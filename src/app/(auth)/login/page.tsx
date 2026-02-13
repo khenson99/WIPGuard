@@ -65,20 +65,20 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-950">
+    <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="w-full max-w-sm space-y-8 px-4">
         <div className="text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-amber-600/10 ring-1 ring-amber-600/30">
-            <Shield className="h-7 w-7 text-amber-500" />
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-primary/30">
+            <Shield className="h-7 w-7 text-primary" />
           </div>
-          <h1 className="mt-4 text-2xl font-bold text-white">WIPGuard</h1>
-          <p className="mt-1 text-sm text-zinc-500">
+          <h1 className="mt-4 text-2xl font-bold text-foreground">WIPGuard</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Kanban task management with WIP limits
           </p>
         </div>
 
         {inviteMessage && (
-          <div className="rounded-lg border border-amber-700/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
+          <div className="rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-xs text-foreground">
             {inviteMessage}
           </div>
         )}
@@ -86,7 +86,7 @@ export default function LoginPage() {
         {/* Google OAuth */}
         <button
           onClick={() => signIn("google", { callbackUrl: "/board" })}
-          className="flex w-full items-center justify-center gap-3 rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-600 hover:bg-zinc-800"
+          className="flex w-full items-center justify-center gap-3 rounded-lg border border-border bg-secondary px-4 py-3 text-sm font-medium text-foreground transition-colors hover:border-muted-foreground hover:bg-card"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24">
             <path
@@ -113,15 +113,15 @@ export default function LoginPage() {
         {isDev && devUsers.length > 0 && (
           <>
             <div className="flex items-center gap-3">
-              <div className="h-px flex-1 bg-zinc-800" />
-              <span className="text-xs text-zinc-600">DEV MODE</span>
-              <div className="h-px flex-1 bg-zinc-800" />
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-xs text-muted-foreground">DEV MODE</span>
+              <div className="h-px flex-1 bg-border" />
             </div>
             <div className="space-y-3">
               <select
                 value={selectedEmail}
                 onChange={(e) => setSelectedEmail(e.target.value)}
-                className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-200 outline-none focus:border-amber-600"
+                className="w-full rounded-lg border border-border bg-secondary px-4 py-3 text-sm text-foreground outline-none focus:border-ring"
               >
                 {devUsers.map((u) => (
                   <option key={u.email} value={u.email}>
@@ -132,7 +132,7 @@ export default function LoginPage() {
               <button
                 onClick={handleDevLogin}
                 disabled={loading}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[var(--primary-hover)] disabled:opacity-50"
               >
                 {loading ? "Signing in..." : "Sign in as this user"}
               </button>
@@ -140,7 +140,7 @@ export default function LoginPage() {
           </>
         )}
 
-        <p className="text-center text-xs text-zinc-600">
+        <p className="text-center text-xs text-muted-foreground">
           Your team&apos;s work-in-progress, protected.
         </p>
       </div>

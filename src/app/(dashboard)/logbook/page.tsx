@@ -55,19 +55,19 @@ export default function LogbookPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-zinc-800 px-6 py-3">
+      <div className="border-b border-border px-6 py-3">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="flex items-center gap-2 text-lg font-semibold text-white">
-              <BookOpen className="h-5 w-5 text-amber-500" />
+            <h1 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+              <BookOpen className="h-5 w-5 text-primary" />
               Logbook
             </h1>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-muted-foreground">
               Completed task archive with full audit trail
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-zinc-500" />
+            <Calendar className="h-4 w-4 text-muted-foreground" />
             <input
               type="date"
               value={startDate}
@@ -75,9 +75,9 @@ export default function LogbookPage() {
                 setStartDate(e.target.value);
                 setPage(1);
               }}
-              className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300"
+              className="rounded-md border border-border bg-secondary px-2 py-1 text-xs text-foreground"
             />
-            <span className="text-xs text-zinc-500">to</span>
+            <span className="text-xs text-muted-foreground">to</span>
             <input
               type="date"
               value={endDate}
@@ -85,7 +85,7 @@ export default function LogbookPage() {
                 setEndDate(e.target.value);
                 setPage(1);
               }}
-              className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300"
+              className="rounded-md border border-border bg-secondary px-2 py-1 text-xs text-foreground"
             />
           </div>
         </div>
@@ -94,10 +94,10 @@ export default function LogbookPage() {
       <div className="flex-1 overflow-auto px-6 py-4">
         {loading ? (
           <div className="flex h-32 items-center justify-center">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-600 border-t-amber-500" />
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-primary" />
           </div>
         ) : entries.length === 0 ? (
-          <div className="mt-12 text-center text-sm text-zinc-500">
+          <div className="mt-12 text-center text-sm text-muted-foreground">
             No completed tasks in this date range.
           </div>
         ) : (
@@ -105,26 +105,26 @@ export default function LogbookPage() {
             {entries.map((entry) => (
               <div
                 key={entry.id}
-                className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4"
+                className="rounded-lg border border-border bg-card p-4"
               >
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="text-sm font-medium text-zinc-200">
+                    <h3 className="text-sm font-medium text-foreground">
                       {entry.taskTitle}
                     </h3>
                     {entry.taskNotes && (
-                      <p className="mt-1 text-xs text-zinc-500 line-clamp-2">
+                      <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
                         {entry.taskNotes}
                       </p>
                     )}
                   </div>
-                  <span className="text-xs text-zinc-500">
+                  <span className="text-xs text-muted-foreground">
                     {new Date(entry.completedOn).toLocaleDateString()}
                   </span>
                 </div>
-                <div className="mt-2 flex items-center gap-3 text-xs text-zinc-500">
+                <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
                   {entry.projectName && (
-                    <span className="rounded bg-zinc-800 px-1.5 py-0.5">
+                    <span className="rounded bg-secondary px-1.5 py-0.5">
                       {entry.projectName}
                     </span>
                   )}
@@ -144,15 +144,15 @@ export default function LogbookPage() {
           <button
             onClick={() => setPage(Math.max(1, page - 1))}
             disabled={page === 1}
-            className="rounded-md p-1.5 text-zinc-400 hover:bg-zinc-800 disabled:opacity-30"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary disabled:opacity-30"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <span className="text-xs text-zinc-500">Page {page}</span>
+          <span className="text-xs text-muted-foreground">Page {page}</span>
           <button
             onClick={() => setPage(page + 1)}
             disabled={entries.length < 25}
-            className="rounded-md p-1.5 text-zinc-400 hover:bg-zinc-800 disabled:opacity-30"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary disabled:opacity-30"
           >
             <ChevronRight className="h-4 w-4" />
           </button>

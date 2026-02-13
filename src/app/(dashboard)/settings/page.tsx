@@ -24,18 +24,18 @@ export default function SettingsPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-zinc-800 px-6 py-3">
-        <h1 className="flex items-center gap-2 text-lg font-semibold text-white">
-          <SettingsIcon className="h-5 w-5 text-amber-500" />
+      <div className="border-b border-border px-6 py-3">
+        <h1 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+          <SettingsIcon className="h-5 w-5 text-primary" />
           Settings
         </h1>
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-muted-foreground">
           Configure your board, sprints, projects, and team
         </p>
       </div>
 
       {/* Tab bar */}
-      <div className="flex border-b border-zinc-800 px-6">
+      <div className="flex border-b border-border px-6">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -43,8 +43,8 @@ export default function SettingsPage() {
             className={clsx(
               "border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
               activeTab === tab.id
-                ? "border-amber-500 text-amber-400"
-                : "border-transparent text-zinc-500 hover:text-zinc-300"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
             {tab.label}
