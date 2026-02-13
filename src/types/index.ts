@@ -1,3 +1,5 @@
+import type React from "react";
+
 export type TaskStatus =
   | "BACKLOG"
   | "QUEUED"
@@ -30,10 +32,10 @@ export const COLUMN_LABELS: Record<TaskStatus, string> = {
 };
 
 export const PRIORITY_COLORS: Record<Priority, string> = {
-  P0: "#dc2626",
-  P1: "#ea580c",
-  P2: "#2563eb",
-  P3: "#6b7280",
+  P0: "var(--priority-p0)",
+  P1: "var(--priority-p1)",
+  P2: "var(--priority-p2)",
+  P3: "var(--priority-p3)",
 };
 
 export const PRIORITY_LABELS: Record<Priority, string> = {
@@ -45,20 +47,46 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
 
 /** Dot color by swim lane (column status) */
 export const STATUS_COLORS: Record<TaskStatus, string> = {
-  BACKLOG: "#71717a",     // zinc-500
-  QUEUED: "#eab308",      // yellow-500
-  WORKING_ON_TODAY: "#3b82f6", // blue-500
-  ACTIVE: "#22c55e",      // green-500
-  NOT_DONE: "#ef4444",    // red-500
-  DONE: "#10b981",        // emerald-500
+  BACKLOG: "var(--status-backlog)",
+  QUEUED: "var(--status-queued)",
+  WORKING_ON_TODAY: "var(--status-working)",
+  ACTIVE: "var(--status-active)",
+  NOT_DONE: "var(--status-not-done)",
+  DONE: "var(--status-done)",
 };
 
-/** Card background shading by difficulty */
-export const DIFFICULTY_BG: Record<DifficultyLevel, string> = {
-  LOW: "bg-zinc-900",
-  MEDIUM: "bg-zinc-900 ring-1 ring-inset ring-amber-900/30",
-  HIGH: "bg-amber-950/20 ring-1 ring-inset ring-amber-800/40",
-  EPIC: "bg-red-950/25 ring-1 ring-inset ring-red-800/50",
+/** Card background + ring styles by difficulty (inline style objects) */
+export const DIFFICULTY_STYLES: Record<
+  DifficultyLevel,
+  React.CSSProperties
+> = {
+  LOW: {
+    background: "var(--diff-low-bg)",
+    boxShadow: "inset 0 0 0 1px var(--diff-low-ring)",
+  },
+  MEDIUM: {
+    background: "var(--diff-medium-bg)",
+    boxShadow: "inset 0 0 0 1px var(--diff-medium-ring)",
+  },
+  HIGH: {
+    background: "var(--diff-high-bg)",
+    boxShadow: "inset 0 0 0 1px var(--diff-high-ring)",
+  },
+  EPIC: {
+    background: "var(--diff-epic-bg)",
+    boxShadow: "inset 0 0 0 1px var(--diff-epic-ring)",
+  },
+};
+
+/** Difficulty tag colors (inline style objects) */
+export const DIFFICULTY_TAG_STYLES: Record<
+  DifficultyLevel,
+  React.CSSProperties
+> = {
+  LOW: { background: "var(--tag-bg)", color: "var(--muted-foreground)" },
+  MEDIUM: { background: "var(--diff-medium-ring)", color: "var(--foreground)" },
+  HIGH: { background: "var(--diff-high-ring)", color: "var(--foreground)" },
+  EPIC: { background: "var(--diff-epic-ring)", color: "var(--foreground)" },
 };
 
 export const DIFFICULTY_LABELS: Record<DifficultyLevel, string> = {

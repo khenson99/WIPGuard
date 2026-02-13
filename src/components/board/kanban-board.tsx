@@ -179,7 +179,13 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-600 border-t-amber-500" />
+        <div
+          className="h-8 w-8 animate-spin rounded-full border-2"
+          style={{
+            borderColor: "var(--border)",
+            borderTopColor: "var(--primary)",
+          }}
+        />
       </div>
     );
   }
@@ -190,7 +196,17 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
         <BoardFilters />
         <button
           onClick={handleCreateTask}
-          className="flex items-center gap-1.5 rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-500"
+          className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium"
+          style={{
+            background: "var(--primary)",
+            color: "var(--primary-foreground)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "var(--primary-hover)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "var(--primary)";
+          }}
         >
           <Plus className="h-4 w-4" />
           New Task

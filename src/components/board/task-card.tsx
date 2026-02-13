@@ -1,7 +1,6 @@
 "use client";
 
 import { Draggable } from "@hello-pangea/dnd";
-import { clsx } from "clsx";
 import {
   ChevronRight,
   ChevronLeft,
@@ -13,7 +12,8 @@ import {
 import type { TaskWithRelations } from "@/types";
 import {
   STATUS_COLORS,
-  DIFFICULTY_BG,
+  DIFFICULTY_STYLES,
+  DIFFICULTY_TAG_STYLES,
   DIFFICULTY_LABELS,
   COLUMN_ORDER,
 } from "@/types";
@@ -45,13 +45,27 @@ export function TaskCard({
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           onClick={onClick}
-          className={clsx(
-            "group cursor-pointer rounded-md border p-3 transition-all",
-            DIFFICULTY_BG[task.degreeOfDifficulty],
-            snapshot.isDragging
-              ? "border-amber-600 shadow-lg shadow-amber-900/20"
-              : "border-zinc-800 hover:border-zinc-700"
-          )}
+          className="group cursor-pointer rounded-md border p-3 transition-all"
+          style={{
+            ...DIFFICULTY_STYLES[task.degreeOfDifficulty],
+            borderColor: snapshot.isDragging
+              ? "var(--card-drag-border)"
+              : "var(--card-border)",
+            boxShadow: snapshot.isDragging
+              ? `${DIFFICULTY_STYLES[task.degreeOfDifficulty].boxShadow}, 0 10px 15px -3px var(--card-drag-shadow)`
+              : DIFFICULTY_STYLES[task.degreeOfDifficulty].boxShadow,
+            ...provided.draggableProps.style,
+          }}
+          onMouseEnter={(e) => {
+            if (!snapshot.isDragging) {
+              e.currentTarget.style.borderColor = "var(--card-hover-border)";
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!snapshot.isDragging) {
+              e.currentTarget.style.borderColor = "var(--card-border)";
+            }
+          }}
         >
           {/* Status dot + title row */}
           <div className="flex items-start gap-2">
@@ -60,7 +74,10 @@ export function TaskCard({
               style={{ backgroundColor: STATUS_COLORS[task.status] }}
               title={task.status.replace(/_/g, " ")}
             />
-            <h4 className="flex-1 text-sm font-medium text-zinc-200 leading-snug">
+            <h4
+              className="flex-1 text-sm font-medium leading-snug"
+              style={{ color: "var(--foreground)" }}
+            >
               {task.title}
             </h4>
           </div>
@@ -68,21 +85,19 @@ export function TaskCard({
           {/* Tags row: project + difficulty + unplanned */}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {task.project && (
-              <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
+              <span
+                className="rounded px-1.5 py-0.5 text-[10px] font-medium"
+                style={{
+                  background: "var(--tag-bg)",
+                  color: "var(--tag-text)",
+                }}
+              >
                 {task.project.name}
               </span>
             )}
             <span
-              className={clsx(
-                "rounded px-1.5 py-0.5 text-[10px] font-medium",
-                task.degreeOfDifficulty === "EPIC"
-                  ? "bg-red-900/60 text-red-300"
-                  : task.degreeOfDifficulty === "HIGH"
-                    ? "bg-amber-900/50 text-amber-300"
-                    : task.degreeOfDifficulty === "MEDIUM"
-                      ? "bg-yellow-900/40 text-yellow-300"
-                      : "bg-zinc-800 text-zinc-500"
-              )}
+              className="rounded px-1.5 py-0.5 text-[10px] font-medium"
+              style={DIFFICULTY_TAG_STYLES[task.degreeOfDifficulty]}
               title={`Difficulty: ${DIFFICULTY_LABELS[task.degreeOfDifficulty]}`}
             >
               <Gauge className="mr-0.5 inline h-2.5 w-2.5" />
@@ -90,12 +105,18 @@ export function TaskCard({
             </span>
             {task.unplanned && (
               <span title="Unplanned" className="flex items-center">
-                <AlertTriangle className="h-3 w-3 text-amber-500" />
+                <AlertTriangle
+                  className="h-3 w-3"
+                  style={{ color: "var(--primary)" }}
+                />
               </span>
             )}
             {task.slackThread && (
               <span title="Has Slack thread" className="flex items-center">
-                <MessageSquare className="h-3 w-3 text-zinc-500" />
+                <MessageSquare
+                  className="h-3 w-3"
+                  style={{ color: "var(--muted-foreground)" }}
+                />
               </span>
             )}
             {task.dependsOn && task.dependsOn.length > 0 && (
@@ -103,7 +124,10 @@ export function TaskCard({
                 title={`Depends on ${task.dependsOn.length} task(s)`}
                 className="flex items-center"
               >
-                <Link2 className="h-3 w-3 text-zinc-500" />
+                <Link2
+                  className="h-3 w-3"
+                  style={{ color: "var(--muted-foreground)" }}
+                />
               </span>
             )}
           </div>
@@ -117,7 +141,12 @@ export function TaskCard({
                   {task.responsible.slice(0, 3).map((user) => (
                     <div
                       key={user.id}
-                      className="flex h-5 w-5 items-center justify-center rounded-full border border-zinc-900 bg-zinc-700 text-[9px] font-medium text-zinc-300"
+                      className="flex h-5 w-5 items-center justify-center rounded-full border text-[9px] font-medium"
+                      style={{
+                        borderColor: "var(--avatar-border)",
+                        background: "var(--avatar-bg)",
+                        color: "var(--avatar-text)",
+                      }}
                       title={user.name || user.email}
                     >
                       {(user.name || user.email)[0].toUpperCase()}
@@ -136,7 +165,16 @@ export function TaskCard({
                     e.stopPropagation();
                     onRetreat?.();
                   }}
-                  className="rounded p-0.5 text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-zinc-800 hover:text-blue-400"
+                  className="rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+                  style={{ color: "var(--muted-foreground)" }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "var(--sidebar-hover)";
+                    e.currentTarget.style.color = "var(--info)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "";
+                    e.currentTarget.style.color = "var(--muted-foreground)";
+                  }}
                   title="Move back"
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -149,7 +187,16 @@ export function TaskCard({
                     e.stopPropagation();
                     onAdvance();
                   }}
-                  className="rounded p-0.5 text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-zinc-800 hover:text-amber-500"
+                  className="rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+                  style={{ color: "var(--muted-foreground)" }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "var(--sidebar-hover)";
+                    e.currentTarget.style.color = "var(--primary)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "";
+                    e.currentTarget.style.color = "var(--muted-foreground)";
+                  }}
                   title="Advance status"
                 >
                   <ChevronRight className="h-4 w-4" />
@@ -160,7 +207,10 @@ export function TaskCard({
 
           {/* Due date */}
           {task.dueDate && (
-            <div className="mt-1.5 text-[10px] text-zinc-500">
+            <div
+              className="mt-1.5 text-[10px]"
+              style={{ color: "var(--muted-foreground)" }}
+            >
               Due {new Date(task.dueDate).toLocaleDateString()}
             </div>
           )}

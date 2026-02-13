@@ -25,10 +25,25 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="flex h-screen w-56 flex-col border-r border-zinc-800 bg-zinc-950 text-zinc-300">
-      <div className="flex items-center gap-2 border-b border-zinc-800 px-4 py-4">
-        <LayoutDashboard className="h-6 w-6 text-amber-500" />
-        <span className="text-lg font-bold text-white">WIPGuard</span>
+    <aside
+      className="flex h-screen w-56 flex-col border-r text-sm"
+      style={{
+        background: "var(--sidebar-bg)",
+        borderColor: "var(--sidebar-border)",
+        color: "var(--sidebar-foreground)",
+      }}
+    >
+      <div
+        className="flex items-center gap-2 border-b px-4 py-4"
+        style={{ borderColor: "var(--sidebar-border)" }}
+      >
+        <LayoutDashboard
+          className="h-6 w-6"
+          style={{ color: "var(--primary)" }}
+        />
+        <span className="text-lg font-bold" style={{ color: "var(--foreground)" }}>
+          WIPGuard
+        </span>
       </div>
 
       <nav className="flex-1 space-y-0.5 px-2 py-3">
@@ -39,11 +54,28 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={clsx(
-                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-zinc-800 text-white"
-                  : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors"
               )}
+              style={{
+                background: isActive
+                  ? "var(--sidebar-active)"
+                  : undefined,
+                color: isActive
+                  ? "var(--sidebar-active-text)"
+                  : "var(--sidebar-muted)",
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.background = "var(--sidebar-hover)";
+                  e.currentTarget.style.color = "var(--sidebar-foreground)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.background = "";
+                  e.currentTarget.style.color = "var(--sidebar-muted)";
+                }
+              }}
             >
               <item.icon className="h-4 w-4" />
               {item.label}
@@ -52,10 +84,22 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="border-t border-zinc-800 p-2">
+      <div
+        className="border-t p-2"
+        style={{ borderColor: "var(--sidebar-border)" }}
+      >
         <Link
           href="/settings"
-          className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+          className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors"
+          style={{ color: "var(--sidebar-muted)" }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "var(--sidebar-hover)";
+            e.currentTarget.style.color = "var(--sidebar-foreground)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "";
+            e.currentTarget.style.color = "var(--sidebar-muted)";
+          }}
         >
           <Settings className="h-4 w-4" />
           Settings
