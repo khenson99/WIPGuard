@@ -1,0 +1,29 @@
+{
+  "project_url": "https://github.com/users/khenson99/projects/4",
+  "repo_type": "backend",
+  "repo_name": "app",
+  "repo_url": "https://github.com/khenson99/WIPGuard.git",
+  "detected_stack": {
+  "package_manager": "npm",
+  "language": "typescript",
+  "framework": "nextjs",
+  "styling": "tailwind",
+  "orm": "prisma",
+  "containerized": true
+},
+  "max_iterations": {
+    "planner": 10,
+    "architect": 20,
+    "agent": 20,
+    "reviewer": 10,
+    "full_cycle": 3
+  },
+  "labels": {
+    "agent_routing": ["agent:backend", "agent:frontend", "agent:qa", "agent:design-system"],
+    "priority": ["priority:high", "priority:medium", "priority:low"],
+    "type": ["type:feature", "type:bug", "type:chore", "type:test"],
+    "repo": ["repo:backend", "repo:frontend", "repo:shared"],
+    "status": ["status:ready", "status:blocked", "status:in-progress", "status:done"]
+  },
+  "initialized_at": "2026-02-13T15:52:18Z"
+}

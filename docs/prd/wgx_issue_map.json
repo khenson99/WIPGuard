@@ -1,0 +1,199 @@
+{
+  "WGX-001": {
+    "number": 1,
+    "url": "https://github.com/khenson99/WIPGuard/issues/1",
+    "title": "[WGX-001] Policy engine for WIP enforcement and override governance",
+    "deps": []
+  },
+  "WGX-002": {
+    "number": 2,
+    "url": "https://github.com/khenson99/WIPGuard/issues/2",
+    "title": "[WGX-002] Replenishment and commitment protocol UX",
+    "deps": [
+      "WGX-001"
+    ]
+  },
+  "WGX-003": {
+    "number": 3,
+    "url": "https://github.com/khenson99/WIPGuard/issues/3",
+    "title": "[WGX-003] Class of service lanes (standard, fixed-date, expedite)",
+    "deps": [
+      "WGX-001"
+    ]
+  },
+  "WGX-004": {
+    "number": 4,
+    "url": "https://github.com/khenson99/WIPGuard/issues/4",
+    "title": "[WGX-004] Concurrency-safe board mutations and ordering integrity",
+    "deps": [
+      "WGX-001"
+    ]
+  },
+  "WGX-005": {
+    "number": 5,
+    "url": "https://github.com/khenson99/WIPGuard/issues/5",
+    "title": "[WGX-005] Hierarchy correctness and inheritance engine hardening",
+    "deps": [
+      "WGX-004"
+    ]
+  },
+  "WGX-006": {
+    "number": 6,
+    "url": "https://github.com/khenson99/WIPGuard/issues/6",
+    "title": "[WGX-006] Sprint commitment ledger and planned/unplanned flow model",
+    "deps": [
+      "WGX-005"
+    ]
+  },
+  "WGX-007": {
+    "number": 7,
+    "url": "https://github.com/khenson99/WIPGuard/issues/7",
+    "title": "[WGX-007] Whip View for scope creep and WIP pressure",
+    "deps": [
+      "WGX-006"
+    ]
+  },
+  "WGX-008": {
+    "number": 8,
+    "url": "https://github.com/khenson99/WIPGuard/issues/8",
+    "title": "[WGX-008] Outbox/event bus foundation for integrations",
+    "deps": [
+      "WGX-004"
+    ]
+  },
+  "WGX-009": {
+    "number": 9,
+    "url": "https://github.com/khenson99/WIPGuard/issues/9",
+    "title": "[WGX-009] HubSpot bi-directional sync MVP",
+    "deps": [
+      "WGX-008"
+    ]
+  },
+  "WGX-010": {
+    "number": 10,
+    "url": "https://github.com/khenson99/WIPGuard/issues/10",
+    "title": "[WGX-010] Slack integration for flow events and task capture",
+    "deps": [
+      "WGX-008"
+    ]
+  },
+  "WGX-011": {
+    "number": 11,
+    "url": "https://github.com/khenson99/WIPGuard/issues/11",
+    "title": "[WGX-011] Google Workspace context (Calendar + Gmail)",
+    "deps": [
+      "WGX-008"
+    ]
+  },
+  "WGX-012": {
+    "number": 12,
+    "url": "https://github.com/khenson99/WIPGuard/issues/12",
+    "title": "[WGX-012] Standup cockpit with flow coaching prompts",
+    "deps": [
+      "WGX-006"
+    ]
+  },
+  "WGX-013": {
+    "number": 13,
+    "url": "https://github.com/khenson99/WIPGuard/issues/13",
+    "title": "[WGX-013] Minimal card mode and cognitive load controls",
+    "deps": [
+      "WGX-002"
+    ]
+  },
+  "WGX-014": {
+    "number": 14,
+    "url": "https://github.com/khenson99/WIPGuard/issues/14",
+    "title": "[WGX-014] Flow analytics engine (CFD, throughput, cycle/lead)",
+    "deps": [
+      "WGX-006",
+      "WGX-008"
+    ]
+  },
+  "WGX-015": {
+    "number": 15,
+    "url": "https://github.com/khenson99/WIPGuard/issues/15",
+    "title": "[WGX-015] Constraint and flow-risk intelligence",
+    "deps": [
+      "WGX-014"
+    ]
+  },
+  "WGX-016": {
+    "number": 16,
+    "url": "https://github.com/khenson99/WIPGuard/issues/16",
+    "title": "[WGX-016] Observability, SLOs, and incident operations",
+    "deps": [
+      "WGX-008"
+    ]
+  },
+  "WGX-017": {
+    "number": 17,
+    "url": "https://github.com/khenson99/WIPGuard/issues/17",
+    "title": "[WGX-017] Authentication, authorization, and audit hardening",
+    "deps": [
+      "WGX-001"
+    ]
+  },
+  "WGX-018": {
+    "number": 18,
+    "url": "https://github.com/khenson99/WIPGuard/issues/18",
+    "title": "[WGX-018] Design system conformance and accessibility remediation",
+    "deps": [
+      "WGX-013"
+    ]
+  },
+  "WGX-019": {
+    "number": 19,
+    "url": "https://github.com/khenson99/WIPGuard/issues/19",
+    "title": "[WGX-019] QA quality gate suite (unit, integration, e2e, contract)",
+    "deps": [
+      "WGX-005",
+      "WGX-006",
+      "WGX-008"
+    ]
+  },
+  "WGX-020": {
+    "number": 20,
+    "url": "https://github.com/khenson99/WIPGuard/issues/20",
+    "title": "[WGX-020] Performance and resilience validation at scale envelope",
+    "deps": [
+      "WGX-016",
+      "WGX-019"
+    ]
+  },
+  "WGX-021": {
+    "number": 21,
+    "url": "https://github.com/khenson99/WIPGuard/issues/21",
+    "title": "[WGX-021] Product instrumentation and decision dashboard",
+    "deps": [
+      "WGX-014"
+    ]
+  },
+  "WGX-022": {
+    "number": 22,
+    "url": "https://github.com/khenson99/WIPGuard/issues/22",
+    "title": "[WGX-022] Release train, rollout controls, and change management",
+    "deps": [
+      "WGX-018",
+      "WGX-019",
+      "WGX-020"
+    ]
+  },
+  "WGX-023": {
+    "number": 23,
+    "url": "https://github.com/khenson99/WIPGuard/issues/23",
+    "title": "[WGX-023] Coda migration and data trustworthiness",
+    "deps": [
+      "WGX-005"
+    ]
+  },
+  "WGX-024": {
+    "number": 24,
+    "url": "https://github.com/khenson99/WIPGuard/issues/24",
+    "title": "[WGX-024] Mobile-responsive and offline-lite field workflow",
+    "deps": [
+      "WGX-013",
+      "WGX-017"
+    ]
+  }
+}

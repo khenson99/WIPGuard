@@ -136,7 +136,7 @@ export function SprintsTab() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
   }
@@ -145,16 +145,16 @@ export function SprintsTab() {
     <div className="max-w-3xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-semibold text-white">
+          <h2 className="text-base font-semibold text-foreground">
             Sprint Management
           </h2>
-          <p className="mt-1 text-xs text-zinc-500">
+          <p className="mt-1 text-xs text-muted-foreground">
             Manage your sprints. Only one sprint can be active at a time.
           </p>
         </div>
         <button
           onClick={openCreate}
-          className="flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500"
+          className="btn-primary-theme flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
         >
           <Plus className="h-4 w-4" />
           New Sprint
@@ -165,15 +165,15 @@ export function SprintsTab() {
       {showForm && (
         <form
           onSubmit={handleSubmit}
-          className="space-y-4 rounded-lg border border-zinc-700 bg-zinc-900/80 p-4"
+          className="space-y-4 rounded-lg border border-border bg-card p-4"
         >
-          <h3 className="text-sm font-medium text-white">
+          <h3 className="text-sm font-medium text-foreground">
             {editingId ? "Edit Sprint" : "Create Sprint"}
           </h3>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs text-zinc-400">
+              <label className="mb-1 block text-xs text-muted-foreground">
                 Sprint Name
               </label>
               <input
@@ -181,13 +181,13 @@ export function SprintsTab() {
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="e.g. Sprint 12"
-                className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-600 focus:border-amber-500 focus:outline-none"
+                className="w-full rounded border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:border-ring focus:outline-none"
                 required
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-xs text-zinc-400">
+              <label className="mb-1 block text-xs text-muted-foreground">
                 Start Date
               </label>
               <input
@@ -196,33 +196,33 @@ export function SprintsTab() {
                 onChange={(e) =>
                   setForm({ ...form, startDate: e.target.value })
                 }
-                className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
+                className="w-full rounded border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
                 required
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-xs text-zinc-400">
+              <label className="mb-1 block text-xs text-muted-foreground">
                 End Date
               </label>
               <input
                 type="date"
                 value={form.endDate}
                 onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-                className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
+                className="w-full rounded border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
                 required
               />
             </div>
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-zinc-300">
+          <label className="flex items-center gap-2 text-sm text-foreground">
             <input
               type="checkbox"
               checked={form.isActive}
               onChange={(e) =>
                 setForm({ ...form, isActive: e.target.checked })
               }
-              className="rounded border-zinc-600 bg-zinc-800 text-amber-500 focus:ring-amber-500"
+              className="rounded border-border bg-secondary text-primary focus:ring-primary"
             />
             Set as active sprint
           </label>
@@ -231,7 +231,7 @@ export function SprintsTab() {
             <button
               type="submit"
               disabled={saving}
-              className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+              className="btn-primary-theme rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
             >
               {saving
                 ? "Saving..."
@@ -242,7 +242,7 @@ export function SprintsTab() {
             <button
               type="button"
               onClick={handleCancel}
-              className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-400 hover:border-zinc-600 hover:text-zinc-300"
+              className="btn-ghost-muted rounded-lg border border-border px-4 py-2 text-sm"
             >
               Cancel
             </button>
@@ -252,10 +252,10 @@ export function SprintsTab() {
 
       {/* Sprint list */}
       {sprints.length === 0 && !showForm ? (
-        <div className="rounded-lg border border-dashed border-zinc-700 py-12 text-center">
-          <Calendar className="mx-auto mb-3 h-8 w-8 text-zinc-600" />
-          <p className="text-sm text-zinc-500">No sprints created yet</p>
-          <p className="text-xs text-zinc-600">
+        <div className="rounded-lg border border-dashed border-border py-12 text-center">
+          <Calendar className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">No sprints created yet</p>
+          <p className="text-xs text-muted-foreground">
             Create your first sprint to start organizing work
           </p>
         </div>
@@ -266,16 +266,16 @@ export function SprintsTab() {
             return (
               <div
                 key={sprint.id}
-                className="flex items-center gap-4 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3"
+                className="flex items-center gap-4 rounded-lg border border-border bg-card px-4 py-3"
               >
                 {/* Status indicator */}
                 <div
                   className={`h-2.5 w-2.5 rounded-full ${
                     status === "current"
-                      ? "bg-green-500"
+                      ? "bg-[var(--success)]"
                       : status === "upcoming"
-                        ? "bg-blue-500"
-                        : "bg-zinc-600"
+                        ? "bg-[var(--link)]"
+                        : "bg-muted-foreground"
                   }`}
                   title={status}
                 />
@@ -283,20 +283,20 @@ export function SprintsTab() {
                 {/* Sprint info */}
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-zinc-200">
+                    <span className="text-sm font-medium text-foreground">
                       {sprint.name}
                     </span>
                     {sprint.isActive && (
-                      <span className="rounded-full bg-green-900/50 px-2 py-0.5 text-[10px] font-medium text-green-400">
+                      <span className="rounded-full bg-[var(--success)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--success)]">
                         ACTIVE
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-muted-foreground">
                     {formatDate(sprint.startDate)} –{" "}
                     {formatDate(sprint.endDate)}
                     {sprint._count?.tasks !== undefined && (
-                      <span className="ml-2 text-zinc-600">
+                      <span className="ml-2 text-muted-foreground">
                         · {sprint._count.tasks} tasks
                       </span>
                     )}
@@ -309,8 +309,8 @@ export function SprintsTab() {
                     onClick={() => toggleActive(sprint)}
                     className={`rounded p-1.5 transition-colors ${
                       sprint.isActive
-                        ? "text-green-400 hover:bg-zinc-800 hover:text-green-300"
-                        : "text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400"
+                        ? "text-[var(--success)] hover:bg-secondary hover:text-[var(--success)]"
+                        : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                     }`}
                     title={
                       sprint.isActive ? "Deactivate sprint" : "Set as active"
@@ -320,7 +320,7 @@ export function SprintsTab() {
                   </button>
                   <button
                     onClick={() => openEdit(sprint)}
-                    className="rounded p-1.5 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-zinc-400"
+                    className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                     title="Edit sprint"
                   >
                     <Pencil className="h-4 w-4" />

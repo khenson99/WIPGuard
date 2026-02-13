@@ -15,13 +15,7 @@ export function Header() {
   useEffect(() => setMounted(true), []);
 
   return (
-    <header
-      className="flex h-14 items-center justify-between border-b px-6"
-      style={{
-        background: "var(--sidebar-bg)",
-        borderColor: "var(--sidebar-border)",
-      }}
-    >
+    <header className="flex h-14 items-center justify-between border-b border-sidebar-border bg-sidebar-bg px-6">
       <div />
 
       <div className="flex items-center gap-2">
@@ -29,16 +23,7 @@ export function Header() {
         {mounted && (
           <button
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="rounded-lg p-2 transition-colors"
-            style={{ color: "var(--muted-foreground)" }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "var(--sidebar-hover)";
-              e.currentTarget.style.color = "var(--foreground)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "";
-              e.currentTarget.style.color = "var(--muted-foreground)";
-            }}
+            className="icon-btn-sidebar rounded-lg p-2"
             title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
           >
             {theme === "dark" ? (
@@ -50,18 +35,7 @@ export function Header() {
         )}
 
         {/* Notifications */}
-        <button
-          className="rounded-lg p-2 transition-colors"
-          style={{ color: "var(--muted-foreground)" }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "var(--sidebar-hover)";
-            e.currentTarget.style.color = "var(--foreground)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "";
-            e.currentTarget.style.color = "var(--muted-foreground)";
-          }}
-        >
+        <button className="icon-btn-sidebar rounded-lg p-2">
           <Bell className="h-4 w-4" />
         </button>
 
@@ -76,24 +50,12 @@ export function Header() {
                 className="h-7 w-7 rounded-full"
               />
             )}
-            <span
-              className="text-sm"
-              style={{ color: "var(--sidebar-foreground)" }}
-            >
+            <span className="text-sm text-sidebar-foreground">
               {session.user.name}
             </span>
             <button
               onClick={() => signOut()}
-              className="rounded-lg p-2 transition-colors"
-              style={{ color: "var(--muted-foreground)" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "var(--sidebar-hover)";
-                e.currentTarget.style.color = "var(--foreground)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "";
-                e.currentTarget.style.color = "var(--muted-foreground)";
-              }}
+              className="icon-btn-sidebar rounded-lg p-2"
               title="Sign out"
             >
               <LogOut className="h-4 w-4" />

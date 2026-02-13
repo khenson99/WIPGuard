@@ -53,10 +53,10 @@ const TYPE_OPTIONS: { value: ProjectType; label: string }[] = [
 ];
 
 const STATUS_COLORS: Record<ProjectStatus, string> = {
-  ACTIVE: "bg-green-900/50 text-green-400",
-  ON_HOLD: "bg-yellow-900/50 text-yellow-400",
-  COMPLETED: "bg-blue-900/50 text-blue-400",
-  ARCHIVED: "bg-zinc-800 text-zinc-500",
+  ACTIVE: "bg-[var(--success)]/10 text-[var(--success)]",
+  ON_HOLD: "bg-[var(--warning)]/10 text-[var(--warning)]",
+  COMPLETED: "bg-[var(--link)]/10 text-[var(--link)]",
+  ARCHIVED: "bg-secondary text-muted-foreground",
 };
 
 export function ProjectsTab() {
@@ -130,8 +130,6 @@ export function ProjectsTab() {
         companyPriorityId: form.companyPriorityId || null,
       };
 
-      // For create, use POST to /api/projects
-      // For edit, we need a PATCH endpoint — fallback to POST for now
       const url = editingId ? `/api/projects/${editingId}` : "/api/projects";
       const method = editingId ? "PATCH" : "POST";
 
@@ -155,7 +153,7 @@ export function ProjectsTab() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
   }
@@ -164,14 +162,14 @@ export function ProjectsTab() {
     <div className="max-w-3xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-semibold text-white">Projects</h2>
-          <p className="mt-1 text-xs text-zinc-500">
+          <h2 className="text-base font-semibold text-foreground">Projects</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
             Manage projects and link them to company priorities.
           </p>
         </div>
         <button
           onClick={openCreate}
-          className="flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500"
+          className="btn-primary-theme flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
         >
           <Plus className="h-4 w-4" />
           New Project
@@ -182,16 +180,16 @@ export function ProjectsTab() {
       {showForm && (
         <form
           onSubmit={handleSubmit}
-          className="space-y-4 rounded-lg border border-zinc-700 bg-zinc-900/80 p-4"
+          className="space-y-4 rounded-lg border border-border bg-card p-4"
         >
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-white">
+            <h3 className="text-sm font-medium text-foreground">
               {editingId ? "Edit Project" : "Create Project"}
             </h3>
             <button
               type="button"
               onClick={handleCancel}
-              className="text-zinc-500 hover:text-zinc-300"
+              className="text-muted-foreground hover:text-foreground"
             >
               <X className="h-4 w-4" />
             </button>
@@ -199,7 +197,7 @@ export function ProjectsTab() {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs text-zinc-400">
+              <label className="mb-1 block text-xs text-muted-foreground">
                 Project Name
               </label>
               <input
@@ -207,13 +205,13 @@ export function ProjectsTab() {
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="e.g. Q1 Product Launch"
-                className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-600 focus:border-amber-500 focus:outline-none"
+                className="w-full rounded border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:border-ring focus:outline-none"
                 required
               />
             </div>
 
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs text-zinc-400">
+              <label className="mb-1 block text-xs text-muted-foreground">
                 Description
               </label>
               <textarea
@@ -222,18 +220,18 @@ export function ProjectsTab() {
                   setForm({ ...form, description: e.target.value })
                 }
                 rows={2}
-                className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-600 focus:border-amber-500 focus:outline-none"
+                className="w-full rounded border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:border-ring focus:outline-none"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-xs text-zinc-400">Status</label>
+              <label className="mb-1 block text-xs text-muted-foreground">Status</label>
               <select
                 value={form.status}
                 onChange={(e) =>
                   setForm({ ...form, status: e.target.value as ProjectStatus })
                 }
-                className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
+                className="w-full rounded border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
               >
                 {STATUS_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -244,7 +242,7 @@ export function ProjectsTab() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs text-zinc-400">Type</label>
+              <label className="mb-1 block text-xs text-muted-foreground">Type</label>
               <select
                 value={form.projectType}
                 onChange={(e) =>
@@ -253,7 +251,7 @@ export function ProjectsTab() {
                     projectType: e.target.value as ProjectType,
                   })
                 }
-                className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
+                className="w-full rounded border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
               >
                 {TYPE_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -264,7 +262,7 @@ export function ProjectsTab() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs text-zinc-400">
+              <label className="mb-1 block text-xs text-muted-foreground">
                 Company Priority
               </label>
               <select
@@ -272,7 +270,7 @@ export function ProjectsTab() {
                 onChange={(e) =>
                   setForm({ ...form, companyPriorityId: e.target.value })
                 }
-                className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
+                className="w-full rounded border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
               >
                 <option value="">None</option>
                 {priorities.map((p) => (
@@ -284,7 +282,7 @@ export function ProjectsTab() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs text-zinc-400">
+              <label className="mb-1 block text-xs text-muted-foreground">
                 Business Function
               </label>
               <input
@@ -294,7 +292,7 @@ export function ProjectsTab() {
                   setForm({ ...form, businessFunction: e.target.value })
                 }
                 placeholder="e.g. Marketing"
-                className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-600 focus:border-amber-500 focus:outline-none"
+                className="w-full rounded border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:border-ring focus:outline-none"
               />
             </div>
           </div>
@@ -303,7 +301,7 @@ export function ProjectsTab() {
             <button
               type="submit"
               disabled={saving}
-              className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+              className="btn-primary-theme rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
             >
               {saving
                 ? "Saving..."
@@ -314,7 +312,7 @@ export function ProjectsTab() {
             <button
               type="button"
               onClick={handleCancel}
-              className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-400 hover:border-zinc-600 hover:text-zinc-300"
+              className="btn-ghost-muted rounded-lg border border-border px-4 py-2 text-sm"
             >
               Cancel
             </button>
@@ -324,10 +322,10 @@ export function ProjectsTab() {
 
       {/* Project list */}
       {projects.length === 0 && !showForm ? (
-        <div className="rounded-lg border border-dashed border-zinc-700 py-12 text-center">
-          <FolderOpen className="mx-auto mb-3 h-8 w-8 text-zinc-600" />
-          <p className="text-sm text-zinc-500">No projects yet</p>
-          <p className="text-xs text-zinc-600">
+        <div className="rounded-lg border border-dashed border-border py-12 text-center">
+          <FolderOpen className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">No projects yet</p>
+          <p className="text-xs text-muted-foreground">
             Create a project to organize your tasks
           </p>
         </div>
@@ -336,11 +334,11 @@ export function ProjectsTab() {
           {projects.map((project) => (
             <div
               key={project.id}
-              className="flex items-center gap-4 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3"
+              className="flex items-center gap-4 rounded-lg border border-border bg-card px-4 py-3"
             >
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-zinc-200">
+                  <span className="text-sm font-medium text-foreground">
                     {project.name}
                   </span>
                   <span
@@ -348,13 +346,13 @@ export function ProjectsTab() {
                   >
                     {project.status.replace("_", " ")}
                   </span>
-                  <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-500">
+                  <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">
                     {project.projectType.replace("_", " ")}
                   </span>
                 </div>
-                <p className="mt-0.5 text-xs text-zinc-500">
+                <p className="mt-0.5 text-xs text-muted-foreground">
                   {project.companyPriority?.name && (
-                    <span className="text-amber-600">
+                    <span className="text-primary">
                       {project.companyPriority.name}
                     </span>
                   )}
@@ -364,7 +362,7 @@ export function ProjectsTab() {
                   {project._count?.tasks !== undefined &&
                     `${project._count.tasks} tasks`}
                   {project.description && (
-                    <span className="ml-2 text-zinc-600">
+                    <span className="ml-2 text-muted-foreground">
                       — {project.description}
                     </span>
                   )}
@@ -373,7 +371,7 @@ export function ProjectsTab() {
 
               <button
                 onClick={() => openEdit(project)}
-                className="rounded p-1.5 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-zinc-400"
+                className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                 title="Edit project"
               >
                 <Pencil className="h-4 w-4" />

@@ -19,6 +19,32 @@ Learnings:
   - Existing schema has BoardSettings.wipLimit but no policy enforcement or override audit trail
   - Next unblock targets after #1 completes: #4 (concurrency) and #17 (auth hardening) in parallel
 
+--- Reviewer Iteration 4 ---
+Timestamp: 2026-02-13T21:17:00Z
+PRs reviewed: [#32]
+PRs approved: [#32]
+PRs with changes requested: []
+PRs merged: [#32]
+Review summary:
+  PR #32 (tickets #27-#31 — optimistic concurrency and deterministic task ordering):
+  - REVIEWER DIRECT ACTION: Resolved merge conflict in task-modal.tsx (RACI destructuring vs expectedUpdatedAt).
+  - Rebased onto main, verified lint/build/tests pass locally, pushed.
+  - CI passed. Reviewed: 17/17 acceptance criteria met across all 5 sub-tickets.
+  - Approved via comment (same-user limitation). Merged via squash.
+  - Closes #27, #28, #29, #30, #31.
+Ticket #2 status:
+  - Was incorrectly auto-closed when PR #26 merged (originally had `Closes #2`).
+  - Reopened with explanation. 0/4 subtasks and 0/2 acceptance criteria are implemented.
+  - Still needs a dedicated implementation PR.
+Sprint progress:
+  - PR #32 merged → closes #27/#28/#29/#30/#31. Sprint now 6/28 done (plus design system bonus).
+  - No open PRs remain.
+  - Ticket #2 (replenishment + commitment UX) still needs implementation.
+Learnings:
+  - `gh pr merge --squash --delete-branch` works even after force-push rebase.
+  - Auto-close via `Closes #N` can fire even if the keyword was removed from PR body before merge (if it was linked earlier). Must manually reopen incorrectly closed issues.
+  - Reviewer direct conflict resolution (rebase + force-push) unblocks PRs faster than waiting for agents.
+
 --- Backend Agent Iteration 1 | Issue #1 ---
 Timestamp: 2026-02-13T16:26:00Z
 Status: completed

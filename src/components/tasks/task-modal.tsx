@@ -10,7 +10,6 @@ import {
   Link2,
   ChevronDown,
   ChevronUp,
-  Check,
 } from "lucide-react";
 import { useBoardStore } from "@/store/board-store";
 import type {
@@ -31,26 +30,7 @@ interface TaskModalProps {
   onClose: () => void;
 }
 
-/* ─── Shared inline-style helpers ─── */
-const labelStyle: React.CSSProperties = {
-  color: "var(--muted-foreground)",
-};
-
-const inputStyle: React.CSSProperties = {
-  background: "var(--secondary)",
-  borderColor: "var(--border)",
-  color: "var(--foreground)",
-};
-
-const inputFocusClass =
-  "w-full rounded-md border px-3 py-2 text-sm focus:outline-none";
-
-const sectionStyle: React.CSSProperties = {
-  background: "var(--background)",
-  borderColor: "var(--border)",
-};
-
-function MultiSelectRaci({
+function MultiSelectDropdown({
   label,
   selectedIds,
   teamMembers,
@@ -61,125 +41,31 @@ function MultiSelectRaci({
   teamMembers: { id: string; name: string | null; email: string }[];
   onChange: (ids: string[]) => void;
 }) {
-  const [open, setOpen] = useState(false);
-
-  const toggle = (id: string) => {
-    onChange(
-      selectedIds.includes(id)
-        ? selectedIds.filter((sid) => sid !== id)
-        : [...selectedIds, id]
-    );
-  };
-
   return (
-    <div className="relative">
-      <label className="mb-1 block text-xs font-medium" style={labelStyle}>
+    <div>
+      <label className="mb-1 block text-xs font-medium text-muted-foreground">
         {label}
       </label>
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors"
-        style={{
-          ...inputStyle,
+      <select
+        multiple
+        value={selectedIds}
+        onChange={(e) => {
+          const selected = Array.from(e.target.selectedOptions, (o) => o.value);
+          onChange(selected);
         }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.borderColor = "var(--card-hover-border)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.borderColor = "var(--border)";
-        }}
+        className="modal-input w-full rounded-md border px-3 py-2 text-sm"
+        size={Math.min(teamMembers.length || 1, 5)}
       >
-        <span className="truncate">
-          {selectedIds.length === 0
-            ? "None"
-            : selectedIds
-                .map((id) => {
-                  const m = teamMembers.find((t) => t.id === id);
-                  return m?.name || m?.email || id;
-                })
-                .join(", ")}
-        </span>
-        {open ? (
-          <ChevronUp
-            className="ml-2 h-3.5 w-3.5 flex-shrink-0"
-            style={{ color: "var(--muted-foreground)" }}
-          />
-        ) : (
-          <ChevronDown
-            className="ml-2 h-3.5 w-3.5 flex-shrink-0"
-            style={{ color: "var(--muted-foreground)" }}
-          />
-        )}
-      </button>
-
-      {open && (
-        <div
-          className="absolute z-10 mt-1 max-h-40 w-full overflow-y-auto rounded-md border py-1"
-          style={{
-            background: "var(--popover)",
-            borderColor: "var(--border)",
-            boxShadow: "var(--shadow-lg)",
-          }}
-        >
-          {teamMembers.map((m) => {
-            const selected = selectedIds.includes(m.id);
-            return (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => toggle(m.id)}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors"
-                style={{
-                  background: selected
-                    ? "var(--accent-light)"
-                    : "transparent",
-                  color: selected
-                    ? "var(--primary)"
-                    : "var(--foreground)",
-                }}
-                onMouseEnter={(e) => {
-                  if (!selected) {
-                    e.currentTarget.style.background = "var(--secondary)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = selected
-                    ? "var(--accent-light)"
-                    : "transparent";
-                }}
-              >
-                <div
-                  className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border"
-                  style={{
-                    borderColor: selected
-                      ? "var(--primary)"
-                      : "var(--border)",
-                    background: selected
-                      ? "var(--primary)"
-                      : "var(--secondary)",
-                  }}
-                >
-                  {selected && (
-                    <Check
-                      className="h-3 w-3"
-                      style={{ color: "var(--primary-foreground)" }}
-                    />
-                  )}
-                </div>
-                <span className="truncate">{m.name || m.email}</span>
-              </button>
-            );
-          })}
-          {teamMembers.length === 0 && (
-            <p
-              className="px-3 py-2 text-xs"
-              style={{ color: "var(--muted-foreground)" }}
-            >
-              No team members
-            </p>
-          )}
-        </div>
+        {teamMembers.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.name || m.email}
+          </option>
+        ))}
+      </select>
+      {selectedIds.length > 0 && (
+        <p className="mt-0.5 text-[10px] text-muted-foreground">
+          {selectedIds.length} selected — hold Ctrl/Cmd to multi-select
+        </p>
       )}
     </div>
   );
@@ -389,44 +275,18 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
   );
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm"
-      style={{ background: "rgba(0, 0, 0, 0.6)" }}
-    >
-      <div
-        className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border"
-        style={{
-          background: "var(--card)",
-          borderColor: "var(--border)",
-          boxShadow: "var(--shadow-lg)",
-        }}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-border bg-card shadow-lg">
         {/* Header */}
-        <div
-          className="flex items-center justify-between border-b px-6 py-4"
-          style={{ borderColor: "var(--border)" }}
-        >
-          <h2
-            className="text-lg font-semibold"
-            style={{ color: "var(--foreground)" }}
-          >
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <h2 className="text-lg font-semibold text-foreground">
             {isNew ? "New Task" : "Edit Task"}
           </h2>
           <div className="flex items-center gap-2">
             {!isNew && task!.status !== "DONE" && (
               <button
                 onClick={handleAdvance}
-                className="flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
-                style={{
-                  background: "var(--secondary)",
-                  color: "var(--primary)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--accent)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "var(--secondary)";
-                }}
+                className="btn-advance-modal flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium"
               >
                 <ChevronRight className="h-3.5 w-3.5" />
                 Advance
@@ -435,32 +295,14 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
             {!isNew && (
               <button
                 onClick={handleDelete}
-                className="rounded-md p-2 transition-colors"
-                style={{ color: "var(--muted-foreground)" }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--secondary)";
-                  e.currentTarget.style.color = "var(--destructive)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "var(--muted-foreground)";
-                }}
+                className="icon-btn-delete rounded-md p-2"
               >
                 <Trash2 className="h-4 w-4" />
               </button>
             )}
             <button
               onClick={onClose}
-              className="rounded-md p-2 transition-colors"
-              style={{ color: "var(--muted-foreground)" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "var(--secondary)";
-                e.currentTarget.style.color = "var(--foreground)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
-                e.currentTarget.style.color = "var(--muted-foreground)";
-              }}
+              className="icon-btn-muted rounded-md p-2"
             >
               <X className="h-4 w-4" />
             </button>
@@ -471,22 +313,13 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
         <div className="space-y-5 px-6 py-5">
           {/* Title */}
           <div>
-            <label className="mb-1 block text-xs font-medium" style={labelStyle}>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">
               Title
             </label>
             <input
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
-              className={inputFocusClass}
-              style={{
-                ...inputStyle,
-              }}
-              onFocus={(e) => {
-                e.currentTarget.style.borderColor = "var(--ring)";
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.borderColor = "var(--border)";
-              }}
+              className="modal-input w-full rounded-md border px-3 py-2 text-sm"
               placeholder="Task title"
               autoFocus
             />
@@ -495,7 +328,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
           {/* Status + Priority + Difficulty row */}
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-medium" style={labelStyle}>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
                 Status
               </label>
               <select
@@ -503,8 +336,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                 onChange={(e) =>
                   setForm({ ...form, status: e.target.value as TaskStatus })
                 }
-                className="w-full rounded-md border px-3 py-2 text-sm"
-                style={inputStyle}
+                className="modal-input w-full rounded-md border px-3 py-2 text-sm"
               >
                 {Object.entries(COLUMN_LABELS).map(([key, label]) => (
                   <option key={key} value={key}>
@@ -514,7 +346,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium" style={labelStyle}>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
                 Priority
               </label>
               <select
@@ -522,8 +354,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                 onChange={(e) =>
                   setForm({ ...form, priority: e.target.value as Priority })
                 }
-                className="w-full rounded-md border px-3 py-2 text-sm"
-                style={inputStyle}
+                className="modal-input w-full rounded-md border px-3 py-2 text-sm"
               >
                 {Object.entries(PRIORITY_LABELS).map(([key, label]) => (
                   <option key={key} value={key}>
@@ -533,7 +364,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium" style={labelStyle}>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
                 Difficulty
               </label>
               <select
@@ -544,8 +375,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                     degreeOfDifficulty: e.target.value as DifficultyLevel,
                   })
                 }
-                className="w-full rounded-md border px-3 py-2 text-sm"
-                style={inputStyle}
+                className="modal-input w-full rounded-md border px-3 py-2 text-sm"
               >
                 <option value="LOW">Low</option>
                 <option value="MEDIUM">Medium</option>
@@ -558,7 +388,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
           {/* Project + Sprint row */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-medium" style={labelStyle}>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
                 Project
               </label>
               <select
@@ -566,8 +396,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                 onChange={(e) =>
                   setForm({ ...form, projectId: e.target.value })
                 }
-                className="w-full rounded-md border px-3 py-2 text-sm"
-                style={inputStyle}
+                className="modal-input w-full rounded-md border px-3 py-2 text-sm"
               >
                 <option value="">No Project</option>
                 {projects.map((p) => (
@@ -578,7 +407,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium" style={labelStyle}>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
                 Sprint
               </label>
               <select
@@ -586,8 +415,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                 onChange={(e) =>
                   setForm({ ...form, sprintId: e.target.value })
                 }
-                className="w-full rounded-md border px-3 py-2 text-sm"
-                style={inputStyle}
+                className="modal-input w-full rounded-md border px-3 py-2 text-sm"
               >
                 <option value="">No Sprint</option>
                 {sprints.map((s) => (
@@ -601,14 +429,13 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
 
           {/* Parent Task */}
           <div>
-            <label className="mb-1 block text-xs font-medium" style={labelStyle}>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">
               Parent Task
             </label>
             <select
               value={form.parentId}
               onChange={(e) => setForm({ ...form, parentId: e.target.value })}
-              className="w-full rounded-md border px-3 py-2 text-sm"
-              style={inputStyle}
+              className="modal-input w-full rounded-md border px-3 py-2 text-sm"
             >
               <option value="">No Parent (top-level)</option>
               {allTasks
@@ -623,36 +450,20 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
 
           {/* Subtasks Section (only for existing tasks) */}
           {!isNew && (
-            <div className="rounded-lg border p-4" style={sectionStyle}>
+            <div className="rounded-lg border border-border bg-background p-4">
               <div className="flex items-center justify-between">
-                <h3
-                  className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: "var(--muted-foreground)" }}
-                >
+                <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   <GitBranch className="h-3.5 w-3.5" />
                   Subtasks
                   {detail?.children && detail.children.length > 0 && (
-                    <span
-                      className="rounded px-1.5 py-0.5 text-[10px] font-medium"
-                      style={{
-                        background: "var(--tag-bg)",
-                        color: "var(--muted-foreground)",
-                      }}
-                    >
+                    <span className="rounded bg-tag-bg px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                       {detail.children.length}
                     </span>
                   )}
                 </h3>
                 <button
                   onClick={() => setShowSubtaskForm(!showSubtaskForm)}
-                  className="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors"
-                  style={{ color: "var(--primary)" }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "var(--secondary)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "transparent";
-                  }}
+                  className="btn-add-subtask flex items-center gap-1 rounded-md px-2 py-1 text-xs"
                 >
                   <Plus className="h-3 w-3" />
                   Add Subtask
@@ -673,30 +484,13 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                       }
                     }}
                     placeholder="Subtask title... (inherits RACI)"
-                    className="flex-1 rounded-md border px-3 py-1.5 text-sm focus:outline-none"
-                    style={inputStyle}
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = "var(--ring)";
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = "var(--border)";
-                    }}
+                    className="modal-input flex-1 rounded-md border px-3 py-1.5 text-sm"
                     autoFocus
                   />
                   <button
                     onClick={handleCreateSubtask}
                     disabled={creatingSub || !subtaskTitle.trim()}
-                    className="rounded-md px-3 py-1.5 text-xs font-medium disabled:opacity-50"
-                    style={{
-                      background: "var(--primary)",
-                      color: "var(--primary-foreground)",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "var(--primary-hover)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "var(--primary)";
-                    }}
+                    className="btn-primary-theme rounded-md px-3 py-1.5 text-xs font-medium disabled:opacity-50"
                   >
                     {creatingSub ? "..." : "Add"}
                   </button>
@@ -709,22 +503,13 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                   {detail.children.map((child) => (
                     <div
                       key={child.id}
-                      className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors"
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "var(--secondary)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "transparent";
-                      }}
+                      className="subtask-row flex items-center gap-2 rounded-md px-2 py-1.5 text-sm"
                     >
                       <div
                         className="h-2 w-2 rounded-full"
                         style={{ background: STATUS_COLORS[child.status] }}
                       />
-                      <span
-                        className="flex-1"
-                        style={{ color: "var(--foreground)" }}
-                      >
+                      <span className="flex-1 text-foreground">
                         {child.title}
                       </span>
                       <span
@@ -733,10 +518,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                       >
                         {child.priority}
                       </span>
-                      <span
-                        className="text-[10px]"
-                        style={{ color: "var(--muted-foreground)" }}
-                      >
+                      <span className="text-[10px] text-muted-foreground">
                         {COLUMN_LABELS[child.status]}
                       </span>
                     </div>
@@ -744,10 +526,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                 </div>
               ) : (
                 !showSubtaskForm && (
-                  <p
-                    className="mt-2 text-xs"
-                    style={{ color: "var(--muted-foreground)" }}
-                  >
+                  <p className="mt-2 text-xs text-muted-foreground">
                     No subtasks yet
                   </p>
                 )
@@ -756,40 +535,25 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
           )}
 
           {/* Dependencies Section */}
-          <div className="rounded-lg border p-4" style={sectionStyle}>
+          <div className="rounded-lg border border-border bg-background p-4">
             <button
               type="button"
               onClick={() => setShowDeps(!showDeps)}
               className="flex w-full items-center justify-between"
             >
-              <h3
-                className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider"
-                style={{ color: "var(--muted-foreground)" }}
-              >
+              <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 <Link2 className="h-3.5 w-3.5" />
                 Dependencies
                 {form.dependsOnIds.length > 0 && (
-                  <span
-                    className="rounded px-1.5 py-0.5 text-[10px] font-medium"
-                    style={{
-                      background: "var(--tag-bg)",
-                      color: "var(--muted-foreground)",
-                    }}
-                  >
+                  <span className="rounded bg-tag-bg px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                     {form.dependsOnIds.length}
                   </span>
                 )}
               </h3>
               {showDeps ? (
-                <ChevronUp
-                  className="h-4 w-4"
-                  style={{ color: "var(--muted-foreground)" }}
-                />
+                <ChevronUp className="h-4 w-4 text-muted-foreground" />
               ) : (
-                <ChevronDown
-                  className="h-4 w-4"
-                  style={{ color: "var(--muted-foreground)" }}
-                />
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
               )}
             </button>
 
@@ -801,11 +565,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                   return (
                     <span
                       key={depId}
-                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px]"
-                      style={{
-                        background: "var(--tag-bg)",
-                        color: "var(--muted-foreground)",
-                      }}
+                      className="inline-flex items-center gap-1 rounded-full bg-tag-bg px-2 py-0.5 text-[11px] text-muted-foreground"
                     >
                       <div
                         className="h-1.5 w-1.5 rounded-full"
@@ -827,10 +587,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
               <div className="mt-3 space-y-3">
                 {/* Depends on */}
                 <div>
-                  <p
-                    className="mb-1 text-[11px] font-medium"
-                    style={{ color: "var(--muted-foreground)" }}
-                  >
+                  <p className="mb-1 text-[11px] font-medium text-muted-foreground">
                     This task depends on:
                   </p>
                   <div className="max-h-36 space-y-0.5 overflow-y-auto">
@@ -839,55 +596,29 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                       return (
                         <label
                           key={t.id}
-                          className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm transition-colors"
-                          style={{
-                            background: isSelected
-                              ? "var(--accent-light)"
-                              : "transparent",
-                            color: isSelected
-                              ? "var(--primary)"
-                              : "var(--muted-foreground)",
-                          }}
-                          onMouseEnter={(e) => {
-                            if (!isSelected) {
-                              e.currentTarget.style.background = "var(--secondary)";
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = isSelected
-                              ? "var(--accent-light)"
-                              : "transparent";
-                          }}
+                          className={`dep-label flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm ${
+                            isSelected ? "dep-label-selected" : "text-muted-foreground"
+                          }`}
                         >
                           <input
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => toggleDep(t.id)}
-                            className="rounded"
-                            style={{
-                              borderColor: "var(--border)",
-                              accentColor: "var(--primary)",
-                            }}
+                            className="rounded border-border accent-primary"
                           />
                           <div
                             className="h-2 w-2 rounded-full"
                             style={{ background: STATUS_COLORS[t.status] }}
                           />
                           <span className="flex-1 truncate">{t.title}</span>
-                          <span
-                            className="text-[10px]"
-                            style={{ color: "var(--muted-foreground)" }}
-                          >
+                          <span className="text-[10px] text-muted-foreground">
                             {COLUMN_LABELS[t.status]}
                           </span>
                         </label>
                       );
                     })}
                     {depCandidates.length === 0 && (
-                      <p
-                        className="py-2 text-center text-xs"
-                        style={{ color: "var(--muted-foreground)" }}
-                      >
+                      <p className="py-2 text-center text-xs text-muted-foreground">
                         No other tasks available
                       </p>
                     )}
@@ -897,18 +628,14 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                 {/* Depended by (read-only) */}
                 {detail?.dependedBy && detail.dependedBy.length > 0 && (
                   <div>
-                    <p
-                      className="mb-1 text-[11px] font-medium"
-                      style={{ color: "var(--muted-foreground)" }}
-                    >
+                    <p className="mb-1 text-[11px] font-medium text-muted-foreground">
                       Blocks these tasks:
                     </p>
                     <div className="space-y-0.5">
                       {detail.dependedBy.map((t) => (
                         <div
                           key={t.id}
-                          className="flex items-center gap-2 rounded px-2 py-1 text-sm"
-                          style={{ color: "var(--muted-foreground)" }}
+                          className="flex items-center gap-2 rounded px-2 py-1 text-sm text-muted-foreground"
                         >
                           <div
                             className="h-2 w-2 rounded-full"
@@ -927,7 +654,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
           {/* Dates */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-medium" style={labelStyle}>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
                 Start Date
               </label>
               <input
@@ -936,37 +663,32 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                 onChange={(e) =>
                   setForm({ ...form, startDate: e.target.value })
                 }
-                className="w-full rounded-md border px-3 py-2 text-sm"
-                style={inputStyle}
+                className="modal-input w-full rounded-md border px-3 py-2 text-sm"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium" style={labelStyle}>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
                 Due Date
               </label>
               <input
                 type="date"
                 value={form.dueDate}
                 onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-                className="w-full rounded-md border px-3 py-2 text-sm"
-                style={inputStyle}
+                className="modal-input w-full rounded-md border px-3 py-2 text-sm"
               />
             </div>
           </div>
 
           {/* RACI Assignments */}
           <div className="space-y-3">
-            <h3
-              className="text-xs font-semibold uppercase tracking-wider"
-              style={{ color: "var(--muted-foreground)" }}
-            >
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               RACI Assignments
             </h3>
 
             {/* R + A: single-select dropdowns */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1 block text-xs font-medium" style={labelStyle}>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
                   Responsible
                 </label>
                 <select
@@ -974,8 +696,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                   onChange={(e) =>
                     setForm({ ...form, responsibleId: e.target.value })
                   }
-                  className="w-full rounded-md border px-3 py-2 text-sm"
-                  style={inputStyle}
+                  className="modal-input w-full rounded-md border px-3 py-2 text-sm"
                 >
                   <option value="">None</option>
                   {teamMembers.map((m) => (
@@ -986,7 +707,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium" style={labelStyle}>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
                   Accountable
                 </label>
                 <select
@@ -994,8 +715,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                   onChange={(e) =>
                     setForm({ ...form, accountableId: e.target.value })
                   }
-                  className="w-full rounded-md border px-3 py-2 text-sm"
-                  style={inputStyle}
+                  className="modal-input w-full rounded-md border px-3 py-2 text-sm"
                 >
                   <option value="">None</option>
                   {teamMembers.map((m) => (
@@ -1007,14 +727,14 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
               </div>
             </div>
 
-            {/* C + I: multi-select with checkboxes */}
+            {/* C + I: multi-select dropdowns */}
             {(
               [
                 ["consultedIds", "Consulted"],
                 ["informedIds", "Informed"],
               ] as const
             ).map(([field, label]) => (
-              <MultiSelectRaci
+              <MultiSelectDropdown
                 key={field}
                 label={label}
                 selectedIds={form[field]}
@@ -1026,47 +746,33 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
 
           {/* Notes */}
           <div>
-            <label className="mb-1 block text-xs font-medium" style={labelStyle}>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">
               Notes
             </label>
             <textarea
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
               rows={4}
-              className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none"
-              style={inputStyle}
-              onFocus={(e) => {
-                e.currentTarget.style.borderColor = "var(--ring)";
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.borderColor = "var(--border)";
-              }}
+              className="modal-input w-full rounded-md border px-3 py-2 text-sm"
               placeholder="Task notes..."
             />
           </div>
 
           {/* Unplanned checkbox + Slack thread */}
           <div className="grid grid-cols-2 gap-3">
-            <label
-              className="flex items-center gap-2 text-sm"
-              style={{ color: "var(--foreground)" }}
-            >
+            <label className="flex items-center gap-2 text-sm text-foreground">
               <input
                 type="checkbox"
                 checked={form.unplanned}
                 onChange={(e) =>
                   setForm({ ...form, unplanned: e.target.checked })
                 }
-                className="rounded"
-                style={{
-                  borderColor: "var(--border)",
-                  accentColor: "var(--primary)",
-                }}
+                className="rounded border-border accent-primary"
               />
               Unplanned work
             </label>
             <div>
-              <label className="mb-1 block text-xs font-medium" style={labelStyle}>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
                 Slack Thread
               </label>
               <input
@@ -1074,8 +780,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                 onChange={(e) =>
                   setForm({ ...form, slackThread: e.target.value })
                 }
-                className="w-full rounded-md border px-3 py-2 text-sm"
-                style={inputStyle}
+                className="modal-input w-full rounded-md border px-3 py-2 text-sm"
                 placeholder="https://slack.com/..."
               />
             </div>
@@ -1083,37 +788,17 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
         </div>
 
         {/* Footer */}
-        <div
-          className="flex items-center justify-end gap-3 border-t px-6 py-4"
-          style={{ borderColor: "var(--border)" }}
-        >
+        <div className="flex items-center justify-end gap-3 border-t border-border px-6 py-4">
           <button
             onClick={onClose}
-            className="rounded-md px-4 py-2 text-sm transition-colors"
-            style={{ color: "var(--muted-foreground)" }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = "var(--foreground)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = "var(--muted-foreground)";
-            }}
+            className="btn-ghost-muted rounded-md px-4 py-2 text-sm"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving || !form.title.trim()}
-            className="rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50"
-            style={{
-              background: "var(--primary)",
-              color: "var(--primary-foreground)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "var(--primary-hover)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "var(--primary)";
-            }}
+            className="btn-primary-theme rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50"
           >
             {saving ? "Saving..." : isNew ? "Create Task" : "Save Changes"}
           </button>

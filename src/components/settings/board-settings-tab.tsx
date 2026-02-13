@@ -113,7 +113,7 @@ export function BoardSettingsTab() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
   }
@@ -121,10 +121,10 @@ export function BoardSettingsTab() {
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h2 className="text-base font-semibold text-white">
+        <h2 className="text-base font-semibold text-foreground">
           WIP Limits & Column Settings
         </h2>
-        <p className="mt-1 text-xs text-zinc-500">
+        <p className="mt-1 text-xs text-muted-foreground">
           Set work-in-progress limits for each column. A limit of 0 means
           unlimited. When exceeded, the column header turns red and a
           confirmation is required to add more tasks.
@@ -137,7 +137,7 @@ export function BoardSettingsTab() {
           .map((setting) => (
             <div
               key={setting.columnName}
-              className="flex items-center gap-4 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3"
+              className="flex items-center gap-4 rounded-lg border border-border bg-card px-4 py-3"
             >
               {/* Color picker */}
               <input
@@ -146,13 +146,13 @@ export function BoardSettingsTab() {
                 onChange={(e) =>
                   updateColor(setting.columnName, e.target.value)
                 }
-                className="h-8 w-8 cursor-pointer rounded border border-zinc-700 bg-transparent"
+                className="h-8 w-8 cursor-pointer rounded border border-border bg-transparent"
                 title="Column color"
               />
 
               {/* Column name */}
               <div className="flex-1">
-                <span className="text-sm font-medium text-zinc-200">
+                <span className="text-sm font-medium text-foreground">
                   {COLUMN_LABELS[setting.columnName as TaskStatus] ||
                     setting.columnName}
                 </span>
@@ -160,7 +160,7 @@ export function BoardSettingsTab() {
 
               {/* WIP limit */}
               <div className="flex items-center gap-2">
-                <label className="text-xs text-zinc-500">WIP Limit</label>
+                <label className="text-xs text-muted-foreground">WIP Limit</label>
                 <input
                   type="number"
                   min={0}
@@ -172,7 +172,7 @@ export function BoardSettingsTab() {
                       parseInt(e.target.value) || 0
                     )
                   }
-                  className="w-16 rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-center text-sm text-white focus:border-amber-500 focus:outline-none"
+                  className="w-16 rounded border border-border bg-secondary px-2 py-1.5 text-center text-sm text-foreground focus:border-ring focus:outline-none"
                 />
               </div>
             </div>
@@ -184,14 +184,14 @@ export function BoardSettingsTab() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:opacity-50"
+          className="btn-primary-theme flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
         >
           <Save className="h-4 w-4" />
           {saving ? "Saving..." : saved ? "Saved ✓" : "Save Changes"}
         </button>
         <button
           onClick={handleReset}
-          className="flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-300"
+          className="btn-ghost-muted flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium"
         >
           <RotateCcw className="h-4 w-4" />
           Reset to Defaults

@@ -149,7 +149,7 @@ export function TeamTab() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
   }
@@ -158,29 +158,29 @@ export function TeamTab() {
     <div className="max-w-3xl space-y-8">
       {/* ── Profile section ── */}
       <section className="space-y-3">
-        <div className="flex items-center gap-2 text-zinc-300">
+        <div className="flex items-center gap-2 text-foreground">
           <User className="h-4 w-4" />
-          <h2 className="text-base font-semibold text-white">Your Profile</h2>
+          <h2 className="text-base font-semibold text-foreground">Your Profile</h2>
         </div>
 
-        <div className="flex items-center gap-5 rounded-lg border border-zinc-800 bg-zinc-900/50 px-5 py-4">
+        <div className="flex items-center gap-5 rounded-lg border border-border bg-card px-5 py-4">
           {session?.user?.image ? (
             <Image
               src={session.user.image}
               alt=""
               width={56}
               height={56}
-              className="h-14 w-14 rounded-full ring-2 ring-zinc-700"
+              className="h-14 w-14 rounded-full ring-2 ring-border"
             />
           ) : (
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-zinc-800 text-lg font-medium text-zinc-400 ring-2 ring-zinc-700">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-secondary text-lg font-medium text-muted-foreground ring-2 ring-border">
               {(session?.user?.name || session?.user?.email || "?")[0]?.toUpperCase()}
             </div>
           )}
 
           <div className="flex-1 space-y-2">
             <div className="flex items-center gap-2">
-              <label className="text-xs font-medium text-zinc-500">
+              <label className="text-xs font-medium text-muted-foreground">
                 Display Name
               </label>
             </div>
@@ -190,16 +190,16 @@ export function TeamTab() {
                 value={profileName}
                 onChange={(e) => setProfileName(e.target.value)}
                 placeholder="Your name"
-                className="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:border-amber-600 focus:outline-none"
+                className="flex-1 rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-foreground placeholder-muted-foreground focus:border-ring focus:outline-none"
               />
               <button
                 onClick={handleSaveProfile}
                 disabled={savingProfile || profileName === session?.user?.name}
-                className="flex items-center gap-1.5 rounded-md bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-600 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-md bg-secondary px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {profileSaved ? (
                   <>
-                    <Check className="h-3.5 w-3.5 text-green-400" />
+                    <Check className="h-3.5 w-3.5 text-[var(--success)]" />
                     Saved
                   </>
                 ) : (
@@ -210,7 +210,7 @@ export function TeamTab() {
                 )}
               </button>
             </div>
-            <p className="text-xs text-zinc-600">
+            <p className="text-xs text-muted-foreground">
               {session?.user?.email}
             </p>
           </div>
@@ -221,17 +221,17 @@ export function TeamTab() {
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-base font-semibold text-white">
+            <h2 className="text-base font-semibold text-foreground">
               Team Members
             </h2>
-            <p className="mt-1 text-xs text-zinc-500">
+            <p className="mt-1 text-xs text-muted-foreground">
               {members.length} member{members.length !== 1 ? "s" : ""} on your
               team
             </p>
           </div>
           <button
             onClick={copyInviteLink}
-            className="flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500"
+            className="btn-primary-theme flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
           >
             {copied ? (
               <>
@@ -248,8 +248,8 @@ export function TeamTab() {
         </div>
 
         {/* ── Email invite form ── */}
-        <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/30 p-4">
-          <div className="flex items-center gap-2 text-xs font-medium text-zinc-400">
+        <div className="space-y-3 rounded-lg border border-border bg-card p-4">
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
             <UserPlus className="h-4 w-4" />
             Invite by Email
           </div>
@@ -261,48 +261,48 @@ export function TeamTab() {
                 onChange={(e) => setInviteEmail(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleInvite()}
                 placeholder="teammate@company.com"
-                className="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:border-amber-600 focus:outline-none"
+                className="flex-1 rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:border-ring focus:outline-none"
               />
               <button
                 onClick={handleInvite}
                 disabled={inviting || !inviteEmail.trim()}
-                className="flex items-center gap-1.5 rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+                className="btn-primary-theme flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Send className="h-3.5 w-3.5" />
                 {inviting ? "Sending…" : "Invite"}
               </button>
             </div>
           ) : (
-            <p className="rounded-md border border-zinc-700 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-500">
+            <p className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
               Only admins can generate invite links.
             </p>
           )}
 
-          {inviteError && <p className="text-xs text-red-400">{inviteError}</p>}
+          {inviteError && <p className="text-xs text-destructive">{inviteError}</p>}
 
           {inviteLink && (
-            <div className="flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-800/50 px-3 py-2">
-              <p className="flex-1 truncate text-xs text-zinc-400">
+            <div className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-2">
+              <p className="flex-1 truncate text-xs text-muted-foreground">
                 {inviteLink}
               </p>
               <button
                 onClick={copyPersonalInvite}
-                className="text-xs text-amber-500 hover:text-amber-400"
+                className="text-xs text-primary hover:text-[var(--primary-hover)]"
               >
                 {inviteCopied ? "Copied!" : "Copy"}
               </button>
             </div>
           )}
 
-          <p className="text-[10px] text-zinc-600">
+          <p className="text-[10px] text-muted-foreground">
             Generates a personal invite link. Email delivery coming in Phase 2.
           </p>
         </div>
 
         {/* ── Info box ── */}
-        <div className="flex items-start gap-3 rounded-lg border border-zinc-800 bg-zinc-900/30 px-4 py-3">
-          <Mail className="mt-0.5 h-4 w-4 text-zinc-500" />
-          <p className="text-xs text-zinc-500">
+        <div className="flex items-start gap-3 rounded-lg border border-border bg-card px-4 py-3">
+          <Mail className="mt-0.5 h-4 w-4 text-muted-foreground" />
+          <p className="text-xs text-muted-foreground">
             New team members join by signing in with Google OAuth. All
             authenticated users are automatically added to the team.
           </p>
@@ -310,10 +310,10 @@ export function TeamTab() {
 
         {/* ── Members list ── */}
         {members.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-zinc-700 py-12 text-center">
-            <Users className="mx-auto mb-3 h-8 w-8 text-zinc-600" />
-            <p className="text-sm text-zinc-500">No team members yet</p>
-            <p className="text-xs text-zinc-600">
+          <div className="rounded-lg border border-dashed border-border py-12 text-center">
+            <Users className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">No team members yet</p>
+            <p className="text-xs text-muted-foreground">
               Share the invite link to get your team started
             </p>
           </div>
@@ -322,7 +322,7 @@ export function TeamTab() {
             {members.map((member) => (
               <div
                 key={member.id}
-                className="flex items-center gap-4 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3"
+                className="flex items-center gap-4 rounded-lg border border-border bg-card px-4 py-3"
               >
                 {member.image ? (
                   <Image
@@ -333,31 +333,31 @@ export function TeamTab() {
                     className="h-9 w-9 rounded-full"
                   />
                 ) : (
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-800 text-sm font-medium text-zinc-400">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-sm font-medium text-muted-foreground">
                     {(member.name || member.email)[0]?.toUpperCase()}
                   </div>
                 )}
 
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-zinc-200">
+                    <span className="text-sm font-medium text-foreground">
                       {member.name || "Unnamed"}
                     </span>
                     {member.id === session?.user?.id && (
-                      <span className="rounded-full bg-amber-900/30 px-2 py-0.5 text-[10px] text-amber-400">
+                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
                         You
                       </span>
                     )}
                     {member.role && (
-                      <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-500">
+                      <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">
                         {member.role}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-zinc-500">{member.email}</p>
+                  <p className="text-xs text-muted-foreground">{member.email}</p>
                 </div>
 
-                <span className="text-xs text-zinc-600">
+                <span className="text-xs text-muted-foreground">
                   Joined {formatDate(member.createdAt)}
                 </span>
               </div>
