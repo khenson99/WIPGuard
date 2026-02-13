@@ -2,8 +2,39 @@
 
 import { signIn } from "next-auth/react";
 import { Shield } from "lucide-react";
+import { useState, useEffect } from "react";
+
+interface DevUser {
+  id: string;
+  name: string;
+  email: string;
+}
 
 export default function LoginPage() {
+  const [devUsers, setDevUsers] = useState<DevUser[]>([]);
+  const [selectedEmail, setSelectedEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const isDev = process.env.NODE_ENV !== "production";
+
+  useEffect(() => {
+    if (isDev) {
+      fetch("/api/dev/users")
+        .then((r) => r.json())
+        .then((data) => {
+          setDevUsers(data);
+          if (data.length > 0) setSelectedEmail(data[0].email);
+        })
+        .catch(() => {});
+    }
+  }, [isDev]);
+
+  const handleDevLogin = async () => {
+    if (!selectedEmail) return;
+    setLoading(true);
+    await signIn("credentials", { email: selectedEmail, callbackUrl: "/board" });
+    setLoading(false);
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-950">
       <div className="w-full max-w-sm space-y-8 px-4">
@@ -17,6 +48,7 @@ export default function LoginPage() {
           </p>
         </div>
 
+        {/* Google OAuth */}
         <button
           onClick={() => signIn("google", { callbackUrl: "/board" })}
           className="flex w-full items-center justify-center gap-3 rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-600 hover:bg-zinc-800"
@@ -41,6 +73,37 @@ export default function LoginPage() {
           </svg>
           Sign in with Google
         </button>
+
+        {/* Dev login */}
+        {isDev && devUsers.length > 0 && (
+          <>
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-zinc-800" />
+              <span className="text-xs text-zinc-600">DEV MODE</span>
+              <div className="h-px flex-1 bg-zinc-800" />
+            </div>
+            <div className="space-y-3">
+              <select
+                value={selectedEmail}
+                onChange={(e) => setSelectedEmail(e.target.value)}
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-200 outline-none focus:border-amber-600"
+              >
+                {devUsers.map((u) => (
+                  <option key={u.email} value={u.email}>
+                    {u.name} ({u.email})
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={handleDevLogin}
+                disabled={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:opacity-50"
+              >
+                {loading ? "Signing in..." : "Sign in as this user"}
+              </button>
+            </div>
+          </>
+        )}
 
         <p className="text-center text-xs text-zinc-600">
           Your team&apos;s work-in-progress, protected.
