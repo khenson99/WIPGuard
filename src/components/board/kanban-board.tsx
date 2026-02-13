@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   DragDropContext,
-  Droppable,
   type DropResult,
 } from "@hello-pangea/dnd";
 import { useBoardStore } from "@/store/board-store";

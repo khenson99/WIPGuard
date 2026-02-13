@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
+import Image from "next/image";
 import {
   Users,
   Mail,
@@ -158,9 +159,11 @@ export function TeamTab() {
 
         <div className="flex items-center gap-5 rounded-lg border border-zinc-800 bg-zinc-900/50 px-5 py-4">
           {session?.user?.image ? (
-            <img
+            <Image
               src={session.user.image}
               alt=""
+              width={56}
+              height={56}
               className="h-14 w-14 rounded-full ring-2 ring-zinc-700"
             />
           ) : (
@@ -308,9 +311,11 @@ export function TeamTab() {
                 className="flex items-center gap-4 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3"
               >
                 {member.image ? (
-                  <img
+                  <Image
                     src={member.image}
                     alt={member.name || ""}
+                    width={36}
+                    height={36}
                     className="h-9 w-9 rounded-full"
                   />
                 ) : (

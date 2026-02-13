@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Plus, Calendar, Check, Pencil, X } from "lucide-react";
+import { Plus, Calendar, Check, Pencil } from "lucide-react";
 
 interface Sprint {
   id: string;

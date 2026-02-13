@@ -1,6 +1,7 @@
 "use client";
 
 import { useSession, signOut } from "next-auth/react";
+import Image from "next/image";
 import { LogOut, Bell } from "lucide-react";
 
 export function Header() {
@@ -18,9 +19,11 @@ export function Header() {
         {session?.user && (
           <div className="flex items-center gap-3">
             {session.user.image && (
-              <img
+              <Image
                 src={session.user.image}
                 alt=""
+                width={28}
+                height={28}
                 className="h-7 w-7 rounded-full"
               />
             )}

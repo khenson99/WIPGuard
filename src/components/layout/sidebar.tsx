@@ -10,7 +10,6 @@ import {
   Table,
   BookOpen,
   Settings,
-  LogOut,
   Columns3,
 } from "lucide-react";
 

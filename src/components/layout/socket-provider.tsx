@@ -3,7 +3,7 @@
 import { useEffect, type ReactNode } from "react";
 import { useSocket } from "@/hooks/use-socket";
 import { useBoardStore } from "@/store/board-store";
-import type { TaskWithRelations, TaskStatus, BoardColumn } from "@/types";
+import type { TaskWithRelations, BoardColumn } from "@/types";
 import { COLUMN_ORDER, COLUMN_LABELS } from "@/types";
 
 /**
@@ -14,7 +14,7 @@ import { COLUMN_ORDER, COLUMN_LABELS } from "@/types";
  */
 export function SocketProvider({ children }: { children: ReactNode }) {
   const { on } = useSocket();
-  const { columns, setColumns, wipLimits } = useBoardStore();
+  const { setColumns } = useBoardStore();
 
   useEffect(() => {
     // ── task:created – add the new task into the right column ──

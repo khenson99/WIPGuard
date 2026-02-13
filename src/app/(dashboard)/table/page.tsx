@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { clsx } from "clsx";
 import type { TaskWithRelations, TaskStatus, Priority } from "@/types";
-import { COLUMN_LABELS, PRIORITY_COLORS, PRIORITY_LABELS } from "@/types";
+import { COLUMN_LABELS, PRIORITY_COLORS } from "@/types";
 import { useBoardStore } from "@/store/board-store";
 import { TaskModal } from "@/components/tasks/task-modal";
 import { ArrowUpDown } from "lucide-react";
@@ -78,6 +77,18 @@ export default function TablePage() {
       .then(setTasks);
   };
 
+  const renderSortHeader = (field: SortField, label: string) => (
+    <th
+      onClick={() => handleSort(field)}
+      className="cursor-pointer px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-zinc-400 hover:text-zinc-200"
+    >
+      <div className="flex items-center gap-1">
+        {label}
+        <ArrowUpDown className="h-3 w-3" />
+      </div>
+    </th>
+  );
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -85,24 +96,6 @@ export default function TablePage() {
       </div>
     );
   }
-
-  const SortHeader = ({
-    field,
-    children,
-  }: {
-    field: SortField;
-    children: React.ReactNode;
-  }) => (
-    <th
-      onClick={() => handleSort(field)}
-      className="cursor-pointer px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-zinc-400 hover:text-zinc-200"
-    >
-      <div className="flex items-center gap-1">
-        {children}
-        <ArrowUpDown className="h-3 w-3" />
-      </div>
-    </th>
-  );
 
   return (
     <div className="flex h-full flex-col">
@@ -117,11 +110,11 @@ export default function TablePage() {
         <table className="w-full text-sm">
           <thead className="border-b border-zinc-800">
             <tr>
-              <SortHeader field="title">Title</SortHeader>
-              <SortHeader field="status">Status</SortHeader>
-              <SortHeader field="priority">Priority</SortHeader>
-              <SortHeader field="project">Project</SortHeader>
-              <SortHeader field="dueDate">Due Date</SortHeader>
+              {renderSortHeader("title", "Title")}
+              {renderSortHeader("status", "Status")}
+              {renderSortHeader("priority", "Priority")}
+              {renderSortHeader("project", "Project")}
+              {renderSortHeader("dueDate", "Due Date")}
               <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-zinc-400">
                 Assignee
               </th>

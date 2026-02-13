@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BookOpen, Calendar, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface LogbookEntry {
@@ -23,9 +23,12 @@ export default function LogbookPage() {
   const [page, setPage] = useState(1);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const fetchIdRef = useRef(0);
 
-  const fetchLogbook = () => {
-    setLoading(true);
+  useEffect(() => {
+    let cancelled = false;
+    const id = ++fetchIdRef.current;
+
     const params = new URLSearchParams({
       page: page.toString(),
       limit: "25",
@@ -35,12 +38,19 @@ export default function LogbookPage() {
 
     fetch(`/api/logbook?${params}`)
       .then((r) => r.json())
-      .then((data) => setEntries(data?.entries ?? (Array.isArray(data) ? data : [])))
-      .finally(() => setLoading(false));
-  };
+      .then((data) => {
+        if (!cancelled && id === fetchIdRef.current) {
+          setEntries(data?.entries ?? (Array.isArray(data) ? data : []));
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled && id === fetchIdRef.current) {
+          setLoading(false);
+        }
+      });
 
-  useEffect(() => {
-    fetchLogbook();
+    return () => { cancelled = true; };
   }, [page, startDate, endDate]);
 
   return (
