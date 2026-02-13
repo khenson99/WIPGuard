@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { enforcePermission } from "@/lib/permissions";
 
 const USER_SELECT = {
   id: true,
@@ -42,6 +43,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const permission = await enforcePermission({
+      userId: session.user.id,
+      action: "priority.write",
+      request,
+      targetType: "priority",
+    });
+    if (permission.deniedResponse) {
+      return permission.deniedResponse;
     }
 
     const body = await request.json();

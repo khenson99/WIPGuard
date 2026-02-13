@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { emitBoardEvent } from "@/lib/socket-emit";
 import { getNextColumnOrder } from "@/lib/task-order";
+import { enforcePermission } from "@/lib/permissions";
 
 const TASK_INCLUDE = {
   project: true,
@@ -67,6 +68,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const permission = await enforcePermission({
+      userId: session.user.id,
+      action: "task.write",
+      request,
+      targetType: "task",
+    });
+    if (permission.deniedResponse) {
+      return permission.deniedResponse;
     }
 
     const body = await request.json();

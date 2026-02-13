@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { emitBoardEvent } from "@/lib/socket-emit";
 import { enforcePolicy, getUserRole, recordPolicyOverride } from "@/lib/policy-check";
 import { compactColumns, getNextColumnOrder } from "@/lib/task-order";
+import { enforcePermission } from "@/lib/permissions";
 import type { TaskStatus } from "@/generated/prisma/client";
 
 const TASK_INCLUDE = {
@@ -68,6 +69,18 @@ export async function PATCH(
     }
 
     const { id } = await params;
+
+    const writePermission = await enforcePermission({
+      userId: session.user.id,
+      action: "task.write",
+      request,
+      targetType: "task",
+      targetId: id,
+    });
+    if (writePermission.deniedResponse) {
+      return writePermission.deniedResponse;
+    }
+
     const body = await request.json();
 
     const existing = await prisma.task.findUnique({
@@ -129,6 +142,19 @@ export async function PATCH(
     const statusChanged =
       directFields.status && directFields.status !== existing.status;
     const movingToDone = statusChanged && directFields.status === "DONE";
+
+    if (statusChanged) {
+      const transitionPermission = await enforcePermission({
+        userId: session.user.id,
+        action: "task.transition",
+        request,
+        targetType: "task",
+        targetId: id,
+      });
+      if (transitionPermission.deniedResponse) {
+        return transitionPermission.deniedResponse;
+      }
+    }
 
     // ── WIP policy enforcement on status change ──
     if (statusChanged) {
@@ -284,7 +310,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: RouteParams
 ): Promise<NextResponse> {
   try {
@@ -294,6 +320,17 @@ export async function DELETE(
     }
 
     const { id } = await params;
+
+    const permission = await enforcePermission({
+      userId: session.user.id,
+      action: "task.write",
+      request,
+      targetType: "task",
+      targetId: id,
+    });
+    if (permission.deniedResponse) {
+      return permission.deniedResponse;
+    }
 
     const existing = await prisma.task.findUnique({ where: { id } });
     if (!existing) {

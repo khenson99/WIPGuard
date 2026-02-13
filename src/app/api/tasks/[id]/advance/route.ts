@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { TaskStatus } from "@/generated/prisma/client";
 import { enforcePolicy, getUserRole, recordPolicyOverride } from "@/lib/policy-check";
 import { compactColumns, getNextColumnOrder } from "@/lib/task-order";
+import { enforcePermission } from "@/lib/permissions";
 
 const STATUS_FLOW: Partial<Record<TaskStatus, TaskStatus>> = {
   BACKLOG: "QUEUED",
@@ -25,6 +26,17 @@ export async function POST(
     }
 
     const { id } = await params;
+
+    const permission = await enforcePermission({
+      userId: session.user.id,
+      action: "task.transition",
+      request,
+      targetType: "task",
+      targetId: id,
+    });
+    if (permission.deniedResponse) {
+      return permission.deniedResponse;
+    }
 
     const existing = await prisma.task.findUnique({
       where: { id },

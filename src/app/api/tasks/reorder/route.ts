@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { emitBoardEvent } from "@/lib/socket-emit";
 import { loadPolicies, getUserRole, recordPolicyOverride } from "@/lib/policy-check";
 import { checkWipPolicy } from "@/lib/policy-engine";
+import { enforcePermission } from "@/lib/permissions";
 import type { TaskStatus } from "@/generated/prisma/client";
 
 interface ReorderItem {
@@ -44,6 +45,16 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const permission = await enforcePermission({
+      userId: session.user.id,
+      action: "task.transition",
+      request,
+      targetType: "task_reorder",
+    });
+    if (permission.deniedResponse) {
+      return permission.deniedResponse;
     }
 
     const body = await request.json();

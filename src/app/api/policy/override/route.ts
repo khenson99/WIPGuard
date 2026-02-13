@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getUserRole, enforcePolicy, recordPolicyOverride } from "@/lib/policy-check";
+import { enforcePermission } from "@/lib/permissions";
+import { recordSecurityAuditEvent } from "@/lib/security-audit";
 import type { TaskStatus } from "@/generated/prisma/client";
 
 interface OverrideInput {
@@ -20,6 +22,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const permission = await enforcePermission({
+      userId: session.user.id,
+      action: "policy.override",
+      request,
+      targetType: "policy_override",
+    });
+    if (permission.deniedResponse) {
+      return permission.deniedResponse;
     }
 
     const body: OverrideInput = await request.json();
@@ -59,6 +71,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       column: task.status,
       wipCount: policyResult.currentCount,
       wipLimit: policyResult.wipLimit,
+    });
+
+    await recordSecurityAuditEvent({
+      action: "policy.override",
+      category: "policy",
+      outcome: "ALLOWED",
+      actorId: session.user.id,
+      actorRole: permission.role,
+      targetType: "task",
+      targetId: body.taskId,
+      request,
+      details: {
+        column: task.status,
+        action: body.action,
+      },
     });
 
     return NextResponse.json(override, { status: 201 });

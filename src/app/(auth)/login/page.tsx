@@ -14,6 +14,7 @@ export default function LoginPage() {
   const [devUsers, setDevUsers] = useState<DevUser[]>([]);
   const [selectedEmail, setSelectedEmail] = useState("");
   const [loading, setLoading] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
   const isDev = process.env.NODE_ENV !== "production";
 
   useEffect(() => {
@@ -27,6 +28,34 @@ export default function LoginPage() {
         .catch(() => {});
     }
   }, [isDev]);
+
+  useEffect(() => {
+    const inviteToken = new URLSearchParams(window.location.search).get(
+      "inviteToken"
+    );
+    if (!inviteToken) return;
+
+    fetch(`/api/team/invite?token=${encodeURIComponent(inviteToken)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.valid && data?.invite?.email) {
+          const expiresAt = data.invite.expiresAt
+            ? new Date(data.invite.expiresAt).toLocaleString()
+            : null;
+          setInviteMessage(
+            expiresAt
+              ? `Invite accepted for ${data.invite.email}. Link expires ${expiresAt}.`
+              : `Invite accepted for ${data.invite.email}.`
+          );
+          setSelectedEmail(data.invite.email);
+          return;
+        }
+        setInviteMessage(data?.error || "Invite link is invalid or expired.");
+      })
+      .catch(() => {
+        setInviteMessage("Invite link is invalid or expired.");
+      });
+  }, []);
 
   const handleDevLogin = async () => {
     if (!selectedEmail) return;
@@ -47,6 +76,12 @@ export default function LoginPage() {
             Kanban task management with WIP limits
           </p>
         </div>
+
+        {inviteMessage && (
+          <div className="rounded-lg border border-amber-700/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
+            {inviteMessage}
+          </div>
+        )}
 
         {/* Google OAuth */}
         <button

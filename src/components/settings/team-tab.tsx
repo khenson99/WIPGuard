@@ -33,12 +33,14 @@ export function TeamTab() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteCopied, setInviteCopied] = useState(false);
 
   // Profile form
   const [profileName, setProfileName] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
+  const canInvite = session?.user?.role === "admin";
 
   const fetchMembers = useCallback(async () => {
     try {
@@ -80,6 +82,7 @@ export function TeamTab() {
     if (!inviteEmail.trim()) return;
     setInviting(true);
     setInviteLink(null);
+    setInviteError(null);
     try {
       const res = await fetch("/api/team/invite", {
         method: "POST",
@@ -90,9 +93,12 @@ export function TeamTab() {
         const data = await res.json();
         setInviteLink(data.inviteUrl);
         setInviteEmail("");
+      } else {
+        const data = await res.json().catch(() => null);
+        setInviteError(data?.error || "Could not create invite link.");
       }
     } catch {
-      // silently handle
+      setInviteError("Could not create invite link.");
     } finally {
       setInviting(false);
     }
@@ -242,29 +248,37 @@ export function TeamTab() {
         </div>
 
         {/* ── Email invite form ── */}
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-4 space-y-3">
+        <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/30 p-4">
           <div className="flex items-center gap-2 text-xs font-medium text-zinc-400">
             <UserPlus className="h-4 w-4" />
             Invite by Email
           </div>
-          <div className="flex gap-2">
-            <input
-              type="email"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleInvite()}
-              placeholder="teammate@company.com"
-              className="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:border-amber-600 focus:outline-none"
-            />
-            <button
-              onClick={handleInvite}
-              disabled={inviting || !inviteEmail.trim()}
-              className="flex items-center gap-1.5 rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Send className="h-3.5 w-3.5" />
-              {inviting ? "Sending…" : "Invite"}
-            </button>
-          </div>
+          {canInvite ? (
+            <div className="flex gap-2">
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleInvite()}
+                placeholder="teammate@company.com"
+                className="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:border-amber-600 focus:outline-none"
+              />
+              <button
+                onClick={handleInvite}
+                disabled={inviting || !inviteEmail.trim()}
+                className="flex items-center gap-1.5 rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Send className="h-3.5 w-3.5" />
+                {inviting ? "Sending…" : "Invite"}
+              </button>
+            </div>
+          ) : (
+            <p className="rounded-md border border-zinc-700 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-500">
+              Only admins can generate invite links.
+            </p>
+          )}
+
+          {inviteError && <p className="text-xs text-red-400">{inviteError}</p>}
 
           {inviteLink && (
             <div className="flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-800/50 px-3 py-2">
