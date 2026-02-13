@@ -38,9 +38,15 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 # Copy generated Prisma client (output to src/generated/prisma)
 COPY --from=builder /app/src/generated ./src/generated
+# Copy Prisma CLI + engines for running migrations at startup
+COPY --from=builder /app/node_modules/prisma ./prisma-cli
+COPY --from=builder /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
+COPY --from=builder /app/node_modules/@prisma/config ./node_modules/@prisma/config
+# Copy entrypoint script
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
 
 USER nextjs
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
