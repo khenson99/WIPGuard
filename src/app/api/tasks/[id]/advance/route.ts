@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { TaskStatus } from "@/generated/prisma/client";
 import { enforcePolicy, getUserRole, recordPolicyOverride } from "@/lib/policy-check";
+import { compactColumns, getNextColumnOrder } from "@/lib/task-order";
 
 const STATUS_FLOW: Partial<Record<TaskStatus, TaskStatus>> = {
   BACKLOG: "QUEUED",
@@ -39,6 +40,40 @@ export async function POST(
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
+    const body = await request.json().catch(() => ({}));
+    const expectedUpdatedAt = (body as Record<string, unknown>).expectedUpdatedAt as
+      | string
+      | undefined;
+    if (expectedUpdatedAt) {
+      const expectedTs = Date.parse(expectedUpdatedAt);
+      if (Number.isNaN(expectedTs)) {
+        return NextResponse.json(
+          { error: "Invalid expectedUpdatedAt" },
+          { status: 400 }
+        );
+      }
+      if (existing.updatedAt.getTime() !== expectedTs) {
+        return NextResponse.json(
+          {
+            error: "Conflict",
+            conflict: {
+              reason: "STALE_VERSION",
+              message:
+                "Task changed before this advance was applied. Refresh and retry.",
+              current: {
+                id: existing.id,
+                status: existing.status,
+                columnOrder: existing.columnOrder,
+                updatedAt: existing.updatedAt.toISOString(),
+              },
+              expectedUpdatedAt,
+            },
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     const nextStatus: TaskStatus | undefined = STATUS_FLOW[existing.status];
     if (!nextStatus) {
       return NextResponse.json(
@@ -65,7 +100,6 @@ export async function POST(
 
     // If override is required, the client must supply a reason
     if (policyResult.requiresOverride) {
-      const body = await request.json().catch(() => ({}));
       const overrideReason = (body as Record<string, unknown>).overrideReason as string | undefined;
       if (!overrideReason) {
         return NextResponse.json(
@@ -91,11 +125,13 @@ export async function POST(
     }
 
     const movingToDone = nextStatus === "DONE";
+    const nextColumnOrder = await getNextColumnOrder(prisma, nextStatus, id);
 
     const task = await prisma.task.update({
       where: { id },
       data: {
         status: nextStatus,
+        columnOrder: nextColumnOrder,
         completedOn: movingToDone ? new Date() : undefined,
       },
       include: {
@@ -155,6 +191,8 @@ export async function POST(
         },
       });
     }
+
+    await compactColumns(prisma, [existing.status, nextStatus]);
 
     return NextResponse.json({
       task,

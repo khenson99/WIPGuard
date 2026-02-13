@@ -96,15 +96,39 @@ export function KanbanColumn({
                 index={index}
                 onClick={() => onTaskClick(task)}
                 onAdvance={async () => {
-                  await fetch(`/api/tasks/${task.id}/advance`, {
+                  const response = await fetch(`/api/tasks/${task.id}/advance`, {
                     method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      expectedUpdatedAt: task.updatedAt,
+                    }),
                   });
+                  if (!response.ok && response.status === 409) {
+                    const conflict = await response.json().catch(() => null);
+                    window.alert(
+                      conflict?.conflict?.message ||
+                        conflict?.error ||
+                        "Task changed before advance was applied. Refreshing board."
+                    );
+                  }
                   onRefresh();
                 }}
                 onRetreat={async () => {
-                  await fetch(`/api/tasks/${task.id}/retreat`, {
+                  const response = await fetch(`/api/tasks/${task.id}/retreat`, {
                     method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      expectedUpdatedAt: task.updatedAt,
+                    }),
                   });
+                  if (!response.ok && response.status === 409) {
+                    const conflict = await response.json().catch(() => null);
+                    window.alert(
+                      conflict?.conflict?.message ||
+                        conflict?.error ||
+                        "Task changed before retreat was applied. Refreshing board."
+                    );
+                  }
                   onRefresh();
                 }}
               />

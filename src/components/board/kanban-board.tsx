@@ -151,19 +151,38 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
 
       // Persist
       try {
-        await fetch("/api/tasks/reorder", {
+        const movedTask = columns
+          .find((column) => column.id === fromColumn)
+          ?.tasks.find((task) => task.id === draggableId);
+
+        const requestId = `${draggableId}:${Date.now()}`;
+        const response = await fetch("/api/tasks/reorder", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            requestId,
             items: [
               {
                 taskId: draggableId,
                 status: toColumn,
                 columnOrder: destination.index,
+                expectedUpdatedAt: movedTask?.updatedAt,
               },
             ],
           }),
         });
+
+        if (!response.ok) {
+          if (response.status === 409) {
+            const conflict = await response.json().catch(() => null);
+            const message =
+              conflict?.conflict?.message ||
+              conflict?.error ||
+              "This task changed before your move was applied. Refreshing board.";
+            window.alert(message);
+          }
+          throw new Error("Failed to reorder task");
+        }
       } catch {
         // Revert on failure
         fetchBoard();

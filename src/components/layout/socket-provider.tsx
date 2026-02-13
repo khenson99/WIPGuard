@@ -1,10 +1,33 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useSocket } from "@/hooks/use-socket";
 import { useBoardStore } from "@/store/board-store";
 import type { TaskWithRelations, BoardColumn } from "@/types";
 import { COLUMN_ORDER, COLUMN_LABELS } from "@/types";
+
+interface EventEnvelope<T = unknown> {
+  eventId: string;
+  emittedAt: string;
+  payload: T;
+}
+
+function parseEventPayload<T>(raw: unknown): {
+  eventId: string | null;
+  payload: T;
+} {
+  if (
+    raw &&
+    typeof raw === "object" &&
+    "eventId" in raw &&
+    "payload" in raw &&
+    typeof (raw as { eventId?: unknown }).eventId === "string"
+  ) {
+    const envelope = raw as EventEnvelope<T>;
+    return { eventId: envelope.eventId, payload: envelope.payload };
+  }
+  return { eventId: null, payload: raw as T };
+}
 
 /**
  * SocketProvider — listens for real-time board events and updates the
@@ -15,11 +38,24 @@ import { COLUMN_ORDER, COLUMN_LABELS } from "@/types";
 export function SocketProvider({ children }: { children: ReactNode }) {
   const { on } = useSocket();
   const { setColumns } = useBoardStore();
+  const seenEventIds = useRef<Set<string>>(new Set());
+
+  const markSeen = (eventId: string | null): boolean => {
+    if (!eventId) return false;
+    if (seenEventIds.current.has(eventId)) return true;
+    seenEventIds.current.add(eventId);
+    if (seenEventIds.current.size > 500) {
+      const oldest = seenEventIds.current.values().next().value;
+      if (oldest) seenEventIds.current.delete(oldest);
+    }
+    return false;
+  };
 
   useEffect(() => {
     // ── task:created – add the new task into the right column ──
-    const offCreated = on("task:created", (payload: unknown) => {
-      const task = payload as TaskWithRelations;
+    const offCreated = on("task:created", (raw: unknown) => {
+      const { eventId, payload: task } = parseEventPayload<TaskWithRelations>(raw);
+      if (markSeen(eventId)) return;
       setColumns(
         useBoardStore.getState().columns.map((col) => {
           if (col.id === task.status) {
@@ -31,8 +67,9 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     });
 
     // ── task:updated – replace the task in place (may change column) ──
-    const offUpdated = on("task:updated", (payload: unknown) => {
-      const task = payload as TaskWithRelations;
+    const offUpdated = on("task:updated", (raw: unknown) => {
+      const { eventId, payload: task } = parseEventPayload<TaskWithRelations>(raw);
+      if (markSeen(eventId)) return;
       const state = useBoardStore.getState();
 
       // Remove from old column, add to new one
@@ -54,7 +91,9 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     });
 
     // ── task:deleted – remove from whichever column it was in ──
-    const offDeleted = on("task:deleted", (payload: unknown) => {
+    const offDeleted = on("task:deleted", (raw: unknown) => {
+      const { eventId, payload } = parseEventPayload<{ taskId: string }>(raw);
+      if (markSeen(eventId)) return;
       const { taskId } = payload as { taskId: string };
       setColumns(
         useBoardStore.getState().columns.map((col) => ({
@@ -65,13 +104,17 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     });
 
     // ── task:reordered – full refresh (cheapest correct approach) ──
-    const offReordered = on("task:reordered", () => {
+    const offReordered = on("task:reordered", (raw: unknown) => {
+      const { eventId } = parseEventPayload(raw);
+      if (markSeen(eventId)) return;
       // Trigger a lightweight board refresh by re-fetching tasks
       refreshBoard();
     });
 
     // ── board:refresh – explicit full refresh signal ──
-    const offRefresh = on("board:refresh", () => {
+    const offRefresh = on("board:refresh", (raw: unknown) => {
+      const { eventId } = parseEventPayload(raw);
+      if (markSeen(eventId)) return;
       refreshBoard();
     });
 

@@ -8,8 +8,35 @@ import type { TaskStatus } from "@/generated/prisma/client";
 
 interface ReorderItem {
   taskId: string;
-  status: string;
+  status: TaskStatus;
   columnOrder: number;
+  expectedUpdatedAt?: string;
+}
+
+const VALID_STATUSES: ReadonlySet<TaskStatus> = new Set([
+  "BACKLOG",
+  "QUEUED",
+  "WORKING_ON_TODAY",
+  "ACTIVE",
+  "NOT_DONE",
+  "DONE",
+]);
+
+interface ConflictEntry {
+  taskId: string;
+  expectedUpdatedAt: string;
+  currentUpdatedAt: string;
+  currentStatus: TaskStatus;
+  currentColumnOrder: number;
+}
+
+function parseIsoTimestamp(value: string): number | null {
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
@@ -20,126 +47,226 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     }
 
     const body = await request.json();
-    const items: ReorderItem[] = body.items ?? body;
+    const itemsRaw = body.items ?? body;
     const overrideReason = body.overrideReason as string | undefined;
+    const requestId =
+      typeof body.requestId === "string" && body.requestId.trim().length > 0
+        ? body.requestId.trim()
+        : undefined;
 
-    if (!Array.isArray(items) || items.length === 0) {
+    if (!Array.isArray(itemsRaw) || itemsRaw.length === 0) {
       return NextResponse.json(
         { error: "Request body must include an array of reorder items" },
         { status: 400 }
       );
     }
 
+    const items: ReorderItem[] = [];
+    const seenTaskIds = new Set<string>();
+    for (const raw of itemsRaw) {
+      const taskId = raw?.taskId as string | undefined;
+      const status = raw?.status as TaskStatus | undefined;
+      const columnOrder = raw?.columnOrder as number | undefined;
+      const expectedUpdatedAt = raw?.expectedUpdatedAt as string | undefined;
+
+      if (!taskId || typeof taskId !== "string") {
+        return NextResponse.json(
+          { error: "Each reorder item must include taskId" },
+          { status: 400 }
+        );
+      }
+      if (seenTaskIds.has(taskId)) {
+        return NextResponse.json(
+          { error: `Duplicate taskId in reorder payload: ${taskId}` },
+          { status: 400 }
+        );
+      }
+      seenTaskIds.add(taskId);
+
+      if (!status || !VALID_STATUSES.has(status)) {
+        return NextResponse.json(
+          { error: `Invalid task status for ${taskId}` },
+          { status: 400 }
+        );
+      }
+      if (
+        typeof columnOrder !== "number" ||
+        !Number.isFinite(columnOrder) ||
+        columnOrder < 0
+      ) {
+        return NextResponse.json(
+          { error: `Invalid columnOrder for ${taskId}` },
+          { status: 400 }
+        );
+      }
+      if (
+        expectedUpdatedAt !== undefined &&
+        (typeof expectedUpdatedAt !== "string" ||
+          parseIsoTimestamp(expectedUpdatedAt) === null)
+      ) {
+        return NextResponse.json(
+          { error: `Invalid expectedUpdatedAt for ${taskId}` },
+          { status: 400 }
+        );
+      }
+
+      items.push({ taskId, status, columnOrder, expectedUpdatedAt });
+    }
+
     const taskIds = items.map((item) => item.taskId);
     const existingTasks = await prisma.task.findMany({
       where: { id: { in: taskIds } },
-      select: { id: true, status: true },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        columnOrder: true,
+        updatedAt: true,
+      },
     });
 
-    const existingByIdMap = new Map<string, string>(
-      existingTasks.map((t: { id: string; status: string }) => [t.id, t.status])
+    if (existingTasks.length !== taskIds.length) {
+      const foundIds = new Set(existingTasks.map((task) => task.id));
+      const missing = taskIds.filter((id) => !foundIds.has(id));
+      return NextResponse.json(
+        { error: `Task(s) not found: ${missing.join(", ")}` },
+        { status: 404 }
+      );
+    }
+
+    const existingById = new Map(
+      existingTasks.map((task) => [task.id, task])
     );
 
-    // Identify which items involve a status change
-    const statusChanges: { taskId: string; from: string; to: string }[] = [];
+    // Optimistic locking checks.
+    const conflicts: ConflictEntry[] = [];
     for (const item of items) {
-      const previousStatus = existingByIdMap.get(item.taskId);
-      if (previousStatus !== undefined && previousStatus !== item.status) {
-        statusChanges.push({
+      if (!item.expectedUpdatedAt) continue;
+      const expectedTs = parseIsoTimestamp(item.expectedUpdatedAt);
+      const current = existingById.get(item.taskId);
+      if (!current || expectedTs === null) continue;
+      if (current.updatedAt.getTime() !== expectedTs) {
+        conflicts.push({
           taskId: item.taskId,
-          from: previousStatus,
-          to: item.status,
+          expectedUpdatedAt: item.expectedUpdatedAt,
+          currentUpdatedAt: current.updatedAt.toISOString(),
+          currentStatus: current.status,
+          currentColumnOrder: current.columnOrder,
         });
       }
     }
 
-    // ── WIP policy enforcement for each column gaining tasks ──
+    if (conflicts.length > 0) {
+      return NextResponse.json(
+        {
+          error: "Conflict",
+          conflict: {
+            reason: "STALE_VERSION",
+            message:
+              "One or more tasks changed before this reorder was applied. Refresh and retry.",
+            items: conflicts,
+          },
+        },
+        { status: 409 }
+      );
+    }
+
+    const statusChanges = items
+      .map((item) => {
+        const existing = existingById.get(item.taskId);
+        if (!existing || existing.status === item.status) {
+          return null;
+        }
+        return {
+          taskId: item.taskId,
+          from: existing.status,
+          to: item.status,
+        };
+      })
+      .filter((change): change is NonNullable<typeof change> => Boolean(change));
+
+    // WIP policy enforcement for columns gaining tasks.
     if (statusChanges.length > 0) {
       const [policies, userRole] = await Promise.all([
         loadPolicies(),
         getUserRole(session.user.id),
       ]);
 
-      // Calculate net additions per target column
-      const columnDeltas = new Map<string, string[]>();
+      const columnDeltas = new Map<TaskStatus, string[]>();
       for (const change of statusChanges) {
-        const list = columnDeltas.get(change.to) ?? [];
-        list.push(change.taskId);
-        columnDeltas.set(change.to, list);
+        const taskList = columnDeltas.get(change.to) ?? [];
+        taskList.push(change.taskId);
+        columnDeltas.set(change.to, taskList);
       }
 
-      // Get current counts per affected column, excluding the tasks being moved
-      const movingTaskIds = new Set(statusChanges.map((c) => c.taskId));
+      const movingTaskIds = new Set(statusChanges.map((change) => change.taskId));
       const affectedColumns = [...columnDeltas.keys()];
+      const columnCounts = new Map<TaskStatus, number>();
 
-      const columnCounts = new Map<string, number>();
       for (const col of affectedColumns) {
         const count = await prisma.task.count({
           where: {
-            status: col as TaskStatus,
+            status: col,
             id: { notIn: [...movingTaskIds] },
           },
         });
         columnCounts.set(col, count);
       }
 
-      // Check policy for each column gaining tasks
       const violations: Array<{
-        column: string;
-        policyResult: ReturnType<typeof checkWipPolicy>;
+        column: TaskStatus;
         taskIds: string[];
+        policy: ReturnType<typeof checkWipPolicy>;
       }> = [];
 
-      for (const [column, taskIdsMoving] of columnDeltas) {
+      for (const [column, movedTaskIds] of columnDeltas) {
         const baseCount = columnCounts.get(column) ?? 0;
-        const projectedCount = baseCount + taskIdsMoving.length;
-
-        const policyResult = checkWipPolicy({
-          targetColumn: column as TaskStatus,
+        const projectedCount = baseCount + movedTaskIds.length;
+        const policy = checkWipPolicy({
+          targetColumn: column,
           currentColumnTaskCount: projectedCount,
           userRole,
           policies,
         });
 
-        if (!policyResult.allowed || policyResult.requiresOverride) {
-          violations.push({ column, policyResult, taskIds: taskIdsMoving });
+        if (!policy.allowed || policy.requiresOverride) {
+          violations.push({ column, taskIds: movedTaskIds, policy });
         }
       }
 
-      // If any column is blocked and user can't override, reject the whole batch
-      const blocked = violations.filter((v) => !v.policyResult.allowed);
+      const blocked = violations.filter((violation) => !violation.policy.allowed);
       if (blocked.length > 0) {
         return NextResponse.json(
           {
             error: "WIP limit exceeded",
-            violations: blocked.map((v) => ({
-              column: v.column,
-              policy: v.policyResult,
+            violations: blocked.map((violation) => ({
+              column: violation.column,
+              policy: violation.policy,
             })),
           },
           { status: 409 }
         );
       }
 
-      // If override required, demand reason
-      const overrideNeeded = violations.filter((v) => v.policyResult.requiresOverride);
-      if (overrideNeeded.length > 0) {
+      const needsOverride = violations.filter(
+        (violation) => violation.policy.requiresOverride
+      );
+      if (needsOverride.length > 0) {
         if (!overrideReason) {
           return NextResponse.json(
             {
               error: "Override reason required",
-              violations: overrideNeeded.map((v) => ({
-                column: v.column,
-                policy: v.policyResult,
+              violations: needsOverride.map((violation) => ({
+                column: violation.column,
+                policy: violation.policy,
               })),
             },
             { status: 409 }
           );
         }
 
-        // Record overrides for each affected task
-        for (const v of overrideNeeded) {
-          for (const taskId of v.taskIds) {
+        for (const violation of needsOverride) {
+          for (const taskId of violation.taskIds) {
             await recordPolicyOverride({
               taskId,
               action: "reorder",
@@ -147,49 +274,125 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
               actorId: session.user.id,
               actorName: session.user.name ?? undefined,
               actorRole: userRole,
-              column: v.column,
-              wipCount: v.policyResult.currentCount,
-              wipLimit: v.policyResult.wipLimit,
+              column: violation.column,
+              wipCount: violation.policy.currentCount,
+              wipLimit: violation.policy.wipLimit,
             });
           }
         }
       }
     }
 
-    // ── Perform the reorder transaction ──
-    await prisma.$transaction(
-      items.map((item) => {
-        const previousStatus = existingByIdMap.get(item.taskId);
-        const statusChanged =
-          previousStatus !== undefined && previousStatus !== item.status;
+    // Build deterministic final ordering per affected column.
+    const affectedColumns = new Set<TaskStatus>();
+    for (const item of items) {
+      affectedColumns.add(item.status);
+      const existing = existingById.get(item.taskId);
+      if (existing) {
+        affectedColumns.add(existing.status);
+      }
+    }
 
-        return prisma.task.update({
-          where: { id: item.taskId },
-          data: {
-            status: item.status as never,
-            columnOrder: item.columnOrder,
-            completedOn:
-              statusChanged && item.status === "DONE" ? new Date() : undefined,
-          },
-        });
-      })
-    );
+    const columnTasks = await prisma.task.findMany({
+      where: { status: { in: [...affectedColumns] } },
+      select: {
+        id: true,
+        status: true,
+        columnOrder: true,
+        updatedAt: true,
+      },
+      orderBy: [{ status: "asc" }, { columnOrder: "asc" }, { updatedAt: "asc" }, { id: "asc" }],
+    });
+
+    const movingIds = new Set(items.map((item) => item.taskId));
+    const baselineByColumn = new Map<TaskStatus, string[]>();
+
+    for (const task of columnTasks) {
+      if (movingIds.has(task.id)) continue;
+      const list = baselineByColumn.get(task.status) ?? [];
+      list.push(task.id);
+      baselineByColumn.set(task.status, list);
+    }
+
+    for (const status of affectedColumns) {
+      if (!baselineByColumn.has(status)) {
+        baselineByColumn.set(status, []);
+      }
+    }
+
+    const insertionsByColumn = new Map<TaskStatus, ReorderItem[]>();
+    for (const item of items) {
+      const list = insertionsByColumn.get(item.status) ?? [];
+      list.push(item);
+      insertionsByColumn.set(item.status, list);
+    }
+
+    const finalByColumn = new Map<TaskStatus, string[]>();
+    for (const status of affectedColumns) {
+      const ordered = [...(baselineByColumn.get(status) ?? [])];
+      const insertions = [...(insertionsByColumn.get(status) ?? [])].sort(
+        (a, b) =>
+          a.columnOrder - b.columnOrder || a.taskId.localeCompare(b.taskId)
+      );
+
+      for (const insertion of insertions) {
+        const idx = clamp(insertion.columnOrder, 0, ordered.length);
+        ordered.splice(idx, 0, insertion.taskId);
+      }
+
+      finalByColumn.set(status, ordered);
+    }
+
+    const now = new Date();
+    const updates: Array<ReturnType<typeof prisma.task.update>> = [];
+
+    for (const [status, orderedIds] of finalByColumn) {
+      for (let index = 0; index < orderedIds.length; index += 1) {
+        const taskId = orderedIds[index];
+        const existing = existingById.get(taskId);
+        const statusChanged = existing && existing.status !== status;
+        const orderChanged = existing && existing.columnOrder !== index;
+
+        if (!statusChanged && !orderChanged) {
+          continue;
+        }
+
+        updates.push(
+          prisma.task.update({
+            where: { id: taskId },
+            data: {
+              status,
+              columnOrder: index,
+              completedOn: statusChanged
+                ? status === "DONE"
+                  ? now
+                  : existing?.status === "DONE"
+                    ? null
+                    : undefined
+                : undefined,
+            },
+          })
+        );
+      }
+    }
+
+    await prisma.$transaction(updates);
 
     if (statusChanges.length > 0) {
       await prisma.statusHistory.createMany({
         data: statusChanges.map((change) => ({
           taskId: change.taskId,
-          fromStatus: change.from as never,
-          toStatus: change.to as never,
+          fromStatus: change.from,
+          toStatus: change.to,
           changedBy: session.user.id,
         })),
       });
     }
 
-    const doneChanges = statusChanges.filter((c) => c.to === "DONE");
+    const doneChanges = statusChanges.filter((change) => change.to === "DONE");
     if (doneChanges.length > 0) {
       const doneTasks = await prisma.task.findMany({
-        where: { id: { in: doneChanges.map((c) => c.taskId) } },
+        where: { id: { in: doneChanges.map((change) => change.taskId) } },
         include: {
           project: true,
           sprint: true,
@@ -209,10 +412,14 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
             priority: task.priority,
             status: task.status,
             responsible:
-              task.responsible.map((u: { name: string | null }) => u.name).join(", ") || null,
+              task.responsible
+                .map((user: { name: string | null }) => user.name)
+                .join(", ") || null,
             accountable:
-              task.accountable.map((u: { name: string | null }) => u.name).join(", ") || null,
-            completedOn: task.completedOn ?? new Date(),
+              task.accountable
+                .map((user: { name: string | null }) => user.name)
+                .join(", ") || null,
+            completedOn: task.completedOn ?? now,
             metadata: {
               taskId: task.id,
               projectId: task.projectId,
@@ -231,9 +438,26 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
       }
     }
 
-    emitBoardEvent("task:reordered", { items });
+    const eventId = requestId ? `task:reordered:${requestId}` : undefined;
+    emitBoardEvent(
+      "task:reordered",
+      {
+        items: items.map((item) => ({
+          taskId: item.taskId,
+          status: item.status,
+          columnOrder: item.columnOrder,
+        })),
+        statusChanges,
+      },
+      eventId
+    );
 
-    return NextResponse.json({ success: true, updated: items.length });
+    return NextResponse.json({
+      success: true,
+      updated: updates.length,
+      statusChanges: statusChanges.length,
+      eventId: eventId ?? null,
+    });
   } catch (error) {
     console.error("PATCH /api/tasks/reorder error:", error);
     return NextResponse.json(
