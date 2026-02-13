@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Deployment helper script intentionally uses CommonJS.
+    "migrate.cjs",
   ]),
 ]);
 

@@ -19,11 +19,15 @@ RUN npx prisma generate
 RUN npm run build
 
 # ── Stage 3: Production ──────────────────────────────────
-FROM node:22-alpine AS runner
+FROM node:22-alpine3.21 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
+
+# Force cache invalidation
+ARG BUILDTIME=unknown
+RUN echo "Build: ${BUILDTIME}" > /app/.build-info
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
@@ -34,7 +38,7 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 # Copy public assets
 COPY --from=builder /app/public ./public
-# Copy Prisma schema (needed by generated client at runtime)
+# Copy Prisma schema + migrations for runtime migrate deploy
 COPY --from=builder /app/prisma ./prisma
 # Copy generated Prisma client (output to src/generated/prisma)
 COPY --from=builder /app/src/generated ./src/generated
@@ -42,6 +46,8 @@ COPY --from=builder /app/src/generated ./src/generated
 COPY --from=builder /app/migrate.cjs ./migrate.cjs
 # Copy entrypoint script
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
+# Verify migrate.cjs exists
+RUN ls -la /app/migrate.cjs /app/docker-entrypoint.sh
 
 USER nextjs
 
