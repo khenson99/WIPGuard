@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import {
   DragDropContext,
   type DropResult,
@@ -11,14 +11,24 @@ import { TaskModal } from "../tasks/task-modal";
 import { BoardFilters } from "./board-filters";
 import type { TaskStatus, TaskWithRelations, BoardColumn } from "@/types";
 import { COLUMN_ORDER, COLUMN_LABELS } from "@/types";
-import { Plus } from "lucide-react";
+import { Eye, EyeOff, Keyboard, Plus } from "lucide-react";
+import { useSession } from "next-auth/react";
 
 interface KanbanBoardProps {
   filterByUser?: string;
   filterByStatus?: TaskStatus[];
 }
 
+type DisplayPreset = "standard" | "dense" | "triage";
+
+const PRESET_DEFAULTS: Record<DisplayPreset, { showMetadata: boolean }> = {
+  standard: { showMetadata: true },
+  dense: { showMetadata: false },
+  triage: { showMetadata: false },
+};
+
 export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) {
+  const { data: session } = useSession();
   const {
     columns,
     setColumns,
@@ -39,6 +49,9 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
   } = useBoardStore();
 
   const [loading, setLoading] = useState(true);
+  const [displayPreset, setDisplayPreset] = useState<DisplayPreset>("standard");
+  const [showMetadata, setShowMetadata] = useState(true);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   const fetchBoard = useCallback(async () => {
     try {
@@ -121,6 +134,101 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
     fetchBoard();
   }, [fetchBoard]);
 
+  const userPresetKey = session?.user?.id
+    ? `board-display-preset:${session.user.id}`
+    : null;
+
+  useEffect(() => {
+    if (!userPresetKey) return;
+    try {
+      const raw = localStorage.getItem(userPresetKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        preset?: DisplayPreset;
+        showMetadata?: boolean;
+      };
+      if (
+        parsed.preset === "standard" ||
+        parsed.preset === "dense" ||
+        parsed.preset === "triage"
+      ) {
+        setDisplayPreset(parsed.preset);
+      }
+      if (typeof parsed.showMetadata === "boolean") {
+        setShowMetadata(parsed.showMetadata);
+      }
+    } catch {
+      // ignore broken local preference payloads
+    }
+  }, [userPresetKey]);
+
+  useEffect(() => {
+    if (!userPresetKey) return;
+    localStorage.setItem(
+      userPresetKey,
+      JSON.stringify({ preset: displayPreset, showMetadata })
+    );
+  }, [displayPreset, showMetadata, userPresetKey]);
+
+  const visibleTasks = useMemo(
+    () => columns.flatMap((column) => column.tasks.map((task) => ({ task, column }))),
+    [columns]
+  );
+
+  useEffect(() => {
+    if (visibleTasks.length === 0) {
+      setSelectedTaskId(null);
+      return;
+    }
+    if (!selectedTaskId || !visibleTasks.some((entry) => entry.task.id === selectedTaskId)) {
+      setSelectedTaskId(visibleTasks[0]?.task.id ?? null);
+    }
+  }, [selectedTaskId, visibleTasks]);
+
+  const applyPreset = useCallback((preset: DisplayPreset) => {
+    setDisplayPreset(preset);
+    setShowMetadata(PRESET_DEFAULTS[preset].showMetadata);
+  }, []);
+
+  const handleBoardKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement;
+      const tag = target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (visibleTasks.length === 0) return;
+
+      const currentIndex = selectedTaskId
+        ? visibleTasks.findIndex((entry) => entry.task.id === selectedTaskId)
+        : -1;
+      const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+
+      if (event.key === "j" || event.key === "ArrowDown") {
+        event.preventDefault();
+        const nextIndex = Math.min(safeIndex + 1, visibleTasks.length - 1);
+        setSelectedTaskId(visibleTasks[nextIndex]?.task.id ?? null);
+        return;
+      }
+
+      if (event.key === "k" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const previousIndex = Math.max(safeIndex - 1, 0);
+        setSelectedTaskId(visibleTasks[previousIndex]?.task.id ?? null);
+        return;
+      }
+
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const selected =
+          visibleTasks[safeIndex]?.task ??
+          visibleTasks.find((entry) => entry.task.id === selectedTaskId)?.task;
+        if (selected) {
+          openTaskModal(selected);
+        }
+      }
+    },
+    [openTaskModal, selectedTaskId, visibleTasks]
+  );
+
   const handleDragEnd = useCallback(
     async (result: DropResult) => {
       const { source, destination, draggableId } = result;
@@ -198,34 +306,53 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div
-          className="h-8 w-8 animate-spin rounded-full border-2"
-          style={{
-            borderColor: "var(--border)",
-            borderTopColor: "var(--primary)",
-          }}
-        />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-primary" />
       </div>
     );
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between px-6 py-3">
-        <BoardFilters />
+    <div className="flex h-full flex-col" onKeyDown={handleBoardKeyDown} tabIndex={0}>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <BoardFilters />
+          <div className="flex items-center gap-2">
+            <select
+              value={displayPreset}
+              onChange={(e) => applyPreset(e.target.value as DisplayPreset)}
+              className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground"
+              title="Display preset"
+            >
+              <option value="standard">Standard</option>
+              <option value="dense">Dense</option>
+              <option value="triage">Triage</option>
+            </select>
+            <button
+              onClick={() => setShowMetadata((current) => !current)}
+              className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+              title="Toggle metadata disclosure"
+            >
+              {showMetadata ? (
+                <>
+                  <EyeOff className="h-3.5 w-3.5" />
+                  Hide Details
+                </>
+              ) : (
+                <>
+                  <Eye className="h-3.5 w-3.5" />
+                  Show Details
+                </>
+              )}
+            </button>
+            <span className="hidden items-center gap-1 text-[11px] text-muted-foreground sm:flex">
+              <Keyboard className="h-3 w-3" />
+              J/K + Enter
+            </span>
+          </div>
+        </div>
         <button
           onClick={handleCreateTask}
-          className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium"
-          style={{
-            background: "var(--primary)",
-            color: "var(--primary-foreground)",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "var(--primary-hover)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "var(--primary)";
-          }}
+          className="btn-primary-theme flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium"
         >
           <Plus className="h-4 w-4" />
           New Task
@@ -242,6 +369,10 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
                 wipLimit={wipLimits[column.id]}
                 onTaskClick={(task) => openTaskModal(task)}
                 onRefresh={fetchBoard}
+                displayPreset={displayPreset}
+                showMetadata={showMetadata}
+                selectedTaskId={selectedTaskId}
+                onSelectTask={setSelectedTaskId}
               />
             ))}
           </div>
