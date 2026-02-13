@@ -1,26 +1,291 @@
 @import "tailwindcss";
 
+/* ─────────────────────────────────────────────────────
+   Arda Design System — WIPGuard Theme
+   Light mode (:root) + Dark mode (.dark)
+   Brand orange: #FC5A29  │  Font: Geist
+   ───────────────────────────────────────────────────── */
+
 :root {
+  /* Brand */
+  --primary: #fc5a29;
+  --primary-foreground: #fafafa;
+  --primary-hover: #e84f22;
+  --accent-light: #fef7f5;
+
+  /* Backgrounds */
   --background: #ffffff;
-  --foreground: #171717;
+  --card: #ffffff;
+  --popover: #ffffff;
+  --secondary: #f5f5f5;
+  --muted: #f5f5f5;
+
+  /* Text */
+  --foreground: #0a0a0a;
+  --card-foreground: #0a0a0a;
+  --popover-foreground: #0a0a0a;
+  --secondary-foreground: #171717;
+  --muted-foreground: #737373;
+  --accent-foreground: #171717;
+  --destructive: #dc2626;
+
+  /* Borders & Rings */
+  --border: #e5e5e5;
+  --input: #e5e5e5;
+  --ring: #fc5a29;
+  --accent: #f5f5f5;
+
+  /* Sidebar */
+  --sidebar-bg: #fafafa;
+  --sidebar-foreground: #171717;
+  --sidebar-border: #e5e5e5;
+  --sidebar-active: #f5f5f5;
+  --sidebar-active-text: #0a0a0a;
+  --sidebar-muted: #737373;
+  --sidebar-hover: #f0f0f0;
+
+  /* Column / Board */
+  --column-bg: #f5f5f5;
+  --column-header: #fafafa;
+  --column-border: #e5e5e5;
+  --drop-highlight: rgba(252, 90, 41, 0.06);
+
+  /* Task Card */
+  --card-border: #e5e5e5;
+  --card-hover-border: #d4d4d4;
+  --card-drag-border: #fc5a29;
+  --card-drag-shadow: rgba(252, 90, 41, 0.15);
+  --tag-bg: #f0f0f0;
+  --tag-text: #525252;
+  --avatar-bg: #e5e5e5;
+  --avatar-text: #525252;
+  --avatar-border: #ffffff;
+
+  /* WIP Indicators */
+  --wip-over-bg: #fef2f2;
+  --wip-over-border: #fecaca;
+  --wip-over-text: #dc2626;
+  --wip-at-bg: #fffbeb;
+  --wip-at-border: #fde68a;
+  --wip-at-text: #d97706;
+
+  /* Difficulty Shading */
+  --diff-low-bg: transparent;
+  --diff-low-ring: transparent;
+  --diff-medium-bg: rgba(252, 90, 41, 0.03);
+  --diff-medium-ring: rgba(252, 90, 41, 0.12);
+  --diff-high-bg: rgba(252, 90, 41, 0.06);
+  --diff-high-ring: rgba(252, 90, 41, 0.22);
+  --diff-epic-bg: rgba(220, 38, 38, 0.05);
+  --diff-epic-ring: rgba(220, 38, 38, 0.20);
+
+  /* Status Dot Colors */
+  --status-backlog: #a3a3a3;
+  --status-queued: #eab308;
+  --status-working: #3b82f6;
+  --status-active: #22c55e;
+  --status-not-done: #ef4444;
+  --status-done: #10b981;
+
+  /* Priority Colors */
+  --priority-p0: #dc2626;
+  --priority-p1: #ea580c;
+  --priority-p2: #2563eb;
+  --priority-p3: #a3a3a3;
+
+  /* Form-Specific */
+  --form-separator: #e5e5e5;
+  --form-text-primary: #0a0a0a;
+  --form-text-secondary: #737373;
+  --form-background: #ffffff;
+  --form-background-secondary: #f3f4f6;
+  --form-switch-active: #fc5a29;
+
+  /* Other */
+  --link: #0a68f3;
+  --success: #16a34a;
+  --warning: #d97706;
+
+  /* Radius */
+  --radius: 0.625rem;
+  --radius-sm: 0.375rem;
+  --radius-lg: 0.75rem;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
+/* ─── Dark Mode ─── */
+.dark {
+  /* Brand */
+  --primary: #fc5a29;
+  --primary-foreground: #fafafa;
+  --primary-hover: #fd7a54;
+  --accent-light: #1c1210;
+
+  /* Backgrounds */
+  --background: #0a0a0a;
+  --card: #141414;
+  --popover: #1a1a1a;
+  --secondary: #1a1a1a;
+  --muted: #1a1a1a;
+
+  /* Text */
+  --foreground: #fafafa;
+  --card-foreground: #fafafa;
+  --popover-foreground: #fafafa;
+  --secondary-foreground: #e5e5e5;
+  --muted-foreground: #a3a3a3;
+  --accent-foreground: #e5e5e5;
+  --destructive: #ef4444;
+
+  /* Borders & Rings */
+  --border: #262626;
+  --input: #262626;
+  --ring: #fc5a29;
+  --accent: #1a1a1a;
+
+  /* Sidebar */
+  --sidebar-bg: #0a0a0a;
+  --sidebar-foreground: #e5e5e5;
+  --sidebar-border: #1f1f1f;
+  --sidebar-active: #1a1a1a;
+  --sidebar-active-text: #fafafa;
+  --sidebar-muted: #737373;
+  --sidebar-hover: #141414;
+
+  /* Column / Board */
+  --column-bg: #111111;
+  --column-header: #141414;
+  --column-border: #262626;
+  --drop-highlight: rgba(252, 90, 41, 0.08);
+
+  /* Task Card */
+  --card-border: #262626;
+  --card-hover-border: #3a3a3a;
+  --card-drag-border: #fc5a29;
+  --card-drag-shadow: rgba(252, 90, 41, 0.25);
+  --tag-bg: #1f1f1f;
+  --tag-text: #a3a3a3;
+  --avatar-bg: #2a2a2a;
+  --avatar-text: #d4d4d4;
+  --avatar-border: #141414;
+
+  /* WIP Indicators */
+  --wip-over-bg: rgba(220, 38, 38, 0.08);
+  --wip-over-border: rgba(220, 38, 38, 0.30);
+  --wip-over-text: #f87171;
+  --wip-at-bg: rgba(217, 119, 6, 0.08);
+  --wip-at-border: rgba(217, 119, 6, 0.30);
+  --wip-at-text: #fbbf24;
+
+  /* Difficulty Shading */
+  --diff-low-bg: transparent;
+  --diff-low-ring: transparent;
+  --diff-medium-bg: rgba(252, 90, 41, 0.04);
+  --diff-medium-ring: rgba(252, 90, 41, 0.18);
+  --diff-high-bg: rgba(252, 90, 41, 0.08);
+  --diff-high-ring: rgba(252, 90, 41, 0.30);
+  --diff-epic-bg: rgba(220, 38, 38, 0.08);
+  --diff-epic-ring: rgba(220, 38, 38, 0.28);
+
+  /* Status Dot Colors (same in dark) */
+  --status-backlog: #737373;
+  --status-queued: #eab308;
+  --status-working: #3b82f6;
+  --status-active: #22c55e;
+  --status-not-done: #ef4444;
+  --status-done: #10b981;
+
+  /* Priority Colors */
+  --priority-p0: #ef4444;
+  --priority-p1: #f97316;
+  --priority-p2: #3b82f6;
+  --priority-p3: #737373;
+
+  /* Form-Specific */
+  --form-separator: #262626;
+  --form-text-primary: #fafafa;
+  --form-text-secondary: #a3a3a3;
+  --form-background: #141414;
+  --form-background-secondary: #1a1a1a;
+  --form-switch-active: #fc5a29;
+
+  /* Other */
+  --link: #60a5fa;
+  --success: #22c55e;
+  --warning: #fbbf24;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* ─── Tailwind v4 Theme Integration ─── */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* ─── Base Styles ─── */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Scrollbar Styles ─── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}
+
+/* ─── Selection ─── */
+::selection {
+  background-color: rgba(252, 90, 41, 0.15);
+  color: var(--foreground);
+}
+
+/* ─── Focus Ring ─── */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
