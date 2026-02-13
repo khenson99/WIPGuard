@@ -39,11 +39,11 @@ COPY --from=builder /app/prisma ./prisma
 # Copy generated Prisma client (output to src/generated/prisma)
 COPY --from=builder /app/src/generated ./src/generated
 
-# Install prisma CLI for running migrations at startup
-RUN npm install --no-save prisma@7.4.0
+# Install prisma CLI in isolated directory for running migrations at startup
+RUN mkdir -p /app/prisma-cli && cd /app/prisma-cli && npm init -y && npm install prisma@7.4.0
 
 USER nextjs
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma migrate deploy --schema=./prisma/schema.prisma && node server.js"]
+CMD ["sh", "-c", "node /app/prisma-cli/node_modules/prisma/build/index.js migrate deploy --schema=/app/prisma/schema.prisma && node server.js"]
