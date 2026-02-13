@@ -34,14 +34,10 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 # Copy public assets
 COPY --from=builder /app/public ./public
-# Copy Prisma schema + migrations for runtime migrate deploy
+# Copy Prisma schema (needed by generated client at runtime)
 COPY --from=builder /app/prisma ./prisma
 # Copy generated Prisma client (output to src/generated/prisma)
 COPY --from=builder /app/src/generated ./src/generated
-# Copy Prisma CLI + engines for running migrations at startup
-COPY --from=builder /app/node_modules/prisma ./prisma-cli
-COPY --from=builder /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
-COPY --from=builder /app/node_modules/@prisma/config ./node_modules/@prisma/config
 # Copy entrypoint script
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 
