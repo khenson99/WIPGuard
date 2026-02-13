@@ -38,6 +38,8 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 # Copy generated Prisma client (output to src/generated/prisma)
 COPY --from=builder /app/src/generated ./src/generated
+# Copy lightweight migration runner (uses pg from standalone trace)
+COPY migrate.cjs ./migrate.cjs
 # Copy entrypoint script
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 
