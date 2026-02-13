@@ -43,6 +43,31 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
   P3: "P3 - Low",
 };
 
+/** Dot color by swim lane (column status) */
+export const STATUS_COLORS: Record<TaskStatus, string> = {
+  BACKLOG: "#71717a",     // zinc-500
+  QUEUED: "#eab308",      // yellow-500
+  WORKING_ON_TODAY: "#3b82f6", // blue-500
+  ACTIVE: "#22c55e",      // green-500
+  NOT_DONE: "#ef4444",    // red-500
+  DONE: "#10b981",        // emerald-500
+};
+
+/** Card background shading by difficulty */
+export const DIFFICULTY_BG: Record<DifficultyLevel, string> = {
+  LOW: "bg-zinc-900",
+  MEDIUM: "bg-zinc-900 ring-1 ring-inset ring-amber-900/30",
+  HIGH: "bg-amber-950/20 ring-1 ring-inset ring-amber-800/40",
+  EPIC: "bg-red-950/25 ring-1 ring-inset ring-red-800/50",
+};
+
+export const DIFFICULTY_LABELS: Record<DifficultyLevel, string> = {
+  LOW: "Easy",
+  MEDIUM: "Medium",
+  HIGH: "Hard",
+  EPIC: "Epic",
+};
+
 export interface TaskWithRelations {
   id: string;
   title: string;

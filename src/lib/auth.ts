@@ -31,7 +31,7 @@ if (process.env.NODE_ENV !== "production") {
           where: { email: credentials.email },
         });
         if (!user) return null;
-        return { id: user.id, name: user.name, email: user.email, image: user.avatarUrl };
+        return { id: user.id, name: user.name, email: user.email, image: user.image };
       },
     }),
   );

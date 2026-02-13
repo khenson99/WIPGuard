@@ -84,6 +84,12 @@ export function KanbanColumn({
                   });
                   onRefresh();
                 }}
+                onRetreat={async () => {
+                  await fetch(`/api/tasks/${task.id}/retreat`, {
+                    method: "POST",
+                  });
+                  onRefresh();
+                }}
               />
             ))}
             {provided.placeholder}
