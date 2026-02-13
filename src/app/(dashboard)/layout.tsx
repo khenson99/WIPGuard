@@ -23,17 +23,8 @@ export default function DashboardLayout({
 
   if (status === "loading") {
     return (
-      <div
-        className="flex h-screen items-center justify-center"
-        style={{ background: "var(--background)" }}
-      >
-        <div
-          className="h-8 w-8 animate-spin rounded-full border-2"
-          style={{
-            borderColor: "var(--border)",
-            borderTopColor: "var(--primary)",
-          }}
-        />
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-primary" />
       </div>
     );
   }
