@@ -1,0 +1,48 @@
+# Ralph Team Loop — Progress Log
+# This file is appended to by every agent after each iteration.
+# It serves as cumulative memory across fresh-context Ralph iterations.
+# =====================================================================
+
+--- Architect Iteration 1 ---
+Timestamp: 2026-02-13T16:00:00Z
+Tickets assigned: [#1 → backend, #2 → frontend]
+Tickets completed: []
+Tickets blocked: []
+Decisions made:
+  - ADR-001: Policy engine as pure function in shared domain logic
+  - Fixed dependency discrepancies: #23 depends on [5], #24 depends on [13, 17]
+Learnings:
+  - team-state.json had incorrect empty depends_on for #23 and #24; corrected from issue bodies
+  - All tickets except #1 and #2 are blocked by upstream dependencies
+  - Critical path: #1 → #4 → #5/#8 (two parallel tracks after #4)
+  - Frontend #2 can scaffold against expected API contract while #1 is built
+  - Existing schema has BoardSettings.wipLimit but no policy enforcement or override audit trail
+  - Next unblock targets after #1 completes: #4 (concurrency) and #17 (auth hardening) in parallel
+
+--- Backend Agent Iteration 1 | Issue #1 ---
+Timestamp: 2026-02-13T16:26:00Z
+Status: completed
+Changes:
+  - prisma/schema.prisma: Added WipPolicy and PolicyOverride models, EnforcementMode enum, Task.policyOverrides relation
+  - prisma/migrations/20260213161912_add_wip_policy_and_override/: New migration
+  - src/lib/policy-engine.ts: Pure policy check function (checkWipPolicy) and batch variant
+  - src/lib/policy-check.ts: DB-backed helpers (loadPolicies, enforcePolicy, recordPolicyOverride, getUserRole)
+  - src/app/api/tasks/[id]/advance/route.ts: Integrated WIP policy enforcement
+  - src/app/api/tasks/[id]/retreat/route.ts: Integrated WIP policy enforcement
+  - src/app/api/tasks/[id]/route.ts: Integrated WIP policy enforcement on PATCH status changes
+  - src/app/api/tasks/reorder/route.ts: Integrated batch WIP policy enforcement
+  - src/app/api/policy/route.ts: GET/PUT endpoints for policy config (admin-only PUT)
+  - src/app/api/policy/override/route.ts: POST endpoint for recording overrides
+  - src/app/api/policy/audit/route.ts: GET endpoint for override audit trail with pagination
+  - src/lib/__tests__/policy-engine.test.ts: 15 unit tests for pure policy engine
+  - vitest.config.ts: Test configuration
+  - package.json: Added vitest, test scripts
+Tests: 15/15 pass
+Learnings:
+  - Prisma 7.x generates types in separate model files under src/generated/prisma/models/
+  - EnforcementMode enum available from @/generated/prisma/enums or @/generated/prisma/client (re-exports)
+  - Existing API pattern: auth() → findUnique → business logic → update → statusHistory → response
+  - API contract for policy: 409 status for WIP violations (blocked or override required)
+  - BACKLOG, DONE, NOT_DONE are exempt from WIP limits (buffer/terminal columns)
+  - Override flow: client gets 409 with requiresOverride:true → resends with overrideReason in body
+

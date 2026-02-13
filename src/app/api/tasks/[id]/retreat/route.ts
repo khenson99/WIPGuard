@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { TaskStatus } from "@/generated/prisma/client";
+import { enforcePolicy, getUserRole, recordPolicyOverride } from "@/lib/policy-check";
 
 const STATUS_BACK: Partial<Record<TaskStatus, TaskStatus>> = {
   QUEUED: "BACKLOG",
@@ -14,7 +15,7 @@ const STATUS_BACK: Partial<Record<TaskStatus, TaskStatus>> = {
 type RouteParams = { params: Promise<{ id: string }> };
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: RouteParams
 ): Promise<NextResponse> {
   try {
@@ -37,6 +38,46 @@ export async function POST(
         { error: `Cannot retreat task from status "${existing.status}".` },
         { status: 400 }
       );
+    }
+
+    // ── WIP policy enforcement ──
+    const userRole = await getUserRole(session.user.id);
+    const policyResult = await enforcePolicy(prevStatus, userRole, id);
+
+    if (!policyResult.allowed) {
+      return NextResponse.json(
+        {
+          error: "WIP limit exceeded",
+          policy: policyResult,
+        },
+        { status: 409 }
+      );
+    }
+
+    if (policyResult.requiresOverride) {
+      const body = await request.json().catch(() => ({}));
+      const overrideReason = (body as Record<string, unknown>).overrideReason as string | undefined;
+      if (!overrideReason) {
+        return NextResponse.json(
+          {
+            error: "Override reason required",
+            policy: policyResult,
+          },
+          { status: 409 }
+        );
+      }
+
+      await recordPolicyOverride({
+        taskId: id,
+        action: "retreat",
+        reason: overrideReason,
+        actorId: session.user.id,
+        actorName: session.user.name ?? undefined,
+        actorRole: userRole,
+        column: prevStatus,
+        wipCount: policyResult.currentCount,
+        wipLimit: policyResult.wipLimit,
+      });
     }
 
     const task = await prisma.task.update({
@@ -76,6 +117,7 @@ export async function POST(
     return NextResponse.json({
       task,
       retreated: { from: existing.status, to: prevStatus },
+      policy: policyResult.warning ? policyResult : undefined,
     });
   } catch (error) {
     console.error("POST /api/tasks/[id]/retreat error:", error);
