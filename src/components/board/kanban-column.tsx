@@ -1,6 +1,7 @@
 "use client";
 
 import { Droppable } from "@hello-pangea/dnd";
+import { clsx } from "clsx";
 import { TaskCard } from "./task-card";
 import type { BoardColumn, TaskWithRelations } from "@/types";
 
@@ -9,6 +10,10 @@ interface KanbanColumnProps {
   wipLimit: number;
   onTaskClick: (task: TaskWithRelations) => void;
   onRefresh: () => void;
+  displayPreset: "standard" | "dense" | "triage";
+  showMetadata: boolean;
+  selectedTaskId: string | null;
+  onSelectTask: (taskId: string) => void;
 }
 
 export function KanbanColumn({
@@ -16,60 +21,54 @@ export function KanbanColumn({
   wipLimit,
   onTaskClick,
   onRefresh,
+  displayPreset,
+  showMetadata,
+  selectedTaskId,
+  onSelectTask,
 }: KanbanColumnProps) {
   const isOverLimit = wipLimit > 0 && column.tasks.length > wipLimit;
   const isAtLimit = wipLimit > 0 && column.tasks.length === wipLimit;
+  const isCompact = displayPreset !== "standard";
 
   return (
     <div
-      className="flex h-full w-72 min-w-[18rem] flex-col rounded-lg"
-      style={{ background: "var(--column-bg)" }}
+      className={clsx(
+        "flex h-full flex-col rounded-lg bg-column-bg",
+        isCompact ? "w-64 min-w-[16rem]" : "w-72 min-w-[18rem]"
+      )}
     >
       {/* Column header */}
       <div
-        className="flex items-center justify-between rounded-t-lg border-b px-3 py-2.5"
-        style={{
-          borderColor: isOverLimit
-            ? "var(--wip-over-border)"
+        className={clsx(
+          "flex items-center justify-between rounded-t-lg border-b px-3 py-2.5",
+          isOverLimit
+            ? "border-wip-over-border bg-wip-over-bg"
             : isAtLimit
-              ? "var(--wip-at-border)"
-              : "var(--column-border)",
-          background: isOverLimit
-            ? "var(--wip-over-bg)"
-            : isAtLimit
-              ? "var(--wip-at-bg)"
-              : "var(--column-header)",
-        }}
+              ? "border-wip-at-border bg-wip-at-bg"
+              : "border-column-border bg-column-header"
+        )}
       >
         <div className="flex items-center gap-2">
-          <h3
-            className="text-sm font-semibold"
-            style={{ color: "var(--foreground)" }}
-          >
+          <h3 className="text-sm font-semibold text-foreground">
             {column.label}
           </h3>
           <span
-            className="rounded-full px-1.5 py-0.5 text-xs font-medium"
-            style={{
-              background: isOverLimit
-                ? "var(--wip-over-border)"
-                : "var(--tag-bg)",
-              color: isOverLimit
-                ? "var(--wip-over-text)"
-                : "var(--muted-foreground)",
-            }}
+            className={clsx(
+              "rounded-full px-1.5 py-0.5 text-xs font-medium",
+              isOverLimit
+                ? "bg-wip-over-border text-wip-over-text"
+                : "bg-tag-bg text-muted-foreground"
+            )}
           >
             {column.tasks.length}
           </span>
         </div>
         {wipLimit > 0 && (
           <span
-            className="text-xs font-medium"
-            style={{
-              color: isOverLimit
-                ? "var(--wip-over-text)"
-                : "var(--muted-foreground)",
-            }}
+            className={clsx(
+              "text-xs font-medium",
+              isOverLimit ? "text-wip-over-text" : "text-muted-foreground"
+            )}
           >
             WIP: {wipLimit}
           </span>
@@ -82,7 +81,10 @@ export function KanbanColumn({
           <div
             ref={provided.innerRef}
             {...provided.droppableProps}
-            className="flex-1 space-y-2 overflow-y-auto p-2 transition-colors"
+            className={clsx(
+              "flex-1 overflow-y-auto transition-colors",
+              isCompact ? "space-y-1 p-1.5" : "space-y-2 p-2"
+            )}
             style={{
               background: snapshot.isDraggingOver
                 ? "var(--drop-highlight)"
@@ -95,6 +97,10 @@ export function KanbanColumn({
                 task={task}
                 index={index}
                 onClick={() => onTaskClick(task)}
+                onSelect={() => onSelectTask(task.id)}
+                selected={selectedTaskId === task.id}
+                displayPreset={displayPreset}
+                showMetadata={showMetadata}
                 onAdvance={async () => {
                   const response = await fetch(`/api/tasks/${task.id}/advance`, {
                     method: "POST",
@@ -136,10 +142,7 @@ export function KanbanColumn({
             {provided.placeholder}
 
             {column.tasks.length === 0 && !snapshot.isDraggingOver && (
-              <div
-                className="flex h-24 items-center justify-center text-xs"
-                style={{ color: "var(--muted-foreground)" }}
-              >
+              <div className="flex h-24 items-center justify-center text-xs text-muted-foreground">
                 No tasks
               </div>
             )}
