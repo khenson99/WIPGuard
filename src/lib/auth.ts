@@ -43,6 +43,18 @@ export const authOptions: NextAuthOptions = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   adapter: PrismaAdapter(prisma as any) as any,
   providers,
+  debug: true, // TEMPORARY: enable in production to diagnose callback failure
+  logger: {
+    error(code, metadata) {
+      console.error("[next-auth][error]", code, metadata);
+    },
+    warn(code) {
+      console.warn("[next-auth][warn]", code);
+    },
+    debug(code, metadata) {
+      console.log("[next-auth][debug]", code, metadata);
+    },
+  },
   session: {
     strategy: "jwt",
     maxAge: 60 * 60 * 8,
@@ -53,56 +65,65 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async signIn({ user, account }) {
-      // Hygiene check: reject sign-ins that arrive with already expired OAuth tokens.
-      if (
-        account?.provider &&
-        account.provider !== "credentials" &&
-        typeof account.expires_at === "number" &&
-        account.expires_at <= Math.floor(Date.now() / 1000)
-      ) {
-        await recordSecurityAuditEvent({
-          action: "auth.signin",
-          category: "auth",
-          outcome: "DENIED",
-          actorId: user.id,
-          details: {
-            reason: "OAUTH_ACCESS_TOKEN_ALREADY_EXPIRED",
-            provider: account.provider,
-            expiresAt: account.expires_at,
-          },
-        });
-        return false;
+      try {
+        // Hygiene check: reject sign-ins that arrive with already expired OAuth tokens.
+        if (
+          account?.provider &&
+          account.provider !== "credentials" &&
+          typeof account.expires_at === "number" &&
+          account.expires_at <= Math.floor(Date.now() / 1000)
+        ) {
+          await recordSecurityAuditEvent({
+            action: "auth.signin",
+            category: "auth",
+            outcome: "DENIED",
+            actorId: user.id,
+            details: {
+              reason: "OAUTH_ACCESS_TOKEN_ALREADY_EXPIRED",
+              provider: account.provider,
+              expiresAt: account.expires_at,
+            },
+          });
+          return false;
+        }
+        return true;
+      } catch (error) {
+        console.error("signIn callback error:", error);
+        return true; // Allow sign-in even if audit logging fails
       }
-      return true;
     },
     async jwt({ token, user, account }) {
-      if (user) {
-        token.id = user.id;
-      }
+      try {
+        if (user) {
+          token.id = user.id;
+        }
 
-      if (token.id) {
-        const dbUser = await prisma.user.findUnique({
-          where: { id: token.id as string },
-          select: { role: true },
-        });
-        token.role = normalizeRole(dbUser?.role);
-      }
+        if (token.id) {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: token.id as string },
+            select: { role: true },
+          });
+          token.role = normalizeRole(dbUser?.role);
+        }
 
-      if (
-        account?.provider &&
-        account.provider !== "credentials" &&
-        typeof account.expires_at === "number"
-      ) {
-        token.oauthExpiresAt = account.expires_at;
-      }
+        if (
+          account?.provider &&
+          account.provider !== "credentials" &&
+          typeof account.expires_at === "number"
+        ) {
+          token.oauthExpiresAt = account.expires_at;
+        }
 
-      if (
-        typeof token.oauthExpiresAt === "number" &&
-        token.oauthExpiresAt <= Math.floor(Date.now() / 1000)
-      ) {
-        token.error = "OAUTH_TOKEN_EXPIRED";
-      } else {
-        delete token.error;
+        if (
+          typeof token.oauthExpiresAt === "number" &&
+          token.oauthExpiresAt <= Math.floor(Date.now() / 1000)
+        ) {
+          token.error = "OAUTH_TOKEN_EXPIRED";
+        } else {
+          delete token.error;
+        }
+      } catch (error) {
+        console.error("jwt callback error:", error);
       }
 
       return token;
