@@ -17,13 +17,10 @@ async function run() {
     process.exit(0);
   }
 
-  // Use SSL when connecting via public proxy (not internal Railway network)
-  const isPublicProxy = !connectionString.includes(".railway.internal");
-
   const pool = new Pool({
     connectionString,
     connectionTimeoutMillis: 10000,
-    ...(isPublicProxy && { ssl: { rejectUnauthorized: false } }),
+    ssl: { rejectUnauthorized: false },
   });
 
   try {
@@ -43,7 +40,7 @@ async function run() {
 
     // Get already-applied migrations
     const applied = await pool.query(
-      'SELECT migration_name FROM "_prisma_migrations" WHERE rolled_back_at IS NULL'
+      'SELECT migration_name FROM "_prisma_migrations" WHERE rolled_back_at IS NULL',
     );
     const appliedSet = new Set(applied.rows.map((r) => r.migration_name));
 
@@ -52,7 +49,10 @@ async function run() {
       .readdirSync(MIGRATIONS_DIR)
       .filter((d) => {
         const p = path.join(MIGRATIONS_DIR, d);
-        return fs.statSync(p).isDirectory() && fs.existsSync(path.join(p, "migration.sql"));
+        return (
+          fs.statSync(p).isDirectory() &&
+          fs.existsSync(path.join(p, "migration.sql"))
+        );
       })
       .sort();
 
@@ -65,14 +65,18 @@ async function run() {
 
       const sqlFile = path.join(MIGRATIONS_DIR, dir, "migration.sql");
       const sql = fs.readFileSync(sqlFile, "utf-8");
-      const checksum = crypto.createHash("sha256").update(sql).digest("hex").slice(0, 64);
+      const checksum = crypto
+        .createHash("sha256")
+        .update(sql)
+        .digest("hex")
+        .slice(0, 64);
 
       console.log("  apply: " + dir + "...");
       await pool.query(sql);
 
       await pool.query(
         'INSERT INTO "_prisma_migrations" (id, checksum, finished_at, migration_name, applied_steps_count) VALUES (gen_random_uuid(), $1, now(), $2, 1)',
-        [checksum, dir]
+        [checksum, dir],
       );
 
       console.log("  done: " + dir);

@@ -9,14 +9,12 @@ function createPrismaClient(): PrismaClient {
     throw new Error("DATABASE_URL environment variable is not set");
   }
 
-  const isPublicProxy = !connectionString.includes(".railway.internal");
-
   const adapter = new PrismaPg({
     connectionString,
     max: 10,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
-    ...(isPublicProxy && { ssl: { rejectUnauthorized: false } }),
+    ssl: { rejectUnauthorized: false },
   });
 
   return new PrismaClient({ adapter });
