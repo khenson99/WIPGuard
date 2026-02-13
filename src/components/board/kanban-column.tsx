@@ -137,6 +137,19 @@ export function KanbanColumn({
                   }
                   onRefresh();
                 }}
+                onDelete={async () => {
+                  const confirmed = window.confirm(
+                    `Delete "${task.title}"? This cannot be undone.`
+                  );
+                  if (!confirmed) return;
+                  const response = await fetch(`/api/tasks/${task.id}`, {
+                    method: "DELETE",
+                  });
+                  if (!response.ok) {
+                    window.alert("Failed to delete task. Please try again.");
+                  }
+                  onRefresh();
+                }}
               />
             ))}
             {provided.placeholder}

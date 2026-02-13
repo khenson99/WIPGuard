@@ -313,7 +313,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
 
   return (
     <div className="flex h-full flex-col" onKeyDown={handleBoardKeyDown} tabIndex={0}>
-      <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <BoardFilters />
           <div className="flex items-center gap-2">

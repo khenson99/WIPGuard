@@ -43,7 +43,7 @@ export const authOptions: NextAuthOptions = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   adapter: PrismaAdapter(prisma as any) as any,
   providers,
-  debug: true, // TEMPORARY: enable in production to diagnose callback failure
+  debug: process.env.NODE_ENV !== "production",
   logger: {
     error(code, metadata) {
       console.error("[next-auth][error]", code, metadata);

@@ -11,6 +11,8 @@ import {
   Link2,
   Gauge,
   MoreHorizontal,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import type { TaskWithRelations } from "@/types";
 import {
@@ -27,6 +29,7 @@ interface TaskCardProps {
   onClick: () => void;
   onAdvance: () => void;
   onRetreat?: () => void;
+  onDelete: () => void;
   displayPreset: "standard" | "dense" | "triage";
   showMetadata: boolean;
   selected: boolean;
@@ -39,6 +42,7 @@ export function TaskCard({
   onClick,
   onAdvance,
   onRetreat,
+  onDelete,
   displayPreset,
   showMetadata,
   selected,
@@ -200,8 +204,19 @@ export function TaskCard({
               )}
             </div>
 
-            {/* Action buttons — always visible */}
+            {/* Action buttons — visible on hover */}
             <div className="flex items-center gap-0.5">
+              {/* Edit button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClick();
+                }}
+                className="rounded p-0.5 text-muted-foreground opacity-0 hover:bg-tag-bg hover:text-foreground group-hover:opacity-100"
+                title="Edit task"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
               {/* Retreat button */}
               {canRetreat && (
                 <button
@@ -228,6 +243,17 @@ export function TaskCard({
                   <ChevronRight className="h-4 w-4" />
                 </button>
               )}
+              {/* Delete button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                className="rounded p-0.5 text-muted-foreground opacity-0 hover:bg-red-500/10 hover:text-red-500 group-hover:opacity-100"
+                title="Delete task"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
             </div>
           </div>
 
