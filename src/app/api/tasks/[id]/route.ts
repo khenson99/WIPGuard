@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { emitBoardEvent } from "@/lib/socket-emit";
 import { enforcePolicy, getUserRole, recordPolicyOverride } from "@/lib/policy-check";
+import { compactColumns, getNextColumnOrder } from "@/lib/task-order";
 import type { TaskStatus } from "@/generated/prisma/client";
 
 const TASK_INCLUDE = {
@@ -83,6 +84,37 @@ export async function PATCH(
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
+    const expectedUpdatedAt = body.expectedUpdatedAt as string | undefined;
+    if (expectedUpdatedAt) {
+      const expectedTs = Date.parse(expectedUpdatedAt);
+      if (Number.isNaN(expectedTs)) {
+        return NextResponse.json(
+          { error: "Invalid expectedUpdatedAt" },
+          { status: 400 }
+        );
+      }
+      if (existing.updatedAt.getTime() !== expectedTs) {
+        return NextResponse.json(
+          {
+            error: "Conflict",
+            conflict: {
+              reason: "STALE_VERSION",
+              message:
+                "Task changed before this update was applied. Refresh and retry.",
+              current: {
+                id: existing.id,
+                status: existing.status,
+                columnOrder: existing.columnOrder,
+                updatedAt: existing.updatedAt.toISOString(),
+              },
+              expectedUpdatedAt,
+            },
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     const {
       responsibleIds,
       accountableIds,
@@ -140,6 +172,7 @@ export async function PATCH(
     const data: Record<string, unknown> = { ...directFields };
     // Remove overrideReason from data so it doesn't get passed to Prisma
     delete data.overrideReason;
+    delete data.expectedUpdatedAt;
 
     if (startDate !== undefined) {
       data.startDate = startDate ? new Date(startDate) : null;
@@ -149,6 +182,16 @@ export async function PATCH(
     }
     if (movingToDone) {
       data.completedOn = new Date();
+    }
+    if (statusChanged) {
+      data.columnOrder = await getNextColumnOrder(
+        prisma,
+        directFields.status as TaskStatus,
+        id
+      );
+      if (existing.status === "DONE" && directFields.status !== "DONE") {
+        data.completedOn = null;
+      }
     }
 
     if (responsibleIds) {
@@ -222,6 +265,10 @@ export async function PATCH(
           },
         },
       });
+    }
+
+    if (statusChanged) {
+      await compactColumns(prisma, [existing.status, task.status]);
     }
 
     emitBoardEvent("task:updated", task);

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { TaskStatus } from "@/generated/prisma/client";
 import { enforcePolicy, getUserRole, recordPolicyOverride } from "@/lib/policy-check";
+import { compactColumns, getNextColumnOrder } from "@/lib/task-order";
 
 const STATUS_BACK: Partial<Record<TaskStatus, TaskStatus>> = {
   QUEUED: "BACKLOG",
@@ -32,6 +33,40 @@ export async function POST(
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
+    const body = await request.json().catch(() => ({}));
+    const expectedUpdatedAt = (body as Record<string, unknown>).expectedUpdatedAt as
+      | string
+      | undefined;
+    if (expectedUpdatedAt) {
+      const expectedTs = Date.parse(expectedUpdatedAt);
+      if (Number.isNaN(expectedTs)) {
+        return NextResponse.json(
+          { error: "Invalid expectedUpdatedAt" },
+          { status: 400 }
+        );
+      }
+      if (existing.updatedAt.getTime() !== expectedTs) {
+        return NextResponse.json(
+          {
+            error: "Conflict",
+            conflict: {
+              reason: "STALE_VERSION",
+              message:
+                "Task changed before this retreat was applied. Refresh and retry.",
+              current: {
+                id: existing.id,
+                status: existing.status,
+                columnOrder: existing.columnOrder,
+                updatedAt: existing.updatedAt.toISOString(),
+              },
+              expectedUpdatedAt,
+            },
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     const prevStatus: TaskStatus | undefined = STATUS_BACK[existing.status];
     if (!prevStatus) {
       return NextResponse.json(
@@ -55,7 +90,6 @@ export async function POST(
     }
 
     if (policyResult.requiresOverride) {
-      const body = await request.json().catch(() => ({}));
       const overrideReason = (body as Record<string, unknown>).overrideReason as string | undefined;
       if (!overrideReason) {
         return NextResponse.json(
@@ -80,10 +114,13 @@ export async function POST(
       });
     }
 
+    const previousColumnOrder = await getNextColumnOrder(prisma, prevStatus, id);
+
     const task = await prisma.task.update({
       where: { id },
       data: {
         status: prevStatus,
+        columnOrder: previousColumnOrder,
         completedOn: existing.status === "DONE" ? null : undefined,
       },
       include: {
@@ -113,6 +150,8 @@ export async function POST(
         changedBy: session.user.id,
       },
     });
+
+    await compactColumns(prisma, [existing.status, prevStatus]);
 
     return NextResponse.json({
       task,

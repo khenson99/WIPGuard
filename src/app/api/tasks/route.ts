@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { emitBoardEvent } from "@/lib/socket-emit";
+import { getNextColumnOrder } from "@/lib/task-order";
 
 const TASK_INCLUDE = {
   project: true,
@@ -96,6 +97,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
+    const nextColumnOrder = await getNextColumnOrder(prisma, status);
+
     const task = await prisma.task.create({
       data: {
         title,
@@ -111,6 +114,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         sprintId,
         unplanned: unplanned ?? false,
         slackThread,
+        columnOrder: nextColumnOrder,
         responsible: {
           connect: responsibleIds.map((id: string) => ({ id })),
         },

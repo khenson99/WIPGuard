@@ -271,11 +271,12 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
       const method = isNew ? "POST" : "PATCH";
 
       const { responsibleId, accountableId, ...rest } = form;
-      await fetch(url, {
+      const response = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...rest,
+          expectedUpdatedAt: detail?.updatedAt || task?.updatedAt,
           responsibleIds: responsibleId ? [responsibleId] : [],
           accountableIds: accountableId ? [accountableId] : [],
           projectId: form.projectId || null,
@@ -286,6 +287,18 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
           slackThread: form.slackThread || null,
         }),
       });
+
+      if (!response.ok) {
+        if (response.status === 409) {
+          const conflict = await response.json().catch(() => null);
+          window.alert(
+            conflict?.conflict?.message ||
+              conflict?.error ||
+              "Task changed before save was applied. Refresh and retry."
+          );
+        }
+        return;
+      }
 
       onClose();
     } catch (err) {
@@ -305,7 +318,21 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
 
   const handleAdvance = async () => {
     if (!task) return;
-    await fetch(`/api/tasks/${task.id}/advance`, { method: "POST" });
+    const response = await fetch(`/api/tasks/${task.id}/advance`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expectedUpdatedAt: detail?.updatedAt || task.updatedAt,
+      }),
+    });
+    if (!response.ok && response.status === 409) {
+      const conflict = await response.json().catch(() => null);
+      window.alert(
+        conflict?.conflict?.message ||
+          conflict?.error ||
+          "Task changed before advance was applied. Refresh and retry."
+      );
+    }
     onClose();
   };
 
