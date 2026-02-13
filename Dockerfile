@@ -26,7 +26,7 @@ ENV NODE_ENV=production
 ENV PORT=3000
 
 # Force cache invalidation
-ARG BUILDTIME=unknown
+ARG BUILDTIME=2026-02-13T2130
 RUN echo "Build: ${BUILDTIME}" > /app/.build-info
 
 RUN addgroup --system --gid 1001 nodejs

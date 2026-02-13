@@ -17,9 +17,15 @@ async function run() {
     process.exit(0);
   }
 
+  // Append sslmode=no-verify for Railway's self-signed certs if not already set
+  const url = new URL(connectionString);
+  if (!url.searchParams.has('sslmode')) {
+    url.searchParams.set('sslmode', 'no-verify');
+  }
+
   const pool = new Pool({
-    connectionString,
-    connectionTimeoutMillis: 10000,
+    connectionString: url.toString(),
+    connectionTimeoutMillis: 30000,
     ssl: { rejectUnauthorized: false },
   });
 
