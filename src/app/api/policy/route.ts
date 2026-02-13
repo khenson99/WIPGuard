@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { getUserRole } from "@/lib/policy-check";
+import { enforcePermission } from "@/lib/permissions";
+import { recordSecurityAuditEvent } from "@/lib/security-audit";
 import type { EnforcementMode } from "@/generated/prisma/enums";
 
 /**
@@ -46,12 +47,14 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userRole = await getUserRole(session.user.id);
-    if (userRole !== "admin") {
-      return NextResponse.json(
-        { error: "Forbidden: admin role required" },
-        { status: 403 }
-      );
+    const permission = await enforcePermission({
+      userId: session.user.id,
+      action: "policy.write",
+      request,
+      targetType: "wip_policy",
+    });
+    if (permission.deniedResponse) {
+      return permission.deniedResponse;
     }
 
     const body = await request.json();
@@ -99,6 +102,18 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
         })
       )
     );
+
+    await recordSecurityAuditEvent({
+      action: "policy.update",
+      category: "policy",
+      outcome: "ALLOWED",
+      actorId: session.user.id,
+      actorRole: permission.role,
+      request,
+      details: {
+        updatedColumns: policies.map((policy) => policy.columnName),
+      },
+    });
 
     return NextResponse.json(policies);
   } catch (error) {

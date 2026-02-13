@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { enforcePermission } from "@/lib/permissions";
 
 export async function GET(): Promise<NextResponse> {
   try {
@@ -40,6 +41,17 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const permission = await enforcePermission({
+      userId: session.user.id,
+      action: "profile.write",
+      request,
+      targetType: "profile",
+      targetId: session.user.id,
+    });
+    if (permission.deniedResponse) {
+      return permission.deniedResponse;
     }
 
     const body = await request.json();

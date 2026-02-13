@@ -21,6 +21,7 @@ model User {
 
   accounts Account[]
   sessions Session[]
+  securityAuditEvents SecurityAuditEvent[]
 
   responsibleTasks  Task[]    @relation("TaskResponsible")
   accountableTasks  Task[]    @relation("TaskAccountable")
@@ -323,4 +324,32 @@ model PolicyOverride {
   wipLimit  Int
 
   createdAt DateTime @default(now())
+}
+
+// ============================================================
+// SECURITY AUDIT
+// ============================================================
+
+model SecurityAuditEvent {
+  id        String  @id @default(cuid())
+  action    String
+  category  String
+  outcome   String
+
+  actorId   String?
+  actor     User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actorRole String?
+
+  targetType String?
+  targetId   String?
+
+  details   Json?
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([category, createdAt])
+  @@index([action, createdAt])
+  @@index([actorId, createdAt])
 }

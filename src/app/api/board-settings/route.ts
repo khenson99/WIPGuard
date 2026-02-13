@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { enforcePermission } from "@/lib/permissions";
+import { recordSecurityAuditEvent } from "@/lib/security-audit";
 
 export async function GET(): Promise<NextResponse> {
   try {
@@ -37,6 +39,16 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const permission = await enforcePermission({
+      userId: session.user.id,
+      action: "board.write",
+      request,
+      targetType: "board_settings",
+    });
+    if (permission.deniedResponse) {
+      return permission.deniedResponse;
+    }
+
     const body: BoardSettingInput[] = await request.json();
 
     if (!Array.isArray(body) || body.length === 0) {
@@ -64,6 +76,18 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
         }),
       ),
     );
+
+    await recordSecurityAuditEvent({
+      action: "board.settings.update",
+      category: "board",
+      outcome: "ALLOWED",
+      actorId: session.user.id,
+      actorRole: permission.role,
+      request,
+      details: {
+        updatedColumns: settings.map((setting) => setting.columnName),
+      },
+    });
 
     return NextResponse.json(settings);
   } catch (error) {

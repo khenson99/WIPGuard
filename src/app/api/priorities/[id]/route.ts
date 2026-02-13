@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { enforcePermission } from "@/lib/permissions";
 
 const USER_SELECT = {
   id: true,
@@ -18,8 +19,18 @@ export async function PATCH(
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
     const { id } = await params;
+
+    const permission = await enforcePermission({
+      userId: session.user.id,
+      action: "priority.write",
+      request,
+      targetType: "priority",
+      targetId: id,
+    });
+    if (permission.deniedResponse) {
+      return permission.deniedResponse;
+    }
     const body = await request.json();
     const {
       name,
