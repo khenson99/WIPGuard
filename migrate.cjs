@@ -17,9 +17,13 @@ async function run() {
     process.exit(0);
   }
 
+  // Use SSL when connecting via public proxy (not internal Railway network)
+  const isPublicProxy = !connectionString.includes(".railway.internal");
+
   const pool = new Pool({
     connectionString,
     connectionTimeoutMillis: 10000,
+    ...(isPublicProxy && { ssl: { rejectUnauthorized: false } }),
   });
 
   try {
