@@ -187,8 +187,9 @@ model Task {
   slackThread String?
   columnOrder Int     @default(0)
 
-  statusHistory  StatusHistory[]
-  logbookEntries LogbookEntry[]
+  statusHistory   StatusHistory[]
+  logbookEntries  LogbookEntry[]
+  policyOverrides PolicyOverride[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -282,4 +283,44 @@ model BoardSettings {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+// WIP POLICY
+// ============================================================
+
+model WipPolicy {
+  id            String          @id @default(cuid())
+  columnName    String          @unique
+  wipLimit      Int             @default(0)
+  enforcement   EnforcementMode @default(WARN)
+  overrideRoles String[]        @default(["admin"])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum EnforcementMode {
+  WARN
+  BLOCK
+}
+
+// ============================================================
+// POLICY OVERRIDE AUDIT
+// ============================================================
+
+model PolicyOverride {
+  id        String     @id @default(cuid())
+  taskId    String
+  task      Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  action    String
+  reason    String     @db.Text
+  actorId   String
+  actorName String?
+  actorRole String?
+  column    String
+  wipCount  Int
+  wipLimit  Int
+
+  createdAt DateTime @default(now())
 }

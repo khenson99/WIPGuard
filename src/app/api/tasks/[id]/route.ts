@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { emitBoardEvent } from "@/lib/socket-emit";
+import { enforcePolicy, getUserRole, recordPolicyOverride } from "@/lib/policy-check";
+import type { TaskStatus } from "@/generated/prisma/client";
 
 const TASK_INCLUDE = {
   project: true,
@@ -96,7 +98,48 @@ export async function PATCH(
       directFields.status && directFields.status !== existing.status;
     const movingToDone = statusChanged && directFields.status === "DONE";
 
+    // ── WIP policy enforcement on status change ──
+    if (statusChanged) {
+      const userRole = await getUserRole(session.user.id);
+      const policyResult = await enforcePolicy(
+        directFields.status as TaskStatus,
+        userRole,
+        id
+      );
+
+      if (!policyResult.allowed) {
+        return NextResponse.json(
+          { error: "WIP limit exceeded", policy: policyResult },
+          { status: 409 }
+        );
+      }
+
+      if (policyResult.requiresOverride) {
+        const overrideReason = body.overrideReason as string | undefined;
+        if (!overrideReason) {
+          return NextResponse.json(
+            { error: "Override reason required", policy: policyResult },
+            { status: 409 }
+          );
+        }
+
+        await recordPolicyOverride({
+          taskId: id,
+          action: "status_change",
+          reason: overrideReason,
+          actorId: session.user.id,
+          actorName: session.user.name ?? undefined,
+          actorRole: userRole,
+          column: directFields.status,
+          wipCount: policyResult.currentCount,
+          wipLimit: policyResult.wipLimit,
+        });
+      }
+    }
+
     const data: Record<string, unknown> = { ...directFields };
+    // Remove overrideReason from data so it doesn't get passed to Prisma
+    delete data.overrideReason;
 
     if (startDate !== undefined) {
       data.startDate = startDate ? new Date(startDate) : null;

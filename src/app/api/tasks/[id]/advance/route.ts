@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { TaskStatus } from "@/generated/prisma/client";
+import { enforcePolicy, getUserRole, recordPolicyOverride } from "@/lib/policy-check";
 
 const STATUS_FLOW: Partial<Record<TaskStatus, TaskStatus>> = {
   BACKLOG: "QUEUED",
@@ -13,7 +14,7 @@ const STATUS_FLOW: Partial<Record<TaskStatus, TaskStatus>> = {
 type RouteParams = { params: Promise<{ id: string }> };
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: RouteParams
 ): Promise<NextResponse> {
   try {
@@ -46,6 +47,47 @@ export async function POST(
         },
         { status: 400 }
       );
+    }
+
+    // ── WIP policy enforcement ──
+    const userRole = await getUserRole(session.user.id);
+    const policyResult = await enforcePolicy(nextStatus, userRole, id);
+
+    if (!policyResult.allowed) {
+      return NextResponse.json(
+        {
+          error: "WIP limit exceeded",
+          policy: policyResult,
+        },
+        { status: 409 }
+      );
+    }
+
+    // If override is required, the client must supply a reason
+    if (policyResult.requiresOverride) {
+      const body = await request.json().catch(() => ({}));
+      const overrideReason = (body as Record<string, unknown>).overrideReason as string | undefined;
+      if (!overrideReason) {
+        return NextResponse.json(
+          {
+            error: "Override reason required",
+            policy: policyResult,
+          },
+          { status: 409 }
+        );
+      }
+
+      await recordPolicyOverride({
+        taskId: id,
+        action: "advance",
+        reason: overrideReason,
+        actorId: session.user.id,
+        actorName: session.user.name ?? undefined,
+        actorRole: userRole,
+        column: nextStatus,
+        wipCount: policyResult.currentCount,
+        wipLimit: policyResult.wipLimit,
+      });
     }
 
     const movingToDone = nextStatus === "DONE";
@@ -117,6 +159,7 @@ export async function POST(
     return NextResponse.json({
       task,
       advanced: { from: existing.status, to: nextStatus },
+      policy: policyResult.warning ? policyResult : undefined,
     });
   } catch (error) {
     console.error("POST /api/tasks/[id]/advance error:", error);
