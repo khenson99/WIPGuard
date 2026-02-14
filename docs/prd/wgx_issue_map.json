@@ -195,5 +195,17 @@
       "WGX-013",
       "WGX-017"
     ]
+  },
+  "WGX-025": {
+    "number": 35,
+    "url": "https://github.com/khenson99/WIPGuard/issues/35",
+    "title": "[WGX-025] Anchor New Task button to board content area instead of window edge",
+    "deps": []
+  },
+  "WGX-026": {
+    "number": 36,
+    "url": "https://github.com/khenson99/WIPGuard/issues/36",
+    "title": "[WGX-026] Add action buttons to bottom of each task card",
+    "deps": []
   }
 }
