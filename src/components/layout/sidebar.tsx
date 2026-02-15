@@ -10,12 +10,11 @@ import {
   Table,
   BookOpen,
   Settings,
-  Columns3,
   FolderKanban,
 } from "lucide-react";
 
 const NAV_ITEMS = [
-  { href: "/board", label: "Taskboard", icon: Columns3 },
+  { href: "/board", label: "Dashboard", icon: LayoutDashboard },
   { href: "/my-tasks", label: "My Tasks", icon: User },
   { href: "/today", label: "Working on Today", icon: Sun },
   { href: "/projects", label: "Projects", icon: FolderKanban },
