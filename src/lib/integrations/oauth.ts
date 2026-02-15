@@ -42,6 +42,10 @@ function normalizeScopes(rawScope: unknown): string[] {
     .filter(Boolean);
 }
 
+function normalizeBearerToken(value: string): string {
+  return value.replace(/^Bearer\s+/i, "").trim();
+}
+
 export function getOAuthStateCookieName(slug: IntegrationSlug): string {
   return `${OAUTH_STATE_COOKIE_PREFIX}_${slug}`;
 }
@@ -262,30 +266,51 @@ export async function fetchOAuthAccountProfile(
 }
 
 export async function verifyCodaApiToken(token: string): Promise<AccountProfile> {
+  const normalizedToken = normalizeBearerToken(token);
+  if (!normalizedToken) {
+    throw new Error("Coda token is empty");
+  }
+
   const response = await fetch("https://coda.io/apis/v1/whoami", {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${normalizedToken}` },
     cache: "no-store",
   });
   const raw = (await response.json().catch(() => null)) as unknown;
   if (!response.ok) {
-    throw new Error("Coda token verification failed");
+    const details = asRecord(raw);
+    const apiMessage =
+      getString(details ?? {}, "message") ||
+      getString(details ?? {}, "error") ||
+      getString(details ?? {}, "detail");
+    throw new Error(
+      apiMessage
+        ? `Coda token verification failed (${response.status}): ${apiMessage}`
+        : `Coda token verification failed (${response.status})`
+    );
   }
   const profile = asRecord(raw);
   if (!profile) {
     throw new Error("Coda whoami response was invalid");
   }
 
-  const providerAccountId = getString(profile, "id") || getString(profile, "loginId");
+  const providerAccountId =
+    getString(profile, "id") ||
+    getString(profile, "loginId") ||
+    getString(profile, "email");
   if (!providerAccountId) {
     throw new Error("Coda profile did not include an account identifier");
   }
 
   return {
     providerAccountId,
-    accountLabel: getString(profile, "loginId") || getString(profile, "name"),
+    accountLabel:
+      getString(profile, "loginId") ||
+      getString(profile, "name") ||
+      getString(profile, "email"),
     metadata: {
       name: getString(profile, "name"),
       loginId: getString(profile, "loginId"),
+      email: getString(profile, "email"),
     },
   };
 }
@@ -297,4 +322,3 @@ export function compactErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message.slice(0, 300);
   return fallback;
 }
-
