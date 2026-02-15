@@ -44,3 +44,9 @@ next-env.d.ts
 
 # Ralph Team Loop — ephemeral task files
 .ralph-team/current-tasks/
+
+# Ralph/Codex agent artifacts
+.ralph-team/logs/
+agents/
+scripts/
+firebase-debug.log

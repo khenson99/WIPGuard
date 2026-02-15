@@ -204,11 +204,13 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
       col.tasks.sort((a, b) => a.columnOrder - b.columnOrder);
     }
 
-    // Return columns with tasks + always include empty project columns
+    // Return only project columns that currently have tasks.
     const result: GenericColumn[] = [];
     for (const p of projectList) {
       const col = colMap.get(p.id)!;
-      result.push(col);
+      if (col.tasks.length > 0) {
+        result.push(col);
+      }
     }
     const unassigned = colMap.get("__unassigned__")!;
     if (unassigned.tasks.length > 0) result.push(unassigned);

@@ -8,7 +8,6 @@ import {
   Flame,
   TrendingUp,
   TrendingDown,
-  CheckCircle2,
   Hourglass,
   Link2,
   ArrowRight,
@@ -669,7 +668,6 @@ export function DashboardView() {
     blockedTasks,
     atRiskDependencies,
     projectSummaries,
-    recentlyCompleted,
     taskStatusOverview,
     totalTasks,
     velocity,
@@ -774,27 +772,7 @@ export function DashboardView() {
       )}
 
       {/* ═══ Alerts row ═══ */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {/* Overdue */}
-        {overdueTasks.length > 0 && (
-          <section className="rounded-2xl border border-red-500/30 bg-red-500/5 p-4">
-            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-red-400">
-              <Clock className="h-4 w-4" />
-              Overdue ({overdueTasks.length})
-            </h3>
-            <div className="space-y-0.5">
-              {overdueTasks.map((t) => (
-                <TaskRow
-                  key={t.id}
-                  task={t}
-                  badge={relativeDate(t.dueDate)}
-                  badgeColor="#ef4444"
-                />
-              ))}
-            </div>
-          </section>
-        )}
-
+      <div className="grid grid-cols-1 gap-4">
         {/* Blocked */}
         {blockedTasks.length > 0 && (
           <section className="rounded-2xl border border-orange-500/30 bg-orange-500/5 p-4">
@@ -878,29 +856,29 @@ export function DashboardView() {
           )}
         </section>
 
-        {/* Recently completed */}
-        <section className="rounded-2xl border border-border bg-card p-4">
-          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-            <CheckCircle2 className="h-4 w-4 text-green-400" />
-            Recently Completed
-            {recentlyCompleted.length > 0 && (
-              <span className="ml-auto rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-medium text-green-400">
-                {recentlyCompleted.length}
+        {/* Overdue tasks */}
+        <section className="rounded-2xl border border-red-500/30 bg-red-500/5 p-4">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-red-400">
+            <Clock className="h-4 w-4" />
+            Overdue Tasks
+            {overdueTasks.length > 0 && (
+              <span className="ml-auto rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-red-400">
+                {overdueTasks.length}
               </span>
             )}
           </h3>
-          {recentlyCompleted.length === 0 ? (
+          {overdueTasks.length === 0 ? (
             <p className="py-6 text-center text-xs text-muted-foreground">
-              No completions this week
+              No overdue tasks
             </p>
           ) : (
             <div className="space-y-0.5">
-              {recentlyCompleted.map((t) => (
+              {overdueTasks.map((t) => (
                 <TaskRow
                   key={t.id}
                   task={t}
-                  badge={`${daysAgo(t.updatedAt)}d ago`}
-                  badgeColor="#22c55e"
+                  badge={relativeDate(t.dueDate)}
+                  badgeColor="#ef4444"
                 />
               ))}
             </div>
