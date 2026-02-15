@@ -1,0 +1,316 @@
+// ─── Data Fetchers for Analytics Dashboard ────────────────
+// Server-side functions that pull live data from HubSpot, Stripe, Mercury
+// Used by API routes and server components
+
+import type {
+  HubSpotData,
+  StripeData,
+  MercuryData,
+  AnalyticsTimestamp,
+  DealStage,
+} from "./types";
+
+function makeMeta(source: "live" | "cached" = "live"): AnalyticsTimestamp {
+  const now = new Date();
+  return {
+    fetchedAt: now.toISOString(),
+    nextRefresh: new Date(now.getTime() + 60 * 60 * 1000).toISOString(),
+    source,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════
+// HUBSPOT FETCHER
+// ═══════════════════════════════════════════════════════════
+
+const HUBSPOT_STAGE_MAP: Record<string, string> = {
+  appointmentscheduled: "Prospect",
+  qualifiedtobuy: "Lead",
+  presentationscheduled: "Demo Scheduled",
+  "1955958510": "No-Show/Reschedule",
+  decisionmakerboughtin: "Demo Follow-Up",
+  "176498593": "Budgetary Quote Sent",
+  "176498594": "Payment Link Sent",
+  "1524801846": "Free Trial",
+  "1499784891": "Unlikely",
+  "1722537990": "Freemium",
+  contractsent: "Subscription",
+  closedwon: "Closed Won",
+  closedlost: "Closed Lost",
+  "1499784892": "Ping Later",
+  "1574807548": "Churn",
+  "1916862197": "On Hold",
+};
+
+export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData> {
+  const baseUrl = "https://api.hubapi.com";
+  const headers = {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  };
+
+  // Fetch deals with stage, amount, source, create date
+  const dealsRes = await fetch(`${baseUrl}/crm/v3/objects/deals/search`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      limit: 200,
+      properties: [
+        "dealstage", "amount", "dealname", "closedate",
+        "createdate", "hs_analytics_source", "num_associated_contacts",
+      ],
+      sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
+    }),
+  });
+
+  const dealsData = await dealsRes.json();
+  const deals = dealsData.results || [];
+  const totalDeals = dealsData.total || deals.length;
+
+  // Aggregate by stage
+  const stageAgg: Record<string, { count: number; value: number }> = {};
+  const sourceAgg: Record<string, { count: number; value: number }> = {};
+
+  for (const deal of deals) {
+    const props = deal.properties || {};
+    const stage = props.dealstage || "unknown";
+    const amount = parseFloat(props.amount) || 0;
+    const source = props.hs_analytics_source || "Unknown";
+
+    if (!stageAgg[stage]) stageAgg[stage] = { count: 0, value: 0 };
+    stageAgg[stage].count++;
+    stageAgg[stage].value += amount;
+
+    if (!sourceAgg[source]) sourceAgg[source] = { count: 0, value: 0 };
+    sourceAgg[source].count++;
+    sourceAgg[source].value += amount;
+  }
+
+  const stages: DealStage[] = Object.entries(stageAgg).map(([id, data]) => ({
+    stageId: id,
+    label: HUBSPOT_STAGE_MAP[id] || id,
+    count: data.count,
+    value: data.value,
+  }));
+
+  const closedWon = stageAgg["closedwon"]?.count || 0;
+  const closedLost = stageAgg["closedlost"]?.count || 0;
+  const unlikely = stageAgg["1499784891"]?.count || 0;
+  const churn = stageAgg["1574807548"]?.count || 0;
+  const subscriptions = stageAgg["contractsent"]?.count || 0;
+  const noShows = stageAgg["1955958510"]?.count || 0;
+  const demoScheduled = stageAgg["presentationscheduled"]?.count || 0;
+  const demoFollowUp = stageAgg["decisionmakerboughtin"]?.count || 0;
+
+  const wonValue = stageAgg["closedwon"]?.value || 0;
+  const winRate = closedWon + closedLost > 0
+    ? (closedWon / (closedWon + closedLost)) * 100 : 0;
+  const terminal = closedWon + closedLost + unlikely + churn;
+  const effectiveWinRate = terminal > 0 ? (closedWon / terminal) * 100 : 0;
+  const noShowRate = demoScheduled + noShows > 0
+    ? (noShows / (demoScheduled + noShows)) * 100 : 0;
+  const avgDealSize = closedWon > 0 ? wonValue / closedWon : 0;
+
+  // Fetch recent contacts count
+  const contactsRes = await fetch(`${baseUrl}/crm/v3/objects/contacts/search`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      limit: 1,
+      filterGroups: [{
+        filters: [{
+          propertyName: "createdate",
+          operator: "GTE",
+          value: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+        }],
+      }],
+    }),
+  });
+  const contactsData = await contactsRes.json();
+
+  return {
+    funnel: {
+      totalDeals,
+      closedWon,
+      closedLost,
+      unlikely,
+      churn,
+      activeSubscriptions: subscriptions,
+      noShows,
+      demoScheduled,
+      demoFollowUp,
+      avgDealSize,
+      winRate,
+      effectiveWinRate,
+      noShowRate,
+      stages,
+      dealsBySource: Object.entries(sourceAgg).map(([source, data]) => ({
+        source,
+        count: data.count,
+        value: data.value,
+      })),
+    },
+    contacts: {
+      totalContacts: 0, // Would need a separate list call
+      recentContacts: contactsData.total || 0,
+      bySource: [],
+    },
+    _meta: makeMeta(),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════
+// STRIPE FETCHER
+// ═══════════════════════════════════════════════════════════
+
+export async function fetchStripeData(apiKey: string): Promise<StripeData> {
+  const headers = { Authorization: `Bearer ${apiKey}` };
+  const baseUrl = "https://api.stripe.com/v1";
+
+  // Fetch active subscriptions
+  const subsRes = await fetch(`${baseUrl}/subscriptions?limit=100&status=active`, { headers });
+  const subsData = await subsRes.json();
+  const activeSubs = subsData.data || [];
+  const mrr = activeSubs.reduce((sum: number, s: { items: { data: { price: { unit_amount: number } }[] } }) => {
+    return sum + (s.items?.data?.[0]?.price?.unit_amount || 0) / 100;
+  }, 0);
+
+  // Fetch canceled subscriptions (recent)
+  const canceledRes = await fetch(`${baseUrl}/subscriptions?limit=50&status=canceled`, { headers });
+  const canceledData = await canceledRes.json();
+  const canceledSubs = canceledData.data || [];
+
+  // Fetch recent charges for revenue
+  const now = Math.floor(Date.now() / 1000);
+  const thirtyDaysAgo = now - 30 * 24 * 60 * 60;
+  const sixtyDaysAgo = now - 60 * 24 * 60 * 60;
+
+  const chargesRes = await fetch(
+    `${baseUrl}/charges?limit=100&created[gte]=${sixtyDaysAgo}`, { headers }
+  );
+  const chargesData = await chargesRes.json();
+  const charges = chargesData.data || [];
+
+  let rev30d = 0, revPrev30d = 0, succeeded = 0, failed = 0;
+  for (const charge of charges) {
+    const amt = (charge.amount || 0) / 100;
+    if (charge.created >= thirtyDaysAgo) {
+      if (charge.status === "succeeded") { rev30d += amt; succeeded++; }
+      else if (charge.status === "failed") failed++;
+    } else {
+      if (charge.status === "succeeded") revPrev30d += amt;
+    }
+  }
+
+  const revenueGrowth = revPrev30d > 0 ? ((rev30d - revPrev30d) / revPrev30d) * 100 : 0;
+
+  // Build revenue trend (last 6 months)
+  const trend: { month: string; revenue: number }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date();
+    d.setMonth(d.getMonth() - i);
+    trend.push({
+      month: d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+      revenue: i === 0 ? rev30d : 0, // Only current month is accurate from this fetch
+    });
+  }
+
+  const recentChurn = canceledSubs.slice(0, 5).map((s: { customer: string; canceled_at: number; items: { data: { price: { unit_amount: number } }[] } }) => ({
+    customer: s.customer,
+    canceledAt: new Date((s.canceled_at || 0) * 1000).toISOString(),
+    amount: (s.items?.data?.[0]?.price?.unit_amount || 0) / 100,
+  }));
+
+  return {
+    revenue: {
+      mrr,
+      mrrChange: 0,
+      totalRevenue30d: rev30d,
+      totalRevenuePrev30d: revPrev30d,
+      revenueGrowth,
+      avgRevenuePerCustomer: activeSubs.length > 0 ? mrr / activeSubs.length : 0,
+    },
+    subscriptions: {
+      active: activeSubs.length,
+      pastDue: 0,
+      canceled: canceledSubs.length,
+      trialing: 0,
+      churnRate: activeSubs.length + canceledSubs.length > 0
+        ? (canceledSubs.length / (activeSubs.length + canceledSubs.length)) * 100 : 0,
+      recentChurnEvents: recentChurn,
+    },
+    payments: {
+      succeeded,
+      failed,
+      successRate: succeeded + failed > 0 ? (succeeded / (succeeded + failed)) * 100 : 0,
+    },
+    revenueTrend: trend,
+    _meta: makeMeta(),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════
+// MERCURY FETCHER
+// ═══════════════════════════════════════════════════════════
+
+export async function fetchMercuryData(apiKey: string): Promise<MercuryData> {
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+  };
+  const baseUrl = "https://api.mercury.com/api/v1";
+
+  // Fetch accounts
+  const accountsRes = await fetch(`${baseUrl}/accounts`, { headers });
+  const accountsData = await accountsRes.json();
+  const accounts = (accountsData.accounts || []).map((a: {
+    id: string; name: string; currentBalance: number; type: string;
+  }) => ({
+    accountId: a.id,
+    accountName: a.name,
+    balance: a.currentBalance || 0,
+    type: a.type || "checking",
+  }));
+
+  const totalBalance = accounts.reduce((s: number, a: { balance: number }) => s + a.balance, 0);
+
+  // Fetch recent transactions for cash flow
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    .toISOString().split("T")[0];
+
+  let inflows = 0, outflows = 0;
+  for (const account of accounts) {
+    try {
+      const txRes = await fetch(
+        `${baseUrl}/account/${account.accountId}/transactions?start=${thirtyDaysAgo}&limit=500`,
+        { headers }
+      );
+      const txData = await txRes.json();
+      for (const tx of txData.transactions || []) {
+        if (tx.status === "sent") {
+          const amt = Math.abs(tx.amount || 0);
+          if (tx.amount > 0) inflows += amt;
+          else outflows += amt;
+        }
+      }
+    } catch {
+      // Skip account on error
+    }
+  }
+
+  const burnRate = outflows > 0 ? outflows : 1;
+  const runway = totalBalance / burnRate;
+
+  return {
+    accounts,
+    cashFlow: {
+      totalBalance,
+      inflows30d: inflows,
+      outflows30d: outflows,
+      netCashFlow: inflows - outflows,
+      runway: Math.round(runway * 10) / 10,
+      burnRate,
+    },
+    _meta: makeMeta(),
+  };
+}
