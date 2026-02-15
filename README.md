@@ -23,6 +23,7 @@ Integrations:
 
 - `HUBSPOT_CLIENT_ID`
 - `HUBSPOT_CLIENT_SECRET`
+- `HUBSPOT_SCOPES` (optional, comma or space-separated, defaults to `crm.objects.deals.read crm.objects.contacts.read`)
 - `SLACK_CLIENT_ID`
 - `SLACK_CLIENT_SECRET`
 - `INTEGRATION_TOKEN_SECRET` (recommended, encrypts stored integration tokens)

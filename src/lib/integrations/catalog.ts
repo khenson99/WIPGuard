@@ -28,6 +28,18 @@ export interface OAuthIntegrationDefinition extends IntegrationDefinition {
   oauth: OAuthSettings;
 }
 
+function getScopesFromEnv(key: string, fallback: string[]): string[] {
+  const raw = process.env[key];
+  if (!raw) return fallback;
+
+  const scopes = raw
+    .split(/[,\s]+/g)
+    .map((scope) => scope.trim())
+    .filter(Boolean);
+
+  return scopes.length > 0 ? scopes : fallback;
+}
+
 const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
   {
     slug: "google-workspace",
@@ -67,11 +79,10 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     oauth: {
       authorizationEndpoint: "https://app.hubspot.com/oauth/authorize",
       tokenEndpoint: "https://api.hubapi.com/oauth/v1/token",
-      scopes: [
+      scopes: getScopesFromEnv("HUBSPOT_SCOPES", [
         "crm.objects.deals.read",
-        "crm.objects.deals.write",
         "crm.objects.contacts.read",
-      ],
+      ]),
       clientIdEnv: "HUBSPOT_CLIENT_ID",
       clientSecretEnv: "HUBSPOT_CLIENT_SECRET",
     },
@@ -163,4 +174,3 @@ export function getMissingIntegrationEnv(definition: IntegrationDefinition): str
   ];
   return required.filter((key) => !process.env[key]);
 }
-
