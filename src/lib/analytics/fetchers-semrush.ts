@@ -87,12 +87,12 @@ async function fetchDomainOverview(apiKey: string): Promise<{
   }
 
   return {
-    organicKeywords: parseInt(row['Or'] || '0', 10),
-    organicTraffic: parseInt(row['Ot'] || '0', 10),
-    organicCost: parseFloat(row['Oc'] || '0'),
-    paidKeywords: parseInt(row['Ad'] || '0', 10),
-    paidTraffic: parseInt(row['At'] || '0', 10),
-    paidCost: parseFloat(row['Ac'] || '0'),
+    organicKeywords: parseInt(row['Organic Keywords'] || '0', 10),
+    organicTraffic: parseInt(row['Organic Traffic'] || '0', 10),
+    organicCost: parseFloat(row['Organic Cost'] || '0'),
+    paidKeywords: parseInt(row['Adwords Keywords'] || '0', 10),
+    paidTraffic: parseInt(row['Adwords Traffic'] || '0', 10),
+    paidCost: parseFloat(row['Adwords Cost'] || '0'),
     authorityScore,
     backlinks,
   };
@@ -124,12 +124,12 @@ async function fetchTopKeywords(apiKey: string): Promise<
 
   const rows = parseSemrushResponse(text);
   return rows.map((r) => ({
-    keyword: r['Ph'] || '',
-    position: parseInt(r['Po'] || '0', 10),
-    volume: parseInt(r['Nq'] || '0', 10),
-    cpc: parseFloat(r['Cp'] || '0'),
-    traffic: parseFloat(r['Tr'] || '0'),
-    url: r['Ur'] || '',
+    keyword: r['Keyword'] || '',
+    position: parseInt(r['Position'] || '0', 10),
+    volume: parseInt(r['Search Volume'] || '0', 10),
+    cpc: parseFloat(r['CPC'] || '0'),
+    traffic: parseFloat(r['Traffic (%)'] || '0'),
+    url: r['Url'] || '',
   }));
 }
 
@@ -159,10 +159,10 @@ async function fetchOrganicCompetitors(apiKey: string): Promise<
 
   const rows = parseSemrushResponse(text);
   return rows.map((r) => ({
-    domain: r['Dn'] || '',
-    commonKeywords: parseInt(r['Np'] || '0', 10),
-    organicKeywords: parseInt(r['Or'] || '0', 10),
-    organicTraffic: parseInt(r['Ot'] || '0', 10),
+    domain: r['Domain'] || '',
+    commonKeywords: parseInt(r['Common Keywords'] || '0', 10),
+    organicKeywords: parseInt(r['Organic Keywords'] || '0', 10),
+    organicTraffic: parseInt(r['Organic Traffic'] || '0', 10),
   }));
 }
 
