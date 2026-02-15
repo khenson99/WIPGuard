@@ -41,7 +41,7 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
 
   // Compute total ad spend across platforms
   const totalAdSpend =
-    (googleAds?.totalSpend || 0) + (metaAds?.totalSpend || 0);
+    (googleAds?.totalSpend30d || 0) + (metaAds?.totalSpend30d || 0);
   const hasAdData = !!(googleAds || metaAds);
 
   return (
@@ -89,8 +89,8 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
           label="Total Ad Spend (30d)"
           value={hasAdData ? fmt$(totalAdSpend) : "—"}
           subtitle={hasAdData ? [
-            googleAds ? `Google: ${fmt$(googleAds.totalSpend)}` : null,
-            metaAds ? `Meta: ${fmt$(metaAds.totalSpend)}` : null,
+            googleAds ? `Google: ${fmt$(googleAds.totalSpend30d)}` : null,
+            metaAds ? `Meta: ${fmt$(metaAds.totalSpend30d)}` : null,
           ].filter(Boolean).join(" · ") : undefined}
           icon={Megaphone}
         />

@@ -2,8 +2,8 @@
 
 import React, { useState } from 'react';
 import { AnalyticsDashboardData } from '@/lib/analytics/types';
-import StatCard from './stat-card';
-import BarDisplay from './bar-display';
+import { StatCard } from './stat-card';
+import { BarDisplay } from './bar-display';
 import {
   Globe,
   MousePointerClick,
@@ -128,8 +128,14 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
         <StatCard
           label="Sessions (30d)"
           value={fmtNum(sessions30d)}
-          change={sessionsChange}
-          changeType={sessionsChange && sessionsChange > 0 ? 'increase' : 'decrease'}
+          change={sessionsChange == null ? undefined : fmtPct(sessionsChange)}
+          changeType={
+            sessionsChange == null
+              ? 'neutral'
+              : sessionsChange > 0
+                ? 'positive'
+                : 'negative'
+          }
           icon={TrendingUp}
         />
         <StatCard
