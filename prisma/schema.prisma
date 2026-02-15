@@ -22,6 +22,7 @@ model User {
   accounts Account[]
   sessions Session[]
   integrationConnections IntegrationConnection[]
+  integrationRules       IntegrationRule[]
   securityAuditEvents SecurityAuditEvent[]
 
   responsibleTasks  Task[]    @relation("TaskResponsible")
@@ -211,11 +212,13 @@ model Task {
   planningSession   PlanningSession? @relation(fields: [planningSessionId], references: [id])
 
   slackThread String?
+  metadata    Json?
   columnOrder Int     @default(0)
 
   statusHistory   StatusHistory[]
   logbookEntries  LogbookEntry[]
   policyOverrides PolicyOverride[]
+  integrationReceipts IntegrationReceipt[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -462,6 +465,49 @@ model IntegrationConnection {
 
   @@unique([userId, provider])
   @@index([provider, status])
+}
+
+model IntegrationRule {
+  id             String              @id @default(cuid())
+  userId         String
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider       IntegrationProvider
+  key            String
+  enabled        Boolean             @default(true)
+  statusOverride TaskStatus?
+  config         Json
+  checkpoint     Json?
+  lastObservedAt DateTime?
+  lastRunAt      DateTime?
+  lastError      String?             @db.Text
+
+  receipts IntegrationReceipt[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, provider, key])
+  @@index([provider, key, enabled])
+}
+
+model IntegrationReceipt {
+  id                 String          @id @default(cuid())
+  ruleId             String
+  rule               IntegrationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  dedupeKey          String          @unique
+  externalObjectType String
+  externalObjectId   String
+  sourceUrl          String?
+  taskId             String?
+  task               Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  lastObservedAt     DateTime
+  metadata           Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ruleId, lastObservedAt])
+  @@index([taskId])
 }
 
 // ============================================================
