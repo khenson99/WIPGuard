@@ -10,6 +10,7 @@ import { fetchHubSpotData, fetchStripeData, fetchMercuryData } from "@/lib/analy
 import { fetchGAData, fetchWebflowData } from "@/lib/analytics/fetchers-ga-webflow";
 import { fetchGoogleAdsData, fetchMetaAdsData, fetchMetaPageData, fetchRedditAdsData } from "@/lib/analytics/fetchers-ads";
 import { fetchCodaData } from "@/lib/analytics/fetchers-coda";
+import { fetchSemrushData } from "@/lib/analytics/fetchers-semrush";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 
 // Cache: revalidate every hour
