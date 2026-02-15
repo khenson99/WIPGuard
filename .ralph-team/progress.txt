@@ -4,71 +4,59 @@
 # =====================================================================
 
 --- Architect Iteration 1 ---
-Timestamp: 2026-02-13T16:00:00Z
-Tickets assigned: [#1 → backend, #2 → frontend]
-Tickets completed: []
-Tickets blocked: []
-Decisions made:
-  - ADR-001: Policy engine as pure function in shared domain logic
-  - Fixed dependency discrepancies: #23 depends on [5], #24 depends on [13, 17]
-Learnings:
-  - team-state.json had incorrect empty depends_on for #23 and #24; corrected from issue bodies
-  - All tickets except #1 and #2 are blocked by upstream dependencies
-  - Critical path: #1 → #4 → #5/#8 (two parallel tracks after #4)
-  - Frontend #2 can scaffold against expected API contract while #1 is built
-  - Existing schema has BoardSettings.wipLimit but no policy enforcement or override audit trail
-  - Next unblock targets after #1 completes: #4 (concurrency) and #17 (auth hardening) in parallel
+Timestamp: 2026-02-15T14:30:00Z
 
---- Reviewer Iteration 4 ---
-Timestamp: 2026-02-13T21:17:00Z
-PRs reviewed: [#32]
-PRs approved: [#32]
-PRs with changes requested: []
-PRs merged: [#32]
-Review summary:
-  PR #32 (tickets #27-#31 — optimistic concurrency and deterministic task ordering):
-  - REVIEWER DIRECT ACTION: Resolved merge conflict in task-modal.tsx (RACI destructuring vs expectedUpdatedAt).
-  - Rebased onto main, verified lint/build/tests pass locally, pushed.
-  - CI passed. Reviewed: 17/17 acceptance criteria met across all 5 sub-tickets.
-  - Approved via comment (same-user limitation). Merged via squash.
-  - Closes #27, #28, #29, #30, #31.
-Ticket #2 status:
-  - Was incorrectly auto-closed when PR #26 merged (originally had `Closes #2`).
-  - Reopened with explanation. 0/4 subtasks and 0/2 acceptance criteria are implemented.
-  - Still needs a dedicated implementation PR.
-Sprint progress:
-  - PR #32 merged → closes #27/#28/#29/#30/#31. Sprint now 6/28 done (plus design system bonus).
-  - No open PRs remain.
-  - Ticket #2 (replenishment + commitment UX) still needs implementation.
-Learnings:
-  - `gh pr merge --squash --delete-branch` works even after force-push rebase.
-  - Auto-close via `Closes #N` can fire even if the keyword was removed from PR body before merge (if it was linked earlier). Must manually reopen incorrectly closed issues.
-  - Reviewer direct conflict resolution (rebase + force-push) unblocks PRs faster than waiting for agents.
+## State Assessment
+- 9 closed issues: #1 (policy engine), #4 (concurrency), #13 (card mode), #17 (auth hardening), #27-31 (WGX-004 subtasks)
+- 22 open issues remaining
+- Issue #2 already marked status:in-progress (frontend)
+- Issues #35, #36 were unlabeled — added agent:frontend, priority:low, status:ready
 
---- Backend Agent Iteration 1 | Issue #1 ---
-Timestamp: 2026-02-13T16:26:00Z
+## Dependency Graph (Critical Path)
+- Path A: #5 → #6 → #14 (hierarchy → sprint ledger → flow analytics)
+- Path B: #8 → #9/#16 (event bus → HubSpot sync / observability)
+- Path C: #14 depends on BOTH #6 and #8 — convergence point
+- Frontend #7 and #12 need #14 analytics APIs — blocked for now
+
+## Tickets Assigned
+- #5 → backend (hierarchy engine) — critical path start, deps met
+- #2 → frontend (replenishment UX) — already in-progress, deps met
+- #18 → design-enforcer (a11y remediation) — no deps, high priority
+- #19 → qa (quality gate suite) — no deps, high priority foundation
+
+## Tickets Queued
+- #8 → backend (event bus) — next after #5
+
+## Tickets Blocked
+- #6 blocked on #5
+- #14 blocked on #6 and #8
+
+## Decisions Made
+- ADR-001: Backend works #5 before #8 because #5→#6→#14 is the longer critical path
+- ADR-002: Issues #35/#36 labeled priority:low — UI polish deferred until core features land
+- ADR-003: RACI inheritance walks up hierarchy with nearest-wins precedence
+
+## Learnings
+- Closed issues retain status:in-progress labels — don't confuse with actually in-progress work
+- WGX-004 was split into subtasks #27-31; all closed — concurrency foundation is solid
+- Integration framework already scaffolded (IntegrationConnection model, /api/integrations routes)
+
+--- Backend Agent Iteration 1 | Issue #5 ---
+Timestamp: 2026-02-15T15:10:00Z
 Status: completed
 Changes:
-  - prisma/schema.prisma: Added WipPolicy and PolicyOverride models, EnforcementMode enum, Task.policyOverrides relation
-  - prisma/migrations/20260213161912_add_wip_policy_and_override/: New migration
-  - src/lib/policy-engine.ts: Pure policy check function (checkWipPolicy) and batch variant
-  - src/lib/policy-check.ts: DB-backed helpers (loadPolicies, enforcePolicy, recordPolicyOverride, getUserRole)
-  - src/app/api/tasks/[id]/advance/route.ts: Integrated WIP policy enforcement
-  - src/app/api/tasks/[id]/retreat/route.ts: Integrated WIP policy enforcement
-  - src/app/api/tasks/[id]/route.ts: Integrated WIP policy enforcement on PATCH status changes
-  - src/app/api/tasks/reorder/route.ts: Integrated batch WIP policy enforcement
-  - src/app/api/policy/route.ts: GET/PUT endpoints for policy config (admin-only PUT)
-  - src/app/api/policy/override/route.ts: POST endpoint for recording overrides
-  - src/app/api/policy/audit/route.ts: GET endpoint for override audit trail with pagination
-  - src/lib/__tests__/policy-engine.test.ts: 15 unit tests for pure policy engine
-  - vitest.config.ts: Test configuration
-  - package.json: Added vitest, test scripts
-Tests: 15/15 pass
+  - prisma/schema.prisma — Added onDelete: Restrict on Project.parentId and Task.parentId FKs; onDelete: Cascade on LogbookEntry.taskId
+  - prisma/migrations/20260215150000_hierarchy_integrity_constraints/migration.sql — DB migration for FK constraint changes
+  - src/lib/raci-inheritance.ts — RACI inheritance engine with nearest-wins precedence
+  - src/app/api/hierarchy/route.ts — GET /api/hierarchy recursive endpoint (tree + flat modes)
+  - scripts/check-orphans.ts — Orphan relationship detection script
+  - src/lib/__tests__/raci-inheritance.test.ts — 16 unit tests for inheritance engine
+Tests: 41 passed (5 test files), 0 failed
 Learnings:
-  - Prisma 7.x generates types in separate model files under src/generated/prisma/models/
-  - EnforcementMode enum available from @/generated/prisma/enums or @/generated/prisma/client (re-exports)
-  - Existing API pattern: auth() → findUnique → business logic → update → statusHistory → response
-  - API contract for policy: 409 status for WIP violations (blocked or override required)
-  - BACKLOG, DONE, NOT_DONE are exempt from WIP limits (buffer/terminal columns)
-  - Override flow: client gets 409 with requiresOverride:true → resends with overrideReason in body
+  - Project and Task both use self-referential parentId; initial migration had ON DELETE SET NULL
+  - ON DELETE RESTRICT is safest for hierarchy — forces explicit reparenting before deletion
+  - Prisma implicit many-to-many tables (_PriorityResponsible, etc.) already cascade on delete
+  - RACI resolution must be independent per role — a task can inherit R from parent task and A from project
+  - Hierarchy endpoint needs flat mode for table consumers (board uses tree, table uses flat)
+  - vitest config uses @/ alias via resolve.alias in vitest.config.ts
 
