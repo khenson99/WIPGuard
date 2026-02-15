@@ -9,9 +9,9 @@ import { useBoardStore } from "@/store/board-store";
 import { KanbanColumn } from "./kanban-column";
 import { TaskModal } from "../tasks/task-modal";
 import { BoardFilters } from "./board-filters";
-import type { TaskStatus, TaskWithRelations, BoardColumn } from "@/types";
+import type { TaskStatus, TaskWithRelations, BoardColumn, DepartmentSummary } from "@/types";
 import { COLUMN_ORDER, COLUMN_LABELS } from "@/types";
-import { Eye, EyeOff, Keyboard, Plus } from "lucide-react";
+import { Eye, EyeOff, Keyboard, Plus, Rows3 } from "lucide-react";
 import { useSession } from "next-auth/react";
 
 interface KanbanBoardProps {
@@ -52,6 +52,9 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
   const [displayPreset, setDisplayPreset] = useState<DisplayPreset>("standard");
   const [showMetadata, setShowMetadata] = useState(true);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [swimLaneEnabled, setSwimLaneEnabled] = useState(false);
+  const [departments, setDepartments] = useState<DepartmentSummary[]>([]);
+  const [projectDeptMap, setProjectDeptMap] = useState<Map<string, string | null>>(new Map());
 
   const fetchBoard = useCallback(async () => {
     try {
@@ -62,13 +65,14 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
       if (filterPriority) params.set("priority", filterPriority);
       if (filterSprint) params.set("sprint", filterSprint);
 
-      const [tasksRes, settingsRes, teamRes, projectsRes, sprintsRes] =
+      const [tasksRes, settingsRes, teamRes, projectsRes, sprintsRes, deptsRes] =
         await Promise.all([
           fetch(`/api/tasks?${params}`),
           fetch("/api/board-settings"),
           fetch("/api/team"),
           fetch("/api/projects"),
           fetch("/api/sprints"),
+          fetch("/api/departments"),
         ]);
 
       const tasks: TaskWithRelations[] = await tasksRes.json();
@@ -76,10 +80,19 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
       const team = await teamRes.json();
       const projects = await projectsRes.json();
       const sprints = await sprintsRes.json();
+      const depts: DepartmentSummary[] = deptsRes.ok ? await deptsRes.json() : [];
 
       setTeamMembers(team);
       setProjects(projects);
       setSprints(sprints);
+      setDepartments(depts);
+
+      // Build project→department mapping
+      const deptMap = new Map<string, string | null>();
+      for (const p of projects) {
+        deptMap.set(p.id, p.departmentId || null);
+      }
+      setProjectDeptMap(deptMap);
 
       // Build WIP limits from settings
       const limits: Record<TaskStatus, number> = {
@@ -348,6 +361,18 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
               <Keyboard className="h-3 w-3" />
               J/K + Enter
             </span>
+            <button
+              onClick={() => setSwimLaneEnabled((v) => !v)}
+              className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors ${
+                swimLaneEnabled
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border bg-card text-muted-foreground hover:text-foreground"
+              }`}
+              title="Toggle department swim lanes"
+            >
+              <Rows3 className="h-3.5 w-3.5" />
+              Swim Lanes
+            </button>
           </div>
         </div>
         <button
@@ -359,23 +384,38 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
         </button>
       </div>
 
-      <div className="flex-1 overflow-x-auto px-4 pb-4">
+      <div className="flex-1 overflow-x-auto overflow-y-auto px-4 pb-4">
         <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="flex h-full gap-3">
-            {columns.map((column) => (
-              <KanbanColumn
-                key={column.id}
-                column={column}
-                wipLimit={wipLimits[column.id]}
-                onTaskClick={(task) => openTaskModal(task)}
-                onRefresh={fetchBoard}
-                displayPreset={displayPreset}
-                showMetadata={showMetadata}
-                selectedTaskId={selectedTaskId}
-                onSelectTask={setSelectedTaskId}
-              />
-            ))}
-          </div>
+          {swimLaneEnabled ? (
+            <SwimLaneBoard
+              columns={columns}
+              departments={departments}
+              projectDeptMap={projectDeptMap}
+              wipLimits={wipLimits}
+              openTaskModal={openTaskModal}
+              fetchBoard={fetchBoard}
+              displayPreset={displayPreset}
+              showMetadata={showMetadata}
+              selectedTaskId={selectedTaskId}
+              setSelectedTaskId={setSelectedTaskId}
+            />
+          ) : (
+            <div className="flex h-full gap-3">
+              {columns.map((column) => (
+                <KanbanColumn
+                  key={column.id}
+                  column={column}
+                  wipLimit={wipLimits[column.id]}
+                  onTaskClick={(task) => openTaskModal(task)}
+                  onRefresh={fetchBoard}
+                  displayPreset={displayPreset}
+                  showMetadata={showMetadata}
+                  selectedTaskId={selectedTaskId}
+                  onSelectTask={setSelectedTaskId}
+                />
+              ))}
+            </div>
+          )}
         </DragDropContext>
       </div>
 
@@ -388,6 +428,164 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
           }}
         />
       )}
+    </div>
+  );
+}
+
+/* ---------- Swim Lane Board sub-component ---------- */
+
+interface SwimLaneBoardProps {
+  columns: BoardColumn[];
+  departments: DepartmentSummary[];
+  projectDeptMap: Map<string, string | null>;
+  wipLimits: Record<TaskStatus, number>;
+  openTaskModal: (task: TaskWithRelations | null) => void;
+  fetchBoard: () => void;
+  displayPreset: DisplayPreset;
+  showMetadata: boolean;
+  selectedTaskId: string | null;
+  setSelectedTaskId: (id: string | null) => void;
+}
+
+function SwimLaneBoard({
+  columns,
+  departments,
+  projectDeptMap,
+  wipLimits,
+  openTaskModal,
+  fetchBoard,
+  displayPreset,
+  showMetadata,
+  selectedTaskId,
+  setSelectedTaskId,
+}: SwimLaneBoardProps) {
+  // Build lanes: group tasks by department (via their project's department)
+  const lanes = useMemo(() => {
+    type Lane = {
+      id: string;
+      name: string;
+      color: string | null;
+      columns: BoardColumn[];
+    };
+
+    const laneMap = new Map<string, Lane>();
+
+    // Initialize a lane per department
+    for (const dept of departments) {
+      laneMap.set(dept.id, {
+        id: dept.id,
+        name: dept.name,
+        color: dept.color || null,
+        columns: columns.map((col) => ({ ...col, tasks: [] })),
+      });
+    }
+    // Unassigned lane
+    laneMap.set("__none__", {
+      id: "__none__",
+      name: "Unassigned",
+      color: null,
+      columns: columns.map((col) => ({ ...col, tasks: [] })),
+    });
+
+    // Distribute tasks into lanes
+    for (const col of columns) {
+      for (const task of col.tasks) {
+        const deptId = task.projectId
+          ? projectDeptMap.get(task.projectId) || "__none__"
+          : "__none__";
+
+        let lane = laneMap.get(deptId);
+        if (!lane) {
+          lane = laneMap.get("__none__")!;
+        }
+
+        const laneCol = lane.columns.find((c) => c.id === col.id);
+        if (laneCol) {
+          laneCol.tasks.push(task);
+        }
+      }
+    }
+
+    // Return all lanes that have at least one task, plus keep Unassigned at the end
+    const result: Lane[] = [];
+    for (const dept of departments) {
+      const lane = laneMap.get(dept.id);
+      if (lane && lane.columns.some((c) => c.tasks.length > 0)) {
+        result.push(lane);
+      }
+    }
+    const unassigned = laneMap.get("__none__")!;
+    if (unassigned.columns.some((c) => c.tasks.length > 0)) {
+      result.push(unassigned);
+    }
+
+    return result;
+  }, [columns, departments, projectDeptMap]);
+
+  if (lanes.length === 0) {
+    return (
+      <div className="flex h-full gap-3">
+        {columns.map((column) => (
+          <KanbanColumn
+            key={column.id}
+            column={column}
+            wipLimit={wipLimits[column.id]}
+            onTaskClick={(task) => openTaskModal(task)}
+            onRefresh={fetchBoard}
+            displayPreset={displayPreset}
+            showMetadata={showMetadata}
+            selectedTaskId={selectedTaskId}
+            onSelectTask={setSelectedTaskId}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {lanes.map((lane) => (
+        <div
+          key={lane.id}
+          className="rounded-xl border border-border bg-card/30 p-3"
+        >
+          {/* Lane header */}
+          <div className="mb-3 flex items-center gap-2 px-1">
+            {lane.color && (
+              <span
+                className="h-3 w-3 rounded-full"
+                style={{ backgroundColor: lane.color }}
+              />
+            )}
+            <h3 className="text-sm font-semibold text-foreground">
+              {lane.name}
+            </h3>
+            <span className="text-xs text-muted-foreground">
+              ({lane.columns.reduce((s, c) => s + c.tasks.length, 0)} task
+              {lane.columns.reduce((s, c) => s + c.tasks.length, 0) !== 1
+                ? "s"
+                : ""})
+            </span>
+          </div>
+
+          {/* Columns within lane */}
+          <div className="flex gap-3 overflow-x-auto">
+            {lane.columns.map((column) => (
+              <KanbanColumn
+                key={`${lane.id}-${column.id}`}
+                column={column}
+                wipLimit={wipLimits[column.id]}
+                onTaskClick={(task) => openTaskModal(task)}
+                onRefresh={fetchBoard}
+                displayPreset={displayPreset}
+                showMetadata={showMetadata}
+                selectedTaskId={selectedTaskId}
+                onSelectTask={setSelectedTaskId}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
