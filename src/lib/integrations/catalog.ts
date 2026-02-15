@@ -40,6 +40,10 @@ function getScopesFromEnv(key: string, fallback: string[]): string[] {
   return scopes.length > 0 ? scopes : fallback;
 }
 
+function joinScopes(scopes: string[]): string {
+  return scopes.join(" ");
+}
+
 const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
   {
     slug: "google-workspace",
@@ -79,10 +83,17 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     oauth: {
       authorizationEndpoint: "https://app.hubspot.com/oauth/authorize",
       tokenEndpoint: "https://api.hubapi.com/oauth/v1/token",
-      scopes: getScopesFromEnv("HUBSPOT_SCOPES", [
-        "crm.objects.deals.read",
-        "crm.objects.contacts.read",
-      ]),
+      // HubSpot expects only required scopes in `scope`; request feature scopes
+      // via `optional_scope` to avoid install URL / app scope mismatch.
+      scopes: ["oauth"],
+      extraAuthParams: {
+        optional_scope: joinScopes(
+          getScopesFromEnv("HUBSPOT_SCOPES", [
+            "crm.objects.deals.read",
+            "crm.objects.contacts.read",
+          ])
+        ),
+      },
       clientIdEnv: "HUBSPOT_CLIENT_ID",
       clientSecretEnv: "HUBSPOT_CLIENT_SECRET",
     },
