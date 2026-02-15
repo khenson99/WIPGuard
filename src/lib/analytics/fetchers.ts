@@ -43,9 +43,10 @@ const HUBSPOT_STAGE_MAP: Record<string, string> = {
 };
 
 export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData> {
+  const token = accessToken.trim();
   const baseUrl = "https://api.hubapi.com";
   const headers: Record<string, string> = {
-    Authorization: `Bearer ${accessToken}`,
+    Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
   };
 
@@ -65,7 +66,7 @@ export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "unknown");
-      throw new Error(`HubSpot deals API error ${res.status}: ${errText}`);
+      throw new Error(`HubSpot deals API error ${res.status} (token length: ${token.length}, prefix: ${token.substring(0, 7)}): ${errText}`);
     }
 
     const data = await res.json();
