@@ -99,6 +99,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       consultedIds = [],
       informedIds = [],
       unplanned,
+      unplannedReason,
+      unplannedNote,
+      planningSessionId,
       slackThread,
       dependsOnIds = [],
     } = body;
@@ -126,6 +129,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         projectId,
         sprintId,
         unplanned: unplanned ?? false,
+        unplannedReason: unplanned ? unplannedReason : undefined,
+        unplannedNote: unplanned ? unplannedNote : undefined,
+        addedBy: session.user.id,
+        planningSessionId,
         slackThread,
         columnOrder: nextColumnOrder,
         responsible: {
