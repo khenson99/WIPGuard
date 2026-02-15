@@ -14,13 +14,42 @@ import {
   Check,
   X,
   Plus,
+  ChevronDown,
   Trash2,
-  Save,
 } from "lucide-react";
 import { COLUMN_LABELS } from "@/types";
 import type { UserSummary, TaskStatus as TStatus } from "@/types";
+/* Simple inline toast since sonner isn't installed */
+function useToast() {
+  const show = (msg: string, type: "success" | "error") => {
+    // Lightweight notification — creates a toast div at bottom-right
+    const div = document.createElement("div");
+    div.textContent = msg;
+    Object.assign(div.style, {
+      position: "fixed",
+      bottom: "1.5rem",
+      right: "1.5rem",
+      padding: "0.6rem 1rem",
+      borderRadius: "0.5rem",
+      fontSize: "0.8rem",
+      fontWeight: "500",
+      color: "#fff",
+      background: type === "success" ? "#22c55e" : "#ef4444",
+      zIndex: "9999",
+      transition: "opacity 0.3s",
+      opacity: "1",
+    });
+    document.body.appendChild(div);
+    setTimeout(() => { div.style.opacity = "0"; }, 2000);
+    setTimeout(() => { div.remove(); }, 2500);
+  };
+  return {
+    success: (msg: string) => show(msg, "success"),
+    error: (msg: string) => show(msg, "error"),
+  };
+}
 
-/* ---------- data types ---------- */
+/* ─── Types ─────────────────────────────────────────────────────────── */
 
 interface TaskDetail {
   id: string;
@@ -41,8 +70,6 @@ interface ProjectFull {
   projectType: string;
   department: { id: string; name: string; color: string | null } | null;
   companyPriority: { id: string; name: string; color: string | null } | null;
-  departmentId: string | null;
-  companyPriorityId: string | null;
   responsible: UserSummary[];
   accountable: UserSummary[];
   consulted: UserSummary[];
@@ -56,13 +83,19 @@ interface ProjectFull {
   updatedAt: string;
 }
 
-interface RefOption {
+interface DeptOption {
   id: string;
   name: string;
-  color?: string | null;
+  color: string | null;
 }
 
-/* ---------- colour maps ---------- */
+interface PriorityOption {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+/* ─── Constants ─────────────────────────────────────────────────────── */
 
 const STATUS_COLORS: Record<string, string> = {
   ACTIVE: "#22c55e",
@@ -70,6 +103,19 @@ const STATUS_COLORS: Record<string, string> = {
   COMPLETED: "#3b82f6",
   ARCHIVED: "#64748b",
 };
+
+const STATUS_OPTIONS = [
+  { value: "ACTIVE", label: "Active" },
+  { value: "ON_HOLD", label: "On Hold" },
+  { value: "COMPLETED", label: "Completed" },
+  { value: "ARCHIVED", label: "Archived" },
+];
+
+const TYPE_OPTIONS = [
+  { value: "RECURRING", label: "Recurring" },
+  { value: "PERPETUAL", label: "Perpetual" },
+  { value: "ONE_OFF", label: "One-Off" },
+];
 
 const TASK_STATUS_COLORS: Record<string, string> = {
   BACKLOG: "#94a3b8",
@@ -81,103 +127,113 @@ const TASK_STATUS_COLORS: Record<string, string> = {
 };
 
 const PRIORITY_STYLES: Record<string, { text: string; bg: string }> = {
-  P0: { text: "#ef4444", bg: "#ef444418" },
-  P1: { text: "#f97316", bg: "#f9731618" },
-  P2: { text: "#eab308", bg: "#eab30818" },
-  P3: { text: "#22c55e", bg: "#22c55e18" },
+  CRITICAL: { text: "#ef4444", bg: "#ef444418" },
+  HIGH: { text: "#f97316", bg: "#f9731618" },
+  MEDIUM: { text: "#eab308", bg: "#eab30818" },
+  LOW: { text: "#22c55e", bg: "#22c55e18" },
 };
 
-const PROJECT_STATUSES = ["ACTIVE", "ON_HOLD", "COMPLETED", "ARCHIVED"];
-const PROJECT_TYPES = ["ONE_OFF", "RECURRING", "INITIATIVE", "MAINTENANCE"];
+const RACI_ROLES = [
+  { key: "sponsor", label: "Sponsor", field: "sponsorIds" },
+  { key: "responsible", label: "Responsible", field: "responsibleIds" },
+  { key: "accountable", label: "Accountable", field: "accountableIds" },
+  { key: "consulted", label: "Consulted", field: "consultedIds" },
+  { key: "informed", label: "Informed", field: "informedIds" },
+] as const;
 
-/* ---------- helpers ---------- */
+/* ─── Inline edit helpers ───────────────────────────────────────────── */
 
 function InlineText({
   value,
   onSave,
-  className = "",
-  tag: Tag = "span",
-  multiline = false,
+  className,
+  as: Tag = "span",
+  multiline,
+  placeholder,
 }: {
   value: string;
   onSave: (v: string) => void;
   className?: string;
-  tag?: "span" | "h1" | "p";
+  as?: "span" | "h1" | "p";
   multiline?: boolean;
+  placeholder?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (editing) inputRef.current?.focus();
+    setDraft(value);
+  }, [value]);
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
   }, [editing]);
 
+  const commit = () => {
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== value) onSave(trimmed);
+    else setDraft(value);
+    setEditing(false);
+  };
+
+  const cancel = () => {
+    setDraft(value);
+    setEditing(false);
+  };
+
   if (editing) {
-    const shared =
-      "w-full rounded border border-primary/40 bg-card px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary";
-    return (
+    return multiline ? (
       <div className="flex items-start gap-1.5">
-        {multiline ? (
-          <textarea
-            ref={inputRef as React.RefObject<HTMLTextAreaElement>}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            rows={3}
-            className={`${shared} resize-y`}
-          />
-        ) : (
-          <input
-            ref={inputRef as React.RefObject<HTMLInputElement>}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                onSave(draft);
-                setEditing(false);
-              }
-              if (e.key === "Escape") {
-                setDraft(value);
-                setEditing(false);
-              }
-            }}
-            className={shared}
-          />
-        )}
-        <button
-          onClick={() => {
-            onSave(draft);
-            setEditing(false);
+        <textarea
+          ref={inputRef as React.RefObject<HTMLTextAreaElement>}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") cancel();
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              commit();
+            }
           }}
-          className="mt-0.5 rounded p-1 text-green-500 hover:bg-green-500/10"
-        >
-          <Check className="h-3.5 w-3.5" />
-        </button>
-        <button
-          onClick={() => {
-            setDraft(value);
-            setEditing(false);
+          rows={3}
+          className="flex-1 resize-none rounded-md border border-primary/40 bg-card px-2 py-1 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary/30"
+        />
+      </div>
+    ) : (
+      <div className="flex items-center gap-1.5">
+        <input
+          ref={inputRef as React.RefObject<HTMLInputElement>}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") cancel();
           }}
-          className="mt-0.5 rounded p-1 text-muted-foreground hover:bg-secondary"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
+          className={`flex-1 rounded-md border border-primary/40 bg-card px-2 py-0.5 text-foreground outline-none focus:ring-1 focus:ring-primary/30 ${className || ""}`}
+        />
       </div>
     );
   }
 
   return (
-    <button
-      onClick={() => {
-        setDraft(value);
-        setEditing(true);
-      }}
-      className={`group inline-flex items-center gap-1.5 text-left hover:text-primary ${className}`}
+    <Tag
+      onClick={() => setEditing(true)}
+      className={`group cursor-pointer rounded-md px-1 -mx-1 transition-colors hover:bg-secondary ${className || ""}`}
       title="Click to edit"
     >
-      <Tag className={className}>{value}</Tag>
-      <Pencil className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-    </button>
+      {value || (
+        <span className="italic text-muted-foreground">
+          {placeholder || "Click to add…"}
+        </span>
+      )}
+      <Pencil className="ml-1.5 inline h-3 w-3 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+    </Tag>
   );
 }
 
@@ -185,140 +241,203 @@ function InlineSelect({
   value,
   options,
   onSave,
-  colorMap,
+  renderValue,
 }: {
   value: string;
   options: { value: string; label: string }[];
   onSave: (v: string) => void;
-  colorMap?: Record<string, string>;
+  renderValue?: (v: string) => React.ReactNode;
 }) {
-  const color = colorMap?.[value] || "#64748b";
-  return (
-    <select
-      value={value}
-      onChange={(e) => onSave(e.target.value)}
-      className="cursor-pointer rounded-full border-0 bg-transparent px-2 py-0.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary"
-      style={{
-        backgroundColor: `${color}18`,
-        color,
-      }}
-    >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
-  );
-}
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
-function RaciSection({
-  label,
-  users,
-  teamMembers,
-  onUpdate,
-}: {
-  label: string;
-  users: UserSummary[];
-  teamMembers: UserSummary[];
-  onUpdate: (ids: string[]) => void;
-}) {
-  const [adding, setAdding] = useState(false);
-  const available = teamMembers.filter(
-    (m) => !users.some((u) => u.id === m.id)
-  );
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const selected = options.find((o) => o.value === value);
 
   return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          {label}
-        </p>
-        {available.length > 0 && (
-          <button
-            onClick={() => setAdding(!adding)}
-            className="rounded p-0.5 text-muted-foreground hover:text-primary"
-            title={`Add ${label.toLowerCase()}`}
-          >
-            <Plus className="h-3 w-3" />
-          </button>
-        )}
-      </div>
-
-      {adding && available.length > 0 && (
-        <select
-          defaultValue=""
-          onChange={(e) => {
-            if (e.target.value) {
-              onUpdate([...users.map((u) => u.id), e.target.value]);
-              setAdding(false);
-            }
-          }}
-          className="mb-2 w-full rounded border border-border bg-secondary px-2 py-1 text-xs text-foreground focus:outline-none"
-        >
-          <option value="">Select member…</option>
-          {available.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name || m.email}
-            </option>
-          ))}
-        </select>
-      )}
-
-      {users.length > 0 ? (
-        <div className="space-y-1.5">
-          {users.map((u) => (
-            <div
-              key={u.id}
-              className="group flex items-center gap-2 text-sm text-foreground"
+    <div ref={ref} className="relative inline-block">
+      <button
+        onClick={() => setOpen(!open)}
+        className="group flex items-center gap-1 rounded-md px-1 -mx-1 transition-colors hover:bg-secondary"
+        title="Click to change"
+      >
+        {renderValue ? renderValue(value) : (selected?.label || value)}
+        <ChevronDown className="h-3 w-3 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 min-w-[140px] rounded-lg border border-border bg-card p-1 shadow-lg">
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => {
+                if (opt.value !== value) onSave(opt.value);
+                setOpen(false);
+              }}
+              className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors ${
+                opt.value === value
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-foreground hover:bg-secondary"
+              }`}
             >
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-secondary text-[10px] font-medium">
-                {u.image ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={u.image}
-                    alt=""
-                    className="h-full w-full rounded-full"
-                  />
-                ) : (
-                  (u.name || u.email || "?").charAt(0).toUpperCase()
-                )}
-              </div>
-              <span className="flex-1 truncate">{u.name || u.email}</span>
-              <button
-                onClick={() =>
-                  onUpdate(users.filter((x) => x.id !== u.id).map((x) => x.id))
-                }
-                className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
-                title="Remove"
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
-            </div>
+              {opt.value === value && <Check className="h-3 w-3" />}
+              {opt.label}
+            </button>
           ))}
         </div>
-      ) : (
-        <p className="text-xs italic text-muted-foreground">None assigned</p>
       )}
     </div>
   );
 }
 
-/* ============================================================
-   Main component
-   ============================================================ */
+function UserChip({
+  user,
+  onRemove,
+}: {
+  user: UserSummary;
+  onRemove?: () => void;
+}) {
+  return (
+    <div className="group flex items-center gap-1.5 rounded-full bg-secondary px-2 py-0.5 text-xs text-foreground">
+      <div className="flex h-4 w-4 items-center justify-center rounded-full bg-card text-[8px] font-medium">
+        {user.image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={user.image}
+            alt=""
+            className="h-full w-full rounded-full"
+          />
+        ) : (
+          (user.name || user.email || "?").charAt(0).toUpperCase()
+        )}
+      </div>
+      <span className="truncate max-w-[100px]">
+        {user.name || user.email}
+      </span>
+      {onRemove && (
+        <button
+          onClick={onRemove}
+          className="ml-0.5 rounded-full p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+          title="Remove"
+        >
+          <X className="h-2.5 w-2.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function UserPicker({
+  allUsers,
+  currentIds,
+  onAdd,
+}: {
+  allUsers: UserSummary[];
+  currentIds: string[];
+  onAdd: (userId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const available = allUsers.filter(
+    (u) =>
+      !currentIds.includes(u.id) &&
+      (u.name?.toLowerCase().includes(search.toLowerCase()) ||
+        u.email.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+        title="Add user"
+      >
+        <Plus className="h-3 w-3" />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-56 rounded-lg border border-border bg-card p-2 shadow-lg">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search team…"
+            className="mb-1.5 w-full rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary/30"
+            autoFocus
+          />
+          <div className="max-h-36 overflow-y-auto space-y-0.5">
+            {available.length === 0 ? (
+              <p className="py-2 text-center text-xs text-muted-foreground">
+                No users available
+              </p>
+            ) : (
+              available.map((u) => (
+                <button
+                  key={u.id}
+                  onClick={() => {
+                    onAdd(u.id);
+                    setSearch("");
+                    setOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-secondary"
+                >
+                  <div className="flex h-5 w-5 items-center justify-center rounded-full bg-secondary text-[9px] font-medium">
+                    {u.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={u.image}
+                        alt=""
+                        className="h-full w-full rounded-full"
+                      />
+                    ) : (
+                      (u.name || u.email || "?").charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <span className="truncate">{u.name || u.email}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Main Component
+   ═══════════════════════════════════════════════════════════════════════ */
 
 export function ProjectDetail({ projectId }: { projectId: string }) {
   const router = useRouter();
   const [project, setProject] = useState<ProjectFull | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [taskFilter, setTaskFilter] = useState<string>("");
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
 
   // Reference data for dropdowns
-  const [departments, setDepartments] = useState<RefOption[]>([]);
-  const [priorities, setPriorities] = useState<RefOption[]>([]);
-  const [teamMembers, setTeamMembers] = useState<UserSummary[]>([]);
+  const [departments, setDepartments] = useState<DeptOption[]>([]);
+  const [priorities, setPriorities] = useState<PriorityOption[]>([]);
+  const [teamUsers, setTeamUsers] = useState<UserSummary[]>([]);
 
   const fetchProject = useCallback(async () => {
     try {
@@ -331,47 +450,85 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
     }
   }, [projectId]);
 
-  const fetchRefData = useCallback(async () => {
-    const [dRes, pRes, tRes] = await Promise.all([
-      fetch("/api/departments"),
-      fetch("/api/priorities"),
-      fetch("/api/team"),
-    ]);
-    if (dRes.ok) setDepartments(await dRes.json());
-    if (pRes.ok) setPriorities(await pRes.json());
-    if (tRes.ok) setTeamMembers(await tRes.json());
+  // Fetch reference data
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/departments").then((r) => (r.ok ? r.json() : [])),
+      fetch("/api/priorities").then((r) => (r.ok ? r.json() : [])),
+      fetch("/api/team").then((r) => (r.ok ? r.json() : [])),
+    ]).then(([depts, pris, team]) => {
+      setDepartments(Array.isArray(depts) ? depts : []);
+      setPriorities(Array.isArray(pris) ? pris : []);
+      setTeamUsers(
+        Array.isArray(team)
+          ? team.map((u: UserSummary & { role?: string }) => ({
+              id: u.id,
+              name: u.name,
+              email: u.email,
+              image: u.image,
+            }))
+          : []
+      );
+    });
   }, []);
 
   useEffect(() => {
     fetchProject();
-    fetchRefData();
-  }, [fetchProject, fetchRefData]);
+  }, [fetchProject]);
 
-  /* auto-save helper */
+  /* ── Patch helper ────────────────────────────────────────────────── */
+
   const patchProject = useCallback(
-    async (patch: Record<string, unknown>) => {
+    async (data: Record<string, unknown>) => {
       if (!project) return;
       setSaving(true);
       try {
-        const res = await fetch(`/api/projects/${project.id}`, {
+        const res = await fetch(`/api/projects/${projectId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(patch),
+          body: JSON.stringify(data),
         });
-        if (res.ok) {
-          // Re-fetch to get fully populated response
-          await fetchProject();
-        }
+        if (!res.ok) throw new Error("Failed to save");
+        toast.success("Saved");
+        // Refetch to get full updated project
+        fetchProject();
       } catch {
-        // ignore
+        toast.error("Failed to save changes");
       } finally {
         setSaving(false);
       }
     },
-    [project, fetchProject]
+    [project, projectId, fetchProject]
   );
 
-  /* computed */
+  /* ── RACI helpers ────────────────────────────────────────────────── */
+
+  const handleAddUser = useCallback(
+    (role: string, field: string, userId: string) => {
+      if (!project) return;
+      const currentIds = (
+        project[role as keyof ProjectFull] as UserSummary[]
+      ).map((u) => u.id);
+      patchProject({ [field]: [...currentIds, userId] });
+    },
+    [project, patchProject]
+  );
+
+  const handleRemoveUser = useCallback(
+    (role: string, field: string, userId: string) => {
+      if (!project) return;
+      const currentIds = (
+        project[role as keyof ProjectFull] as UserSummary[]
+      )
+        .map((u) => u.id)
+        .filter((id) => id !== userId);
+      patchProject({ [field]: currentIds });
+    },
+    [project, patchProject]
+  );
+
+  /* ── Computed ────────────────────────────────────────────────────── */
+
   const filteredTasks = useMemo(() => {
     if (!project) return [];
     if (!taskFilter) return project.tasks;
@@ -400,7 +557,8 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
     };
   }, [project]);
 
-  /* loading / error */
+  /* ── Loading / Error states ──────────────────────────────────────── */
+
   if (loading) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
@@ -423,9 +581,23 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
     );
   }
 
+  const statusColor = STATUS_COLORS[project.status] || "#64748b";
+
+  const deptOptions = departments.map((d) => ({
+    value: d.id,
+    label: d.name,
+  }));
+  deptOptions.unshift({ value: "", label: "None" });
+
+  const priOptions = priorities.map((p) => ({
+    value: p.id,
+    label: p.name,
+  }));
+  priOptions.unshift({ value: "", label: "None" });
+
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
+      {/* Breadcrumb / Back */}
       <div className="flex items-center justify-between">
         <button
           onClick={() => router.push("/projects")}
@@ -435,116 +607,125 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           All Projects
         </button>
         {saving && (
-          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Save className="h-3 w-3 animate-pulse" />
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground animate-pulse">
+            <div className="h-2 w-2 rounded-full bg-primary animate-ping" />
             Saving…
           </span>
         )}
       </div>
 
-      {/* ======= Header – editable ======= */}
+      {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          {/* Name */}
-          <div className="mb-1 flex items-center gap-3">
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-3">
             <InlineText
               value={project.name}
               onSave={(v) => patchProject({ name: v })}
               className="text-xl font-bold text-foreground"
-              tag="h1"
+              as="h1"
             />
-
-            {/* Status dropdown */}
             <InlineSelect
               value={project.status}
-              options={PROJECT_STATUSES.map((s) => ({
-                value: s,
-                label: s.replace("_", " "),
-              }))}
+              options={STATUS_OPTIONS}
               onSave={(v) => patchProject({ status: v })}
-              colorMap={STATUS_COLORS}
+              renderValue={(v) => {
+                const c = STATUS_COLORS[v] || "#64748b";
+                return (
+                  <span
+                    className="rounded-full px-2.5 py-0.5 text-xs font-medium"
+                    style={{ backgroundColor: `${c}18`, color: c }}
+                  >
+                    {v.replace("_", " ")}
+                  </span>
+                );
+              }}
             />
           </div>
 
-          {/* Description */}
-          <div className="mb-2 max-w-2xl">
-            <InlineText
-              value={project.description || "Add a description…"}
-              onSave={(v) =>
-                patchProject({
-                  description: v === "Add a description…" ? null : v,
-                })
-              }
-              className="text-sm text-muted-foreground"
-              tag="p"
-              multiline
-            />
-          </div>
+          <InlineText
+            value={project.description || ""}
+            onSave={(v) => patchProject({ description: v })}
+            className="max-w-2xl text-sm text-muted-foreground"
+            as="p"
+            multiline
+            placeholder="Add a description…"
+          />
 
-          {/* Meta row — editable */}
-          <div className="flex flex-wrap items-center gap-3 text-xs">
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
             {/* Department */}
-            <div className="flex items-center gap-1.5">
-              {project.department?.color && (
-                <span
-                  className="inline-block h-2 w-2 rounded-full"
-                  style={{ backgroundColor: project.department.color }}
-                />
-              )}
-              <select
+            <span className="flex items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wider font-medium">
+                Dept:
+              </span>
+              <InlineSelect
                 value={project.department?.id || ""}
-                onChange={(e) =>
-                  patchProject({ departmentId: e.target.value || null })
+                options={deptOptions}
+                onSave={(v) =>
+                  patchProject({ departmentId: v || null })
                 }
-                className="cursor-pointer rounded border border-border bg-secondary px-2 py-0.5 text-xs text-foreground focus:border-primary focus:outline-none"
-              >
-                <option value="">No Department</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+                renderValue={(v) => {
+                  const dept = departments.find((d) => d.id === v);
+                  if (!dept) return <span className="italic">None</span>;
+                  return (
+                    <span className="flex items-center gap-1">
+                      {dept.color && (
+                        <span
+                          className="inline-block h-2 w-2 rounded-full"
+                          style={{ backgroundColor: dept.color }}
+                        />
+                      )}
+                      {dept.name}
+                    </span>
+                  );
+                }}
+              />
+            </span>
 
-            {/* Company Priority */}
-            <div className="flex items-center gap-1.5">
-              {project.companyPriority?.color && (
-                <span
-                  className="inline-block h-2 w-2 rounded-full"
-                  style={{ backgroundColor: project.companyPriority.color }}
-                />
-              )}
-              <select
+            {/* Priority */}
+            <span className="flex items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wider font-medium">
+                Priority:
+              </span>
+              <InlineSelect
                 value={project.companyPriority?.id || ""}
-                onChange={(e) =>
-                  patchProject({ companyPriorityId: e.target.value || null })
+                options={priOptions}
+                onSave={(v) =>
+                  patchProject({ companyPriorityId: v || null })
                 }
-                className="cursor-pointer rounded border border-border bg-secondary px-2 py-0.5 text-xs text-foreground focus:border-primary focus:outline-none"
-              >
-                <option value="">No Priority</option>
-                {priorities.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+                renderValue={(v) => {
+                  const pri = priorities.find((p) => p.id === v);
+                  if (!pri) return <span className="italic">None</span>;
+                  return (
+                    <span className="flex items-center gap-1">
+                      {pri.color && (
+                        <span
+                          className="inline-block h-2 w-2 rounded-full"
+                          style={{ backgroundColor: pri.color }}
+                        />
+                      )}
+                      {pri.name}
+                    </span>
+                  );
+                }}
+              />
+            </span>
 
-            {/* Project Type */}
-            <InlineSelect
-              value={project.projectType}
-              options={PROJECT_TYPES.map((t) => ({
-                value: t,
-                label: t.replace("_", "-").toLowerCase(),
-              }))}
-              onSave={(v) => patchProject({ projectType: v })}
-            />
+            {/* Type */}
+            <span className="flex items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wider font-medium">
+                Type:
+              </span>
+              <InlineSelect
+                value={project.projectType}
+                options={TYPE_OPTIONS}
+                onSave={(v) => patchProject({ projectType: v })}
+              />
+            </span>
           </div>
         </div>
       </div>
 
-      {/* ======= Metrics row ======= */}
+      {/* Metrics row */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[
           {
@@ -596,7 +777,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         ))}
       </div>
 
-      {/* ======= Task distribution bar ======= */}
+      {/* Task status distribution bar */}
       {metrics.total > 0 && (
         <div className="rounded-xl border border-border bg-card p-4">
           <h3 className="mb-3 text-sm font-semibold text-foreground">
@@ -647,7 +828,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         </div>
       )}
 
-      {/* ======= RACI + Tasks ======= */}
+      {/* Two-column: RACI + Tasks */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* RACI panel — editable */}
         <div className="rounded-xl border border-border bg-card p-4 lg:col-span-1">
@@ -656,36 +837,40 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
             Team (RACI)
           </h3>
           <div className="space-y-4">
-            <RaciSection
-              label="Sponsor"
-              users={project.sponsor}
-              teamMembers={teamMembers}
-              onUpdate={(ids) => patchProject({ sponsorIds: ids })}
-            />
-            <RaciSection
-              label="Responsible"
-              users={project.responsible}
-              teamMembers={teamMembers}
-              onUpdate={(ids) => patchProject({ responsibleIds: ids })}
-            />
-            <RaciSection
-              label="Accountable"
-              users={project.accountable}
-              teamMembers={teamMembers}
-              onUpdate={(ids) => patchProject({ accountableIds: ids })}
-            />
-            <RaciSection
-              label="Consulted"
-              users={project.consulted}
-              teamMembers={teamMembers}
-              onUpdate={(ids) => patchProject({ consultedIds: ids })}
-            />
-            <RaciSection
-              label="Informed"
-              users={project.informed}
-              teamMembers={teamMembers}
-              onUpdate={(ids) => patchProject({ informedIds: ids })}
-            />
+            {RACI_ROLES.map(({ key, label, field }) => {
+              const users = project[key as keyof ProjectFull] as UserSummary[];
+              return (
+                <div key={key}>
+                  <p className="mb-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    {label}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {users.length > 0 ? (
+                      users.map((u) => (
+                        <UserChip
+                          key={u.id}
+                          user={u}
+                          onRemove={() =>
+                            handleRemoveUser(key, field, u.id)
+                          }
+                        />
+                      ))
+                    ) : (
+                      <span className="text-xs italic text-muted-foreground mr-1.5">
+                        None
+                      </span>
+                    )}
+                    <UserPicker
+                      allUsers={teamUsers}
+                      currentIds={users.map((u) => u.id)}
+                      onAdd={(userId) =>
+                        handleAddUser(key, field, userId)
+                      }
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -749,7 +934,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         </div>
       </div>
 
-      {/* ======= Sub-projects ======= */}
+      {/* Sub-projects */}
       {project.children && project.children.length > 0 && (
         <div className="rounded-xl border border-border bg-card p-4">
           <h3 className="mb-3 text-sm font-semibold text-foreground">

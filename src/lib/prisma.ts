@@ -9,12 +9,14 @@ function createPrismaClient(): PrismaClient {
     throw new Error("DATABASE_URL environment variable is not set");
   }
 
+  const useSSL = process.env.NODE_ENV === "production" || process.env.DATABASE_SSL === "true";
+
   const adapter = new PrismaPg({
     connectionString,
     max: 10,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
-    ssl: { rejectUnauthorized: false },
+    ...(useSSL ? { ssl: { rejectUnauthorized: false } } : {}),
   });
 
   return new PrismaClient({ adapter });

@@ -13,6 +13,7 @@ export async function GET(): Promise<NextResponse> {
 
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
     const fiveDaysAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
     const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
@@ -33,6 +34,7 @@ export async function GET(): Promise<NextResponse> {
       activeProjects,
       recentlyCompleted,
       statusCounts,
+      lastWeekCompleted,
     ] = await Promise.all([
       // Stale tasks: active tasks not updated in 5+ days
       prisma.task.findMany({
@@ -151,12 +153,24 @@ export async function GET(): Promise<NextResponse> {
         by: ["status"],
         _count: { status: true },
       }),
+
+      // Last week's completed count (7-14 days ago) — for velocity comparison
+      prisma.task.count({
+        where: {
+          status: "DONE",
+          updatedAt: { gte: fourteenDaysAgo, lt: sevenDaysAgo },
+        },
+      }),
     ]);
 
-    // Compute project summaries with progress
+    // Compute project summaries with progress + task distribution
     const projectSummaries = activeProjects.map((p) => {
       const total = p.tasks.length;
       const done = p.tasks.filter((t) => t.status === "DONE").length;
+      const statusDist: Record<string, number> = {};
+      for (const t of p.tasks) {
+        statusDist[t.status] = (statusDist[t.status] || 0) + 1;
+      }
       return {
         id: p.id,
         name: p.name,
@@ -164,6 +178,7 @@ export async function GET(): Promise<NextResponse> {
         totalTasks: total,
         doneTasks: done,
         progress: total > 0 ? Math.round((done / total) * 100) : 0,
+        statusDistribution: statusDist,
       };
     });
 
@@ -177,16 +192,34 @@ export async function GET(): Promise<NextResponse> {
       0
     );
 
+    // Compute urgency scores for at-risk dependencies
+    const scoredAtRisk = atRiskDependencies.map((t) => {
+      const overdueDays = t.dueDate
+        ? Math.max(0, Math.floor((now.getTime() - new Date(t.dueDate).getTime()) / (1000 * 60 * 60 * 24)))
+        : 0;
+      const staleDays = Math.floor(
+        (now.getTime() - new Date(t.updatedAt).getTime()) / (1000 * 60 * 60 * 24)
+      );
+      const dependentCount = t.dependedBy?.length || 0;
+      const urgencyScore = overdueDays * 2 + dependentCount * 3 + staleDays;
+      return { ...t, urgencyScore };
+    });
+    scoredAtRisk.sort((a, b) => b.urgencyScore - a.urgencyScore);
+
     return NextResponse.json({
       staleTasks,
       upcomingDeadlines,
       overdueTasks,
       blockedTasks,
-      atRiskDependencies,
+      atRiskDependencies: scoredAtRisk,
       projectSummaries,
       recentlyCompleted,
       taskStatusOverview,
       totalTasks,
+      velocity: {
+        thisWeek: recentlyCompleted.length,
+        lastWeek: lastWeekCompleted,
+      },
     });
   } catch (error) {
     console.error("GET /api/dashboard error:", error);
