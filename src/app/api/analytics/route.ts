@@ -7,6 +7,9 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCredentials } from "@/lib/analytics/credentials";
 import { fetchHubSpotData, fetchStripeData, fetchMercuryData } from "@/lib/analytics/fetchers";
+import { fetchGAData, fetchWebflowData } from "@/lib/analytics/fetchers-ga-webflow";
+import { fetchGoogleAdsData, fetchMetaAdsData, fetchMetaPageData, fetchRedditAdsData } from "@/lib/analytics/fetchers-ads";
+import { fetchCodaData } from "@/lib/analytics/fetchers-coda";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 
 // Cache: revalidate every hour
@@ -29,40 +32,110 @@ export async function GET(request: Request) {
     hubspot: null,
     stripe: null,
     mercury: null,
+    googleAnalytics: null,
+    googleAds: null,
+    metaAds: null,
+    metaPage: null,
+    redditAds: null,
+    webflow: null,
+    coda: null,
     lastFullRefresh: new Date().toISOString(),
     errors: [],
   };
 
-  // Fetch all sources in parallel
-  const [hubspotResult, stripeResult, mercuryResult] = await Promise.allSettled([
-    creds.hubspotToken
-      ? fetchHubSpotData(creds.hubspotToken)
-      : Promise.reject(new Error("No HubSpot token configured")),
-    creds.stripeKey
-      ? fetchStripeData(creds.stripeKey)
-      : Promise.reject(new Error("No Stripe key configured")),
-    creds.mercuryKey
-      ? fetchMercuryData(creds.mercuryKey)
-      : Promise.reject(new Error("No Mercury key configured")),
-  ]);
+  // Build fetcher array — only include sources with credentials
+  type FetcherEntry = { key: string; fn: () => Promise<unknown> };
+  const fetchers: FetcherEntry[] = [];
 
-  if (hubspotResult.status === "fulfilled") {
-    result.hubspot = hubspotResult.value;
-  } else {
-    result.errors.push({ source: "hubspot", message: hubspotResult.reason?.message || "Failed" });
+  // Existing sources
+  if (creds.hubspotToken) {
+    fetchers.push({ key: "hubspot", fn: () => fetchHubSpotData(creds.hubspotToken!) });
+  }
+  if (creds.stripeKey) {
+    fetchers.push({ key: "stripe", fn: () => fetchStripeData(creds.stripeKey!) });
+  }
+  if (creds.mercuryKey) {
+    fetchers.push({ key: "mercury", fn: () => fetchMercuryData(creds.mercuryKey!) });
   }
 
-  if (stripeResult.status === "fulfilled") {
-    result.stripe = stripeResult.value;
-  } else {
-    result.errors.push({ source: "stripe", message: stripeResult.reason?.message || "Failed" });
+  // Google Analytics (GA4) — needs all 3 service account fields
+  if (creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey) {
+    fetchers.push({
+      key: "googleAnalytics",
+      fn: () => fetchGAData(creds.gaPropertyId!, creds.gaClientEmail!, creds.gaPrivateKey!),
+    });
   }
 
-  if (mercuryResult.status === "fulfilled") {
-    result.mercury = mercuryResult.value;
-  } else {
-    result.errors.push({ source: "mercury", message: mercuryResult.reason?.message || "Failed" });
+  // Google Ads — needs all 5 fields
+  if (creds.googleAdsDevToken && creds.googleAdsCustomerId && creds.googleAdsRefreshToken && creds.googleAdsClientId && creds.googleAdsClientSecret) {
+    fetchers.push({
+      key: "googleAds",
+      fn: () => fetchGoogleAdsData(
+        creds.googleAdsDevToken!, creds.googleAdsCustomerId!,
+        creds.googleAdsRefreshToken!, creds.googleAdsClientId!, creds.googleAdsClientSecret!,
+      ),
+    });
   }
+
+  // Meta Ads
+  if (creds.metaAccessToken && creds.metaAdAccountId) {
+    fetchers.push({
+      key: "metaAds",
+      fn: () => fetchMetaAdsData(creds.metaAccessToken!, creds.metaAdAccountId!),
+    });
+  }
+
+  // Meta Page Insights
+  if (creds.metaAccessToken && creds.metaPageId) {
+    fetchers.push({
+      key: "metaPage",
+      fn: () => fetchMetaPageData(creds.metaAccessToken!, creds.metaPageId!),
+    });
+  }
+
+  // Reddit Ads
+  if (creds.redditClientId && creds.redditClientSecret && creds.redditRefreshToken && creds.redditAdAccountId) {
+    fetchers.push({
+      key: "redditAds",
+      fn: () => fetchRedditAdsData(
+        creds.redditClientId!, creds.redditClientSecret!,
+        creds.redditRefreshToken!, creds.redditAdAccountId!,
+      ),
+    });
+  }
+
+  // Webflow
+  if (creds.webflowApiToken && creds.webflowSiteId) {
+    fetchers.push({
+      key: "webflow",
+      fn: () => fetchWebflowData(creds.webflowApiToken!, creds.webflowSiteId!),
+    });
+  }
+
+  // Coda
+  if (creds.codaApiToken && creds.codaDocId) {
+    fetchers.push({
+      key: "coda",
+      fn: () => fetchCodaData(creds.codaApiToken!, creds.codaDocId!),
+    });
+  }
+
+  // Execute all fetchers in parallel
+  const results = await Promise.allSettled(fetchers.map((f) => f.fn()));
+
+  // Map results back to the response object
+  results.forEach((outcome, i) => {
+    const { key } = fetchers[i];
+    if (outcome.status === "fulfilled") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (result as any)[key] = outcome.value;
+    } else {
+      result.errors.push({
+        source: key,
+        message: outcome.reason?.message || "Failed",
+      });
+    }
+  });
 
   return NextResponse.json(result, {
     headers: {

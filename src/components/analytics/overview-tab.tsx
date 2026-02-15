@@ -3,6 +3,7 @@
 import {
   DollarSign, Users, TrendingUp, Wallet,
   ArrowUpRight, ArrowDownRight, Activity, CreditCard,
+  Globe, Megaphone,
 } from "lucide-react";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import { StatCard } from "./stat-card";
@@ -14,16 +15,34 @@ function fmt$(n: number) {
   return `$${n.toFixed(0)}`;
 }
 
+function fmtN(n: number) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toLocaleString();
+}
+
 function fmtPct(n: number) { return `${n.toFixed(1)}%`; }
+
+function pctChange(current: number, previous: number): string {
+  if (previous === 0) return current > 0 ? "+∞%" : "—";
+  const change = ((current - previous) / previous) * 100;
+  return `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`;
+}
 
 export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
   if (!data) return <EmptyState />;
 
-  const { hubspot, stripe, mercury } = data;
+  const { hubspot, stripe, mercury, googleAnalytics, googleAds, metaAds } = data;
   const funnel = hubspot?.funnel;
   const revenue = stripe?.revenue;
   const subs = stripe?.subscriptions;
   const cash = mercury?.cashFlow;
+  const ga = googleAnalytics;
+
+  // Compute total ad spend across platforms
+  const totalAdSpend =
+    (googleAds?.totalSpend || 0) + (metaAds?.totalSpend || 0);
+  const hasAdData = !!(googleAds || metaAds);
 
   return (
     <div className="space-y-6">
@@ -37,10 +56,11 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
           icon={DollarSign}
         />
         <StatCard
-          label="Active Subscriptions"
-          value={subs ? subs.active.toLocaleString() : "—"}
-          subtitle={subs ? `${subs.pastDue} past due · ${subs.trialing} trialing` : undefined}
-          icon={CreditCard}
+          label="Website Sessions (30d)"
+          value={ga ? fmtN(ga.sessions30d) : "—"}
+          change={ga ? pctChange(ga.sessions30d, ga.sessionsPrev30d) : undefined}
+          changeType={ga && ga.sessions30d >= ga.sessionsPrev30d ? "positive" : "negative"}
+          icon={Globe}
         />
         <StatCard
           label="Pipeline Deals"
@@ -54,6 +74,38 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
           change={cash ? `${cash.runway.toFixed(1)} months runway` : undefined}
           changeType={cash && cash.runway > 6 ? "positive" : cash && cash.runway > 3 ? "neutral" : "negative"}
           icon={Wallet}
+        />
+      </div>
+
+      {/* Ad Spend + Subscriptions Row */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          label="Active Subscriptions"
+          value={subs ? subs.active.toLocaleString() : "—"}
+          subtitle={subs ? `${subs.pastDue} past due · ${subs.trialing} trialing` : undefined}
+          icon={CreditCard}
+        />
+        <StatCard
+          label="Total Ad Spend (30d)"
+          value={hasAdData ? fmt$(totalAdSpend) : "—"}
+          subtitle={hasAdData ? [
+            googleAds ? `Google: ${fmt$(googleAds.totalSpend)}` : null,
+            metaAds ? `Meta: ${fmt$(metaAds.totalSpend)}` : null,
+          ].filter(Boolean).join(" · ") : undefined}
+          icon={Megaphone}
+        />
+        <StatCard
+          label="Unique Visitors (30d)"
+          value={ga ? fmtN(ga.users30d) : "—"}
+          change={ga ? pctChange(ga.users30d, ga.usersPrev30d) : undefined}
+          changeType={ga && ga.users30d >= ga.usersPrev30d ? "positive" : "negative"}
+          icon={Users}
+        />
+        <StatCard
+          label="Bounce Rate"
+          value={ga ? fmtPct(ga.bounceRate * 100) : "—"}
+          subtitle={ga ? `Avg session: ${Math.round(ga.avgSessionDuration)}s` : undefined}
+          icon={Activity}
         />
       </div>
 
@@ -220,7 +272,7 @@ function EmptyState() {
       <div className="text-center">
         <TrendingUp className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
         <p className="text-sm text-muted-foreground">No analytics data available</p>
-        <p className="text-xs text-muted-foreground">Connect HubSpot, Stripe, or Mercury to see metrics</p>
+        <p className="text-xs text-muted-foreground">Connect your data sources to see metrics</p>
       </div>
     </div>
   );

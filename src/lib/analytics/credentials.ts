@@ -7,6 +7,31 @@ export interface AnalyticsCredentials {
   hubspotToken: string | null;
   stripeKey: string | null;
   mercuryKey: string | null;
+  // Google Analytics (GA4)
+  gaPropertyId: string | null;
+  gaClientEmail: string | null;
+  gaPrivateKey: string | null;
+  // Google Ads
+  googleAdsDevToken: string | null;
+  googleAdsCustomerId: string | null;
+  googleAdsRefreshToken: string | null;
+  googleAdsClientId: string | null;
+  googleAdsClientSecret: string | null;
+  // Meta (Facebook/Instagram)
+  metaAccessToken: string | null;
+  metaAdAccountId: string | null;
+  metaPageId: string | null;
+  // Reddit Ads
+  redditClientId: string | null;
+  redditClientSecret: string | null;
+  redditRefreshToken: string | null;
+  redditAdAccountId: string | null;
+  // Webflow
+  webflowApiToken: string | null;
+  webflowSiteId: string | null;
+  // Coda
+  codaApiToken: string | null;
+  codaDocId: string | null;
 }
 
 /**
@@ -34,5 +59,40 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     }
   }
 
-  return { hubspotToken, stripeKey, mercuryKey };
+  return {
+    hubspotToken,
+    stripeKey,
+    mercuryKey,
+
+    // Google Analytics (GA4) — Service Account
+    gaPropertyId: process.env.GA_PROPERTY_ID?.trim() || null,
+    gaClientEmail: process.env.GA_CLIENT_EMAIL?.trim() || null,
+    gaPrivateKey: process.env.GA_PRIVATE_KEY?.replace(/\\n/g, "\n").trim() || null,
+
+    // Google Ads
+    googleAdsDevToken: process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim() || null,
+    googleAdsCustomerId: process.env.GOOGLE_ADS_CUSTOMER_ID?.trim() || null,
+    googleAdsRefreshToken: process.env.GOOGLE_ADS_REFRESH_TOKEN?.trim() || null,
+    googleAdsClientId: process.env.GOOGLE_ADS_CLIENT_ID?.trim() || null,
+    googleAdsClientSecret: process.env.GOOGLE_ADS_CLIENT_SECRET?.trim() || null,
+
+    // Meta (Facebook/Instagram)
+    metaAccessToken: process.env.META_ACCESS_TOKEN?.trim() || null,
+    metaAdAccountId: process.env.META_AD_ACCOUNT_ID?.trim() || null,
+    metaPageId: process.env.META_PAGE_ID?.trim() || null,
+
+    // Reddit Ads
+    redditClientId: process.env.REDDIT_CLIENT_ID?.trim() || null,
+    redditClientSecret: process.env.REDDIT_CLIENT_SECRET?.trim() || null,
+    redditRefreshToken: process.env.REDDIT_REFRESH_TOKEN?.trim() || null,
+    redditAdAccountId: process.env.REDDIT_AD_ACCOUNT_ID?.trim() || null,
+
+    // Webflow
+    webflowApiToken: process.env.WEBFLOW_API_TOKEN?.trim() || null,
+    webflowSiteId: process.env.WEBFLOW_SITE_ID?.trim() || "67b7700312bb763ca2083376",
+
+    // Coda
+    codaApiToken: process.env.CODA_API_TOKEN?.trim() || null,
+    codaDocId: process.env.CODA_DOC_ID?.trim() || "dPjhbdhLZh9",
+  };
 }

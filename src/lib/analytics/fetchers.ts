@@ -66,7 +66,7 @@ export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "unknown");
-      throw new Error(`HubSpot deals API error ${res.status} (token length: ${token.length}, prefix: ${token.substring(0, 7)}): ${errText}`);
+      throw new Error(`HubSpot deals API error ${res.status}: ${errText}`);
     }
 
     const data = await res.json();

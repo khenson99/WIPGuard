@@ -5,9 +5,10 @@ import { BarChart3, RefreshCw, Clock, AlertCircle } from "lucide-react";
 import { ANALYTICS_TABS } from "@/lib/analytics/types";
 import type { AnalyticsDashboardData, AnalyticsTab } from "@/lib/analytics/types";
 import { OverviewTab } from "@/components/analytics/overview-tab";
-import { MarketingTab } from "@/components/analytics/marketing-tab";
 import { SalesFunnelTab } from "@/components/analytics/sales-funnel-tab";
-import { ActionPlanTab } from "@/components/analytics/action-plan-tab";
+import { FinanceTab } from "@/components/analytics/finance-tab";
+import { MarketingTabNew } from "@/components/analytics/marketing-tab-new";
+import { TasksTab } from "@/components/analytics/tasks-tab";
 
 export default function AnalyticsPage() {
   const [activeTab, setActiveTab] = useState<AnalyticsTab>("overview");
@@ -55,7 +56,7 @@ export default function AnalyticsPage() {
             <div>
               <h1 className="text-2xl font-bold text-foreground">Analytics</h1>
               <p className="text-sm text-muted-foreground">
-                Live data from HubSpot, Stripe & Mercury
+                Live data from HubSpot, Stripe, Mercury, GA, Ads & more
               </p>
             </div>
           </div>
@@ -118,9 +119,10 @@ export default function AnalyticsPage() {
         ) : (
           <>
             {activeTab === "overview" && <OverviewTab data={data} />}
-            {activeTab === "marketing" && <MarketingTab data={data} />}
-            {activeTab === "sales-funnel" && <SalesFunnelTab data={data} />}
-            {activeTab === "action-plan" && <ActionPlanTab data={data} />}
+            {activeTab === "sales" && <SalesFunnelTab data={data} />}
+            {activeTab === "finance" && <FinanceTab data={data} />}
+            {activeTab === "marketing" && <MarketingTabNew data={data} />}
+            {activeTab === "tasks" && <TasksTab data={data} />}
           </>
         )}
       </div>
