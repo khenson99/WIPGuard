@@ -570,10 +570,10 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
         {data.semrush ? (
           <div className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <StatCard title="Authority Score" value={String(data.semrush.authorityScore)} icon={Award} />
-              <StatCard title="Backlinks" value={fmtNum(data.semrush.backlinks)} icon={Link2} />
-              <StatCard title="Organic Keywords" value={fmtNum(data.semrush.organicKeywords)} icon={Search} />
-              <StatCard title="Organic Traffic" value={fmtNum(data.semrush.organicTraffic)} icon={TrendingUp} />
+              <StatCard label="Authority Score" value={String(data.semrush.authorityScore)} icon={Award} />
+              <StatCard label="Backlinks" value={fmtNum(data.semrush.backlinks)} icon={Link2} />
+              <StatCard label="Organic Keywords" value={fmtNum(data.semrush.organicKeywords)} icon={Search} />
+              <StatCard label="Organic Traffic" value={fmtNum(data.semrush.organicTraffic)} icon={TrendingUp} />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="bg-card border border-border rounded-lg p-4">

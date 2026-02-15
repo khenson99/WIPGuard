@@ -97,9 +97,6 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     webflowApiToken: process.env.WEBFLOW_API_TOKEN?.trim() || null,
     webflowSiteId: process.env.WEBFLOW_SITE_ID?.trim() || "67b7700312bb763ca2083376",
 
-    // SEMrush
-  semrushApiToken: string | null;
-
   // Coda
     codaApiToken: process.env.CODA_API_TOKEN?.trim() || null,
     codaDocId: process.env.CODA_DOC_ID?.trim() || "dPjhbdhLZh9",
