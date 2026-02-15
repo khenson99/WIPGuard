@@ -14,23 +14,31 @@ so everything works without refactoring.
 - **PostgreSQL** via Railway's managed Postgres plugin
 - Auto-deploy on push to `main` (after CI passes on GitHub Actions)
 
+## Canonical Config Locations
+
+- Docker build: repo root `Dockerfile`
+- Docker ignore: repo root `.dockerignore`
+- Railway config: repo root `railway.json`
+- CI workflow: repo root `.github/workflows/ci.yml`
+- Root command entrypoints: repo root `package.json` (delegates to `app/`)
+
 ## Implementation Steps
 
 ### 1. Add `output: "standalone"` to next.config.ts
 
 Required for Docker-optimized Next.js builds. Produces a self-contained `server.js`.
 
-### 2. Create multi-stage Dockerfile
+### 2. Create multi-stage Dockerfile at repo root
 
 - Stage 1 (`deps`): Install node_modules
-- Stage 2 (`builder`): Generate Prisma client, build Next.js
-- Stage 3 (`runner`): Production image with standalone output + static/public assets
+- Stage 2 (`builder`): Copy `app/`, generate Prisma client, build Next.js
+- Stage 3 (`runner`): Production image with standalone output + static/public assets + migration runner
 
-### 3. Create .dockerignore
+### 3. Create repo-root `.dockerignore`
 
 Exclude node_modules, .git, .env, .next from Docker context.
 
-### 4. Add railway.json (optional)
+### 4. Add repo-root `railway.json` (optional)
 
 Configure build and deploy settings: Dockerfile path, health check, restart policy.
 
@@ -47,8 +55,8 @@ Configure build and deploy settings: Dockerfile path, health check, restart poli
 
 ### 6. Prisma migration strategy
 
-Run `npx prisma migrate deploy` during Docker build (after Prisma generate).
-This applies pending migrations to the Railway Postgres database.
+Run migrations at container startup via `app/docker-entrypoint.sh` using `migrate.cjs`.
+This applies pending SQL migrations before the Next.js server starts.
 
 ### 7. Google OAuth redirect URI
 
@@ -61,4 +69,4 @@ Add Railway domain to authorized redirect URIs in Google Cloud Console:
 - No CORS changes
 - No separate back-end service
 - All API routes work as-is
-- GitHub Actions CI continues to run lint/typecheck/build
+- GitHub Actions CI continues to run lint/typecheck/build from `app` via root workflow defaults

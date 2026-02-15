@@ -6,6 +6,7 @@ import type {
   SprintSummary,
   ProjectSummary,
   UserSummary,
+  DepartmentSummary,
 } from "@/types";
 import { COLUMN_ORDER, COLUMN_LABELS } from "@/types";
 
@@ -17,6 +18,7 @@ interface BoardState {
   sprints: SprintSummary[];
   activeSprint: SprintSummary | null;
   projects: ProjectSummary[];
+  departments: DepartmentSummary[];
   teamMembers: UserSummary[];
   filterAssignee: string | null;
   filterProject: string | null;
@@ -37,6 +39,7 @@ interface BoardState {
   setSprints: (sprints: SprintSummary[]) => void;
   setActiveSprint: (sprint: SprintSummary | null) => void;
   setProjects: (projects: ProjectSummary[]) => void;
+  setDepartments: (departments: DepartmentSummary[]) => void;
   setTeamMembers: (members: UserSummary[]) => void;
   setFilter: (
     key: "filterAssignee" | "filterProject" | "filterPriority" | "filterSprint",
@@ -65,6 +68,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
   sprints: [],
   activeSprint: null,
   projects: [],
+  departments: [],
   teamMembers: [],
   filterAssignee: null,
   filterProject: null,
@@ -116,6 +120,8 @@ export const useBoardStore = create<BoardState>((set, get) => ({
   setActiveSprint: (sprint) => set({ activeSprint: sprint }),
 
   setProjects: (projects) => set({ projects }),
+
+  setDepartments: (departments) => set({ departments }),
 
   setTeamMembers: (members) => set({ teamMembers: members }),
 

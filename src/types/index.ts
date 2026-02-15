@@ -158,3 +158,30 @@ export interface ProjectSummary {
   projectType: ProjectType;
   companyPriorityId: string | null;
 }
+
+export interface DepartmentSummary {
+  id: string;
+  name: string;
+  color: string | null;
+  _count?: { projects: number };
+}
+
+export interface ProjectWithDetails {
+  id: string;
+  name: string;
+  description: string | null;
+  status: ProjectStatus;
+  projectType: ProjectType;
+  departmentId: string | null;
+  department: { id: string; name: string; color: string | null } | null;
+  companyPriority: { id: string; name: string; color: string | null } | null;
+  responsible: UserSummary[];
+  accountable: UserSummary[];
+  consulted: UserSummary[];
+  informed: UserSummary[];
+  sponsor: UserSummary[];
+  _count: { tasks: number };
+  taskStatusCounts?: Record<string, number>;
+  createdAt: string;
+  updatedAt: string;
+}

@@ -11,6 +11,8 @@ interface Project {
   status: ProjectStatus;
   projectType: ProjectType;
   businessFunction: string | null;
+  departmentId: string | null;
+  department?: { id: string; name: string; color: string | null } | null;
   companyPriorityId: string | null;
   companyPriority?: { id: string; name: string } | null;
   _count?: { tasks: number };
@@ -21,12 +23,18 @@ interface PrioritySummary {
   name: string;
 }
 
+interface DepartmentOption {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
 interface ProjectForm {
   name: string;
   description: string;
   status: ProjectStatus;
   projectType: ProjectType;
-  businessFunction: string;
+  departmentId: string;
   companyPriorityId: string;
 }
 
@@ -35,7 +43,7 @@ const emptyForm: ProjectForm = {
   description: "",
   status: "ACTIVE",
   projectType: "ONE_OFF",
-  businessFunction: "",
+  departmentId: "",
   companyPriorityId: "",
 };
 
@@ -62,6 +70,7 @@ const STATUS_COLORS: Record<ProjectStatus, string> = {
 export function ProjectsTab() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [priorities, setPriorities] = useState<PrioritySummary[]>([]);
+  const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -70,15 +79,17 @@ export function ProjectsTab() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [projRes, priRes] = await Promise.all([
+      const [projRes, priRes, deptRes] = await Promise.all([
         fetch("/api/projects"),
         fetch("/api/priorities"),
+        fetch("/api/departments"),
       ]);
       if (projRes.ok) setProjects(await projRes.json());
       if (priRes.ok) {
         const priData = await priRes.json();
         setPriorities(priData.map((p: { id: string; name: string }) => ({ id: p.id, name: p.name })));
       }
+      if (deptRes.ok) setDepartments(await deptRes.json());
     } catch {
       // Silently handle
     } finally {
@@ -103,7 +114,7 @@ export function ProjectsTab() {
       description: project.description || "",
       status: project.status,
       projectType: project.projectType,
-      businessFunction: project.businessFunction || "",
+      departmentId: project.departmentId || "",
       companyPriorityId: project.companyPriorityId || "",
     });
     setShowForm(true);
@@ -126,7 +137,7 @@ export function ProjectsTab() {
         description: form.description || null,
         status: form.status,
         projectType: form.projectType,
-        businessFunction: form.businessFunction || null,
+        departmentId: form.departmentId || null,
         companyPriorityId: form.companyPriorityId || null,
       };
 
@@ -283,17 +294,22 @@ export function ProjectsTab() {
 
             <div>
               <label className="mb-1 block text-xs text-muted-foreground">
-                Business Function
+                Department
               </label>
-              <input
-                type="text"
-                value={form.businessFunction}
+              <select
+                value={form.departmentId}
                 onChange={(e) =>
-                  setForm({ ...form, businessFunction: e.target.value })
+                  setForm({ ...form, departmentId: e.target.value })
                 }
-                placeholder="e.g. Marketing"
-                className="w-full rounded border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:border-ring focus:outline-none"
-              />
+                className="w-full rounded border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
+              >
+                <option value="">None</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 

@@ -8,11 +8,13 @@ import { SprintsTab } from "@/components/settings/sprints-tab";
 import { ProjectsTab } from "@/components/settings/projects-tab";
 import { PrioritiesTab } from "@/components/settings/priorities-tab";
 import { TeamTab } from "@/components/settings/team-tab";
+import { DepartmentsTab } from "@/components/settings/departments-tab";
 
 const TABS = [
   { id: "board", label: "Board & WIP Limits" },
   { id: "sprints", label: "Sprints" },
   { id: "projects", label: "Projects" },
+  { id: "departments", label: "Departments" },
   { id: "priorities", label: "Company Priorities" },
   { id: "team", label: "Team" },
 ] as const;
@@ -57,6 +59,7 @@ export default function SettingsPage() {
         {activeTab === "board" && <BoardSettingsTab />}
         {activeTab === "sprints" && <SprintsTab />}
         {activeTab === "projects" && <ProjectsTab />}
+        {activeTab === "departments" && <DepartmentsTab />}
         {activeTab === "priorities" && <PrioritiesTab />}
         {activeTab === "team" && <TeamTab />}
       </div>

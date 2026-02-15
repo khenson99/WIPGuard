@@ -22,17 +22,29 @@ export async function GET(): Promise<NextResponse> {
     const projects = await prisma.project.findMany({
       include: {
         companyPriority: { select: { id: true, name: true, color: true } },
+        department: { select: { id: true, name: true, color: true } },
         responsible: { select: USER_SELECT },
         accountable: { select: USER_SELECT },
         consulted: { select: USER_SELECT },
         informed: { select: USER_SELECT },
         sponsor: { select: USER_SELECT },
         _count: { select: { tasks: true } },
+        tasks: { select: { status: true } },
       },
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json(projects);
+    // Compute task status counts for each project
+    const projectsWithCounts = projects.map((p) => {
+      const taskStatusCounts: Record<string, number> = {};
+      for (const t of p.tasks) {
+        taskStatusCounts[t.status] = (taskStatusCounts[t.status] || 0) + 1;
+      }
+      const { tasks: _tasks, ...rest } = p;
+      return { ...rest, taskStatusCounts };
+    });
+
+    return NextResponse.json(projectsWithCounts);
   } catch (error) {
     console.error("Failed to fetch projects:", error);
     return NextResponse.json(
@@ -67,6 +79,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       projectType,
       companyPriorityId,
       businessFunction,
+      departmentId,
       parentId,
       responsibleIds = [],
       accountableIds = [],
@@ -90,6 +103,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         projectType,
         companyPriorityId,
         businessFunction,
+        departmentId: departmentId || null,
         parentId,
         responsible: { connect: responsibleIds.map((id: string) => ({ id })) },
         accountable: { connect: accountableIds.map((id: string) => ({ id })) },
@@ -99,6 +113,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       },
       include: {
         companyPriority: { select: { id: true, name: true, color: true } },
+        department: { select: { id: true, name: true, color: true } },
         responsible: { select: USER_SELECT },
         accountable: { select: USER_SELECT },
         consulted: { select: USER_SELECT },

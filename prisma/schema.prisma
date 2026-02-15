@@ -104,6 +104,20 @@ model CompanyPriority {
 }
 
 // ============================================================
+// DEPARTMENTS (Swim Lanes)
+// ============================================================
+
+model Department {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  color     String?
+  projects  Project[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================
 // PROJECTS
 // ============================================================
 
@@ -121,6 +135,9 @@ model Project {
   companyPriorityId String?
   companyPriority   CompanyPriority? @relation(fields: [companyPriorityId], references: [id])
   businessFunction  String?
+
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
 
   responsible User[] @relation("ProjectResponsible")
   accountable User[] @relation("ProjectAccountable")

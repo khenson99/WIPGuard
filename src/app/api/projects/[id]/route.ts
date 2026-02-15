@@ -12,6 +12,59 @@ const USER_SELECT = {
   image: true,
 } as const;
 
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<NextResponse> {
+  try {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const { id } = await params;
+
+    const project = await prisma.project.findUnique({
+      where: { id },
+      include: {
+        companyPriority: { select: { id: true, name: true, color: true } },
+        department: { select: { id: true, name: true, color: true } },
+        responsible: { select: USER_SELECT },
+        accountable: { select: USER_SELECT },
+        consulted: { select: USER_SELECT },
+        informed: { select: USER_SELECT },
+        sponsor: { select: USER_SELECT },
+        parent: { select: { id: true, name: true } },
+        children: { select: { id: true, name: true, status: true } },
+        tasks: {
+          include: {
+            responsible: { select: USER_SELECT },
+            accountable: { select: USER_SELECT },
+          },
+          orderBy: { createdAt: "desc" },
+        },
+      },
+    });
+
+    if (!project) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
+    // Compute task status counts
+    const taskStatusCounts: Record<string, number> = {};
+    for (const t of project.tasks) {
+      taskStatusCounts[t.status] = (taskStatusCounts[t.status] || 0) + 1;
+    }
+
+    return NextResponse.json({ ...project, taskStatusCounts });
+  } catch (error) {
+    console.error("Failed to fetch project:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch project" },
+      { status: 500 },
+    );
+  }
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -42,6 +95,7 @@ export async function PATCH(
       projectType,
       companyPriorityId,
       businessFunction,
+      departmentId,
       parentId,
       responsibleIds,
       accountableIds,
@@ -59,6 +113,7 @@ export async function PATCH(
     if (companyPriorityId !== undefined)
       data.companyPriorityId = companyPriorityId;
     if (businessFunction !== undefined) data.businessFunction = businessFunction;
+    if (departmentId !== undefined) data.departmentId = departmentId;
     if (parentId !== undefined) data.parentId = parentId;
 
     // Handle RACI relation updates (set = disconnect all then connect new)
@@ -78,6 +133,7 @@ export async function PATCH(
       data,
       include: {
         companyPriority: { select: { id: true, name: true, color: true } },
+        department: { select: { id: true, name: true, color: true } },
         responsible: { select: USER_SELECT },
         accountable: { select: USER_SELECT },
         consulted: { select: USER_SELECT },
