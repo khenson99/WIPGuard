@@ -29,6 +29,9 @@ export interface AnalyticsCredentials {
   // Webflow
   webflowApiToken: string | null;
   webflowSiteId: string | null;
+  // SEMrush
+  semrushApiToken: string | null;
+
   // Coda
   codaApiToken: string | null;
   codaDocId: string | null;
@@ -87,11 +90,17 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     redditRefreshToken: process.env.REDDIT_REFRESH_TOKEN?.trim() || null,
     redditAdAccountId: process.env.REDDIT_AD_ACCOUNT_ID?.trim() || null,
 
+    // SEMrush
+    semrushApiToken: process.env.SEMRUSH_API_TOKEN?.trim() || null,
+
     // Webflow
     webflowApiToken: process.env.WEBFLOW_API_TOKEN?.trim() || null,
     webflowSiteId: process.env.WEBFLOW_SITE_ID?.trim() || "67b7700312bb763ca2083376",
 
-    // Coda
+    // SEMrush
+  semrushApiToken: string | null;
+
+  // Coda
     codaApiToken: process.env.CODA_API_TOKEN?.trim() || null,
     codaDocId: process.env.CODA_DOC_ID?.trim() || "dPjhbdhLZh9",
   };

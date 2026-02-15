@@ -15,6 +15,9 @@ import {
   Layout,
   ChevronDown,
   ChevronUp,
+  Search,
+  Award,
+  Link2,
 } from 'lucide-react';
 
 interface MarketingTabNewProps {
@@ -556,6 +559,91 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
             <p className="text-muted-foreground text-center py-8">Not configured</p>
           )}
         </div>
+      </div>
+
+      {/* -- SEMrush SEO Intelligence -- */}
+      <div className="mt-6">
+        <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+          <Search className="w-5 h-5 text-[#fc5a29]" />
+          SEMrush SEO Intelligence
+        </h3>
+        {data.semrush ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <StatCard title="Authority Score" value={String(data.semrush.authorityScore)} icon={Award} />
+              <StatCard title="Backlinks" value={fmtNum(data.semrush.backlinks)} icon={Link2} />
+              <StatCard title="Organic Keywords" value={fmtNum(data.semrush.organicKeywords)} icon={Search} />
+              <StatCard title="Organic Traffic" value={fmtNum(data.semrush.organicTraffic)} icon={TrendingUp} />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="bg-card border border-border rounded-lg p-4">
+                <p className="text-sm font-semibold text-foreground mb-2">Organic Search</p>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Keywords</span><span className="text-foreground font-semibold">{fmtNum(data.semrush.organicKeywords)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Traffic</span><span className="text-foreground font-semibold">{fmtNum(data.semrush.organicTraffic)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Traffic Cost</span><span className="text-foreground font-semibold">{fmtCurrency(data.semrush.organicTrafficCost)}</span></div>
+                </div>
+              </div>
+              <div className="bg-card border border-border rounded-lg p-4">
+                <p className="text-sm font-semibold text-foreground mb-2">Paid Search</p>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Keywords</span><span className="text-foreground font-semibold">{fmtNum(data.semrush.paidKeywords)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Traffic</span><span className="text-foreground font-semibold">{fmtNum(data.semrush.paidTraffic)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Traffic Cost</span><span className="text-foreground font-semibold">{fmtCurrency(data.semrush.paidTrafficCost)}</span></div>
+                </div>
+              </div>
+            </div>
+            {data.semrush.topKeywords && data.semrush.topKeywords.length > 0 && (
+              <div className="bg-card border border-border rounded-lg p-4">
+                <p className="text-sm font-semibold text-foreground mb-3">Top Organic Keywords</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left py-2 text-muted-foreground font-medium">Keyword</th>
+                        <th className="text-right py-2 text-muted-foreground font-medium">Pos</th>
+                        <th className="text-right py-2 text-muted-foreground font-medium">Volume</th>
+                        <th className="text-right py-2 text-muted-foreground font-medium">Traffic</th>
+                        <th className="text-right py-2 text-muted-foreground font-medium">CPC</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.semrush.topKeywords.map((kw, idx) => (
+                        <tr key={idx} className="border-b border-border/50">
+                          <td className="py-2 text-foreground">{kw.keyword}</td>
+                          <td className={`py-2 text-right font-semibold ${kw.position <= 3 ? 'text-green-500' : kw.position <= 10 ? 'text-yellow-500' : 'text-muted-foreground'}`}>{kw.position}</td>
+                          <td className="py-2 text-right text-muted-foreground">{fmtNum(kw.volume)}</td>
+                          <td className="py-2 text-right text-muted-foreground">{fmtNum(kw.traffic)}</td>
+                          <td className="py-2 text-right text-muted-foreground">{fmtCurrency(kw.cpc)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {data.semrush.organicCompetitors && data.semrush.organicCompetitors.length > 0 && (
+              <div className="bg-card border border-border rounded-lg p-4">
+                <p className="text-sm font-semibold text-foreground mb-3">Organic Competitors</p>
+                <div className="space-y-2">
+                  {data.semrush.organicCompetitors.map((comp, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-2 bg-secondary/40 rounded text-sm">
+                      <span className="text-foreground font-medium">{comp.domain}</span>
+                      <div className="flex gap-4">
+                        <span className="text-muted-foreground">Common: {fmtNum(comp.commonKeywords)}</span>
+                        <span className="text-muted-foreground">Traffic: {fmtNum(comp.organicTraffic)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-muted-foreground text-center py-8">Not configured</p>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -39,6 +39,7 @@ export async function GET(request: Request) {
     redditAds: null,
     webflow: null,
     coda: null,
+    semrush: null,
     lastFullRefresh: new Date().toISOString(),
     errors: [],
   };
@@ -117,6 +118,14 @@ export async function GET(request: Request) {
     fetchers.push({
       key: "coda",
       fn: () => fetchCodaData(creds.codaApiToken!, creds.codaDocId!),
+    });
+  }
+
+  // SEMrush
+  if (creds.semrushApiToken) {
+    fetchers.push({
+      key: "semrush",
+      fn: () => fetchSemrushData(creds.semrushApiToken!),
     });
   }
 

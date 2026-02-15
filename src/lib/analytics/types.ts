@@ -264,6 +264,41 @@ export interface CodaKanbanData {
 }
 
 // ══════════════════════════════════════════════════════════
+// SEMRUSH TYPES
+// ══════════════════════════════════════════════════════════
+
+export interface SemrushKeyword {
+  keyword: string;
+  position: number;
+  volume: number;
+  cpc: number;
+  traffic: number;
+  url: string;
+}
+
+export interface SemrushCompetitor {
+  domain: string;
+  commonKeywords: number;
+  organicKeywords: number;
+  organicTraffic: number;
+}
+
+export interface SemrushData {
+  domain: string;
+  authorityScore: number;
+  backlinks: number;
+  organicKeywords: number;
+  organicTraffic: number;
+  organicTrafficCost: number;
+  paidKeywords: number;
+  paidTraffic: number;
+  paidTrafficCost: number;
+  topKeywords: SemrushKeyword[];
+  organicCompetitors: SemrushCompetitor[];
+  _meta: AnalyticsTimestamp;
+}
+
+// ══════════════════════════════════════════════════════════
 // COMBINED DASHBOARD
 // ══════════════════════════════════════════════════════════
 
@@ -278,6 +313,7 @@ export interface AnalyticsDashboardData {
   redditAds: RedditAdsData | null;
   webflow: WebflowData | null;
   coda: CodaKanbanData | null;
+  semrush: SemrushData | null;
   lastFullRefresh: string;
   errors: { source: string; message: string }[];
 }
