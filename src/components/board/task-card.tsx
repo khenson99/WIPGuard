@@ -21,7 +21,11 @@ import {
   DIFFICULTY_TAG_STYLES,
   DIFFICULTY_LABELS,
   COLUMN_ORDER,
+  COLUMN_LABELS,
 } from "@/types";
+import type { TaskStatus as TStatus } from "@/types";
+
+export type GroupByMode = "status" | "project" | "department";
 
 interface TaskCardProps {
   task: TaskWithRelations;
@@ -34,6 +38,9 @@ interface TaskCardProps {
   showMetadata: boolean;
   selected: boolean;
   onSelect: () => void;
+  groupBy?: GroupByMode;
+  departmentName?: string | null;
+  departmentColor?: string | null;
 }
 
 export function TaskCard({
@@ -47,6 +54,9 @@ export function TaskCard({
   showMetadata,
   selected,
   onSelect,
+  groupBy = "status",
+  departmentName,
+  departmentColor,
 }: TaskCardProps) {
   const colIdx = COLUMN_ORDER.indexOf(task.status);
   const canRetreat = colIdx > 0;
@@ -148,12 +158,37 @@ export function TaskCard({
             )}
           </div>
 
-          {/* Tags row: project + difficulty + unplanned */}
+          {/* Tags row: contextual metadata based on grouping */}
           {revealMetadata && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {task.project && (
+              {/* Status tag — show when NOT grouped by status */}
+              {groupBy !== "status" && (
+                <span
+                  className="rounded px-1.5 py-0.5 text-[10px] font-medium"
+                  style={{
+                    backgroundColor: `${STATUS_COLORS[task.status]}18`,
+                    color: STATUS_COLORS[task.status],
+                  }}
+                >
+                  {COLUMN_LABELS[task.status as TStatus] || task.status}
+                </span>
+              )}
+              {/* Project tag — show when NOT grouped by project */}
+              {groupBy !== "project" && task.project && (
                 <span className="rounded bg-tag-bg px-1.5 py-0.5 text-[10px] font-medium text-tag-text">
                   {task.project.name}
+                </span>
+              )}
+              {/* Department tag — show when NOT grouped by department */}
+              {groupBy !== "department" && departmentName && (
+                <span
+                  className="rounded px-1.5 py-0.5 text-[10px] font-medium"
+                  style={{
+                    backgroundColor: departmentColor ? `${departmentColor}18` : undefined,
+                    color: departmentColor || undefined,
+                  }}
+                >
+                  {departmentName}
                 </span>
               )}
               <span

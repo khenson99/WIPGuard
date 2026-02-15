@@ -11,7 +11,8 @@ import { TaskModal } from "../tasks/task-modal";
 import { BoardFilters } from "./board-filters";
 import type { TaskStatus, TaskWithRelations, BoardColumn, DepartmentSummary } from "@/types";
 import { COLUMN_ORDER, COLUMN_LABELS } from "@/types";
-import { Eye, EyeOff, Keyboard, Plus, Rows3 } from "lucide-react";
+import type { GroupByMode } from "./task-card";
+import { Eye, EyeOff, Keyboard, Plus, Layers } from "lucide-react";
 import { useSession } from "next-auth/react";
 
 interface KanbanBoardProps {
@@ -26,6 +27,18 @@ const PRESET_DEFAULTS: Record<DisplayPreset, { showMetadata: boolean }> = {
   dense: { showMetadata: false },
   triage: { showMetadata: false },
 };
+
+/* ============================================================
+   GenericColumn — a slimmed-down column shape used for
+   project/department grouping (not tied to TaskStatus)
+   ============================================================ */
+
+interface GenericColumn {
+  id: string;
+  label: string;
+  tasks: TaskWithRelations[];
+  color?: string | null;
+}
 
 export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) {
   const { data: session } = useSession();
@@ -52,9 +65,13 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
   const [displayPreset, setDisplayPreset] = useState<DisplayPreset>("standard");
   const [showMetadata, setShowMetadata] = useState(true);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [swimLaneEnabled, setSwimLaneEnabled] = useState(false);
+  const [groupBy, setGroupBy] = useState<GroupByMode>("status");
   const [departments, setDepartments] = useState<DepartmentSummary[]>([]);
-  const [projectDeptMap, setProjectDeptMap] = useState<Map<string, string | null>>(new Map());
+  const [projectDeptMap, setProjectDeptMap] = useState<
+    Map<string, { deptId: string | null; deptName: string | null; deptColor: string | null }>
+  >(new Map());
+  const [allTasks, setAllTasks] = useState<TaskWithRelations[]>([]);
+  const [projectList, setProjectList] = useState<{ id: string; name: string; departmentId: string | null }[]>([]);
 
   const fetchBoard = useCallback(async () => {
     try {
@@ -86,11 +103,31 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
       setProjects(projects);
       setSprints(sprints);
       setDepartments(depts);
+      setAllTasks(tasks);
+      setProjectList(
+        projects.map((p: { id: string; name: string; departmentId?: string | null }) => ({
+          id: p.id,
+          name: p.name,
+          departmentId: p.departmentId || null,
+        }))
+      );
 
-      // Build project→department mapping
-      const deptMap = new Map<string, string | null>();
+      // Build project→department mapping (includes name/color for card tags)
+      const deptLookup = new Map<string, DepartmentSummary>();
+      for (const d of depts) deptLookup.set(d.id, d);
+
+      const deptMap = new Map<
+        string,
+        { deptId: string | null; deptName: string | null; deptColor: string | null }
+      >();
       for (const p of projects) {
-        deptMap.set(p.id, p.departmentId || null);
+        const dId = p.departmentId || null;
+        const dept = dId ? deptLookup.get(dId) : null;
+        deptMap.set(p.id, {
+          deptId: dId,
+          deptName: dept?.name || null,
+          deptColor: dept?.color || null,
+        });
       }
       setProjectDeptMap(deptMap);
 
@@ -112,7 +149,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
       }
       setWipLimits(limits);
 
-      // Build columns
+      // Build status columns (always needed for store)
       const statusesToShow = filterByStatus || COLUMN_ORDER;
       const boardColumns: BoardColumn[] = statusesToShow.map((status) => ({
         id: status,
@@ -147,6 +184,79 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
     fetchBoard();
   }, [fetchBoard]);
 
+  /* ----- Group By: Project columns ----- */
+  const projectColumns = useMemo((): GenericColumn[] => {
+    if (groupBy !== "project") return [];
+    const colMap = new Map<string, GenericColumn>();
+
+    for (const p of projectList) {
+      colMap.set(p.id, { id: p.id, label: p.name, tasks: [] });
+    }
+    colMap.set("__unassigned__", { id: "__unassigned__", label: "No Project", tasks: [] });
+
+    for (const task of allTasks) {
+      const key = task.projectId && colMap.has(task.projectId) ? task.projectId : "__unassigned__";
+      colMap.get(key)!.tasks.push(task);
+    }
+
+    // Sort tasks within each column by columnOrder
+    for (const col of colMap.values()) {
+      col.tasks.sort((a, b) => a.columnOrder - b.columnOrder);
+    }
+
+    // Return columns with tasks + always include empty project columns
+    const result: GenericColumn[] = [];
+    for (const p of projectList) {
+      const col = colMap.get(p.id)!;
+      result.push(col);
+    }
+    const unassigned = colMap.get("__unassigned__")!;
+    if (unassigned.tasks.length > 0) result.push(unassigned);
+    return result;
+  }, [groupBy, allTasks, projectList]);
+
+  /* ----- Group By: Department columns ----- */
+  const departmentColumns = useMemo((): GenericColumn[] => {
+    if (groupBy !== "department") return [];
+    const colMap = new Map<string, GenericColumn>();
+
+    for (const d of departments) {
+      colMap.set(d.id, { id: d.id, label: d.name, tasks: [], color: d.color });
+    }
+    colMap.set("__unassigned__", { id: "__unassigned__", label: "No Department", tasks: [] });
+
+    for (const task of allTasks) {
+      const deptInfo = task.projectId ? projectDeptMap.get(task.projectId) : null;
+      const key = deptInfo?.deptId && colMap.has(deptInfo.deptId) ? deptInfo.deptId : "__unassigned__";
+      colMap.get(key)!.tasks.push(task);
+    }
+
+    for (const col of colMap.values()) {
+      col.tasks.sort((a, b) => a.columnOrder - b.columnOrder);
+    }
+
+    const result: GenericColumn[] = [];
+    for (const d of departments) {
+      const col = colMap.get(d.id)!;
+      result.push(col);
+    }
+    const unassigned = colMap.get("__unassigned__")!;
+    if (unassigned.tasks.length > 0) result.push(unassigned);
+    return result;
+  }, [groupBy, allTasks, departments, projectDeptMap]);
+
+  /* ----- Helper: get dept info for a task (used when grouping by status or project) ----- */
+  const getDeptForTask = useCallback(
+    (task: TaskWithRelations): { name: string; color: string | null } | null => {
+      if (!task.projectId) return null;
+      const info = projectDeptMap.get(task.projectId);
+      if (!info?.deptName) return null;
+      return { name: info.deptName, color: info.deptColor };
+    },
+    [projectDeptMap]
+  );
+
+  /* ----- Preference persistence ----- */
   const userPresetKey = session?.user?.id
     ? `board-display-preset:${session.user.id}`
     : null;
@@ -159,6 +269,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
       const parsed = JSON.parse(raw) as {
         preset?: DisplayPreset;
         showMetadata?: boolean;
+        groupBy?: GroupByMode;
       };
       if (
         parsed.preset === "standard" ||
@@ -170,6 +281,9 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
       if (typeof parsed.showMetadata === "boolean") {
         setShowMetadata(parsed.showMetadata);
       }
+      if (parsed.groupBy === "status" || parsed.groupBy === "project" || parsed.groupBy === "department") {
+        setGroupBy(parsed.groupBy);
+      }
     } catch {
       // ignore broken local preference payloads
     }
@@ -179,10 +293,11 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
     if (!userPresetKey) return;
     localStorage.setItem(
       userPresetKey,
-      JSON.stringify({ preset: displayPreset, showMetadata })
+      JSON.stringify({ preset: displayPreset, showMetadata, groupBy })
     );
-  }, [displayPreset, showMetadata, userPresetKey]);
+  }, [displayPreset, showMetadata, groupBy, userPresetKey]);
 
+  /* ----- Keyboard nav ----- */
   const visibleTasks = useMemo(
     () => columns.flatMap((column) => column.tasks.map((task) => ({ task, column }))),
     [columns]
@@ -242,6 +357,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
     [openTaskModal, selectedTaskId, visibleTasks]
   );
 
+  /* ----- Drag & drop (status grouping only) ----- */
   const handleDragEnd = useCallback(
     async (result: DropResult) => {
       const { source, destination, draggableId } = result;
@@ -251,6 +367,9 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
         source.index === destination.index
       )
         return;
+
+      // Only support reordering for status grouping currently
+      if (groupBy !== "status") return;
 
       const fromColumn = source.droppableId as TaskStatus;
       const toColumn = destination.droppableId as TaskStatus;
@@ -309,7 +428,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
         fetchBoard();
       }
     },
-    [columns, wipLimits, moveTask, fetchBoard]
+    [columns, wipLimits, moveTask, fetchBoard, groupBy]
   );
 
   const handleCreateTask = () => {
@@ -324,12 +443,27 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
     );
   }
 
+  /* ----- Render ----- */
   return (
     <div className="flex h-full flex-col" onKeyDown={handleBoardKeyDown} tabIndex={0}>
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <BoardFilters />
           <div className="flex items-center gap-2">
+            {/* Group By selector */}
+            <div className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1">
+              <Layers className="h-3.5 w-3.5 text-muted-foreground" />
+              <select
+                value={groupBy}
+                onChange={(e) => setGroupBy(e.target.value as GroupByMode)}
+                className="bg-transparent text-xs text-foreground outline-none"
+                title="Group tasks by"
+              >
+                <option value="status">Group by Status</option>
+                <option value="project">Group by Project</option>
+                <option value="department">Group by Department</option>
+              </select>
+            </div>
             <select
               value={displayPreset}
               onChange={(e) => applyPreset(e.target.value as DisplayPreset)}
@@ -361,18 +495,6 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
               <Keyboard className="h-3 w-3" />
               J/K + Enter
             </span>
-            <button
-              onClick={() => setSwimLaneEnabled((v) => !v)}
-              className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors ${
-                swimLaneEnabled
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border bg-card text-muted-foreground hover:text-foreground"
-              }`}
-              title="Toggle department swim lanes"
-            >
-              <Rows3 className="h-3.5 w-3.5" />
-              Swim Lanes
-            </button>
           </div>
         </div>
         <button
@@ -386,20 +508,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
 
       <div className="flex-1 overflow-x-auto overflow-y-auto px-4 pb-4">
         <DragDropContext onDragEnd={handleDragEnd}>
-          {swimLaneEnabled ? (
-            <SwimLaneBoard
-              columns={columns}
-              departments={departments}
-              projectDeptMap={projectDeptMap}
-              wipLimits={wipLimits}
-              openTaskModal={openTaskModal}
-              fetchBoard={fetchBoard}
-              displayPreset={displayPreset}
-              showMetadata={showMetadata}
-              selectedTaskId={selectedTaskId}
-              setSelectedTaskId={setSelectedTaskId}
-            />
-          ) : (
+          {groupBy === "status" && (
             <div className="flex h-full gap-3">
               {columns.map((column) => (
                 <KanbanColumn
@@ -412,7 +521,123 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
                   showMetadata={showMetadata}
                   selectedTaskId={selectedTaskId}
                   onSelectTask={setSelectedTaskId}
+                  groupBy="status"
+                  getDeptForTask={getDeptForTask}
                 />
+              ))}
+            </div>
+          )}
+
+          {groupBy === "project" && (
+            <div className="flex h-full gap-3">
+              {projectColumns.map((col) => {
+                // Resolve department for project-level column header
+                const projInfo = projectList.find((p) => p.id === col.id);
+                const deptInfo = projInfo?.departmentId
+                  ? projectDeptMap.get(projInfo.id)
+                  : null;
+
+                return (
+                  <div
+                    key={col.id}
+                    className="flex h-full w-72 min-w-[18rem] flex-col rounded-lg bg-column-bg"
+                  >
+                    {/* Column header */}
+                    <div className="flex items-center justify-between rounded-t-lg border-b border-column-border bg-column-header px-3 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-semibold text-foreground">
+                          {col.label}
+                        </h3>
+                        <span className="rounded-full bg-tag-bg px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+                          {col.tasks.length}
+                        </span>
+                      </div>
+                      {deptInfo?.deptName && (
+                        <span
+                          className="rounded px-1.5 py-0.5 text-[10px] font-medium"
+                          style={{
+                            backgroundColor: deptInfo.deptColor
+                              ? `${deptInfo.deptColor}18`
+                              : undefined,
+                            color: deptInfo.deptColor || undefined,
+                          }}
+                        >
+                          {deptInfo.deptName}
+                        </span>
+                      )}
+                    </div>
+                    {/* Reuse KanbanColumn's droppable wrapper via a pseudo-column */}
+                    <KanbanColumn
+                      column={{
+                        id: col.id as TaskStatus,
+                        label: col.label,
+                        wipLimit: 0,
+                        tasks: col.tasks,
+                      }}
+                      wipLimit={0}
+                      onTaskClick={(task) => openTaskModal(task)}
+                      onRefresh={fetchBoard}
+                      displayPreset={displayPreset}
+                      showMetadata={showMetadata}
+                      selectedTaskId={selectedTaskId}
+                      onSelectTask={setSelectedTaskId}
+                      groupBy="project"
+                      droppableIdPrefix={`proj-${col.id}:`}
+                      getDeptForTask={getDeptForTask}
+                      hideHeader
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {groupBy === "department" && (
+            <div className="flex h-full gap-3">
+              {departmentColumns.map((col) => (
+                <div
+                  key={col.id}
+                  className="flex h-full w-72 min-w-[18rem] flex-col rounded-lg bg-column-bg"
+                >
+                  {/* Column header */}
+                  <div className="flex items-center justify-between rounded-t-lg border-b border-column-border bg-column-header px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                      {col.color && (
+                        <span
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: col.color }}
+                        />
+                      )}
+                      <h3 className="text-sm font-semibold text-foreground">
+                        {col.label}
+                      </h3>
+                      <span className="rounded-full bg-tag-bg px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+                        {col.tasks.length}
+                      </span>
+                    </div>
+                  </div>
+                  <KanbanColumn
+                    column={{
+                      id: col.id as TaskStatus,
+                      label: col.label,
+                      wipLimit: 0,
+                      tasks: col.tasks,
+                    }}
+                    wipLimit={0}
+                    onTaskClick={(task) => openTaskModal(task)}
+                    onRefresh={fetchBoard}
+                    displayPreset={displayPreset}
+                    showMetadata={showMetadata}
+                    selectedTaskId={selectedTaskId}
+                    onSelectTask={setSelectedTaskId}
+                    groupBy="department"
+                    departmentName={col.label}
+                    departmentColor={col.color}
+                    droppableIdPrefix={`dept-${col.id}:`}
+                    getDeptForTask={getDeptForTask}
+                    hideHeader
+                  />
+                </div>
               ))}
             </div>
           )}
@@ -428,164 +653,6 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
           }}
         />
       )}
-    </div>
-  );
-}
-
-/* ---------- Swim Lane Board sub-component ---------- */
-
-interface SwimLaneBoardProps {
-  columns: BoardColumn[];
-  departments: DepartmentSummary[];
-  projectDeptMap: Map<string, string | null>;
-  wipLimits: Record<TaskStatus, number>;
-  openTaskModal: (task: TaskWithRelations | null) => void;
-  fetchBoard: () => void;
-  displayPreset: DisplayPreset;
-  showMetadata: boolean;
-  selectedTaskId: string | null;
-  setSelectedTaskId: (id: string | null) => void;
-}
-
-function SwimLaneBoard({
-  columns,
-  departments,
-  projectDeptMap,
-  wipLimits,
-  openTaskModal,
-  fetchBoard,
-  displayPreset,
-  showMetadata,
-  selectedTaskId,
-  setSelectedTaskId,
-}: SwimLaneBoardProps) {
-  // Build lanes: group tasks by department (via their project's department)
-  const lanes = useMemo(() => {
-    type Lane = {
-      id: string;
-      name: string;
-      color: string | null;
-      columns: BoardColumn[];
-    };
-
-    const laneMap = new Map<string, Lane>();
-
-    // Initialize a lane per department
-    for (const dept of departments) {
-      laneMap.set(dept.id, {
-        id: dept.id,
-        name: dept.name,
-        color: dept.color || null,
-        columns: columns.map((col) => ({ ...col, tasks: [] })),
-      });
-    }
-    // Unassigned lane
-    laneMap.set("__none__", {
-      id: "__none__",
-      name: "Unassigned",
-      color: null,
-      columns: columns.map((col) => ({ ...col, tasks: [] })),
-    });
-
-    // Distribute tasks into lanes
-    for (const col of columns) {
-      for (const task of col.tasks) {
-        const deptId = task.projectId
-          ? projectDeptMap.get(task.projectId) || "__none__"
-          : "__none__";
-
-        let lane = laneMap.get(deptId);
-        if (!lane) {
-          lane = laneMap.get("__none__")!;
-        }
-
-        const laneCol = lane.columns.find((c) => c.id === col.id);
-        if (laneCol) {
-          laneCol.tasks.push(task);
-        }
-      }
-    }
-
-    // Return all lanes that have at least one task, plus keep Unassigned at the end
-    const result: Lane[] = [];
-    for (const dept of departments) {
-      const lane = laneMap.get(dept.id);
-      if (lane && lane.columns.some((c) => c.tasks.length > 0)) {
-        result.push(lane);
-      }
-    }
-    const unassigned = laneMap.get("__none__")!;
-    if (unassigned.columns.some((c) => c.tasks.length > 0)) {
-      result.push(unassigned);
-    }
-
-    return result;
-  }, [columns, departments, projectDeptMap]);
-
-  if (lanes.length === 0) {
-    return (
-      <div className="flex h-full gap-3">
-        {columns.map((column) => (
-          <KanbanColumn
-            key={column.id}
-            column={column}
-            wipLimit={wipLimits[column.id]}
-            onTaskClick={(task) => openTaskModal(task)}
-            onRefresh={fetchBoard}
-            displayPreset={displayPreset}
-            showMetadata={showMetadata}
-            selectedTaskId={selectedTaskId}
-            onSelectTask={setSelectedTaskId}
-          />
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {lanes.map((lane) => (
-        <div
-          key={lane.id}
-          className="rounded-xl border border-border bg-card/30 p-3"
-        >
-          {/* Lane header */}
-          <div className="mb-3 flex items-center gap-2 px-1">
-            {lane.color && (
-              <span
-                className="h-3 w-3 rounded-full"
-                style={{ backgroundColor: lane.color }}
-              />
-            )}
-            <h3 className="text-sm font-semibold text-foreground">
-              {lane.name}
-            </h3>
-            <span className="text-xs text-muted-foreground">
-              ({lane.columns.reduce((s, c) => s + c.tasks.length, 0)} task
-              {lane.columns.reduce((s, c) => s + c.tasks.length, 0) !== 1
-                ? "s"
-                : ""})
-            </span>
-          </div>
-
-          {/* Columns within lane */}
-          <div className="flex gap-3 overflow-x-auto">
-            {lane.columns.map((column) => (
-              <KanbanColumn
-                key={`${lane.id}-${column.id}`}
-                column={column}
-                wipLimit={wipLimits[column.id]}
-                onTaskClick={(task) => openTaskModal(task)}
-                onRefresh={fetchBoard}
-                displayPreset={displayPreset}
-                showMetadata={showMetadata}
-                selectedTaskId={selectedTaskId}
-                onSelectTask={setSelectedTaskId}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
     </div>
   );
 }

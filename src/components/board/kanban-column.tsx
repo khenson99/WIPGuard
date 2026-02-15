@@ -2,7 +2,7 @@
 
 import { Droppable } from "@hello-pangea/dnd";
 import { clsx } from "clsx";
-import { TaskCard } from "./task-card";
+import { TaskCard, type GroupByMode } from "./task-card";
 import type { BoardColumn, TaskWithRelations } from "@/types";
 
 interface KanbanColumnProps {
@@ -14,6 +14,12 @@ interface KanbanColumnProps {
   showMetadata: boolean;
   selectedTaskId: string | null;
   onSelectTask: (taskId: string) => void;
+  groupBy?: GroupByMode;
+  departmentName?: string | null;
+  departmentColor?: string | null;
+  droppableIdPrefix?: string;
+  getDeptForTask?: (task: TaskWithRelations) => { name: string; color: string | null } | null;
+  hideHeader?: boolean;
 }
 
 export function KanbanColumn({
@@ -25,6 +31,12 @@ export function KanbanColumn({
   showMetadata,
   selectedTaskId,
   onSelectTask,
+  groupBy = "status",
+  departmentName,
+  departmentColor,
+  droppableIdPrefix = "",
+  getDeptForTask,
+  hideHeader = false,
 }: KanbanColumnProps) {
   const isOverLimit = wipLimit > 0 && column.tasks.length > wipLimit;
   const isAtLimit = wipLimit > 0 && column.tasks.length === wipLimit;
@@ -33,50 +45,53 @@ export function KanbanColumn({
   return (
     <div
       className={clsx(
-        "flex h-full flex-col rounded-lg bg-column-bg",
-        isCompact ? "w-64 min-w-[16rem]" : "w-72 min-w-[18rem]"
+        "flex h-full flex-col",
+        !hideHeader && "rounded-lg bg-column-bg",
+        !hideHeader && (isCompact ? "w-64 min-w-[16rem]" : "w-72 min-w-[18rem]")
       )}
     >
-      {/* Column header */}
-      <div
-        className={clsx(
-          "flex items-center justify-between rounded-t-lg border-b px-3 py-2.5",
-          isOverLimit
-            ? "border-wip-over-border bg-wip-over-bg"
-            : isAtLimit
-              ? "border-wip-at-border bg-wip-at-bg"
-              : "border-column-border bg-column-header"
-        )}
-      >
-        <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-foreground">
-            {column.label}
-          </h3>
-          <span
-            className={clsx(
-              "rounded-full px-1.5 py-0.5 text-xs font-medium",
-              isOverLimit
-                ? "bg-wip-over-border text-wip-over-text"
-                : "bg-tag-bg text-muted-foreground"
-            )}
-          >
-            {column.tasks.length}
-          </span>
+      {/* Column header — hidden when parent provides its own */}
+      {!hideHeader && (
+        <div
+          className={clsx(
+            "flex items-center justify-between rounded-t-lg border-b px-3 py-2.5",
+            isOverLimit
+              ? "border-wip-over-border bg-wip-over-bg"
+              : isAtLimit
+                ? "border-wip-at-border bg-wip-at-bg"
+                : "border-column-border bg-column-header"
+          )}
+        >
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-foreground">
+              {column.label}
+            </h3>
+            <span
+              className={clsx(
+                "rounded-full px-1.5 py-0.5 text-xs font-medium",
+                isOverLimit
+                  ? "bg-wip-over-border text-wip-over-text"
+                  : "bg-tag-bg text-muted-foreground"
+              )}
+            >
+              {column.tasks.length}
+            </span>
+          </div>
+          {wipLimit > 0 && (
+            <span
+              className={clsx(
+                "text-xs font-medium",
+                isOverLimit ? "text-wip-over-text" : "text-muted-foreground"
+              )}
+            >
+              WIP: {wipLimit}
+            </span>
+          )}
         </div>
-        {wipLimit > 0 && (
-          <span
-            className={clsx(
-              "text-xs font-medium",
-              isOverLimit ? "text-wip-over-text" : "text-muted-foreground"
-            )}
-          >
-            WIP: {wipLimit}
-          </span>
-        )}
-      </div>
+      )}
 
       {/* Droppable area */}
-      <Droppable droppableId={column.id}>
+      <Droppable droppableId={`${droppableIdPrefix}${column.id}`}>
         {(provided, snapshot) => (
           <div
             ref={provided.innerRef}
@@ -91,7 +106,9 @@ export function KanbanColumn({
                 : undefined,
             }}
           >
-            {column.tasks.map((task, index) => (
+            {column.tasks.map((task, index) => {
+              const taskDept = getDeptForTask ? getDeptForTask(task) : null;
+              return (
               <TaskCard
                 key={task.id}
                 task={task}
@@ -101,6 +118,9 @@ export function KanbanColumn({
                 selected={selectedTaskId === task.id}
                 displayPreset={displayPreset}
                 showMetadata={showMetadata}
+                groupBy={groupBy}
+                departmentName={departmentName || taskDept?.name}
+                departmentColor={departmentColor || taskDept?.color}
                 onAdvance={async () => {
                   const response = await fetch(`/api/tasks/${task.id}/advance`, {
                     method: "POST",
@@ -151,7 +171,8 @@ export function KanbanColumn({
                   onRefresh();
                 }}
               />
-            ))}
+              );
+            })}
             {provided.placeholder}
 
             {column.tasks.length === 0 && !snapshot.isDraggingOver && (
