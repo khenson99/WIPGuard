@@ -11,7 +11,7 @@ import {
   ArrowDownRight,
 } from "lucide-react";
 import { AnalyticsDashboardData } from "@/lib/analytics/types";
-import StatCard from "./stat-card";
+import { StatCard } from "./stat-card";
 import { RingStat } from "./bar-display";
 
 interface FinanceTabProps {
@@ -149,7 +149,7 @@ export function FinanceTab({ data }: FinanceTabProps) {
                 max={100}
                 label="Payment Success Rate"
                 color="hsl(var(--primary))"
-                size="md"
+                size={120}
               />
             </div>
 

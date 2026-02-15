@@ -7,6 +7,13 @@ import {
   AnalyticsTimestamp,
 } from "./types";
 
+type RedditCampaignReport = {
+  campaign_id: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+};
+
 function makeMeta(source: "live" | "cached" = "live"): AnalyticsTimestamp {
   const now = new Date();
   return {
@@ -532,19 +539,14 @@ export async function fetchRedditAdsData(
     }
 
     const reportsData = await reportsResponse.json() as {
-      data?: Array<{
-        campaign_id: string;
-        spend: number;
-        impressions: number;
-        clicks: number;
-      }>;
+      data?: RedditCampaignReport[];
     };
 
     let totalSpend = 0;
     let totalImpressions = 0;
     let totalClicks = 0;
     const campaigns: AdCampaign[] = [];
-    const campaignMap = new Map<string, typeof reportsData.data[0]>();
+    const campaignMap = new Map<string, RedditCampaignReport>();
 
     // Build campaign report map
     if (reportsData.data) {

@@ -761,6 +761,8 @@ export async function runSlackUnansweredDetector(input: {
       if (!message.ts || !message.user || !message.text) continue;
       if (!messageLooksLikeRequest(message.text, patterns)) continue;
 
+      const requesterUserId = message.user;
+      const requestText = message.text;
       const rootTs = message.thread_ts ?? message.ts;
       const rootMs = tsToMs(rootTs);
       if (!Number.isFinite(rootMs)) continue;
@@ -785,7 +787,7 @@ export async function runSlackUnansweredDetector(input: {
       if (
         hasQualifyingReply({
           replies,
-          requesterUserId: message.user,
+          requesterUserId,
           rootTs,
         })
       ) {
@@ -816,7 +818,7 @@ export async function runSlackUnansweredDetector(input: {
       const dueDate = addMinutes(now, config.triageDueMinutes);
       const title = buildTaskTitle({
         channelName,
-        text: message.text,
+        text: requestText,
       });
 
       if (input.dryRun) {
@@ -845,7 +847,7 @@ export async function runSlackUnansweredDetector(input: {
                   metadata: {
                     channelId,
                     threadTs: rootTs,
-                    requesterUserId: message.user,
+                    requesterUserId,
                     slaMinutes: config.slaMinutes,
                   },
                 },
@@ -863,9 +865,9 @@ export async function runSlackUnansweredDetector(input: {
                     sourceUrl,
                     channelId,
                     channelName,
-                    requesterUserId: message.user,
+                    requesterUserId,
                     threadTs: rootTs,
-                    text: message.text,
+                    text: requestText,
                     slaMinutes: config.slaMinutes,
                     observedAt: now,
                   }),
