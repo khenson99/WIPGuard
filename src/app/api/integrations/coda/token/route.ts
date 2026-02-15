@@ -34,11 +34,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return permission.deniedResponse;
     }
 
-    const body = (await request.json()) as ConnectCodaBody;
-    const token = body.token?.trim();
+    const body = (await request.json().catch(() => ({}))) as ConnectCodaBody;
+    const token = body.token?.trim() || process.env.CODA_API_TOKEN?.trim();
     if (!token) {
       return NextResponse.json(
-        { error: "Coda API token is required" },
+        { error: "Coda API token is required (or set CODA_API_TOKEN on the server)" },
         { status: 400 }
       );
     }
@@ -94,4 +94,3 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 }
-

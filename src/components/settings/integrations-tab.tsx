@@ -108,18 +108,14 @@ export function IntegrationsTab() {
   };
 
   const connectCoda = async () => {
-    if (!codaToken.trim()) {
-      setError("Coda API token is required.");
-      return;
-    }
-
     setWorking("coda");
     setError(null);
     try {
+      const token = codaToken.trim();
       const response = await fetch("/api/integrations/coda/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: codaToken.trim() }),
+        body: JSON.stringify(token ? { token } : {}),
       });
 
       if (!response.ok) {
@@ -268,7 +264,7 @@ export function IntegrationsTab() {
                         type="password"
                         value={codaToken}
                         onChange={(event) => setCodaToken(event.target.value)}
-                        placeholder="Paste Coda API token"
+                        placeholder="Paste Coda API token (optional if server token is set)"
                         className="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:border-ring focus:outline-none"
                       />
                     )}
