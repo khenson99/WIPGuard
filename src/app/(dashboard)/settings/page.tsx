@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Settings as SettingsIcon } from "lucide-react";
 import { clsx } from "clsx";
 import { BoardSettingsTab } from "@/components/settings/board-settings-tab";
@@ -9,6 +9,7 @@ import { ProjectsTab } from "@/components/settings/projects-tab";
 import { PrioritiesTab } from "@/components/settings/priorities-tab";
 import { TeamTab } from "@/components/settings/team-tab";
 import { DepartmentsTab } from "@/components/settings/departments-tab";
+import { IntegrationsTab } from "@/components/settings/integrations-tab";
 
 const TABS = [
   { id: "board", label: "Board & WIP Limits" },
@@ -17,12 +18,27 @@ const TABS = [
   { id: "departments", label: "Departments" },
   { id: "priorities", label: "Company Priorities" },
   { id: "team", label: "Team" },
+  { id: "integrations", label: "Integrations" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<TabId>("board");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const tabParam = searchParams?.get("tab");
+  const activeTab: TabId =
+    tabParam && TABS.some((candidate) => candidate.id === tabParam)
+      ? (tabParam as TabId)
+      : "board";
+
+  const handleTabChange = (tabId: TabId) => {
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    params.set("tab", tabId);
+    const basePath = pathname || "/settings";
+    router.replace(`${basePath}?${params.toString()}`, { scroll: false });
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -41,7 +57,7 @@ export default function SettingsPage() {
         {TABS.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => handleTabChange(tab.id)}
             className={clsx(
               "border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
               activeTab === tab.id
@@ -62,6 +78,7 @@ export default function SettingsPage() {
         {activeTab === "departments" && <DepartmentsTab />}
         {activeTab === "priorities" && <PrioritiesTab />}
         {activeTab === "team" && <TeamTab />}
+        {activeTab === "integrations" && <IntegrationsTab />}
       </div>
     </div>
   );

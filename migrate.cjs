@@ -7,6 +7,10 @@ const { Pool } = require("pg");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+// Load local .env when available; Railway injects env vars directly in production.
+try {
+  require("dotenv/config");
+} catch {}
 
 const MIGRATIONS_DIR = path.join(__dirname, "prisma", "migrations");
 
@@ -17,17 +21,26 @@ async function run() {
     process.exit(0);
   }
 
-  // Append sslmode=no-verify for Railway's self-signed certs if not already set
+  const useSSL =
+    process.env.NODE_ENV === "production" ||
+    process.env.DATABASE_SSL === "true";
+
+  // Append sslmode=no-verify for managed Postgres SSL connections if not already set.
+  // Keep local/dev defaults non-SSL unless explicitly configured.
   const url = new URL(connectionString);
-  if (!url.searchParams.has('sslmode')) {
-    url.searchParams.set('sslmode', 'no-verify');
+  if (useSSL && !url.searchParams.has("sslmode")) {
+    url.searchParams.set("sslmode", "no-verify");
   }
 
-  const pool = new Pool({
+  const poolOptions = {
     connectionString: url.toString(),
     connectionTimeoutMillis: 30000,
-    ssl: { rejectUnauthorized: false },
-  });
+  };
+  if (useSSL) {
+    poolOptions.ssl = { rejectUnauthorized: false };
+  }
+
+  const pool = new Pool(poolOptions);
 
   try {
     // Ensure _prisma_migrations table exists
