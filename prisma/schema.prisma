@@ -463,3 +463,39 @@ model IntegrationConnection {
   @@unique([userId, provider])
   @@index([provider, status])
 }
+
+// ============================================================
+// OUTBOX / EVENT BUS
+// ============================================================
+
+enum OutboxEventStatus {
+  PENDING
+  DISPATCHED
+  FAILED
+  DEAD_LETTER
+}
+
+model OutboxEvent {
+  id            String           @id @default(cuid())
+  eventType     String
+  aggregateType String
+  aggregateId   String
+  schemaVersion Int              @default(1)
+  payload       Json
+
+  idempotencyKey String          @unique
+  status         OutboxEventStatus @default(PENDING)
+  retryCount     Int             @default(0)
+  nextAttemptAt  DateTime        @default(now())
+  lastAttemptAt  DateTime?
+  dispatchedAt   DateTime?
+  failedAt       DateTime?
+  error          String?         @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([aggregateType, aggregateId, createdAt])
+  @@index([eventType, createdAt])
+}
