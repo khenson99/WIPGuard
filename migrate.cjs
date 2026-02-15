@@ -7,7 +7,10 @@ const { Pool } = require("pg");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-require("dotenv/config");
+// Load local .env when available; Railway injects env vars directly in production.
+try {
+  require("dotenv/config");
+} catch {}
 
 const MIGRATIONS_DIR = path.join(__dirname, "prisma", "migrations");
 
