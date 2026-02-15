@@ -42,8 +42,8 @@ model User {
 
   waitingOnTasks Task[] @relation("TaskWaitingOn")
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
 
 model Account {
@@ -202,7 +202,14 @@ model Task {
   dependedBy Task[] @relation("TaskDependency")
   waitingOn  User[] @relation("TaskWaitingOn")
 
-  unplanned   Boolean @default(false)
+  unplanned       Boolean          @default(false)
+  unplannedReason UnplannedReason?
+  unplannedNote   String?          @db.Text
+  addedBy         String?
+
+  planningSessionId String?
+  planningSession   PlanningSession? @relation(fields: [planningSessionId], references: [id])
+
   slackThread String?
   columnOrder Int     @default(0)
 
@@ -237,6 +244,15 @@ enum DifficultyLevel {
   EPIC
 }
 
+enum UnplannedReason {
+  ESCALATION
+  BUG_FIX
+  CUSTOMER_REQUEST
+  SCOPE_CHANGE
+  DEPENDENCY
+  OTHER
+}
+
 // ============================================================
 // SPRINTS
 // ============================================================
@@ -248,10 +264,43 @@ model Sprint {
   endDate   DateTime
   isActive  Boolean  @default(false)
 
-  tasks Task[]
+  tasks             Task[]
+  commitments       SprintCommitment[]
+  planningSessions  PlanningSession[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+// SPRINT COMMITMENT LEDGER
+// ============================================================
+
+// Immutable snapshot of tasks committed at sprint start.
+// Append-only: never UPDATE or DELETE — only INSERT.
+model SprintCommitment {
+  id            String   @id @default(cuid())
+  sprintId      String
+  sprint        Sprint   @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  snapshotAt    DateTime @default(now())
+  createdBy     String
+  taskSnapshots Json     // Array of {taskId, title, status, projectId, priority}
+
+  @@index([sprintId, snapshotAt])
+}
+
+model PlanningSession {
+  id          String    @id @default(cuid())
+  sprintId    String
+  sprint      Sprint    @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  createdBy   String
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  notes       String?   @db.Text
+
+  tasks Task[]
+
+  @@index([sprintId])
 }
 
 // ============================================================
