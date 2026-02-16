@@ -1,3 +1,4 @@
+import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { AiInsightsPanel } from "@/components/analytics/ai-insights-panel";
 import type { AiInsightsBundle } from "@/lib/analytics/types";
