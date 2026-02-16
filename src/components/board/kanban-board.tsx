@@ -527,7 +527,8 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
 
   /* ----- Render ----- */
   return (
-    <div className="flex h-full flex-col" onKeyDown={handleBoardKeyDown} tabIndex={0}>
+    <div className="h-full overflow-x-auto overflow-y-auto" onKeyDown={handleBoardKeyDown} tabIndex={0}>
+      <div className="inline-flex min-w-full flex-col">
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <BoardFilters />
@@ -588,7 +589,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
         </button>
       </div>
 
-      <div className="flex-1 overflow-x-auto overflow-y-auto px-4 pb-4">
+      <div className="px-4 pb-4">
         <DragDropContext onDragEnd={handleDragEnd}>
           {groupBy === "status" && (
             <div className="flex h-full gap-3">
@@ -724,6 +725,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
             </div>
           )}
         </DragDropContext>
+      </div>
       </div>
 
       {isTaskModalOpen && (
