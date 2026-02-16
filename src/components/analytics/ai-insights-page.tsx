@@ -5,6 +5,7 @@ import { InsightCardFull } from "./insight-card-full";
 import { StatCard } from "./stat-card";
 import type { AnalyticsDashboardData, AnalyticsSectionId } from "@/lib/analytics/types";
 import { AlertTriangle, AlertCircle, Info, BarChart3 } from "lucide-react";
+import { populateConnectionStatus } from "@/hooks/use-connection-status";
 
 type SeverityFilter = "all" | "critical" | "warning" | "info";
 type SectionFilter = "all" | AnalyticsSectionId;
@@ -30,6 +31,11 @@ export function AiInsightsPage() {
   const [sortMode, setSortMode] = useState<SortMode>("severity");
 
   useEffect(() => {
+    const cached = readOverviewCache();
+    if (cached) {
+      populateConnectionStatus(cached.freshness, cached);
+    }
+
     let active = true;
     const controller = new AbortController();
 
@@ -38,6 +44,7 @@ export function AiInsightsPage() {
       .then((json: AnalyticsDashboardData) => {
         if (!active) return;
         setData(json);
+        populateConnectionStatus(json.freshness, json);
         sessionStorage.setItem("analytics:overview", JSON.stringify(json));
       })
       .catch(() => {})

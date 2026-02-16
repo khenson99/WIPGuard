@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { IntegrationProviderKey, ProviderFreshness } from "@/lib/analytics/types";
+import type { AnalyticsDashboardData, IntegrationProviderKey, ProviderFreshness } from "@/lib/analytics/types";
 
 export type ConnectionStatus = "connected" | "stale" | "disconnected";
 
@@ -56,31 +56,81 @@ const PROVIDER_TO_DOMAINS: Record<IntegrationProviderKey, string[]> = {
   mercury: ["mercury"],
 };
 
+const DASHBOARD_DATA_DOMAINS = [
+  "hubspot",
+  "stripe",
+  "mercury",
+  "googleAnalytics",
+  "googleAds",
+  "metaAds",
+  "metaPage",
+  "redditAds",
+  "webflow",
+  "coda",
+  "semrush",
+  "pylon",
+  "product",
+  "googleWorkspace",
+  "slack",
+  "hubspotOps",
+  "codaOps",
+  "redditOps",
+] as const;
+
+function statusFromDomainPayload(
+  dashboard: AnalyticsDashboardData,
+  domain: (typeof DASHBOARD_DATA_DOMAINS)[number],
+): ConnectionStatus {
+  const payload = dashboard[domain];
+  if (payload === null || payload === undefined) {
+    return "disconnected";
+  }
+  const staleDomains = Array.isArray(dashboard.staleDomains) ? dashboard.staleDomains : [];
+  if (staleDomains.includes(domain)) {
+    return "stale";
+  }
+  return "connected";
+}
+
 /**
  * Convert a freshness map from the API into ConnectionEntry[] and populate
  * the store.  Safe to call multiple times — last call wins.
  */
 export function populateConnectionStatus(
-  freshness: Partial<Record<IntegrationProviderKey, ProviderFreshness>> | undefined
+  freshness: Partial<Record<IntegrationProviderKey, ProviderFreshness>> | undefined,
+  dashboard?: AnalyticsDashboardData | null,
 ): void {
-  if (!freshness) return;
+  const entriesByDomain = new Map<string, ConnectionEntry>();
 
-  const entries: ConnectionEntry[] = [];
+  if (freshness) {
+    for (const [providerKey, info] of Object.entries(freshness)) {
+      if (!info) continue;
+      const domains = PROVIDER_TO_DOMAINS[providerKey as IntegrationProviderKey] ?? [];
+      const status = mapFreshnessToStatus(info);
 
-  for (const [providerKey, info] of Object.entries(freshness)) {
-    if (!info) continue;
-    const domains = PROVIDER_TO_DOMAINS[providerKey as IntegrationProviderKey] ?? [];
-    const status = mapFreshnessToStatus(info);
-
-    for (const domain of domains) {
-      entries.push({
-        dataDomain: domain,
-        status,
-        provider: info.provider,
-        lastSync: info.lastSyncedAt ?? undefined,
-      });
+      for (const domain of domains) {
+        entriesByDomain.set(domain, {
+          dataDomain: domain,
+          status,
+          provider: info.provider,
+          lastSync: info.lastSyncedAt ?? undefined,
+        });
+      }
     }
   }
 
-  useConnectionStatus.getState().setEntries(entries);
+  if (dashboard) {
+    for (const domain of DASHBOARD_DATA_DOMAINS) {
+      const inferredStatus = statusFromDomainPayload(dashboard, domain);
+      const existing = entriesByDomain.get(domain);
+      if (!existing) {
+        entriesByDomain.set(domain, {
+          dataDomain: domain,
+          status: inferredStatus,
+        });
+      }
+    }
+  }
+
+  useConnectionStatus.getState().setEntries(Array.from(entriesByDomain.values()));
 }

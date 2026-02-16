@@ -25,6 +25,7 @@ import {
   getAnalyticsSecondaryForPrimary,
   getAnalyticsSubSectionById,
 } from "@/lib/analytics/section-registry";
+import { populateConnectionStatus } from "@/hooks/use-connection-status";
 
 interface AnalyticsSectionPageProps {
   sectionId: string;
@@ -158,6 +159,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     if (cached) {
       setAnalyticsData(cached.analyticsData);
       setAuxPayload(cached.auxPayload);
+      populateConnectionStatus(cached.analyticsData?.freshness, cached.analyticsData);
       setLoading(false);
     } else {
       setAnalyticsData(null);
@@ -225,6 +227,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
 
         setAnalyticsData(nextAnalytics);
         setAuxPayload(nextAux);
+        populateConnectionStatus(nextAnalytics?.freshness, nextAnalytics);
         setError(null);
         writeSectionCache(sectionId, rangeQuery, {
           analyticsData: nextAnalytics,

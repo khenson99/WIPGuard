@@ -103,7 +103,7 @@ export function AnalyticsSummaryPage() {
         if (!active) return;
         setSummary(cached.summary);
         setOverview(cached.overview);
-        populateConnectionStatus(cached.overview?.freshness);
+        populateConnectionStatus(cached.overview?.freshness, cached.overview);
         setLoading(false);
       });
     } else {
@@ -129,7 +129,7 @@ export function AnalyticsSummaryPage() {
         };
         setSummary(next.summary);
         setOverview(next.overview);
-        populateConnectionStatus(next.overview?.freshness);
+        populateConnectionStatus(next.overview?.freshness, next.overview);
         writeSummaryCache(rangeQuery, next);
       })
       .catch((error) => {

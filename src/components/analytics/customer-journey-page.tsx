@@ -9,6 +9,7 @@ import type {
   LifecycleStageId,
 } from "@/lib/analytics/types";
 import { Users, TrendingUp, ArrowRight, Sparkles } from "lucide-react";
+import { populateConnectionStatus } from "@/hooks/use-connection-status";
 
 function readOverviewCache(): AnalyticsDashboardData | null {
   if (typeof window === "undefined") return null;
@@ -39,6 +40,11 @@ export function CustomerJourneyPage() {
   const [loading, setLoading] = useState(() => readOverviewCache() === null);
 
   useEffect(() => {
+    const cached = readOverviewCache();
+    if (cached) {
+      populateConnectionStatus(cached.freshness, cached);
+    }
+
     let active = true;
     const controller = new AbortController();
 
@@ -47,6 +53,7 @@ export function CustomerJourneyPage() {
       .then((json: AnalyticsDashboardData) => {
         if (!active) return;
         setData(json);
+        populateConnectionStatus(json.freshness, json);
         sessionStorage.setItem("analytics:overview", JSON.stringify(json));
       })
       .catch(() => {})

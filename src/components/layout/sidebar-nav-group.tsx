@@ -38,12 +38,13 @@ export function SidebarNavGroup({ item }: { item: NavItem }) {
   );
   const isParentActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
-  const [expanded, setExpanded] = useState(
-    () => readExpanded().has(item.id) || Boolean(isChildActive)
+  const [storedExpanded, setStoredExpanded] = useState(
+    () => readExpanded().has(item.id)
   );
+  const expanded = storedExpanded || Boolean(isChildActive);
 
   const toggle = () => {
-    setExpanded((prev) => {
+    setStoredExpanded((prev) => {
       const next = !prev;
       const stored = readExpanded();
       if (next) stored.add(item.id); else stored.delete(item.id);
