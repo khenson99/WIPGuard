@@ -60,11 +60,14 @@ export async function GET(request: Request) {
     fetchers.push({ key: "mercury", fn: () => fetchMercuryData(creds.mercuryKey!) });
   }
 
-  // Google Analytics (GA4) — needs all 3 service account fields
-  if (creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey) {
+  // Google Analytics (GA4) — service account OR OAuth2 refresh token
+  if (creds.gaPropertyId && (
+    (creds.gaClientEmail && creds.gaPrivateKey) ||
+    (creds.gaRefreshToken && creds.gaOAuthClientId && creds.gaOAuthClientSecret)
+  )) {
     fetchers.push({
       key: "googleAnalytics",
-      fn: () => fetchGAData(creds.gaPropertyId!, creds.gaClientEmail!, creds.gaPrivateKey!),
+      fn: () => fetchGAData(creds.gaPropertyId!, creds.gaClientEmail || "", creds.gaPrivateKey || ""),
     });
   }
 
