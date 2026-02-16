@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 
 interface ApprovalItem {
   id: string;
@@ -24,30 +25,60 @@ interface ApprovalItem {
   } | null;
 }
 
+const AUTOMATION_APPROVALS_CACHE_KEY = "dashboard:automations:approvals:v1";
+
 export default function AutomationApprovalsPage() {
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchApprovals = async () => {
-    setLoading(true);
+  const fetchApprovals = async (options?: { preserveExisting?: boolean; signal?: AbortSignal }) => {
+    if (!options?.preserveExisting) {
+      setLoading(true);
+    }
     setError(null);
     try {
-      const response = await fetch("/api/automations/approvals", { cache: "no-store" });
+      const response = await fetch("/api/automations/approvals", { signal: options?.signal });
       const payload = (await response.json()) as unknown;
-      setApprovals(Array.isArray(payload) ? (payload as ApprovalItem[]) : []);
+      if (options?.signal?.aborted) return;
+      const next = Array.isArray(payload) ? (payload as ApprovalItem[]) : [];
+      setApprovals(next);
+      writeSessionCache<ApprovalItem[]>(AUTOMATION_APPROVALS_CACHE_KEY, next);
     } catch {
-      setError("Could not fetch approvals");
+      if (!options?.signal?.aborted) {
+        setError("Could not fetch approvals");
+      }
     } finally {
-      setLoading(false);
+      if (!options?.signal?.aborted) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void fetchApprovals();
-    }, 0);
-    return () => window.clearTimeout(timer);
+    let active = true;
+    const controller = new AbortController();
+    const cached = readSessionCache<ApprovalItem[]>(AUTOMATION_APPROVALS_CACHE_KEY);
+
+    if (cached) {
+      queueMicrotask(() => {
+        if (!active) return;
+        setApprovals(cached);
+        setLoading(false);
+      });
+    } else {
+      queueMicrotask(() => {
+        if (!active) return;
+        setLoading(true);
+      });
+    }
+
+    void fetchApprovals({ preserveExisting: Boolean(cached), signal: controller.signal });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, []);
 
   const decide = async (approvalId: string, action: "approve" | "reject") => {
@@ -65,7 +96,7 @@ export default function AutomationApprovalsPage() {
       return;
     }
 
-    await fetchApprovals();
+    await fetchApprovals({ preserveExisting: true });
   };
 
   return (

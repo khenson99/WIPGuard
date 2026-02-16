@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Play, Save, Send, Plus, Trash2 } from "lucide-react";
 import { validateWorkflowGraph } from "@/lib/automations/graph";
+import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 
 type WorkflowNode = {
   key: string;
@@ -49,6 +50,7 @@ export default function AutomationBuilderPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const workflowId = params?.id ?? "";
+  const cacheKey = `dashboard:automations:workflow:v1:${workflowId}`;
 
   const [workflow, setWorkflow] = useState<WorkflowDetail | null>(null);
   const [name, setName] = useState("");
@@ -78,9 +80,27 @@ export default function AutomationBuilderPage() {
 
   useEffect(() => {
     if (!workflowId) return;
-    fetch(`/api/automations/${workflowId}`, { cache: "no-store" })
+    let active = true;
+    const controller = new AbortController();
+    const cached = readSessionCache<WorkflowDetail>(cacheKey);
+
+    if (cached) {
+      queueMicrotask(() => {
+        if (!active) return;
+        setWorkflow(cached);
+        setName(cached.name || "");
+        setDescription(cached.description || "");
+        setScope(cached.scope || "PRIVATE");
+        setProviders(Array.isArray(cached.providers) ? cached.providers : []);
+        setNodes(Array.isArray(cached.nodes) ? cached.nodes : []);
+        setEdges(Array.isArray(cached.edges) ? cached.edges : []);
+      });
+    }
+
+    fetch(`/api/automations/${workflowId}`, { signal: controller.signal })
       .then((response) => response.json())
       .then((payload) => {
+        if (!active) return;
         setWorkflow(payload as WorkflowDetail);
         setName(payload.name || "");
         setDescription(payload.description || "");
@@ -97,11 +117,17 @@ export default function AutomationBuilderPage() {
             : []
         );
         setEdges(Array.isArray(payload.edges) ? payload.edges : []);
+        writeSessionCache<WorkflowDetail>(cacheKey, payload as WorkflowDetail);
       })
-      .catch(() => {
+      .catch((error) => {
+        if (!active || (error instanceof Error && error.name === "AbortError")) return;
         setWorkflow(null);
       });
-  }, [workflowId]);
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [cacheKey, workflowId]);
 
   const selectedNode = nodes.find((node) => node.key === selectedNodeKey) || null;
 
@@ -167,6 +193,7 @@ export default function AutomationBuilderPage() {
     setSaveMessage("Published");
     const refreshed = (await response.json()) as WorkflowDetail;
     setWorkflow(refreshed);
+    writeSessionCache<WorkflowDetail>(cacheKey, refreshed);
   };
 
   const runTest = async () => {

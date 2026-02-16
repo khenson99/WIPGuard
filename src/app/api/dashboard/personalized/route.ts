@@ -179,26 +179,33 @@ export async function GET(): Promise<NextResponse> {
       taskStatusOverview[status.status] = status._count.status;
     }
 
-    return NextResponse.json({
-      generatedAt: now.toISOString(),
-      personal: {
-        myActive,
-        myBlocked,
-        myOverdue,
-        myDueSoon,
-        myCompletedWeek,
-        recommendations,
+    return NextResponse.json(
+      {
+        generatedAt: now.toISOString(),
+        personal: {
+          myActive,
+          myBlocked,
+          myOverdue,
+          myDueSoon,
+          myCompletedWeek,
+          recommendations,
+        },
+        team: {
+          staleTasks: staleTeam,
+          blockedTasks: blockedTeam,
+          overdueTasks: overdueTeam,
+          taskStatusOverview,
+        },
+        projects: {
+          active: projectSummaries,
+        },
       },
-      team: {
-        staleTasks: staleTeam,
-        blockedTasks: blockedTeam,
-        overdueTasks: overdueTeam,
-        taskStatusOverview,
-      },
-      projects: {
-        active: projectSummaries,
-      },
-    });
+      {
+        headers: {
+          "Cache-Control": "private, max-age=30, stale-while-revalidate=120",
+        },
+      }
+    );
   } catch (error) {
     console.error("GET /api/dashboard/personalized error:", error);
     return NextResponse.json(

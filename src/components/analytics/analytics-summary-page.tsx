@@ -6,6 +6,8 @@ import { useSearchParams } from "next/navigation";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import { ANALYTICS_PRIMARY_SECTIONS } from "@/lib/analytics/section-registry";
 import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-controls";
+import { LifecycleFunnelPanel } from "@/components/analytics/lifecycle-funnel-panel";
+import { AiInsightsPanel } from "@/components/analytics/ai-insights-panel";
 
 interface SummaryPayload {
   generatedAt: string;
@@ -40,6 +42,13 @@ const STATUS_CLASS: Record<string, string> = {
   missing: "text-muted-foreground",
 };
 
+const SUMMARY_CACHE_PREFIX = "analytics:summary:v1:";
+
+interface CachedSummaryPayload {
+  summary: SummaryPayload;
+  overview: AnalyticsDashboardData;
+}
+
 function buildRangeQuery(searchParams: URLSearchParams | null): string {
   const params = new URLSearchParams();
   const range = searchParams?.get("range");
@@ -51,6 +60,35 @@ function buildRangeQuery(searchParams: URLSearchParams | null): string {
   return params.toString();
 }
 
+function summaryCacheKey(rangeQuery: string): string {
+  return `${SUMMARY_CACHE_PREFIX}${rangeQuery || "default"}`;
+}
+
+function readSummaryCache(rangeQuery: string): CachedSummaryPayload | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(summaryCacheKey(rangeQuery));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<CachedSummaryPayload>;
+    if (!parsed.summary || !parsed.overview) return null;
+    return {
+      summary: parsed.summary,
+      overview: parsed.overview,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeSummaryCache(rangeQuery: string, payload: CachedSummaryPayload): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(summaryCacheKey(rangeQuery), JSON.stringify(payload));
+  } catch {
+    // Ignore storage write failures (private browsing/storage quotas).
+  }
+}
+
 export function AnalyticsSummaryPage() {
   const searchParams = useSearchParams();
   const [summary, setSummary] = useState<SummaryPayload | null>(null);
@@ -60,28 +98,59 @@ export function AnalyticsSummaryPage() {
   const rangeQuery = useMemo(() => buildRangeQuery(searchParams), [searchParams]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setLoading(true);
-      Promise.all([
-        fetch(`/api/analytics/summary${rangeQuery ? `?${rangeQuery}` : ""}`, { cache: "no-store" }).then((response) =>
-          response.json()
-        ),
-        fetch(`/api/analytics?section=overview${rangeQuery ? `&${rangeQuery}` : ""}`, { cache: "no-store" }).then((response) =>
-          response.json()
-        ),
-      ])
-        .then(([summaryPayload, overviewPayload]) => {
-          setSummary(summaryPayload as SummaryPayload);
-          setOverview(overviewPayload as AnalyticsDashboardData);
-        })
-        .catch(() => {
+    let active = true;
+    const controller = new AbortController();
+    const cached = readSummaryCache(rangeQuery);
+
+    if (cached) {
+      queueMicrotask(() => {
+        if (!active) return;
+        setSummary(cached.summary);
+        setOverview(cached.overview);
+        setLoading(false);
+      });
+    } else {
+      queueMicrotask(() => {
+        if (!active) return;
+        setLoading(true);
+      });
+    }
+
+    Promise.all([
+      fetch(`/api/analytics/summary${rangeQuery ? `?${rangeQuery}` : ""}`, { signal: controller.signal }).then((response) =>
+        response.json()
+      ),
+      fetch(`/api/analytics?section=overview${rangeQuery ? `&${rangeQuery}` : ""}`, { signal: controller.signal }).then((response) =>
+        response.json()
+      ),
+    ])
+      .then(([summaryPayload, overviewPayload]) => {
+        if (!active) return;
+        const next = {
+          summary: summaryPayload as SummaryPayload,
+          overview: overviewPayload as AnalyticsDashboardData,
+        };
+        setSummary(next.summary);
+        setOverview(next.overview);
+        writeSummaryCache(rangeQuery, next);
+      })
+      .catch((error) => {
+        if (!active || (error instanceof Error && error.name === "AbortError")) return;
+        if (!cached) {
           setSummary(null);
           setOverview(null);
-        })
-        .finally(() => setLoading(false));
-    }, 0);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [rangeQuery]);
 
   if (loading) {
@@ -97,7 +166,7 @@ export function AnalyticsSummaryPage() {
   }
 
   return (
-    <div className="space-y-6 p-4">
+    <div className="h-full space-y-6 overflow-y-auto p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground">Analytics Overview</h1>
@@ -131,46 +200,8 @@ export function AnalyticsSummaryPage() {
         </div>
       </div>
 
-      {overview?.funnelJourney && (
-        <section className="rounded-xl border border-border bg-card p-4">
-          <h2 className="text-sm font-semibold text-foreground">Marketing to Sales to Customer Success Funnel</h2>
-          <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
-            {overview.funnelJourney.stages.map((stage) => (
-              <div key={stage.stageId} className="rounded-lg border border-border/60 bg-background px-3 py-2">
-                <p className="text-xs text-muted-foreground">{stage.stageLabel}</p>
-                <p className="mt-1 text-xl font-semibold text-foreground">{stage.count.toLocaleString()}</p>
-                <p className="text-[11px] text-muted-foreground">
-                  {stage.conversionFromPrevious === null
-                    ? "Entry stage"
-                    : `${stage.conversionFromPrevious.toFixed(1)}% from previous`}
-                </p>
-              </div>
-            ))}
-          </div>
-          <div className="mt-3 space-y-1">
-            {overview.funnelJourney.narrative.map((line, index) => (
-              <p key={index} className="text-xs text-muted-foreground">
-                {line}
-              </p>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {overview?.recommendations && overview.recommendations.length > 0 && (
-        <section className="rounded-xl border border-border bg-card p-4">
-          <h2 className="text-sm font-semibold text-foreground">Proactive Recommendations</h2>
-          <div className="mt-3 grid grid-cols-1 gap-2 lg:grid-cols-2">
-            {overview.recommendations.map((item) => (
-              <div key={item.id} className="rounded-lg border border-border/60 bg-background px-3 py-2">
-                <p className="text-sm font-semibold text-foreground">{item.title}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{item.insight}</p>
-                <p className="mt-1 text-xs text-foreground">{item.suggestedAction}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      <LifecycleFunnelPanel lifecycle={overview?.lifecycleFunnel ?? null} insights={overview?.aiInsights?.global ?? []} sectionFocus="all" />
+      <AiInsightsPanel bundle={overview?.aiInsights ?? null} defaultFilter="all" />
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
         {ANALYTICS_PRIMARY_SECTIONS.map((primary) => {

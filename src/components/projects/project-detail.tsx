@@ -17,6 +17,7 @@ import {
   ChevronDown,
   Trash2,
 } from "lucide-react";
+import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 import { COLUMN_LABELS } from "@/types";
 import type { UserSummary, TaskStatus as TStatus } from "@/types";
 /* Simple inline toast since sonner isn't installed */
@@ -438,17 +439,25 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const [departments, setDepartments] = useState<DeptOption[]>([]);
   const [priorities, setPriorities] = useState<PriorityOption[]>([]);
   const [teamUsers, setTeamUsers] = useState<UserSummary[]>([]);
+  const cacheKey = `dashboard:project-detail:v1:${projectId}`;
 
-  const fetchProject = useCallback(async () => {
+  const fetchProject = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch(`/api/projects/${projectId}`);
-      if (res.ok) setProject(await res.json());
+      const res = await fetch(`/api/projects/${projectId}`, { signal });
+      if (res.ok) {
+        const payload = (await res.json()) as ProjectFull;
+        if (signal?.aborted) return;
+        setProject(payload);
+        writeSessionCache<ProjectFull>(cacheKey, payload);
+      }
     } catch {
       // Handle silently
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
     }
-  }, [projectId]);
+  }, [cacheKey, projectId]);
 
   // Fetch reference data
   useEffect(() => {
@@ -473,8 +482,30 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   }, []);
 
   useEffect(() => {
-    fetchProject();
-  }, [fetchProject]);
+    let active = true;
+    const controller = new AbortController();
+    const cached = readSessionCache<ProjectFull>(cacheKey);
+
+    if (cached) {
+      queueMicrotask(() => {
+        if (!active) return;
+        setProject(cached);
+        setLoading(false);
+      });
+    } else {
+      queueMicrotask(() => {
+        if (!active) return;
+        setLoading(true);
+      });
+    }
+
+    void fetchProject(controller.signal);
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [cacheKey, fetchProject]);
 
   /* ── Patch helper ────────────────────────────────────────────────── */
 

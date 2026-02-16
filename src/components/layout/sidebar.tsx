@@ -7,23 +7,29 @@ import {
   LayoutDashboard,
   FolderKanban,
   CheckSquare,
-  BarChart3,
+  Megaphone,
+  Landmark,
+  Target,
+  HeartHandshake,
   Bot,
   BookOpen,
   Settings,
   Gauge,
 } from "lucide-react";
 
-const PRIMARY_NAV_ITEMS = [
+export const PRIMARY_NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
-  { href: "/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/analytics/ads-traffic", label: "Ads & Traffic", icon: Megaphone },
+  { href: "/analytics/finance", label: "Finance", icon: Landmark },
+  { href: "/analytics/sales-pipeline", label: "Sales & Pipeline", icon: Target },
+  { href: "/analytics/customer-success", label: "Customer Success", icon: HeartHandshake },
   { href: "/whip", label: "Whip View", icon: Gauge },
   { href: "/automations", label: "Automations", icon: Bot },
 ];
 
-const SECONDARY_NAV_ITEMS = [
+export const SECONDARY_NAV_ITEMS = [
   { href: "/logbook", label: "Logbook", icon: BookOpen },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

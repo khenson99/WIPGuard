@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Bot, Filter, PlusCircle, ShieldCheck } from "lucide-react";
+import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 
 type WorkflowListItem = {
   id: string;
@@ -40,6 +41,8 @@ interface AutomationsResponse {
   }>;
 }
 
+const AUTOMATIONS_CACHE_KEY = "dashboard:automations:v1";
+
 export default function AutomationsPage() {
   const router = useRouter();
   const [data, setData] = useState<AutomationsResponse | null>(null);
@@ -49,24 +52,48 @@ export default function AutomationsPage() {
   const [providerFilter, setProviderFilter] = useState<string>("all");
   const [healthFilter, setHealthFilter] = useState<"all" | "healthy" | "needs-attention" | "never-run">("all");
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (signal?: AbortSignal) => {
     try {
-      const response = await fetch("/api/automations", { cache: "no-store" });
+      const response = await fetch("/api/automations", { signal });
       const payload = (await response.json()) as AutomationsResponse;
+      if (signal?.aborted) return;
       setData(payload);
+      writeSessionCache<AutomationsResponse>(AUTOMATIONS_CACHE_KEY, payload);
     } catch {
-      setData(null);
+      if (!signal?.aborted) {
+        setData(null);
+      }
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void fetchData();
-    }, 0);
-    return () => window.clearTimeout(timer);
+    let active = true;
+    const controller = new AbortController();
+    const cached = readSessionCache<AutomationsResponse>(AUTOMATIONS_CACHE_KEY);
+
+    if (cached) {
+      queueMicrotask(() => {
+        if (!active) return;
+        setData(cached);
+        setLoading(false);
+      });
+    } else {
+      queueMicrotask(() => {
+        if (!active) return;
+        setLoading(true);
+      });
+    }
+
+    void fetchData(controller.signal);
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, []);
 
   const providerOptions = useMemo(() => {
