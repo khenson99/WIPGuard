@@ -13,6 +13,7 @@ interface OAuthSettings {
   tokenEndpoint: string;
   scopes: string[];
   scopeSeparator?: " " | ",";
+  pkce?: boolean;
   extraAuthParams?: Record<string, string>;
   clientIdEnv: string;
   clientSecretEnv: string;
@@ -88,6 +89,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     oauth: {
       authorizationEndpoint: "https://app.hubspot.com/oauth/authorize",
       tokenEndpoint: "https://api.hubapi.com/oauth/v1/token",
+      pkce: true,
       // HubSpot expects only required scopes in `scope`; request feature scopes
       // via `optional_scope` to avoid install URL / app scope mismatch.
       scopes: ["oauth"],
