@@ -11,6 +11,7 @@ import { fetchGAData, fetchWebflowData } from "@/lib/analytics/fetchers-ga-webfl
 import { fetchIntegrationTelemetryData } from "@/lib/analytics/fetchers-integrations";
 import { fetchPylonData } from "@/lib/analytics/fetchers-pylon";
 import { fetchSemrushData } from "@/lib/analytics/fetchers-semrush";
+import { providerForSnapshotKey } from "@/lib/analytics/provider-health";
 import { snapshotExpiryFromNow, storeAnalyticsSnapshot, storeAnalyticsSnapshotFailure } from "@/lib/analytics/snapshots";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
 import { prisma } from "@/lib/prisma";
@@ -70,10 +71,39 @@ async function computeProductSnapshot(userId: string, fromDate: Date, toDate: Da
   };
 }
 
+interface ProviderRefreshOutcome {
+  succeeded: boolean;
+  failed: boolean;
+  lastError: string | null;
+}
+
+function recordProviderOutcome(
+  outcomes: Map<IntegrationProvider, ProviderRefreshOutcome>,
+  provider: IntegrationProvider | null,
+  input: { success: boolean; error?: string | null }
+) {
+  if (!provider) return;
+
+  const current = outcomes.get(provider) ?? {
+    succeeded: false,
+    failed: false,
+    lastError: null,
+  };
+
+  if (input.success) {
+    current.succeeded = true;
+  } else {
+    current.failed = true;
+    current.lastError = input.error ?? current.lastError ?? "refresh failed";
+  }
+
+  outcomes.set(provider, current);
+}
+
 async function refreshForUserAndRange(input: {
   userId: string;
   rangePreset: "7d" | "30d" | "90d";
-}): Promise<{ refreshed: number; failures: number }> {
+}): Promise<{ refreshed: number; failures: number; providerOutcomes: Map<IntegrationProvider, ProviderRefreshOutcome> }> {
   const params = new URLSearchParams();
   params.set("range", input.rangePreset);
   const range = parseAnalyticsTimeRange(params);
@@ -219,8 +249,11 @@ async function refreshForUserAndRange(input: {
 
   let refreshed = 0;
   let failures = 0;
+  const providerOutcomes = new Map<IntegrationProvider, ProviderRefreshOutcome>();
 
   for (const job of jobs) {
+    const provider = providerForSnapshotKey(job.providerKey);
+
     try {
       const payload = await timeout(job.run(), 10_000);
       await storeAnalyticsSnapshot({
@@ -234,8 +267,10 @@ async function refreshForUserAndRange(input: {
         expiresAt,
       });
       refreshed += 1;
+      recordProviderOutcome(providerOutcomes, provider, { success: true });
     } catch (error) {
       failures += 1;
+      const message = error instanceof Error ? error.message : "refresh failed";
       await storeAnalyticsSnapshotFailure({
         userId: input.userId,
         providerKey: job.providerKey,
@@ -243,13 +278,14 @@ async function refreshForUserAndRange(input: {
         rangePreset: range.preset,
         fromDate,
         toDate,
-        error: error instanceof Error ? error.message : "refresh failed",
+        error: message,
         expiresAt,
       });
+      recordProviderOutcome(providerOutcomes, provider, { success: false, error: message });
     }
   }
 
-  return { refreshed, failures };
+  return { refreshed, failures, providerOutcomes };
 }
 
 export async function runAnalyticsRefresh(input: {
@@ -278,16 +314,42 @@ export async function runAnalyticsRefresh(input: {
   let failureCount = 0;
 
   for (const userId of userIds) {
+    const providerOutcomes = new Map<IntegrationProvider, ProviderRefreshOutcome>();
+
     for (const rangePreset of rangePresets) {
       const result = await refreshForUserAndRange({ userId, rangePreset });
       refreshCount += result.refreshed;
       failureCount += result.failures;
+
+      for (const [provider, outcome] of result.providerOutcomes.entries()) {
+        const existing = providerOutcomes.get(provider) ?? {
+          succeeded: false,
+          failed: false,
+          lastError: null,
+        };
+        existing.succeeded = existing.succeeded || outcome.succeeded;
+        existing.failed = existing.failed || outcome.failed;
+        if (outcome.lastError) {
+          existing.lastError = outcome.lastError;
+        }
+        providerOutcomes.set(provider, existing);
+      }
     }
 
-    await prisma.integrationConnection.updateMany({
-      where: { userId },
-      data: { lastSyncedAt: new Date() },
-    });
+    const now = new Date();
+    for (const [provider, outcome] of providerOutcomes.entries()) {
+      await prisma.integrationConnection.updateMany({
+        where: { userId, provider },
+        data: {
+          ...(outcome.succeeded ? { lastSyncedAt: now } : {}),
+          ...(outcome.failed
+            ? { lastError: outcome.lastError ?? "refresh failed" }
+            : outcome.succeeded
+              ? { lastError: null }
+              : {}),
+        },
+      });
+    }
   }
 
   return {

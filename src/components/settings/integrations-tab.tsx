@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 type IntegrationStatus = "CONNECTED" | "DISCONNECTED" | "ERROR";
+type SyncHealth = "healthy" | "degraded" | "error" | "missing";
 
 interface IntegrationItem {
   slug: string;
@@ -26,6 +27,11 @@ interface IntegrationItem {
   accountLabel: string | null;
   connectedAt: string | null;
   lastError: string | null;
+  syncHealth: SyncHealth;
+  syncHealthReason: string | null;
+  lastSnapshotAt: string | null;
+  lastSnapshotStatus: "SUCCESS" | "ERROR" | null;
+  docId?: string | null;
 }
 
 const STATUS_MESSAGE: Record<string, string> = {
@@ -47,6 +53,32 @@ function formatConnectedAt(value: string | null): string {
   });
 }
 
+function formatHealthLabel(item: IntegrationItem): {
+  tone: "success" | "warning" | "danger" | "muted";
+  label: string;
+} {
+  if (!item.connected) {
+    if (item.status === "ERROR" || item.syncHealth === "error") {
+      return { tone: "danger", label: "Error" };
+    }
+    return { tone: "muted", label: "Not connected" };
+  }
+
+  if (item.syncHealth === "healthy") {
+    return { tone: "success", label: "Connected" };
+  }
+
+  if (item.syncHealth === "degraded") {
+    return { tone: "warning", label: "Connected (degraded)" };
+  }
+
+  if (item.syncHealth === "error") {
+    return { tone: "danger", label: "Connected (error)" };
+  }
+
+  return { tone: "muted", label: "Connected" };
+}
+
 export function IntegrationsTab() {
   const searchParams = useSearchParams();
   const [items, setItems] = useState<IntegrationItem[]>([]);
@@ -54,6 +86,7 @@ export function IntegrationsTab() {
   const [working, setWorking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [codaToken, setCodaToken] = useState("");
+  const [codaDocInput, setCodaDocInput] = useState("");
 
   const fetchIntegrations = useCallback(async () => {
     setError(null);
@@ -62,7 +95,10 @@ export function IntegrationsTab() {
       if (!response.ok) {
         throw new Error("Could not load integrations");
       }
-      setItems((await response.json()) as IntegrationItem[]);
+      const integrations = (await response.json()) as IntegrationItem[];
+      setItems(integrations);
+      const coda = integrations.find((item) => item.slug === "coda");
+      setCodaDocInput(coda?.docId ?? "");
     } catch {
       setError("Could not load integrations.");
     } finally {
@@ -112,10 +148,22 @@ export function IntegrationsTab() {
     setError(null);
     try {
       const token = codaToken.trim();
+      const docInput = codaDocInput.trim();
+      const payload: { token?: string; docId?: string; docUrl?: string } = {};
+      if (token) {
+        payload.token = token;
+      }
+      if (docInput) {
+        if (/^https?:\/\//i.test(docInput)) {
+          payload.docUrl = docInput;
+        } else {
+          payload.docId = docInput;
+        }
+      }
       const response = await fetch("/api/integrations/coda/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(token ? { token } : {}),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -125,7 +173,13 @@ export function IntegrationsTab() {
         throw new Error(payload?.error || "Coda connect failed");
       }
 
+      const successPayload = (await response.json().catch(() => null)) as
+        | { docId?: string }
+        | null;
       setCodaToken("");
+      if (successPayload?.docId) {
+        setCodaDocInput(successPayload.docId);
+      }
       await fetchIntegrations();
     } catch (connectError) {
       const message =
@@ -170,7 +224,9 @@ export function IntegrationsTab() {
       )}
 
       <div className="space-y-3">
-        {items.map((item) => (
+        {items.map((item) => {
+          const health = formatHealthLabel(item);
+          return (
           <section
             key={item.slug}
             className="rounded-lg border border-border bg-card p-4"
@@ -179,20 +235,25 @@ export function IntegrationsTab() {
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-semibold text-foreground">{item.name}</h3>
-                  {item.connected ? (
+                  {health.tone === "success" ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-[var(--success)]/10 px-2 py-0.5 text-xs text-[var(--success)]">
                       <CheckCircle2 className="h-3 w-3" />
-                      Connected
+                      {health.label}
                     </span>
-                  ) : item.status === "ERROR" ? (
+                  ) : health.tone === "warning" ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--warning)]/10 px-2 py-0.5 text-xs text-[var(--warning)]">
+                      <AlertTriangle className="h-3 w-3" />
+                      {health.label}
+                    </span>
+                  ) : health.tone === "danger" ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-[var(--danger)]/10 px-2 py-0.5 text-xs text-[var(--danger)]">
                       <AlertTriangle className="h-3 w-3" />
-                      Error
+                      {health.label}
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
                       <Link2Off className="h-3 w-3" />
-                      Not connected
+                      {health.label}
                     </span>
                   )}
                 </div>
@@ -213,6 +274,11 @@ export function IntegrationsTab() {
                     {formatConnectedAt(item.connectedAt)}.
                   </p>
                 )}
+                {item.slug === "coda" && (
+                  <p className="text-xs text-muted-foreground">
+                    Coda doc: {item.docId || "Not configured"}.
+                  </p>
+                )}
                 {!item.configured && item.authType === "oauth" && (
                   <p className="text-xs text-[var(--warning)]">
                     Missing env: {item.missingEnv.join(", ")}
@@ -221,6 +287,11 @@ export function IntegrationsTab() {
                 {item.lastError && (
                   <p className="text-xs text-[var(--danger)]">
                     Last error: {item.lastError}
+                  </p>
+                )}
+                {item.syncHealthReason && (
+                  <p className="text-xs text-muted-foreground">
+                    Data health: {item.syncHealthReason}
                   </p>
                 )}
               </div>
@@ -259,6 +330,13 @@ export function IntegrationsTab() {
                   )
                 ) : (
                   <>
+                    <input
+                      type="text"
+                      value={codaDocInput}
+                      onChange={(event) => setCodaDocInput(event.target.value)}
+                      placeholder="Coda Doc URL or Doc ID"
+                      className="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:border-ring focus:outline-none"
+                    />
                     {!item.connected && (
                       <input
                         type="password"
@@ -284,20 +362,37 @@ export function IntegrationsTab() {
                         )}
                       </button>
                     ) : (
-                      <button
-                        onClick={() => disconnect(item.slug)}
-                        disabled={working === item.slug}
-                        className="btn-ghost-muted rounded-lg border border-border px-3 py-2 text-sm disabled:opacity-60"
-                      >
-                        Disconnect
-                      </button>
+                      <>
+                        <button
+                          onClick={connectCoda}
+                          disabled={working === "coda"}
+                          className="btn-primary-theme rounded-lg px-3 py-2 text-sm disabled:opacity-60"
+                        >
+                          {working === "coda" ? (
+                            <span className="inline-flex items-center gap-1">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              Saving...
+                            </span>
+                          ) : (
+                            "Save Coda doc"
+                          )}
+                        </button>
+                        <button
+                          onClick={() => disconnect(item.slug)}
+                          disabled={working === item.slug}
+                          className="btn-ghost-muted rounded-lg border border-border px-3 py-2 text-sm disabled:opacity-60"
+                        >
+                          Disconnect
+                        </button>
+                      </>
                     )}
                   </>
                 )}
               </div>
             </div>
           </section>
-        ))}
+        );
+        })}
       </div>
     </div>
   );

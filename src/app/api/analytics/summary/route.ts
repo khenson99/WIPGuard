@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
+import { AnalyticsSnapshotStatus } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCredentials } from "@/lib/analytics/credentials";
@@ -10,12 +11,15 @@ import {
   ANALYTICS_SUB_SECTIONS,
   type AnalyticsSubSection,
 } from "@/lib/analytics/section-registry";
-
-type SectionStatus = "connected" | "partial" | "missing";
+import {
+  deriveDomainSectionStatus,
+  type SectionStatus,
+} from "@/lib/analytics/summary-health";
 
 function aggregateStatus(statuses: SectionStatus[]): SectionStatus {
   if (statuses.every((status) => status === "connected")) return "connected";
-  if (statuses.some((status) => status === "connected" || status === "partial")) return "partial";
+  if (statuses.some((status) => status === "degraded")) return "degraded";
+  if (statuses.some((status) => status === "connected")) return "partial";
   return "missing";
 }
 
@@ -30,7 +34,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const from = new Date(`${range.from}T00:00:00.000Z`);
     const to = new Date(`${range.to}T23:59:59.999Z`);
 
-    const [creds, tasksByStatus, overdueTasks, activeProjects, contributors] = await Promise.all([
+    const [creds, tasksByStatus, overdueTasks, activeProjects, contributors, latestSnapshots] = await Promise.all([
       getCredentials(session.user.id),
       prisma.task.groupBy({ by: ["status"], _count: { status: true } }),
       prisma.task.count({
@@ -48,10 +52,59 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         distinct: ["changedBy"],
         select: { changedBy: true },
       }),
+      prisma.analyticsSnapshot.findMany({
+        where: {
+          userId: session.user.id,
+          rangePreset: range.preset,
+          toDate: to,
+          providerKey: {
+            in: [
+              "hubspot",
+              "stripe",
+              "mercury",
+              "googleAnalytics",
+              "googleAds",
+              "metaAds",
+              "metaPage",
+              "redditAds",
+              "webflow",
+              "coda",
+              "semrush",
+              "pylon",
+              "googleWorkspace",
+              "slack",
+            ],
+          },
+        },
+        select: {
+          providerKey: true,
+          status: true,
+          expiresAt: true,
+          capturedAt: true,
+        },
+        orderBy: [{ capturedAt: "desc" }],
+      }),
     ]);
 
     const totalTasks = tasksByStatus.reduce((sum, item) => sum + item._count.status, 0);
     const activeContributors = contributors.filter((entry) => Boolean(entry.changedBy)).length;
+    const now = Date.now();
+
+    const latestSnapshotByProvider = new Map<
+      string,
+      {
+        status: AnalyticsSnapshotStatus;
+        stale: boolean;
+      }
+    >();
+
+    for (const snapshot of latestSnapshots) {
+      if (latestSnapshotByProvider.has(snapshot.providerKey)) continue;
+      latestSnapshotByProvider.set(snapshot.providerKey, {
+        status: snapshot.status,
+        stale: snapshot.expiresAt.getTime() < now,
+      });
+    }
 
     const domainConnected: Record<AnalyticsSubSection["dataDomain"], boolean> = {
       hubspot: Boolean(creds.hubspotToken),
@@ -83,9 +136,39 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       observability: true,
     };
 
+    const domainSnapshotKey: Partial<Record<AnalyticsSubSection["dataDomain"], string>> = {
+      hubspot: "hubspot",
+      stripe: "stripe",
+      mercury: "mercury",
+      googleWorkspace: "googleWorkspace",
+      slack: "slack",
+      googleAnalytics: "googleAnalytics",
+      googleAds: "googleAds",
+      metaAds: "metaAds",
+      metaPage: "metaPage",
+      redditAds: "redditAds",
+      webflow: "webflow",
+      coda: "coda",
+      semrush: "semrush",
+      pylon: "pylon",
+    };
+
     const primarySections = ANALYTICS_PRIMARY_SECTIONS.map((primary) => {
       const children = ANALYTICS_SUB_SECTIONS.filter((child) => child.parentId === primary.id).map((child) => {
-        const status: SectionStatus = domainConnected[child.dataDomain] ? "connected" : "missing";
+        const configured = domainConnected[child.dataDomain];
+        const snapshotKey = domainSnapshotKey[child.dataDomain];
+        const latestSnapshot = snapshotKey ? latestSnapshotByProvider.get(snapshotKey) : null;
+        const status = deriveDomainSectionStatus({
+          configured,
+          requiresSnapshot: Boolean(snapshotKey),
+          snapshotStatus:
+            latestSnapshot?.status === AnalyticsSnapshotStatus.SUCCESS
+              ? "SUCCESS"
+              : latestSnapshot?.status === AnalyticsSnapshotStatus.ERROR
+                ? "ERROR"
+                : null,
+          snapshotStale: latestSnapshot?.stale ?? false,
+        });
         return {
           id: child.id,
           label: child.label,
