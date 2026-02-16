@@ -23,6 +23,7 @@ model User {
   sessions Session[]
   integrationConnections IntegrationConnection[]
   integrationRules       IntegrationRule[]
+  analyticsSnapshots     AnalyticsSnapshot[]
   uiPreference           UserUiPreference?
   savedViews             UserSavedView[]
   ownedWorkflows         WorkflowDefinition[] @relation("WorkflowOwner")
@@ -440,11 +441,18 @@ enum IntegrationProvider {
   SLACK
   CODA
   REDDIT
+  STRIPE
+  MERCURY
 }
 
 enum IntegrationConnectionStatus {
   CONNECTED
   DISCONNECTED
+  ERROR
+}
+
+enum AnalyticsSnapshotStatus {
+  SUCCESS
   ERROR
 }
 
@@ -472,6 +480,31 @@ model IntegrationConnection {
 
   @@unique([userId, provider])
   @@index([provider, status])
+}
+
+model AnalyticsSnapshot {
+  id       String @id @default(cuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  providerKey String
+  contextKey  String @default("default")
+  rangePreset String
+  fromDate    DateTime
+  toDate      DateTime
+
+  payload   Json?
+  status    AnalyticsSnapshotStatus @default(SUCCESS)
+  lastError String?                 @db.Text
+
+  capturedAt DateTime @default(now())
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId, providerKey, contextKey, rangePreset, toDate])
+  @@index([expiresAt])
+  @@index([capturedAt])
 }
 
 model IntegrationRule {

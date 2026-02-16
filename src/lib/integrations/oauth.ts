@@ -82,7 +82,8 @@ export function buildOAuthAuthorizationUrl(input: {
   const url = new URL(definition.oauth.authorizationEndpoint);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", clientId);
-  url.searchParams.set("redirect_uri", redirectUri);
+  const authRedirectParam = definition.oauth.authorizationRedirectParamName ?? "redirect_uri";
+  url.searchParams.set(authRedirectParam, redirectUri);
   url.searchParams.set(
     "scope",
     definition.oauth.scopes.join(definition.oauth.scopeSeparator ?? " ")
@@ -114,10 +115,9 @@ export async function exchangeOAuthCode(input: {
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
-    client_id: clientId,
-    client_secret: clientSecret,
-    redirect_uri: redirectUri,
   });
+  const tokenRedirectParam = definition.oauth.tokenRedirectParamName ?? "redirect_uri";
+  body.set(tokenRedirectParam, redirectUri);
   if (codeVerifier) {
     body.set("code_verifier", codeVerifier);
   }
@@ -126,10 +126,11 @@ export async function exchangeOAuthCode(input: {
     "Content-Type": "application/x-www-form-urlencoded",
   };
 
-  if (definition.slug === "reddit") {
-    body.delete("client_id");
-    body.delete("client_secret");
+  if (definition.oauth.tokenClientAuthMethod === "basic") {
     headers.Authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
+  } else {
+    body.set("client_id", clientId);
+    body.set("client_secret", clientSecret);
   }
 
   const response = await fetch(definition.oauth.tokenEndpoint, {
@@ -400,10 +401,137 @@ async function fetchRedditProfile(accessToken: string): Promise<AccountProfile> 
   };
 }
 
+async function fetchStripeProfile(
+  accessToken: string,
+  tokenPayload: Record<string, unknown> | null
+): Promise<AccountProfile> {
+  const fallbackAccountId = getString(tokenPayload ?? {}, "stripe_user_id");
+  const fallbackLabel =
+    getString(tokenPayload ?? {}, "stripe_publishable_key") || fallbackAccountId;
+
+  try {
+    const response = await fetch("https://api.stripe.com/v1/account", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+    const raw = (await response.json().catch(() => null)) as unknown;
+    if (!response.ok) {
+      throw new Error("Stripe account lookup failed");
+    }
+    const profile = asRecord(raw);
+    if (!profile) {
+      throw new Error("Stripe account response was invalid");
+    }
+
+    const businessProfile = asRecord(profile.business_profile);
+    const providerAccountId = getString(profile, "id") || fallbackAccountId;
+    if (!providerAccountId) {
+      throw new Error("Stripe profile did not include an account identifier");
+    }
+
+    return {
+      providerAccountId,
+      accountLabel:
+        getString(profile, "email") ||
+        getString(profile, "display_name") ||
+        getString(businessProfile ?? {}, "name") ||
+        providerAccountId,
+      metadata: {
+        country: getString(profile, "country"),
+        defaultCurrency: getString(profile, "default_currency"),
+        businessType: getString(profile, "business_type"),
+        chargesEnabled: profile.charges_enabled === true,
+        payoutsEnabled: profile.payouts_enabled === true,
+      },
+    };
+  } catch {
+    if (!fallbackAccountId) {
+      throw new Error("Stripe account lookup failed");
+    }
+
+    return {
+      providerAccountId: fallbackAccountId,
+      accountLabel: fallbackLabel,
+      metadata: {
+        fallback: "token_payload",
+      },
+    };
+  }
+}
+
+function firstRecordFromUnknown(raw: unknown): Record<string, unknown> | null {
+  if (Array.isArray(raw)) {
+    return asRecord(raw[0]);
+  }
+
+  const record = asRecord(raw);
+  if (!record) return null;
+  const accounts = record.accounts;
+  if (Array.isArray(accounts)) {
+    return asRecord(accounts[0]);
+  }
+
+  return record;
+}
+
+async function fetchMercuryProfile(
+  accessToken: string,
+  tokenPayload: Record<string, unknown> | null
+): Promise<AccountProfile> {
+  const fallbackAccountId =
+    getString(tokenPayload ?? {}, "account_id") ||
+    getString(tokenPayload ?? {}, "organization_id") ||
+    "mercury-account";
+
+  try {
+    const response = await fetch("https://api.mercury.com/api/v1/accounts", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+    const raw = (await response.json().catch(() => null)) as unknown;
+    if (!response.ok) {
+      throw new Error("Mercury account lookup failed");
+    }
+
+    const firstAccount = firstRecordFromUnknown(raw);
+    const root = asRecord(raw);
+    const providerAccountId =
+      getString(firstAccount ?? {}, "id") ||
+      getString(root ?? {}, "id") ||
+      fallbackAccountId;
+
+    const accountLabel =
+      getString(firstAccount ?? {}, "nickname") ||
+      getString(firstAccount ?? {}, "name") ||
+      getString(root ?? {}, "legalBusinessName") ||
+      providerAccountId;
+
+    return {
+      providerAccountId,
+      accountLabel,
+      metadata: {
+        accountType: getString(firstAccount ?? {}, "accountType"),
+        status: getString(firstAccount ?? {}, "status"),
+      },
+    };
+  } catch {
+    return {
+      providerAccountId: fallbackAccountId,
+      accountLabel: fallbackAccountId,
+      metadata: {
+        fallback: "token_payload",
+      },
+    };
+  }
+}
+
 export async function fetchOAuthAccountProfile(
   definition: OAuthIntegrationDefinition,
-  accessToken: string
+  accessToken: string,
+  tokenRaw?: unknown
 ): Promise<AccountProfile> {
+  const tokenPayload = asRecord(tokenRaw);
+
   if (definition.slug === "google-workspace") {
     return fetchGoogleProfile(accessToken);
   }
@@ -415,6 +543,12 @@ export async function fetchOAuthAccountProfile(
   }
   if (definition.slug === "reddit") {
     return fetchRedditProfile(accessToken);
+  }
+  if (definition.slug === "stripe") {
+    return fetchStripeProfile(accessToken, tokenPayload);
+  }
+  if (definition.slug === "mercury") {
+    return fetchMercuryProfile(accessToken, tokenPayload);
   }
   throw new Error(`No OAuth account profile fetcher for ${definition.slug}`);
 }

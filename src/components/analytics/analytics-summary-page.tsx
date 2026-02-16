@@ -136,11 +136,13 @@ export function AnalyticsSummaryPage() {
           <h2 className="text-sm font-semibold text-foreground">Marketing to Sales to Customer Success Funnel</h2>
           <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
             {overview.funnelJourney.stages.map((stage) => (
-              <div key={stage.id} className="rounded-lg border border-border/60 bg-background px-3 py-2">
-                <p className="text-xs text-muted-foreground">{stage.label}</p>
+              <div key={stage.stageId} className="rounded-lg border border-border/60 bg-background px-3 py-2">
+                <p className="text-xs text-muted-foreground">{stage.stageLabel}</p>
                 <p className="mt-1 text-xl font-semibold text-foreground">{stage.count.toLocaleString()}</p>
                 <p className="text-[11px] text-muted-foreground">
-                  {stage.conversionFromPrev === null ? "Entry stage" : `${stage.conversionFromPrev.toFixed(1)}% from previous`}
+                  {stage.conversionFromPrevious === null
+                    ? "Entry stage"
+                    : `${stage.conversionFromPrevious.toFixed(1)}% from previous`}
                 </p>
               </div>
             ))}

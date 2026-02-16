@@ -57,6 +57,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       hubspot: Boolean(creds.hubspotToken),
       stripe: Boolean(creds.stripeKey),
       mercury: Boolean(creds.mercuryKey),
+      googleWorkspace: Boolean(creds.googleWorkspaceAccessToken),
+      slack: Boolean(creds.slackAccessToken),
       googleAnalytics: Boolean(creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey),
       googleAds: Boolean(
         creds.googleAdsDevToken &&
@@ -125,4 +127,3 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Failed to fetch analytics summary" }, { status: 500 });
   }
 }
-

@@ -60,6 +60,10 @@ export function integrationProviderFromString(
       return IntegrationProvider.CODA;
     case "REDDIT":
       return IntegrationProvider.REDDIT;
+    case "STRIPE":
+      return IntegrationProvider.STRIPE;
+    case "MERCURY":
+      return IntegrationProvider.MERCURY;
     default:
       return null;
   }

@@ -4,6 +4,8 @@ export type IntegrationSlug =
   | "google-workspace"
   | "hubspot"
   | "slack"
+  | "stripe"
+  | "mercury"
   | "coda"
   | "reddit";
 export type IntegrationAuthType = "oauth" | "token";
@@ -14,6 +16,9 @@ interface OAuthSettings {
   scopes: string[];
   scopeSeparator?: " " | ",";
   pkce?: boolean;
+  authorizationRedirectParamName?: string;
+  tokenRedirectParamName?: string;
+  tokenClientAuthMethod?: "body" | "basic";
   extraAuthParams?: Record<string, string>;
   clientIdEnv: string;
   clientSecretEnv: string;
@@ -123,6 +128,40 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     },
   },
   {
+    slug: "stripe",
+    provider: IntegrationProvider.STRIPE,
+    name: "Stripe",
+    description: "Connect Stripe account data and payment signals into WIPGuard.",
+    capabilities: ["Revenue", "Payments", "Subscriptions"],
+    authType: "oauth",
+    oauth: {
+      authorizationEndpoint: "https://connect.stripe.com/oauth/authorize",
+      tokenEndpoint: "https://connect.stripe.com/oauth/token",
+      scopes: getScopesFromEnv("STRIPE_SCOPES", ["read_write"]),
+      clientIdEnv: "STRIPE_CLIENT_ID",
+      clientSecretEnv: "STRIPE_CLIENT_SECRET",
+    },
+  },
+  {
+    slug: "mercury",
+    provider: IntegrationProvider.MERCURY,
+    name: "Mercury",
+    description: "Connect Mercury banking activity and cashflow context.",
+    capabilities: ["Accounts", "Transactions", "Cashflow"],
+    authType: "oauth",
+    oauth: {
+      authorizationEndpoint: "https://oauth2.mercury.com/oauth2/auth",
+      tokenEndpoint: "https://oauth2.mercury.com/oauth2/token",
+      scopes: getScopesFromEnv("MERCURY_SCOPES", ["read"]),
+      pkce: true,
+      authorizationRedirectParamName: "redirect_url",
+      tokenRedirectParamName: "redirect_url",
+      tokenClientAuthMethod: "basic",
+      clientIdEnv: "MERCURY_CLIENT_ID",
+      clientSecretEnv: "MERCURY_CLIENT_SECRET",
+    },
+  },
+  {
     slug: "coda",
     provider: IntegrationProvider.CODA,
     name: "Coda",
@@ -142,6 +181,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
       authorizationEndpoint: "https://www.reddit.com/api/v1/authorize",
       tokenEndpoint: "https://www.reddit.com/api/v1/access_token",
       scopes: ["identity", "read", "history"],
+      tokenClientAuthMethod: "basic",
       extraAuthParams: {
         duration: "permanent",
       },

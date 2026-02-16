@@ -54,7 +54,8 @@ export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData
   // Using GET list instead of POST search — more compatible with PAT tokens
   const allDeals: { properties: Record<string, string> }[] = [];
   let after: string | undefined;
-  const properties = "dealstage,amount,dealname,closedate,createdate,hs_analytics_source,num_associated_contacts";
+  const properties =
+    "dealstage,amount,dealname,closedate,createdate,hs_analytics_source,num_associated_contacts,hubspot_owner_id,hs_lastmodifieddate";
 
   for (let page = 0; page < 10; page++) {
     const url = new URL(`${baseUrl}/crm/v3/objects/deals`);
@@ -105,6 +106,21 @@ export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData
     count: data.count,
     value: data.value,
   }));
+
+  const deals = allDeals.map((deal) => {
+    const props = deal.properties || {};
+    const stageId = props.dealstage || "unknown";
+    return {
+      dealId: String((deal as { id?: string }).id ?? ""),
+      dealName: props.dealname || "Untitled deal",
+      stageId,
+      stageLabel: HUBSPOT_STAGE_MAP[stageId] || stageId,
+      amount: parseFloat(props.amount) || 0,
+      source: props.hs_analytics_source || "Unknown",
+      ownerId: props.hubspot_owner_id || null,
+      updatedAt: props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).toISOString() : null,
+    };
+  });
 
   const closedWon = stageAgg["closedwon"]?.count || 0;
   const closedLost = stageAgg["closedlost"]?.count || 0;
@@ -166,6 +182,7 @@ export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData
       recentContacts,
       bySource: [],
     },
+    deals,
     _meta: makeMeta(),
   };
 }

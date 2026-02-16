@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { IntegrationProvider } from "@/generated/prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCredentials } from "@/lib/analytics/credentials";
@@ -15,11 +16,21 @@ import {
 import { fetchCodaData } from "@/lib/analytics/fetchers-coda";
 import { fetchSemrushData } from "@/lib/analytics/fetchers-semrush";
 import { fetchPylonData } from "@/lib/analytics/fetchers-pylon";
+import { fetchIntegrationTelemetryData } from "@/lib/analytics/fetchers-integrations";
+import { buildCrossFunnelData } from "@/lib/analytics/funnel";
+import { buildDistilledInsights } from "@/lib/analytics/insight-engine";
+import {
+  readLatestSnapshot,
+  readLatestSuccessfulSnapshot,
+  snapshotExpiryFromNow,
+  storeAnalyticsSnapshot,
+  storeAnalyticsSnapshotFailure,
+} from "@/lib/analytics/snapshots";
 import type {
   AnalyticsDashboardData,
   AnalyticsRecommendation,
-  CrossFunnelData,
   ProductSuccessData,
+  ProviderFreshness,
 } from "@/lib/analytics/types";
 
 export const revalidate = 300;
@@ -38,8 +49,14 @@ type DomainKey =
   | "semrush"
   | "pylon"
   | "product"
+  | "googleWorkspace"
+  | "slack"
+  | "hubspotOps"
+  | "codaOps"
+  | "redditOps"
   | "funnelJourney"
-  | "recommendations";
+  | "recommendations"
+  | "distilledInsights";
 
 const ALL_DOMAINS: DomainKey[] = [
   "hubspot",
@@ -55,31 +72,64 @@ const ALL_DOMAINS: DomainKey[] = [
   "semrush",
   "pylon",
   "product",
+  "googleWorkspace",
+  "slack",
+  "hubspotOps",
+  "codaOps",
+  "redditOps",
   "funnelJourney",
   "recommendations",
+  "distilledInsights",
 ];
 
 const SECTION_DOMAINS: Record<string, DomainKey[]> = {
-  overview: ["googleAnalytics", "hubspot", "stripe", "mercury", "pylon", "product", "funnelJourney", "recommendations"],
-  "ads-traffic": ["googleAnalytics", "googleAds", "metaAds", "redditAds", "webflow", "semrush", "coda", "funnelJourney", "recommendations"],
-  finance: ["mercury", "stripe", "hubspot", "funnelJourney", "recommendations"],
-  "sales-pipeline": ["hubspot", "stripe", "funnelJourney", "recommendations"],
-  "customer-success": ["pylon", "coda", "product", "funnelJourney", "recommendations"],
+  overview: [
+    "googleAnalytics",
+    "hubspot",
+    "stripe",
+    "mercury",
+    "pylon",
+    "product",
+    "googleWorkspace",
+    "slack",
+    "funnelJourney",
+    "recommendations",
+    "distilledInsights",
+  ],
+  "ads-traffic": [
+    "googleAnalytics",
+    "googleAds",
+    "metaAds",
+    "redditAds",
+    "webflow",
+    "semrush",
+    "coda",
+    "funnelJourney",
+    "recommendations",
+    "distilledInsights",
+  ],
+  finance: ["mercury", "stripe", "hubspot", "hubspotOps", "funnelJourney", "recommendations", "distilledInsights"],
+  "sales-pipeline": ["hubspot", "stripe", "googleWorkspace", "slack", "hubspotOps", "funnelJourney", "recommendations", "distilledInsights"],
+  "customer-success": ["pylon", "coda", "product", "googleWorkspace", "slack", "codaOps", "funnelJourney", "recommendations", "distilledInsights"],
   "ads-google-analytics": ["googleAnalytics"],
   "ads-google-ads": ["googleAds"],
   "ads-meta-ads": ["metaAds"],
-  "ads-reddit-ads": ["redditAds"],
+  "ads-reddit-ads": ["redditAds", "redditOps"],
   "ads-webflow": ["webflow"],
   "ads-semrush": ["semrush"],
-  "ads-coda-kanban": ["coda"],
+  "ads-coda-kanban": ["coda", "codaOps"],
   "finance-mercury": ["mercury"],
   "finance-stripe": ["stripe"],
-  "finance-hubspot": ["hubspot"],
-  "sales-hubspot": ["hubspot"],
+  "finance-hubspot": ["hubspot", "hubspotOps"],
+  "sales-hubspot": ["hubspot", "hubspotOps"],
   "sales-stripe": ["stripe"],
+  "sales-google-workspace": ["googleWorkspace"],
+  "sales-slack": ["slack"],
   "cs-pylon": ["pylon"],
-  "cs-coda": ["coda"],
+  "cs-coda": ["coda", "codaOps"],
   "cs-product": ["product"],
+  "cs-google-workspace": ["googleWorkspace"],
+  "cs-slack": ["slack"],
 };
 
 function requiredDomainsForSection(section: string | null): Set<DomainKey> {
@@ -142,44 +192,6 @@ async function computeProductSuccessData(from: Date, to: Date): Promise<ProductS
   };
 }
 
-function buildFunnelJourney(data: AnalyticsDashboardData): CrossFunnelData {
-  const marketingCount =
-    data.googleAnalytics?.users30d ??
-    ((data.googleAds?.totalClicks ?? 0) + (data.metaAds?.totalClicks ?? 0) + (data.redditAds?.totalClicks ?? 0));
-  const salesCount = data.hubspot?.funnel?.totalDeals ?? 0;
-  const customerSuccessCount =
-    data.stripe?.subscriptions?.active ?? Math.max(0, (data.pylon?.resolvedInRange ?? 0) - (data.pylon?.urgentConversations ?? 0));
-
-  const salesConv = marketingCount > 0 ? (salesCount / marketingCount) * 100 : null;
-  const csConv = salesCount > 0 ? (customerSuccessCount / salesCount) * 100 : null;
-
-  const narrative: string[] = [];
-  if (salesConv !== null) {
-    narrative.push(`Marketing to sales conversion is ${salesConv.toFixed(1)}%.`);
-  }
-  if (csConv !== null) {
-    narrative.push(`Sales to customer-success handoff retention is ${csConv.toFixed(1)}%.`);
-  }
-  if (data.hubspot?.funnel?.noShowRate && data.hubspot.funnel.noShowRate > 15) {
-    narrative.push("No-show rate is high; tighten reminder and follow-up automations.");
-  }
-  if (data.pylon?.urgentConversations && data.pylon.urgentConversations > 10) {
-    narrative.push("Urgent support load is elevated; consider SLA triage workflow automation.");
-  }
-  if (narrative.length === 0) {
-    narrative.push("Funnel health is stable across acquisition, conversion, and customer success.");
-  }
-
-  return {
-    stages: [
-      { id: "marketing", label: "Marketing", count: marketingCount, conversionFromPrev: null },
-      { id: "sales", label: "Sales", count: salesCount, conversionFromPrev: salesConv },
-      { id: "customer-success", label: "Customer Success", count: customerSuccessCount, conversionFromPrev: csConv },
-    ],
-    narrative,
-  };
-}
-
 function buildRecommendations(data: AnalyticsDashboardData): AnalyticsRecommendation[] {
   const recommendations: AnalyticsRecommendation[] = [];
 
@@ -189,7 +201,7 @@ function buildRecommendations(data: AnalyticsDashboardData): AnalyticsRecommenda
       section: "ads-traffic",
       severity: "warning",
       title: "Reduce high bounce traffic",
-      insight: `Bounce rate is ${(((data.googleAnalytics?.bounceRate ?? 0) * 100)).toFixed(1)}%, indicating weak landing relevance.`,
+      insight: `Bounce rate is ${((data.googleAnalytics?.bounceRate ?? 0) * 100).toFixed(1)}%, indicating weak landing relevance.`,
       suggestedAction: "Launch A/B tests on top entry pages and tighten ad-to-page message match.",
     });
   }
@@ -241,6 +253,15 @@ function buildRecommendations(data: AnalyticsDashboardData): AnalyticsRecommenda
   return recommendations;
 }
 
+function providerForDomain(domain: DomainKey): "google_workspace" | "hubspot" | "slack" | "coda" | "reddit" | null {
+  if (domain === "hubspot" || domain === "hubspotOps") return "hubspot";
+  if (domain === "googleWorkspace") return "google_workspace";
+  if (domain === "slack") return "slack";
+  if (domain === "coda" || domain === "codaOps") return "coda";
+  if (domain === "redditOps") return "reddit";
+  return null;
+}
+
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
@@ -256,6 +277,10 @@ export async function GET(request: Request) {
   const toDate = new Date(`${range.to}T23:59:59.999Z`);
 
   const userId = (session.user as { id?: string }).id;
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const creds = await getCredentials(userId);
 
   const result: AnalyticsDashboardData = {
@@ -272,144 +297,325 @@ export async function GET(request: Request) {
     semrush: null,
     pylon: null,
     product: null,
+    googleWorkspace: null,
+    slack: null,
+    hubspotOps: null,
+    codaOps: null,
+    redditOps: null,
     funnelJourney: null,
     recommendations: [],
+    distilledInsights: [],
+    freshness: {
+      google_workspace: {
+        provider: "google_workspace",
+        source: creds.freshness.GOOGLE_WORKSPACE.source,
+        status: creds.freshness.GOOGLE_WORKSPACE.status,
+        connectedAt: creds.freshness.GOOGLE_WORKSPACE.connectedAt,
+        lastSyncedAt: creds.freshness.GOOGLE_WORKSPACE.lastSyncedAt,
+        lastError: creds.freshness.GOOGLE_WORKSPACE.lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
+      hubspot: {
+        provider: "hubspot",
+        source: creds.freshness.HUBSPOT.source,
+        status: creds.freshness.HUBSPOT.status,
+        connectedAt: creds.freshness.HUBSPOT.connectedAt,
+        lastSyncedAt: creds.freshness.HUBSPOT.lastSyncedAt,
+        lastError: creds.freshness.HUBSPOT.lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
+      slack: {
+        provider: "slack",
+        source: creds.freshness.SLACK.source,
+        status: creds.freshness.SLACK.status,
+        connectedAt: creds.freshness.SLACK.connectedAt,
+        lastSyncedAt: creds.freshness.SLACK.lastSyncedAt,
+        lastError: creds.freshness.SLACK.lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
+      coda: {
+        provider: "coda",
+        source: creds.freshness.CODA.source,
+        status: creds.freshness.CODA.status,
+        connectedAt: creds.freshness.CODA.connectedAt,
+        lastSyncedAt: creds.freshness.CODA.lastSyncedAt,
+        lastError: creds.freshness.CODA.lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
+      reddit: {
+        provider: "reddit",
+        source: creds.freshness.REDDIT.source,
+        status: creds.freshness.REDDIT.status,
+        connectedAt: creds.freshness.REDDIT.connectedAt,
+        lastSyncedAt: creds.freshness.REDDIT.lastSyncedAt,
+        lastError: creds.freshness.REDDIT.lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
+      stripe: {
+        provider: "stripe",
+        source: creds.freshness.STRIPE.source,
+        status: creds.freshness.STRIPE.status,
+        connectedAt: creds.freshness.STRIPE.connectedAt,
+        lastSyncedAt: creds.freshness.STRIPE.lastSyncedAt,
+        lastError: creds.freshness.STRIPE.lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
+      mercury: {
+        provider: "mercury",
+        source: creds.freshness.MERCURY.source,
+        status: creds.freshness.MERCURY.status,
+        connectedAt: creds.freshness.MERCURY.connectedAt,
+        lastSyncedAt: creds.freshness.MERCURY.lastSyncedAt,
+        lastError: creds.freshness.MERCURY.lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
+    },
+    staleDomains: [],
     timeRange: range,
     lastFullRefresh: new Date().toISOString(),
     errors: [],
   };
 
   type FetchEntry = {
-    key: DomainKey;
+    key: Exclude<DomainKey, "funnelJourney" | "recommendations" | "distilledInsights">;
     fn: () => Promise<unknown>;
   };
-  const fetchers: FetchEntry[] = [];
 
-  if (domains.has("hubspot") && creds.hubspotToken) {
-    fetchers.push({ key: "hubspot", fn: () => fetchHubSpotData(creds.hubspotToken!) });
-  }
-  if (domains.has("stripe") && creds.stripeKey) {
-    fetchers.push({ key: "stripe", fn: () => fetchStripeData(creds.stripeKey!) });
-  }
-  if (domains.has("mercury") && creds.mercuryKey) {
-    fetchers.push({ key: "mercury", fn: () => fetchMercuryData(creds.mercuryKey!) });
-  }
-  // Google Analytics (GA4) — service account OR OAuth2 refresh token
-  const hasGAServiceAccount = !!(creds.gaClientEmail && creds.gaPrivateKey);
-  const hasGAOAuth = !!(creds.gaRefreshToken && creds.gaOAuthClientId && creds.gaOAuthClientSecret);
-  if (domains.has("googleAnalytics") && creds.gaPropertyId && (hasGAServiceAccount || hasGAOAuth)) {
-    fetchers.push({
+  const fetchers = ([
+    { key: "hubspot", fn: () => (creds.hubspotToken ? fetchHubSpotData(creds.hubspotToken) : Promise.reject(new Error("Missing HubSpot credential"))) },
+    { key: "stripe", fn: () => (creds.stripeKey ? fetchStripeData(creds.stripeKey) : Promise.reject(new Error("Missing Stripe credential"))) },
+    { key: "mercury", fn: () => (creds.mercuryKey ? fetchMercuryData(creds.mercuryKey) : Promise.reject(new Error("Missing Mercury credential"))) },
+    {
       key: "googleAnalytics",
-      fn: () => fetchGAData(creds.gaPropertyId!, creds.gaClientEmail || "", creds.gaPrivateKey || ""),
-    });
-  }
-  if (
-    domains.has("googleAds") &&
-    creds.googleAdsDevToken &&
-    creds.googleAdsCustomerId &&
-    creds.googleAdsRefreshToken &&
-    creds.googleAdsClientId &&
-    creds.googleAdsClientSecret
-  ) {
-    fetchers.push({
+      fn: () =>
+        creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey
+          ? fetchGAData(creds.gaPropertyId, creds.gaClientEmail, creds.gaPrivateKey)
+          : Promise.reject(new Error("Missing Google Analytics credential")),
+    },
+    {
       key: "googleAds",
       fn: () =>
-        fetchGoogleAdsData(
-          creds.googleAdsDevToken!,
-          creds.googleAdsCustomerId!,
-          creds.googleAdsRefreshToken!,
-          creds.googleAdsClientId!,
-          creds.googleAdsClientSecret!
-        ),
-    });
-  }
-  if (domains.has("metaAds") && creds.metaAccessToken && creds.metaAdAccountId) {
-    fetchers.push({
+        creds.googleAdsDevToken &&
+        creds.googleAdsCustomerId &&
+        creds.googleAdsRefreshToken &&
+        creds.googleAdsClientId &&
+        creds.googleAdsClientSecret
+          ? fetchGoogleAdsData(
+              creds.googleAdsDevToken,
+              creds.googleAdsCustomerId,
+              creds.googleAdsRefreshToken,
+              creds.googleAdsClientId,
+              creds.googleAdsClientSecret
+            )
+          : Promise.reject(new Error("Missing Google Ads credential")),
+    },
+    {
       key: "metaAds",
-      fn: () => fetchMetaAdsData(creds.metaAccessToken!, creds.metaAdAccountId!),
-    });
-  }
-  if (domains.has("metaPage") && creds.metaAccessToken && creds.metaPageId) {
-    fetchers.push({
+      fn: () =>
+        creds.metaAccessToken && creds.metaAdAccountId
+          ? fetchMetaAdsData(creds.metaAccessToken, creds.metaAdAccountId)
+          : Promise.reject(new Error("Missing Meta Ads credential")),
+    },
+    {
       key: "metaPage",
-      fn: () => fetchMetaPageData(creds.metaAccessToken!, creds.metaPageId!),
-    });
-  }
-  if (
-    domains.has("redditAds") &&
-    creds.redditClientId &&
-    creds.redditClientSecret &&
-    creds.redditRefreshToken &&
-    creds.redditAdAccountId
-  ) {
-    fetchers.push({
+      fn: () =>
+        creds.metaAccessToken && creds.metaPageId
+          ? fetchMetaPageData(creds.metaAccessToken, creds.metaPageId)
+          : Promise.reject(new Error("Missing Meta Page credential")),
+    },
+    {
       key: "redditAds",
       fn: () =>
-        fetchRedditAdsData(
-          creds.redditClientId!,
-          creds.redditClientSecret!,
-          creds.redditRefreshToken!,
-          creds.redditAdAccountId!
-        ),
-    });
-  }
-  if (domains.has("webflow") && creds.webflowApiToken && creds.webflowSiteId) {
-    fetchers.push({
+        creds.redditClientId && creds.redditClientSecret && creds.redditRefreshToken && creds.redditAdAccountId
+          ? fetchRedditAdsData(creds.redditClientId, creds.redditClientSecret, creds.redditRefreshToken, creds.redditAdAccountId)
+          : Promise.reject(new Error("Missing Reddit Ads credential")),
+    },
+    {
       key: "webflow",
-      fn: () => fetchWebflowData(creds.webflowApiToken!, creds.webflowSiteId!),
-    });
-  }
-  if (domains.has("coda") && creds.codaApiToken && creds.codaDocId) {
-    fetchers.push({
+      fn: () =>
+        creds.webflowApiToken && creds.webflowSiteId
+          ? fetchWebflowData(creds.webflowApiToken, creds.webflowSiteId)
+          : Promise.reject(new Error("Missing Webflow credential")),
+    },
+    {
       key: "coda",
-      fn: () => fetchCodaData(creds.codaApiToken!, creds.codaDocId!),
-    });
-  }
-  if (domains.has("semrush") && creds.semrushApiToken) {
-    fetchers.push({
+      fn: () =>
+        creds.codaApiToken && creds.codaDocId
+          ? fetchCodaData(creds.codaApiToken, creds.codaDocId)
+          : Promise.reject(new Error("Missing Coda credential")),
+    },
+    {
       key: "semrush",
-      fn: () => fetchSemrushData(creds.semrushApiToken!),
-    });
-  }
-  if (domains.has("pylon") && creds.pylonApiKey) {
-    fetchers.push({
+      fn: () => (creds.semrushApiToken ? fetchSemrushData(creds.semrushApiToken) : Promise.reject(new Error("Missing SEMrush credential"))),
+    },
+    {
       key: "pylon",
-      fn: () => fetchPylonData({ apiKey: creds.pylonApiKey!, from: range.from, to: range.to }),
-    });
-  }
-  if (domains.has("product")) {
-    fetchers.push({
+      fn: () =>
+        creds.pylonApiKey
+          ? fetchPylonData({ apiKey: creds.pylonApiKey, from: range.from, to: range.to })
+          : Promise.reject(new Error("Missing Pylon credential")),
+    },
+    {
       key: "product",
       fn: () => computeProductSuccessData(fromDate, toDate),
-    });
-  }
+    },
+    {
+      key: "googleWorkspace",
+      fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.GOOGLE_WORKSPACE, from: fromDate, to: toDate }),
+    },
+    {
+      key: "hubspotOps",
+      fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.HUBSPOT, from: fromDate, to: toDate }),
+    },
+    {
+      key: "slack",
+      fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.SLACK, from: fromDate, to: toDate }),
+    },
+    {
+      key: "codaOps",
+      fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.CODA, from: fromDate, to: toDate }),
+    },
+    {
+      key: "redditOps",
+      fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.REDDIT, from: fromDate, to: toDate }),
+    },
+  ] as FetchEntry[]).filter((entry) => domains.has(entry.key));
+
+  const snapshotExpiresAt = snapshotExpiryFromNow(1);
 
   const settled = await Promise.allSettled(
-    fetchers.map((entry) => withTimeout(entry.fn, 6500, entry.key))
+    fetchers.map(async (entry) => {
+      const latestSnapshot = await readLatestSnapshot({
+        userId,
+        providerKey: entry.key,
+        contextKey: "default",
+        rangePreset: range.preset,
+        fromDate,
+        toDate,
+      });
+
+      if (!forceRefresh && latestSnapshot.payload && !latestSnapshot.stale) {
+        return {
+          key: entry.key,
+          payload: latestSnapshot.payload,
+          stale: false,
+          capturedAt: latestSnapshot.capturedAt,
+          source: "snapshot" as const,
+        };
+      }
+
+      try {
+        const live = await withTimeout(entry.fn, 8_500, entry.key);
+        await storeAnalyticsSnapshot({
+          userId,
+          providerKey: entry.key,
+          contextKey: "default",
+          rangePreset: range.preset,
+          fromDate,
+          toDate,
+          payload: live,
+          expiresAt: snapshotExpiresAt,
+        });
+
+        return {
+          key: entry.key,
+          payload: live,
+          stale: false,
+          capturedAt: new Date().toISOString(),
+          source: "live" as const,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed";
+
+        await storeAnalyticsSnapshotFailure({
+          userId,
+          providerKey: entry.key,
+          contextKey: "default",
+          rangePreset: range.preset,
+          fromDate,
+          toDate,
+          error: message,
+          expiresAt: snapshotExpiresAt,
+        });
+
+        const fallback = await readLatestSuccessfulSnapshot({
+          userId,
+          providerKey: entry.key,
+          contextKey: "default",
+          rangePreset: range.preset,
+          fromDate,
+          toDate,
+        });
+
+        if (fallback.payload) {
+          return {
+            key: entry.key,
+            payload: fallback.payload,
+            stale: true,
+            capturedAt: fallback.capturedAt,
+            source: "snapshot" as const,
+            fallbackError: message,
+          };
+        }
+
+        throw new Error(message);
+      }
+    })
   );
 
-  settled.forEach((outcome, index) => {
-    const targetKey = fetchers[index].key;
-    if (outcome.status === "fulfilled") {
-      (result as unknown as Record<string, unknown>)[targetKey] = outcome.value;
+  settled.forEach((outcome) => {
+    if (outcome.status === "rejected") {
+      result.errors.push({
+        source: "analytics",
+        message: outcome.reason instanceof Error ? outcome.reason.message : "Failed",
+      });
       return;
     }
-    result.errors.push({
-      source: targetKey,
-      message: outcome.reason instanceof Error ? outcome.reason.message : "Failed",
-    });
+
+    const { key, payload, stale, capturedAt, fallbackError } = outcome.value;
+    (result as unknown as Record<string, unknown>)[key] = payload;
+
+    if (stale) {
+      result.staleDomains.push(key);
+      if (fallbackError) {
+        result.errors.push({ source: key, message: fallbackError });
+      }
+    }
+
+    const provider = providerForDomain(key);
+    if (provider) {
+      const existing = result.freshness[provider] as ProviderFreshness | undefined;
+      if (existing) {
+        result.freshness[provider] = {
+          ...existing,
+          stale: existing.stale || stale,
+          lastSnapshotAt: capturedAt ?? existing.lastSnapshotAt,
+          source: stale ? "snapshot" : existing.source,
+        };
+      }
+    }
   });
 
   if (domains.has("funnelJourney")) {
-    result.funnelJourney = buildFunnelJourney(result);
+    result.funnelJourney = buildCrossFunnelData(result);
   }
   if (domains.has("recommendations")) {
     result.recommendations = buildRecommendations(result);
   }
+  if (domains.has("distilledInsights")) {
+    result.distilledInsights = buildDistilledInsights(result);
+  }
 
   return NextResponse.json(result, {
     headers: {
-      "Cache-Control": forceRefresh ? "no-cache, no-store" : "public, s-maxage=300, stale-while-revalidate=60",
+      "Cache-Control": forceRefresh ? "no-cache, no-store" : "public, s-maxage=120, stale-while-revalidate=60",
     },
   });
 }

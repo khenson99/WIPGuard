@@ -7,6 +7,28 @@ export interface AnalyticsTimestamp {
   source: "live" | "cached";
 }
 
+export type AnalyticsSnapshotStatus = "SUCCESS" | "ERROR";
+
+export type IntegrationProviderKey =
+  | "google_workspace"
+  | "hubspot"
+  | "slack"
+  | "coda"
+  | "reddit"
+  | "stripe"
+  | "mercury";
+
+export interface ProviderFreshness {
+  provider: IntegrationProviderKey;
+  source: "connection" | "env" | "none" | "snapshot";
+  status: "CONNECTED" | "DISCONNECTED" | "ERROR" | null;
+  connectedAt: string | null;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  stale: boolean;
+  lastSnapshotAt: string | null;
+}
+
 // ══════════════════════════════════════════════════════════
 // HUBSPOT TYPES
 // ══════════════════════════════════════════════════════════
@@ -51,6 +73,16 @@ export interface ContactMetrics {
 export interface HubSpotData {
   funnel: FunnelMetrics;
   contacts: ContactMetrics;
+  deals?: Array<{
+    dealId: string;
+    dealName: string;
+    stageId: string;
+    stageLabel: string;
+    amount: number;
+    source: string;
+    ownerId: string | null;
+    updatedAt: string | null;
+  }>;
   _meta: AnalyticsTimestamp;
 }
 
@@ -322,13 +354,67 @@ export interface ProductSuccessData {
   _meta: AnalyticsTimestamp;
 }
 
-export interface CrossFunnelData {
-  stages: Array<{
-    id: "marketing" | "sales" | "customer-success";
-    label: string;
-    count: number;
-    conversionFromPrev: number | null;
+export interface IntegrationTelemetryData {
+  provider: IntegrationProviderKey;
+  totalRules: number;
+  enabledRules: number;
+  erroredRules: number;
+  receiptsInRange: number;
+  tasksCreatedInRange: number;
+  eventsInRange: number;
+  failuresInRange: number;
+  trend: Array<{ date: string; receipts: number; createdTasks: number; failures: number }>;
+  topFailureReasons: Array<{ reason: string; count: number }>;
+  _meta: AnalyticsTimestamp;
+}
+
+export interface FunnelTouchpoint {
+  stageId: string;
+  stageLabel: string;
+  count: number;
+  conversionFromPrevious: number | null;
+}
+
+export interface FunnelDropoffRecord {
+  id: string;
+  fromStageId: string;
+  fromStageLabel: string;
+  toStageId: string;
+  toStageLabel: string;
+  droppedCount: number;
+  dropoffRate: number;
+  entityType: "contact" | "deal";
+  entityId: string;
+  entityName: string;
+  owner: string | null;
+  value: number;
+  reason: string;
+  source: "hubspot" | "stripe" | "pylon" | "inferred";
+  lastActivityAt: string | null;
+}
+
+export interface CrossFunnelAttribution {
+  marketingSources: Array<{
+    source: string;
+    leads: number;
+    deals: number;
+    revenue: number;
+    conversionRate: number | null;
   }>;
+}
+
+export interface FunnelInsight {
+  id: string;
+  severity: "info" | "warning" | "critical";
+  headline: string;
+  detail: string;
+}
+
+export interface CrossFunnelData {
+  stages: FunnelTouchpoint[];
+  dropoffs: FunnelDropoffRecord[];
+  attribution: CrossFunnelAttribution;
+  insights: FunnelInsight[];
   narrative: string[];
 }
 
@@ -339,6 +425,29 @@ export interface AnalyticsRecommendation {
   suggestedAction: string;
   severity: "info" | "warning" | "critical";
   section: "ads-traffic" | "finance" | "sales-pipeline" | "customer-success";
+}
+
+export type InsightActionType =
+  | "create_task"
+  | "assign_owner"
+  | "create_automation_from_template"
+  | "open_integration_followup";
+
+export interface InsightAction {
+  type: InsightActionType;
+  label: string;
+  payload: Record<string, unknown>;
+}
+
+export interface DistilledInsight {
+  id: string;
+  section: "ads-traffic" | "finance" | "sales-pipeline" | "customer-success";
+  severity: "info" | "warning" | "critical";
+  title: string;
+  why: string;
+  changeOverTime: string;
+  confidence: number;
+  actions: InsightAction[];
 }
 
 // ══════════════════════════════════════════════════════════
@@ -359,8 +468,16 @@ export interface AnalyticsDashboardData {
   semrush: SemrushData | null;
   pylon: PylonData | null;
   product: ProductSuccessData | null;
+  googleWorkspace: IntegrationTelemetryData | null;
+  slack: IntegrationTelemetryData | null;
+  hubspotOps: IntegrationTelemetryData | null;
+  codaOps: IntegrationTelemetryData | null;
+  redditOps: IntegrationTelemetryData | null;
   funnelJourney: CrossFunnelData | null;
   recommendations: AnalyticsRecommendation[];
+  distilledInsights: DistilledInsight[];
+  freshness: Partial<Record<IntegrationProviderKey, ProviderFreshness>>;
+  staleDomains: string[];
   timeRange?: {
     preset: string;
     from: string;

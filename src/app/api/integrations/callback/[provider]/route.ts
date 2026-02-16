@@ -215,7 +215,8 @@ export async function GET(
     });
     const accountProfile = await fetchOAuthAccountProfile(
       definition,
-      tokenResponse.accessToken
+      tokenResponse.accessToken,
+      tokenResponse.raw
     );
 
     const metadata: Prisma.InputJsonObject = {

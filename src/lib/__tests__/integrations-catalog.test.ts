@@ -19,4 +19,17 @@ describe("integrations catalog", () => {
     const slugs = listIntegrationDefinitions().map((definition) => definition.slug);
     expect(slugs).toContain("reddit");
   });
+
+  it("includes stripe and mercury as oauth integrations", () => {
+    const stripe = getIntegrationBySlug("stripe");
+    const mercury = getIntegrationBySlug("mercury");
+
+    expect(stripe).not.toBeNull();
+    expect(stripe?.provider).toBe("STRIPE");
+    expect(stripe ? isOAuthIntegration(stripe) : false).toBe(true);
+
+    expect(mercury).not.toBeNull();
+    expect(mercury?.provider).toBe("MERCURY");
+    expect(mercury ? isOAuthIntegration(mercury) : false).toBe(true);
+  });
 });

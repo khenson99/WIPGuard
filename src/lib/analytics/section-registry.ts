@@ -17,9 +17,11 @@ export interface AnalyticsSubSection {
   path: string;
   parentId: AnalyticsPrimarySectionId;
   dataDomain:
+    | "googleWorkspace"
     | "hubspot"
     | "stripe"
     | "mercury"
+    | "slack"
     | "googleAnalytics"
     | "googleAds"
     | "metaAds"
@@ -78,10 +80,14 @@ export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
 
   { id: "sales-hubspot", label: "HubSpot", path: "/analytics/sales-hubspot", parentId: "sales-pipeline", dataDomain: "hubspot" },
   { id: "sales-stripe", label: "Stripe", path: "/analytics/sales-stripe", parentId: "sales-pipeline", dataDomain: "stripe" },
+  { id: "sales-google-workspace", label: "Google Workspace", path: "/analytics/sales-google-workspace", parentId: "sales-pipeline", dataDomain: "googleWorkspace" },
+  { id: "sales-slack", label: "Slack", path: "/analytics/sales-slack", parentId: "sales-pipeline", dataDomain: "slack" },
 
   { id: "cs-pylon", label: "Pylon", path: "/analytics/cs-pylon", parentId: "customer-success", dataDomain: "pylon" },
   { id: "cs-coda", label: "Coda", path: "/analytics/cs-coda", parentId: "customer-success", dataDomain: "coda" },
   { id: "cs-product", label: "Product", path: "/analytics/cs-product", parentId: "customer-success", dataDomain: "product" },
+  { id: "cs-google-workspace", label: "Google Workspace", path: "/analytics/cs-google-workspace", parentId: "customer-success", dataDomain: "googleWorkspace" },
+  { id: "cs-slack", label: "Slack", path: "/analytics/cs-slack", parentId: "customer-success", dataDomain: "slack" },
   { id: "cs-decision-dashboard", label: "Decision Dashboard", path: "/analytics/cs-decision-dashboard", parentId: "customer-success", dataDomain: "decisionDashboard" },
   { id: "cs-flow-metrics", label: "Flow Metrics", path: "/analytics/cs-flow-metrics", parentId: "customer-success", dataDomain: "flowMetrics" },
   { id: "cs-flow-risk", label: "Flow Risk", path: "/analytics/cs-flow-risk", parentId: "customer-success", dataDomain: "flowRisk" },
@@ -134,10 +140,11 @@ export const LEGACY_ANALYTICS_ROUTE_REDIRECTS: Record<string, string> = {
   "reddit-ads": "/analytics/ads-reddit-ads",
   webflow: "/analytics/ads-webflow",
   coda: "/analytics/cs-coda",
+  "google-workspace": "/analytics/sales-google-workspace",
+  slack: "/analytics/sales-slack",
   semrush: "/analytics/ads-semrush",
   "decision-dashboard": "/analytics/cs-decision-dashboard",
   "flow-metrics": "/analytics/cs-flow-metrics",
   "flow-risk": "/analytics/cs-flow-risk",
   observability: "/analytics/cs-observability",
 };
-
