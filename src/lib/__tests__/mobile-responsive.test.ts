@@ -46,6 +46,15 @@ import {
   resolveConflict,
 } from "@/lib/mobile/offline-sync";
 
+type UnknownRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): UnknownRecord {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as UnknownRecord;
+}
+
 /* ------------------------------------------------------------------ */
 /*  responsive-utils                                                   */
 /* ------------------------------------------------------------------ */
@@ -209,27 +218,31 @@ describe("conflict-resolution", () => {
 
   it("client-wins preserves server values in _serverOverridden", () => {
     const result = resolveWithStrategy("field-level", "client-wins", { a: 1 }, { a: 2 });
+    const serverOverridden = asRecord(asRecord(result)._serverOverridden);
     expect(result.a).toBe(1);
-    expect((result as any)._serverOverridden.a).toBe(2);
+    expect(serverOverridden.a).toBe(2);
   });
 
   it("server-wins preserves client values in _clientOverridden", () => {
     const result = resolveWithStrategy("field-level", "server-wins", { a: 1 }, { a: 2 });
+    const clientOverridden = asRecord(asRecord(result)._clientOverridden);
     expect(result.a).toBe(2);
-    expect((result as any)._clientOverridden.a).toBe(1);
+    expect(clientOverridden.a).toBe(1);
   });
 
   it("merge strategy combines both and records conflicts", () => {
     const result = mergeChanges({ a: 1, b: "client" }, { a: 1, b: "server", c: 3 });
+    const conflicts = asRecord(asRecord(result)._conflicts);
+    const conflictB = asRecord(conflicts.b);
     expect(result.a).toBe(1);
     expect(result.b).toBe("client");
     expect(result.c).toBe(3);
-    expect((result as any)._conflicts.b.server).toBe("server");
+    expect(conflictB.server).toBe("server");
   });
 
   it("manual strategy returns requires-manual flag", () => {
     const result = resolveWithStrategy("concurrent-edit", "manual", { a: 1 }, { a: 2 });
-    expect((result as any)._requiresManualResolution).toBe(true);
+    expect(asRecord(result)._requiresManualResolution).toBe(true);
   });
 
   it("no-conflict just merges payloads", () => {
@@ -306,7 +319,8 @@ describe("offline-sync", () => {
     await queueOfflineAction("field-note", { seq: 1 });
     await queueOfflineAction("field-note", { seq: 2 });
     await processSync(async (action) => {
-      order.push(String((action.payload as any).seq));
+      const payload = asRecord(action.payload);
+      order.push(String(payload.seq));
       return { ok: true as const };
     });
     expect(order).toEqual(["1", "2"]);
@@ -353,16 +367,22 @@ describe("PWA manifest", () => {
 
   it("manifest includes 192 and 512 icons", () => {
     const raw = readFileSync(join(process.cwd(), "public", "manifest.json"), "utf-8");
-    const manifest = JSON.parse(raw);
-    const sizes = manifest.icons.map((i: any) => i.sizes);
+    const manifest = asRecord(JSON.parse(raw));
+    const icons = Array.isArray(manifest.icons)
+      ? (manifest.icons as UnknownRecord[])
+      : [];
+    const sizes = icons.map((icon) => String(icon.sizes ?? ""));
     expect(sizes).toContain("192x192");
     expect(sizes).toContain("512x512");
   });
 
   it("manifest has a maskable icon", () => {
     const raw = readFileSync(join(process.cwd(), "public", "manifest.json"), "utf-8");
-    const manifest = JSON.parse(raw);
-    const maskable = manifest.icons.find((i: any) => i.purpose === "maskable");
+    const manifest = asRecord(JSON.parse(raw));
+    const icons = Array.isArray(manifest.icons)
+      ? (manifest.icons as UnknownRecord[])
+      : [];
+    const maskable = icons.find((icon) => icon.purpose === "maskable");
     expect(maskable).toBeDefined();
   });
 });

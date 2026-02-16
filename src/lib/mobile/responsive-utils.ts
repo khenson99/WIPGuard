@@ -37,5 +37,10 @@ export function getCardSize(width: number): CardSize {
 
 export function isTouchDevice(): boolean {
   if (typeof window === "undefined") return false;
-  return "ontouchstart" in window || navigator.maxTouchPoints > 0 || (navigator as any).msMaxTouchPoints > 0;
+  const nav = navigator as Navigator & { msMaxTouchPoints?: number };
+  return (
+    "ontouchstart" in window ||
+    nav.maxTouchPoints > 0 ||
+    (nav.msMaxTouchPoints ?? 0) > 0
+  );
 }
