@@ -359,6 +359,9 @@ export interface IntegrationTelemetryData {
   totalRules: number;
   enabledRules: number;
   erroredRules: number;
+  configuredRules?: string[];
+  expectedRules?: string[];
+  coverageStatus?: "active" | "stale" | "not_provisioned";
   receiptsInRange: number;
   tasksCreatedInRange: number;
   eventsInRange: number;
