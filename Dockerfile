@@ -32,6 +32,9 @@ RUN echo "Build: ${BUILDTIME}" > /app/.build-info
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
+# Include runtime deps needed by migrate.cjs (not part of Next standalone trace).
+COPY --from=deps /app/node_modules ./node_modules
+
 # Copy standalone server (includes traced node_modules via serverExternalPackages)
 COPY --from=builder /app/.next/standalone ./
 # Copy static assets
