@@ -264,14 +264,13 @@ function StatusDonut({
 }) {
   const segments = useMemo(() => {
     const ordered = STATUS_ORDER.filter((s) => (data[s] || 0) > 0);
-    let accumulated = 0;
-    return ordered.map((status) => {
+    return ordered.reduce<Array<{ status: string; count: number; pct: number; start: number; end: number }>>((acc, status) => {
       const count = data[status] || 0;
       const pct = (count / total) * 100;
-      const start = accumulated;
-      accumulated += pct;
-      return { status, count, pct, start, end: accumulated };
-    });
+      const start = acc[acc.length - 1]?.end ?? 0;
+      const end = start + pct;
+      return [...acc, { status, count, pct, start, end }];
+    }, []);
   }, [data, total]);
 
   const gradientStops = segments

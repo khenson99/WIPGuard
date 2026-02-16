@@ -185,3 +185,123 @@ export interface ProjectWithDetails {
   createdAt: string;
   updatedAt: string;
 }
+
+export type SavedViewScope = "TASKS" | "PROJECTS";
+
+export interface UserUiPreference {
+  id: string;
+  userId: string;
+  dashboardConfig: Record<string, unknown> | null;
+  tasksConfig: Record<string, unknown> | null;
+  projectsConfig: Record<string, unknown> | null;
+  analyticsConfig: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserSavedView {
+  id: string;
+  userId: string;
+  scope: SavedViewScope;
+  slug: string;
+  name: string;
+  isDefault: boolean;
+  isSystem: boolean;
+  config: Record<string, unknown>;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type WorkflowScope = "PRIVATE" | "SHARED";
+export type WorkflowStatus = "DRAFT" | "ACTIVE" | "PAUSED" | "ERROR" | "ARCHIVED";
+export type WorkflowNodeType = "TRIGGER" | "CONDITION" | "ACTION" | "APPROVAL" | "DELAY";
+export type WorkflowRunStatus =
+  | "QUEUED"
+  | "RUNNING"
+  | "WAITING_APPROVAL"
+  | "SUCCEEDED"
+  | "FAILED"
+  | "CANCELED";
+export type WorkflowStepStatus =
+  | "PENDING"
+  | "RUNNING"
+  | "SUCCEEDED"
+  | "FAILED"
+  | "SKIPPED"
+  | "WAITING_APPROVAL";
+export type WorkflowApprovalStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "TIMED_OUT"
+  | "CANCELED";
+
+export interface WorkflowNode {
+  id: string;
+  workflowId: string;
+  nodeKey: string;
+  type: WorkflowNodeType;
+  label: string;
+  config: Record<string, unknown>;
+  positionX: number;
+  positionY: number;
+}
+
+export interface WorkflowEdge {
+  id: string;
+  workflowId: string;
+  sourceNodeKey: string;
+  targetNodeKey: string;
+  conditionLabel: string | null;
+  conditionExpr: Record<string, unknown> | null;
+  priority: number;
+}
+
+export interface WorkflowDefinition {
+  id: string;
+  ownerId: string;
+  name: string;
+  description: string | null;
+  scope: WorkflowScope;
+  status: WorkflowStatus;
+  providers: string[];
+  rolePolicy: Record<string, unknown> | null;
+  isSystemManaged: boolean;
+  graphVersion: number;
+  graph: Record<string, unknown>;
+  lastPublishedAt: string | null;
+  lastRunAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkflowRun {
+  id: string;
+  workflowId: string;
+  requestedById: string | null;
+  triggerProvider: string | null;
+  triggerType: string | null;
+  triggerId: string | null;
+  status: WorkflowRunStatus;
+  correlationId: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkflowApproval {
+  id: string;
+  runId: string;
+  stepId: string | null;
+  nodeKey: string;
+  requestedById: string | null;
+  approverId: string | null;
+  status: WorkflowApprovalStatus;
+  decisionNote: string | null;
+  timeoutAt: string | null;
+  resolvedAt: string | null;
+}

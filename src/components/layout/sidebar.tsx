@@ -5,47 +5,51 @@ import { usePathname } from "next/navigation";
 import { clsx } from "clsx";
 import {
   LayoutDashboard,
-  User,
-  Sun,
-  Table,
+  FolderKanban,
+  CheckSquare,
+  BarChart3,
+  Bot,
   BookOpen,
   Settings,
-  FolderKanban,
-  BarChart3,
 } from "lucide-react";
 
-const NAV_ITEMS = [
-  { href: "/board", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/my-tasks", label: "My Tasks", icon: User },
-  { href: "/today", label: "Working on Today", icon: Sun },
+const PRIMARY_NAV_ITEMS = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/table", label: "Table View", icon: Table },
-  { href: "/logbook", label: "Logbook", icon: BookOpen },
+  { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/automations", label: "Automations", icon: Bot },
+];
+
+const SECONDARY_NAV_ITEMS = [
+  { href: "/logbook", label: "Logbook", icon: BookOpen },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Sidebar() {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "";
+
+  const isActive = (href: string): boolean => {
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
 
   return (
     <aside className="flex h-screen w-56 flex-col border-r border-sidebar-border bg-sidebar-bg text-sm text-sidebar-foreground">
       <div className="flex items-center gap-2 border-b border-sidebar-border px-4 py-4">
         <LayoutDashboard className="h-6 w-6 text-primary" />
-        <span className="text-lg font-bold text-foreground">
-          WIPGuard
-        </span>
+        <span className="text-lg font-bold text-foreground">WIPGuard</span>
       </div>
 
       <nav className="flex-1 space-y-0.5 px-2 py-3">
-        {NAV_ITEMS.map((item) => {
-          const isActive = pathname === item.href;
+        {PRIMARY_NAV_ITEMS.map((item) => {
+          const active = isActive(item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
               className={clsx(
                 "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium",
-                isActive ? "sidebar-link-active" : "sidebar-link"
+                active ? "sidebar-link-active" : "sidebar-link"
               )}
             >
               <item.icon className="h-4 w-4" />
@@ -55,14 +59,23 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="border-t border-sidebar-border p-2">
-        <Link
-          href="/settings"
-          className="sidebar-link flex items-center gap-2.5 rounded-md px-3 py-2 text-sm"
-        >
-          <Settings className="h-4 w-4" />
-          Settings
-        </Link>
+      <div className="space-y-0.5 border-t border-sidebar-border p-2">
+        {SECONDARY_NAV_ITEMS.map((item) => {
+          const active = isActive(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={clsx(
+                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium",
+                active ? "sidebar-link-active" : "sidebar-link"
+              )}
+            >
+              <item.icon className="h-4 w-4" />
+              {item.label}
+            </Link>
+          );
+        })}
       </div>
     </aside>
   );

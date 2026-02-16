@@ -6,15 +6,22 @@ import {
   Plus,
   LayoutGrid,
   Rows3,
+  List,
+  BookmarkPlus,
   FolderKanban,
   CheckCircle2,
   Circle,
   FilterX,
 } from "lucide-react";
 import { ProjectCard } from "./project-card";
-import type { ProjectWithDetails, DepartmentSummary, ProjectStatus } from "@/types";
+import type {
+  ProjectWithDetails,
+  DepartmentSummary,
+  ProjectStatus,
+  UserSavedView,
+} from "@/types";
 
-type ViewMode = "grid" | "swimlane";
+type ViewMode = "grid" | "swimlane" | "list";
 
 const STATUS_OPTIONS: { value: ProjectStatus | ""; label: string }[] = [
   { value: "", label: "All Statuses" },
@@ -32,6 +39,8 @@ export function ProjectDashboard() {
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [filterStatus, setFilterStatus] = useState<ProjectStatus | "">("");
   const [filterDepartment, setFilterDepartment] = useState("");
+  const [savedViews, setSavedViews] = useState<UserSavedView[]>([]);
+  const [selectedViewId, setSelectedViewId] = useState("");
 
   const fetchData = useCallback(async () => {
     try {
@@ -51,6 +60,34 @@ export function ProjectDashboard() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    fetch("/api/views?scope=projects", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((payload) => {
+        const views = Array.isArray(payload) ? (payload as UserSavedView[]) : [];
+        setSavedViews(views);
+        const defaultView = views.find((view) => view.isDefault) || views[0];
+        if (!defaultView) return;
+        setSelectedViewId(defaultView.id);
+
+        if (typeof defaultView.config.defaultLayout === "string") {
+          const layout = defaultView.config.defaultLayout;
+          if (layout === "grid" || layout === "swimlane" || layout === "list") {
+            setViewMode(layout);
+          }
+        }
+        if (typeof defaultView.config.filterStatus === "string") {
+          const status = defaultView.config.filterStatus as ProjectStatus;
+          if (status === "ACTIVE" || status === "ON_HOLD" || status === "COMPLETED" || status === "ARCHIVED") {
+            setFilterStatus(status);
+          }
+        }
+      })
+      .catch(() => {
+        setSavedViews([]);
+      });
+  }, []);
 
   const filteredProjects = useMemo(() => {
     let list = projects;
@@ -101,6 +138,60 @@ export function ProjectDashboard() {
   }, [filteredProjects, departments]);
 
   const hasFilters = filterStatus || filterDepartment;
+
+  const applySavedView = (viewId: string) => {
+    setSelectedViewId(viewId);
+    const view = savedViews.find((item) => item.id === viewId);
+    if (!view) return;
+
+    const layout = view.config.defaultLayout;
+    if (layout === "grid" || layout === "swimlane" || layout === "list") {
+      setViewMode(layout);
+    }
+
+    const status = view.config.filterStatus;
+    if (
+      status === "ACTIVE" ||
+      status === "ON_HOLD" ||
+      status === "COMPLETED" ||
+      status === "ARCHIVED"
+    ) {
+      setFilterStatus(status);
+    } else {
+      setFilterStatus("");
+    }
+
+    const department = view.config.filterDepartment;
+    if (typeof department === "string") {
+      setFilterDepartment(department);
+    } else {
+      setFilterDepartment("");
+    }
+  };
+
+  const saveCurrentAsView = async () => {
+    const name = window.prompt("Saved view name");
+    if (!name) return;
+
+    const response = await fetch("/api/views", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scope: "projects",
+        name,
+        config: {
+          defaultLayout: viewMode,
+          filterStatus: filterStatus || null,
+          filterDepartment: filterDepartment || null,
+        },
+      }),
+    });
+
+    if (!response.ok) return;
+    const created = (await response.json()) as UserSavedView;
+    setSavedViews((current) => [...current, created]);
+    setSelectedViewId(created.id);
+  };
 
   if (loading) {
     return (
@@ -178,6 +269,27 @@ export function ProjectDashboard() {
       {/* Filters & view toggle */}
       <div className="flex flex-wrap items-center gap-3">
         <select
+          value={selectedViewId}
+          onChange={(e) => applySavedView(e.target.value)}
+          className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground"
+          disabled={savedViews.length === 0}
+        >
+          {savedViews.map((view) => (
+            <option key={view.id} value={view.id}>
+              {view.name}
+            </option>
+          ))}
+        </select>
+
+        <button
+          onClick={saveCurrentAsView}
+          className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <BookmarkPlus className="h-3.5 w-3.5" />
+          Save View
+        </button>
+
+        <select
           value={filterStatus}
           onChange={(e) =>
             setFilterStatus(e.target.value as ProjectStatus | "")
@@ -231,7 +343,7 @@ export function ProjectDashboard() {
           </button>
           <button
             onClick={() => setViewMode("swimlane")}
-            className={`rounded-r-lg px-3 py-2 text-sm ${
+            className={`px-3 py-2 text-sm ${
               viewMode === "swimlane"
                 ? "bg-primary text-primary-foreground"
                 : "bg-card text-muted-foreground hover:text-foreground"
@@ -239,6 +351,17 @@ export function ProjectDashboard() {
             title="Swim lane view"
           >
             <Rows3 className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => setViewMode("list")}
+            className={`rounded-r-lg px-3 py-2 text-sm ${
+              viewMode === "list"
+                ? "bg-primary text-primary-foreground"
+                : "bg-card text-muted-foreground hover:text-foreground"
+            }`}
+            title="List view"
+          >
+            <List className="h-4 w-4" />
           </button>
         </div>
       </div>
@@ -262,7 +385,7 @@ export function ProjectDashboard() {
             />
           ))}
         </div>
-      ) : (
+      ) : viewMode === "swimlane" ? (
         /* Swim lane view */
         <div className="space-y-6">
           {swimLanes.map((lane) => (
@@ -292,6 +415,49 @@ export function ProjectDashboard() {
               </div>
             </div>
           ))}
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
+          <table className="w-full text-sm">
+            <thead className="border-b border-border bg-secondary/50">
+              <tr>
+                <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Project
+                </th>
+                <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Status
+                </th>
+                <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Department
+                </th>
+                <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Tasks
+                </th>
+                <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Updated
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/50">
+              {filteredProjects.map((project) => (
+                <tr
+                  key={project.id}
+                  onClick={() => router.push(`/projects/${project.id}`)}
+                  className="cursor-pointer hover:bg-secondary/40"
+                >
+                  <td className="px-4 py-2.5 font-medium text-foreground">{project.name}</td>
+                  <td className="px-4 py-2.5 text-xs text-muted-foreground">{project.status}</td>
+                  <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                    {project.department?.name || "Unassigned"}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-muted-foreground">{project._count.tasks}</td>
+                  <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                    {new Date(project.updatedAt).toLocaleDateString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

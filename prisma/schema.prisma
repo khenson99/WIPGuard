@@ -23,6 +23,12 @@ model User {
   sessions Session[]
   integrationConnections IntegrationConnection[]
   integrationRules       IntegrationRule[]
+  uiPreference           UserUiPreference?
+  savedViews             UserSavedView[]
+  ownedWorkflows         WorkflowDefinition[] @relation("WorkflowOwner")
+  workflowRunRequests    WorkflowRun[]        @relation("WorkflowRunRequestedBy")
+  workflowApprovalRequests WorkflowApproval[] @relation("WorkflowApprovalRequestedBy")
+  workflowApprovals      WorkflowApproval[]   @relation("WorkflowApprovalApprover")
   securityAuditEvents SecurityAuditEvent[]
 
   responsibleTasks  Task[]    @relation("TaskResponsible")
@@ -509,6 +515,308 @@ model IntegrationReceipt {
 
   @@index([ruleId, lastObservedAt])
   @@index([taskId])
+}
+
+enum SavedViewScope {
+  TASKS
+  PROJECTS
+}
+
+model UserUiPreference {
+  id String @id @default(cuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  dashboardConfig Json?
+  tasksConfig     Json?
+  projectsConfig  Json?
+  analyticsConfig Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model UserSavedView {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  scope     SavedViewScope
+  slug      String
+  name      String
+  isDefault Boolean @default(false)
+  isSystem  Boolean @default(false)
+  config    Json
+  position  Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, scope, slug])
+  @@index([userId, scope, isDefault])
+}
+
+enum WorkflowScope {
+  PRIVATE
+  SHARED
+}
+
+enum WorkflowStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ERROR
+  ARCHIVED
+}
+
+enum WorkflowNodeType {
+  TRIGGER
+  CONDITION
+  ACTION
+  APPROVAL
+  DELAY
+}
+
+enum WorkflowRunStatus {
+  QUEUED
+  RUNNING
+  WAITING_APPROVAL
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum WorkflowStepStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+  WAITING_APPROVAL
+}
+
+enum WorkflowApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  TIMED_OUT
+  CANCELED
+}
+
+enum WorkflowEventStatus {
+  QUEUED
+  DISPATCHED
+  FAILED
+  DEAD_LETTER
+}
+
+model WorkflowDefinition {
+  id String @id @default(cuid())
+
+  ownerId String
+  owner   User   @relation("WorkflowOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String? @db.Text
+  scope       WorkflowScope @default(PRIVATE)
+  status      WorkflowStatus @default(DRAFT)
+  providers   IntegrationProvider[] @default([])
+  rolePolicy  Json?
+
+  isSystemManaged Boolean @default(false)
+  graphVersion    Int     @default(1)
+  graph           Json
+
+  lastPublishedAt DateTime?
+  lastRunAt       DateTime?
+  lastError       String? @db.Text
+
+  nodes        WorkflowNode[]
+  edges        WorkflowEdge[]
+  runs         WorkflowRun[]
+  triggerCursors WorkflowTriggerCursor[]
+  triggerEvents WorkflowTriggerEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId, status])
+  @@index([scope, status])
+}
+
+model WorkflowNode {
+  id String @id @default(cuid())
+
+  workflowId String
+  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  nodeKey String
+  type    WorkflowNodeType
+  label   String
+  config  Json
+
+  positionX Int @default(0)
+  positionY Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workflowId, nodeKey])
+  @@index([workflowId, type])
+}
+
+model WorkflowEdge {
+  id String @id @default(cuid())
+
+  workflowId String
+  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  sourceNodeKey  String
+  targetNodeKey  String
+  conditionLabel String?
+  conditionExpr  Json?
+  priority       Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workflowId, sourceNodeKey, priority])
+  @@index([workflowId, targetNodeKey])
+}
+
+model WorkflowRun {
+  id String @id @default(cuid())
+
+  workflowId String
+  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  requestedById String?
+  requestedBy   User?   @relation("WorkflowRunRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+
+  triggerProvider IntegrationProvider?
+  triggerType     String?
+  triggerId       String?
+  triggerPayload  Json?
+  dedupeKey       String? @unique
+
+  status WorkflowRunStatus @default(QUEUED)
+  correlationId String?
+  startedAt DateTime?
+  finishedAt DateTime?
+  error String? @db.Text
+
+  steps     WorkflowRunStep[]
+  approvals WorkflowApproval[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workflowId, status, createdAt])
+  @@index([triggerProvider, triggerType])
+}
+
+model WorkflowRunStep {
+  id String @id @default(cuid())
+
+  runId String
+  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  nodeKey String
+  nodeType WorkflowNodeType
+  status WorkflowStepStatus @default(PENDING)
+  attempt Int @default(0)
+
+  idempotencyKey String? @unique
+  input  Json?
+  output Json?
+  error  String? @db.Text
+
+  startedAt DateTime?
+  finishedAt DateTime?
+
+  approvals WorkflowApproval[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([runId, nodeKey, status])
+}
+
+model WorkflowApproval {
+  id String @id @default(cuid())
+
+  runId String
+  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  stepId String?
+  step   WorkflowRunStep? @relation(fields: [stepId], references: [id], onDelete: SetNull)
+
+  nodeKey String
+
+  requestedById String?
+  requestedBy   User?   @relation("WorkflowApprovalRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+
+  approverId String?
+  approver   User?   @relation("WorkflowApprovalApprover", fields: [approverId], references: [id], onDelete: SetNull)
+
+  status WorkflowApprovalStatus @default(PENDING)
+  decisionNote String? @db.Text
+
+  timeoutAt DateTime?
+  resolvedAt DateTime?
+  fallbackEdgeId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, approverId, timeoutAt])
+  @@index([runId, status])
+}
+
+model WorkflowTriggerCursor {
+  id String @id @default(cuid())
+
+  workflowId String
+  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  provider IntegrationProvider
+  cursorKey String
+  cursorValue Json?
+
+  lastEventAt DateTime?
+  lastRunAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workflowId, provider, cursorKey])
+}
+
+model WorkflowTriggerEvent {
+  id String @id @default(cuid())
+
+  workflowId String?
+  workflow   WorkflowDefinition? @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+
+  provider IntegrationProvider
+  eventType String
+  externalId String?
+  idempotencyKey String @unique
+  payload Json
+  observedAt DateTime @default(now())
+
+  status WorkflowEventStatus @default(QUEUED)
+  attemptCount Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  lastError String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([provider, eventType, observedAt])
 }
 
 // ============================================================
