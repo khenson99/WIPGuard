@@ -11,6 +11,7 @@ import {
   Bot,
   BookOpen,
   Settings,
+  Gauge,
 } from "lucide-react";
 
 const PRIMARY_NAV_ITEMS = [
@@ -18,6 +19,7 @@ const PRIMARY_NAV_ITEMS = [
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/whip", label: "Whip View", icon: Gauge },
   { href: "/automations", label: "Automations", icon: Bot },
 ];
 
