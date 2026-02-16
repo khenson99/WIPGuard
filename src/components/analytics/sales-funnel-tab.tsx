@@ -6,7 +6,8 @@ import {
 } from "lucide-react";
 import type { AnalyticsDashboardData, DealStage } from "@/lib/analytics/types";
 import { StatCard } from "./stat-card";
-import { RingStat } from "./bar-display";
+import { DashboardSectionCard } from "./dashboard-section-card";
+import { HorizontalFunnel, DonutChart, CHART_PALETTE } from "@/components/charts";
 
 function fmt$(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
@@ -54,7 +55,23 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
     (s) => ["Closed Won", "Closed Lost", "Unlikely", "Churn", "Ping Later", "On Hold"].includes(s.label)
   );
 
-  const maxStageCount = Math.max(...orderedStages.map((s) => s.count), 1);
+  // HorizontalFunnel data
+  const funnelStages = orderedStages.map((stage) => ({
+    label: stage.label,
+    value: stage.count,
+    color: STAGE_COLORS[stage.label] || "#6b7280",
+    extra: { pipeline: fmt$(stage.value) },
+  }));
+
+  // DonutChart terminal segments
+  const terminalSegments = terminalStages
+    .sort((a, b) => b.count - a.count)
+    .map((s) => ({
+      name: s.label,
+      value: s.count,
+      color: STAGE_COLORS[s.label] || "#6b7280",
+    }));
+  const totalDecided = funnel.closedWon + funnel.closedLost;
 
   return (
     <div className="space-y-6">
@@ -92,48 +109,18 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
         />
       </div>
 
-      {/* Funnel Visualization */}
-      <div className="rounded-xl border border-border bg-card p-5">
-        <h3 className="mb-1 text-sm font-semibold text-foreground">Sales Pipeline Funnel</h3>
-        <p className="mb-5 text-xs text-muted-foreground">Active pipeline stages — ordered by sales process flow</p>
-        <div className="space-y-2">
-          {orderedStages.map((stage) => {
-            const widthPct = Math.max((stage.count / maxStageCount) * 100, 8);
-            return (
-              <div key={stage.stageId} className="flex items-center gap-3">
-                <span className="w-40 text-right text-sm text-muted-foreground">
-                  {stage.label}
-                </span>
-                <div className="flex-1">
-                  <div className="relative h-8 overflow-hidden rounded-md">
-                    <div
-                      className="flex h-full items-center rounded-md px-3 transition-all duration-500"
-                      style={{
-                        width: `${widthPct}%`,
-                        backgroundColor: STAGE_COLORS[stage.label] || "#6b7280",
-                        minWidth: "60px",
-                      }}
-                    >
-                      <span className="text-xs font-bold text-white drop-shadow">
-                        {stage.count}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <span className="w-20 text-right text-xs tabular-nums text-muted-foreground">
-                  {fmt$(stage.value)}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      {/* Hero: Sales Pipeline Funnel */}
+      <DashboardSectionCard
+        title="Sales Pipeline Funnel"
+        subtitle="Active pipeline stages — ordered by sales process flow"
+      >
+        <HorizontalFunnel stages={funnelStages} height={380} />
+      </DashboardSectionCard>
 
       {/* Bottleneck Analysis + Terminal Stages */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Bottleneck Alerts */}
-        <div className="rounded-xl border border-border bg-card p-5">
-          <h3 className="mb-4 text-sm font-semibold text-foreground">Bottleneck Analysis</h3>
+        <DashboardSectionCard title="Bottleneck Analysis">
           <div className="space-y-3">
             {funnel.noShowRate > 15 && (
               <BottleneckAlert
@@ -170,19 +157,16 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
               </div>
             )}
           </div>
-        </div>
+        </DashboardSectionCard>
 
         {/* Terminal Stage Breakdown */}
-        <div className="rounded-xl border border-border bg-card p-5">
-          <h3 className="mb-4 text-sm font-semibold text-foreground">Terminal Stages</h3>
-          <div className="mb-4 flex justify-center gap-4">
-            <RingStat value={funnel.winRate} max={100} label="Win Rate" color="#22c55e" size={90} />
-            <RingStat
-              value={100 - funnel.winRate}
-              max={100}
-              label="Loss Rate"
-              color="#ef4444"
-              size={90}
+        <DashboardSectionCard title="Terminal Stages">
+          <div className="mb-4 flex justify-center">
+            <DonutChart
+              segments={terminalSegments}
+              size={180}
+              centerValue={totalDecided.toString()}
+              centerLabel="Decided"
             />
           </div>
           <div className="space-y-2">
@@ -208,13 +192,12 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
                 </div>
               ))}
           </div>
-        </div>
+        </DashboardSectionCard>
       </div>
 
       {/* Deal Sources Performance */}
       {funnel.dealsBySource.length > 0 && (
-        <div className="rounded-xl border border-border bg-card p-5">
-          <h3 className="mb-4 text-sm font-semibold text-foreground">Performance by Source</h3>
+        <DashboardSectionCard title="Performance by Source">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -258,7 +241,7 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
               </tbody>
             </table>
           </div>
-        </div>
+        </DashboardSectionCard>
       )}
     </div>
   );
