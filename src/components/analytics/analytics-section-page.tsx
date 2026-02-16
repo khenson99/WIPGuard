@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { MarketingTabNew } from "@/components/analytics/marketing-tab-new";
@@ -16,6 +16,9 @@ import {
 } from "@/components/analytics/ops-insights";
 import { LifecycleFunnelPanel } from "@/components/analytics/lifecycle-funnel-panel";
 import { AiInsightsPanel } from "@/components/analytics/ai-insights-panel";
+import { GoogleAnalyticsDashboard } from "./sub-dashboards/google-analytics-dashboard";
+import { StripeDashboard } from "./sub-dashboards/stripe-dashboard";
+import { HubspotSalesDashboard } from "./sub-dashboards/hubspot-sales-dashboard";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import {
   getAnalyticsPrimaryForSection,
@@ -34,6 +37,14 @@ interface CachedSectionPayload {
 
 const SECTION_CACHE_PREFIX = "analytics:section:v1:";
 const OPS_DOMAINS = ["decisionDashboard", "flowMetrics", "flowRisk", "observability"] as const;
+
+const SUB_DASHBOARD_MAP: Record<string, React.ComponentType<{ data: AnalyticsDashboardData | null }>> = {
+  "ads-google-analytics": GoogleAnalyticsDashboard,
+  "finance-stripe": StripeDashboard,
+  "sales-stripe": StripeDashboard,
+  "sales-hubspot": HubspotSalesDashboard,
+  "finance-hubspot": HubspotSalesDashboard,
+};
 
 function buildRangeQuery(searchParams: URLSearchParams | null): string {
   const params = new URLSearchParams();
@@ -273,6 +284,12 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     }
     if (child.dataDomain === "observability") {
       return <ObservabilityView payload={auxPayload} />;
+    }
+
+    // Check for dedicated sub-dashboard
+    const SubDashboard = SUB_DASHBOARD_MAP[sectionId];
+    if (SubDashboard) {
+      return <SubDashboard data={analyticsData} />;
     }
 
     const payload = (analyticsData as unknown as Record<string, unknown>) || null;
