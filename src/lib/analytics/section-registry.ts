@@ -147,4 +147,6 @@ export const LEGACY_ANALYTICS_ROUTE_REDIRECTS: Record<string, string> = {
   "flow-metrics": "/analytics/cs-flow-metrics",
   "flow-risk": "/analytics/cs-flow-risk",
   observability: "/analytics/cs-observability",
+  "customer-journey": "/analytics/customer-journey",
+  "ai-insights": "/analytics/ai-insights",
 };
