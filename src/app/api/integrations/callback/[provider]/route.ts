@@ -13,6 +13,7 @@ import {
 } from "@/lib/integrations/catalog";
 import {
   buildOAuthRedirectUri,
+  decodeOAuthStateCookie,
   compactErrorMessage,
   exchangeOAuthCode,
   fetchOAuthAccountProfile,
@@ -122,6 +123,7 @@ export async function GET(
   const state = request.nextUrl.searchParams.get("state");
   const cookieName = getOAuthStateCookieName(definition.slug);
   const stateCookie = request.cookies.get(cookieName)?.value;
+  const statePayload = stateCookie ? decodeOAuthStateCookie(stateCookie) : null;
 
   if (oauthError) {
     const message = `OAuth denied: ${oauthError}`;
@@ -138,7 +140,7 @@ export async function GET(
     );
   }
 
-  if (!code || !state || !stateCookie) {
+  if (!code || !state || !statePayload) {
     await markConnectionError({
       userId: session.user.id,
       provider: definition.provider,
@@ -152,7 +154,8 @@ export async function GET(
     );
   }
 
-  const [expectedState, userIdFromCookie] = stateCookie.split(":");
+  const expectedState = statePayload.state;
+  const userIdFromCookie = statePayload.userId;
   if (
     !expectedState ||
     !userIdFromCookie ||
@@ -163,6 +166,19 @@ export async function GET(
       userId: session.user.id,
       provider: definition.provider,
       message: "OAuth state mismatch",
+    });
+    return redirectWithStateCookieCleared(
+      request,
+      "invalid_state",
+      cookieName,
+      definition.slug
+    );
+  }
+  if (definition.oauth.pkce && !statePayload.codeVerifier) {
+    await markConnectionError({
+      userId: session.user.id,
+      provider: definition.provider,
+      message: "OAuth PKCE verifier missing",
     });
     return redirectWithStateCookieCleared(
       request,
@@ -195,6 +211,7 @@ export async function GET(
       clientId: credentials.clientId,
       clientSecret: credentials.clientSecret,
       redirectUri,
+      codeVerifier: statePayload.codeVerifier ?? undefined,
     });
     const accountProfile = await fetchOAuthAccountProfile(
       definition,
@@ -266,4 +283,3 @@ export async function GET(
     );
   }
 }
-

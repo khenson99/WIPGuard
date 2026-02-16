@@ -1,6 +1,8 @@
+import { createHash, randomBytes } from "crypto";
 import type { OAuthIntegrationDefinition, IntegrationSlug } from "@/lib/integrations/catalog";
 
 const OAUTH_STATE_COOKIE_PREFIX = "wgint_state";
+const PKCE_VERIFIER_BYTES = 32;
 
 interface OAuthTokenResponse {
   accessToken: string;
@@ -15,6 +17,12 @@ interface AccountProfile {
   providerAccountId: string;
   accountLabel: string | null;
   metadata?: Record<string, unknown>;
+}
+
+interface OAuthStateCookiePayload {
+  state: string;
+  userId: string;
+  codeVerifier: string | null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -60,8 +68,17 @@ export function buildOAuthAuthorizationUrl(input: {
   clientId: string;
   redirectUri: string;
   state: string;
+  codeChallenge?: string;
+  codeChallengeMethod?: "S256";
 }): string {
-  const { definition, clientId, redirectUri, state } = input;
+  const {
+    definition,
+    clientId,
+    redirectUri,
+    state,
+    codeChallenge,
+    codeChallengeMethod,
+  } = input;
   const url = new URL(definition.oauth.authorizationEndpoint);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", clientId);
@@ -71,6 +88,10 @@ export function buildOAuthAuthorizationUrl(input: {
     definition.oauth.scopes.join(definition.oauth.scopeSeparator ?? " ")
   );
   url.searchParams.set("state", state);
+  if (codeChallenge) {
+    url.searchParams.set("code_challenge", codeChallenge);
+    url.searchParams.set("code_challenge_method", codeChallengeMethod ?? "S256");
+  }
 
   for (const [key, value] of Object.entries(definition.oauth.extraAuthParams ?? {})) {
     url.searchParams.set(key, value);
@@ -85,8 +106,10 @@ export async function exchangeOAuthCode(input: {
   clientId: string;
   clientSecret: string;
   redirectUri: string;
+  codeVerifier?: string;
 }): Promise<OAuthTokenResponse> {
-  const { definition, code, clientId, clientSecret, redirectUri } = input;
+  const { definition, code, clientId, clientSecret, redirectUri, codeVerifier } =
+    input;
 
   const body = new URLSearchParams({
     grant_type: "authorization_code",
@@ -95,6 +118,9 @@ export async function exchangeOAuthCode(input: {
     client_secret: clientSecret,
     redirect_uri: redirectUri,
   });
+  if (codeVerifier) {
+    body.set("code_verifier", codeVerifier);
+  }
 
   const headers: Record<string, string> = {
     "Content-Type": "application/x-www-form-urlencoded",
@@ -154,6 +180,79 @@ export async function exchangeOAuthCode(input: {
     expiresAt,
     raw,
   };
+}
+
+export function createOAuthPkcePair(): {
+  codeVerifier: string;
+  codeChallenge: string;
+  codeChallengeMethod: "S256";
+} {
+  const codeVerifier = randomBytes(PKCE_VERIFIER_BYTES).toString("base64url");
+  const codeChallenge = createHash("sha256")
+    .update(codeVerifier)
+    .digest("base64url");
+  return {
+    codeVerifier,
+    codeChallenge,
+    codeChallengeMethod: "S256",
+  };
+}
+
+export function encodeOAuthStateCookie(payload: {
+  state: string;
+  userId: string;
+  codeVerifier?: string | null;
+}): string {
+  const normalized: OAuthStateCookiePayload = {
+    state: payload.state,
+    userId: payload.userId,
+    codeVerifier: payload.codeVerifier ?? null,
+  };
+  return Buffer.from(JSON.stringify(normalized), "utf8").toString("base64url");
+}
+
+export function decodeOAuthStateCookie(value: string): OAuthStateCookiePayload | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const decoded = Buffer.from(value, "base64url").toString("utf8");
+    const payload = JSON.parse(decoded) as Partial<OAuthStateCookiePayload>;
+    if (!payload || typeof payload !== "object") {
+      return null;
+    }
+    if (typeof payload.state !== "string" || payload.state.length === 0) {
+      return null;
+    }
+    if (typeof payload.userId !== "string" || payload.userId.length === 0) {
+      return null;
+    }
+    if (
+      payload.codeVerifier !== null &&
+      payload.codeVerifier !== undefined &&
+      (typeof payload.codeVerifier !== "string" || payload.codeVerifier.length === 0)
+    ) {
+      return null;
+    }
+    return {
+      state: payload.state,
+      userId: payload.userId,
+      codeVerifier: payload.codeVerifier ?? null,
+    };
+  } catch {
+    // Backward compatibility for legacy cookies that stored `state:userId`.
+    const separatorIndex = value.indexOf(":");
+    if (separatorIndex <= 0 || separatorIndex === value.length - 1) {
+      return null;
+    }
+
+    return {
+      state: value.slice(0, separatorIndex),
+      userId: value.slice(separatorIndex + 1),
+      codeVerifier: null,
+    };
+  }
 }
 
 async function fetchGoogleProfile(accessToken: string): Promise<AccountProfile> {

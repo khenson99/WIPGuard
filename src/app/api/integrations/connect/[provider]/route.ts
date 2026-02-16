@@ -11,6 +11,8 @@ import {
 import {
   buildOAuthAuthorizationUrl,
   buildOAuthRedirectUri,
+  createOAuthPkcePair,
+  encodeOAuthStateCookie,
   getOAuthStateCookieName,
 } from "@/lib/integrations/oauth";
 import { enforcePermission } from "@/lib/permissions";
@@ -67,18 +69,25 @@ export async function GET(
   }
 
   const state = randomBytes(24).toString("hex");
+  const pkce = definition.oauth.pkce ? createOAuthPkcePair() : null;
   const redirectUri = buildOAuthRedirectUri(getBaseUrl(request), definition.slug);
   const authorizationUrl = buildOAuthAuthorizationUrl({
     definition,
     clientId: credentials.clientId,
     redirectUri,
     state,
+    codeChallenge: pkce?.codeChallenge,
+    codeChallengeMethod: pkce?.codeChallengeMethod,
   });
 
   const response = NextResponse.redirect(authorizationUrl);
   response.cookies.set({
     name: getOAuthStateCookieName(definition.slug),
-    value: `${state}:${session.user.id}`,
+    value: encodeOAuthStateCookie({
+      state,
+      userId: session.user.id,
+      codeVerifier: pkce?.codeVerifier,
+    }),
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
