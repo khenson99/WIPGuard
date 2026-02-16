@@ -11,6 +11,7 @@ export interface ObservabilityConnectionSample {
 
 export interface ObservabilityRuleSample {
   provider: string;
+  key?: string;
   enabled: boolean;
   lastRunAt: string | null;
   lastError: string | null;
@@ -32,8 +33,11 @@ export interface ProviderHealthSummary {
   connected: number;
   errored: number;
   staleConnections: number;
+  configuredRules: number;
   enabledRules: number;
   staleRules: number;
+  expectedRules: number;
+  missingRules: number;
 }
 
 export interface IntegrationHealthSummary {
@@ -41,8 +45,11 @@ export interface IntegrationHealthSummary {
   connectedConnections: number;
   errorConnections: number;
   staleConnections: number;
+  configuredRules: number;
   enabledRules: number;
   staleRules: number;
+  expectedRules: number;
+  missingRules: number;
   providers: ProviderHealthSummary[];
 }
 
@@ -58,6 +65,7 @@ interface EvaluateSloInput {
   outboxMetrics: OutboxOperationalMetrics;
   connections: ObservabilityConnectionSample[];
   rules: ObservabilityRuleSample[];
+  expectedRuleKeysByProvider?: Partial<Record<string, string[]>>;
   now?: Date;
 }
 
@@ -81,8 +89,10 @@ function summarizeIntegrationHealth(input: {
   now: Date;
   connections: ObservabilityConnectionSample[];
   rules: ObservabilityRuleSample[];
+  expectedRuleKeysByProvider?: Partial<Record<string, string[]>>;
 }): IntegrationHealthSummary {
   const providerMap = new Map<string, ProviderHealthSummary>();
+  const configuredRuleKeysByProvider = new Map<string, Set<string>>();
 
   for (const connection of input.connections) {
     const current = providerMap.get(connection.provider) ?? {
@@ -90,8 +100,11 @@ function summarizeIntegrationHealth(input: {
       connected: 0,
       errored: 0,
       staleConnections: 0,
+      configuredRules: 0,
       enabledRules: 0,
       staleRules: 0,
+      expectedRules: 0,
+      missingRules: 0,
     };
 
     if (connection.status === "CONNECTED") {
@@ -115,9 +128,16 @@ function summarizeIntegrationHealth(input: {
       connected: 0,
       errored: 0,
       staleConnections: 0,
+      configuredRules: 0,
       enabledRules: 0,
       staleRules: 0,
+      expectedRules: 0,
+      missingRules: 0,
     };
+
+    const configuredSet = configuredRuleKeysByProvider.get(rule.provider) ?? new Set<string>();
+    configuredSet.add(rule.key ?? `__unspecified__${configuredSet.size + 1}`);
+    configuredRuleKeysByProvider.set(rule.provider, configuredSet);
 
     if (rule.enabled) {
       current.enabledRules += 1;
@@ -130,6 +150,33 @@ function summarizeIntegrationHealth(input: {
     providerMap.set(rule.provider, current);
   }
 
+  if (input.expectedRuleKeysByProvider) {
+    for (const provider of Object.keys(input.expectedRuleKeysByProvider)) {
+      if (!providerMap.has(provider)) {
+        providerMap.set(provider, {
+          provider,
+          connected: 0,
+          errored: 0,
+          staleConnections: 0,
+          configuredRules: 0,
+          enabledRules: 0,
+          staleRules: 0,
+          expectedRules: 0,
+          missingRules: 0,
+        });
+      }
+    }
+  }
+
+  for (const [provider, current] of providerMap.entries()) {
+    const expectedRules = input.expectedRuleKeysByProvider?.[provider] ?? [];
+    const configuredSet = configuredRuleKeysByProvider.get(provider) ?? new Set<string>();
+    current.configuredRules = configuredSet.size;
+    current.expectedRules = expectedRules.length;
+    current.missingRules = expectedRules.filter((key) => !configuredSet.has(key)).length;
+    providerMap.set(provider, current);
+  }
+
   const providers = Array.from(providerMap.values()).sort((a, b) =>
     a.provider.localeCompare(b.provider)
   );
@@ -139,8 +186,11 @@ function summarizeIntegrationHealth(input: {
     connectedConnections: input.connections.filter((item) => item.status === "CONNECTED").length,
     errorConnections: input.connections.filter((item) => item.status === "ERROR").length,
     staleConnections: providers.reduce((sum, provider) => sum + provider.staleConnections, 0),
+    configuredRules: providers.reduce((sum, provider) => sum + provider.configuredRules, 0),
     enabledRules: providers.reduce((sum, provider) => sum + provider.enabledRules, 0),
     staleRules: providers.reduce((sum, provider) => sum + provider.staleRules, 0),
+    expectedRules: providers.reduce((sum, provider) => sum + provider.expectedRules, 0),
+    missingRules: providers.reduce((sum, provider) => sum + provider.missingRules, 0),
     providers,
   };
 }
@@ -152,6 +202,7 @@ export function evaluateObservabilitySlos(input: EvaluateSloInput): Observabilit
     now,
     connections: input.connections,
     rules: input.rules,
+    expectedRuleKeysByProvider: input.expectedRuleKeysByProvider,
   });
 
   const outboxLagSeconds = input.outboxMetrics.lag.oldestRetryableEventAgeSeconds;
@@ -191,6 +242,16 @@ export function evaluateObservabilitySlos(input: EvaluateSloInput): Observabilit
       value: `${integrationHealth.staleRules} stale rule(s)`,
       breached: integrationHealth.staleRules > 0,
       severity: integrationHealth.staleRules > 0 ? "warning" : null,
+      runbookIds: ["sync-lag"],
+    },
+    {
+      key: "integration_rule_coverage",
+      label: "Integration Rule Coverage",
+      objective: "Connected providers have their expected default integration rules provisioned.",
+      thresholdLabel: "0 missing rules",
+      value: `${integrationHealth.missingRules} missing rule(s)`,
+      breached: integrationHealth.missingRules > 0,
+      severity: integrationHealth.missingRules > 0 ? "warning" : null,
       runbookIds: ["sync-lag"],
     },
     {

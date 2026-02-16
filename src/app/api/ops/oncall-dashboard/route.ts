@@ -10,7 +10,7 @@ import {
   DEFAULT_BREACH_CONFIG,
   type BreachRecord,
 } from "@/lib/observability/breach-detector";
-import { getSuggestedRunbooks, getAllRunbooks } from "@/lib/observability/runbooks";
+import { getSuggestedRunbooks } from "@/lib/observability/runbooks";
 import {
   assembleOnCallDashboard,
   type SystemComponentHealth,
@@ -67,6 +67,7 @@ export async function GET(): Promise<NextResponse> {
         where: { enabled: true },
         select: {
           provider: true,
+          key: true,
           enabled: true,
           lastRunAt: true,
           lastError: true,
@@ -85,6 +86,7 @@ export async function GET(): Promise<NextResponse> {
       })),
       rules: rules.map((r) => ({
         provider: r.provider,
+        key: r.key,
         enabled: r.enabled,
         lastRunAt: r.lastRunAt?.toISOString() ?? null,
         lastError: r.lastError,
