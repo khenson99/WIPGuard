@@ -176,13 +176,40 @@ export async function dispatchOutboxBatch(
   let deadLetter = 0;
 
   for (const event of events) {
+    const startedAt = Date.now();
+    console.info("outbox.event.dispatch_started", {
+      eventId: event.id,
+      eventType: event.eventType,
+      aggregateType: event.aggregateType,
+      aggregateId: event.aggregateId,
+      retryCount: event.retryCount,
+      status: event.status,
+    });
+
     try {
       await dispatch(event);
       await markOutboxEventDispatched(db, event.id, options?.now ?? new Date());
       dispatched += 1;
+      console.info("outbox.event.dispatch_succeeded", {
+        eventId: event.id,
+        eventType: event.eventType,
+        aggregateType: event.aggregateType,
+        aggregateId: event.aggregateId,
+        dispatchDurationMs: Date.now() - startedAt,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const status = await markOutboxEventFailure(db, event, message, options);
+      console.error("outbox.event.dispatch_failed", {
+        eventId: event.id,
+        eventType: event.eventType,
+        aggregateType: event.aggregateType,
+        aggregateId: event.aggregateId,
+        retryCount: event.retryCount + 1,
+        nextStatus: status,
+        error: message,
+        dispatchDurationMs: Date.now() - startedAt,
+      });
       if (status === "DEAD_LETTER") {
         deadLetter += 1;
       } else {

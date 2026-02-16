@@ -10,6 +10,7 @@ import { PrioritiesTab } from "@/components/settings/priorities-tab";
 import { TeamTab } from "@/components/settings/team-tab";
 import { DepartmentsTab } from "@/components/settings/departments-tab";
 import { IntegrationsTab } from "@/components/settings/integrations-tab";
+import { OperationsTab } from "@/components/settings/operations-tab";
 
 const TABS = [
   { id: "board", label: "Board & WIP Limits" },
@@ -19,6 +20,7 @@ const TABS = [
   { id: "priorities", label: "Company Priorities" },
   { id: "team", label: "Team" },
   { id: "integrations", label: "Integrations" },
+  { id: "operations", label: "Operations" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -79,6 +81,7 @@ export default function SettingsPage() {
         {activeTab === "priorities" && <PrioritiesTab />}
         {activeTab === "team" && <TeamTab />}
         {activeTab === "integrations" && <IntegrationsTab />}
+        {activeTab === "operations" && <OperationsTab />}
       </div>
     </div>
   );
