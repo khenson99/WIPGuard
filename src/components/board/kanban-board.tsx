@@ -9,7 +9,15 @@ import { useBoardStore } from "@/store/board-store";
 import { KanbanColumn } from "./kanban-column";
 import { TaskModal } from "../tasks/task-modal";
 import { BoardFilters } from "./board-filters";
-import type { TaskStatus, TaskWithRelations, BoardColumn, DepartmentSummary } from "@/types";
+import type {
+  TaskStatus,
+  TaskWithRelations,
+  BoardColumn,
+  DepartmentSummary,
+  ProjectSummary,
+  UserSummary,
+  SprintSummary,
+} from "@/types";
 import { COLUMN_ORDER, COLUMN_LABELS } from "@/types";
 import type { GroupByMode } from "./task-card";
 import { Eye, EyeOff, Keyboard, Plus, Layers } from "lucide-react";
@@ -46,18 +54,16 @@ interface BoardSettingsEntry {
   wipLimit: number;
 }
 
-interface BoardProjectLite {
-  id: string;
-  name: string;
+type BoardProjectLite = ProjectSummary & {
   departmentId?: string | null;
-}
+};
 
 interface KanbanSnapshot {
   tasks: TaskWithRelations[];
   settings: BoardSettingsEntry[];
-  team: Array<Record<string, unknown>>;
+  team: UserSummary[];
   projects: BoardProjectLite[];
-  sprints: Array<Record<string, unknown>>;
+  sprints: SprintSummary[];
   departments: DepartmentSummary[];
 }
 
@@ -197,9 +203,9 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
 
       const tasks: TaskWithRelations[] = await tasksRes.json();
       const settings: BoardSettingsEntry[] = await settingsRes.json();
-      const team: Array<Record<string, unknown>> = await teamRes.json();
+      const team = await teamRes.json();
       const projects: BoardProjectLite[] = await projectsRes.json();
-      const sprints: Array<Record<string, unknown>> = await sprintsRes.json();
+      const sprints = await sprintsRes.json();
       const depts: DepartmentSummary[] = deptsRes.ok ? await deptsRes.json() : [];
 
       if (signal?.aborted) return;
@@ -207,9 +213,9 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
       const snapshot: KanbanSnapshot = {
         tasks,
         settings: Array.isArray(settings) ? settings : [],
-        team: Array.isArray(team) ? team : [],
+        team: Array.isArray(team) ? (team as UserSummary[]) : [],
         projects: Array.isArray(projects) ? projects : [],
-        sprints: Array.isArray(sprints) ? sprints : [],
+        sprints: Array.isArray(sprints) ? (sprints as SprintSummary[]) : [],
         departments: depts,
       };
 
