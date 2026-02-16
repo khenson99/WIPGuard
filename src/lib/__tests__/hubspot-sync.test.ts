@@ -717,7 +717,8 @@ describe("validateMappingConfig", () => {
 
   it("flags invalid conflict resolution strategy", () => {
     const config = makeConfig();
-    (config as Record<string, unknown>).conflictResolution = "invalid_strategy";
+    (config as unknown as Record<string, unknown>).conflictResolution =
+      "invalid_strategy";
 
     const issues = validateMappingConfig(config as HubSpotBidirectionalSyncConfig);
     expect(issues.some((i) => i.includes("invalid_strategy"))).toBe(true);
