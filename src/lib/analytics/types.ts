@@ -299,6 +299,49 @@ export interface SemrushData {
 }
 
 // ══════════════════════════════════════════════════════════
+// CUSTOMER SUCCESS TYPES
+// ══════════════════════════════════════════════════════════
+
+export interface PylonData {
+  openConversations: number;
+  urgentConversations: number;
+  waitingOnTeam: number;
+  resolvedInRange: number;
+  avgFirstResponseMinutes: number | null;
+  csat: number | null;
+  _meta: AnalyticsTimestamp;
+}
+
+export interface ProductSuccessData {
+  activeContributors: number;
+  createdTasksInRange: number;
+  completedTasksInRange: number;
+  overdueOpenTasks: number;
+  backlogGrowth: number;
+  throughputRate: number | null;
+  _meta: AnalyticsTimestamp;
+}
+
+export interface CrossFunnelData {
+  stages: Array<{
+    id: "marketing" | "sales" | "customer-success";
+    label: string;
+    count: number;
+    conversionFromPrev: number | null;
+  }>;
+  narrative: string[];
+}
+
+export interface AnalyticsRecommendation {
+  id: string;
+  title: string;
+  insight: string;
+  suggestedAction: string;
+  severity: "info" | "warning" | "critical";
+  section: "ads-traffic" | "finance" | "sales-pipeline" | "customer-success";
+}
+
+// ══════════════════════════════════════════════════════════
 // COMBINED DASHBOARD
 // ══════════════════════════════════════════════════════════
 
@@ -314,6 +357,17 @@ export interface AnalyticsDashboardData {
   webflow: WebflowData | null;
   coda: CodaKanbanData | null;
   semrush: SemrushData | null;
+  pylon: PylonData | null;
+  product: ProductSuccessData | null;
+  funnelJourney: CrossFunnelData | null;
+  recommendations: AnalyticsRecommendation[];
+  timeRange?: {
+    preset: string;
+    from: string;
+    to: string;
+    days: number;
+    label: string;
+  };
   lastFullRefresh: string;
   errors: { source: string; message: string }[];
 }

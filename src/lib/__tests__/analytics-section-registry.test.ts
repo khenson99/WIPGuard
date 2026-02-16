@@ -1,45 +1,44 @@
 import { describe, expect, it } from "vitest";
 import {
-  ANALYTICS_SECTION_REGISTRY,
+  ANALYTICS_PRIMARY_SECTIONS,
+  ANALYTICS_SUB_SECTIONS,
   LEGACY_ANALYTICS_TAB_REDIRECTS,
-  getAnalyticsSectionById,
+  getAnalyticsPrimaryForSection,
 } from "@/lib/analytics/section-registry";
 
 describe("analytics section registry", () => {
-  it("includes all required top-level section routes", () => {
-    const ids = new Set(ANALYTICS_SECTION_REGISTRY.map((section) => section.id));
-
-    expect(ids.has("overview")).toBe(true);
-    expect(ids.has("sales")).toBe(true);
+  it("includes required primary sections", () => {
+    const ids = new Set(ANALYTICS_PRIMARY_SECTIONS.map((section) => section.id));
+    expect(ids.has("ads-traffic")).toBe(true);
     expect(ids.has("finance")).toBe(true);
-    expect(ids.has("marketing")).toBe(true);
-    expect(ids.has("tasks")).toBe(true);
-    expect(ids.has("hubspot")).toBe(true);
-    expect(ids.has("stripe")).toBe(true);
-    expect(ids.has("mercury")).toBe(true);
-    expect(ids.has("google-analytics")).toBe(true);
-    expect(ids.has("google-ads")).toBe(true);
-    expect(ids.has("meta-ads")).toBe(true);
-    expect(ids.has("meta-page")).toBe(true);
-    expect(ids.has("reddit-ads")).toBe(true);
-    expect(ids.has("webflow")).toBe(true);
-    expect(ids.has("coda")).toBe(true);
-    expect(ids.has("semrush")).toBe(true);
-    expect(ids.has("decision-dashboard")).toBe(true);
-    expect(ids.has("flow-metrics")).toBe(true);
-    expect(ids.has("flow-risk")).toBe(true);
-    expect(ids.has("observability")).toBe(true);
+    expect(ids.has("sales-pipeline")).toBe(true);
+    expect(ids.has("customer-success")).toBe(true);
   });
 
-  it("maps legacy analytics tabs to section routes", () => {
-    expect(LEGACY_ANALYTICS_TAB_REDIRECTS.overview).toBe("/analytics/overview");
-    expect(LEGACY_ANALYTICS_TAB_REDIRECTS.sales).toBe("/analytics/sales");
+  it("includes customer-success and ops child sections", () => {
+    const ids = new Set(ANALYTICS_SUB_SECTIONS.map((section) => section.id));
+    expect(ids.has("cs-pylon")).toBe(true);
+    expect(ids.has("cs-coda")).toBe(true);
+    expect(ids.has("cs-product")).toBe(true);
+    expect(ids.has("cs-decision-dashboard")).toBe(true);
+    expect(ids.has("cs-flow-metrics")).toBe(true);
+    expect(ids.has("cs-flow-risk")).toBe(true);
+    expect(ids.has("cs-observability")).toBe(true);
+  });
+
+  it("maps legacy analytics tabs to new primary routes", () => {
+    expect(LEGACY_ANALYTICS_TAB_REDIRECTS.overview).toBe("/analytics");
+    expect(LEGACY_ANALYTICS_TAB_REDIRECTS.sales).toBe("/analytics/sales-pipeline");
     expect(LEGACY_ANALYTICS_TAB_REDIRECTS.finance).toBe("/analytics/finance");
-    expect(LEGACY_ANALYTICS_TAB_REDIRECTS.marketing).toBe("/analytics/marketing");
-    expect(LEGACY_ANALYTICS_TAB_REDIRECTS.tasks).toBe("/analytics/tasks");
+    expect(LEGACY_ANALYTICS_TAB_REDIRECTS.marketing).toBe("/analytics/ads-traffic");
+    expect(LEGACY_ANALYTICS_TAB_REDIRECTS.tasks).toBe("/analytics/customer-success");
   });
 
-  it("returns null for unknown sections", () => {
-    expect(getAnalyticsSectionById("missing")).toBeNull();
+  it("returns the owning primary section for child routes", () => {
+    expect(getAnalyticsPrimaryForSection("ads-google-ads")?.id).toBe("ads-traffic");
+    expect(getAnalyticsPrimaryForSection("finance-stripe")?.id).toBe("finance");
+    expect(getAnalyticsPrimaryForSection("sales-hubspot")?.id).toBe("sales-pipeline");
+    expect(getAnalyticsPrimaryForSection("cs-pylon")?.id).toBe("customer-success");
+    expect(getAnalyticsPrimaryForSection("missing")).toBeNull();
   });
 });

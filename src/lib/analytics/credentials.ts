@@ -39,6 +39,9 @@ export interface AnalyticsCredentials {
   // Coda
   codaApiToken: string | null;
   codaDocId: string | null;
+
+  // Pylon
+  pylonApiKey: string | null;
 }
 
 /**
@@ -85,8 +88,8 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     googleAdsDevToken: process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim() || null,
     googleAdsCustomerId: process.env.GOOGLE_ADS_CUSTOMER_ID?.trim() || null,
     googleAdsRefreshToken: process.env.GOOGLE_ADS_REFRESH_TOKEN?.trim() || null,
-    googleAdsClientId: process.env.GOOGLE_ADS_CLIENT_ID?.trim() || null,
-    googleAdsClientSecret: process.env.GOOGLE_ADS_CLIENT_SECRET?.trim() || null,
+    googleAdsClientId: process.env.GOOGLE_ADS_CLIENT_ID?.trim() || process.env.GOOGLE_CLIENT_ID?.trim() || null,
+    googleAdsClientSecret: process.env.GOOGLE_ADS_CLIENT_SECRET?.trim() || process.env.GOOGLE_CLIENT_SECRET?.trim() || null,
 
     // Meta (Facebook/Instagram)
     metaAccessToken: process.env.META_ACCESS_TOKEN?.trim() || null,
@@ -109,5 +112,8 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
   // Coda
     codaApiToken: process.env.CODA_API_TOKEN?.trim() || null,
     codaDocId: process.env.CODA_DOC_ID?.trim() || "dPjhbdhLZh9",
+
+    // Pylon
+    pylonApiKey: process.env.PYLON_API_KEY?.trim() || null,
   };
 }

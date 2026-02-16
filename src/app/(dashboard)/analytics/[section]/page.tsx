@@ -1,6 +1,10 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { AnalyticsSectionPage } from "@/components/analytics/analytics-section-page";
-import { getAnalyticsSectionById } from "@/lib/analytics/section-registry";
+import {
+  getAnalyticsPrimarySectionById,
+  getAnalyticsSubSectionById,
+  LEGACY_ANALYTICS_ROUTE_REDIRECTS,
+} from "@/lib/analytics/section-registry";
 
 interface PageProps {
   params: Promise<{ section: string }>;
@@ -8,7 +12,12 @@ interface PageProps {
 
 export default async function AnalyticsSectionRoute({ params }: PageProps) {
   const { section } = await params;
-  if (!getAnalyticsSectionById(section)) {
+  const legacyTarget = LEGACY_ANALYTICS_ROUTE_REDIRECTS[section];
+  if (legacyTarget) {
+    redirect(legacyTarget);
+  }
+
+  if (!getAnalyticsPrimarySectionById(section) && !getAnalyticsSubSectionById(section)) {
     notFound();
   }
 
