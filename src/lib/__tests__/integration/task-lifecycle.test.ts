@@ -36,18 +36,19 @@ class InMemoryBoard {
     this.wipLimits.set(column, limit);
   }
 
-  createTask(input: Pick<Task, "title"> & Partial<Task>): Task {
+  createTask(input: Omit<Partial<Task>, "title"> & Pick<Task, "title">): Task {
+    const { title, ...overrides } = input;
     const task: Task = {
       id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      title: input.title,
-      status: input.status ?? "BACKLOG",
+      title,
+      status: overrides.status ?? "BACKLOG",
       columnOrder: this.nextOrder++,
       createdAt: new Date(),
       updatedAt: new Date(),
       completedOn: null,
-      assigneeId: input.assigneeId ?? null,
-      classOfService: input.classOfService ?? "standard",
-      ...input,
+      assigneeId: overrides.assigneeId ?? null,
+      classOfService: overrides.classOfService ?? "standard",
+      ...overrides,
     };
     this.tasks.set(task.id, task);
     return task;
