@@ -17,67 +17,118 @@ function makeMeta(source: "live" | "cached" = "live"): AnalyticsTimestamp {
   };
 }
 
+/**
+ * Obtain a GA4 access token.
+ * Supports two authentication methods:
+ *   1. OAuth2 Refresh Token (preferred when org policy blocks SA keys)
+ *      - Requires: GA_REFRESH_TOKEN + GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET
+ *   2. Service Account JWT (traditional approach)
+ *      - Requires: GA_CLIENT_EMAIL + GA_PRIVATE_KEY
+ */
+async function getGAAccessToken(opts: {
+  clientEmail?: string | null;
+  privateKey?: string | null;
+  refreshToken?: string | null;
+  googleClientId?: string | null;
+  googleClientSecret?: string | null;
+}): Promise<string> {
+  // ── Path 1: OAuth2 Refresh Token ──
+  if (opts.refreshToken && opts.googleClientId && opts.googleClientSecret) {
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: opts.refreshToken,
+        client_id: opts.googleClientId,
+        client_secret: opts.googleClientSecret,
+      }).toString(),
+    });
+
+    if (!tokenResponse.ok) {
+      const errorBody = await tokenResponse.text();
+      throw new Error(
+        `GA4 OAuth2 token refresh failed (${tokenResponse.status}): ${errorBody}`
+      );
+    }
+
+    const tokenData = (await tokenResponse.json()) as { access_token: string };
+    return tokenData.access_token;
+  }
+
+  // ── Path 2: Service Account JWT ──
+  if (opts.clientEmail && opts.privateKey) {
+    const now = Math.floor(Date.now() / 1000);
+    const jwtPayload = {
+      iss: opts.clientEmail,
+      scope: "https://www.googleapis.com/auth/analytics.readonly",
+      aud: "https://oauth2.googleapis.com/token",
+      iat: now,
+      exp: now + 3600,
+    };
+
+    const jwtHeader = { alg: "RS256" as const, typ: "JWT" as const };
+
+    const encodeBase64Url = (str: string): string =>
+      Buffer.from(str)
+        .toString("base64")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=/g, "");
+
+    const headerEncoded = encodeBase64Url(JSON.stringify(jwtHeader));
+    const payloadEncoded = encodeBase64Url(JSON.stringify(jwtPayload));
+    const signatureInput = `${headerEncoded}.${payloadEncoded}`;
+
+    const sign = createSign("RSA-SHA256");
+    sign.update(signatureInput);
+    const signatureBuffer = sign.sign(opts.privateKey);
+    const signatureEncoded = signatureBuffer
+      .toString("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=/g, "");
+
+    const jwt = `${signatureInput}.${signatureEncoded}`;
+
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion: jwt,
+      }).toString(),
+    });
+
+    if (!tokenResponse.ok) {
+      throw new Error(
+        `GA4 SA token exchange failed: ${tokenResponse.statusText}`
+      );
+    }
+
+    const tokenData = (await tokenResponse.json()) as { access_token: string };
+    return tokenData.access_token;
+  }
+
+  throw new Error(
+    "GA4 authentication failed: provide either GA_REFRESH_TOKEN (with GOOGLE_CLIENT_ID/SECRET) " +
+      "or GA_CLIENT_EMAIL + GA_PRIVATE_KEY"
+  );
+}
+
 export async function fetchGAData(
   propertyId: string,
   clientEmail: string,
   privateKey: string
 ): Promise<GAData> {
-  // Create JWT for service account authentication
-  const now = Math.floor(Date.now() / 1000);
-  const jwtPayload = {
-    iss: clientEmail,
-    scope: "https://www.googleapis.com/auth/analytics.readonly",
-    aud: "https://oauth2.googleapis.com/token",
-    iat: now,
-    exp: now + 3600,
-  };
-
-  const jwtHeader = {
-    alg: "RS256",
-    typ: "JWT",
-  };
-
-  const encodeBase64Url = (str: string): string => {
-    return Buffer.from(str)
-      .toString("base64")
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=/g, "");
-  };
-
-  const headerEncoded = encodeBase64Url(JSON.stringify(jwtHeader));
-  const payloadEncoded = encodeBase64Url(JSON.stringify(jwtPayload));
-  const signatureInput = `${headerEncoded}.${payloadEncoded}`;
-
-  const sign = createSign("RSA-SHA256");
-  sign.update(signatureInput);
-  const signatureBuffer = sign.sign(privateKey);
-  const signatureEncoded = signatureBuffer
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=/g, "");
-
-  const jwt = `${signatureInput}.${signatureEncoded}`;
-
-  // Exchange JWT for access token
-  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt,
-    }).toString(),
+  // Get access token using whichever auth method is configured
+  const accessToken = await getGAAccessToken({
+    clientEmail: clientEmail || null,
+    privateKey: privateKey || null,
+    refreshToken: process.env.GA_REFRESH_TOKEN?.trim() || null,
+    googleClientId: process.env.GOOGLE_CLIENT_ID?.trim() || null,
+    googleClientSecret: process.env.GOOGLE_CLIENT_SECRET?.trim() || null,
   });
-
-  if (!tokenResponse.ok) {
-    throw new Error(`Failed to obtain access token: ${tokenResponse.statusText}`);
-  }
-
-  const tokenData = (await tokenResponse.json()) as { access_token: string };
-  const accessToken = tokenData.access_token;
 
   const headers = {
     Authorization: `Bearer ${accessToken}`,
