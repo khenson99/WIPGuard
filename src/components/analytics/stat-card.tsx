@@ -1,5 +1,6 @@
-// Reusable stat card for analytics dashboard
+// src/components/analytics/stat-card.tsx
 import { type LucideIcon } from "lucide-react";
+import { SparkLine } from "@/components/charts/spark-line";
 
 interface StatCardProps {
   label: string;
@@ -9,6 +10,7 @@ interface StatCardProps {
   subtitle?: string;
   icon?: LucideIcon;
   iconColor?: string;
+  trend?: { data: number[]; color?: string };
 }
 
 export function StatCard({
@@ -19,6 +21,7 @@ export function StatCard({
   subtitle,
   icon: Icon,
   iconColor = "text-primary",
+  trend,
 }: StatCardProps) {
   const changeColors = {
     positive: "text-emerald-500",
@@ -38,9 +41,14 @@ export function StatCard({
           </div>
         )}
       </div>
-      <p className="mt-2 text-2xl font-bold tabular-nums text-foreground">
-        {value}
-      </p>
+      <div className="mt-2 flex items-end justify-between">
+        <p className="text-2xl font-bold tabular-nums text-foreground">
+          {value}
+        </p>
+        {trend && trend.data.length >= 2 && (
+          <SparkLine data={trend.data} color={trend.color} />
+        )}
+      </div>
       {change && (
         <p className={`mt-1 text-xs font-medium ${changeColors[changeType]}`}>
           {change}
