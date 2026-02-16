@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { InsightCardFull } from "./insight-card-full";
 import { StatCard } from "./stat-card";
-import type { AnalyticsDashboardData, AiInsight, AnalyticsSectionId } from "@/lib/analytics/types";
+import type { AnalyticsDashboardData, AnalyticsSectionId } from "@/lib/analytics/types";
 import { AlertTriangle, AlertCircle, Info, BarChart3 } from "lucide-react";
 
 type SeverityFilter = "all" | "critical" | "warning" | "info";
@@ -12,34 +12,43 @@ type SortMode = "severity" | "confidence";
 
 const SEVERITY_ORDER: Record<string, number> = { critical: 0, warning: 1, info: 2 };
 
+function readOverviewCache(): AnalyticsDashboardData | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem("analytics:overview");
+    return raw ? (JSON.parse(raw) as AnalyticsDashboardData) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function AiInsightsPage() {
-  const [data, setData] = useState<AnalyticsDashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<AnalyticsDashboardData | null>(readOverviewCache);
+  const [loading, setLoading] = useState(() => readOverviewCache() === null);
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
   const [sectionFilter, setSectionFilter] = useState<SectionFilter>("all");
   const [sortMode, setSortMode] = useState<SortMode>("severity");
 
   useEffect(() => {
-    const cached = sessionStorage.getItem("analytics:overview");
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        if (parsed.analyticsData) {
-          setData(parsed.analyticsData);
-          setLoading(false);
-        }
-      } catch { /* ignore */ }
-    }
-    fetch("/api/analytics?section=overview")
+    let active = true;
+    const controller = new AbortController();
+
+    fetch("/api/analytics?section=overview", { signal: controller.signal })
       .then((r) => r.json())
-      .then((json) => {
-        if (json.analyticsData) {
-          setData(json.analyticsData);
-          sessionStorage.setItem("analytics:overview", JSON.stringify(json));
-        }
+      .then((json: AnalyticsDashboardData) => {
+        if (!active) return;
+        setData(json);
+        sessionStorage.setItem("analytics:overview", JSON.stringify(json));
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, []);
 
   const allInsights = data?.aiInsights?.global ?? [];

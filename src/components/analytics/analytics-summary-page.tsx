@@ -9,6 +9,7 @@ import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-co
 import { LifecycleFunnelPanel } from "@/components/analytics/lifecycle-funnel-panel";
 import { AiInsightsPanel } from "@/components/analytics/ai-insights-panel";
 import { ConnectionDot } from "@/components/analytics/connection-dot";
+import { populateConnectionStatus } from "@/hooks/use-connection-status";
 
 interface SummaryPayload {
   generatedAt: string;
@@ -102,6 +103,7 @@ export function AnalyticsSummaryPage() {
         if (!active) return;
         setSummary(cached.summary);
         setOverview(cached.overview);
+        populateConnectionStatus(cached.overview?.freshness);
         setLoading(false);
       });
     } else {
@@ -127,6 +129,7 @@ export function AnalyticsSummaryPage() {
         };
         setSummary(next.summary);
         setOverview(next.overview);
+        populateConnectionStatus(next.overview?.freshness);
         writeSummaryCache(rangeQuery, next);
       })
       .catch((error) => {

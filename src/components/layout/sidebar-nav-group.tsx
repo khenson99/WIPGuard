@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronRight, ChevronDown } from "lucide-react";
@@ -38,14 +38,9 @@ export function SidebarNavGroup({ item }: { item: NavItem }) {
   );
   const isParentActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
-  const [expanded, setExpanded] = useState(false);
-
-  useEffect(() => {
-    const stored = readExpanded();
-    if (stored.has(item.id) || isChildActive) {
-      setExpanded(true);
-    }
-  }, [item.id, isChildActive]);
+  const [expanded, setExpanded] = useState(
+    () => readExpanded().has(item.id) || Boolean(isChildActive)
+  );
 
   const toggle = () => {
     setExpanded((prev) => {

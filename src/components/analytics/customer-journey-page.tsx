@@ -7,11 +7,18 @@ import { DashboardSectionCard } from "./dashboard-section-card";
 import type {
   AnalyticsDashboardData,
   LifecycleStageId,
-  AiInsight,
-  LifecycleSegment,
-  LifecycleTransition,
 } from "@/lib/analytics/types";
-import { Users, TrendingUp, ArrowRight, Target, Repeat, Sparkles } from "lucide-react";
+import { Users, TrendingUp, ArrowRight, Sparkles } from "lucide-react";
+
+function readOverviewCache(): AnalyticsDashboardData | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem("analytics:overview");
+    return raw ? (JSON.parse(raw) as AnalyticsDashboardData) : null;
+  } catch {
+    return null;
+  }
+}
 
 const STAGE_COLORS: Record<LifecycleStageId, string> = {
   awareness: "#3b82f6",
@@ -27,31 +34,30 @@ const STAGE_ORDER: LifecycleStageId[] = [
 ];
 
 export function CustomerJourneyPage() {
-  const [data, setData] = useState<AnalyticsDashboardData | null>(null);
+  const [data, setData] = useState<AnalyticsDashboardData | null>(readOverviewCache);
   const [selectedStage, setSelectedStage] = useState<LifecycleStageId | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => readOverviewCache() === null);
 
   useEffect(() => {
-    const cached = sessionStorage.getItem("analytics:overview");
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        if (parsed.analyticsData) {
-          setData(parsed.analyticsData);
-          setLoading(false);
-        }
-      } catch { /* ignore */ }
-    }
-    fetch("/api/analytics?section=overview")
+    let active = true;
+    const controller = new AbortController();
+
+    fetch("/api/analytics?section=overview", { signal: controller.signal })
       .then((r) => r.json())
-      .then((json) => {
-        if (json.analyticsData) {
-          setData(json.analyticsData);
-          sessionStorage.setItem("analytics:overview", JSON.stringify(json));
-        }
+      .then((json: AnalyticsDashboardData) => {
+        if (!active) return;
+        setData(json);
+        sessionStorage.setItem("analytics:overview", JSON.stringify(json));
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, []);
 
   const lifecycle = data?.lifecycleFunnel ?? null;
