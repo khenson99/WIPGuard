@@ -8,6 +8,7 @@ import { ANALYTICS_PRIMARY_SECTIONS } from "@/lib/analytics/section-registry";
 import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-controls";
 import { LifecycleFunnelPanel } from "@/components/analytics/lifecycle-funnel-panel";
 import { AiInsightsPanel } from "@/components/analytics/ai-insights-panel";
+import { ConnectionDot } from "@/components/analytics/connection-dot";
 
 interface SummaryPayload {
   generatedAt: string;
@@ -35,12 +36,6 @@ interface SummaryPayload {
     connectedCount: number;
   }>;
 }
-
-const STATUS_CLASS: Record<string, string> = {
-  connected: "text-emerald-600",
-  partial: "text-amber-600",
-  missing: "text-muted-foreground",
-};
 
 const SUMMARY_CACHE_PREFIX = "analytics:summary:v1:";
 
@@ -214,15 +209,23 @@ export function AnalyticsSummaryPage() {
             >
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-foreground">{primary.label}</h3>
-                <span className={`text-xs uppercase ${STATUS_CLASS[section?.status ?? "missing"]}`}>
-                  {section?.status ?? "missing"}
-                </span>
+                <ConnectionDot
+                  status={section?.status === "connected" ? "connected" : section?.status === "partial" ? "stale" : "disconnected"}
+                  provider={primary.label}
+                  size="md"
+                />
               </div>
               <p className="mt-1 text-xs text-muted-foreground">{primary.description}</p>
-              {section && (
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  {section.connectedCount}/{section.integrationCount} integrations connected
-                </p>
+              {section && section.integrationCount > 0 && (
+                <div className="mt-2 flex items-center gap-1">
+                  {Array.from({ length: section.integrationCount }, (_, i) => (
+                    <ConnectionDot
+                      key={i}
+                      status={i < section.connectedCount ? "connected" : "disconnected"}
+                      size="sm"
+                    />
+                  ))}
+                </div>
               )}
             </Link>
           );
