@@ -14,9 +14,10 @@ import {
   FlowRiskView,
   ObservabilityView,
 } from "@/components/analytics/ops-insights";
+import { LifecycleFunnelPanel } from "@/components/analytics/lifecycle-funnel-panel";
+import { AiInsightsPanel } from "@/components/analytics/ai-insights-panel";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import {
-  ANALYTICS_PRIMARY_SECTIONS,
   getAnalyticsPrimaryForSection,
   getAnalyticsSecondaryForPrimary,
   getAnalyticsSubSectionById,
@@ -25,6 +26,14 @@ import {
 interface AnalyticsSectionPageProps {
   sectionId: string;
 }
+
+interface CachedSectionPayload {
+  analyticsData: AnalyticsDashboardData | null;
+  auxPayload: Record<string, unknown> | null;
+}
+
+const SECTION_CACHE_PREFIX = "analytics:section:v1:";
+const OPS_DOMAINS = ["decisionDashboard", "flowMetrics", "flowRisk", "observability"] as const;
 
 function buildRangeQuery(searchParams: URLSearchParams | null): string {
   const params = new URLSearchParams();
@@ -35,6 +44,34 @@ function buildRangeQuery(searchParams: URLSearchParams | null): string {
   if (from) params.set("from", from);
   if (to) params.set("to", to);
   return params.toString();
+}
+
+function sectionCacheKey(sectionId: string, rangeQuery: string): string {
+  return `${SECTION_CACHE_PREFIX}${sectionId}:${rangeQuery || "default"}`;
+}
+
+function readSectionCache(sectionId: string, rangeQuery: string): CachedSectionPayload | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(sectionCacheKey(sectionId, rangeQuery));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<CachedSectionPayload>;
+    return {
+      analyticsData: (parsed.analyticsData as AnalyticsDashboardData | null) ?? null,
+      auxPayload: (parsed.auxPayload as Record<string, unknown> | null) ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeSectionCache(sectionId: string, rangeQuery: string, payload: CachedSectionPayload): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(sectionCacheKey(sectionId, rangeQuery), JSON.stringify(payload));
+  } catch {
+    // Ignore storage write failures (private browsing/storage quotas).
+  }
 }
 
 function SnapshotCards({
@@ -90,6 +127,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
   const child = getAnalyticsSubSectionById(sectionId);
   const secondaryItems = primary ? getAnalyticsSecondaryForPrimary(primary.id) : [];
   const rangeQuery = useMemo(() => buildRangeQuery(searchParams), [searchParams]);
+  const searchParamsString = searchParams?.toString() ?? "";
   const fullRangeSuffix = rangeQuery ? `&${rangeQuery}` : "";
 
   useEffect(() => {
@@ -99,26 +137,34 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
       return;
     }
 
-    const load = async () => {
+    let active = true;
+    const controller = new AbortController();
+    const cached = readSectionCache(sectionId, rangeQuery);
+    const isOpsSection = Boolean(
+      child && OPS_DOMAINS.includes(child.dataDomain as (typeof OPS_DOMAINS)[number])
+    );
+
+    if (cached) {
+      setAnalyticsData(cached.analyticsData);
+      setAuxPayload(cached.auxPayload);
+      setLoading(false);
+    } else {
+      setAnalyticsData(null);
+      setAuxPayload(null);
       setLoading(true);
-      setError(null);
+    }
+    setError(null);
+
+    const load = async () => {
       try {
-        setAuxPayload(null);
+        const params = new URLSearchParams(searchParamsString);
+        let nextAnalytics: AnalyticsDashboardData | null = isOpsSection ? null : cached?.analyticsData ?? null;
+        let nextAux: Record<string, unknown> | null = cached?.auxPayload ?? null;
 
-        if (!child || ["decisionDashboard", "flowMetrics", "flowRisk", "observability"].includes(child.dataDomain)) {
-          const tasks: Array<Promise<unknown>> = [];
-
-          if (!child || ["decisionDashboard", "flowMetrics", "flowRisk", "observability"].includes(child.dataDomain) === false) {
-            tasks.push(
-              fetch(`/api/analytics?section=${sectionId}${rangeQuery ? `&${rangeQuery}` : ""}`, { cache: "no-store" })
-                .then((response) => response.json())
-                .then((payload) => setAnalyticsData(payload as AnalyticsDashboardData))
-            );
-          }
-
+        if (isOpsSection) {
           if (child?.dataDomain === "decisionDashboard") {
-            const from = searchParams?.get("from");
-            const to = searchParams?.get("to");
+            const from = params.get("from");
+            const to = params.get("to");
             let lookback = 30;
             if (from && to) {
               const fromDate = new Date(`${from}T00:00:00.000Z`);
@@ -127,56 +173,73 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
                 lookback = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
               }
             } else {
-              lookback = Number((searchParams?.get("range") || "30d").replace("d", "")) || 30;
+              lookback = Number((params.get("range") || "30d").replace("d", "")) || 30;
             }
-            tasks.push(
-              fetch(`/api/analytics/decision-dashboard?lookbackDays=${Math.max(7, Math.min(120, lookback))}`, { cache: "no-store" })
-                .then((response) => response.json())
-                .then((payload) => setAuxPayload(payload as Record<string, unknown>))
-            );
+            const response = await fetch(`/api/analytics/decision-dashboard?lookbackDays=${Math.max(7, Math.min(120, lookback))}`, {
+              signal: controller.signal,
+            });
+            nextAux = (await response.json()) as Record<string, unknown>;
           } else if (child?.dataDomain === "flowMetrics") {
-            const params = new URLSearchParams(searchParams?.toString() ?? "");
             if (!params.get("from") || !params.get("to")) {
               const now = new Date();
               params.set("from", new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
               params.set("to", now.toISOString().slice(0, 10));
             }
-            tasks.push(
-              fetch(`/api/flow/metrics?${params.toString()}&interval=week`, { cache: "no-store" })
-                .then((response) => response.json())
-                .then((payload) => setAuxPayload(payload as Record<string, unknown>))
-            );
+            const response = await fetch(`/api/flow/metrics?${params.toString()}&interval=week`, {
+              signal: controller.signal,
+            });
+            nextAux = (await response.json()) as Record<string, unknown>;
           } else if (child?.dataDomain === "flowRisk") {
-            tasks.push(
-              fetch("/api/flow/risk?blockerLookbackDays=30&fixedDateLookaheadDays=14", { cache: "no-store" })
-                .then((response) => response.json())
-                .then((payload) => setAuxPayload(payload as Record<string, unknown>))
-            );
+            const response = await fetch("/api/flow/risk?blockerLookbackDays=30&fixedDateLookaheadDays=14", {
+              signal: controller.signal,
+            });
+            nextAux = (await response.json()) as Record<string, unknown>;
           } else if (child?.dataDomain === "observability") {
-            tasks.push(
-              fetch("/api/ops/observability", { cache: "no-store" })
-                .then((response) => response.json())
-                .then((payload) => setAuxPayload(payload as Record<string, unknown>))
-            );
+            const response = await fetch("/api/ops/observability", {
+              signal: controller.signal,
+            });
+            nextAux = (await response.json()) as Record<string, unknown>;
           }
-
-          await Promise.all(tasks);
         } else {
           const response = await fetch(`/api/analytics?section=${sectionId}${rangeQuery ? `&${rangeQuery}` : ""}`, {
-            cache: "no-store",
+            signal: controller.signal,
           });
-          const payload = (await response.json()) as AnalyticsDashboardData;
-          setAnalyticsData(payload);
+          nextAnalytics = (await response.json()) as AnalyticsDashboardData;
+          nextAux = null;
         }
+
+        if (!active) {
+          return;
+        }
+
+        setAnalyticsData(nextAnalytics);
+        setAuxPayload(nextAux);
+        setError(null);
+        writeSectionCache(sectionId, rangeQuery, {
+          analyticsData: nextAnalytics,
+          auxPayload: nextAux,
+        });
       } catch (fetchError) {
-        setError(fetchError instanceof Error ? fetchError.message : "Failed to load section");
+        if (!active || (fetchError instanceof Error && fetchError.name === "AbortError")) {
+          return;
+        }
+        if (!cached) {
+          setError(fetchError instanceof Error ? fetchError.message : "Failed to load section");
+        }
       } finally {
-        setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       }
     };
 
     void load();
-  }, [sectionId, primary, child, rangeQuery, searchParams]);
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [sectionId, primary, child, rangeQuery, searchParamsString]);
 
   if (!primary) {
     return (
@@ -223,7 +286,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
   };
 
   return (
-    <div className="space-y-4 p-4">
+    <div className="h-full space-y-4 overflow-y-auto p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground">{title}</h1>
@@ -232,22 +295,6 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
           </p>
         </div>
         <AnalyticsTimeRangeControls />
-      </div>
-
-      <div className="flex flex-wrap gap-1 border-b border-border pb-2">
-        {ANALYTICS_PRIMARY_SECTIONS.map((item) => (
-          <Link
-            key={item.id}
-            href={`${item.path}${rangeQuery ? `?${rangeQuery}` : ""}`}
-            className={`rounded-md px-2 py-1 text-xs ${
-              item.id === primary.id
-                ? "bg-primary text-primary-foreground"
-                : "bg-card text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {item.label}
-          </Link>
-        ))}
       </div>
 
       <div className="flex flex-wrap gap-1 border-b border-border pb-2">
@@ -271,7 +318,21 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
       ) : error ? (
         <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-500">{error}</div>
       ) : (
-        <>{child ? renderChild() : renderPrimary()}</>
+        <>
+          {child ? (
+            renderChild()
+          ) : (
+            <div className="space-y-4">
+              {renderPrimary()}
+              <LifecycleFunnelPanel
+                lifecycle={analyticsData?.lifecycleFunnel ?? null}
+                insights={analyticsData?.aiInsights?.global ?? []}
+                sectionFocus={primary.id}
+              />
+              <AiInsightsPanel bundle={analyticsData?.aiInsights ?? null} defaultFilter={primary.id} />
+            </div>
+          )}
+        </>
       )}
 
       <div className="text-right text-[11px] text-muted-foreground">

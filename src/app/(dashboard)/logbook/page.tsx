@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { BookOpen, Calendar, ChevronLeft, ChevronRight } from "lucide-react";
+import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 
 interface LogbookEntry {
   id: string;
@@ -24,10 +25,26 @@ export default function LogbookPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const fetchIdRef = useRef(0);
+  const cacheKey = `dashboard:logbook:v1:${page}:${startDate || "all"}:${endDate || "all"}`;
 
   useEffect(() => {
-    let cancelled = false;
+    let active = true;
+    const controller = new AbortController();
     const id = ++fetchIdRef.current;
+    const cached = readSessionCache<LogbookEntry[]>(cacheKey);
+
+    if (cached) {
+      queueMicrotask(() => {
+        if (!active) return;
+        setEntries(cached);
+        setLoading(false);
+      });
+    } else {
+      queueMicrotask(() => {
+        if (!active) return;
+        setLoading(true);
+      });
+    }
 
     const params = new URLSearchParams({
       page: page.toString(),
@@ -36,22 +53,30 @@ export default function LogbookPage() {
     if (startDate) params.set("startDate", startDate);
     if (endDate) params.set("endDate", endDate);
 
-    fetch(`/api/logbook?${params}`)
+    fetch(`/api/logbook?${params}`, { signal: controller.signal })
       .then((r) => r.json())
       .then((data) => {
-        if (!cancelled && id === fetchIdRef.current) {
-          setEntries(data?.entries ?? (Array.isArray(data) ? data : []));
+        if (active && id === fetchIdRef.current) {
+          const nextEntries = (data?.entries ?? (Array.isArray(data) ? data : [])) as LogbookEntry[];
+          setEntries(nextEntries);
+          writeSessionCache<LogbookEntry[]>(cacheKey, nextEntries);
           setLoading(false);
         }
       })
-      .catch(() => {
-        if (!cancelled && id === fetchIdRef.current) {
+      .catch((error) => {
+        if (!active || (error instanceof Error && error.name === "AbortError")) {
+          return;
+        }
+        if (id === fetchIdRef.current && !cached) {
           setLoading(false);
         }
       });
 
-    return () => { cancelled = true; };
-  }, [page, startDate, endDate]);
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [cacheKey, endDate, page, startDate]);
 
   return (
     <div className="flex h-full flex-col">

@@ -110,18 +110,25 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const connectedPrimary = primarySections.filter((section) => section.status !== "missing").length;
     const disciplineCoverage = Math.round((connectedPrimary / primarySections.length) * 100);
 
-    return NextResponse.json({
-      generatedAt: new Date().toISOString(),
-      timeRange: range,
-      highlights: {
-        totalTasks,
-        overdueTasks,
-        activeProjects,
-        activeContributors,
-        disciplineCoverage,
+    return NextResponse.json(
+      {
+        generatedAt: new Date().toISOString(),
+        timeRange: range,
+        highlights: {
+          totalTasks,
+          overdueTasks,
+          activeProjects,
+          activeContributors,
+          disciplineCoverage,
+        },
+        primarySections,
       },
-      primarySections,
-    });
+      {
+        headers: {
+          "Cache-Control": "private, max-age=30, stale-while-revalidate=120",
+        },
+      }
+    );
   } catch (error) {
     console.error("GET /api/analytics/summary error:", error);
     return NextResponse.json({ error: "Failed to fetch analytics summary" }, { status: 500 });

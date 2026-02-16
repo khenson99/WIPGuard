@@ -17,8 +17,9 @@ import { fetchCodaData } from "@/lib/analytics/fetchers-coda";
 import { fetchSemrushData } from "@/lib/analytics/fetchers-semrush";
 import { fetchPylonData } from "@/lib/analytics/fetchers-pylon";
 import { fetchIntegrationTelemetryData } from "@/lib/analytics/fetchers-integrations";
-import { buildCrossFunnelData } from "@/lib/analytics/funnel";
-import { buildDistilledInsights } from "@/lib/analytics/insight-engine";
+import { buildCrossFunnelData, buildLifecycleFunnelData } from "@/lib/analytics/funnel";
+import { buildAiInsightsBundle, buildDistilledInsights } from "@/lib/analytics/insight-engine";
+import { createEmptyAnalyticsDashboardData, patchFreshnessWithStale } from "@/lib/analytics/response-shape";
 import {
   readLatestSnapshot,
   readLatestSuccessfulSnapshot,
@@ -30,7 +31,6 @@ import type {
   AnalyticsDashboardData,
   AnalyticsRecommendation,
   ProductSuccessData,
-  ProviderFreshness,
 } from "@/lib/analytics/types";
 
 export const revalidate = 300;
@@ -54,7 +54,9 @@ type DomainKey =
   | "hubspotOps"
   | "codaOps"
   | "redditOps"
+  | "lifecycleFunnel"
   | "funnelJourney"
+  | "aiInsights"
   | "recommendations"
   | "distilledInsights";
 
@@ -77,7 +79,9 @@ const ALL_DOMAINS: DomainKey[] = [
   "hubspotOps",
   "codaOps",
   "redditOps",
+  "lifecycleFunnel",
   "funnelJourney",
+  "aiInsights",
   "recommendations",
   "distilledInsights",
 ];
@@ -92,7 +96,9 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "product",
     "googleWorkspace",
     "slack",
+    "lifecycleFunnel",
     "funnelJourney",
+    "aiInsights",
     "recommendations",
     "distilledInsights",
   ],
@@ -104,13 +110,48 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "webflow",
     "semrush",
     "coda",
+    "lifecycleFunnel",
     "funnelJourney",
+    "aiInsights",
     "recommendations",
     "distilledInsights",
   ],
-  finance: ["mercury", "stripe", "hubspot", "hubspotOps", "funnelJourney", "recommendations", "distilledInsights"],
-  "sales-pipeline": ["hubspot", "stripe", "googleWorkspace", "slack", "hubspotOps", "funnelJourney", "recommendations", "distilledInsights"],
-  "customer-success": ["pylon", "coda", "product", "googleWorkspace", "slack", "codaOps", "funnelJourney", "recommendations", "distilledInsights"],
+  finance: [
+    "mercury",
+    "stripe",
+    "hubspot",
+    "hubspotOps",
+    "lifecycleFunnel",
+    "funnelJourney",
+    "aiInsights",
+    "recommendations",
+    "distilledInsights",
+  ],
+  "sales-pipeline": [
+    "hubspot",
+    "stripe",
+    "googleWorkspace",
+    "slack",
+    "hubspotOps",
+    "lifecycleFunnel",
+    "funnelJourney",
+    "aiInsights",
+    "recommendations",
+    "distilledInsights",
+  ],
+  "customer-success": [
+    "pylon",
+    "coda",
+    "product",
+    "googleWorkspace",
+    "slack",
+    "codaOps",
+    "lifecycleFunnel",
+    "funnelJourney",
+    "aiInsights",
+    "recommendations",
+    "distilledInsights",
+  ],
   "ads-google-analytics": ["googleAnalytics"],
   "ads-google-ads": ["googleAds"],
   "ads-meta-ads": ["metaAds"],
@@ -262,6 +303,91 @@ function providerForDomain(domain: DomainKey): "google_workspace" | "hubspot" | 
   return null;
 }
 
+type FetchEntry = {
+  key: Exclude<DomainKey, "lifecycleFunnel" | "funnelJourney" | "aiInsights" | "recommendations" | "distilledInsights">;
+  fn: () => Promise<unknown>;
+};
+
+type FetchOutcome = {
+  key: FetchEntry["key"];
+  payload: unknown;
+  stale: boolean;
+  capturedAt: string | null;
+  source: "snapshot" | "live";
+  fallbackError?: string;
+};
+
+type RefreshInput = {
+  userId: string;
+  rangePreset: string;
+  fromDate: Date;
+  toDate: Date;
+  snapshotExpiresAt: Date;
+  entry: FetchEntry;
+};
+
+const inFlightStaleRefreshes = new Map<string, Promise<void>>();
+
+function staleRefreshKey(input: RefreshInput): string {
+  return [
+    input.userId,
+    input.entry.key,
+    input.rangePreset,
+    input.fromDate.toISOString(),
+    input.toDate.toISOString(),
+  ].join(":");
+}
+
+async function refreshDomainSnapshot(input: RefreshInput): Promise<void> {
+  try {
+    const live = await withTimeout(input.entry.fn, 8_500, input.entry.key);
+    await storeAnalyticsSnapshot({
+      userId: input.userId,
+      providerKey: input.entry.key,
+      contextKey: "default",
+      rangePreset: input.rangePreset,
+      fromDate: input.fromDate,
+      toDate: input.toDate,
+      payload: live,
+      expiresAt: input.snapshotExpiresAt,
+    });
+  } catch (error) {
+    await storeAnalyticsSnapshotFailure({
+      userId: input.userId,
+      providerKey: input.entry.key,
+      contextKey: "default",
+      rangePreset: input.rangePreset,
+      fromDate: input.fromDate,
+      toDate: input.toDate,
+      error: error instanceof Error ? error.message : "Failed",
+      expiresAt: input.snapshotExpiresAt,
+    });
+    throw error;
+  }
+}
+
+function queueStaleSnapshotRefresh(input: RefreshInput): void {
+  const key = staleRefreshKey(input);
+  if (inFlightStaleRefreshes.has(key)) {
+    return;
+  }
+
+  const job = refreshDomainSnapshot(input)
+    .catch((error) => {
+      console.error("analytics stale snapshot refresh failed", {
+        domain: input.entry.key,
+        userId: input.userId,
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    })
+    .finally(() => {
+      inFlightStaleRefreshes.delete(key);
+    });
+
+  inFlightStaleRefreshes.set(key, job);
+  void job;
+}
+
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
@@ -283,28 +409,7 @@ export async function GET(request: Request) {
 
   const creds = await getCredentials(userId);
 
-  const result: AnalyticsDashboardData = {
-    hubspot: null,
-    stripe: null,
-    mercury: null,
-    googleAnalytics: null,
-    googleAds: null,
-    metaAds: null,
-    metaPage: null,
-    redditAds: null,
-    webflow: null,
-    coda: null,
-    semrush: null,
-    pylon: null,
-    product: null,
-    googleWorkspace: null,
-    slack: null,
-    hubspotOps: null,
-    codaOps: null,
-    redditOps: null,
-    funnelJourney: null,
-    recommendations: [],
-    distilledInsights: [],
+  const result: AnalyticsDashboardData = createEmptyAnalyticsDashboardData({
     freshness: {
       google_workspace: {
         provider: "google_workspace",
@@ -377,16 +482,9 @@ export async function GET(request: Request) {
         lastSnapshotAt: null,
       },
     },
-    staleDomains: [],
     timeRange: range,
     lastFullRefresh: new Date().toISOString(),
-    errors: [],
-  };
-
-  type FetchEntry = {
-    key: Exclude<DomainKey, "funnelJourney" | "recommendations" | "distilledInsights">;
-    fn: () => Promise<unknown>;
-  };
+  });
 
   const fetchers = ([
     { key: "hubspot", fn: () => (creds.hubspotToken ? fetchHubSpotData(creds.hubspotToken) : Promise.reject(new Error("Missing HubSpot credential"))) },
@@ -491,7 +589,7 @@ export async function GET(request: Request) {
   const snapshotExpiresAt = snapshotExpiryFromNow(1);
 
   const settled = await Promise.allSettled(
-    fetchers.map(async (entry) => {
+    fetchers.map(async (entry): Promise<FetchOutcome> => {
       const latestSnapshot = await readLatestSnapshot({
         userId,
         providerKey: entry.key,
@@ -501,11 +599,22 @@ export async function GET(request: Request) {
         toDate,
       });
 
-      if (!forceRefresh && latestSnapshot.payload && !latestSnapshot.stale) {
+      if (!forceRefresh && latestSnapshot.payload) {
+        if (latestSnapshot.stale) {
+          queueStaleSnapshotRefresh({
+            userId,
+            rangePreset: range.preset,
+            fromDate,
+            toDate,
+            snapshotExpiresAt,
+            entry,
+          });
+        }
+
         return {
           key: entry.key,
           payload: latestSnapshot.payload,
-          stale: false,
+          stale: latestSnapshot.stale,
           capturedAt: latestSnapshot.capturedAt,
           source: "snapshot" as const,
         };
@@ -591,20 +700,24 @@ export async function GET(request: Request) {
 
     const provider = providerForDomain(key);
     if (provider) {
-      const existing = result.freshness[provider] as ProviderFreshness | undefined;
+      const existing = result.freshness[provider];
       if (existing) {
-        result.freshness[provider] = {
-          ...existing,
-          stale: existing.stale || stale,
-          lastSnapshotAt: capturedAt ?? existing.lastSnapshotAt,
-          source: stale ? "snapshot" : existing.source,
-        };
+        result.freshness[provider] = patchFreshnessWithStale(existing, {
+          stale,
+          capturedAt,
+        });
       }
     }
   });
 
   if (domains.has("funnelJourney")) {
     result.funnelJourney = buildCrossFunnelData(result);
+  }
+  if (domains.has("lifecycleFunnel")) {
+    result.lifecycleFunnel = buildLifecycleFunnelData(result);
+  }
+  if (domains.has("aiInsights")) {
+    result.aiInsights = buildAiInsightsBundle(result);
   }
   if (domains.has("recommendations")) {
     result.recommendations = buildRecommendations(result);
@@ -615,7 +728,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json(result, {
     headers: {
-      "Cache-Control": forceRefresh ? "no-cache, no-store" : "public, s-maxage=120, stale-while-revalidate=60",
+      "Cache-Control": forceRefresh ? "no-cache, no-store" : "private, max-age=30, stale-while-revalidate=120",
     },
   });
 }

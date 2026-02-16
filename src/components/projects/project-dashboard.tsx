@@ -14,6 +14,7 @@ import {
   FilterX,
 } from "lucide-react";
 import { ProjectCard } from "./project-card";
+import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 import type {
   ProjectWithDetails,
   DepartmentSummary,
@@ -22,6 +23,18 @@ import type {
 } from "@/types";
 
 type ViewMode = "grid" | "swimlane" | "list";
+
+const PROJECT_DASHBOARD_CACHE_KEY = "dashboard:projects:v1";
+
+interface ProjectDashboardCache {
+  projects: ProjectWithDetails[];
+  departments: DepartmentSummary[];
+  savedViews: UserSavedView[];
+  selectedViewId: string;
+  viewMode: ViewMode;
+  filterStatus: ProjectStatus | "";
+  filterDepartment: string;
+}
 
 const STATUS_OPTIONS: { value: ProjectStatus | ""; label: string }[] = [
   { value: "", label: "All Statuses" },
@@ -42,52 +55,100 @@ export function ProjectDashboard() {
   const [savedViews, setSavedViews] = useState<UserSavedView[]>([]);
   const [selectedViewId, setSelectedViewId] = useState("");
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (signal?: AbortSignal) => {
     try {
-      const [projRes, deptRes] = await Promise.all([
-        fetch("/api/projects"),
-        fetch("/api/departments"),
+      const [projRes, deptRes, viewsRes] = await Promise.all([
+        fetch("/api/projects", { signal }),
+        fetch("/api/departments", { signal }),
+        fetch("/api/views?scope=projects", { signal }),
       ]);
-      if (projRes.ok) setProjects(await projRes.json());
-      if (deptRes.ok) setDepartments(await deptRes.json());
-    } catch {
-      // Silently handle
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+      const nextProjects = projRes.ok ? ((await projRes.json()) as ProjectWithDetails[]) : [];
+      const nextDepartments = deptRes.ok ? ((await deptRes.json()) as DepartmentSummary[]) : [];
+      const nextViews = viewsRes.ok ? ((await viewsRes.json()) as UserSavedView[]) : [];
 
-  useEffect(() => {
-    fetch("/api/views?scope=projects", { cache: "no-store" })
-      .then((response) => response.json())
-      .then((payload) => {
-        const views = Array.isArray(payload) ? (payload as UserSavedView[]) : [];
-        setSavedViews(views);
-        const defaultView = views.find((view) => view.isDefault) || views[0];
-        if (!defaultView) return;
+      if (signal?.aborted) return;
+
+      setProjects(nextProjects);
+      setDepartments(nextDepartments);
+      setSavedViews(nextViews);
+
+      const defaultView = nextViews.find((view) => view.isDefault) || nextViews[0];
+      let nextViewMode: ViewMode = "grid";
+      let nextFilterStatus: ProjectStatus | "" = "";
+      let nextFilterDepartment = "";
+
+      if (defaultView) {
         setSelectedViewId(defaultView.id);
-
         if (typeof defaultView.config.defaultLayout === "string") {
           const layout = defaultView.config.defaultLayout;
           if (layout === "grid" || layout === "swimlane" || layout === "list") {
+            nextViewMode = layout;
             setViewMode(layout);
           }
         }
         if (typeof defaultView.config.filterStatus === "string") {
           const status = defaultView.config.filterStatus as ProjectStatus;
           if (status === "ACTIVE" || status === "ON_HOLD" || status === "COMPLETED" || status === "ARCHIVED") {
+            nextFilterStatus = status;
             setFilterStatus(status);
           }
         }
-      })
-      .catch(() => {
-        setSavedViews([]);
+        if (typeof defaultView.config.filterDepartment === "string") {
+          nextFilterDepartment = defaultView.config.filterDepartment;
+          setFilterDepartment(defaultView.config.filterDepartment);
+        }
+      }
+
+      writeSessionCache<ProjectDashboardCache>(PROJECT_DASHBOARD_CACHE_KEY, {
+        projects: nextProjects,
+        departments: nextDepartments,
+        savedViews: nextViews,
+        selectedViewId: defaultView?.id ?? "",
+        viewMode: nextViewMode,
+        filterStatus: nextFilterStatus,
+        filterDepartment: nextFilterDepartment,
       });
+    } catch {
+      // Silently handle
+    } finally {
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
+    }
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const cached = readSessionCache<ProjectDashboardCache>(PROJECT_DASHBOARD_CACHE_KEY);
+
+    if (cached) {
+      queueMicrotask(() => {
+        if (!active) return;
+        setProjects(cached.projects);
+        setDepartments(cached.departments);
+        setSavedViews(cached.savedViews);
+        setSelectedViewId(cached.selectedViewId);
+        setViewMode(cached.viewMode);
+        setFilterStatus(cached.filterStatus);
+        setFilterDepartment(cached.filterDepartment);
+        setLoading(false);
+      });
+    } else {
+      queueMicrotask(() => {
+        if (!active) return;
+        setLoading(true);
+      });
+    }
+
+    void fetchData(controller.signal);
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [fetchData]);
 
   const filteredProjects = useMemo(() => {
     let list = projects;

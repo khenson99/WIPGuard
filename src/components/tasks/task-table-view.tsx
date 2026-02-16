@@ -5,6 +5,7 @@ import { ArrowUpDown } from "lucide-react";
 import { COLUMN_LABELS, PRIORITY_COLORS, type Priority, type TaskStatus, type TaskWithRelations } from "@/types";
 import { useBoardStore } from "@/store/board-store";
 import { TaskModal } from "@/components/tasks/task-modal";
+import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 
 type SortField = "title" | "status" | "priority" | "dueDate" | "project";
 type SortDir = "asc" | "desc";
@@ -33,35 +34,63 @@ export function TaskTableView({ assigneeId, statusFilter, compact = false }: Tas
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const { isTaskModalOpen, selectedTask, openTaskModal, closeTaskModal } = useBoardStore();
+  const cacheKey = useMemo(() => {
+    const statusKey = statusFilter && statusFilter.length > 0 ? statusFilter.join(",") : "all";
+    return `dashboard:tasks-table:v1:${assigneeId || "all"}:${statusKey}`;
+  }, [assigneeId, statusFilter]);
 
-  const fetchTasks = useCallback(async () => {
-    setLoading(true);
+  const fetchTasks = useCallback(async (signal?: AbortSignal) => {
     const params = new URLSearchParams();
     if (assigneeId) params.set("assignee", assigneeId);
 
     try {
-      const response = await fetch(`/api/tasks?${params.toString()}`);
+      const response = await fetch(`/api/tasks?${params.toString()}`, { signal });
       const payload = (await response.json()) as unknown;
       const normalized: TaskWithRelations[] = Array.isArray(payload)
         ? (payload as TaskWithRelations[])
         : [];
 
-      setTasks(
+      const nextTasks =
         statusFilter && statusFilter.length > 0
           ? normalized.filter((task) => statusFilter.includes(task.status))
-          : normalized
-      );
+          : normalized;
+
+      if (signal?.aborted) return;
+
+      setTasks(nextTasks);
+      writeSessionCache<TaskWithRelations[]>(cacheKey, nextTasks);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
     }
-  }, [assigneeId, statusFilter]);
+  }, [assigneeId, cacheKey, statusFilter]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void fetchTasks();
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [fetchTasks]);
+    let active = true;
+    const controller = new AbortController();
+    const cached = readSessionCache<TaskWithRelations[]>(cacheKey);
+
+    if (cached) {
+      queueMicrotask(() => {
+        if (!active) return;
+        setTasks(cached);
+        setLoading(false);
+      });
+    } else {
+      queueMicrotask(() => {
+        if (!active) return;
+        setLoading(true);
+      });
+    }
+
+    void fetchTasks(controller.signal);
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [cacheKey, fetchTasks]);
 
   const sorted = useMemo(() => {
     return [...tasks].sort((a, b) => {

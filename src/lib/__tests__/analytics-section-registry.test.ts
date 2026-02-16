@@ -4,6 +4,7 @@ import {
   ANALYTICS_SUB_SECTIONS,
   LEGACY_ANALYTICS_TAB_REDIRECTS,
   getAnalyticsPrimaryForSection,
+  getAnalyticsSecondaryForPrimary,
 } from "@/lib/analytics/section-registry";
 
 describe("analytics section registry", () => {
@@ -40,5 +41,12 @@ describe("analytics section registry", () => {
     expect(getAnalyticsPrimaryForSection("sales-hubspot")?.id).toBe("sales-pipeline");
     expect(getAnalyticsPrimaryForSection("cs-pylon")?.id).toBe("customer-success");
     expect(getAnalyticsPrimaryForSection("missing")).toBeNull();
+  });
+
+  it("ensures each tier-1 dashboard has integration sub-tabs", () => {
+    expect(getAnalyticsSecondaryForPrimary("ads-traffic").length).toBeGreaterThan(0);
+    expect(getAnalyticsSecondaryForPrimary("finance").length).toBeGreaterThan(0);
+    expect(getAnalyticsSecondaryForPrimary("sales-pipeline").length).toBeGreaterThan(0);
+    expect(getAnalyticsSecondaryForPrimary("customer-success").length).toBeGreaterThan(0);
   });
 });

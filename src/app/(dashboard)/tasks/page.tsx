@@ -6,11 +6,14 @@ import { useSession } from "next-auth/react";
 import { LayoutGrid, PanelsTopLeft, TableProperties } from "lucide-react";
 import { KanbanBoard } from "@/components/board/kanban-board";
 import { TaskTableView } from "@/components/tasks/task-table-view";
+import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 import type { TaskStatus, UserSavedView } from "@/types";
 
 type TaskLayout = "kanban" | "table" | "split";
 
 type BuiltInView = "all-work" | "my-work" | "today-focus" | "table-audit";
+
+const TASK_VIEWS_CACHE_KEY = "dashboard:tasks:views:v1";
 
 function viewFromQuery(value: string | null): BuiltInView {
   if (value === "my-work") return "my-work";
@@ -31,11 +34,40 @@ export default function TasksPage() {
   const builtInView = viewFromQuery(searchParams?.get("view") ?? null);
 
   useEffect(() => {
-    fetch("/api/views?scope=tasks", { cache: "no-store" })
+    let active = true;
+    const controller = new AbortController();
+    const cached = readSessionCache<UserSavedView[]>(TASK_VIEWS_CACHE_KEY);
+
+    if (cached) {
+      queueMicrotask(() => {
+        if (!active) return;
+        setSavedViews(cached);
+        const defaultView = cached.find((view) => view.isDefault) || cached[0];
+        if (defaultView) {
+          setSelectedSavedViewId(defaultView.id);
+          const configuredLayout =
+            typeof defaultView.config?.layout === "string"
+              ? defaultView.config.layout
+              : null;
+          if (
+            configuredLayout === "kanban" ||
+            configuredLayout === "table" ||
+            configuredLayout === "split"
+          ) {
+            setLayout(configuredLayout);
+          }
+        }
+        setLoadingViews(false);
+      });
+    }
+
+    fetch("/api/views?scope=tasks", { signal: controller.signal })
       .then((response) => response.json())
       .then((payload) => {
+        if (!active) return;
         const views = Array.isArray(payload) ? (payload as UserSavedView[]) : [];
         setSavedViews(views);
+        writeSessionCache<UserSavedView[]>(TASK_VIEWS_CACHE_KEY, views);
         const defaultView = views.find((view) => view.isDefault) || views[0];
         if (defaultView) {
           setSelectedSavedViewId(defaultView.id);
@@ -52,7 +84,19 @@ export default function TasksPage() {
           }
         }
       })
-      .finally(() => setLoadingViews(false));
+      .catch((error) => {
+        if (!active || (error instanceof Error && error.name === "AbortError")) return;
+      })
+      .finally(() => {
+        if (active) {
+          setLoadingViews(false);
+        }
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, []);
 
   const selectedView = useMemo(

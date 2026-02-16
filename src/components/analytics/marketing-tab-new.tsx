@@ -81,6 +81,76 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
     );
   }
 
+  const googleAds = data.googleAds;
+  const metaAds = data.metaAds;
+  const redditAds = data.redditAds;
+  const metaPage = data.metaPage;
+  const webflow = data.webflow;
+  const ga = data.googleAnalytics;
+
+  const googleAdsConfigured = Boolean(googleAds);
+  const metaAdsConfigured = Boolean(metaAds);
+  const redditAdsConfigured = Boolean(redditAds);
+  const metaPageConfigured = Boolean(metaPage);
+  const gaConfigured = Boolean(ga);
+
+  const hasGoogleAdsSignal = Boolean(
+    googleAds &&
+      (googleAds.totalSpend30d > 0 ||
+        googleAds.totalImpressions > 0 ||
+        googleAds.totalClicks > 0 ||
+        googleAds.totalConversions > 0 ||
+        googleAds.campaigns.length > 0)
+  );
+
+  const hasMetaAdsSignal = Boolean(
+    metaAds &&
+      (metaAds.totalSpend30d > 0 ||
+        metaAds.totalImpressions > 0 ||
+        metaAds.totalClicks > 0 ||
+        metaAds.totalConversions > 0 ||
+        metaAds.campaigns.length > 0)
+  );
+
+  const hasRedditAdsSignal = Boolean(
+    redditAds &&
+      (redditAds.totalSpend30d > 0 ||
+        redditAds.totalImpressions > 0 ||
+        redditAds.totalClicks > 0 ||
+        redditAds.campaigns.length > 0)
+  );
+
+  const hasAnyAdsConfigured = googleAdsConfigured || metaAdsConfigured || redditAdsConfigured;
+  const hasAnyAdsSignal = hasGoogleAdsSignal || hasMetaAdsSignal || hasRedditAdsSignal;
+
+  const hasMetaPageSignal = Boolean(
+    metaPage &&
+      (metaPage.pageLikes > 0 ||
+        metaPage.pageFollowers > 0 ||
+        metaPage.postReach30d > 0 ||
+        metaPage.postEngagement30d > 0 ||
+        metaPage.topPosts.length > 0)
+  );
+
+  const hasWebflowSignal = Boolean(
+    webflow &&
+      (webflow.totalPages > 0 ||
+        webflow.totalCollections > 0 ||
+        webflow.formSubmissions.length > 0 ||
+        webflow.customDomains.length > 0 ||
+        Boolean(webflow.siteName) ||
+        Boolean(webflow.lastPublished))
+  );
+
+  const hasGASignal = Boolean(
+    ga &&
+      (ga.sessions30d > 0 ||
+        ga.users30d > 0 ||
+        ga.pageviews30d > 0 ||
+        ga.trafficByChannel.length > 0 ||
+        ga.topPages.length > 0)
+  );
+
   // Calculate KPI metrics
   const sessions30d = data.googleAnalytics?.sessions30d || 0;
   const sessionsPrev30d = data.googleAnalytics?.sessionsPrev30d || 0;
@@ -130,8 +200,8 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Sessions (30d)"
-          value={fmtNum(sessions30d)}
-          change={sessionsChange == null ? undefined : fmtPct(sessionsChange)}
+          value={!gaConfigured ? "Not configured" : hasGASignal ? fmtNum(sessions30d) : "No data"}
+          change={!gaConfigured || !hasGASignal || sessionsChange == null ? undefined : fmtPct(sessionsChange)}
           changeType={
             sessionsChange == null
               ? 'neutral'
@@ -139,24 +209,25 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
                 ? 'positive'
                 : 'negative'
           }
+          subtitle={!gaConfigured ? "Google Analytics" : !hasGASignal ? "No GA data in selected range" : undefined}
           icon={TrendingUp}
         />
         <StatCard
           label="Total Ad Spend"
-          value={fmtCurrency(totalAdSpend)}
-          subtitle="Google + Meta + Reddit"
+          value={!hasAnyAdsConfigured ? "Not configured" : hasAnyAdsSignal ? fmtCurrency(totalAdSpend) : "No data"}
+          subtitle={!hasAnyAdsConfigured ? "Google Ads, Meta Ads, Reddit Ads" : hasAnyAdsSignal ? "Google + Meta + Reddit" : "No ad spend in selected range"}
           icon={DollarSign}
         />
         <StatCard
           label="Total Conversions"
-          value={fmtNum(totalConversions)}
-          subtitle="Google + Meta"
+          value={!hasAnyAdsConfigured ? "Not configured" : hasAnyAdsSignal ? fmtNum(totalConversions) : "No data"}
+          subtitle={!hasAnyAdsConfigured ? "Google Ads, Meta Ads" : hasAnyAdsSignal ? "Google + Meta" : "No conversion data in selected range"}
           icon={MousePointerClick}
         />
         <StatCard
           label="Page Followers"
-          value={fmtNum(pageFollowers)}
-          subtitle="Meta Page"
+          value={!metaPageConfigured ? "Not configured" : hasMetaPageSignal ? fmtNum(pageFollowers) : "No data"}
+          subtitle={!metaPageConfigured ? "Meta Page" : hasMetaPageSignal ? "Meta Page" : "No page insights in selected range"}
           icon={Facebook}
         />
       </div>
@@ -169,14 +240,16 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
             <Globe className="w-5 h-5 text-primary" />
             Traffic by Channel
           </h3>
-          {barItems.length > 0 ? (
+          {!gaConfigured ? (
+            <p className="text-muted-foreground text-center py-8">Not configured</p>
+          ) : barItems.length > 0 ? (
             <BarDisplay
               items={barItems}
               formatValue={(v) => fmtNum(v)}
               maxValue={Math.max(...barItems.map((i) => i.value), 1)}
             />
           ) : (
-            <p className="text-muted-foreground text-center py-8">No traffic data available</p>
+            <p className="text-muted-foreground text-center py-8">No traffic data in selected range</p>
           )}
         </div>
 
@@ -186,7 +259,9 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
             <Eye className="w-5 h-5 text-primary" />
             Top Pages
           </h3>
-          {topPages.length > 0 ? (
+          {!gaConfigured ? (
+            <p className="text-muted-foreground text-center py-8">Not configured</p>
+          ) : topPages.length > 0 ? (
             <div className="space-y-3">
               {topPages.slice(0, 5).map((page, idx) => (
                 <div key={idx} className="flex items-center justify-between p-3 bg-secondary/40 rounded-lg">
@@ -200,7 +275,7 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
               ))}
             </div>
           ) : (
-            <p className="text-muted-foreground text-center py-8">No page data available</p>
+            <p className="text-muted-foreground text-center py-8">No page data in selected range</p>
           )}
         </div>
       </div>
@@ -228,51 +303,55 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
 
           {expandedPlatforms.googleAds && (
             <div className="border-t border-border px-6 py-4 space-y-4">
-              {data.googleAds ? (
+              {!googleAds ? (
+                <p className="text-muted-foreground text-center py-6">Not configured</p>
+              ) : !hasGoogleAdsSignal ? (
+                <p className="text-muted-foreground text-center py-6">No Google Ads data in selected range</p>
+              ) : (
                 <>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="bg-secondary/40 rounded-lg p-3">
                       <p className="text-xs text-muted-foreground mb-1">Spend</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtCurrency(data.googleAds.totalSpend30d)}</p>
+                      <p className="text-lg font-semibold text-foreground">{fmtCurrency(googleAds.totalSpend30d)}</p>
                     </div>
                     <div className="bg-secondary/40 rounded-lg p-3">
                       <p className="text-xs text-muted-foreground mb-1">Impressions</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtNum(data.googleAds.totalImpressions)}</p>
+                      <p className="text-lg font-semibold text-foreground">{fmtNum(googleAds.totalImpressions)}</p>
                     </div>
                     <div className="bg-secondary/40 rounded-lg p-3">
                       <p className="text-xs text-muted-foreground mb-1">Clicks</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtNum(data.googleAds.totalClicks)}</p>
+                      <p className="text-lg font-semibold text-foreground">{fmtNum(googleAds.totalClicks)}</p>
                     </div>
                     <div className="bg-secondary/40 rounded-lg p-3">
                       <p className="text-xs text-muted-foreground mb-1">Conversions</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtNum(data.googleAds.totalConversions)}</p>
+                      <p className="text-lg font-semibold text-foreground">{fmtNum(googleAds.totalConversions)}</p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">CTR</p>
-                      <p className="text-sm font-semibold text-foreground">{fmtPct(data.googleAds.ctr)}</p>
+                      <p className="text-sm font-semibold text-foreground">{fmtPct(googleAds.ctr)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">CPC</p>
-                      <p className="text-sm font-semibold text-foreground">{fmtCurrency(data.googleAds.cpc)}</p>
+                      <p className="text-sm font-semibold text-foreground">{fmtCurrency(googleAds.cpc)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">CPA</p>
-                      <p className="text-sm font-semibold text-foreground">{fmtCurrency(data.googleAds.cpa)}</p>
+                      <p className="text-sm font-semibold text-foreground">{fmtCurrency(googleAds.cpa)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">ROAS</p>
-                      <p className="text-sm font-semibold text-foreground">{data.googleAds.roas?.toFixed(2)}x</p>
+                      <p className="text-sm font-semibold text-foreground">{googleAds.roas?.toFixed(2)}x</p>
                     </div>
                   </div>
 
-                  {data.googleAds.campaigns && data.googleAds.campaigns.length > 0 && (
+                  {googleAds.campaigns && googleAds.campaigns.length > 0 && (
                     <div>
                       <p className="text-sm font-semibold text-foreground mb-3">Top Campaigns</p>
                       <div className="space-y-2">
-                        {data.googleAds.campaigns.slice(0, 5).map((campaign, idx) => (
+                        {googleAds.campaigns.slice(0, 5).map((campaign, idx) => (
                           <div key={idx} className="flex items-center justify-between p-2 bg-secondary/40 rounded">
                             <span className="text-sm text-foreground truncate">{campaign.name}</span>
                             <div className="text-right">
@@ -285,8 +364,6 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
                     </div>
                   )}
                 </>
-              ) : (
-                <p className="text-muted-foreground text-center py-6">Not configured</p>
               )}
             </div>
           )}
@@ -311,47 +388,51 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
 
           {expandedPlatforms.metaAds && (
             <div className="border-t border-border px-6 py-4 space-y-4">
-              {data.metaAds ? (
+              {!metaAds ? (
+                <p className="text-muted-foreground text-center py-6">Not configured</p>
+              ) : !hasMetaAdsSignal ? (
+                <p className="text-muted-foreground text-center py-6">No Meta Ads data in selected range</p>
+              ) : (
                 <>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="bg-secondary/40 rounded-lg p-3">
                       <p className="text-xs text-muted-foreground mb-1">Spend</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtCurrency(data.metaAds.totalSpend30d)}</p>
+                      <p className="text-lg font-semibold text-foreground">{fmtCurrency(metaAds.totalSpend30d)}</p>
                     </div>
                     <div className="bg-secondary/40 rounded-lg p-3">
                       <p className="text-xs text-muted-foreground mb-1">Impressions</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtNum(data.metaAds.totalImpressions)}</p>
+                      <p className="text-lg font-semibold text-foreground">{fmtNum(metaAds.totalImpressions)}</p>
                     </div>
                     <div className="bg-secondary/40 rounded-lg p-3">
                       <p className="text-xs text-muted-foreground mb-1">Clicks</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtNum(data.metaAds.totalClicks)}</p>
+                      <p className="text-lg font-semibold text-foreground">{fmtNum(metaAds.totalClicks)}</p>
                     </div>
                     <div className="bg-secondary/40 rounded-lg p-3">
                       <p className="text-xs text-muted-foreground mb-1">Conversions</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtNum(data.metaAds.totalConversions)}</p>
+                      <p className="text-lg font-semibold text-foreground">{fmtNum(metaAds.totalConversions)}</p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">CTR</p>
-                      <p className="text-sm font-semibold text-foreground">{fmtPct(data.metaAds.ctr)}</p>
+                      <p className="text-sm font-semibold text-foreground">{fmtPct(metaAds.ctr)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">CPC</p>
-                      <p className="text-sm font-semibold text-foreground">{fmtCurrency(data.metaAds.cpc)}</p>
+                      <p className="text-sm font-semibold text-foreground">{fmtCurrency(metaAds.cpc)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">CPA</p>
-                      <p className="text-sm font-semibold text-foreground">{fmtCurrency(data.metaAds.cpa)}</p>
+                      <p className="text-sm font-semibold text-foreground">{fmtCurrency(metaAds.cpa)}</p>
                     </div>
                   </div>
 
-                  {data.metaAds.campaigns && data.metaAds.campaigns.length > 0 && (
+                  {metaAds.campaigns && metaAds.campaigns.length > 0 && (
                     <div>
                       <p className="text-sm font-semibold text-foreground mb-3">Top Campaigns</p>
                       <div className="space-y-2">
-                        {data.metaAds.campaigns.slice(0, 5).map((campaign, idx) => (
+                        {metaAds.campaigns.slice(0, 5).map((campaign, idx) => (
                           <div key={idx} className="flex items-center justify-between p-2 bg-secondary/40 rounded">
                             <span className="text-sm text-foreground truncate">{campaign.name}</span>
                             <div className="text-right">
@@ -364,8 +445,6 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
                     </div>
                   )}
                 </>
-              ) : (
-                <p className="text-muted-foreground text-center py-6">Not configured</p>
               )}
             </div>
           )}
@@ -390,39 +469,43 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
 
           {expandedPlatforms.redditAds && (
             <div className="border-t border-border px-6 py-4 space-y-4">
-              {data.redditAds ? (
+              {!redditAds ? (
+                <p className="text-muted-foreground text-center py-6">Not configured</p>
+              ) : !hasRedditAdsSignal ? (
+                <p className="text-muted-foreground text-center py-6">No Reddit Ads data in selected range</p>
+              ) : (
                 <>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="bg-secondary/40 rounded-lg p-3">
                       <p className="text-xs text-muted-foreground mb-1">Spend</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtCurrency(data.redditAds.totalSpend30d)}</p>
+                      <p className="text-lg font-semibold text-foreground">{fmtCurrency(redditAds.totalSpend30d)}</p>
                     </div>
                     <div className="bg-secondary/40 rounded-lg p-3">
                       <p className="text-xs text-muted-foreground mb-1">Impressions</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtNum(data.redditAds.totalImpressions)}</p>
+                      <p className="text-lg font-semibold text-foreground">{fmtNum(redditAds.totalImpressions)}</p>
                     </div>
                     <div className="bg-secondary/40 rounded-lg p-3">
                       <p className="text-xs text-muted-foreground mb-1">Clicks</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtNum(data.redditAds.totalClicks)}</p>
+                      <p className="text-lg font-semibold text-foreground">{fmtNum(redditAds.totalClicks)}</p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">CTR</p>
-                      <p className="text-sm font-semibold text-foreground">{fmtPct(data.redditAds.ctr)}</p>
+                      <p className="text-sm font-semibold text-foreground">{fmtPct(redditAds.ctr)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">CPC</p>
-                      <p className="text-sm font-semibold text-foreground">{fmtCurrency(data.redditAds.cpc)}</p>
+                      <p className="text-sm font-semibold text-foreground">{fmtCurrency(redditAds.cpc)}</p>
                     </div>
                   </div>
 
-                  {data.redditAds.campaigns && data.redditAds.campaigns.length > 0 && (
+                  {redditAds.campaigns && redditAds.campaigns.length > 0 && (
                     <div>
                       <p className="text-sm font-semibold text-foreground mb-3">Top Campaigns</p>
                       <div className="space-y-2">
-                        {data.redditAds.campaigns.slice(0, 5).map((campaign, idx) => (
+                        {redditAds.campaigns.slice(0, 5).map((campaign, idx) => (
                           <div key={idx} className="flex items-center justify-between p-2 bg-secondary/40 rounded">
                             <span className="text-sm text-foreground truncate">{campaign.name}</span>
                             <div className="text-right">
@@ -435,8 +518,6 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
                     </div>
                   )}
                 </>
-              ) : (
-                <p className="text-muted-foreground text-center py-6">Not configured</p>
               )}
             </div>
           )}
@@ -451,7 +532,11 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
             <Facebook className="w-5 h-5 text-primary" />
             Meta Page
           </h3>
-          {data.metaPage ? (
+          {!metaPage ? (
+            <p className="text-muted-foreground text-center py-8">Not configured</p>
+          ) : !hasMetaPageSignal ? (
+            <p className="text-muted-foreground text-center py-8">No Meta Page data in selected range</p>
+          ) : (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-secondary/40 rounded-lg p-3">
@@ -488,8 +573,6 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
                 </div>
               )}
             </div>
-          ) : (
-            <p className="text-muted-foreground text-center py-8">Not configured</p>
           )}
         </div>
 
@@ -499,20 +582,24 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
             <Layout className="w-5 h-5 text-primary" />
             Webflow
           </h3>
-          {data.webflow ? (
+          {!webflow ? (
+            <p className="text-muted-foreground text-center py-8">Not configured</p>
+          ) : !hasWebflowSignal ? (
+            <p className="text-muted-foreground text-center py-8">No Webflow data in selected range</p>
+          ) : (
             <div className="space-y-4">
-              {data.webflow.siteName && (
+              {webflow.siteName && (
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Site Name</p>
-                  <p className="text-sm font-semibold text-foreground">{data.webflow.siteName}</p>
+                  <p className="text-sm font-semibold text-foreground">{webflow.siteName}</p>
                 </div>
               )}
 
-              {data.webflow.lastPublished && (
+              {webflow.lastPublished && (
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Last Published</p>
                   <p className="text-sm font-semibold text-foreground">
-                    {new Date(data.webflow.lastPublished).toLocaleDateString()}
+                    {new Date(webflow.lastPublished).toLocaleDateString()}
                   </p>
                 </div>
               )}
@@ -520,19 +607,19 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-secondary/40 rounded-lg p-3">
                   <p className="text-xs text-muted-foreground mb-1">Pages</p>
-                  <p className="text-lg font-semibold text-foreground">{data.webflow.totalPages || 0}</p>
+                  <p className="text-lg font-semibold text-foreground">{webflow.totalPages || 0}</p>
                 </div>
                 <div className="bg-secondary/40 rounded-lg p-3">
                   <p className="text-xs text-muted-foreground mb-1">Collections</p>
-                  <p className="text-lg font-semibold text-foreground">{data.webflow.totalCollections || 0}</p>
+                  <p className="text-lg font-semibold text-foreground">{webflow.totalCollections || 0}</p>
                 </div>
               </div>
 
-              {data.webflow.formSubmissions && data.webflow.formSubmissions.length > 0 && (
+              {webflow.formSubmissions && webflow.formSubmissions.length > 0 && (
                 <div>
                   <p className="text-sm font-semibold text-foreground mb-2">Form Submissions</p>
                   <div className="space-y-1">
-                    {data.webflow.formSubmissions.map((form, idx) => (
+                    {webflow.formSubmissions.map((form, idx) => (
                       <div key={idx} className="flex items-center justify-between p-2 bg-secondary/40 rounded text-sm">
                         <span className="text-foreground truncate">{form.formName}</span>
                         <span className="text-muted-foreground font-semibold">{form.count}</span>
@@ -542,11 +629,11 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
                 </div>
               )}
 
-              {data.webflow.customDomains && data.webflow.customDomains.length > 0 && (
+              {webflow.customDomains && webflow.customDomains.length > 0 && (
                 <div>
                   <p className="text-sm font-semibold text-foreground mb-2">Custom Domains</p>
                   <div className="space-y-1">
-                    {data.webflow.customDomains.map((domain, idx) => (
+                    {webflow.customDomains.map((domain, idx) => (
                       <div key={idx} className="p-2 bg-secondary/40 rounded text-sm text-foreground">
                         {domain}
                       </div>
@@ -555,8 +642,6 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
                 </div>
               )}
             </div>
-          ) : (
-            <p className="text-muted-foreground text-center py-8">Not configured</p>
           )}
         </div>
       </div>

@@ -14,6 +14,7 @@ import { COLUMN_ORDER, COLUMN_LABELS } from "@/types";
 import type { GroupByMode } from "./task-card";
 import { Eye, EyeOff, Keyboard, Plus, Layers } from "lucide-react";
 import { useSession } from "next-auth/react";
+import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 
 interface KanbanBoardProps {
   filterByUser?: string;
@@ -38,6 +39,26 @@ interface GenericColumn {
   label: string;
   tasks: TaskWithRelations[];
   color?: string | null;
+}
+
+interface BoardSettingsEntry {
+  columnName: string;
+  wipLimit: number;
+}
+
+interface BoardProjectLite {
+  id: string;
+  name: string;
+  departmentId?: string | null;
+}
+
+interface KanbanSnapshot {
+  tasks: TaskWithRelations[];
+  settings: BoardSettingsEntry[];
+  team: Array<Record<string, unknown>>;
+  projects: BoardProjectLite[];
+  sprints: Array<Record<string, unknown>>;
+  departments: DepartmentSummary[];
 }
 
 export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) {
@@ -72,32 +93,27 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
   >(new Map());
   const [allTasks, setAllTasks] = useState<TaskWithRelations[]>([]);
   const [projectList, setProjectList] = useState<{ id: string; name: string; departmentId: string | null }[]>([]);
+  const boardCacheKey = useMemo(() => {
+    const statusKey = filterByStatus && filterByStatus.length > 0 ? filterByStatus.join(",") : "all";
+    return [
+      "dashboard:kanban:v1",
+      filterByUser || "all",
+      filterAssignee || "all",
+      filterProject || "all",
+      filterPriority || "all",
+      filterSprint || "all",
+      statusKey,
+    ].join(":");
+  }, [filterAssignee, filterByStatus, filterByUser, filterPriority, filterProject, filterSprint]);
 
-  const fetchBoard = useCallback(async () => {
-    try {
-      const params = new URLSearchParams();
-      if (filterByUser) params.set("assignee", filterByUser);
-      if (filterAssignee) params.set("assignee", filterAssignee);
-      if (filterProject) params.set("project", filterProject);
-      if (filterPriority) params.set("priority", filterPriority);
-      if (filterSprint) params.set("sprint", filterSprint);
-
-      const [tasksRes, settingsRes, teamRes, projectsRes, sprintsRes, deptsRes] =
-        await Promise.all([
-          fetch(`/api/tasks?${params}`),
-          fetch("/api/board-settings"),
-          fetch("/api/team"),
-          fetch("/api/projects"),
-          fetch("/api/sprints"),
-          fetch("/api/departments"),
-        ]);
-
-      const tasks: TaskWithRelations[] = await tasksRes.json();
-      const settings = await settingsRes.json();
-      const team = await teamRes.json();
-      const projects = await projectsRes.json();
-      const sprints = await sprintsRes.json();
-      const depts: DepartmentSummary[] = deptsRes.ok ? await deptsRes.json() : [];
+  const applyBoardSnapshot = useCallback(
+    (snapshot: KanbanSnapshot) => {
+      const tasks = snapshot.tasks;
+      const settings = snapshot.settings;
+      const team = snapshot.team;
+      const projects = snapshot.projects;
+      const sprints = snapshot.sprints;
+      const depts = snapshot.departments;
 
       setTeamMembers(team);
       setProjects(projects);
@@ -105,14 +121,13 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
       setDepartments(depts);
       setAllTasks(tasks);
       setProjectList(
-        projects.map((p: { id: string; name: string; departmentId?: string | null }) => ({
+        projects.map((p) => ({
           id: p.id,
           name: p.name,
           departmentId: p.departmentId || null,
         }))
       );
 
-      // Build project→department mapping (includes name/color for card tags)
       const deptLookup = new Map<string, DepartmentSummary>();
       for (const d of depts) deptLookup.set(d.id, d);
 
@@ -131,7 +146,6 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
       }
       setProjectDeptMap(deptMap);
 
-      // Build WIP limits from settings
       const limits: Record<TaskStatus, number> = {
         BACKLOG: 0,
         QUEUED: 0,
@@ -140,16 +154,13 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
         NOT_DONE: 0,
         DONE: 0,
       };
-      if (Array.isArray(settings)) {
-        for (const s of settings) {
-          if (s.columnName in limits) {
-            limits[s.columnName as TaskStatus] = s.wipLimit;
-          }
+      for (const s of settings) {
+        if (s.columnName in limits) {
+          limits[s.columnName as TaskStatus] = s.wipLimit;
         }
       }
       setWipLimits(limits);
 
-      // Build status columns (always needed for store)
       const statusesToShow = filterByStatus || COLUMN_ORDER;
       const boardColumns: BoardColumn[] = statusesToShow.map((status) => ({
         id: status,
@@ -161,28 +172,91 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
       }));
 
       setColumns(boardColumns);
+    },
+    [filterByStatus, setColumns, setProjects, setSprints, setTeamMembers, setWipLimits]
+  );
+
+  const fetchBoard = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const params = new URLSearchParams();
+      if (filterByUser) params.set("assignee", filterByUser);
+      if (filterAssignee) params.set("assignee", filterAssignee);
+      if (filterProject) params.set("project", filterProject);
+      if (filterPriority) params.set("priority", filterPriority);
+      if (filterSprint) params.set("sprint", filterSprint);
+
+      const [tasksRes, settingsRes, teamRes, projectsRes, sprintsRes, deptsRes] =
+        await Promise.all([
+          fetch(`/api/tasks?${params}`, { signal }),
+          fetch("/api/board-settings", { signal }),
+          fetch("/api/team", { signal }),
+          fetch("/api/projects", { signal }),
+          fetch("/api/sprints", { signal }),
+          fetch("/api/departments", { signal }),
+        ]);
+
+      const tasks: TaskWithRelations[] = await tasksRes.json();
+      const settings: BoardSettingsEntry[] = await settingsRes.json();
+      const team: Array<Record<string, unknown>> = await teamRes.json();
+      const projects: BoardProjectLite[] = await projectsRes.json();
+      const sprints: Array<Record<string, unknown>> = await sprintsRes.json();
+      const depts: DepartmentSummary[] = deptsRes.ok ? await deptsRes.json() : [];
+
+      if (signal?.aborted) return;
+
+      const snapshot: KanbanSnapshot = {
+        tasks,
+        settings: Array.isArray(settings) ? settings : [],
+        team: Array.isArray(team) ? team : [],
+        projects: Array.isArray(projects) ? projects : [],
+        sprints: Array.isArray(sprints) ? sprints : [],
+        departments: depts,
+      };
+
+      applyBoardSnapshot(snapshot);
+      writeSessionCache<KanbanSnapshot>(boardCacheKey, snapshot);
     } catch (err) {
       console.error("Failed to fetch board data:", err);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
     }
   }, [
+    applyBoardSnapshot,
+    boardCacheKey,
     filterByUser,
-    filterByStatus,
     filterAssignee,
     filterProject,
     filterPriority,
     filterSprint,
-    setColumns,
-    setWipLimits,
-    setTeamMembers,
-    setProjects,
-    setSprints,
   ]);
 
   useEffect(() => {
-    fetchBoard();
-  }, [fetchBoard]);
+    let active = true;
+    const controller = new AbortController();
+    const cached = readSessionCache<KanbanSnapshot>(boardCacheKey);
+
+    if (cached) {
+      queueMicrotask(() => {
+        if (!active) return;
+        applyBoardSnapshot(cached);
+        setLoading(false);
+      });
+    } else {
+      queueMicrotask(() => {
+        if (!active) return;
+        setLoading(true);
+      });
+    }
+
+    void fetchBoard(controller.signal);
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [applyBoardSnapshot, boardCacheKey, fetchBoard]);
 
   /* ----- Group By: Project columns ----- */
   const projectColumns = useMemo((): GenericColumn[] => {

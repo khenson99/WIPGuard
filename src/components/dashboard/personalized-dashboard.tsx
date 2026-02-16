@@ -40,6 +40,28 @@ interface PersonalizedDashboardPayload {
   };
 }
 
+const PERSONALIZED_DASHBOARD_CACHE_KEY = "dashboard:personalized:v1";
+
+function readDashboardCache(): PersonalizedDashboardPayload | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(PERSONALIZED_DASHBOARD_CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as PersonalizedDashboardPayload;
+  } catch {
+    return null;
+  }
+}
+
+function writeDashboardCache(payload: PersonalizedDashboardPayload): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(PERSONALIZED_DASHBOARD_CACHE_KEY, JSON.stringify(payload));
+  } catch {
+    // Ignore storage write failures (private browsing/storage quotas).
+  }
+}
+
 function relativeDate(date: string | null): string {
   if (!date) return "No due date";
   const target = new Date(date).getTime();
@@ -85,11 +107,46 @@ export function PersonalizedDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/dashboard/personalized", { cache: "no-store" })
+    let active = true;
+    const controller = new AbortController();
+    const cached = readDashboardCache();
+
+    if (cached) {
+      queueMicrotask(() => {
+        if (!active) return;
+        setData(cached);
+        setLoading(false);
+      });
+    } else {
+      queueMicrotask(() => {
+        if (!active) return;
+        setLoading(true);
+      });
+    }
+
+    fetch("/api/dashboard/personalized", { signal: controller.signal })
       .then((response) => response.json())
-      .then((payload) => setData(payload))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+      .then((payload) => {
+        if (!active) return;
+        setData(payload);
+        writeDashboardCache(payload as PersonalizedDashboardPayload);
+      })
+      .catch((error) => {
+        if (!active || (error instanceof Error && error.name === "AbortError")) return;
+        if (!cached) {
+          setData(null);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, []);
 
   const taskTotal = useMemo(() => {

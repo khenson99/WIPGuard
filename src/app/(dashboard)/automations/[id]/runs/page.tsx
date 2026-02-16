@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 
 interface RunStep {
   id: string;
@@ -37,17 +38,53 @@ interface WorkflowRun {
 export default function AutomationRunsPage() {
   const params = useParams<{ id: string }>();
   const workflowId = params?.id ?? "";
+  const cacheKey = `dashboard:automations:runs:v1:${workflowId}`;
 
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!workflowId) return;
-    fetch(`/api/automations/${workflowId}/runs`, { cache: "no-store" })
+
+    let active = true;
+    const controller = new AbortController();
+    const cached = readSessionCache<WorkflowRun[]>(cacheKey);
+
+    if (cached) {
+      queueMicrotask(() => {
+        if (!active) return;
+        setRuns(cached);
+        setLoading(false);
+      });
+    } else {
+      queueMicrotask(() => {
+        if (!active) return;
+        setLoading(true);
+      });
+    }
+
+    fetch(`/api/automations/${workflowId}/runs`, { signal: controller.signal })
       .then((response) => response.json())
-      .then((payload) => setRuns(Array.isArray(payload) ? (payload as WorkflowRun[]) : []))
-      .finally(() => setLoading(false));
-  }, [workflowId]);
+      .then((payload) => {
+        if (!active) return;
+        const next = Array.isArray(payload) ? (payload as WorkflowRun[]) : [];
+        setRuns(next);
+        writeSessionCache<WorkflowRun[]>(cacheKey, next);
+      })
+      .catch((error) => {
+        if (!active || (error instanceof Error && error.name === "AbortError")) return;
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [cacheKey, workflowId]);
 
   return (
     <div className="space-y-4 p-4">

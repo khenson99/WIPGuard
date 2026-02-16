@@ -7,10 +7,29 @@ function formatPct(value: number | null | undefined): string {
   return `${value.toFixed(1)}%`;
 }
 
+function buildCombinedTrend(data: AnalyticsDashboardData | null): Array<{ date: string; total: number }> {
+  if (!data) return [];
+  const buckets = new Map<string, number>();
+  const trendSources = [data.slack?.trend ?? [], data.googleWorkspace?.trend ?? [], data.codaOps?.trend ?? []];
+
+  trendSources.forEach((trend) => {
+    trend.forEach((item) => {
+      buckets.set(item.date, (buckets.get(item.date) ?? 0) + item.createdTasks + item.receipts);
+    });
+  });
+
+  return Array.from(buckets.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-7)
+    .map(([date, total]) => ({ date, total }));
+}
+
 export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | null }) {
   const pylon = data?.pylon;
   const coda = data?.coda;
   const product = data?.product;
+  const trend = buildCombinedTrend(data);
+  const maxTrend = Math.max(1, ...trend.map((item) => item.total));
 
   if (!pylon && !coda && !product) {
     return (
@@ -19,6 +38,48 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
       </div>
     );
   }
+
+  const riskItems = [
+    {
+      id: "urgent",
+      label: "Urgent Support Load",
+      value: pylon?.urgentConversations ?? 0,
+      threshold: 10,
+      description: "High urgent queue can increase churn risk.",
+    },
+    {
+      id: "backlog",
+      label: "Backlog Growth",
+      value: product?.backlogGrowth ?? 0,
+      threshold: 1,
+      description: "Growing backlog can degrade response quality.",
+    },
+    {
+      id: "overdue",
+      label: "Overdue Open Tasks",
+      value: product?.overdueOpenTasks ?? 0,
+      threshold: 5,
+      description: "Overdue execution creates retention delays.",
+    },
+  ];
+
+  const actions = [
+    {
+      title: "Rebalance urgent queue ownership",
+      detail: "Assign a daily triage owner and enforce 2-hour response SLA on urgent tickets.",
+      impact: "Expected: lower urgent backlog within 1 week.",
+    },
+    {
+      title: "Throttle backlog inflow",
+      detail: "Route non-critical requests into weekly batches and prioritize customer-blocking items.",
+      impact: "Expected: improved throughput and queue stability.",
+    },
+    {
+      title: "Automate follow-up execution",
+      detail: "Use Slack/Coda workflows to auto-create and assign post-resolution follow-up tasks.",
+      impact: "Expected: faster closure and improved customer confidence.",
+    },
+  ];
 
   return (
     <div className="space-y-4">
@@ -41,28 +102,63 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
         </div>
       </div>
 
+      <div className="rounded-xl border border-border bg-card p-4">
+        <h3 className="text-sm font-semibold text-foreground">Customer Ops Trend (7 buckets)</h3>
+        {trend.length === 0 ? (
+          <p className="mt-2 text-xs text-muted-foreground">No workflow trend available in this range.</p>
+        ) : (
+          <div className="mt-3 grid grid-cols-7 gap-2">
+            {trend.map((item) => {
+              const height = Math.max(10, Math.round((item.total / maxTrend) * 100));
+              return (
+                <div key={item.date} className="flex flex-col items-center gap-1">
+                  <div className="flex h-24 w-full items-end">
+                    <div className="w-full rounded-sm bg-primary/75" style={{ height: `${height}%` }} />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">{item.date.slice(5)}</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <div className="rounded-xl border border-border bg-card p-4">
-          <h3 className="text-sm font-semibold text-foreground">Pylon Support Health</h3>
-          <div className="mt-3 space-y-2 text-xs">
-            <p className="text-muted-foreground">Waiting on team: <span className="text-foreground">{pylon?.waitingOnTeam ?? "—"}</span></p>
-            <p className="text-muted-foreground">Resolved in range: <span className="text-foreground">{pylon?.resolvedInRange ?? "—"}</span></p>
-            <p className="text-muted-foreground">Avg first response: <span className="text-foreground">{pylon?.avgFirstResponseMinutes ?? "—"} min</span></p>
-            <p className="text-muted-foreground">CSAT: <span className="text-foreground">{pylon?.csat ?? "—"}</span></p>
+          <h3 className="text-sm font-semibold text-foreground">Top Risks</h3>
+          <div className="mt-3 space-y-2">
+            {riskItems.map((risk) => {
+              const isHigh = risk.value >= risk.threshold;
+              return (
+                <div
+                  key={risk.id}
+                  className={`rounded-md border px-3 py-2 ${
+                    isHigh ? "border-red-500/30 bg-red-500/10" : "border-border/60 bg-background"
+                  }`}
+                >
+                  <p className="text-xs font-medium text-foreground">
+                    {risk.label}: <span className={isHigh ? "text-red-500" : "text-foreground"}>{risk.value}</span>
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">{risk.description}</p>
+                </div>
+              );
+            })}
           </div>
         </div>
 
         <div className="rounded-xl border border-border bg-card p-4">
-          <h3 className="text-sm font-semibold text-foreground">Product Execution Signals</h3>
-          <div className="mt-3 space-y-2 text-xs">
-            <p className="text-muted-foreground">Created tasks: <span className="text-foreground">{product?.createdTasksInRange ?? "—"}</span></p>
-            <p className="text-muted-foreground">Completed tasks: <span className="text-foreground">{product?.completedTasksInRange ?? "—"}</span></p>
-            <p className="text-muted-foreground">Backlog growth: <span className="text-foreground">{product?.backlogGrowth ?? "—"}</span></p>
-            <p className="text-muted-foreground">Active contributors: <span className="text-foreground">{product?.activeContributors ?? "—"}</span></p>
+          <h3 className="text-sm font-semibold text-foreground">Recommended Actions</h3>
+          <div className="mt-3 space-y-2">
+            {actions.map((action) => (
+              <div key={action.title} className="rounded-md border border-border/60 bg-background px-3 py-2">
+                <p className="text-xs font-medium text-foreground">{action.title}</p>
+                <p className="text-[11px] text-muted-foreground">{action.detail}</p>
+                <p className="mt-0.5 text-[11px] text-foreground">{action.impact}</p>
+              </div>
+            ))}
           </div>
         </div>
       </div>
     </div>
   );
 }
-

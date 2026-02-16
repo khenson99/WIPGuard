@@ -418,13 +418,78 @@ export interface CrossFunnelData {
   narrative: string[];
 }
 
+export type AnalyticsSectionId =
+  | "ads-traffic"
+  | "finance"
+  | "sales-pipeline"
+  | "customer-success";
+
+export type LifecycleStageId =
+  | "awareness"
+  | "acquisition"
+  | "activation"
+  | "revenue"
+  | "retention"
+  | "expansion";
+
+export interface LifecycleSegment {
+  source: string;
+  domain:
+    | "googleAnalytics"
+    | "googleAds"
+    | "metaAds"
+    | "redditAds"
+    | "webflow"
+    | "semrush"
+    | "hubspot"
+    | "stripe"
+    | "pylon"
+    | "product"
+    | "coda"
+    | "googleWorkspace"
+    | "slack";
+  contribution: number;
+  share: number;
+  confidence: number;
+  detail: string;
+}
+
+export interface LifecycleStage {
+  id: LifecycleStageId;
+  label: string;
+  volume: number;
+  conversionFromPrevious: number | null;
+  trendDeltaPct: number | null;
+  confidence: number;
+  section: AnalyticsSectionId;
+  evidence: LifecycleSegment[];
+}
+
+export interface LifecycleTransition {
+  id: string;
+  fromStageId: LifecycleStageId;
+  toStageId: LifecycleStageId;
+  fromVolume: number;
+  toVolume: number;
+  dropoff: number;
+  conversionRate: number | null;
+  trendDeltaPct: number | null;
+}
+
+export interface LifecycleFunnelData {
+  stages: LifecycleStage[];
+  transitions: LifecycleTransition[];
+  generatedAt: string;
+  narrative: string[];
+}
+
 export interface AnalyticsRecommendation {
   id: string;
   title: string;
   insight: string;
   suggestedAction: string;
   severity: "info" | "warning" | "critical";
-  section: "ads-traffic" | "finance" | "sales-pipeline" | "customer-success";
+  section: AnalyticsSectionId;
 }
 
 export type InsightActionType =
@@ -441,13 +506,46 @@ export interface InsightAction {
 
 export interface DistilledInsight {
   id: string;
-  section: "ads-traffic" | "finance" | "sales-pipeline" | "customer-success";
+  section: AnalyticsSectionId;
   severity: "info" | "warning" | "critical";
   title: string;
   why: string;
   changeOverTime: string;
   confidence: number;
   actions: InsightAction[];
+}
+
+export interface AiInsightEvidence {
+  source: string;
+  domain: string;
+  metric: string;
+  value: string;
+  delta: string;
+}
+
+export interface AiInsightAction {
+  type: InsightActionType;
+  label: string;
+  payload: Record<string, unknown>;
+}
+
+export interface AiInsight {
+  id: string;
+  section: AnalyticsSectionId;
+  severity: "info" | "warning" | "critical";
+  title: string;
+  why: string;
+  confidence: number;
+  expectedImpact: string;
+  stale: boolean;
+  evidence: AiInsightEvidence[];
+  actions: AiInsightAction[];
+}
+
+export interface AiInsightsBundle {
+  generatedAt: string;
+  global: AiInsight[];
+  bySection: Record<AnalyticsSectionId, AiInsight[]>;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -474,8 +572,10 @@ export interface AnalyticsDashboardData {
   codaOps: IntegrationTelemetryData | null;
   redditOps: IntegrationTelemetryData | null;
   funnelJourney: CrossFunnelData | null;
+  lifecycleFunnel: LifecycleFunnelData | null;
   recommendations: AnalyticsRecommendation[];
   distilledInsights: DistilledInsight[];
+  aiInsights: AiInsightsBundle;
   freshness: Partial<Record<IntegrationProviderKey, ProviderFreshness>>;
   staleDomains: string[];
   timeRange?: {
