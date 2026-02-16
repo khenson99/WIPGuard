@@ -403,7 +403,7 @@ export async function createTaskFromSlack(input: {
                 dedupeKey,
                 lastObservedAt: new Date().toISOString(),
               },
-            },
+            } as unknown as Prisma.InputJsonValue,
             responsible: {
               connect: [{ id: input.userId }],
             },

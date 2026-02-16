@@ -107,14 +107,14 @@ export async function publishTypedDomainEvent<T extends DomainEventType>(
       eventType: event.eventType,
       aggregateType: event.aggregateType,
       aggregateId: event.aggregateId,
-      payload: event.payload as Record<string, unknown>,
+      payload: event.payload as unknown as Record<string, unknown>,
     });
 
   return writeOutboxEvent(db, {
     eventType: event.eventType,
     aggregateType: event.aggregateType,
     aggregateId: event.aggregateId,
-    payload: event.payload as Record<string, unknown>,
+    payload: event.payload as unknown as Record<string, unknown>,
     idempotencyKey,
     schemaVersion: options?.schemaVersion,
   }, { now: options?.now });

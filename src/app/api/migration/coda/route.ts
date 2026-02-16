@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { IntegrationProvider } from "@/generated/prisma/client";
+import { IntegrationProvider, Prisma } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { enforcePermission } from "@/lib/permissions";
 import {
@@ -377,6 +377,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
               });
 
               if (existingReceipt?.taskId) {
+                const sourceMetadata = record.sourceMetadata as unknown as Prisma.InputJsonValue;
+                const receiptMetadata = {
+                  contentHash: record.contentHash,
+                  ...record.sourceMetadata,
+                } as Prisma.InputJsonValue;
+
                 // Update existing task
                 await tx.task.update({
                   where: { id: existingReceipt.taskId },
@@ -387,7 +393,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
                     priority: record.priority as "P0" | "P1" | "P2" | "P3",
                     dueDate: record.dueDate,
                     parentId: parentTargetId,
-                    metadata: record.sourceMetadata as Record<string, unknown>,
+                    metadata: sourceMetadata,
                   },
                 });
 
@@ -395,10 +401,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
                   where: { id: existingReceipt.id },
                   data: {
                     lastObservedAt: new Date(),
-                    metadata: {
-                      contentHash: record.contentHash,
-                      ...record.sourceMetadata,
-                    },
+                    metadata: receiptMetadata,
                   },
                 });
 
@@ -406,6 +409,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
               }
 
               // Create new task
+              const sourceMetadata = record.sourceMetadata as unknown as Prisma.InputJsonValue;
+              const receiptMetadata = {
+                contentHash: record.contentHash,
+                ...record.sourceMetadata,
+              } as Prisma.InputJsonValue;
+
               const task = await tx.task.create({
                 data: {
                   title: record.title,
@@ -414,8 +423,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
                   priority: record.priority as "P0" | "P1" | "P2" | "P3",
                   dueDate: record.dueDate,
                   parentId: parentTargetId,
-                  userId: session.user!.id,
-                  metadata: record.sourceMetadata as Record<string, unknown>,
+                  metadata: sourceMetadata,
                 },
               });
 
@@ -429,10 +437,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
                   sourceUrl: record.sourceMetadata.codaBrowserLink,
                   lastObservedAt: new Date(),
                   taskId: task.id,
-                  metadata: {
-                    contentHash: record.contentHash,
-                    ...record.sourceMetadata,
-                  },
+                  metadata: receiptMetadata,
                 },
               });
 
