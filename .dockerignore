@@ -5,7 +5,7 @@ node_modules
 .env.local
 .claude
 .worktrees
-app
+/app
 *.md
 docs
 .github
