@@ -106,6 +106,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "googleAnalytics",
     "googleAds",
     "metaAds",
+    "metaPage",
     "redditAds",
     "webflow",
     "semrush",
@@ -492,10 +493,13 @@ export async function GET(request: Request) {
     { key: "mercury", fn: () => (creds.mercuryKey ? fetchMercuryData(creds.mercuryKey) : Promise.reject(new Error("Missing Mercury credential"))) },
     {
       key: "googleAnalytics",
-      fn: () =>
-        creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey
-          ? fetchGAData(creds.gaPropertyId, creds.gaClientEmail, creds.gaPrivateKey)
-          : Promise.reject(new Error("Missing Google Analytics credential")),
+      fn: () => {
+        const hasServiceAccount = creds.gaClientEmail && creds.gaPrivateKey;
+        const hasOAuth = process.env.GA_REFRESH_TOKEN?.trim() && process.env.GOOGLE_CLIENT_ID?.trim() && process.env.GOOGLE_CLIENT_SECRET?.trim();
+        return creds.gaPropertyId && (hasServiceAccount || hasOAuth)
+          ? fetchGAData(creds.gaPropertyId, creds.gaClientEmail ?? "", creds.gaPrivateKey ?? "")
+          : Promise.reject(new Error("Missing Google Analytics credential"));
+      },
     },
     {
       key: "googleAds",
