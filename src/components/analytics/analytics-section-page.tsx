@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { MarketingTabNew } from "@/components/analytics/marketing-tab-new";
 import { FinanceTab } from "@/components/analytics/finance-tab";
+import { FinanceStripeTab } from "@/components/analytics/finance-stripe-tab";
+import { FinanceHubSpotTab } from "@/components/analytics/finance-hubspot-tab";
 import { SalesFunnelTab } from "@/components/analytics/sales-funnel-tab";
 import { CustomerSuccessTab } from "@/components/analytics/customer-success-tab";
 import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-controls";
@@ -34,6 +36,31 @@ interface CachedSectionPayload {
 
 const SECTION_CACHE_PREFIX = "analytics:section:v1:";
 const OPS_DOMAINS = ["decisionDashboard", "flowMetrics", "flowRisk", "observability"] as const;
+type ChildDataDomain = "decisionDashboard" | "flowMetrics" | "flowRisk" | "observability" | string;
+
+export type AnalyticsChildRenderKind =
+  | "finance-stripe"
+  | "finance-hubspot"
+  | "sales-hubspot"
+  | "decisionDashboard"
+  | "flowMetrics"
+  | "flowRisk"
+  | "observability"
+  | "snapshot";
+
+export function resolveAnalyticsChildRenderKind(input: {
+  childId: string;
+  childDataDomain: ChildDataDomain;
+}): AnalyticsChildRenderKind {
+  if (input.childId === "finance-stripe") return "finance-stripe";
+  if (input.childId === "finance-hubspot") return "finance-hubspot";
+  if (input.childId === "sales-hubspot") return "sales-hubspot";
+  if (input.childDataDomain === "decisionDashboard") return "decisionDashboard";
+  if (input.childDataDomain === "flowMetrics") return "flowMetrics";
+  if (input.childDataDomain === "flowRisk") return "flowRisk";
+  if (input.childDataDomain === "observability") return "observability";
+  return "snapshot";
+}
 
 function buildRangeQuery(searchParams: URLSearchParams | null): string {
   const params = new URLSearchParams();
@@ -77,11 +104,21 @@ function writeSectionCache(sectionId: string, rangeQuery: string, payload: Cache
 function SnapshotCards({
   title,
   payload,
+  errors,
 }: {
   title: string;
   payload: Record<string, unknown> | null;
+  errors?: string[];
 }) {
   if (!payload) {
+    if (errors && errors.length > 0) {
+      return (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-500">
+          <p className="font-medium text-foreground">{title} failed to load.</p>
+          <p className="mt-1">{errors[0]}</p>
+        </div>
+      );
+    }
     return (
       <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
         No data available for this integration in the selected range.
@@ -262,18 +299,17 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
   const renderChild = () => {
     if (!child) return null;
 
-    if (child.dataDomain === "decisionDashboard") {
-      return <DecisionDashboardView payload={auxPayload} />;
-    }
-    if (child.dataDomain === "flowMetrics") {
-      return <FlowMetricsView payload={auxPayload} />;
-    }
-    if (child.dataDomain === "flowRisk") {
-      return <FlowRiskView payload={auxPayload} />;
-    }
-    if (child.dataDomain === "observability") {
-      return <ObservabilityView payload={auxPayload} />;
-    }
+    const renderKind = resolveAnalyticsChildRenderKind({
+      childId: child.id,
+      childDataDomain: child.dataDomain,
+    });
+    if (renderKind === "finance-stripe") return <FinanceStripeTab data={analyticsData} />;
+    if (renderKind === "finance-hubspot") return <FinanceHubSpotTab data={analyticsData} />;
+    if (renderKind === "sales-hubspot") return <SalesFunnelTab data={analyticsData} />;
+    if (renderKind === "decisionDashboard") return <DecisionDashboardView payload={auxPayload} />;
+    if (renderKind === "flowMetrics") return <FlowMetricsView payload={auxPayload} />;
+    if (renderKind === "flowRisk") return <FlowRiskView payload={auxPayload} />;
+    if (renderKind === "observability") return <ObservabilityView payload={auxPayload} />;
 
     const payload = (analyticsData as unknown as Record<string, unknown>) || null;
     const domainKey = child.dataDomain;
@@ -281,8 +317,17 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
       domainKey === "product" || domainKey === "pylon"
         ? (payload?.[domainKey] as Record<string, unknown> | null)
         : (payload?.[domainKey] as Record<string, unknown> | null);
+    const domainErrors = (analyticsData?.errors ?? [])
+      .filter((entry) => entry.source === domainKey)
+      .map((entry) => entry.message);
 
-    return <SnapshotCards title={`${child.label} Snapshot`} payload={domainPayload} />;
+    return (
+      <SnapshotCards
+        title={`${child.label} Snapshot`}
+        payload={domainPayload}
+        errors={domainErrors}
+      />
+    );
   };
 
   return (

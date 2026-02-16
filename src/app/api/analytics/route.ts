@@ -21,6 +21,10 @@ import { buildCrossFunnelData, buildLifecycleFunnelData } from "@/lib/analytics/
 import { buildAiInsightsBundle, buildDistilledInsights } from "@/lib/analytics/insight-engine";
 import { createEmptyAnalyticsDashboardData, patchFreshnessWithStale } from "@/lib/analytics/response-shape";
 import {
+  analyticsErrorFromReason,
+  createAnalyticsDomainError,
+} from "@/lib/analytics/error-attribution";
+import {
   readLatestSnapshot,
   readLatestSuccessfulSnapshot,
   snapshotExpiryFromNow,
@@ -674,17 +678,28 @@ export async function GET(request: Request) {
           };
         }
 
-        throw new Error(message);
+        throw createAnalyticsDomainError(entry.key, message);
       }
     })
   );
 
   settled.forEach((outcome) => {
     if (outcome.status === "rejected") {
-      result.errors.push({
-        source: "analytics",
-        message: outcome.reason instanceof Error ? outcome.reason.message : "Failed",
-      });
+      const mapped = analyticsErrorFromReason(outcome.reason);
+      result.errors.push(mapped);
+      result.staleDomains.push(mapped.source);
+
+      const provider = providerForDomain(mapped.source as DomainKey);
+      if (provider) {
+        const existing = result.freshness[provider];
+        if (existing) {
+          result.freshness[provider] = patchFreshnessWithStale(existing, {
+            stale: true,
+            source: "snapshot",
+            lastError: mapped.message,
+          });
+        }
+      }
       return;
     }
 
@@ -705,6 +720,7 @@ export async function GET(request: Request) {
         result.freshness[provider] = patchFreshnessWithStale(existing, {
           stale,
           capturedAt,
+          lastError: fallbackError ?? null,
         });
       }
     }

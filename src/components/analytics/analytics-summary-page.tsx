@@ -30,7 +30,7 @@ interface SummaryPayload {
     label: string;
     description: string;
     href: string;
-    status: "connected" | "partial" | "missing";
+    status: "connected" | "partial" | "degraded" | "missing";
     integrationCount: number;
     connectedCount: number;
   }>;
@@ -38,6 +38,7 @@ interface SummaryPayload {
 
 const STATUS_CLASS: Record<string, string> = {
   connected: "text-emerald-600",
+  degraded: "text-amber-600",
   partial: "text-amber-600",
   missing: "text-muted-foreground",
 };

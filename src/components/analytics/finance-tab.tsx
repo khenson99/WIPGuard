@@ -13,6 +13,7 @@ import {
 import { AnalyticsDashboardData } from "@/lib/analytics/types";
 import { StatCard } from "./stat-card";
 import { RingStat } from "./bar-display";
+import { FinanceDataEmptyState } from "./finance-empty-state";
 
 interface FinanceTabProps {
   data: AnalyticsDashboardData | null;
@@ -40,20 +41,33 @@ function fmt$(n: number): string {
  * @example fmtPct(0.05) => "5.0%"
  */
 function fmtPct(n: number): string {
-  return `${(n * 100).toFixed(1)}%`;
+  return `${n.toFixed(1)}%`;
 }
 
 export function FinanceTab({ data }: FinanceTabProps) {
   if (!data) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <p className="text-muted-foreground">No financial data available</p>
-      </div>
-    );
+    return <FinanceDataEmptyState title="No financial data available" message="Finance analytics payload is missing." />;
   }
 
   const stripe = data.stripe;
   const mercury = data.mercury;
+  const financeErrors = data.errors
+    .filter((entry) => entry.source === "stripe" || entry.source === "mercury")
+    .map((entry) => `${entry.source}: ${entry.message}`);
+  const freshnessErrors = [
+    data.freshness.stripe?.lastError ? `stripe: ${data.freshness.stripe.lastError}` : null,
+    data.freshness.mercury?.lastError ? `mercury: ${data.freshness.mercury.lastError}` : null,
+  ].filter((entry): entry is string => Boolean(entry));
+
+  if (!stripe && !mercury) {
+    return (
+      <FinanceDataEmptyState
+        title="Finance dashboard data is unavailable"
+        message="Stripe and Mercury data could not be loaded for this range."
+        reasons={[...financeErrors, ...freshnessErrors]}
+      />
+    );
+  }
 
   // Extract metrics with fallbacks
   const mrr = stripe?.revenue?.mrr ?? 0;
@@ -76,7 +90,7 @@ export function FinanceTab({ data }: FinanceTabProps) {
         <StatCard
           label="Monthly Recurring Revenue"
           value={fmt$(mrr)}
-          change={fmtPct(Math.abs(mrrChange / 100))}
+          change={fmtPct(Math.abs(mrrChange))}
           changeType={mrrChange >= 0 ? "positive" : "negative"}
           icon={DollarSign}
         />
@@ -145,7 +159,7 @@ export function FinanceTab({ data }: FinanceTabProps) {
 
             <div className="flex items-center justify-center mb-8">
               <RingStat
-                value={successRate * 100}
+                value={successRate}
                 max={100}
                 label="Payment Success Rate"
                 color="hsl(var(--primary))"

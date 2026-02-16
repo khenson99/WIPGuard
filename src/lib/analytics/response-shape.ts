@@ -52,12 +52,13 @@ export function createEmptyAnalyticsDashboardData(input: {
 
 export function patchFreshnessWithStale(
   existing: ProviderFreshness,
-  input: { stale: boolean; capturedAt?: string | null }
+  input: { stale: boolean; capturedAt?: string | null; source?: ProviderFreshness["source"]; lastError?: string | null }
 ): ProviderFreshness {
   return {
     ...existing,
     stale: existing.stale || input.stale,
     lastSnapshotAt: input.capturedAt ?? existing.lastSnapshotAt,
-    source: input.stale ? "snapshot" : existing.source,
+    source: input.source ?? (input.stale ? "snapshot" : existing.source),
+    lastError: input.lastError ?? existing.lastError,
   };
 }
