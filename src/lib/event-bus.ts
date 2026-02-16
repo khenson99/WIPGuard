@@ -39,7 +39,7 @@ export async function enqueueOutboxEvent(
   db: OutboxEventWriteClient,
   input: DomainEventInput
 ): Promise<OutboxEvent> {
-  return db.outboxEvent.upsert({
+  const event = await db.outboxEvent.upsert({
     where: { idempotencyKey: input.idempotencyKey },
     update: {},
     create: {
@@ -54,6 +54,17 @@ export async function enqueueOutboxEvent(
       nextAttemptAt: new Date(),
     },
   });
+
+  console.info("outbox.event.enqueued", {
+    eventId: event.id,
+    eventType: event.eventType,
+    aggregateType: event.aggregateType,
+    aggregateId: event.aggregateId,
+    idempotencyKey: event.idempotencyKey,
+    status: event.status,
+  });
+
+  return event;
 }
 
 export async function publishDomainEvent(
