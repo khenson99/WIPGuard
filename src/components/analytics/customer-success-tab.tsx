@@ -7,6 +7,32 @@ function formatPct(value: number | null | undefined): string {
   return `${value.toFixed(1)}%`;
 }
 
+type IntegrationStatus = "Not provisioned" | "Connected but stale" | "Active";
+
+function deriveIntegrationStatus(input: {
+  connected: boolean;
+  stale: boolean;
+  coverageStatus: "active" | "stale" | "not_provisioned" | null;
+}): IntegrationStatus {
+  if (!input.connected || input.coverageStatus === "not_provisioned") {
+    return "Not provisioned";
+  }
+  if (input.stale || input.coverageStatus === "stale") {
+    return "Connected but stale";
+  }
+  return "Active";
+}
+
+function statusClasses(status: IntegrationStatus): string {
+  if (status === "Active") {
+    return "border-[var(--success)]/40 bg-[var(--success)]/10 text-[var(--success)]";
+  }
+  if (status === "Connected but stale") {
+    return "border-[var(--warning)]/40 bg-[var(--warning)]/10 text-[var(--warning)]";
+  }
+  return "border-border bg-secondary/30 text-muted-foreground";
+}
+
 function buildCombinedTrend(data: AnalyticsDashboardData | null): Array<{ date: string; total: number }> {
   if (!data) return [];
   const buckets = new Map<string, number>();
@@ -28,8 +54,41 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
   const pylon = data?.pylon;
   const coda = data?.coda;
   const product = data?.product;
+  const googleWorkspace = data?.googleWorkspace;
+  const slackOps = data?.slack;
+  const codaOps = data?.codaOps;
   const trend = buildCombinedTrend(data);
   const maxTrend = Math.max(1, ...trend.map((item) => item.total));
+
+  const integrationStatuses = [
+    {
+      label: "Google Workspace",
+      status: deriveIntegrationStatus({
+        connected: data?.freshness.google_workspace?.status === "CONNECTED",
+        stale: Boolean(data?.freshness.google_workspace?.stale),
+        coverageStatus: googleWorkspace?.coverageStatus ?? null,
+      }),
+      details: `${googleWorkspace?.configuredRules.length ?? 0}/${googleWorkspace?.expectedRules.length ?? 0} rules`,
+    },
+    {
+      label: "Slack",
+      status: deriveIntegrationStatus({
+        connected: data?.freshness.slack?.status === "CONNECTED",
+        stale: Boolean(data?.freshness.slack?.stale),
+        coverageStatus: slackOps?.coverageStatus ?? null,
+      }),
+      details: `${slackOps?.configuredRules.length ?? 0}/${slackOps?.expectedRules.length ?? 0} rules`,
+    },
+    {
+      label: "Coda",
+      status: deriveIntegrationStatus({
+        connected: data?.freshness.coda?.status === "CONNECTED",
+        stale: Boolean(data?.freshness.coda?.stale),
+        coverageStatus: codaOps?.coverageStatus ?? null,
+      }),
+      details: `${codaOps?.configuredRules.length ?? 0}/${codaOps?.expectedRules.length ?? 0} rules`,
+    },
+  ];
 
   if (!pylon && !coda && !product) {
     return (
@@ -99,6 +158,24 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
         <div className="rounded-xl border border-border bg-card px-4 py-3">
           <p className="text-xs text-muted-foreground">Coda Cards</p>
           <p className="mt-1 text-2xl font-semibold text-foreground">{coda?.totalCards ?? "—"}</p>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-4">
+        <h3 className="text-sm font-semibold text-foreground">Integration Delivery Status</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Operational state for customer-success integrations.
+        </p>
+        <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+          {integrationStatuses.map((item) => (
+            <div key={item.label} className="rounded-md border border-border bg-secondary/20 px-3 py-2">
+              <p className="text-xs text-muted-foreground">{item.label}</p>
+              <p className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs ${statusClasses(item.status)}`}>
+                {item.status}
+              </p>
+              <p className="mt-1 text-[11px] text-muted-foreground">{item.details}</p>
+            </div>
+          ))}
         </div>
       </div>
 
