@@ -54,4 +54,4 @@ firebase-debug.log
 # Git worktree artifacts (gitlinks / submodule-like entries)
 .claude/worktrees/
 .worktrees/
-app
+/app
