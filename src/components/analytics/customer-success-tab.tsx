@@ -1,6 +1,10 @@
 "use client";
 
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import { StatCard } from "./stat-card";
+import { DashboardSectionCard } from "./dashboard-section-card";
+import { AreaTrend, CHART_PALETTE } from "@/components/charts";
+import { MessageCircle, AlertTriangle, Activity, LayoutGrid } from "lucide-react";
 
 function formatPct(value: number | null | undefined): string {
   if (value === null || value === undefined) return "—";
@@ -29,7 +33,6 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
   const coda = data?.coda;
   const product = data?.product;
   const trend = buildCombinedTrend(data);
-  const maxTrend = Math.max(1, ...trend.map((item) => item.total));
 
   if (!pylon && !coda && !product) {
     return (
@@ -82,51 +85,54 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div className="rounded-xl border border-border bg-card px-4 py-3">
-          <p className="text-xs text-muted-foreground">Open Pylon Conversations</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{pylon?.openConversations ?? "—"}</p>
-        </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-3">
-          <p className="text-xs text-muted-foreground">Urgent Conversations</p>
-          <p className="mt-1 text-2xl font-semibold text-red-500">{pylon?.urgentConversations ?? "—"}</p>
-        </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-3">
-          <p className="text-xs text-muted-foreground">Product Throughput</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{formatPct(product?.throughputRate)}</p>
-        </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-3">
-          <p className="text-xs text-muted-foreground">Coda Cards</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{coda?.totalCards ?? "—"}</p>
-        </div>
+    <div className="space-y-6">
+      {/* KPI Strip */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          label="Open Conversations"
+          value={(pylon?.openConversations ?? 0).toString()}
+          icon={MessageCircle}
+        />
+        <StatCard
+          label="Urgent Count"
+          value={(pylon?.urgentConversations ?? 0).toString()}
+          changeType={(pylon?.urgentConversations ?? 0) > 5 ? "negative" : "positive"}
+          icon={AlertTriangle}
+        />
+        <StatCard
+          label="Throughput Rate"
+          value={formatPct(product?.throughputRate)}
+          icon={Activity}
+        />
+        <StatCard
+          label="Coda Cards"
+          value={(coda?.totalCards ?? 0).toString()}
+          icon={LayoutGrid}
+        />
       </div>
 
-      <div className="rounded-xl border border-border bg-card p-4">
-        <h3 className="text-sm font-semibold text-foreground">Customer Ops Trend (7 buckets)</h3>
+      {/* Hero: Customer Ops Trend */}
+      <DashboardSectionCard
+        title="Customer Ops Trend"
+        subtitle="Combined workflow volume (7 days)"
+      >
         {trend.length === 0 ? (
-          <p className="mt-2 text-xs text-muted-foreground">No workflow trend available in this range.</p>
+          <p className="text-xs text-muted-foreground">No workflow trend available in this range.</p>
         ) : (
-          <div className="mt-3 grid grid-cols-7 gap-2">
-            {trend.map((item) => {
-              const height = Math.max(10, Math.round((item.total / maxTrend) * 100));
-              return (
-                <div key={item.date} className="flex flex-col items-center gap-1">
-                  <div className="flex h-24 w-full items-end">
-                    <div className="w-full rounded-sm bg-primary/75" style={{ height: `${height}%` }} />
-                  </div>
-                  <p className="text-[10px] text-muted-foreground">{item.date.slice(5)}</p>
-                </div>
-              );
-            })}
-          </div>
+          <AreaTrend
+            data={trend}
+            xKey="date"
+            yKeys={["total"]}
+            height={240}
+            xFormatter={(v) => v.slice(5)}
+          />
         )}
-      </div>
+      </DashboardSectionCard>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <div className="rounded-xl border border-border bg-card p-4">
-          <h3 className="text-sm font-semibold text-foreground">Top Risks</h3>
-          <div className="mt-3 space-y-2">
+      {/* Two-column grid: Risks + Actions */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <DashboardSectionCard title="Top Risks">
+          <div className="space-y-2">
             {riskItems.map((risk) => {
               const isHigh = risk.value >= risk.threshold;
               return (
@@ -144,11 +150,10 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
               );
             })}
           </div>
-        </div>
+        </DashboardSectionCard>
 
-        <div className="rounded-xl border border-border bg-card p-4">
-          <h3 className="text-sm font-semibold text-foreground">Recommended Actions</h3>
-          <div className="mt-3 space-y-2">
+        <DashboardSectionCard title="Recommended Actions">
+          <div className="space-y-2">
             {actions.map((action) => (
               <div key={action.title} className="rounded-md border border-border/60 bg-background px-3 py-2">
                 <p className="text-xs font-medium text-foreground">{action.title}</p>
@@ -157,7 +162,7 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
               </div>
             ))}
           </div>
-        </div>
+        </DashboardSectionCard>
       </div>
     </div>
   );
