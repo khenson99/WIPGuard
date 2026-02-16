@@ -1,6 +1,11 @@
 import { IntegrationProvider } from "@/generated/prisma/client";
 
-export type IntegrationSlug = "google-workspace" | "hubspot" | "slack" | "coda";
+export type IntegrationSlug =
+  | "google-workspace"
+  | "hubspot"
+  | "slack"
+  | "coda"
+  | "reddit";
 export type IntegrationAuthType = "oauth" | "token";
 
 interface OAuthSettings {
@@ -123,6 +128,24 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
       "Attach docs and migrate legacy Coda workflows using a Coda API token.",
     capabilities: ["Docs", "Rows", "Coda migration"],
     authType: "token",
+  },
+  {
+    slug: "reddit",
+    provider: IntegrationProvider.REDDIT,
+    name: "Reddit",
+    description: "Capture Reddit threads and community signals in WIPGuard.",
+    capabilities: ["Thread capture", "Community monitoring"],
+    authType: "oauth",
+    oauth: {
+      authorizationEndpoint: "https://www.reddit.com/api/v1/authorize",
+      tokenEndpoint: "https://www.reddit.com/api/v1/access_token",
+      scopes: ["identity", "read", "history"],
+      extraAuthParams: {
+        duration: "permanent",
+      },
+      clientIdEnv: "REDDIT_CLIENT_ID",
+      clientSecretEnv: "REDDIT_CLIENT_SECRET",
+    },
   },
 ] as const;
 

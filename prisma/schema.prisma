@@ -433,6 +433,7 @@ enum IntegrationProvider {
   HUBSPOT
   SLACK
   CODA
+  REDDIT
 }
 
 enum IntegrationConnectionStatus {
