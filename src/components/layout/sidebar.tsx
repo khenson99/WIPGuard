@@ -15,6 +15,7 @@ import {
   BookOpen,
   Settings,
   Gauge,
+  Users,
 } from "lucide-react";
 
 export const PRIMARY_NAV_ITEMS = [
@@ -26,6 +27,7 @@ export const PRIMARY_NAV_ITEMS = [
   { href: "/analytics/sales-pipeline", label: "Sales & Pipeline", icon: Target },
   { href: "/analytics/customer-success", label: "Customer Success", icon: HeartHandshake },
   { href: "/whip", label: "Whip View", icon: Gauge },
+  { href: "/standup", label: "Standup", icon: Users },
   { href: "/automations", label: "Automations", icon: Bot },
 ];
 
