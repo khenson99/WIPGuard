@@ -20,7 +20,7 @@ const authErrors: Record<string, string> = {
     "Unable to create account from email sign-in. Please contact support.",
   Callback: "Sign-in callback failed. Please try again.",
   OAuthAccountNotLinked:
-    "This email is already linked to another sign-in method.",
+    "This email is already registered. Continue with Google using this same email address.",
   EmailSignin: "Email sign-in failed. Please try again.",
   CredentialsSignin:
     "Unable to sign in with that dev account. Check that the user exists.",
