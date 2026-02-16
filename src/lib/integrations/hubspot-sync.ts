@@ -26,6 +26,8 @@ import {
   __private__ as bidirectionalPrivate,
 } from "./hubspot-bidirectional-sync";
 
+export type { HubSpotBidirectionalSyncConfig };
+
 // ---------------------------------------------------------------------------
 // Webhook signature verification
 // ---------------------------------------------------------------------------
