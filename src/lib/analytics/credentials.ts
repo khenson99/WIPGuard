@@ -11,6 +11,10 @@ export interface AnalyticsCredentials {
   gaPropertyId: string | null;
   gaClientEmail: string | null;
   gaPrivateKey: string | null;
+  // Google Analytics (GA4) — OAuth2 alternative
+  gaRefreshToken: string | null;
+  gaOAuthClientId: string | null;
+  gaOAuthClientSecret: string | null;
   // Google Ads
   googleAdsDevToken: string | null;
   googleAdsCustomerId: string | null;
@@ -71,6 +75,11 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     gaPropertyId: process.env.GA_PROPERTY_ID?.trim() || null,
     gaClientEmail: process.env.GA_CLIENT_EMAIL?.trim() || null,
     gaPrivateKey: process.env.GA_PRIVATE_KEY?.replace(/\\n/g, "\n").trim() || null,
+
+    // Google Analytics (GA4) — OAuth2
+    gaRefreshToken: process.env.GA_REFRESH_TOKEN?.trim() || null,
+    gaOAuthClientId: process.env.GOOGLE_CLIENT_ID?.trim() || null,
+    gaOAuthClientSecret: process.env.GOOGLE_CLIENT_SECRET?.trim() || null,
 
     // Google Ads
     googleAdsDevToken: process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim() || null,
