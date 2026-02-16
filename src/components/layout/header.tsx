@@ -23,20 +23,25 @@ export function Header() {
         {mounted && (
           <button
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="icon-btn-sidebar rounded-lg p-2"
+            className="icon-btn-sidebar rounded-lg p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2"
             title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
           >
             {theme === "dark" ? (
-              <SunMedium className="h-4 w-4" />
+              <SunMedium className="h-4 w-4" aria-hidden="true" />
             ) : (
-              <Moon className="h-4 w-4" />
+              <Moon className="h-4 w-4" aria-hidden="true" />
             )}
           </button>
         )}
 
         {/* Notifications */}
-        <button className="icon-btn-sidebar rounded-lg p-2">
-          <Bell className="h-4 w-4" />
+        <button
+          className="icon-btn-sidebar rounded-lg p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2"
+          aria-label="Notifications"
+          title="Notifications"
+        >
+          <Bell className="h-4 w-4" aria-hidden="true" />
         </button>
 
         {session?.user && (
@@ -44,7 +49,7 @@ export function Header() {
             {session.user.image && (
               <Image
                 src={session.user.image}
-                alt=""
+                alt={`${session.user.name || "User"} avatar`}
                 width={28}
                 height={28}
                 className="h-7 w-7 rounded-full"
@@ -55,10 +60,11 @@ export function Header() {
             </span>
             <button
               onClick={() => signOut()}
-              className="icon-btn-sidebar rounded-lg p-2"
+              className="icon-btn-sidebar rounded-lg p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2"
               title="Sign out"
+              aria-label="Sign out"
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
         )}

@@ -120,7 +120,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm space-y-8 px-4">
         <div className="text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-primary/30">
-            <Shield className="h-7 w-7 text-primary" />
+            <Shield className="h-7 w-7 text-primary" aria-hidden="true" />
           </div>
           <h1 className="mt-4 text-2xl font-bold text-foreground">WIPGuard</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -135,7 +135,7 @@ export default function LoginPage() {
         )}
 
         {authError && (
-          <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-foreground">
+          <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-foreground">
             {authError}
           </div>
         )}
@@ -146,7 +146,7 @@ export default function LoginPage() {
             onClick={() => signIn("google", { callbackUrl: "/board" })}
             className="flex w-full items-center justify-center gap-3 rounded-lg border border-border bg-secondary px-4 py-3 text-sm font-medium text-foreground transition-colors hover:border-muted-foreground hover:bg-card"
           >
-            <svg className="h-5 w-5" viewBox="0 0 24 24">
+            <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
               <path
                 d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
                 fill="#4285F4"
