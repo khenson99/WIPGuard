@@ -50,3 +50,8 @@ next-env.d.ts
 agents/
 scripts/
 firebase-debug.log
+
+# Local AI agent worktrees
+.worktrees/
+.claude/worktrees/
+app/
