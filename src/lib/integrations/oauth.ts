@@ -96,9 +96,19 @@ export async function exchangeOAuthCode(input: {
     redirect_uri: redirectUri,
   });
 
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+
+  if (definition.slug === "reddit") {
+    body.delete("client_id");
+    body.delete("client_secret");
+    headers.Authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
+  }
+
   const response = await fetch(definition.oauth.tokenEndpoint, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers,
     body,
     cache: "no-store",
   });
@@ -249,6 +259,48 @@ async function fetchSlackProfile(accessToken: string): Promise<AccountProfile> {
   };
 }
 
+async function fetchRedditProfile(accessToken: string): Promise<AccountProfile> {
+  const userAgent = process.env.REDDIT_USER_AGENT?.trim() || "WIPGuard/1.0";
+  const response = await fetch("https://oauth.reddit.com/api/v1/me", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "User-Agent": userAgent,
+    },
+    cache: "no-store",
+  });
+  const raw = (await response.json().catch(() => null)) as unknown;
+  if (!response.ok) {
+    throw new Error("Reddit account lookup failed");
+  }
+  const profile = asRecord(raw);
+  if (!profile) {
+    throw new Error("Reddit account response was invalid");
+  }
+
+  const providerAccountId = getString(profile, "id") || getString(profile, "name");
+  if (!providerAccountId) {
+    throw new Error("Reddit profile did not include an account identifier");
+  }
+
+  const subreddit = asRecord(profile.subreddit);
+
+  return {
+    providerAccountId,
+    accountLabel: getString(profile, "name"),
+    metadata: {
+      name: getString(profile, "name"),
+      subreddit: subreddit
+        ? {
+            displayName: getString(subreddit, "display_name"),
+            title: getString(subreddit, "title"),
+            subscribers: getNumber(subreddit, "subscribers"),
+            over18: subreddit.over_18 === true,
+          }
+        : null,
+    },
+  };
+}
+
 export async function fetchOAuthAccountProfile(
   definition: OAuthIntegrationDefinition,
   accessToken: string
@@ -261,6 +313,9 @@ export async function fetchOAuthAccountProfile(
   }
   if (definition.slug === "slack") {
     return fetchSlackProfile(accessToken);
+  }
+  if (definition.slug === "reddit") {
+    return fetchRedditProfile(accessToken);
   }
   throw new Error(`No OAuth account profile fetcher for ${definition.slug}`);
 }
