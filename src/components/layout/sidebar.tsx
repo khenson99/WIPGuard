@@ -7,29 +7,41 @@ import {
   LayoutDashboard,
   FolderKanban,
   CheckSquare,
-  Megaphone,
-  Landmark,
-  Target,
-  HeartHandshake,
   Bot,
   BookOpen,
   Settings,
   Gauge,
+  type LucideIcon,
 } from "lucide-react";
 
-export const PRIMARY_NAV_ITEMS = [
+interface SidebarNavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+interface DashboardNavItem {
+  href: string;
+  label: string;
+  indicatorColor: string;
+}
+
+export const PRIMARY_NAV_ITEMS: SidebarNavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
-  { href: "/analytics/ads-traffic", label: "Ads & Traffic", icon: Megaphone },
-  { href: "/analytics/finance", label: "Finance", icon: Landmark },
-  { href: "/analytics/sales-pipeline", label: "Sales & Pipeline", icon: Target },
-  { href: "/analytics/customer-success", label: "Customer Success", icon: HeartHandshake },
   { href: "/whip", label: "Whip View", icon: Gauge },
   { href: "/automations", label: "Automations", icon: Bot },
 ];
 
-export const SECONDARY_NAV_ITEMS = [
+export const DASHBOARD_NAV_ITEMS: DashboardNavItem[] = [
+  { href: "/analytics/ads-traffic", label: "Ads & Traffic", indicatorColor: "#3b82f6" },
+  { href: "/analytics/finance", label: "Finance", indicatorColor: "#16a34a" },
+  { href: "/analytics/sales-pipeline", label: "Sales & Pipeline", indicatorColor: "#f59e0b" },
+  { href: "/analytics/customer-success", label: "Customer Success", indicatorColor: "#ef4444" },
+];
+
+export const SECONDARY_NAV_ITEMS: SidebarNavItem[] = [
   { href: "/logbook", label: "Logbook", icon: BookOpen },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
@@ -66,6 +78,35 @@ export function Sidebar() {
             </Link>
           );
         })}
+
+        <div className="pt-2">
+          <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
+            Dashboards
+          </p>
+          <div aria-label="Dashboard navigation" className="space-y-0.5 pl-4">
+            {DASHBOARD_NAV_ITEMS.map((item) => {
+              const active = isActive(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
+                  className={clsx(
+                    "flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2",
+                    active ? "sidebar-link-active" : "sidebar-link"
+                  )}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: item.indicatorColor }}
+                  />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
       </nav>
 
       <nav aria-label="Secondary navigation" className="space-y-0.5 border-t border-sidebar-border p-2">

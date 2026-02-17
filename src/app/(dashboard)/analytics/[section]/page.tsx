@@ -13,7 +13,8 @@ interface PageProps {
 export default async function AnalyticsSectionRoute({ params }: PageProps) {
   const { section } = await params;
   const legacyTarget = LEGACY_ANALYTICS_ROUTE_REDIRECTS[section];
-  if (legacyTarget) {
+  const canonicalPath = `/analytics/${section}`;
+  if (legacyTarget && legacyTarget !== canonicalPath) {
     redirect(legacyTarget);
   }
 

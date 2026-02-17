@@ -114,16 +114,19 @@ export async function ensureDefaultSavedViews(
   userId: string,
   scope: SavedViewScope
 ): Promise<void> {
-  const existingCount = await prisma.userSavedView.count({
-    where: { userId, scope },
-  });
-  if (existingCount > 0) return;
-
   const defaults = defaultsForScope(scope);
   await prisma.$transaction(
     defaults.map((view, index) =>
-      prisma.userSavedView.create({
-        data: {
+      prisma.userSavedView.upsert({
+        where: {
+          userId_scope_slug: {
+            userId,
+            scope,
+            slug: view.slug,
+          },
+        },
+        update: {},
+        create: {
           userId,
           scope,
           slug: view.slug,

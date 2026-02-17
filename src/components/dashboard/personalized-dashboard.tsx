@@ -42,12 +42,40 @@ interface PersonalizedDashboardPayload {
 
 const PERSONALIZED_DASHBOARD_CACHE_KEY = "dashboard:personalized:v1";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isPersonalizedDashboardPayload(value: unknown): value is PersonalizedDashboardPayload {
+  if (!isRecord(value)) return false;
+  if (!isRecord(value.personal) || !isRecord(value.team) || !isRecord(value.projects)) return false;
+
+  const personal = value.personal;
+  const team = value.team;
+  const projects = value.projects;
+
+  return (
+    Array.isArray(personal.myActive) &&
+    Array.isArray(personal.myBlocked) &&
+    Array.isArray(personal.myOverdue) &&
+    Array.isArray(personal.myDueSoon) &&
+    Array.isArray(personal.recommendations) &&
+    typeof personal.myCompletedWeek === "number" &&
+    typeof team.staleTasks === "number" &&
+    typeof team.blockedTasks === "number" &&
+    typeof team.overdueTasks === "number" &&
+    isRecord(team.taskStatusOverview) &&
+    Array.isArray(projects.active)
+  );
+}
+
 function readDashboardCache(): PersonalizedDashboardPayload | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.sessionStorage.getItem(PERSONALIZED_DASHBOARD_CACHE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as PersonalizedDashboardPayload;
+    const parsed = JSON.parse(raw) as unknown;
+    return isPersonalizedDashboardPayload(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -124,24 +152,33 @@ export function PersonalizedDashboard() {
       });
     }
 
-    fetch("/api/dashboard/personalized", { signal: controller.signal })
-      .then((response) => response.json())
-      .then((payload) => {
+    const load = async () => {
+      try {
+        const response = await fetch("/api/dashboard/personalized", { signal: controller.signal });
+        if (!response.ok) {
+          throw new Error(`Dashboard request failed (${response.status})`);
+        }
+        const payload = (await response.json()) as unknown;
+        if (!isPersonalizedDashboardPayload(payload)) {
+          throw new Error("Dashboard response payload is invalid");
+        }
+
         if (!active) return;
         setData(payload);
-        writeDashboardCache(payload as PersonalizedDashboardPayload);
-      })
-      .catch((error) => {
+        writeDashboardCache(payload);
+      } catch (error) {
         if (!active || (error instanceof Error && error.name === "AbortError")) return;
         if (!cached) {
           setData(null);
         }
-      })
-      .finally(() => {
+      } finally {
         if (active) {
           setLoading(false);
         }
-      });
+      }
+    };
+
+    void load();
 
     return () => {
       active = false;
@@ -151,7 +188,7 @@ export function PersonalizedDashboard() {
 
   const taskTotal = useMemo(() => {
     if (!data) return 0;
-    return Object.values(data.team.taskStatusOverview).reduce((sum, count) => sum + count, 0);
+    return Object.values(data.team.taskStatusOverview ?? {}).reduce((sum, count) => sum + count, 0);
   }, [data]);
 
   if (loading) {
