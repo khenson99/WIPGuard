@@ -12,7 +12,6 @@ import type {
   TeamMember,
   OwnerGroup,
   CoachingConfig,
-  WipLimits,
 } from "@/lib/standup-engine";
 
 // ---------------------------------------------------------------------------

@@ -359,9 +359,6 @@ export interface IntegrationTelemetryData {
   totalRules: number;
   enabledRules: number;
   erroredRules: number;
-  configuredRules?: string[];
-  expectedRules?: string[];
-  coverageStatus?: "active" | "stale" | "not_provisioned";
   receiptsInRange: number;
   tasksCreatedInRange: number;
   eventsInRange: number;
@@ -587,6 +584,14 @@ export interface AnalyticsDashboardData {
     to: string;
     days: number;
     label: string;
+  };
+  meta?: {
+    servedAt: string;
+    section: string | null;
+    forceRefresh: boolean;
+    isPartial: boolean;
+    staleDomains: string[];
+    erroredDomains: string[];
   };
   lastFullRefresh: string;
   errors: { source: string; message: string }[];

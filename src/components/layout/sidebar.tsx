@@ -3,38 +3,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { clsx } from "clsx";
-import {
-  LayoutDashboard,
-  FolderKanban,
-  CheckSquare,
-  Megaphone,
-  Landmark,
-  Target,
-  HeartHandshake,
-  Bot,
-  BookOpen,
-  Settings,
-  Gauge,
-  Users,
-} from "lucide-react";
-
-export const PRIMARY_NAV_ITEMS = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/tasks", label: "Tasks", icon: CheckSquare },
-  { href: "/analytics/ads-traffic", label: "Ads & Traffic", icon: Megaphone },
-  { href: "/analytics/finance", label: "Finance", icon: Landmark },
-  { href: "/analytics/sales-pipeline", label: "Sales & Pipeline", icon: Target },
-  { href: "/analytics/customer-success", label: "Customer Success", icon: HeartHandshake },
-  { href: "/whip", label: "Whip View", icon: Gauge },
-  { href: "/standup", label: "Standup", icon: Users },
-  { href: "/automations", label: "Automations", icon: Bot },
-];
+import { LayoutDashboard, BookOpen, Settings } from "lucide-react";
+import { buildNavItems } from "./sidebar-nav-config";
+import { SidebarNavGroup } from "./sidebar-nav-group";
 
 export const SECONDARY_NAV_ITEMS = [
   { href: "/logbook", label: "Logbook", icon: BookOpen },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
+
+const navItems = buildNavItems();
 
 export function Sidebar() {
   const pathname = usePathname() ?? "";
@@ -50,24 +28,25 @@ export function Sidebar() {
         <span className="text-lg font-bold text-foreground">WIPGuard</span>
       </div>
 
-      <nav aria-label="Main navigation" className="flex-1 space-y-0.5 px-2 py-3">
-        {PRIMARY_NAV_ITEMS.map((item) => {
-          const active = isActive(item.href);
-          return (
+      <nav aria-label="Main navigation" className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
+        {navItems.map((item) =>
+          item.children && item.children.length > 0 ? (
+            <SidebarNavGroup key={item.id} item={item} />
+          ) : (
             <Link
-              key={item.href}
+              key={item.id}
               href={item.href}
-              aria-current={active ? "page" : undefined}
+              aria-current={isActive(item.href) ? "page" : undefined}
               className={clsx(
                 "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2",
-                active ? "sidebar-link-active" : "sidebar-link"
+                isActive(item.href) ? "sidebar-link-active" : "sidebar-link"
               )}
             >
               <item.icon className="h-4 w-4" aria-hidden="true" />
               {item.label}
             </Link>
-          );
-        })}
+          )
+        )}
       </nav>
 
       <nav aria-label="Secondary navigation" className="space-y-0.5 border-t border-sidebar-border p-2">
