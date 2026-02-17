@@ -1,14 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Calendar } from "lucide-react";
 
 const PRESETS = [
-  { value: "7d", label: "Last 7d" },
-  { value: "30d", label: "Last 30d" },
-  { value: "90d", label: "Last 90d" },
-  { value: "180d", label: "Last 180d" },
-  { value: "365d", label: "Last 12m" },
+  { value: "7d", label: "7d" },
+  { value: "30d", label: "30d" },
+  { value: "90d", label: "90d" },
+  { value: "180d", label: "6m" },
+  { value: "365d", label: "12m" },
   { value: "custom", label: "Custom" },
 ] as const;
 
@@ -34,53 +35,82 @@ export function AnalyticsTimeRangeControls() {
   const [range, setRange] = useState(initial.range);
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
+  const [isCustomOpen, setIsCustomOpen] = useState(initial.range === "custom");
 
-  const apply = () => {
-    const params = new URLSearchParams(searchParams?.toString() ?? "");
-    params.set("range", range);
-    params.set("from", from);
-    params.set("to", to);
-    router.replace(`${pathname || "/analytics"}?${params.toString()}`);
+  const navigate = useCallback(
+    (newRange: string, newFrom?: string, newTo?: string) => {
+      const params = new URLSearchParams(searchParams?.toString() ?? "");
+      params.set("range", newRange);
+      params.set("from", newFrom || from);
+      params.set("to", newTo || to);
+      router.replace(`${pathname || "/analytics"}?${params.toString()}`);
+    },
+    [searchParams, pathname, router, from, to],
+  );
+
+  const handlePresetClick = (preset: string) => {
+    setRange(preset);
+    if (preset === "custom") {
+      setIsCustomOpen(true);
+      return; // Don't navigate yet — wait for Apply
+    }
+    setIsCustomOpen(false);
+    navigate(preset);
+  };
+
+  const applyCustom = () => {
+    navigate("custom", from, to);
   };
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <select
-        value={range}
-        onChange={(event) => setRange(event.target.value)}
-        className="rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground"
-      >
-        {PRESETS.map((preset) => (
-          <option key={preset.value} value={preset.value}>
-            {preset.label}
-          </option>
-        ))}
-      </select>
+      {/* Preset pills */}
+      <div className="flex items-center rounded-lg border border-border bg-card p-0.5">
+        {PRESETS.map((preset) => {
+          const isActive = range === preset.value;
+          return (
+            <button
+              key={preset.value}
+              onClick={() => handlePresetClick(preset.value)}
+              className={`relative rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-150 ${
+                isActive
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {preset.value === "custom" && (
+                <Calendar className="mr-1 inline-block h-3 w-3" />
+              )}
+              {preset.label}
+            </button>
+          );
+        })}
+      </div>
 
-      {range === "custom" && (
-        <>
+      {/* Custom date range — slides in */}
+      {isCustomOpen && (
+        <div className="flex items-center gap-2 animate-analytics-in">
           <input
             type="date"
             value={from}
-            onChange={(event) => setFrom(event.target.value)}
-            className="rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground"
+            onChange={(e) => setFrom(e.target.value)}
+            className="rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary"
           />
+          <span className="text-xs text-muted-foreground">to</span>
           <input
             type="date"
             value={to}
-            onChange={(event) => setTo(event.target.value)}
-            className="rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground"
+            onChange={(e) => setTo(e.target.value)}
+            className="rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary"
           />
-        </>
+          <button
+            onClick={applyCustom}
+            className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+          >
+            Apply
+          </button>
+        </div>
       )}
-
-      <button
-        onClick={apply}
-        className="rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-      >
-        Apply
-      </button>
     </div>
   );
 }
-

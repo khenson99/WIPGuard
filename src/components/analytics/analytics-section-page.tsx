@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import {
+  AlertTriangle, DollarSign, Users, Target, CheckSquare,
+  Globe, Mail, TrendingUp, Clock, BarChart2, ArrowLeft,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { MarketingTabNew } from "@/components/analytics/marketing-tab-new";
 import { FinanceTab } from "@/components/analytics/finance-tab";
 import { FinanceStripeTab } from "@/components/analytics/finance-stripe-tab";
@@ -18,6 +23,8 @@ import {
 } from "@/components/analytics/ops-insights";
 import { LifecycleFunnelPanel } from "@/components/analytics/lifecycle-funnel-panel";
 import { AiInsightsPanel } from "@/components/analytics/ai-insights-panel";
+import { SectionSkeleton } from "@/components/analytics/skeleton";
+import { smartFormat, humanizeKey, guessIconForKey } from "@/lib/analytics/format";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import {
   getAnalyticsPrimaryForSection,
@@ -101,6 +108,18 @@ function writeSectionCache(sectionId: string, rangeQuery: string, payload: Cache
   }
 }
 
+const ICON_MAP: Record<string, LucideIcon> = {
+  "dollar-sign": DollarSign,
+  "users": Users,
+  "target": Target,
+  "check-square": CheckSquare,
+  "globe": Globe,
+  "mail": Mail,
+  "trending-up": TrendingUp,
+  "clock": Clock,
+  "bar-chart-2": BarChart2,
+};
+
 function SnapshotCards({
   title,
   payload,
@@ -113,15 +132,22 @@ function SnapshotCards({
   if (!payload) {
     if (errors && errors.length > 0) {
       return (
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-500">
-          <p className="font-medium text-foreground">{title} failed to load.</p>
-          <p className="mt-1">{errors[0]}</p>
+        <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/5 p-4">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-500/10">
+            <AlertTriangle className="h-4 w-4 text-red-500" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-foreground">{title} failed to load.</p>
+            <p className="mt-0.5 text-xs text-red-400">{errors[0]}</p>
+          </div>
         </div>
       );
     }
     return (
-      <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
-        No data available for this integration in the selected range.
+      <div className="flex min-h-[120px] items-center justify-center rounded-xl border border-border bg-card">
+        <p className="text-sm text-muted-foreground">
+          No data available for this integration in the selected range.
+        </p>
       </div>
     );
   }
@@ -132,8 +158,8 @@ function SnapshotCards({
 
   if (scalarEntries.length === 0) {
     return (
-      <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
-        {title} loaded.
+      <div className="flex min-h-[120px] items-center justify-center rounded-xl border border-border bg-card">
+        <p className="text-sm text-muted-foreground">{title} — no scalar metrics found.</p>
       </div>
     );
   }
@@ -142,12 +168,28 @@ function SnapshotCards({
     <div className="space-y-3">
       <h2 className="text-sm font-semibold text-foreground">{title}</h2>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {scalarEntries.slice(0, 12).map(([key, value]) => (
-          <div key={key} className="rounded-xl border border-border bg-card px-4 py-3">
-            <p className="text-xs capitalize text-muted-foreground">{key}</p>
-            <p className="mt-1 text-2xl font-semibold text-foreground">{String(value)}</p>
-          </div>
-        ))}
+        {scalarEntries.slice(0, 12).map(([key, value]) => {
+          const iconName = guessIconForKey(key);
+          const IconComp = ICON_MAP[iconName] || BarChart2;
+          return (
+            <div
+              key={key}
+              className="group rounded-xl border border-border bg-card px-4 py-3 transition-all duration-200 hover:border-primary/30 hover:bg-secondary/30"
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  {humanizeKey(key)}
+                </p>
+                <div className="rounded-lg bg-primary/10 p-1 text-primary opacity-60 group-hover:opacity-100 transition-opacity">
+                  <IconComp className="h-3 w-3" />
+                </div>
+              </div>
+              <p className="mt-1.5 text-2xl font-bold tabular-nums text-foreground">
+                {smartFormat(key, value)}
+              </p>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -332,36 +374,60 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
 
   return (
     <div className="h-full space-y-4 overflow-y-auto p-4">
+      {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">{title}</h1>
-          <p className="text-xs text-muted-foreground">
-            First-class analytics with integration drill-down.
-          </p>
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/analytics${rangeQuery ? `?${rangeQuery}` : ""}`}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+          </Link>
+          <div>
+            <h1 className="text-xl font-semibold text-foreground">{title}</h1>
+            <p className="text-xs text-muted-foreground">
+              {primary.description || "First-class analytics with integration drill-down."}
+            </p>
+          </div>
         </div>
         <AnalyticsTimeRangeControls />
       </div>
 
-      <div className="flex flex-wrap gap-1 border-b border-border pb-2">
-        {secondaryItems.map((item) => (
-          <Link
-            key={item.id}
-            href={`${item.path}${rangeQuery ? `?${rangeQuery}` : ""}`}
-            className={`rounded-md px-2 py-1 text-xs ${
-              item.id === child?.id
-                ? "bg-primary/90 text-primary-foreground"
-                : "bg-card text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {item.label}
-          </Link>
-        ))}
-      </div>
+      {/* Sub-section tabs */}
+      {secondaryItems.length > 0 && (
+        <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-card p-0.5">
+          {secondaryItems.map((item) => {
+            const isActive = item.id === child?.id;
+            return (
+              <Link
+                key={item.id}
+                href={`${item.path}${rangeQuery ? `?${rangeQuery}` : ""}`}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-150 ${
+                  isActive
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
 
+      {/* Content */}
       {loading ? (
-        <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">Loading section...</div>
+        <SectionSkeleton />
       ) : error ? (
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-500">{error}</div>
+        <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-border bg-card">
+          <div className="text-center">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-red-500/10">
+              <AlertTriangle className="h-6 w-6 text-red-500" />
+            </div>
+            <p className="text-sm font-medium text-foreground">Failed to load section</p>
+            <p className="mt-1 text-xs text-muted-foreground">{error}</p>
+          </div>
+        </div>
       ) : (
         <>
           {child ? (

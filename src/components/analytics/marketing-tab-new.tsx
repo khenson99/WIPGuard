@@ -1,735 +1,145 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { AnalyticsDashboardData } from '@/lib/analytics/types';
-import { StatCard } from './stat-card';
-import { BarDisplay } from './bar-display';
 import {
-  Globe,
-  MousePointerClick,
-  Eye,
   TrendingUp,
   DollarSign,
-  BarChart3,
+  MousePointerClick,
   Facebook,
-  Layout,
-  ChevronDown,
-  ChevronUp,
-  Search,
-  Award,
-  Link2,
-} from 'lucide-react';
+  BarChart3,
+} from "lucide-react";
+import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import { fmtCurrency, fmtNumber, fmtPercent, pctChange, changeDirection } from "@/lib/analytics/format";
+import { StatCard } from "./stat-card";
+import { TrafficOverview } from "./marketing/traffic-overview";
+import {
+  AdPlatformCard,
+  buildGoogleAdsMetrics,
+  buildMetaAdsMetrics,
+  buildRedditAdsMetrics,
+} from "./marketing/ad-platform-card";
+import { SocialWebSection } from "./marketing/social-web-section";
+import { SEOIntelligence } from "./marketing/seo-intelligence";
 
 interface MarketingTabNewProps {
   data: AnalyticsDashboardData | null;
 }
 
-// Helper functions
-function fmtCurrency(n: number | null | undefined): string {
-  if (n == null) return '$0';
-  if (n >= 1000000) return `$${(n / 1000000).toFixed(2)}M`;
-  if (n >= 1000) return `$${(n / 1000).toFixed(1)}K`;
-  return `$${n.toFixed(2)}`;
-}
-
-function fmtNum(n: number | null | undefined): string {
-  if (n == null) return '0';
-  if (n >= 1000000) return `${(n / 1000000).toFixed(2)}M`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
-  return n.toFixed(0);
-}
-
-function fmtPct(n: number | null | undefined): string {
-  if (n == null) return '0%';
-  return `${n.toFixed(2)}%`;
-}
-
-function fmtDuration(secs: number | null | undefined): string {
-  if (secs == null) return '0:00';
-  const mins = Math.floor(secs / 60);
-  const seconds = Math.floor(secs % 60);
-  return `${mins}:${seconds.toString().padStart(2, '0')}`;
-}
-
-function calculateChange(current: number | null | undefined, previous: number | null | undefined): number | undefined {
-  if (current == null || previous == null || previous === 0) return undefined;
-  return ((current - previous) / previous) * 100;
-}
-
 export function MarketingTabNew({ data }: MarketingTabNewProps) {
-  const [expandedPlatforms, setExpandedPlatforms] = useState<Record<string, boolean>>({
-    googleAds: true,
-    metaAds: true,
-    redditAds: false,
-  });
-
-  const togglePlatform = (platform: string) => {
-    setExpandedPlatforms((prev) => ({
-      ...prev,
-      [platform]: !prev[platform],
-    }));
-  };
-
   if (!data) {
     return (
-      <div className="flex items-center justify-center h-96 bg-card border border-border rounded-xl">
+      <div className="flex h-96 items-center justify-center rounded-xl border border-border bg-card">
         <div className="text-center">
-          <BarChart3 className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <BarChart3 className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
           <p className="text-muted-foreground">No analytics data available</p>
         </div>
       </div>
     );
   }
 
-  const googleAds = data.googleAds;
-  const metaAds = data.metaAds;
-  const redditAds = data.redditAds;
-  const metaPage = data.metaPage;
-  const webflow = data.webflow;
-  const ga = data.googleAnalytics;
+  const { googleAds, metaAds, redditAds, metaPage, webflow, googleAnalytics: ga, semrush } = data;
 
-  const googleAdsConfigured = Boolean(googleAds);
-  const metaAdsConfigured = Boolean(metaAds);
-  const redditAdsConfigured = Boolean(redditAds);
-  const metaPageConfigured = Boolean(metaPage);
-  const gaConfigured = Boolean(ga);
-
+  /* ── Signal detection ── */
   const hasGoogleAdsSignal = Boolean(
-    googleAds &&
-      (googleAds.totalSpend30d > 0 ||
-        googleAds.totalImpressions > 0 ||
-        googleAds.totalClicks > 0 ||
-        googleAds.totalConversions > 0 ||
-        googleAds.campaigns.length > 0)
+    googleAds && (googleAds.totalSpend30d > 0 || googleAds.totalImpressions > 0 || googleAds.totalClicks > 0 || googleAds.totalConversions > 0 || googleAds.campaigns.length > 0),
   );
-
   const hasMetaAdsSignal = Boolean(
-    metaAds &&
-      (metaAds.totalSpend30d > 0 ||
-        metaAds.totalImpressions > 0 ||
-        metaAds.totalClicks > 0 ||
-        metaAds.totalConversions > 0 ||
-        metaAds.campaigns.length > 0)
+    metaAds && (metaAds.totalSpend30d > 0 || metaAds.totalImpressions > 0 || metaAds.totalClicks > 0 || metaAds.totalConversions > 0 || metaAds.campaigns.length > 0),
   );
-
   const hasRedditAdsSignal = Boolean(
-    redditAds &&
-      (redditAds.totalSpend30d > 0 ||
-        redditAds.totalImpressions > 0 ||
-        redditAds.totalClicks > 0 ||
-        redditAds.campaigns.length > 0)
+    redditAds && (redditAds.totalSpend30d > 0 || redditAds.totalImpressions > 0 || redditAds.totalClicks > 0 || redditAds.campaigns.length > 0),
+  );
+  const hasGASignal = Boolean(
+    ga && (ga.sessions30d > 0 || ga.users30d > 0 || ga.pageviews30d > 0 || ga.trafficByChannel.length > 0 || ga.topPages.length > 0),
+  );
+  const hasMetaPageSignal = Boolean(
+    metaPage && (metaPage.pageLikes > 0 || metaPage.pageFollowers > 0 || metaPage.postReach30d > 0 || metaPage.postEngagement30d > 0 || metaPage.topPosts.length > 0),
   );
 
-  const hasAnyAdsConfigured = googleAdsConfigured || metaAdsConfigured || redditAdsConfigured;
+  const hasAnyAdsConfigured = Boolean(googleAds) || Boolean(metaAds) || Boolean(redditAds);
   const hasAnyAdsSignal = hasGoogleAdsSignal || hasMetaAdsSignal || hasRedditAdsSignal;
 
-  const hasMetaPageSignal = Boolean(
-    metaPage &&
-      (metaPage.pageLikes > 0 ||
-        metaPage.pageFollowers > 0 ||
-        metaPage.postReach30d > 0 ||
-        metaPage.postEngagement30d > 0 ||
-        metaPage.topPosts.length > 0)
-  );
-
-  const hasWebflowSignal = Boolean(
-    webflow &&
-      (webflow.totalPages > 0 ||
-        webflow.totalCollections > 0 ||
-        webflow.formSubmissions.length > 0 ||
-        webflow.customDomains.length > 0 ||
-        Boolean(webflow.siteName) ||
-        Boolean(webflow.lastPublished))
-  );
-
-  const hasGASignal = Boolean(
-    ga &&
-      (ga.sessions30d > 0 ||
-        ga.users30d > 0 ||
-        ga.pageviews30d > 0 ||
-        ga.trafficByChannel.length > 0 ||
-        ga.topPages.length > 0)
-  );
-
-  // Calculate KPI metrics
-  const sessions30d = data.googleAnalytics?.sessions30d || 0;
-  const sessionsPrev30d = data.googleAnalytics?.sessionsPrev30d || 0;
-  const sessionsChange = calculateChange(sessions30d, sessionsPrev30d);
-
-  const googleSpend = data.googleAds?.totalSpend30d || 0;
-  const metaSpend = data.metaAds?.totalSpend30d || 0;
-  const redditSpend = data.redditAds?.totalSpend30d || 0;
-  const totalAdSpend = googleSpend + metaSpend + redditSpend;
-
-  const googleConversions = data.googleAds?.totalConversions || 0;
-  const metaConversions = data.metaAds?.totalConversions || 0;
-  const totalConversions = googleConversions + metaConversions;
-
-  const pageFollowers = data.metaPage?.pageFollowers || 0;
-
-  // Traffic by channel data
-  const trafficByChannel = data.googleAnalytics?.trafficByChannel || [];
-  const channelColors: Record<string, string> = {
-    direct: '#3b82f6',
-    organic: '#10b981',
-    referral: '#f59e0b',
-    paid: '#ef4444',
-    social: '#8b5cf6',
-    email: '#06b6d4',
-  };
-
-  const barItems = trafficByChannel.map((item) => ({
-    label: item.channel || 'Unknown',
-    value: item.sessions || 0,
-    color: channelColors[item.channel?.toLowerCase()] || '#6b7280',
-  }));
-
-  // Top pages data
-  const topPages = data.googleAnalytics?.topPages || [];
-
-  // Meta page data
-  const metaPageLikes = data.metaPage?.pageLikes || 0;
-  const metaPageFollowers = data.metaPage?.pageFollowers || 0;
-  const metaPostReach = data.metaPage?.postReach30d || 0;
-  const metaPostEngagement = data.metaPage?.postEngagement30d || 0;
-  const metaTopPosts = data.metaPage?.topPosts || [];
+  /* ── Aggregate KPIs ── */
+  const sessions30d = ga?.sessions30d ?? 0;
+  const sessionsPrev = ga?.sessionsPrev30d ?? 0;
+  const sessionsDir = changeDirection(sessions30d, sessionsPrev);
+  const sessionsChangeLabel = pctChange(sessions30d, sessionsPrev);
+  const totalAdSpend = (googleAds?.totalSpend30d ?? 0) + (metaAds?.totalSpend30d ?? 0) + (redditAds?.totalSpend30d ?? 0);
+  const totalConversions = (googleAds?.totalConversions ?? 0) + (metaAds?.totalConversions ?? 0);
+  const pageFollowers = metaPage?.pageFollowers ?? 0;
 
   return (
     <div className="space-y-6">
-      {/* Top KPI Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
+      {/* ── Top KPI Row ── */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="animate-analytics-in animate-delay-0"><StatCard
           label="Sessions (30d)"
-          value={!gaConfigured ? "Not configured" : hasGASignal ? fmtNum(sessions30d) : "No data"}
-          change={!gaConfigured || !hasGASignal || sessionsChange == null ? undefined : fmtPct(sessionsChange)}
-          changeType={
-            sessionsChange == null
-              ? 'neutral'
-              : sessionsChange > 0
-                ? 'positive'
-                : 'negative'
-          }
-          subtitle={!gaConfigured ? "Google Analytics" : !hasGASignal ? "No GA data in selected range" : undefined}
+          value={!ga ? "Not configured" : hasGASignal ? fmtNumber(sessions30d) : "No data"}
+          change={!ga || !hasGASignal || sessionsDir === "neutral" ? undefined : sessionsChangeLabel}
+          changeType={sessionsDir}
+          subtitle={!ga ? "Google Analytics" : !hasGASignal ? "No GA data in range" : undefined}
           icon={TrendingUp}
-        />
-        <StatCard
+        /></div>
+        <div className="animate-analytics-in animate-delay-1"><StatCard
           label="Total Ad Spend"
           value={!hasAnyAdsConfigured ? "Not configured" : hasAnyAdsSignal ? fmtCurrency(totalAdSpend) : "No data"}
-          subtitle={!hasAnyAdsConfigured ? "Google Ads, Meta Ads, Reddit Ads" : hasAnyAdsSignal ? "Google + Meta + Reddit" : "No ad spend in selected range"}
+          subtitle={!hasAnyAdsConfigured ? "Google + Meta + Reddit" : hasAnyAdsSignal ? "Google + Meta + Reddit" : "No ad spend in range"}
           icon={DollarSign}
-        />
-        <StatCard
+        /></div>
+        <div className="animate-analytics-in animate-delay-2"><StatCard
           label="Total Conversions"
-          value={!hasAnyAdsConfigured ? "Not configured" : hasAnyAdsSignal ? fmtNum(totalConversions) : "No data"}
-          subtitle={!hasAnyAdsConfigured ? "Google Ads, Meta Ads" : hasAnyAdsSignal ? "Google + Meta" : "No conversion data in selected range"}
+          value={!hasAnyAdsConfigured ? "Not configured" : hasAnyAdsSignal ? fmtNumber(totalConversions) : "No data"}
+          subtitle={!hasAnyAdsConfigured ? "Google + Meta" : hasAnyAdsSignal ? "Google + Meta" : "No conversion data"}
           icon={MousePointerClick}
-        />
-        <StatCard
+        /></div>
+        <div className="animate-analytics-in animate-delay-3"><StatCard
           label="Page Followers"
-          value={!metaPageConfigured ? "Not configured" : hasMetaPageSignal ? fmtNum(pageFollowers) : "No data"}
-          subtitle={!metaPageConfigured ? "Meta Page" : hasMetaPageSignal ? "Meta Page" : "No page insights in selected range"}
+          value={!metaPage ? "Not configured" : hasMetaPageSignal ? fmtNumber(pageFollowers) : "No data"}
+          subtitle={!metaPage ? "Meta Page" : hasMetaPageSignal ? "Meta Page" : "No page insights"}
           icon={Facebook}
+        /></div>
+      </div>
+
+      {/* ── Traffic by Channel + Top Pages ── */}
+      <TrafficOverview ga={ga ?? null} />
+
+      {/* ── Ad Performance ── */}
+      <div className="animate-analytics-slide-up space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          Ad Performance
+        </h2>
+        <AdPlatformCard
+          name="Google Ads"
+          icon={BarChart3}
+          configured={Boolean(googleAds)}
+          hasSignal={hasGoogleAdsSignal}
+          metrics={googleAds ? buildGoogleAdsMetrics(googleAds) : []}
+          campaigns={googleAds?.campaigns ?? []}
+          defaultExpanded
+        />
+        <AdPlatformCard
+          name="Meta Ads"
+          icon={Facebook}
+          configured={Boolean(metaAds)}
+          hasSignal={hasMetaAdsSignal}
+          metrics={metaAds ? buildMetaAdsMetrics(metaAds) : []}
+          campaigns={metaAds?.campaigns ?? []}
+          defaultExpanded
+        />
+        <AdPlatformCard
+          name="Reddit Ads"
+          icon={BarChart3}
+          configured={Boolean(redditAds)}
+          hasSignal={hasRedditAdsSignal}
+          metrics={redditAds ? buildRedditAdsMetrics(redditAds) : []}
+          campaigns={redditAds?.campaigns ?? []}
         />
       </div>
 
-      {/* Traffic Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Traffic by Channel */}
-        <div className="bg-card border border-border rounded-xl p-6">
-          <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-            <Globe className="w-5 h-5 text-primary" />
-            Traffic by Channel
-          </h3>
-          {!gaConfigured ? (
-            <p className="text-muted-foreground text-center py-8">Not configured</p>
-          ) : barItems.length > 0 ? (
-            <BarDisplay
-              items={barItems}
-              formatValue={(v) => fmtNum(v)}
-              maxValue={Math.max(...barItems.map((i) => i.value), 1)}
-            />
-          ) : (
-            <p className="text-muted-foreground text-center py-8">No traffic data in selected range</p>
-          )}
-        </div>
+      {/* ── Social & Web ── */}
+      <SocialWebSection metaPage={metaPage ?? null} webflow={webflow ?? null} />
 
-        {/* Top Pages */}
-        <div className="bg-card border border-border rounded-xl p-6">
-          <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-            <Eye className="w-5 h-5 text-primary" />
-            Top Pages
-          </h3>
-          {!gaConfigured ? (
-            <p className="text-muted-foreground text-center py-8">Not configured</p>
-          ) : topPages.length > 0 ? (
-            <div className="space-y-3">
-              {topPages.slice(0, 5).map((page, idx) => (
-                <div key={idx} className="flex items-center justify-between p-3 bg-secondary/40 rounded-lg">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{page.path || 'Unknown'}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {fmtNum(page.pageviews)} views · {fmtDuration(page.avgDuration)}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-center py-8">No page data in selected range</p>
-          )}
-        </div>
-      </div>
-
-      {/* Ad Performance Section */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-foreground">Ad Performance</h2>
-
-        {/* Google Ads Card */}
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <button
-            onClick={() => togglePlatform('googleAds')}
-            className="w-full px-6 py-4 flex items-center justify-between hover:bg-secondary/50 transition-colors"
-          >
-            <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-primary" />
-              Google Ads
-            </h3>
-            {expandedPlatforms.googleAds ? (
-              <ChevronUp className="w-5 h-5 text-muted-foreground" />
-            ) : (
-              <ChevronDown className="w-5 h-5 text-muted-foreground" />
-            )}
-          </button>
-
-          {expandedPlatforms.googleAds && (
-            <div className="border-t border-border px-6 py-4 space-y-4">
-              {!googleAds ? (
-                <p className="text-muted-foreground text-center py-6">Not configured</p>
-              ) : !hasGoogleAdsSignal ? (
-                <p className="text-muted-foreground text-center py-6">No Google Ads data in selected range</p>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-secondary/40 rounded-lg p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Spend</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtCurrency(googleAds.totalSpend30d)}</p>
-                    </div>
-                    <div className="bg-secondary/40 rounded-lg p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Impressions</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtNum(googleAds.totalImpressions)}</p>
-                    </div>
-                    <div className="bg-secondary/40 rounded-lg p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Clicks</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtNum(googleAds.totalClicks)}</p>
-                    </div>
-                    <div className="bg-secondary/40 rounded-lg p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Conversions</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtNum(googleAds.totalConversions)}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">CTR</p>
-                      <p className="text-sm font-semibold text-foreground">{fmtPct(googleAds.ctr)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">CPC</p>
-                      <p className="text-sm font-semibold text-foreground">{fmtCurrency(googleAds.cpc)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">CPA</p>
-                      <p className="text-sm font-semibold text-foreground">{fmtCurrency(googleAds.cpa)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">ROAS</p>
-                      <p className="text-sm font-semibold text-foreground">{googleAds.roas?.toFixed(2)}x</p>
-                    </div>
-                  </div>
-
-                  {googleAds.campaigns && googleAds.campaigns.length > 0 && (
-                    <div>
-                      <p className="text-sm font-semibold text-foreground mb-3">Top Campaigns</p>
-                      <div className="space-y-2">
-                        {googleAds.campaigns.slice(0, 5).map((campaign, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-2 bg-secondary/40 rounded">
-                            <span className="text-sm text-foreground truncate">{campaign.name}</span>
-                            <div className="text-right">
-                              <p className="text-xs font-semibold text-foreground">{fmtCurrency(campaign.spend)}</p>
-                              <p className="text-xs text-muted-foreground">{fmtNum(campaign.clicks)} clicks</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Meta Ads Card */}
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <button
-            onClick={() => togglePlatform('metaAds')}
-            className="w-full px-6 py-4 flex items-center justify-between hover:bg-secondary/50 transition-colors"
-          >
-            <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
-              <Facebook className="w-5 h-5 text-primary" />
-              Meta Ads
-            </h3>
-            {expandedPlatforms.metaAds ? (
-              <ChevronUp className="w-5 h-5 text-muted-foreground" />
-            ) : (
-              <ChevronDown className="w-5 h-5 text-muted-foreground" />
-            )}
-          </button>
-
-          {expandedPlatforms.metaAds && (
-            <div className="border-t border-border px-6 py-4 space-y-4">
-              {!metaAds ? (
-                <p className="text-muted-foreground text-center py-6">Not configured</p>
-              ) : !hasMetaAdsSignal ? (
-                <p className="text-muted-foreground text-center py-6">No Meta Ads data in selected range</p>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-secondary/40 rounded-lg p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Spend</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtCurrency(metaAds.totalSpend30d)}</p>
-                    </div>
-                    <div className="bg-secondary/40 rounded-lg p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Impressions</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtNum(metaAds.totalImpressions)}</p>
-                    </div>
-                    <div className="bg-secondary/40 rounded-lg p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Clicks</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtNum(metaAds.totalClicks)}</p>
-                    </div>
-                    <div className="bg-secondary/40 rounded-lg p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Conversions</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtNum(metaAds.totalConversions)}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">CTR</p>
-                      <p className="text-sm font-semibold text-foreground">{fmtPct(metaAds.ctr)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">CPC</p>
-                      <p className="text-sm font-semibold text-foreground">{fmtCurrency(metaAds.cpc)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">CPA</p>
-                      <p className="text-sm font-semibold text-foreground">{fmtCurrency(metaAds.cpa)}</p>
-                    </div>
-                  </div>
-
-                  {metaAds.campaigns && metaAds.campaigns.length > 0 && (
-                    <div>
-                      <p className="text-sm font-semibold text-foreground mb-3">Top Campaigns</p>
-                      <div className="space-y-2">
-                        {metaAds.campaigns.slice(0, 5).map((campaign, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-2 bg-secondary/40 rounded">
-                            <span className="text-sm text-foreground truncate">{campaign.name}</span>
-                            <div className="text-right">
-                              <p className="text-xs font-semibold text-foreground">{fmtCurrency(campaign.spend)}</p>
-                              <p className="text-xs text-muted-foreground">{fmtNum(campaign.clicks)} clicks</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Reddit Ads Card */}
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <button
-            onClick={() => togglePlatform('redditAds')}
-            className="w-full px-6 py-4 flex items-center justify-between hover:bg-secondary/50 transition-colors"
-          >
-            <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-primary" />
-              Reddit Ads
-            </h3>
-            {expandedPlatforms.redditAds ? (
-              <ChevronUp className="w-5 h-5 text-muted-foreground" />
-            ) : (
-              <ChevronDown className="w-5 h-5 text-muted-foreground" />
-            )}
-          </button>
-
-          {expandedPlatforms.redditAds && (
-            <div className="border-t border-border px-6 py-4 space-y-4">
-              {!redditAds ? (
-                <p className="text-muted-foreground text-center py-6">Not configured</p>
-              ) : !hasRedditAdsSignal ? (
-                <p className="text-muted-foreground text-center py-6">No Reddit Ads data in selected range</p>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-secondary/40 rounded-lg p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Spend</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtCurrency(redditAds.totalSpend30d)}</p>
-                    </div>
-                    <div className="bg-secondary/40 rounded-lg p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Impressions</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtNum(redditAds.totalImpressions)}</p>
-                    </div>
-                    <div className="bg-secondary/40 rounded-lg p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Clicks</p>
-                      <p className="text-lg font-semibold text-foreground">{fmtNum(redditAds.totalClicks)}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">CTR</p>
-                      <p className="text-sm font-semibold text-foreground">{fmtPct(redditAds.ctr)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">CPC</p>
-                      <p className="text-sm font-semibold text-foreground">{fmtCurrency(redditAds.cpc)}</p>
-                    </div>
-                  </div>
-
-                  {redditAds.campaigns && redditAds.campaigns.length > 0 && (
-                    <div>
-                      <p className="text-sm font-semibold text-foreground mb-3">Top Campaigns</p>
-                      <div className="space-y-2">
-                        {redditAds.campaigns.slice(0, 5).map((campaign, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-2 bg-secondary/40 rounded">
-                            <span className="text-sm text-foreground truncate">{campaign.name}</span>
-                            <div className="text-right">
-                              <p className="text-xs font-semibold text-foreground">{fmtCurrency(campaign.spend)}</p>
-                              <p className="text-xs text-muted-foreground">{fmtNum(campaign.clicks)} clicks</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Social & Web Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Meta Page Insights */}
-        <div className="bg-card border border-border rounded-xl p-6">
-          <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-            <Facebook className="w-5 h-5 text-primary" />
-            Meta Page
-          </h3>
-          {!metaPage ? (
-            <p className="text-muted-foreground text-center py-8">Not configured</p>
-          ) : !hasMetaPageSignal ? (
-            <p className="text-muted-foreground text-center py-8">No Meta Page data in selected range</p>
-          ) : (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-secondary/40 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Likes</p>
-                  <p className="text-lg font-semibold text-foreground">{fmtNum(metaPageLikes)}</p>
-                </div>
-                <div className="bg-secondary/40 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Followers</p>
-                  <p className="text-lg font-semibold text-foreground">{fmtNum(metaPageFollowers)}</p>
-                </div>
-                <div className="bg-secondary/40 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Reach (30d)</p>
-                  <p className="text-lg font-semibold text-foreground">{fmtNum(metaPostReach)}</p>
-                </div>
-                <div className="bg-secondary/40 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Engagement (30d)</p>
-                  <p className="text-lg font-semibold text-foreground">{fmtNum(metaPostEngagement)}</p>
-                </div>
-              </div>
-
-              {metaTopPosts.length > 0 && (
-                <div>
-                  <p className="text-sm font-semibold text-foreground mb-3">Top Posts</p>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {metaTopPosts.slice(0, 5).map((post, idx) => (
-                      <div key={idx} className="p-2 bg-secondary/40 rounded text-sm">
-                        <p className="text-foreground line-clamp-2">{post.message}</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {fmtNum(post.reach)} reach · {fmtNum(post.engagement)} engagement
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Webflow Site Info */}
-        <div className="bg-card border border-border rounded-xl p-6">
-          <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-            <Layout className="w-5 h-5 text-primary" />
-            Webflow
-          </h3>
-          {!webflow ? (
-            <p className="text-muted-foreground text-center py-8">Not configured</p>
-          ) : !hasWebflowSignal ? (
-            <p className="text-muted-foreground text-center py-8">No Webflow data in selected range</p>
-          ) : (
-            <div className="space-y-4">
-              {webflow.siteName && (
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Site Name</p>
-                  <p className="text-sm font-semibold text-foreground">{webflow.siteName}</p>
-                </div>
-              )}
-
-              {webflow.lastPublished && (
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Last Published</p>
-                  <p className="text-sm font-semibold text-foreground">
-                    {new Date(webflow.lastPublished).toLocaleDateString()}
-                  </p>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-secondary/40 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Pages</p>
-                  <p className="text-lg font-semibold text-foreground">{webflow.totalPages || 0}</p>
-                </div>
-                <div className="bg-secondary/40 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Collections</p>
-                  <p className="text-lg font-semibold text-foreground">{webflow.totalCollections || 0}</p>
-                </div>
-              </div>
-
-              {webflow.formSubmissions && webflow.formSubmissions.length > 0 && (
-                <div>
-                  <p className="text-sm font-semibold text-foreground mb-2">Form Submissions</p>
-                  <div className="space-y-1">
-                    {webflow.formSubmissions.map((form, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-2 bg-secondary/40 rounded text-sm">
-                        <span className="text-foreground truncate">{form.formName}</span>
-                        <span className="text-muted-foreground font-semibold">{form.count}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {webflow.customDomains && webflow.customDomains.length > 0 && (
-                <div>
-                  <p className="text-sm font-semibold text-foreground mb-2">Custom Domains</p>
-                  <div className="space-y-1">
-                    {webflow.customDomains.map((domain, idx) => (
-                      <div key={idx} className="p-2 bg-secondary/40 rounded text-sm text-foreground">
-                        {domain}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* -- SEMrush SEO Intelligence -- */}
-      <div className="mt-6">
-        <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
-          <Search className="w-5 h-5 text-[#fc5a29]" />
-          SEMrush SEO Intelligence
-        </h3>
-        {data.semrush ? (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <StatCard label="Authority Score" value={String(data.semrush.authorityScore)} icon={Award} />
-              <StatCard label="Backlinks" value={fmtNum(data.semrush.backlinks)} icon={Link2} />
-              <StatCard label="Organic Keywords" value={fmtNum(data.semrush.organicKeywords)} icon={Search} />
-              <StatCard label="Organic Traffic" value={fmtNum(data.semrush.organicTraffic)} icon={TrendingUp} />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="bg-card border border-border rounded-lg p-4">
-                <p className="text-sm font-semibold text-foreground mb-2">Organic Search</p>
-                <div className="space-y-1 text-sm">
-                  <div className="flex justify-between"><span className="text-muted-foreground">Keywords</span><span className="text-foreground font-semibold">{fmtNum(data.semrush.organicKeywords)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Traffic</span><span className="text-foreground font-semibold">{fmtNum(data.semrush.organicTraffic)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Traffic Cost</span><span className="text-foreground font-semibold">{fmtCurrency(data.semrush.organicTrafficCost)}</span></div>
-                </div>
-              </div>
-              <div className="bg-card border border-border rounded-lg p-4">
-                <p className="text-sm font-semibold text-foreground mb-2">Paid Search</p>
-                <div className="space-y-1 text-sm">
-                  <div className="flex justify-between"><span className="text-muted-foreground">Keywords</span><span className="text-foreground font-semibold">{fmtNum(data.semrush.paidKeywords)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Traffic</span><span className="text-foreground font-semibold">{fmtNum(data.semrush.paidTraffic)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Traffic Cost</span><span className="text-foreground font-semibold">{fmtCurrency(data.semrush.paidTrafficCost)}</span></div>
-                </div>
-              </div>
-            </div>
-            {data.semrush.topKeywords && data.semrush.topKeywords.length > 0 && (
-              <div className="bg-card border border-border rounded-lg p-4">
-                <p className="text-sm font-semibold text-foreground mb-3">Top Organic Keywords</p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="text-left py-2 text-muted-foreground font-medium">Keyword</th>
-                        <th className="text-right py-2 text-muted-foreground font-medium">Pos</th>
-                        <th className="text-right py-2 text-muted-foreground font-medium">Volume</th>
-                        <th className="text-right py-2 text-muted-foreground font-medium">Traffic</th>
-                        <th className="text-right py-2 text-muted-foreground font-medium">CPC</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.semrush.topKeywords.map((kw, idx) => (
-                        <tr key={idx} className="border-b border-border/50">
-                          <td className="py-2 text-foreground">{kw.keyword}</td>
-                          <td className={`py-2 text-right font-semibold ${kw.position <= 3 ? 'text-green-500' : kw.position <= 10 ? 'text-yellow-500' : 'text-muted-foreground'}`}>{kw.position}</td>
-                          <td className="py-2 text-right text-muted-foreground">{fmtNum(kw.volume)}</td>
-                          <td className="py-2 text-right text-muted-foreground">{fmtNum(kw.traffic)}</td>
-                          <td className="py-2 text-right text-muted-foreground">{fmtCurrency(kw.cpc)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-            {data.semrush.organicCompetitors && data.semrush.organicCompetitors.length > 0 && (
-              <div className="bg-card border border-border rounded-lg p-4">
-                <p className="text-sm font-semibold text-foreground mb-3">Organic Competitors</p>
-                <div className="space-y-2">
-                  {data.semrush.organicCompetitors.map((comp, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-2 bg-secondary/40 rounded text-sm">
-                      <span className="text-foreground font-medium">{comp.domain}</span>
-                      <div className="flex gap-4">
-                        <span className="text-muted-foreground">Common: {fmtNum(comp.commonKeywords)}</span>
-                        <span className="text-muted-foreground">Traffic: {fmtNum(comp.organicTraffic)}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="bg-card border border-border rounded-lg p-4">
-            <p className="text-muted-foreground text-center py-8">Not configured</p>
-          </div>
-        )}
-      </div>
+      {/* ── SEO Intelligence ── */}
+      <SEOIntelligence semrush={semrush ?? null} />
     </div>
   );
 }

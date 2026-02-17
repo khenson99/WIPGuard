@@ -464,3 +464,69 @@ body {
   border-color: var(--ring);
   outline: none;
 }
+
+/* ─── Analytics Entrance Animations ─── */
+
+@keyframes analytics-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes analytics-fade-in-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes analytics-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-analytics-in {
+  animation: analytics-fade-in 300ms ease-out both;
+}
+
+.animate-analytics-scale-in {
+  animation: analytics-fade-in-scale 250ms ease-out both;
+}
+
+.animate-analytics-slide-up {
+  animation: analytics-slide-up 350ms ease-out both;
+}
+
+/* Stagger delays for stat card grids */
+.animate-delay-0 { animation-delay: 0ms; }
+.animate-delay-1 { animation-delay: 50ms; }
+.animate-delay-2 { animation-delay: 100ms; }
+.animate-delay-3 { animation-delay: 150ms; }
+.animate-delay-4 { animation-delay: 200ms; }
+.animate-delay-5 { animation-delay: 250ms; }
+
+/* Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .animate-analytics-in,
+  .animate-analytics-scale-in,
+  .animate-analytics-slide-up {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
