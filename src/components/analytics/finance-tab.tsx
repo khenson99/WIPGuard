@@ -120,8 +120,16 @@ export function FinanceTab({ data }: FinanceTabProps) {
   const stripeFreshness: ProviderFreshness | undefined = data.freshness?.stripe;
   const mercuryFreshness: ProviderFreshness | undefined = data.freshness?.mercury;
 
-  const stripeConnected = stripeFreshness?.source !== "none" && stripeFreshness?.source !== undefined;
-  const mercuryConnected = mercuryFreshness?.source !== "none" && mercuryFreshness?.source !== undefined;
+  const stripeConnected = Boolean(
+    stripeFreshness &&
+      stripeFreshness.source !== "none" &&
+      stripeFreshness.status !== "DISCONNECTED"
+  );
+  const mercuryConnected = Boolean(
+    mercuryFreshness &&
+      mercuryFreshness.source !== "none" &&
+      mercuryFreshness.status !== "DISCONNECTED"
+  );
 
   // If neither integration is connected, show a full empty state
   if (!stripe && !mercury && !stripeConnected && !mercuryConnected) {
