@@ -31,6 +31,7 @@ import {
   storeAnalyticsSnapshot,
   storeAnalyticsSnapshotFailure,
 } from "@/lib/analytics/snapshots";
+import { buildAnalyticsRouteMeta } from "@/lib/analytics/route-meta";
 import type {
   AnalyticsDashboardData,
   AnalyticsRecommendation,
@@ -110,7 +111,6 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "googleAnalytics",
     "googleAds",
     "metaAds",
-    "metaPage",
     "redditAds",
     "webflow",
     "semrush",
@@ -497,24 +497,10 @@ export async function GET(request: Request) {
     { key: "mercury", fn: () => (creds.mercuryKey ? fetchMercuryData(creds.mercuryKey) : Promise.reject(new Error("Missing Mercury credential"))) },
     {
       key: "googleAnalytics",
-      fn: () => {
-        const hasServiceAccount = Boolean(
-          creds.gaClientEmail && creds.gaPrivateKey
-        );
-        const hasOAuth = Boolean(
-          process.env.GA_REFRESH_TOKEN?.trim() &&
-            process.env.GOOGLE_CLIENT_ID?.trim() &&
-            process.env.GOOGLE_CLIENT_SECRET?.trim()
-        );
-
-        return creds.gaPropertyId && (hasServiceAccount || hasOAuth)
-          ? fetchGAData(
-              creds.gaPropertyId,
-              creds.gaClientEmail ?? "",
-              creds.gaPrivateKey ?? ""
-            )
-          : Promise.reject(new Error("Missing Google Analytics credential"));
-      },
+      fn: () =>
+        creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey
+          ? fetchGAData(creds.gaPropertyId, creds.gaClientEmail, creds.gaPrivateKey)
+          : Promise.reject(new Error("Missing Google Analytics credential")),
     },
     {
       key: "googleAds",
@@ -756,6 +742,16 @@ export async function GET(request: Request) {
   if (domains.has("distilledInsights")) {
     result.distilledInsights = buildDistilledInsights(result);
   }
+
+  const staleDomains = Array.from(new Set(result.staleDomains));
+  const erroredDomains = Array.from(new Set(result.errors.map((entry) => entry.source)));
+  result.staleDomains = staleDomains;
+  result.meta = buildAnalyticsRouteMeta({
+    section,
+    forceRefresh,
+    staleDomains,
+    erroredDomains,
+  });
 
   return NextResponse.json(result, {
     headers: {
