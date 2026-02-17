@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
@@ -8,9 +8,18 @@ import { ANALYTICS_PRIMARY_SECTIONS } from "@/lib/analytics/section-registry";
 import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-controls";
 import { LifecycleFunnelPanel } from "@/components/analytics/lifecycle-funnel-panel";
 import { AiInsightsPanel } from "@/components/analytics/ai-insights-panel";
+import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-state";
+import { DashboardStaleBanner } from "@/components/dashboard/dashboard-stale-banner";
+import { DashboardErrorBanner } from "@/components/dashboard/dashboard-error-banner";
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
 
 interface SummaryPayload {
   generatedAt: string;
+  meta?: {
+    servedAt: string;
+    isPartial: boolean;
+  };
   timeRange: {
     preset: string;
     from: string;
@@ -33,19 +42,20 @@ interface SummaryPayload {
     status: "connected" | "partial" | "degraded" | "missing";
     integrationCount: number;
     connectedCount: number;
+    children?: Array<{
+      id: string;
+      label: string;
+      href: string;
+      status: "connected" | "partial" | "degraded" | "missing";
+      lastSnapshotAt?: string | null;
+      lastError?: string | null;
+    }>;
   }>;
 }
 
-const STATUS_CLASS: Record<string, string> = {
-  connected: "text-emerald-600",
-  degraded: "text-amber-600",
-  partial: "text-amber-600",
-  missing: "text-muted-foreground",
-};
-
 const SUMMARY_CACHE_PREFIX = "analytics:summary:v1:";
 
-interface CachedSummaryPayload {
+interface SummaryViewModel {
   summary: SummaryPayload;
   overview: AnalyticsDashboardData;
 }
@@ -65,118 +75,135 @@ function summaryCacheKey(rangeQuery: string): string {
   return `${SUMMARY_CACHE_PREFIX}${rangeQuery || "default"}`;
 }
 
-function readSummaryCache(rangeQuery: string): CachedSummaryPayload | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.sessionStorage.getItem(summaryCacheKey(rangeQuery));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<CachedSummaryPayload>;
-    if (!parsed.summary || !parsed.overview) return null;
-    return {
-      summary: parsed.summary,
-      overview: parsed.overview,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function writeSummaryCache(rangeQuery: string, payload: CachedSummaryPayload): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.setItem(summaryCacheKey(rangeQuery), JSON.stringify(payload));
-  } catch {
-    // Ignore storage write failures (private browsing/storage quotas).
-  }
+function unique(items: string[]): string[] {
+  return Array.from(new Set(items.filter((item) => item.trim().length > 0)));
 }
 
 export function AnalyticsSummaryPage() {
   const searchParams = useSearchParams();
-  const [summary, setSummary] = useState<SummaryPayload | null>(null);
-  const [overview, setOverview] = useState<AnalyticsDashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
-
   const rangeQuery = useMemo(() => buildRangeQuery(searchParams), [searchParams]);
 
-  useEffect(() => {
-    let active = true;
-    const controller = new AbortController();
-    const cached = readSummaryCache(rangeQuery);
+  const resource = useDashboardResource<SummaryViewModel>({
+    cacheKey: summaryCacheKey(rangeQuery),
+    deps: [rangeQuery],
+    load: async ({ signal, refresh }) => {
+      const summaryParams = new URLSearchParams(rangeQuery);
+      if (refresh) {
+        summaryParams.set("refresh", "true");
+      }
 
-    if (cached) {
-      queueMicrotask(() => {
-        if (!active) return;
-        setSummary(cached.summary);
-        setOverview(cached.overview);
-        setLoading(false);
-      });
-    } else {
-      queueMicrotask(() => {
-        if (!active) return;
-        setLoading(true);
-      });
-    }
+      const overviewParams = new URLSearchParams(rangeQuery);
+      overviewParams.set("section", "overview");
+      if (refresh) {
+        overviewParams.set("refresh", "true");
+      }
 
-    Promise.all([
-      fetch(`/api/analytics/summary${rangeQuery ? `?${rangeQuery}` : ""}`, { signal: controller.signal }).then((response) =>
-        response.json()
-      ),
-      fetch(`/api/analytics?section=overview${rangeQuery ? `&${rangeQuery}` : ""}`, { signal: controller.signal }).then((response) =>
-        response.json()
-      ),
-    ])
-      .then(([summaryPayload, overviewPayload]) => {
-        if (!active) return;
-        const next = {
-          summary: summaryPayload as SummaryPayload,
-          overview: overviewPayload as AnalyticsDashboardData,
-        };
-        setSummary(next.summary);
-        setOverview(next.overview);
-        writeSummaryCache(rangeQuery, next);
-      })
-      .catch((error) => {
-        if (!active || (error instanceof Error && error.name === "AbortError")) return;
-        if (!cached) {
-          setSummary(null);
-          setOverview(null);
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setLoading(false);
-        }
-      });
+      const [summaryResponse, overviewResponse] = await Promise.all([
+        fetch(`/api/analytics/summary${summaryParams.toString() ? `?${summaryParams.toString()}` : ""}`, {
+          signal,
+          cache: refresh ? "no-store" : "default",
+        }),
+        fetch(`/api/analytics?${overviewParams.toString()}`, {
+          signal,
+          cache: refresh ? "no-store" : "default",
+        }),
+      ]);
 
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [rangeQuery]);
+      if (!summaryResponse.ok) {
+        throw new Error(`Analytics summary request failed (${summaryResponse.status})`);
+      }
+      if (!overviewResponse.ok) {
+        throw new Error(`Analytics overview request failed (${overviewResponse.status})`);
+      }
 
-  if (loading) {
+      const [summaryPayload, overviewPayload] = await Promise.all([
+        summaryResponse.json(),
+        overviewResponse.json(),
+      ]);
+
+      return {
+        summary: summaryPayload as SummaryPayload,
+        overview: overviewPayload as AnalyticsDashboardData,
+      };
+    },
+    getLastUpdatedAt: (payload) => {
+      return (
+        payload.summary.meta?.servedAt ??
+        payload.overview.meta?.servedAt ??
+        payload.overview.lastFullRefresh ??
+        payload.summary.generatedAt
+      );
+    },
+    mapError: (error) => {
+      if (error instanceof Error && error.message) return error.message;
+      return "Could not load analytics summary.";
+    },
+  });
+
+  const summary = resource.data?.summary ?? null;
+  const overview = resource.data?.overview ?? null;
+
+  if (resource.loading && !resource.data) {
+    return <DashboardLoadingState message="Loading analytics summary..." />;
+  }
+
+  if (!summary) {
     return (
-      <div className="flex h-[40vh] items-center justify-center text-sm text-muted-foreground">
-        Loading analytics summary...
+      <div className="p-4">
+        <DashboardEmptyState
+          title="Analytics summary unavailable"
+          message={resource.error ?? "No summary data is available for the selected range."}
+          actionLabel="Refresh now"
+          onAction={resource.refresh}
+        />
       </div>
     );
   }
 
-  if (!summary) {
-    return <div className="p-6 text-sm text-muted-foreground">Could not load analytics summary.</div>;
-  }
+  const staleDomains = unique([...(overview?.staleDomains ?? []), ...(overview?.meta?.staleDomains ?? [])]);
 
   return (
-    <div className="h-full space-y-6 overflow-y-auto p-4">
+    <div className="h-full space-y-4 overflow-y-auto p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground">Analytics Overview</h1>
           <p className="text-xs text-muted-foreground">
             Distilled cross-platform insights across Ads, Finance, Sales, and Customer Success.
           </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Last updated: {resource.lastUpdatedAt ? new Date(resource.lastUpdatedAt).toLocaleString() : "Unknown"}
+            {resource.fromCache ? " (cache warm start)" : ""}
+          </p>
         </div>
-        <AnalyticsTimeRangeControls />
+        <div className="flex items-center gap-2">
+          <AnalyticsTimeRangeControls />
+          <button
+            type="button"
+            onClick={resource.refresh}
+            disabled={resource.refreshing}
+            className="rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-70"
+          >
+            {resource.refreshing ? "Refreshing..." : "Refresh now"}
+          </button>
+        </div>
       </div>
+
+      {(resource.stale || staleDomains.length > 0) && (
+        <DashboardStaleBanner
+          lastUpdatedAt={resource.lastUpdatedAt}
+          refreshing={resource.refreshing}
+          onRefresh={resource.refresh}
+          label="Showing cached analytics while background refresh completes or retries."
+        />
+      )}
+
+      {resource.error ? (
+        <DashboardErrorBanner
+          message={resource.error}
+          onRetry={resource.refresh}
+          settingsHref="/settings?tab=integrations"
+        />
+      ) : null}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <div className="rounded-xl border border-border bg-card px-4 py-3">
@@ -206,25 +233,14 @@ export function AnalyticsSummaryPage() {
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
         {ANALYTICS_PRIMARY_SECTIONS.map((primary) => {
-          const section = summary.primarySections.find((item) => item.id === primary.id);
           return (
             <Link
               key={primary.id}
               href={`${primary.path}${rangeQuery ? `?${rangeQuery}` : ""}`}
               className="rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40"
             >
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold text-foreground">{primary.label}</h3>
-                <span className={`text-xs uppercase ${STATUS_CLASS[section?.status ?? "missing"]}`}>
-                  {section?.status ?? "missing"}
-                </span>
-              </div>
+              <h3 className="text-sm font-semibold text-foreground">{primary.label}</h3>
               <p className="mt-1 text-xs text-muted-foreground">{primary.description}</p>
-              {section && (
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  {section.connectedCount}/{section.integrationCount} integrations connected
-                </p>
-              )}
             </Link>
           );
         })}
