@@ -13,8 +13,8 @@ export function useSocket() {
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
-    // Hit the init endpoint first to ensure the IO server is bootstrapped
-    fetch("/api/socketio").finally(() => {
+    // Hit a dedicated bootstrap endpoint so we don't poll Engine.IO directly.
+    fetch("/api/socketio/init", { cache: "no-store" }).finally(() => {
       const socket = io({
         path: "/api/socketio",
         transports: ["websocket", "polling"],
