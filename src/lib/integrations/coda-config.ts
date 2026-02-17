@@ -6,10 +6,41 @@ export function normalizeCodaDocId(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
 
-  // If the user pasted a full Coda URL, extract the doc ID segment.
-  const urlMatch = trimmed.match(/coda\.io\/d\/[^/]+\/_d([A-Za-z0-9_-]+)/);
-  if (urlMatch) return urlMatch[1];
+  // Already a bare ID.
+  if (/^d[A-Za-z0-9_-]{5,}$/.test(trimmed)) {
+    return trimmed;
+  }
 
-  // Already a bare ID — return as-is.
+  try {
+    const parsed = new URL(trimmed);
+    if (!parsed.hostname.endsWith("coda.io")) {
+      return trimmed;
+    }
+
+    // Support URLs with ?docId=dXXXX.
+    const queryDocId = parsed.searchParams.get("docId")?.trim() ?? "";
+    if (/^d[A-Za-z0-9_-]{5,}$/.test(queryDocId)) {
+      return queryDocId;
+    }
+
+    // Support common share URLs such as:
+    // - /d/Doc-Name_dXXXX
+    // - /d/_dXXXX
+    const segments = parsed.pathname
+      .split("/")
+      .map((segment) => decodeURIComponent(segment).trim())
+      .filter(Boolean);
+
+    for (const segment of segments) {
+      const fromSuffix = segment.match(/(?:^|_)(d[A-Za-z0-9_-]{5,})$/);
+      if (fromSuffix) {
+        return fromSuffix[1];
+      }
+    }
+  } catch {
+    // Fall through to legacy behavior below.
+  }
+
+  // Preserve existing fallback behavior for unknown formats.
   return trimmed;
 }

@@ -56,6 +56,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         where: {
           userId: session.user.id,
           rangePreset: range.preset,
+          fromDate: from,
           toDate: to,
           providerKey: {
             in: [

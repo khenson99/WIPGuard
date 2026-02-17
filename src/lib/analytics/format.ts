@@ -72,6 +72,12 @@ const CURRENCY_PATTERNS = /(?:revenue|mrr|spend|cost|balance|amount|price|inflow
 const PERCENT_PATTERNS = /(?:rate|pct|percent|ratio|share|coverage|growth|churn|bounce|ctr|roas|conversion|winRate|effectiveWinRate|noShowRate|throughput|successRate)/i;
 const DURATION_PATTERNS = /(?:duration|seconds|minutes|hours|time|latency|response|avg.*time|session.*duration)/i;
 
+function normalizePercentValue(value: number): number {
+  // Some upstream metrics are emitted as ratios (e.g. 0.56 for 56%).
+  // Preserve existing whole-percent inputs, but scale ratio-style values.
+  return Math.abs(value) <= 1 ? value * 100 : value;
+}
+
 /**
  * Auto-format a value based on its key name. Useful for generic snapshot rendering.
  */
@@ -83,7 +89,7 @@ export function smartFormat(key: string, value: unknown): string {
   if (typeof value === "number") {
     // Check key patterns to decide format
     if (CURRENCY_PATTERNS.test(key)) return fmtCurrency(value);
-    if (PERCENT_PATTERNS.test(key)) return fmtPercent(value);
+    if (PERCENT_PATTERNS.test(key)) return fmtPercent(normalizePercentValue(value));
     if (DURATION_PATTERNS.test(key)) return fmtDuration(value);
     return fmtNumber(value);
   }
