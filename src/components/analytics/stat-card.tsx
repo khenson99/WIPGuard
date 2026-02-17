@@ -14,6 +14,8 @@ interface StatCardProps {
   subtitle?: string;
   icon?: StatCardIcon;
   iconColor?: string;
+  /** Optional trend data for sparkline rendering */
+  trend?: { data: number[] };
 }
 
 export function StatCard({

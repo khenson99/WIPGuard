@@ -8,6 +8,8 @@ import {
   Target,
   HeartHandshake,
   Bot,
+  Route,
+  Sparkles,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -63,10 +65,15 @@ export function buildNavItems(): NavItem[] {
     };
   });
 
+  const newPages: NavItem[] = [
+    { id: "customer-journey", href: "/analytics/customer-journey", label: "Customer Journey", icon: Route },
+    { id: "ai-insights", href: "/analytics/ai-insights", label: "AI Insights", icon: Sparkles },
+  ];
+
   const bottomStatic: NavItem[] = [
     { id: "standup", href: "/today", label: "Standup Hub", icon: Users },
     { id: "automations", href: "/automations", label: "Automations", icon: Bot },
   ];
 
-  return [...topStatic, ...analyticsGroups, ...bottomStatic];
+  return [...topStatic, ...analyticsGroups, ...newPages, ...bottomStatic];
 }

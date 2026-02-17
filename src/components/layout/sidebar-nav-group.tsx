@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 import { ChevronRight, ChevronDown } from "lucide-react";
 import { clsx } from "clsx";
 import type { NavItem } from "./sidebar-nav-config";
+import { ConnectionDot } from "@/components/analytics/connection-dot";
+import { useConnectionStatus } from "@/hooks/use-connection-status";
 
 const STORAGE_KEY = "sidebar:expanded";
 
@@ -29,6 +31,7 @@ function writeExpanded(ids: Set<string>): void {
 
 export function SidebarNavGroup({ item }: { item: NavItem }) {
   const pathname = usePathname() ?? "";
+  const getStatus = useConnectionStatus((s) => s.getStatus);
 
   const isChildActive = item.children?.some((child) => {
     return pathname === child.href || pathname.startsWith(`${child.href}/`);
@@ -89,11 +92,12 @@ export function SidebarNavGroup({ item }: { item: NavItem }) {
                 href={child.href}
                 aria-current={childActive ? "page" : undefined}
                 className={clsx(
-                  "flex items-center rounded-md py-1.5 pl-10 pr-3 text-[13px]",
+                  "flex items-center justify-between rounded-md py-1.5 pl-10 pr-3 text-[13px]",
                   childActive ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {child.label}
+                <span>{child.label}</span>
+                <ConnectionDot status={getStatus(child.dataDomain)} size="sm" />
               </Link>
             );
           })}
