@@ -51,6 +51,72 @@ function buildCombinedTrend(data: AnalyticsDashboardData | null): Array<{ date: 
     .map(([date, total]) => ({ date, total }));
 }
 
+interface CSAction {
+  title: string;
+  detail: string;
+  impact: string;
+  severity: "critical" | "warning" | "info";
+}
+
+function deriveCSActions(input: {
+  pylon: AnalyticsDashboardData["pylon"];
+  product: AnalyticsDashboardData["product"];
+  coda: AnalyticsDashboardData["coda"];
+}): CSAction[] {
+  const actions: CSAction[] = [];
+
+  const urgent = input.pylon?.urgentConversations ?? 0;
+  if (urgent > 15) {
+    actions.push({
+      title: "Rebalance urgent queue ownership",
+      detail: `${urgent} urgent conversations exceed the 15-threshold. Assign a daily triage owner and enforce 2-hour response SLA.`,
+      impact: "Expected: lower urgent backlog within 1 week.",
+      severity: urgent > 25 ? "critical" : "warning",
+    });
+  }
+
+  const backlogGrowth = input.product?.backlogGrowth ?? 0;
+  if (backlogGrowth > 5) {
+    actions.push({
+      title: "Throttle backlog inflow",
+      detail: `Backlog grew by ${backlogGrowth} net items. Route non-critical requests into weekly batches and prioritize customer-blocking items.`,
+      impact: "Expected: improved throughput and queue stability.",
+      severity: backlogGrowth > 15 ? "critical" : "warning",
+    });
+  }
+
+  const throughputRate = input.product?.throughputRate ?? 100;
+  if (throughputRate < 70) {
+    actions.push({
+      title: "Automate follow-up execution",
+      detail: `Throughput at ${throughputRate.toFixed(1)}% — below 70% target. Use Slack/Coda workflows to auto-create and assign post-resolution follow-up tasks.`,
+      impact: "Expected: faster closure and improved customer confidence.",
+      severity: throughputRate < 50 ? "critical" : "warning",
+    });
+  }
+
+  const overdueOpen = input.product?.overdueOpenTasks ?? 0;
+  if (overdueOpen > 5) {
+    actions.push({
+      title: "Review overdue task assignments",
+      detail: `${overdueOpen} tasks are overdue. Reassign or rescope blockers to restore delivery cadence.`,
+      impact: "Expected: reduced retention risk from stalled execution.",
+      severity: overdueOpen > 15 ? "critical" : "warning",
+    });
+  }
+
+  if (actions.length === 0) {
+    actions.push({
+      title: "System operating within thresholds",
+      detail: "All customer-success indicators are within acceptable ranges. No immediate intervention required.",
+      impact: "Use this window to invest in proactive retention workflows.",
+      severity: "info",
+    });
+  }
+
+  return actions;
+}
+
 export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | null }) {
   const pylon = data?.pylon;
   const coda = data?.coda;
@@ -126,23 +192,7 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
     },
   ];
 
-  const actions = [
-    {
-      title: "Rebalance urgent queue ownership",
-      detail: "Assign a daily triage owner and enforce 2-hour response SLA on urgent tickets.",
-      impact: "Expected: lower urgent backlog within 1 week.",
-    },
-    {
-      title: "Throttle backlog inflow",
-      detail: "Route non-critical requests into weekly batches and prioritize customer-blocking items.",
-      impact: "Expected: improved throughput and queue stability.",
-    },
-    {
-      title: "Automate follow-up execution",
-      detail: "Use Slack/Coda workflows to auto-create and assign post-resolution follow-up tasks.",
-      impact: "Expected: faster closure and improved customer confidence.",
-    },
-  ];
+  const actions = deriveCSActions({ pylon: pylon ?? null, product: product ?? null, coda: coda ?? null });
 
   return (
     <div className="space-y-4">
@@ -230,13 +280,27 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
         <div className="rounded-xl border border-border bg-card p-4">
           <h3 className="text-sm font-semibold text-foreground">Recommended Actions</h3>
           <div className="mt-3 space-y-2">
-            {actions.map((action) => (
-              <div key={action.title} className="rounded-md border border-border/60 bg-background px-3 py-2">
-                <p className="text-xs font-medium text-foreground">{action.title}</p>
-                <p className="text-[11px] text-muted-foreground">{action.detail}</p>
-                <p className="mt-0.5 text-[11px] text-foreground">{action.impact}</p>
-              </div>
-            ))}
+            {actions.map((action) => {
+              const borderColor =
+                action.severity === "critical"
+                  ? "border-red-500/30 bg-red-500/5"
+                  : action.severity === "warning"
+                    ? "border-yellow-500/30 bg-yellow-500/5"
+                    : "border-border/60 bg-background";
+              const titleColor =
+                action.severity === "critical"
+                  ? "text-red-500"
+                  : action.severity === "warning"
+                    ? "text-yellow-500"
+                    : "text-foreground";
+              return (
+                <div key={action.title} className={`rounded-md border ${borderColor} px-3 py-2`}>
+                  <p className={`text-xs font-medium ${titleColor}`}>{action.title}</p>
+                  <p className="text-[11px] text-muted-foreground">{action.detail}</p>
+                  <p className="mt-0.5 text-[11px] text-foreground">{action.impact}</p>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

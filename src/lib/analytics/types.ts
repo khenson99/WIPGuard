@@ -521,6 +521,7 @@ export interface AiInsightEvidence {
   metric: string;
   value: string;
   delta: string;
+  trendValues?: number[];
 }
 
 export interface AiInsightAction {
@@ -538,6 +539,8 @@ export interface AiInsight {
   confidence: number;
   expectedImpact: string;
   stale: boolean;
+  crossDomain?: boolean;
+  subsectionId?: string;
   evidence: AiInsightEvidence[];
   actions: AiInsightAction[];
 }
