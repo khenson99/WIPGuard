@@ -44,7 +44,7 @@ describe("AnalyticsSectionPage", () => {
     render(<AnalyticsSectionPage sectionId="ads-google-ads" />);
 
     await waitFor(() => {
-      expect(screen.getByText("Google Ads Snapshot failed to load.")).toBeTruthy();
+      expect(screen.getByText("Google Ads data is unavailable")).toBeTruthy();
     });
 
     expect(screen.getByText("Google Ads API quota exceeded")).toBeTruthy();
