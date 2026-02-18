@@ -66,27 +66,27 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
       status: deriveIntegrationStatus({
         connected: data?.freshness.google_workspace?.status === "CONNECTED",
         stale: Boolean(data?.freshness.google_workspace?.stale),
-        coverageStatus: googleWorkspace?.coverageStatus ?? null,
+        coverageStatus: googleWorkspace ? (googleWorkspace.enabledRules > 0 ? "active" : "not_provisioned") : null,
       }),
-      details: `${googleWorkspace?.configuredRules.length ?? 0}/${googleWorkspace?.expectedRules.length ?? 0} rules`,
+      details: `${googleWorkspace?.enabledRules ?? 0}/${googleWorkspace?.totalRules ?? 0} rules`,
     },
     {
       label: "Slack",
       status: deriveIntegrationStatus({
         connected: data?.freshness.slack?.status === "CONNECTED",
         stale: Boolean(data?.freshness.slack?.stale),
-        coverageStatus: slackOps?.coverageStatus ?? null,
+        coverageStatus: slackOps ? (slackOps.enabledRules > 0 ? "active" : "not_provisioned") : null,
       }),
-      details: `${slackOps?.configuredRules.length ?? 0}/${slackOps?.expectedRules.length ?? 0} rules`,
+      details: `${slackOps?.enabledRules ?? 0}/${slackOps?.totalRules ?? 0} rules`,
     },
     {
       label: "Coda",
       status: deriveIntegrationStatus({
         connected: data?.freshness.coda?.status === "CONNECTED",
         stale: Boolean(data?.freshness.coda?.stale),
-        coverageStatus: codaOps?.coverageStatus ?? null,
+        coverageStatus: codaOps ? (codaOps.enabledRules > 0 ? "active" : "not_provisioned") : null,
       }),
-      details: `${codaOps?.configuredRules.length ?? 0}/${codaOps?.expectedRules.length ?? 0} rules`,
+      details: `${codaOps?.enabledRules ?? 0}/${codaOps?.totalRules ?? 0} rules`,
     },
   ];
 

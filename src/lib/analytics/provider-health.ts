@@ -34,6 +34,8 @@ export function snapshotKeysForIntegrationProvider(provider: IntegrationProvider
       return ["stripe"];
     case IntegrationProvider.MERCURY:
       return ["mercury"];
+    default:
+      throw new Error(`Unhandled provider: ${String(provider)}`);
   }
 }
 

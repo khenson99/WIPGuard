@@ -18,6 +18,8 @@ function toProviderKey(provider: IntegrationProvider): IntegrationProviderKey {
       return "stripe";
     case IntegrationProvider.MERCURY:
       return "mercury";
+    default:
+      throw new Error(`Unhandled provider: ${String(provider)}`);
   }
 }
 

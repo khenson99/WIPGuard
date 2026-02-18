@@ -129,7 +129,6 @@ export function AnalyticsSummaryPage() {
     getLastUpdatedAt: (payload) => {
       return (
         payload.summary.meta?.servedAt ??
-        payload.overview.meta?.servedAt ??
         payload.overview.lastFullRefresh ??
         payload.summary.generatedAt
       );
@@ -160,7 +159,7 @@ export function AnalyticsSummaryPage() {
     );
   }
 
-  const staleDomains = unique([...(overview?.staleDomains ?? []), ...(overview?.meta?.staleDomains ?? [])]);
+  const staleDomains = unique(overview?.staleDomains ?? []);
 
   return (
     <div className="h-full space-y-4 overflow-y-auto p-4">
