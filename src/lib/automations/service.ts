@@ -64,6 +64,8 @@ export function integrationProviderFromString(
       return IntegrationProvider.STRIPE;
     case "MERCURY":
       return IntegrationProvider.MERCURY;
+    case "WEBFLOW":
+      return IntegrationProvider.WEBFLOW;
     default:
       return null;
   }

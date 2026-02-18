@@ -165,9 +165,10 @@ export function MiniStat({
 
 export interface DataTableColumn<T> {
   key: string;
-  header: string;
+  header?: string;
+  label?: string;
   align?: "left" | "right" | "center";
-  render: (row: T) => React.ReactNode;
+  render?: (row: T) => React.ReactNode;
 }
 
 export function DataTable<T>({
@@ -195,7 +196,7 @@ export function DataTable<T>({
                   col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : "text-left"
                 }`}
               >
-                {col.header}
+                {col.header ?? col.label ?? col.key}
               </th>
             ))}
           </tr>
@@ -210,7 +211,7 @@ export function DataTable<T>({
                     col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : ""
                   }`}
                 >
-                  {col.render(row)}
+                  {col.render ? col.render(row) : String((row as Record<string, unknown>)[col.key] ?? "—")}
                 </td>
               ))}
             </tr>

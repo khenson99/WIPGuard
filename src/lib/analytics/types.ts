@@ -11,12 +11,27 @@ export type AnalyticsSnapshotStatus = "SUCCESS" | "ERROR";
 
 export type IntegrationProviderKey =
   | "google_workspace"
+  | "googleWorkspace"
   | "hubspot"
   | "slack"
+  | "webflow"
   | "coda"
+  | "codaKanban"
+  | "codaOps"
   | "reddit"
+  | "redditAds"
+  | "redditOps"
   | "stripe"
-  | "mercury";
+  | "mercury"
+  | "ga"
+  | "googleAnalytics"
+  | "googleAds"
+  | "metaAds"
+  | "metaPage"
+  | "semrush"
+  | "pylon"
+  | "product"
+  | "hubspotOps";
 
 export interface ProviderFreshness {
   provider: IntegrationProviderKey;
@@ -533,6 +548,7 @@ export interface AiInsightAction {
 export interface AiInsight {
   id: string;
   section: AnalyticsSectionId;
+  subsectionId?: string;
   severity: "info" | "warning" | "critical";
   title: string;
   why: string;
@@ -540,7 +556,6 @@ export interface AiInsight {
   expectedImpact: string;
   stale: boolean;
   crossDomain?: boolean;
-  subsectionId?: string;
   evidence: AiInsightEvidence[];
   actions: AiInsightAction[];
 }
@@ -560,12 +575,14 @@ export interface AnalyticsDashboardData {
   stripe: StripeData | null;
   mercury: MercuryData | null;
   googleAnalytics: GAData | null;
+  ga?: GAData | null;
   googleAds: GoogleAdsData | null;
   metaAds: MetaAdsData | null;
   metaPage: MetaPageData | null;
   redditAds: RedditAdsData | null;
   webflow: WebflowData | null;
   coda: CodaKanbanData | null;
+  codaKanban?: CodaKanbanData | null;
   semrush: SemrushData | null;
   pylon: PylonData | null;
   product: ProductSuccessData | null;

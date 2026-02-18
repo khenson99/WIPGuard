@@ -470,7 +470,7 @@ describe("finance insights", () => {
 // ── Sales & Pipeline insights ───────────────────────────
 
 describe("sales insights", () => {
-  function hubspotWithFunnel(overrides: Partial<AnalyticsDashboardData["hubspot"] extends infer T ? T extends null ? never : T : never>["funnel"]) {
+  function hubspotWithFunnel(overrides: Partial<NonNullable<AnalyticsDashboardData["hubspot"]>["funnel"]>) {
     return {
       funnel: {
         totalDeals: 50, closedWon: 10, closedLost: 5,

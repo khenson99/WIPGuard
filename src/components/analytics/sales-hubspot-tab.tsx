@@ -2,7 +2,7 @@
 
 import {
   Target, Users, DollarSign, BarChart3,
-  Calendar, ArrowRight,
+  Calendar, ArrowRight, AlertTriangle,
 } from "lucide-react";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";

@@ -44,8 +44,12 @@ export function AdsWebflowTab({ data }: AdsWebflowTabProps) {
 
   // ── Derived metrics ──
   const totalFormSubmissions = formSubmissions.reduce((sum, f) => sum + f.count, 0);
-  const daysSincePublish = lastPublished
-    ? Math.floor((Date.now() - new Date(lastPublished).getTime()) / (1000 * 60 * 60 * 24))
+  const referenceTimestamp = data?.meta?.servedAt
+    ? new Date(data.meta.servedAt).getTime()
+    : null;
+  const lastPublishedTimestamp = lastPublished ? new Date(lastPublished).getTime() : null;
+  const daysSincePublish = referenceTimestamp !== null && lastPublishedTimestamp !== null
+    ? Math.floor((referenceTimestamp - lastPublishedTimestamp) / (1000 * 60 * 60 * 24))
     : null;
 
   // ── Alerts ──
