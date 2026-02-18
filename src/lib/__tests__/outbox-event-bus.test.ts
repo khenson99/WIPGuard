@@ -5,8 +5,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // ---------------------------------------------------------------------------
 import type {
   OutboxEvent,
-  DomainEventType,
-  HandlerRegistry,
 } from "@/lib/events/outbox-types";
 import { DOMAIN_EVENT_TYPES } from "@/lib/events/outbox-types";
 
@@ -233,11 +231,9 @@ describe("outbox-writer", () => {
   describe("writeOutboxEventBatch", () => {
     it("writes multiple events and counts duplicates", async () => {
       const existingEvent = makeOutboxEvent({ id: "dup_1", idempotencyKey: "key_dup" });
-      let findCallCount = 0;
 
       const db = makeWriteClient({
         findUnique: vi.fn().mockImplementation(async (args: { where: { idempotencyKey: string } }) => {
-          findCallCount++;
           return args.where.idempotencyKey === "key_dup" ? existingEvent : null;
         }),
         upsert: vi.fn().mockImplementation(async (args: { create: Partial<OutboxEvent> }) =>

@@ -207,6 +207,10 @@ export async function GET(): Promise<NextResponse> {
     scoredAtRisk.sort((a, b) => b.urgencyScore - a.urgencyScore);
 
     return NextResponse.json({
+      meta: {
+        servedAt: new Date().toISOString(),
+        isPartial: false,
+      },
       staleTasks,
       upcomingDeadlines,
       overdueTasks,

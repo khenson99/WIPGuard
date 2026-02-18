@@ -5,7 +5,6 @@ import type {
   AiInsight,
   AnalyticsSectionId,
   LifecycleFunnelData,
-  LifecycleStage,
   LifecycleStageId,
 } from "@/lib/analytics/types";
 

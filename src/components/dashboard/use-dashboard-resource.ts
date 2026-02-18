@@ -124,7 +124,7 @@ export function useDashboardResource<T>(input: UseDashboardResourceInput<T>): Da
           setStale(false);
         }
       } finally {
-        if (!mountedRef.current) return;
+        if (opts.signal?.aborted || !mountedRef.current) return;
         setLoading(false);
         if (opts.refresh) {
           setRefreshing(false);

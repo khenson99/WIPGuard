@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "db:generate": "prisma generate --schema prisma/schema.prisma",
+    "ops:ads-preflight": "./scripts/ads-analytics-preflight.sh",
     "prebuild": "npm run db:generate",
     "build": "next build",
     "start": "next start",

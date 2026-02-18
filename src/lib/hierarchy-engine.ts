@@ -63,7 +63,6 @@ export function wouldCreateCycle(
   }
 
   // Temporarily apply the proposed change
-  const originalParentId = nodeMap.get(targetId)?.parentId ?? null;
   const modifiedMap = new Map(nodeMap);
   modifiedMap.set(targetId, { id: targetId, parentId: proposedParentId });
 

@@ -143,7 +143,6 @@ export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData
   // ── Fetch recent contacts count using list endpoint ──
   let recentContacts = 0;
   try {
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const contactsUrl = `${baseUrl}/crm/v3/objects/contacts?limit=1&properties=createdate`;
     const contactsRes = await fetch(contactsUrl, { headers });
     if (contactsRes.ok) {

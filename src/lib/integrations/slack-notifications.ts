@@ -13,7 +13,6 @@
 import {
   IntegrationConnectionStatus,
   IntegrationProvider,
-  Prisma,
 } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";

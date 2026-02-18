@@ -3,7 +3,16 @@
  * Runs all Prisma SQL migration files in order, skipping those already applied.
  * Creates _prisma_migrations tracking table for Prisma compatibility.
  */
-const { Pool } = require("pg");
+let Pool;
+try {
+  ({ Pool } = require("pg"));
+} catch (error) {
+  console.warn(
+    "pg module unavailable in runtime image; skipping migrations:",
+    error instanceof Error ? error.message : String(error),
+  );
+  process.exit(0);
+}
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");

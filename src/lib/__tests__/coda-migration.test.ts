@@ -600,8 +600,6 @@ describe("reconciliation", () => {
 // ---------------------------------------------------------------------------
 
 describe("dedup-detection", () => {
-  const config = defaultMigrationConfig({ sourceLabel: "test" });
-
   function makeNormalized(
     id: string,
     overrides: {
