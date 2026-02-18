@@ -145,7 +145,8 @@ async function refreshForUserAndRange(input: {
           creds.googleAdsCustomerId!,
           creds.googleAdsRefreshToken!,
           creds.googleAdsClientId!,
-          creds.googleAdsClientSecret!
+          creds.googleAdsClientSecret!,
+          creds.googleAdsLoginCustomerId
         ),
     });
   }
@@ -163,7 +164,8 @@ async function refreshForUserAndRange(input: {
           creds.redditClientId!,
           creds.redditClientSecret!,
           creds.redditRefreshToken!,
-          creds.redditAdAccountId!
+          creds.redditAdAccountId!,
+          creds.redditUserAgent
         ),
     });
   }
@@ -173,8 +175,11 @@ async function refreshForUserAndRange(input: {
   if (creds.codaApiToken && creds.codaDocId) {
     jobs.push({ providerKey: "coda", run: () => fetchCodaData(creds.codaApiToken!, creds.codaDocId!) });
   }
-  if (creds.semrushApiToken) {
-    jobs.push({ providerKey: "semrush", run: () => fetchSemrushData(creds.semrushApiToken!) });
+  if (creds.semrushApiToken && creds.semrushDomain) {
+    jobs.push({
+      providerKey: "semrush",
+      run: () => fetchSemrushData(creds.semrushApiToken!, creds.semrushDomain!),
+    });
   }
   if (creds.pylonApiKey) {
     jobs.push({ providerKey: "pylon", run: () => fetchPylonData({ apiKey: creds.pylonApiKey!, from: range.from, to: range.to }) });

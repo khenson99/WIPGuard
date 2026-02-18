@@ -30,13 +30,6 @@ export interface SnapshotResult<T = unknown> {
   error: string | null;
 }
 
-function asRecord(input: unknown): Record<string, unknown> {
-  if (!input || typeof input !== "object" || Array.isArray(input)) {
-    return {};
-  }
-  return input as Record<string, unknown>;
-}
-
 function contextKeyOrDefault(value?: string): string {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : "default";

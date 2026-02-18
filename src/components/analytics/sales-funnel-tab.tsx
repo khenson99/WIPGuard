@@ -2,7 +2,7 @@
 
 import {
   Target, AlertTriangle, TrendingDown, CheckCircle,
-  XCircle, Clock, ArrowRight, Zap,
+  Clock, ArrowRight, Zap,
 } from "lucide-react";
 import type { AnalyticsDashboardData, DealStage } from "@/lib/analytics/types";
 import { StatCard } from "./stat-card";

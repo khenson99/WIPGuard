@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AiInsight, AiInsightsBundle, AnalyticsSectionId } from "@/lib/analytics/types";
 
 type InsightFilter = "all" | AnalyticsSectionId;
@@ -32,6 +32,10 @@ function severityClass(severity: AiInsight["severity"]): string {
 
 export function AiInsightsPanel({ bundle, defaultFilter = "all" }: AiInsightsPanelProps) {
   const [filter, setFilter] = useState<InsightFilter>(defaultFilter);
+
+  useEffect(() => {
+    setFilter(defaultFilter);
+  }, [defaultFilter]);
 
   const visible = useMemo(() => {
     if (!bundle) return [];

@@ -10,7 +10,7 @@
  * @module observability/breach-detector
  */
 
-import type { ObservabilitySlo, ObservabilitySloReport, SloSeverity } from "./slo";
+import type { ObservabilitySloReport, SloSeverity } from "./slo";
 
 // ---------------------------------------------------------------------------
 // Types

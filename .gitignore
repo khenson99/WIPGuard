@@ -49,9 +49,11 @@ next-env.d.ts
 .ralph-team/logs/
 agents/
 scripts/
+!scripts/
+!scripts/ads-analytics-preflight.sh
 firebase-debug.log
 
 # Local AI agent worktrees
 .worktrees/
 .claude/worktrees/
-app/
+/app/

@@ -11,11 +11,7 @@ import {
   buildOutboundSyncDedupeKey,
   aggregateWebhookResults,
   getDefaultMappingConfig,
-  type HubSpotWebhookEvent,
-  type ParsedDealStageChange,
-  type ReconciliationInput,
   type ReconciliationAction,
-  type DriftDetectionInput,
   type WebhookVerificationInput,
   type HubSpotBidirectionalSyncConfig,
   type SyncAuditEntry,
@@ -695,8 +691,9 @@ describe("validateMappingConfig", () => {
 
   it("flags missing task status mappings", () => {
     const config = makeConfig();
-    // Remove BACKLOG mapping
-    const { BACKLOG, ...rest } = config.taskStatusToDealStage;
+    const rest = Object.fromEntries(
+      Object.entries(config.taskStatusToDealStage).filter(([status]) => status !== "BACKLOG")
+    );
     const modified = {
       ...config,
       taskStatusToDealStage: rest as Record<TaskStatus, string>,

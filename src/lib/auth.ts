@@ -1,5 +1,6 @@
 import type { NextAuthOptions } from "next-auth";
 import { getServerSession } from "next-auth";
+import type { Adapter } from "next-auth/adapters";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
@@ -8,6 +9,60 @@ import { normalizeRole } from "@/lib/permissions";
 import { recordSecurityAuditEvent } from "@/lib/security-audit";
 
 const providers: NextAuthOptions["providers"] = [];
+const normalizeEmail = (email?: string | null) => email?.trim().toLowerCase() ?? null;
+
+function isPrismaUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybeCode = (error as { code?: unknown }).code;
+  return maybeCode === "P2002";
+}
+
+function createResilientAdapter(): Adapter {
+  const baseAdapter = PrismaAdapter(prisma as never) as Adapter;
+  const createUserImpl = baseAdapter.createUser as NonNullable<Adapter["createUser"]> | undefined;
+
+  if (!createUserImpl) {
+    throw new Error("Prisma adapter missing createUser method.");
+  }
+
+  return {
+    ...baseAdapter,
+    async getUserByEmail(email: string) {
+      const normalized = normalizeEmail(email);
+      if (!normalized) return null;
+
+      return prisma.user.findFirst({
+        where: {
+          email: {
+            equals: normalized,
+            mode: "insensitive",
+          },
+        },
+      });
+    },
+    async createUser(data: Parameters<NonNullable<Adapter["createUser"]>>[0]) {
+      const normalized = normalizeEmail(data.email);
+      const payload = normalized ? { ...data, email: normalized } : data;
+
+      try {
+        return await createUserImpl(payload as never);
+      } catch (error) {
+        if (!isPrismaUniqueViolation(error) || !normalized) throw error;
+
+        const existingUser = await prisma.user.findFirst({
+          where: {
+            email: {
+              equals: normalized,
+              mode: "insensitive",
+            },
+          },
+        });
+        if (existingUser) return existingUser;
+        throw error;
+      }
+    },
+  };
+}
 
 // Google OAuth — only add if credentials are configured
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
@@ -15,8 +70,6 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      // Allow first Google sign-in for pre-seeded/invited users that already exist by email.
-      allowDangerousEmailAccountLinking: true,
     }),
   );
 }
@@ -30,9 +83,15 @@ if (process.env.NODE_ENV !== "production") {
         email: { label: "Email", type: "email", placeholder: "user@example.com" },
       },
       async authorize(credentials) {
-        if (!credentials?.email) return null;
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
+        const normalized = normalizeEmail(credentials?.email);
+        if (!normalized) return null;
+        const user = await prisma.user.findFirst({
+          where: {
+            email: {
+              equals: normalized,
+              mode: "insensitive",
+            },
+          },
         });
         if (!user) return null;
         return { id: user.id, name: user.name, email: user.email, image: user.image };
@@ -43,7 +102,7 @@ if (process.env.NODE_ENV !== "production") {
 
 export const authOptions: NextAuthOptions = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  adapter: PrismaAdapter(prisma as any) as any,
+  adapter: createResilientAdapter() as any,
   providers,
   debug: process.env.NODE_ENV !== "production",
   logger: {

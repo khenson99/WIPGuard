@@ -12,12 +12,13 @@ type IntegrationStatus = "Not provisioned" | "Connected but stale" | "Active";
 function deriveIntegrationStatus(input: {
   connected: boolean;
   stale: boolean;
-  coverageStatus: "active" | "stale" | "not_provisioned" | null;
+  enabledRules: number;
+  totalRules: number;
 }): IntegrationStatus {
-  if (!input.connected || input.coverageStatus === "not_provisioned") {
+  if (!input.connected || input.totalRules === 0 || input.enabledRules === 0) {
     return "Not provisioned";
   }
-  if (input.stale || input.coverageStatus === "stale") {
+  if (input.stale) {
     return "Connected but stale";
   }
   return "Active";
@@ -66,27 +67,30 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
       status: deriveIntegrationStatus({
         connected: data?.freshness.google_workspace?.status === "CONNECTED",
         stale: Boolean(data?.freshness.google_workspace?.stale),
-        coverageStatus: googleWorkspace?.coverageStatus ?? null,
+        enabledRules: googleWorkspace?.enabledRules ?? 0,
+        totalRules: googleWorkspace?.totalRules ?? 0,
       }),
-      details: `${googleWorkspace?.configuredRules.length ?? 0}/${googleWorkspace?.expectedRules.length ?? 0} rules`,
+      details: `${googleWorkspace?.enabledRules ?? 0}/${googleWorkspace?.totalRules ?? 0} rules enabled`,
     },
     {
       label: "Slack",
       status: deriveIntegrationStatus({
         connected: data?.freshness.slack?.status === "CONNECTED",
         stale: Boolean(data?.freshness.slack?.stale),
-        coverageStatus: slackOps?.coverageStatus ?? null,
+        enabledRules: slackOps?.enabledRules ?? 0,
+        totalRules: slackOps?.totalRules ?? 0,
       }),
-      details: `${slackOps?.configuredRules.length ?? 0}/${slackOps?.expectedRules.length ?? 0} rules`,
+      details: `${slackOps?.enabledRules ?? 0}/${slackOps?.totalRules ?? 0} rules enabled`,
     },
     {
       label: "Coda",
       status: deriveIntegrationStatus({
         connected: data?.freshness.coda?.status === "CONNECTED",
         stale: Boolean(data?.freshness.coda?.stale),
-        coverageStatus: codaOps?.coverageStatus ?? null,
+        enabledRules: codaOps?.enabledRules ?? 0,
+        totalRules: codaOps?.totalRules ?? 0,
       }),
-      details: `${codaOps?.configuredRules.length ?? 0}/${codaOps?.expectedRules.length ?? 0} rules`,
+      details: `${codaOps?.enabledRules ?? 0}/${codaOps?.totalRules ?? 0} rules enabled`,
     },
   ];
 

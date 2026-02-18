@@ -7,12 +7,7 @@ import {
   AnalyticsTimestamp,
 } from "./types";
 
-type RedditCampaignReport = {
-  campaign_id: string;
-  spend: number;
-  impressions: number;
-  clicks: number;
-};
+type UnknownRecord = Record<string, unknown>;
 
 function makeMeta(source: "live" | "cached" = "live"): AnalyticsTimestamp {
   const now = new Date();
@@ -23,586 +18,640 @@ function makeMeta(source: "live" | "cached" = "live"): AnalyticsTimestamp {
   };
 }
 
+function asRecord(value: unknown): UnknownRecord | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as UnknownRecord;
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function readNumber(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return 0;
+}
+
+async function parseErrorBody(response: Response): Promise<string> {
+  const text = await response.text().catch(() => "");
+  return text ? text.slice(0, 500) : response.statusText || "Unknown error";
+}
+
+function normalizeMetaAdAccountId(adAccountId: string): string {
+  return adAccountId.trim().replace(/^act_/i, "");
+}
+
+function extractMetaConversions(actions: unknown): number {
+  let total = 0;
+  for (const actionRaw of asArray(actions)) {
+    const action = asRecord(actionRaw);
+    if (!action) continue;
+    const actionType = String(action.action_type ?? "").toLowerCase();
+    if (
+      actionType === "lead" ||
+      actionType.includes("lead") ||
+      actionType.startsWith("offsite_conversion")
+    ) {
+      total += readNumber(action.value);
+    }
+  }
+  return total;
+}
+
+function parseGoogleAdsBatches(raw: string): { batches: UnknownRecord[]; parsed: boolean } {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { batches: [], parsed: true };
+  }
+
+  const batches: UnknownRecord[] = [];
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) {
+      for (const item of parsed) {
+        const record = asRecord(item);
+        if (record) batches.push(record);
+      }
+      return { batches, parsed: true };
+    }
+    const record = asRecord(parsed);
+    if (record) {
+      batches.push(record);
+      return { batches, parsed: true };
+    }
+    return { batches, parsed: true };
+  } catch {
+    // Fall back to line-delimited parsing below.
+  }
+
+  let parsedLineCount = 0;
+  for (const line of trimmed.split("\n")) {
+    const lineTrimmed = line.trim();
+    if (!lineTrimmed) continue;
+    try {
+      const parsedLine = JSON.parse(lineTrimmed);
+      parsedLineCount += 1;
+      if (Array.isArray(parsedLine)) {
+        for (const item of parsedLine) {
+          const record = asRecord(item);
+          if (record) batches.push(record);
+        }
+        continue;
+      }
+      const record = asRecord(parsedLine);
+      if (record) {
+        batches.push(record);
+      }
+    } catch {
+      // Ignore non-JSON lines from chunked responses.
+    }
+  }
+
+  return { batches, parsed: parsedLineCount > 0 };
+}
+
+function extractRedditCampaignId(metric: UnknownRecord): string | null {
+  const candidate =
+    metric.campaign_id ??
+    metric.campaignId ??
+    metric.CAMPAIGN_ID ??
+    metric.campaign ??
+    null;
+  if (!candidate) return null;
+  const id = String(candidate).trim();
+  return id || null;
+}
+
+function extractRedditSpend(metric: UnknownRecord): number {
+  const direct =
+    metric.spend ??
+    metric.SPEND ??
+    metric.amount_spent ??
+    metric.total_spend ??
+    null;
+  if (direct !== null) {
+    return readNumber(direct);
+  }
+
+  const micros =
+    metric.spend_micros ??
+    metric.spendMicros ??
+    metric.amount_spent_micros ??
+    metric.total_spend_micros ??
+    null;
+  if (micros !== null) {
+    return readNumber(micros) / 1_000_000;
+  }
+
+  return 0;
+}
+
 /**
- * Fetch Google Ads data for the last 30 days
+ * Fetch Google Ads data for the last 30 days.
  */
 export async function fetchGoogleAdsData(
   devToken: string,
   customerId: string,
   refreshToken: string,
   clientId: string,
-  clientSecret: string
+  clientSecret: string,
+  loginCustomerId?: string | null
 ): Promise<GoogleAdsData> {
-  try {
-    // Step 1: Exchange refresh token for access token
-    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: refreshToken,
-        client_id: clientId,
-        client_secret: clientSecret,
-      }).toString(),
-    });
+  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      client_id: clientId,
+      client_secret: clientSecret,
+    }).toString(),
+  });
 
-    if (!tokenResponse.ok) {
-      throw new Error(`Failed to get access token: ${tokenResponse.statusText}`);
-    }
-
-    const tokenData = await tokenResponse.json() as { access_token: string };
-    const accessToken = tokenData.access_token;
-
-    // Step 2: Query Google Ads API using GAQL
-    const cleanCustomerId = customerId.replace(/-/g, "");
-    const gaqlQuery = `
-      SELECT campaign.name, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.cost_per_conversion 
-      FROM campaign 
-      WHERE segments.date DURING LAST_30_DAYS AND campaign.status = 'ENABLED'
-    `;
-
-    const adsResponse = await fetch(
-      `https://googleads.googleapis.com/v17/customers/${cleanCustomerId}:searchStream`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "developer-token": devToken,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          query: gaqlQuery,
-        }),
-      }
+  if (!tokenResponse.ok) {
+    throw new Error(
+      `Failed to get Google access token (${tokenResponse.status}): ${await parseErrorBody(tokenResponse)}`
     );
-
-    if (!adsResponse.ok) {
-      throw new Error(`Google Ads API error: ${adsResponse.statusText}`);
-    }
-
-    const responseText = await adsResponse.text();
-    const lines = responseText.trim().split("\n");
-
-    let totalSpend = 0;
-    let totalImpressions = 0;
-    let totalClicks = 0;
-    let totalConversions = 0;
-    let totalCostPerConversion = 0;
-    const campaigns: AdCampaign[] = [];
-    let campaignCount = 0;
-
-    // Parse streaming response
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const batch = JSON.parse(line) as {
-          results?: Array<{
-            campaign?: { name: string };
-            metrics?: {
-              cost_micros?: number;
-              impressions?: number;
-              clicks?: number;
-              conversions?: number;
-              cost_per_conversion?: number;
-            };
-          }>;
-        };
-
-        if (batch.results) {
-          for (const result of batch.results) {
-            const campaign = result.campaign;
-            const metrics = result.metrics;
-
-            if (campaign && metrics) {
-              const spend = (metrics.cost_micros || 0) / 1_000_000;
-              const impressions = metrics.impressions || 0;
-              const clicks = metrics.clicks || 0;
-              const conversions = metrics.conversions || 0;
-              const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
-              const cpc = clicks > 0 ? spend / clicks : 0;
-
-              totalSpend += spend;
-              totalImpressions += impressions;
-              totalClicks += clicks;
-              totalConversions += conversions;
-              if (metrics.cost_per_conversion) {
-                totalCostPerConversion += metrics.cost_per_conversion;
-                campaignCount++;
-              }
-
-              campaigns.push({
-                name: campaign.name,
-                spend,
-                impressions,
-                clicks,
-                conversions,
-                ctr,
-                cpc,
-              });
-            }
-          }
-        }
-      } catch (e) {
-        // Skip invalid lines in streaming response
-      }
-    }
-
-    const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-    const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
-    const cpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
-    // Estimate ROAS: assume $500 average deal size per conversion
-    const estimatedRevenue = totalConversions * 500;
-    const roas = totalSpend > 0 ? estimatedRevenue / totalSpend : 0;
-
-    return {
-      totalSpend30d: totalSpend,
-      totalImpressions,
-      totalClicks,
-      totalConversions,
-      ctr,
-      cpc,
-      cpa,
-      roas,
-      campaigns,
-      _meta: makeMeta("live"),
-    };
-  } catch (error) {
-    console.error("Error fetching Google Ads data:", error);
-    // Return empty data on error
-    return {
-      totalSpend30d: 0,
-      totalImpressions: 0,
-      totalClicks: 0,
-      totalConversions: 0,
-      ctr: 0,
-      cpc: 0,
-      cpa: 0,
-      roas: 0,
-      campaigns: [],
-      _meta: makeMeta("live"),
-    };
   }
+
+  const tokenData = (await tokenResponse.json()) as { access_token?: string };
+  const accessToken = tokenData.access_token?.trim();
+  if (!accessToken) {
+    throw new Error("Google token response did not include access_token.");
+  }
+
+  const cleanCustomerId = customerId.replace(/-/g, "").trim();
+  const cleanLoginCustomerId = loginCustomerId?.replace(/-/g, "").trim();
+  const gaqlQuery = `
+    SELECT campaign.name, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions
+    FROM campaign
+    WHERE segments.date DURING LAST_30_DAYS AND campaign.status = 'ENABLED'
+  `;
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`,
+    "developer-token": devToken,
+    "Content-Type": "application/json",
+  };
+  if (cleanLoginCustomerId) {
+    headers["login-customer-id"] = cleanLoginCustomerId;
+  }
+
+  const adsResponse = await fetch(
+    `https://googleads.googleapis.com/v17/customers/${cleanCustomerId}:searchStream`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ query: gaqlQuery }),
+    }
+  );
+
+  if (!adsResponse.ok) {
+    throw new Error(
+      `Google Ads API error (${adsResponse.status}): ${await parseErrorBody(adsResponse)}`
+    );
+  }
+
+  const responseText = await adsResponse.text();
+  const { batches, parsed } = parseGoogleAdsBatches(responseText);
+  if (!parsed) {
+    throw new Error(
+      `Google Ads response parse error: ${responseText.slice(0, 300) || "unparseable response body"}`
+    );
+  }
+
+  let totalSpend = 0;
+  let totalImpressions = 0;
+  let totalClicks = 0;
+  let totalConversions = 0;
+  const campaigns: AdCampaign[] = [];
+
+  for (const batch of batches) {
+    for (const resultRaw of asArray(batch.results)) {
+      const result = asRecord(resultRaw);
+      if (!result) continue;
+      const campaign = asRecord(result.campaign);
+      const metrics = asRecord(result.metrics);
+      if (!metrics) continue;
+
+      const spend = readNumber(metrics.cost_micros) / 1_000_000;
+      const impressions = readNumber(metrics.impressions);
+      const clicks = readNumber(metrics.clicks);
+      const conversions = readNumber(metrics.conversions);
+      const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+      const cpc = clicks > 0 ? spend / clicks : 0;
+
+      totalSpend += spend;
+      totalImpressions += impressions;
+      totalClicks += clicks;
+      totalConversions += conversions;
+
+      campaigns.push({
+        name: String(campaign?.name ?? "Unknown campaign"),
+        spend,
+        impressions,
+        clicks,
+        conversions,
+        ctr,
+        cpc,
+      });
+    }
+  }
+
+  const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+  const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+  const cpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
+  const estimatedRevenue = totalConversions * 500;
+  const roas = totalSpend > 0 ? estimatedRevenue / totalSpend : 0;
+
+  return {
+    totalSpend30d: totalSpend,
+    totalImpressions,
+    totalClicks,
+    totalConversions,
+    ctr,
+    cpc,
+    cpa,
+    roas,
+    campaigns,
+    _meta: makeMeta("live"),
+  };
 }
 
 /**
- * Fetch Meta Ads data for the last 30 days
+ * Fetch Meta Ads data for the last 30 days.
  */
 export async function fetchMetaAdsData(
   accessToken: string,
   adAccountId: string
 ): Promise<MetaAdsData> {
-  try {
-    // Step 1: Get account-level insights
-    const insightsResponse = await fetch(
-      `https://graph.facebook.com/v18.0/act_${adAccountId}/insights?fields=spend,impressions,clicks,actions&date_preset=last_30d&level=account&access_token=${accessToken}`
+  const accountId = normalizeMetaAdAccountId(adAccountId);
+  const encodedToken = encodeURIComponent(accessToken);
+
+  const insightsResponse = await fetch(
+    `https://graph.facebook.com/v18.0/act_${accountId}/insights?fields=spend,impressions,clicks,actions&date_preset=last_30d&level=account&access_token=${encodedToken}`
+  );
+  if (!insightsResponse.ok) {
+    throw new Error(
+      `Meta Ads insights error (${insightsResponse.status}): ${await parseErrorBody(insightsResponse)}`
     );
+  }
 
-    if (!insightsResponse.ok) {
-      throw new Error(`Meta Insights API error: ${insightsResponse.statusText}`);
-    }
+  const insightsData = (await insightsResponse.json()) as {
+    data?: Array<{
+      spend?: string | number;
+      impressions?: string | number;
+      clicks?: string | number;
+      actions?: Array<{ action_type?: string; value?: string | number }>;
+    }>;
+  };
 
-    const insightsData = await insightsResponse.json() as {
-      data?: Array<{
-        spend?: string;
-        impressions?: number;
-        clicks?: number;
-        actions?: Array<{ action_type: string; value: string }>;
-      }>;
-    };
+  let totalSpend = 0;
+  let totalImpressions = 0;
+  let totalClicks = 0;
+  let totalConversions = 0;
 
-    let totalSpend = 0;
-    let totalImpressions = 0;
-    let totalClicks = 0;
-    let totalConversions = 0;
+  const accountInsight = insightsData.data?.[0];
+  if (accountInsight) {
+    totalSpend = readNumber(accountInsight.spend);
+    totalImpressions = readNumber(accountInsight.impressions);
+    totalClicks = readNumber(accountInsight.clicks);
+    totalConversions = extractMetaConversions(accountInsight.actions);
+  }
 
-    if (insightsData.data && insightsData.data.length > 0) {
-      const insight = insightsData.data[0];
-      totalSpend = parseFloat(insight.spend || "0");
-      totalImpressions = insight.impressions || 0;
-      totalClicks = insight.clicks || 0;
-
-      // Extract conversions from actions
-      if (insight.actions) {
-        for (const action of insight.actions) {
-          if (
-            action.action_type === "offsite_conversion" ||
-            action.action_type === "lead"
-          ) {
-            totalConversions += parseFloat(action.value || "0");
-          }
-        }
-      }
-    }
-
-    // Step 2: Get campaign-level data
-    const campaignsResponse = await fetch(
-      `https://graph.facebook.com/v18.0/act_${adAccountId}/campaigns?fields=name,insights{spend,impressions,clicks,actions}&date_preset=last_30d&access_token=${accessToken}`
+  const campaignsResponse = await fetch(
+    `https://graph.facebook.com/v18.0/act_${accountId}/campaigns?fields=name,insights{spend,impressions,clicks,actions}&date_preset=last_30d&access_token=${encodedToken}`
+  );
+  if (!campaignsResponse.ok) {
+    throw new Error(
+      `Meta Ads campaigns error (${campaignsResponse.status}): ${await parseErrorBody(campaignsResponse)}`
     );
+  }
 
-    if (!campaignsResponse.ok) {
-      throw new Error(`Meta Campaigns API error: ${campaignsResponse.statusText}`);
-    }
+  const campaignsData = (await campaignsResponse.json()) as {
+    data?: Array<{
+      name?: string;
+      insights?: {
+        data?: Array<{
+          spend?: string | number;
+          impressions?: string | number;
+          clicks?: string | number;
+          actions?: Array<{ action_type?: string; value?: string | number }>;
+        }>;
+      };
+    }>;
+  };
 
-    const campaignsData = await campaignsResponse.json() as {
-      data?: Array<{
-        name?: string;
-        insights?: {
-          data?: Array<{
-            spend?: string;
-            impressions?: number;
-            clicks?: number;
-            actions?: Array<{ action_type: string; value: string }>;
-          }>;
-        };
-      }>;
-    };
+  const campaigns: AdCampaign[] = [];
+  for (const campaign of campaignsData.data ?? []) {
+    const insight = campaign.insights?.data?.[0];
+    if (!insight) continue;
 
-    const campaigns: AdCampaign[] = [];
+    const spend = readNumber(insight.spend);
+    const impressions = readNumber(insight.impressions);
+    const clicks = readNumber(insight.clicks);
+    const conversions = extractMetaConversions(insight.actions);
+    const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+    const cpc = clicks > 0 ? spend / clicks : 0;
 
-    if (campaignsData.data) {
-      for (const campaign of campaignsData.data) {
-        if (campaign.insights && campaign.insights.data) {
-          const insight = campaign.insights.data[0];
-          const spend = parseFloat(insight.spend || "0");
-          const impressions = insight.impressions || 0;
-          const clicks = insight.clicks || 0;
-
-          let conversions = 0;
-          if (insight.actions) {
-            for (const action of insight.actions) {
-              if (
-                action.action_type === "offsite_conversion" ||
-                action.action_type === "lead"
-              ) {
-                conversions += parseFloat(action.value || "0");
-              }
-            }
-          }
-
-          const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
-          const cpc = clicks > 0 ? spend / clicks : 0;
-
-          campaigns.push({
-            name: campaign.name || "Unknown",
-            spend,
-            impressions,
-            clicks,
-            conversions,
-            ctr,
-            cpc,
-          });
-        }
-      }
-    }
-
-    const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-    const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
-    const cpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
-
-    return {
-      totalSpend30d: totalSpend,
-      totalImpressions,
-      totalClicks,
-      totalConversions,
+    campaigns.push({
+      name: campaign.name || "Unknown campaign",
+      spend,
+      impressions,
+      clicks,
+      conversions,
       ctr,
       cpc,
-      cpa,
-      campaigns,
-      _meta: makeMeta("live"),
-    };
-  } catch (error) {
-    console.error("Error fetching Meta Ads data:", error);
-    // Return empty data on error
-    return {
-      totalSpend30d: 0,
-      totalImpressions: 0,
-      totalClicks: 0,
-      totalConversions: 0,
-      ctr: 0,
-      cpc: 0,
-      cpa: 0,
-      campaigns: [],
-      _meta: makeMeta("live"),
-    };
+    });
   }
+
+  const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+  const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+  const cpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
+
+  return {
+    totalSpend30d: totalSpend,
+    totalImpressions,
+    totalClicks,
+    totalConversions,
+    ctr,
+    cpc,
+    cpa,
+    campaigns,
+    _meta: makeMeta("live"),
+  };
 }
 
 /**
- * Fetch Meta Page Insights data
+ * Fetch Meta Page Insights data.
  */
 export async function fetchMetaPageData(
   accessToken: string,
   pageId: string
 ): Promise<MetaPageData> {
-  try {
-    // Step 1: Get page likes and followers
-    const pageResponse = await fetch(
-      `https://graph.facebook.com/v18.0/${pageId}?fields=fan_count,followers_count&access_token=${accessToken}`
+  const encodedToken = encodeURIComponent(accessToken);
+  const normalizedPageId = pageId.trim();
+
+  const pageResponse = await fetch(
+    `https://graph.facebook.com/v18.0/${normalizedPageId}?fields=fan_count,followers_count&access_token=${encodedToken}`
+  );
+  if (!pageResponse.ok) {
+    throw new Error(
+      `Meta Page profile error (${pageResponse.status}): ${await parseErrorBody(pageResponse)}`
     );
-
-    if (!pageResponse.ok) {
-      throw new Error(`Meta Page API error: ${pageResponse.statusText}`);
-    }
-
-    const pageData = await pageResponse.json() as {
-      fan_count?: number;
-      followers_count?: number;
-    };
-
-    const pageLikes = pageData.fan_count || 0;
-    const pageFollowers = pageData.followers_count || 0;
-
-    // Step 2: Get reach and engagement metrics
-    const insightsResponse = await fetch(
-      `https://graph.facebook.com/v18.0/${pageId}/insights?metric=page_impressions,page_engaged_users&period=days_28&access_token=${accessToken}`
-    );
-
-    if (!insightsResponse.ok) {
-      throw new Error(`Meta Insights API error: ${insightsResponse.statusText}`);
-    }
-
-    const insightsData = await insightsResponse.json() as {
-      data?: Array<{
-        name: string;
-        values?: Array<{ value: number }>;
-      }>;
-    };
-
-    let postReach30d = 0;
-    let postEngagement30d = 0;
-
-    if (insightsData.data) {
-      for (const metric of insightsData.data) {
-        if (metric.name === "page_impressions" && metric.values) {
-          postReach30d = metric.values.reduce((sum, v) => sum + v.value, 0);
-        }
-        if (metric.name === "page_engaged_users" && metric.values) {
-          postEngagement30d = metric.values.reduce((sum, v) => sum + v.value, 0);
-        }
-      }
-    }
-
-    // Step 3: Get top posts
-    const postsResponse = await fetch(
-      `https://graph.facebook.com/v18.0/${pageId}/posts?fields=message,insights{metric(post_impressions,post_engaged_users)},created_time&limit=5&access_token=${accessToken}`
-    );
-
-    if (!postsResponse.ok) {
-      throw new Error(`Meta Posts API error: ${postsResponse.statusText}`);
-    }
-
-    const postsData = await postsResponse.json() as {
-      data?: Array<{
-        message?: string;
-        created_time?: string;
-        insights?: {
-          data?: Array<{
-            name: string;
-            values?: Array<{ value: number }>;
-          }>;
-        };
-      }>;
-    };
-
-    const topPosts: { message: string; reach: number; engagement: number; createdAt: string }[] = [];
-
-    if (postsData.data) {
-      for (const post of postsData.data) {
-        let reach = 0;
-        let engagement = 0;
-
-        if (post.insights && post.insights.data) {
-          for (const metric of post.insights.data) {
-            if (
-              metric.name === "post_impressions" &&
-              metric.values &&
-              metric.values.length > 0
-            ) {
-              reach = metric.values[0].value;
-            }
-            if (
-              metric.name === "post_engaged_users" &&
-              metric.values &&
-              metric.values.length > 0
-            ) {
-              engagement = metric.values[0].value;
-            }
-          }
-        }
-
-        topPosts.push({
-          message: post.message || "",
-          reach,
-          engagement,
-          createdAt: post.created_time || new Date().toISOString(),
-        });
-      }
-    }
-
-    return {
-      pageLikes,
-      pageFollowers,
-      postReach30d,
-      postEngagement30d,
-      topPosts,
-      _meta: makeMeta("live"),
-    };
-  } catch (error) {
-    console.error("Error fetching Meta Page data:", error);
-    // Return empty data on error
-    return {
-      pageLikes: 0,
-      pageFollowers: 0,
-      postReach30d: 0,
-      postEngagement30d: 0,
-      topPosts: [],
-      _meta: makeMeta("live"),
-    };
   }
+  const pageData = (await pageResponse.json()) as {
+    fan_count?: string | number;
+    followers_count?: string | number;
+  };
+
+  const pageLikes = readNumber(pageData.fan_count);
+  const pageFollowers = readNumber(pageData.followers_count);
+
+  const insightsResponse = await fetch(
+    `https://graph.facebook.com/v18.0/${normalizedPageId}/insights?metric=page_impressions,page_engaged_users&period=days_28&access_token=${encodedToken}`
+  );
+  if (!insightsResponse.ok) {
+    throw new Error(
+      `Meta Page insights error (${insightsResponse.status}): ${await parseErrorBody(insightsResponse)}`
+    );
+  }
+  const insightsData = (await insightsResponse.json()) as {
+    data?: Array<{
+      name: string;
+      values?: Array<{ value: string | number }>;
+    }>;
+  };
+
+  let postReach30d = 0;
+  let postEngagement30d = 0;
+  for (const metric of insightsData.data ?? []) {
+    const value = (metric.values ?? []).reduce((sum, item) => sum + readNumber(item.value), 0);
+    if (metric.name === "page_impressions") {
+      postReach30d = value;
+    }
+    if (metric.name === "page_engaged_users") {
+      postEngagement30d = value;
+    }
+  }
+
+  const postsResponse = await fetch(
+    `https://graph.facebook.com/v18.0/${normalizedPageId}/posts?fields=message,insights{metric(post_impressions,post_engaged_users)},created_time&limit=5&access_token=${encodedToken}`
+  );
+  if (!postsResponse.ok) {
+    throw new Error(
+      `Meta Page posts error (${postsResponse.status}): ${await parseErrorBody(postsResponse)}`
+    );
+  }
+
+  const postsData = (await postsResponse.json()) as {
+    data?: Array<{
+      message?: string;
+      created_time?: string;
+      insights?: {
+        data?: Array<{
+          name: string;
+          values?: Array<{ value: string | number }>;
+        }>;
+      };
+    }>;
+  };
+
+  const topPosts: { message: string; reach: number; engagement: number; createdAt: string }[] = [];
+  for (const post of postsData.data ?? []) {
+    let reach = 0;
+    let engagement = 0;
+    for (const metric of post.insights?.data ?? []) {
+      const metricValue = readNumber(metric.values?.[0]?.value);
+      if (metric.name === "post_impressions") {
+        reach = metricValue;
+      }
+      if (metric.name === "post_engaged_users") {
+        engagement = metricValue;
+      }
+    }
+
+    topPosts.push({
+      message: post.message || "",
+      reach,
+      engagement,
+      createdAt: post.created_time || new Date().toISOString(),
+    });
+  }
+
+  return {
+    pageLikes,
+    pageFollowers,
+    postReach30d,
+    postEngagement30d,
+    topPosts,
+    _meta: makeMeta("live"),
+  };
 }
 
 /**
- * Fetch Reddit Ads data for the last 30 days
+ * Fetch Reddit Ads data for the last 30 days using v3 endpoints.
  */
 export async function fetchRedditAdsData(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  adAccountId: string
+  adAccountId: string,
+  userAgent?: string | null
 ): Promise<RedditAdsData> {
-  try {
-    // Step 1: Get access token using Basic auth
-    const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-    const tokenResponse = await fetch("https://www.reddit.com/api/v1/access_token", {
+  const normalizedUserAgent = (userAgent || process.env.REDDIT_USER_AGENT || "WIPGuard/1.0").trim();
+  const baseHeaders = {
+    "User-Agent": normalizedUserAgent,
+  };
+
+  const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+  const tokenResponse = await fetch("https://www.reddit.com/api/v1/access_token", {
+    method: "POST",
+    headers: {
+      ...baseHeaders,
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }).toString(),
+  });
+
+  if (!tokenResponse.ok) {
+    throw new Error(
+      `Reddit token error (${tokenResponse.status}): ${await parseErrorBody(tokenResponse)}`
+    );
+  }
+
+  const tokenData = (await tokenResponse.json()) as { access_token?: string };
+  const accessToken = tokenData.access_token?.trim();
+  if (!accessToken) {
+    throw new Error("Reddit token response did not include access_token.");
+  }
+
+  const cleanAccountId = adAccountId.trim();
+  const campaignResponse = await fetch(
+    `https://ads-api.reddit.com/api/v3/ad_accounts/${cleanAccountId}/campaigns`,
+    {
+      method: "GET",
+      headers: {
+        ...baseHeaders,
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
+
+  if (!campaignResponse.ok) {
+    throw new Error(
+      `Reddit campaigns error (${campaignResponse.status}): ${await parseErrorBody(campaignResponse)}`
+    );
+  }
+
+  const campaignsPayload = (await campaignResponse.json()) as {
+    data?: Array<{ id?: string; name?: string }>;
+  };
+  const campaignNameById = new Map<string, string>();
+  for (const campaign of campaignsPayload.data ?? []) {
+    const id = String(campaign.id ?? "").trim();
+    if (!id) continue;
+    campaignNameById.set(id, campaign.name || id);
+  }
+
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const reportsResponse = await fetch(
+    `https://ads-api.reddit.com/api/v3/ad_accounts/${cleanAccountId}/reports`,
+    {
       method: "POST",
       headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/x-www-form-urlencoded",
+        ...baseHeaders,
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
       },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: refreshToken,
-      }).toString(),
-    });
-
-    if (!tokenResponse.ok) {
-      throw new Error(`Reddit token error: ${tokenResponse.statusText}`);
-    }
-
-    const tokenData = await tokenResponse.json() as { access_token: string };
-    const accessToken = tokenData.access_token;
-
-    // Step 2: Get campaigns
-    const campaignsResponse = await fetch(
-      `https://ads-api.reddit.com/api/v3/ad_accounts/${adAccountId}/campaigns`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
+      body: JSON.stringify({
+        data: {
+          starts_at: thirtyDaysAgo.toISOString().slice(0, 10),
+          ends_at: now.toISOString().slice(0, 10),
+          breakdowns: ["CAMPAIGN_ID"],
+          fields: ["CAMPAIGN_ID", "SPEND", "IMPRESSIONS", "CLICKS"],
         },
-      }
+      }),
+    }
+  );
+
+  if (!reportsResponse.ok) {
+    throw new Error(
+      `Reddit reports error (${reportsResponse.status}): ${await parseErrorBody(reportsResponse)}`
     );
+  }
 
-    if (!campaignsResponse.ok) {
-      throw new Error(`Reddit Campaigns API error: ${campaignsResponse.statusText}`);
-    }
-
-    const campaignsData = await campaignsResponse.json() as {
-      data?: Array<{
-        id: string;
-        name: string;
-      }>;
+  const reportsPayload = (await reportsResponse.json()) as {
+    data?: {
+      metrics?: UnknownRecord[];
     };
+  };
 
-    // Step 3: Get campaign reports
-    const now = new Date();
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  let totalSpend = 0;
+  let totalImpressions = 0;
+  let totalClicks = 0;
+  const campaignRollup = new Map<string, { spend: number; impressions: number; clicks: number }>();
 
-    const reportsResponse = await fetch(
-      `https://ads-api.reddit.com/api/v3/ad_accounts/${adAccountId}/reports?` +
-        new URLSearchParams({
-          start_date: thirtyDaysAgo.toISOString().split("T")[0],
-          end_date: now.toISOString().split("T")[0],
-        }).toString(),
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      }
-    );
+  for (const metricRaw of reportsPayload.data?.metrics ?? []) {
+    const metric = asRecord(metricRaw);
+    if (!metric) continue;
+    const campaignId = extractRedditCampaignId(metric) || "unknown";
+    const spend = extractRedditSpend(metric);
+    const impressions = readNumber(metric.impressions ?? metric.IMPRESSIONS);
+    const clicks = readNumber(metric.clicks ?? metric.CLICKS);
 
-    if (!reportsResponse.ok) {
-      throw new Error(`Reddit Reports API error: ${reportsResponse.statusText}`);
-    }
+    totalSpend += spend;
+    totalImpressions += impressions;
+    totalClicks += clicks;
 
-    const reportsData = await reportsResponse.json() as {
-      data?: RedditCampaignReport[];
-    };
+    const existing = campaignRollup.get(campaignId) ?? { spend: 0, impressions: 0, clicks: 0 };
+    existing.spend += spend;
+    existing.impressions += impressions;
+    existing.clicks += clicks;
+    campaignRollup.set(campaignId, existing);
+  }
 
-    let totalSpend = 0;
-    let totalImpressions = 0;
-    let totalClicks = 0;
-    const campaigns: AdCampaign[] = [];
-    const campaignMap = new Map<string, RedditCampaignReport>();
-
-    // Build campaign report map
-    if (reportsData.data) {
-      for (const report of reportsData.data) {
-        totalSpend += report.spend || 0;
-        totalImpressions += report.impressions || 0;
-        totalClicks += report.clicks || 0;
-        campaignMap.set(report.campaign_id, report);
-      }
-    }
-
-    // Build campaigns list
-    if (campaignsData.data) {
-      for (const campaign of campaignsData.data) {
-        const report = campaignMap.get(campaign.id);
-        const spend = report?.spend || 0;
-        const impressions = report?.impressions || 0;
-        const clicks = report?.clicks || 0;
-        const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
-        const cpc = clicks > 0 ? spend / clicks : 0;
-
-        campaigns.push({
-          name: campaign.name,
-          spend,
-          impressions,
-          clicks,
-          conversions: 0, // Reddit API doesn't provide conversion data easily
-          ctr,
-          cpc,
-        });
-      }
-    }
-
-    const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-    const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
-
+  const campaigns: AdCampaign[] = Array.from(campaignRollup.entries()).map(([campaignId, data]) => {
+    const ctr = data.impressions > 0 ? (data.clicks / data.impressions) * 100 : 0;
+    const cpc = data.clicks > 0 ? data.spend / data.clicks : 0;
     return {
-      totalSpend30d: totalSpend,
-      totalImpressions,
-      totalClicks,
+      name: campaignNameById.get(campaignId) || campaignId,
+      spend: data.spend,
+      impressions: data.impressions,
+      clicks: data.clicks,
+      conversions: 0,
       ctr,
       cpc,
-      campaigns,
-      _meta: makeMeta("live"),
     };
-  } catch (error) {
-    console.error("Error fetching Reddit Ads data:", error);
-    // Return zeros on error (user may not have Reddit Ads credentials)
-    return {
-      totalSpend30d: 0,
-      totalImpressions: 0,
-      totalClicks: 0,
-      ctr: 0,
-      cpc: 0,
-      campaigns: [],
-      _meta: makeMeta("live"),
-    };
-  }
+  });
+
+  const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+  const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+
+  return {
+    totalSpend30d: totalSpend,
+    totalImpressions,
+    totalClicks,
+    ctr,
+    cpc,
+    campaigns,
+    _meta: makeMeta("live"),
+  };
 }

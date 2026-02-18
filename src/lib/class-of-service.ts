@@ -11,13 +11,6 @@
  *   intangible — tech-debt / maintenance; scheduled during slack capacity
  */
 
-import type {
-  Calendar,
-  Zap,
-  Clock,
-  Wrench,
-} from "lucide-react";
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------

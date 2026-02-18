@@ -116,11 +116,15 @@ describe("provider health", () => {
     expect(snapshotKeysForIntegrationProvider(IntegrationProvider.STRIPE)).toEqual([
       "stripe",
     ]);
+    expect(snapshotKeysForIntegrationProvider(IntegrationProvider.WEBFLOW)).toEqual([
+      "webflow",
+    ]);
   });
 
   it("maps snapshot keys back to integration providers", () => {
     expect(providerForSnapshotKey("hubspotOps")).toBe(IntegrationProvider.HUBSPOT);
     expect(providerForSnapshotKey("stripe")).toBe(IntegrationProvider.STRIPE);
+    expect(providerForSnapshotKey("webflow")).toBe(IntegrationProvider.WEBFLOW);
     expect(providerForSnapshotKey("unknown")).toBeNull();
   });
 });

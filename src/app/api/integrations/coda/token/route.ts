@@ -7,6 +7,7 @@ import {
   type Prisma,
 } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
+import { resolveCodaDocId } from "@/lib/integrations/coda-config";
 import { compactErrorMessage, verifyCodaApiToken } from "@/lib/integrations/oauth";
 import { protectIntegrationSecret } from "@/lib/integrations/token-crypto";
 import { enforcePermission } from "@/lib/permissions";
@@ -14,6 +15,22 @@ import { prisma } from "@/lib/prisma";
 
 interface ConnectCodaBody {
   token?: string;
+  docId?: string;
+  docUrl?: string;
+}
+
+function readPersistedDocId(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+  const candidate = (metadata as Record<string, unknown>).docId;
+  return typeof candidate === "string" && candidate.trim().length > 0
+    ? candidate.trim()
+    : null;
+}
+
+function hasCodaDocInput(body: ConnectCodaBody): boolean {
+  return Boolean(body.docId?.trim() || body.docUrl?.trim());
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -44,10 +61,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const profile = await verifyCodaApiToken(token);
+    const connection = await prisma.integrationConnection.findUnique({
+      where: {
+        userId_provider: {
+          userId: session.user.id,
+          provider: IntegrationProvider.CODA,
+        },
+      },
+      select: {
+        metadata: true,
+      },
+    });
+    const docId =
+      hasCodaDocInput(body)
+        ? resolveCodaDocId({ docId: body.docId, docUrl: body.docUrl })
+        : readPersistedDocId(connection?.metadata);
     const metadata: Prisma.InputJsonObject = {
       ...(profile.metadata ?? {}),
       authType: "api_token",
       connectedByUserId: session.user.id,
+      docId,
     };
 
     await prisma.integrationConnection.upsert({
@@ -85,7 +118,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       },
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, docId });
   } catch (error) {
     console.error("POST /api/integrations/coda/token error:", error);
     return NextResponse.json(

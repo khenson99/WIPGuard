@@ -13,6 +13,7 @@ export type IntegrationProviderKey =
   | "google_workspace"
   | "hubspot"
   | "slack"
+  | "webflow"
   | "coda"
   | "reddit"
   | "stripe"
@@ -584,6 +585,14 @@ export interface AnalyticsDashboardData {
     to: string;
     days: number;
     label: string;
+  };
+  meta?: {
+    servedAt: string;
+    section: string | null;
+    forceRefresh: boolean;
+    isPartial: boolean;
+    staleDomains: string[];
+    erroredDomains: string[];
   };
   lastFullRefresh: string;
   errors: { source: string; message: string }[];

@@ -32,8 +32,6 @@ export type { HubSpotBidirectionalSyncConfig };
 // Webhook signature verification
 // ---------------------------------------------------------------------------
 
-const HUBSPOT_SIGNATURE_HEADER_V3 = "x-hubspot-signature-v3";
-const HUBSPOT_TIMESTAMP_HEADER = "x-hubspot-request-timestamp";
 const MAX_TIMESTAMP_AGE_MS = 5 * 60 * 1000; // 5 minutes
 
 export interface WebhookVerificationInput {
@@ -276,20 +274,6 @@ export function computeReconciliation(input: ReconciliationInput): Reconciliatio
     dealUpdatedAt,
     taskUpdatedAt: task.updatedAt,
   });
-
-  const mappedDealStage = config.taskStatusToDealStage[task.status] ?? null;
-
-  const conflict: HubSpotSyncConflict = {
-    dealId,
-    taskId: task.id,
-    dealStage: newDealStage,
-    mappedTaskStatus,
-    taskStatus: task.status,
-    mappedDealStage: mappedDealStage ?? "UNMAPPED",
-    resolution: config.conflictResolution,
-    winner: winner.winner,
-    reason: winner.reason,
-  };
 
   if (winner.winner === "task") {
     return {

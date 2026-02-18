@@ -56,6 +56,30 @@ function calculateChange(current: number | null | undefined, previous: number | 
   return ((current - previous) / previous) * 100;
 }
 
+type ProviderHealthState = 'not_configured' | 'failing' | 'no_data' | 'healthy';
+
+function isMissingCredentialError(message: string | undefined): boolean {
+  if (!message) return false;
+  return /^Missing .* credential/i.test(message.trim());
+}
+
+function resolveProviderState(input: {
+  payload: unknown;
+  hasSignal: boolean;
+  error?: string;
+}): { state: ProviderHealthState; error: string | null } {
+  if (input.error && !isMissingCredentialError(input.error)) {
+    return { state: 'failing', error: input.error };
+  }
+  if (!input.payload) {
+    return { state: 'not_configured', error: null };
+  }
+  if (!input.hasSignal) {
+    return { state: 'no_data', error: null };
+  }
+  return { state: 'healthy', error: null };
+}
+
 export function MarketingTabNew({ data }: MarketingTabNewProps) {
   const [expandedPlatforms, setExpandedPlatforms] = useState<Record<string, boolean>>({
     googleAds: true,
@@ -86,13 +110,15 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
   const redditAds = data.redditAds;
   const metaPage = data.metaPage;
   const webflow = data.webflow;
+  const semrush = data.semrush;
   const ga = data.googleAnalytics;
 
-  const googleAdsConfigured = Boolean(googleAds);
-  const metaAdsConfigured = Boolean(metaAds);
-  const redditAdsConfigured = Boolean(redditAds);
-  const metaPageConfigured = Boolean(metaPage);
-  const gaConfigured = Boolean(ga);
+  const errorBySource = new Map<string, string>();
+  for (const entry of data.errors || []) {
+    if (!errorBySource.has(entry.source)) {
+      errorBySource.set(entry.source, entry.message);
+    }
+  }
 
   const hasGoogleAdsSignal = Boolean(
     googleAds &&
@@ -119,9 +145,6 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
         redditAds.totalClicks > 0 ||
         redditAds.campaigns.length > 0)
   );
-
-  const hasAnyAdsConfigured = googleAdsConfigured || metaAdsConfigured || redditAdsConfigured;
-  const hasAnyAdsSignal = hasGoogleAdsSignal || hasMetaAdsSignal || hasRedditAdsSignal;
 
   const hasMetaPageSignal = Boolean(
     metaPage &&
@@ -150,6 +173,60 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
         ga.trafficByChannel.length > 0 ||
         ga.topPages.length > 0)
   );
+
+  const gaStatus = resolveProviderState({
+    payload: ga,
+    hasSignal: hasGASignal,
+    error: errorBySource.get('googleAnalytics'),
+  });
+  const googleAdsStatus = resolveProviderState({
+    payload: googleAds,
+    hasSignal: hasGoogleAdsSignal,
+    error: errorBySource.get('googleAds'),
+  });
+  const metaAdsStatus = resolveProviderState({
+    payload: metaAds,
+    hasSignal: hasMetaAdsSignal,
+    error: errorBySource.get('metaAds'),
+  });
+  const redditAdsStatus = resolveProviderState({
+    payload: redditAds,
+    hasSignal: hasRedditAdsSignal,
+    error: errorBySource.get('redditAds'),
+  });
+  const metaPageStatus = resolveProviderState({
+    payload: metaPage,
+    hasSignal: hasMetaPageSignal,
+    error: errorBySource.get('metaPage'),
+  });
+  const webflowStatus = resolveProviderState({
+    payload: webflow,
+    hasSignal: hasWebflowSignal,
+    error: errorBySource.get('webflow'),
+  });
+  const semrushHasSignal = Boolean(
+    semrush &&
+      (semrush.organicKeywords > 0 ||
+        semrush.organicTraffic > 0 ||
+        semrush.paidKeywords > 0 ||
+        semrush.topKeywords.length > 0 ||
+        semrush.organicCompetitors.length > 0)
+  );
+  const semrushStatus = resolveProviderState({
+    payload: semrush,
+    hasSignal: semrushHasSignal,
+    error: errorBySource.get('semrush'),
+  });
+
+  const paidProviders = [googleAdsStatus, metaAdsStatus, redditAdsStatus];
+  const paidConfigured = paidProviders.some((provider) => provider.state !== 'not_configured');
+  const paidFailure = paidProviders.find((provider) => provider.state === 'failing');
+  const paidHealthy = paidProviders.some((provider) => provider.state === 'healthy');
+
+  const conversionProviders = [googleAdsStatus, metaAdsStatus];
+  const conversionConfigured = conversionProviders.some((provider) => provider.state !== 'not_configured');
+  const conversionFailure = conversionProviders.find((provider) => provider.state === 'failing');
+  const conversionHealthy = conversionProviders.some((provider) => provider.state === 'healthy');
 
   // Calculate KPI metrics
   const sessions30d = data.googleAnalytics?.sessions30d || 0;
@@ -200,8 +277,16 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Sessions (30d)"
-          value={!gaConfigured ? "Not configured" : hasGASignal ? fmtNum(sessions30d) : "No data"}
-          change={!gaConfigured || !hasGASignal || sessionsChange == null ? undefined : fmtPct(sessionsChange)}
+          value={
+            gaStatus.state === 'not_configured'
+              ? "Not configured"
+              : gaStatus.state === 'failing'
+                ? "Configured but failing"
+                : gaStatus.state === 'no_data'
+                  ? "No data"
+                  : fmtNum(sessions30d)
+          }
+          change={gaStatus.state === 'healthy' && sessionsChange != null ? fmtPct(sessionsChange) : undefined}
           changeType={
             sessionsChange == null
               ? 'neutral'
@@ -209,25 +294,81 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
                 ? 'positive'
                 : 'negative'
           }
-          subtitle={!gaConfigured ? "Google Analytics" : !hasGASignal ? "No GA data in selected range" : undefined}
+          subtitle={
+            gaStatus.state === 'failing'
+              ? gaStatus.error || "Google Analytics request failed"
+              : gaStatus.state === 'not_configured'
+                ? "Google Analytics"
+                : gaStatus.state === 'no_data'
+                  ? "No GA data in selected range"
+                  : undefined
+          }
           icon={TrendingUp}
         />
         <StatCard
           label="Total Ad Spend"
-          value={!hasAnyAdsConfigured ? "Not configured" : hasAnyAdsSignal ? fmtCurrency(totalAdSpend) : "No data"}
-          subtitle={!hasAnyAdsConfigured ? "Google Ads, Meta Ads, Reddit Ads" : hasAnyAdsSignal ? "Google + Meta + Reddit" : "No ad spend in selected range"}
+          value={
+            !paidConfigured
+              ? "Not configured"
+              : paidFailure
+                ? "Configured but failing"
+                : paidHealthy
+                  ? fmtCurrency(totalAdSpend)
+                  : "No data"
+          }
+          subtitle={
+            !paidConfigured
+              ? "Google Ads, Meta Ads, Reddit Ads"
+              : paidFailure
+                ? paidFailure.error || "One or more ad providers failed"
+                : paidHealthy
+                  ? "Google + Meta + Reddit"
+                  : "No ad spend in selected range"
+          }
           icon={DollarSign}
         />
         <StatCard
           label="Total Conversions"
-          value={!hasAnyAdsConfigured ? "Not configured" : hasAnyAdsSignal ? fmtNum(totalConversions) : "No data"}
-          subtitle={!hasAnyAdsConfigured ? "Google Ads, Meta Ads" : hasAnyAdsSignal ? "Google + Meta" : "No conversion data in selected range"}
+          value={
+            !conversionConfigured
+              ? "Not configured"
+              : conversionFailure
+                ? "Configured but failing"
+                : conversionHealthy
+                  ? fmtNum(totalConversions)
+                  : "No data"
+          }
+          subtitle={
+            !conversionConfigured
+              ? "Google Ads, Meta Ads"
+              : conversionFailure
+                ? conversionFailure.error || "Conversion providers failed"
+                : conversionHealthy
+                  ? "Google + Meta"
+                  : "No conversion data in selected range"
+          }
           icon={MousePointerClick}
         />
         <StatCard
           label="Page Followers"
-          value={!metaPageConfigured ? "Not configured" : hasMetaPageSignal ? fmtNum(pageFollowers) : "No data"}
-          subtitle={!metaPageConfigured ? "Meta Page" : hasMetaPageSignal ? "Meta Page" : "No page insights in selected range"}
+          value={
+            metaPageStatus.state === 'not_configured'
+              ? "Not configured"
+              : metaPageStatus.state === 'failing'
+                ? "Configured but failing"
+                : metaPageStatus.state === 'no_data'
+                  ? "No data"
+                  : fmtNum(pageFollowers)
+          }
+          subtitle={
+            metaPageStatus.state === 'failing'
+              ? metaPageStatus.error || "Meta Page request failed"
+              : metaPageStatus.state === 'not_configured'
+                ? "Meta Page"
+                : metaPageStatus.state === 'no_data'
+                  ? "No page insights in selected range"
+                  : "Meta Page"
+          }
           icon={Facebook}
         />
       </div>
@@ -240,8 +381,10 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
             <Globe className="w-5 h-5 text-primary" />
             Traffic by Channel
           </h3>
-          {!gaConfigured ? (
+          {gaStatus.state === 'not_configured' ? (
             <p className="text-muted-foreground text-center py-8">Not configured</p>
+          ) : gaStatus.state === 'failing' ? (
+            <p className="text-destructive text-center py-8">Configured but failing: {gaStatus.error}</p>
           ) : barItems.length > 0 ? (
             <BarDisplay
               items={barItems}
@@ -259,8 +402,10 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
             <Eye className="w-5 h-5 text-primary" />
             Top Pages
           </h3>
-          {!gaConfigured ? (
+          {gaStatus.state === 'not_configured' ? (
             <p className="text-muted-foreground text-center py-8">Not configured</p>
+          ) : gaStatus.state === 'failing' ? (
+            <p className="text-destructive text-center py-8">Configured but failing: {gaStatus.error}</p>
           ) : topPages.length > 0 ? (
             <div className="space-y-3">
               {topPages.slice(0, 5).map((page, idx) => (
@@ -303,9 +448,13 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
 
           {expandedPlatforms.googleAds && (
             <div className="border-t border-border px-6 py-4 space-y-4">
-              {!googleAds ? (
+              {googleAdsStatus.state === 'not_configured' ? (
                 <p className="text-muted-foreground text-center py-6">Not configured</p>
-              ) : !hasGoogleAdsSignal ? (
+              ) : googleAdsStatus.state === 'failing' ? (
+                <p className="text-destructive text-center py-6">Configured but failing: {googleAdsStatus.error}</p>
+              ) : googleAdsStatus.state === 'no_data' ? (
+                <p className="text-muted-foreground text-center py-6">No Google Ads data in selected range</p>
+              ) : !googleAds ? (
                 <p className="text-muted-foreground text-center py-6">No Google Ads data in selected range</p>
               ) : (
                 <>
@@ -388,9 +537,13 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
 
           {expandedPlatforms.metaAds && (
             <div className="border-t border-border px-6 py-4 space-y-4">
-              {!metaAds ? (
+              {metaAdsStatus.state === 'not_configured' ? (
                 <p className="text-muted-foreground text-center py-6">Not configured</p>
-              ) : !hasMetaAdsSignal ? (
+              ) : metaAdsStatus.state === 'failing' ? (
+                <p className="text-destructive text-center py-6">Configured but failing: {metaAdsStatus.error}</p>
+              ) : metaAdsStatus.state === 'no_data' ? (
+                <p className="text-muted-foreground text-center py-6">No Meta Ads data in selected range</p>
+              ) : !metaAds ? (
                 <p className="text-muted-foreground text-center py-6">No Meta Ads data in selected range</p>
               ) : (
                 <>
@@ -469,9 +622,13 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
 
           {expandedPlatforms.redditAds && (
             <div className="border-t border-border px-6 py-4 space-y-4">
-              {!redditAds ? (
+              {redditAdsStatus.state === 'not_configured' ? (
                 <p className="text-muted-foreground text-center py-6">Not configured</p>
-              ) : !hasRedditAdsSignal ? (
+              ) : redditAdsStatus.state === 'failing' ? (
+                <p className="text-destructive text-center py-6">Configured but failing: {redditAdsStatus.error}</p>
+              ) : redditAdsStatus.state === 'no_data' ? (
+                <p className="text-muted-foreground text-center py-6">No Reddit Ads data in selected range</p>
+              ) : !redditAds ? (
                 <p className="text-muted-foreground text-center py-6">No Reddit Ads data in selected range</p>
               ) : (
                 <>
@@ -532,9 +689,11 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
             <Facebook className="w-5 h-5 text-primary" />
             Meta Page
           </h3>
-          {!metaPage ? (
+          {metaPageStatus.state === 'not_configured' ? (
             <p className="text-muted-foreground text-center py-8">Not configured</p>
-          ) : !hasMetaPageSignal ? (
+          ) : metaPageStatus.state === 'failing' ? (
+            <p className="text-destructive text-center py-8">Configured but failing: {metaPageStatus.error}</p>
+          ) : metaPageStatus.state === 'no_data' ? (
             <p className="text-muted-foreground text-center py-8">No Meta Page data in selected range</p>
           ) : (
             <div className="space-y-4">
@@ -582,9 +741,13 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
             <Layout className="w-5 h-5 text-primary" />
             Webflow
           </h3>
-          {!webflow ? (
+          {webflowStatus.state === 'not_configured' ? (
             <p className="text-muted-foreground text-center py-8">Not configured</p>
-          ) : !hasWebflowSignal ? (
+          ) : webflowStatus.state === 'failing' ? (
+            <p className="text-destructive text-center py-8">Configured but failing: {webflowStatus.error}</p>
+          ) : webflowStatus.state === 'no_data' ? (
+            <p className="text-muted-foreground text-center py-8">No Webflow data in selected range</p>
+          ) : !webflow ? (
             <p className="text-muted-foreground text-center py-8">No Webflow data in selected range</p>
           ) : (
             <div className="space-y-4">
@@ -652,33 +815,45 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
           <Search className="w-5 h-5 text-[#fc5a29]" />
           SEMrush SEO Intelligence
         </h3>
-        {data.semrush ? (
+        {semrushStatus.state === 'not_configured' ? (
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-muted-foreground text-center py-8">Not configured</p>
+          </div>
+        ) : semrushStatus.state === 'failing' ? (
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-destructive text-center py-8">Configured but failing: {semrushStatus.error}</p>
+          </div>
+        ) : semrushStatus.state === 'no_data' ? (
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-muted-foreground text-center py-8">No SEMrush data in selected range</p>
+          </div>
+        ) : (
           <div className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <StatCard label="Authority Score" value={String(data.semrush.authorityScore)} icon={Award} />
-              <StatCard label="Backlinks" value={fmtNum(data.semrush.backlinks)} icon={Link2} />
-              <StatCard label="Organic Keywords" value={fmtNum(data.semrush.organicKeywords)} icon={Search} />
-              <StatCard label="Organic Traffic" value={fmtNum(data.semrush.organicTraffic)} icon={TrendingUp} />
+              <StatCard label="Authority Score" value={String(semrush!.authorityScore)} icon={Award} />
+              <StatCard label="Backlinks" value={fmtNum(semrush!.backlinks)} icon={Link2} />
+              <StatCard label="Organic Keywords" value={fmtNum(semrush!.organicKeywords)} icon={Search} />
+              <StatCard label="Organic Traffic" value={fmtNum(semrush!.organicTraffic)} icon={TrendingUp} />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="bg-card border border-border rounded-lg p-4">
                 <p className="text-sm font-semibold text-foreground mb-2">Organic Search</p>
                 <div className="space-y-1 text-sm">
-                  <div className="flex justify-between"><span className="text-muted-foreground">Keywords</span><span className="text-foreground font-semibold">{fmtNum(data.semrush.organicKeywords)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Traffic</span><span className="text-foreground font-semibold">{fmtNum(data.semrush.organicTraffic)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Traffic Cost</span><span className="text-foreground font-semibold">{fmtCurrency(data.semrush.organicTrafficCost)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Keywords</span><span className="text-foreground font-semibold">{fmtNum(semrush!.organicKeywords)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Traffic</span><span className="text-foreground font-semibold">{fmtNum(semrush!.organicTraffic)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Traffic Cost</span><span className="text-foreground font-semibold">{fmtCurrency(semrush!.organicTrafficCost)}</span></div>
                 </div>
               </div>
               <div className="bg-card border border-border rounded-lg p-4">
                 <p className="text-sm font-semibold text-foreground mb-2">Paid Search</p>
                 <div className="space-y-1 text-sm">
-                  <div className="flex justify-between"><span className="text-muted-foreground">Keywords</span><span className="text-foreground font-semibold">{fmtNum(data.semrush.paidKeywords)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Traffic</span><span className="text-foreground font-semibold">{fmtNum(data.semrush.paidTraffic)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Traffic Cost</span><span className="text-foreground font-semibold">{fmtCurrency(data.semrush.paidTrafficCost)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Keywords</span><span className="text-foreground font-semibold">{fmtNum(semrush!.paidKeywords)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Traffic</span><span className="text-foreground font-semibold">{fmtNum(semrush!.paidTraffic)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Traffic Cost</span><span className="text-foreground font-semibold">{fmtCurrency(semrush!.paidTrafficCost)}</span></div>
                 </div>
               </div>
             </div>
-            {data.semrush.topKeywords && data.semrush.topKeywords.length > 0 && (
+            {semrush!.topKeywords && semrush!.topKeywords.length > 0 && (
               <div className="bg-card border border-border rounded-lg p-4">
                 <p className="text-sm font-semibold text-foreground mb-3">Top Organic Keywords</p>
                 <div className="overflow-x-auto">
@@ -693,7 +868,7 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
                       </tr>
                     </thead>
                     <tbody>
-                      {data.semrush.topKeywords.map((kw, idx) => (
+                      {semrush!.topKeywords.map((kw, idx) => (
                         <tr key={idx} className="border-b border-border/50">
                           <td className="py-2 text-foreground">{kw.keyword}</td>
                           <td className={`py-2 text-right font-semibold ${kw.position <= 3 ? 'text-green-500' : kw.position <= 10 ? 'text-yellow-500' : 'text-muted-foreground'}`}>{kw.position}</td>
@@ -707,11 +882,11 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
                 </div>
               </div>
             )}
-            {data.semrush.organicCompetitors && data.semrush.organicCompetitors.length > 0 && (
+            {semrush!.organicCompetitors && semrush!.organicCompetitors.length > 0 && (
               <div className="bg-card border border-border rounded-lg p-4">
                 <p className="text-sm font-semibold text-foreground mb-3">Organic Competitors</p>
                 <div className="space-y-2">
-                  {data.semrush.organicCompetitors.map((comp, idx) => (
+                  {semrush!.organicCompetitors.map((comp, idx) => (
                     <div key={idx} className="flex items-center justify-between p-2 bg-secondary/40 rounded text-sm">
                       <span className="text-foreground font-medium">{comp.domain}</span>
                       <div className="flex gap-4">
@@ -723,10 +898,6 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
                 </div>
               </div>
             )}
-          </div>
-        ) : (
-          <div className="bg-card border border-border rounded-lg p-4">
-            <p className="text-muted-foreground text-center py-8">Not configured</p>
           </div>
         )}
       </div>
