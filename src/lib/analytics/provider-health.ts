@@ -34,6 +34,10 @@ export function snapshotKeysForIntegrationProvider(provider: IntegrationProvider
       return ["stripe"];
     case IntegrationProvider.MERCURY:
       return ["mercury"];
+    case IntegrationProvider.WEBFLOW:
+      return ["webflow"];
+    default:
+      return [];
   }
 }
 
@@ -143,5 +147,6 @@ export function providerForSnapshotKey(providerKey: string): IntegrationProvider
   if (providerKey === "redditAds" || providerKey === "redditOps") return IntegrationProvider.REDDIT;
   if (providerKey === "stripe") return IntegrationProvider.STRIPE;
   if (providerKey === "mercury") return IntegrationProvider.MERCURY;
+  if (providerKey === "webflow") return IntegrationProvider.WEBFLOW;
   return null;
 }

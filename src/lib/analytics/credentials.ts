@@ -33,6 +33,7 @@ export interface AnalyticsCredentials {
   googleAdsRefreshToken: string | null;
   googleAdsClientId: string | null;
   googleAdsClientSecret: string | null;
+  googleAdsLoginCustomerId: string | null;
 
   // Meta (Facebook/Instagram)
   metaAccessToken: string | null;
@@ -44,6 +45,7 @@ export interface AnalyticsCredentials {
   redditClientSecret: string | null;
   redditRefreshToken: string | null;
   redditAdAccountId: string | null;
+  redditUserAgent: string | null;
 
   // Webflow
   webflowApiToken: string | null;
@@ -51,6 +53,7 @@ export interface AnalyticsCredentials {
 
   // SEMrush
   semrushApiToken: string | null;
+  semrushDomain: string | null;
 
   // Coda
   codaApiToken: string | null;
@@ -71,6 +74,7 @@ type ConnectionRecord = {
   status: IntegrationConnectionStatus;
   accessToken: string | null;
   refreshToken: string | null;
+  metadata: unknown;
   connectedAt: Date;
   lastSyncedAt: Date | null;
   lastError: string | null;
@@ -79,6 +83,14 @@ type ConnectionRecord = {
 function envOrNull(value: string | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : null;
+}
+
+function metadataString(metadata: unknown, key: string): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
 function buildFreshness(
@@ -129,6 +141,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
         status: true,
         accessToken: true,
         refreshToken: true,
+        metadata: true,
         connectedAt: true,
         lastSyncedAt: true,
         lastError: true,
@@ -143,6 +156,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
           status: connection.status,
           accessToken: connection.accessToken,
           refreshToken: connection.refreshToken,
+          metadata: connection.metadata,
           connectedAt: connection.connectedAt,
           lastSyncedAt: connection.lastSyncedAt,
           lastError: connection.lastError,
@@ -158,12 +172,15 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
   const slackConnection = byProvider.get(IntegrationProvider.SLACK) ?? null;
   const stripeConnection = byProvider.get(IntegrationProvider.STRIPE) ?? null;
   const mercuryConnection = byProvider.get(IntegrationProvider.MERCURY) ?? null;
+  const webflowConnection = byProvider.get(IntegrationProvider.WEBFLOW) ?? null;
 
   const envHubspot = envOrNull(process.env.HUBSPOT_ACCESS_TOKEN);
   const envCoda = envOrNull(process.env.CODA_API_TOKEN);
   const envRedditRefresh = envOrNull(process.env.REDDIT_REFRESH_TOKEN);
   const envStripe = envOrNull(process.env.STRIPE_SECRET_KEY);
   const envMercury = envOrNull(process.env.MERCURY_API_TOKEN);
+  const envWebflowToken = envOrNull(process.env.WEBFLOW_API_TOKEN);
+  const envWebflowSiteId = envOrNull(process.env.WEBFLOW_SITE_ID);
 
   const hubspotToken =
     envHubspot ??
@@ -205,6 +222,17 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
       ? unprotectIntegrationSecret(mercuryConnection.accessToken)
       : null);
 
+  const webflowApiToken =
+    envWebflowToken ??
+    (webflowConnection?.status === IntegrationConnectionStatus.CONNECTED
+      ? unprotectIntegrationSecret(webflowConnection.accessToken)
+      : null);
+
+  const webflowSiteId =
+    envWebflowSiteId ??
+    metadataString(webflowConnection?.metadata, "siteId") ??
+    metadataString(webflowConnection?.metadata, "defaultSiteId");
+
   const freshness: Record<IntegrationProvider, ProviderFreshnessSnapshot> = {
     [IntegrationProvider.GOOGLE_WORKSPACE]: buildFreshness(
       IntegrationProvider.GOOGLE_WORKSPACE,
@@ -237,6 +265,11 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
       mercuryConnection,
       Boolean(envMercury)
     ),
+    [IntegrationProvider.WEBFLOW]: buildFreshness(
+      IntegrationProvider.WEBFLOW,
+      webflowConnection,
+      Boolean(envWebflowToken)
+    ),
   };
 
   return {
@@ -253,6 +286,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     googleAdsRefreshToken: envOrNull(process.env.GOOGLE_ADS_REFRESH_TOKEN),
     googleAdsClientId: envOrNull(process.env.GOOGLE_ADS_CLIENT_ID),
     googleAdsClientSecret: envOrNull(process.env.GOOGLE_ADS_CLIENT_SECRET),
+    googleAdsLoginCustomerId: envOrNull(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID),
 
     metaAccessToken: envOrNull(process.env.META_ACCESS_TOKEN),
     metaAdAccountId: envOrNull(process.env.META_AD_ACCOUNT_ID),
@@ -262,11 +296,13 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     redditClientSecret: envOrNull(process.env.REDDIT_CLIENT_SECRET),
     redditRefreshToken,
     redditAdAccountId: envOrNull(process.env.REDDIT_AD_ACCOUNT_ID),
+    redditUserAgent: envOrNull(process.env.REDDIT_USER_AGENT),
 
     semrushApiToken: envOrNull(process.env.SEMRUSH_API_TOKEN),
+    semrushDomain: envOrNull(process.env.SEMRUSH_DOMAIN),
 
-    webflowApiToken: envOrNull(process.env.WEBFLOW_API_TOKEN),
-    webflowSiteId: envOrNull(process.env.WEBFLOW_SITE_ID) || "67b7700312bb763ca2083376",
+    webflowApiToken,
+    webflowSiteId,
 
     codaApiToken,
     codaDocId: envOrNull(process.env.CODA_DOC_ID) || "dPjhbdhLZh9",
