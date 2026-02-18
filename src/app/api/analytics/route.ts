@@ -806,6 +806,16 @@ export async function GET(request: Request) {
     erroredDomains,
   });
 
+  const staleDomains = Array.from(new Set(result.staleDomains));
+  const erroredDomains = Array.from(new Set(result.errors.map((entry) => entry.source)));
+  result.staleDomains = staleDomains;
+  result.meta = buildAnalyticsRouteMeta({
+    section,
+    forceRefresh,
+    staleDomains,
+    erroredDomains,
+  });
+
   return NextResponse.json(result, {
     headers: {
       "Cache-Control": forceRefresh ? "no-cache, no-store" : "private, max-age=30, stale-while-revalidate=120",
