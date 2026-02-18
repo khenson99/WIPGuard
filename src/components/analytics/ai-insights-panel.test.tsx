@@ -1,3 +1,4 @@
+import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { AiInsightsPanel } from "@/components/analytics/ai-insights-panel";
 import type { AiInsightsBundle } from "@/lib/analytics/types";
@@ -15,6 +16,7 @@ function makeBundle(): AiInsightsBundle {
         confidence: 0.71,
         expectedImpact: "Improve paid ROI.",
         stale: false,
+        subsectionId: "ads-google-analytics",
         evidence: [
           {
             source: "Google Ads",
@@ -22,6 +24,7 @@ function makeBundle(): AiInsightsBundle {
             metric: "CPA",
             value: "$58",
             delta: "+12%",
+            trendValues: [90, 110, 105, 120],
           },
         ],
         actions: [{ type: "create_task", label: "Refactor campaign targeting", payload: {} }],
@@ -35,6 +38,7 @@ function makeBundle(): AiInsightsBundle {
         confidence: 0.89,
         expectedImpact: "Recover demos.",
         stale: true,
+        crossDomain: true,
         evidence: [
           {
             source: "HubSpot",
@@ -58,6 +62,18 @@ function makeBundle(): AiInsightsBundle {
         evidence: [],
         actions: [],
       },
+      {
+        id: "warn-cs",
+        section: "customer-success",
+        severity: "warning",
+        title: "Support load increasing",
+        why: "Urgent queue expanded.",
+        confidence: 0.75,
+        expectedImpact: "Rebalance support.",
+        stale: false,
+        evidence: [],
+        actions: [],
+      },
     ],
     bySection: {
       "ads-traffic": [],
@@ -74,12 +90,12 @@ describe("AiInsightsPanel", () => {
     bundle.bySection["ads-traffic"] = [bundle.global[0]];
     bundle.bySection.finance = [bundle.global[2]];
     bundle.bySection["sales-pipeline"] = [bundle.global[1]];
-    bundle.bySection["customer-success"] = [];
+    bundle.bySection["customer-success"] = [bundle.global[3]];
 
     const { container } = render(<AiInsightsPanel bundle={bundle} defaultFilter="all" />);
 
     const cards = Array.from(container.querySelectorAll("article"));
-    expect(cards.length).toBe(3);
+    expect(cards.length).toBe(4);
     expect(cards[0].textContent).toContain("Pipeline conversion risk");
     expect(screen.getByText("stale data")).toBeTruthy();
 
@@ -90,5 +106,41 @@ describe("AiInsightsPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ads" }));
     expect(screen.getByText("Ads efficiency trending down")).toBeTruthy();
     expect(screen.getByText("Refactor campaign targeting")).toBeTruthy();
+  });
+
+  it("renders compact mode with expansion, metadata badges, and trend sparkline", () => {
+    const bundle = makeBundle();
+    bundle.bySection["ads-traffic"] = [bundle.global[0]];
+    bundle.bySection.finance = [bundle.global[2]];
+    bundle.bySection["sales-pipeline"] = [bundle.global[1]];
+    bundle.bySection["customer-success"] = [bundle.global[3]];
+
+    const { container } = render(<AiInsightsPanel bundle={bundle} defaultFilter="all" compact />);
+
+    expect(screen.getByText("+1 more")).toBeTruthy();
+    expect(screen.queryByText("Refactor campaign targeting")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "+1 more" }));
+
+    expect(screen.getByText("cross-domain")).toBeTruthy();
+    expect(screen.getByText("ads-google-analytics")).toBeTruthy();
+    expect(container.querySelector("svg")).toBeTruthy();
+  });
+
+  it("resets filter when defaultFilter prop changes", () => {
+    const bundle = makeBundle();
+    bundle.bySection["ads-traffic"] = [bundle.global[0]];
+    bundle.bySection.finance = [bundle.global[2]];
+    bundle.bySection["sales-pipeline"] = [bundle.global[1]];
+
+    const { rerender } = render(<AiInsightsPanel bundle={bundle} defaultFilter="sales-pipeline" />);
+
+    expect(screen.getByText("Pipeline conversion risk")).toBeTruthy();
+    expect(screen.queryByText("Runway stable")).toBeNull();
+
+    rerender(<AiInsightsPanel bundle={bundle} defaultFilter="finance" />);
+
+    expect(screen.getByText("Runway stable")).toBeTruthy();
+    expect(screen.queryByText("Pipeline conversion risk")).toBeNull();
   });
 });

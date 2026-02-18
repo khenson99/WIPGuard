@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildAiInsightsBundle, buildDistilledInsights, __private__ } from "@/lib/analytics/insight-engine";
-import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import type { AnalyticsDashboardData, FunnelMetrics } from "@/lib/analytics/types";
 
 const { sortInsights } = __private__;
 
@@ -13,6 +13,7 @@ function baseData(): AnalyticsDashboardData {
     googleAds: null,
     metaAds: null,
     metaPage: null,
+    instagram: null,
     redditAds: null,
     webflow: null,
     coda: null,
@@ -470,7 +471,7 @@ describe("finance insights", () => {
 // ── Sales & Pipeline insights ───────────────────────────
 
 describe("sales insights", () => {
-  function hubspotWithFunnel(overrides: Partial<NonNullable<AnalyticsDashboardData["hubspot"]>["funnel"]>) {
+  function hubspotWithFunnel(overrides: Partial<FunnelMetrics>) {
     return {
       funnel: {
         totalDeals: 50, closedWon: 10, closedLost: 5,
@@ -591,6 +592,21 @@ describe("customer success insights", () => {
     expect(stall).toBeDefined();
     expect(stall!.severity).toBe("warning");
     expect(stall!.subsectionId).toBe("cs-product");
+  });
+
+  it("normalizes percentage throughput values (55 => 55%) before threshold checks", () => {
+    const data = baseData();
+    data.product = {
+      activeContributors: 3, createdTasksInRange: 15,
+      completedTasksInRange: 6, overdueOpenTasks: 9,
+      backlogGrowth: 9, throughputRate: 55,
+      _meta: META,
+    };
+    const bundle = buildAiInsightsBundle(data);
+    const stall = bundle.global.find((i) => i.id === "ai-cs-throughput-stall");
+    expect(stall).toBeDefined();
+    expect(stall!.severity).toBe("warning");
+    expect(stall!.evidence[0].value).toBe("55.0%");
   });
 
   it("escalates throughput stall to critical below 50%", () => {

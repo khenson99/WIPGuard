@@ -38,6 +38,13 @@ function sortInsights(items: AiInsight[]): AiInsight[] {
   });
 }
 
+function normalizeThroughputRatio(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  return value > 1 ? value / 100 : value;
+}
+
 // ── Ads & Traffic ────────────────────────────────────────
 
 function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
@@ -515,7 +522,8 @@ function buildCustomerSuccessInsights(data: AnalyticsDashboardData): AiInsight[]
   const insights: AiInsight[] = [];
   const urgent = data.pylon?.urgentConversations ?? 0;
   const backlogGrowth = data.product?.backlogGrowth ?? 0;
-  const throughputRate = data.product?.throughputRate ?? 0;
+  const throughputRatio = normalizeThroughputRatio(data.product?.throughputRate);
+  const throughputPctText = throughputRatio === null ? "n/a" : `${(throughputRatio * 100).toFixed(1)}%`;
   const csStale = data.staleDomains.includes("pylon") || data.staleDomains.includes("codaOps") || data.staleDomains.includes("slack");
 
   // 1. Escalation pressure
@@ -526,7 +534,7 @@ function buildCustomerSuccessInsights(data: AnalyticsDashboardData): AiInsight[]
       subsectionId: "cs-pylon",
       severity: urgent > 20 || backlogGrowth > 10 ? "critical" : "warning",
       title: "Customer-success execution pressure is rising",
-      why: `Urgent conversations: ${urgent}; backlog growth: ${backlogGrowth}; throughput: ${throughputRate?.toFixed(1) ?? "n/a"}%.`,
+      why: `Urgent conversations: ${urgent}; backlog growth: ${backlogGrowth}; throughput: ${throughputPctText}.`,
       confidence: clampConfidence(0.83),
       expectedImpact: "Rebalancing support and execution queues should reduce urgent backlog and churn precursors.",
       stale: csStale,
@@ -543,7 +551,7 @@ function buildCustomerSuccessInsights(data: AnalyticsDashboardData): AiInsight[]
           domain: "product",
           metric: "Backlog Growth",
           value: String(backlogGrowth),
-          delta: `${throughputRate?.toFixed(1) ?? "n/a"}% throughput`,
+          delta: `${throughputPctText} throughput`,
         },
       ],
       actions: [
@@ -562,14 +570,14 @@ function buildCustomerSuccessInsights(data: AnalyticsDashboardData): AiInsight[]
   }
 
   // 2. Throughput stall warning
-  if (throughputRate > 0 && throughputRate < 0.70) {
+  if (throughputRatio !== null && throughputRatio < 0.70) {
     insights.push({
       id: "ai-cs-throughput-stall",
       section: "customer-success",
       subsectionId: "cs-product",
-      severity: throughputRate < 0.50 ? "critical" : "warning",
+      severity: throughputRatio < 0.50 ? "critical" : "warning",
       title: "Execution throughput has stalled below target",
-      why: `Throughput rate is ${(throughputRate * 100).toFixed(1)}% — below the 70% healthy threshold. Backlog is growing at ${backlogGrowth}/period.`,
+      why: `Throughput rate is ${(throughputRatio * 100).toFixed(1)}% — below the 70% healthy threshold. Backlog is growing at ${backlogGrowth}/period.`,
       confidence: clampConfidence(0.81),
       expectedImpact: "Restoring throughput above 70% prevents backlog snowball and customer frustration.",
       stale: csStale,
@@ -578,7 +586,7 @@ function buildCustomerSuccessInsights(data: AnalyticsDashboardData): AiInsight[]
           source: "Product Signals",
           domain: "product",
           metric: "Throughput Rate",
-          value: `${(throughputRate * 100).toFixed(1)}%`,
+          value: `${(throughputRatio * 100).toFixed(1)}%`,
           delta: `Backlog growth: ${backlogGrowth}`,
         },
       ],
