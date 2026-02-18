@@ -86,6 +86,16 @@ function summarizeRunResponse(payload: unknown): string {
   return summaryParts.length > 0 ? `Run complete (${summaryParts.join(" · ")}).` : "Run complete.";
 }
 
+function providerAttentionCount(item: IntegrationItem, rules: RuleLoadState[]): number {
+  let count = 0;
+  if (!item.connected) count += 1;
+  if (!item.configured) count += 1;
+  if (item.status === "ERROR") count += 1;
+  if (item.syncHealth === "degraded" || item.syncHealth === "error") count += 1;
+  if (rules.some((rule) => Boolean(rule.rule?.lastError))) count += 1;
+  return count;
+}
+
 export function IntegrationsTab() {
   const searchParams = useSearchParams();
 
@@ -98,6 +108,7 @@ export function IntegrationsTab() {
   const [codaDocInput, setCodaDocInput] = useState("");
 
   const [ruleStates, setRuleStates] = useState<Record<string, RuleLoadState>>(createInitialRuleStates);
+  const [expandedProviderSlug, setExpandedProviderSlug] = useState<string | null>(null);
 
   const [hubspotDiagnostics, setHubspotDiagnostics] = useState<{
     loading: boolean;
@@ -120,6 +131,7 @@ export function IntegrationsTab() {
 
   const loadedProvidersRef = useRef<Set<string>>(new Set());
   const loadedHubspotDiagnosticsRef = useRef(false);
+  const didUserToggleProviderRef = useRef(false);
 
   const setRuleState = useCallback(
     (ruleId: string, patch: Partial<RuleLoadState>) => {
@@ -286,6 +298,27 @@ export function IntegrationsTab() {
       void reloadHubspotDiagnostics();
     }
   }, [items, loadRulesForProvider, reloadHubspotDiagnostics]);
+
+  useEffect(() => {
+    if (items.length === 0 || didUserToggleProviderRef.current) {
+      return;
+    }
+
+    const firstNeedsAttention = items.find((item) => {
+      const providerRuleStates = descriptorsForProvider(item.slug)
+        .map((descriptor) => ruleStates[descriptor.id])
+        .filter((state): state is RuleLoadState => Boolean(state));
+      return providerAttentionCount(item, providerRuleStates) > 0;
+    });
+
+    const nextExpandedSlug = firstNeedsAttention?.slug ?? null;
+    setExpandedProviderSlug((previous) => (previous === nextExpandedSlug ? previous : nextExpandedSlug));
+  }, [items, ruleStates]);
+
+  const toggleProviderExpanded = useCallback((slug: string) => {
+    didUserToggleProviderRef.current = true;
+    setExpandedProviderSlug((previous) => (previous === slug ? null : slug));
+  }, []);
 
   const banner = useMemo(() => {
     const status = searchParams?.get("status");
@@ -581,6 +614,7 @@ export function IntegrationsTab() {
           const providerRuleStates = descriptorsForProvider(item.slug)
             .map((descriptor) => ruleStates[descriptor.id])
             .filter((state): state is RuleLoadState => Boolean(state));
+          const attentionCount = providerAttentionCount(item, providerRuleStates);
 
           const remediationSteps = buildRemediationSteps({
             item,
@@ -592,6 +626,9 @@ export function IntegrationsTab() {
             <ProviderCard
               key={item.slug}
               item={item}
+              isExpanded={expandedProviderSlug === item.slug}
+              onToggleExpand={() => toggleProviderExpanded(item.slug)}
+              attentionCount={attentionCount}
               loadingProviderAction={loadingProviderAction}
               remediationSteps={remediationSteps}
               ruleStates={ruleStates}
