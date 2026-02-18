@@ -9,6 +9,21 @@ import { FinanceStripeTab } from "@/components/analytics/finance-stripe-tab";
 import { FinanceHubSpotTab } from "@/components/analytics/finance-hubspot-tab";
 import { SalesFunnelTab } from "@/components/analytics/sales-funnel-tab";
 import { CustomerSuccessTab } from "@/components/analytics/customer-success-tab";
+import { FinanceMercuryTab } from "@/components/analytics/finance-mercury-tab";
+import { AdsGoogleAnalyticsTab } from "@/components/analytics/ads-google-analytics-tab";
+import { AdsGoogleAdsTab } from "@/components/analytics/ads-google-ads-tab";
+import { AdsMetaAdsTab } from "@/components/analytics/ads-meta-ads-tab";
+import { AdsRedditAdsTab } from "@/components/analytics/ads-reddit-ads-tab";
+import { AdsWebflowTab } from "@/components/analytics/ads-webflow-tab";
+import { AdsSemrushTab } from "@/components/analytics/ads-semrush-tab";
+import { AdsCodaKanbanTab } from "@/components/analytics/ads-coda-kanban-tab";
+import { SalesHubspotTab } from "@/components/analytics/sales-hubspot-tab";
+import { SalesStripeTab } from "@/components/analytics/sales-stripe-tab";
+import { GenericWorkspaceTab } from "@/components/analytics/generic-workspace-tab";
+import { GenericSlackTab } from "@/components/analytics/generic-slack-tab";
+import { CsPylonTab } from "@/components/analytics/cs-pylon-tab";
+import { CsCodaTab } from "@/components/analytics/cs-coda-tab";
+import { CsProductTab } from "@/components/analytics/cs-product-tab";
 import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-controls";
 import {
   DecisionDashboardView,
@@ -46,7 +61,23 @@ type ChildDataDomain = "decisionDashboard" | "flowMetrics" | "flowRisk" | "obser
 export type AnalyticsChildRenderKind =
   | "finance-stripe"
   | "finance-hubspot"
+  | "finance-mercury"
   | "sales-hubspot"
+  | "sales-stripe"
+  | "sales-google-workspace"
+  | "sales-slack"
+  | "ads-google-analytics"
+  | "ads-google-ads"
+  | "ads-meta-ads"
+  | "ads-reddit-ads"
+  | "ads-webflow"
+  | "ads-semrush"
+  | "ads-coda-kanban"
+  | "cs-pylon"
+  | "cs-coda"
+  | "cs-product"
+  | "cs-google-workspace"
+  | "cs-slack"
   | "decisionDashboard"
   | "flowMetrics"
   | "flowRisk"
@@ -57,9 +88,30 @@ export function resolveAnalyticsChildRenderKind(input: {
   childId: string;
   childDataDomain: ChildDataDomain;
 }): AnalyticsChildRenderKind {
+  // Finance
   if (input.childId === "finance-stripe") return "finance-stripe";
   if (input.childId === "finance-hubspot") return "finance-hubspot";
+  if (input.childId === "finance-mercury") return "finance-mercury";
+  // Sales
   if (input.childId === "sales-hubspot") return "sales-hubspot";
+  if (input.childId === "sales-stripe") return "sales-stripe";
+  if (input.childId === "sales-google-workspace") return "sales-google-workspace";
+  if (input.childId === "sales-slack") return "sales-slack";
+  // Ads & Traffic
+  if (input.childId === "ads-google-analytics") return "ads-google-analytics";
+  if (input.childId === "ads-google-ads") return "ads-google-ads";
+  if (input.childId === "ads-meta-ads") return "ads-meta-ads";
+  if (input.childId === "ads-reddit-ads") return "ads-reddit-ads";
+  if (input.childId === "ads-webflow") return "ads-webflow";
+  if (input.childId === "ads-semrush") return "ads-semrush";
+  if (input.childId === "ads-coda-kanban") return "ads-coda-kanban";
+  // Customer Success
+  if (input.childId === "cs-pylon") return "cs-pylon";
+  if (input.childId === "cs-coda") return "cs-coda";
+  if (input.childId === "cs-product") return "cs-product";
+  if (input.childId === "cs-google-workspace") return "cs-google-workspace";
+  if (input.childId === "cs-slack") return "cs-slack";
+  // Ops
   if (input.childDataDomain === "decisionDashboard") return "decisionDashboard";
   if (input.childDataDomain === "flowMetrics") return "flowMetrics";
   if (input.childDataDomain === "flowRisk") return "flowRisk";
@@ -308,14 +360,36 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
       childId: child.id,
       childDataDomain: child.dataDomain,
     });
+    // Finance
     if (renderKind === "finance-stripe") return <FinanceStripeTab data={analyticsData} />;
     if (renderKind === "finance-hubspot") return <FinanceHubSpotTab data={analyticsData} />;
-    if (renderKind === "sales-hubspot") return <SalesFunnelTab data={analyticsData} />;
+    if (renderKind === "finance-mercury") return <FinanceMercuryTab data={analyticsData} />;
+    // Sales
+    if (renderKind === "sales-hubspot") return <SalesHubspotTab data={analyticsData} />;
+    if (renderKind === "sales-stripe") return <SalesStripeTab data={analyticsData} />;
+    if (renderKind === "sales-google-workspace") return <GenericWorkspaceTab data={analyticsData} />;
+    if (renderKind === "sales-slack") return <GenericSlackTab data={analyticsData} />;
+    // Ads & Traffic
+    if (renderKind === "ads-google-analytics") return <AdsGoogleAnalyticsTab data={analyticsData} />;
+    if (renderKind === "ads-google-ads") return <AdsGoogleAdsTab data={analyticsData} />;
+    if (renderKind === "ads-meta-ads") return <AdsMetaAdsTab data={analyticsData} />;
+    if (renderKind === "ads-reddit-ads") return <AdsRedditAdsTab data={analyticsData} />;
+    if (renderKind === "ads-webflow") return <AdsWebflowTab data={analyticsData} />;
+    if (renderKind === "ads-semrush") return <AdsSemrushTab data={analyticsData} />;
+    if (renderKind === "ads-coda-kanban") return <AdsCodaKanbanTab data={analyticsData} />;
+    // Customer Success
+    if (renderKind === "cs-pylon") return <CsPylonTab data={analyticsData} />;
+    if (renderKind === "cs-coda") return <CsCodaTab data={analyticsData} />;
+    if (renderKind === "cs-product") return <CsProductTab data={analyticsData} />;
+    if (renderKind === "cs-google-workspace") return <GenericWorkspaceTab data={analyticsData} />;
+    if (renderKind === "cs-slack") return <GenericSlackTab data={analyticsData} />;
+    // Ops
     if (renderKind === "decisionDashboard") return <DecisionDashboardView payload={auxPayload} />;
     if (renderKind === "flowMetrics") return <FlowMetricsView payload={auxPayload} />;
     if (renderKind === "flowRisk") return <FlowRiskView payload={auxPayload} />;
     if (renderKind === "observability") return <ObservabilityView payload={auxPayload} />;
 
+    // Fallback for any unrecognized sub-sections
     const payload = (analyticsData as unknown as Record<string, unknown>) || null;
     const domainKey = child.dataDomain;
     const domainPayload = (payload?.[domainKey] as Record<string, unknown> | null) ?? null;
@@ -399,7 +473,16 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
           onAction={resource.refresh}
         />
       ) : child ? (
-        renderChild()
+        <div className="space-y-4">
+          {renderChild()}
+          {analyticsData?.aiInsights && (
+            <AiInsightsPanel
+              bundle={analyticsData.aiInsights}
+              defaultFilter={primary.id}
+              compact
+            />
+          )}
+        </div>
       ) : (
         <div className="space-y-4">
           {renderPrimary()}
