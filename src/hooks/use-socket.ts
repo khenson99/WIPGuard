@@ -14,7 +14,7 @@ export function useSocket() {
 
   useEffect(() => {
     // Hit a dedicated bootstrap endpoint so we don't poll Engine.IO directly.
-    fetch("/api/socketio-bootstrap", { cache: "no-store" }).finally(() => {
+    fetch("/api/realtime/bootstrap", { cache: "no-store" }).finally(() => {
       const socket = io({
         path: "/api/socketio",
         transports: ["websocket", "polling"],
