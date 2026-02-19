@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { AlertTriangle, CalendarClock, Clock3, Flame } from "lucide-react";
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-state";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
@@ -88,7 +88,7 @@ function relativeDate(date: string | null): string {
   return `Due in ${diffDays}d`;
 }
 
-function TaskList({
+const TaskList = memo(function TaskList({
   title,
   items,
   empty,
@@ -116,7 +116,7 @@ function TaskList({
       )}
     </section>
   );
-}
+});
 
 export function PersonalizedDashboard() {
   const resource = useDashboardResource<PersonalizedDashboardPayload>({

@@ -92,4 +92,23 @@ describe("AiInsightsPanel", () => {
     expect(screen.getByText("Ads efficiency trending down")).toBeTruthy();
     expect(screen.getByText("Refactor campaign targeting")).toBeTruthy();
   });
+
+  it("resets filter when defaultFilter prop changes", () => {
+    const bundle = makeBundle();
+    bundle.bySection["ads-traffic"] = [bundle.global[0]];
+    bundle.bySection.finance = [bundle.global[2]];
+    bundle.bySection["sales-pipeline"] = [bundle.global[1]];
+
+    const { rerender } = render(
+      <AiInsightsPanel bundle={bundle} defaultFilter="sales-pipeline" />
+    );
+
+    expect(screen.getByText("Pipeline conversion risk")).toBeTruthy();
+    expect(screen.queryByText("Runway stable")).toBeNull();
+
+    rerender(<AiInsightsPanel bundle={bundle} defaultFilter="finance" />);
+
+    expect(screen.getByText("Runway stable")).toBeTruthy();
+    expect(screen.queryByText("Pipeline conversion risk")).toBeNull();
+  });
 });

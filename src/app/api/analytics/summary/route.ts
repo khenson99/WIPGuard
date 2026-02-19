@@ -133,7 +133,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       ),
       webflow: Boolean(creds.webflowApiToken && creds.webflowSiteId),
       coda: Boolean(creds.codaApiToken && creds.codaDocId),
-      semrush: Boolean(creds.semrushApiToken),
+      semrush: Boolean(creds.semrushApiToken && creds.semrushDomain),
       pylon: Boolean(creds.pylonApiKey),
       product: true,
       decisionDashboard: true,

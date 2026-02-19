@@ -2,41 +2,42 @@
 
 import React, { useMemo } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
-import { MarketingTabNew } from "@/components/analytics/marketing-tab-new";
-import { FinanceTab } from "@/components/analytics/finance-tab";
-import { FinanceStripeTab } from "@/components/analytics/finance-stripe-tab";
-import { FinanceHubSpotTab } from "@/components/analytics/finance-hubspot-tab";
-import { SalesFunnelTab } from "@/components/analytics/sales-funnel-tab";
-import { CustomerSuccessTab } from "@/components/analytics/customer-success-tab";
-import { FinanceMercuryTab } from "@/components/analytics/finance-mercury-tab";
-import { AdsGoogleAnalyticsTab } from "@/components/analytics/ads-google-analytics-tab";
-import { AdsGoogleAdsTab } from "@/components/analytics/ads-google-ads-tab";
-import { AdsMetaAdsTab } from "@/components/analytics/ads-meta-ads-tab";
-import { AdsRedditAdsTab } from "@/components/analytics/ads-reddit-ads-tab";
-import { AdsWebflowTab } from "@/components/analytics/ads-webflow-tab";
-import { AdsSemrushTab } from "@/components/analytics/ads-semrush-tab";
-import { AdsCodaKanbanTab } from "@/components/analytics/ads-coda-kanban-tab";
-import { SalesHubspotTab } from "@/components/analytics/sales-hubspot-tab";
-import { SalesStripeTab } from "@/components/analytics/sales-stripe-tab";
-import { GenericWorkspaceTab } from "@/components/analytics/generic-workspace-tab";
-import { GenericSlackTab } from "@/components/analytics/generic-slack-tab";
-import { CsPylonTab } from "@/components/analytics/cs-pylon-tab";
-import { CsCodaTab } from "@/components/analytics/cs-coda-tab";
-import { CsProductTab } from "@/components/analytics/cs-product-tab";
 import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-controls";
-import {
-  DecisionDashboardView,
-  FlowMetricsView,
-  FlowRiskView,
-  ObservabilityView,
-} from "@/components/analytics/ops-insights";
-import { LifecycleFunnelPanel } from "@/components/analytics/lifecycle-funnel-panel";
-import { AiInsightsPanel } from "@/components/analytics/ai-insights-panel";
-import { GoogleAnalyticsDashboard } from "./sub-dashboards/google-analytics-dashboard";
-import { StripeDashboard } from "./sub-dashboards/stripe-dashboard";
-import { HubspotSalesDashboard } from "./sub-dashboards/hubspot-sales-dashboard";
+
+const MarketingTabNew = dynamic(() => import("@/components/analytics/marketing-tab-new").then((m) => m.MarketingTabNew));
+const FinanceTab = dynamic(() => import("@/components/analytics/finance-tab").then((m) => m.FinanceTab));
+const FinanceStripeTab = dynamic(() => import("@/components/analytics/finance-stripe-tab").then((m) => m.FinanceStripeTab));
+const FinanceHubSpotTab = dynamic(() => import("@/components/analytics/finance-hubspot-tab").then((m) => m.FinanceHubSpotTab));
+const FinanceMercuryTab = dynamic(() => import("@/components/analytics/finance-mercury-tab").then((m) => m.FinanceMercuryTab));
+const SalesFunnelTab = dynamic(() => import("@/components/analytics/sales-funnel-tab").then((m) => m.SalesFunnelTab));
+const CustomerSuccessTab = dynamic(() => import("@/components/analytics/customer-success-tab").then((m) => m.CustomerSuccessTab));
+const AdsGoogleAnalyticsTab = dynamic(() => import("@/components/analytics/ads-google-analytics-tab").then((m) => m.AdsGoogleAnalyticsTab));
+const AdsGoogleAdsTab = dynamic(() => import("@/components/analytics/ads-google-ads-tab").then((m) => m.AdsGoogleAdsTab));
+const AdsMetaAdsTab = dynamic(() => import("@/components/analytics/ads-meta-ads-tab").then((m) => m.AdsMetaAdsTab));
+const AdsRedditAdsTab = dynamic(() => import("@/components/analytics/ads-reddit-ads-tab").then((m) => m.AdsRedditAdsTab));
+const AdsWebflowTab = dynamic(() => import("@/components/analytics/ads-webflow-tab").then((m) => m.AdsWebflowTab));
+const AdsSemrushTab = dynamic(() => import("@/components/analytics/ads-semrush-tab").then((m) => m.AdsSemrushTab));
+const AdsCodaKanbanTab = dynamic(() => import("@/components/analytics/ads-coda-kanban-tab").then((m) => m.AdsCodaKanbanTab));
+const SalesHubspotTab = dynamic(() => import("@/components/analytics/sales-hubspot-tab").then((m) => m.SalesHubspotTab));
+const SalesStripeTab = dynamic(() => import("@/components/analytics/sales-stripe-tab").then((m) => m.SalesStripeTab));
+const GenericWorkspaceTab = dynamic(() => import("@/components/analytics/generic-workspace-tab").then((m) => m.GenericWorkspaceTab));
+const GenericSlackTab = dynamic(() => import("@/components/analytics/generic-slack-tab").then((m) => m.GenericSlackTab));
+const CsPylonTab = dynamic(() => import("@/components/analytics/cs-pylon-tab").then((m) => m.CsPylonTab));
+const CsCodaTab = dynamic(() => import("@/components/analytics/cs-coda-tab").then((m) => m.CsCodaTab));
+const CsProductTab = dynamic(() => import("@/components/analytics/cs-product-tab").then((m) => m.CsProductTab));
+const DecisionDashboardView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.DecisionDashboardView));
+const FlowMetricsView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.FlowMetricsView));
+const FlowRiskView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.FlowRiskView));
+const ObservabilityView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.ObservabilityView));
+const LifecycleFunnelPanel = dynamic(() => import("@/components/analytics/lifecycle-funnel-panel").then((m) => m.LifecycleFunnelPanel));
+const AiInsightsPanel = dynamic(() => import("@/components/analytics/ai-insights-panel").then((m) => m.AiInsightsPanel));
+const GoogleAnalyticsDashboard = dynamic(() => import("./sub-dashboards/google-analytics-dashboard").then((m) => m.GoogleAnalyticsDashboard));
+const StripeDashboard = dynamic(() => import("./sub-dashboards/stripe-dashboard").then((m) => m.StripeDashboard));
+const HubspotSalesDashboard = dynamic(() => import("./sub-dashboards/hubspot-sales-dashboard").then((m) => m.HubspotSalesDashboard));
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import { buildRangeQuery } from "@/lib/analytics/time-range";
 import {
   getAnalyticsPrimaryForSection,
   getAnalyticsSecondaryForPrimary,
@@ -131,17 +132,6 @@ export function resolveAnalyticsChildRenderKind(input: {
   return "snapshot";
 }
 
-function buildRangeQuery(searchParams: URLSearchParams | null): string {
-  const params = new URLSearchParams();
-  const range = searchParams?.get("range");
-  const from = searchParams?.get("from");
-  const to = searchParams?.get("to");
-  if (range) params.set("range", range);
-  if (from) params.set("from", from);
-  if (to) params.set("to", to);
-  return params.toString();
-}
-
 function sectionCacheKey(sectionId: string, rangeQuery: string): string {
   return `${SECTION_CACHE_PREFIX}${sectionId}:${rangeQuery || "default"}`;
 }
@@ -190,7 +180,7 @@ function SnapshotCards({
     );
   }
 
-  const summary = summarizePayload(payload);
+  const summary = useMemo(() => summarizePayload(payload), [payload]);
 
   if (summary.scalarEntries.length === 0) {
     return (
@@ -362,15 +352,15 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
   const auxPayload = resource.data?.auxPayload ?? null;
   const title = child?.label ?? primary.label;
 
-  const renderPrimary = () => {
+  const primaryContent = useMemo(() => {
     if (sectionId === "ads-traffic") return <MarketingTabNew data={analyticsData} />;
     if (sectionId === "finance") return <FinanceTab data={analyticsData} />;
     if (sectionId === "sales-pipeline") return <SalesFunnelTab data={analyticsData} />;
     if (sectionId === "customer-success") return <CustomerSuccessTab data={analyticsData} />;
     return null;
-  };
+  }, [sectionId, analyticsData]);
 
-  const renderChild = () => {
+  const childContent = useMemo(() => {
     if (!child) return null;
 
     const renderKind = resolveAnalyticsChildRenderKind({
@@ -427,7 +417,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         errors={domainErrors}
       />
     );
-  };
+  }, [child, analyticsData, auxPayload]);
 
   return (
     <div className="h-full space-y-4 overflow-y-auto p-4">
@@ -497,7 +487,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         />
       ) : child ? (
         <div className="space-y-4">
-          {renderChild()}
+          {childContent}
           {analyticsData?.aiInsights && (
             <AiInsightsPanel
               bundle={analyticsData.aiInsights}
@@ -508,7 +498,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         </div>
       ) : (
         <div className="space-y-4">
-          {renderPrimary()}
+          {primaryContent}
           <LifecycleFunnelPanel
             lifecycle={analyticsData?.lifecycleFunnel ?? null}
             insights={analyticsData?.aiInsights?.global ?? []}

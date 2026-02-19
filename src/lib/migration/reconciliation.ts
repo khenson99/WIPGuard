@@ -13,7 +13,7 @@ import type {
   CodaImportColumnMap,
   NormalizedImportRecord,
 } from "./coda-import";
-import { computeContentHash, buildMigrationDedupeKey } from "./coda-import";
+import { buildMigrationDedupeKey } from "./coda-import";
 
 // ---------------------------------------------------------------------------
 // Types

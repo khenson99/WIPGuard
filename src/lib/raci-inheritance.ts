@@ -53,7 +53,6 @@ export interface RaciNode {
 }
 
 const RACI_ROLES = ["responsible", "accountable", "consulted", "informed"] as const;
-type RaciRole = (typeof RACI_ROLES)[number];
 
 /**
  * Build the ancestor chain for a given task, ordered from the task itself

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AiInsight, AiInsightsBundle, AnalyticsSectionId } from "@/lib/analytics/types";
 import { MiniTrend } from "./evidence-mini-chart";
 
@@ -117,6 +117,10 @@ function CompactInsightRow({ insight }: { insight: AiInsight }) {
 export function AiInsightsPanel({ bundle, defaultFilter = "all", compact = false }: AiInsightsPanelProps) {
   const [filter, setFilter] = useState<InsightFilter>(defaultFilter);
   const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    setFilter(defaultFilter);
+  }, [defaultFilter]);
 
   const visible = useMemo(() => {
     if (!bundle) return [];

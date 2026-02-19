@@ -44,11 +44,10 @@ import {
   filterMetricsByPrefix,
   getActiveBreachSloKeys,
   computeMTTR,
-  type SystemComponentHealth,
 } from "@/lib/observability/oncall-dashboard";
 
 // --- SLO types ---
-import type { ObservabilitySloReport, ObservabilitySlo } from "@/lib/observability/slo";
+import type { ObservabilitySloReport } from "@/lib/observability/slo";
 import { evaluateObservabilitySlos } from "@/lib/observability/slo";
 import type { OutboxOperationalMetrics } from "@/lib/outbox-worker";
 

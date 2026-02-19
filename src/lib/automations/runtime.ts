@@ -12,7 +12,6 @@ import {
   evaluateConditionExpression,
   normalizeWorkflowGraph,
   renderTemplatedString,
-  type WorkflowExecutionContext,
   type WorkflowGraph,
   type WorkflowGraphNode,
 } from "@/lib/automations/graph";

@@ -1,38 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Link2,
-  Link2Off,
-  Loader2,
-  ShieldAlert,
-} from "lucide-react";
-
-type IntegrationStatus = "CONNECTED" | "DISCONNECTED" | "ERROR";
-type SyncHealth = "healthy" | "degraded" | "error" | "missing";
-
-interface IntegrationItem {
-  slug: string;
-  name: string;
-  description: string;
-  capabilities: string[];
-  authType: "oauth" | "token";
-  configured: boolean;
-  missingEnv: string[];
-  connected: boolean;
-  status: IntegrationStatus;
-  accountLabel: string | null;
-  connectedAt: string | null;
-  lastError: string | null;
-  syncHealth: SyncHealth;
-  syncHealthReason: string | null;
-  lastSnapshotAt: string | null;
-  lastSnapshotStatus: "SUCCESS" | "ERROR" | null;
-  docId?: string | null;
-}
+import { ShieldAlert } from "lucide-react";
+import { ProviderCard } from "@/components/settings/integrations/provider-card";
+import { descriptorsForProvider, RULE_DESCRIPTORS } from "@/components/settings/integrations/rule-descriptors";
+import { buildRemediationSteps } from "@/components/settings/integrations/remediation";
+import type {
+  HubSpotDiagnosticsResponse,
+  HubSpotDriftReport,
+  IntegrationItem,
+  RuleLoadState,
+  RuleRuntimeState,
+} from "@/components/settings/integrations/types";
 
 const STATUS_MESSAGE: Record<string, string> = {
   connected: "Integration connected successfully.",
@@ -42,73 +22,303 @@ const STATUS_MESSAGE: Record<string, string> = {
   missing_config: "Provider credentials are missing on the server.",
 };
 
-function formatConnectedAt(value: string | null): string {
-  if (!value) return "Never";
-  return new Date(value).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as Record<string, unknown>;
 }
 
-function formatHealthLabel(item: IntegrationItem): {
-  tone: "success" | "warning" | "danger" | "muted";
-  label: string;
-} {
-  if (!item.connected) {
-    if (item.status === "ERROR" || item.syncHealth === "error") {
-      return { tone: "danger", label: "Error" };
+function normalizeRule(raw: unknown): RuleRuntimeState {
+  const input = asRecord(raw);
+  return {
+    id: String(input.id ?? ""),
+    key: String(input.key ?? ""),
+    enabled: input.enabled === true,
+    statusOverride:
+      input.statusOverride === "QUEUED" || input.statusOverride === "ACTIVE" || input.statusOverride === "NOT_DONE"
+        ? input.statusOverride
+        : null,
+    config: asRecord(input.config),
+    checkpoint: asRecord(input.checkpoint),
+    lastObservedAt: typeof input.lastObservedAt === "string" ? input.lastObservedAt : null,
+    lastRunAt: typeof input.lastRunAt === "string" ? input.lastRunAt : null,
+    lastError: typeof input.lastError === "string" ? input.lastError : null,
+  };
+}
+
+function createInitialRuleStates(): Record<string, RuleLoadState> {
+  return Object.fromEntries(
+    RULE_DESCRIPTORS.map((descriptor) => [
+      descriptor.id,
+      {
+        loading: false,
+        saving: false,
+        running: false,
+        error: null,
+        message: null,
+        rule: null,
+      },
+    ])
+  ) as Record<string, RuleLoadState>;
+}
+
+async function parseErrorMessage(response: Response, fallback: string): Promise<string> {
+  const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+  return payload?.error || fallback;
+}
+
+function summarizeRunResponse(payload: unknown): string {
+  const record = asRecord(payload);
+  const result = asRecord(record.result);
+  if (Object.keys(result).length === 0) {
+    return "Action completed.";
+  }
+
+  const summaryParts: string[] = [];
+
+  for (const [key, value] of Object.entries(result)) {
+    if (typeof value === "number") {
+      summaryParts.push(`${key}: ${value}`);
     }
-    return { tone: "muted", label: "Not connected" };
   }
 
-  if (item.syncHealth === "healthy") {
-    return { tone: "success", label: "Connected" };
-  }
+  return summaryParts.length > 0 ? `Run complete (${summaryParts.join(" · ")}).` : "Run complete.";
+}
 
-  if (item.syncHealth === "degraded") {
-    return { tone: "warning", label: "Connected (degraded)" };
-  }
-
-  if (item.syncHealth === "error") {
-    return { tone: "danger", label: "Connected (error)" };
-  }
-
-  return { tone: "muted", label: "Connected" };
+function providerAttentionCount(item: IntegrationItem, rules: RuleLoadState[]): number {
+  let count = 0;
+  if (!item.connected) count += 1;
+  if (!item.configured) count += 1;
+  if (item.status === "ERROR") count += 1;
+  if (item.syncHealth === "degraded" || item.syncHealth === "error") count += 1;
+  if (rules.some((rule) => Boolean(rule.rule?.lastError))) count += 1;
+  return count;
 }
 
 export function IntegrationsTab() {
   const searchParams = useSearchParams();
+
   const [items, setItems] = useState<IntegrationItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [working, setWorking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadingProviderAction, setLoadingProviderAction] = useState<string | null>(null);
+
   const [codaToken, setCodaToken] = useState("");
   const [codaDocInput, setCodaDocInput] = useState("");
+
+  const [ruleStates, setRuleStates] = useState<Record<string, RuleLoadState>>(createInitialRuleStates);
+  const [expandedProviderSlug, setExpandedProviderSlug] = useState<string | null>(null);
+
+  const [hubspotDiagnostics, setHubspotDiagnostics] = useState<{
+    loading: boolean;
+    error: string | null;
+    data: HubSpotDiagnosticsResponse | null;
+    driftLoading: boolean;
+    driftReport: HubSpotDriftReport | null;
+  }>({
+    loading: false,
+    error: null,
+    data: null,
+    driftLoading: false,
+    driftReport: null,
+  });
+
+  const descriptorById = useMemo(
+    () => new Map(RULE_DESCRIPTORS.map((descriptor) => [descriptor.id, descriptor])),
+    []
+  );
+
+  const loadedProvidersRef = useRef<Set<string>>(new Set());
+  const loadedHubspotDiagnosticsRef = useRef(false);
+  const didUserToggleProviderRef = useRef(false);
+
+  const setRuleState = useCallback(
+    (ruleId: string, patch: Partial<RuleLoadState>) => {
+      setRuleStates((prev) => ({
+        ...prev,
+        [ruleId]: {
+          ...(prev[ruleId] ?? {
+            loading: false,
+            saving: false,
+            running: false,
+            error: null,
+            message: null,
+            rule: null,
+          }),
+          ...patch,
+        },
+      }));
+    },
+    []
+  );
 
   const fetchIntegrations = useCallback(async () => {
     setError(null);
     try {
       const response = await fetch("/api/integrations", { cache: "no-store" });
       if (!response.ok) {
-        throw new Error("Could not load integrations");
+        throw new Error(await parseErrorMessage(response, "Could not load integrations"));
       }
+
       const integrations = (await response.json()) as IntegrationItem[];
       setItems(integrations);
+
       const coda = integrations.find((item) => item.slug === "coda");
       setCodaDocInput(coda?.docId ?? "");
-    } catch {
-      setError("Could not load integrations.");
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : "Could not load integrations.");
     } finally {
       setLoading(false);
     }
   }, []);
 
+  const loadRule = useCallback(
+    async (ruleId: string) => {
+      const descriptor = descriptorById.get(ruleId);
+      if (!descriptor) return;
+
+      setRuleState(ruleId, {
+        loading: true,
+        error: null,
+      });
+
+      try {
+        const response = await fetch(descriptor.endpoint, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(await parseErrorMessage(response, `Failed to load ${descriptor.title}`));
+        }
+
+        const payload = (await response.json().catch(() => null)) as { rule?: unknown } | null;
+        if (!payload?.rule) {
+          throw new Error(`No rule payload returned for ${descriptor.title}`);
+        }
+
+        setRuleState(ruleId, {
+          loading: false,
+          error: null,
+          rule: normalizeRule(payload.rule),
+        });
+      } catch (loadError) {
+        setRuleState(ruleId, {
+          loading: false,
+          error: loadError instanceof Error ? loadError.message : `Failed to load ${descriptor.title}`,
+        });
+      }
+    },
+    [descriptorById, setRuleState]
+  );
+
+  const loadRulesForProvider = useCallback(
+    async (provider: string) => {
+      const descriptors = descriptorsForProvider(provider);
+      if (descriptors.length === 0) return;
+      await Promise.all(descriptors.map((descriptor) => loadRule(descriptor.id)));
+    },
+    [loadRule]
+  );
+
+  const reloadHubspotDiagnostics = useCallback(async () => {
+    setHubspotDiagnostics((prev) => ({ ...prev, loading: true, error: null }));
+    try {
+      const response = await fetch("/api/integrations/hubspot/sync", { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(await parseErrorMessage(response, "Failed to load HubSpot diagnostics"));
+      }
+
+      const payload = (await response.json()) as HubSpotDiagnosticsResponse;
+      setHubspotDiagnostics((prev) => ({
+        ...prev,
+        loading: false,
+        error: null,
+        data: payload,
+      }));
+    } catch (diagnosticsError) {
+      setHubspotDiagnostics((prev) => ({
+        ...prev,
+        loading: false,
+        error:
+          diagnosticsError instanceof Error
+            ? diagnosticsError.message
+            : "Failed to load HubSpot diagnostics",
+      }));
+    }
+  }, []);
+
+  const runHubspotDriftReport = useCallback(async () => {
+    setHubspotDiagnostics((prev) => ({ ...prev, driftLoading: true, error: null }));
+    try {
+      const response = await fetch("/api/integrations/hubspot/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "drift_report" }),
+      });
+      if (!response.ok) {
+        throw new Error(await parseErrorMessage(response, "Failed to run HubSpot drift report"));
+      }
+
+      const payload = (await response.json().catch(() => null)) as
+        | { report?: HubSpotDriftReport }
+        | null;
+      setHubspotDiagnostics((prev) => ({
+        ...prev,
+        driftLoading: false,
+        driftReport: payload?.report ?? null,
+      }));
+    } catch (driftError) {
+      setHubspotDiagnostics((prev) => ({
+        ...prev,
+        driftLoading: false,
+        error:
+          driftError instanceof Error ? driftError.message : "Failed to run HubSpot drift report",
+      }));
+    }
+  }, []);
+
   useEffect(() => {
-    fetchIntegrations();
+    void fetchIntegrations();
   }, [fetchIntegrations]);
+
+  useEffect(() => {
+    if (items.length === 0) return;
+
+    for (const item of items) {
+      if (descriptorsForProvider(item.slug).length === 0) {
+        continue;
+      }
+
+      if (!loadedProvidersRef.current.has(item.slug)) {
+        loadedProvidersRef.current.add(item.slug);
+        void loadRulesForProvider(item.slug);
+      }
+    }
+
+    if (items.some((item) => item.slug === "hubspot") && !loadedHubspotDiagnosticsRef.current) {
+      loadedHubspotDiagnosticsRef.current = true;
+      void reloadHubspotDiagnostics();
+    }
+  }, [items, loadRulesForProvider, reloadHubspotDiagnostics]);
+
+  useEffect(() => {
+    if (items.length === 0 || didUserToggleProviderRef.current) {
+      return;
+    }
+
+    const firstNeedsAttention = items.find((item) => {
+      const providerRuleStates = descriptorsForProvider(item.slug)
+        .map((descriptor) => ruleStates[descriptor.id])
+        .filter((state): state is RuleLoadState => Boolean(state));
+      return providerAttentionCount(item, providerRuleStates) > 0;
+    });
+
+    const nextExpandedSlug = firstNeedsAttention?.slug ?? null;
+    setExpandedProviderSlug((previous) => (previous === nextExpandedSlug ? previous : nextExpandedSlug));
+  }, [items, ruleStates]);
+
+  const toggleProviderExpanded = useCallback((slug: string) => {
+    didUserToggleProviderRef.current = true;
+    setExpandedProviderSlug((previous) => (previous === slug ? null : slug));
+  }, []);
 
   const banner = useMemo(() => {
     const status = searchParams?.get("status");
@@ -116,40 +326,45 @@ export function IntegrationsTab() {
       return null;
     }
     const integration = searchParams?.get("integration");
-    return integration
-      ? `${STATUS_MESSAGE[status]} (${integration})`
-      : STATUS_MESSAGE[status];
+    return integration ? `${STATUS_MESSAGE[status]} (${integration})` : STATUS_MESSAGE[status];
   }, [searchParams]);
 
   const startOAuthConnect = (slug: string) => {
     window.location.href = `/api/integrations/connect/${slug}`;
   };
 
-  const disconnect = async (slug: string) => {
-    setWorking(slug);
-    setError(null);
-    try {
-      const response = await fetch(`/api/integrations/${slug}`, {
-        method: "DELETE",
-      });
-      if (!response.ok) {
-        throw new Error("Disconnect failed");
+  const disconnect = useCallback(
+    async (slug: string) => {
+      setLoadingProviderAction(slug);
+      setError(null);
+      try {
+        const response = await fetch(`/api/integrations/${slug}`, {
+          method: "DELETE",
+        });
+        if (!response.ok) {
+          throw new Error(await parseErrorMessage(response, `Failed to disconnect ${slug}`));
+        }
+        await fetchIntegrations();
+      } catch (disconnectError) {
+        setError(
+          disconnectError instanceof Error ? disconnectError.message : `Failed to disconnect ${slug}.`
+        );
+      } finally {
+        setLoadingProviderAction(null);
       }
-      await fetchIntegrations();
-    } catch {
-      setError(`Failed to disconnect ${slug}.`);
-    } finally {
-      setWorking(null);
-    }
-  };
+    },
+    [fetchIntegrations]
+  );
 
-  const connectCoda = async () => {
-    setWorking("coda");
+  const connectCoda = useCallback(async () => {
+    setLoadingProviderAction("coda");
     setError(null);
+
     try {
       const token = codaToken.trim();
       const docInput = codaDocInput.trim();
       const payload: { token?: string; docId?: string; docUrl?: string } = {};
+
       if (token) {
         payload.token = token;
       }
@@ -160,6 +375,7 @@ export function IntegrationsTab() {
           payload.docId = docInput;
         }
       }
+
       const response = await fetch("/api/integrations/coda/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -167,30 +383,201 @@ export function IntegrationsTab() {
       });
 
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as
-          | { error?: string }
-          | null;
-        throw new Error(payload?.error || "Coda connect failed");
+        throw new Error(await parseErrorMessage(response, "Failed to connect Coda"));
       }
 
       const successPayload = (await response.json().catch(() => null)) as
-        | { docId?: string }
+        | { docId?: string | null }
         | null;
+
       setCodaToken("");
-      if (successPayload?.docId) {
+      if (typeof successPayload?.docId === "string") {
         setCodaDocInput(successPayload.docId);
       }
+
       await fetchIntegrations();
     } catch (connectError) {
-      const message =
-        connectError instanceof Error
-          ? connectError.message
-          : "Failed to connect Coda.";
-      setError(message);
+      setError(connectError instanceof Error ? connectError.message : "Failed to connect Coda");
     } finally {
-      setWorking(null);
+      setLoadingProviderAction(null);
     }
-  };
+  }, [codaDocInput, codaToken, fetchIntegrations]);
+
+  const saveRule = useCallback(
+    async (
+      ruleId: string,
+      payload: {
+        enabled?: boolean;
+        statusOverride?: "QUEUED" | "ACTIVE" | "NOT_DONE" | null;
+        config: Record<string, unknown>;
+      }
+    ) => {
+      const descriptor = descriptorById.get(ruleId);
+      if (!descriptor) return;
+
+      setRuleState(ruleId, { saving: true, error: null, message: null });
+
+      try {
+        const body: Record<string, unknown> = {
+          action: "configure",
+          enabled: payload.enabled,
+          config: payload.config,
+        };
+        if (descriptor.supportsStatusOverride) {
+          body.statusOverride = payload.statusOverride ?? null;
+        }
+
+        const response = await fetch(descriptor.endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+          throw new Error(await parseErrorMessage(response, `Failed to save ${descriptor.title}`));
+        }
+
+        const resultPayload = (await response.json().catch(() => null)) as
+          | { rule?: unknown }
+          | null;
+
+        setRuleState(ruleId, {
+          saving: false,
+          message: `${descriptor.title} saved.`,
+          rule: resultPayload?.rule ? normalizeRule(resultPayload.rule) : ruleStates[ruleId]?.rule ?? null,
+        });
+
+        await fetchIntegrations();
+      } catch (saveError) {
+        setRuleState(ruleId, {
+          saving: false,
+          error: saveError instanceof Error ? saveError.message : `Failed to save ${descriptor.title}`,
+        });
+      }
+    },
+    [descriptorById, fetchIntegrations, ruleStates, setRuleState]
+  );
+
+  const runRule = useCallback(
+    async (ruleId: string, payload?: { dryRun?: boolean; payload?: Record<string, unknown> }) => {
+      const descriptor = descriptorById.get(ruleId);
+      if (!descriptor || !descriptor.runAction) {
+        return;
+      }
+
+      setRuleState(ruleId, { running: true, error: null, message: null });
+
+      try {
+        const body: Record<string, unknown> = { action: descriptor.runAction };
+        if (descriptor.runAction === "sync") {
+          body.dryRun = payload?.dryRun === true;
+        }
+        if (descriptor.runAction === "capture") {
+          body.payload = payload?.payload;
+        }
+
+        const response = await fetch(descriptor.endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+          throw new Error(await parseErrorMessage(response, `Failed to run ${descriptor.title}`));
+        }
+
+        const resultPayload = (await response.json().catch(() => null)) as unknown;
+
+        setRuleState(ruleId, {
+          running: false,
+          message: summarizeRunResponse(resultPayload),
+        });
+
+        await loadRule(ruleId);
+        await fetchIntegrations();
+      } catch (runError) {
+        setRuleState(ruleId, {
+          running: false,
+          error: runError instanceof Error ? runError.message : `Failed to run ${descriptor.title}`,
+        });
+      }
+    },
+    [descriptorById, fetchIntegrations, loadRule, setRuleState]
+  );
+
+  const addChannelRoutingPolicy = useCallback(
+    async (ruleId: string, policy: Record<string, unknown>) => {
+      const descriptor = descriptorById.get(ruleId);
+      if (!descriptor) return;
+
+      setRuleState(ruleId, { saving: true, error: null, message: null });
+
+      try {
+        const response = await fetch(descriptor.endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "add_policy", policy }),
+        });
+
+        if (!response.ok) {
+          throw new Error(await parseErrorMessage(response, "Failed to add policy"));
+        }
+
+        const payload = (await response.json().catch(() => null)) as
+          | { rule?: unknown }
+          | null;
+
+        setRuleState(ruleId, {
+          saving: false,
+          message: "Routing policy added.",
+          rule: payload?.rule ? normalizeRule(payload.rule) : ruleStates[ruleId]?.rule ?? null,
+        });
+      } catch (policyError) {
+        setRuleState(ruleId, {
+          saving: false,
+          error: policyError instanceof Error ? policyError.message : "Failed to add policy",
+        });
+      }
+    },
+    [descriptorById, ruleStates, setRuleState]
+  );
+
+  const removeChannelRoutingPolicy = useCallback(
+    async (ruleId: string, policyIndex: number) => {
+      const descriptor = descriptorById.get(ruleId);
+      if (!descriptor) return;
+
+      setRuleState(ruleId, { saving: true, error: null, message: null });
+
+      try {
+        const response = await fetch(descriptor.endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "remove_policy", policyIndex }),
+        });
+
+        if (!response.ok) {
+          throw new Error(await parseErrorMessage(response, "Failed to remove policy"));
+        }
+
+        const payload = (await response.json().catch(() => null)) as
+          | { rule?: unknown }
+          | null;
+
+        setRuleState(ruleId, {
+          saving: false,
+          message: "Routing policy removed.",
+          rule: payload?.rule ? normalizeRule(payload.rule) : ruleStates[ruleId]?.rule ?? null,
+        });
+      } catch (policyError) {
+        setRuleState(ruleId, {
+          saving: false,
+          error: policyError instanceof Error ? policyError.message : "Failed to remove policy",
+        });
+      }
+    },
+    [descriptorById, ruleStates, setRuleState]
+  );
 
   if (loading) {
     return (
@@ -201,197 +588,68 @@ export function IntegrationsTab() {
   }
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="max-w-6xl space-y-4">
       <div>
         <h2 className="text-base font-semibold text-foreground">Integrations</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          Connect WIPGuard to your GTM tools. Google includes Gmail, Drive, and
-          Calendar scopes.
+          Full integration operations live here: connection health, rule configuration, and remediation actions.
         </p>
       </div>
 
-      {banner && (
+      {banner ? (
         <div className="rounded-lg border border-[var(--success)]/40 bg-[var(--success)]/10 px-3 py-2 text-sm text-foreground">
           {banner}
         </div>
-      )}
+      ) : null}
 
-      {error && (
+      {error ? (
         <div className="flex items-start gap-2 rounded-lg border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-3 py-2 text-sm text-foreground">
           <ShieldAlert className="mt-0.5 h-4 w-4 text-[var(--danger)]" />
           <span>{error}</span>
         </div>
-      )}
+      ) : null}
 
       <div className="space-y-3">
         {items.map((item) => {
-          const health = formatHealthLabel(item);
-          return (
-          <section
-            key={item.slug}
-            className="rounded-lg border border-border bg-card p-4"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-semibold text-foreground">{item.name}</h3>
-                  {health.tone === "success" ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--success)]/10 px-2 py-0.5 text-xs text-[var(--success)]">
-                      <CheckCircle2 className="h-3 w-3" />
-                      {health.label}
-                    </span>
-                  ) : health.tone === "warning" ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--warning)]/10 px-2 py-0.5 text-xs text-[var(--warning)]">
-                      <AlertTriangle className="h-3 w-3" />
-                      {health.label}
-                    </span>
-                  ) : health.tone === "danger" ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--danger)]/10 px-2 py-0.5 text-xs text-[var(--danger)]">
-                      <AlertTriangle className="h-3 w-3" />
-                      {health.label}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
-                      <Link2Off className="h-3 w-3" />
-                      {health.label}
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">{item.description}</p>
-                <div className="flex flex-wrap gap-1">
-                  {item.capabilities.map((capability) => (
-                    <span
-                      key={capability}
-                      className="rounded-md bg-secondary px-2 py-0.5 text-xs text-muted-foreground"
-                    >
-                      {capability}
-                    </span>
-                  ))}
-                </div>
-                {item.connected && (
-                  <p className="text-xs text-muted-foreground">
-                    Connected as {item.accountLabel || "unknown account"} on{" "}
-                    {formatConnectedAt(item.connectedAt)}.
-                  </p>
-                )}
-                {item.slug === "coda" && (
-                  <p className="text-xs text-muted-foreground">
-                    Coda doc: {item.docId || "Not configured"}.
-                  </p>
-                )}
-                {!item.configured && item.authType === "oauth" && (
-                  <p className="text-xs text-[var(--warning)]">
-                    Missing env: {item.missingEnv.join(", ")}
-                  </p>
-                )}
-                {item.lastError && (
-                  <p className="text-xs text-[var(--danger)]">
-                    Last error: {item.lastError}
-                  </p>
-                )}
-                {item.syncHealthReason && (
-                  <p className="text-xs text-muted-foreground">
-                    Data health: {item.syncHealthReason}
-                  </p>
-                )}
-              </div>
+          const providerRuleStates = descriptorsForProvider(item.slug)
+            .map((descriptor) => ruleStates[descriptor.id])
+            .filter((state): state is RuleLoadState => Boolean(state));
+          const attentionCount = providerAttentionCount(item, providerRuleStates);
 
-              <div className="flex min-w-[210px] flex-col items-stretch gap-2">
-                {item.authType === "oauth" ? (
-                  item.connected ? (
-                    <button
-                      onClick={() => disconnect(item.slug)}
-                      disabled={working === item.slug}
-                      className="btn-ghost-muted rounded-lg border border-border px-3 py-2 text-sm disabled:opacity-60"
-                    >
-                      {working === item.slug ? (
-                        <span className="inline-flex items-center gap-1">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          Disconnecting...
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1">
-                          <Link2Off className="h-3.5 w-3.5" />
-                          Disconnect
-                        </span>
-                      )}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => startOAuthConnect(item.slug)}
-                      disabled={!item.configured || working === item.slug}
-                      className="btn-primary-theme rounded-lg px-3 py-2 text-sm disabled:opacity-60"
-                    >
-                      <span className="inline-flex items-center gap-1">
-                        <Link2 className="h-3.5 w-3.5" />
-                        Connect
-                      </span>
-                    </button>
-                  )
-                ) : (
-                  <>
-                    <input
-                      type="text"
-                      value={codaDocInput}
-                      onChange={(event) => setCodaDocInput(event.target.value)}
-                      placeholder="Coda Doc URL or Doc ID"
-                      className="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:border-ring focus:outline-none"
-                    />
-                    {!item.connected && (
-                      <input
-                        type="password"
-                        value={codaToken}
-                        onChange={(event) => setCodaToken(event.target.value)}
-                        placeholder="Paste Coda API token (optional if server token is set)"
-                        className="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:border-ring focus:outline-none"
-                      />
-                    )}
-                    {!item.connected ? (
-                      <button
-                        onClick={connectCoda}
-                        disabled={working === "coda"}
-                        className="btn-primary-theme rounded-lg px-3 py-2 text-sm disabled:opacity-60"
-                      >
-                        {working === "coda" ? (
-                          <span className="inline-flex items-center gap-1">
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            Connecting...
-                          </span>
-                        ) : (
-                          "Connect with token"
-                        )}
-                      </button>
-                    ) : (
-                      <>
-                        <button
-                          onClick={connectCoda}
-                          disabled={working === "coda"}
-                          className="btn-primary-theme rounded-lg px-3 py-2 text-sm disabled:opacity-60"
-                        >
-                          {working === "coda" ? (
-                            <span className="inline-flex items-center gap-1">
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              Saving...
-                            </span>
-                          ) : (
-                            "Save Coda doc"
-                          )}
-                        </button>
-                        <button
-                          onClick={() => disconnect(item.slug)}
-                          disabled={working === item.slug}
-                          className="btn-ghost-muted rounded-lg border border-border px-3 py-2 text-sm disabled:opacity-60"
-                        >
-                          Disconnect
-                        </button>
-                      </>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          </section>
-        );
+          const remediationSteps = buildRemediationSteps({
+            item,
+            rules: providerRuleStates,
+            hubspotDiagnostics: item.slug === "hubspot" ? hubspotDiagnostics.data : null,
+          });
+
+          return (
+            <ProviderCard
+              key={item.slug}
+              item={item}
+              isExpanded={expandedProviderSlug === item.slug}
+              onToggleExpand={() => toggleProviderExpanded(item.slug)}
+              attentionCount={attentionCount}
+              loadingProviderAction={loadingProviderAction}
+              remediationSteps={remediationSteps}
+              ruleStates={ruleStates}
+              onStartOAuthConnect={startOAuthConnect}
+              onDisconnect={disconnect}
+              onRefresh={fetchIntegrations}
+              codaToken={codaToken}
+              codaDocInput={codaDocInput}
+              onCodaTokenChange={setCodaToken}
+              onCodaDocChange={setCodaDocInput}
+              onConnectCoda={connectCoda}
+              onRuleReload={(ruleId) => loadRule(ruleId)}
+              onRuleSave={saveRule}
+              onRuleRun={runRule}
+              onChannelRoutingAddPolicy={addChannelRoutingPolicy}
+              onChannelRoutingRemovePolicy={removeChannelRoutingPolicy}
+              hubspotDiagnostics={hubspotDiagnostics}
+              onReloadHubspotDiagnostics={reloadHubspotDiagnostics}
+              onRunHubspotDrift={runHubspotDriftReport}
+            />
+          );
         })}
       </div>
     </div>

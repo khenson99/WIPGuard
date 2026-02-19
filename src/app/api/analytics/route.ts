@@ -515,7 +515,8 @@ export async function GET(request: Request) {
               creds.googleAdsCustomerId,
               creds.googleAdsRefreshToken,
               creds.googleAdsClientId,
-              creds.googleAdsClientSecret
+              creds.googleAdsClientSecret,
+              creds.googleAdsLoginCustomerId
             )
           : Promise.reject(new Error("Missing Google Ads credential")),
     },
@@ -537,7 +538,13 @@ export async function GET(request: Request) {
       key: "redditAds",
       fn: () =>
         creds.redditClientId && creds.redditClientSecret && creds.redditRefreshToken && creds.redditAdAccountId
-          ? fetchRedditAdsData(creds.redditClientId, creds.redditClientSecret, creds.redditRefreshToken, creds.redditAdAccountId)
+          ? fetchRedditAdsData(
+              creds.redditClientId,
+              creds.redditClientSecret,
+              creds.redditRefreshToken,
+              creds.redditAdAccountId,
+              creds.redditUserAgent
+            )
           : Promise.reject(new Error("Missing Reddit Ads credential")),
     },
     {
@@ -556,7 +563,10 @@ export async function GET(request: Request) {
     },
     {
       key: "semrush",
-      fn: () => (creds.semrushApiToken ? fetchSemrushData(creds.semrushApiToken) : Promise.reject(new Error("Missing SEMrush credential"))),
+      fn: () =>
+        creds.semrushApiToken && creds.semrushDomain
+          ? fetchSemrushData(creds.semrushApiToken, creds.semrushDomain)
+          : Promise.reject(new Error("Missing SEMrush credential")),
     },
     {
       key: "pylon",

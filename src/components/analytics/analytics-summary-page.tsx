@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import { buildRangeQuery } from "@/lib/analytics/time-range";
 import { ANALYTICS_PRIMARY_SECTIONS } from "@/lib/analytics/section-registry";
 import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-controls";
 import { LifecycleFunnelPanel } from "@/components/analytics/lifecycle-funnel-panel";
@@ -65,17 +66,6 @@ const SUMMARY_CACHE_PREFIX = "analytics:summary:v1:";
 interface SummaryViewModel {
   summary: SummaryPayload;
   overview: AnalyticsDashboardData;
-}
-
-function buildRangeQuery(searchParams: URLSearchParams | null): string {
-  const params = new URLSearchParams();
-  const range = searchParams?.get("range");
-  const from = searchParams?.get("from");
-  const to = searchParams?.get("to");
-  if (range) params.set("range", range);
-  if (from) params.set("from", from);
-  if (to) params.set("to", to);
-  return params.toString();
 }
 
 function summaryCacheKey(rangeQuery: string): string {

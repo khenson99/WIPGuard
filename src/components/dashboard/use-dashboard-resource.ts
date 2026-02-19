@@ -51,22 +51,35 @@ export function useDashboardResource<T>(input: UseDashboardResourceInput<T>): Da
   const getLastUpdatedAtRef = useRef(getLastUpdatedAt);
   const dependencyObjectIdsRef = useRef(new WeakMap<object, number>());
   const nextDependencyObjectIdRef = useRef(1);
+  const prevDepsRef = useRef<unknown[]>([]);
+  const prevDepsSignatureRef = useRef("");
 
-  const depsSignature = deps
-    .map((dep, index) => {
-      if (dep !== null && (typeof dep === "object" || typeof dep === "function")) {
-        const objectDep = dep as object;
-        let depId = dependencyObjectIdsRef.current.get(objectDep);
-        if (!depId) {
-          depId = nextDependencyObjectIdRef.current;
-          nextDependencyObjectIdRef.current += 1;
-          dependencyObjectIdsRef.current.set(objectDep, depId);
+  let depsSignature: string;
+  const prevDeps = prevDepsRef.current;
+  if (
+    prevDeps.length === deps.length &&
+    deps.every((dep, i) => Object.is(dep, prevDeps[i]))
+  ) {
+    depsSignature = prevDepsSignatureRef.current;
+  } else {
+    depsSignature = deps
+      .map((dep, index) => {
+        if (dep !== null && (typeof dep === "object" || typeof dep === "function")) {
+          const objectDep = dep as object;
+          let depId = dependencyObjectIdsRef.current.get(objectDep);
+          if (!depId) {
+            depId = nextDependencyObjectIdRef.current;
+            nextDependencyObjectIdRef.current += 1;
+            dependencyObjectIdsRef.current.set(objectDep, depId);
+          }
+          return `ref:${index}:${depId}`;
         }
-        return `ref:${index}:${depId}`;
-      }
-      return `${typeof dep}:${index}:${String(dep)}`;
-    })
-    .join("|");
+        return `${typeof dep}:${index}:${String(dep)}`;
+      })
+      .join("|");
+    prevDepsRef.current = deps;
+    prevDepsSignatureRef.current = depsSignature;
+  }
 
   useEffect(() => {
     return () => {
@@ -124,7 +137,7 @@ export function useDashboardResource<T>(input: UseDashboardResourceInput<T>): Da
           setStale(false);
         }
       } finally {
-        if (!mountedRef.current) return;
+        if (opts.signal?.aborted || !mountedRef.current) return;
         setLoading(false);
         if (opts.refresh) {
           setRefreshing(false);

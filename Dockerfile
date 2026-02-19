@@ -34,6 +34,9 @@ RUN adduser --system --uid 1001 nextjs
 
 # Copy standalone server (includes traced node_modules via serverExternalPackages)
 COPY --from=builder /app/.next/standalone ./
+# Ensure runtime dependencies required by health checks and migration runner
+# (for example `pg`) are present in the final image.
+COPY --from=deps /app/node_modules ./node_modules
 # Copy static assets
 COPY --from=builder /app/.next/static ./.next/static
 # Copy public assets

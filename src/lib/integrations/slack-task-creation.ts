@@ -203,7 +203,7 @@ function buildTaskNotes(input: {
   return lines.filter((line) => line !== null).join("\n");
 }
 
-function toValidTaskStatus(priority?: string): TaskStatus {
+function toValidTaskStatus(): TaskStatus {
   // Default new Slack tasks to QUEUED status
   return "QUEUED";
 }
@@ -349,7 +349,7 @@ export async function createTaskFromSlack(input: {
     slackUserId: payload.slackUserId,
   });
 
-  const status = toValidTaskStatus(payload.priority);
+  const status = toValidTaskStatus();
 
   const sourceTraceability: SlackSourceTraceability = {
     provider: "slack",

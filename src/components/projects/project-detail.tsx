@@ -15,7 +15,6 @@ import {
   X,
   Plus,
   ChevronDown,
-  Trash2,
 } from "lucide-react";
 import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 import { COLUMN_LABELS } from "@/types";
@@ -529,7 +528,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         setSaving(false);
       }
     },
-    [project, projectId, fetchProject]
+    [project, projectId, fetchProject, toast]
   );
 
   /* ── RACI helpers ────────────────────────────────────────────────── */
@@ -611,8 +610,6 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
       </div>
     );
   }
-
-  const statusColor = STATUS_COLORS[project.status] || "#64748b";
 
   const deptOptions = departments.map((d) => ({
     value: d.id,

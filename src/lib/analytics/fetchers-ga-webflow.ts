@@ -305,58 +305,115 @@ export async function fetchWebflowData(
     Accept: "application/json",
   };
 
-  try {
-    // Fetch site info, pages, collections in parallel
-    const [siteResponse, pagesResponse, collectionsResponse] = await Promise.all([
-      fetch(`${baseUrl}/sites/${siteId}`, { headers }).then((r) => r.json()),
-      fetch(`${baseUrl}/sites/${siteId}/pages`, { headers }).then((r) => r.json()),
-      fetch(`${baseUrl}/sites/${siteId}/collections`, { headers }).then((r) =>
-        r.json()
-      ),
-    ]);
-
-    const siteName = siteResponse.displayName || siteResponse.name || "";
-    const lastPublished = siteResponse.lastPublished || "";
-    const customDomains = siteResponse.customDomains || [];
-    const totalPages = (pagesResponse.items || []).length;
-    const totalCollections = (collectionsResponse.items || []).length;
-
-    // Try to fetch form submissions (may fail in v2)
-    let formSubmissions: WebflowFormEntry[] = [];
+  const parseJson = async (response: Response): Promise<unknown> => {
+    const text = await response.text();
+    if (!text) return {};
     try {
-      const submissionsResponse = await fetch(
-        `${baseUrl}/sites/${siteId}/form-submissions`,
-        { headers }
-      ).then((r) => r.json());
-
-      if (submissionsResponse.items) {
-        const formMap: Record<string, number> = {};
-        (submissionsResponse.items || []).forEach(
-          (submission: { formId?: string; formName?: string }) => {
-            const formName = submission.formName || submission.formId || "Unknown";
-            formMap[formName] = (formMap[formName] || 0) + 1;
-          }
-        );
-        formSubmissions = Object.entries(formMap).map(([formName, count]) => ({
-          formName,
-          count,
-        }));
-      }
+      return JSON.parse(text);
     } catch {
-      // Form submissions endpoint may not exist in v2, silently fail
-      formSubmissions = [];
+      return { raw: text };
     }
+  };
 
-    return {
-      siteName,
-      lastPublished,
-      totalPages,
-      totalCollections,
-      formSubmissions,
-      customDomains,
-      _meta: makeMeta("live"),
-    };
-  } catch (error) {
-    throw new Error(`Failed to fetch Webflow data: ${error instanceof Error ? error.message : String(error)}`);
+  const errorFromResponse = async (
+    response: Response,
+    context: string
+  ): Promise<Error> => {
+    const parsed = (await parseJson(response)) as Record<string, unknown>;
+    const message =
+      typeof parsed?.message === "string"
+        ? parsed.message
+        : typeof parsed?.error === "string"
+          ? parsed.error
+          : response.statusText || "Webflow API request failed";
+    const withScopeHint =
+      message.includes("missing") && message.includes("scope")
+        ? `${message} (check both read/write scopes; read scopes are required for analytics pulls)`
+        : message;
+    return new Error(`${context} (${response.status}): ${withScopeHint}`);
+  };
+
+  const requireObject = (value: unknown): Record<string, unknown> =>
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+
+  const asArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
+
+  const [siteRes, pagesRes, collectionsRes] = await Promise.all([
+    fetch(`${baseUrl}/sites/${siteId}`, { headers }),
+    fetch(`${baseUrl}/sites/${siteId}/pages`, { headers }),
+    fetch(`${baseUrl}/sites/${siteId}/collections`, { headers }),
+  ]);
+
+  if (!siteRes.ok) {
+    throw await errorFromResponse(siteRes, "Webflow site request failed");
   }
+  if (!pagesRes.ok) {
+    throw await errorFromResponse(pagesRes, "Webflow pages request failed");
+  }
+  if (!collectionsRes.ok) {
+    throw await errorFromResponse(collectionsRes, "Webflow collections request failed");
+  }
+
+  const siteResponse = requireObject(await parseJson(siteRes));
+  const pagesResponse = requireObject(await parseJson(pagesRes));
+  const collectionsResponse = requireObject(await parseJson(collectionsRes));
+
+  const siteName = String(siteResponse.displayName || siteResponse.name || "");
+  const lastPublished = String(
+    siteResponse.lastPublished || siteResponse.lastPublishedOn || ""
+  );
+
+  const customDomains = asArray(siteResponse.customDomains).map((entry) => {
+    if (typeof entry === "string") return entry;
+    if (entry && typeof entry === "object") {
+      const domain = entry as Record<string, unknown>;
+      return String(domain.host || domain.name || domain.url || "");
+    }
+    return "";
+  }).filter(Boolean);
+
+  const pages = asArray(pagesResponse.items).length
+    ? asArray(pagesResponse.items)
+    : asArray(pagesResponse.pages);
+  const collections = asArray(collectionsResponse.items).length
+    ? asArray(collectionsResponse.items)
+    : asArray(collectionsResponse.collections);
+
+  let formSubmissions: WebflowFormEntry[] = [];
+  try {
+    const formsRes = await fetch(`${baseUrl}/sites/${siteId}/form_submissions`, {
+      headers,
+    });
+    if (formsRes.ok) {
+      const formsResponse = requireObject(await parseJson(formsRes));
+      const items = asArray(formsResponse.items).length
+        ? asArray(formsResponse.items)
+        : asArray(formsResponse.formSubmissions);
+
+      const formMap: Record<string, number> = {};
+      items.forEach((submission) => {
+        const row = requireObject(submission);
+        const formName = String(row.formName || row.formId || "Unknown");
+        formMap[formName] = (formMap[formName] || 0) + 1;
+      });
+      formSubmissions = Object.entries(formMap).map(([formName, count]) => ({
+        formName,
+        count,
+      }));
+    }
+  } catch {
+    formSubmissions = [];
+  }
+
+  return {
+    siteName,
+    lastPublished,
+    totalPages: pages.length,
+    totalCollections: collections.length,
+    formSubmissions,
+    customDomains,
+    _meta: makeMeta("live"),
+  };
 }

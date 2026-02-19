@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import type { DailyDelta, PlannedVsUnplannedResult } from "./types";
+import type { PlannedVsUnplannedResult } from "./types";
 
 interface ScopeTimelineProps {
   data: PlannedVsUnplannedResult | null;
@@ -22,7 +22,7 @@ function formatWeekday(dateStr: string): string {
  * Pure CSS -- no chart library needed for standup readability.
  */
 export function ScopeTimeline({ data }: ScopeTimelineProps) {
-  const deltas = data?.dailyDeltas ?? [];
+  const deltas = useMemo(() => data?.dailyDeltas ?? [], [data?.dailyDeltas]);
 
   const maxTotal = useMemo(() => {
     let max = 1;

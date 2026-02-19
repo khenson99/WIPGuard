@@ -12,7 +12,7 @@ const USER_SELECT = {
   image: true,
 } as const;
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await auth();
     if (!session?.user) {
@@ -34,17 +34,28 @@ export async function GET(): Promise<NextResponse> {
       orderBy: { createdAt: "desc" },
     });
 
-    // Compute task status counts for each project
     const projectsWithCounts = projects.map((p) => {
+      const { tasks, ...rest } = p;
       const taskStatusCounts: Record<string, number> = {};
-      for (const t of p.tasks) {
+      for (const t of tasks) {
         taskStatusCounts[t.status] = (taskStatusCounts[t.status] || 0) + 1;
       }
-      const { tasks: _tasks, ...rest } = p;
       return { ...rest, taskStatusCounts };
     });
 
-    return NextResponse.json(projectsWithCounts);
+    const includeMeta = request.nextUrl.searchParams.get("meta") === "true";
+
+    if (!includeMeta) {
+      return NextResponse.json(projectsWithCounts);
+    }
+
+    return NextResponse.json({
+      items: projectsWithCounts,
+      meta: {
+        servedAt: new Date().toISOString(),
+        isPartial: false,
+      },
+    });
   } catch (error) {
     console.error("Failed to fetch projects:", error);
     return NextResponse.json(
