@@ -36,6 +36,14 @@ const AiInsightsPanel = dynamic(() => import("@/components/analytics/ai-insights
 const GoogleAnalyticsDashboard = dynamic(() => import("./sub-dashboards/google-analytics-dashboard").then((m) => m.GoogleAnalyticsDashboard));
 const StripeDashboard = dynamic(() => import("./sub-dashboards/stripe-dashboard").then((m) => m.StripeDashboard));
 const HubspotSalesDashboard = dynamic(() => import("./sub-dashboards/hubspot-sales-dashboard").then((m) => m.HubspotSalesDashboard));
+const CustomerJourneyTab = dynamic(() => import("@/components/analytics/customer-journey-tab").then((m) => m.CustomerJourneyTab));
+const DemoAnalyticsTab = dynamic(() => import("@/components/analytics/demo-analytics-tab").then((m) => m.DemoAnalyticsTab));
+const ProcessAnalyticsTab = dynamic(() => import("@/components/analytics/process-analytics-tab").then((m) => m.ProcessAnalyticsTab));
+const CustomerJourneyDrillDown = dynamic(() => import("@/components/analytics/customer-journey-drill-down").then((m) => m.CustomerJourneyDrillDown));
+const DemoSchedulingView = dynamic(() => import("@/components/analytics/demo-scheduling-view").then((m) => m.DemoSchedulingView));
+const DemoAttributionView = dynamic(() => import("@/components/analytics/demo-attribution-view").then((m) => m.DemoAttributionView));
+const ProcessBottlenecksView = dynamic(() => import("@/components/analytics/process-bottlenecks-view").then((m) => m.ProcessBottlenecksView));
+const ProcessHealthView = dynamic(() => import("@/components/analytics/process-health-view").then((m) => m.ProcessHealthView));
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import { buildRangeQuery } from "@/lib/analytics/time-range";
 import {
@@ -95,6 +103,11 @@ export type AnalyticsChildRenderKind =
   | "flowMetrics"
   | "flowRisk"
   | "observability"
+  | "customerJourneyDrillDown"
+  | "demoScheduling"
+  | "demoAttribution"
+  | "processBottlenecks"
+  | "processHealth"
   | "snapshot";
 
 export function resolveAnalyticsChildRenderKind(input: {
@@ -129,6 +142,14 @@ export function resolveAnalyticsChildRenderKind(input: {
   if (input.childDataDomain === "flowMetrics") return "flowMetrics";
   if (input.childDataDomain === "flowRisk") return "flowRisk";
   if (input.childDataDomain === "observability") return "observability";
+  if (input.childId === "cj-touchpoints") return "customerJourneyDrillDown";
+  if (input.childDataDomain === "customerJourney") return "customerJourneyDrillDown";
+  if (input.childId === "demo-scheduling") return "demoScheduling";
+  if (input.childId === "demo-attribution") return "demoAttribution";
+  if (input.childDataDomain === "demoAnalytics") return "demoScheduling";
+  if (input.childId === "process-bottlenecks" || input.childId === "process-velocity") return "processBottlenecks";
+  if (input.childId === "process-health" || input.childId === "process-throughput") return "processHealth";
+  if (input.childDataDomain === "processAnalytics") return "processBottlenecks";
   return "snapshot";
 }
 
@@ -357,6 +378,9 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     if (sectionId === "finance") return <FinanceTab data={analyticsData} />;
     if (sectionId === "sales-pipeline") return <SalesFunnelTab data={analyticsData} />;
     if (sectionId === "customer-success") return <CustomerSuccessTab data={analyticsData} />;
+    if (sectionId === "customer-journey") return <CustomerJourneyTab data={analyticsData} />;
+    if (sectionId === "demo-analytics") return <DemoAnalyticsTab data={analyticsData} />;
+    if (sectionId === "process-analytics") return <ProcessAnalyticsTab data={analyticsData} />;
     return null;
   }, [sectionId, analyticsData]);
 
@@ -395,6 +419,11 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     if (renderKind === "flowMetrics") return <FlowMetricsView payload={auxPayload} />;
     if (renderKind === "flowRisk") return <FlowRiskView payload={auxPayload} />;
     if (renderKind === "observability") return <ObservabilityView payload={auxPayload} />;
+    if (renderKind === "customerJourneyDrillDown") return <CustomerJourneyDrillDown data={analyticsData} />;
+    if (renderKind === "demoScheduling") return <DemoSchedulingView data={analyticsData} />;
+    if (renderKind === "demoAttribution") return <DemoAttributionView data={analyticsData} />;
+    if (renderKind === "processBottlenecks") return <ProcessBottlenecksView data={analyticsData} />;
+    if (renderKind === "processHealth") return <ProcessHealthView data={analyticsData} />;
 
     // Check for dedicated sub-dashboard component
     const SubDashboard = SUB_DASHBOARD_MAP[sectionId];

@@ -46,7 +46,7 @@ export function mapFreshnessToStatus(freshness: {
  * (e.g. google_workspace → googleWorkspace, but Google Analytics / Ads use env keys
  * not provider connections, so they are omitted).
  */
-const PROVIDER_TO_DOMAINS: Record<IntegrationProviderKey, string[]> = {
+const PROVIDER_TO_DOMAINS: Partial<Record<IntegrationProviderKey, string[]>> = {
   google_workspace: ["googleWorkspace"],
   hubspot: ["hubspot"],
   slack: ["slack"],

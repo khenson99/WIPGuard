@@ -6,7 +6,15 @@ import type {
   DistilledInsight,
 } from "@/lib/analytics/types";
 
-const SECTION_ORDER: AnalyticsSectionId[] = ["ads-traffic", "finance", "sales-pipeline", "customer-success"];
+const SECTION_ORDER: AnalyticsSectionId[] = [
+  "ads-traffic",
+  "finance",
+  "sales-pipeline",
+  "customer-success",
+  "customer-journey",
+  "demo-analytics",
+  "process-analytics",
+];
 
 const SEVERITY_RANK: Record<AiInsight["severity"], number> = {
   critical: 3,
@@ -725,6 +733,175 @@ function buildCrossdomainInsights(data: AnalyticsDashboardData): AiInsight[] {
   return insights;
 }
 
+// ── Journey / Demo / Process Insights ────────────────────
+
+function buildJourneyInsight(data: AnalyticsDashboardData): AiInsight | null {
+  const journey = data.customerJourney;
+  if (!journey || journey.journeys.length === 0) return null;
+
+  const longJourneys = journey.journeys.filter((j) => j.daysInPipeline > 60);
+  const lowTouchJourneys = journey.journeys.filter((j) => j.touchpoints.length <= 2 && j.value > 0);
+  const avgTouches = journey.avgTouchpoints;
+
+  if (longJourneys.length < 3 && lowTouchJourneys.length < 3) return null;
+
+  const longPct = journey.journeys.length > 0 ? (longJourneys.length / journey.journeys.length) * 100 : 0;
+  const lowTouchPct = journey.journeys.length > 0 ? (lowTouchJourneys.length / journey.journeys.length) * 100 : 0;
+
+  return {
+    id: "ai-journey-engagement-gap",
+    section: "customer-journey",
+    severity: longPct > 30 || lowTouchPct > 25 ? "critical" : "warning",
+    title: "Customer journeys show engagement gaps slowing conversion",
+    why: `${longJourneys.length} journeys exceed 60 days (${longPct.toFixed(0)}%) and ${lowTouchJourneys.length} active deals have ≤2 touchpoints. Average touches: ${avgTouches.toFixed(1)}.`,
+    confidence: clampConfidence(0.82),
+    expectedImpact: "Adding mid-funnel touchpoints and reducing stale deal age should lift conversion velocity.",
+    stale: data.staleDomains.includes("hubspot"),
+    evidence: [
+      {
+        source: "Customer Journey",
+        domain: "customerJourney",
+        metric: "Long Journeys (>60d)",
+        value: `${longJourneys.length} deals (${longPct.toFixed(1)}%)`,
+        delta: `median ${journey.medianDaysToClose}d to close`,
+      },
+      {
+        source: "Customer Journey",
+        domain: "customerJourney",
+        metric: "Low-Touch Deals",
+        value: `${lowTouchJourneys.length} deals`,
+        delta: `avg ${avgTouches.toFixed(1)} touchpoints`,
+      },
+    ],
+    actions: [
+      {
+        type: "create_task",
+        label: "Create mid-funnel engagement playbook",
+        payload: {
+          title: "Add touchpoints for stalled deals with low engagement",
+          priority: "P1",
+          status: "QUEUED",
+        },
+      },
+      {
+        type: "assign_owner",
+        label: "Assign owner for stale-deal review",
+        payload: { role: "sales-ops" },
+      },
+    ],
+  };
+}
+
+function buildDemoInsight(data: AnalyticsDashboardData): AiInsight | null {
+  const demo = data.demoAnalytics;
+  if (!demo || demo.totalScheduled === 0) return null;
+
+  const noShowRate = demo.noShowRate;
+  const conversionStep = demo.conversionFunnel.find((s) => s.label === "Closed Won");
+  const endConversion = conversionStep?.conversionFromPrevious ?? 0;
+
+  if (noShowRate <= 15 && endConversion >= 20) return null;
+
+  return {
+    id: "ai-demo-effectiveness",
+    section: "demo-analytics",
+    severity: noShowRate > 30 || endConversion < 10 ? "critical" : "warning",
+    title: "Demo pipeline leaking — no-shows and post-demo drop-off are high",
+    why: `No-show rate is ${noShowRate.toFixed(1)}% across ${demo.totalScheduled} scheduled demos. Post-demo close rate: ${endConversion.toFixed(1)}%.`,
+    confidence: clampConfidence(0.87),
+    expectedImpact: "Reducing no-shows by 10pp and improving follow-up speed should lift demo-to-close by 5-15%.",
+    stale: data.staleDomains.includes("hubspot") || data.staleDomains.includes("googleWorkspace"),
+    evidence: [
+      {
+        source: "Demo Analytics",
+        domain: "demoAnalytics",
+        metric: "No-Show Rate",
+        value: `${noShowRate.toFixed(1)}%`,
+        delta: `${demo.totalNoShows} of ${demo.totalScheduled}`,
+      },
+      {
+        source: "Demo Analytics",
+        domain: "demoAnalytics",
+        metric: "Post-Demo Close Rate",
+        value: `${endConversion.toFixed(1)}%`,
+        delta: `${demo.totalCompleted} completed`,
+      },
+    ],
+    actions: [
+      {
+        type: "create_task",
+        label: "Implement demo reminder + no-show recovery flow",
+        payload: {
+          title: "SMS/email demo reminders and no-show re-engagement",
+          priority: "P1",
+          status: "QUEUED",
+        },
+      },
+      {
+        type: "create_automation_from_template",
+        label: "Enable post-demo follow-up automation",
+        payload: { templateKey: "hubspot-demo-followup" },
+      },
+    ],
+  };
+}
+
+function buildProcessInsight(data: AnalyticsDashboardData): AiInsight | null {
+  const process = data.processAnalytics;
+  if (!process) return null;
+
+  const health = process.healthScore;
+  const criticalBottlenecks = process.bottlenecks.filter((b) => b.severity === "critical");
+  const totalLeakage = process.leakagePoints.reduce((sum, lp) => sum + lp.lostCount, 0);
+
+  if (health >= 70 && criticalBottlenecks.length === 0) return null;
+
+  const worstBottleneck = criticalBottlenecks[0] ?? process.bottlenecks[0];
+
+  return {
+    id: "ai-process-health-alert",
+    section: "process-analytics",
+    severity: health < 40 || criticalBottlenecks.length >= 2 ? "critical" : "warning",
+    title: "Pipeline health degraded — bottlenecks and leakage need attention",
+    why: `Health score: ${health}/100. ${criticalBottlenecks.length} critical bottlenecks. ${totalLeakage} deals leaked from pipeline. Worst stage: ${worstBottleneck?.stageLabel ?? "n/a"} (${worstBottleneck?.avgDays.toFixed(1) ?? "n/a"}d avg).`,
+    confidence: clampConfidence(0.85),
+    expectedImpact: "Clearing bottleneck stages and plugging leakage points should recover 15-25% of pipeline velocity.",
+    stale: data.staleDomains.includes("hubspot"),
+    evidence: [
+      {
+        source: "Process Analytics",
+        domain: "processAnalytics",
+        metric: "Health Score",
+        value: `${health}/100`,
+        delta: `${criticalBottlenecks.length} critical bottlenecks`,
+      },
+      {
+        source: "Process Analytics",
+        domain: "processAnalytics",
+        metric: "Pipeline Leakage",
+        value: `${totalLeakage} deals`,
+        delta: `avg cycle ${process.avgCycleTimeDays}d`,
+      },
+    ],
+    actions: [
+      {
+        type: "create_task",
+        label: "Create bottleneck resolution plan",
+        payload: {
+          title: `Clear ${worstBottleneck?.stageLabel ?? "critical"} stage bottleneck`,
+          priority: "P0",
+          status: "WORKING_ON_TODAY",
+        },
+      },
+      {
+        type: "assign_owner",
+        label: "Assign pipeline velocity owner",
+        payload: { role: "rev-ops" },
+      },
+    ],
+  };
+}
+
 // ── Steady State Fallback ────────────────────────────────
 
 function buildSteadyStateInsight(data: AnalyticsDashboardData): AiInsight {
@@ -765,6 +942,7 @@ export function buildAiInsightsBundle(data: AnalyticsDashboardData): AiInsightsB
     ...buildSalesInsights(data),
     ...buildCustomerSuccessInsights(data),
     ...buildCrossdomainInsights(data),
+    ...[buildJourneyInsight(data), buildDemoInsight(data), buildProcessInsight(data)].filter((item): item is AiInsight => item !== null),
   ];
 
   const global = sortInsights(candidateInsights.length > 0 ? candidateInsights : [buildSteadyStateInsight(data)]).slice(0, 12);
@@ -779,6 +957,9 @@ export function buildAiInsightsBundle(data: AnalyticsDashboardData): AiInsightsB
       finance: [],
       "sales-pipeline": [],
       "customer-success": [],
+      "customer-journey": [],
+      "demo-analytics": [],
+      "process-analytics": [],
     }
   );
 

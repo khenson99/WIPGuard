@@ -65,6 +65,9 @@ function makeBundle(): AiInsightsBundle {
       finance: [],
       "sales-pipeline": [],
       "customer-success": [],
+      "customer-journey": [],
+      "demo-analytics": [],
+      "process-analytics": [],
     },
   };
 }
