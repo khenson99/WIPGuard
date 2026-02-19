@@ -34,6 +34,9 @@ function baseData(): AnalyticsDashboardData {
         finance: [],
         "sales-pipeline": [],
         "customer-success": [],
+        "customer-journey": [],
+        "demo-analytics": [],
+        "process-analytics": [],
       },
     },
     freshness: {},
@@ -47,6 +50,9 @@ function baseData(): AnalyticsDashboardData {
     },
     lastFullRefresh: "2026-01-30T00:00:00.000Z",
     financialPlanning: null,
+    customerJourney: null,
+    demoAnalytics: null,
+    processAnalytics: null,
     errors: [],
   };
 }

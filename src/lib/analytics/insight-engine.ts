@@ -6,7 +6,15 @@ import type {
   DistilledInsight,
 } from "@/lib/analytics/types";
 
-const SECTION_ORDER: AnalyticsSectionId[] = ["ads-traffic", "finance", "sales-pipeline", "customer-success"];
+const SECTION_ORDER: AnalyticsSectionId[] = [
+  "ads-traffic",
+  "finance",
+  "sales-pipeline",
+  "customer-success",
+  "customer-journey",
+  "demo-analytics",
+  "process-analytics",
+];
 
 const SEVERITY_RANK: Record<AiInsight["severity"], number> = {
   critical: 3,
@@ -320,6 +328,9 @@ export function buildAiInsightsBundle(data: AnalyticsDashboardData): AiInsightsB
       finance: [],
       "sales-pipeline": [],
       "customer-success": [],
+      "customer-journey": [],
+      "demo-analytics": [],
+      "process-analytics": [],
     }
   );
 

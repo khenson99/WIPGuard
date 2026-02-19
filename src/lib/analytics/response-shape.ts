@@ -9,6 +9,9 @@ export function createEmptyAiInsightsBundle(generatedAt: string = new Date().toI
       finance: [],
       "sales-pipeline": [],
       "customer-success": [],
+      "customer-journey": [],
+      "demo-analytics": [],
+      "process-analytics": [],
     },
   };
 }
@@ -39,6 +42,9 @@ export function createEmptyAnalyticsDashboardData(input: {
     redditOps: null,
     funnelJourney: null,
     lifecycleFunnel: null,
+    customerJourney: null,
+    demoAnalytics: null,
+    processAnalytics: null,
     recommendations: [],
     distilledInsights: [],
     aiInsights: createEmptyAiInsightsBundle(),

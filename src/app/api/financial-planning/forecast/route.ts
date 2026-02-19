@@ -13,6 +13,30 @@ import type {
   ForecastAssumptions,
 } from "@/lib/analytics/types";
 
+const DEFAULT_FORECAST_ASSUMPTIONS: ForecastAssumptions = {
+  revenueGrowthRate: 0,
+  churnRateDelta: 0,
+  burnRateDelta: 0,
+  additionalMonthlyExpense: 0,
+  additionalMonthlyRevenue: 0,
+};
+
+function isForecastAssumptions(value: unknown): value is ForecastAssumptions {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Partial<ForecastAssumptions>;
+  return (
+    typeof candidate.revenueGrowthRate === "number" &&
+    typeof candidate.churnRateDelta === "number" &&
+    typeof candidate.burnRateDelta === "number" &&
+    typeof candidate.additionalMonthlyExpense === "number" &&
+    typeof candidate.additionalMonthlyRevenue === "number"
+  );
+}
+
+function toForecastAssumptions(value: unknown): ForecastAssumptions {
+  return isForecastAssumptions(value) ? value : DEFAULT_FORECAST_ASSUMPTIONS;
+}
+
 async function loadFinancialData(
   userId: string,
 ): Promise<{ stripe: StripeData | null; mercury: MercuryData | null }> {
@@ -21,7 +45,11 @@ async function loadFinancialData(
     orderBy: { capturedAt: "desc" },
   });
 
-  const dashboardData = snapshot?.data as Record<string, unknown> | null;
+  const payload = snapshot?.payload;
+  const dashboardData =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? (payload as Record<string, unknown>)
+      : null;
   const stripe = (dashboardData?.stripe as StripeData | null) ?? null;
   const mercury = (dashboardData?.mercury as MercuryData | null) ?? null;
 
@@ -50,7 +78,7 @@ export async function GET(
       buildForecastScenario(
         stripe,
         mercury,
-        scenario.assumptions as ForecastAssumptions,
+        toForecastAssumptions(scenario.assumptions),
         { id: scenario.id, name: scenario.name },
       ),
     );
@@ -83,6 +111,12 @@ export async function POST(
         { status: 400 },
       );
     }
+    if (!isForecastAssumptions(body.assumptions)) {
+      return NextResponse.json(
+        { error: "assumptions must contain numeric forecast fields" },
+        { status: 400 },
+      );
+    }
 
     const scenario = await prisma.forecastScenario.create({
       data: {
@@ -97,7 +131,7 @@ export async function POST(
     const result = buildForecastScenario(
       stripe,
       mercury,
-      scenario.assumptions as ForecastAssumptions,
+      toForecastAssumptions(scenario.assumptions),
       { id: scenario.id, name: scenario.name },
     );
 

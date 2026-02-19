@@ -65,6 +65,9 @@ function makeBundle(): AiInsightsBundle {
       finance: [],
       "sales-pipeline": [],
       "customer-success": [],
+      "customer-journey": [],
+      "demo-analytics": [],
+      "process-analytics": [],
     },
   };
 }
@@ -76,6 +79,9 @@ describe("AiInsightsPanel", () => {
     bundle.bySection.finance = [bundle.global[2]];
     bundle.bySection["sales-pipeline"] = [bundle.global[1]];
     bundle.bySection["customer-success"] = [];
+    bundle.bySection["customer-journey"] = [];
+    bundle.bySection["demo-analytics"] = [];
+    bundle.bySection["process-analytics"] = [];
 
     const { container } = render(<AiInsightsPanel bundle={bundle} defaultFilter="all" />);
 
@@ -98,6 +104,10 @@ describe("AiInsightsPanel", () => {
     bundle.bySection["ads-traffic"] = [bundle.global[0]];
     bundle.bySection.finance = [bundle.global[2]];
     bundle.bySection["sales-pipeline"] = [bundle.global[1]];
+    bundle.bySection["customer-success"] = [];
+    bundle.bySection["customer-journey"] = [];
+    bundle.bySection["demo-analytics"] = [];
+    bundle.bySection["process-analytics"] = [];
 
     const { rerender } = render(
       <AiInsightsPanel bundle={bundle} defaultFilter="sales-pipeline" />
