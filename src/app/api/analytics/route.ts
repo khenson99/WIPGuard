@@ -31,6 +31,7 @@ import {
   storeAnalyticsSnapshot,
   storeAnalyticsSnapshotFailure,
 } from "@/lib/analytics/snapshots";
+import { buildAnalyticsRouteMeta } from "@/lib/analytics/route-meta";
 import type {
   AnalyticsDashboardData,
   AnalyticsRecommendation,
@@ -741,6 +742,16 @@ export async function GET(request: Request) {
   if (domains.has("distilledInsights")) {
     result.distilledInsights = buildDistilledInsights(result);
   }
+
+  const staleDomains = Array.from(new Set(result.staleDomains));
+  const erroredDomains = Array.from(new Set(result.errors.map((entry) => entry.source)));
+  result.staleDomains = staleDomains;
+  result.meta = buildAnalyticsRouteMeta({
+    section,
+    forceRefresh,
+    staleDomains,
+    erroredDomains,
+  });
 
   return NextResponse.json(result, {
     headers: {

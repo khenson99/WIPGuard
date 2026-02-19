@@ -3,7 +3,7 @@
 import { Droppable } from "@hello-pangea/dnd";
 import { clsx } from "clsx";
 import { TaskCard, type GroupByMode } from "./task-card";
-import type { BoardColumn, TaskWithRelations } from "@/types";
+import type { BoardColumn, Priority, TaskWithRelations } from "@/types";
 
 interface KanbanColumnProps {
   column: BoardColumn;
@@ -20,6 +20,12 @@ interface KanbanColumnProps {
   droppableIdPrefix?: string;
   getDeptForTask?: (task: TaskWithRelations) => { name: string; color: string | null } | null;
   hideHeader?: boolean;
+  currentUserId?: string | null;
+  activeSprintId?: string | null;
+  committedTaskIds?: Set<string>;
+  queuedCount?: number;
+  queuedWipLimit?: number;
+  onReplenishTask?: (task: TaskWithRelations) => Promise<void>;
 }
 
 export function KanbanColumn({
@@ -37,10 +43,53 @@ export function KanbanColumn({
   droppableIdPrefix = "",
   getDeptForTask,
   hideHeader = false,
+  currentUserId = null,
+  activeSprintId = null,
+  committedTaskIds = new Set<string>(),
+  queuedCount = 0,
+  queuedWipLimit = 0,
+  onReplenishTask,
 }: KanbanColumnProps) {
   const isOverLimit = wipLimit > 0 && column.tasks.length > wipLimit;
   const isAtLimit = wipLimit > 0 && column.tasks.length === wipLimit;
   const isCompact = displayPreset !== "standard";
+  const queuedBudgetExceeded =
+    queuedWipLimit > 0 && queuedCount >= queuedWipLimit;
+
+  const nextPriority = (current: Priority): Priority => {
+    const order: Priority[] = ["P3", "P2", "P1", "P0"];
+    const index = order.indexOf(current);
+    return order[(index + 1) % order.length];
+  };
+
+  const patchTask = async (
+    task: TaskWithRelations,
+    payload: Record<string, unknown>,
+    conflictFallbackMessage: string
+  ): Promise<boolean> => {
+    const response = await fetch(`/api/tasks/${task.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...payload,
+        expectedUpdatedAt: task.updatedAt,
+      }),
+    });
+    if (!response.ok) {
+      if (response.status === 409) {
+        const conflict = await response.json().catch(() => null);
+        window.alert(
+          conflict?.conflict?.message ||
+            conflict?.error ||
+            conflictFallbackMessage
+        );
+      } else {
+        window.alert("Task update failed. Please try again.");
+      }
+      return false;
+    }
+    return true;
+  };
 
   return (
     <div
@@ -108,6 +157,20 @@ export function KanbanColumn({
           >
             {column.tasks.map((task, index) => {
               const taskDept = getDeptForTask ? getDeptForTask(task) : null;
+              const commitmentState =
+                activeSprintId && task.sprintId === activeSprintId
+                  ? committedTaskIds.has(task.id)
+                    ? "committed"
+                    : "opportunistic"
+                  : null;
+              const isAssignedToMe = Boolean(
+                currentUserId &&
+                  task.responsible?.some((member) => member.id === currentUserId)
+              );
+              const replenishWarning =
+                task.status === "BACKLOG" && queuedBudgetExceeded
+                  ? `Queued WIP budget is full (${queuedCount}/${queuedWipLimit}).`
+                  : null;
               return (
               <TaskCard
                 key={task.id}
@@ -121,7 +184,14 @@ export function KanbanColumn({
                 groupBy={groupBy}
                 departmentName={departmentName || taskDept?.name}
                 departmentColor={departmentColor || taskDept?.color}
+                commitmentState={commitmentState}
+                isAssignedToMe={isAssignedToMe}
+                replenishWarning={replenishWarning}
                 onAdvance={async () => {
+                  if (task.status === "BACKLOG" && onReplenishTask) {
+                    await onReplenishTask(task);
+                    return;
+                  }
                   const response = await fetch(`/api/tasks/${task.id}/advance`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -139,6 +209,13 @@ export function KanbanColumn({
                   }
                   onRefresh();
                 }}
+                onReplenish={
+                  onReplenishTask
+                    ? async () => {
+                        await onReplenishTask(task);
+                      }
+                    : undefined
+                }
                 onRetreat={async () => {
                   const response = await fetch(`/api/tasks/${task.id}/retreat`, {
                     method: "POST",
@@ -156,6 +233,42 @@ export function KanbanColumn({
                     );
                   }
                   onRefresh();
+                }}
+                onAssignToMe={
+                  currentUserId
+                    ? async () => {
+                        if (isAssignedToMe) return;
+                        const currentResponsible =
+                          task.responsible?.map((member) => member.id) ?? [];
+                        const ok = await patchTask(
+                          task,
+                          {
+                            responsibleIds: Array.from(
+                              new Set([...currentResponsible, currentUserId])
+                            ),
+                          },
+                          "Task changed before assignment was applied. Refreshing board."
+                        );
+                        if (ok) onRefresh();
+                      }
+                    : undefined
+                }
+                onCyclePriority={async () => {
+                  const ok = await patchTask(
+                    task,
+                    { priority: nextPriority(task.priority) },
+                    "Task changed before priority update was applied. Refreshing board."
+                  );
+                  if (ok) onRefresh();
+                }}
+                onComplete={async () => {
+                  if (task.status === "DONE") return;
+                  const ok = await patchTask(
+                    task,
+                    { status: "DONE" },
+                    "Task changed before completion was applied. Refreshing board."
+                  );
+                  if (ok) onRefresh();
                 }}
                 onDelete={async () => {
                   const confirmed = window.confirm(

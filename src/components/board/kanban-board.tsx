@@ -65,6 +65,14 @@ interface KanbanSnapshot {
   projects: BoardProjectLite[];
   sprints: SprintSummary[];
   departments: DepartmentSummary[];
+  activeSprintId?: string | null;
+  committedTaskIds?: string[];
+}
+
+interface ReplenishmentNotice {
+  taskId: string;
+  title: string;
+  updatedAt?: string;
 }
 
 export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) {
@@ -99,6 +107,9 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
   >(new Map());
   const [allTasks, setAllTasks] = useState<TaskWithRelations[]>([]);
   const [projectList, setProjectList] = useState<{ id: string; name: string; departmentId: string | null }[]>([]);
+  const [activeSprintId, setActiveSprintId] = useState<string | null>(null);
+  const [committedTaskIds, setCommittedTaskIds] = useState<Set<string>>(new Set());
+  const [replenishmentNotice, setReplenishmentNotice] = useState<ReplenishmentNotice | null>(null);
   const boardCacheKey = useMemo(() => {
     const statusKey = filterByStatus && filterByStatus.length > 0 ? filterByStatus.join(",") : "all";
     return [
@@ -125,6 +136,10 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
       setProjects(projects);
       setSprints(sprints);
       setDepartments(depts);
+      const derivedActiveSprintId =
+        snapshot.activeSprintId ?? sprints.find((s) => s.isActive)?.id ?? null;
+      setActiveSprintId(derivedActiveSprintId);
+      setCommittedTaskIds(new Set(snapshot.committedTaskIds ?? []));
       setAllTasks(tasks);
       setProjectList(
         projects.map((p) => ({
@@ -207,6 +222,19 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
       const projects: BoardProjectLite[] = await projectsRes.json();
       const sprints = await sprintsRes.json();
       const depts: DepartmentSummary[] = deptsRes.ok ? await deptsRes.json() : [];
+      const activeSprint = Array.isArray(sprints)
+        ? (sprints as SprintSummary[]).find((s) => s.isActive)
+        : null;
+
+      let committedTaskIds: string[] = [];
+      if (activeSprint?.id) {
+        const reportRes = await fetch(`/api/sprints/${activeSprint.id}/report`, { signal });
+        if (reportRes.ok) {
+          const report = await reportRes.json();
+          committedTaskIds =
+            report?.plannedVsUnplanned?.commitmentSnapshot?.committedTaskIds ?? [];
+        }
+      }
 
       if (signal?.aborted) return;
 
@@ -217,6 +245,8 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
         projects: Array.isArray(projects) ? projects : [],
         sprints: Array.isArray(sprints) ? (sprints as SprintSummary[]) : [],
         departments: depts,
+        activeSprintId: activeSprint?.id ?? null,
+        committedTaskIds,
       };
 
       applyBoardSnapshot(snapshot);
@@ -517,6 +547,88 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
     openTaskModal(null);
   };
 
+  const queuedTaskCount = useMemo(
+    () => columns.find((column) => column.id === "QUEUED")?.tasks.length ?? 0,
+    [columns]
+  );
+
+  const handleReplenishTask = useCallback(
+    async (task: TaskWithRelations) => {
+      if (task.status !== "BACKLOG") return;
+
+      const queuedLimit = wipLimits.QUEUED;
+      if (queuedLimit > 0 && queuedTaskCount >= queuedLimit) {
+        const proceed = window.confirm(
+          `Queued WIP budget is full (${queuedTaskCount}/${queuedLimit}). Replenish anyway?`
+        );
+        if (!proceed) return;
+      }
+
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "QUEUED",
+          expectedUpdatedAt: task.updatedAt,
+        }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 409) {
+          const conflict = await response.json().catch(() => null);
+          window.alert(
+            conflict?.conflict?.message ||
+              conflict?.error ||
+              "Task changed before replenish was applied. Refreshing board."
+          );
+        } else {
+          window.alert("Failed to replenish task. Please try again.");
+        }
+        void fetchBoard();
+        return;
+      }
+
+      const updated = await response.json().catch(() => null);
+      setReplenishmentNotice({
+        taskId: task.id,
+        title: task.title,
+        updatedAt: updated?.updatedAt,
+      });
+      void fetchBoard();
+    },
+    [fetchBoard, queuedTaskCount, wipLimits.QUEUED]
+  );
+
+  const handleUndoReplenish = useCallback(async () => {
+    if (!replenishmentNotice) return;
+
+    const response = await fetch(`/api/tasks/${replenishmentNotice.taskId}/retreat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        replenishmentNotice.updatedAt
+          ? { expectedUpdatedAt: replenishmentNotice.updatedAt }
+          : {}
+      ),
+    });
+
+    if (!response.ok) {
+      if (response.status === 409) {
+        const conflict = await response.json().catch(() => null);
+        window.alert(
+          conflict?.conflict?.message ||
+            conflict?.error ||
+            "Task changed before undo was applied. Refreshing board."
+        );
+      } else {
+        window.alert("Failed to undo replenish action.");
+      }
+    }
+
+    setReplenishmentNotice(null);
+    void fetchBoard();
+  }, [fetchBoard, replenishmentNotice]);
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -527,7 +639,8 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
 
   /* ----- Render ----- */
   return (
-    <div className="flex h-full flex-col" onKeyDown={handleBoardKeyDown} tabIndex={0}>
+    <div className="h-full overflow-x-auto overflow-y-auto" onKeyDown={handleBoardKeyDown} tabIndex={0}>
+      <div className="inline-flex min-w-full flex-col">
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <BoardFilters />
@@ -587,8 +700,29 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
           New Task
         </button>
       </div>
+      {replenishmentNotice && (
+        <div className="mx-4 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs">
+          <span className="text-emerald-700">
+            Replenished <strong>{replenishmentNotice.title}</strong> to Queued. Logged in status history.
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleUndoReplenish}
+              className="rounded border border-emerald-600/40 px-2 py-0.5 font-medium text-emerald-700 hover:bg-emerald-500/20"
+            >
+              Undo
+            </button>
+            <button
+              onClick={() => setReplenishmentNotice(null)}
+              className="rounded px-2 py-0.5 text-emerald-700 hover:bg-emerald-500/20"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
-      <div className="flex-1 overflow-x-auto overflow-y-auto px-4 pb-4">
+      <div className="px-4 pb-4">
         <DragDropContext onDragEnd={handleDragEnd}>
           {groupBy === "status" && (
             <div className="flex h-full gap-3">
@@ -605,6 +739,12 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
                   onSelectTask={setSelectedTaskId}
                   groupBy="status"
                   getDeptForTask={getDeptForTask}
+                  currentUserId={session?.user?.id ?? null}
+                  activeSprintId={activeSprintId}
+                  committedTaskIds={committedTaskIds}
+                  queuedCount={queuedTaskCount}
+                  queuedWipLimit={wipLimits.QUEUED}
+                  onReplenishTask={handleReplenishTask}
                 />
               ))}
             </div>
@@ -667,6 +807,12 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
                       droppableIdPrefix={`proj-${col.id}:`}
                       getDeptForTask={getDeptForTask}
                       hideHeader
+                      currentUserId={session?.user?.id ?? null}
+                      activeSprintId={activeSprintId}
+                      committedTaskIds={committedTaskIds}
+                      queuedCount={queuedTaskCount}
+                      queuedWipLimit={wipLimits.QUEUED}
+                      onReplenishTask={handleReplenishTask}
                     />
                   </div>
                 );
@@ -718,12 +864,19 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
                     droppableIdPrefix={`dept-${col.id}:`}
                     getDeptForTask={getDeptForTask}
                     hideHeader
+                    currentUserId={session?.user?.id ?? null}
+                    activeSprintId={activeSprintId}
+                    committedTaskIds={committedTaskIds}
+                    queuedCount={queuedTaskCount}
+                    queuedWipLimit={wipLimits.QUEUED}
+                    onReplenishTask={handleReplenishTask}
                   />
                 </div>
               ))}
             </div>
           )}
         </DragDropContext>
+      </div>
       </div>
 
       {isTaskModalOpen && (

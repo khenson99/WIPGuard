@@ -1,46 +1,91 @@
-/**
- * Normalize a Coda document ID to its canonical form.
- * Strips URL prefixes and whitespace so that stored IDs are consistent.
- */
-export function normalizeCodaDocId(raw: string): string | null {
-  const trimmed = raw.trim();
+const CODA_DOC_ID_REGEX = /^d[a-zA-Z0-9_-]{5,}$/;
+
+function asTrimmed(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : null;
+}
+
+export function normalizeCodaDocId(value: string | null | undefined): string | null {
+  const trimmed = asTrimmed(value);
   if (!trimmed) return null;
+  return CODA_DOC_ID_REGEX.test(trimmed) ? trimmed : null;
+}
 
-  // Already a bare ID.
-  if (/^d[A-Za-z0-9_-]{5,}$/.test(trimmed)) {
-    return trimmed;
-  }
+export function extractCodaDocIdFromUrl(urlLike: string): string | null {
+  const raw = asTrimmed(urlLike);
+  if (!raw) return null;
 
+  let parsed: URL;
   try {
-    const parsed = new URL(trimmed);
-    if (!parsed.hostname.endsWith("coda.io")) {
-      return trimmed;
-    }
-
-    // Support URLs with ?docId=dXXXX.
-    const queryDocId = parsed.searchParams.get("docId")?.trim() ?? "";
-    if (/^d[A-Za-z0-9_-]{5,}$/.test(queryDocId)) {
-      return queryDocId;
-    }
-
-    // Support common share URLs such as:
-    // - /d/Doc-Name_dXXXX
-    // - /d/_dXXXX
-    const segments = parsed.pathname
-      .split("/")
-      .map((segment) => decodeURIComponent(segment).trim())
-      .filter(Boolean);
-
-    for (const segment of segments) {
-      const fromSuffix = segment.match(/(?:^|_)(d[A-Za-z0-9_-]{5,})$/);
-      if (fromSuffix) {
-        return fromSuffix[1];
-      }
-    }
+    parsed = new URL(raw);
   } catch {
-    // Fall through to legacy behavior below.
+    return null;
   }
 
-  // Preserve existing fallback behavior for unknown formats.
-  return trimmed;
+  if (!parsed.hostname.endsWith("coda.io")) {
+    return null;
+  }
+
+  const docIdFromQuery = normalizeCodaDocId(parsed.searchParams.get("docId"));
+  if (docIdFromQuery) {
+    return docIdFromQuery;
+  }
+
+  const segments = parsed.pathname
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .map((segment) => decodeURIComponent(segment));
+
+  if (segments.length === 0) {
+    return null;
+  }
+
+  if ((segments[0] === "d" || segments[0] === "docs") && segments.length > 1) {
+    const direct = normalizeCodaDocId(segments[1]);
+    if (direct) {
+      return direct;
+    }
+  }
+
+  for (const segment of segments) {
+    const underscoreSplit = segment.split("_");
+    const candidate = normalizeCodaDocId(underscoreSplit[underscoreSplit.length - 1] ?? null);
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+export function resolveCodaDocId(input: {
+  docId?: string | null;
+  docUrl?: string | null;
+}): string | null {
+  const hasDocIdInput = asTrimmed(input.docId) !== null;
+  const hasDocUrlInput = asTrimmed(input.docUrl) !== null;
+
+  const parsedDocId = normalizeCodaDocId(input.docId);
+  const parsedDocIdFromUrl = input.docUrl
+    ? extractCodaDocIdFromUrl(input.docUrl)
+    : null;
+
+  if (hasDocIdInput && !parsedDocId) {
+    throw new Error("Invalid Coda doc ID");
+  }
+
+  if (hasDocUrlInput && !parsedDocIdFromUrl) {
+    throw new Error("Invalid Coda doc URL");
+  }
+
+  if (
+    parsedDocId &&
+    parsedDocIdFromUrl &&
+    parsedDocId !== parsedDocIdFromUrl
+  ) {
+    throw new Error("Coda doc ID and doc URL do not match");
+  }
+
+  return parsedDocId ?? parsedDocIdFromUrl ?? null;
 }

@@ -15,6 +15,7 @@ import {
   deriveDomainSectionStatus,
   type SectionStatus,
 } from "@/lib/analytics/summary-health";
+import { buildSummaryChildDiagnostics } from "@/lib/analytics/route-meta";
 
 function aggregateStatus(statuses: SectionStatus[]): SectionStatus {
   if (statuses.every((status) => status === "connected")) return "connected";
@@ -56,7 +57,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         where: {
           userId: session.user.id,
           rangePreset: range.preset,
-          fromDate: from,
           toDate: to,
           providerKey: {
             in: [
@@ -82,6 +82,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           status: true,
           expiresAt: true,
           capturedAt: true,
+          lastError: true,
         },
         orderBy: [{ capturedAt: "desc" }],
       }),
@@ -96,6 +97,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       {
         status: AnalyticsSnapshotStatus;
         stale: boolean;
+        capturedAt: string;
+        lastError: string | null;
       }
     >();
 
@@ -104,6 +107,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       latestSnapshotByProvider.set(snapshot.providerKey, {
         status: snapshot.status,
         stale: snapshot.expiresAt.getTime() < now,
+        capturedAt: snapshot.capturedAt.toISOString(),
+        lastError: snapshot.lastError,
       });
     }
 
@@ -175,6 +180,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           label: child.label,
           href: child.path,
           status,
+          ...buildSummaryChildDiagnostics({
+            snapshotStatus:
+              latestSnapshot?.status === AnalyticsSnapshotStatus.SUCCESS
+                ? "SUCCESS"
+                : latestSnapshot?.status === AnalyticsSnapshotStatus.ERROR
+                  ? "ERROR"
+                  : null,
+            capturedAt: latestSnapshot?.capturedAt ?? null,
+            lastError: latestSnapshot?.lastError ?? null,
+          }),
         };
       });
 
@@ -193,9 +208,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const connectedPrimary = primarySections.filter((section) => section.status !== "missing").length;
     const disciplineCoverage = Math.round((connectedPrimary / primarySections.length) * 100);
+    const isPartial = primarySections.some((section) => section.status === "degraded" || section.status === "partial");
 
     return NextResponse.json(
       {
+        meta: {
+          servedAt: new Date().toISOString(),
+          isPartial,
+        },
         generatedAt: new Date().toISOString(),
         timeRange: range,
         highlights: {

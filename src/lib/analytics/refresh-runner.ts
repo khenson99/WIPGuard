@@ -124,10 +124,24 @@ async function refreshForUserAndRange(input: {
   if (creds.mercuryKey) {
     jobs.push({ providerKey: "mercury", run: () => fetchMercuryData(creds.mercuryKey!) });
   }
-  if (creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey) {
+  const hasGAServiceAccount = Boolean(
+    creds.gaClientEmail && creds.gaPrivateKey
+  );
+  const hasGAOAuth = Boolean(
+    process.env.GA_REFRESH_TOKEN?.trim() &&
+      process.env.GOOGLE_CLIENT_ID?.trim() &&
+      process.env.GOOGLE_CLIENT_SECRET?.trim()
+  );
+
+  if (creds.gaPropertyId && (hasGAServiceAccount || hasGAOAuth)) {
     jobs.push({
       providerKey: "googleAnalytics",
-      run: () => fetchGAData(creds.gaPropertyId!, creds.gaClientEmail!, creds.gaPrivateKey!),
+      run: () =>
+        fetchGAData(
+          creds.gaPropertyId!,
+          creds.gaClientEmail ?? "",
+          creds.gaPrivateKey ?? ""
+        ),
     });
   }
   if (
