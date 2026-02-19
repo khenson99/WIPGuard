@@ -88,7 +88,11 @@ export function FinanceTab({ data }: FinanceTabProps) {
   const goals = useMemo(() => (data ? computeFinancialGoals(data) : []), [data]);
   const health = useMemo(() => (data ? scoreFinancialHealth(data) : null), [data]);
   const sensitivityResults = useMemo(
-    () => (data ? runSensitivityAnalysis(data, { churnDelta, growthDelta, burnDelta }) : []),
+    () => (data ? runSensitivityAnalysis(data, {
+      churnDelta: churnDelta / 100,
+      growthDelta: growthDelta / 100,
+      burnDelta: burnDelta / 100,
+    }) : []),
     [data, churnDelta, growthDelta, burnDelta]
   );
 
@@ -589,14 +593,14 @@ function GoalsPanel({ goals }: { goals: FinancialGoal[] }) {
                 className={`h-full rounded-full transition-all duration-500 ${
                   goal.onTrack ? "bg-emerald-500" : "bg-yellow-500"
                 }`}
-                style={{ width: `${Math.min(goal.progress * 100, 100)}%` }}
+                style={{ width: `${Math.min(goal.progress, 100)}%` }}
               />
             </div>
           </div>
 
           {/* Meta info */}
           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-            <span>{Math.round(goal.progress * 100)}% complete</span>
+            <span>{Math.round(goal.progress)}% complete</span>
             {goal.projectedDate && (
               <span className="flex items-center gap-1">
                 <Clock className="w-3 h-3" />
