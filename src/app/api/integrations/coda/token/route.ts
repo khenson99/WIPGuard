@@ -19,6 +19,13 @@ interface ConnectCodaBody {
   docUrl?: string;
 }
 
+function asMetadataObject(metadata: unknown): Prisma.InputJsonObject {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return {};
+  }
+  return metadata as Prisma.InputJsonObject;
+}
+
 function readPersistedDocId(metadata: unknown): string | null {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
     return null;
@@ -52,15 +59,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const body = (await request.json().catch(() => ({}))) as ConnectCodaBody;
-    const token = body.token?.trim() || process.env.CODA_API_TOKEN?.trim();
-    if (!token) {
-      return NextResponse.json(
-        { error: "Coda API token is required (or set CODA_API_TOKEN on the server)" },
-        { status: 400 }
-      );
-    }
-
-    const profile = await verifyCodaApiToken(token);
     const connection = await prisma.integrationConnection.findUnique({
       where: {
         userId_provider: {
@@ -72,8 +70,39 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         metadata: true,
       },
     });
+    const token = body.token?.trim() || process.env.CODA_API_TOKEN?.trim();
+    const hasDocInput = hasCodaDocInput(body);
+
+    if (!token) {
+      if (!hasDocInput || !connection) {
+        return NextResponse.json(
+          { error: "Coda API token is required (or set CODA_API_TOKEN on the server)" },
+          { status: 400 }
+        );
+      }
+
+      const docId = resolveCodaDocId({ docId: body.docId, docUrl: body.docUrl });
+      const metadata: Prisma.InputJsonObject = {
+        ...asMetadataObject(connection.metadata),
+        docId,
+      };
+
+      await prisma.integrationConnection.update({
+        where: {
+          userId_provider: {
+            userId: session.user.id,
+            provider: IntegrationProvider.CODA,
+          },
+        },
+        data: { metadata },
+      });
+
+      return NextResponse.json({ ok: true, docId });
+    }
+
+    const profile = await verifyCodaApiToken(token);
     const docId =
-      hasCodaDocInput(body)
+      hasDocInput
         ? resolveCodaDocId({ docId: body.docId, docUrl: body.docUrl })
         : readPersistedDocId(connection?.metadata);
     const metadata: Prisma.InputJsonObject = {
