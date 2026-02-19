@@ -2,7 +2,13 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FinanceTab } from "@/components/analytics/finance-tab";
 import { createEmptyAnalyticsDashboardData } from "@/lib/analytics/response-shape";
-import type { AnalyticsDashboardData, StripeData, MercuryData } from "@/lib/analytics/types";
+import type {
+  AnalyticsDashboardData,
+  StripeData,
+  MercuryData,
+  IntegrationProviderKey,
+  ProviderFreshness,
+} from "@/lib/analytics/types";
 
 /* ── Helpers ───────────────────────────────────────────── */
 
@@ -64,6 +70,23 @@ function makeMercury(overrides: Partial<MercuryData> = {}): MercuryData {
   };
 }
 
+function makeFreshness(
+  provider: IntegrationProviderKey,
+  overrides: Partial<ProviderFreshness> = {}
+): ProviderFreshness {
+  return {
+    provider,
+    source: "none",
+    status: null,
+    connectedAt: null,
+    lastSyncedAt: null,
+    lastError: null,
+    stale: false,
+    lastSnapshotAt: null,
+    ...overrides,
+  };
+}
+
 function makePayload(
   opts: { stripe?: StripeData | null; mercury?: MercuryData | null } = {}
 ): AnalyticsDashboardData {
@@ -91,6 +114,62 @@ describe("FinanceTab", () => {
     const data = makePayload({ stripe: null, mercury: null });
     render(<FinanceTab data={data} />);
     expect(screen.getByText("Finance dashboard data is unavailable")).toBeTruthy();
+  });
+
+  /* ─── Connection status ─────────────────────────────── */
+
+  it("shows connect-empty-state when both finance providers are disconnected", () => {
+    const data = makePayload({ stripe: null, mercury: null });
+    data.freshness.stripe = makeFreshness("stripe", {
+      source: "connection",
+      status: "DISCONNECTED",
+    });
+    data.freshness.mercury = makeFreshness("mercury", {
+      source: "connection",
+      status: "DISCONNECTED",
+    });
+
+    render(<FinanceTab data={data} />);
+
+    expect(screen.getByText("Connect your finance integrations")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Go to Settings" })).toBeTruthy();
+  });
+
+  it("treats DISCONNECTED connection records as not connected and shows warning banner", () => {
+    const data = makePayload({ stripe: null, mercury: null });
+    data.freshness.stripe = makeFreshness("stripe", {
+      source: "connection",
+      status: "DISCONNECTED",
+    });
+    data.freshness.mercury = makeFreshness("mercury", {
+      source: "env",
+      status: null,
+    });
+
+    render(<FinanceTab data={data} />);
+
+    expect(screen.getByText("Stripe is not connected")).toBeTruthy();
+  });
+
+  it("shows provider error banners and filters generic missing-credential API errors", () => {
+    const data = makePayload({ stripe: null, mercury: null });
+    data.freshness.stripe = makeFreshness("stripe", {
+      source: "connection",
+      status: "ERROR",
+      lastError: "Stripe 401",
+    });
+    data.freshness.mercury = makeFreshness("mercury", {
+      source: "env",
+      status: null,
+    });
+    data.errors.push({ source: "stripe", message: "Missing STRIPE_SECRET_KEY" });
+    data.errors.push({ source: "stripe", message: "API timeout" });
+
+    render(<FinanceTab data={data} />);
+
+    expect(screen.getByText("Stripe connection error: Stripe 401")).toBeTruthy();
+    expect(screen.getByText("stripe: API timeout")).toBeTruthy();
+    expect(screen.queryByText("stripe: Missing STRIPE_SECRET_KEY")).toBeNull();
   });
 
   /* ─── A: Command Strip ──────────────────────────────── */

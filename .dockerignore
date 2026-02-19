@@ -3,9 +3,6 @@ node_modules
 .git
 .env
 .env.local
-.claude
-.worktrees
-app
 *.md
 docs
 .github

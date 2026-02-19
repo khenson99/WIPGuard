@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   DollarSign,
   Wallet,
@@ -14,7 +15,7 @@ import {
   AlertTriangle,
   CheckCircle2,
 } from "lucide-react";
-import { AnalyticsDashboardData } from "@/lib/analytics/types";
+import { AnalyticsDashboardData, ProviderFreshness } from "@/lib/analytics/types";
 import { StatCard } from "./stat-card";
 import { RingStat } from "./bar-display";
 import { FinanceDataEmptyState } from "./finance-empty-state";
@@ -116,6 +117,56 @@ export function FinanceTab({ data }: FinanceTabProps) {
     data.freshness.mercury?.lastError ? `mercury: ${data.freshness.mercury.lastError}` : null,
   ].filter((entry): entry is string => Boolean(entry));
 
+  const stripeFreshness: ProviderFreshness | undefined = data.freshness?.stripe;
+  const mercuryFreshness: ProviderFreshness | undefined = data.freshness?.mercury;
+
+  const stripeConnected = Boolean(
+    stripeFreshness &&
+      stripeFreshness.source !== "none" &&
+      stripeFreshness.status !== "DISCONNECTED"
+  );
+  const mercuryConnected = Boolean(
+    mercuryFreshness &&
+      mercuryFreshness.source !== "none" &&
+      mercuryFreshness.status !== "DISCONNECTED"
+  );
+
+  // If neither integration is connected, show a full empty state
+  if (!stripe && !mercury && !stripeConnected && !mercuryConnected) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 gap-4">
+        <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
+          <DollarSign className="w-7 h-7 text-primary" />
+        </div>
+        <div className="text-center space-y-1">
+          <h3 className="text-foreground font-semibold">Connect your finance integrations</h3>
+          <p className="text-sm text-muted-foreground max-w-md">
+            Link Stripe and Mercury to see revenue, subscriptions, cash flow, and runway metrics here.
+          </p>
+        </div>
+        <Link
+          href="/settings?tab=integrations"
+          className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          Go to Settings
+        </Link>
+      </div>
+    );
+  }
+
+  // Connection status banners
+  const connectionBanners: { label: string; status: "warning" | "error" }[] = [];
+  if (!stripeConnected) {
+    connectionBanners.push({ label: "Stripe is not connected", status: "warning" });
+  } else if (stripeFreshness?.status === "ERROR") {
+    connectionBanners.push({ label: `Stripe connection error: ${stripeFreshness.lastError ?? "unknown"}`, status: "error" });
+  }
+  if (!mercuryConnected) {
+    connectionBanners.push({ label: "Mercury is not connected", status: "warning" });
+  } else if (mercuryFreshness?.status === "ERROR") {
+    connectionBanners.push({ label: `Mercury connection error: ${mercuryFreshness.lastError ?? "unknown"}`, status: "error" });
+  }
+
   if (!stripe && !mercury) {
     return (
       <FinanceDataEmptyState
@@ -140,6 +191,28 @@ export function FinanceTab({ data }: FinanceTabProps) {
 
   return (
     <div className="space-y-6">
+      {/* Connection Banners */}
+      {connectionBanners.length > 0 && (
+        <div className="space-y-2">
+          {connectionBanners.map((banner) => (
+            <div
+              key={banner.label}
+              className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm ${
+                banner.status === "error"
+                  ? "border-red-500/40 bg-red-500/10 text-red-600"
+                  : "border-amber-500/40 bg-amber-500/10 text-amber-600"
+              }`}
+            >
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span className="flex-1">{banner.label}</span>
+              <Link href="/settings?tab=integrations" className="font-medium underline underline-offset-2 hover:no-underline">
+                Settings
+              </Link>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ═══ A — COMMAND STRIP ═══════════════════════════════ */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Health Score Gauge */}
