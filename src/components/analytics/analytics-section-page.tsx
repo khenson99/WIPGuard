@@ -44,6 +44,10 @@ const DemoSchedulingView = dynamic(() => import("@/components/analytics/demo-sch
 const DemoAttributionView = dynamic(() => import("@/components/analytics/demo-attribution-view").then((m) => m.DemoAttributionView));
 const ProcessBottlenecksView = dynamic(() => import("@/components/analytics/process-bottlenecks-view").then((m) => m.ProcessBottlenecksView));
 const ProcessHealthView = dynamic(() => import("@/components/analytics/process-health-view").then((m) => m.ProcessHealthView));
+const FinancePlanningTab = dynamic(() => import("@/components/analytics/finance-planning-tab").then((m) => m.FinancePlanningTab));
+const FinanceForecastTab = dynamic(() => import("@/components/analytics/finance-forecast-tab").then((m) => m.FinanceForecastTab));
+const FinancePnlTab = dynamic(() => import("@/components/analytics/finance-pnl-tab").then((m) => m.FinancePnlTab));
+const FinanceUnitEconomicsTab = dynamic(() => import("@/components/analytics/finance-unit-economics-tab").then((m) => m.FinanceUnitEconomicsTab));
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import { buildRangeQuery } from "@/lib/analytics/time-range";
 import {
@@ -108,6 +112,10 @@ export type AnalyticsChildRenderKind =
   | "demoAttribution"
   | "processBottlenecks"
   | "processHealth"
+  | "finance-planning"
+  | "finance-forecast"
+  | "finance-pnl"
+  | "finance-unit-economics"
   | "snapshot";
 
 export function resolveAnalyticsChildRenderKind(input: {
@@ -118,6 +126,10 @@ export function resolveAnalyticsChildRenderKind(input: {
   if (input.childId === "finance-stripe") return "finance-stripe";
   if (input.childId === "finance-hubspot") return "finance-hubspot";
   if (input.childId === "finance-mercury") return "finance-mercury";
+  if (input.childId === "finance-planning") return "finance-planning";
+  if (input.childId === "finance-forecast") return "finance-forecast";
+  if (input.childId === "finance-pnl") return "finance-pnl";
+  if (input.childId === "finance-unit-economics") return "finance-unit-economics";
   // Sales
   if (input.childId === "sales-hubspot") return "sales-hubspot";
   if (input.childId === "sales-stripe") return "sales-stripe";
@@ -395,6 +407,10 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     if (renderKind === "finance-stripe") return <FinanceStripeTab data={analyticsData} />;
     if (renderKind === "finance-hubspot") return <FinanceHubSpotTab data={analyticsData} />;
     if (renderKind === "finance-mercury") return <FinanceMercuryTab data={analyticsData} />;
+    if (renderKind === "finance-planning") return <FinancePlanningTab data={analyticsData} />;
+    if (renderKind === "finance-forecast") return <FinanceForecastTab data={analyticsData} />;
+    if (renderKind === "finance-pnl") return <FinancePnlTab data={analyticsData} />;
+    if (renderKind === "finance-unit-economics") return <FinanceUnitEconomicsTab data={analyticsData} />;
     // Sales
     if (renderKind === "sales-hubspot") return <SalesHubspotTab data={analyticsData} />;
     if (renderKind === "sales-stripe") return <SalesStripeTab data={analyticsData} />;
