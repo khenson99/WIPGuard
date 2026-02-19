@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 import { LifecycleFunnelPanel } from "@/components/analytics/lifecycle-funnel-panel";
 import type { AiInsight, LifecycleFunnelData } from "@/lib/analytics/types";
 
