@@ -11,17 +11,6 @@ import type {
 
 // ── Touchpoint extraction from each domain ──
 
-function hubspotTouchpoints(data: AnalyticsDashboardData): Touchpoint[] {
-  const deals = data.hubspot?.deals ?? [];
-  return deals.map((deal) => ({
-    timestamp: deal.updatedAt ?? new Date().toISOString(),
-    channel: "hubspot" as TouchpointChannel,
-    type: deal.stageLabel === "Closed Won" ? "conversion" as const : "engagement" as const,
-    detail: `${deal.stageLabel}: ${deal.dealName}`,
-    value: deal.amount,
-  }));
-}
-
 function stripeTouchpoints(data: AnalyticsDashboardData): Touchpoint[] {
   const touchpoints: Touchpoint[] = [];
   const churnEvents = data.stripe?.subscriptions?.recentChurnEvents ?? [];
@@ -150,8 +139,20 @@ function buildJourneys(data: AnalyticsDashboardData): CustomerJourneyRecord[] {
   const deals = data.hubspot?.deals ?? [];
   if (deals.length === 0) return [];
 
-  const allTouchpoints = [
-    ...hubspotTouchpoints(data),
+  // Build deal-specific HubSpot touchpoints keyed by dealId
+  const hubspotByDeal = new Map<string, Touchpoint[]>();
+  for (const deal of deals) {
+    hubspotByDeal.set(deal.dealId, [{
+      timestamp: deal.updatedAt ?? new Date().toISOString(),
+      channel: "hubspot" as TouchpointChannel,
+      type: deal.stageLabel === "Closed Won" ? "conversion" as const : "engagement" as const,
+      detail: `${deal.stageLabel}: ${deal.dealName}`,
+      value: deal.amount,
+    }]);
+  }
+
+  // Shared touchpoints are distributed across all deals (ads, webflow, etc.)
+  const sharedTouchpoints = [
     ...stripeTouchpoints(data),
     ...adTouchpoints(data),
     ...webflowTouchpoints(data),
@@ -159,15 +160,31 @@ function buildJourneys(data: AnalyticsDashboardData): CustomerJourneyRecord[] {
     ...pylonTouchpoints(data),
     ...telemetryTouchpoints(data, "googleWorkspace", "google-workspace"),
     ...telemetryTouchpoints(data, "slack", "slack"),
-  ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  ];
+
+  // Distribute shared touchpoints round-robin so each deal gets a subset
+  const sharedByDeal = new Map<string, Touchpoint[]>();
+  for (const deal of deals) sharedByDeal.set(deal.dealId, []);
+  if (sharedTouchpoints.length > 0 && deals.length > 0) {
+    for (let i = 0; i < sharedTouchpoints.length; i++) {
+      const tp = sharedTouchpoints[i];
+      // If the touchpoint detail mentions a specific deal, assign it there
+      const matchingDeal = deals.find((d) => tp.detail.includes(d.dealName));
+      if (matchingDeal) {
+        sharedByDeal.get(matchingDeal.dealId)!.push(tp);
+      } else {
+        // Round-robin assignment so deals get different touchpoints
+        const targetDeal = deals[i % deals.length];
+        sharedByDeal.get(targetDeal.dealId)!.push(tp);
+      }
+    }
+  }
 
   return deals.map((deal) => {
-    const dealTouchpoints = allTouchpoints.filter(
-      (tp) =>
-        tp.detail.includes(deal.dealName) ||
-        tp.channel === "hubspot" ||
-        tp.type === "first-touch"
-    );
+    const dealTouchpoints = [
+      ...(hubspotByDeal.get(deal.dealId) ?? []),
+      ...(sharedByDeal.get(deal.dealId) ?? []),
+    ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
     const timestamps = dealTouchpoints.map((tp) => new Date(tp.timestamp).getTime());
     const firstTouch = timestamps.length > 0 ? new Date(Math.min(...timestamps)).toISOString() : new Date().toISOString();
@@ -216,7 +233,7 @@ function buildTopPaths(journeys: CustomerJourneyRecord[]): JourneyPath[] {
   const pathCounts = new Map<string, { count: number; totalDays: number; totalValue: number }>();
 
   for (const journey of journeys) {
-    const channels = [...new Set(journey.touchpoints.map((tp) => tp.channel))];
+    const channels = Array.from(new Set(journey.touchpoints.map((tp) => tp.channel)));
     if (channels.length === 0) continue;
     const key = channels.join(" → ");
     const entry = pathCounts.get(key) ?? { count: 0, totalDays: 0, totalValue: 0 };
