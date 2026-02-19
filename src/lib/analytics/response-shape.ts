@@ -46,6 +46,7 @@ export function createEmptyAnalyticsDashboardData(input: {
     staleDomains: [],
     timeRange: input.timeRange,
     lastFullRefresh: input.lastFullRefresh ?? new Date().toISOString(),
+    financialPlanning: null,
     errors: [],
   };
 }

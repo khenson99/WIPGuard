@@ -72,6 +72,20 @@ export function buildRemediationSteps(input: {
     });
   }
 
+  if (item.connected && item.metadata) {
+    const meta = item.metadata;
+    if (meta?.insufficientScopes) {
+      const missing = Array.isArray(meta.missingScopes)
+        ? (meta.missingScopes as string[]).join(", ")
+        : "unknown scopes";
+      steps.push({
+        id: "insufficient-scopes",
+        title: "Missing required OAuth scopes",
+        detail: `Disconnect and reconnect to re-authorize with the correct permissions. Missing: ${missing}`,
+      });
+    }
+  }
+
   if (item.slug === "hubspot" && (hubspotDiagnostics?.mappingValidation?.length ?? 0) > 0) {
     steps.push({
       id: "hubspot-mapping",

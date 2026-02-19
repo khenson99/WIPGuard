@@ -11,13 +11,27 @@ export type AnalyticsSnapshotStatus = "SUCCESS" | "ERROR";
 
 export type IntegrationProviderKey =
   | "google_workspace"
+  | "googleWorkspace"
   | "hubspot"
   | "slack"
   | "webflow"
   | "coda"
+  | "codaKanban"
+  | "codaOps"
   | "reddit"
+  | "redditAds"
+  | "redditOps"
   | "stripe"
-  | "mercury";
+  | "mercury"
+  | "ga"
+  | "googleAnalytics"
+  | "googleAds"
+  | "metaAds"
+  | "metaPage"
+  | "semrush"
+  | "pylon"
+  | "product"
+  | "hubspotOps";
 
 export interface ProviderFreshness {
   provider: IntegrationProviderKey;
@@ -285,14 +299,75 @@ export interface CodaCard {
   status: string;
   priority?: string;
   assignee?: string;
+  creator?: string;
+  creatorEmail?: string | null;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface CodaCreatorBreakdown {
+  creator: string;
+  email: string | null;
+  cardCount: number;
+  activeDays: number;
+  firstCardAt: string | null;
+  lastCardAt: string | null;
+}
+
+export interface CodaCreatorWindow {
+  windowDays: 30 | 60 | 90;
+  totalCards: number;
+  previousWindowTotalCards: number;
+  trendDeltaPct: number | null;
+  uniqueCreators: number;
+  byCreator: CodaCreatorBreakdown[];
+}
+
+export interface CodaNewCreatorFeedEntry {
+  creator: string;
+  email: string | null;
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+  cardsCreated: number;
+  isUnknown: boolean;
+}
+
+export interface CodaCreatorTrends {
+  newCreators30d: Array<{ date: string; count: number }>;
+  cardsCreated90d: Array<{ date: string; count: number }>;
+}
+
+export type CodaLeadFunnelStatus = "inFunnel" | "notInFunnel" | "unknown";
+
+export interface CodaEngagedLeadCandidate {
+  creator: string;
+  email: string;
+  cards30d: number;
+  activeDays30d: number;
+  lastActivityAt: string | null;
+  trend30dVsPrevious30d: number | null;
+  engagementScore: number;
+  reasons: string[];
+  funnelStatus: CodaLeadFunnelStatus;
+  hubspotSearchUrl: string;
+}
+
+export interface CodaDiagnostics {
+  creatorResolutionMode: "override" | "auto_detect" | "unknown_heavy";
+  unknownCreatorRatio: number;
+  unknownCardCount: number;
+  hubspotMatchingErrors: number;
 }
 
 export interface CodaKanbanData {
   totalCards: number;
   cardsByStatus: { status: string; count: number }[];
   recentCards: CodaCard[];
+  creatorWindows?: CodaCreatorWindow[];
+  newCreatorFeed?: CodaNewCreatorFeedEntry[];
+  trends?: CodaCreatorTrends;
+  engagedLeadCandidates?: CodaEngagedLeadCandidate[];
+  diagnostics?: CodaDiagnostics;
   _meta: AnalyticsTimestamp;
 }
 
@@ -366,6 +441,9 @@ export interface IntegrationTelemetryData {
   failuresInRange: number;
   trend: Array<{ date: string; receipts: number; createdTasks: number; failures: number }>;
   topFailureReasons: Array<{ reason: string; count: number }>;
+  coverageStatus?: "active" | "stale" | "not_provisioned" | null;
+  configuredRules?: string[];
+  expectedRules?: string[];
   _meta: AnalyticsTimestamp;
 }
 
@@ -423,7 +501,10 @@ export type AnalyticsSectionId =
   | "ads-traffic"
   | "finance"
   | "sales-pipeline"
-  | "customer-success";
+  | "customer-success"
+  | "customer-journey"
+  | "demo-analytics"
+  | "process-analytics";
 
 export type LifecycleStageId =
   | "awareness"
@@ -522,6 +603,7 @@ export interface AiInsightEvidence {
   metric: string;
   value: string;
   delta: string;
+  trendValues?: number[];
 }
 
 export interface AiInsightAction {
@@ -533,12 +615,14 @@ export interface AiInsightAction {
 export interface AiInsight {
   id: string;
   section: AnalyticsSectionId;
+  subsectionId?: string;
   severity: "info" | "warning" | "critical";
   title: string;
   why: string;
   confidence: number;
   expectedImpact: string;
   stale: boolean;
+  crossDomain?: boolean;
   evidence: AiInsightEvidence[];
   actions: AiInsightAction[];
 }
@@ -550,6 +634,308 @@ export interface AiInsightsBundle {
 }
 
 // ══════════════════════════════════════════════════════════
+// CUSTOMER JOURNEY TYPES
+// ══════════════════════════════════════════════════════════
+
+export type TouchpointChannel =
+  | "hubspot"
+  | "stripe"
+  | "google-workspace"
+  | "slack"
+  | "webflow"
+  | "coda"
+  | "google-analytics"
+  | "google-ads"
+  | "meta-ads"
+  | "reddit-ads"
+  | "pylon"
+  | "mercury";
+
+export type TouchpointType =
+  | "first-touch"
+  | "engagement"
+  | "conversion"
+  | "support"
+  | "expansion";
+
+export interface Touchpoint {
+  timestamp: string;
+  channel: TouchpointChannel;
+  type: TouchpointType;
+  detail: string;
+  value: number | null;
+}
+
+export interface CustomerJourneyRecord {
+  dealId: string;
+  dealName: string;
+  contactEmail: string | null;
+  currentStage: string;
+  value: number;
+  touchpoints: Touchpoint[];
+  firstTouch: string;
+  lastTouch: string;
+  daysInPipeline: number;
+}
+
+export interface TouchpointSummary {
+  channel: TouchpointChannel;
+  totalTouchpoints: number;
+  avgPerJourney: number;
+  firstTouchCount: number;
+  conversionCount: number;
+}
+
+export interface JourneyPath {
+  sequence: TouchpointChannel[];
+  count: number;
+  avgDaysToClose: number;
+  avgValue: number;
+}
+
+export interface ChannelAttribution {
+  channel: TouchpointChannel;
+  firstTouchDeals: number;
+  assistedDeals: number;
+  lastTouchDeals: number;
+  totalRevenue: number;
+  avgDealValue: number;
+}
+
+export interface CustomerJourneyData {
+  journeys: CustomerJourneyRecord[];
+  touchpointSummary: TouchpointSummary[];
+  avgTouchpoints: number;
+  medianDaysToClose: number;
+  topPaths: JourneyPath[];
+  attribution: ChannelAttribution[];
+}
+
+// ══════════════════════════════════════════════════════════
+// DEMO ANALYTICS TYPES
+// ══════════════════════════════════════════════════════════
+
+export type DemoOutcome = "completed" | "no-show" | "rescheduled" | "pending";
+
+export interface DemoRecord {
+  dealId: string;
+  dealName: string;
+  contactEmail: string | null;
+  scheduledAt: string;
+  source: string;
+  outcome: DemoOutcome;
+  followUpSent: boolean;
+  daysToNextStage: number | null;
+  resultingStage: string | null;
+}
+
+export interface DemoSourceBreakdown {
+  source: string;
+  scheduled: number;
+  completed: number;
+  noShows: number;
+  conversionRate: number;
+}
+
+export interface DemoOutcomeBreakdown {
+  outcome: DemoOutcome;
+  count: number;
+  pct: number;
+}
+
+export interface DemoConversionStep {
+  label: string;
+  count: number;
+  conversionFromPrevious: number | null;
+}
+
+export interface DemoWeeklyTrend {
+  week: string;
+  scheduled: number;
+  completed: number;
+  noShows: number;
+}
+
+export interface DemoAnalyticsData {
+  totalScheduled: number;
+  totalCompleted: number;
+  totalNoShows: number;
+  noShowRate: number;
+  avgLeadTimeDays: number;
+  demos: DemoRecord[];
+  bySource: DemoSourceBreakdown[];
+  byOutcome: DemoOutcomeBreakdown[];
+  conversionFunnel: DemoConversionStep[];
+  weeklyTrend: DemoWeeklyTrend[];
+}
+
+// ══════════════════════════════════════════════════════════
+// PROCESS ANALYTICS TYPES
+// ══════════════════════════════════════════════════════════
+
+export interface StageVelocity {
+  stageId: string;
+  stageLabel: string;
+  avgDays: number;
+  medianDays: number;
+  p90Days: number;
+  dealCount: number;
+}
+
+export interface ProcessBottleneck {
+  stageLabel: string;
+  avgDays: number;
+  dealCount: number;
+  severity: "critical" | "warning" | "info";
+  recommendation: string;
+}
+
+export interface StageConversion {
+  fromStage: string;
+  toStage: string;
+  conversionRate: number;
+  avgDays: number;
+  dealCount: number;
+}
+
+export interface HealthFactor {
+  factor: string;
+  score: number;
+  weight: number;
+  detail: string;
+}
+
+export interface WeeklyThroughput {
+  week: string;
+  entered: number;
+  exited: number;
+  netChange: number;
+}
+
+export interface LeakagePoint {
+  stage: string;
+  lostCount: number;
+  lostValue: number;
+  topReasons: string[];
+  pctOfTotal: number;
+}
+
+export interface ProcessAnalyticsData {
+  avgCycleTimeDays: number;
+  stageVelocity: StageVelocity[];
+  bottlenecks: ProcessBottleneck[];
+  conversionByStage: StageConversion[];
+  healthScore: number;
+  healthFactors: HealthFactor[];
+  throughput: WeeklyThroughput[];
+  leakagePoints: LeakagePoint[];
+}
+
+// ══════════════════════════════════════════════════════════
+// FINANCIAL PLANNING
+// ══════════════════════════════════════════════════════════
+
+export type BudgetPeriod = "monthly" | "quarterly" | "annual";
+export type ExpenseCategory = "payroll" | "marketing" | "infrastructure" | "ops" | "cogs" | "other";
+
+export interface BudgetLineItemData {
+  id: string;
+  category: ExpenseCategory;
+  plannedAmount: number;
+  actualAmount: number | null;
+  variance: number | null;
+  variancePct: number | null;
+  notes?: string;
+}
+
+export interface BudgetData {
+  id: string;
+  name: string;
+  period: BudgetPeriod;
+  startDate: string;
+  endDate: string;
+  lineItems: BudgetLineItemData[];
+  totalPlanned: number;
+  totalActual: number | null;
+  totalVariance: number | null;
+}
+
+export interface ForecastAssumptions {
+  revenueGrowthRate: number;
+  churnRateDelta: number;
+  burnRateDelta: number;
+  additionalMonthlyExpense: number;
+  additionalMonthlyRevenue: number;
+}
+
+export interface ForecastMonth {
+  month: string;
+  projectedRevenue: number;
+  projectedExpenses: number;
+  projectedCashBalance: number;
+  projectedMrr: number;
+  projectedRunway: number | null;
+}
+
+export interface ForecastScenarioData {
+  id: string;
+  name: string;
+  assumptions: ForecastAssumptions;
+  months: ForecastMonth[];
+  runwayMonths: number | null;
+}
+
+export type GoalMetric = "mrr" | "arr" | "runway" | "burn_rate" | "net_cash_flow" | "revenue" | "customer_count";
+export type GoalStatus = "active" | "achieved" | "missed";
+
+export interface FinancialGoalData {
+  id: string;
+  metric: GoalMetric;
+  targetValue: number;
+  currentValue: number;
+  progressPct: number;
+  deadline: string;
+  status: GoalStatus;
+}
+
+export interface PnLRow {
+  label: string;
+  currentPeriod: number;
+  previousPeriod: number;
+  change: number;
+  changePct: number;
+}
+
+export interface ProfitAndLoss {
+  periodLabel: string;
+  revenue: PnLRow;
+  cogs: PnLRow;
+  grossProfit: PnLRow;
+  operatingExpenses: PnLRow[];
+  totalOpex: PnLRow;
+  operatingIncome: PnLRow;
+  netIncome: PnLRow;
+}
+
+export interface UnitEconomics {
+  ltv: number;
+  cac: number;
+  ltvCacRatio: number;
+  avgRevenuePerAccount: number;
+  paybackMonths: number;
+  grossMarginPct: number;
+}
+
+export interface FinancialPlanningData {
+  budgets: BudgetData[];
+  activeBudget: BudgetData | null;
+  forecasts: ForecastScenarioData[];
+  goals: FinancialGoalData[];
+  pnl: ProfitAndLoss | null;
+  unitEconomics: UnitEconomics | null;
+}
+
+// ══════════════════════════════════════════════════════════
 // COMBINED DASHBOARD
 // ══════════════════════════════════════════════════════════
 
@@ -558,12 +944,14 @@ export interface AnalyticsDashboardData {
   stripe: StripeData | null;
   mercury: MercuryData | null;
   googleAnalytics: GAData | null;
+  ga?: GAData | null;
   googleAds: GoogleAdsData | null;
   metaAds: MetaAdsData | null;
   metaPage: MetaPageData | null;
   redditAds: RedditAdsData | null;
   webflow: WebflowData | null;
   coda: CodaKanbanData | null;
+  codaKanban?: CodaKanbanData | null;
   semrush: SemrushData | null;
   pylon: PylonData | null;
   product: ProductSuccessData | null;
@@ -574,6 +962,9 @@ export interface AnalyticsDashboardData {
   redditOps: IntegrationTelemetryData | null;
   funnelJourney: CrossFunnelData | null;
   lifecycleFunnel: LifecycleFunnelData | null;
+  customerJourney: CustomerJourneyData | null;
+  demoAnalytics: DemoAnalyticsData | null;
+  processAnalytics: ProcessAnalyticsData | null;
   recommendations: AnalyticsRecommendation[];
   distilledInsights: DistilledInsight[];
   aiInsights: AiInsightsBundle;
@@ -595,6 +986,7 @@ export interface AnalyticsDashboardData {
     erroredDomains: string[];
   };
   lastFullRefresh: string;
+  financialPlanning: FinancialPlanningData | null;
   errors: { source: string; message: string }[];
 }
 

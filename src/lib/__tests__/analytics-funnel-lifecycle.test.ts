@@ -46,6 +46,7 @@ function baseData(): AnalyticsDashboardData {
       label: "Last 30 days",
     },
     lastFullRefresh: "2026-01-30T00:00:00.000Z",
+    financialPlanning: null,
     errors: [],
   };
 }

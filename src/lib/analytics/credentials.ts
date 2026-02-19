@@ -5,6 +5,7 @@ import {
   IntegrationConnectionStatus,
   IntegrationProvider,
 } from "@/generated/prisma/client";
+import { listProviderRegistryEntries } from "@/lib/integrations/provider-registry";
 import { prisma } from "@/lib/prisma";
 import { unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
 
@@ -39,6 +40,7 @@ export interface AnalyticsCredentials {
   metaAccessToken: string | null;
   metaAdAccountId: string | null;
   metaPageId: string | null;
+  metaInstagramAccountId: string | null;
 
   // Reddit Ads
   redditClientId: string | null;
@@ -93,6 +95,10 @@ function metadataString(metadata: unknown, key: string): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+function hasValue(value: string | null): boolean {
+  return Boolean(value && value.trim().length > 0);
+}
+
 function buildFreshness(
   provider: IntegrationProvider,
   connection: ConnectionRecord | null,
@@ -128,6 +134,44 @@ function buildFreshness(
     lastSyncedAt: null,
     lastError: null,
   };
+}
+
+export function defaultFreshnessSnapshot(
+  provider: IntegrationProvider
+): ProviderFreshnessSnapshot {
+  return {
+    provider,
+    source: "none",
+    status: null,
+    connectedAt: null,
+    lastSyncedAt: null,
+    lastError: null,
+  };
+}
+
+function envGoogleAdsReady(): boolean {
+  return Boolean(
+    envOrNull(process.env.GOOGLE_ADS_DEVELOPER_TOKEN) &&
+      envOrNull(process.env.GOOGLE_ADS_CUSTOMER_ID) &&
+      envOrNull(process.env.GOOGLE_ADS_REFRESH_TOKEN) &&
+      envOrNull(process.env.GOOGLE_ADS_CLIENT_ID) &&
+      envOrNull(process.env.GOOGLE_ADS_CLIENT_SECRET)
+  );
+}
+
+function envMetaAdsReady(): boolean {
+  return Boolean(
+    envOrNull(process.env.META_ACCESS_TOKEN) &&
+      envOrNull(process.env.META_AD_ACCOUNT_ID)
+  );
+}
+
+function envMetaPageReady(): boolean {
+  return Boolean(
+    envOrNull(process.env.META_ACCESS_TOKEN) &&
+      (envOrNull(process.env.META_PAGE_ID) ||
+        envOrNull(process.env.META_INSTAGRAM_ACCOUNT_ID))
+  );
 }
 
 export async function getCredentials(userId?: string): Promise<AnalyticsCredentials> {
@@ -173,6 +217,10 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
   const stripeConnection = byProvider.get(IntegrationProvider.STRIPE) ?? null;
   const mercuryConnection = byProvider.get(IntegrationProvider.MERCURY) ?? null;
   const webflowConnection = byProvider.get(IntegrationProvider.WEBFLOW) ?? null;
+  const googleAdsConnection = byProvider.get(IntegrationProvider.GOOGLE_ADS) ?? null;
+  const metaAdsConnection = byProvider.get(IntegrationProvider.META_ADS) ?? null;
+  const metaPageConnection = byProvider.get(IntegrationProvider.META_PAGE) ?? null;
+  const pylonConnection = byProvider.get(IntegrationProvider.PYLON) ?? null;
 
   const envHubspot = envOrNull(process.env.HUBSPOT_ACCESS_TOKEN);
   const envCoda = envOrNull(process.env.CODA_API_TOKEN);
@@ -181,6 +229,11 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
   const envMercury = envOrNull(process.env.MERCURY_API_TOKEN);
   const envWebflowToken = envOrNull(process.env.WEBFLOW_API_TOKEN);
   const envWebflowSiteId = envOrNull(process.env.WEBFLOW_SITE_ID);
+  const envPylonApiKey = envOrNull(process.env.PYLON_API_KEY);
+  const envMetaAccessToken = envOrNull(process.env.META_ACCESS_TOKEN);
+  const envMetaAdAccountId = envOrNull(process.env.META_AD_ACCOUNT_ID);
+  const envMetaPageId = envOrNull(process.env.META_PAGE_ID);
+  const envMetaInstagramAccountId = envOrNull(process.env.META_INSTAGRAM_ACCOUNT_ID);
 
   const hubspotToken =
     envHubspot ??
@@ -233,6 +286,37 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     metadataString(webflowConnection?.metadata, "siteId") ??
     metadataString(webflowConnection?.metadata, "defaultSiteId");
 
+  const googleAdsRefreshToken =
+    envOrNull(process.env.GOOGLE_ADS_REFRESH_TOKEN) ??
+    (googleAdsConnection?.status === IntegrationConnectionStatus.CONNECTED
+      ? unprotectIntegrationSecret(googleAdsConnection.refreshToken)
+      : null);
+
+  const metaAccessToken =
+    envMetaAccessToken ??
+    (metaAdsConnection?.status === IntegrationConnectionStatus.CONNECTED
+      ? unprotectIntegrationSecret(metaAdsConnection.accessToken)
+      : null) ??
+    (metaPageConnection?.status === IntegrationConnectionStatus.CONNECTED
+      ? unprotectIntegrationSecret(metaPageConnection.accessToken)
+      : null);
+
+  const metaAdAccountId =
+    envMetaAdAccountId ??
+    metadataString(metaAdsConnection?.metadata, "adAccountId");
+  const metaPageId =
+    envMetaPageId ??
+    metadataString(metaPageConnection?.metadata, "pageId");
+  const metaInstagramAccountId =
+    envMetaInstagramAccountId ??
+    metadataString(metaPageConnection?.metadata, "instagramAccountId");
+
+  const pylonApiKey =
+    envPylonApiKey ??
+    (pylonConnection?.status === IntegrationConnectionStatus.CONNECTED
+      ? unprotectIntegrationSecret(pylonConnection.accessToken)
+      : null);
+
   const freshness: Record<IntegrationProvider, ProviderFreshnessSnapshot> = {
     [IntegrationProvider.GOOGLE_WORKSPACE]: buildFreshness(
       IntegrationProvider.GOOGLE_WORKSPACE,
@@ -270,7 +354,33 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
       webflowConnection,
       Boolean(envWebflowToken)
     ),
+    [IntegrationProvider.GOOGLE_ADS]: buildFreshness(
+      IntegrationProvider.GOOGLE_ADS,
+      googleAdsConnection,
+      envGoogleAdsReady()
+    ),
+    [IntegrationProvider.META_ADS]: buildFreshness(
+      IntegrationProvider.META_ADS,
+      metaAdsConnection,
+      envMetaAdsReady()
+    ),
+    [IntegrationProvider.META_PAGE]: buildFreshness(
+      IntegrationProvider.META_PAGE,
+      metaPageConnection,
+      envMetaPageReady()
+    ),
+    [IntegrationProvider.PYLON]: buildFreshness(
+      IntegrationProvider.PYLON,
+      pylonConnection,
+      hasValue(envPylonApiKey)
+    ),
   };
+
+  for (const entry of listProviderRegistryEntries()) {
+    if (!freshness[entry.provider]) {
+      freshness[entry.provider] = defaultFreshnessSnapshot(entry.provider);
+    }
+  }
 
   return {
     hubspotToken,
@@ -283,14 +393,15 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
 
     googleAdsDevToken: envOrNull(process.env.GOOGLE_ADS_DEVELOPER_TOKEN),
     googleAdsCustomerId: envOrNull(process.env.GOOGLE_ADS_CUSTOMER_ID),
-    googleAdsRefreshToken: envOrNull(process.env.GOOGLE_ADS_REFRESH_TOKEN),
+    googleAdsRefreshToken,
     googleAdsClientId: envOrNull(process.env.GOOGLE_ADS_CLIENT_ID),
     googleAdsClientSecret: envOrNull(process.env.GOOGLE_ADS_CLIENT_SECRET),
     googleAdsLoginCustomerId: envOrNull(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID),
 
-    metaAccessToken: envOrNull(process.env.META_ACCESS_TOKEN),
-    metaAdAccountId: envOrNull(process.env.META_AD_ACCOUNT_ID),
-    metaPageId: envOrNull(process.env.META_PAGE_ID),
+    metaAccessToken,
+    metaAdAccountId,
+    metaPageId,
+    metaInstagramAccountId,
 
     redditClientId: envOrNull(process.env.REDDIT_CLIENT_ID),
     redditClientSecret: envOrNull(process.env.REDDIT_CLIENT_SECRET),
@@ -307,7 +418,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     codaApiToken,
     codaDocId: envOrNull(process.env.CODA_DOC_ID) || "dPjhbdhLZh9",
 
-    pylonApiKey: envOrNull(process.env.PYLON_API_KEY),
+    pylonApiKey,
 
     googleWorkspaceAccessToken,
     slackAccessToken,

@@ -50,6 +50,10 @@ model User {
 
   waitingOnTasks Task[] @relation("TaskWaitingOn")
 
+  budgets           Budget[]
+  financialGoals    FinancialGoal[]
+  forecastScenarios ForecastScenario[]
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 }
@@ -444,6 +448,10 @@ enum IntegrationProvider {
   STRIPE
   MERCURY
   WEBFLOW
+  GOOGLE_ADS
+  META_ADS
+  META_PAGE
+  PYLON
 }
 
 enum IntegrationConnectionStatus {
@@ -887,4 +895,127 @@ model OutboxEvent {
   @@index([status, nextAttemptAt])
   @@index([aggregateType, aggregateId, createdAt])
   @@index([eventType, createdAt])
+}
+
+// ============================================================
+// PROSPECTING
+// ============================================================
+
+enum ProspectStatus {
+  DISCOVERED
+  VERIFIED
+  PUSHED
+  REJECTED
+  ERROR
+}
+
+model ManufacturerProspect {
+  id               String         @id @default(cuid())
+  userId           String
+  companyName      String
+  domain           String?
+  industry         String?
+  location         String?
+  employeeCount    Int?
+  kanbanEvidence   Json           // [{ url, snippet, confidence }]
+  contactName      String?
+  contactEmail     String?
+  contactTitle     String?
+  sourceType       String         // "google_cse" | "website_scrape" | "directory"
+  sourceUrl        String
+  confidence       Float          @default(0.5)
+  status           ProspectStatus @default(DISCOVERED)
+  hubspotCompanyId String?
+  hubspotContactId String?
+  pushedToHubspotAt DateTime?
+  discoveredAt     DateTime       @default(now())
+  metadata         Json?
+
+  @@unique([userId, domain])
+  @@index([userId, status])
+  @@index([discoveredAt])
+}
+
+// ── Financial Planning ──
+
+enum BudgetPeriod {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+enum ExpenseCategory {
+  PAYROLL
+  MARKETING
+  INFRASTRUCTURE
+  OPS
+  COGS
+  OTHER
+}
+
+enum GoalMetric {
+  MRR
+  ARR
+  RUNWAY
+  BURN_RATE
+  NET_CASH_FLOW
+  REVENUE
+  CUSTOMER_COUNT
+}
+
+enum GoalStatus {
+  ACTIVE
+  ACHIEVED
+  MISSED
+}
+
+model Budget {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  period    BudgetPeriod
+  startDate DateTime
+  endDate   DateTime
+  lineItems BudgetLineItem[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([userId])
+}
+
+model BudgetLineItem {
+  id            String          @id @default(cuid())
+  budgetId      String
+  budget        Budget          @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  category      ExpenseCategory
+  plannedAmount Float
+  notes         String?
+
+  @@index([budgetId])
+}
+
+model FinancialGoal {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metric      GoalMetric
+  targetValue Float
+  deadline    DateTime
+  status      GoalStatus @default(ACTIVE)
+  createdAt   DateTime   @default(now())
+
+  @@index([userId, status])
+}
+
+model ForecastScenario {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  assumptions Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
 }

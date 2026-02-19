@@ -1,4 +1,8 @@
 import { IntegrationProvider } from "@/generated/prisma/client";
+import {
+  getProviderRegistryEntry,
+  resolveProviderRegistryEntryBySlug,
+} from "@/lib/integrations/provider-registry";
 
 export type IntegrationSlug =
   | "google-workspace"
@@ -8,7 +12,11 @@ export type IntegrationSlug =
   | "mercury"
   | "webflow"
   | "coda"
-  | "reddit";
+  | "reddit"
+  | "google-ads"
+  | "meta-ads"
+  | "meta-page"
+  | "pylon";
 export type IntegrationAuthType = "oauth" | "token";
 
 interface OAuthSettings {
@@ -210,6 +218,65 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
       clientSecretEnv: "REDDIT_CLIENT_SECRET",
     },
   },
+  {
+    slug: "google-ads",
+    provider: IntegrationProvider.GOOGLE_ADS,
+    name: "Google Ads",
+    description: "Connect Google Ads campaign and spend data into WIPGuard.",
+    capabilities: ["Campaigns", "Ad spend", "Performance metrics"],
+    authType: "oauth",
+    oauth: {
+      authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+      tokenEndpoint: "https://oauth2.googleapis.com/token",
+      scopes: getScopesFromEnv("GOOGLE_ADS_SCOPES", [
+        "openid",
+        "email",
+        "https://www.googleapis.com/auth/adwords",
+      ]),
+      extraAuthParams: {
+        access_type: "offline",
+        prompt: "consent",
+      },
+      clientIdEnv: "GOOGLE_ADS_CLIENT_ID",
+      clientSecretEnv: "GOOGLE_ADS_CLIENT_SECRET",
+    },
+  },
+  {
+    slug: "meta-ads",
+    provider: IntegrationProvider.META_ADS,
+    name: "Meta Ads",
+    description: "Connect Meta (Facebook/Instagram) ad account data into WIPGuard.",
+    capabilities: ["Ad campaigns", "Ad spend", "Performance metrics"],
+    authType: "oauth",
+    oauth: {
+      authorizationEndpoint: "https://www.facebook.com/v21.0/dialog/oauth",
+      tokenEndpoint: "https://graph.facebook.com/v21.0/oauth/access_token",
+      scopes: getScopesFromEnv("META_ADS_SCOPES", [
+        "ads_read",
+        "ads_management",
+        "business_management",
+      ]),
+      scopeSeparator: ",",
+      clientIdEnv: "META_APP_ID",
+      clientSecretEnv: "META_APP_SECRET",
+    },
+  },
+  {
+    slug: "meta-page",
+    provider: IntegrationProvider.META_PAGE,
+    name: "Meta Page",
+    description: "Connect Meta Page insights and engagement data into WIPGuard.",
+    capabilities: ["Page insights", "Post engagement"],
+    authType: "token",
+  },
+  {
+    slug: "pylon",
+    provider: IntegrationProvider.PYLON,
+    name: "Pylon",
+    description: "Connect customer conversation telemetry from Pylon.",
+    capabilities: ["Conversations", "Customer support metrics"],
+    authType: "token",
+  },
 ] as const;
 
 const SLUG_LOOKUP = new Map(
@@ -227,12 +294,20 @@ export function listIntegrationDefinitions(): readonly IntegrationDefinition[] {
 export function getIntegrationBySlug(
   slug: string
 ): IntegrationDefinition | null {
-  return SLUG_LOOKUP.get(slug as IntegrationSlug) ?? null;
+  const resolved = resolveProviderRegistryEntryBySlug(slug);
+  if (!resolved) {
+    return null;
+  }
+  return PROVIDER_LOOKUP.get(resolved.provider) ?? null;
 }
 
 export function getIntegrationByProvider(
   provider: IntegrationProvider
 ): IntegrationDefinition | null {
+  // Validate provider exists in the canonical registry.
+  if (!getProviderRegistryEntry(provider)) {
+    return null;
+  }
   return PROVIDER_LOOKUP.get(provider) ?? null;
 }
 
