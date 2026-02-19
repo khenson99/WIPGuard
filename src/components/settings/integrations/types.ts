@@ -8,8 +8,13 @@ export type IntegrationSlug =
   | "slack"
   | "stripe"
   | "mercury"
+  | "webflow"
   | "coda"
-  | "reddit";
+  | "reddit"
+  | "google-ads"
+  | "meta-ads"
+  | "meta-page"
+  | "pylon";
 
 export interface IntegrationItem {
   slug: IntegrationSlug;
@@ -32,6 +37,7 @@ export interface IntegrationItem {
   lastSnapshotAt: string | null;
   lastSnapshotStatus: "SUCCESS" | "ERROR" | null;
   docId?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface RuleRuntimeState {

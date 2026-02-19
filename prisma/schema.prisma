@@ -450,6 +450,10 @@ enum IntegrationProvider {
   STRIPE
   MERCURY
   WEBFLOW
+  GOOGLE_ADS
+  META_ADS
+  META_PAGE
+  PYLON
 }
 
 enum IntegrationConnectionStatus {

@@ -44,6 +44,7 @@ function baseData(): AnalyticsDashboardData {
     freshness: {},
     staleDomains: [],
     lastFullRefresh: "2026-01-01T00:00:00.000Z",
+    financialPlanning: null,
     customerJourney: null,
     demoAnalytics: null,
     processAnalytics: null,

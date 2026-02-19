@@ -264,6 +264,14 @@ interface SlackPostResult {
   ts: string;
 }
 
+function metadataString(metadata: unknown, key: string): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
 async function postSlackMessage(input: {
   token: string;
   channelId: string;
@@ -311,6 +319,72 @@ async function postSlackMessage(input: {
   return {
     channel: payload.channel,
     ts: payload.ts,
+  };
+}
+
+async function openSlackDirectConversation(input: {
+  token: string;
+  slackUserId: string;
+}): Promise<string> {
+  const response = await fetch("https://slack.com/api/conversations.open", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.token}`,
+      "Content-Type": "application/json; charset=utf-8",
+    },
+    body: JSON.stringify({ users: input.slackUserId }),
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { ok?: boolean; error?: string; channel?: { id?: string } }
+    | null;
+
+  if (!response.ok || !payload || payload.ok === false || !payload.channel?.id) {
+    throw new Error(payload?.error || "Slack DM open failed");
+  }
+
+  return payload.channel.id;
+}
+
+export async function sendSlackDirectMessage(input: {
+  userId: string;
+  message: string;
+  slackUserId?: string;
+}): Promise<{ channelId: string; messageTs: string }> {
+  const token = await getSlackToken(input.userId);
+  const connection = await prisma.integrationConnection.findUnique({
+    where: {
+      userId_provider: {
+        userId: input.userId,
+        provider: IntegrationProvider.SLACK,
+      },
+    },
+    select: {
+      metadata: true,
+    },
+  });
+
+  const slackUserId =
+    input.slackUserId || metadataString(connection?.metadata, "userId");
+  if (!slackUserId) {
+    throw new Error("Slack user id is missing for direct message");
+  }
+
+  const channelId = await openSlackDirectConversation({
+    token,
+    slackUserId,
+  });
+
+  const posted = await postSlackMessage({
+    token,
+    channelId,
+    text: input.message,
+  });
+
+  return {
+    channelId: posted.channel,
+    messageTs: posted.ts,
   };
 }
 
