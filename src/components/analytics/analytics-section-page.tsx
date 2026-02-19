@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import React, { useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { MarketingTabNew } from "@/components/analytics/marketing-tab-new";
@@ -33,6 +33,9 @@ import {
 } from "@/components/analytics/ops-insights";
 import { LifecycleFunnelPanel } from "@/components/analytics/lifecycle-funnel-panel";
 import { AiInsightsPanel } from "@/components/analytics/ai-insights-panel";
+import { GoogleAnalyticsDashboard } from "./sub-dashboards/google-analytics-dashboard";
+import { StripeDashboard } from "./sub-dashboards/stripe-dashboard";
+import { HubspotSalesDashboard } from "./sub-dashboards/hubspot-sales-dashboard";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import {
   getAnalyticsPrimaryForSection,
@@ -44,6 +47,7 @@ import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-error-banner";
 import { DashboardStaleBanner } from "@/components/dashboard/dashboard-stale-banner";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { populateConnectionStatus } from "@/hooks/use-connection-status";
 
 interface AnalyticsSectionPageProps {
   sectionId: string;
@@ -57,6 +61,14 @@ interface SectionViewModel {
 const SECTION_CACHE_PREFIX = "analytics:section:v2:";
 const OPS_DOMAINS = ["decisionDashboard", "flowMetrics", "flowRisk", "observability"] as const;
 type ChildDataDomain = "decisionDashboard" | "flowMetrics" | "flowRisk" | "observability" | string;
+
+const SUB_DASHBOARD_MAP: Record<string, React.ComponentType<{ data: AnalyticsDashboardData | null }>> = {
+  "ads-google-analytics": GoogleAnalyticsDashboard,
+  "finance-stripe": StripeDashboard,
+  "sales-stripe": StripeDashboard,
+  "sales-hubspot": HubspotSalesDashboard,
+  "finance-hubspot": HubspotSalesDashboard,
+};
 
 export type AnalyticsChildRenderKind =
   | "finance-stripe"
@@ -319,8 +331,13 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         throw new Error(`Analytics section request failed (${response.status})`);
       }
 
+      const analyticsData = (await response.json()) as AnalyticsDashboardData;
+
+      // Populate connection status store with freshness data
+      populateConnectionStatus(analyticsData?.freshness, analyticsData);
+
       return {
-        analyticsData: (await response.json()) as AnalyticsDashboardData,
+        analyticsData,
         auxPayload: null,
       };
     },
@@ -388,6 +405,12 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     if (renderKind === "flowMetrics") return <FlowMetricsView payload={auxPayload} />;
     if (renderKind === "flowRisk") return <FlowRiskView payload={auxPayload} />;
     if (renderKind === "observability") return <ObservabilityView payload={auxPayload} />;
+
+    // Check for dedicated sub-dashboard component
+    const SubDashboard = SUB_DASHBOARD_MAP[sectionId];
+    if (SubDashboard) {
+      return <SubDashboard data={analyticsData} />;
+    }
 
     // Fallback for any unrecognized sub-sections
     const payload = (analyticsData as unknown as Record<string, unknown>) || null;
