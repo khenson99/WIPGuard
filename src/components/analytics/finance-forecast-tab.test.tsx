@@ -1,12 +1,25 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { FinanceForecastTab } from "@/components/analytics/finance-forecast-tab";
 import { createEmptyAnalyticsDashboardData } from "@/lib/analytics/response-shape";
 import type {
   AnalyticsDashboardData,
   StripeData,
   MercuryData,
 } from "@/lib/analytics/types";
+import type { ForecastScenarioData } from "@/lib/analytics/forecast-engine";
+
+vi.mock("@/lib/analytics/forecast-engine", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/analytics/forecast-engine")>(
+    "@/lib/analytics/forecast-engine",
+  );
+  return {
+    ...actual,
+    buildDefaultScenarios: vi.fn(actual.buildDefaultScenarios),
+  };
+});
+
+import { buildDefaultScenarios } from "@/lib/analytics/forecast-engine";
+import { FinanceForecastTab } from "@/components/analytics/finance-forecast-tab";
 
 /* ── Helpers ───────────────────────────────────────────── */
 
@@ -167,6 +180,44 @@ describe("FinanceForecastTab", () => {
     const data = makePayload({ stripe });
     render(<FinanceForecastTab data={data} />);
     expect(screen.getByText("Forecast Insights")).toBeTruthy();
+  });
+
+  it("selects worst scenario by runway when scenarios are unordered", () => {
+    const makeScenario = (
+      id: string,
+      name: string,
+      runway: number,
+      mrr12: number,
+    ): ForecastScenarioData => ({
+      id,
+      name,
+      monthlyGrowthRate: 0.1,
+      monthlyChurnRate: 0.04,
+      additionalBurn: 0,
+      revenue: Array.from({ length: 13 }, (_, i) => ({
+        month: i,
+        label: `M${i}`,
+        value: mrr12,
+      })),
+      cash: Array.from({ length: 13 }, (_, i) => ({
+        month: i,
+        label: `M${i}`,
+        value: 10_000,
+      })),
+      runway,
+    });
+
+    const scenarios = [
+      makeScenario("base", "Base", 12, 20_000),
+      makeScenario("optimistic", "Optimistic", 5, 30_000),
+      makeScenario("conservative", "Conservative", 14, 10_000),
+    ];
+
+    (buildDefaultScenarios as unknown as { mockImplementationOnce: (fn: () => ForecastScenarioData[]) => void })
+      .mockImplementationOnce(() => scenarios);
+
+    render(<FinanceForecastTab data={makePayload()} />);
+    expect(screen.getByText("Conservative runway is only 5.0 mo")).toBeTruthy();
   });
 
   /* ─── Graceful degradation ──────────────────────────── */

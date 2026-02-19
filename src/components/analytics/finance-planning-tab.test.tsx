@@ -184,8 +184,25 @@ describe("FinancePlanningTab", () => {
 
   describe("insights section", () => {
     it("renders Insights & Recommendations section", () => {
-      render(<FinancePlanningTab data={makePayload()} />);
+      const baseMercury = makeMercury();
+      const data = makePayload({
+        mercury: {
+          ...baseMercury,
+          cashFlow: {
+            ...baseMercury.cashFlow,
+            runway: 10,
+          },
+        },
+      });
+      render(<FinancePlanningTab data={data} />);
       expect(screen.getByText("Insights & Recommendations")).toBeTruthy();
+    });
+
+    it("shows baseline banner and suppresses variance insights when no budget is configured", () => {
+      render(<FinancePlanningTab data={makePayload()} />);
+      expect(screen.getByText("Budget baseline not configured")).toBeTruthy();
+      expect(screen.queryByText("Under Budget Overall")).toBeNull();
+      expect(screen.queryByText("Significant Budget Overrun")).toBeNull();
     });
   });
 

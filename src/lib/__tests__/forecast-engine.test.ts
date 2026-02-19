@@ -334,7 +334,7 @@ describe("buildDefaultScenarios", () => {
     expect(scenarios.map((s) => s.name)).toEqual(["Optimistic", "Base", "Conservative"]);
   });
 
-  it("optimistic has growth * 1.5 and churn * 0.7", () => {
+  it("optimistic applies positive deltas to growth and churn", () => {
     const data = makeData();
     const scenarios = buildDefaultScenarios(data);
     const optimistic = scenarios[0];
@@ -342,8 +342,11 @@ describe("buildDefaultScenarios", () => {
     const baseGrowth = 10 / 100; // 10% -> 0.10
     const baseChurn = 4 / 100; // 4% -> 0.04
 
-    expect(optimistic.monthlyGrowthRate).toBeCloseTo(baseGrowth * 1.5, 10);
-    expect(optimistic.monthlyChurnRate).toBeCloseTo(baseChurn * 0.7, 10);
+    const growthDelta = Math.max(Math.abs(baseGrowth) * 0.5, 0.03);
+    const churnDelta = Math.max(baseChurn * 0.3, 0.01);
+
+    expect(optimistic.monthlyGrowthRate).toBeCloseTo(baseGrowth + growthDelta, 10);
+    expect(optimistic.monthlyChurnRate).toBeCloseTo(baseChurn - churnDelta, 10);
   });
 
   it("base matches live data rates", () => {
@@ -355,7 +358,7 @@ describe("buildDefaultScenarios", () => {
     expect(base.monthlyChurnRate).toBeCloseTo(0.04, 10); // 4%
   });
 
-  it("conservative has growth * 0.7 and churn * 1.5", () => {
+  it("conservative applies negative deltas to growth and churn", () => {
     const data = makeData();
     const scenarios = buildDefaultScenarios(data);
     const conservative = scenarios[2];
@@ -363,8 +366,11 @@ describe("buildDefaultScenarios", () => {
     const baseGrowth = 10 / 100;
     const baseChurn = 4 / 100;
 
-    expect(conservative.monthlyGrowthRate).toBeCloseTo(baseGrowth * 0.7, 10);
-    expect(conservative.monthlyChurnRate).toBeCloseTo(baseChurn * 1.5, 10);
+    const growthDelta = Math.max(Math.abs(baseGrowth) * 0.5, 0.03);
+    const churnDelta = Math.max(baseChurn * 0.3, 0.01);
+
+    expect(conservative.monthlyGrowthRate).toBeCloseTo(baseGrowth - growthDelta, 10);
+    expect(conservative.monthlyChurnRate).toBeCloseTo(baseChurn + churnDelta, 10);
   });
 
   it("optimistic runway >= base runway >= conservative runway", () => {
@@ -373,6 +379,36 @@ describe("buildDefaultScenarios", () => {
 
     expect(optimistic.runway).toBeGreaterThanOrEqual(base.runway);
     expect(base.runway).toBeGreaterThanOrEqual(conservative.runway);
+  });
+
+  it("keeps optimistic >= base >= conservative when growth is negative", () => {
+    const data = makeData({
+      stripe: {
+        revenue: {
+          mrr: 10_000,
+          mrrChange: -500,
+          totalRevenue30d: 9_000,
+          totalRevenuePrev30d: 10_000,
+          revenueGrowth: -10,
+          avgRevenuePerCustomer: 200,
+        },
+        subscriptions: {
+          active: 50,
+          pastDue: 2,
+          canceled: 3,
+          trialing: 5,
+          churnRate: 4,
+          recentChurnEvents: [],
+        },
+        payments: { succeeded: 48, failed: 2, successRate: 96 },
+        revenueTrend: [],
+        _meta: META,
+      },
+    });
+    const [optimistic, base, conservative] = buildDefaultScenarios(data);
+
+    expect(optimistic.monthlyGrowthRate).toBeGreaterThan(base.monthlyGrowthRate);
+    expect(base.monthlyGrowthRate).toBeGreaterThan(conservative.monthlyGrowthRate);
   });
 
   it("handles all-null providers", () => {

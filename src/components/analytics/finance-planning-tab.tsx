@@ -81,6 +81,8 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
     [budgetItems],
   );
 
+  const hasBudgetBaseline = false;
+
   const goals = useMemo<FinancialGoal[]>(
     () => (data ? computeFinancialGoals(data) : []),
     [data],
@@ -91,7 +93,15 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
   const alerts = useMemo(() => {
     const items: { severity: "critical" | "warning" | "info"; title: string; description: string }[] = [];
 
-    if (budgetSummary.overspendCategories.length > 0) {
+    if (!hasBudgetBaseline) {
+      items.push({
+        severity: "info",
+        title: "Budget baseline not configured",
+        description: "Variance alerts are disabled until a baseline budget is set.",
+      });
+    }
+
+    if (hasBudgetBaseline && budgetSummary.overspendCategories.length > 0) {
       items.push({
         severity: "warning",
         title: `${budgetSummary.overspendCategories.length} categor${budgetSummary.overspendCategories.length === 1 ? "y" : "ies"} over budget`,
@@ -108,16 +118,18 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
     const items: { title: string; insight: string; action?: string; severity: "critical" | "warning" | "info" | "success" }[] = [];
 
     // Critical: any category overspending > 20%
-    const heavyOverspend = budgetItems.filter(
-      (b) => b.variancePct > 20 && b.status === "over",
-    );
-    if (heavyOverspend.length > 0) {
-      items.push({
-        title: "Significant Budget Overrun",
-        insight: `${heavyOverspend.map((h) => h.category).join(", ")} ${heavyOverspend.length === 1 ? "is" : "are"} more than 20% over budget. Immediate review recommended.`,
-        action: "Audit these categories and reallocate funds or renegotiate vendor contracts.",
-        severity: "critical",
-      });
+    if (hasBudgetBaseline) {
+      const heavyOverspend = budgetItems.filter(
+        (b) => b.variancePct > 20 && b.status === "over",
+      );
+      if (heavyOverspend.length > 0) {
+        items.push({
+          title: "Significant Budget Overrun",
+          insight: `${heavyOverspend.map((h) => h.category).join(", ")} ${heavyOverspend.length === 1 ? "is" : "are"} more than 20% over budget. Immediate review recommended.`,
+          action: "Audit these categories and reallocate funds or renegotiate vendor contracts.",
+          severity: "critical",
+        });
+      }
     }
 
     // Success: all goals on track
@@ -141,7 +153,7 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
     }
 
     // Info: budget surplus
-    if (budgetSummary.totalVariance < 0) {
+    if (hasBudgetBaseline && budgetSummary.totalVariance < 0) {
       items.push({
         title: "Under Budget Overall",
         insight: `Total spending is ${fmt$(Math.abs(budgetSummary.totalVariance))} under budget (${fmtPct(Math.abs(budgetSummary.totalVariancePct))}). Consider reallocating surplus to growth areas.`,
@@ -259,23 +271,49 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
         <StatCard
           label="Total Actual"
           value={fmt$(budgetSummary.totalActual)}
-          change={`${budgetSummary.totalVariancePct >= 0 ? "+" : ""}${fmtPct(budgetSummary.totalVariancePct)} vs budget`}
-          changeType={budgetSummary.totalVariancePct > 5 ? "negative" : budgetSummary.totalVariancePct < -5 ? "positive" : "neutral"}
+          change={
+            hasBudgetBaseline
+              ? `${budgetSummary.totalVariancePct >= 0 ? "+" : ""}${fmtPct(budgetSummary.totalVariancePct)} vs budget`
+              : undefined
+          }
+          changeType={
+            hasBudgetBaseline
+              ? budgetSummary.totalVariancePct > 5
+                ? "negative"
+                : budgetSummary.totalVariancePct < -5
+                  ? "positive"
+                  : "neutral"
+              : "neutral"
+          }
           icon={TrendingDown}
         />
         <StatCard
           label="Variance"
-          value={fmtDelta(budgetSummary.totalVariance)}
-          changeType={budgetSummary.totalVariance > 0 ? "negative" : "positive"}
+          value={hasBudgetBaseline ? fmtDelta(budgetSummary.totalVariance) : "—"}
+          changeType={
+            hasBudgetBaseline ? (budgetSummary.totalVariance > 0 ? "negative" : "positive") : "neutral"
+          }
           icon={AlertTriangle}
-          iconColor={budgetSummary.totalVariance > 0 ? "text-red-500" : "text-emerald-500"}
+          iconColor={
+            hasBudgetBaseline
+              ? budgetSummary.totalVariance > 0
+                ? "text-red-500"
+                : "text-emerald-500"
+              : "text-muted-foreground"
+          }
         />
         <StatCard
           label="Overspend Areas"
-          value={budgetSummary.overspendCategories.length.toString()}
-          changeType={budgetSummary.overspendCategories.length > 0 ? "negative" : "positive"}
+          value={hasBudgetBaseline ? budgetSummary.overspendCategories.length.toString() : "—"}
+          changeType={hasBudgetBaseline ? (budgetSummary.overspendCategories.length > 0 ? "negative" : "positive") : "neutral"}
           icon={Target}
-          iconColor={budgetSummary.overspendCategories.length > 0 ? "text-red-500" : "text-primary"}
+          iconColor={
+            hasBudgetBaseline
+              ? budgetSummary.overspendCategories.length > 0
+                ? "text-red-500"
+                : "text-primary"
+              : "text-muted-foreground"
+          }
         />
       </div>
 

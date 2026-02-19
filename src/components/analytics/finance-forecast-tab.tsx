@@ -52,6 +52,25 @@ function monthlyBurn(scenario: ForecastScenarioData, data: AnalyticsDashboardDat
   return baseBurn + scenario.additionalBurn;
 }
 
+function scenarioValueAtMonth(scenario: ForecastScenarioData, month: number): number {
+  if (scenario.revenue.length === 0) return 0;
+  const idx = Math.min(month, scenario.revenue.length - 1);
+  return scenario.revenue[idx]?.value ?? 0;
+}
+
+function pickWorstScenario(scenarios: ForecastScenarioData[]): ForecastScenarioData | null {
+  if (scenarios.length === 0) return null;
+  return scenarios.reduce((worst, candidate) => {
+    if (!worst) return candidate;
+    if (candidate.runway < worst.runway) return candidate;
+    if (candidate.runway > worst.runway) return worst;
+    const candidateMrr = scenarioValueAtMonth(candidate, 12);
+    const worstMrr = scenarioValueAtMonth(worst, 12);
+    if (candidateMrr < worstMrr) return candidate;
+    return worst;
+  }, null as ForecastScenarioData | null);
+}
+
 // ── Component ────────────────────────────────────────────
 
 export function FinanceForecastTab({
@@ -97,9 +116,9 @@ export function FinanceForecastTab({
   const currentMrr = data?.stripe?.revenue?.mrr ?? 0;
 
   // Worst and base scenarios
-  const worstScenario = scenarios[scenarios.length - 1];
-  const baseScenario = scenarios[1];
-  const optimisticScenario = scenarios[0];
+  const baseScenario = scenarios.find((s) => s.id === "base") ?? scenarios[0];
+  const optimisticScenario = scenarios.find((s) => s.id === "optimistic") ?? scenarios[0];
+  const worstScenario = pickWorstScenario(scenarios);
 
   // ── Alerts ──────────────────────────────────────────
   const alerts: {
@@ -117,11 +136,7 @@ export function FinanceForecastTab({
     });
   }
 
-  if (
-    baseScenario &&
-    baseScenario.runway < 18 &&
-    !(worstScenario && worstScenario.runway < 12)
-  ) {
+  if (baseScenario && baseScenario.runway < 18 && !(worstScenario && worstScenario.runway < 12)) {
     alerts.push({
       severity: "warning",
       title: `Base-case runway at ${fmtMonths(baseScenario.runway)}`,
@@ -139,14 +154,8 @@ export function FinanceForecastTab({
   }[] = [];
 
   // Optimistic >2x current MRR
-  if (
-    optimisticScenario &&
-    optimisticScenario.revenue.length > 0 &&
-    currentMrr > 0
-  ) {
-    const projected12 =
-      optimisticScenario.revenue[Math.min(12, optimisticScenario.revenue.length - 1)]
-        ?.value ?? 0;
+  if (optimisticScenario && optimisticScenario.revenue.length > 0 && currentMrr > 0) {
+    const projected12 = scenarioValueAtMonth(optimisticScenario, 12);
     if (projected12 > currentMrr * 2) {
       insights.push({
         title: "Strong growth potential",

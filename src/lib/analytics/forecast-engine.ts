@@ -26,6 +26,10 @@ export interface ForecastScenarioData {
 
 // ── Helpers ──────────────────────────────────────────────
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 /** Generate a month label like "Mar '25" offset by `i` months from now. */
 function monthLabel(offsetMonths: number): string {
   const d = new Date();
@@ -177,12 +181,19 @@ export function buildDefaultScenarios(
   const stripe = data.stripe;
   const baseGrowth = stripe ? stripe.revenue.revenueGrowth / 100 : 0;
   const baseChurn = stripe ? stripe.subscriptions.churnRate / 100 : 0;
+  const growthDelta = stripe ? Math.max(Math.abs(baseGrowth) * 0.5, 0.03) : 0;
+  const churnDelta = stripe ? Math.max(baseChurn * 0.3, 0.01) : 0;
+
+  const optimisticGrowth = clamp(baseGrowth + growthDelta, -1, 1);
+  const conservativeGrowth = clamp(baseGrowth - growthDelta, -1, 1);
+  const optimisticChurn = clamp(baseChurn - churnDelta, 0, 1);
+  const conservativeChurn = clamp(baseChurn + churnDelta, 0, 1);
 
   const optimistic = buildForecastScenario(
     data,
     {
-      monthlyGrowthRate: baseGrowth * 1.5,
-      monthlyChurnRate: baseChurn * 0.7,
+      monthlyGrowthRate: optimisticGrowth,
+      monthlyChurnRate: optimisticChurn,
     },
     "Optimistic",
   );
@@ -192,8 +203,8 @@ export function buildDefaultScenarios(
   const conservative = buildForecastScenario(
     data,
     {
-      monthlyGrowthRate: baseGrowth * 0.7,
-      monthlyChurnRate: baseChurn * 1.5,
+      monthlyGrowthRate: conservativeGrowth,
+      monthlyChurnRate: conservativeChurn,
     },
     "Conservative",
   );
