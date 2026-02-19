@@ -6,7 +6,7 @@
   "deploy": {
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10,
-    "healthcheckPath": "/api/socketio-bootstrap",
+    "healthcheckPath": "/api/realtime/bootstrap",
     "healthcheckTimeout": 30
   }
 }
