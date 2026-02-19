@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import {
+  AnalyticsSnapshotStatus,
   IntegrationConnectionStatus,
   IntegrationProvider,
 } from "@/generated/prisma/client";
@@ -61,22 +62,54 @@ export async function GET(): Promise<NextResponse> {
       )
     );
 
-    const snapshots = await prisma.analyticsSnapshot.findMany({
-      where: {
-        userId: session.user.id,
-        providerKey: { in: allSnapshotKeys },
-      },
-      select: {
-        providerKey: true,
-        status: true,
-        capturedAt: true,
-        expiresAt: true,
-        lastError: true,
-      },
-      orderBy: {
-        capturedAt: "desc",
-      },
-      take: 500,
+    const [latestSnapshots, latestSuccessfulSnapshots] = await Promise.all([
+      prisma.analyticsSnapshot.findMany({
+        where: {
+          userId: session.user.id,
+          providerKey: { in: allSnapshotKeys },
+        },
+        select: {
+          providerKey: true,
+          status: true,
+          capturedAt: true,
+          expiresAt: true,
+          lastError: true,
+        },
+        distinct: ["providerKey"],
+        orderBy: [{ providerKey: "asc" }, { capturedAt: "desc" }],
+      }),
+      prisma.analyticsSnapshot.findMany({
+        where: {
+          userId: session.user.id,
+          providerKey: { in: allSnapshotKeys },
+          status: AnalyticsSnapshotStatus.SUCCESS,
+        },
+        select: {
+          providerKey: true,
+          status: true,
+          capturedAt: true,
+          expiresAt: true,
+          lastError: true,
+        },
+        distinct: ["providerKey"],
+        orderBy: [{ providerKey: "asc" }, { capturedAt: "desc" }],
+      }),
+    ]);
+
+    const latestSuccessByProviderKey = new Map(
+      latestSuccessfulSnapshots.map((snapshot) => [snapshot.providerKey, snapshot])
+    );
+    const snapshots = latestSnapshots.flatMap((latest) => {
+      const latestSuccess = latestSuccessByProviderKey.get(latest.providerKey);
+      if (!latestSuccess) {
+        return [latest];
+      }
+
+      const isSameSnapshot =
+        latest.capturedAt.getTime() === latestSuccess.capturedAt.getTime() &&
+        latest.status === latestSuccess.status;
+
+      return isSameSnapshot ? [latest] : [latest, latestSuccess];
     });
 
     const hasCredentialByProvider: Record<IntegrationProvider, boolean> = {
@@ -87,6 +120,7 @@ export async function GET(): Promise<NextResponse> {
       [IntegrationProvider.REDDIT]: Boolean(credentials.redditRefreshToken),
       [IntegrationProvider.STRIPE]: Boolean(credentials.stripeKey),
       [IntegrationProvider.MERCURY]: Boolean(credentials.mercuryKey),
+      [IntegrationProvider.WEBFLOW]: Boolean(credentials.webflowApiToken),
     };
 
     const byProvider = new Map(
@@ -117,6 +151,7 @@ export async function GET(): Promise<NextResponse> {
         connectedAt: connection?.connectedAt ?? null,
         lastSyncedAt: connection?.lastSyncedAt ?? null,
         lastError: connection?.lastError ?? null,
+        credentialSource: credentials.freshness[definition.provider].source,
         syncHealth: syncHealth.syncHealth,
         syncHealthReason: syncHealth.syncHealthReason,
         lastSnapshotAt: syncHealth.lastSnapshotAt,

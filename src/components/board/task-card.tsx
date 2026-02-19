@@ -13,6 +13,9 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
+  Check,
+  Flag,
+  UserPlus,
 } from "lucide-react";
 import type { TaskWithRelations } from "@/types";
 import {
@@ -33,6 +36,10 @@ interface TaskCardProps {
   onClick: () => void;
   onAdvance: () => void;
   onRetreat?: () => void;
+  onReplenish?: () => void;
+  onAssignToMe?: () => void;
+  onCyclePriority?: () => void;
+  onComplete?: () => void;
   onDelete: () => void;
   displayPreset: "standard" | "dense" | "triage";
   showMetadata: boolean;
@@ -41,6 +48,9 @@ interface TaskCardProps {
   groupBy?: GroupByMode;
   departmentName?: string | null;
   departmentColor?: string | null;
+  commitmentState?: "committed" | "opportunistic" | null;
+  isAssignedToMe?: boolean;
+  replenishWarning?: string | null;
 }
 
 export function TaskCard({
@@ -49,6 +59,10 @@ export function TaskCard({
   onClick,
   onAdvance,
   onRetreat,
+  onReplenish,
+  onAssignToMe,
+  onCyclePriority,
+  onComplete,
   onDelete,
   displayPreset,
   showMetadata,
@@ -57,6 +71,9 @@ export function TaskCard({
   groupBy = "status",
   departmentName,
   departmentColor,
+  commitmentState = null,
+  isAssignedToMe = false,
+  replenishWarning = null,
 }: TaskCardProps) {
   const colIdx = COLUMN_ORDER.indexOf(task.status);
   const canRetreat = colIdx > 0;
@@ -142,6 +159,23 @@ export function TaskCard({
             >
               {task.title}
             </h4>
+            {commitmentState && (
+              <span
+                className={clsx(
+                  "mt-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                  commitmentState === "committed"
+                    ? "bg-emerald-500/15 text-emerald-600"
+                    : "bg-amber-500/15 text-amber-700"
+                )}
+                title={
+                  commitmentState === "committed"
+                    ? "Committed sprint work"
+                    : "Opportunistic sprint work"
+                }
+              >
+                {commitmentState === "committed" ? "Committed" : "Opportunistic"}
+              </span>
+            )}
             {displayPreset !== "standard" && (
               <button
                 onClick={(e) => {
@@ -241,17 +275,6 @@ export function TaskCard({
 
             {/* Action buttons — visible on hover */}
             <div className="flex items-center gap-0.5">
-              {/* Edit button */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onClick();
-                }}
-                className="rounded p-0.5 text-muted-foreground opacity-0 hover:bg-tag-bg hover:text-foreground group-hover:opacity-100"
-                title="Edit task"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
               {/* Retreat button */}
               {canRetreat && (
                 <button
@@ -266,7 +289,7 @@ export function TaskCard({
                 </button>
               )}
               {/* Advance button */}
-              {canAdvance && (
+              {canAdvance && task.status !== "BACKLOG" && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -278,17 +301,6 @@ export function TaskCard({
                   <ChevronRight className="h-4 w-4" />
                 </button>
               )}
-              {/* Delete button */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete();
-                }}
-                className="rounded p-0.5 text-muted-foreground opacity-0 hover:bg-red-500/10 hover:text-red-500 group-hover:opacity-100"
-                title="Delete task"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
             </div>
           </div>
 
@@ -298,6 +310,122 @@ export function TaskCard({
               Due {new Date(task.dueDate).toLocaleDateString()}
             </div>
           )}
+
+          {/* Persistent footer actions */}
+          <div
+            className={clsx(
+              "mt-2 flex items-center justify-between gap-1 border-t border-border/60 pt-1.5",
+              isCompact && "gap-0.5"
+            )}
+          >
+            <div className="flex items-center gap-1">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClick();
+                }}
+                className="rounded px-1.5 py-1 text-[11px] text-muted-foreground hover:bg-tag-bg hover:text-foreground"
+                title="Edit task"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+              {onAssignToMe && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAssignToMe();
+                  }}
+                  className={clsx(
+                    "rounded px-1.5 py-1 text-[11px] text-muted-foreground hover:bg-tag-bg hover:text-foreground",
+                    isAssignedToMe && "text-primary"
+                  )}
+                  title={isAssignedToMe ? "Already assigned to you" : "Assign to me"}
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {onCyclePriority && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCyclePriority();
+                  }}
+                  className="rounded px-1.5 py-1 text-[11px] text-muted-foreground hover:bg-tag-bg hover:text-foreground"
+                  title={`Cycle priority (current: ${task.priority})`}
+                >
+                  <Flag className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1">
+              {task.status === "BACKLOG" && onReplenish && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onReplenish();
+                  }}
+                  className={clsx(
+                    "action-btn-advance rounded px-1.5 py-1 text-[11px]",
+                    replenishWarning && "text-amber-600"
+                  )}
+                  title={replenishWarning || "Replenish to Queued"}
+                >
+                  {replenishWarning ? (
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              )}
+              {canRetreat && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRetreat?.();
+                  }}
+                  className="action-btn-retreat rounded px-1.5 py-1 text-[11px]"
+                  title="Move back"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {canAdvance && task.status !== "BACKLOG" && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAdvance();
+                  }}
+                  className="action-btn-advance rounded px-1.5 py-1 text-[11px]"
+                  title="Advance status"
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {task.status !== "DONE" && onComplete && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onComplete();
+                  }}
+                  className="rounded px-1.5 py-1 text-[11px] text-muted-foreground hover:bg-tag-bg hover:text-foreground"
+                  title="Mark done"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                </button>
+              )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                className="rounded px-1.5 py-1 text-[11px] text-muted-foreground hover:bg-red-500/10 hover:text-red-500"
+                title="Delete task"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </Draggable>

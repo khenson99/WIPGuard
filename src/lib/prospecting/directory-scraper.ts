@@ -21,10 +21,11 @@ async function scrapeAmeCaseStudies(): Promise<RawProspect[]> {
 
     // AME case study listings typically have cards/articles
     $("article, .view-content .views-row, .node--type-case-study").each(
-      function () {
-        const title = $(this).find("h2, h3, .field--name-title").text().trim();
-        const link = $(this).find("a").first().attr("href");
-        const snippet = $(this)
+      (_, element) => {
+        const card = $(element);
+        const title = card.find("h2, h3, .field--name-title").text().trim();
+        const link = card.find("a").first().attr("href");
+        const snippet = card
           .find("p, .field--name-body, .summary")
           .first()
           .text()
@@ -101,10 +102,11 @@ async function scrapeLeiCaseStudies(): Promise<RawProspect[]> {
     const $ = cheerio.load(html);
 
     // LEI case study listings
-    $("article, .case-study-item, .post-item, .entry").each(function () {
-      const title = $(this).find("h2, h3, .entry-title").text().trim();
-      const link = $(this).find("a").first().attr("href");
-      const snippet = $(this)
+    $("article, .case-study-item, .post-item, .entry").each((_, element) => {
+      const card = $(element);
+      const title = card.find("h2, h3, .entry-title").text().trim();
+      const link = card.find("a").first().attr("href");
+      const snippet = card
         .find("p, .excerpt, .entry-summary")
         .first()
         .text()

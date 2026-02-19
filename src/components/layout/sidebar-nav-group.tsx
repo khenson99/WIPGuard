@@ -27,35 +27,7 @@ function writeExpanded(ids: Set<string>): void {
   }
 }
 
-export type AnalyticsSectionStatus = "connected" | "partial" | "degraded" | "missing";
-
-const STATUS_DOT_CLASS: Record<AnalyticsSectionStatus, string> = {
-  connected: "bg-emerald-500",
-  partial: "bg-amber-500",
-  degraded: "bg-orange-500",
-  missing: "bg-muted-foreground/50",
-};
-
-function StatusDot({ status }: { status?: AnalyticsSectionStatus }) {
-  if (!status) return null;
-  return (
-    <span
-      className={clsx("h-1.5 w-1.5 rounded-full", STATUS_DOT_CLASS[status])}
-      title={`Status: ${status}`}
-      aria-label={`Status: ${status}`}
-    />
-  );
-}
-
-export function SidebarNavGroup({
-  item,
-  status,
-  childStatusMap,
-}: {
-  item: NavItem;
-  status?: AnalyticsSectionStatus;
-  childStatusMap?: Record<string, AnalyticsSectionStatus>;
-}) {
+export function SidebarNavGroup({ item }: { item: NavItem }) {
   const pathname = usePathname() ?? "";
 
   const isChildActive = item.children?.some((child) => {
@@ -96,9 +68,6 @@ export function SidebarNavGroup({
         >
           <item.icon className="h-4 w-4" aria-hidden="true" />
           {item.label}
-          <span className="ml-auto">
-            <StatusDot status={status} />
-          </span>
         </Link>
         <button
           type="button"
@@ -120,12 +89,11 @@ export function SidebarNavGroup({
                 href={child.href}
                 aria-current={childActive ? "page" : undefined}
                 className={clsx(
-                  "flex items-center justify-between rounded-md py-1.5 pl-10 pr-3 text-[13px]",
+                  "flex items-center rounded-md py-1.5 pl-10 pr-3 text-[13px]",
                   childActive ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                <span>{child.label}</span>
-                <StatusDot status={childStatusMap?.[child.id]} />
+                {child.label}
               </Link>
             );
           })}

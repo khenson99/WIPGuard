@@ -59,14 +59,14 @@ function findKanbanEvidence($: cheerio.CheerioAPI, url: string): KanbanEvidence[
 
     // Find the paragraph/section containing the keyword
     const matches = $("p, li, h1, h2, h3, h4, td, span, div")
-      .filter(function () {
-        const text = $(this).text().toLowerCase();
+      .filter((_, element) => {
+        const text = $(element).text().toLowerCase();
         return text.includes(keyword) && text.length < 500;
       })
       .slice(0, 3);
 
-    matches.each(function () {
-      const snippet = $(this).text().trim().slice(0, 300);
+    matches.each((_, element) => {
+      const snippet = $(element).text().trim().slice(0, 300);
       if (snippet.length > 20) {
         evidence.push({ url, snippet, confidence: 0.6 });
       }
@@ -95,9 +95,9 @@ function extractContactInfo($: cheerio.CheerioAPI): {
   let title: string | null = null;
 
   // Email from mailto links
-  $('a[href^="mailto:"]').each(function () {
+  $('a[href^="mailto:"]').each((_, element) => {
     if (!email) {
-      const href = $(this).attr("href") ?? "";
+      const href = $(element).attr("href") ?? "";
       email = href.replace("mailto:", "").split("?")[0].trim();
     }
   });
@@ -107,8 +107,8 @@ function extractContactInfo($: cheerio.CheerioAPI): {
     '[class*="contact"], [id*="contact"], [class*="team"], [id*="team"], [class*="about"], [id*="about"]'
   );
 
-  contactSections.find("h2, h3, h4, p, span").each(function () {
-    const text = $(this).text().trim();
+  contactSections.find("h2, h3, h4, p, span").each((_, element) => {
+    const text = $(element).text().trim();
 
     // Check for title patterns
     if (!title) {
@@ -147,9 +147,9 @@ function extractCompanyInfo($: cheerio.CheerioAPI, domain: string): {
 
   // Location from structured data or address elements
   let location: string | null = null;
-  $('address, [itemprop="address"], [class*="address"]').each(function () {
+  $('address, [itemprop="address"], [class*="address"]').each((_, element) => {
     if (!location) {
-      const text = $(this).text().trim();
+      const text = $(element).text().trim();
       if (text.length > 5 && text.length < 200) {
         location = text.replace(/\s+/g, " ");
       }

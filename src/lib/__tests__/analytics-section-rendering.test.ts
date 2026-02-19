@@ -28,11 +28,20 @@ describe("analytics child section rendering", () => {
     ).toBe("finance-stripe");
   });
 
-  it("uses snapshot fallback for generic integrations", () => {
+  it("routes sales stripe to sales-stripe renderer", () => {
     expect(
       resolveAnalyticsChildRenderKind({
         childId: "sales-stripe",
         childDataDomain: "stripe",
+      })
+    ).toBe("sales-stripe");
+  });
+
+  it("uses snapshot fallback for generic integrations", () => {
+    expect(
+      resolveAnalyticsChildRenderKind({
+        childId: "ads-unknown",
+        childDataDomain: "unknown",
       })
     ).toBe("snapshot");
   });

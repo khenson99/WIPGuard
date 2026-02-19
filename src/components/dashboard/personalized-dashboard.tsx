@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { AlertTriangle, CalendarClock, Clock3, Flame } from "lucide-react";
+import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-state";
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { DashboardErrorBanner } from "@/components/dashboard/dashboard-error-banner";
+import { DashboardStaleBanner } from "@/components/dashboard/dashboard-stale-banner";
+import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
 
 interface DashboardTask {
   id: string;
@@ -15,6 +20,10 @@ interface DashboardTask {
 
 interface PersonalizedDashboardPayload {
   generatedAt: string;
+  meta?: {
+    servedAt: string;
+    isPartial: boolean;
+  };
   personal: {
     myActive: DashboardTask[];
     myBlocked: DashboardTask[];
@@ -40,7 +49,7 @@ interface PersonalizedDashboardPayload {
   };
 }
 
-const PERSONALIZED_DASHBOARD_CACHE_KEY = "dashboard:personalized:v1";
+const PERSONALIZED_DASHBOARD_CACHE_KEY = "dashboard:personalized:v2";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -67,27 +76,6 @@ function isPersonalizedDashboardPayload(value: unknown): value is PersonalizedDa
     isRecord(team.taskStatusOverview) &&
     Array.isArray(projects.active)
   );
-}
-
-function readDashboardCache(): PersonalizedDashboardPayload | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.sessionStorage.getItem(PERSONALIZED_DASHBOARD_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    return isPersonalizedDashboardPayload(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeDashboardCache(payload: PersonalizedDashboardPayload): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.setItem(PERSONALIZED_DASHBOARD_CACHE_KEY, JSON.stringify(payload));
-  } catch {
-    // Ignore storage write failures (private browsing/storage quotas).
-  }
 }
 
 function relativeDate(date: string | null): string {
@@ -131,90 +119,86 @@ function TaskList({
 }
 
 export function PersonalizedDashboard() {
-  const [data, setData] = useState<PersonalizedDashboardPayload | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    const controller = new AbortController();
-    const cached = readDashboardCache();
-
-    if (cached) {
-      queueMicrotask(() => {
-        if (!active) return;
-        setData(cached);
-        setLoading(false);
+  const resource = useDashboardResource<PersonalizedDashboardPayload>({
+    cacheKey: PERSONALIZED_DASHBOARD_CACHE_KEY,
+    deps: [],
+    load: async ({ signal, refresh }) => {
+      const response = await fetch("/api/dashboard/personalized", {
+        signal,
+        cache: refresh ? "no-store" : "default",
       });
-    } else {
-      queueMicrotask(() => {
-        if (!active) return;
-        setLoading(true);
-      });
-    }
 
-    const load = async () => {
-      try {
-        const response = await fetch("/api/dashboard/personalized", { signal: controller.signal });
-        if (!response.ok) {
-          throw new Error(`Dashboard request failed (${response.status})`);
-        }
-        const payload = (await response.json()) as unknown;
-        if (!isPersonalizedDashboardPayload(payload)) {
-          throw new Error("Dashboard response payload is invalid");
-        }
-
-        if (!active) return;
-        setData(payload);
-        writeDashboardCache(payload);
-      } catch (error) {
-        if (!active || (error instanceof Error && error.name === "AbortError")) return;
-        if (!cached) {
-          setData(null);
-        }
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
+      if (!response.ok) {
+        throw new Error(`Dashboard request failed (${response.status})`);
       }
-    };
 
-    void load();
+      const payload = (await response.json()) as unknown;
+      if (!isPersonalizedDashboardPayload(payload)) {
+        throw new Error("Dashboard response payload is invalid");
+      }
+      return payload;
+    },
+    getLastUpdatedAt: (payload) => payload.meta?.servedAt ?? payload.generatedAt,
+    mapError: (error) => {
+      if (error instanceof Error && error.message.trim().length > 0) return error.message;
+      return "Could not load personalized dashboard.";
+    },
+  });
 
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, []);
+  const data = resource.data;
 
   const taskTotal = useMemo(() => {
     if (!data) return 0;
     return Object.values(data.team.taskStatusOverview ?? {}).reduce((sum, count) => sum + count, 0);
   }, [data]);
 
-  if (loading) {
-    return (
-      <div className="flex h-[50vh] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    );
+  if (resource.loading && !data) {
+    return <DashboardLoadingState message="Loading personalized dashboard..." className="h-[50vh]" />;
   }
 
   if (!data) {
     return (
-      <div className="py-16 text-center text-sm text-muted-foreground">
-        Could not load personalized dashboard.
+      <div className="p-4">
+        <DashboardEmptyState
+          title="Dashboard unavailable"
+          message={resource.error ?? "No personalized dashboard data was returned."}
+          actionLabel="Refresh now"
+          onAction={resource.refresh}
+        />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 px-4 py-4">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Dashboard</h1>
-        <p className="text-xs text-muted-foreground">
-          Personalized work intelligence with team context.
-        </p>
+    <div className="space-y-4 px-4 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h1 className="text-xl font-semibold text-foreground">Dashboard</h1>
+          <p className="text-xs text-muted-foreground">
+            Personalized work intelligence with team context.
+          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Last updated: {resource.lastUpdatedAt ? new Date(resource.lastUpdatedAt).toLocaleString() : "Unknown"}
+            {resource.fromCache ? " (cache warm start)" : ""}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={resource.refresh}
+          disabled={resource.refreshing}
+          className="rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-70"
+        >
+          {resource.refreshing ? "Refreshing..." : "Refresh now"}
+        </button>
       </div>
+
+      {resource.stale ? (
+        <DashboardStaleBanner lastUpdatedAt={resource.lastUpdatedAt} onRefresh={resource.refresh} refreshing={resource.refreshing} />
+      ) : null}
+
+      {resource.error ? (
+        <DashboardErrorBanner message={resource.error} onRetry={resource.refresh} />
+      ) : null}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <div className="rounded-xl border border-border bg-card px-4 py-3">
