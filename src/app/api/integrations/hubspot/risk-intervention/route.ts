@@ -11,6 +11,7 @@ import {
   serializeHubSpotRiskRule,
   type HubSpotRiskInterventionConfig,
 } from "@/lib/integrations/hubspot-risk-intervention";
+import { withSyncObservability } from "@/lib/integrations/sync-observability";
 
 interface HubSpotRiskSyncRequestBody {
   action?: "sync" | "configure";
@@ -86,10 +87,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       });
     }
 
-    const result = await runHubSpotRiskIntervention({
-      userId: session.user.id,
-      dryRun: body.dryRun,
-    });
+    const result = await withSyncObservability(
+      "hubspot", "risk-intervention", session.user.id,
+      () => runHubSpotRiskIntervention({ userId: session.user.id, dryRun: body.dryRun }),
+      { dryRun: body.dryRun },
+    );
 
     return NextResponse.json({
       ok: true,

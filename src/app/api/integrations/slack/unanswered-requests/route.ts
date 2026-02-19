@@ -11,6 +11,7 @@ import {
   serializeSlackUnansweredRule,
   type SlackUnansweredConfig,
 } from "@/lib/integrations/slack-unanswered-requests";
+import { withSyncObservability } from "@/lib/integrations/sync-observability";
 
 interface SlackUnansweredRequestBody {
   action?: "sync" | "configure";
@@ -86,10 +87,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       });
     }
 
-    const result = await runSlackUnansweredDetector({
-      userId: session.user.id,
-      dryRun: body.dryRun,
-    });
+    const result = await withSyncObservability(
+      "slack", "unanswered-requests", session.user.id,
+      () => runSlackUnansweredDetector({ userId: session.user.id, dryRun: body.dryRun }),
+      { dryRun: body.dryRun },
+    );
 
     return NextResponse.json({
       ok: true,

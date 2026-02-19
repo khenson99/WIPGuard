@@ -9,7 +9,8 @@ import { prisma } from "@/lib/prisma";
 import { unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
 import { getNextColumnOrder } from "@/lib/task-order";
 import { buildOutboxIdempotencyKey, publishDomainEvent } from "@/lib/event-bus";
-import { computeRetryDelayMs } from "@/lib/outbox-worker";
+import { withRetries } from "@/lib/integrations/with-retries";
+import { isCircuitClosed, recordSuccess, recordFailure, CircuitOpenError, getCircuitState } from "@/lib/integrations/circuit-breaker";
 
 export const CODA_RULE_KEY = "coda_row_task_upsert";
 
@@ -231,31 +232,6 @@ function buildCodaFallbackRowUrl(config: CodaRowSyncConfig, rowId: string): stri
   return `https://coda.io/d/${config.docId}/_su${rowId}`;
 }
 
-async function sleep(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function withRetries<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
-  let lastError: unknown = null;
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error;
-      if (attempt === maxAttempts) {
-        throw error;
-      }
-
-      const waitMs = computeRetryDelayMs(attempt, {
-        baseDelayMs: 250,
-        maxDelayMs: 3000,
-      });
-      await sleep(waitMs);
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error("Unknown retry failure");
-}
 
 async function markConnectionError(userId: string, message: string): Promise<void> {
   await prisma.integrationConnection.updateMany({
@@ -504,6 +480,13 @@ export async function runCodaRowSync(input: {
       errors: [],
     };
   }
+
+  const CB_PROVIDER = "coda";
+  if (!isCircuitClosed(CB_PROVIDER, input.userId)) {
+    throw new CircuitOpenError(CB_PROVIDER, input.userId, getCircuitState(CB_PROVIDER, input.userId));
+  }
+  let _cbSuccess = false;
+  try {
 
   if (!config.docId || !config.tableId) {
     throw new Error("Coda row sync requires config.docId and config.tableId");
@@ -808,6 +791,7 @@ export async function runCodaRowSync(input: {
     },
   });
 
+  _cbSuccess = true;
   return {
     ruleId: rule.id,
     enabled: true,
@@ -819,4 +803,8 @@ export async function runCodaRowSync(input: {
     tasks,
     errors,
   };
+  } finally {
+    if (_cbSuccess) recordSuccess(CB_PROVIDER, input.userId);
+    else recordFailure(CB_PROVIDER, input.userId);
+  }
 }

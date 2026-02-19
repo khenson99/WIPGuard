@@ -10,7 +10,8 @@ import { prisma } from "@/lib/prisma";
 import { protectIntegrationSecret, unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
 import { getNextColumnOrder } from "@/lib/task-order";
 import { buildOutboxIdempotencyKey, publishDomainEvent } from "@/lib/event-bus";
-import { computeRetryDelayMs } from "@/lib/outbox-worker";
+import { withRetries } from "@/lib/integrations/with-retries";
+import { isCircuitClosed, recordSuccess, recordFailure, CircuitOpenError, getCircuitState } from "@/lib/integrations/circuit-breaker";
 
 export const GOOGLE_DRIVE_RULE_KEY = "google_drive_comment_escalation";
 const GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
@@ -305,31 +306,6 @@ function addHours(date: Date, hours: number): Date {
   return new Date(date.getTime() + hours * 60 * 60 * 1000);
 }
 
-async function sleep(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function withRetries<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
-  let lastError: unknown = null;
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error;
-      if (attempt === maxAttempts) {
-        throw error;
-      }
-
-      const waitMs = computeRetryDelayMs(attempt, {
-        baseDelayMs: 250,
-        maxDelayMs: 3000,
-      });
-      await sleep(waitMs);
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error("Unknown retry failure");
-}
 
 async function markConnectionError(userId: string, message: string): Promise<void> {
   await prisma.integrationConnection.updateMany({
@@ -386,24 +362,29 @@ async function refreshGoogleAccessToken(connection: IntegrationConnection): Prom
     client_secret: process.env.GOOGLE_CLIENT_SECRET,
   });
 
-  const response = await fetch(GOOGLE_TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-    cache: "no-store",
-  });
+  const parsed = await withRetries(
+    async () => {
+      const response = await fetch(GOOGLE_TOKEN_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+        cache: "no-store",
+      });
 
-  const json = (await response.json().catch(() => ({}))) as unknown;
-  if (!response.ok) {
-    const details = asRecord(json);
-    const reason =
-      (typeof details.error_description === "string" && details.error_description) ||
-      (typeof details.error === "string" && details.error) ||
-      "Google token refresh failed";
-    throw new GoogleDriveIntegrationAuthError(reason);
-  }
+      const json = (await response.json().catch(() => ({}))) as unknown;
+      if (!response.ok) {
+        const details = asRecord(json);
+        const reason =
+          (typeof details.error_description === "string" && details.error_description) ||
+          (typeof details.error === "string" && details.error) ||
+          "Google token refresh failed";
+        throw new GoogleDriveIntegrationAuthError(reason);
+      }
 
-  const parsed = parseTokenResponse(json);
+      return parseTokenResponse(json);
+    },
+    { maxAttempts: 2, baseDelayMs: 500, maxDelayMs: 2000 }
+  );
 
   await prisma.integrationConnection.update({
     where: {
@@ -425,6 +406,9 @@ async function refreshGoogleAccessToken(connection: IntegrationConnection): Prom
 
   return parsed.accessToken;
 }
+
+/** In-flight refresh promises keyed by userId to prevent concurrent refresh races. */
+const inflightRefreshes = new Map<string, Promise<string>>();
 
 async function getValidGoogleAccessToken(userId: string): Promise<string> {
   const connection = await prisma.integrationConnection.findUnique({
@@ -449,7 +433,14 @@ async function getValidGoogleAccessToken(userId: string): Promise<string> {
     Boolean(connection.expiresAt) && connection.expiresAt!.getTime() <= Date.now() + 60_000;
 
   if (expiresSoon) {
-    return refreshGoogleAccessToken(connection);
+    const existing = inflightRefreshes.get(userId);
+    if (existing) return existing;
+
+    const promise = refreshGoogleAccessToken(connection).finally(() => {
+      inflightRefreshes.delete(userId);
+    });
+    inflightRefreshes.set(userId, promise);
+    return promise;
   }
 
   return token;
@@ -661,6 +652,13 @@ export async function runGoogleDriveCommentEscalation(input: {
       errors: [],
     };
   }
+
+  const CB_PROVIDER = "google_drive";
+  if (!isCircuitClosed(CB_PROVIDER, input.userId)) {
+    throw new CircuitOpenError(CB_PROVIDER, input.userId, getCircuitState(CB_PROVIDER, input.userId));
+  }
+  let _cbSuccess = false;
+  try {
 
   let accessToken: string;
   try {
@@ -1039,6 +1037,7 @@ export async function runGoogleDriveCommentEscalation(input: {
     },
   });
 
+  _cbSuccess = true;
   return {
     ruleId: rule.id,
     enabled: true,
@@ -1052,4 +1051,9 @@ export async function runGoogleDriveCommentEscalation(input: {
     tasks,
     errors,
   };
+
+  } finally {
+    if (_cbSuccess) recordSuccess(CB_PROVIDER, input.userId);
+    else recordFailure(CB_PROVIDER, input.userId);
+  }
 }
