@@ -847,6 +847,142 @@ export interface ActionPlanData {
   };
 }
 
+// ══════════════════════════════════════════════════════════
+// ENHANCED AI ANALYTICS ENGINE TYPES
+// ══════════════════════════════════════════════════════════
+
+export interface MetricAnomaly {
+  metricKey: string;
+  section: AnalyticsSectionId;
+  label: string;
+  currentValue: number;
+  expectedValue: number;
+  zScore: number;
+  direction: "above" | "below";
+  severity: "warning" | "critical";
+  possibleCauses: string[];
+  history: number[];
+}
+
+export interface MetricForecastPoint {
+  value: number;
+  upper: number;
+  lower: number;
+}
+
+export interface MetricForecast {
+  metricKey: string;
+  section: AnalyticsSectionId;
+  label: string;
+  currentValue: number;
+  trendDirection: "up" | "down" | "flat";
+  trendStrength: number;
+  forecast7d: MetricForecastPoint[];
+  forecast30d: MetricForecastPoint[];
+  history: number[];
+  confidence: number;
+}
+
+export interface ScenarioOutcome {
+  label: string;
+  metricKey: string;
+  current: number;
+  projected: number;
+  delta: string;
+}
+
+export interface ScenarioPlan {
+  id: string;
+  section: AnalyticsSectionId;
+  title: string;
+  best: ScenarioOutcome[];
+  expected: ScenarioOutcome[];
+  worst: ScenarioOutcome[];
+}
+
+export interface RootCauseAnalysis {
+  insightId: string;
+  section: AnalyticsSectionId;
+  summary: string;
+  contributingFactors: Array<{
+    source: string;
+    metric: string;
+    contribution: string;
+  }>;
+  correlatedAnomalies: string[];
+}
+
+export interface EnhancedRecommendation {
+  id: string;
+  section: AnalyticsSectionId;
+  title: string;
+  description: string;
+  expectedImpact: string;
+  projectedDelta: string;
+  priority: "P0" | "P1" | "P2";
+  effort: "low" | "medium" | "high";
+  actions: AiInsightAction[];
+}
+
+export interface DiscussionQuestion {
+  id: string;
+  section: AnalyticsSectionId;
+  question: string;
+  context: string;
+  triggeringMetrics: string[];
+}
+
+export interface HealthCheck {
+  metricKey: string;
+  section: AnalyticsSectionId;
+  label: string;
+  status: "green" | "yellow" | "red";
+  currentValue: number;
+  threshold: { warning: number; critical: number };
+  forecastWarning: boolean;
+  note: string;
+}
+
+export interface CrossDomainCorrelation {
+  metricA: string;
+  metricB: string;
+  sectionA: AnalyticsSectionId;
+  sectionB: AnalyticsSectionId;
+  correlation: number;
+  interpretation: string;
+  significant: boolean;
+}
+
+export interface SectionNarrative {
+  section: AnalyticsSectionId;
+  headline: string;
+  body: string;
+}
+
+export interface EnhancedSectionInsights {
+  section: AnalyticsSectionId;
+  narrative: SectionNarrative;
+  anomalies: MetricAnomaly[];
+  forecasts: MetricForecast[];
+  healthChecks: HealthCheck[];
+  recommendations: EnhancedRecommendation[];
+  questions: DiscussionQuestion[];
+  scenarios: ScenarioPlan[];
+  rootCauses: RootCauseAnalysis[];
+}
+
+export interface CrossDomainInsights {
+  topRisks: Array<{ title: string; severity: "warning" | "critical"; sections: AnalyticsSectionId[] }>;
+  correlations: CrossDomainCorrelation[];
+  overallHealth: Record<AnalyticsSectionId, "green" | "yellow" | "red">;
+  narrative: string;
+}
+
+export interface EnhancedInsightsBundle extends AiInsightsBundle {
+  sections: Record<AnalyticsSectionId, EnhancedSectionInsights>;
+  crossDomain: CrossDomainInsights;
+}
+
 // ── Dashboard Tab Config ──
 export type AnalyticsTab =
   | "overview"
