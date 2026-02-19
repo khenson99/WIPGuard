@@ -43,8 +43,10 @@ export function BarDisplay({ items, formatValue, maxValue }: BarDisplayProps) {
 
 // Donut-like ring display
 interface RingStatProps {
-  value: number;
-  max: number;
+  value?: number;
+  max?: number;
+  segments?: Array<{ label: string; value: number; color: string }>;
+  total?: number;
   label: string;
   color?: string;
   size?: number;
@@ -53,13 +55,20 @@ interface RingStatProps {
 export function RingStat({
   value,
   max,
+  segments,
+  total,
   label,
   color = "var(--primary)",
   size = 120,
 }: RingStatProps) {
-  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
+  const hasSegments = Array.isArray(segments) && segments.length > 0;
+  const effectiveTotal = total ?? (hasSegments ? segments.reduce((sum, segment) => sum + segment.value, 0) : max ?? 0);
+  const normalizedValue = value ?? 0;
+  const normalizedMax = max ?? 0;
+  const pct = !hasSegments && normalizedMax > 0 ? Math.min((normalizedValue / normalizedMax) * 100, 100) : 0;
   const circumference = 2 * Math.PI * 42;
   const strokeDashoffset = circumference - (pct / 100) * circumference;
+  let consumed = 0;
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -70,17 +79,40 @@ export function RingStat({
           stroke="var(--border)"
           strokeWidth="8"
         />
-        <circle
-          cx="50" cy="50" r="42"
-          fill="none"
-          stroke={color}
-          strokeWidth="8"
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={strokeDashoffset}
-          transform="rotate(-90 50 50)"
-          className="transition-all duration-700"
-        />
+        {!hasSegments && (
+          <circle
+            cx="50" cy="50" r="42"
+            fill="none"
+            stroke={color}
+            strokeWidth="8"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            transform="rotate(-90 50 50)"
+            className="transition-all duration-700"
+          />
+        )}
+        {hasSegments && segments.map((segment) => {
+          const safeTotal = effectiveTotal > 0 ? effectiveTotal : 1;
+          const segmentLength = (segment.value / safeTotal) * circumference;
+          const dashOffset = circumference - consumed;
+          consumed += segmentLength;
+
+          return (
+            <circle
+              key={segment.label}
+              cx="50" cy="50" r="42"
+              fill="none"
+              stroke={segment.color}
+              strokeWidth="8"
+              strokeLinecap="butt"
+              strokeDasharray={`${segmentLength} ${circumference}`}
+              strokeDashoffset={dashOffset}
+              transform="rotate(-90 50 50)"
+              className="transition-all duration-700"
+            />
+          );
+        })}
         <text
           x="50" y="46"
           textAnchor="middle"
@@ -88,7 +120,7 @@ export function RingStat({
           fontSize="18"
           fontWeight="700"
         >
-          {pct.toFixed(0)}%
+          {hasSegments ? `${effectiveTotal}` : `${pct.toFixed(0)}%`}
         </text>
         <text
           x="50" y="62"

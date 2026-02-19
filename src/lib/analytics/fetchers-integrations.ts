@@ -18,8 +18,10 @@ function toProviderKey(provider: IntegrationProvider): IntegrationProviderKey {
       return "stripe";
     case IntegrationProvider.MERCURY:
       return "mercury";
+    case IntegrationProvider.WEBFLOW:
+      return "webflow";
     default:
-      throw new Error(`Unhandled provider: ${String(provider)}`);
+      throw new Error(`Unsupported integration provider: ${provider as string}`);
   }
 }
 
@@ -47,6 +49,7 @@ function getFailurePrefix(provider: IntegrationProvider): string {
   if (provider === IntegrationProvider.CODA) return "integration.coda";
   if (provider === IntegrationProvider.STRIPE) return "integration.stripe";
   if (provider === IntegrationProvider.MERCURY) return "integration.mercury";
+  if (provider === IntegrationProvider.WEBFLOW) return "integration.webflow";
   return "integration.reddit";
 }
 

@@ -53,6 +53,13 @@ interface SummaryPayload {
   }>;
 }
 
+const STATUS_CLASS: Record<string, string> = {
+  connected: "text-emerald-600",
+  degraded: "text-amber-600",
+  partial: "text-amber-600",
+  missing: "text-muted-foreground",
+};
+
 const SUMMARY_CACHE_PREFIX = "analytics:summary:v1:";
 
 interface SummaryViewModel {
@@ -129,6 +136,7 @@ export function AnalyticsSummaryPage() {
     getLastUpdatedAt: (payload) => {
       return (
         payload.summary.meta?.servedAt ??
+        payload.overview.meta?.servedAt ??
         payload.overview.lastFullRefresh ??
         payload.summary.generatedAt
       );
@@ -159,7 +167,14 @@ export function AnalyticsSummaryPage() {
     );
   }
 
-  const staleDomains = unique(overview?.staleDomains ?? []);
+  const staleDomains = unique([...(overview?.staleDomains ?? []), ...(overview?.meta?.staleDomains ?? [])]);
+  const erroredDomains = unique([
+    ...(overview?.errors ?? []).map((item) => item.source),
+    ...(overview?.meta?.erroredDomains ?? []),
+  ]);
+  const connected = summary.primarySections.filter((section) => section.status === "connected").length;
+  const degraded = summary.primarySections.filter((section) => section.status === "degraded").length;
+  const missing = summary.primarySections.filter((section) => section.status === "missing").length;
 
   return (
     <div className="h-full space-y-4 overflow-y-auto p-4">
@@ -204,6 +219,26 @@ export function AnalyticsSummaryPage() {
         />
       ) : null}
 
+      <div className="rounded-xl border border-border bg-card px-4 py-3">
+        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <span>
+            Sections: <span className="font-semibold text-foreground">{connected}</span> connected
+          </span>
+          <span>
+            <span className="font-semibold text-amber-600">{degraded}</span> degraded
+          </span>
+          <span>
+            <span className="font-semibold text-muted-foreground">{missing}</span> missing
+          </span>
+          <span>
+            Stale domains: <span className="font-semibold text-foreground">{staleDomains.length}</span>
+          </span>
+          <span>
+            Error domains: <span className="font-semibold text-foreground">{erroredDomains.length}</span>
+          </span>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <div className="rounded-xl border border-border bg-card px-4 py-3">
           <p className="text-xs text-muted-foreground">Discipline Coverage</p>
@@ -232,14 +267,30 @@ export function AnalyticsSummaryPage() {
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
         {ANALYTICS_PRIMARY_SECTIONS.map((primary) => {
+          const section = summary.primarySections.find((item) => item.id === primary.id);
           return (
             <Link
               key={primary.id}
               href={`${primary.path}${rangeQuery ? `?${rangeQuery}` : ""}`}
               className="rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40"
             >
-              <h3 className="text-sm font-semibold text-foreground">{primary.label}</h3>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-foreground">{primary.label}</h3>
+                <span className={`text-xs uppercase ${STATUS_CLASS[section?.status ?? "missing"]}`}>
+                  {section?.status ?? "missing"}
+                </span>
+              </div>
               <p className="mt-1 text-xs text-muted-foreground">{primary.description}</p>
+              {section && (
+                <>
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    {section.connectedCount}/{section.integrationCount} integrations connected
+                  </p>
+                  {section.children?.some((child) => child.lastError) ? (
+                    <p className="mt-1 text-[11px] text-amber-600">Some integrations are failing and need attention.</p>
+                  ) : null}
+                </>
+              )}
             </Link>
           );
         })}

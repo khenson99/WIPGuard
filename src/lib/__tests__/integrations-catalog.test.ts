@@ -13,6 +13,7 @@ describe("integrations catalog", () => {
     expect(reddit?.provider).toBe("REDDIT");
     expect(reddit ? isOAuthIntegration(reddit) : false).toBe(true);
     expect(reddit?.authType).toBe("oauth");
+    expect(reddit?.oauth?.scopes).toContain("adsread");
   });
 
   it("exposes reddit in definitions list", () => {
@@ -31,5 +32,14 @@ describe("integrations catalog", () => {
     expect(mercury).not.toBeNull();
     expect(mercury?.provider).toBe("MERCURY");
     expect(mercury ? isOAuthIntegration(mercury) : false).toBe(true);
+  });
+
+  it("includes webflow as an oauth integration", () => {
+    const webflow = getIntegrationBySlug("webflow");
+
+    expect(webflow).not.toBeNull();
+    expect(webflow?.provider).toBe("WEBFLOW");
+    expect(webflow ? isOAuthIntegration(webflow) : false).toBe(true);
+    expect(webflow?.oauth?.scopes).toContain("sites:read");
   });
 });

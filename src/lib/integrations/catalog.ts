@@ -6,6 +6,7 @@ export type IntegrationSlug =
   | "slack"
   | "stripe"
   | "mercury"
+  | "webflow"
   | "coda"
   | "reddit";
 export type IntegrationAuthType = "oauth" | "token";
@@ -162,6 +163,26 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     },
   },
   {
+    slug: "webflow",
+    provider: IntegrationProvider.WEBFLOW,
+    name: "Webflow",
+    description: "Connect Webflow sites and content signals into WIPGuard.",
+    capabilities: ["Sites", "Pages", "CMS", "Forms"],
+    authType: "oauth",
+    oauth: {
+      authorizationEndpoint: "https://webflow.com/oauth/authorize",
+      tokenEndpoint: "https://api.webflow.com/oauth/access_token",
+      scopes: getScopesFromEnv("WEBFLOW_SCOPES", [
+        "sites:read",
+        "pages:read",
+        "cms:read",
+        "forms:read",
+      ]),
+      clientIdEnv: "WEBFLOW_CLIENT_ID",
+      clientSecretEnv: "WEBFLOW_CLIENT_SECRET",
+    },
+  },
+  {
     slug: "coda",
     provider: IntegrationProvider.CODA,
     name: "Coda",
@@ -180,7 +201,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     oauth: {
       authorizationEndpoint: "https://www.reddit.com/api/v1/authorize",
       tokenEndpoint: "https://www.reddit.com/api/v1/access_token",
-      scopes: ["identity", "read", "history"],
+      scopes: ["identity", "read", "history", "adsread"],
       tokenClientAuthMethod: "basic",
       extraAuthParams: {
         duration: "permanent",

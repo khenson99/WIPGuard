@@ -54,4 +54,4 @@ firebase-debug.log
 # Local AI agent worktrees
 .worktrees/
 .claude/worktrees/
-app/
+/app/
