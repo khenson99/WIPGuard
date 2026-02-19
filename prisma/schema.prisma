@@ -443,6 +443,7 @@ enum IntegrationProvider {
   REDDIT
   STRIPE
   MERCURY
+  WEBFLOW
 }
 
 enum IntegrationConnectionStatus {

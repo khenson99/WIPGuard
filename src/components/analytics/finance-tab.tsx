@@ -1,322 +1,299 @@
-// src/components/analytics/finance-tab.tsx
 "use client";
 
+import React from "react";
 import {
   DollarSign,
   CreditCard,
   Wallet,
   TrendingDown,
-  TrendingUp,
-  Clock,
+  Activity,
+  ArrowUpRight,
+  ArrowDownRight,
 } from "lucide-react";
 import { AnalyticsDashboardData } from "@/lib/analytics/types";
 import { StatCard } from "./stat-card";
-import { DashboardSectionCard } from "./dashboard-section-card";
-import { AreaTrend, DonutChart, ComposedMetric, CHART_PALETTE } from "@/components/charts";
+import { RingStat } from "./bar-display";
+import { FinanceDataEmptyState } from "./finance-empty-state";
 
 interface FinanceTabProps {
   data: AnalyticsDashboardData | null;
 }
 
-/* ── Formatting helpers ──────────────────────────────── */
-
-/** Format number as currency with short notation */
+/**
+ * Format number as currency with short notation
+ * @example fmt$(1234) => "$1.2K"
+ * @example fmt$(1500000) => "$1.5M"
+ */
 function fmt$(n: number): string {
   if (n === 0) return "$0";
-  const abs = Math.abs(n);
-  const sign = n < 0 ? "-" : "";
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
-  return `${sign}$${abs.toFixed(0)}`;
+  if (n >= 1_000_000) {
+    return `$${(n / 1_000_000).toFixed(1)}M`;
+  }
+  if (n >= 1_000) {
+    return `$${(n / 1_000).toFixed(1)}K`;
+  }
+  return `$${n.toFixed(0)}`;
 }
 
-/** Format decimal 0-1 as percentage (finance: multiply by 100) */
+/**
+ * Format number as percentage
+ * @example fmtPct(0.856) => "85.6%"
+ * @example fmtPct(0.05) => "5.0%"
+ */
 function fmtPct(n: number): string {
-  return `${(n * 100).toFixed(1)}%`;
+  return `${n.toFixed(1)}%`;
 }
-
-/** Calculate percentage change string */
-function calculateChange(current: number, previous: number): { text: string; type: "positive" | "negative" | "neutral" } {
-  if (previous === 0) return { text: "N/A", type: "neutral" };
-  const pct = ((current - previous) / previous) * 100;
-  const sign = pct >= 0 ? "+" : "";
-  return {
-    text: `${sign}${pct.toFixed(1)}%`,
-    type: pct > 0 ? "positive" : pct < 0 ? "negative" : "neutral",
-  };
-}
-
-/* ── Component ───────────────────────────────────────── */
 
 export function FinanceTab({ data }: FinanceTabProps) {
   if (!data) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <p className="text-muted-foreground">No financial data available</p>
-      </div>
-    );
+    return <FinanceDataEmptyState title="No financial data available" message="Finance analytics payload is missing." />;
   }
 
   const stripe = data.stripe;
   const mercury = data.mercury;
+  const financeErrors = data.errors
+    .filter((entry) => entry.source === "stripe" || entry.source === "mercury")
+    .map((entry) => `${entry.source}: ${entry.message}`);
+  const freshnessErrors = [
+    data.freshness.stripe?.lastError ? `stripe: ${data.freshness.stripe.lastError}` : null,
+    data.freshness.mercury?.lastError ? `mercury: ${data.freshness.mercury.lastError}` : null,
+  ].filter((entry): entry is string => Boolean(entry));
 
-  // ── Extract metrics with fallbacks ────────────────
+  if (!stripe && !mercury) {
+    return (
+      <FinanceDataEmptyState
+        title="Finance dashboard data is unavailable"
+        message="Stripe and Mercury data could not be loaded for this range."
+        reasons={[...financeErrors, ...freshnessErrors]}
+      />
+    );
+  }
+
+  // Extract metrics with fallbacks
   const mrr = stripe?.revenue?.mrr ?? 0;
   const mrrChange = stripe?.revenue?.mrrChange ?? 0;
-  const totalRevenue30d = stripe?.revenue?.totalRevenue30d ?? 0;
-  const totalRevenuePrev30d = stripe?.revenue?.totalRevenuePrev30d ?? 0;
   const activeSubs = stripe?.subscriptions?.active ?? 0;
   const pastDue = stripe?.subscriptions?.pastDue ?? 0;
   const trialing = stripe?.subscriptions?.trialing ?? 0;
-  const canceled = stripe?.subscriptions?.canceled ?? 0;
   const cashBalance = mercury?.cashFlow?.totalBalance ?? 0;
   const runway = mercury?.cashFlow?.runway ?? 0;
   const netCashFlow = mercury?.cashFlow?.netCashFlow ?? 0;
-  const inflows = mercury?.cashFlow?.inflows30d ?? 0;
-  const outflows = mercury?.cashFlow?.outflows30d ?? 0;
-  const burnRate = mercury?.cashFlow?.burnRate ?? 0;
   const successRate = stripe?.payments?.successRate ?? 0;
   const churnRate = stripe?.subscriptions?.churnRate ?? 0;
   const recentChurns = stripe?.subscriptions?.recentChurnEvents ?? [];
-  const revenueTrend = stripe?.revenueTrend ?? [];
-
-  // Build SparkLine data from revenueTrend
-  const mrrSparkData = revenueTrend.map((p) => p.revenue);
-
-  // Revenue change
-  const revenueChange = calculateChange(totalRevenue30d, totalRevenuePrev30d);
-
-  // ── Hero chart: 6-month MRR AreaTrend data ────────
-  const heroData = revenueTrend.slice(-6).map((p) => ({
-    month: p.month,
-    revenue: p.revenue,
-  }));
-
-  // ── Cash flow waterfall data ──────────────────────
-  const cashFlowData = [
-    { label: "Inflows", inflows, outflows: 0 },
-    { label: "Outflows", inflows: 0, outflows },
-    { label: "Net", inflows: Math.max(netCashFlow, 0), outflows: Math.max(-netCashFlow, 0) },
-  ];
-
-  // ── Subscription health donut segments ────────────
-  const subSegments = [
-    { name: "Active", value: activeSubs, color: "#10b981" },
-    { name: "Past Due", value: pastDue, color: "#f59e0b" },
-    { name: "Trialing", value: trialing, color: "#3b82f6" },
-    { name: "Canceled", value: canceled, color: "#ef4444" },
-  ].filter((s) => s.value > 0);
-
-  const totalSubs = activeSubs + pastDue + trialing + canceled;
 
   return (
     <div className="space-y-6">
-      {/* ── KPI Strip ──────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      {/* Top KPI Row */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* MRR */}
         <StatCard
-          label="MRR"
+          label="Monthly Recurring Revenue"
           value={fmt$(mrr)}
-          change={`${mrrChange >= 0 ? "+" : ""}${mrrChange.toFixed(1)}%`}
+          change={fmtPct(Math.abs(mrrChange))}
           changeType={mrrChange >= 0 ? "positive" : "negative"}
           icon={DollarSign}
-          trend={mrrSparkData.length >= 2 ? { data: mrrSparkData, color: CHART_PALETTE[0] } : undefined}
         />
 
+        {/* Active Subscriptions */}
         <StatCard
           label="Active Subscriptions"
           value={activeSubs.toLocaleString()}
-          subtitle={`${pastDue} past due · ${trialing} trialing`}
+          subtitle={`${pastDue} past due, ${trialing} trialing`}
           icon={CreditCard}
         />
 
+        {/* Cash Balance */}
         <StatCard
           label="Cash Balance"
           value={fmt$(cashBalance)}
+          subtitle={runway > 0 ? `${runway.toFixed(1)} months runway` : undefined}
           icon={Wallet}
         />
 
+        {/* Net Cash Flow */}
         <StatCard
-          label="Net Cash Flow"
+          label="Net Cash Flow (30d)"
           value={fmt$(netCashFlow)}
-          subtitle="Last 30 days"
           changeType={netCashFlow >= 0 ? "positive" : "negative"}
-          icon={netCashFlow >= 0 ? TrendingUp : TrendingDown}
-        />
-
-        <StatCard
-          label="Runway"
-          value={runway > 0 ? `${runway.toFixed(1)}mo` : "N/A"}
-          subtitle={burnRate > 0 ? `${fmt$(burnRate)}/mo burn` : undefined}
-          icon={Clock}
-          changeType={runway > 12 ? "positive" : runway > 6 ? "neutral" : "negative"}
+          icon={TrendingDown}
         />
       </div>
 
-      {/* ── Hero Chart: Revenue Trend ──────────────── */}
-      {heroData.length >= 2 && (
-        <DashboardSectionCard title="Revenue Trend" subtitle="6-month MRR">
-          <AreaTrend
-            data={heroData}
-            xKey="month"
-            yKeys={["revenue"]}
-            colors={[CHART_PALETTE[0]]}
-            height={300}
-            yFormatter={fmt$}
-          />
-        </DashboardSectionCard>
+      {/* Revenue Trend Chart */}
+      {stripe?.revenueTrend && stripe.revenueTrend.length > 0 && (
+        <div className="bg-card border border-border rounded-xl p-6">
+          <h3 className="text-foreground font-semibold mb-6">Revenue Trend</h3>
+          <div className="flex items-end gap-2 h-48">
+            {stripe.revenueTrend.slice(-6).map((point, idx) => {
+              const maxRevenue = Math.max(
+                ...stripe.revenueTrend!.map((p) => p.revenue)
+              );
+              const heightPercent = (point.revenue / maxRevenue) * 100;
+
+              return (
+                <div key={idx} className="flex-1 flex flex-col items-center gap-2">
+                  <div className="w-full bg-gradient-to-t from-primary/40 to-primary rounded-t-md transition-all duration-300 hover:from-primary/60 hover:to-primary/80"
+                    style={{ height: `${heightPercent}%`, minHeight: "4px" }}
+                  />
+                  <span className="text-xs text-muted-foreground text-center">
+                    {point.month}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
 
-      {/* ── Secondary Panels ──────────────────────── */}
+      {/* Two Column Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Cash Flow Waterfall */}
-        <DashboardSectionCard
-          title="Cash Flow"
-          subtitle="30-day inflows vs outflows"
-        >
-          <ComposedMetric
-            data={cashFlowData}
-            xKey="label"
-            series={[
-              { key: "inflows", type: "bar", color: "#10b981", name: "Inflows" },
-              { key: "outflows", type: "bar", color: "#ef4444", name: "Outflows" },
-            ]}
-            height={240}
-            yLeftFormatter={fmt$}
-            showLegend={true}
-          />
-          {/* Summary stats */}
-          <div className="mt-4 grid grid-cols-3 gap-3">
-            <div className="rounded-lg bg-secondary/40 p-3 text-center">
-              <p className="text-xs text-muted-foreground">Inflows</p>
-              <p className="text-sm font-semibold text-emerald-500">{fmt$(inflows)}</p>
-            </div>
-            <div className="rounded-lg bg-secondary/40 p-3 text-center">
-              <p className="text-xs text-muted-foreground">Outflows</p>
-              <p className="text-sm font-semibold text-red-500">{fmt$(outflows)}</p>
-            </div>
-            <div className="rounded-lg bg-secondary/40 p-3 text-center">
-              <p className="text-xs text-muted-foreground">Burn Rate</p>
-              <p className="text-sm font-semibold text-foreground">{fmt$(burnRate)}/mo</p>
-            </div>
-          </div>
-        </DashboardSectionCard>
-
         {/* Subscription Health */}
-        <DashboardSectionCard title="Subscription Health">
-          <div className="flex items-start gap-6">
-            {/* Donut */}
-            {subSegments.length > 0 && (
-              <div className="flex flex-col items-center gap-2">
-                <DonutChart
-                  segments={subSegments}
-                  size={160}
-                  innerRadius={50}
-                  centerValue={totalSubs.toLocaleString()}
-                  centerLabel="Total"
-                />
-                <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
-                  {subSegments.map((s) => (
-                    <span key={s.name} className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                      <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: s.color }} />
-                      {s.name}
-                    </span>
+        <div className="space-y-6">
+          {/* Payment Success Rate Ring */}
+          <div className="bg-card border border-border rounded-xl p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-foreground font-semibold">Subscription Health</h3>
+              <Activity className="w-5 h-5 text-muted-foreground" />
+            </div>
+
+            <div className="flex items-center justify-center mb-8">
+              <RingStat
+                value={successRate}
+                max={100}
+                label="Payment Success Rate"
+                color="hsl(var(--primary))"
+                size={120}
+              />
+            </div>
+
+            {/* Churn Rate */}
+            <div className="bg-secondary/40 rounded-lg p-4 mb-6">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground text-sm">Churn Rate</span>
+                <span className="text-foreground font-semibold">
+                  {fmtPct(churnRate)}
+                </span>
+              </div>
+            </div>
+
+            {/* Recent Churn Events */}
+            {recentChurns && recentChurns.length > 0 && (
+              <div>
+                <h4 className="text-muted-foreground text-xs font-semibold uppercase mb-3">
+                  Recent Churn
+                </h4>
+                <div className="space-y-3">
+                  {recentChurns.slice(0, 5).map((event, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between py-2 border-b border-border/50 last:border-b-0"
+                    >
+                      <div className="flex-1">
+                        <p className="text-sm text-foreground truncate">
+                          {event.customer}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {event.canceledAt}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-foreground">
+                          {fmt$(event.amount)}
+                        </p>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
             )}
+          </div>
+        </div>
 
-            {/* Key stats + churn list */}
-            <div className="flex-1 space-y-3">
-              <div className="rounded-lg bg-secondary/40 p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Payment Success</span>
-                  <span className="text-sm font-semibold text-foreground">
-                    {fmtPct(successRate)}
-                  </span>
-                </div>
-              </div>
-              <div className="rounded-lg bg-secondary/40 p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Churn Rate</span>
-                  <span className="text-sm font-semibold text-foreground">
-                    {fmtPct(churnRate)}
-                  </span>
-                </div>
-              </div>
+        {/* Bank Accounts */}
+        <div className="bg-card border border-border rounded-xl p-6">
+          <h3 className="text-foreground font-semibold mb-6">Bank Accounts</h3>
 
-              {/* Recent churn events */}
-              {recentChurns.length > 0 && (
-                <div className="pt-1">
-                  <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                    Recent Churn
-                  </h4>
-                  <div className="space-y-2">
-                    {recentChurns.slice(0, 4).map((event, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between text-xs py-1.5 border-b border-border/50 last:border-b-0"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-foreground">{event.customer}</p>
-                          <p className="text-muted-foreground">{event.canceledAt}</p>
-                        </div>
-                        <span className="ml-2 font-medium text-foreground">{fmt$(event.amount)}</span>
-                      </div>
-                    ))}
+          {mercury?.accounts && mercury.accounts.length > 0 ? (
+            <div className="space-y-4">
+              {mercury.accounts.map((account, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between p-4 bg-secondary/40 rounded-lg border border-border/50"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Wallet className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        {account.accountName}
+                      </p>
+                      <p className="text-xs text-muted-foreground capitalize">
+                        {account.type}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-foreground">
+                      {fmt$(account.balance)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {account.accountId}
+                    </p>
                   </div>
                 </div>
-              )}
+              ))}
             </div>
-          </div>
-        </DashboardSectionCard>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              No bank accounts connected
+            </p>
+          )}
+        </div>
       </div>
 
-      {/* ── Bank Accounts ─────────────────────────── */}
-      <DashboardSectionCard title="Bank Accounts" subtitle="Mercury connected accounts">
-        {mercury?.accounts && mercury.accounts.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left">
-                  <th className="pb-2 text-xs font-medium text-muted-foreground">Account</th>
-                  <th className="pb-2 text-xs font-medium text-muted-foreground">Type</th>
-                  <th className="pb-2 text-right text-xs font-medium text-muted-foreground">Balance</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/50">
-                {mercury.accounts.map((account, idx) => (
-                  <tr key={idx} className="hover:bg-secondary/30 transition-colors">
-                    <td className="py-2.5">
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
-                          <Wallet className="h-3.5 w-3.5 text-primary" />
-                        </div>
-                        <span className="font-medium text-foreground">{account.accountName}</span>
-                      </div>
-                    </td>
-                    <td className="py-2.5 capitalize text-muted-foreground">{account.type}</td>
-                    <td className="py-2.5 text-right font-semibold tabular-nums text-foreground">
-                      {fmt$(account.balance)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t border-border">
-                  <td className="pt-2.5 font-medium text-foreground" colSpan={2}>Total</td>
-                  <td className="pt-2.5 text-right font-bold tabular-nums text-foreground">
-                    {fmt$(cashBalance)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+      {/* Cash Flow Mini Stats */}
+      {mercury?.cashFlow && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-card border border-border rounded-xl p-6">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-muted-foreground text-sm font-medium">
+                Inflows (30d)
+              </span>
+              <ArrowDownRight className="w-4 h-4 text-green-600" />
+            </div>
+            <p className="text-2xl font-bold text-foreground">
+              {fmt$(mercury.cashFlow.inflows30d)}
+            </p>
           </div>
-        ) : (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            No bank accounts connected
-          </p>
-        )}
-      </DashboardSectionCard>
+
+          <div className="bg-card border border-border rounded-xl p-6">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-muted-foreground text-sm font-medium">
+                Outflows (30d)
+              </span>
+              <ArrowUpRight className="w-4 h-4 text-red-600" />
+            </div>
+            <p className="text-2xl font-bold text-foreground">
+              {fmt$(mercury.cashFlow.outflows30d)}
+            </p>
+          </div>
+
+          <div className="bg-card border border-border rounded-xl p-6">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-muted-foreground text-sm font-medium">
+                Burn Rate
+              </span>
+              <TrendingDown className="w-4 h-4 text-orange-600" />
+            </div>
+            <p className="text-2xl font-bold text-foreground">
+              {fmt$(mercury.cashFlow.burnRate)}
+              <span className="text-xs text-muted-foreground ml-2">/month</span>
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

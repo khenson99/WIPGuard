@@ -23,9 +23,10 @@ interface CodaColumn {
 
 interface CodaRow {
   id: string;
+  name?: string;
   createdAt?: string;
   updatedAt?: string;
-  values: (string | number | boolean | null | undefined)[];
+  values: Record<string, string | number | boolean | null | undefined>;
 }
 
 interface CodaTablesResponse {
@@ -82,7 +83,7 @@ export async function fetchCodaData(
 
   const tableId = selectedTable.id;
 
-  // Step 3: Get columns to map names
+  // Step 3: Get columns to build a lookup from column name to column ID
   const columnsUrl = `${CODA_API_BASE}/docs/${docId}/tables/${tableId}/columns`;
   const columnsResponse = await fetch(columnsUrl, { headers });
 
@@ -95,21 +96,20 @@ export async function fetchCodaData(
   const columnsData = (await columnsResponse.json()) as CodaColumnsResponse;
   const columns = columnsData.items || [];
 
-  // Build column index map
-  const columnIndexMap: Record<string, number> = {};
-  columns.forEach((col, index) => {
-    columnIndexMap[col.name.toLowerCase()] = index;
+  // Build a map from lowercased column name -> column ID
+  const columnNameToId: Record<string, string> = {};
+  columns.forEach((col) => {
+    columnNameToId[col.name.toLowerCase()] = col.id;
   });
 
-  // Identify special columns
-  const nameColumnIndex =
-    columnIndexMap["name"] ?? columnIndexMap["title"] ?? 0;
-  const statusColumnIndex = columnIndexMap["status"] ?? -1;
-  const priorityColumnIndex = columnIndexMap["priority"] ?? -1;
-  const assigneeColumnIndex = columnIndexMap["assignee"] ?? -1;
+  // Identify special column IDs
+  const nameColumnId = columnNameToId["name"] ?? columnNameToId["title"] ?? null;
+  const statusColumnId = columnNameToId["status"] ?? null;
+  const priorityColumnId = columnNameToId["priority"] ?? null;
+  const assigneeColumnId = columnNameToId["assignee"] ?? null;
 
-  // Step 4: Fetch all rows
-  const rowsUrl = `${CODA_API_BASE}/docs/${docId}/tables/${tableId}/rows?limit=500`;
+  // Step 4: Fetch all rows (values keyed by column ID)
+  const rowsUrl = `${CODA_API_BASE}/docs/${docId}/tables/${tableId}/rows?limit=500&valueFormat=simple`;
   const rowsResponse = await fetch(rowsUrl, { headers });
 
   if (!rowsResponse.ok) {
@@ -121,22 +121,29 @@ export async function fetchCodaData(
   const rowsData = (await rowsResponse.json()) as CodaRowsResponse;
   const rows = rowsData.items || [];
 
-  // Step 5: Map rows to CodaCard objects
+  // Step 5: Map rows to CodaCard objects via column ID lookups
   const cards: CodaCard[] = rows.map((row) => {
-    const name =
-      (row.values[nameColumnIndex] as string | undefined) || `Card ${row.id}`;
-    const status =
-      statusColumnIndex >= 0
-        ? (row.values[statusColumnIndex] as string | undefined) || "Backlog"
-        : "Backlog";
-    const priority =
-      priorityColumnIndex >= 0
-        ? (row.values[priorityColumnIndex] as string | undefined)
-        : undefined;
-    const assignee =
-      assigneeColumnIndex >= 0
-        ? (row.values[assigneeColumnIndex] as string | undefined)
-        : undefined;
+    const values = row.values || {};
+
+    const name = nameColumnId
+      ? String(values[nameColumnId] ?? "") || row.name || `Card ${row.id}`
+      : row.name || `Card ${row.id}`;
+
+    const status = statusColumnId
+      ? String(values[statusColumnId] ?? "") || "Backlog"
+      : "Backlog";
+
+    const priority = priorityColumnId
+      ? values[priorityColumnId] != null
+        ? String(values[priorityColumnId])
+        : undefined
+      : undefined;
+
+    const assignee = assigneeColumnId
+      ? values[assigneeColumnId] != null
+        ? String(values[assigneeColumnId])
+        : undefined
+      : undefined;
 
     return {
       id: row.id,

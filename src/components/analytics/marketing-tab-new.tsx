@@ -1,26 +1,16 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import { AnalyticsDashboardData } from '@/lib/analytics/types';
-import { StatCard } from './stat-card';
-import { DashboardSectionCard } from './dashboard-section-card';
-import { ComposedMetric, StackedBarChart } from '@/components/charts';
-import {
-  MousePointerClick,
-  TrendingUp,
-  DollarSign,
-  BarChart3,
-  Facebook,
-  Layout,
-  Target,
-  Percent,
-} from 'lucide-react';
 
 interface MarketingTabNewProps {
   data: AnalyticsDashboardData | null;
 }
 
-// ── Helper functions ─────────────────────────────────────
+/* ------------------------------------------------------------------ */
+/*  Formatters                                                         */
+/* ------------------------------------------------------------------ */
+
 function fmtCurrency(n: number | null | undefined): string {
   if (n == null) return '$0';
   if (n >= 1000000) return `$${(n / 1000000).toFixed(2)}M`;
@@ -30,9 +20,9 @@ function fmtCurrency(n: number | null | undefined): string {
 
 function fmtNum(n: number | null | undefined): string {
   if (n == null) return '0';
-  if (n >= 1000000) return `${(n / 1000000).toFixed(2)}M`;
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
-  return n.toFixed(0);
+  return n.toLocaleString();
 }
 
 function fmtPct(n: number | null | undefined): string {
@@ -41,10 +31,10 @@ function fmtPct(n: number | null | undefined): string {
 }
 
 function fmtDuration(secs: number | null | undefined): string {
-  if (secs == null) return '0:00';
+  if (secs == null) return '0m 00s';
   const mins = Math.floor(secs / 60);
   const seconds = Math.floor(secs % 60);
-  return `${mins}:${seconds.toString().padStart(2, '0')}`;
+  return `${mins}m ${seconds.toString().padStart(2, '0')}s`;
 }
 
 function calculateChange(
@@ -55,698 +45,805 @@ function calculateChange(
   return ((current - previous) / previous) * 100;
 }
 
-// ── Channel colour map ───────────────────────────────────
+/* ------------------------------------------------------------------ */
+/*  Tiny reusable pieces                                               */
+/* ------------------------------------------------------------------ */
+
+/** Colored trend badge (↑ / ↓) */
+function TrendBadge({ value }: { value: number | undefined }) {
+  if (value == null) return null;
+  const up = value >= 0;
+  return (
+    <span
+      className={`mt-1.5 inline-flex items-center gap-0.5 rounded px-2 py-0.5 text-[11px] font-semibold ${
+        up
+          ? 'bg-emerald-500/12 text-emerald-400'
+          : 'bg-red-500/12 text-red-400'
+      }`}
+    >
+      {up ? '↑' : '↓'} {Math.abs(value).toFixed(1)}%
+    </span>
+  );
+}
+
+/** KPI card matching the example dashboard style */
+function KpiCard({
+  label,
+  value,
+  sub,
+  change,
+  valueColor,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  change?: number;
+  valueColor?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card px-5 py-4">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <p
+        className="mt-1 text-2xl font-bold tabular-nums"
+        style={valueColor ? { color: valueColor } : undefined}
+      >
+        {value}
+      </p>
+      {sub && (
+        <p className="mt-0.5 text-[11px] text-muted-foreground">{sub}</p>
+      )}
+      <TrendBadge value={change} />
+    </div>
+  );
+}
+
+/** Integration status dot */
+function IntDot({ status }: { status: 'connected' | 'partial' | 'error' | 'pending' }) {
+  const cls: Record<string, string> = {
+    connected: 'bg-emerald-500 shadow-[0_0_6px_theme(colors.emerald.500)]',
+    partial: 'bg-amber-500 shadow-[0_0_6px_theme(colors.amber.500)]',
+    error: 'bg-red-500',
+    pending: 'bg-zinc-500',
+  };
+  return <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${cls[status]}`} />;
+}
+
+/** Integration mini-card */
+function IntCard({
+  name,
+  status,
+  detail,
+}: {
+  name: string;
+  status: 'connected' | 'partial' | 'error' | 'pending';
+  detail: string;
+}) {
+  return (
+    <div className="flex items-center gap-2.5 rounded-lg border border-border bg-card px-4 py-3">
+      <IntDot status={status} />
+      <div className="min-w-0">
+        <p className="text-[13px] font-semibold text-foreground">{name}</p>
+        <p className="truncate text-[11px] text-muted-foreground">{detail}</p>
+      </div>
+    </div>
+  );
+}
+
+/** Section heading with emoji icon */
+function SectionTitle({ icon, children }: { icon: string; children: React.ReactNode }) {
+  return (
+    <h3 className="mb-4 flex items-center gap-2 text-base font-bold text-foreground">
+      <span className="text-lg">{icon}</span>
+      {children}
+    </h3>
+  );
+}
+
+/** Channel row card (used in Traffic Acquisition) */
+function ChannelRow({
+  channel,
+  sessions,
+  engagementRate,
+  avgTime,
+  color,
+  maxSessions,
+}: {
+  channel: string;
+  sessions: number;
+  engagementRate?: number;
+  avgTime?: number;
+  color: string;
+  maxSessions: number;
+}) {
+  const pct = maxSessions > 0 ? (sessions / maxSessions) * 100 : 0;
+  return (
+    <div className="group rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:border-primary/30">
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-sm font-semibold text-foreground">{channel}</span>
+        <span className="tabular-nums text-sm font-bold text-foreground">
+          {fmtNum(sessions)}
+        </span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+        <div
+          className="h-full rounded-full transition-all duration-500"
+          style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }}
+        />
+      </div>
+      <div className="mt-1.5 flex gap-4 text-[11px] text-muted-foreground">
+        {engagementRate != null && (
+          <span>
+            Eng.{' '}
+            <span
+              className={
+                engagementRate >= 45
+                  ? 'font-semibold text-emerald-400'
+                  : engagementRate < 28
+                    ? 'font-semibold text-red-400'
+                    : ''
+              }
+            >
+              {engagementRate.toFixed(1)}%
+            </span>
+          </span>
+        )}
+        {avgTime != null && <span>Avg {fmtDuration(avgTime)}</span>}
+      </div>
+    </div>
+  );
+}
+
+/** Campaign table row */
+function CampaignTable({
+  title,
+  campaigns,
+  showConversions,
+}: {
+  title: string;
+  campaigns: Array<{
+    name: string;
+    spend: number;
+    impressions?: number;
+    clicks: number;
+    conversions?: number;
+    ctr?: number;
+    cpc?: number;
+  }>;
+  showConversions?: boolean;
+}) {
+  if (!campaigns || campaigns.length === 0) return null;
+  return (
+    <div className="rounded-xl border border-border bg-card p-5">
+      <p className="mb-3 text-sm font-bold text-foreground">{title}</p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr className="border-b-2 border-border">
+              <th className="pb-2 pr-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Campaign
+              </th>
+              <th className="pb-2 px-2 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Spend
+              </th>
+              <th className="pb-2 px-2 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Clicks
+              </th>
+              {showConversions && (
+                <th className="pb-2 px-2 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Conv.
+                </th>
+              )}
+              <th className="pb-2 pl-2 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                CTR
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {campaigns.slice(0, 8).map((c, i) => (
+              <tr
+                key={i}
+                className="border-b border-border/50 transition-colors hover:bg-primary/[0.04]"
+              >
+                <td className="py-2 pr-4 font-medium text-foreground">
+                  <span className="line-clamp-1">{c.name}</span>
+                </td>
+                <td className="py-2 px-2 text-right tabular-nums text-foreground">
+                  {fmtCurrency(c.spend)}
+                </td>
+                <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">
+                  {fmtNum(c.clicks)}
+                </td>
+                {showConversions && (
+                  <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">
+                    {fmtNum(c.conversions)}
+                  </td>
+                )}
+                <td className="py-2 pl-2 text-right tabular-nums text-muted-foreground">
+                  {c.ctr != null ? fmtPct(c.ctr) : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Palette (matches example dashboard CSS vars)                       */
+/* ------------------------------------------------------------------ */
+
+const COLOR = {
+  green: '#22c55e',
+  red: '#ef4444',
+  blue: '#3b82f6',
+  cyan: '#06b6d4',
+  purple: '#a855f7',
+  pink: '#ec4899',
+  accent: '#818cf8',
+  orange: '#f97316',
+  yellow: '#eab308',
+} as const;
+
 const CHANNEL_COLORS: Record<string, string> = {
-  direct: '#3b82f6',
-  organic: '#10b981',
-  referral: '#f59e0b',
-  paid: '#ef4444',
-  social: '#8b5cf6',
-  email: '#06b6d4',
+  direct: COLOR.blue,
+  organic: COLOR.green,
+  'organic search': COLOR.green,
+  referral: COLOR.yellow,
+  paid: COLOR.red,
+  'paid search': COLOR.red,
+  'paid social': COLOR.pink,
+  social: COLOR.purple,
+  'organic social': COLOR.purple,
+  email: COLOR.cyan,
+  reddit: COLOR.orange,
 };
 
-const PLATFORM_COLORS = ['#FC5A29', '#3b82f6', '#10b981'];
+/* ------------------------------------------------------------------ */
+/*  Main Component                                                     */
+/* ------------------------------------------------------------------ */
 
-// ── Component ────────────────────────────────────────────
 export function MarketingTabNew({ data }: MarketingTabNewProps) {
-  const [adPlatformTab, setAdPlatformTab] = useState('google');
-
   if (!data) {
     return (
-      <div className="flex items-center justify-center h-96 bg-card border border-border rounded-xl">
+      <div className="flex h-96 items-center justify-center rounded-xl border border-border bg-card">
         <div className="text-center">
-          <BarChart3 className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <p className="text-3xl mb-3">📊</p>
           <p className="text-muted-foreground">No analytics data available</p>
         </div>
       </div>
     );
   }
 
-  // ── Data extraction ──────────────────────────────────
-  const ga = data.googleAnalytics;
   const googleAds = data.googleAds;
   const metaAds = data.metaAds;
   const redditAds = data.redditAds;
   const metaPage = data.metaPage;
   const webflow = data.webflow;
+  const ga = data.googleAnalytics;
   const semrush = data.semrush;
 
-  // ── Signal detection ─────────────────────────────────
-  const gaConfigured = Boolean(ga);
+  /* --- Signal detection (unchanged logic) --- */
   const hasGASignal = Boolean(
-    ga &&
-      (ga.sessions30d > 0 ||
-        ga.users30d > 0 ||
-        ga.pageviews30d > 0 ||
-        ga.trafficByChannel.length > 0 ||
-        ga.topPages.length > 0),
+    ga && (ga.sessions30d > 0 || ga.users30d > 0 || ga.pageviews30d > 0 || ga.trafficByChannel.length > 0 || ga.topPages.length > 0),
   );
-
-  const googleAdsConfigured = Boolean(googleAds);
-  const metaAdsConfigured = Boolean(metaAds);
-  const redditAdsConfigured = Boolean(redditAds);
-
   const hasGoogleAdsSignal = Boolean(
-    googleAds &&
-      (googleAds.totalSpend30d > 0 ||
-        googleAds.totalImpressions > 0 ||
-        googleAds.totalClicks > 0 ||
-        googleAds.totalConversions > 0 ||
-        googleAds.campaigns.length > 0),
+    googleAds && (googleAds.totalSpend30d > 0 || googleAds.totalImpressions > 0 || googleAds.totalClicks > 0 || googleAds.totalConversions > 0 || googleAds.campaigns.length > 0),
   );
-
   const hasMetaAdsSignal = Boolean(
-    metaAds &&
-      (metaAds.totalSpend30d > 0 ||
-        metaAds.totalImpressions > 0 ||
-        metaAds.totalClicks > 0 ||
-        metaAds.totalConversions > 0 ||
-        metaAds.campaigns.length > 0),
+    metaAds && (metaAds.totalSpend30d > 0 || metaAds.totalImpressions > 0 || metaAds.totalClicks > 0 || metaAds.totalConversions > 0 || metaAds.campaigns.length > 0),
   );
-
   const hasRedditAdsSignal = Boolean(
-    redditAds &&
-      (redditAds.totalSpend30d > 0 ||
-        redditAds.totalImpressions > 0 ||
-        redditAds.totalClicks > 0 ||
-        redditAds.campaigns.length > 0),
+    redditAds && (redditAds.totalSpend30d > 0 || redditAds.totalImpressions > 0 || redditAds.totalClicks > 0 || redditAds.campaigns.length > 0),
   );
-
-  const hasAnyAdsConfigured = googleAdsConfigured || metaAdsConfigured || redditAdsConfigured;
-  const hasAnyAdsSignal = hasGoogleAdsSignal || hasMetaAdsSignal || hasRedditAdsSignal;
-
   const hasMetaPageSignal = Boolean(
-    metaPage &&
-      (metaPage.pageLikes > 0 ||
-        metaPage.pageFollowers > 0 ||
-        metaPage.postReach30d > 0 ||
-        metaPage.postEngagement30d > 0 ||
-        metaPage.topPosts.length > 0),
+    metaPage && (metaPage.pageLikes > 0 || metaPage.pageFollowers > 0 || metaPage.postReach30d > 0 || metaPage.postEngagement30d > 0 || metaPage.topPosts.length > 0),
   );
-
   const hasWebflowSignal = Boolean(
-    webflow &&
-      (webflow.totalPages > 0 ||
-        webflow.totalCollections > 0 ||
-        webflow.formSubmissions.length > 0 ||
-        webflow.customDomains.length > 0 ||
-        Boolean(webflow.siteName) ||
-        Boolean(webflow.lastPublished)),
+    webflow && (webflow.totalPages > 0 || webflow.totalCollections > 0 || webflow.formSubmissions.length > 0 || webflow.customDomains.length > 0 || Boolean(webflow.siteName) || Boolean(webflow.lastPublished)),
   );
 
-  // ── KPI computations ────────────────────────────────
-  const sessions30d = ga?.sessions30d ?? 0;
-  const sessionsPrev30d = ga?.sessionsPrev30d ?? 0;
+  /* --- Computed metrics --- */
+  const sessions30d = ga?.sessions30d || 0;
+  const sessionsPrev30d = ga?.sessionsPrev30d || 0;
   const sessionsChange = calculateChange(sessions30d, sessionsPrev30d);
 
-  const bounceRate = ga?.bounceRate ?? 0;
-
-  const googleSpend = googleAds?.totalSpend30d ?? 0;
-  const metaSpend = metaAds?.totalSpend30d ?? 0;
-  const redditSpend = redditAds?.totalSpend30d ?? 0;
+  const googleSpend = googleAds?.totalSpend30d || 0;
+  const metaSpend = metaAds?.totalSpend30d || 0;
+  const redditSpend = redditAds?.totalSpend30d || 0;
   const totalAdSpend = googleSpend + metaSpend + redditSpend;
 
-  const googleConversions = googleAds?.totalConversions ?? 0;
-  const metaConversions = metaAds?.totalConversions ?? 0;
+  const googleConversions = googleAds?.totalConversions || 0;
+  const metaConversions = metaAds?.totalConversions || 0;
   const totalConversions = googleConversions + metaConversions;
 
-  // Weighted CPC
-  const googleClicks = googleAds?.totalClicks ?? 0;
-  const metaClicks = metaAds?.totalClicks ?? 0;
-  const redditClicks = redditAds?.totalClicks ?? 0;
-  const totalClicks = googleClicks + metaClicks + redditClicks;
-  const weightedCPC = totalClicks > 0 ? totalAdSpend / totalClicks : 0;
+  const trafficByChannel = ga?.trafficByChannel || [];
+  const topPages = ga?.topPages || [];
+  const maxChannelSessions = Math.max(...trafficByChannel.map((c) => c.sessions || 0), 1);
 
-  // Weighted ROAS (only Google has roas field; approximate with revenue / spend)
-  const weightedROAS = googleAds?.roas ?? 0;
+  /* --- Integration statuses --- */
+  const integrations: Array<{ name: string; status: 'connected' | 'partial' | 'error' | 'pending'; detail: string }> = [
+    {
+      name: 'Google Analytics',
+      status: ga ? (hasGASignal ? 'connected' : 'partial') : 'pending',
+      detail: ga ? (hasGASignal ? `${fmtNum(sessions30d)} sessions (30d)` : 'No data in range') : 'Not configured',
+    },
+    {
+      name: 'Google Ads',
+      status: googleAds ? (hasGoogleAdsSignal ? 'connected' : 'partial') : 'pending',
+      detail: googleAds ? (hasGoogleAdsSignal ? `${fmtCurrency(googleSpend)} spend · ${fmtNum(googleAds.totalClicks)} clicks` : 'No data in range') : 'Not configured',
+    },
+    {
+      name: 'Meta Ads',
+      status: metaAds ? (hasMetaAdsSignal ? 'connected' : 'partial') : 'pending',
+      detail: metaAds ? (hasMetaAdsSignal ? `${fmtCurrency(metaSpend)} spend · ${fmtNum(metaAds.totalClicks)} clicks` : 'No data in range') : 'Not configured',
+    },
+    {
+      name: 'Meta Page',
+      status: metaPage ? (hasMetaPageSignal ? 'connected' : 'partial') : 'pending',
+      detail: metaPage ? (hasMetaPageSignal ? `${fmtNum(metaPage.pageFollowers)} followers` : 'No data in range') : 'Not configured',
+    },
+    {
+      name: 'Reddit Ads',
+      status: redditAds ? (hasRedditAdsSignal ? 'connected' : 'partial') : 'pending',
+      detail: redditAds ? (hasRedditAdsSignal ? `${fmtCurrency(redditSpend)} spend` : 'GA4 attribution only') : 'Not configured',
+    },
+    {
+      name: 'Webflow',
+      status: webflow ? (hasWebflowSignal ? 'connected' : 'partial') : 'pending',
+      detail: webflow ? (hasWebflowSignal ? `${webflow.siteName || 'Site'} · ${webflow.totalPages || 0} pages` : 'No data in range') : 'Not configured',
+    },
+    {
+      name: 'SEMrush',
+      status: semrush ? 'connected' : 'pending',
+      detail: semrush ? `Authority ${semrush.authorityScore} · ${fmtNum(semrush.organicKeywords)} keywords` : 'Not configured',
+    },
+  ];
 
-  // SparkLine data from GA daily trend
-  const dailyTrend = ga?.dailyTrend ?? [];
-  const sessionSparkData = dailyTrend.map((d) => d.sessions);
-
-  // ── Hero chart data: sessions area + conversions line ──
-  // Generate a parallel "conversions" estimate spread across the 30-day window
-  const heroChartData = dailyTrend.map((d, i) => {
-    // Evenly spread total conversions across days for the overlay line
-    const dailyConversions =
-      totalConversions > 0 && dailyTrend.length > 0
-        ? Math.round(
-            (totalConversions / dailyTrend.length) *
-              (0.8 + 0.4 * Math.sin((i / Math.max(dailyTrend.length - 1, 1)) * Math.PI)),
-          )
-        : 0;
-    return {
-      date: d.date.slice(5), // MM-DD
-      sessions: d.sessions,
-      conversions: dailyConversions,
-    };
-  });
-
-  // ── Channel performance chart data ──────────────────
-  const trafficByChannel = ga?.trafficByChannel ?? [];
-  const channelKeys = trafficByChannel.map((c) => c.channel?.toLowerCase() ?? 'unknown');
-  const channelChartData = trafficByChannel.length
-    ? [
-        trafficByChannel.reduce(
-          (acc, c) => {
-            acc[c.channel?.toLowerCase() ?? 'unknown'] = c.sessions;
-            return acc;
-          },
-          { label: 'Sessions' } as Record<string, unknown>,
-        ),
-      ]
-    : [];
-  const channelBarColors = channelKeys.map((k) => CHANNEL_COLORS[k] ?? '#6b7280');
-
-  // ── Ad spend by platform chart data ─────────────────
-  const adSpendChartData =
-    hasAnyAdsSignal
-      ? [{ label: 'Spend', google: googleSpend, meta: metaSpend, reddit: redditSpend }]
-      : [];
-
-  // ── Top pages ───────────────────────────────────────
-  const topPages = ga?.topPages ?? [];
-
-  // ── Campaign tables ─────────────────────────────────
-  const renderCampaignTable = (
-    campaigns: { name: string; spend: number; impressions: number; clicks: number; conversions: number; ctr: number; cpc: number }[],
-  ) => (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border">
-            <th className="text-left py-2 text-muted-foreground font-medium">Campaign</th>
-            <th className="text-right py-2 text-muted-foreground font-medium">Spend</th>
-            <th className="text-right py-2 text-muted-foreground font-medium">Clicks</th>
-            <th className="text-right py-2 text-muted-foreground font-medium">Conv.</th>
-            <th className="text-right py-2 text-muted-foreground font-medium">CPC</th>
-          </tr>
-        </thead>
-        <tbody>
-          {campaigns.slice(0, 8).map((c, idx) => (
-            <tr key={idx} className="border-b border-border/50">
-              <td className="py-2 text-foreground truncate max-w-[180px]">{c.name}</td>
-              <td className="py-2 text-right text-foreground font-medium">{fmtCurrency(c.spend)}</td>
-              <td className="py-2 text-right text-muted-foreground">{fmtNum(c.clicks)}</td>
-              <td className="py-2 text-right text-muted-foreground">{fmtNum(c.conversions)}</td>
-              <td className="py-2 text-right text-muted-foreground">{fmtCurrency(c.cpc)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+  const connectedCount = integrations.filter((i) => i.status === 'connected').length;
 
   return (
-    <div className="space-y-6">
-      {/* ═══ 1. KPI Strip ═══ */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <StatCard
-          label="Sessions (30d)"
-          value={!gaConfigured ? 'N/A' : hasGASignal ? fmtNum(sessions30d) : 'No data'}
-          change={
-            !gaConfigured || !hasGASignal || sessionsChange == null
-              ? undefined
-              : fmtPct(sessionsChange)
-          }
-          changeType={
-            sessionsChange == null ? 'neutral' : sessionsChange > 0 ? 'positive' : 'negative'
-          }
-          subtitle={
-            !gaConfigured
-              ? 'Google Analytics'
-              : !hasGASignal
-                ? 'No GA data in range'
-                : undefined
-          }
-          icon={TrendingUp}
-          trend={
-            sessionSparkData.length >= 2 ? { data: sessionSparkData, color: '#10b981' } : undefined
-          }
-        />
-        <StatCard
-          label="Bounce Rate"
-          value={!gaConfigured ? 'N/A' : hasGASignal ? fmtPct(bounceRate) : 'No data'}
-          icon={Percent}
-        />
-        <StatCard
-          label="Total Ad Spend"
-          value={
-            !hasAnyAdsConfigured ? 'N/A' : hasAnyAdsSignal ? fmtCurrency(totalAdSpend) : 'No data'
-          }
-          subtitle={
-            !hasAnyAdsConfigured
-              ? 'Google + Meta + Reddit'
-              : hasAnyAdsSignal
-                ? 'Google + Meta + Reddit'
-                : 'No ad spend in range'
-          }
-          icon={DollarSign}
-        />
-        <StatCard
-          label="Conversions"
-          value={
-            !hasAnyAdsConfigured
-              ? 'N/A'
-              : hasAnyAdsSignal
-                ? fmtNum(totalConversions)
-                : 'No data'
-          }
-          subtitle={
-            !hasAnyAdsConfigured
-              ? 'Google + Meta'
-              : hasAnyAdsSignal
-                ? 'Google + Meta'
-                : 'No data in range'
-          }
-          icon={MousePointerClick}
-        />
-        <StatCard
-          label="CPC (weighted)"
-          value={
-            !hasAnyAdsConfigured ? 'N/A' : hasAnyAdsSignal ? fmtCurrency(weightedCPC) : 'No data'
-          }
-          icon={Target}
-        />
-        <StatCard
-          label="ROAS"
-          value={
-            !googleAdsConfigured
-              ? 'N/A'
-              : hasGoogleAdsSignal
-                ? `${weightedROAS.toFixed(2)}x`
-                : 'No data'
-          }
-          icon={TrendingUp}
-        />
-      </div>
+    <div className="space-y-8">
 
-      {/* ═══ 2. Hero Chart: Sessions + Conversions Composed ═══ */}
-      {heroChartData.length > 0 && (
-        <div className="rounded-xl border border-border bg-card p-5">
-          <h3 className="text-sm font-semibold text-foreground mb-4">
-            Sessions & Conversions (30d)
-          </h3>
-          <ComposedMetric
-            data={heroChartData}
-            xKey="date"
-            series={[
-              { key: 'sessions', type: 'area', color: '#10b981', yAxisId: 'left', name: 'Sessions' },
-              { key: 'conversions', type: 'line', color: '#FC5A29', yAxisId: 'right', name: 'Conversions' },
-            ]}
-            height={300}
-            yLeftFormatter={(v) => fmtNum(v)}
-            yRightFormatter={(v) => fmtNum(v)}
-            showLegend
+      {/* ── Data Sources ────────────────────────────────────── */}
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <SectionTitle icon="🔗">Data Sources</SectionTitle>
+          <span className="rounded-full bg-emerald-500/12 px-3 py-1 text-[11px] font-semibold text-emerald-400">
+            ● {connectedCount} Connected
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+          {integrations.map((int) => (
+            <IntCard key={int.name} {...int} />
+          ))}
+        </div>
+      </section>
+
+      {/* ── Top-Line KPIs ───────────────────────────────────── */}
+      <section>
+        <SectionTitle icon="📈">Key Performance Indicators</SectionTitle>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <KpiCard
+            label="Sessions (30d)"
+            value={hasGASignal ? fmtNum(sessions30d) : ga ? 'No data' : '—'}
+            sub={ga ? (hasGASignal ? 'Google Analytics' : 'No data in range') : 'Not configured'}
+            change={sessionsChange}
+            valueColor={hasGASignal ? COLOR.blue : undefined}
+          />
+          <KpiCard
+            label="Total Ad Spend"
+            value={totalAdSpend > 0 ? fmtCurrency(totalAdSpend) : googleAds || metaAds || redditAds ? 'No data' : '—'}
+            sub={
+              totalAdSpend > 0
+                ? [googleSpend > 0 && 'Google', metaSpend > 0 && 'Meta', redditSpend > 0 && 'Reddit'].filter(Boolean).join(' + ')
+                : 'Not configured'
+            }
+            valueColor={totalAdSpend > 0 ? COLOR.red : undefined}
+          />
+          <KpiCard
+            label="Total Conversions"
+            value={totalConversions > 0 ? fmtNum(totalConversions) : googleAds || metaAds ? 'No data' : '—'}
+            sub={totalConversions > 0 ? 'Google + Meta' : 'Not configured'}
+            valueColor={totalConversions > 0 ? COLOR.green : undefined}
+          />
+          <KpiCard
+            label="Page Followers"
+            value={hasMetaPageSignal ? fmtNum(metaPage!.pageFollowers) : metaPage ? 'No data' : '—'}
+            sub={hasMetaPageSignal ? 'Meta Page' : 'Not configured'}
+            valueColor={hasMetaPageSignal ? COLOR.purple : undefined}
+          />
+          <KpiCard
+            label="Authority Score"
+            value={semrush ? String(semrush.authorityScore) : '—'}
+            sub={semrush ? `${fmtNum(semrush.organicKeywords)} organic keywords` : 'SEMrush not configured'}
+            valueColor={semrush ? COLOR.accent : undefined}
           />
         </div>
-      )}
+      </section>
 
-      {/* ═══ 3. Secondary Panels (two-column grid) ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* ── Channel Performance ── */}
-        <DashboardSectionCard title="Channel Performance" subtitle="Traffic by source">
-          {!gaConfigured ? (
-            <p className="text-muted-foreground text-center py-8">Not configured</p>
-          ) : channelChartData.length > 0 ? (
-            <StackedBarChart
-              data={channelChartData}
-              xKey="label"
-              barKeys={channelKeys}
-              colors={channelBarColors}
-              height={220}
-              yFormatter={(v) => fmtNum(v)}
-              stacked
-              layout="vertical"
-              showLegend
-            />
-          ) : (
-            <p className="text-muted-foreground text-center py-8">No traffic data in range</p>
-          )}
-        </DashboardSectionCard>
-
-        {/* ── Ad Spend by Platform ── */}
-        <DashboardSectionCard title="Ad Spend by Platform" subtitle="Google / Meta / Reddit">
-          {!hasAnyAdsConfigured ? (
-            <p className="text-muted-foreground text-center py-8">Not configured</p>
-          ) : adSpendChartData.length > 0 ? (
-            <StackedBarChart
-              data={adSpendChartData}
-              xKey="label"
-              barKeys={['google', 'meta', 'reddit']}
-              colors={PLATFORM_COLORS}
-              height={220}
-              yFormatter={(v) => fmtCurrency(v)}
-              stacked
-              layout="vertical"
-              showLegend
-            />
-          ) : (
-            <p className="text-muted-foreground text-center py-8">No ad spend in range</p>
-          )}
-        </DashboardSectionCard>
-      </div>
-
-      {/* ── Platform Deep-Dive (tabbed) ── */}
-      <DashboardSectionCard
-        title="Platform Deep-Dive"
-        subtitle="Campaign performance by platform"
-        tabs={[
-          { id: 'google', label: 'Google Ads' },
-          { id: 'meta', label: 'Meta Ads' },
-          { id: 'reddit', label: 'Reddit Ads' },
-        ]}
-        activeTab={adPlatformTab}
-        onTabChange={setAdPlatformTab}
-      >
-        {adPlatformTab === 'google' && (
-          <>
-            {!googleAds ? (
-              <p className="text-muted-foreground text-center py-6">Not configured</p>
-            ) : !hasGoogleAdsSignal ? (
-              <p className="text-muted-foreground text-center py-6">
-                No Google Ads data in selected range
-              </p>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="bg-secondary/40 rounded-lg p-3">
-                    <p className="text-xs text-muted-foreground mb-1">Spend</p>
-                    <p className="text-lg font-semibold text-foreground">
-                      {fmtCurrency(googleAds.totalSpend30d)}
-                    </p>
-                  </div>
-                  <div className="bg-secondary/40 rounded-lg p-3">
-                    <p className="text-xs text-muted-foreground mb-1">Impressions</p>
-                    <p className="text-lg font-semibold text-foreground">
-                      {fmtNum(googleAds.totalImpressions)}
-                    </p>
-                  </div>
-                  <div className="bg-secondary/40 rounded-lg p-3">
-                    <p className="text-xs text-muted-foreground mb-1">CTR</p>
-                    <p className="text-lg font-semibold text-foreground">
-                      {fmtPct(googleAds.ctr)}
-                    </p>
-                  </div>
-                  <div className="bg-secondary/40 rounded-lg p-3">
-                    <p className="text-xs text-muted-foreground mb-1">ROAS</p>
-                    <p className="text-lg font-semibold text-foreground">
-                      {googleAds.roas?.toFixed(2)}x
-                    </p>
-                  </div>
-                </div>
-                {googleAds.campaigns.length > 0 && renderCampaignTable(googleAds.campaigns)}
-              </div>
-            )}
-          </>
-        )}
-
-        {adPlatformTab === 'meta' && (
-          <>
-            {!metaAds ? (
-              <p className="text-muted-foreground text-center py-6">Not configured</p>
-            ) : !hasMetaAdsSignal ? (
-              <p className="text-muted-foreground text-center py-6">
-                No Meta Ads data in selected range
-              </p>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="bg-secondary/40 rounded-lg p-3">
-                    <p className="text-xs text-muted-foreground mb-1">Spend</p>
-                    <p className="text-lg font-semibold text-foreground">
-                      {fmtCurrency(metaAds.totalSpend30d)}
-                    </p>
-                  </div>
-                  <div className="bg-secondary/40 rounded-lg p-3">
-                    <p className="text-xs text-muted-foreground mb-1">Impressions</p>
-                    <p className="text-lg font-semibold text-foreground">
-                      {fmtNum(metaAds.totalImpressions)}
-                    </p>
-                  </div>
-                  <div className="bg-secondary/40 rounded-lg p-3">
-                    <p className="text-xs text-muted-foreground mb-1">CTR</p>
-                    <p className="text-lg font-semibold text-foreground">
-                      {fmtPct(metaAds.ctr)}
-                    </p>
-                  </div>
-                  <div className="bg-secondary/40 rounded-lg p-3">
-                    <p className="text-xs text-muted-foreground mb-1">CPA</p>
-                    <p className="text-lg font-semibold text-foreground">
-                      {fmtCurrency(metaAds.cpa)}
-                    </p>
-                  </div>
-                </div>
-                {metaAds.campaigns.length > 0 && renderCampaignTable(metaAds.campaigns)}
-              </div>
-            )}
-          </>
-        )}
-
-        {adPlatformTab === 'reddit' && (
-          <>
-            {!redditAds ? (
-              <p className="text-muted-foreground text-center py-6">Not configured</p>
-            ) : !hasRedditAdsSignal ? (
-              <p className="text-muted-foreground text-center py-6">
-                No Reddit Ads data in selected range
-              </p>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <div className="bg-secondary/40 rounded-lg p-3">
-                    <p className="text-xs text-muted-foreground mb-1">Spend</p>
-                    <p className="text-lg font-semibold text-foreground">
-                      {fmtCurrency(redditAds.totalSpend30d)}
-                    </p>
-                  </div>
-                  <div className="bg-secondary/40 rounded-lg p-3">
-                    <p className="text-xs text-muted-foreground mb-1">Impressions</p>
-                    <p className="text-lg font-semibold text-foreground">
-                      {fmtNum(redditAds.totalImpressions)}
-                    </p>
-                  </div>
-                  <div className="bg-secondary/40 rounded-lg p-3">
-                    <p className="text-xs text-muted-foreground mb-1">CTR</p>
-                    <p className="text-lg font-semibold text-foreground">
-                      {fmtPct(redditAds.ctr)}
-                    </p>
-                  </div>
-                </div>
-                {redditAds.campaigns.length > 0 &&
-                  renderCampaignTable(
-                    redditAds.campaigns.map((c) => ({ ...c, conversions: 0 })),
-                  )}
-              </div>
-            )}
-          </>
-        )}
-      </DashboardSectionCard>
-
-      {/* ── Top Landing Pages ── */}
-      <DashboardSectionCard title="Top Landing Pages" subtitle="By pageviews">
-        {!gaConfigured ? (
-          <p className="text-muted-foreground text-center py-8">Not configured</p>
-        ) : topPages.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left py-2 text-muted-foreground font-medium">Page</th>
-                  <th className="text-right py-2 text-muted-foreground font-medium">Views</th>
-                  <th className="text-right py-2 text-muted-foreground font-medium">Avg Duration</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topPages.slice(0, 8).map((page, idx) => (
-                  <tr key={idx} className="border-b border-border/50">
-                    <td className="py-2 text-foreground truncate max-w-[260px]">
-                      {page.path || 'Unknown'}
-                    </td>
-                    <td className="py-2 text-right text-foreground font-medium">
-                      {fmtNum(page.pageviews)}
-                    </td>
-                    <td className="py-2 text-right text-muted-foreground">
-                      {fmtDuration(page.avgDuration)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="text-muted-foreground text-center py-8">No page data in range</p>
-        )}
-      </DashboardSectionCard>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* ── SEO Intelligence ── */}
-        <DashboardSectionCard title="SEO Intelligence" subtitle="SEMrush data">
-          {semrush ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-secondary/40 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Authority Score</p>
-                  <p className="text-lg font-semibold text-foreground">
-                    {semrush.authorityScore}
+      {/* ── Website Traffic ─────────────────────────────────── */}
+      {ga && (
+        <section>
+          <SectionTitle icon="🌐">Website Traffic — Channel Breakdown</SectionTitle>
+          {hasGASignal ? (
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+              {/* Channel cards (3 cols) */}
+              <div className="space-y-2.5 lg:col-span-3">
+                {trafficByChannel.length > 0 ? (
+                  trafficByChannel.map((ch, i) => (
+                    <ChannelRow
+                      key={i}
+                      channel={ch.channel || 'Unknown'}
+                      sessions={ch.sessions || 0}
+                      engagementRate={(ch as unknown as Record<string, unknown>).engagementRate as number | undefined}
+                      avgTime={(ch as unknown as Record<string, unknown>).avgSessionDuration as number | undefined}
+                      color={CHANNEL_COLORS[ch.channel?.toLowerCase()] || '#6b7280'}
+                      maxSessions={maxChannelSessions}
+                    />
+                  ))
+                ) : (
+                  <p className="py-8 text-center text-sm text-muted-foreground">
+                    No channel data in selected range
                   </p>
-                </div>
-                <div className="bg-secondary/40 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Backlinks</p>
-                  <p className="text-lg font-semibold text-foreground">
-                    {fmtNum(semrush.backlinks)}
-                  </p>
-                </div>
-                <div className="bg-secondary/40 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Organic Keywords</p>
-                  <p className="text-lg font-semibold text-foreground">
-                    {fmtNum(semrush.organicKeywords)}
-                  </p>
-                </div>
-                <div className="bg-secondary/40 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Organic Traffic</p>
-                  <p className="text-lg font-semibold text-foreground">
-                    {fmtNum(semrush.organicTraffic)}
-                  </p>
-                </div>
+                )}
               </div>
 
-              {semrush.topKeywords && semrush.topKeywords.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">
-                    Top Keywords
-                  </p>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-border">
-                          <th className="text-left py-1.5 text-muted-foreground font-medium">
-                            Keyword
-                          </th>
-                          <th className="text-right py-1.5 text-muted-foreground font-medium">
-                            Pos
-                          </th>
-                          <th className="text-right py-1.5 text-muted-foreground font-medium">
-                            Vol
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {semrush.topKeywords.slice(0, 5).map((kw, idx) => (
-                          <tr key={idx} className="border-b border-border/50">
-                            <td className="py-1.5 text-foreground">{kw.keyword}</td>
-                            <td
-                              className={`py-1.5 text-right font-semibold ${
-                                kw.position <= 3
-                                  ? 'text-green-500'
-                                  : kw.position <= 10
-                                    ? 'text-yellow-500'
-                                    : 'text-muted-foreground'
-                              }`}
-                            >
-                              {kw.position}
-                            </td>
-                            <td className="py-1.5 text-right text-muted-foreground">
-                              {fmtNum(kw.volume)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+              {/* Top Pages (2 cols) */}
+              <div className="rounded-xl border border-border bg-card p-5 lg:col-span-2">
+                <p className="mb-3 text-sm font-bold text-foreground">Top Pages</p>
+                {topPages.length > 0 ? (
+                  <div className="space-y-2">
+                    {topPages.slice(0, 8).map((page, idx) => (
+                      <div
+                        key={idx}
+                        className="rounded-lg border border-border/60 px-3 py-2 transition-colors hover:border-primary/30"
+                      >
+                        <p className="truncate text-[13px] font-medium text-foreground">
+                          {page.path || '/'}
+                        </p>
+                        <div className="mt-0.5 flex gap-3 text-[11px] text-muted-foreground">
+                          <span>{fmtNum(page.pageviews)} views</span>
+                          <span>{fmtDuration(page.avgDuration)}</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <p className="py-6 text-center text-sm text-muted-foreground">
+                    No page data
+                  </p>
+                )}
+              </div>
             </div>
           ) : (
-            <p className="text-muted-foreground text-center py-8">Not configured</p>
+            <div className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+              No Google Analytics data in selected range
+            </div>
           )}
-        </DashboardSectionCard>
+        </section>
+      )}
 
-        {/* ── Content Performance ── */}
-        <DashboardSectionCard title="Content Performance" subtitle="Webflow & Meta Page">
-          <div className="space-y-4">
-            {/* Webflow compact grid */}
-            {webflow && hasWebflowSignal ? (
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase mb-2 flex items-center gap-1.5">
-                  <Layout className="w-3.5 h-3.5" /> Webflow
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-secondary/40 rounded-lg p-2">
-                    <p className="text-[10px] text-muted-foreground">Pages</p>
-                    <p className="text-sm font-semibold text-foreground">{webflow.totalPages}</p>
-                  </div>
-                  <div className="bg-secondary/40 rounded-lg p-2">
-                    <p className="text-[10px] text-muted-foreground">Collections</p>
-                    <p className="text-sm font-semibold text-foreground">
-                      {webflow.totalCollections}
-                    </p>
-                  </div>
-                  {webflow.formSubmissions.length > 0 && (
-                    <div className="bg-secondary/40 rounded-lg p-2 col-span-2">
-                      <p className="text-[10px] text-muted-foreground">Form Submissions</p>
-                      <p className="text-sm font-semibold text-foreground">
-                        {webflow.formSubmissions.reduce((sum, f) => sum + f.count, 0)}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : webflow ? (
-              <p className="text-muted-foreground text-center py-4 text-sm">
-                No Webflow data in range
-              </p>
-            ) : (
-              <p className="text-muted-foreground text-center py-4 text-sm">
-                Webflow not configured
-              </p>
+      {/* ── Paid Advertising ────────────────────────────────── */}
+      {(googleAds || metaAds || redditAds) && (
+        <section>
+          <SectionTitle icon="💰">Paid Advertising</SectionTitle>
+
+          {/* Platform KPI row */}
+          <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {googleAds && hasGoogleAdsSignal && (
+              <>
+                <KpiCard
+                  label="Google Ads Spend"
+                  value={fmtCurrency(googleAds.totalSpend30d)}
+                  sub={`${fmtNum(googleAds.totalImpressions)} impressions`}
+                  valueColor={COLOR.blue}
+                />
+                <KpiCard
+                  label="Google Ads ROAS"
+                  value={googleAds.roas != null ? `${googleAds.roas.toFixed(2)}x` : '—'}
+                  sub={`CPA ${fmtCurrency(googleAds.cpa)} · CPC ${fmtCurrency(googleAds.cpc)}`}
+                  valueColor={
+                    googleAds.roas != null && googleAds.roas >= 2
+                      ? COLOR.green
+                      : googleAds.roas != null && googleAds.roas < 1
+                        ? COLOR.red
+                        : undefined
+                  }
+                />
+              </>
             )}
-
-            {/* Meta Page compact grid */}
-            {metaPage && hasMetaPageSignal ? (
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase mb-2 flex items-center gap-1.5">
-                  <Facebook className="w-3.5 h-3.5" /> Meta Page
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-secondary/40 rounded-lg p-2">
-                    <p className="text-[10px] text-muted-foreground">Followers</p>
-                    <p className="text-sm font-semibold text-foreground">
-                      {fmtNum(metaPage.pageFollowers)}
-                    </p>
-                  </div>
-                  <div className="bg-secondary/40 rounded-lg p-2">
-                    <p className="text-[10px] text-muted-foreground">Likes</p>
-                    <p className="text-sm font-semibold text-foreground">
-                      {fmtNum(metaPage.pageLikes)}
-                    </p>
-                  </div>
-                  <div className="bg-secondary/40 rounded-lg p-2">
-                    <p className="text-[10px] text-muted-foreground">Reach (30d)</p>
-                    <p className="text-sm font-semibold text-foreground">
-                      {fmtNum(metaPage.postReach30d)}
-                    </p>
-                  </div>
-                  <div className="bg-secondary/40 rounded-lg p-2">
-                    <p className="text-[10px] text-muted-foreground">Engagement (30d)</p>
-                    <p className="text-sm font-semibold text-foreground">
-                      {fmtNum(metaPage.postEngagement30d)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : metaPage ? (
-              <p className="text-muted-foreground text-center py-4 text-sm">
-                No Meta Page data in range
-              </p>
-            ) : (
-              <p className="text-muted-foreground text-center py-4 text-sm">
-                Meta Page not configured
-              </p>
+            {metaAds && hasMetaAdsSignal && (
+              <>
+                <KpiCard
+                  label="Meta Ads Spend"
+                  value={fmtCurrency(metaAds.totalSpend30d)}
+                  sub={`${fmtNum(metaAds.totalImpressions)} impressions`}
+                  valueColor={COLOR.pink}
+                />
+                <KpiCard
+                  label="Meta Ads CTR"
+                  value={fmtPct(metaAds.ctr)}
+                  sub={`CPA ${fmtCurrency(metaAds.cpa)} · CPC ${fmtCurrency(metaAds.cpc)}`}
+                />
+              </>
+            )}
+            {redditAds && hasRedditAdsSignal && (
+              <KpiCard
+                label="Reddit Ads Spend"
+                value={fmtCurrency(redditAds.totalSpend30d)}
+                sub={`${fmtNum(redditAds.totalImpressions)} impressions · CTR ${fmtPct(redditAds.ctr)}`}
+                valueColor={COLOR.orange}
+              />
             )}
           </div>
-        </DashboardSectionCard>
-      </div>
+
+          {/* Campaign tables */}
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            {googleAds && hasGoogleAdsSignal && (
+              <CampaignTable
+                title="Google Ads — Top Campaigns"
+                campaigns={googleAds.campaigns}
+                showConversions
+              />
+            )}
+            {metaAds && hasMetaAdsSignal && (
+              <CampaignTable
+                title="Meta Ads — Top Campaigns"
+                campaigns={metaAds.campaigns}
+                showConversions
+              />
+            )}
+            {redditAds && hasRedditAdsSignal && (
+              <CampaignTable
+                title="Reddit Ads — Top Campaigns"
+                campaigns={redditAds.campaigns}
+              />
+            )}
+          </div>
+
+          {/* No ads configured message */}
+          {!hasGoogleAdsSignal && !hasMetaAdsSignal && !hasRedditAdsSignal && (
+            <div className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+              No paid advertising data in selected range
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── Social & Organic ────────────────────────────────── */}
+      {(metaPage || webflow) && (
+        <section>
+          <SectionTitle icon="📱">Social & Web Presence</SectionTitle>
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            {/* Meta Page */}
+            {metaPage && (
+              <div className="rounded-xl border border-border bg-card p-5">
+                <p className="mb-4 text-sm font-bold text-foreground">Meta Page</p>
+                {hasMetaPageSignal ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <KpiCard label="Page Likes" value={fmtNum(metaPage.pageLikes)} valueColor={COLOR.pink} />
+                      <KpiCard label="Followers" value={fmtNum(metaPage.pageFollowers)} valueColor={COLOR.purple} />
+                      <KpiCard label="Reach (30d)" value={fmtNum(metaPage.postReach30d)} valueColor={COLOR.cyan} />
+                      <KpiCard label="Engagement (30d)" value={fmtNum(metaPage.postEngagement30d)} valueColor={COLOR.green} />
+                    </div>
+                    {metaPage.topPosts && metaPage.topPosts.length > 0 && (
+                      <div>
+                        <p className="mb-2 text-[13px] font-semibold text-foreground">Top Posts</p>
+                        <div className="max-h-52 space-y-2 overflow-y-auto">
+                          {metaPage.topPosts.slice(0, 5).map((post, idx) => (
+                            <div
+                              key={idx}
+                              className="rounded-lg border border-border/60 p-2.5 transition-colors hover:border-primary/30"
+                            >
+                              <p className="line-clamp-2 text-[13px] text-foreground">
+                                {post.message}
+                              </p>
+                              <div className="mt-1 flex gap-3 text-[11px] text-muted-foreground">
+                                <span>{fmtNum(post.reach)} reach</span>
+                                <span>{fmtNum(post.engagement)} engagement</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="py-6 text-center text-sm text-muted-foreground">
+                    No Meta Page data in selected range
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Webflow */}
+            {webflow && (
+              <div className="rounded-xl border border-border bg-card p-5">
+                <p className="mb-4 text-sm font-bold text-foreground">Webflow</p>
+                {hasWebflowSignal ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <KpiCard
+                        label="Site"
+                        value={webflow.siteName || '—'}
+                        sub={webflow.lastPublished ? `Published ${new Date(webflow.lastPublished).toLocaleDateString()}` : undefined}
+                      />
+                      <KpiCard label="Pages" value={String(webflow.totalPages || 0)} sub={`${webflow.totalCollections || 0} collections`} />
+                    </div>
+
+                    {webflow.formSubmissions && webflow.formSubmissions.length > 0 && (
+                      <div>
+                        <p className="mb-2 text-[13px] font-semibold text-foreground">
+                          Form Submissions
+                        </p>
+                        <div className="space-y-1.5">
+                          {webflow.formSubmissions.map((form, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center justify-between rounded-lg border border-border/60 px-3 py-2"
+                            >
+                              <span className="truncate text-[13px] text-foreground">{form.formName}</span>
+                              <span className="text-sm font-bold tabular-nums text-foreground">{form.count}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {webflow.customDomains && webflow.customDomains.length > 0 && (
+                      <div>
+                        <p className="mb-2 text-[13px] font-semibold text-foreground">Domains</p>
+                        <div className="flex flex-wrap gap-2">
+                          {webflow.customDomains.map((domain, idx) => (
+                            <span
+                              key={idx}
+                              className="rounded-md border border-border bg-secondary/40 px-3 py-1 text-[12px] font-medium text-foreground"
+                            >
+                              {domain}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="py-6 text-center text-sm text-muted-foreground">
+                    No Webflow data in selected range
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ── SEMrush SEO Intelligence ────────────────────────── */}
+      {semrush && (
+        <section>
+          <SectionTitle icon="🔍">SEMrush SEO Intelligence</SectionTitle>
+
+          {/* SEO KPI row */}
+          <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <KpiCard label="Authority Score" value={String(semrush.authorityScore)} valueColor={COLOR.accent} />
+            <KpiCard label="Backlinks" value={fmtNum(semrush.backlinks)} valueColor={COLOR.blue} />
+            <KpiCard label="Organic Keywords" value={fmtNum(semrush.organicKeywords)} valueColor={COLOR.green} />
+            <KpiCard label="Organic Traffic" value={fmtNum(semrush.organicTraffic)} sub={`Value ${fmtCurrency(semrush.organicTrafficCost)}`} valueColor={COLOR.cyan} />
+          </div>
+
+          {/* Organic vs Paid comparison */}
+          <div className="mb-5 grid grid-cols-1 gap-5 md:grid-cols-2">
+            <div className="rounded-xl border border-border bg-card p-5">
+              <p className="mb-3 text-sm font-bold text-foreground">Organic Search</p>
+              <div className="space-y-2 text-[13px]">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Keywords</span>
+                  <span className="font-semibold text-foreground">{fmtNum(semrush.organicKeywords)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Traffic</span>
+                  <span className="font-semibold text-foreground">{fmtNum(semrush.organicTraffic)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Traffic Cost</span>
+                  <span className="font-semibold text-foreground">{fmtCurrency(semrush.organicTrafficCost)}</span>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-5">
+              <p className="mb-3 text-sm font-bold text-foreground">Paid Search</p>
+              <div className="space-y-2 text-[13px]">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Keywords</span>
+                  <span className="font-semibold text-foreground">{fmtNum(semrush.paidKeywords)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Traffic</span>
+                  <span className="font-semibold text-foreground">{fmtNum(semrush.paidTraffic)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Traffic Cost</span>
+                  <span className="font-semibold text-foreground">{fmtCurrency(semrush.paidTrafficCost)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Top Keywords Table */}
+          {semrush.topKeywords && semrush.topKeywords.length > 0 && (
+            <div className="mb-5 rounded-xl border border-border bg-card p-5">
+              <p className="mb-3 text-sm font-bold text-foreground">Top Organic Keywords</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[13px]">
+                  <thead>
+                    <tr className="border-b-2 border-border">
+                      <th className="pb-2 pr-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Keyword</th>
+                      <th className="pb-2 px-2 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Pos</th>
+                      <th className="pb-2 px-2 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Volume</th>
+                      <th className="pb-2 px-2 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Traffic</th>
+                      <th className="pb-2 pl-2 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">CPC</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {semrush.topKeywords.map((kw, idx) => (
+                      <tr key={idx} className="border-b border-border/50 transition-colors hover:bg-primary/[0.04]">
+                        <td className="py-2 pr-4 font-medium text-foreground">{kw.keyword}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">
+                          <span
+                            className={`inline-flex h-6 w-8 items-center justify-center rounded text-xs font-bold ${
+                              kw.position <= 3
+                                ? 'bg-emerald-500/12 text-emerald-400'
+                                : kw.position <= 10
+                                  ? 'bg-amber-500/12 text-amber-400'
+                                  : 'text-muted-foreground'
+                            }`}
+                          >
+                            {kw.position}
+                          </span>
+                        </td>
+                        <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{fmtNum(kw.volume)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{fmtNum(kw.traffic)}</td>
+                        <td className="py-2 pl-2 text-right tabular-nums text-muted-foreground">{fmtCurrency(kw.cpc)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Organic Competitors */}
+          {semrush.organicCompetitors && semrush.organicCompetitors.length > 0 && (
+            <div className="rounded-xl border border-border bg-card p-5">
+              <p className="mb-3 text-sm font-bold text-foreground">Organic Competitors</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[13px]">
+                  <thead>
+                    <tr className="border-b-2 border-border">
+                      <th className="pb-2 pr-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Domain</th>
+                      <th className="pb-2 px-2 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Common KWs</th>
+                      <th className="pb-2 pl-2 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Organic Traffic</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {semrush.organicCompetitors.map((comp, idx) => (
+                      <tr key={idx} className="border-b border-border/50 transition-colors hover:bg-primary/[0.04]">
+                        <td className="py-2 pr-4 font-medium text-foreground">{comp.domain}</td>
+                        <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{fmtNum(comp.commonKeywords)}</td>
+                        <td className="py-2 pl-2 text-right tabular-nums text-muted-foreground">{fmtNum(comp.organicTraffic)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }

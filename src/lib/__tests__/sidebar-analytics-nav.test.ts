@@ -1,28 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { buildNavItems } from "@/components/layout/sidebar-nav-config";
 
-describe("sidebar analytics tier-1 navigation", () => {
-  it("includes collapsible groups for each tier-1 analytics dashboard", () => {
-    const items = buildNavItems();
-    const hrefs = new Set(items.map((item) => item.href));
+describe("sidebar analytics navigation", () => {
+  it("builds analytics as grouped entries with nested children", () => {
+    const navItems = buildNavItems();
 
-    expect(hrefs.has("/analytics/ads-traffic")).toBe(true);
-    expect(hrefs.has("/analytics/finance")).toBe(true);
-    expect(hrefs.has("/analytics/sales-pipeline")).toBe(true);
-    expect(hrefs.has("/analytics/customer-success")).toBe(true);
+    const ads = navItems.find((item) => item.id === "ads-traffic");
+    const finance = navItems.find((item) => item.id === "finance");
+    const sales = navItems.find((item) => item.id === "sales-pipeline");
+    const cs = navItems.find((item) => item.id === "customer-success");
+
+    expect(ads?.children?.length).toBeGreaterThan(0);
+    expect(finance?.children?.length).toBeGreaterThan(0);
+    expect(sales?.children?.length).toBeGreaterThan(0);
+    expect(cs?.children?.length).toBeGreaterThan(0);
   });
 
-  it("analytics groups have children from section registry", () => {
-    const items = buildNavItems();
-    const adsTraffic = items.find((i) => i.id === "ads-traffic");
-    expect(adsTraffic?.children?.length).toBeGreaterThan(0);
-  });
+  it("keeps standup command center in nav and points it to /today", () => {
+    const navItems = buildNavItems();
+    const standup = navItems.find((item) => item.id === "standup");
 
-  it("includes Customer Journey and AI Insights top-level pages", () => {
-    const items = buildNavItems();
-    const journey = items.find((i) => i.id === "customer-journey");
-    const insights = items.find((i) => i.id === "ai-insights");
-    expect(journey?.href).toBe("/analytics/customer-journey");
-    expect(insights?.href).toBe("/analytics/ai-insights");
+    expect(standup).toBeTruthy();
+    expect(standup?.href).toBe("/today");
   });
 });

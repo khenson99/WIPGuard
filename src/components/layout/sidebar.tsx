@@ -24,11 +24,11 @@ export function Sidebar() {
   return (
     <aside className="flex h-screen w-56 flex-col border-r border-sidebar-border bg-sidebar-bg text-sm text-sidebar-foreground">
       <div className="flex items-center gap-2 border-b border-sidebar-border px-4 py-4">
-        <LayoutDashboard className="h-6 w-6 text-primary" />
+        <LayoutDashboard className="h-6 w-6 text-primary" aria-hidden="true" />
         <span className="text-lg font-bold text-foreground">WIPGuard</span>
       </div>
 
-      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
+      <nav aria-label="Main navigation" className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
         {navItems.map((item) =>
           item.children && item.children.length > 0 ? (
             <SidebarNavGroup key={item.id} item={item} />
@@ -36,36 +36,38 @@ export function Sidebar() {
             <Link
               key={item.id}
               href={item.href}
+              aria-current={isActive(item.href) ? "page" : undefined}
               className={clsx(
-                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium",
+                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2",
                 isActive(item.href) ? "sidebar-link-active" : "sidebar-link"
               )}
             >
-              <item.icon className="h-4 w-4" />
+              <item.icon className="h-4 w-4" aria-hidden="true" />
               {item.label}
             </Link>
           )
         )}
       </nav>
 
-      <div className="space-y-0.5 border-t border-sidebar-border p-2">
+      <nav aria-label="Secondary navigation" className="space-y-0.5 border-t border-sidebar-border p-2">
         {SECONDARY_NAV_ITEMS.map((item) => {
           const active = isActive(item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
+              aria-current={active ? "page" : undefined}
               className={clsx(
-                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium",
+                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2",
                 active ? "sidebar-link-active" : "sidebar-link"
               )}
             >
-              <item.icon className="h-4 w-4" />
+              <item.icon className="h-4 w-4" aria-hidden="true" />
               {item.label}
             </Link>
           );
         })}
-      </div>
+      </nav>
     </aside>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   X,
   Trash2,
@@ -74,6 +74,36 @@ function MultiSelectDropdown({
 export function TaskModal({ task, onClose }: TaskModalProps) {
   const { projects, sprints, teamMembers } = useBoardStore();
   const isNew = !task;
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Focus trapping and Escape key handling
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key === "Tab" && dialogRef.current) {
+        const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    // Focus the dialog on mount
+    dialogRef.current?.focus();
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
 
   // Full task detail (with children, deps, etc.) fetched from /api/tasks/[id]
   const [detail, setDetail] = useState<TaskWithRelations | null>(task);
@@ -275,36 +305,51 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-border bg-card shadow-lg">
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="task-modal-title"
+        tabIndex={-1}
+        className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-border bg-card shadow-lg focus:outline-none"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <h2 className="text-lg font-semibold text-foreground">
+          <h2 id="task-modal-title" className="text-lg font-semibold text-foreground">
             {isNew ? "New Task" : "Edit Task"}
           </h2>
           <div className="flex items-center gap-2">
             {!isNew && task!.status !== "DONE" && (
               <button
                 onClick={handleAdvance}
-                className="btn-advance-modal flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium"
+                className="btn-advance-modal flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Advance task status"
               >
-                <ChevronRight className="h-3.5 w-3.5" />
+                <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
                 Advance
               </button>
             )}
             {!isNew && (
               <button
                 onClick={handleDelete}
-                className="icon-btn-delete rounded-md p-2"
+                className="icon-btn-delete rounded-md p-2 focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Delete task"
+                title="Delete task"
               >
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
               </button>
             )}
             <button
               onClick={onClose}
-              className="icon-btn-muted rounded-md p-2"
+              className="icon-btn-muted rounded-md p-2 focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Close dialog"
+              title="Close"
             >
-              <X className="h-4 w-4" />
+              <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -453,7 +498,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
             <div className="rounded-lg border border-border bg-background p-4">
               <div className="flex items-center justify-between">
                 <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  <GitBranch className="h-3.5 w-3.5" />
+                  <GitBranch className="h-3.5 w-3.5" aria-hidden="true" />
                   Subtasks
                   {detail?.children && detail.children.length > 0 && (
                     <span className="rounded bg-tag-bg px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
@@ -463,9 +508,10 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                 </h3>
                 <button
                   onClick={() => setShowSubtaskForm(!showSubtaskForm)}
-                  className="btn-add-subtask flex items-center gap-1 rounded-md px-2 py-1 text-xs"
+                  className="btn-add-subtask flex items-center gap-1 rounded-md px-2 py-1 text-xs focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={showSubtaskForm ? "Cancel adding subtask" : "Add subtask"}
                 >
-                  <Plus className="h-3 w-3" />
+                  <Plus className="h-3 w-3" aria-hidden="true" />
                   Add Subtask
                 </button>
               </div>
@@ -485,6 +531,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                     }}
                     placeholder="Subtask title... (inherits RACI)"
                     className="modal-input flex-1 rounded-md border px-3 py-1.5 text-sm"
+                    aria-label="Subtask title"
                     autoFocus
                   />
                   <button
@@ -508,6 +555,8 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                       <div
                         className="h-2 w-2 rounded-full"
                         style={{ background: STATUS_COLORS[child.status] }}
+                        role="img"
+                        aria-label={`Status: ${child.status.replace(/_/g, " ")}`}
                       />
                       <span className="flex-1 text-foreground">
                         {child.title}
@@ -539,10 +588,12 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
             <button
               type="button"
               onClick={() => setShowDeps(!showDeps)}
-              className="flex w-full items-center justify-between"
+              className="flex w-full items-center justify-between focus-visible:ring-2 focus-visible:ring-ring focus-visible:rounded"
+              aria-expanded={showDeps}
+              aria-label={`Dependencies${form.dependsOnIds.length > 0 ? `, ${form.dependsOnIds.length} selected` : ""}`}
             >
               <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                <Link2 className="h-3.5 w-3.5" />
+                <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
                 Dependencies
                 {form.dependsOnIds.length > 0 && (
                   <span className="rounded bg-tag-bg px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
@@ -551,9 +602,9 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                 )}
               </h3>
               {showDeps ? (
-                <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                <ChevronUp className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
               ) : (
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                <ChevronDown className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
               )}
             </button>
 

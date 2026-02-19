@@ -26,9 +26,27 @@ patterns, gotchas, and conventions.
 - **Error responses**: `{ error: "message" }` with appropriate HTTP status codes
 - **Include patterns**: Define `const TASK_INCLUDE = { ... } as const` at top of route file for reuse
 
+## Slack Integration Patterns (Issue #10)
+
+- **Notification throttling**: In-memory per-channel sliding window with `shouldThrottle()` (pure, does not mutate) + `recordSend()` (mutates state). `ThrottleConfig` has `windowMs`, `maxBurst`, `bypassTypes`, `minIntervalMs`. Blocked notifications bypass throttle.
+- **Dedupe keys**: Format `slack:<domain>:<channel>:<id>:<type>:<qualifier>` — ensures idempotency. Notification keys include threadTs; task creation keys include trigger type+value.
+- **Source traceability**: Every Slack-created task stores a `SlackSourceTraceability` struct in `task.metadata.integration.sourceTraceability` with provider, channelId, threadTs, triggerType, slackUserId, sourceUrl, capturedAt.
+- **Channel routing**: First-match-wins with specificity sorting (more match criteria = higher priority). Policies use AND logic. Falls back to `defaultChannelId`, then to user DM. Config stored in `IntegrationRule` with key `slack_channel_routing`. In-memory cache with 30s TTL.
+- **RACI -> Notification mapping**: Responsible=assignment+status+blocked, Accountable=status+blocked, Consulted=mention, Informed=status_change. Self-notifications skipped (actor != recipient).
+- **Slack Event API handler**: HMAC signature verification with `v0:${timestamp}:${body}` base string and 5-min replay window. Handles `url_verification` challenge, `reaction_added` -> task creation, `/wipguard` slash commands.
+- **Dead letter pattern**: Failed Slack operations create `OutboxEvent` with `status: "DEAD_LETTER"` for later inspection/retry.
+- **Retry pattern**: `withRetries()` with exponential backoff via `computeRetryDelayMs()` from outbox-worker.
+
+## Test Count
+
+- Total test files: 4 new (slack-notifications, slack-task-creation, slack-channel-routing, slack-raci-bridge)
+- Total test cases: 74 new across those 4 files
+- All tests are pure function tests — no DB mocking needed
+
 ## Stack-Specific Notes
 
 - **Prisma client**: Generated to `src/generated/prisma`, uses `@prisma/adapter-pg` with PrismaPg adapter
 - **Prisma singleton**: Lazy proxy in `src/lib/prisma.ts` — avoid creating new PrismaClient instances
 - **vitest config**: `@/` alias mapped via `resolve.alias` in `vitest.config.ts`
 - **Package scripts**: `npm test` runs `vitest run`, `npm run test:watch` for dev mode
+- **Prisma in worktrees**: Need to run `npx prisma generate` in worktrees before tests will pass (the generated client is gitignored)

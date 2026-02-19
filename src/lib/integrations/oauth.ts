@@ -525,6 +525,104 @@ async function fetchMercuryProfile(
   }
 }
 
+function firstArrayRecord(value: unknown): Record<string, unknown> | null {
+  if (!Array.isArray(value) || value.length === 0) {
+    return null;
+  }
+  return asRecord(value[0]);
+}
+
+async function fetchWebflowProfile(accessToken: string): Promise<AccountProfile> {
+  const headers = {
+    Authorization: `Bearer ${accessToken}`,
+    Accept: "application/json",
+  };
+
+  const parseResponse = async (response: Response): Promise<Record<string, unknown> | null> => {
+    const raw = (await response.json().catch(() => null)) as unknown;
+    return asRecord(raw);
+  };
+
+  const fetchFirstSite = async (): Promise<Record<string, unknown> | null> => {
+    const response = await fetch("https://api.webflow.com/v2/sites", {
+      headers,
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const payload = await parseResponse(response);
+    return (
+      firstArrayRecord(payload?.sites) ||
+      firstArrayRecord(payload?.items) ||
+      firstArrayRecord(payload?.data)
+    );
+  };
+
+  const authorizedByResponse = await fetch("https://api.webflow.com/v2/token/authorized_by", {
+    headers,
+    cache: "no-store",
+  });
+
+  if (authorizedByResponse.ok) {
+    const profile = await parseResponse(authorizedByResponse);
+    const nestedUser = asRecord(profile?.user);
+    const providerAccountId =
+      getString(profile ?? {}, "id") ||
+      getString(profile ?? {}, "userId") ||
+      getString(nestedUser ?? {}, "id");
+
+    if (providerAccountId) {
+      const firstSite = await fetchFirstSite();
+      return {
+        providerAccountId,
+        accountLabel:
+          getString(profile ?? {}, "email") ||
+          getString(profile ?? {}, "name") ||
+          getString(profile ?? {}, "fullName") ||
+          getString(nestedUser ?? {}, "email") ||
+          getString(nestedUser ?? {}, "name"),
+        metadata: {
+          userEmail:
+            getString(profile ?? {}, "email") || getString(nestedUser ?? {}, "email"),
+          userName:
+            getString(profile ?? {}, "name") ||
+            getString(profile ?? {}, "fullName") ||
+            getString(nestedUser ?? {}, "name"),
+          defaultSiteId: getString(firstSite ?? {}, "id"),
+          defaultSiteName:
+            getString(firstSite ?? {}, "displayName") ||
+            getString(firstSite ?? {}, "name"),
+        },
+      };
+    }
+  }
+
+  const firstSite = await fetchFirstSite();
+  if (!firstSite) {
+    throw new Error("Webflow account lookup failed");
+  }
+
+  const providerAccountId = getString(firstSite ?? {}, "id");
+  if (!providerAccountId) {
+    throw new Error("Webflow profile did not include an account identifier");
+  }
+
+  return {
+    providerAccountId,
+    accountLabel:
+      getString(firstSite ?? {}, "displayName") ||
+      getString(firstSite ?? {}, "name") ||
+      providerAccountId,
+    metadata: {
+      siteId: providerAccountId,
+      siteName:
+        getString(firstSite ?? {}, "displayName") ||
+        getString(firstSite ?? {}, "name"),
+    },
+  };
+}
+
 export async function fetchOAuthAccountProfile(
   definition: OAuthIntegrationDefinition,
   accessToken: string,
@@ -549,6 +647,9 @@ export async function fetchOAuthAccountProfile(
   }
   if (definition.slug === "mercury") {
     return fetchMercuryProfile(accessToken, tokenPayload);
+  }
+  if (definition.slug === "webflow") {
+    return fetchWebflowProfile(accessToken);
   }
   throw new Error(`No OAuth account profile fetcher for ${definition.slug}`);
 }

@@ -181,6 +181,10 @@ export async function GET(): Promise<NextResponse> {
 
     return NextResponse.json(
       {
+        meta: {
+          servedAt: new Date().toISOString(),
+          isPartial: false,
+        },
         generatedAt: now.toISOString(),
         personal: {
           myActive,

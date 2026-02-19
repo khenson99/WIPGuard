@@ -51,7 +51,7 @@ agents/
 scripts/
 firebase-debug.log
 
-# Git worktree artifacts (gitlinks / submodule-like entries)
-.claude/worktrees/
+# Local AI agent worktrees
 .worktrees/
-/app
+.claude/worktrees/
+/app/

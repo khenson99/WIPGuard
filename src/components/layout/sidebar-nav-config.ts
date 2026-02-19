@@ -2,13 +2,13 @@ import {
   LayoutDashboard,
   FolderKanban,
   CheckSquare,
+  Gauge,
   Megaphone,
   Landmark,
   Target,
   HeartHandshake,
   Bot,
-  Route,
-  Sparkles,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -17,19 +17,19 @@ import {
   type AnalyticsPrimarySectionId,
 } from "@/lib/analytics/section-registry";
 
+export interface NavChildItem {
+  id: string;
+  href: string;
+  label: string;
+  dataDomain: string;
+}
+
 export interface NavItem {
   id: string;
   href: string;
   label: string;
   icon: LucideIcon;
   children?: NavChildItem[];
-}
-
-export interface NavChildItem {
-  id: string;
-  href: string;
-  label: string;
-  dataDomain: string;
 }
 
 const ANALYTICS_ICONS: Record<AnalyticsPrimarySectionId, LucideIcon> = {
@@ -44,6 +44,7 @@ export function buildNavItems(): NavItem[] {
     { id: "dashboard", href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "projects", href: "/projects", label: "Projects", icon: FolderKanban },
     { id: "tasks", href: "/tasks", label: "Tasks", icon: CheckSquare },
+    { id: "whip", href: "/whip", label: "Whip View", icon: Gauge },
   ];
 
   const analyticsGroups: NavItem[] = ANALYTICS_PRIMARY_SECTIONS.map((section) => {
@@ -62,14 +63,10 @@ export function buildNavItems(): NavItem[] {
     };
   });
 
-  const newPages: NavItem[] = [
-    { id: "customer-journey", href: "/analytics/customer-journey", label: "Customer Journey", icon: Route },
-    { id: "ai-insights", href: "/analytics/ai-insights", label: "AI Insights", icon: Sparkles },
-  ];
-
   const bottomStatic: NavItem[] = [
+    { id: "standup", href: "/today", label: "Standup Hub", icon: Users },
     { id: "automations", href: "/automations", label: "Automations", icon: Bot },
   ];
 
-  return [...topStatic, ...analyticsGroups, ...newPages, ...bottomStatic];
+  return [...topStatic, ...analyticsGroups, ...bottomStatic];
 }

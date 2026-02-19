@@ -1,7 +1,17 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { IntegrationConnectionStatus } from "@/generated/prisma/client";
+import {
+  AnalyticsSnapshotStatus,
+  IntegrationConnectionStatus,
+  IntegrationProvider,
+} from "@/generated/prisma/client";
+import { getCredentials } from "@/lib/analytics/credentials";
+import {
+  evaluateProviderSyncHealth,
+  snapshotKeysForIntegrationProvider,
+  snapshotsForProvider,
+} from "@/lib/analytics/provider-health";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
@@ -9,6 +19,18 @@ import {
   isIntegrationConfigured,
   listIntegrationDefinitions,
 } from "@/lib/integrations/catalog";
+import { normalizeCodaDocId } from "@/lib/integrations/coda-config";
+
+function readCodaDocId(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+  const candidate = (metadata as Record<string, unknown>).docId;
+  if (typeof candidate !== "string") {
+    return null;
+  }
+  return normalizeCodaDocId(candidate);
+}
 
 export async function GET(): Promise<NextResponse> {
   try {
@@ -26,8 +48,80 @@ export async function GET(): Promise<NextResponse> {
         connectedAt: true,
         lastSyncedAt: true,
         lastError: true,
+        metadata: true,
       },
     });
+
+    const credentials = await getCredentials(session.user.id);
+
+    const allSnapshotKeys = Array.from(
+      new Set(
+        listIntegrationDefinitions().flatMap((definition) =>
+          snapshotKeysForIntegrationProvider(definition.provider)
+        )
+      )
+    );
+
+    const [latestSnapshots, latestSuccessfulSnapshots] = await Promise.all([
+      prisma.analyticsSnapshot.findMany({
+        where: {
+          userId: session.user.id,
+          providerKey: { in: allSnapshotKeys },
+        },
+        select: {
+          providerKey: true,
+          status: true,
+          capturedAt: true,
+          expiresAt: true,
+          lastError: true,
+        },
+        distinct: ["providerKey"],
+        orderBy: [{ providerKey: "asc" }, { capturedAt: "desc" }],
+      }),
+      prisma.analyticsSnapshot.findMany({
+        where: {
+          userId: session.user.id,
+          providerKey: { in: allSnapshotKeys },
+          status: AnalyticsSnapshotStatus.SUCCESS,
+        },
+        select: {
+          providerKey: true,
+          status: true,
+          capturedAt: true,
+          expiresAt: true,
+          lastError: true,
+        },
+        distinct: ["providerKey"],
+        orderBy: [{ providerKey: "asc" }, { capturedAt: "desc" }],
+      }),
+    ]);
+
+    const latestSuccessByProviderKey = new Map(
+      latestSuccessfulSnapshots.map((snapshot) => [snapshot.providerKey, snapshot])
+    );
+    const snapshots = latestSnapshots.flatMap((latest) => {
+      const latestSuccess = latestSuccessByProviderKey.get(latest.providerKey);
+      if (!latestSuccess) {
+        return [latest];
+      }
+
+      const isSameSnapshot =
+        latest.capturedAt.getTime() === latestSuccess.capturedAt.getTime() &&
+        latest.status === latestSuccess.status;
+
+      return isSameSnapshot ? [latest] : [latest, latestSuccess];
+    });
+
+    const hasCredentialByProvider: Record<IntegrationProvider, boolean> = {
+      [IntegrationProvider.GOOGLE_WORKSPACE]: Boolean(credentials.googleWorkspaceAccessToken),
+      [IntegrationProvider.HUBSPOT]: Boolean(credentials.hubspotToken),
+      [IntegrationProvider.SLACK]: Boolean(credentials.slackAccessToken),
+      [IntegrationProvider.CODA]: Boolean(credentials.codaApiToken),
+      [IntegrationProvider.REDDIT]: Boolean(credentials.redditRefreshToken),
+      [IntegrationProvider.STRIPE]: Boolean(credentials.stripeKey),
+      [IntegrationProvider.MERCURY]: Boolean(credentials.mercuryKey),
+      [IntegrationProvider.WEBFLOW]: Boolean(credentials.webflowApiToken),
+    };
 
     const byProvider = new Map(
       connections.map((connection) => [connection.provider, connection])
@@ -36,6 +130,12 @@ export async function GET(): Promise<NextResponse> {
     const response = listIntegrationDefinitions().map((definition) => {
       const connection = byProvider.get(definition.provider);
       const status = connection?.status ?? IntegrationConnectionStatus.DISCONNECTED;
+      const syncHealth = evaluateProviderSyncHealth({
+        connected: status === IntegrationConnectionStatus.CONNECTED,
+        hasCredential: hasCredentialByProvider[definition.provider],
+        snapshots: snapshotsForProvider(definition.provider, snapshots),
+      });
+
       return {
         slug: definition.slug,
         provider: definition.provider,
@@ -51,6 +151,15 @@ export async function GET(): Promise<NextResponse> {
         connectedAt: connection?.connectedAt ?? null,
         lastSyncedAt: connection?.lastSyncedAt ?? null,
         lastError: connection?.lastError ?? null,
+        credentialSource: credentials.freshness[definition.provider].source,
+        syncHealth: syncHealth.syncHealth,
+        syncHealthReason: syncHealth.syncHealthReason,
+        lastSnapshotAt: syncHealth.lastSnapshotAt,
+        lastSnapshotStatus: syncHealth.lastSnapshotStatus,
+        docId:
+          definition.provider === IntegrationProvider.CODA
+            ? readCodaDocId(connection?.metadata ?? null)
+            : null,
       };
     });
 
@@ -63,4 +172,3 @@ export async function GET(): Promise<NextResponse> {
     );
   }
 }
-
