@@ -118,8 +118,11 @@ export function AiInsightsPanel({ bundle, defaultFilter = "all", compact = false
   const [filter, setFilter] = useState<InsightFilter>(defaultFilter);
   const [expanded, setExpanded] = useState(false);
 
+  // Reset local view state whenever parent default filter changes.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     setFilter(defaultFilter);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setExpanded(false);
   }, [defaultFilter]);
 
