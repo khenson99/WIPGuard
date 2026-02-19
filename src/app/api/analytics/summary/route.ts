@@ -140,6 +140,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       flowMetrics: true,
       flowRisk: true,
       observability: true,
+      customerJourney: true,
+      demoAnalytics: true,
+      processAnalytics: true,
     };
 
     const domainSnapshotKey: Partial<Record<AnalyticsSubSection["dataDomain"], string>> = {

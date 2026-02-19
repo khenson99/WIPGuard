@@ -5,10 +5,16 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { MarketingTabNew } from "@/components/analytics/marketing-tab-new";
 import { FinanceTab } from "@/components/analytics/finance-tab";
-import { FinanceStripeTab } from "@/components/analytics/finance-stripe-tab";
-import { FinanceHubSpotTab } from "@/components/analytics/finance-hubspot-tab";
 import { SalesFunnelTab } from "@/components/analytics/sales-funnel-tab";
 import { CustomerSuccessTab } from "@/components/analytics/customer-success-tab";
+import { CustomerJourneyTab } from "@/components/analytics/customer-journey-tab";
+import { CustomerJourneyDrillDown } from "@/components/analytics/customer-journey-drill-down";
+import { DemoAnalyticsTab } from "@/components/analytics/demo-analytics-tab";
+import { DemoSchedulingView } from "@/components/analytics/demo-scheduling-view";
+import { DemoAttributionView } from "@/components/analytics/demo-attribution-view";
+import { ProcessAnalyticsTab } from "@/components/analytics/process-analytics-tab";
+import { ProcessBottlenecksView } from "@/components/analytics/process-bottlenecks-view";
+import { ProcessHealthView } from "@/components/analytics/process-health-view";
 import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-controls";
 import {
   DecisionDashboardView,
@@ -29,6 +35,7 @@ import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-error-banner";
 import { DashboardStaleBanner } from "@/components/dashboard/dashboard-stale-banner";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { INTEGRATION_CHILD_DASHBOARD_REGISTRY } from "@/components/analytics/integration-child-dashboards";
 
 interface AnalyticsSectionPageProps {
   sectionId: string;
@@ -44,26 +51,33 @@ const OPS_DOMAINS = ["decisionDashboard", "flowMetrics", "flowRisk", "observabil
 type ChildDataDomain = "decisionDashboard" | "flowMetrics" | "flowRisk" | "observability" | string;
 
 export type AnalyticsChildRenderKind =
-  | "finance-stripe"
-  | "finance-hubspot"
-  | "sales-hubspot"
   | "decisionDashboard"
   | "flowMetrics"
   | "flowRisk"
   | "observability"
+  | "customerJourneyDrillDown"
+  | "demoScheduling"
+  | "demoAttribution"
+  | "processBottlenecks"
+  | "processHealth"
   | "snapshot";
 
 export function resolveAnalyticsChildRenderKind(input: {
   childId: string;
   childDataDomain: ChildDataDomain;
 }): AnalyticsChildRenderKind {
-  if (input.childId === "finance-stripe") return "finance-stripe";
-  if (input.childId === "finance-hubspot") return "finance-hubspot";
-  if (input.childId === "sales-hubspot") return "sales-hubspot";
   if (input.childDataDomain === "decisionDashboard") return "decisionDashboard";
   if (input.childDataDomain === "flowMetrics") return "flowMetrics";
   if (input.childDataDomain === "flowRisk") return "flowRisk";
   if (input.childDataDomain === "observability") return "observability";
+  if (input.childId === "cj-touchpoints") return "customerJourneyDrillDown";
+  if (input.childDataDomain === "customerJourney") return "customerJourneyDrillDown";
+  if (input.childId === "demo-scheduling") return "demoScheduling";
+  if (input.childId === "demo-attribution") return "demoAttribution";
+  if (input.childDataDomain === "demoAnalytics") return "demoScheduling";
+  if (input.childId === "process-bottlenecks" || input.childId === "process-velocity") return "processBottlenecks";
+  if (input.childId === "process-health" || input.childId === "process-throughput") return "processHealth";
+  if (input.childDataDomain === "processAnalytics") return "processBottlenecks";
   return "snapshot";
 }
 
@@ -298,6 +312,9 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     if (sectionId === "finance") return <FinanceTab data={analyticsData} />;
     if (sectionId === "sales-pipeline") return <SalesFunnelTab data={analyticsData} />;
     if (sectionId === "customer-success") return <CustomerSuccessTab data={analyticsData} />;
+    if (sectionId === "customer-journey") return <CustomerJourneyTab data={analyticsData} />;
+    if (sectionId === "demo-analytics") return <DemoAnalyticsTab data={analyticsData} />;
+    if (sectionId === "process-analytics") return <ProcessAnalyticsTab data={analyticsData} />;
     return null;
   };
 
@@ -308,13 +325,20 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
       childId: child.id,
       childDataDomain: child.dataDomain,
     });
-    if (renderKind === "finance-stripe") return <FinanceStripeTab data={analyticsData} />;
-    if (renderKind === "finance-hubspot") return <FinanceHubSpotTab data={analyticsData} />;
-    if (renderKind === "sales-hubspot") return <SalesFunnelTab data={analyticsData} />;
     if (renderKind === "decisionDashboard") return <DecisionDashboardView payload={auxPayload} />;
     if (renderKind === "flowMetrics") return <FlowMetricsView payload={auxPayload} />;
     if (renderKind === "flowRisk") return <FlowRiskView payload={auxPayload} />;
     if (renderKind === "observability") return <ObservabilityView payload={auxPayload} />;
+    if (renderKind === "customerJourneyDrillDown") return <CustomerJourneyDrillDown data={analyticsData} />;
+    if (renderKind === "demoScheduling") return <DemoSchedulingView data={analyticsData} />;
+    if (renderKind === "demoAttribution") return <DemoAttributionView data={analyticsData} />;
+    if (renderKind === "processBottlenecks") return <ProcessBottlenecksView data={analyticsData} />;
+    if (renderKind === "processHealth") return <ProcessHealthView data={analyticsData} />;
+
+    const RegistryDashboard = INTEGRATION_CHILD_DASHBOARD_REGISTRY[child.id];
+    if (RegistryDashboard) {
+      return <RegistryDashboard data={analyticsData} />;
+    }
 
     const payload = (analyticsData as unknown as Record<string, unknown>) || null;
     const domainKey = child.dataDomain;

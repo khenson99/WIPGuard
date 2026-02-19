@@ -7,6 +7,9 @@ import {
   Landmark,
   Target,
   HeartHandshake,
+  Route,
+  Presentation,
+  Activity,
   Bot,
   Users,
   type LucideIcon,
@@ -37,6 +40,9 @@ const ANALYTICS_ICONS: Record<AnalyticsPrimarySectionId, LucideIcon> = {
   finance: Landmark,
   "sales-pipeline": Target,
   "customer-success": HeartHandshake,
+  "customer-journey": Route,
+  "demo-analytics": Presentation,
+  "process-analytics": Activity,
 };
 
 export function buildNavItems(): NavItem[] {
