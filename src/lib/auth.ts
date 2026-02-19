@@ -15,8 +15,6 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      // Allow first Google sign-in for pre-seeded/invited users that already exist by email.
-      allowDangerousEmailAccountLinking: true,
     }),
   );
 }
