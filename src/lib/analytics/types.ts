@@ -97,6 +97,7 @@ export interface HubSpotData {
     source: string;
     ownerId: string | null;
     updatedAt: string | null;
+    createdAt: string | null;
   }>;
   _meta: AnalyticsTimestamp;
 }
@@ -756,6 +757,28 @@ export interface DemoWeeklyTrend {
   noShows: number;
 }
 
+export interface JourneyPathRow {
+  source: string;
+  totalLeads: number;
+  demosBooked: number;
+  demosBookedPct: number;
+  demoCompleted: number;
+  demoCompletedPct: number;
+  demoNoShow: number;
+  demoNoShowPct: number;
+  avgDaysToDecision: number | null;
+  closedWon: number;
+  closedWonPct: number;
+  closedLost: number;
+  onboarding: number;
+  onboardingPct: number;
+  avgContractValue: number | null;
+  churned: number;
+  churnedPct: number;
+  notActivated: number;
+  notActivatedPct: number;
+}
+
 export interface DemoAnalyticsData {
   totalScheduled: number;
   totalCompleted: number;
@@ -767,6 +790,7 @@ export interface DemoAnalyticsData {
   byOutcome: DemoOutcomeBreakdown[];
   conversionFunnel: DemoConversionStep[];
   weeklyTrend: DemoWeeklyTrend[];
+  journeyPaths: JourneyPathRow[];
 }
 
 // ══════════════════════════════════════════════════════════
