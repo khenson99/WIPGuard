@@ -100,6 +100,17 @@ export function parseAnalyticsTimeRange(params: URLSearchParams, now = new Date(
   };
 }
 
+export function buildRangeQuery(searchParams: URLSearchParams | null): string {
+  const params = new URLSearchParams();
+  const range = searchParams?.get("range");
+  const from = searchParams?.get("from");
+  const to = searchParams?.get("to");
+  if (range) params.set("range", range);
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  return params.toString();
+}
+
 export function buildAnalyticsRangeSearchParams(range: AnalyticsTimeRange): URLSearchParams {
   const params = new URLSearchParams();
   params.set("range", range.preset);
