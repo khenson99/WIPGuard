@@ -365,6 +365,9 @@ export interface IntegrationTelemetryData {
   failuresInRange: number;
   trend: Array<{ date: string; receipts: number; createdTasks: number; failures: number }>;
   topFailureReasons: Array<{ reason: string; count: number }>;
+  coverageStatus?: "active" | "stale" | "not_provisioned" | null;
+  configuredRules?: string[];
+  expectedRules?: string[];
   _meta: AnalyticsTimestamp;
 }
 
@@ -584,6 +587,14 @@ export interface AnalyticsDashboardData {
     to: string;
     days: number;
     label: string;
+  };
+  meta?: {
+    servedAt: string;
+    section: string | null;
+    forceRefresh: boolean;
+    isPartial: boolean;
+    staleDomains: string[];
+    erroredDomains: string[];
   };
   lastFullRefresh: string;
   errors: { source: string; message: string }[];

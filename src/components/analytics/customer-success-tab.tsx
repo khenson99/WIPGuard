@@ -68,7 +68,7 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
         stale: Boolean(data?.freshness.google_workspace?.stale),
         coverageStatus: googleWorkspace?.coverageStatus ?? null,
       }),
-      details: `${googleWorkspace?.configuredRules.length ?? 0}/${googleWorkspace?.expectedRules.length ?? 0} rules`,
+      details: `${googleWorkspace?.configuredRules?.length ?? 0}/${googleWorkspace?.expectedRules?.length ?? 0} rules`,
     },
     {
       label: "Slack",
@@ -77,7 +77,7 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
         stale: Boolean(data?.freshness.slack?.stale),
         coverageStatus: slackOps?.coverageStatus ?? null,
       }),
-      details: `${slackOps?.configuredRules.length ?? 0}/${slackOps?.expectedRules.length ?? 0} rules`,
+      details: `${slackOps?.configuredRules?.length ?? 0}/${slackOps?.expectedRules?.length ?? 0} rules`,
     },
     {
       label: "Coda",
@@ -86,7 +86,7 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
         stale: Boolean(data?.freshness.coda?.stale),
         coverageStatus: codaOps?.coverageStatus ?? null,
       }),
-      details: `${codaOps?.configuredRules.length ?? 0}/${codaOps?.expectedRules.length ?? 0} rules`,
+      details: `${codaOps?.configuredRules?.length ?? 0}/${codaOps?.expectedRules?.length ?? 0} rules`,
     },
   ];
 
