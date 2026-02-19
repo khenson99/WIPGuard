@@ -119,12 +119,13 @@ export function AiInsightsPanel({ bundle, defaultFilter = "all", compact = false
   const [expanded, setExpanded] = useState(false);
 
   // Reset local view state whenever parent default filter changes.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // Reset local state when parent default filter changes.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setFilter(defaultFilter);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setExpanded(false);
   }, [defaultFilter]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const visible = useMemo(() => {
     if (!bundle) return [];
