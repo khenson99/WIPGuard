@@ -122,6 +122,10 @@ export function AiInsightsPanel({ bundle, defaultFilter = "all", compact = false
     setFilter(defaultFilter);
   }, [defaultFilter]);
 
+  useEffect(() => {
+    setFilter(defaultFilter);
+  }, [defaultFilter]);
+
   const visible = useMemo(() => {
     if (!bundle) return [];
     const items = filter === "all" ? bundle.global : bundle.bySection[filter];

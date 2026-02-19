@@ -11,6 +11,7 @@ import {
   serializeHubSpotRuleState,
   type HubSpotStageChecklistConfig,
 } from "@/lib/integrations/hubspot-stage-checklist";
+import { withSyncObservability } from "@/lib/integrations/sync-observability";
 
 interface HubSpotSyncRequestBody {
   action?: "sync" | "configure";
@@ -86,10 +87,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       });
     }
 
-    const result = await runHubSpotStageChecklist({
-      userId: session.user.id,
-      dryRun: body.dryRun,
-    });
+    const result = await withSyncObservability(
+      "hubspot", "stage-checklist", session.user.id,
+      () => runHubSpotStageChecklist({ userId: session.user.id, dryRun: body.dryRun }),
+      { dryRun: body.dryRun },
+    );
 
     return NextResponse.json({
       ok: true,
