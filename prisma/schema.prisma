@@ -888,3 +888,42 @@ model OutboxEvent {
   @@index([aggregateType, aggregateId, createdAt])
   @@index([eventType, createdAt])
 }
+
+// ============================================================
+// PROSPECTING
+// ============================================================
+
+enum ProspectStatus {
+  DISCOVERED
+  VERIFIED
+  PUSHED
+  REJECTED
+  ERROR
+}
+
+model ManufacturerProspect {
+  id               String         @id @default(cuid())
+  userId           String
+  companyName      String
+  domain           String?
+  industry         String?
+  location         String?
+  employeeCount    Int?
+  kanbanEvidence   Json           // [{ url, snippet, confidence }]
+  contactName      String?
+  contactEmail     String?
+  contactTitle     String?
+  sourceType       String         // "google_cse" | "website_scrape" | "directory"
+  sourceUrl        String
+  confidence       Float          @default(0.5)
+  status           ProspectStatus @default(DISCOVERED)
+  hubspotCompanyId String?
+  hubspotContactId String?
+  pushedToHubspotAt DateTime?
+  discoveredAt     DateTime       @default(now())
+  metadata         Json?
+
+  @@unique([userId, domain])
+  @@index([userId, status])
+  @@index([discoveredAt])
+}

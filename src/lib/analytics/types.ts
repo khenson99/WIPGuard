@@ -380,6 +380,9 @@ export interface IntegrationTelemetryData {
   failuresInRange: number;
   trend: Array<{ date: string; receipts: number; createdTasks: number; failures: number }>;
   topFailureReasons: Array<{ reason: string; count: number }>;
+  coverageStatus?: "active" | "stale" | "not_provisioned" | null;
+  configuredRules?: string[];
+  expectedRules?: string[];
   _meta: AnalyticsTimestamp;
 }
 

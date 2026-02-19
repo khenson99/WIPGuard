@@ -8,6 +8,13 @@ import { WipPressureHeatmap } from "@/components/whip/wip-pressure-heatmap";
 import { QuickActionsPanel } from "@/components/whip/quick-actions-panel";
 import { RetroExport } from "@/components/whip/retro-export";
 
+function formatSprintDay(dateValue: string | null | undefined): string | null {
+  if (!dateValue) return null;
+  const parsed = new Date(`${dateValue}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
 export default function WhipPage() {
   const {
     sprints,
@@ -22,6 +29,8 @@ export default function WhipPage() {
   } = useWhipData();
 
   const activeSprint = sprints.find((s) => s.id === filters.sprintId);
+  const sprintStartLabel = formatSprintDay(activeSprint?.startDate);
+  const sprintEndLabel = formatSprintDay(activeSprint?.endDate);
 
   return (
     <div className="space-y-6 p-6">
@@ -42,9 +51,9 @@ export default function WhipPage() {
               {activeSprint.name}
             </span>
             <span className="text-xs text-muted-foreground">
-              {new Date(activeSprint.startDate + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}
-              {" -- "}
-              {new Date(activeSprint.endDate + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}
+              {sprintStartLabel && sprintEndLabel
+                ? `${sprintStartLabel} -- ${sprintEndLabel}`
+                : "Date range unavailable"}
             </span>
           </div>
         )}
