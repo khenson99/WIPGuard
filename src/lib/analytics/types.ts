@@ -440,7 +440,10 @@ export type AnalyticsSectionId =
   | "ads-traffic"
   | "finance"
   | "sales-pipeline"
-  | "customer-success";
+  | "customer-success"
+  | "customer-journey"
+  | "demo-analytics"
+  | "process-analytics";
 
 export type LifecycleStageId =
   | "awareness"
@@ -570,6 +573,204 @@ export interface AiInsightsBundle {
 }
 
 // ══════════════════════════════════════════════════════════
+// CUSTOMER JOURNEY TYPES
+// ══════════════════════════════════════════════════════════
+
+export type TouchpointChannel =
+  | "hubspot"
+  | "stripe"
+  | "google-workspace"
+  | "slack"
+  | "webflow"
+  | "coda"
+  | "google-analytics"
+  | "google-ads"
+  | "meta-ads"
+  | "reddit-ads"
+  | "pylon"
+  | "mercury";
+
+export type TouchpointType =
+  | "first-touch"
+  | "engagement"
+  | "conversion"
+  | "support"
+  | "expansion";
+
+export interface Touchpoint {
+  timestamp: string;
+  channel: TouchpointChannel;
+  type: TouchpointType;
+  detail: string;
+  value: number | null;
+}
+
+export interface CustomerJourneyRecord {
+  dealId: string;
+  dealName: string;
+  contactEmail: string | null;
+  currentStage: string;
+  value: number;
+  touchpoints: Touchpoint[];
+  firstTouch: string;
+  lastTouch: string;
+  daysInPipeline: number;
+}
+
+export interface TouchpointSummary {
+  channel: TouchpointChannel;
+  totalTouchpoints: number;
+  avgPerJourney: number;
+  firstTouchCount: number;
+  conversionCount: number;
+}
+
+export interface JourneyPath {
+  sequence: TouchpointChannel[];
+  count: number;
+  avgDaysToClose: number;
+  avgValue: number;
+}
+
+export interface ChannelAttribution {
+  channel: TouchpointChannel;
+  firstTouchDeals: number;
+  assistedDeals: number;
+  lastTouchDeals: number;
+  totalRevenue: number;
+  avgDealValue: number;
+}
+
+export interface CustomerJourneyData {
+  journeys: CustomerJourneyRecord[];
+  touchpointSummary: TouchpointSummary[];
+  avgTouchpoints: number;
+  medianDaysToClose: number;
+  topPaths: JourneyPath[];
+  attribution: ChannelAttribution[];
+}
+
+// ══════════════════════════════════════════════════════════
+// DEMO ANALYTICS TYPES
+// ══════════════════════════════════════════════════════════
+
+export type DemoOutcome = "completed" | "no-show" | "rescheduled" | "pending";
+
+export interface DemoRecord {
+  dealId: string;
+  dealName: string;
+  contactEmail: string | null;
+  scheduledAt: string;
+  source: string;
+  outcome: DemoOutcome;
+  followUpSent: boolean;
+  daysToNextStage: number | null;
+  resultingStage: string | null;
+}
+
+export interface DemoSourceBreakdown {
+  source: string;
+  scheduled: number;
+  completed: number;
+  noShows: number;
+  conversionRate: number;
+}
+
+export interface DemoOutcomeBreakdown {
+  outcome: DemoOutcome;
+  count: number;
+  pct: number;
+}
+
+export interface DemoConversionStep {
+  label: string;
+  count: number;
+  conversionFromPrevious: number | null;
+}
+
+export interface DemoWeeklyTrend {
+  week: string;
+  scheduled: number;
+  completed: number;
+  noShows: number;
+}
+
+export interface DemoAnalyticsData {
+  totalScheduled: number;
+  totalCompleted: number;
+  totalNoShows: number;
+  noShowRate: number;
+  avgLeadTimeDays: number;
+  demos: DemoRecord[];
+  bySource: DemoSourceBreakdown[];
+  byOutcome: DemoOutcomeBreakdown[];
+  conversionFunnel: DemoConversionStep[];
+  weeklyTrend: DemoWeeklyTrend[];
+}
+
+// ══════════════════════════════════════════════════════════
+// PROCESS ANALYTICS TYPES
+// ══════════════════════════════════════════════════════════
+
+export interface StageVelocity {
+  stageId: string;
+  stageLabel: string;
+  avgDays: number;
+  medianDays: number;
+  p90Days: number;
+  dealCount: number;
+}
+
+export interface ProcessBottleneck {
+  stageLabel: string;
+  avgDays: number;
+  dealCount: number;
+  severity: "critical" | "warning" | "info";
+  recommendation: string;
+}
+
+export interface StageConversion {
+  fromStage: string;
+  toStage: string;
+  conversionRate: number;
+  avgDays: number;
+  dealCount: number;
+}
+
+export interface HealthFactor {
+  factor: string;
+  score: number;
+  weight: number;
+  detail: string;
+}
+
+export interface WeeklyThroughput {
+  week: string;
+  entered: number;
+  exited: number;
+  netChange: number;
+}
+
+export interface LeakagePoint {
+  stage: string;
+  lostCount: number;
+  lostValue: number;
+  topReasons: string[];
+  pctOfTotal: number;
+}
+
+export interface ProcessAnalyticsData {
+  avgCycleTimeDays: number;
+  stageVelocity: StageVelocity[];
+  bottlenecks: ProcessBottleneck[];
+  conversionByStage: StageConversion[];
+  healthScore: number;
+  healthFactors: HealthFactor[];
+  throughput: WeeklyThroughput[];
+  leakagePoints: LeakagePoint[];
+}
+
+// ══════════════════════════════════════════════════════════
 // COMBINED DASHBOARD
 // ══════════════════════════════════════════════════════════
 
@@ -596,6 +797,9 @@ export interface AnalyticsDashboardData {
   redditOps: IntegrationTelemetryData | null;
   funnelJourney: CrossFunnelData | null;
   lifecycleFunnel: LifecycleFunnelData | null;
+  customerJourney: CustomerJourneyData | null;
+  demoAnalytics: DemoAnalyticsData | null;
+  processAnalytics: ProcessAnalyticsData | null;
   recommendations: AnalyticsRecommendation[];
   distilledInsights: DistilledInsight[];
   aiInsights: AiInsightsBundle;

@@ -18,6 +18,9 @@ import { fetchSemrushData } from "@/lib/analytics/fetchers-semrush";
 import { fetchPylonData } from "@/lib/analytics/fetchers-pylon";
 import { fetchIntegrationTelemetryData } from "@/lib/analytics/fetchers-integrations";
 import { buildCrossFunnelData, buildLifecycleFunnelData } from "@/lib/analytics/funnel";
+import { buildCustomerJourneyData } from "@/lib/analytics/customer-journey";
+import { buildDemoAnalyticsData } from "@/lib/analytics/demo-analytics";
+import { buildProcessAnalyticsData } from "@/lib/analytics/process-analytics";
 import { buildAiInsightsBundle, buildDistilledInsights } from "@/lib/analytics/insight-engine";
 import { createEmptyAnalyticsDashboardData, patchFreshnessWithStale } from "@/lib/analytics/response-shape";
 import {
@@ -63,7 +66,10 @@ type DomainKey =
   | "funnelJourney"
   | "aiInsights"
   | "recommendations"
-  | "distilledInsights";
+  | "distilledInsights"
+  | "customerJourney"
+  | "demoAnalytics"
+  | "processAnalytics";
 
 const ALL_DOMAINS: DomainKey[] = [
   "hubspot",
@@ -89,6 +95,9 @@ const ALL_DOMAINS: DomainKey[] = [
   "aiInsights",
   "recommendations",
   "distilledInsights",
+  "customerJourney",
+  "demoAnalytics",
+  "processAnalytics",
 ];
 
 const SECTION_DOMAINS: Record<string, DomainKey[]> = {
@@ -176,6 +185,31 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "cs-product": ["product"],
   "cs-google-workspace": ["googleWorkspace"],
   "cs-slack": ["slack"],
+
+  "customer-journey": [
+    "hubspot", "stripe", "mercury", "googleWorkspace", "slack",
+    "webflow", "coda", "googleAnalytics", "googleAds", "metaAds",
+    "redditAds", "pylon", "customerJourney",
+    "lifecycleFunnel", "funnelJourney", "aiInsights", "recommendations", "distilledInsights",
+  ],
+  "cj-overview": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "redditAds", "pylon", "customerJourney"],
+  "cj-touchpoints": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "redditAds", "pylon", "customerJourney"],
+
+  "demo-analytics": [
+    "hubspot", "googleWorkspace", "demoAnalytics",
+    "lifecycleFunnel", "funnelJourney", "aiInsights", "recommendations", "distilledInsights",
+  ],
+  "demo-scheduling": ["hubspot", "googleWorkspace", "demoAnalytics"],
+  "demo-attribution": ["hubspot", "googleAds", "metaAds", "redditAds", "googleAnalytics", "webflow", "demoAnalytics"],
+
+  "process-analytics": [
+    "hubspot", "stripe", "processAnalytics",
+    "lifecycleFunnel", "funnelJourney", "aiInsights", "recommendations", "distilledInsights",
+  ],
+  "process-bottlenecks": ["hubspot", "processAnalytics"],
+  "process-velocity": ["hubspot", "processAnalytics"],
+  "process-health": ["hubspot", "stripe", "processAnalytics"],
+  "process-throughput": ["hubspot", "processAnalytics"],
 };
 
 function requiredDomainsForSection(section: string | null): Set<DomainKey> {
@@ -309,7 +343,7 @@ function providerForDomain(domain: DomainKey): "google_workspace" | "hubspot" | 
 }
 
 type FetchEntry = {
-  key: Exclude<DomainKey, "lifecycleFunnel" | "funnelJourney" | "aiInsights" | "recommendations" | "distilledInsights">;
+  key: Exclude<DomainKey, "lifecycleFunnel" | "funnelJourney" | "aiInsights" | "recommendations" | "distilledInsights" | "customerJourney" | "demoAnalytics" | "processAnalytics">;
   fn: () => Promise<unknown>;
 };
 
@@ -751,6 +785,15 @@ export async function GET(request: Request) {
   }
   if (domains.has("distilledInsights")) {
     result.distilledInsights = buildDistilledInsights(result);
+  }
+  if (domains.has("customerJourney")) {
+    result.customerJourney = buildCustomerJourneyData(result);
+  }
+  if (domains.has("demoAnalytics")) {
+    result.demoAnalytics = buildDemoAnalyticsData(result);
+  }
+  if (domains.has("processAnalytics")) {
+    result.processAnalytics = buildProcessAnalyticsData(result);
   }
 
   const staleDomains = Array.from(new Set(result.staleDomains));

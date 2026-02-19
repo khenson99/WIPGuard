@@ -2,7 +2,10 @@ export type AnalyticsPrimarySectionId =
   | "ads-traffic"
   | "finance"
   | "sales-pipeline"
-  | "customer-success";
+  | "customer-success"
+  | "customer-journey"
+  | "demo-analytics"
+  | "process-analytics";
 
 export interface AnalyticsPrimarySection {
   id: AnalyticsPrimarySectionId;
@@ -35,7 +38,10 @@ export interface AnalyticsSubSection {
     | "decisionDashboard"
     | "flowMetrics"
     | "flowRisk"
-    | "observability";
+    | "observability"
+    | "customerJourney"
+    | "demoAnalytics"
+    | "processAnalytics";
 }
 
 export const ANALYTICS_PRIMARY_SECTIONS: AnalyticsPrimarySection[] = [
@@ -62,6 +68,24 @@ export const ANALYTICS_PRIMARY_SECTIONS: AnalyticsPrimarySection[] = [
     label: "Customer Success",
     path: "/analytics/customer-success",
     description: "Post-sale support and product adoption.",
+  },
+  {
+    id: "customer-journey",
+    label: "Customer Journey",
+    path: "/analytics/customer-journey",
+    description: "End-to-end customer touchpoint mapping.",
+  },
+  {
+    id: "demo-analytics",
+    label: "Demo Analytics",
+    path: "/analytics/demo-analytics",
+    description: "Demo scheduling, attendance, and conversion.",
+  },
+  {
+    id: "process-analytics",
+    label: "Process Analytics",
+    path: "/analytics/process-analytics",
+    description: "Pipeline velocity, health, and bottlenecks.",
   },
 ];
 
@@ -92,6 +116,17 @@ export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
   { id: "cs-flow-metrics", label: "Flow Metrics", path: "/analytics/cs-flow-metrics", parentId: "customer-success", dataDomain: "flowMetrics" },
   { id: "cs-flow-risk", label: "Flow Risk", path: "/analytics/cs-flow-risk", parentId: "customer-success", dataDomain: "flowRisk" },
   { id: "cs-observability", label: "Observability", path: "/analytics/cs-observability", parentId: "customer-success", dataDomain: "observability" },
+
+  { id: "cj-overview", label: "Journey Overview", path: "/analytics/cj-overview", parentId: "customer-journey", dataDomain: "customerJourney" },
+  { id: "cj-touchpoints", label: "Touchpoints", path: "/analytics/cj-touchpoints", parentId: "customer-journey", dataDomain: "customerJourney" },
+
+  { id: "demo-scheduling", label: "Scheduling", path: "/analytics/demo-scheduling", parentId: "demo-analytics", dataDomain: "demoAnalytics" },
+  { id: "demo-attribution", label: "Attribution", path: "/analytics/demo-attribution", parentId: "demo-analytics", dataDomain: "demoAnalytics" },
+
+  { id: "process-bottlenecks", label: "Bottlenecks", path: "/analytics/process-bottlenecks", parentId: "process-analytics", dataDomain: "processAnalytics" },
+  { id: "process-velocity", label: "Velocity", path: "/analytics/process-velocity", parentId: "process-analytics", dataDomain: "processAnalytics" },
+  { id: "process-health", label: "Health", path: "/analytics/process-health", parentId: "process-analytics", dataDomain: "processAnalytics" },
+  { id: "process-throughput", label: "Throughput", path: "/analytics/process-throughput", parentId: "process-analytics", dataDomain: "processAnalytics" },
 ];
 
 export function getAnalyticsPrimarySectionById(id: string): AnalyticsPrimarySection | null {
@@ -122,6 +157,9 @@ export const LEGACY_ANALYTICS_TAB_REDIRECTS: Record<string, string> = {
   finance: "/analytics/finance",
   marketing: "/analytics/ads-traffic",
   tasks: "/analytics/customer-success",
+  journey: "/analytics/customer-journey",
+  demos: "/analytics/demo-analytics",
+  process: "/analytics/process-analytics",
 };
 
 export const LEGACY_ANALYTICS_ROUTE_REDIRECTS: Record<string, string> = {
@@ -147,4 +185,7 @@ export const LEGACY_ANALYTICS_ROUTE_REDIRECTS: Record<string, string> = {
   "flow-metrics": "/analytics/cs-flow-metrics",
   "flow-risk": "/analytics/cs-flow-risk",
   observability: "/analytics/cs-observability",
+  "customer-journey": "/analytics/customer-journey",
+  "demo-analytics": "/analytics/demo-analytics",
+  "process-analytics": "/analytics/process-analytics",
 };
