@@ -33,6 +33,7 @@ const FlowRiskView = dynamic(() => import("@/components/analytics/ops-insights")
 const ObservabilityView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.ObservabilityView));
 const LifecycleFunnelPanel = dynamic(() => import("@/components/analytics/lifecycle-funnel-panel").then((m) => m.LifecycleFunnelPanel));
 const AiInsightsPanel = dynamic(() => import("@/components/analytics/ai-insights-panel").then((m) => m.AiInsightsPanel));
+const EnhancedInsightsPanel = dynamic(() => import("@/components/analytics/enhanced-insights-panel").then((m) => m.EnhancedInsightsPanel));
 const GoogleAnalyticsDashboard = dynamic(() => import("./sub-dashboards/google-analytics-dashboard").then((m) => m.GoogleAnalyticsDashboard));
 const StripeDashboard = dynamic(() => import("./sub-dashboards/stripe-dashboard").then((m) => m.StripeDashboard));
 const HubspotSalesDashboard = dynamic(() => import("./sub-dashboards/hubspot-sales-dashboard").then((m) => m.HubspotSalesDashboard));
@@ -44,7 +45,7 @@ const DemoSchedulingView = dynamic(() => import("@/components/analytics/demo-sch
 const DemoAttributionView = dynamic(() => import("@/components/analytics/demo-attribution-view").then((m) => m.DemoAttributionView));
 const ProcessBottlenecksView = dynamic(() => import("@/components/analytics/process-bottlenecks-view").then((m) => m.ProcessBottlenecksView));
 const ProcessHealthView = dynamic(() => import("@/components/analytics/process-health-view").then((m) => m.ProcessHealthView));
-import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import type { AnalyticsDashboardData, AnalyticsSectionId, EnhancedInsightsBundle } from "@/lib/analytics/types";
 import { buildRangeQuery } from "@/lib/analytics/time-range";
 import {
   getAnalyticsPrimaryForSection,
@@ -532,6 +533,14 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
             lifecycle={analyticsData?.lifecycleFunnel ?? null}
             insights={analyticsData?.aiInsights?.global ?? []}
             sectionFocus={primary.id}
+          />
+          <EnhancedInsightsPanel
+            section={primary.id as AnalyticsSectionId}
+            insights={
+              (analyticsData?.aiInsights as EnhancedInsightsBundle | undefined)?.sections?.[
+                primary.id as AnalyticsSectionId
+              ] ?? null
+            }
           />
           <AiInsightsPanel bundle={analyticsData?.aiInsights ?? null} defaultFilter={primary.id} />
         </div>

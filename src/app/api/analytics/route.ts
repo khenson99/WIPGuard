@@ -22,6 +22,8 @@ import { buildCustomerJourneyData } from "@/lib/analytics/customer-journey";
 import { buildDemoAnalyticsData } from "@/lib/analytics/demo-analytics";
 import { buildProcessAnalyticsData } from "@/lib/analytics/process-analytics";
 import { buildAiInsightsBundle, buildDistilledInsights } from "@/lib/analytics/insight-engine";
+import { buildEnhancedInsightsBundle } from "@/lib/analytics/enhanced-insight-engine";
+import { extractAndStoreMetrics } from "@/lib/analytics/metric-history";
 import { createEmptyAnalyticsDashboardData, patchFreshnessWithStale } from "@/lib/analytics/response-shape";
 import {
   analyticsErrorFromReason,
@@ -778,8 +780,11 @@ export async function GET(request: Request) {
     result.lifecycleFunnel = buildLifecycleFunnelData(result);
   }
   if (domains.has("aiInsights")) {
-    result.aiInsights = buildAiInsightsBundle(result);
+    result.aiInsights = await buildEnhancedInsightsBundle(userId, result, range);
   }
+
+  // Fire-and-forget: accumulate metric history for future analytics
+  extractAndStoreMetrics(userId, result, range).catch(() => {});
   if (domains.has("recommendations")) {
     result.recommendations = buildRecommendations(result);
   }
@@ -795,16 +800,6 @@ export async function GET(request: Request) {
   if (domains.has("processAnalytics")) {
     result.processAnalytics = buildProcessAnalyticsData(result);
   }
-
-  const staleDomains = Array.from(new Set(result.staleDomains));
-  const erroredDomains = Array.from(new Set(result.errors.map((entry) => entry.source)));
-  result.staleDomains = staleDomains;
-  result.meta = buildAnalyticsRouteMeta({
-    section,
-    forceRefresh,
-    staleDomains,
-    erroredDomains,
-  });
 
   const staleDomains = Array.from(new Set(result.staleDomains));
   const erroredDomains = Array.from(new Set(result.errors.map((entry) => entry.source)));
