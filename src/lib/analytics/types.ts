@@ -11,16 +11,29 @@ export type AnalyticsSnapshotStatus = "SUCCESS" | "ERROR";
 
 export type IntegrationProviderKey =
   | "google_workspace"
+  | "googleWorkspace"
   | "google_ads"
+  | "ga"
+  | "googleAnalytics"
+  | "googleAds"
   | "hubspot"
+  | "hubspotOps"
   | "slack"
   | "webflow"
   | "coda"
+  | "codaKanban"
+  | "codaOps"
   | "reddit"
+  | "redditAds"
+  | "redditOps"
   | "meta"
+  | "metaAds"
+  | "metaPage"
   | "stripe"
   | "mercury"
-  | "pylon";
+  | "pylon"
+  | "semrush"
+  | "product";
 
 export interface ProviderFreshness {
   provider: IntegrationProviderKey;
@@ -574,13 +587,15 @@ export interface AnalyticsDashboardData {
   stripe: StripeData | null;
   mercury: MercuryData | null;
   googleAnalytics: GAData | null;
+  ga?: GAData | null;
   googleAds: GoogleAdsData | null;
   metaAds: MetaAdsData | null;
   metaPage: MetaPageData | null;
-  instagram: MetaInstagramData | null;
+  instagram?: MetaInstagramData | null;
   redditAds: RedditAdsData | null;
   webflow: WebflowData | null;
   coda: CodaKanbanData | null;
+  codaKanban?: CodaKanbanData | null;
   semrush: SemrushData | null;
   pylon: PylonData | null;
   product: ProductSuccessData | null;
