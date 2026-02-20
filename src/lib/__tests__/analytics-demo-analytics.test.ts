@@ -156,8 +156,8 @@ describe("buildDemoAnalyticsData", () => {
     expect(paid.demoNoShow).toBe(1);
     expect(paid.closedLost).toBe(1);
     expect(paid.onboarding).toBe(0); // No Subscription/Closed Won deals
-    expect(paid.churned).toBe(0);
-    expect(paid.notActivated).toBe(0);
+    expect(paid.churned).toBe(1);
+    expect(paid.notActivated).toBe(1);
   });
 
   it("includes Stripe churn events in churned count", () => {
@@ -171,7 +171,7 @@ describe("buildDemoAnalyticsData", () => {
       },
       contacts: { totalContacts: 5, recentContacts: 1, bySource: [] },
       deals: [
-        { dealId: "cus_stripe1", dealName: "Stripe Customer", stageId: "w", stageLabel: "Closed Won", amount: 5000, source: "Organic", ownerId: null, updatedAt: "2026-02-05T00:00:00.000Z", createdAt: "2026-01-01T00:00:00.000Z" },
+        { dealId: "cus_stripe1", dealName: "Stripe Customer", stageId: "w", stageLabel: "Closed Won", amount: 5000, source: "Organic", ownerId: null, updatedAt: "2026-03-05T00:00:00.000Z", createdAt: "2026-01-01T00:00:00.000Z" },
         { dealId: "d2", dealName: "Active Deal", stageId: "s", stageLabel: "Subscription", amount: 3000, source: "Organic", ownerId: null, updatedAt: "2026-02-01T00:00:00.000Z", createdAt: "2026-01-10T00:00:00.000Z" },
       ],
       _meta: META,
@@ -182,7 +182,7 @@ describe("buildDemoAnalyticsData", () => {
       subscriptions: {
         active: 1, pastDue: 0, canceled: 1, trialing: 0, churnRate: 50,
         recentChurnEvents: [
-          { customer: "cus_stripe1", canceledAt: "2026-02-15T00:00:00.000Z", amount: 5000 },
+          { customer: "cus_stripe1", canceledAt: "2026-01-20T00:00:00.000Z", amount: 5000 },
         ],
       },
       payments: { succeeded: 2, failed: 0, successRate: 100 },
@@ -196,5 +196,6 @@ describe("buildDemoAnalyticsData", () => {
     // Stripe churn event matched by dealId → customer ID
     expect(organic.churned).toBe(1);
     expect(organic.onboarding).toBe(2); // Both Closed Won and Subscription
+    expect(organic.notActivated).toBe(1);
   });
 });

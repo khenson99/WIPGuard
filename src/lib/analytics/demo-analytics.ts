@@ -176,13 +176,53 @@ function pct(num: number, denom: number): number {
 
 // Stages that indicate the customer has been onboarded (reached Subscription or beyond)
 const ONBOARDED_STAGES = new Set(["Subscription", "Closed Won"]);
+const HUBSPOT_CHURN_STAGES = new Set(["Churn", "Closed Lost"]);
+
+type StripeChurnEvent = NonNullable<
+  AnalyticsDashboardData["stripe"]
+>["subscriptions"]["recentChurnEvents"][number];
+
+function normalizeKey(value: string | null | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function buildStripeChurnLookup(events: StripeChurnEvent[]): Map<string, StripeChurnEvent> {
+  const lookup = new Map<string, StripeChurnEvent>();
+  for (const event of events) {
+    const key = normalizeKey(event.customer);
+    if (!key) continue;
+    const existing = lookup.get(key);
+    if (!existing) {
+      lookup.set(key, event);
+      continue;
+    }
+    const existingTime = new Date(existing.canceledAt).getTime();
+    const nextTime = new Date(event.canceledAt).getTime();
+    if (nextTime > existingTime) {
+      lookup.set(key, event);
+    }
+  }
+  return lookup;
+}
+
+function resolveStripeChurnEvent(
+  deal: { dealId: string; dealName: string },
+  lookup: Map<string, StripeChurnEvent>
+): StripeChurnEvent | null {
+  const candidates = [normalizeKey(deal.dealId), normalizeKey(deal.dealName)].filter(Boolean);
+  for (const candidate of candidates) {
+    const match = lookup.get(candidate);
+    if (match) return match;
+  }
+  return null;
+}
 
 function buildJourneyPathAnalysis(data: AnalyticsDashboardData): JourneyPathRow[] {
   const deals = data.hubspot?.deals ?? [];
   const stripeChurnEvents = data.stripe?.subscriptions?.recentChurnEvents ?? [];
 
-  // Build a set of Stripe-churned customer IDs for cross-referencing
-  const stripeChurnedCustomers = new Set(stripeChurnEvents.map((e) => e.customer));
+  // Build a lookup of Stripe-churned customer IDs for cross-referencing
+  const stripeChurnLookup = buildStripeChurnLookup(stripeChurnEvents);
 
   const bySource = new Map<string, typeof deals>();
   for (const deal of deals) {
@@ -228,20 +268,24 @@ function buildJourneyPathAnalysis(data: AnalyticsDashboardData): JourneyPathRow[
       ? Math.round(wonWithValue.reduce((s, d) => s + d.amount, 0) / wonWithValue.length)
       : null;
 
-    // Churn: HubSpot "Churn" stage OR Stripe subscription cancellation
+    // Churn: HubSpot "Churn" / "Closed Lost" stages OR Stripe subscription cancellation
     // Stripe churn events are matched by customer ID (deal name used as fallback identifier)
-    const hubspotChurned = sourceDeals.filter((d) => d.stageLabel === "Churn");
-    const stripeChurned = sourceDeals.filter(
-      (d) => !hubspotChurned.includes(d) && stripeChurnedCustomers.has(d.dealId),
-    );
-    const churned = hubspotChurned.length + stripeChurned.length;
-    const allChurnedDeals = [...hubspotChurned, ...stripeChurned];
+    const churnedDeals = sourceDeals.flatMap((deal) => {
+      const stripeEvent = resolveStripeChurnEvent(deal, stripeChurnLookup);
+      const hubspotChurned = HUBSPOT_CHURN_STAGES.has(deal.stageLabel);
+      if (!hubspotChurned && !stripeEvent) return [];
+      return [{
+        deal,
+        churnedAt: stripeEvent?.canceledAt ?? deal.updatedAt ?? null,
+      }];
+    });
+    const churned = churnedDeals.length;
 
     // Not Activated: churned within 30 days of deal creation (signup)
-    const notActivated = allChurnedDeals.filter((d) => {
-      if (!d.createdAt) return false;
-      const createdMs = new Date(d.createdAt).getTime();
-      const churnedMs = d.updatedAt ? new Date(d.updatedAt).getTime() : Date.now();
+    const notActivated = churnedDeals.filter(({ deal, churnedAt }) => {
+      if (!deal.createdAt || !churnedAt) return false;
+      const createdMs = new Date(deal.createdAt).getTime();
+      const churnedMs = new Date(churnedAt).getTime();
       const daysSinceCreation = (churnedMs - createdMs) / 86_400_000;
       return daysSinceCreation <= 30;
     }).length;
