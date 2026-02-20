@@ -1,5 +1,6 @@
 "use client";
 
+import { memo, useMemo } from "react";
 import {
   DollarSign, Users, TrendingUp, Wallet,
   ArrowUpRight, ArrowDownRight, Activity, CreditCard,
@@ -141,24 +142,7 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
           {stripe?.revenueTrend && stripe.revenueTrend.length > 0 && (
             <div className="mt-6">
               <p className="mb-3 text-xs text-muted-foreground">Revenue Trend</p>
-              <div className="flex items-end gap-2" style={{ height: 120 }}>
-                {stripe.revenueTrend.map((t, i) => {
-                  const max = Math.max(...stripe.revenueTrend.map((r) => r.revenue), 1);
-                  const h = Math.max((t.revenue / max) * 100, 4);
-                  return (
-                    <div key={i} className="flex flex-1 flex-col items-center gap-1">
-                      <span className="text-[10px] tabular-nums text-muted-foreground">
-                        {t.revenue > 0 ? fmt$(t.revenue) : ""}
-                      </span>
-                      <div
-                        className="w-full rounded-t bg-primary/80 transition-all duration-500"
-                        style={{ height: `${h}%` }}
-                      />
-                      <span className="text-[10px] text-muted-foreground">{t.month}</span>
-                    </div>
-                  );
-                })}
-              </div>
+              <RevenueTrendBars trend={stripe.revenueTrend} />
             </div>
           )}
         </div>
@@ -254,7 +238,38 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
   );
 }
 
-function MiniStat({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
+const RevenueTrendBars = memo(function RevenueTrendBars({
+  trend,
+}: {
+  trend: Array<{ month: string; revenue: number }>;
+}) {
+  const maxRevenue = useMemo(
+    () => Math.max(...trend.map((r) => r.revenue), 1),
+    [trend]
+  );
+
+  return (
+    <div className="flex items-end gap-2" style={{ height: 120 }}>
+      {trend.map((t, i) => {
+        const h = Math.max((t.revenue / maxRevenue) * 100, 4);
+        return (
+          <div key={i} className="flex flex-1 flex-col items-center gap-1">
+            <span className="text-[10px] tabular-nums text-muted-foreground">
+              {t.revenue > 0 ? fmt$(t.revenue) : ""}
+            </span>
+            <div
+              className="w-full rounded-t bg-primary/80 transition-all duration-500"
+              style={{ height: `${h}%` }}
+            />
+            <span className="text-[10px] text-muted-foreground">{t.month}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+});
+
+const MiniStat = memo(function MiniStat({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
   return (
     <div>
       <div className="mb-1 flex items-center gap-1.5">
@@ -264,9 +279,9 @@ function MiniStat({ label, value, icon }: { label: string; value: string; icon: 
       <p className="text-lg font-bold tabular-nums text-foreground">{value}</p>
     </div>
   );
-}
+});
 
-function EmptyState() {
+const EmptyState = memo(function EmptyState() {
   return (
     <div className="flex h-64 items-center justify-center">
       <div className="text-center">
@@ -276,4 +291,4 @@ function EmptyState() {
       </div>
     </div>
   );
-}
+});

@@ -11,6 +11,7 @@ import {
   serializeGoogleDriveRule,
   type GoogleDriveEscalationConfig,
 } from "@/lib/integrations/google-drive-comment-escalation";
+import { withSyncObservability } from "@/lib/integrations/sync-observability";
 
 interface GoogleDriveRequestBody {
   action?: "sync" | "configure";
@@ -86,10 +87,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       });
     }
 
-    const result = await runGoogleDriveCommentEscalation({
-      userId: session.user.id,
-      dryRun: body.dryRun,
-    });
+    const result = await withSyncObservability(
+      "google_drive", "drive-comment-escalation", session.user.id,
+      () => runGoogleDriveCommentEscalation({ userId: session.user.id, dryRun: body.dryRun }),
+      { dryRun: body.dryRun },
+    );
 
     return NextResponse.json({
       ok: true,

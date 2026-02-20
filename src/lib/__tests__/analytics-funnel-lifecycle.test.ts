@@ -39,6 +39,9 @@ function baseData(): AnalyticsDashboardData {
         "process-analytics": [],
       },
     },
+    customerJourney: null,
+    demoAnalytics: null,
+    processAnalytics: null,
     freshness: {},
     staleDomains: [],
     timeRange: {

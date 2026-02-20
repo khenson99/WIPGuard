@@ -11,6 +11,7 @@ import {
   serializeSlackStatusSyncRule,
   type SlackStatusSyncConfig,
 } from "@/lib/integrations/slack-status-sync";
+import { withSyncObservability } from "@/lib/integrations/sync-observability";
 
 interface SlackStatusSyncRequestBody {
   action?: "sync" | "configure";
@@ -86,10 +87,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       });
     }
 
-    const result = await runSlackStatusSync({
-      userId: session.user.id,
-      dryRun: body.dryRun,
-    });
+    const result = await withSyncObservability(
+      "slack", "status-sync", session.user.id,
+      () => runSlackStatusSync({ userId: session.user.id, dryRun: body.dryRun }),
+      { dryRun: body.dryRun },
+    );
 
     return NextResponse.json({
       ok: true,

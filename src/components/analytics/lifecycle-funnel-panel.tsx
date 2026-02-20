@@ -58,8 +58,14 @@ export function LifecycleFunnelPanel({ lifecycle, insights = [], sectionFocus = 
   const hoveredStage = visibleStages.find((stage) => stage.id === hoveredStageId) ?? null;
   const displayStage = hoveredStage ?? activeStage;
 
-  const visibleTransitions = lifecycle.transitions.filter((item) => item.fromStageId === displayStage.id);
-  const relatedInsights = insights.filter((item) => item.section === displayStage.section);
+  const visibleTransitions = useMemo(
+    () => lifecycle.transitions.filter((item) => item.fromStageId === displayStage.id),
+    [lifecycle.transitions, displayStage.id]
+  );
+  const relatedInsights = useMemo(
+    () => insights.filter((item) => item.section === displayStage.section),
+    [insights, displayStage.section]
+  );
 
   const maxVolume = Math.max(1, ...visibleStages.map((stage) => stage.volume));
 

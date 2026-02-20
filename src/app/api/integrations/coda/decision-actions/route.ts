@@ -11,6 +11,7 @@ import {
   serializeCodaDecisionRule,
   type CodaDecisionActionConfig,
 } from "@/lib/integrations/coda-decision-actions";
+import { withSyncObservability } from "@/lib/integrations/sync-observability";
 
 interface CodaDecisionRequestBody {
   action?: "sync" | "configure";
@@ -86,10 +87,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       });
     }
 
-    const result = await runCodaDecisionActionConverter({
-      userId: session.user.id,
-      dryRun: body.dryRun,
-    });
+    const result = await withSyncObservability(
+      "coda", "decision-actions", session.user.id,
+      () => runCodaDecisionActionConverter({ userId: session.user.id, dryRun: body.dryRun }),
+      { dryRun: body.dryRun },
+    );
 
     return NextResponse.json({
       ok: true,
