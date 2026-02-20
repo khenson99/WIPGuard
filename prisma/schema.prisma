@@ -24,7 +24,8 @@ model User {
   integrationConnections IntegrationConnection[]
   integrationRules       IntegrationRule[]
   analyticsSnapshots     AnalyticsSnapshot[]
-  stripeCustomerLinks    StripeCustomerLink[]
+  metricHistory          MetricHistory[]
+  insightFeedback        InsightFeedback[]
   uiPreference           UserUiPreference?
   savedViews             UserSavedView[]
   ownedWorkflows         WorkflowDefinition[] @relation("WorkflowOwner")
@@ -517,20 +518,48 @@ model AnalyticsSnapshot {
   @@index([capturedAt])
 }
 
-model StripeCustomerLink {
-  id               String   @id @default(cuid())
-  userId           String
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  stripeCustomerId String
-  hubspotDealId    String
-  hubspotDealName  String?
+// ============================================================
+// AI ANALYTICS: METRIC HISTORY & INSIGHT FEEDBACK
+// ============================================================
+
+model MetricHistory {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  metricKey   String
+  section     String
+  value       Float
+  periodStart DateTime
+  periodEnd   DateTime
+  rangePreset String
+
+  capturedAt DateTime @default(now())
+
+  @@index([userId, metricKey, periodEnd(sort: Desc)])
+  @@index([userId, section, periodEnd(sort: Desc)])
+  @@index([capturedAt])
+}
+
+enum InsightFeedbackAction {
+  USEFUL
+  NOT_USEFUL
+  ACTED_ON
+  DISMISSED
+}
+
+model InsightFeedback {
+  id        String                @id @default(cuid())
+  userId    String
+  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  insightId String
+  action    InsightFeedbackAction
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 
-  @@unique([userId, stripeCustomerId])
-  @@unique([userId, hubspotDealId])
-  @@index([userId])
+  @@index([userId, insightId])
+  @@index([createdAt])
 }
 
 model IntegrationRule {
