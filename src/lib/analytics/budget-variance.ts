@@ -68,7 +68,7 @@ export function computeBudgetActuals(
   mercury: AnalyticsDashboardData["mercury"],
   budgetAmounts?: Record<string, number>,
 ): BudgetActualItem[] {
-  const totalOutflows = mercury?.cashFlow.outflows30d ?? 0;
+  const totalOutflows = mercury?.cashFlow?.outflows30d ?? 0;
   const items: BudgetActualItem[] = [];
 
   const ratioKeys = Object.keys(DEFAULT_EXPENSE_RATIOS) as Array<

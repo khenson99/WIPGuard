@@ -59,11 +59,11 @@ export function buildProfitAndLoss(
   const ratios = opts?.ratios ?? DEFAULT_EXPENSE_RATIOS;
 
   // Revenue figures from Stripe
-  const currentRevenue = stripe?.revenue.totalRevenue30d ?? 0;
-  const previousRevenue = stripe?.revenue.totalRevenuePrev30d ?? 0;
+  const currentRevenue = stripe?.revenue?.totalRevenue30d ?? 0;
+  const previousRevenue = stripe?.revenue?.totalRevenuePrev30d ?? 0;
 
   // Total outflows from Mercury (used to estimate expenses)
-  const currentOutflows = mercury?.cashFlow.outflows30d ?? 0;
+  const currentOutflows = mercury?.cashFlow?.outflows30d ?? 0;
   // Estimate previous outflows from current (no historical data available)
   const previousOutflows = currentOutflows;
 
