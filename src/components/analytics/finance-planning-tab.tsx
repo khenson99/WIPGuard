@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Target, Wallet, AlertTriangle, TrendingDown } from "lucide-react";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
@@ -22,6 +22,84 @@ import {
 } from "@/lib/analytics/budget-variance";
 import { computeVariance, fmtDelta, runwayColor } from "@/lib/analytics/finance-utils";
 import { computeFinancialGoals, type FinancialGoal } from "@/lib/analytics/finance-modeling";
+
+type BudgetPeriodApi = "MONTHLY" | "QUARTERLY" | "ANNUAL";
+type BudgetCategoryApi = "COGS" | "PAYROLL" | "MARKETING" | "INFRASTRUCTURE" | "OPS" | "OTHER";
+
+type BudgetLineItemApi = {
+  id: string;
+  category: BudgetCategoryApi;
+  plannedAmount: number;
+  notes?: string | null;
+};
+
+type BudgetApi = {
+  id: string;
+  name: string;
+  period: BudgetPeriodApi;
+  startDate: string;
+  endDate: string;
+  lineItems: BudgetLineItemApi[];
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+const CATEGORY_CONFIG: Array<{ key: BudgetCategoryApi; label: string }> = [
+  { key: "COGS", label: "Cost of Goods Sold" },
+  { key: "PAYROLL", label: "Payroll & Benefits" },
+  { key: "MARKETING", label: "Sales & Marketing" },
+  { key: "INFRASTRUCTURE", label: "Infrastructure & Hosting" },
+  { key: "OPS", label: "General & Administrative" },
+  { key: "OTHER", label: "Other" },
+];
+
+function formatDateInput(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function parseDateInput(value: string): Date | null {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function addMonths(date: Date, months: number): Date {
+  const d = new Date(date);
+  d.setMonth(d.getMonth() + months);
+  return d;
+}
+
+function endDateForPeriod(startDate: string, period: BudgetPeriodApi): string {
+  const parsed = parseDateInput(startDate);
+  if (!parsed) return "";
+  const months = period === "MONTHLY" ? 1 : period === "QUARTERLY" ? 3 : 12;
+  const end = addMonths(parsed, months);
+  end.setDate(end.getDate() - 1);
+  return formatDateInput(end);
+}
+
+function defaultDateRange(period: BudgetPeriodApi): { start: string; end: string } {
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  return { start: formatDateInput(start), end: endDateForPeriod(formatDateInput(start), period) };
+}
+
+function emptyAmounts(): Record<BudgetCategoryApi, string> {
+  return {
+    COGS: "",
+    PAYROLL: "",
+    MARKETING: "",
+    INFRASTRUCTURE: "",
+    OPS: "",
+    OTHER: "",
+  };
+}
+
+function toNumber(value: string): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 /* ── Status badge helper ───────────────────────────────── */
 
@@ -58,6 +136,19 @@ interface FinancePlanningTabProps {
 }
 
 export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
+  const [budgets, setBudgets] = useState<BudgetApi[]>([]);
+  const [budgetsLoading, setBudgetsLoading] = useState(true);
+  const [budgetError, setBudgetError] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [formInitialized, setFormInitialized] = useState(false);
+  const [formName, setFormName] = useState("Baseline Budget");
+  const [formPeriod, setFormPeriod] = useState<BudgetPeriodApi>("MONTHLY");
+  const [formStartDate, setFormStartDate] = useState("");
+  const [formEndDate, setFormEndDate] = useState("");
+  const [formAmounts, setFormAmounts] = useState<Record<BudgetCategoryApi, string>>(emptyAmounts());
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   /* ── Empty state ──────────────────────────────────── */
 
   if (!data?.stripe && !data?.mercury) {
@@ -69,11 +160,82 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
     );
   }
 
+  const loadBudgets = useCallback(async () => {
+    setBudgetsLoading(true);
+    setBudgetError(null);
+    try {
+      const response = await fetch("/api/financial-planning/budgets", { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`Failed to load budgets (${response.status})`);
+      }
+      const payload = (await response.json()) as BudgetApi[];
+      setBudgets(Array.isArray(payload) ? payload : []);
+    } catch (error) {
+      setBudgetError(error instanceof Error ? error.message : "Failed to load budgets");
+      setBudgets([]);
+    } finally {
+      setBudgetsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadBudgets();
+  }, [loadBudgets]);
+
+  const activeBudget = budgets[0] ?? null;
+
+  const seedFormDefaults = useCallback((period: BudgetPeriodApi = "MONTHLY") => {
+    const range = defaultDateRange(period);
+    setFormName("Baseline Budget");
+    setFormPeriod(period);
+    setFormStartDate(range.start);
+    setFormEndDate(range.end);
+    setFormAmounts(emptyAmounts());
+  }, []);
+
+  const seedFormFromBudget = useCallback((budget: BudgetApi) => {
+    setFormName(budget.name ?? "Baseline Budget");
+    setFormPeriod(budget.period ?? "MONTHLY");
+    setFormStartDate(budget.startDate ? budget.startDate.slice(0, 10) : "");
+    setFormEndDate(budget.endDate ? budget.endDate.slice(0, 10) : "");
+    const nextAmounts = emptyAmounts();
+    for (const item of budget.lineItems ?? []) {
+      nextAmounts[item.category] = String(item.plannedAmount ?? "");
+    }
+    setFormAmounts(nextAmounts);
+  }, []);
+
+  useEffect(() => {
+    if (formInitialized || budgetsLoading) return;
+    if (activeBudget) {
+      seedFormFromBudget(activeBudget);
+      setFormOpen(false);
+    } else {
+      seedFormDefaults("MONTHLY");
+      setFormOpen(true);
+    }
+    setFormInitialized(true);
+  }, [activeBudget, budgetsLoading, formInitialized, seedFormDefaults, seedFormFromBudget]);
+
+  const budgetAmounts = useMemo(() => {
+    if (!activeBudget || !activeBudget.lineItems?.length) return undefined;
+    const amounts: Record<string, number> = {};
+    for (const config of CATEGORY_CONFIG) {
+      amounts[config.label] = 0;
+    }
+    for (const item of activeBudget.lineItems) {
+      const config = CATEGORY_CONFIG.find((entry) => entry.key === item.category);
+      if (!config) continue;
+      amounts[config.label] = item.plannedAmount ?? 0;
+    }
+    return amounts;
+  }, [activeBudget]);
+
   /* ── Computed data ────────────────────────────────── */
 
   const budgetItems = useMemo(
-    () => computeBudgetActuals(data?.mercury ?? null),
-    [data?.mercury],
+    () => computeBudgetActuals(data?.mercury ?? null, budgetAmounts),
+    [data?.mercury, budgetAmounts],
   );
 
   const budgetSummary = useMemo(
@@ -81,7 +243,7 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
     [budgetItems],
   );
 
-  const hasBudgetBaseline = false;
+  const hasBudgetBaseline = Boolean(activeBudget && activeBudget.lineItems?.length);
 
   const goals = useMemo<FinancialGoal[]>(
     () => (data ? computeFinancialGoals(data) : []),
@@ -110,7 +272,7 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
     }
 
     return items;
-  }, [budgetSummary.overspendCategories]);
+  }, [budgetSummary.overspendCategories, hasBudgetBaseline]);
 
   /* ── Insights ─────────────────────────────────────── */
 
@@ -162,7 +324,60 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
     }
 
     return items;
-  }, [budgetItems, budgetSummary, goals]);
+  }, [budgetItems, budgetSummary, goals, hasBudgetBaseline]);
+
+  const plannedTotal = useMemo(() => {
+    return CATEGORY_CONFIG.reduce((sum, category) => sum + toNumber(formAmounts[category.key]), 0);
+  }, [formAmounts]);
+
+  const handleSaveBaseline = useCallback(async () => {
+    setSaveError(null);
+    if (!formStartDate || !formEndDate) {
+      setSaveError("Start and end dates are required.");
+      return;
+    }
+    const payload = {
+      name: formName.trim() || "Baseline Budget",
+      period: formPeriod,
+      startDate: formStartDate,
+      endDate: formEndDate,
+      lineItems: CATEGORY_CONFIG.map((category) => ({
+        category: category.key,
+        plannedAmount: toNumber(formAmounts[category.key]),
+      })),
+    };
+
+    setSaving(true);
+    try {
+      const url = activeBudget
+        ? `/api/financial-planning/budgets/${activeBudget.id}`
+        : "/api/financial-planning/budgets";
+      const response = await fetch(url, {
+        method: activeBudget ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const message = await response.text().catch(() => "");
+        throw new Error(message || `Failed to save budget (${response.status})`);
+      }
+      await loadBudgets();
+      setFormOpen(false);
+      setFormInitialized(false);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Failed to save budget");
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    activeBudget,
+    formEndDate,
+    formName,
+    formPeriod,
+    formStartDate,
+    formAmounts,
+    loadBudgets,
+  ]);
 
   /* ── Budget variance table columns ────────────────── */
 
@@ -259,6 +474,154 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
           ))}
         </div>
       )}
+
+      <SectionCard
+        title="Budget Baseline"
+        subtitle="Define monthly targets to unlock variance alerts and overspend tracking."
+      >
+        {budgetsLoading ? (
+          <p className="text-sm text-muted-foreground">Loading budgets...</p>
+        ) : budgetError ? (
+          <p className="text-sm text-red-500">{budgetError}</p>
+        ) : null}
+
+        {activeBudget && !formOpen ? (
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">{activeBudget.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {activeBudget.period} · {activeBudget.startDate.slice(0, 10)} → {activeBudget.endDate.slice(0, 10)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  seedFormFromBudget(activeBudget);
+                  setFormOpen(true);
+                }}
+                className="rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+              >
+                Edit baseline
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {CATEGORY_CONFIG.map((category) => (
+                <div key={category.key} className="rounded-md border border-border bg-secondary/20 px-3 py-2">
+                  <p className="text-xs text-muted-foreground">{category.label}</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {fmt$(
+                      activeBudget.lineItems?.find((item) => item.category === category.key)?.plannedAmount ?? 0
+                    )}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-xs text-muted-foreground">
+                Budget name
+                <input
+                  type="text"
+                  value={formName}
+                  onChange={(event) => setFormName(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground"
+                />
+              </label>
+              <label className="text-xs text-muted-foreground">
+                Period
+                <select
+                  value={formPeriod}
+                  onChange={(event) => {
+                    const nextPeriod = event.target.value as BudgetPeriodApi;
+                    setFormPeriod(nextPeriod);
+                    if (formStartDate) {
+                      setFormEndDate(endDateForPeriod(formStartDate, nextPeriod));
+                    }
+                  }}
+                  className="mt-1 w-full rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground"
+                >
+                  <option value="MONTHLY">Monthly</option>
+                  <option value="QUARTERLY">Quarterly</option>
+                  <option value="ANNUAL">Annual</option>
+                </select>
+              </label>
+              <label className="text-xs text-muted-foreground">
+                Start date
+                <input
+                  type="date"
+                  value={formStartDate}
+                  onChange={(event) => {
+                    const nextStart = event.target.value;
+                    setFormStartDate(nextStart);
+                    if (nextStart) {
+                      setFormEndDate(endDateForPeriod(nextStart, formPeriod));
+                    }
+                  }}
+                  className="mt-1 w-full rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground"
+                />
+              </label>
+              <label className="text-xs text-muted-foreground">
+                End date
+                <input
+                  type="date"
+                  value={formEndDate}
+                  onChange={(event) => setFormEndDate(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground"
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {CATEGORY_CONFIG.map((category) => (
+                <label key={category.key} className="text-xs text-muted-foreground">
+                  {category.label}
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formAmounts[category.key]}
+                    onChange={(event) =>
+                      setFormAmounts((prev) => ({ ...prev, [category.key]: event.target.value }))
+                    }
+                    className="mt-1 w-full rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground"
+                  />
+                </label>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                Planned total: <span className="font-semibold text-foreground">{fmt$(plannedTotal)}</span>
+              </p>
+              <div className="flex items-center gap-2">
+                {activeBudget && (
+                  <button
+                    type="button"
+                    onClick={() => setFormOpen(false)}
+                    className="rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleSaveBaseline}
+                  disabled={saving}
+                  className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-70"
+                >
+                  {saving ? "Saving..." : activeBudget ? "Update baseline" : "Create baseline"}
+                </button>
+              </div>
+            </div>
+
+            {saveError && <p className="text-xs text-red-500">{saveError}</p>}
+          </div>
+        )}
+      </SectionCard>
 
       {/* Top Row: Budget Summary StatCards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

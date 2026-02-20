@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FinancePlanningTab } from "@/components/analytics/finance-planning-tab";
 import { createEmptyAnalyticsDashboardData } from "@/lib/analytics/response-shape";
 import type { AnalyticsDashboardData, StripeData, MercuryData } from "@/lib/analytics/types";
@@ -107,6 +107,14 @@ function makePayload(
 describe("FinancePlanningTab", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      json: async () => [],
+    })) as unknown as typeof fetch);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   /* ─── Empty states ───────────────────────────────────── */
@@ -151,8 +159,8 @@ describe("FinancePlanningTab", () => {
 
     it("displays budget category labels", () => {
       render(<FinancePlanningTab data={makePayload()} />);
-      expect(screen.getByText("Cost of Goods Sold")).toBeTruthy();
-      expect(screen.getByText("Payroll & Benefits")).toBeTruthy();
+      expect(screen.getAllByText("Cost of Goods Sold").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Payroll & Benefits").length).toBeGreaterThanOrEqual(1);
     });
   });
 
