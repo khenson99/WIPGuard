@@ -52,26 +52,22 @@ export function computeUnitEconomics(
   hubspot: AnalyticsDashboardData["hubspot"],
 ): UnitEconomicsData {
   // ── ARPA ──
-  const arpa = stripe?.revenue.avgRevenuePerCustomer ?? 0;
+  const arpa = stripe?.revenue?.avgRevenuePerCustomer ?? 0;
 
   // ── Churn (monthly, as a decimal) ──
-  const churnDecimal = stripe
-    ? stripe.subscriptions.churnRate / 100
-    : 0;
+  const churnDecimal = (stripe?.subscriptions?.churnRate ?? 0) / 100;
   const effectiveChurn = Math.max(churnDecimal, 0.01);
 
   // ── LTV ──
   const ltv = Math.round((arpa / effectiveChurn) * 100) / 100;
 
   // ── CAC ──
-  const totalOutflows = mercury?.cashFlow.outflows30d ?? 0;
+  const totalOutflows = mercury?.cashFlow?.outflows30d ?? 0;
   const marketingSpend = totalOutflows * DEFAULT_EXPENSE_RATIOS.marketing;
 
   // Estimate new customers from HubSpot recentContacts, fallback to 10
-  const newCustomers =
-    hubspot && hubspot.contacts.recentContacts > 0
-      ? hubspot.contacts.recentContacts
-      : 10;
+  const recentContacts = hubspot?.contacts?.recentContacts ?? 0;
+  const newCustomers = recentContacts > 0 ? recentContacts : 10;
 
   const cac =
     newCustomers > 0
@@ -89,7 +85,7 @@ export function computeUnitEconomics(
       : 0;
 
   // ── Gross margin ──
-  const revenue = stripe?.revenue.totalRevenue30d ?? 0;
+  const revenue = stripe?.revenue?.totalRevenue30d ?? 0;
   const cogs = totalOutflows * DEFAULT_EXPENSE_RATIOS.cogs;
   const grossMarginPct =
     revenue > 0
