@@ -98,17 +98,26 @@ export function projectRunway(
  * Calculate the runway in months — the point where cash balance
  * first goes to zero (or the full projection length if it never does).
  */
-function computeRunwayMonths(cashPoints: ForecastPoint[]): number {
-  for (let i = 1; i < cashPoints.length; i++) {
-    if (cashPoints[i].value <= 0) {
-      // Interpolate fractional month
-      const prev = cashPoints[i - 1].value;
-      const curr = cashPoints[i].value;
-      const frac = prev / (prev - curr);
+function computeRunwayMonths(
+  balance: number,
+  burn: number,
+  inflows: number,
+  months: number,
+): number {
+  if (balance <= 0) return 0;
+
+  let cash = balance;
+  for (let i = 1; i <= months; i++) {
+    const nextCash = cash + inflows - burn;
+    if (nextCash <= 0) {
+      // Interpolate fractional month using unclamped values.
+      const frac = cash / (cash - nextCash);
       return Math.round((i - 1 + frac) * 10) / 10;
     }
+    cash = nextCash;
   }
-  return cashPoints.length - 1;
+
+  return months;
 }
 
 // ── Scenario builders ────────────────────────────────────
@@ -152,7 +161,7 @@ export function buildForecastScenario(
 
   const revenue = projectRevenue(baseMrr, growthRate, churnRate, projectionMonths);
   const cash = projectRunway(balance, totalBurn, baseInflows, projectionMonths);
-  const runway = computeRunwayMonths(cash);
+  const runway = computeRunwayMonths(balance, totalBurn, baseInflows, projectionMonths);
 
   const id = (name ?? "custom").toLowerCase().replace(/\s+/g, "-");
 

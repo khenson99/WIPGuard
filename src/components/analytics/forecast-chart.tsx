@@ -26,8 +26,11 @@ const PADDING = { top: 16, right: 16, bottom: 40, left: 64 };
 const GRID_LINES = 5;
 
 function defaultFormat(v: number): string {
-  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
-  return `$${(v / 1_000).toFixed(0)}K`;
+  const sign = v < 0 ? "-" : "";
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+  return `${sign}$${Math.round(abs)}`;
 }
 
 export function ForecastChart({
@@ -36,13 +39,18 @@ export function ForecastChart({
   formatValue = defaultFormat,
   title,
 }: ForecastChartProps) {
+  const nonEmptySeries = useMemo(
+    () => series.filter((s) => s.data.length > 0),
+    [series],
+  );
+
   const { paths, yLabels, xLabels, chartWidth, yMin, yRange } = useMemo(() => {
-    if (series.length === 0) {
+    if (nonEmptySeries.length === 0) {
       return { paths: [], yLabels: [], xLabels: [], chartWidth: 800, yMin: 0, yRange: 1 };
     }
 
     // Compute extent across all series
-    const allValues = series.flatMap((s) => s.data.map((d) => d.value));
+    const allValues = nonEmptySeries.flatMap((s) => s.data.map((d) => d.value));
     const rawMin = Math.min(...allValues);
     const rawMax = Math.max(...allValues);
     const padding = (rawMax - rawMin) * 0.05 || 1;
@@ -51,14 +59,14 @@ export function ForecastChart({
     const computedYRange = computedYMax - computedYMin || 1;
 
     // Take the longest series for the x-axis
-    const maxPoints = Math.max(...series.map((s) => s.data.length));
+    const maxPoints = Math.max(...nonEmptySeries.map((s) => s.data.length));
     const computedChartWidth = 800;
 
     const plotW = computedChartWidth - PADDING.left - PADDING.right;
     const plotH = height - PADDING.top - PADDING.bottom;
 
     // Build polyline paths for each series
-    const computedPaths = series.map((s) => {
+    const computedPaths = nonEmptySeries.map((s) => {
       const points = s.data.map((d, i) => {
         const x =
           PADDING.left +
@@ -92,7 +100,7 @@ export function ForecastChart({
 
     // X-axis labels — show every 3rd month
     const longestSeries =
-      series.reduce((a, b) => (a.data.length >= b.data.length ? a : b), series[0]);
+      nonEmptySeries.reduce((a, b) => (a.data.length >= b.data.length ? a : b), nonEmptySeries[0]);
     const computedXLabels = longestSeries.data
       .filter((_, i) => i % 3 === 0)
       .map((d, _, arr) => {
@@ -111,9 +119,9 @@ export function ForecastChart({
       yMin: computedYMin,
       yRange: computedYRange,
     };
-  }, [series, height, formatValue]);
+  }, [nonEmptySeries, height, formatValue]);
 
-  if (series.length === 0) return null;
+  if (nonEmptySeries.length === 0) return null;
 
   const plotH = height - PADDING.top - PADDING.bottom;
 
@@ -187,7 +195,7 @@ export function ForecastChart({
 
       {/* Legend */}
       <div className="mt-2 flex flex-wrap items-center justify-center gap-4">
-        {series.map((s) => (
+        {nonEmptySeries.map((s) => (
           <div key={s.name} className="flex items-center gap-1.5">
             <span
               className="inline-block h-2.5 w-2.5 rounded-full"
