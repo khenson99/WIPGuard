@@ -4,6 +4,25 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 
+const VALID_PERIODS = new Set(["MONTHLY", "QUARTERLY", "ANNUAL"]);
+
+function computeEndDate(startDate: Date, period: string): Date {
+  const endDate = new Date(startDate);
+  switch (period) {
+    case "QUARTERLY":
+      endDate.setMonth(endDate.getMonth() + 3);
+      break;
+    case "ANNUAL":
+      endDate.setFullYear(endDate.getFullYear() + 1);
+      break;
+    case "MONTHLY":
+    default:
+      endDate.setMonth(endDate.getMonth() + 1);
+      break;
+  }
+  return endDate;
+}
+
 export async function GET(
   _request: NextRequest,
 ): Promise<NextResponse> {
@@ -50,13 +69,39 @@ export async function POST(
       );
     }
 
+    const period = body.period ?? "MONTHLY";
+    if (!VALID_PERIODS.has(period)) {
+      return NextResponse.json(
+        { error: "period must be MONTHLY, QUARTERLY, or ANNUAL" },
+        { status: 400 },
+      );
+    }
+
+    const startDate = new Date(body.startDate);
+    if (!Number.isFinite(startDate.getTime())) {
+      return NextResponse.json(
+        { error: "startDate must be a valid date" },
+        { status: 400 },
+      );
+    }
+
+    const endDate = body.endDate
+      ? new Date(body.endDate)
+      : computeEndDate(startDate, period);
+    if (!Number.isFinite(endDate.getTime())) {
+      return NextResponse.json(
+        { error: "endDate must be a valid date" },
+        { status: 400 },
+      );
+    }
+
     const budget = await prisma.budget.create({
       data: {
         userId,
         name: body.name,
-        period: body.period ?? "MONTHLY",
-        startDate: new Date(body.startDate),
-        endDate: new Date(body.endDate),
+        period,
+        startDate,
+        endDate,
         lineItems: body.lineItems
           ? { create: body.lineItems }
           : undefined,

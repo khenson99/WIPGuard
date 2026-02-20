@@ -15,7 +15,17 @@ export function computeVariance(
 }
 
 /** Progress toward a target value as a clamped 0-100 percentage. */
-export function computeProgressPct(current: number, target: number): number {
+export function computeProgressPct(
+  current: number,
+  target: number,
+  direction: "higher" | "lower" = "higher",
+): number {
+  if (direction === "lower") {
+    if (current === 0) return target >= 0 ? 100 : 0;
+    if (target === 0) return current <= 0 ? 100 : 0;
+    return Math.min(Math.max((target / current) * 100, 0), 100);
+  }
+
   if (target === 0) return current > 0 ? 100 : 0;
   return Math.min(Math.max((current / target) * 100, 0), 100);
 }

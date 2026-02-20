@@ -131,8 +131,10 @@ export function buildForecastScenario(
 
   const runwayMonths = projectRunway(
     cashBalance,
-    baseBurnRate,
-    assumptions.burnRateDelta,
+    baseBurnRate +
+      assumptions.burnRateDelta +
+      assumptions.additionalMonthlyExpense -
+      assumptions.additionalMonthlyRevenue,
   );
 
   return {

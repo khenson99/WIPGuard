@@ -460,10 +460,15 @@ async function buildFinancialPlanningData(
   const goals: FinancialGoalData[] = dbGoals.map((g: { id: string; name: string; metric: string; targetValue: number; deadline: Date; notes: string | null }) => {
     const metricKey = g.metric.toLowerCase() as GoalMetric;
     const currentValue = currentMetrics[metricKey] ?? 0;
-    const progressPct = computeProgressPct(currentValue, g.targetValue);
+    const direction = metricKey === "burn_rate" ? "lower" : "higher";
+    const progressPct = computeProgressPct(currentValue, g.targetValue, direction);
     const isPastDeadline = new Date(g.deadline) < new Date();
     let status: GoalStatus = "active";
-    if (progressPct >= 100) status = "achieved";
+    const achieved =
+      direction === "lower"
+        ? currentValue <= g.targetValue
+        : currentValue >= g.targetValue;
+    if (achieved) status = "achieved";
     else if (isPastDeadline) status = "missed";
     return {
       id: g.id,

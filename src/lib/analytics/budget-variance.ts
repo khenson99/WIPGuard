@@ -40,6 +40,20 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/** Scale 30-day outflows to match the budget date range. */
+function estimateOutflowMultiplier(budget: BudgetData): number {
+  const start = new Date(budget.startDate);
+  const end = new Date(budget.endDate);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
+    return 1;
+  }
+  const ms = end.getTime() - start.getTime();
+  if (ms <= 0) return 1;
+  const days = ms / (1000 * 60 * 60 * 24);
+  if (!Number.isFinite(days) || days <= 0) return 1;
+  return Math.max(days / 30, 0);
+}
+
 // ---------------------------------------------------------------------------
 // computeBudgetActuals
 // ---------------------------------------------------------------------------
@@ -49,7 +63,7 @@ function round2(n: number): number {
  * outflows and the SaaS-standard category ratios.
  *
  * For every line item, `actualAmount` is derived from:
- *   `mercury.cashFlow.outflows30d * CATEGORY_RATIOS[category]`
+ *   `mercury.cashFlow.outflows30d * outflowMultiplier * CATEGORY_RATIOS[category]`
  *
  * The "other" category receives whatever is left after all known-ratio
  * categories have been allocated.
@@ -70,7 +84,8 @@ export function computeBudgetActuals(
     }));
   }
 
-  const totalOutflows = mercury.cashFlow.outflows30d;
+  const totalOutflows =
+    mercury.cashFlow.outflows30d * estimateOutflowMultiplier(budget);
 
   // First pass: compute actuals for all known-ratio categories and track the
   // sum so we can derive the "other" remainder.
