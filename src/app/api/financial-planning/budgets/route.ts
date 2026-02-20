@@ -43,32 +43,9 @@ export async function POST(
     const userId = (session.user as { id: string }).id;
     const body = await request.json();
 
-    if (!body.name || !body.startDate || !body.endDate) {
+    if (!body.name || !body.startDate) {
       return NextResponse.json(
-        { error: "name, startDate, and endDate are required" },
-        { status: 400 },
-      );
-    }
-
-    const allowedPeriods = new Set(["MONTHLY", "QUARTERLY", "ANNUAL"]);
-    if (body.period && !allowedPeriods.has(body.period)) {
-      return NextResponse.json(
-        { error: "period must be MONTHLY, QUARTERLY, or ANNUAL" },
-        { status: 400 },
-      );
-    }
-
-    const startDate = new Date(body.startDate);
-    const endDate = new Date(body.endDate);
-    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-      return NextResponse.json(
-        { error: "startDate and endDate must be valid dates" },
-        { status: 400 },
-      );
-    }
-    if (endDate < startDate) {
-      return NextResponse.json(
-        { error: "endDate must be on or after startDate" },
+        { error: "name and startDate are required" },
         { status: 400 },
       );
     }
@@ -78,8 +55,8 @@ export async function POST(
         userId,
         name: body.name,
         period: body.period ?? "MONTHLY",
-        startDate,
-        endDate,
+        startDate: new Date(body.startDate),
+        endDate: new Date(body.endDate),
         lineItems: body.lineItems
           ? { create: body.lineItems }
           : undefined,

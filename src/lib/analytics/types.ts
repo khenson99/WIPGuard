@@ -97,6 +97,7 @@ export interface HubSpotData {
     source: string;
     ownerId: string | null;
     updatedAt: string | null;
+    createdAt: string | null;
   }>;
   _meta: AnalyticsTimestamp;
 }
@@ -299,14 +300,75 @@ export interface CodaCard {
   status: string;
   priority?: string;
   assignee?: string;
+  creator?: string;
+  creatorEmail?: string | null;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface CodaCreatorBreakdown {
+  creator: string;
+  email: string | null;
+  cardCount: number;
+  activeDays: number;
+  firstCardAt: string | null;
+  lastCardAt: string | null;
+}
+
+export interface CodaCreatorWindow {
+  windowDays: 30 | 60 | 90;
+  totalCards: number;
+  previousWindowTotalCards: number;
+  trendDeltaPct: number | null;
+  uniqueCreators: number;
+  byCreator: CodaCreatorBreakdown[];
+}
+
+export interface CodaNewCreatorFeedEntry {
+  creator: string;
+  email: string | null;
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+  cardsCreated: number;
+  isUnknown: boolean;
+}
+
+export interface CodaCreatorTrends {
+  newCreators30d: Array<{ date: string; count: number }>;
+  cardsCreated90d: Array<{ date: string; count: number }>;
+}
+
+export type CodaLeadFunnelStatus = "inFunnel" | "notInFunnel" | "unknown";
+
+export interface CodaEngagedLeadCandidate {
+  creator: string;
+  email: string;
+  cards30d: number;
+  activeDays30d: number;
+  lastActivityAt: string | null;
+  trend30dVsPrevious30d: number | null;
+  engagementScore: number;
+  reasons: string[];
+  funnelStatus: CodaLeadFunnelStatus;
+  hubspotSearchUrl: string;
+}
+
+export interface CodaDiagnostics {
+  creatorResolutionMode: "override" | "auto_detect" | "unknown_heavy";
+  unknownCreatorRatio: number;
+  unknownCardCount: number;
+  hubspotMatchingErrors: number;
 }
 
 export interface CodaKanbanData {
   totalCards: number;
   cardsByStatus: { status: string; count: number }[];
   recentCards: CodaCard[];
+  creatorWindows?: CodaCreatorWindow[];
+  newCreatorFeed?: CodaNewCreatorFeedEntry[];
+  trends?: CodaCreatorTrends;
+  engagedLeadCandidates?: CodaEngagedLeadCandidate[];
+  diagnostics?: CodaDiagnostics;
   _meta: AnalyticsTimestamp;
 }
 
@@ -440,7 +502,10 @@ export type AnalyticsSectionId =
   | "ads-traffic"
   | "finance"
   | "sales-pipeline"
-  | "customer-success";
+  | "customer-success"
+  | "customer-journey"
+  | "demo-analytics"
+  | "process-analytics";
 
 export type LifecycleStageId =
   | "awareness"
@@ -567,6 +632,227 @@ export interface AiInsightsBundle {
   generatedAt: string;
   global: AiInsight[];
   bySection: Record<AnalyticsSectionId, AiInsight[]>;
+}
+
+// ══════════════════════════════════════════════════════════
+// CUSTOMER JOURNEY TYPES
+// ══════════════════════════════════════════════════════════
+
+export type TouchpointChannel =
+  | "hubspot"
+  | "stripe"
+  | "google-workspace"
+  | "slack"
+  | "webflow"
+  | "coda"
+  | "google-analytics"
+  | "google-ads"
+  | "meta-ads"
+  | "reddit-ads"
+  | "pylon"
+  | "mercury";
+
+export type TouchpointType =
+  | "first-touch"
+  | "engagement"
+  | "conversion"
+  | "support"
+  | "expansion";
+
+export interface Touchpoint {
+  timestamp: string;
+  channel: TouchpointChannel;
+  type: TouchpointType;
+  detail: string;
+  value: number | null;
+}
+
+export interface CustomerJourneyRecord {
+  dealId: string;
+  dealName: string;
+  contactEmail: string | null;
+  currentStage: string;
+  value: number;
+  touchpoints: Touchpoint[];
+  firstTouch: string;
+  lastTouch: string;
+  daysInPipeline: number;
+}
+
+export interface TouchpointSummary {
+  channel: TouchpointChannel;
+  totalTouchpoints: number;
+  avgPerJourney: number;
+  firstTouchCount: number;
+  conversionCount: number;
+}
+
+export interface JourneyPath {
+  sequence: TouchpointChannel[];
+  count: number;
+  avgDaysToClose: number;
+  avgValue: number;
+}
+
+export interface ChannelAttribution {
+  channel: TouchpointChannel;
+  firstTouchDeals: number;
+  assistedDeals: number;
+  lastTouchDeals: number;
+  totalRevenue: number;
+  avgDealValue: number;
+}
+
+export interface CustomerJourneyData {
+  journeys: CustomerJourneyRecord[];
+  touchpointSummary: TouchpointSummary[];
+  avgTouchpoints: number;
+  medianDaysToClose: number;
+  topPaths: JourneyPath[];
+  attribution: ChannelAttribution[];
+}
+
+// ══════════════════════════════════════════════════════════
+// DEMO ANALYTICS TYPES
+// ══════════════════════════════════════════════════════════
+
+export type DemoOutcome = "completed" | "no-show" | "rescheduled" | "pending";
+
+export interface DemoRecord {
+  dealId: string;
+  dealName: string;
+  contactEmail: string | null;
+  scheduledAt: string;
+  source: string;
+  outcome: DemoOutcome;
+  followUpSent: boolean;
+  daysToNextStage: number | null;
+  resultingStage: string | null;
+}
+
+export interface DemoSourceBreakdown {
+  source: string;
+  scheduled: number;
+  completed: number;
+  noShows: number;
+  conversionRate: number;
+}
+
+export interface DemoOutcomeBreakdown {
+  outcome: DemoOutcome;
+  count: number;
+  pct: number;
+}
+
+export interface DemoConversionStep {
+  label: string;
+  count: number;
+  conversionFromPrevious: number | null;
+}
+
+export interface DemoWeeklyTrend {
+  week: string;
+  scheduled: number;
+  completed: number;
+  noShows: number;
+}
+
+export interface JourneyPathRow {
+  source: string;
+  totalLeads: number;
+  demosBooked: number;
+  demosBookedPct: number;
+  demoCompleted: number;
+  demoCompletedPct: number;
+  demoNoShow: number;
+  demoNoShowPct: number;
+  avgDaysToDecision: number | null;
+  closedWon: number;
+  closedWonPct: number;
+  closedLost: number;
+  onboarding: number;
+  onboardingPct: number;
+  avgContractValue: number | null;
+  churned: number;
+  churnedPct: number;
+  notActivated: number;
+  notActivatedPct: number;
+}
+
+export interface DemoAnalyticsData {
+  totalScheduled: number;
+  totalCompleted: number;
+  totalNoShows: number;
+  noShowRate: number;
+  avgLeadTimeDays: number;
+  demos: DemoRecord[];
+  bySource: DemoSourceBreakdown[];
+  byOutcome: DemoOutcomeBreakdown[];
+  conversionFunnel: DemoConversionStep[];
+  weeklyTrend: DemoWeeklyTrend[];
+  journeyPaths: JourneyPathRow[];
+}
+
+// ══════════════════════════════════════════════════════════
+// PROCESS ANALYTICS TYPES
+// ══════════════════════════════════════════════════════════
+
+export interface StageVelocity {
+  stageId: string;
+  stageLabel: string;
+  avgDays: number;
+  medianDays: number;
+  p90Days: number;
+  dealCount: number;
+}
+
+export interface ProcessBottleneck {
+  stageLabel: string;
+  avgDays: number;
+  dealCount: number;
+  severity: "critical" | "warning" | "info";
+  recommendation: string;
+}
+
+export interface StageConversion {
+  fromStage: string;
+  toStage: string;
+  conversionRate: number;
+  avgDays: number;
+  dealCount: number;
+}
+
+export interface HealthFactor {
+  factor: string;
+  score: number;
+  weight: number;
+  detail: string;
+}
+
+export interface WeeklyThroughput {
+  week: string;
+  entered: number;
+  exited: number;
+  netChange: number;
+}
+
+export interface LeakagePoint {
+  stage: string;
+  lostCount: number;
+  lostValue: number;
+  topReasons: string[];
+  pctOfTotal: number;
+}
+
+export interface ProcessAnalyticsData {
+  avgCycleTimeDays: number;
+  stageVelocity: StageVelocity[];
+  bottlenecks: ProcessBottleneck[];
+  conversionByStage: StageConversion[];
+  healthScore: number;
+  healthFactors: HealthFactor[];
+  throughput: WeeklyThroughput[];
+  leakagePoints: LeakagePoint[];
 }
 
 // ══════════════════════════════════════════════════════════
@@ -700,6 +986,9 @@ export interface AnalyticsDashboardData {
   redditOps: IntegrationTelemetryData | null;
   funnelJourney: CrossFunnelData | null;
   lifecycleFunnel: LifecycleFunnelData | null;
+  customerJourney: CustomerJourneyData | null;
+  demoAnalytics: DemoAnalyticsData | null;
+  processAnalytics: ProcessAnalyticsData | null;
   recommendations: AnalyticsRecommendation[];
   distilledInsights: DistilledInsight[];
   aiInsights: AiInsightsBundle;
@@ -721,6 +1010,7 @@ export interface AnalyticsDashboardData {
     erroredDomains: string[];
   };
   lastFullRefresh: string;
+  financialPlanning: FinancialPlanningData | null;
   errors: { source: string; message: string }[];
 }
 

@@ -119,6 +119,7 @@ export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData
       source: props.hs_analytics_source || "Unknown",
       ownerId: props.hubspot_owner_id || null,
       updatedAt: props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).toISOString() : null,
+      createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
     };
   });
 

@@ -19,6 +19,7 @@ import {
   fetchOAuthAccountProfile,
   getOAuthStateCookieName,
 } from "@/lib/integrations/oauth";
+import { validateIntegrationScopes } from "@/lib/integrations/scope-validation";
 import { enforcePermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { protectIntegrationSecret } from "@/lib/integrations/token-crypto";
@@ -219,11 +220,29 @@ export async function GET(
       tokenResponse.raw
     );
 
+    // Validate granted scopes against required scopes
+    const scopeValidation = validateIntegrationScopes(
+      definition,
+      tokenResponse.scopes
+    );
+    const hasMissingScopes =
+      scopeValidation !== null && !scopeValidation.valid;
+
     const metadata: Prisma.InputJsonObject = {
       ...(accountProfile.metadata ?? {}),
       oauthProvider: definition.slug,
       connectedByUserId: session.user.id,
+      ...(hasMissingScopes
+        ? {
+            insufficientScopes: true,
+            missingScopes: scopeValidation.missing,
+          }
+        : { insufficientScopes: false }),
     };
+
+    const scopeError = hasMissingScopes
+      ? `Missing required OAuth scopes: ${scopeValidation.missing.join(", ")}`
+      : null;
 
     await prisma.integrationConnection.upsert({
       where: {
@@ -245,7 +264,7 @@ export async function GET(
         expiresAt: tokenResponse.expiresAt,
         connectedAt: new Date(),
         lastSyncedAt: new Date(),
-        lastError: null,
+        lastError: scopeError,
         metadata,
       },
       update: {
@@ -259,7 +278,7 @@ export async function GET(
         expiresAt: tokenResponse.expiresAt,
         connectedAt: new Date(),
         lastSyncedAt: new Date(),
-        lastError: null,
+        lastError: scopeError,
         metadata,
       },
     });

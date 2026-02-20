@@ -22,8 +22,6 @@ import { buildCustomerJourneyData } from "@/lib/analytics/customer-journey";
 import { buildDemoAnalyticsData } from "@/lib/analytics/demo-analytics";
 import { buildProcessAnalyticsData } from "@/lib/analytics/process-analytics";
 import { buildAiInsightsBundle, buildDistilledInsights } from "@/lib/analytics/insight-engine";
-import { buildEnhancedInsightsBundle } from "@/lib/analytics/enhanced-insight-engine";
-import { extractAndStoreMetrics } from "@/lib/analytics/metric-history";
 import { createEmptyAnalyticsDashboardData, patchFreshnessWithStale } from "@/lib/analytics/response-shape";
 import {
   analyticsErrorFromReason,
@@ -345,7 +343,17 @@ function providerForDomain(domain: DomainKey): "google_workspace" | "hubspot" | 
 }
 
 type FetchEntry = {
-  key: Exclude<DomainKey, "lifecycleFunnel" | "funnelJourney" | "aiInsights" | "recommendations" | "distilledInsights" | "customerJourney" | "demoAnalytics" | "processAnalytics">;
+  key: Exclude<
+    DomainKey,
+    | "lifecycleFunnel"
+    | "funnelJourney"
+    | "aiInsights"
+    | "recommendations"
+    | "distilledInsights"
+    | "customerJourney"
+    | "demoAnalytics"
+    | "processAnalytics"
+  >;
   fn: () => Promise<unknown>;
 };
 
@@ -780,11 +788,8 @@ export async function GET(request: Request) {
     result.lifecycleFunnel = buildLifecycleFunnelData(result);
   }
   if (domains.has("aiInsights")) {
-    result.aiInsights = await buildEnhancedInsightsBundle(userId, result, range);
+    result.aiInsights = buildAiInsightsBundle(result);
   }
-
-  // Fire-and-forget: accumulate metric history for future analytics
-  extractAndStoreMetrics(userId, result, range).catch(() => {});
   if (domains.has("recommendations")) {
     result.recommendations = buildRecommendations(result);
   }

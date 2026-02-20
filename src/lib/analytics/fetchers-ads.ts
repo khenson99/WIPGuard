@@ -501,6 +501,71 @@ export async function fetchMetaPageData(
   };
 }
 
+export async function fetchMetaInstagramData(
+  accessToken: string,
+  instagramAccountId: string,
+  options?: { pageId?: string }
+): Promise<Record<string, unknown>> {
+  const encodedToken = encodeURIComponent(accessToken);
+  const accountId = instagramAccountId.trim();
+
+  const accountResponse = await fetch(
+    `https://graph.facebook.com/v18.0/${accountId}?fields=id,username,followers_count,media_count&access_token=${encodedToken}`
+  );
+  if (!accountResponse.ok) {
+    throw new Error(
+      `Meta Instagram profile error (${accountResponse.status}): ${await parseErrorBody(accountResponse)}`
+    );
+  }
+
+  const accountData = (await accountResponse.json()) as {
+    id?: string;
+    username?: string;
+    followers_count?: string | number;
+    media_count?: string | number;
+  };
+
+  const mediaResponse = await fetch(
+    `https://graph.facebook.com/v18.0/${accountId}/media?fields=id,caption,timestamp,like_count,comments_count&limit=25&access_token=${encodedToken}`
+  );
+  if (!mediaResponse.ok) {
+    throw new Error(
+      `Meta Instagram media error (${mediaResponse.status}): ${await parseErrorBody(mediaResponse)}`
+    );
+  }
+
+  const mediaData = (await mediaResponse.json()) as {
+    data?: Array<{
+      id?: string;
+      caption?: string;
+      timestamp?: string;
+      like_count?: string | number;
+      comments_count?: string | number;
+    }>;
+  };
+
+  const media = (mediaData.data ?? []).map((item) => ({
+    id: item.id ?? "",
+    caption: item.caption ?? "",
+    timestamp: item.timestamp ?? "",
+    likes: readNumber(item.like_count),
+    comments: readNumber(item.comments_count),
+  }));
+
+  const engagement30d = media.reduce((sum, item) => sum + item.likes + item.comments, 0);
+
+  return {
+    accountId: accountData.id ?? accountId,
+    username: accountData.username ?? null,
+    followers: readNumber(accountData.followers_count),
+    mediaCount: readNumber(accountData.media_count),
+    engagement30d,
+    linkedPageId: options?.pageId ?? null,
+    media,
+    _meta: makeMeta("live"),
+  };
+}
+
 /**
  * Fetch Reddit Ads data for the last 30 days using v3 endpoints.
  */

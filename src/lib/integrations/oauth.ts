@@ -623,6 +623,46 @@ async function fetchWebflowProfile(accessToken: string): Promise<AccountProfile>
   };
 }
 
+async function fetchMetaProfile(accessToken: string): Promise<AccountProfile> {
+  const response = await fetch(
+    "https://graph.facebook.com/v21.0/me?fields=id,name,email",
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      cache: "no-store",
+    }
+  );
+  const raw = (await response.json().catch(() => null)) as unknown;
+  if (!response.ok) {
+    const details = asRecord(raw);
+    throw new Error(
+      getString(details ?? {}, "error_description") ||
+        getString(details ?? {}, "message") ||
+        "Meta profile lookup failed"
+    );
+  }
+
+  const profile = asRecord(raw);
+  if (!profile) {
+    throw new Error("Meta profile response was invalid");
+  }
+
+  const providerAccountId = getString(profile, "id");
+  if (!providerAccountId) {
+    throw new Error("Meta profile did not include an account identifier");
+  }
+
+  return {
+    providerAccountId,
+    accountLabel: getString(profile, "name") || getString(profile, "email"),
+    metadata: {
+      name: getString(profile, "name"),
+      email: getString(profile, "email"),
+    },
+  };
+}
+
 export async function fetchOAuthAccountProfile(
   definition: OAuthIntegrationDefinition,
   accessToken: string,
@@ -650,6 +690,9 @@ export async function fetchOAuthAccountProfile(
   }
   if (definition.slug === "webflow") {
     return fetchWebflowProfile(accessToken);
+  }
+  if (definition.slug === "meta-ads" || definition.slug === "meta-page") {
+    return fetchMetaProfile(accessToken);
   }
   throw new Error(`No OAuth account profile fetcher for ${definition.slug}`);
 }
@@ -702,6 +745,78 @@ export async function verifyCodaApiToken(token: string): Promise<AccountProfile>
       email: getString(profile, "email"),
     },
   };
+}
+
+export async function verifyPylonApiToken(
+  token: string,
+  options?: { baseUrl?: string }
+): Promise<AccountProfile> {
+  const normalizedToken = normalizeBearerToken(token);
+  if (!normalizedToken) {
+    throw new Error("Pylon token is empty");
+  }
+
+  const baseUrl = options?.baseUrl?.trim() || process.env.PYLON_API_BASE_URL?.trim() || "https://api.usepylon.com";
+  const endpoints = ["/v1/me", "/v1/users/me"];
+
+  let lastStatus = 0;
+  let lastMessage: string | null = null;
+  for (const endpoint of endpoints) {
+    const response = await fetch(`${baseUrl}${endpoint}`, {
+      headers: {
+        Authorization: `Bearer ${normalizedToken}`,
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    });
+
+    const raw = (await response.json().catch(() => null)) as unknown;
+    if (!response.ok) {
+      lastStatus = response.status;
+      const details = asRecord(raw);
+      lastMessage =
+        getString(details ?? {}, "message") ||
+        getString(details ?? {}, "error") ||
+        getString(details ?? {}, "detail");
+      continue;
+    }
+
+    const profile = asRecord(raw);
+    if (!profile) {
+      throw new Error("Pylon profile response was invalid");
+    }
+
+    const providerAccountId =
+      getString(profile, "id") ||
+      getString(profile, "userId") ||
+      getString(profile, "email");
+    if (!providerAccountId) {
+      throw new Error("Pylon profile did not include an account identifier");
+    }
+
+    return {
+      providerAccountId,
+      accountLabel:
+        getString(profile, "name") ||
+        getString(profile, "email") ||
+        providerAccountId,
+      metadata: {
+        name: getString(profile, "name"),
+        email: getString(profile, "email"),
+        username: getString(profile, "username"),
+      },
+    };
+  }
+
+  if (lastStatus > 0) {
+    throw new Error(
+      lastMessage
+        ? `Pylon token verification failed (${lastStatus}): ${lastMessage}`
+        : `Pylon token verification failed (${lastStatus})`
+    );
+  }
+
+  throw new Error("Pylon token verification failed");
 }
 
 export function compactErrorMessage(error: unknown): string {

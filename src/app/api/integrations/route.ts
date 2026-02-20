@@ -7,6 +7,7 @@ import {
   IntegrationProvider,
 } from "@/generated/prisma/client";
 import { getCredentials } from "@/lib/analytics/credentials";
+import { defaultFreshnessSnapshot } from "@/lib/analytics/credentials";
 import {
   evaluateProviderSyncHealth,
   snapshotKeysForIntegrationProvider,
@@ -30,6 +31,49 @@ function readCodaDocId(metadata: unknown): string | null {
     return null;
   }
   return normalizeCodaDocId(candidate);
+}
+
+function hasCredentialForProvider(
+  provider: IntegrationProvider,
+  credentials: Awaited<ReturnType<typeof getCredentials>>
+): boolean {
+  switch (provider) {
+    case IntegrationProvider.GOOGLE_WORKSPACE:
+      return Boolean(credentials.googleWorkspaceAccessToken);
+    case IntegrationProvider.HUBSPOT:
+      return Boolean(credentials.hubspotToken);
+    case IntegrationProvider.SLACK:
+      return Boolean(credentials.slackAccessToken);
+    case IntegrationProvider.CODA:
+      return Boolean(credentials.codaApiToken);
+    case IntegrationProvider.REDDIT:
+      return Boolean(credentials.redditRefreshToken);
+    case IntegrationProvider.STRIPE:
+      return Boolean(credentials.stripeKey);
+    case IntegrationProvider.MERCURY:
+      return Boolean(credentials.mercuryKey);
+    case IntegrationProvider.WEBFLOW:
+      return Boolean(credentials.webflowApiToken);
+    case IntegrationProvider.GOOGLE_ADS:
+      return Boolean(
+        credentials.googleAdsDevToken &&
+          credentials.googleAdsCustomerId &&
+          credentials.googleAdsRefreshToken &&
+          credentials.googleAdsClientId &&
+          credentials.googleAdsClientSecret
+      );
+    case IntegrationProvider.META_ADS:
+      return Boolean(credentials.metaAccessToken && credentials.metaAdAccountId);
+    case IntegrationProvider.META_PAGE:
+      return Boolean(
+        credentials.metaAccessToken &&
+          (credentials.metaPageId || credentials.metaInstagramAccountId)
+      );
+    case IntegrationProvider.PYLON:
+      return Boolean(credentials.pylonApiKey);
+    default:
+      return false;
+  }
 }
 
 export async function GET(): Promise<NextResponse> {
@@ -112,17 +156,6 @@ export async function GET(): Promise<NextResponse> {
       return isSameSnapshot ? [latest] : [latest, latestSuccess];
     });
 
-    const hasCredentialByProvider: Record<IntegrationProvider, boolean> = {
-      [IntegrationProvider.GOOGLE_WORKSPACE]: Boolean(credentials.googleWorkspaceAccessToken),
-      [IntegrationProvider.HUBSPOT]: Boolean(credentials.hubspotToken),
-      [IntegrationProvider.SLACK]: Boolean(credentials.slackAccessToken),
-      [IntegrationProvider.CODA]: Boolean(credentials.codaApiToken),
-      [IntegrationProvider.REDDIT]: Boolean(credentials.redditRefreshToken),
-      [IntegrationProvider.STRIPE]: Boolean(credentials.stripeKey),
-      [IntegrationProvider.MERCURY]: Boolean(credentials.mercuryKey),
-      [IntegrationProvider.WEBFLOW]: Boolean(credentials.webflowApiToken),
-    };
-
     const byProvider = new Map(
       connections.map((connection) => [connection.provider, connection])
     );
@@ -130,9 +163,12 @@ export async function GET(): Promise<NextResponse> {
     const response = listIntegrationDefinitions().map((definition) => {
       const connection = byProvider.get(definition.provider);
       const status = connection?.status ?? IntegrationConnectionStatus.DISCONNECTED;
+      const freshness =
+        credentials.freshness?.[definition.provider] ??
+        defaultFreshnessSnapshot(definition.provider);
       const syncHealth = evaluateProviderSyncHealth({
         connected: status === IntegrationConnectionStatus.CONNECTED,
-        hasCredential: hasCredentialByProvider[definition.provider],
+        hasCredential: hasCredentialForProvider(definition.provider, credentials),
         snapshots: snapshotsForProvider(definition.provider, snapshots),
       });
 
@@ -151,7 +187,7 @@ export async function GET(): Promise<NextResponse> {
         connectedAt: connection?.connectedAt ?? null,
         lastSyncedAt: connection?.lastSyncedAt ?? null,
         lastError: connection?.lastError ?? null,
-        credentialSource: credentials.freshness[definition.provider].source,
+        credentialSource: freshness.source,
         syncHealth: syncHealth.syncHealth,
         syncHealthReason: syncHealth.syncHealthReason,
         lastSnapshotAt: syncHealth.lastSnapshotAt,

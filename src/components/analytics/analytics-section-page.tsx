@@ -1,52 +1,30 @@
 "use client";
 
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
-import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
+import { MarketingTabNew } from "@/components/analytics/marketing-tab-new";
+import { FinanceTab } from "@/components/analytics/finance-tab";
+import { SalesFunnelTab } from "@/components/analytics/sales-funnel-tab";
+import { CustomerSuccessTab } from "@/components/analytics/customer-success-tab";
+import { CustomerJourneyTab } from "@/components/analytics/customer-journey-tab";
+import { CustomerJourneyDrillDown } from "@/components/analytics/customer-journey-drill-down";
+import { DemoAnalyticsTab } from "@/components/analytics/demo-analytics-tab";
+import { DemoSchedulingView } from "@/components/analytics/demo-scheduling-view";
+import { DemoAttributionView } from "@/components/analytics/demo-attribution-view";
+import { ProcessAnalyticsTab } from "@/components/analytics/process-analytics-tab";
+import { ProcessBottlenecksView } from "@/components/analytics/process-bottlenecks-view";
+import { ProcessHealthView } from "@/components/analytics/process-health-view";
 import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-controls";
-
-const MarketingTabNew = dynamic(() => import("@/components/analytics/marketing-tab-new").then((m) => m.MarketingTabNew));
-const FinanceTab = dynamic(() => import("@/components/analytics/finance-tab").then((m) => m.FinanceTab));
-const FinanceStripeTab = dynamic(() => import("@/components/analytics/finance-stripe-tab").then((m) => m.FinanceStripeTab));
-const FinanceHubSpotTab = dynamic(() => import("@/components/analytics/finance-hubspot-tab").then((m) => m.FinanceHubSpotTab));
-const FinanceMercuryTab = dynamic(() => import("@/components/analytics/finance-mercury-tab").then((m) => m.FinanceMercuryTab));
-const SalesFunnelTab = dynamic(() => import("@/components/analytics/sales-funnel-tab").then((m) => m.SalesFunnelTab));
-const CustomerSuccessTab = dynamic(() => import("@/components/analytics/customer-success-tab").then((m) => m.CustomerSuccessTab));
-const AdsGoogleAnalyticsTab = dynamic(() => import("@/components/analytics/ads-google-analytics-tab").then((m) => m.AdsGoogleAnalyticsTab));
-const AdsGoogleAdsTab = dynamic(() => import("@/components/analytics/ads-google-ads-tab").then((m) => m.AdsGoogleAdsTab));
-const AdsMetaAdsTab = dynamic(() => import("@/components/analytics/ads-meta-ads-tab").then((m) => m.AdsMetaAdsTab));
-const AdsRedditAdsTab = dynamic(() => import("@/components/analytics/ads-reddit-ads-tab").then((m) => m.AdsRedditAdsTab));
-const AdsWebflowTab = dynamic(() => import("@/components/analytics/ads-webflow-tab").then((m) => m.AdsWebflowTab));
-const AdsSemrushTab = dynamic(() => import("@/components/analytics/ads-semrush-tab").then((m) => m.AdsSemrushTab));
-const AdsCodaKanbanTab = dynamic(() => import("@/components/analytics/ads-coda-kanban-tab").then((m) => m.AdsCodaKanbanTab));
-const SalesHubspotTab = dynamic(() => import("@/components/analytics/sales-hubspot-tab").then((m) => m.SalesHubspotTab));
-const SalesStripeTab = dynamic(() => import("@/components/analytics/sales-stripe-tab").then((m) => m.SalesStripeTab));
-const GenericWorkspaceTab = dynamic(() => import("@/components/analytics/generic-workspace-tab").then((m) => m.GenericWorkspaceTab));
-const GenericSlackTab = dynamic(() => import("@/components/analytics/generic-slack-tab").then((m) => m.GenericSlackTab));
-const CsPylonTab = dynamic(() => import("@/components/analytics/cs-pylon-tab").then((m) => m.CsPylonTab));
-const CsCodaTab = dynamic(() => import("@/components/analytics/cs-coda-tab").then((m) => m.CsCodaTab));
-const CsProductTab = dynamic(() => import("@/components/analytics/cs-product-tab").then((m) => m.CsProductTab));
-const DecisionDashboardView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.DecisionDashboardView));
-const FlowMetricsView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.FlowMetricsView));
-const FlowRiskView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.FlowRiskView));
-const ObservabilityView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.ObservabilityView));
-const LifecycleFunnelPanel = dynamic(() => import("@/components/analytics/lifecycle-funnel-panel").then((m) => m.LifecycleFunnelPanel));
-const AiInsightsPanel = dynamic(() => import("@/components/analytics/ai-insights-panel").then((m) => m.AiInsightsPanel));
-const EnhancedInsightsPanel = dynamic(() => import("@/components/analytics/enhanced-insights-panel").then((m) => m.EnhancedInsightsPanel));
-const GoogleAnalyticsDashboard = dynamic(() => import("./sub-dashboards/google-analytics-dashboard").then((m) => m.GoogleAnalyticsDashboard));
-const StripeDashboard = dynamic(() => import("./sub-dashboards/stripe-dashboard").then((m) => m.StripeDashboard));
-const HubspotSalesDashboard = dynamic(() => import("./sub-dashboards/hubspot-sales-dashboard").then((m) => m.HubspotSalesDashboard));
-const CustomerJourneyTab = dynamic(() => import("@/components/analytics/customer-journey-tab").then((m) => m.CustomerJourneyTab));
-const DemoAnalyticsTab = dynamic(() => import("@/components/analytics/demo-analytics-tab").then((m) => m.DemoAnalyticsTab));
-const ProcessAnalyticsTab = dynamic(() => import("@/components/analytics/process-analytics-tab").then((m) => m.ProcessAnalyticsTab));
-const CustomerJourneyDrillDown = dynamic(() => import("@/components/analytics/customer-journey-drill-down").then((m) => m.CustomerJourneyDrillDown));
-const DemoSchedulingView = dynamic(() => import("@/components/analytics/demo-scheduling-view").then((m) => m.DemoSchedulingView));
-const DemoAttributionView = dynamic(() => import("@/components/analytics/demo-attribution-view").then((m) => m.DemoAttributionView));
-const ProcessBottlenecksView = dynamic(() => import("@/components/analytics/process-bottlenecks-view").then((m) => m.ProcessBottlenecksView));
-const ProcessHealthView = dynamic(() => import("@/components/analytics/process-health-view").then((m) => m.ProcessHealthView));
-import type { AnalyticsDashboardData, AnalyticsSectionId, EnhancedInsightsBundle } from "@/lib/analytics/types";
-import { buildRangeQuery } from "@/lib/analytics/time-range";
+import {
+  DecisionDashboardView,
+  FlowMetricsView,
+  FlowRiskView,
+  ObservabilityView,
+} from "@/components/analytics/ops-insights";
+import { LifecycleFunnelPanel } from "@/components/analytics/lifecycle-funnel-panel";
+import { AiInsightsPanel } from "@/components/analytics/ai-insights-panel";
+import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import {
   getAnalyticsPrimaryForSection,
   getAnalyticsSecondaryForPrimary,
@@ -57,7 +35,7 @@ import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-error-banner";
 import { DashboardStaleBanner } from "@/components/dashboard/dashboard-stale-banner";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
-import { populateConnectionStatus } from "@/hooks/use-connection-status";
+import { INTEGRATION_CHILD_DASHBOARD_REGISTRY } from "@/components/analytics/integration-child-dashboards";
 
 interface AnalyticsSectionPageProps {
   sectionId: string;
@@ -72,34 +50,7 @@ const SECTION_CACHE_PREFIX = "analytics:section:v2:";
 const OPS_DOMAINS = ["decisionDashboard", "flowMetrics", "flowRisk", "observability"] as const;
 type ChildDataDomain = "decisionDashboard" | "flowMetrics" | "flowRisk" | "observability" | string;
 
-const SUB_DASHBOARD_MAP: Record<string, React.ComponentType<{ data: AnalyticsDashboardData | null }>> = {
-  "ads-google-analytics": GoogleAnalyticsDashboard,
-  "finance-stripe": StripeDashboard,
-  "sales-stripe": StripeDashboard,
-  "sales-hubspot": HubspotSalesDashboard,
-  "finance-hubspot": HubspotSalesDashboard,
-};
-
 export type AnalyticsChildRenderKind =
-  | "finance-stripe"
-  | "finance-hubspot"
-  | "finance-mercury"
-  | "sales-hubspot"
-  | "sales-stripe"
-  | "sales-google-workspace"
-  | "sales-slack"
-  | "ads-google-analytics"
-  | "ads-google-ads"
-  | "ads-meta-ads"
-  | "ads-reddit-ads"
-  | "ads-webflow"
-  | "ads-semrush"
-  | "ads-coda-kanban"
-  | "cs-pylon"
-  | "cs-coda"
-  | "cs-product"
-  | "cs-google-workspace"
-  | "cs-slack"
   | "decisionDashboard"
   | "flowMetrics"
   | "flowRisk"
@@ -115,30 +66,6 @@ export function resolveAnalyticsChildRenderKind(input: {
   childId: string;
   childDataDomain: ChildDataDomain;
 }): AnalyticsChildRenderKind {
-  // Finance
-  if (input.childId === "finance-stripe") return "finance-stripe";
-  if (input.childId === "finance-hubspot") return "finance-hubspot";
-  if (input.childId === "finance-mercury") return "finance-mercury";
-  // Sales
-  if (input.childId === "sales-hubspot") return "sales-hubspot";
-  if (input.childId === "sales-stripe") return "sales-stripe";
-  if (input.childId === "sales-google-workspace") return "sales-google-workspace";
-  if (input.childId === "sales-slack") return "sales-slack";
-  // Ads & Traffic
-  if (input.childId === "ads-google-analytics") return "ads-google-analytics";
-  if (input.childId === "ads-google-ads") return "ads-google-ads";
-  if (input.childId === "ads-meta-ads") return "ads-meta-ads";
-  if (input.childId === "ads-reddit-ads") return "ads-reddit-ads";
-  if (input.childId === "ads-webflow") return "ads-webflow";
-  if (input.childId === "ads-semrush") return "ads-semrush";
-  if (input.childId === "ads-coda-kanban") return "ads-coda-kanban";
-  // Customer Success
-  if (input.childId === "cs-pylon") return "cs-pylon";
-  if (input.childId === "cs-coda") return "cs-coda";
-  if (input.childId === "cs-product") return "cs-product";
-  if (input.childId === "cs-google-workspace") return "cs-google-workspace";
-  if (input.childId === "cs-slack") return "cs-slack";
-  // Ops
   if (input.childDataDomain === "decisionDashboard") return "decisionDashboard";
   if (input.childDataDomain === "flowMetrics") return "flowMetrics";
   if (input.childDataDomain === "flowRisk") return "flowRisk";
@@ -152,6 +79,17 @@ export function resolveAnalyticsChildRenderKind(input: {
   if (input.childId === "process-health" || input.childId === "process-throughput") return "processHealth";
   if (input.childDataDomain === "processAnalytics") return "processBottlenecks";
   return "snapshot";
+}
+
+function buildRangeQuery(searchParams: URLSearchParams | null): string {
+  const params = new URLSearchParams();
+  const range = searchParams?.get("range");
+  const from = searchParams?.get("from");
+  const to = searchParams?.get("to");
+  if (range) params.set("range", range);
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  return params.toString();
 }
 
 function sectionCacheKey(sectionId: string, rangeQuery: string): string {
@@ -202,7 +140,7 @@ function SnapshotCards({
     );
   }
 
-  const summary = useMemo(() => summarizePayload(payload), [payload]);
+  const summary = summarizePayload(payload);
 
   if (summary.scalarEntries.length === 0) {
     return (
@@ -343,13 +281,8 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         throw new Error(`Analytics section request failed (${response.status})`);
       }
 
-      const analyticsData = (await response.json()) as AnalyticsDashboardData;
-
-      // Populate connection status store with freshness data
-      populateConnectionStatus(analyticsData?.freshness, analyticsData);
-
       return {
-        analyticsData,
+        analyticsData: (await response.json()) as AnalyticsDashboardData,
         auxPayload: null,
       };
     },
@@ -374,7 +307,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
   const auxPayload = resource.data?.auxPayload ?? null;
   const title = child?.label ?? primary.label;
 
-  const primaryContent = useMemo(() => {
+  const renderPrimary = () => {
     if (sectionId === "ads-traffic") return <MarketingTabNew data={analyticsData} />;
     if (sectionId === "finance") return <FinanceTab data={analyticsData} />;
     if (sectionId === "sales-pipeline") return <SalesFunnelTab data={analyticsData} />;
@@ -383,39 +316,15 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     if (sectionId === "demo-analytics") return <DemoAnalyticsTab data={analyticsData} />;
     if (sectionId === "process-analytics") return <ProcessAnalyticsTab data={analyticsData} />;
     return null;
-  }, [sectionId, analyticsData]);
+  };
 
-  const childContent = useMemo(() => {
+  const renderChild = () => {
     if (!child) return null;
 
     const renderKind = resolveAnalyticsChildRenderKind({
       childId: child.id,
       childDataDomain: child.dataDomain,
     });
-    // Finance
-    if (renderKind === "finance-stripe") return <FinanceStripeTab data={analyticsData} />;
-    if (renderKind === "finance-hubspot") return <FinanceHubSpotTab data={analyticsData} />;
-    if (renderKind === "finance-mercury") return <FinanceMercuryTab data={analyticsData} />;
-    // Sales
-    if (renderKind === "sales-hubspot") return <SalesHubspotTab data={analyticsData} />;
-    if (renderKind === "sales-stripe") return <SalesStripeTab data={analyticsData} />;
-    if (renderKind === "sales-google-workspace") return <GenericWorkspaceTab data={analyticsData} />;
-    if (renderKind === "sales-slack") return <GenericSlackTab data={analyticsData} />;
-    // Ads & Traffic
-    if (renderKind === "ads-google-analytics") return <AdsGoogleAnalyticsTab data={analyticsData} />;
-    if (renderKind === "ads-google-ads") return <AdsGoogleAdsTab data={analyticsData} />;
-    if (renderKind === "ads-meta-ads") return <AdsMetaAdsTab data={analyticsData} />;
-    if (renderKind === "ads-reddit-ads") return <AdsRedditAdsTab data={analyticsData} />;
-    if (renderKind === "ads-webflow") return <AdsWebflowTab data={analyticsData} />;
-    if (renderKind === "ads-semrush") return <AdsSemrushTab data={analyticsData} />;
-    if (renderKind === "ads-coda-kanban") return <AdsCodaKanbanTab data={analyticsData} />;
-    // Customer Success
-    if (renderKind === "cs-pylon") return <CsPylonTab data={analyticsData} />;
-    if (renderKind === "cs-coda") return <CsCodaTab data={analyticsData} />;
-    if (renderKind === "cs-product") return <CsProductTab data={analyticsData} />;
-    if (renderKind === "cs-google-workspace") return <GenericWorkspaceTab data={analyticsData} />;
-    if (renderKind === "cs-slack") return <GenericSlackTab data={analyticsData} />;
-    // Ops
     if (renderKind === "decisionDashboard") return <DecisionDashboardView payload={auxPayload} />;
     if (renderKind === "flowMetrics") return <FlowMetricsView payload={auxPayload} />;
     if (renderKind === "flowRisk") return <FlowRiskView payload={auxPayload} />;
@@ -426,13 +335,11 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     if (renderKind === "processBottlenecks") return <ProcessBottlenecksView data={analyticsData} />;
     if (renderKind === "processHealth") return <ProcessHealthView data={analyticsData} />;
 
-    // Check for dedicated sub-dashboard component
-    const SubDashboard = SUB_DASHBOARD_MAP[sectionId];
-    if (SubDashboard) {
-      return <SubDashboard data={analyticsData} />;
+    const RegistryDashboard = INTEGRATION_CHILD_DASHBOARD_REGISTRY[child.id];
+    if (RegistryDashboard) {
+      return <RegistryDashboard data={analyticsData} />;
     }
 
-    // Fallback for any unrecognized sub-sections
     const payload = (analyticsData as unknown as Record<string, unknown>) || null;
     const domainKey = child.dataDomain;
     const domainPayload = (payload?.[domainKey] as Record<string, unknown> | null) ?? null;
@@ -447,7 +354,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         errors={domainErrors}
       />
     );
-  }, [child, analyticsData, auxPayload]);
+  };
 
   return (
     <div className="h-full space-y-4 overflow-y-auto p-4">
@@ -516,31 +423,14 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
           onAction={resource.refresh}
         />
       ) : child ? (
-        <div className="space-y-4">
-          {childContent}
-          {analyticsData?.aiInsights && (
-            <AiInsightsPanel
-              bundle={analyticsData.aiInsights}
-              defaultFilter={primary.id}
-              compact
-            />
-          )}
-        </div>
+        renderChild()
       ) : (
         <div className="space-y-4">
-          {primaryContent}
+          {renderPrimary()}
           <LifecycleFunnelPanel
             lifecycle={analyticsData?.lifecycleFunnel ?? null}
             insights={analyticsData?.aiInsights?.global ?? []}
             sectionFocus={primary.id}
-          />
-          <EnhancedInsightsPanel
-            section={primary.id as AnalyticsSectionId}
-            insights={
-              (analyticsData?.aiInsights as EnhancedInsightsBundle | undefined)?.sections?.[
-                primary.id as AnalyticsSectionId
-              ] ?? null
-            }
           />
           <AiInsightsPanel bundle={analyticsData?.aiInsights ?? null} defaultFilter={primary.id} />
         </div>
