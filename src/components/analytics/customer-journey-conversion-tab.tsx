@@ -5,12 +5,16 @@ import {
   TrendingUp, TrendingDown, ArrowRight, Percent,
   DollarSign, Clock, BarChart3,
 } from "lucide-react";
-import type {
-  AnalyticsDashboardData,
-  CustomerJourneyData,
-  CustomerJourneyRecord,
-  TouchpointChannel,
-} from "@/lib/analytics/types";
+import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import {
+  buildPathConversions,
+  buildSourceConversions,
+  buildStageConversions,
+  CHANNEL_COLORS,
+  CHANNEL_LABELS,
+  CLOSE_STAGES,
+  pct,
+} from "@/lib/analytics/customer-journey-conversion";
 import { StatCard } from "./stat-card";
 
 // ── Helpers ──
@@ -19,174 +23,6 @@ function fmt$(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
   return `$${n.toFixed(0)}`;
-}
-
-function pct(n: number, d: number): number {
-  return d > 0 ? Math.round((n / d) * 1000) / 10 : 0;
-}
-
-const CHANNEL_LABELS: Record<TouchpointChannel, string> = {
-  hubspot: "HubSpot",
-  stripe: "Stripe",
-  "google-workspace": "Google Workspace",
-  slack: "Slack",
-  webflow: "Webflow",
-  coda: "Coda",
-  "google-analytics": "Google Analytics",
-  "google-ads": "Google Ads",
-  "meta-ads": "Meta Ads",
-  "reddit-ads": "Reddit Ads",
-  pylon: "Pylon",
-  mercury: "Mercury",
-};
-
-const CHANNEL_COLORS: Record<TouchpointChannel, string> = {
-  hubspot: "#ff7a59",
-  stripe: "#635bff",
-  "google-workspace": "#4285f4",
-  slack: "#e01e5a",
-  webflow: "#4353ff",
-  coda: "#f46a54",
-  "google-analytics": "#e37400",
-  "google-ads": "#4285f4",
-  "meta-ads": "#0081fb",
-  "reddit-ads": "#ff4500",
-  pylon: "#6366f1",
-  mercury: "#1c1c1e",
-};
-
-// ── Derived analytics ──
-
-interface StageConversionRow {
-  fromStage: string;
-  toStage: string;
-  fromCount: number;
-  toCount: number;
-  conversionRate: number;
-  avgDaysInStage: number;
-  revenueAtRisk: number;
-}
-
-interface SourceConversionRow {
-  source: string;
-  totalJourneys: number;
-  converted: number;
-  conversionRate: number;
-  totalRevenue: number;
-  avgDaysToClose: number;
-}
-
-interface PathConversionRow {
-  path: string;
-  channels: TouchpointChannel[];
-  journeyCount: number;
-  convertedCount: number;
-  conversionRate: number;
-  avgValue: number;
-  avgDays: number;
-}
-
-function buildStageConversions(journeys: CustomerJourneyRecord[]): StageConversionRow[] {
-  const stageOrder = new Map<string, number>();
-  const stageCounts = new Map<string, { count: number; totalDays: number; totalValue: number }>();
-
-  for (const j of journeys) {
-    const stage = j.currentStage;
-    if (!stageOrder.has(stage)) stageOrder.set(stage, stageOrder.size);
-    const entry = stageCounts.get(stage) ?? { count: 0, totalDays: 0, totalValue: 0 };
-    entry.count += 1;
-    entry.totalDays += j.daysInPipeline;
-    entry.totalValue += j.value;
-    stageCounts.set(stage, entry);
-  }
-
-  const stages = Array.from(stageOrder.entries())
-    .sort((a, b) => a[1] - b[1])
-    .map(([s]) => s);
-
-  const rows: StageConversionRow[] = [];
-  for (let i = 0; i < stages.length - 1; i++) {
-    const from = stageCounts.get(stages[i])!;
-    const to = stageCounts.get(stages[i + 1])!;
-    rows.push({
-      fromStage: stages[i],
-      toStage: stages[i + 1],
-      fromCount: from.count,
-      toCount: to.count,
-      conversionRate: pct(to.count, from.count),
-      avgDaysInStage: from.count > 0 ? Math.round(from.totalDays / from.count) : 0,
-      revenueAtRisk: Math.max(0, from.totalValue - to.totalValue),
-    });
-  }
-  return rows;
-}
-
-function buildSourceConversions(journeys: CustomerJourneyRecord[]): SourceConversionRow[] {
-  const CLOSE_STAGES = new Set(["Closed Won", "Subscription", "Active"]);
-  const byFirstChannel = new Map<TouchpointChannel, { total: number; converted: number; revenue: number; totalDays: number }>();
-
-  for (const j of journeys) {
-    const firstChannel = j.touchpoints[0]?.channel;
-    if (!firstChannel) continue;
-    const entry = byFirstChannel.get(firstChannel) ?? { total: 0, converted: 0, revenue: 0, totalDays: 0 };
-    entry.total += 1;
-    entry.totalDays += j.daysInPipeline;
-    if (CLOSE_STAGES.has(j.currentStage)) {
-      entry.converted += 1;
-      entry.revenue += j.value;
-    }
-    byFirstChannel.set(firstChannel, entry);
-  }
-
-  return Array.from(byFirstChannel.entries())
-    .map(([channel, stats]) => ({
-      source: CHANNEL_LABELS[channel] ?? channel,
-      totalJourneys: stats.total,
-      converted: stats.converted,
-      conversionRate: pct(stats.converted, stats.total),
-      totalRevenue: stats.revenue,
-      avgDaysToClose: stats.total > 0 ? Math.round(stats.totalDays / stats.total) : 0,
-    }))
-    .sort((a, b) => b.totalRevenue - a.totalRevenue);
-}
-
-function buildPathConversions(journey: CustomerJourneyData): PathConversionRow[] {
-  const CLOSE_STAGES = new Set(["Closed Won", "Subscription", "Active"]);
-
-  const pathMap = new Map<string, {
-    channels: TouchpointChannel[];
-    count: number;
-    converted: number;
-    totalValue: number;
-    totalDays: number;
-  }>();
-
-  for (const j of journey.journeys) {
-    const channels = [...new Set(j.touchpoints.map((tp) => tp.channel))];
-    if (channels.length === 0) continue;
-    const key = channels.join(" → ");
-    const entry = pathMap.get(key) ?? { channels, count: 0, converted: 0, totalValue: 0, totalDays: 0 };
-    entry.count += 1;
-    entry.totalDays += j.daysInPipeline;
-    if (CLOSE_STAGES.has(j.currentStage)) {
-      entry.converted += 1;
-      entry.totalValue += j.value;
-    }
-    pathMap.set(key, entry);
-  }
-
-  return Array.from(pathMap.entries())
-    .map(([path, stats]) => ({
-      path,
-      channels: stats.channels,
-      journeyCount: stats.count,
-      convertedCount: stats.converted,
-      conversionRate: pct(stats.converted, stats.count),
-      avgValue: stats.converted > 0 ? Math.round(stats.totalValue / stats.converted) : 0,
-      avgDays: stats.count > 0 ? Math.round(stats.totalDays / stats.count) : 0,
-    }))
-    .sort((a, b) => b.conversionRate - a.conversionRate || b.journeyCount - a.journeyCount)
-    .slice(0, 10);
 }
 
 // ── Component ──
@@ -211,7 +47,6 @@ export function CustomerJourneyConversionTab({ data }: { data: AnalyticsDashboar
 
   if (!journey || journey.journeys.length === 0) return <EmptyState />;
 
-  const CLOSE_STAGES = new Set(["Closed Won", "Subscription", "Active"]);
   const totalJourneys = journey.journeys.length;
   const closedJourneys = journey.journeys.filter((j) => CLOSE_STAGES.has(j.currentStage));
   const overallConversionRate = pct(closedJourneys.length, totalJourneys);

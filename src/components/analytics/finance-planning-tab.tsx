@@ -20,10 +20,15 @@ import {
   computeBudgetSummary,
   type BudgetActualItem,
 } from "@/lib/analytics/budget-variance";
+import {
+  defaultDateRange,
+  endDateForPeriod,
+  type BudgetPeriod,
+} from "@/lib/analytics/budget-period";
 import { computeVariance, fmtDelta, runwayColor } from "@/lib/analytics/finance-utils";
 import { computeFinancialGoals, type FinancialGoal } from "@/lib/analytics/finance-modeling";
 
-type BudgetPeriodApi = "MONTHLY" | "QUARTERLY" | "ANNUAL";
+type BudgetPeriodApi = BudgetPeriod;
 type BudgetCategoryApi = "COGS" | "PAYROLL" | "MARKETING" | "INFRASTRUCTURE" | "OPS" | "OTHER";
 
 type BudgetLineItemApi = {
@@ -52,38 +57,6 @@ const CATEGORY_CONFIG: Array<{ key: BudgetCategoryApi; label: string }> = [
   { key: "OPS", label: "General & Administrative" },
   { key: "OTHER", label: "Other" },
 ];
-
-function formatDateInput(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function parseDateInput(value: string): Date | null {
-  if (!value) return null;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return null;
-  return date;
-}
-
-function addMonths(date: Date, months: number): Date {
-  const d = new Date(date);
-  d.setMonth(d.getMonth() + months);
-  return d;
-}
-
-function endDateForPeriod(startDate: string, period: BudgetPeriodApi): string {
-  const parsed = parseDateInput(startDate);
-  if (!parsed) return "";
-  const months = period === "MONTHLY" ? 1 : period === "QUARTERLY" ? 3 : 12;
-  const end = addMonths(parsed, months);
-  end.setDate(end.getDate() - 1);
-  return formatDateInput(end);
-}
-
-function defaultDateRange(period: BudgetPeriodApi): { start: string; end: string } {
-  const now = new Date();
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  return { start: formatDateInput(start), end: endDateForPeriod(formatDateInput(start), period) };
-}
 
 function emptyAmounts(): Record<BudgetCategoryApi, string> {
   return {
