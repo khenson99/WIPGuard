@@ -40,6 +40,7 @@ const CustomerJourneyTab = dynamic(() => import("@/components/analytics/customer
 const DemoAnalyticsTab = dynamic(() => import("@/components/analytics/demo-analytics-tab").then((m) => m.DemoAnalyticsTab));
 const ProcessAnalyticsTab = dynamic(() => import("@/components/analytics/process-analytics-tab").then((m) => m.ProcessAnalyticsTab));
 const CustomerJourneyDrillDown = dynamic(() => import("@/components/analytics/customer-journey-drill-down").then((m) => m.CustomerJourneyDrillDown));
+const CustomerJourneyConversionTab = dynamic(() => import("@/components/analytics/customer-journey-conversion-tab").then((m) => m.CustomerJourneyConversionTab));
 const DemoSchedulingView = dynamic(() => import("@/components/analytics/demo-scheduling-view").then((m) => m.DemoSchedulingView));
 const DemoAttributionView = dynamic(() => import("@/components/analytics/demo-attribution-view").then((m) => m.DemoAttributionView));
 const ProcessBottlenecksView = dynamic(() => import("@/components/analytics/process-bottlenecks-view").then((m) => m.ProcessBottlenecksView));
@@ -108,6 +109,7 @@ export type AnalyticsChildRenderKind =
   | "flowRisk"
   | "observability"
   | "customerJourneyDrillDown"
+  | "customerJourneyConversion"
   | "demoScheduling"
   | "demoAttribution"
   | "processBottlenecks"
@@ -155,6 +157,7 @@ export function resolveAnalyticsChildRenderKind(input: {
   if (input.childDataDomain === "flowRisk") return "flowRisk";
   if (input.childDataDomain === "observability") return "observability";
   if (input.childId === "cj-touchpoints") return "customerJourneyDrillDown";
+  if (input.childId === "cj-conversion") return "customerJourneyConversion";
   if (input.childDataDomain === "customerJourney") return "customerJourneyDrillDown";
   if (input.childId === "demo-scheduling") return "demoScheduling";
   if (input.childId === "demo-attribution") return "demoAttribution";
@@ -436,6 +439,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     if (renderKind === "flowRisk") return <FlowRiskView payload={auxPayload} />;
     if (renderKind === "observability") return <ObservabilityView payload={auxPayload} />;
     if (renderKind === "customerJourneyDrillDown") return <CustomerJourneyDrillDown data={analyticsData} />;
+    if (renderKind === "customerJourneyConversion") return <CustomerJourneyConversionTab data={analyticsData} />;
     if (renderKind === "demoScheduling") return <DemoSchedulingView data={analyticsData} />;
     if (renderKind === "demoAttribution") return <DemoAttributionView data={analyticsData} />;
     if (renderKind === "processBottlenecks") return <ProcessBottlenecksView data={analyticsData} />;
