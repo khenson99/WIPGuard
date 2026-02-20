@@ -1,8 +1,8 @@
 // Reusable stat card for analytics dashboard
-import type React from "react";
+import React from "react";
 import { type LucideIcon } from "lucide-react";
 
-type StatCardIcon = LucideIcon | React.ReactNode;
+type StatCardIcon = React.ElementType | React.ReactNode | LucideIcon;
 
 interface StatCardProps {
   label?: string;
@@ -36,13 +36,21 @@ export function StatCard({
   };
 
   const displayLabel = label ?? title ?? "";
-  const iconNode =
-    typeof icon === "function"
-      ? (() => {
-          const Icon = icon as LucideIcon;
-          return <Icon className="h-3.5 w-3.5" />;
-        })()
-      : icon;
+  let iconNode: React.ReactNode = null;
+  if (icon) {
+    if (React.isValidElement(icon)) {
+      iconNode = icon;
+    } else if (
+      typeof icon === "function" ||
+      (typeof icon === "object" && icon !== null && "$$typeof" in icon)
+    ) {
+      iconNode = React.createElement(icon as React.ElementType, {
+        className: "h-3.5 w-3.5",
+      });
+    } else {
+      iconNode = icon;
+    }
+  }
 
   return (
     <div className={`rounded-xl border border-border bg-card p-5 transition-colors hover:bg-secondary/30 ${className ?? ""}`}>
