@@ -9,6 +9,8 @@ import { ANALYTICS_PRIMARY_SECTIONS } from "@/lib/analytics/section-registry";
 import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-controls";
 import { LifecycleFunnelPanel } from "@/components/analytics/lifecycle-funnel-panel";
 import { AiInsightsPanel } from "@/components/analytics/ai-insights-panel";
+import { CrossDomainInsightsPanel } from "@/components/analytics/cross-domain-insights";
+import type { EnhancedInsightsBundle } from "@/lib/analytics/types";
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-state";
 import { DashboardStaleBanner } from "@/components/dashboard/dashboard-stale-banner";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-error-banner";
@@ -253,6 +255,9 @@ export function AnalyticsSummaryPage() {
       </div>
 
       <LifecycleFunnelPanel lifecycle={overview?.lifecycleFunnel ?? null} insights={overview?.aiInsights?.global ?? []} sectionFocus="all" />
+      <CrossDomainInsightsPanel
+        data={(overview?.aiInsights as EnhancedInsightsBundle | undefined)?.crossDomain ?? null}
+      />
       <AiInsightsPanel bundle={overview?.aiInsights ?? null} defaultFilter="all" />
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">

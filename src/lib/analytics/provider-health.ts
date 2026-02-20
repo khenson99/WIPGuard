@@ -1,5 +1,9 @@
 import { IntegrationProvider } from "@/generated/prisma/client";
 import type { AnalyticsSnapshotStatus } from "@/lib/analytics/types";
+import {
+  getProviderRegistryEntry,
+  providerForSnapshotKey as providerForSnapshotKeyFromRegistry,
+} from "@/lib/integrations/provider-registry";
 
 export type ProviderSyncHealth = "healthy" | "degraded" | "error" | "missing";
 
@@ -19,26 +23,7 @@ export interface ProviderSyncHealthResult {
 }
 
 export function snapshotKeysForIntegrationProvider(provider: IntegrationProvider): string[] {
-  switch (provider) {
-    case IntegrationProvider.GOOGLE_WORKSPACE:
-      return ["googleWorkspace"];
-    case IntegrationProvider.HUBSPOT:
-      return ["hubspot", "hubspotOps"];
-    case IntegrationProvider.SLACK:
-      return ["slack"];
-    case IntegrationProvider.CODA:
-      return ["coda", "codaOps"];
-    case IntegrationProvider.REDDIT:
-      return ["redditAds", "redditOps"];
-    case IntegrationProvider.STRIPE:
-      return ["stripe"];
-    case IntegrationProvider.MERCURY:
-      return ["mercury"];
-    case IntegrationProvider.WEBFLOW:
-      return ["webflow"];
-    default:
-      return [];
-  }
+  return getProviderRegistryEntry(provider)?.snapshotKeys ?? [];
 }
 
 function toDate(value: Date | string): Date {
@@ -140,13 +125,5 @@ export function snapshotsForProvider(
 }
 
 export function providerForSnapshotKey(providerKey: string): IntegrationProvider | null {
-  if (providerKey === "googleWorkspace") return IntegrationProvider.GOOGLE_WORKSPACE;
-  if (providerKey === "hubspot" || providerKey === "hubspotOps") return IntegrationProvider.HUBSPOT;
-  if (providerKey === "slack") return IntegrationProvider.SLACK;
-  if (providerKey === "coda" || providerKey === "codaOps") return IntegrationProvider.CODA;
-  if (providerKey === "redditAds" || providerKey === "redditOps") return IntegrationProvider.REDDIT;
-  if (providerKey === "stripe") return IntegrationProvider.STRIPE;
-  if (providerKey === "mercury") return IntegrationProvider.MERCURY;
-  if (providerKey === "webflow") return IntegrationProvider.WEBFLOW;
-  return null;
+  return providerForSnapshotKeyFromRegistry(providerKey);
 }

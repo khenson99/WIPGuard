@@ -97,6 +97,7 @@ export interface HubSpotData {
     source: string;
     ownerId: string | null;
     updatedAt: string | null;
+    createdAt: string | null;
   }>;
   _meta: AnalyticsTimestamp;
 }
@@ -299,14 +300,75 @@ export interface CodaCard {
   status: string;
   priority?: string;
   assignee?: string;
+  creator?: string;
+  creatorEmail?: string | null;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface CodaCreatorBreakdown {
+  creator: string;
+  email: string | null;
+  cardCount: number;
+  activeDays: number;
+  firstCardAt: string | null;
+  lastCardAt: string | null;
+}
+
+export interface CodaCreatorWindow {
+  windowDays: 30 | 60 | 90;
+  totalCards: number;
+  previousWindowTotalCards: number;
+  trendDeltaPct: number | null;
+  uniqueCreators: number;
+  byCreator: CodaCreatorBreakdown[];
+}
+
+export interface CodaNewCreatorFeedEntry {
+  creator: string;
+  email: string | null;
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+  cardsCreated: number;
+  isUnknown: boolean;
+}
+
+export interface CodaCreatorTrends {
+  newCreators30d: Array<{ date: string; count: number }>;
+  cardsCreated90d: Array<{ date: string; count: number }>;
+}
+
+export type CodaLeadFunnelStatus = "inFunnel" | "notInFunnel" | "unknown";
+
+export interface CodaEngagedLeadCandidate {
+  creator: string;
+  email: string;
+  cards30d: number;
+  activeDays30d: number;
+  lastActivityAt: string | null;
+  trend30dVsPrevious30d: number | null;
+  engagementScore: number;
+  reasons: string[];
+  funnelStatus: CodaLeadFunnelStatus;
+  hubspotSearchUrl: string;
+}
+
+export interface CodaDiagnostics {
+  creatorResolutionMode: "override" | "auto_detect" | "unknown_heavy";
+  unknownCreatorRatio: number;
+  unknownCardCount: number;
+  hubspotMatchingErrors: number;
 }
 
 export interface CodaKanbanData {
   totalCards: number;
   cardsByStatus: { status: string; count: number }[];
   recentCards: CodaCard[];
+  creatorWindows?: CodaCreatorWindow[];
+  newCreatorFeed?: CodaNewCreatorFeedEntry[];
+  trends?: CodaCreatorTrends;
+  engagedLeadCandidates?: CodaEngagedLeadCandidate[];
+  diagnostics?: CodaDiagnostics;
   _meta: AnalyticsTimestamp;
 }
 
@@ -695,6 +757,28 @@ export interface DemoWeeklyTrend {
   noShows: number;
 }
 
+export interface JourneyPathRow {
+  source: string;
+  totalLeads: number;
+  demosBooked: number;
+  demosBookedPct: number;
+  demoCompleted: number;
+  demoCompletedPct: number;
+  demoNoShow: number;
+  demoNoShowPct: number;
+  avgDaysToDecision: number | null;
+  closedWon: number;
+  closedWonPct: number;
+  closedLost: number;
+  onboarding: number;
+  onboardingPct: number;
+  avgContractValue: number | null;
+  churned: number;
+  churnedPct: number;
+  notActivated: number;
+  notActivatedPct: number;
+}
+
 export interface DemoAnalyticsData {
   totalScheduled: number;
   totalCompleted: number;
@@ -706,6 +790,7 @@ export interface DemoAnalyticsData {
   byOutcome: DemoOutcomeBreakdown[];
   conversionFunnel: DemoConversionStep[];
   weeklyTrend: DemoWeeklyTrend[];
+  journeyPaths: JourneyPathRow[];
 }
 
 // ══════════════════════════════════════════════════════════
@@ -771,6 +856,110 @@ export interface ProcessAnalyticsData {
 }
 
 // ══════════════════════════════════════════════════════════
+// FINANCIAL PLANNING
+// ══════════════════════════════════════════════════════════
+
+export type BudgetPeriod = "monthly" | "quarterly" | "annual";
+export type ExpenseCategory = "payroll" | "marketing" | "infrastructure" | "ops" | "cogs" | "other";
+
+export interface BudgetLineItemData {
+  id: string;
+  category: ExpenseCategory;
+  plannedAmount: number;
+  actualAmount: number | null;
+  variance: number | null;
+  variancePct: number | null;
+  notes?: string;
+}
+
+export interface BudgetData {
+  id: string;
+  name: string;
+  period: BudgetPeriod;
+  startDate: string;
+  endDate: string;
+  lineItems: BudgetLineItemData[];
+  totalPlanned: number;
+  totalActual: number | null;
+  totalVariance: number | null;
+}
+
+export interface ForecastAssumptions {
+  revenueGrowthRate: number;
+  churnRateDelta: number;
+  burnRateDelta: number;
+  additionalMonthlyExpense: number;
+  additionalMonthlyRevenue: number;
+}
+
+export interface ForecastMonth {
+  month: string;
+  projectedRevenue: number;
+  projectedExpenses: number;
+  projectedCashBalance: number;
+  projectedMrr: number;
+  projectedRunway: number | null;
+}
+
+export interface ForecastScenarioData {
+  id: string;
+  name: string;
+  assumptions: ForecastAssumptions;
+  months: ForecastMonth[];
+  runwayMonths: number | null;
+}
+
+export type GoalMetric = "mrr" | "arr" | "runway" | "burn_rate" | "net_cash_flow" | "revenue" | "customer_count";
+export type GoalStatus = "active" | "achieved" | "missed";
+
+export interface FinancialGoalData {
+  id: string;
+  metric: GoalMetric;
+  targetValue: number;
+  currentValue: number;
+  progressPct: number;
+  deadline: string;
+  status: GoalStatus;
+}
+
+export interface PnLRow {
+  label: string;
+  currentPeriod: number;
+  previousPeriod: number;
+  change: number;
+  changePct: number;
+}
+
+export interface ProfitAndLoss {
+  periodLabel: string;
+  revenue: PnLRow;
+  cogs: PnLRow;
+  grossProfit: PnLRow;
+  operatingExpenses: PnLRow[];
+  totalOpex: PnLRow;
+  operatingIncome: PnLRow;
+  netIncome: PnLRow;
+}
+
+export interface UnitEconomics {
+  ltv: number;
+  cac: number;
+  ltvCacRatio: number;
+  avgRevenuePerAccount: number;
+  paybackMonths: number;
+  grossMarginPct: number;
+}
+
+export interface FinancialPlanningData {
+  budgets: BudgetData[];
+  activeBudget: BudgetData | null;
+  forecasts: ForecastScenarioData[];
+  goals: FinancialGoalData[];
+  pnl: ProfitAndLoss | null;
+  unitEconomics: UnitEconomics | null;
+}
+
+// ══════════════════════════════════════════════════════════
 // COMBINED DASHBOARD
 // ══════════════════════════════════════════════════════════
 
@@ -821,6 +1010,7 @@ export interface AnalyticsDashboardData {
     erroredDomains: string[];
   };
   lastFullRefresh: string;
+  financialPlanning: FinancialPlanningData | null;
   errors: { source: string; message: string }[];
 }
 

@@ -347,7 +347,17 @@ function providerForDomain(domain: DomainKey): "google_workspace" | "hubspot" | 
 }
 
 type FetchEntry = {
-  key: Exclude<DomainKey, "lifecycleFunnel" | "funnelJourney" | "aiInsights" | "recommendations" | "distilledInsights" | "customerJourney" | "demoAnalytics" | "processAnalytics">;
+  key: Exclude<
+    DomainKey,
+    | "lifecycleFunnel"
+    | "funnelJourney"
+    | "aiInsights"
+    | "recommendations"
+    | "distilledInsights"
+    | "customerJourney"
+    | "demoAnalytics"
+    | "processAnalytics"
+  >;
   fn: () => Promise<unknown>;
 };
 
