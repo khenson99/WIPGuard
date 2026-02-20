@@ -24,6 +24,11 @@ Integrations:
 - `HUBSPOT_CLIENT_ID`
 - `HUBSPOT_CLIENT_SECRET`
 - `HUBSPOT_SCOPES` (optional, comma or space-separated; requested as HubSpot `optional_scope`, defaults to `crm.objects.deals.read crm.objects.contacts.read`)
+
+Stripe churn attribution:
+- Populate the `StripeCustomerLink` table with Stripe customer IDs and HubSpot deal IDs.
+- Optional: `stripe_customer_id` (preferred) or `stripe_customer` HubSpot deal properties can be used as a fallback mapping source.
+
 - `SLACK_CLIENT_ID`
 - `SLACK_CLIENT_SECRET`
 - `CODA_API_TOKEN` (optional, enables one-click Coda connect without pasting token)

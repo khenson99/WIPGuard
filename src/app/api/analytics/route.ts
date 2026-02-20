@@ -236,6 +236,39 @@ function withTimeout<T>(fn: () => Promise<T>, timeoutMs: number, label: string):
   });
 }
 
+function normalizeLookupKey(value: string | null | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+async function hydrateStripeCustomerLinks(
+  userId: string,
+  data: AnalyticsDashboardData
+): Promise<void> {
+  if (!data.hubspot?.deals?.length) return;
+
+  const links = await prisma.stripeCustomerLink.findMany({
+    where: { userId },
+  });
+  if (links.length === 0) return;
+
+  const byDealId = new Map(links.map((link) => [link.hubspotDealId, link.stripeCustomerId]));
+  const byDealName = new Map(
+    links
+      .filter((link) => link.hubspotDealName)
+      .map((link) => [normalizeLookupKey(link.hubspotDealName), link.stripeCustomerId])
+  );
+
+  data.hubspot.deals = data.hubspot.deals.map((deal) => {
+    const mapped =
+      byDealId.get(deal.dealId) ||
+      byDealName.get(normalizeLookupKey(deal.dealName));
+    return {
+      ...deal,
+      stripeCustomerId: deal.stripeCustomerId ?? mapped ?? null,
+    };
+  });
+}
+
 async function computeProductSuccessData(from: Date, to: Date): Promise<ProductSuccessData> {
   const [createdTasksInRange, completedTasksInRange, overdueOpenTasks, contributors] = await Promise.all([
     prisma.task.count({ where: { createdAt: { gte: from, lte: to } } }),
@@ -784,6 +817,8 @@ export async function GET(request: Request) {
       }
     }
   });
+
+  await hydrateStripeCustomerLinks(userId, result);
 
   if (domains.has("funnelJourney")) {
     result.funnelJourney = buildCrossFunnelData(result);
