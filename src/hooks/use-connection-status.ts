@@ -52,8 +52,8 @@ const PROVIDER_TO_DOMAINS: Partial<Record<IntegrationProviderKey, string[]>> = {
   slack: ["slack"],
   coda: ["coda"],
   reddit: ["redditAds"],
-  stripe: ["stripe"],
-  mercury: ["mercury"],
+  stripe: ["stripe", "financePlanning", "financeForecast", "financePnl", "financeUnitEconomics"],
+  mercury: ["mercury", "financePlanning", "financeForecast", "financePnl"],
 };
 
 const DASHBOARD_DATA_DOMAINS = [

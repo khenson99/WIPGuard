@@ -141,6 +141,10 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "recommendations",
     "distilledInsights",
   ],
+  "finance-planning": ["stripe", "mercury"],
+  "finance-forecast": ["stripe", "mercury"],
+  "finance-pnl": ["stripe", "mercury"],
+  "finance-unit-economics": ["stripe", "mercury", "hubspot"],
   "sales-pipeline": [
     "hubspot",
     "stripe",

@@ -1,201 +1,222 @@
-// Forecast engine — pure computation functions for financial scenario modeling.
-// Complements finance-modeling.ts (which works with AnalyticsDashboardData)
-// by accepting raw numeric inputs for flexibility and testability.
+// ─── Forecast Engine ─────────────────────────────────────
+// Revenue and runway projection engine for financial planning.
+// Builds multi-scenario forecasts from Stripe MRR and Mercury
+// cash data. All functions are pure — no side effects.
 
-import type {
-  ForecastAssumptions,
-  ForecastMonth,
-  ForecastScenarioData,
-  StripeData,
-  MercuryData,
-} from "@/lib/analytics/types";
+import type { AnalyticsDashboardData } from "./types";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// ── Exported interfaces ──────────────────────────────────
 
-function monthLabel(offset: number): string {
-  const d = new Date();
-  d.setDate(1);
-  d.setMonth(d.getMonth() + offset);
-  return d.toISOString().slice(0, 7); // YYYY-MM
+export interface ForecastPoint {
+  month: number;
+  label: string;
+  value: number;
 }
 
-// ---------------------------------------------------------------------------
-// Core projections
-// ---------------------------------------------------------------------------
+export interface ForecastScenarioData {
+  id: string;
+  name: string;
+  monthlyGrowthRate: number;
+  monthlyChurnRate: number;
+  additionalBurn: number;
+  revenue: ForecastPoint[];
+  cash: ForecastPoint[];
+  runway: number;
+}
+
+// ── Helpers ──────────────────────────────────────────────
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+/** Generate a month label like "Mar '25" offset by `i` months from now. */
+function monthLabel(offsetMonths: number): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() + offsetMonths);
+  const short = d.toLocaleString("en-US", { month: "short" });
+  const yr = String(d.getFullYear()).slice(2);
+  return `${short} '${yr}`;
+}
+
+// ── Core projection functions ────────────────────────────
 
 /**
- * Project monthly revenue & MRR forward from current values.
+ * Project MRR over `months` periods using compound growth minus churn.
  *
- * Each month applies compound growth and churn:
- *   newMrr = prevMrr * (1 + growthRate) * (1 - churnRate)
- *
- * Returns an array of ForecastMonth with revenue, expenses, cash balance,
- * MRR, and per-month runway estimate.
+ * Formula per month: mrr = mrr * (1 + growthRate) * (1 - churnRate)
  */
 export function projectRevenue(
-  currentMrr: number,
-  monthlyGrowthRate: number,
-  monthlyChurnRate: number,
-  cashBalance: number,
-  monthlyExpenses: number,
-  months: number = 18,
-): ForecastMonth[] {
-  const result: ForecastMonth[] = [];
-  let mrr = currentMrr;
-  let cash = cashBalance;
+  baseMrr: number,
+  growthRate: number,
+  churnRate: number,
+  months: number,
+): ForecastPoint[] {
+  const points: ForecastPoint[] = [];
+  let mrr = baseMrr;
 
-  for (let i = 1; i <= months; i++) {
-    // Apply growth and churn to MRR
-    const netGrowthFactor = (1 + monthlyGrowthRate) * (1 - monthlyChurnRate);
-    mrr = Math.max(mrr * netGrowthFactor, 0);
-
-    const revenue = mrr;
-    const expenses = monthlyExpenses;
-    cash = cash + revenue - expenses;
-
-    // Per-month forward runway: how many months of cash left at current burn
-    const netBurn = expenses - revenue;
-    const runway = netBurn <= 0 ? null : cash > 0 ? cash / netBurn : 0;
-
-    result.push({
-      month: monthLabel(i),
-      projectedRevenue: Math.round(revenue * 100) / 100,
-      projectedExpenses: Math.round(expenses * 100) / 100,
-      projectedCashBalance: Math.round(cash * 100) / 100,
-      projectedMrr: Math.round(mrr * 100) / 100,
-      projectedRunway: runway !== null ? Math.round(runway * 10) / 10 : null,
+  for (let i = 0; i <= months; i++) {
+    points.push({
+      month: i,
+      label: monthLabel(i),
+      value: Math.round(mrr * 100) / 100,
     });
+    mrr = mrr * (1 + growthRate) * (1 - churnRate);
   }
 
-  return result;
+  return points;
 }
 
 /**
- * Calculate months of runway from current cash and burn rate.
- * Returns null if burn rate is zero or negative (infinite runway).
+ * Project cash balance forward.
+ *
+ * Each month: balance = balance + inflows - burn
+ * If balance hits zero, remaining months are clamped to 0.
  */
 export function projectRunway(
-  cashBalance: number,
-  burnRate: number,
-  burnDelta: number = 0,
-): number | null {
-  const effectiveBurn = burnRate + burnDelta;
-  if (effectiveBurn <= 0) return null; // infinite runway
-  if (cashBalance <= 0) return 0;
-  return Math.round((cashBalance / effectiveBurn) * 10) / 10;
+  balance: number,
+  burn: number,
+  inflows: number,
+  months: number,
+): ForecastPoint[] {
+  const points: ForecastPoint[] = [];
+  let cash = balance;
+
+  for (let i = 0; i <= months; i++) {
+    points.push({
+      month: i,
+      label: monthLabel(i),
+      value: Math.round(Math.max(cash, 0) * 100) / 100,
+    });
+    cash = cash + inflows - burn;
+  }
+
+  return points;
 }
 
-// ---------------------------------------------------------------------------
-// Scenario builders
-// ---------------------------------------------------------------------------
+/**
+ * Calculate the runway in months — the point where cash balance
+ * first goes to zero (or the full projection length if it never does).
+ */
+function computeRunwayMonths(
+  balance: number,
+  burn: number,
+  inflows: number,
+  months: number,
+): number {
+  if (balance <= 0) return 0;
+
+  let cash = balance;
+  for (let i = 1; i <= months; i++) {
+    const nextCash = cash + inflows - burn;
+    if (nextCash <= 0) {
+      // Interpolate fractional month using unclamped values.
+      const frac = cash / (cash - nextCash);
+      return Math.round((i - 1 + frac) * 10) / 10;
+    }
+    cash = nextCash;
+  }
+
+  return months;
+}
+
+// ── Scenario builders ────────────────────────────────────
 
 /**
- * Build a complete forecast scenario from Stripe + Mercury data
- * and a set of user-configurable assumptions.
+ * Build a single forecast scenario from live dashboard data
+ * with optional overrides for growth, churn, and extra burn.
  */
 export function buildForecastScenario(
-  stripe: StripeData | null,
-  mercury: MercuryData | null,
-  assumptions: ForecastAssumptions,
-  opts: { id?: string; name?: string; months?: number } = {},
+  data: AnalyticsDashboardData,
+  overrides: Partial<
+    Pick<
+      ForecastScenarioData,
+      "monthlyGrowthRate" | "monthlyChurnRate" | "additionalBurn"
+    >
+  >,
+  name?: string,
 ): ForecastScenarioData {
-  const currentMrr = stripe?.revenue.mrr ?? 0;
-  const baseGrowthRate = (stripe?.revenue.revenueGrowth ?? 0) / 100;
-  const baseChurnRate = (stripe?.subscriptions.churnRate ?? 0) / 100;
-  const cashBalance = mercury?.cashFlow.totalBalance ?? 0;
-  const baseBurnRate = mercury?.cashFlow.burnRate ?? 0;
+  const stripe = data.stripe;
+  const mercury = data.mercury;
 
-  // Apply assumption deltas
-  const growthRate = baseGrowthRate + assumptions.revenueGrowthRate / 100;
-  const churnRate = Math.max(baseChurnRate + assumptions.churnRateDelta / 100, 0);
-  const monthlyExpenses =
-    baseBurnRate +
-    assumptions.burnRateDelta +
-    assumptions.additionalMonthlyExpense;
+  // Base values from live data (fallback to 0 when provider missing)
+  const baseMrr = stripe?.revenue.mrr ?? 0;
+  const baseGrowth = stripe
+    ? stripe.revenue.revenueGrowth / 100
+    : 0;
+  const baseChurn = stripe
+    ? stripe.subscriptions.churnRate / 100
+    : 0;
+  const balance = mercury?.cashFlow.totalBalance ?? 0;
+  const baseBurn = mercury?.cashFlow.burnRate ?? 0;
+  const baseInflows = mercury?.cashFlow.inflows30d ?? 0;
 
-  // Effective starting MRR includes additional recurring revenue
-  const effectiveMrr = currentMrr + assumptions.additionalMonthlyRevenue;
+  // Apply overrides
+  const growthRate = overrides.monthlyGrowthRate ?? baseGrowth;
+  const churnRate = overrides.monthlyChurnRate ?? baseChurn;
+  const additionalBurn = overrides.additionalBurn ?? 0;
+  const totalBurn = baseBurn + additionalBurn;
 
-  const forecastMonths = opts.months ?? 18;
+  const projectionMonths = 24;
 
-  const months = projectRevenue(
-    effectiveMrr,
-    growthRate,
-    churnRate,
-    cashBalance,
-    monthlyExpenses,
-    forecastMonths,
-  );
+  const revenue = projectRevenue(baseMrr, growthRate, churnRate, projectionMonths);
+  const cash = projectRunway(balance, totalBurn, baseInflows, projectionMonths);
+  const runway = computeRunwayMonths(balance, totalBurn, baseInflows, projectionMonths);
 
-  const runwayMonths = projectRunway(
-    cashBalance,
-    baseBurnRate,
-    assumptions.burnRateDelta,
-  );
+  const id = (name ?? "custom").toLowerCase().replace(/\s+/g, "-");
 
   return {
-    id: opts.id ?? crypto.randomUUID(),
-    name: opts.name ?? "Custom Scenario",
-    assumptions,
-    months,
-    runwayMonths,
+    id,
+    name: name ?? "Custom",
+    monthlyGrowthRate: growthRate,
+    monthlyChurnRate: churnRate,
+    additionalBurn,
+    revenue,
+    cash,
+    runway,
   };
 }
 
 /**
- * Generate three default forecast scenarios:
- * - Base case: current rates unchanged
- * - Optimistic: +50% revenue growth, -20% churn
- * - Conservative: -30% revenue growth, +25% churn, +15% burn
+ * Build the three default scenarios: Optimistic, Base, Conservative.
+ *
+ * - Optimistic: growth +50%, churn -30%
+ * - Base: as-is from live data
+ * - Conservative: growth -30%, churn +50%
  */
 export function buildDefaultScenarios(
-  stripe: StripeData | null,
-  mercury: MercuryData | null,
-  months: number = 18,
+  data: AnalyticsDashboardData,
 ): ForecastScenarioData[] {
-  const baseBurn = mercury?.cashFlow.burnRate ?? 0;
+  const stripe = data.stripe;
+  const baseGrowth = stripe ? stripe.revenue.revenueGrowth / 100 : 0;
+  const baseChurn = stripe ? stripe.subscriptions.churnRate / 100 : 0;
+  const growthDelta = stripe ? Math.max(Math.abs(baseGrowth) * 0.5, 0.03) : 0;
+  const churnDelta = stripe ? Math.max(baseChurn * 0.3, 0.01) : 0;
 
-  const base: ForecastAssumptions = {
-    revenueGrowthRate: 0,
-    churnRateDelta: 0,
-    burnRateDelta: 0,
-    additionalMonthlyExpense: 0,
-    additionalMonthlyRevenue: 0,
-  };
+  const optimisticGrowth = clamp(baseGrowth + growthDelta, -1, 1);
+  const conservativeGrowth = clamp(baseGrowth - growthDelta, -1, 1);
+  const optimisticChurn = clamp(baseChurn - churnDelta, 0, 1);
+  const conservativeChurn = clamp(baseChurn + churnDelta, 0, 1);
 
-  const optimistic: ForecastAssumptions = {
-    revenueGrowthRate: 50, // +50% on top of current growth rate
-    churnRateDelta: -20,   // reduce churn by 20 percentage points
-    burnRateDelta: 0,
-    additionalMonthlyExpense: 0,
-    additionalMonthlyRevenue: 0,
-  };
+  const optimistic = buildForecastScenario(
+    data,
+    {
+      monthlyGrowthRate: optimisticGrowth,
+      monthlyChurnRate: optimisticChurn,
+    },
+    "Optimistic",
+  );
 
-  const conservative: ForecastAssumptions = {
-    revenueGrowthRate: -30,          // -30% off current growth rate
-    churnRateDelta: 25,              // increase churn by 25 pp
-    burnRateDelta: baseBurn * 0.15,  // +15% burn increase
-    additionalMonthlyExpense: 0,
-    additionalMonthlyRevenue: 0,
-  };
+  const base = buildForecastScenario(data, {}, "Base");
 
-  return [
-    buildForecastScenario(stripe, mercury, base, {
-      id: "default-base",
-      name: "Base Case",
-      months,
-    }),
-    buildForecastScenario(stripe, mercury, optimistic, {
-      id: "default-optimistic",
-      name: "Optimistic",
-      months,
-    }),
-    buildForecastScenario(stripe, mercury, conservative, {
-      id: "default-conservative",
-      name: "Conservative",
-      months,
-    }),
-  ];
+  const conservative = buildForecastScenario(
+    data,
+    {
+      monthlyGrowthRate: conservativeGrowth,
+      monthlyChurnRate: conservativeChurn,
+    },
+    "Conservative",
+  );
+
+  return [optimistic, base, conservative];
 }

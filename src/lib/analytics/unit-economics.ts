@@ -1,150 +1,115 @@
-// Unit-economics engine — pure computation module for SaaS unit economics.
-//
-// Derives LTV, CAC, LTV:CAC ratio, ARPA, payback period, and gross margin
-// from Stripe, Mercury, and HubSpot provider data.  Mercury only exposes
-// aggregate cash-flow figures, so expense-category estimates (COGS, marketing
-// spend) use SaaS-standard ratios applied to total outflows — identical to the
-// approach used in pnl-builder.ts.
+// ─── Unit Economics Engine ───────────────────────────────
+// Computes SaaS unit economics (LTV, CAC, LTV:CAC, payback,
+// gross margin, ARPA) from Stripe, Mercury, and HubSpot data.
+// Mercury only provides aggregate inflows/outflows, so
+// marketing spend is estimated via SaaS-standard ratios.
 
-import type {
-  StripeData,
-  MercuryData,
-  HubSpotData,
-  UnitEconomics,
-} from "@/lib/analytics/types";
+import type { AnalyticsDashboardData } from "./types";
+import { DEFAULT_EXPENSE_RATIOS } from "./finance-utils";
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+// ── Exported interfaces ──────────────────────────────────
 
-/** Fraction of Mercury outflows attributed to COGS (hosting, infra, etc.) */
-const COGS_RATIO = 0.25;
-
-/** Fraction of Mercury outflows attributed to marketing / sales spend. */
-const MARKETING_SPEND_RATIO = 0.15;
-
-/** When churn is zero we cap LTV at 10 years worth of ARPA. */
-const MAX_LTV_MONTHS = 120;
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Round to two decimal places. */
-function r2(x: number): number {
-  return Math.round(x * 100) / 100;
+export interface UnitEconomicsData {
+  /** Customer lifetime value */
+  ltv: number;
+  /** Customer acquisition cost */
+  cac: number;
+  /** LTV to CAC ratio */
+  ltvCacRatio: number;
+  /** Months to recover CAC */
+  paybackMonths: number;
+  /** Gross margin percentage */
+  grossMarginPct: number;
+  /** Average revenue per account (monthly) */
+  arpa: number;
+  /** Revenue per employee — null when headcount is unavailable */
+  revenuePerEmployee: number | null;
+  /** SaaS magic number — null (requires quarterly data we don't have) */
+  magicNumber: number | null;
 }
 
-// ---------------------------------------------------------------------------
-// Core computation
-// ---------------------------------------------------------------------------
+// ── Core computation ─────────────────────────────────────
 
 /**
- * Compute SaaS unit economics from provider data.
+ * Compute unit economics from live provider data.
  *
- * All three providers are optional — missing providers are treated as having
- * zero values.  The function is pure: no database calls, no side effects.
+ * Formulas:
+ *   ARPA  = avgRevenuePerCustomer (from Stripe)
+ *   Churn = subscriptions.churnRate / 100  (monthly, from Stripe)
+ *   LTV   = ARPA / max(churn, 0.01)       (prevent divide-by-zero)
+ *   CAC   = marketing spend / new customers
+ *           marketing spend = outflows * marketing ratio (0.15)
+ *           new customers   = recentContacts or fallback 10
+ *   LTV:CAC = ltv / max(cac, 1)
+ *   Payback = cac / max(arpa, 1)
+ *   Gross margin = (revenue - COGS) / revenue * 100
+ *           COGS = outflows * cogs ratio (0.25)
+ *   Magic number = null (needs quarterly delta we don't track)
  */
 export function computeUnitEconomics(
-  stripe: StripeData | null,
-  mercury: MercuryData | null,
-  hubspot: HubSpotData | null,
-): UnitEconomics {
-  // -- Early exit: nothing to compute ---
-  if (!stripe && !mercury && !hubspot) {
-    return {
-      ltv: 0,
-      cac: 0,
-      ltvCacRatio: 0,
-      avgRevenuePerAccount: 0,
-      paybackMonths: 0,
-      grossMarginPct: 0,
-    };
-  }
+  stripe: AnalyticsDashboardData["stripe"],
+  mercury: AnalyticsDashboardData["mercury"],
+  hubspot: AnalyticsDashboardData["hubspot"],
+): UnitEconomicsData {
+  // ── ARPA ──
+  const arpa = stripe?.revenue.avgRevenuePerCustomer ?? 0;
 
-  // ---------------------------------------------------------------------------
-  // 1. ARPA — Average Revenue Per Account
-  // ---------------------------------------------------------------------------
+  // ── Churn (monthly, as a decimal) ──
+  const churnDecimal = stripe
+    ? stripe.subscriptions.churnRate / 100
+    : 0;
+  const effectiveChurn = Math.max(churnDecimal, 0.01);
 
-  let arpa = 0;
-  if (stripe) {
-    arpa =
-      stripe.revenue.avgRevenuePerCustomer ||
-      (stripe.subscriptions.active > 0
-        ? stripe.revenue.mrr / stripe.subscriptions.active
-        : 0);
-  }
+  // ── LTV ──
+  const ltv = Math.round((arpa / effectiveChurn) * 100) / 100;
 
-  // ---------------------------------------------------------------------------
-  // 2. Monthly churn rate (decimal)
-  // ---------------------------------------------------------------------------
+  // ── CAC ──
+  const totalOutflows = mercury?.cashFlow.outflows30d ?? 0;
+  const marketingSpend = totalOutflows * DEFAULT_EXPENSE_RATIOS.marketing;
 
-  const monthlyChurnRate = stripe ? stripe.subscriptions.churnRate / 100 : 0;
+  // Estimate new customers from HubSpot recentContacts, fallback to 10
+  const newCustomers =
+    hubspot && hubspot.contacts.recentContacts > 0
+      ? hubspot.contacts.recentContacts
+      : 10;
 
-  // ---------------------------------------------------------------------------
-  // 3. LTV — Lifetime Value
-  // ---------------------------------------------------------------------------
+  const cac =
+    newCustomers > 0
+      ? Math.round((marketingSpend / newCustomers) * 100) / 100
+      : 0;
 
-  const ltv =
-    monthlyChurnRate > 0 ? arpa / monthlyChurnRate : arpa * MAX_LTV_MONTHS;
+  // ── LTV:CAC ratio ──
+  const ltvCacRatio =
+    Math.round((ltv / Math.max(cac, 1)) * 100) / 100;
 
-  // ---------------------------------------------------------------------------
-  // 4. Gross margin
-  // ---------------------------------------------------------------------------
-
-  const revenue = stripe?.revenue.totalRevenue30d ?? 0;
-  const cogs = (mercury?.cashFlow.outflows30d ?? 0) * COGS_RATIO;
-  const grossMarginPct =
-    revenue === 0 ? 0 : ((revenue - cogs) / revenue) * 100;
-
-  // ---------------------------------------------------------------------------
-  // 5. CAC — Customer Acquisition Cost
-  // ---------------------------------------------------------------------------
-
-  const marketingSpend = (mercury?.cashFlow.outflows30d ?? 0) * MARKETING_SPEND_RATIO;
-
-  let newCustomers = hubspot?.funnel.closedWon ?? 0;
-  if (newCustomers <= 0 && stripe) {
-    // Approximate new customers from active-sub base and churn rate (the
-    // minimum number of new subs needed just to replace churn).
-    newCustomers = Math.max(1, stripe.subscriptions.active * monthlyChurnRate);
-  }
-  // Guard: treat zero new customers as 1 to avoid division by zero.
-  if (newCustomers <= 0) {
-    newCustomers = 1;
-  }
-
-  const cac = marketingSpend / newCustomers;
-
-  // ---------------------------------------------------------------------------
-  // 6. Payback period (months)
-  // ---------------------------------------------------------------------------
-
-  const monthlyGrossProfit = arpa * (grossMarginPct / 100);
+  // ── Payback months ──
   const paybackMonths =
-    monthlyGrossProfit > 0 ? cac / monthlyGrossProfit : Infinity;
+    arpa > 0
+      ? Math.round((cac / arpa) * 100) / 100
+      : 0;
 
-  // ---------------------------------------------------------------------------
-  // 7. LTV:CAC ratio
-  // ---------------------------------------------------------------------------
+  // ── Gross margin ──
+  const revenue = stripe?.revenue.totalRevenue30d ?? 0;
+  const cogs = totalOutflows * DEFAULT_EXPENSE_RATIOS.cogs;
+  const grossMarginPct =
+    revenue > 0
+      ? Math.round(((revenue - cogs) / revenue) * 10000) / 100
+      : 0;
 
-  let ltvCacRatio: number;
-  if (cac === 0) {
-    ltvCacRatio = ltv > 0 ? Infinity : 0;
-  } else {
-    ltvCacRatio = ltv / cac;
-  }
+  // ── Revenue per employee — null (no employee data available) ──
+  const revenuePerEmployee: number | null = null;
 
-  // ---------------------------------------------------------------------------
-  // Result
-  // ---------------------------------------------------------------------------
+  // ── Magic number — null (requires quarterly data we don't have) ──
+  const magicNumber: number | null = null;
 
   return {
-    ltv: r2(ltv),
-    cac: r2(cac),
-    ltvCacRatio: r2(ltvCacRatio),
-    avgRevenuePerAccount: r2(arpa),
-    paybackMonths: r2(paybackMonths),
-    grossMarginPct: r2(grossMarginPct),
+    ltv,
+    cac,
+    ltvCacRatio,
+    paybackMonths,
+    grossMarginPct,
+    arpa,
+    revenuePerEmployee,
+    magicNumber,
   };
 }

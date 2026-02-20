@@ -41,7 +41,11 @@ export interface AnalyticsSubSection {
     | "observability"
     | "customerJourney"
     | "demoAnalytics"
-    | "processAnalytics";
+    | "processAnalytics"
+    | "financePlanning"
+    | "financeForecast"
+    | "financePnl"
+    | "financeUnitEconomics";
 }
 
 export const ANALYTICS_PRIMARY_SECTIONS: AnalyticsPrimarySection[] = [
@@ -101,6 +105,10 @@ export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
   { id: "finance-mercury", label: "Mercury", path: "/analytics/finance-mercury", parentId: "finance", dataDomain: "mercury" },
   { id: "finance-stripe", label: "Stripe", path: "/analytics/finance-stripe", parentId: "finance", dataDomain: "stripe" },
   { id: "finance-hubspot", label: "HubSpot", path: "/analytics/finance-hubspot", parentId: "finance", dataDomain: "hubspot" },
+  { id: "finance-planning", label: "Budget & Goals", path: "/analytics/finance-planning", parentId: "finance", dataDomain: "financePlanning" },
+  { id: "finance-forecast", label: "Forecasts", path: "/analytics/finance-forecast", parentId: "finance", dataDomain: "financeForecast" },
+  { id: "finance-pnl", label: "P&L", path: "/analytics/finance-pnl", parentId: "finance", dataDomain: "financePnl" },
+  { id: "finance-unit-economics", label: "Unit Economics", path: "/analytics/finance-unit-economics", parentId: "finance", dataDomain: "financeUnitEconomics" },
 
   { id: "sales-hubspot", label: "HubSpot", path: "/analytics/sales-hubspot", parentId: "sales-pipeline", dataDomain: "hubspot" },
   { id: "sales-stripe", label: "Stripe", path: "/analytics/sales-stripe", parentId: "sales-pipeline", dataDomain: "stripe" },
@@ -188,4 +196,8 @@ export const LEGACY_ANALYTICS_ROUTE_REDIRECTS: Record<string, string> = {
   "customer-journey": "/analytics/customer-journey",
   "demo-analytics": "/analytics/demo-analytics",
   "process-analytics": "/analytics/process-analytics",
+  "finance-planning": "/analytics/finance-planning",
+  "finance-forecast": "/analytics/finance-forecast",
+  "finance-pnl": "/analytics/finance-pnl",
+  "finance-unit-economics": "/analytics/finance-unit-economics",
 };

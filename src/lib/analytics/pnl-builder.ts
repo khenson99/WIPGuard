@@ -1,144 +1,155 @@
-// P&L builder — derives a Profit & Loss statement from Stripe + Mercury data.
-//
-// Mercury data only provides aggregate inflows/outflows (no transaction-level
-// detail), so expense categorisation uses configurable SaaS-standard ratios
-// applied to total outflows rather than merchant-based classification.
+// ─── Profit & Loss Builder ───────────────────────────────
+// Constructs a P&L statement from Stripe revenue and Mercury
+// cash-flow data. Expense categories are estimated using
+// SaaS-standard ratios because Mercury only provides aggregate
+// inflows/outflows — no transaction-level detail.
 
-import type {
-  PnLRow,
-  ProfitAndLoss,
-  StripeData,
-  MercuryData,
-} from "@/lib/analytics/types";
+import type { AnalyticsDashboardData } from "./types";
+import { DEFAULT_EXPENSE_RATIOS } from "./finance-utils";
 
-// ---------------------------------------------------------------------------
-// Default expense category splits (fraction of total outflows)
-// ---------------------------------------------------------------------------
+// ── Exported interfaces ──────────────────────────────────
 
-export interface ExpenseRatios {
-  cogs: number;           // cost of goods sold (hosting, infrastructure, etc.)
-  payroll: number;
-  marketing: number;
-  infrastructure: number; // non-COGS infra (office, tools, SaaS)
-  ops: number;            // general & administrative
+export interface PnlLineItem {
+  label: string;
+  current: number;
+  previous: number;
+  category: "revenue" | "expense" | "subtotal" | "total";
 }
 
-const DEFAULT_RATIOS: ExpenseRatios = {
-  cogs: 0.25,
-  payroll: 0.35,
-  marketing: 0.15,
-  infrastructure: 0.10,
-  ops: 0.15,
+export interface ProfitAndLossData {
+  period: string;
+  previousPeriod: string;
+  items: PnlLineItem[];
+  netIncome: number;
+  previousNetIncome: number;
+  grossMargin: number;
+  operatingMargin: number;
+}
+
+// ── Helpers ──────────────────────────────────────────────
+
+/** Map ratio keys to human-readable expense labels. */
+const EXPENSE_LABELS: Record<keyof typeof DEFAULT_EXPENSE_RATIOS, string> = {
+  cogs: "Cost of Goods Sold",
+  payroll: "Payroll & Benefits",
+  marketing: "Sales & Marketing",
+  infrastructure: "Infrastructure & Hosting",
+  ops: "General & Administrative",
 };
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function makePnLRow(
-  label: string,
-  current: number,
-  previous: number,
-): PnLRow {
-  const change = current - previous;
-  const changePct = previous === 0 ? (current === 0 ? 0 : 100) : (change / Math.abs(previous)) * 100;
-  return {
-    label,
-    currentPeriod: Math.round(current * 100) / 100,
-    previousPeriod: Math.round(previous * 100) / 100,
-    change: Math.round(change * 100) / 100,
-    changePct: Math.round(changePct * 10) / 10,
-  };
+/** Build period label like "Last 30 days". */
+function periodLabel(offset: 0 | 1): string {
+  return offset === 0 ? "Last 30 days" : "Prior 30 days";
 }
 
-function estimatePreviousOutflows(mercury: MercuryData | null): number {
-  // Mercury gives us 30-day outflows. We approximate the previous period
-  // by using burn rate (which is effectively 30-day outflows) as the baseline.
-  // Without historical snapshots, current and previous are treated as equal.
-  return mercury?.cashFlow.outflows30d ?? 0;
-}
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
+// ── Core builder ─────────────────────────────────────────
 
 /**
- * Build a Profit & Loss statement from Stripe revenue and Mercury expenses.
+ * Build a complete P&L from Stripe + Mercury data.
  *
- * `timeRange` controls the period label; the underlying data always reflects
- * the most recent 30-day window from Stripe charges and Mercury transactions.
- *
- * Because Mercury data lacks transaction-level detail, expense categories are
- * estimated using `ratios` (defaults to SaaS-standard splits). Override these
- * when actual breakdowns are known (e.g., from budget data).
+ * Revenue comes from Stripe (totalRevenue30d / totalRevenuePrev30d).
+ * Expenses are derived from Mercury outflows multiplied by the
+ * category ratios (configurable via `opts.ratios`).
  */
 export function buildProfitAndLoss(
-  stripe: StripeData | null,
-  mercury: MercuryData | null,
-  opts: {
-    timeRange?: string;
-    ratios?: Partial<ExpenseRatios>;
-  } = {},
-): ProfitAndLoss {
-  const ratios: ExpenseRatios = { ...DEFAULT_RATIOS, ...opts.ratios };
-  const periodLabel = opts.timeRange ?? "Last 30 days";
+  stripe: AnalyticsDashboardData["stripe"],
+  mercury: AnalyticsDashboardData["mercury"],
+  opts?: { ratios?: typeof DEFAULT_EXPENSE_RATIOS },
+): ProfitAndLossData {
+  const ratios = opts?.ratios ?? DEFAULT_EXPENSE_RATIOS;
 
-  // --- Revenue ---
+  // Revenue figures from Stripe
   const currentRevenue = stripe?.revenue.totalRevenue30d ?? 0;
   const previousRevenue = stripe?.revenue.totalRevenuePrev30d ?? 0;
 
-  // --- Total expenses ---
-  const currentExpenses = mercury?.cashFlow.outflows30d ?? 0;
-  const previousExpenses = estimatePreviousOutflows(mercury);
+  // Total outflows from Mercury (used to estimate expenses)
+  const currentOutflows = mercury?.cashFlow.outflows30d ?? 0;
+  // Estimate previous outflows from current (no historical data available)
+  const previousOutflows = currentOutflows;
 
-  // --- COGS ---
-  const currentCogs = currentExpenses * ratios.cogs;
-  const previousCogs = previousExpenses * ratios.cogs;
+  const items: PnlLineItem[] = [];
 
-  // --- Gross profit ---
-  const currentGross = currentRevenue - currentCogs;
-  const previousGross = previousRevenue - previousCogs;
-
-  // --- Operating expenses by category (non-COGS portion) ---
-  const nonCogsRatio = 1 - ratios.cogs;
-  const opexCategories: { key: keyof Omit<ExpenseRatios, "cogs">; label: string }[] = [
-    { key: "payroll", label: "Payroll & Compensation" },
-    { key: "marketing", label: "Marketing & Sales" },
-    { key: "infrastructure", label: "Infrastructure & Tools" },
-    { key: "ops", label: "General & Administrative" },
-  ];
-
-  const operatingExpenses: PnLRow[] = opexCategories.map(({ key, label }) => {
-    // Scale ratio relative to non-COGS total so categories sum to total opex
-    const fraction = nonCogsRatio === 0 ? 0 : ratios[key] / nonCogsRatio;
-    const nonCogsCurrentExpenses = currentExpenses * (1 - ratios.cogs);
-    const nonCogsPreviousExpenses = previousExpenses * (1 - ratios.cogs);
-    return makePnLRow(
-      label,
-      nonCogsCurrentExpenses * fraction,
-      nonCogsPreviousExpenses * fraction,
-    );
+  // ── Revenue section ──
+  items.push({
+    label: "Subscription Revenue",
+    current: currentRevenue,
+    previous: previousRevenue,
+    category: "revenue",
   });
 
-  const currentTotalOpex = currentExpenses - currentCogs;
-  const previousTotalOpex = previousExpenses - previousCogs;
+  items.push({
+    label: "Total Revenue",
+    current: currentRevenue,
+    previous: previousRevenue,
+    category: "subtotal",
+  });
 
-  // --- Operating & net income ---
-  const currentOperatingIncome = currentGross - currentTotalOpex;
-  const previousOperatingIncome = previousGross - previousTotalOpex;
+  // ── Expense section ──
+  let totalCurrentExpenses = 0;
+  let totalPreviousExpenses = 0;
+  let currentCogs = 0;
+  let previousCogs = 0;
 
-  // Net income = operating income (no tax/interest modeling yet)
-  const currentNetIncome = currentOperatingIncome;
-  const previousNetIncome = previousOperatingIncome;
+  const ratioKeys = Object.keys(ratios) as Array<keyof typeof ratios>;
+
+  for (const key of ratioKeys) {
+    const ratio = ratios[key];
+    const current = Math.round(currentOutflows * ratio * 100) / 100;
+    const previous = Math.round(previousOutflows * ratio * 100) / 100;
+
+    if (key === "cogs") {
+      currentCogs = current;
+      previousCogs = previous;
+    }
+
+    items.push({
+      label: EXPENSE_LABELS[key],
+      current,
+      previous,
+      category: "expense",
+    });
+
+    totalCurrentExpenses += current;
+    totalPreviousExpenses += previous;
+  }
+
+  items.push({
+    label: "Total Expenses",
+    current: Math.round(totalCurrentExpenses * 100) / 100,
+    previous: Math.round(totalPreviousExpenses * 100) / 100,
+    category: "subtotal",
+  });
+
+  // ── Net income ──
+  const netIncome = currentRevenue - totalCurrentExpenses;
+  const previousNetIncome = previousRevenue - totalPreviousExpenses;
+
+  items.push({
+    label: "Net Income",
+    current: Math.round(netIncome * 100) / 100,
+    previous: Math.round(previousNetIncome * 100) / 100,
+    category: "total",
+  });
+
+  // ── Margin calculations ──
+  const grossMargin =
+    currentRevenue > 0
+      ? Math.round(((currentRevenue - currentCogs) / currentRevenue) * 10000) /
+        100
+      : 0;
+
+  const operatingMargin =
+    currentRevenue > 0
+      ? Math.round((netIncome / currentRevenue) * 10000) / 100
+      : 0;
 
   return {
-    periodLabel,
-    revenue: makePnLRow("Revenue", currentRevenue, previousRevenue),
-    cogs: makePnLRow("Cost of Goods Sold", currentCogs, previousCogs),
-    grossProfit: makePnLRow("Gross Profit", currentGross, previousGross),
-    operatingExpenses,
-    totalOpex: makePnLRow("Total Operating Expenses", currentTotalOpex, previousTotalOpex),
-    operatingIncome: makePnLRow("Operating Income", currentOperatingIncome, previousOperatingIncome),
-    netIncome: makePnLRow("Net Income", currentNetIncome, previousNetIncome),
+    period: periodLabel(0),
+    previousPeriod: periodLabel(1),
+    items,
+    netIncome: Math.round(netIncome * 100) / 100,
+    previousNetIncome: Math.round(previousNetIncome * 100) / 100,
+    grossMargin,
+    operatingMargin,
   };
 }
