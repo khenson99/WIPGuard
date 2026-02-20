@@ -206,10 +206,14 @@ function buildStripeChurnLookup(events: StripeChurnEvent[]): Map<string, StripeC
 }
 
 function resolveStripeChurnEvent(
-  deal: { dealId: string; dealName: string },
+  deal: { dealId: string; dealName: string; stripeCustomerId?: string | null },
   lookup: Map<string, StripeChurnEvent>
 ): StripeChurnEvent | null {
-  const candidates = [normalizeKey(deal.dealId), normalizeKey(deal.dealName)].filter(Boolean);
+  const candidates = [
+    normalizeKey(deal.stripeCustomerId),
+    normalizeKey(deal.dealId),
+    normalizeKey(deal.dealName),
+  ].filter(Boolean);
   for (const candidate of candidates) {
     const match = lookup.get(candidate);
     if (match) return match;

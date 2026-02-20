@@ -98,6 +98,7 @@ export interface HubSpotData {
     ownerId: string | null;
     updatedAt: string | null;
     createdAt: string | null;
+    stripeCustomerId?: string | null;
   }>;
   _meta: AnalyticsTimestamp;
 }

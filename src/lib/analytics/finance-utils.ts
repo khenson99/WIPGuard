@@ -22,10 +22,20 @@ export function computeVariance(actual: number, budget: number): number {
   return ((actual - budget) / budget) * 100;
 }
 
-/** Progress toward a target, clamped to 0-100%. */
-export function computeProgressPct(current: number, target: number): number {
-  if (target <= 0) return 0;
-  return Math.min(100, Math.max(0, (current / target) * 100));
+/** Progress toward a target value as a clamped 0-100 percentage. */
+export function computeProgressPct(
+  current: number,
+  target: number,
+  direction: "higher" | "lower" = "higher",
+): number {
+  if (direction === "lower") {
+    if (current === 0) return target >= 0 ? 100 : 0;
+    if (target === 0) return current <= 0 ? 100 : 0;
+    return Math.min(Math.max((target / current) * 100, 0), 100);
+  }
+
+  if (target === 0) return current > 0 ? 100 : 0;
+  return Math.min(Math.max((current / target) * 100, 0), 100);
 }
 
 /** Format a numeric delta as a compact dollar string: "+$1.2K" or "-$500". */

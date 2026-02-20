@@ -55,7 +55,7 @@ export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData
   const allDeals: { properties: Record<string, string> }[] = [];
   let after: string | undefined;
   const properties =
-    "dealstage,amount,dealname,closedate,createdate,hs_analytics_source,num_associated_contacts,hubspot_owner_id,hs_lastmodifieddate";
+    "dealstage,amount,dealname,closedate,createdate,hs_analytics_source,num_associated_contacts,hubspot_owner_id,hs_lastmodifieddate,stripe_customer_id,stripe_customer";
 
   for (let page = 0; page < 10; page++) {
     const url = new URL(`${baseUrl}/crm/v3/objects/deals`);
@@ -120,6 +120,7 @@ export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData
       ownerId: props.hubspot_owner_id || null,
       updatedAt: props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).toISOString() : null,
       createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
+      stripeCustomerId: props.stripe_customer_id || props.stripe_customer || null,
     };
   });
 
