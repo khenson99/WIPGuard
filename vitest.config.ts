@@ -5,6 +5,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "jsdom",
+    exclude: ["**/.claude/**", "**/.worktrees/**"],
   },
   resolve: {
     alias: {
