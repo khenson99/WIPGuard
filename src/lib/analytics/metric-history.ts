@@ -66,11 +66,44 @@ export function getMetricLabel(metricKey: string): string {
 
 // ── Storage ──
 
+type MetricHistoryDelegate = {
+  createMany: (args: {
+    data: Array<{
+      userId: string;
+      metricKey: string;
+      section: string;
+      value: number;
+      periodStart: Date;
+      periodEnd: Date;
+      rangePreset: string;
+    }>;
+  }) => Promise<unknown>;
+  findMany: (args: {
+    where: Record<string, unknown>;
+    orderBy: Record<string, "desc" | "asc">;
+    take: number;
+    select: { metricKey: true; value: true; periodEnd: true };
+  }) => Promise<MetricHistoryRow[]>;
+};
+
+function getMetricHistoryDelegate(): MetricHistoryDelegate | null {
+  const delegate = (prisma as unknown as { metricHistory?: MetricHistoryDelegate })
+    .metricHistory;
+  if (!delegate) {
+    console.warn("[metric-history] Prisma client missing MetricHistory delegate");
+    return null;
+  }
+  return delegate;
+}
+
 export async function extractAndStoreMetrics(
   userId: string,
   data: AnalyticsDashboardData,
   range: { preset: string; from: string; to: string },
 ): Promise<void> {
+  const metricHistory = getMetricHistoryDelegate();
+  if (!metricHistory) return;
+
   const rows: Array<{
     userId: string;
     metricKey: string;
@@ -98,7 +131,7 @@ export async function extractAndStoreMetrics(
 
   if (rows.length === 0) return;
 
-  await prisma.metricHistory.createMany({ data: rows });
+  await metricHistory.createMany({ data: rows });
 }
 
 // ── Query ──
@@ -114,8 +147,11 @@ export async function queryMetricHistory(
   metricKey: string,
   opts?: { limit?: number; rangePreset?: string },
 ): Promise<MetricHistoryRow[]> {
+  const metricHistory = getMetricHistoryDelegate();
+  if (!metricHistory) return [];
+
   const limit = opts?.limit ?? 12;
-  const rows = await prisma.metricHistory.findMany({
+  const rows = await metricHistory.findMany({
     where: {
       userId,
       metricKey,
@@ -133,8 +169,15 @@ export async function queryMetricHistoryBatch(
   metricKeys: string[],
   opts?: { limit?: number; rangePreset?: string },
 ): Promise<Map<string, MetricHistoryRow[]>> {
+  const metricHistory = getMetricHistoryDelegate();
+  if (!metricHistory) {
+    const empty = new Map<string, MetricHistoryRow[]>();
+    for (const key of metricKeys) empty.set(key, []);
+    return empty;
+  }
+
   const limit = opts?.limit ?? 12;
-  const rows = await prisma.metricHistory.findMany({
+  const rows = await metricHistory.findMany({
     where: {
       userId,
       metricKey: { in: metricKeys },
