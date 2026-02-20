@@ -78,10 +78,7 @@ export function FinanceForecastTab({
 }: {
   data: AnalyticsDashboardData | null;
 }) {
-  // Empty-state guard
-  if (!data?.stripe && !data?.mercury) {
-    return <FinanceDataEmptyState />;
-  }
+  const hasFinanceData = Boolean(data?.stripe || data?.mercury);
 
   const scenarios = useMemo(
     () => (data ? buildDefaultScenarios(data) : []),
@@ -109,6 +106,11 @@ export function FinanceForecastTab({
       })),
     [scenarios],
   );
+
+  // Empty-state guard (after hooks to keep hook order stable)
+  if (!hasFinanceData) {
+    return <FinanceDataEmptyState />;
+  }
 
   if (scenarios.length === 0) return null;
 
