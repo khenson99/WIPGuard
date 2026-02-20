@@ -24,6 +24,7 @@ model User {
   integrationConnections IntegrationConnection[]
   integrationRules       IntegrationRule[]
   analyticsSnapshots     AnalyticsSnapshot[]
+  stripeCustomerLinks    StripeCustomerLink[]
   metricHistory          MetricHistory[]
   insightFeedback        InsightFeedback[]
   uiPreference           UserUiPreference?
@@ -516,6 +517,23 @@ model AnalyticsSnapshot {
   @@index([userId, providerKey, contextKey, rangePreset, toDate])
   @@index([expiresAt])
   @@index([capturedAt])
+}
+
+model StripeCustomerLink {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  stripeCustomerId String
+  hubspotDealId    String
+  hubspotDealName  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, stripeCustomerId])
+  @@unique([userId, hubspotDealId])
+  @@index([userId])
 }
 
 // ============================================================

@@ -45,6 +45,8 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 # Copy generated Prisma client (output to src/generated/prisma)
 COPY --from=builder /app/src/generated ./src/generated
+# Ensure Next.js cache dir is writable by the runtime user
+RUN mkdir -p /app/.next/cache && chown -R nextjs:nodejs /app/.next
 # Copy lightweight migration runner (uses pg from standalone trace)
 COPY --from=builder /app/migrate.cjs ./migrate.cjs
 # Copy entrypoint script

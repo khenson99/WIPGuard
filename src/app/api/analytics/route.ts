@@ -246,7 +246,15 @@ async function hydrateStripeCustomerLinks(
 ): Promise<void> {
   if (!data.hubspot?.deals?.length) return;
 
-  const links = await prisma.stripeCustomerLink.findMany({
+  const stripeCustomerLink = (
+    prisma as unknown as { stripeCustomerLink?: { findMany: Function } }
+  ).stripeCustomerLink;
+  if (!stripeCustomerLink) {
+    console.warn("[analytics] Prisma client missing StripeCustomerLink delegate");
+    return;
+  }
+
+  const links = await stripeCustomerLink.findMany({
     where: { userId },
   });
   if (links.length === 0) return;
