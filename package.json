@@ -6,6 +6,7 @@
     "dev": "next dev",
     "db:generate": "prisma generate --schema prisma/schema.prisma",
     "ops:ads-preflight": "./scripts/ads-analytics-preflight.sh",
+    "ops:backfill-google-oauth-scopes": "node ./scripts/backfill-google-oauth-scope-aliases.cjs",
     "prebuild": "npm run db:generate",
     "build": "next build",
     "start": "next start",

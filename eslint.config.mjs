@@ -11,9 +11,13 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    ".claude/**",
+    ".worktrees/**",
     "next-env.d.ts",
     // Deployment helper script intentionally uses CommonJS.
     "migrate.cjs",
+    // Ops script intentionally uses CommonJS.
+    "scripts/backfill-google-oauth-scope-aliases.cjs",
   ]),
 ]);
 
