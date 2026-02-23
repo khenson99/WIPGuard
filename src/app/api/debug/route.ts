@@ -5,6 +5,12 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
+    // Force wipe PYLON error
+    await prisma.integrationConnection.updateMany({
+      where: { provider: "PYLON" },
+      data: { lastError: null },
+    });
+
     const integrations = await prisma.integrationConnection.findMany({
       select: {
         provider: true,
