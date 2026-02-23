@@ -118,8 +118,8 @@ async function getGAAccessToken(opts: {
 
 export async function fetchGAData(
   propertyId: string,
-  clientEmail: string,
-  privateKey: string
+  clientEmail?: string | null,
+  privateKey?: string | null
 ): Promise<GAData> {
   // Get access token using whichever auth method is configured
   const accessToken = await getGAAccessToken({

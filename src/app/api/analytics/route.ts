@@ -611,12 +611,17 @@ export async function GET(request: Request) {
     { key: "mercury", fn: () => (creds.mercuryKey ? fetchMercuryData(creds.mercuryKey) : Promise.reject(new Error("Missing Mercury credential"))) },
     {
       key: "googleAnalytics",
-      fn: () =>
-        creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey
-          ? fetchGAData(creds.gaPropertyId, creds.gaClientEmail, creds.gaPrivateKey)
-          : process.env.GA_PROPERTY_ID && process.env.GA_CLIENT_EMAIL && process.env.GA_PRIVATE_KEY
-            ? fetchGAData(process.env.GA_PROPERTY_ID, process.env.GA_CLIENT_EMAIL, process.env.GA_PRIVATE_KEY.replace(/\\n/g, "\n"))
-            : Promise.reject(new Error("Missing Google Analytics credential")),
+      fn: () => {
+        const propId = creds.gaPropertyId || process.env.GA_PROPERTY_ID;
+        const email = creds.gaClientEmail || process.env.GA_CLIENT_EMAIL;
+        const key = creds.gaPrivateKey || process.env.GA_PRIVATE_KEY?.replace(/\\n/g, "\\n");
+        const hasOAuth = process.env.GA_REFRESH_TOKEN && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET;
+        
+        if (propId && ((email && key) || hasOAuth)) {
+          return fetchGAData(propId, email, key);
+        }
+        return Promise.reject(new Error("Missing Google Analytics credential"));
+      },
     },
     {
       key: "googleAds",
