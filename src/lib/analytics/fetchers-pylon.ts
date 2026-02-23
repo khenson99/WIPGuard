@@ -62,7 +62,7 @@ export async function fetchPylonData(input: {
       to: input.to,
     });
 
-    const response = await fetch(`${baseUrl}/conversations?${query.toString()}`, {
+    const response = await fetch(`${baseUrl}/api/issues?${query.toString()}`, {
       headers: {
         Authorization: `Bearer ${input.apiKey}`,
         Accept: "application/json",

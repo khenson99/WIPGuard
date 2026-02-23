@@ -758,7 +758,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     webflowSiteId,
 
     codaApiToken,
-    codaDocId: envOrNull(process.env.CODA_DOC_ID) || "dPjhbdhLZh9",
+    codaDocId: envOrNull(process.env.CODA_DOC_ID) || "lE7mWZbZCk",
 
     pylonApiKey,
 

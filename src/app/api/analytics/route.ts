@@ -614,7 +614,9 @@ export async function GET(request: Request) {
       fn: () =>
         creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey
           ? fetchGAData(creds.gaPropertyId, creds.gaClientEmail, creds.gaPrivateKey)
-          : Promise.reject(new Error("Missing Google Analytics credential")),
+          : process.env.GA_PROPERTY_ID && process.env.GA_CLIENT_EMAIL && process.env.GA_PRIVATE_KEY
+            ? fetchGAData(process.env.GA_PROPERTY_ID, process.env.GA_CLIENT_EMAIL, process.env.GA_PRIVATE_KEY.replace(/\\n/g, "\n"))
+            : Promise.reject(new Error("Missing Google Analytics credential")),
     },
     {
       key: "googleAds",
@@ -715,6 +717,11 @@ export async function GET(request: Request) {
     },
   ] as FetchEntry[]).filter((entry) => domains.has(entry.key));
 
+  const TIMEOUT_OVERRIDES: Partial<Record<DomainKey, number>> = {
+    stripe: 20000,
+  };
+  const DEFAULT_TIMEOUT = 12000;
+
   const snapshotExpiresAt = snapshotExpiryFromNow(1);
 
   const settled = await Promise.allSettled(
@@ -750,7 +757,11 @@ export async function GET(request: Request) {
       }
 
       try {
-        const live = await withTimeout(entry.fn, timeoutMsForDomain(entry.key), entry.key);
+        const live = await withTimeout(
+          entry.fn,
+          TIMEOUT_OVERRIDES[entry.key] ?? DEFAULT_TIMEOUT,
+          entry.key
+        );
         await storeAnalyticsSnapshot({
           userId,
           providerKey: entry.key,

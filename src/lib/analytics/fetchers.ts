@@ -268,7 +268,7 @@ export async function fetchStripeData(apiKey: string): Promise<StripeData> {
     // Paginate through all charges in the last 6 months
     const allCharges: StripeCharge[] = [];
     let startingAfter: string | undefined;
-    for (let page = 0; page < 10; page++) {
+    for (let page = 0; page < 5; page++) {
       let chargesUrl = `${baseUrl}/charges?limit=100&created[gte]=${sixMonthsAgo}`;
       if (startingAfter) chargesUrl += `&starting_after=${startingAfter}`;
 
