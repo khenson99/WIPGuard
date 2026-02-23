@@ -694,7 +694,9 @@ export async function fetchRedditAdsData(
   }
 
   const now = new Date();
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const startsAt = new Date(now);
+  startsAt.setUTCDate(startsAt.getUTCDate() - 29);
+  startsAt.setUTCHours(0, 0, 0, 0);
   const reportsResponse = await fetch(
     `https://ads-api.reddit.com/api/v3/ad_accounts/${cleanAccountId}/reports`,
     {
@@ -706,7 +708,7 @@ export async function fetchRedditAdsData(
       },
       body: JSON.stringify({
         data: {
-          starts_at: thirtyDaysAgo.toISOString(),
+          starts_at: startsAt.toISOString(),
           ends_at: now.toISOString(),
           breakdowns: ["CAMPAIGN_ID"],
           fields: ["CAMPAIGN_ID", "SPEND", "IMPRESSIONS", "CLICKS"],
