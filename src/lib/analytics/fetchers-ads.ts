@@ -646,16 +646,16 @@ export async function fetchRedditAdsData(
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        data: {
-          starts_at: thirtyDaysAgo.toISOString().slice(0, 10),
-          ends_at: now.toISOString().slice(0, 10),
-          breakdowns: ["CAMPAIGN_ID"],
-          fields: ["CAMPAIGN_ID", "SPEND", "IMPRESSIONS", "CLICKS"],
-        },
-      }),
-    }
-  );
+	      body: JSON.stringify({
+	        data: {
+	          starts_at: thirtyDaysAgo.toISOString(),
+	          ends_at: now.toISOString(),
+	          breakdowns: ["CAMPAIGN_ID"],
+	          fields: ["CAMPAIGN_ID", "SPEND", "IMPRESSIONS", "CLICKS"],
+	        },
+	      }),
+	    }
+	  );
 
   if (!reportsResponse.ok) {
     throw new Error(

@@ -195,6 +195,13 @@ describe("analytics ads fetchers", () => {
     expect(reportsCall?.[0]).toContain("/api/v3/ad_accounts/acc-1/reports");
     const reportInit = reportsCall?.[1] as RequestInit;
     expect(reportInit.method).toBe("POST");
+    expect(typeof reportInit.body).toBe("string");
+
+    const payload = JSON.parse(reportInit.body as string) as {
+      data?: { starts_at?: string; ends_at?: string };
+    };
+    expect(payload.data?.starts_at).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/);
+    expect(payload.data?.ends_at).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/);
 
     for (const [, init] of fetchMock.mock.calls as Array<[unknown, RequestInit]>) {
       const headers = (init?.headers || {}) as Record<string, string>;
