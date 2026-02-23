@@ -670,7 +670,7 @@ export async function fetchOAuthAccountProfile(
 ): Promise<AccountProfile> {
   const tokenPayload = asRecord(tokenRaw);
 
-  if (definition.slug === "google-workspace") {
+  if (definition.slug === "google-workspace" || definition.slug === "google-ads") {
     return fetchGoogleProfile(accessToken);
   }
   if (definition.slug === "hubspot") {
