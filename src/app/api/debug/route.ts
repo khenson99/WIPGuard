@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { IntegrationProvider } from "@/generated/prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -7,7 +8,7 @@ export async function GET() {
   try {
     // Force wipe PYLON error
     await prisma.integrationConnection.updateMany({
-      where: { provider: "PYLON" },
+      where: { provider: IntegrationProvider.PYLON },
       data: { lastError: null },
     });
 
