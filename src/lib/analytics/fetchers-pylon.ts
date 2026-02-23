@@ -51,15 +51,15 @@ export async function fetchPylonData(input: {
   to: string;
   baseUrl?: string;
 }): Promise<PylonData> {
-  const baseUrl = input.baseUrl || process.env.PYLON_API_BASE_URL || "https://api.usepylon.com/v1";
+  const baseUrl = input.baseUrl || process.env.PYLON_API_BASE_URL || "https://api.usepylon.com";
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
 
   try {
     const query = new URLSearchParams({
       limit: "200",
-      from: input.from,
-      to: input.to,
+      start_time: input.from,
+      end_time: input.to,
     });
 
     const response = await fetch(`${baseUrl}/issues?${query.toString()}`, {
