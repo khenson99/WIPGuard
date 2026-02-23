@@ -522,11 +522,15 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     metadataString(webflowConnection?.metadata, "siteId") ??
     metadataString(webflowConnection?.metadata, "defaultSiteId");
 
-  const googleAdsRefreshToken =
-    envOrNull(process.env.GOOGLE_ADS_REFRESH_TOKEN) ??
-    (googleAdsConnection?.status === IntegrationConnectionStatus.CONNECTED
+  const googleAdsConnectionRefreshToken =
+    googleAdsConnection?.status === IntegrationConnectionStatus.CONNECTED
       ? unprotectIntegrationSecret(googleAdsConnection.refreshToken)
-      : null);
+      : null;
+
+  const envGoogleAdsRefreshToken = envOrNull(process.env.GOOGLE_ADS_REFRESH_TOKEN);
+  const googleAdsRefreshToken = googleAdsConnectionRefreshToken ?? envGoogleAdsRefreshToken;
+  const usingGoogleAdsEnvFallback =
+    !googleAdsConnectionRefreshToken && envGoogleAdsReady();
 
   const metaAccessToken =
     envMetaAccessToken ??
@@ -695,7 +699,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     [IntegrationProvider.GOOGLE_ADS]: buildFreshness(
       IntegrationProvider.GOOGLE_ADS,
       googleAdsConnection,
-      envGoogleAdsReady()
+      usingGoogleAdsEnvFallback
     ),
     [IntegrationProvider.META_ADS]: buildFreshness(
       IntegrationProvider.META_ADS,
