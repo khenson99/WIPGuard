@@ -16,6 +16,19 @@ Core:
 - `DATABASE_URL`
 - `NEXTAUTH_SECRET`
 - `NEXTAUTH_URL`
+
+Client-side tracking (GTM):
+
+- `NEXT_PUBLIC_GTM_ID` (optional; enables Google Tag Manager in the app)
+- `NEXT_PUBLIC_ANALYTICS_DEBUG` (optional; set to `1` to log `dataLayer` events in the browser console)
+- Tracking helpers live in `src/lib/tracking/data-layer.ts` and push events like `page_view`, `login`, `sign_up`, and `task_*`.
+
+Authentication:
+
+- Email/password credentials auth is enabled by default.
+- `INVITE_TOKEN_SECRET` (recommended; falls back to `NEXTAUTH_SECRET`)
+- `PASSWORD_RESET_TOKEN_TTL_SECONDS` (optional; default `3600`)
+- Google OAuth (optional):
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 
@@ -45,9 +58,12 @@ Advertising and marketing analytics:
 - Google Ads (optional)
 - `GOOGLE_ADS_LOGIN_CUSTOMER_ID` (manager account id for MCC access)
 - Meta (required)
-- `META_ACCESS_TOKEN`
+- `META_ACCESS_TOKEN` (User/System User access token; must include `ads_read` or `ads_management` and be assigned to the configured ad account; NOT an `app_id|app_secret` app token)
 - `META_AD_ACCOUNT_ID`
 - `META_PAGE_ID`
+- Meta OAuth app config (required only if using in-app OAuth connect; also enables `debug_token` validation in `npm run ops:ads-preflight`)
+- `META_APP_ID`
+- `META_APP_SECRET`
 - Reddit Ads (required)
 - `REDDIT_CLIENT_ID`
 - `REDDIT_CLIENT_SECRET`
@@ -79,6 +95,16 @@ Use these callback URLs in each provider app configuration:
 - Slack: `http://localhost:3000/api/integrations/callback/slack`
 
 For deployed environments, replace `http://localhost:3000` with your production `NEXTAUTH_URL`.
+
+## Authentication flows
+
+- Standard login supports email/password and (optionally) Google OAuth.
+- Credentials onboarding is invite-only:
+  - Admins create an invite link from Team settings.
+  - Invitees open `/login?inviteToken=...` and set their password.
+- Password resets are admin-generated links from Team settings:
+  - Admin creates a reset link for an existing user.
+  - User opens `/login?resetToken=...` and sets a new password.
 
 ## Integrations included
 
