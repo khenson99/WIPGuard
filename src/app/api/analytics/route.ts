@@ -247,6 +247,20 @@ function normalizeLookupKey(value: string | null | undefined): string {
   return value?.trim().toLowerCase() ?? "";
 }
 
+type StripeCustomerLinkDelegateLike = {
+  findMany(args: {
+    where: {
+      userId: string;
+    };
+  }): Promise<
+    Array<{
+      hubspotDealId: string;
+      hubspotDealName: string | null;
+      stripeCustomerId: string;
+    }>
+  >;
+};
+
 async function hydrateStripeCustomerLinks(
   userId: string,
   data: AnalyticsDashboardData
@@ -254,7 +268,7 @@ async function hydrateStripeCustomerLinks(
   if (!data.hubspot?.deals?.length) return;
 
   const stripeCustomerLink = (
-    prisma as unknown as { stripeCustomerLink?: { findMany: Function } }
+    prisma as unknown as { stripeCustomerLink?: StripeCustomerLinkDelegateLike }
   ).stripeCustomerLink;
   if (!stripeCustomerLink) {
     console.warn("[analytics] Prisma client missing StripeCustomerLink delegate");

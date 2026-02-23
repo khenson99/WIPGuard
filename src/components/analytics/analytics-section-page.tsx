@@ -197,6 +197,8 @@ function SnapshotCards({
   payload: Record<string, unknown> | null;
   errors?: string[];
 }) {
+  const summary = useMemo(() => summarizePayload(payload ?? {}), [payload]);
+
   if (!payload) {
     if (errors && errors.length > 0) {
       return (
@@ -212,8 +214,6 @@ function SnapshotCards({
       </div>
     );
   }
-
-  const summary = useMemo(() => summarizePayload(payload), [payload]);
 
   if (summary.scalarEntries.length === 0) {
     return (
@@ -373,17 +373,9 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     },
   });
 
-  if (!primary) {
-    return (
-      <div className="p-6 text-sm text-muted-foreground">
-        Unknown section. <Link href="/analytics" className="text-primary">Back to analytics</Link>
-      </div>
-    );
-  }
-
   const analyticsData = resource.data?.analyticsData ?? null;
   const auxPayload = resource.data?.auxPayload ?? null;
-  const title = child?.label ?? primary.label;
+  const title = child?.label ?? primary?.label ?? "Analytics";
 
   const primaryContent = useMemo(() => {
     if (sectionId === "ads-traffic") return <MarketingTabNew data={analyticsData} />;
@@ -462,7 +454,18 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         errors={domainErrors}
       />
     );
-  }, [child, analyticsData, auxPayload]);
+  }, [child, analyticsData, auxPayload, sectionId]);
+
+  if (!primary) {
+    return (
+      <div className="p-6 text-sm text-muted-foreground">
+        Unknown section.{" "}
+        <Link href="/analytics" className="text-primary">
+          Back to analytics
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full space-y-4 overflow-y-auto p-4">

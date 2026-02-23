@@ -28,17 +28,17 @@ export function DemoSchedulingView({ data }: { data: AnalyticsDashboardData | nu
     });
   }, [demo, search, outcomeFilter]);
 
-  if (!demo || demo.totalScheduled === 0) return <EmptyState />;
-
   // Weekly density
   const weeklyDensity = useMemo(() => {
-    if (!demo.weeklyTrend.length) return [];
+    if (!demo || !demo.weeklyTrend.length) return [];
     const maxScheduled = Math.max(...demo.weeklyTrend.map((w) => w.scheduled), 1);
     return demo.weeklyTrend.slice(-12).map((w) => ({
       ...w,
       density: w.scheduled / maxScheduled,
     }));
-  }, [demo.weeklyTrend]);
+  }, [demo]);
+
+  if (!demo || demo.totalScheduled === 0) return <EmptyState />;
 
   return (
     <div className="space-y-6">

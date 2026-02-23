@@ -53,9 +53,6 @@ function baseData(): AnalyticsDashboardData {
     },
     lastFullRefresh: "2026-01-30T00:00:00.000Z",
     financialPlanning: null,
-    customerJourney: null,
-    demoAnalytics: null,
-    processAnalytics: null,
     errors: [],
   };
 }

@@ -635,6 +635,20 @@ export interface AiInsightsBundle {
   bySection: Record<AnalyticsSectionId, AiInsight[]>;
 }
 
+export interface CrossDomainInsights {
+  narrative: string;
+  overallHealth: Record<AnalyticsSectionId, "green" | "yellow" | "red">;
+  topRisks: Array<{
+    severity: "warning" | "critical";
+    title: string;
+    sections: AnalyticsSectionId[];
+  }>;
+  correlations: Array<{
+    correlation: number;
+    interpretation: string;
+  }>;
+}
+
 // ══════════════════════════════════════════════════════════
 // CUSTOMER JOURNEY TYPES
 // ══════════════════════════════════════════════════════════

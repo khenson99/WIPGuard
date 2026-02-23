@@ -8,7 +8,7 @@
     "ops:ads-preflight": "./scripts/ads-analytics-preflight.sh",
     "ops:backfill-google-oauth-scopes": "node ./scripts/backfill-google-oauth-scope-aliases.cjs",
     "prebuild": "npm run db:generate",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "pretest": "npm run db:generate",

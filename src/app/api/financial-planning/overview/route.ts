@@ -44,10 +44,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       loadLatestProviderPayload<HubSpotData>(userId, "hubspot"),
     ]);
 
-    const timeRange =
-      request.nextUrl.searchParams.get("timeRange") ?? "Last 30 days";
-
-    const pnl = buildProfitAndLoss(stripe, mercury, { timeRange });
+    const pnl = buildProfitAndLoss(stripe, mercury);
     const unitEconomics = computeUnitEconomics(stripe, mercury, hubspot);
 
     return NextResponse.json(

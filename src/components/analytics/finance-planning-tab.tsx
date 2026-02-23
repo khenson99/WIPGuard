@@ -149,16 +149,7 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  /* ── Empty state ──────────────────────────────────── */
-
-  if (!data?.stripe && !data?.mercury) {
-    return (
-      <FinanceDataEmptyState
-        provider="Finance"
-        reasons={["No Stripe or Mercury data"]}
-      />
-    );
-  }
+  const hasFinanceData = Boolean(data?.stripe || data?.mercury);
 
   const loadBudgets = useCallback(async () => {
     setBudgetsLoading(true);
@@ -179,8 +170,9 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
   }, []);
 
   useEffect(() => {
+    if (!hasFinanceData) return;
     void loadBudgets();
-  }, [loadBudgets]);
+  }, [hasFinanceData, loadBudgets]);
 
   const activeBudget = budgets[0] ?? null;
 
@@ -206,6 +198,7 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
   }, []);
 
   useEffect(() => {
+    if (!hasFinanceData) return;
     if (formInitialized || budgetsLoading) return;
     if (activeBudget) {
       seedFormFromBudget(activeBudget);
@@ -215,7 +208,14 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
       setFormOpen(true);
     }
     setFormInitialized(true);
-  }, [activeBudget, budgetsLoading, formInitialized, seedFormDefaults, seedFormFromBudget]);
+  }, [
+    activeBudget,
+    budgetsLoading,
+    formInitialized,
+    hasFinanceData,
+    seedFormDefaults,
+    seedFormFromBudget,
+  ]);
 
   const budgetAmounts = useMemo(() => {
     if (!activeBudget || !activeBudget.lineItems?.length) return undefined;
@@ -458,6 +458,15 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
   );
 
   /* ── Render ───────────────────────────────────────── */
+
+  if (!hasFinanceData) {
+    return (
+      <FinanceDataEmptyState
+        provider="Finance"
+        reasons={["No Stripe or Mercury data"]}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">

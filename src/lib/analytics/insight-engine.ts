@@ -457,49 +457,50 @@ function buildBudgetVarianceInsights(
 function buildRunwayForecastInsights(
   data: AnalyticsDashboardData,
   stale: boolean,
-): AiInsight[] {
-  if (!data.stripe && !data.mercury) return [];
+  ): AiInsight[] {
+    if (!data.stripe && !data.mercury) return [];
 
-  const scenarios = buildDefaultScenarios(data);
-  const conservative = scenarios.find((s) => s.id === "conservative");
-  const base = scenarios.find((s) => s.id === "base");
+    const scenarios = buildDefaultScenarios(data.stripe ?? null, data.mercury ?? null);
+    const conservative = scenarios.find((s) => s.id === "default-conservative");
+    const base = scenarios.find((s) => s.id === "default-base");
 
-  if (!conservative || !base) return [];
+    if (!conservative || !base) return [];
 
-  // Only alert when conservative scenario shows significantly shorter runway
-  const runwayGap = base.runway - conservative.runway;
-  if (conservative.runway >= 12 || runwayGap < 3) return [];
+    // Only alert when conservative scenario shows significantly shorter runway
+    if (conservative.runwayMonths === null || base.runwayMonths === null) return [];
+    const runwayGap = base.runwayMonths - conservative.runwayMonths;
+    if (conservative.runwayMonths >= 12 || runwayGap < 3) return [];
 
-  return [
-    {
-      id: "ai-finance-forecast-runway",
-      section: "finance",
-      subsectionId: "finance-forecast",
-      severity: conservative.runway < 6 ? "critical" : "warning",
-      title: "Conservative forecast shows shortened runway",
-      why: `Under conservative assumptions (growth ${(conservative.monthlyGrowthRate * 100).toFixed(1)}%, churn ${(conservative.monthlyChurnRate * 100).toFixed(1)}%), runway drops to ${conservative.runway.toFixed(1)} months — ${runwayGap.toFixed(1)} months shorter than base case.`,
-      confidence: clampConfidence(0.80),
-      expectedImpact: "Scenario planning enables proactive cost cuts before runway becomes critical.",
-      stale,
-      evidence: [
-        {
-          source: "Forecast Engine",
-          domain: "financeForecast",
-          metric: "Conservative Runway",
-          value: `${conservative.runway.toFixed(1)} months`,
-          delta: `${runwayGap.toFixed(1)}mo shorter than base`,
-        },
-        {
-          source: "Forecast Engine",
-          domain: "financeForecast",
-          metric: "Base Runway",
-          value: `${base.runway.toFixed(1)} months`,
-          delta: `growth ${(base.monthlyGrowthRate * 100).toFixed(1)}%`,
-        },
-      ],
-      actions: [
-        {
-          type: "create_task",
+    return [
+      {
+        id: "ai-finance-forecast-runway",
+        section: "finance",
+        subsectionId: "finance-forecast",
+        severity: conservative.runwayMonths < 6 ? "critical" : "warning",
+        title: "Conservative forecast shows shortened runway",
+        why: `Under conservative assumptions (growth Δ ${conservative.assumptions.revenueGrowthRate.toFixed(0)}%, churn Δ ${conservative.assumptions.churnRateDelta.toFixed(0)}pp), runway drops to ${conservative.runwayMonths.toFixed(1)} months — ${runwayGap.toFixed(1)} months shorter than base case.`,
+        confidence: clampConfidence(0.80),
+        expectedImpact: "Scenario planning enables proactive cost cuts before runway becomes critical.",
+        stale,
+        evidence: [
+          {
+            source: "Forecast Engine",
+            domain: "financeForecast",
+            metric: "Conservative Runway",
+            value: `${conservative.runwayMonths.toFixed(1)} months`,
+            delta: `${runwayGap.toFixed(1)}mo shorter than base`,
+          },
+          {
+            source: "Forecast Engine",
+            domain: "financeForecast",
+            metric: "Base Runway",
+            value: `${base.runwayMonths.toFixed(1)} months`,
+            delta: `growth Δ ${base.assumptions.revenueGrowthRate.toFixed(0)}%`,
+          },
+        ],
+        actions: [
+          {
+            type: "create_task",
           label: "Create contingency cost-reduction plan",
           payload: {
             title: "Contingency plan for conservative runway scenario",
@@ -756,16 +757,16 @@ function buildBurnRateTrendInsights(
 function buildRevenueVsForecastInsights(
   data: AnalyticsDashboardData,
   stale: boolean,
-): AiInsight[] {
-  if (!data.stripe) return [];
+  ): AiInsight[] {
+    if (!data.stripe) return [];
 
-  const scenarios = buildDefaultScenarios(data);
-  const base = scenarios.find((s) => s.id === "base");
-  if (!base || base.revenue.length < 2) return [];
+    const scenarios = buildDefaultScenarios(data.stripe ?? null, data.mercury ?? null);
+    const base = scenarios.find((s) => s.id === "default-base");
+    if (!base || base.months.length < 1) return [];
 
-  // Compare current MRR to month-0 of forecast — detect if already behind
-  const currentMrr = data.stripe?.revenue?.mrr ?? 0;
-  const forecastMonth1 = base.revenue[1]?.value ?? 0;
+    // Compare current MRR to month-0 of forecast — detect if already behind
+    const currentMrr = data.stripe?.revenue?.mrr ?? 0;
+    const forecastMonth1 = base.months[0]?.projectedMrr ?? 0;
 
   if (forecastMonth1 <= 0 || currentMrr <= 0) return [];
 

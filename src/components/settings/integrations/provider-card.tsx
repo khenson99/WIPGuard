@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -148,31 +148,24 @@ export function ProviderCard({
   const health = getHealthTone(item);
 
   const [openRuleId, setOpenRuleId] = useState<string | null>(null);
-  const didUserToggleRuleRef = useRef(false);
+  const [didUserToggleRule, setDidUserToggleRule] = useState(false);
 
-  useEffect(() => {
-    if (!isExpanded || didUserToggleRuleRef.current) {
-      return;
+  const effectiveOpenRuleId = useMemo(() => {
+    if (!isExpanded) return null;
+
+    if (openRuleId && sortedRules.some((entry) => entry.descriptor.id === openRuleId)) {
+      return openRuleId;
     }
+
+    if (didUserToggleRule) return null;
 
     const firstFailingRule = sortedRules.find((entry) => Boolean(entry.state?.rule?.lastError));
-    setOpenRuleId(firstFailingRule?.descriptor.id ?? null);
-  }, [isExpanded, sortedRules]);
-
-  useEffect(() => {
-    if (!openRuleId) {
-      return;
-    }
-
-    const stillExists = sortedRules.some((entry) => entry.descriptor.id === openRuleId);
-    if (!stillExists) {
-      setOpenRuleId(null);
-    }
-  }, [openRuleId, sortedRules]);
+    return firstFailingRule?.descriptor.id ?? null;
+  }, [didUserToggleRule, isExpanded, openRuleId, sortedRules]);
 
   const toggleRule = (ruleId: string) => {
-    didUserToggleRuleRef.current = true;
-    setOpenRuleId((previous) => (previous === ruleId ? null : ruleId));
+    setDidUserToggleRule(true);
+    setOpenRuleId(effectiveOpenRuleId === ruleId ? null : ruleId);
   };
 
   return (
@@ -482,7 +475,7 @@ export function ProviderCard({
                     return null;
                   }
 
-                  const isOpen = openRuleId === descriptor.id;
+                  const isOpen = effectiveOpenRuleId === descriptor.id;
                   const rowStatus = getRuleStatusLabel(state);
                   const panelId = `${contentId}-${descriptor.id}`;
 

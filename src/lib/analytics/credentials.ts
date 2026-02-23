@@ -344,16 +344,16 @@ async function bestEffortHealScopeMetadata(input: {
   nextMetadata.insufficientScopes = false;
   delete nextMetadata.missingScopes;
 
-  await prisma.integrationConnection.updateMany({
-    where: {
-      userId,
-      provider: connection.provider,
-    },
-    data: {
-      metadata: nextMetadata,
-      lastError: null,
-    },
-  });
+	  await prisma.integrationConnection.updateMany({
+	    where: {
+	      userId,
+	      provider: connection.provider,
+	    },
+	    data: {
+	      metadata: nextMetadata as unknown as Prisma.InputJsonValue,
+	      lastError: null,
+	    },
+	  });
 
   connection.metadata = nextMetadata;
   connection.lastError = null;

@@ -59,6 +59,7 @@ describe("buildProcessAnalyticsData", () => {
           amount: 5000,
           source: "Organic",
           ownerId: "owner-1",
+          createdAt: oldDate,
           updatedAt: oldDate,
         },
         {
@@ -69,6 +70,7 @@ describe("buildProcessAnalyticsData", () => {
           amount: 3000,
           source: "Paid",
           ownerId: "owner-2",
+          createdAt: recentDate,
           updatedAt: recentDate,
         },
       ],

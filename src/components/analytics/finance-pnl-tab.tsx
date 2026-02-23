@@ -68,6 +68,19 @@ export function FinancePnlTab({
     [data],
   );
 
+  // Expense items for bar chart
+  const expenseItems = useMemo(
+    () =>
+      pnl.items
+        .filter((i) => i.category === "expense" && i.current !== 0)
+        .map((item, idx) => ({
+          label: item.label,
+          value: Math.abs(item.current),
+          color: EXPENSE_COLORS[idx % EXPENSE_COLORS.length],
+        })),
+    [pnl],
+  );
+
   // Empty state
   if (!data?.stripe && !data?.mercury) {
     return (
@@ -112,19 +125,6 @@ export function FinancePnlTab({
         "Gross margin below 50% may limit ability to scale. Consider pricing adjustments or reducing cost of goods sold.",
     });
   }
-
-  // Expense items for bar chart
-  const expenseItems = useMemo(
-    () =>
-      pnl.items
-        .filter((i) => i.category === "expense" && i.current !== 0)
-        .map((item, idx) => ({
-          label: item.label,
-          value: Math.abs(item.current),
-          color: EXPENSE_COLORS[idx % EXPENSE_COLORS.length],
-        })),
-    [pnl],
-  );
 
   // Table columns
   const pnlColumns: DataTableColumn<PnlLineItem>[] = [
