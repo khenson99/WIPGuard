@@ -488,8 +488,13 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
       })
     );
 
+    const scopeHealCandidates = [
+      ...refreshCandidates,
+      IntegrationProvider.GOOGLE_ADS,
+    ] as const;
+
     await Promise.all(
-      refreshCandidates.map(async (provider) => {
+      scopeHealCandidates.map(async (provider) => {
         const connection = byProvider.get(provider);
         if (!connection) return;
         await bestEffortHealScopeMetadata({ userId, connection });

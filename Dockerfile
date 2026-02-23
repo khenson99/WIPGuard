@@ -49,6 +49,8 @@ COPY --from=builder /app/src/generated ./src/generated
 RUN mkdir -p /app/.next/cache && chown -R nextjs:nodejs /app/.next
 # Copy lightweight migration runner (uses pg from standalone trace)
 COPY --from=builder /app/migrate.cjs ./migrate.cjs
+# Copy ops scripts used by runbooks (e.g. OAuth scope backfills)
+COPY --from=builder /app/scripts/backfill-google-oauth-scope-aliases.cjs ./scripts/backfill-google-oauth-scope-aliases.cjs
 # Copy entrypoint script
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 # Verify migrate.cjs exists
