@@ -697,6 +697,8 @@ export async function fetchRedditAdsData(
   const startsAt = new Date(now);
   startsAt.setUTCDate(startsAt.getUTCDate() - 29);
   startsAt.setUTCHours(0, 0, 0, 0);
+  const startsAtIso = startsAt.toISOString().replace(/\.\d{3}Z$/, "Z");
+  const endsAtIso = now.toISOString().replace(/\.\d{3}Z$/, "Z");
   const reportsResponse = await fetch(
     `https://ads-api.reddit.com/api/v3/ad_accounts/${cleanAccountId}/reports`,
     {
@@ -708,8 +710,8 @@ export async function fetchRedditAdsData(
       },
       body: JSON.stringify({
         data: {
-          starts_at: startsAt.toISOString(),
-          ends_at: now.toISOString(),
+          starts_at: startsAtIso,
+          ends_at: endsAtIso,
           breakdowns: ["CAMPAIGN_ID"],
           fields: ["CAMPAIGN_ID", "SPEND", "IMPRESSIONS", "CLICKS"],
         },
@@ -719,7 +721,9 @@ export async function fetchRedditAdsData(
 
   if (!reportsResponse.ok) {
     throw new Error(
-      `Reddit reports error (${reportsResponse.status}): ${await parseErrorBody(reportsResponse)}`
+      `Reddit reports error (${reportsResponse.status}): ${await parseErrorBody(
+        reportsResponse
+      )}. starts_at=${startsAtIso} ends_at=${endsAtIso}`
     );
   }
 
