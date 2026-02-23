@@ -19,6 +19,11 @@ import {
   fetchOAuthAccountProfile,
   getOAuthStateCookieName,
 } from "@/lib/integrations/oauth";
+import {
+  discoverMetaAdAccountId,
+  discoverMetaPageAndInstagram,
+  exchangeMetaForLongLivedToken,
+} from "@/lib/integrations/meta-auth";
 import { validateIntegrationScopes } from "@/lib/integrations/scope-validation";
 import { enforcePermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -206,7 +211,7 @@ export async function GET(
 
   try {
     const redirectUri = buildOAuthRedirectUri(getBaseUrl(request), definition.slug);
-    const tokenResponse = await exchangeOAuthCode({
+    let tokenResponse = await exchangeOAuthCode({
       definition,
       code,
       clientId: credentials.clientId,
@@ -214,24 +219,74 @@ export async function GET(
       redirectUri,
       codeVerifier: statePayload.codeVerifier ?? undefined,
     });
+
+    if (definition.slug === "meta-ads") {
+      try {
+        const longLived = await exchangeMetaForLongLivedToken({
+          accessToken: tokenResponse.accessToken,
+          appId: credentials.clientId,
+          appSecret: credentials.clientSecret,
+        });
+
+        tokenResponse = {
+          ...tokenResponse,
+          accessToken: longLived.accessToken,
+          tokenType: longLived.tokenType ?? tokenResponse.tokenType,
+          expiresAt: longLived.expiresAt ?? tokenResponse.expiresAt,
+        };
+      } catch (error) {
+        console.warn("[integrations] Meta long-lived token exchange failed:", error);
+      }
+    }
+
     const accountProfile = await fetchOAuthAccountProfile(
       definition,
       tokenResponse.accessToken,
       tokenResponse.raw
     );
 
-    // Validate granted scopes against required scopes
-    const scopeValidation = validateIntegrationScopes(
-      definition,
-      tokenResponse.scopes
-    );
+    // Some providers (e.g. Meta) do not return granted scopes in their token response.
+    // Avoid flagging false negatives when scope data is absent.
+    const scopeValidation =
+      tokenResponse.scopes.length > 0
+        ? validateIntegrationScopes(definition, tokenResponse.scopes)
+        : null;
     const hasMissingScopes =
       scopeValidation !== null && !scopeValidation.valid;
+
+    const discoveredMeta: Record<string, unknown> = {};
+    if (definition.slug === "meta-ads") {
+      try {
+        const adAccountId = await discoverMetaAdAccountId({
+          accessToken: tokenResponse.accessToken,
+        });
+        if (adAccountId) {
+          discoveredMeta.adAccountId = adAccountId;
+        }
+      } catch (error) {
+        console.warn("[integrations] Meta ad account discovery failed:", error);
+      }
+
+      try {
+        const { pageId, instagramAccountId } = await discoverMetaPageAndInstagram({
+          accessToken: tokenResponse.accessToken,
+        });
+        if (pageId) {
+          discoveredMeta.pageId = pageId;
+        }
+        if (instagramAccountId) {
+          discoveredMeta.instagramAccountId = instagramAccountId;
+        }
+      } catch (error) {
+        console.warn("[integrations] Meta page discovery failed:", error);
+      }
+    }
 
     const metadata: Prisma.InputJsonObject = {
       ...(accountProfile.metadata ?? {}),
       oauthProvider: definition.slug,
       connectedByUserId: session.user.id,
+      ...discoveredMeta,
       ...(hasMissingScopes
         ? {
             insufficientScopes: true,

@@ -166,9 +166,11 @@ export async function GET(): Promise<NextResponse> {
       const freshness =
         credentials.freshness?.[definition.provider] ??
         defaultFreshnessSnapshot(definition.provider);
+      const hasCredential = hasCredentialForProvider(definition.provider, credentials);
+      const connected = status === IntegrationConnectionStatus.CONNECTED || hasCredential;
       const syncHealth = evaluateProviderSyncHealth({
-        connected: status === IntegrationConnectionStatus.CONNECTED,
-        hasCredential: hasCredentialForProvider(definition.provider, credentials),
+        connected,
+        hasCredential,
         snapshots: snapshotsForProvider(definition.provider, snapshots),
       });
 
@@ -181,7 +183,7 @@ export async function GET(): Promise<NextResponse> {
         authType: definition.authType,
         configured: isIntegrationConfigured(definition),
         missingEnv: getMissingIntegrationEnv(definition),
-        connected: status === IntegrationConnectionStatus.CONNECTED,
+        connected,
         status,
         accountLabel: connection?.accountLabel ?? null,
         connectedAt: connection?.connectedAt ?? null,

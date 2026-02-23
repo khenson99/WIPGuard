@@ -237,7 +237,7 @@ export function ProviderCard({
 
         <div className="flex flex-wrap items-center gap-1.5">
           {item.authType === "oauth" ? (
-            item.connected ? (
+            item.status === "CONNECTED" ? (
               <>
                 <button
                   type="button"
@@ -366,7 +366,7 @@ export function ProviderCard({
                     "Connect Coda"
                   )}
                 </button>
-                {item.connected ? (
+                {item.status === "CONNECTED" ? (
                   <button
                     type="button"
                     onClick={() => onDisconnect(item.slug)}

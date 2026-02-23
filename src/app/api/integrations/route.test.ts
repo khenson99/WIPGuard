@@ -233,6 +233,10 @@ describe("GET /api/integrations", () => {
     expect(body.length).toBeGreaterThanOrEqual(12);
     expect(body.some((item) => item.provider === IntegrationProvider.PYLON)).toBe(true);
     expect(
+      body.find((item) => item.provider === IntegrationProvider.GOOGLE_ADS)?.connected
+    ).toBe(true);
+    expect(body.find((item) => item.provider === IntegrationProvider.PYLON)?.connected).toBe(true);
+    expect(
       body.find((item) => item.provider === IntegrationProvider.GOOGLE_ADS)?.credentialSource
     ).toBe("env");
     expect(prisma.analyticsSnapshot.findMany).toHaveBeenCalledTimes(2);

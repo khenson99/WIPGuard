@@ -4,10 +4,19 @@
 import {
   IntegrationConnectionStatus,
   IntegrationProvider,
+  type Prisma,
 } from "@/generated/prisma/client";
+import {
+  getIntegrationByProvider,
+  getIntegrationOAuthCredentials,
+  isOAuthIntegration,
+} from "@/lib/integrations/catalog";
+import { discoverMetaAdAccountId, discoverMetaPageAndInstagram } from "@/lib/integrations/meta-auth";
+import { compactErrorMessage, refreshOAuthToken } from "@/lib/integrations/oauth";
 import { listProviderRegistryEntries } from "@/lib/integrations/provider-registry";
+import { validateIntegrationScopes } from "@/lib/integrations/scope-validation";
 import { prisma } from "@/lib/prisma";
-import { unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
+import { protectIntegrationSecret, unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
 
 export interface ProviderFreshnessSnapshot {
   provider: IntegrationProvider;
@@ -76,15 +85,43 @@ type ConnectionRecord = {
   status: IntegrationConnectionStatus;
   accessToken: string | null;
   refreshToken: string | null;
+  tokenType: string | null;
+  expiresAt: Date | null;
+  scopes: string[];
   metadata: unknown;
   connectedAt: Date;
   lastSyncedAt: Date | null;
   lastError: string | null;
 };
 
+type OAuthRefreshResult = {
+  accessToken: string;
+  refreshToken: string | null;
+  tokenType: string | null;
+  expiresAt: Date | null;
+  scopes: string[];
+};
+
+type MetaDiscoveryResult = {
+  adAccountId: string | null;
+  pageId: string | null;
+  instagramAccountId: string | null;
+};
+
+const REFRESH_MARGIN_MS = 2 * 60_000;
+const inflightOAuthRefresh = new Map<string, Promise<OAuthRefreshResult>>();
+const inflightMetaDiscovery = new Map<string, Promise<MetaDiscoveryResult>>();
+
 function envOrNull(value: string | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : null;
+}
+
+function asJsonObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
 }
 
 function metadataString(metadata: unknown, key: string): string | null {
@@ -104,17 +141,6 @@ function buildFreshness(
   connection: ConnectionRecord | null,
   usingEnvFallback: boolean
 ): ProviderFreshnessSnapshot {
-  if (connection) {
-    return {
-      provider,
-      source: "connection",
-      status: connection.status,
-      connectedAt: connection.connectedAt.toISOString(),
-      lastSyncedAt: connection.lastSyncedAt?.toISOString() ?? null,
-      lastError: connection.lastError,
-    };
-  }
-
   if (usingEnvFallback) {
     return {
       provider,
@@ -123,6 +149,17 @@ function buildFreshness(
       connectedAt: null,
       lastSyncedAt: null,
       lastError: null,
+    };
+  }
+
+  if (connection) {
+    return {
+      provider,
+      source: "connection",
+      status: connection.status,
+      connectedAt: connection.connectedAt.toISOString(),
+      lastSyncedAt: connection.lastSyncedAt?.toISOString() ?? null,
+      lastError: connection.lastError,
     };
   }
 
@@ -159,19 +196,167 @@ function envGoogleAdsReady(): boolean {
   );
 }
 
-function envMetaAdsReady(): boolean {
-  return Boolean(
-    envOrNull(process.env.META_ACCESS_TOKEN) &&
-      envOrNull(process.env.META_AD_ACCOUNT_ID)
-  );
+async function bestEffortRefreshOAuthConnection(input: {
+  userId: string;
+  connection: ConnectionRecord;
+  required: boolean;
+}): Promise<void> {
+  const { userId, connection, required } = input;
+
+  const definition = getIntegrationByProvider(connection.provider);
+  if (!definition || !isOAuthIntegration(definition)) {
+    return;
+  }
+
+  const refreshToken = unprotectIntegrationSecret(connection.refreshToken);
+  if (!refreshToken) {
+    return;
+  }
+
+  const oauthCredentials = getIntegrationOAuthCredentials(definition);
+  if (!oauthCredentials) {
+    return;
+  }
+
+  const key = `${userId}:${connection.provider}`;
+  let refresh = inflightOAuthRefresh.get(key);
+
+  if (!refresh) {
+    refresh = (async () => {
+      const tokenResponse = await refreshOAuthToken({
+        definition,
+        refreshToken,
+        clientId: oauthCredentials.clientId,
+        clientSecret: oauthCredentials.clientSecret,
+      });
+
+      const nextAccessToken = protectIntegrationSecret(tokenResponse.accessToken);
+      if (!nextAccessToken) {
+        throw new Error("Failed to protect refreshed access token");
+      }
+
+      const nextRefreshToken =
+        protectIntegrationSecret(tokenResponse.refreshToken) ?? connection.refreshToken;
+
+      const nextScopes =
+        tokenResponse.scopes.length > 0 ? tokenResponse.scopes : connection.scopes;
+
+      const now = new Date();
+      await prisma.integrationConnection.update({
+        where: {
+          userId_provider: {
+            userId,
+            provider: connection.provider,
+          },
+        },
+        data: {
+          accessToken: nextAccessToken,
+          refreshToken: nextRefreshToken,
+          tokenType: tokenResponse.tokenType ?? connection.tokenType,
+          expiresAt: tokenResponse.expiresAt,
+          scopes: nextScopes,
+          status: IntegrationConnectionStatus.CONNECTED,
+          lastError: null,
+          lastSyncedAt: now,
+        },
+      });
+
+      return {
+        accessToken: nextAccessToken,
+        refreshToken: nextRefreshToken,
+        tokenType: tokenResponse.tokenType ?? connection.tokenType,
+        expiresAt: tokenResponse.expiresAt,
+        scopes: nextScopes,
+      };
+    })().finally(() => {
+      inflightOAuthRefresh.delete(key);
+    });
+
+    inflightOAuthRefresh.set(key, refresh);
+  }
+
+  try {
+    const outcome = await refresh;
+    connection.accessToken = outcome.accessToken;
+    connection.refreshToken = outcome.refreshToken;
+    connection.tokenType = outcome.tokenType;
+    connection.expiresAt = outcome.expiresAt;
+    connection.scopes = outcome.scopes;
+    connection.status = IntegrationConnectionStatus.CONNECTED;
+    connection.lastError = null;
+    connection.lastSyncedAt = new Date();
+  } catch (error) {
+    if (required) {
+      const message = compactErrorMessage(error);
+      await prisma.integrationConnection.updateMany({
+        where: {
+          userId,
+          provider: connection.provider,
+        },
+        data: {
+          status: IntegrationConnectionStatus.ERROR,
+          lastError: message,
+          lastSyncedAt: null,
+        },
+      });
+      connection.status = IntegrationConnectionStatus.ERROR;
+      connection.lastError = message;
+      connection.lastSyncedAt = null;
+    } else {
+      console.warn(
+        `[analytics-credentials] OAuth refresh failed for ${connection.provider}:`,
+        error
+      );
+    }
+  }
 }
 
-function envMetaPageReady(): boolean {
-  return Boolean(
-    envOrNull(process.env.META_ACCESS_TOKEN) &&
-      (envOrNull(process.env.META_PAGE_ID) ||
-        envOrNull(process.env.META_INSTAGRAM_ACCOUNT_ID))
-  );
+async function bestEffortHealScopeMetadata(input: {
+  userId: string;
+  connection: ConnectionRecord;
+}): Promise<void> {
+  const { userId, connection } = input;
+
+  if (connection.scopes.length === 0) {
+    return;
+  }
+
+  const metadata = asJsonObject(connection.metadata);
+  const insufficient = metadata?.insufficientScopes === true;
+  const shouldCheck =
+    insufficient ||
+    Boolean(connection.lastError?.includes("Missing required OAuth scopes"));
+  if (!shouldCheck) {
+    return;
+  }
+
+  const definition = getIntegrationByProvider(connection.provider);
+  if (!definition || !isOAuthIntegration(definition)) {
+    return;
+  }
+
+  const validation = validateIntegrationScopes(definition, connection.scopes);
+  if (!validation || !validation.valid) {
+    return;
+  }
+
+  const nextMetadata: Record<string, unknown> = { ...(metadata ?? {}) };
+  nextMetadata.insufficientScopes = false;
+  delete nextMetadata.missingScopes;
+
+  await prisma.integrationConnection.updateMany({
+    where: {
+      userId,
+      provider: connection.provider,
+    },
+    data: {
+      metadata: nextMetadata,
+      lastError: null,
+    },
+  });
+
+  connection.metadata = nextMetadata;
+  connection.lastError = null;
 }
 
 export async function getCredentials(userId?: string): Promise<AnalyticsCredentials> {
@@ -185,6 +370,9 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
         status: true,
         accessToken: true,
         refreshToken: true,
+        tokenType: true,
+        expiresAt: true,
+        scopes: true,
         metadata: true,
         connectedAt: true,
         lastSyncedAt: true,
@@ -200,12 +388,60 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
           status: connection.status,
           accessToken: connection.accessToken,
           refreshToken: connection.refreshToken,
+          tokenType: connection.tokenType,
+          expiresAt: connection.expiresAt,
+          scopes: connection.scopes,
           metadata: connection.metadata,
           connectedAt: connection.connectedAt,
           lastSyncedAt: connection.lastSyncedAt,
           lastError: connection.lastError,
         },
       ])
+    );
+
+    const refreshCandidates = [
+      IntegrationProvider.GOOGLE_WORKSPACE,
+      IntegrationProvider.HUBSPOT,
+      IntegrationProvider.STRIPE,
+      IntegrationProvider.MERCURY,
+      IntegrationProvider.WEBFLOW,
+    ] as const;
+
+    const now = Date.now();
+    await Promise.all(
+      refreshCandidates.map(async (provider) => {
+        const connection = byProvider.get(provider);
+        if (!connection) return;
+
+        if (
+          connection.status !== IntegrationConnectionStatus.CONNECTED &&
+          connection.status !== IntegrationConnectionStatus.ERROR
+        ) {
+          return;
+        }
+
+        const hasAccessToken = Boolean(unprotectIntegrationSecret(connection.accessToken));
+        const expiresAtMs = connection.expiresAt?.getTime() ?? null;
+        const expiresSoon =
+          expiresAtMs !== null && expiresAtMs <= now + REFRESH_MARGIN_MS;
+
+        if (!expiresSoon && hasAccessToken) {
+          return;
+        }
+
+        const expired = expiresAtMs !== null && expiresAtMs <= now - 30_000;
+        const required = expired || !hasAccessToken;
+
+        await bestEffortRefreshOAuthConnection({ userId, connection, required });
+      })
+    );
+
+    await Promise.all(
+      refreshCandidates.map(async (provider) => {
+        const connection = byProvider.get(provider);
+        if (!connection) return;
+        await bestEffortHealScopeMetadata({ userId, connection });
+      })
     );
   }
 
@@ -301,15 +537,117 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
       ? unprotectIntegrationSecret(metaPageConnection.accessToken)
       : null);
 
-  const metaAdAccountId =
+  let metaAdAccountId =
     envMetaAdAccountId ??
     metadataString(metaAdsConnection?.metadata, "adAccountId");
-  const metaPageId =
+  let metaPageId =
     envMetaPageId ??
-    metadataString(metaPageConnection?.metadata, "pageId");
-  const metaInstagramAccountId =
+    metadataString(metaPageConnection?.metadata, "pageId") ??
+    metadataString(metaAdsConnection?.metadata, "pageId");
+  let metaInstagramAccountId =
     envMetaInstagramAccountId ??
-    metadataString(metaPageConnection?.metadata, "instagramAccountId");
+    metadataString(metaPageConnection?.metadata, "instagramAccountId") ??
+    metadataString(metaAdsConnection?.metadata, "instagramAccountId");
+
+  if (
+    userId &&
+    metaAccessToken &&
+    (!metaAdAccountId || (!metaPageId && !metaInstagramAccountId))
+  ) {
+    const key = `${userId}:meta`;
+    let discovery = inflightMetaDiscovery.get(key);
+
+    if (!discovery) {
+      discovery = (async () => {
+        const result: MetaDiscoveryResult = {
+          adAccountId: null,
+          pageId: null,
+          instagramAccountId: null,
+        };
+
+        if (!metaAdAccountId) {
+          try {
+            result.adAccountId = await discoverMetaAdAccountId({
+              accessToken: metaAccessToken,
+            });
+          } catch (error) {
+            console.warn("[analytics-credentials] Meta ad account discovery failed:", error);
+          }
+        }
+
+        if (!metaPageId && !metaInstagramAccountId) {
+          try {
+            const discovered = await discoverMetaPageAndInstagram({
+              accessToken: metaAccessToken,
+            });
+            result.pageId = discovered.pageId;
+            result.instagramAccountId = discovered.instagramAccountId;
+          } catch (error) {
+            console.warn("[analytics-credentials] Meta page discovery failed:", error);
+          }
+        }
+
+        return result;
+      })().finally(() => {
+        inflightMetaDiscovery.delete(key);
+      });
+
+      inflightMetaDiscovery.set(key, discovery);
+    }
+
+    try {
+      const discovered = await discovery;
+      const updates: Record<string, unknown> = {};
+
+      if (discovered.adAccountId && !metaAdAccountId) {
+        metaAdAccountId = discovered.adAccountId;
+        updates.adAccountId = discovered.adAccountId;
+      }
+
+      if (discovered.pageId && !metaPageId) {
+        metaPageId = discovered.pageId;
+        updates.pageId = discovered.pageId;
+      }
+
+      if (discovered.instagramAccountId && !metaInstagramAccountId) {
+        metaInstagramAccountId = discovered.instagramAccountId;
+        updates.instagramAccountId = discovered.instagramAccountId;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        const base = asJsonObject(metaAdsConnection?.metadata) ?? {};
+        const nextMetadata = {
+          ...base,
+          ...updates,
+          metaDiscoveredAt: new Date().toISOString(),
+        } as Prisma.InputJsonObject;
+
+        await prisma.integrationConnection.upsert({
+          where: {
+            userId_provider: {
+              userId,
+              provider: IntegrationProvider.META_ADS,
+            },
+          },
+          create: {
+            userId,
+            provider: IntegrationProvider.META_ADS,
+            status: IntegrationConnectionStatus.DISCONNECTED,
+            metadata: nextMetadata,
+          },
+          update: {
+            metadata: nextMetadata,
+          },
+        });
+
+        if (metaAdsConnection) {
+          metaAdsConnection.metadata = nextMetadata;
+        }
+      }
+    } catch (error) {
+      console.warn("[analytics-credentials] Meta discovery failed:", error);
+    }
+  }
 
   const pylonApiKey =
     envPylonApiKey ??
@@ -362,12 +700,12 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     [IntegrationProvider.META_ADS]: buildFreshness(
       IntegrationProvider.META_ADS,
       metaAdsConnection,
-      envMetaAdsReady()
+      Boolean(envMetaAccessToken)
     ),
     [IntegrationProvider.META_PAGE]: buildFreshness(
       IntegrationProvider.META_PAGE,
       metaPageConnection,
-      envMetaPageReady()
+      Boolean(envMetaAccessToken)
     ),
     [IntegrationProvider.PYLON]: buildFreshness(
       IntegrationProvider.PYLON,
