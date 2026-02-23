@@ -206,6 +206,7 @@ interface StripeSub {
 }
 
 interface StripeCharge {
+  id?: string;
   amount: number;
   created: number;
   status: string;
@@ -214,14 +215,81 @@ interface StripeCharge {
 export async function fetchStripeData(apiKey: string): Promise<StripeData> {
   const headers = { Authorization: `Bearer ${apiKey}` };
   const baseUrl = "https://api.stripe.com/v1";
+  const now = Math.floor(Date.now() / 1000);
+  const sixMonthsAgo = now - 180 * 24 * 60 * 60;
 
-  // ── Fetch active subscriptions ──
-  const subsRes = await fetch(`${baseUrl}/subscriptions?limit=100&status=active`, { headers });
-  if (!subsRes.ok) {
-    throw new Error(`Stripe subscriptions error ${subsRes.status}`);
-  }
-  const subsData = await subsRes.json();
-  const activeSubs: StripeSub[] = subsData.data || [];
+  const fetchStripe = async (url: string): Promise<Response> =>
+    fetch(url, { headers, cache: "no-store" });
+
+  const fetchActiveSubscriptions = async (): Promise<StripeSub[]> => {
+    const subsRes = await fetchStripe(`${baseUrl}/subscriptions?limit=100&status=active`);
+    if (!subsRes.ok) {
+      throw new Error(`Stripe subscriptions error ${subsRes.status}`);
+    }
+    const subsData = await subsRes.json();
+    return subsData.data || [];
+  };
+
+  const fetchCanceledSubscriptions = async (): Promise<StripeSub[]> => {
+    const canceledRes = await fetchStripe(`${baseUrl}/subscriptions?limit=50&status=canceled`);
+    const canceledData = await canceledRes.json();
+    return canceledData.data || [];
+  };
+
+  const fetchPastDueAndTrialingCounts = async (): Promise<{
+    pastDueCount: number;
+    trialingCount: number;
+  }> => {
+    let pastDueCount = 0;
+    let trialingCount = 0;
+    try {
+      const [pastDueRes, trialingRes] = await Promise.all([
+        fetchStripe(`${baseUrl}/subscriptions?limit=1&status=past_due`),
+        fetchStripe(`${baseUrl}/subscriptions?limit=1&status=trialing`),
+      ]);
+      if (pastDueRes.ok) {
+        const pd = await pastDueRes.json();
+        pastDueCount = pd.data?.length || 0;
+        // Stripe doesn't return total count on list, but we fetch all if needed
+        if (pd.has_more) pastDueCount = 99; // approximate; indicates "many"
+      }
+      if (trialingRes.ok) {
+        const tr = await trialingRes.json();
+        trialingCount = tr.data?.length || 0;
+        if (tr.has_more) trialingCount = 99;
+      }
+    } catch {
+      // Non-critical
+    }
+    return { pastDueCount, trialingCount };
+  };
+
+  const fetchChargesSixMonths = async (): Promise<StripeCharge[]> => {
+    // Paginate through all charges in the last 6 months
+    const allCharges: StripeCharge[] = [];
+    let startingAfter: string | undefined;
+    for (let page = 0; page < 10; page++) {
+      let chargesUrl = `${baseUrl}/charges?limit=100&created[gte]=${sixMonthsAgo}`;
+      if (startingAfter) chargesUrl += `&starting_after=${startingAfter}`;
+
+      const chargesRes = await fetchStripe(chargesUrl);
+      if (!chargesRes.ok) break;
+      const chargesData = await chargesRes.json();
+      const batch = chargesData.data || [];
+      allCharges.push(...batch);
+
+      if (!chargesData.has_more || batch.length === 0) break;
+      startingAfter = batch[batch.length - 1].id;
+    }
+    return allCharges;
+  };
+
+  const [activeSubs, canceledSubs, counts, allCharges] = await Promise.all([
+    fetchActiveSubscriptions(),
+    fetchCanceledSubscriptions(),
+    fetchPastDueAndTrialingCounts(),
+    fetchChargesSixMonths(),
+  ]);
 
   // ── Calculate MRR — normalize yearly/quarterly subscriptions to monthly ──
   const mrr = activeSubs.reduce((sum: number, s: StripeSub) => {
@@ -246,54 +314,7 @@ export async function fetchStripeData(apiKey: string): Promise<StripeData> {
     return sum + monthlyAmount;
   }, 0);
 
-  // ── Fetch past_due + trialing subscriptions counts ──
-  let pastDueCount = 0;
-  let trialingCount = 0;
-  try {
-    const [pastDueRes, trialingRes] = await Promise.all([
-      fetch(`${baseUrl}/subscriptions?limit=1&status=past_due`, { headers }),
-      fetch(`${baseUrl}/subscriptions?limit=1&status=trialing`, { headers }),
-    ]);
-    if (pastDueRes.ok) {
-      const pd = await pastDueRes.json();
-      pastDueCount = pd.data?.length || 0;
-      // Stripe doesn't return total count on list, but we fetch all if needed
-      if (pd.has_more) pastDueCount = 99; // approximate; indicates "many"
-    }
-    if (trialingRes.ok) {
-      const tr = await trialingRes.json();
-      trialingCount = tr.data?.length || 0;
-      if (tr.has_more) trialingCount = 99;
-    }
-  } catch {
-    // Non-critical
-  }
-
-  // ── Fetch canceled subscriptions (recent) ──
-  const canceledRes = await fetch(`${baseUrl}/subscriptions?limit=50&status=canceled`, { headers });
-  const canceledData = await canceledRes.json();
-  const canceledSubs: StripeSub[] = canceledData.data || [];
-
-  // ── Fetch charges for revenue across 6 months ──
-  const now = Math.floor(Date.now() / 1000);
-  const sixMonthsAgo = now - 180 * 24 * 60 * 60;
-
-  // Paginate through all charges in the last 6 months
-  const allCharges: StripeCharge[] = [];
-  let startingAfter: string | undefined;
-  for (let page = 0; page < 10; page++) {
-    let chargesUrl = `${baseUrl}/charges?limit=100&created[gte]=${sixMonthsAgo}`;
-    if (startingAfter) chargesUrl += `&starting_after=${startingAfter}`;
-
-    const chargesRes = await fetch(chargesUrl, { headers });
-    if (!chargesRes.ok) break;
-    const chargesData = await chargesRes.json();
-    const batch = chargesData.data || [];
-    allCharges.push(...batch);
-
-    if (!chargesData.has_more || batch.length === 0) break;
-    startingAfter = batch[batch.length - 1].id;
-  }
+  const { pastDueCount, trialingCount } = counts;
 
   // ── Bucket charges by month for trend ──
   const thirtyDaysAgo = now - 30 * 24 * 60 * 60;

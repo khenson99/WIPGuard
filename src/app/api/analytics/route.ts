@@ -221,6 +221,13 @@ function requiredDomainsForSection(section: string | null): Set<DomainKey> {
   return new Set(SECTION_DOMAINS[section] ?? ALL_DOMAINS);
 }
 
+const DEFAULT_DOMAIN_TIMEOUT_MS = 8_500;
+const STRIPE_DOMAIN_TIMEOUT_MS = 20_000;
+
+function timeoutMsForDomain(domain: DomainKey): number {
+  return domain === "stripe" ? STRIPE_DOMAIN_TIMEOUT_MS : DEFAULT_DOMAIN_TIMEOUT_MS;
+}
+
 function withTimeout<T>(fn: () => Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
@@ -434,7 +441,11 @@ function staleRefreshKey(input: RefreshInput): string {
 
 async function refreshDomainSnapshot(input: RefreshInput): Promise<void> {
   try {
-    const live = await withTimeout(input.entry.fn, 8_500, input.entry.key);
+    const live = await withTimeout(
+      input.entry.fn,
+      timeoutMsForDomain(input.entry.key),
+      input.entry.key
+    );
     await storeAnalyticsSnapshot({
       userId: input.userId,
       providerKey: input.entry.key,
@@ -725,7 +736,7 @@ export async function GET(request: Request) {
       }
 
       try {
-        const live = await withTimeout(entry.fn, 8_500, entry.key);
+        const live = await withTimeout(entry.fn, timeoutMsForDomain(entry.key), entry.key);
         await storeAnalyticsSnapshot({
           userId,
           providerKey: entry.key,

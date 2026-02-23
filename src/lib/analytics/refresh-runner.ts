@@ -31,6 +31,11 @@ function timeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+function timeoutMsForRefreshJob(providerKey: string): number {
+  if (providerKey === "stripe") return 25_000;
+  return 10_000;
+}
+
 async function computeProductSnapshot(userId: string, fromDate: Date, toDate: Date) {
   const [createdTasksInRange, completedTasksInRange, overdueOpenTasks, contributors] = await Promise.all([
     prisma.task.count({ where: { createdAt: { gte: fromDate, lte: toDate } } }),
@@ -260,7 +265,7 @@ async function refreshForUserAndRange(input: {
     const provider = providerForSnapshotKey(job.providerKey);
 
     try {
-      const payload = await timeout(job.run(), 10_000);
+      const payload = await timeout(job.run(), timeoutMsForRefreshJob(job.providerKey));
       await storeAnalyticsSnapshot({
         userId: input.userId,
         providerKey: job.providerKey,

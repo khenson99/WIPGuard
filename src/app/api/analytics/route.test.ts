@@ -424,4 +424,36 @@ describe("GET /api/analytics", () => {
     expect(body.processAnalytics).toBeTruthy();
     expect(body.processAnalytics.healthScore).toBeGreaterThanOrEqual(0);
   });
+
+  it("does not time out stripe at the default 8.5s budget", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const { fetchStripeData } = await import("@/lib/analytics/fetchers");
+      vi.mocked(fetchStripeData).mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => resolve(STRIPE_DATA as never), 9_000);
+          }) as never
+      );
+
+      const { GET } = await import("@/app/api/analytics/route");
+      const responsePromise = GET(
+        new Request("http://localhost/api/analytics?section=finance-stripe")
+      );
+
+      await vi.advanceTimersByTimeAsync(9_000);
+
+      const response = await responsePromise;
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.stripe).toBeTruthy();
+      expect(
+        body.errors.some((entry: { source: string }) => entry.source === "stripe")
+      ).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
