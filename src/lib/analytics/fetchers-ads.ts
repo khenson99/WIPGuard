@@ -698,7 +698,9 @@ export async function fetchRedditAdsData(
   startsAt.setUTCDate(startsAt.getUTCDate() - 29);
   startsAt.setUTCHours(0, 0, 0, 0);
   const startsAtIso = startsAt.toISOString().replace(/\.\d{3}Z$/, "Z");
-  const endsAtIso = now.toISOString().replace(/\.\d{3}Z$/, "Z");
+  const endsAt = new Date(now);
+  endsAt.setUTCMinutes(0, 0, 0);
+  const endsAtIso = endsAt.toISOString().replace(/\.\d{3}Z$/, "Z");
   const reportsResponse = await fetch(
     `https://ads-api.reddit.com/api/v3/ad_accounts/${cleanAccountId}/reports`,
     {
