@@ -62,6 +62,10 @@ describe("analytics ads fetchers", () => {
     expect(data.totalConversions).toBe(5);
     expect(data.campaigns[0]?.name).toBe("Brand Search");
 
+    const requestUrl = String(fetchMock.mock.calls[1]?.[0] ?? "");
+    expect(requestUrl).toContain("/customers/1234567890/googleAds:searchStream");
+    expect(requestUrl).not.toContain("/customers/1234567890:searchStream");
+
     const requestInit = fetchMock.mock.calls[1]?.[1] as RequestInit;
     const headers = requestInit.headers as Record<string, string>;
     expect(headers["login-customer-id"]).toBe("9998887777");
@@ -144,7 +148,13 @@ describe("analytics ads fetchers", () => {
 
     const prefixed = await fetchMetaAdsData("meta-token", "act_12345");
     expect(prefixed.totalConversions).toBe(4);
-    expect(firstFetchMock.mock.calls[0]?.[0]).toContain("/act_12345/insights");
+    const firstInsightsUrl = String(firstFetchMock.mock.calls[0]?.[0]);
+    expect(firstInsightsUrl).toContain("/act_12345/insights");
+    expect(firstInsightsUrl).not.toContain("access_token=");
+    const firstInsightsInit = firstFetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect((firstInsightsInit.headers as Record<string, string>)?.Authorization).toBe(
+      "Bearer meta-token"
+    );
 
     const secondFetchMock = vi.fn();
     secondFetchMock
@@ -158,7 +168,19 @@ describe("analytics ads fetchers", () => {
     vi.stubGlobal("fetch", secondFetchMock as unknown as typeof fetch);
 
     await fetchMetaAdsData("meta-token", "12345");
-    expect(secondFetchMock.mock.calls[0]?.[0]).toContain("/act_12345/insights");
+    const secondInsightsUrl = String(secondFetchMock.mock.calls[0]?.[0]);
+    expect(secondInsightsUrl).toContain("/act_12345/insights");
+    expect(secondInsightsUrl).not.toContain("access_token=");
+    const secondInsightsInit = secondFetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect((secondInsightsInit.headers as Record<string, string>)?.Authorization).toBe(
+      "Bearer meta-token"
+    );
+  });
+
+  it("rejects Meta app access tokens with a clear error", async () => {
+    await expect(fetchMetaAdsData("123|not-a-user-token", "12345")).rejects.toThrow(
+      "looks like an app access token"
+    );
   });
 
   it("uses Reddit v3 report shape and joins campaign metadata", async () => {

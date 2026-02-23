@@ -9,6 +9,8 @@ import {
 
 type UnknownRecord = Record<string, unknown>;
 
+const META_GRAPH_VERSION = "v21.0";
+
 function makeMeta(source: "live" | "cached" = "live"): AnalyticsTimestamp {
   const now = new Date();
   return {
@@ -47,8 +49,17 @@ async function parseErrorBody(response: Response): Promise<string> {
   return text ? text.slice(0, 500) : response.statusText || "Unknown error";
 }
 
+function normalizeBearerToken(value: string): string {
+  return value.replace(/^Bearer\s+/i, "").trim();
+}
+
 function normalizeMetaAdAccountId(adAccountId: string): string {
   return adAccountId.trim().replace(/^act_/i, "");
+}
+
+function looksLikeMetaAppAccessToken(accessToken: string): boolean {
+  const normalized = accessToken.trim();
+  return Boolean(normalized && /^\d+\|/.test(normalized));
 }
 
 function extractMetaConversions(actions: unknown): number {
@@ -210,7 +221,7 @@ export async function fetchGoogleAdsData(
   }
 
   const adsResponse = await fetch(
-    `https://googleads.googleapis.com/v17/customers/${cleanCustomerId}:searchStream`,
+    `https://googleads.googleapis.com/v17/customers/${cleanCustomerId}/googleAds:searchStream`,
     {
       method: "POST",
       headers,
@@ -297,12 +308,24 @@ export async function fetchMetaAdsData(
   accessToken: string,
   adAccountId: string
 ): Promise<MetaAdsData> {
-  const accountId = normalizeMetaAdAccountId(adAccountId);
-  const encodedToken = encodeURIComponent(accessToken);
+  const token = normalizeBearerToken(accessToken);
+  if (looksLikeMetaAppAccessToken(token)) {
+    throw new Error(
+      "Meta Ads token error: META_ACCESS_TOKEN looks like an app access token (app_id|app_secret). WIPGuard requires a User/System User token with ads_read or ads_management and access to the configured ad account."
+    );
+  }
 
-  const insightsResponse = await fetch(
-    `https://graph.facebook.com/v18.0/act_${accountId}/insights?fields=spend,impressions,clicks,actions&date_preset=last_30d&level=account&access_token=${encodedToken}`
+  const accountId = normalizeMetaAdAccountId(adAccountId);
+  const baseHeaders = { Authorization: `Bearer ${token}` };
+
+  const insightsUrl = new URL(
+    `https://graph.facebook.com/${META_GRAPH_VERSION}/act_${accountId}/insights`
   );
+  insightsUrl.searchParams.set("fields", "spend,impressions,clicks,actions");
+  insightsUrl.searchParams.set("date_preset", "last_30d");
+  insightsUrl.searchParams.set("level", "account");
+
+  const insightsResponse = await fetch(insightsUrl, { headers: baseHeaders });
   if (!insightsResponse.ok) {
     throw new Error(
       `Meta Ads insights error (${insightsResponse.status}): ${await parseErrorBody(insightsResponse)}`
@@ -331,9 +354,13 @@ export async function fetchMetaAdsData(
     totalConversions = extractMetaConversions(accountInsight.actions);
   }
 
-  const campaignsResponse = await fetch(
-    `https://graph.facebook.com/v18.0/act_${accountId}/campaigns?fields=name,insights{spend,impressions,clicks,actions}&date_preset=last_30d&access_token=${encodedToken}`
+  const campaignsUrl = new URL(
+    `https://graph.facebook.com/${META_GRAPH_VERSION}/act_${accountId}/campaigns`
   );
+  campaignsUrl.searchParams.set("fields", "name,insights{spend,impressions,clicks,actions}");
+  campaignsUrl.searchParams.set("date_preset", "last_30d");
+
+  const campaignsResponse = await fetch(campaignsUrl, { headers: baseHeaders });
   if (!campaignsResponse.ok) {
     throw new Error(
       `Meta Ads campaigns error (${campaignsResponse.status}): ${await parseErrorBody(campaignsResponse)}`
@@ -401,12 +428,22 @@ export async function fetchMetaPageData(
   accessToken: string,
   pageId: string
 ): Promise<MetaPageData> {
-  const encodedToken = encodeURIComponent(accessToken);
+  const token = normalizeBearerToken(accessToken);
+  if (looksLikeMetaAppAccessToken(token)) {
+    throw new Error(
+      "Meta Page token error: META_ACCESS_TOKEN looks like an app access token (app_id|app_secret). WIPGuard requires a User/System User token with ads_read or ads_management and access to the configured Page."
+    );
+  }
+
+  const baseHeaders = { Authorization: `Bearer ${token}` };
   const normalizedPageId = pageId.trim();
 
-  const pageResponse = await fetch(
-    `https://graph.facebook.com/v18.0/${normalizedPageId}?fields=fan_count,followers_count&access_token=${encodedToken}`
+  const pageUrl = new URL(
+    `https://graph.facebook.com/${META_GRAPH_VERSION}/${normalizedPageId}`
   );
+  pageUrl.searchParams.set("fields", "fan_count,followers_count");
+
+  const pageResponse = await fetch(pageUrl, { headers: baseHeaders });
   if (!pageResponse.ok) {
     throw new Error(
       `Meta Page profile error (${pageResponse.status}): ${await parseErrorBody(pageResponse)}`
@@ -420,9 +457,13 @@ export async function fetchMetaPageData(
   const pageLikes = readNumber(pageData.fan_count);
   const pageFollowers = readNumber(pageData.followers_count);
 
-  const insightsResponse = await fetch(
-    `https://graph.facebook.com/v18.0/${normalizedPageId}/insights?metric=page_impressions,page_engaged_users&period=days_28&access_token=${encodedToken}`
+  const insightsUrl = new URL(
+    `https://graph.facebook.com/${META_GRAPH_VERSION}/${normalizedPageId}/insights`
   );
+  insightsUrl.searchParams.set("metric", "page_impressions,page_engaged_users");
+  insightsUrl.searchParams.set("period", "days_28");
+
+  const insightsResponse = await fetch(insightsUrl, { headers: baseHeaders });
   if (!insightsResponse.ok) {
     throw new Error(
       `Meta Page insights error (${insightsResponse.status}): ${await parseErrorBody(insightsResponse)}`
@@ -447,9 +488,16 @@ export async function fetchMetaPageData(
     }
   }
 
-  const postsResponse = await fetch(
-    `https://graph.facebook.com/v18.0/${normalizedPageId}/posts?fields=message,insights{metric(post_impressions,post_engaged_users)},created_time&limit=5&access_token=${encodedToken}`
+  const postsUrl = new URL(
+    `https://graph.facebook.com/${META_GRAPH_VERSION}/${normalizedPageId}/posts`
   );
+  postsUrl.searchParams.set(
+    "fields",
+    "message,insights{metric(post_impressions,post_engaged_users)},created_time"
+  );
+  postsUrl.searchParams.set("limit", "5");
+
+  const postsResponse = await fetch(postsUrl, { headers: baseHeaders });
   if (!postsResponse.ok) {
     throw new Error(
       `Meta Page posts error (${postsResponse.status}): ${await parseErrorBody(postsResponse)}`
@@ -506,12 +554,20 @@ export async function fetchMetaInstagramData(
   instagramAccountId: string,
   options?: { pageId?: string }
 ): Promise<Record<string, unknown>> {
-  const encodedToken = encodeURIComponent(accessToken);
+  const token = normalizeBearerToken(accessToken);
+  if (looksLikeMetaAppAccessToken(token)) {
+    throw new Error(
+      "Meta Instagram token error: META_ACCESS_TOKEN looks like an app access token (app_id|app_secret). WIPGuard requires a User/System User token with ads_read or ads_management and access to the configured Instagram account."
+    );
+  }
+
+  const baseHeaders = { Authorization: `Bearer ${token}` };
   const accountId = instagramAccountId.trim();
 
-  const accountResponse = await fetch(
-    `https://graph.facebook.com/v18.0/${accountId}?fields=id,username,followers_count,media_count&access_token=${encodedToken}`
-  );
+  const accountUrl = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${accountId}`);
+  accountUrl.searchParams.set("fields", "id,username,followers_count,media_count");
+
+  const accountResponse = await fetch(accountUrl, { headers: baseHeaders });
   if (!accountResponse.ok) {
     throw new Error(
       `Meta Instagram profile error (${accountResponse.status}): ${await parseErrorBody(accountResponse)}`
@@ -525,9 +581,11 @@ export async function fetchMetaInstagramData(
     media_count?: string | number;
   };
 
-  const mediaResponse = await fetch(
-    `https://graph.facebook.com/v18.0/${accountId}/media?fields=id,caption,timestamp,like_count,comments_count&limit=25&access_token=${encodedToken}`
-  );
+  const mediaUrl = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${accountId}/media`);
+  mediaUrl.searchParams.set("fields", "id,caption,timestamp,like_count,comments_count");
+  mediaUrl.searchParams.set("limit", "25");
+
+  const mediaResponse = await fetch(mediaUrl, { headers: baseHeaders });
   if (!mediaResponse.ok) {
     throw new Error(
       `Meta Instagram media error (${mediaResponse.status}): ${await parseErrorBody(mediaResponse)}`
@@ -646,16 +704,16 @@ export async function fetchRedditAdsData(
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
-	      body: JSON.stringify({
-	        data: {
-	          starts_at: thirtyDaysAgo.toISOString(),
-	          ends_at: now.toISOString(),
-	          breakdowns: ["CAMPAIGN_ID"],
-	          fields: ["CAMPAIGN_ID", "SPEND", "IMPRESSIONS", "CLICKS"],
-	        },
-	      }),
-	    }
-	  );
+      body: JSON.stringify({
+        data: {
+          starts_at: thirtyDaysAgo.toISOString(),
+          ends_at: now.toISOString(),
+          breakdowns: ["CAMPAIGN_ID"],
+          fields: ["CAMPAIGN_ID", "SPEND", "IMPRESSIONS", "CLICKS"],
+        },
+      }),
+    }
+  );
 
   if (!reportsResponse.ok) {
     throw new Error(
