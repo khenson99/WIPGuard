@@ -11,7 +11,11 @@ import {
   getIntegrationOAuthCredentials,
   isOAuthIntegration,
 } from "@/lib/integrations/catalog";
-import { discoverMetaAdAccountId, discoverMetaPageAndInstagram } from "@/lib/integrations/meta-auth";
+import {
+  discoverMetaAdAccountId,
+  discoverMetaPageAndInstagram,
+  exchangeMetaForLongLivedToken,
+} from "@/lib/integrations/meta-auth";
 import { compactErrorMessage, refreshOAuthToken } from "@/lib/integrations/oauth";
 import { listProviderRegistryEntries } from "@/lib/integrations/provider-registry";
 import { validateIntegrationScopes } from "@/lib/integrations/scope-validation";
@@ -109,6 +113,7 @@ type MetaDiscoveryResult = {
 };
 
 const REFRESH_MARGIN_MS = 2 * 60_000;
+const META_REFRESH_MARGIN_MS = 7 * 24 * 60 * 60_000;
 const inflightOAuthRefresh = new Map<string, Promise<OAuthRefreshResult>>();
 const inflightMetaDiscovery = new Map<string, Promise<MetaDiscoveryResult>>();
 
@@ -208,11 +213,6 @@ async function bestEffortRefreshOAuthConnection(input: {
     return;
   }
 
-  const refreshToken = unprotectIntegrationSecret(connection.refreshToken);
-  if (!refreshToken) {
-    return;
-  }
-
   const oauthCredentials = getIntegrationOAuthCredentials(definition);
   if (!oauthCredentials) {
     return;
@@ -223,6 +223,55 @@ async function bestEffortRefreshOAuthConnection(input: {
 
   if (!refresh) {
     refresh = (async () => {
+      if (definition.slug === "meta-ads") {
+        const accessToken = unprotectIntegrationSecret(connection.accessToken);
+        if (!accessToken) {
+          throw new Error("Missing Meta access token");
+        }
+
+        const tokenResponse = await exchangeMetaForLongLivedToken({
+          accessToken,
+          appId: oauthCredentials.clientId,
+          appSecret: oauthCredentials.clientSecret,
+        });
+
+        const nextAccessToken = protectIntegrationSecret(tokenResponse.accessToken);
+        if (!nextAccessToken) {
+          throw new Error("Failed to protect refreshed Meta access token");
+        }
+
+        const now = new Date();
+        await prisma.integrationConnection.update({
+          where: {
+            userId_provider: {
+              userId,
+              provider: connection.provider,
+            },
+          },
+          data: {
+            accessToken: nextAccessToken,
+            tokenType: tokenResponse.tokenType ?? connection.tokenType,
+            expiresAt: tokenResponse.expiresAt,
+            status: IntegrationConnectionStatus.CONNECTED,
+            lastError: null,
+            lastSyncedAt: now,
+          },
+        });
+
+        return {
+          accessToken: nextAccessToken,
+          refreshToken: connection.refreshToken,
+          tokenType: tokenResponse.tokenType ?? connection.tokenType,
+          expiresAt: tokenResponse.expiresAt,
+          scopes: connection.scopes,
+        };
+      }
+
+      const refreshToken = unprotectIntegrationSecret(connection.refreshToken);
+      if (!refreshToken) {
+        throw new Error("Missing OAuth refresh token");
+      }
+
       const tokenResponse = await refreshOAuthToken({
         definition,
         refreshToken,
@@ -344,16 +393,16 @@ async function bestEffortHealScopeMetadata(input: {
   nextMetadata.insufficientScopes = false;
   delete nextMetadata.missingScopes;
 
-	  await prisma.integrationConnection.updateMany({
-	    where: {
-	      userId,
-	      provider: connection.provider,
-	    },
-	    data: {
-	      metadata: nextMetadata as unknown as Prisma.InputJsonValue,
-	      lastError: null,
-	    },
-	  });
+  await prisma.integrationConnection.updateMany({
+    where: {
+      userId,
+      provider: connection.provider,
+    },
+    data: {
+      metadata: nextMetadata as unknown as Prisma.InputJsonValue,
+      lastError: null,
+    },
+  });
 
   connection.metadata = nextMetadata;
   connection.lastError = null;
@@ -402,6 +451,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     const refreshCandidates = [
       IntegrationProvider.GOOGLE_WORKSPACE,
       IntegrationProvider.HUBSPOT,
+      IntegrationProvider.META_ADS,
       IntegrationProvider.STRIPE,
       IntegrationProvider.MERCURY,
       IntegrationProvider.WEBFLOW,
@@ -422,8 +472,10 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
 
         const hasAccessToken = Boolean(unprotectIntegrationSecret(connection.accessToken));
         const expiresAtMs = connection.expiresAt?.getTime() ?? null;
+        const refreshMarginMs =
+          provider === IntegrationProvider.META_ADS ? META_REFRESH_MARGIN_MS : REFRESH_MARGIN_MS;
         const expiresSoon =
-          expiresAtMs !== null && expiresAtMs <= now + REFRESH_MARGIN_MS;
+          expiresAtMs !== null && expiresAtMs <= now + refreshMarginMs;
 
         if (!expiresSoon && hasAccessToken) {
           return;
