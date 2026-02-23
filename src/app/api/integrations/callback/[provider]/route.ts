@@ -328,7 +328,9 @@ export async function GET(
         accountLabel: accountProfile.accountLabel,
         scopes: tokenResponse.scopes,
         accessToken: protectIntegrationSecret(tokenResponse.accessToken),
-        refreshToken: protectIntegrationSecret(tokenResponse.refreshToken),
+        ...(tokenResponse.refreshToken
+          ? { refreshToken: protectIntegrationSecret(tokenResponse.refreshToken) }
+          : {}),
         tokenType: tokenResponse.tokenType,
         expiresAt: tokenResponse.expiresAt,
         connectedAt: new Date(),
