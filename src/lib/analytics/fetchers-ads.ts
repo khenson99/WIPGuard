@@ -45,9 +45,46 @@ function readNumber(value: unknown): number {
   return 0;
 }
 
+function extractApiErrorMessage(payload: unknown): string | null {
+  const record = asRecord(payload);
+  if (!record) return null;
+
+  const nestedError = asRecord(record.error);
+  const candidates = [
+    nestedError?.message,
+    record.message,
+    record.error_description,
+    typeof record.error === "string" ? record.error : null,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      if (trimmed) return trimmed;
+    }
+  }
+
+  return null;
+}
+
 async function parseErrorBody(response: Response): Promise<string> {
   const text = await response.text().catch(() => "");
-  return text ? text.slice(0, 500) : response.statusText || "Unknown error";
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return response.statusText || "Unknown error";
+  }
+
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      const message = extractApiErrorMessage(parsed);
+      if (message) return message.slice(0, 500);
+    } catch {
+      // Fall back to raw text.
+    }
+  }
+
+  return trimmed.slice(0, 500);
 }
 
 function normalizeBearerToken(value: string): string {
@@ -587,26 +624,121 @@ export async function fetchMetaInstagramData(
   }
 
   const baseHeaders = { Authorization: `Bearer ${token}` };
-  const accountId = instagramAccountId.trim();
+  const configuredAccountId = instagramAccountId.trim();
 
-  const accountUrl = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${accountId}`);
-  accountUrl.searchParams.set("fields", "id,username,followers_count,media_count");
+  type InstagramProfile = {
+    id: string;
+    username: string | null;
+    followersCount: number;
+    mediaCount: number;
+  };
 
-  const accountResponse = await fetch(accountUrl, { headers: baseHeaders });
-  if (!accountResponse.ok) {
+  const isNonexistentUsernameError = (message: string): boolean => {
+    const normalized = message.toLowerCase();
+    return normalized.includes("nonexistent field") && normalized.includes("username");
+  };
+
+  const fetchInstagramProfile = async (accountId: string): Promise<InstagramProfile> => {
+    const accountUrl = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${accountId}`);
+    accountUrl.searchParams.set("fields", "id,username,followers_count,media_count");
+
+    const accountResponse = await fetch(accountUrl, { headers: baseHeaders });
+    if (!accountResponse.ok) {
+      throw new Error(
+        `Meta Instagram profile error (${accountResponse.status}): ${await parseErrorBody(accountResponse)}`
+      );
+    }
+
+    const accountData = (await accountResponse.json()) as {
+      id?: string;
+      username?: string;
+      followers_count?: string | number;
+      media_count?: string | number;
+    };
+
+    const id = String(accountData.id ?? "").trim();
+    if (!id) {
+      throw new Error("Meta Instagram profile error: response did not include an id.");
+    }
+
+    return {
+      id,
+      username: typeof accountData.username === "string" ? accountData.username : null,
+      followersCount: readNumber(accountData.followers_count),
+      mediaCount: readNumber(accountData.media_count),
+    };
+  };
+
+  const resolveInstagramProfileViaPage = async (
+    pageId: string
+  ): Promise<InstagramProfile | null> => {
+    const normalizedPageId = pageId.trim();
+    if (!normalizedPageId) return null;
+
+    const pageUrl = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${normalizedPageId}`);
+    pageUrl.searchParams.set(
+      "fields",
+      "instagram_business_account{id,username,followers_count,media_count},connected_instagram_account{id,username,followers_count,media_count}"
+    );
+
+    const pageResponse = await fetch(pageUrl, { headers: baseHeaders });
+    if (!pageResponse.ok) {
+      return null;
+    }
+
+    const pageData = (await pageResponse.json()) as {
+      instagram_business_account?: {
+        id?: string;
+        username?: string;
+        followers_count?: string | number;
+        media_count?: string | number;
+      } | null;
+      connected_instagram_account?: {
+        id?: string;
+        username?: string;
+        followers_count?: string | number;
+        media_count?: string | number;
+      } | null;
+    };
+
+    const candidate =
+      pageData.instagram_business_account ?? pageData.connected_instagram_account ?? null;
+    const id = String(candidate?.id ?? "").trim();
+    if (!id) return null;
+
+    return {
+      id,
+      username: typeof candidate?.username === "string" ? candidate.username : null,
+      followersCount: readNumber(candidate?.followers_count),
+      mediaCount: readNumber(candidate?.media_count),
+    };
+  };
+
+  let resolvedProfile: InstagramProfile | null =
+    options?.pageId?.trim() ? await resolveInstagramProfileViaPage(options.pageId) : null;
+
+  if (!resolvedProfile) {
+    try {
+      resolvedProfile = await fetchInstagramProfile(configuredAccountId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (isNonexistentUsernameError(message)) {
+        resolvedProfile = await resolveInstagramProfileViaPage(configuredAccountId);
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  if (!resolvedProfile) {
     throw new Error(
-      `Meta Instagram profile error (${accountResponse.status}): ${await parseErrorBody(accountResponse)}`
+      "Meta Instagram configuration error: META_INSTAGRAM_ACCOUNT_ID is not an Instagram Business Account ID. Set META_PAGE_ID (or connect a Meta Page) so WIPGuard can resolve the linked instagram_business_account, or update the configured Instagram Account ID."
     );
   }
 
-  const accountData = (await accountResponse.json()) as {
-    id?: string;
-    username?: string;
-    followers_count?: string | number;
-    media_count?: string | number;
-  };
-
-  const mediaUrl = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${accountId}/media`);
+  const mediaUrl = new URL(
+    `https://graph.facebook.com/${META_GRAPH_VERSION}/${resolvedProfile.id}/media`
+  );
   mediaUrl.searchParams.set("fields", "id,caption,timestamp,like_count,comments_count");
   
   const fromTime = Math.floor((from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).getTime() / 1000);
@@ -651,7 +783,7 @@ export async function fetchMetaInstagramData(
   }));
 
   return {
-    followers: readNumber(accountData.followers_count),
+    followers: resolvedProfile.followersCount,
     reach30d: engagement30d, // Using engagements as proxy for reach30d
     engagement30d,
     traffic: 0,

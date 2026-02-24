@@ -665,7 +665,13 @@ export async function GET(request: Request) {
       key: "instagram",
       fn: () =>
         creds.metaAccessToken && creds.metaInstagramAccountId
-          ? fetchMetaInstagramData(creds.metaAccessToken, creds.metaInstagramAccountId, undefined, fromDate, toDate)
+          ? fetchMetaInstagramData(
+              creds.metaAccessToken,
+              creds.metaInstagramAccountId,
+              { pageId: creds.metaPageId ?? undefined },
+              fromDate,
+              toDate
+            )
           : Promise.reject(new Error("Missing Instagram credential")),
     },
     {
