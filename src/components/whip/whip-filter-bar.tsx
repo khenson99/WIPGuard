@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import type { SprintOption, WhipFilters, WhipTask } from "./types";
+import { getSprintLabel } from "@/lib/sprints";
 
 interface WhipFilterBarProps {
   sprints: SprintOption[];
@@ -39,7 +40,7 @@ export function WhipFilterBar({ sprints, tasks, filters, setFilters }: WhipFilte
           <option value="">All sprints</option>
           {sprints.map((s) => (
             <option key={s.id} value={s.id}>
-              {s.name}
+              {getSprintLabel(s)}
               {s.isActive ? " (active)" : ""}
             </option>
           ))}

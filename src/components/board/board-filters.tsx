@@ -2,6 +2,7 @@
 
 import { useBoardStore } from "@/store/board-store";
 import { Filter, X } from "lucide-react";
+import { getSprintLabel } from "@/lib/sprints";
 
 export function BoardFilters() {
   const {
@@ -80,7 +81,8 @@ export function BoardFilters() {
         <option value="">All Sprints</option>
         {sprints.map((s) => (
           <option key={s.id} value={s.id}>
-            {s.name}
+            {getSprintLabel(s)}
+            {s.isActive ? " (active)" : ""}
           </option>
         ))}
       </select>
