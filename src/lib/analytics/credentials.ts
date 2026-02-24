@@ -76,6 +76,7 @@ export interface AnalyticsCredentials {
 
   // Pylon
   pylonApiKey: string | null;
+  pylonBaseUrl: string | null;
 
   // Integration OAuth tokens used for integration analytics tabs.
   googleWorkspaceAccessToken: string | null;
@@ -139,6 +140,15 @@ function metadataString(metadata: unknown, key: string): string | null {
 
 function hasValue(value: string | null): boolean {
   return Boolean(value && value.trim().length > 0);
+}
+
+function looksInvalidMetaInstagramAccountId(value: string | null): boolean {
+  if (!value) return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (trimmed === "me") return true;
+  if (/^act_/i.test(trimmed)) return true;
+  return false;
 }
 
 function buildFreshness(
@@ -523,6 +533,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
   const envWebflowToken = envOrNull(process.env.WEBFLOW_API_TOKEN);
   const envWebflowSiteId = envOrNull(process.env.WEBFLOW_SITE_ID);
   const envPylonApiKey = envOrNull(process.env.PYLON_API_KEY);
+  const envPylonBaseUrl = envOrNull(process.env.PYLON_API_BASE_URL);
   const envMetaAccessToken = envOrNull(process.env.META_ACCESS_TOKEN);
   const envMetaAdAccountId = envOrNull(process.env.META_AD_ACCOUNT_ID);
   const envMetaPageId = envOrNull(process.env.META_PAGE_ID);
@@ -610,10 +621,14 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     metadataString(metaPageConnection?.metadata, "instagramAccountId") ??
     metadataString(metaAdsConnection?.metadata, "instagramAccountId");
 
+  if (looksInvalidMetaInstagramAccountId(metaInstagramAccountId)) {
+    metaInstagramAccountId = null;
+  }
+
   if (
     userId &&
     metaAccessToken &&
-    (!metaAdAccountId || (!metaPageId && !metaInstagramAccountId))
+    (!metaAdAccountId || !metaPageId || !metaInstagramAccountId)
   ) {
     const key = `${userId}:meta`;
     let discovery = inflightMetaDiscovery.get(key);
@@ -636,7 +651,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
           }
         }
 
-        if (!metaPageId && !metaInstagramAccountId) {
+        if (!metaPageId || !metaInstagramAccountId) {
           try {
             const discovered = await discoverMetaPageAndInstagram({
               accessToken: metaAccessToken,
@@ -715,6 +730,9 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     (pylonConnection?.status === IntegrationConnectionStatus.CONNECTED
       ? unprotectIntegrationSecret(pylonConnection.accessToken)
       : null);
+
+  const pylonBaseUrl =
+    metadataString(pylonConnection?.metadata, "baseUrl") ?? envPylonBaseUrl;
 
   const freshness: Record<IntegrationProvider, ProviderFreshnessSnapshot> = {
     [IntegrationProvider.GOOGLE_WORKSPACE]: buildFreshness(
@@ -828,6 +846,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     codaDocId: envOrNull(process.env.CODA_DOC_ID) || "lE7mWZbZCk",
 
     pylonApiKey,
+    pylonBaseUrl,
 
     googleWorkspaceAccessToken,
     slackAccessToken,

@@ -189,6 +189,7 @@ export async function GET(): Promise<NextResponse> {
         connectedAt: connection?.connectedAt ?? null,
         lastSyncedAt: connection?.lastSyncedAt ?? null,
         lastError: connection?.lastError ?? null,
+        metadata: connection?.metadata ?? null,
         credentialSource: freshness.source,
         syncHealth: syncHealth.syncHealth,
         syncHealthReason: syncHealth.syncHealthReason,
