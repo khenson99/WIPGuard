@@ -59,6 +59,17 @@ export interface DealsBySource {
   source: string;
   count: number;
   value: number;
+  closedWon?: number;
+  followUpNeeded?: number;
+  churned?: number;
+}
+
+export interface DealsByRep {
+  repName: string;
+  count: number;
+  value: number;
+  closedWon: number;
+  closedWonValue: number;
 }
 
 export interface FunnelMetrics {
@@ -67,6 +78,7 @@ export interface FunnelMetrics {
   closedLost: number;
   unlikely: number;
   churn: number;
+  notActivated?: number;
   activeSubscriptions: number;
   noShows: number;
   demoScheduled: number;
@@ -77,6 +89,7 @@ export interface FunnelMetrics {
   noShowRate: number;
   stages: DealStage[];
   dealsBySource: DealsBySource[];
+  dealsByRep?: DealsByRep[];
 }
 
 export interface ContactMetrics {
@@ -96,6 +109,7 @@ export interface HubSpotData {
     amount: number;
     source: string;
     ownerId: string | null;
+    repName?: string;
     updatedAt: string | null;
     createdAt: string | null;
     stripeCustomerId?: string | null;
@@ -286,6 +300,8 @@ export interface RedditAdsData {
   totalSpend30d: number;
   totalImpressions: number;
   totalClicks: number;
+  totalConversions: number;
+  cpa: number;
   ctr: number;
   cpc: number;
   campaigns: AdCampaign[];

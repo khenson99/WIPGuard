@@ -177,7 +177,9 @@ export async function fetchGoogleAdsData(
   refreshToken: string,
   clientId: string,
   clientSecret: string,
-  loginCustomerId?: string | null
+  loginCustomerId?: string | null,
+  from?: Date,
+  to?: Date
 ): Promise<GoogleAdsData> {
   const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -206,10 +208,14 @@ export async function fetchGoogleAdsData(
 
   const cleanCustomerId = customerId.replace(/-/g, "").trim();
   const cleanLoginCustomerId = loginCustomerId?.replace(/-/g, "").trim();
+  
+  const fromIso = (from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).toISOString().split("T")[0];
+  const toIso = (to || new Date()).toISOString().split("T")[0];
+
   const gaqlQuery = `
     SELECT campaign.name, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions
     FROM campaign
-    WHERE segments.date DURING LAST_30_DAYS AND campaign.status = 'ENABLED'
+    WHERE segments.date BETWEEN '${fromIso}' AND '${toIso}' AND campaign.status = 'ENABLED'
   `;
 
   const headers: Record<string, string> = {
@@ -307,7 +313,9 @@ export async function fetchGoogleAdsData(
  */
 export async function fetchMetaAdsData(
   accessToken: string,
-  adAccountId: string
+  adAccountId: string,
+  from?: Date,
+  to?: Date
 ): Promise<MetaAdsData> {
   const token = normalizeBearerToken(accessToken);
   if (looksLikeMetaAppAccessToken(token)) {
@@ -319,11 +327,15 @@ export async function fetchMetaAdsData(
   const accountId = normalizeMetaAdAccountId(adAccountId);
   const baseHeaders = { Authorization: `Bearer ${token}` };
 
+  const fromIso = (from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).toISOString().split("T")[0];
+  const toIso = (to || new Date()).toISOString().split("T")[0];
+  const timeRange = JSON.stringify({ since: fromIso, until: toIso });
+
   const insightsUrl = new URL(
     `https://graph.facebook.com/${META_GRAPH_VERSION}/act_${accountId}/insights`
   );
   insightsUrl.searchParams.set("fields", "spend,impressions,clicks,actions");
-  insightsUrl.searchParams.set("date_preset", "last_30d");
+  insightsUrl.searchParams.set("time_range", timeRange);
   insightsUrl.searchParams.set("level", "account");
 
   const insightsResponse = await fetch(insightsUrl, { headers: baseHeaders });
@@ -359,7 +371,7 @@ export async function fetchMetaAdsData(
     `https://graph.facebook.com/${META_GRAPH_VERSION}/act_${accountId}/campaigns`
   );
   campaignsUrl.searchParams.set("fields", "name,insights{spend,impressions,clicks,actions}");
-  campaignsUrl.searchParams.set("date_preset", "last_30d");
+  campaignsUrl.searchParams.set("time_range", timeRange);
 
   const campaignsResponse = await fetch(campaignsUrl, { headers: baseHeaders });
   if (!campaignsResponse.ok) {
@@ -427,7 +439,9 @@ export async function fetchMetaAdsData(
  */
 export async function fetchMetaPageData(
   accessToken: string,
-  pageId: string
+  pageId: string,
+  from?: Date,
+  to?: Date
 ): Promise<MetaPageData> {
   const token = normalizeBearerToken(accessToken);
   if (looksLikeMetaAppAccessToken(token)) {
@@ -462,7 +476,11 @@ export async function fetchMetaPageData(
     `https://graph.facebook.com/${META_GRAPH_VERSION}/${normalizedPageId}/insights`
   );
   insightsUrl.searchParams.set("metric", "page_impressions,page_engaged_users");
-  insightsUrl.searchParams.set("period", "days_28");
+
+  const fromTime = Math.floor((from || new Date(Date.now() - 28 * 24 * 60 * 60 * 1000)).getTime() / 1000);
+  const toTime = Math.floor((to || new Date()).getTime() / 1000);
+  insightsUrl.searchParams.set("since", fromTime.toString());
+  insightsUrl.searchParams.set("until", toTime.toString());
 
   const insightsResponse = await fetch(insightsUrl, { headers: baseHeaders });
   if (!insightsResponse.ok) {
@@ -557,7 +575,9 @@ export async function fetchMetaPageData(
 export async function fetchMetaInstagramData(
   accessToken: string,
   instagramAccountId: string,
-  options?: { pageId?: string }
+  options?: { pageId?: string },
+  from?: Date,
+  to?: Date
 ): Promise<InstagramData> {
   const token = normalizeBearerToken(accessToken);
   if (looksLikeMetaAppAccessToken(token)) {
@@ -588,7 +608,13 @@ export async function fetchMetaInstagramData(
 
   const mediaUrl = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${accountId}/media`);
   mediaUrl.searchParams.set("fields", "id,caption,timestamp,like_count,comments_count");
-  mediaUrl.searchParams.set("limit", "25");
+  
+  const fromTime = Math.floor((from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).getTime() / 1000);
+  const toTime = Math.floor((to || new Date()).getTime() / 1000);
+  mediaUrl.searchParams.set("since", fromTime.toString());
+  mediaUrl.searchParams.set("until", toTime.toString());
+  
+  mediaUrl.searchParams.set("limit", "100");
 
   const mediaResponse = await fetch(mediaUrl, { headers: baseHeaders });
   if (!mediaResponse.ok) {
@@ -645,7 +671,9 @@ export async function fetchRedditAdsData(
   clientSecret: string,
   refreshToken: string,
   adAccountId: string,
-  userAgent?: string | null
+  userAgent?: string | null,
+  from?: Date,
+  to?: Date
 ): Promise<RedditAdsData> {
   const normalizedUserAgent = (userAgent || process.env.REDDIT_USER_AGENT || "WIPGuard/1.0").trim();
   const baseHeaders = {
@@ -706,13 +734,15 @@ export async function fetchRedditAdsData(
     campaignNameById.set(id, campaign.name || id);
   }
 
-  const now = new Date();
-  const startsAt = new Date(now);
-  startsAt.setUTCDate(startsAt.getUTCDate() - 29);
-  startsAt.setUTCHours(0, 0, 0, 0);
+  const defaultTo = new Date();
+  const defaultFrom = new Date(defaultTo);
+  defaultFrom.setUTCDate(defaultFrom.getUTCDate() - 29);
+  defaultFrom.setUTCHours(0, 0, 0, 0);
+
+  const startsAt = from || defaultFrom;
+  const endsAt = to || defaultTo;
+
   const startsAtIso = startsAt.toISOString().replace(/\.\d{3}Z$/, "Z");
-  const endsAt = new Date(now);
-  endsAt.setUTCMinutes(0, 0, 0);
   const endsAtIso = endsAt.toISOString().replace(/\.\d{3}Z$/, "Z");
   const reportsResponse = await fetch(
     `https://ads-api.reddit.com/api/v3/ad_accounts/${cleanAccountId}/reports`,
@@ -794,6 +824,8 @@ export async function fetchRedditAdsData(
     totalSpend30d: totalSpend,
     totalImpressions,
     totalClicks,
+    totalConversions: 0,
+    cpa: 0,
     ctr,
     cpc,
     campaigns,

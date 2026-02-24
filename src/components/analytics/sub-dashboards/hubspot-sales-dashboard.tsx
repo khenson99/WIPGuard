@@ -6,6 +6,7 @@ import { SubDashboardTemplate } from "../sub-dashboard-template";
 import { StatCard } from "../stat-card";
 import { DashboardSectionCard } from "../dashboard-section-card";
 import { HorizontalFunnel, DonutChart, CHART_PALETTE } from "@/components/charts";
+import { VisualFunnel } from "../visual-funnel";
 
 /* ── Formatting helpers ────────────────────────────── */
 
@@ -61,20 +62,21 @@ export function HubspotSalesDashboard({ data }: HubspotSalesDashboardProps) {
 
   const { funnel, deals } = hubspot;
 
-  /* ── Funnel stages for HorizontalFunnel ─── */
-  const funnelStages = funnel.stages.map((stage) => ({
-    label: stage.label,
-    value: stage.count,
-    color: STAGE_COLORS[stage.label] ?? CHART_PALETTE[0],
-  }));
+  /* ── Rep Scoreboard ─── */
+  const repRows = [...(funnel.dealsByRep || [])].sort((a, b) => b.value - a.value);
 
-  /* ── Source attribution donut ─── */
-  const sourceSegments = funnel.dealsBySource.map((src, i) => ({
-    name: src.source || "Unknown",
-    value: src.count,
-    color: CHART_PALETTE[i % CHART_PALETTE.length],
-  }));
-  const totalSourceDeals = funnel.dealsBySource.reduce((sum, s) => sum + s.count, 0);
+  /* ── Source attribution table ─── */
+  const sourceRows = funnel.dealsBySource
+    .sort((a, b) => b.value - a.value)
+    .map((src) => {
+      const winPct = src.count > 0 ? ((src.closedWon || 0) / src.count) * 100 : 0;
+      const churnPct = src.count > 0 ? ((src.churned || 0) / src.count) * 100 : 0;
+      return {
+        ...src,
+        winPct,
+        churnPct,
+      };
+    });
 
   /* ── Top deals ─── */
   const topDeals = (deals ?? []).slice(0, 10);
@@ -109,62 +111,43 @@ export function HubspotSalesDashboard({ data }: HubspotSalesDashboardProps) {
         </div>
       }
       heroChart={
-        <HorizontalFunnel
-          stages={funnelStages}
-          height={Math.max(280, funnelStages.length * 36)}
-          valueFormatter={(v) => v.toLocaleString()}
-        />
+        <div className="w-full">
+          <VisualFunnel stages={funnel.stages.map(s => ({ id: s.stageId, label: s.label, count: s.count, value: s.value }))} />
+        </div>
       }
       panels={
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <DashboardSectionCard title="Source Attribution">
-            {sourceSegments.length === 0 ? (
+        <div className="flex flex-col gap-6">
+          <DashboardSectionCard title="Performance by Source" subtitle="Analyze conversion and retention by lead origin">
+            {sourceRows.length === 0 ? (
               <p className="py-4 text-center text-xs text-muted-foreground">No source data</p>
-            ) : (
-              <div className="flex items-center justify-center gap-6">
-                <DonutChart
-                  segments={sourceSegments}
-                  size={180}
-                  centerValue={totalSourceDeals.toLocaleString()}
-                  centerLabel="Deals"
-                />
-                <div className="space-y-2">
-                  {sourceSegments.map((seg) => (
-                    <div key={seg.name} className="flex items-center gap-2 text-xs">
-                      <span
-                        className="inline-block h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: seg.color }}
-                      />
-                      <span className="text-muted-foreground">{seg.name}</span>
-                      <span className="font-medium tabular-nums text-foreground">{seg.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </DashboardSectionCard>
-
-          <DashboardSectionCard title="Top Deals">
-            {topDeals.length === 0 ? (
-              <p className="py-4 text-center text-xs text-muted-foreground">No deal data available</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border text-left text-muted-foreground">
-                      <th className="pb-2 font-medium">Deal</th>
-                      <th className="pb-2 font-medium">Stage</th>
-                      <th className="pb-2 text-right font-medium">Amount</th>
                       <th className="pb-2 font-medium">Source</th>
+                      <th className="pb-2 text-right font-medium">Deals</th>
+                      <th className="pb-2 text-right font-medium">Pipeline Value</th>
+                      <th className="pb-2 text-right font-medium">% Closed Won</th>
+                      <th className="pb-2 text-right font-medium">Follow-Up Needed</th>
+                      <th className="pb-2 text-right font-medium">% Churned</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {topDeals.map((deal) => (
-                      <tr key={deal.dealId} className="border-b border-border/50">
-                        <td className="max-w-[140px] truncate py-2 text-foreground">{deal.dealName}</td>
-                        <td className="py-2 text-muted-foreground">{deal.stageLabel}</td>
-                        <td className="py-2 text-right tabular-nums text-foreground">{fmt$(deal.amount)}</td>
-                        <td className="py-2 text-muted-foreground">{deal.source || "—"}</td>
+                    {sourceRows.map((src) => (
+                      <tr key={src.source} className="border-b border-border/50">
+                        <td className="py-2.5 font-medium text-foreground">{src.source || "Unknown"}</td>
+                        <td className="py-2.5 text-right tabular-nums text-foreground">{src.count.toLocaleString()}</td>
+                        <td className="py-2.5 text-right tabular-nums text-foreground">{fmt$(src.value)}</td>
+                        <td className="py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
+                          {fmtPct(src.winPct)}
+                        </td>
+                        <td className="py-2.5 text-right tabular-nums text-foreground">
+                          {src.followUpNeeded?.toLocaleString() || 0}
+                        </td>
+                        <td className="py-2.5 text-right tabular-nums text-red-600 dark:text-red-400">
+                          {fmtPct(src.churnPct)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -172,6 +155,70 @@ export function HubspotSalesDashboard({ data }: HubspotSalesDashboardProps) {
               </div>
             )}
           </DashboardSectionCard>
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <DashboardSectionCard title="Sales Rep Scoreboard" subtitle="Pipeline and win metrics by team member">
+              {repRows.length === 0 ? (
+                <p className="py-4 text-center text-xs text-muted-foreground">No rep data available</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border text-left text-muted-foreground">
+                        <th className="pb-2 font-medium">Rep Name</th>
+                        <th className="pb-2 text-right font-medium">Total Deals</th>
+                        <th className="pb-2 text-right font-medium">Total Pipeline</th>
+                        <th className="pb-2 text-right font-medium">Won Count</th>
+                        <th className="pb-2 text-right font-medium">Won Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {repRows.map((rep) => (
+                        <tr key={rep.repName} className="border-b border-border/50">
+                          <td className="py-2.5 text-foreground">{rep.repName}</td>
+                          <td className="py-2.5 text-right tabular-nums text-foreground">{rep.count.toLocaleString()}</td>
+                          <td className="py-2.5 text-right tabular-nums text-foreground">{fmt$(rep.value)}</td>
+                          <td className="py-2.5 text-right tabular-nums text-foreground">{rep.closedWon.toLocaleString()}</td>
+                          <td className="py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
+                            {fmt$(rep.closedWonValue)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </DashboardSectionCard>
+
+            <DashboardSectionCard title="Top Deals">
+              {topDeals.length === 0 ? (
+                <p className="py-4 text-center text-xs text-muted-foreground">No deal data available</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border text-left text-muted-foreground">
+                        <th className="pb-2 font-medium">Deal</th>
+                        <th className="pb-2 font-medium">Stage</th>
+                        <th className="pb-2 text-right font-medium">Amount</th>
+                        <th className="pb-2 font-medium">Source</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {topDeals.map((deal) => (
+                        <tr key={deal.dealId} className="border-b border-border/50">
+                          <td className="max-w-[140px] truncate py-2.5 text-foreground">{deal.dealName}</td>
+                          <td className="py-2.5 text-muted-foreground">{deal.stageLabel}</td>
+                          <td className="py-2.5 text-right tabular-nums text-foreground">{fmt$(deal.amount)}</td>
+                          <td className="py-2.5 text-muted-foreground">{deal.source || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </DashboardSectionCard>
+          </div>
         </div>
       }
     />

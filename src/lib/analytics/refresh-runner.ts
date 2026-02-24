@@ -121,13 +121,13 @@ async function refreshForUserAndRange(input: {
   const jobs: Array<{ providerKey: string; run: () => Promise<unknown> }> = [];
 
   if (creds.hubspotToken) {
-    jobs.push({ providerKey: "hubspot", run: () => fetchHubSpotData(creds.hubspotToken!) });
+    jobs.push({ providerKey: "hubspot", run: () => fetchHubSpotData(creds.hubspotToken!, fromDate, toDate) });
   }
   if (creds.stripeKey) {
-    jobs.push({ providerKey: "stripe", run: () => fetchStripeData(creds.stripeKey!) });
+    jobs.push({ providerKey: "stripe", run: () => fetchStripeData(creds.stripeKey!, fromDate, toDate) });
   }
   if (creds.mercuryKey) {
-    jobs.push({ providerKey: "mercury", run: () => fetchMercuryData(creds.mercuryKey!) });
+    jobs.push({ providerKey: "mercury", run: () => fetchMercuryData(creds.mercuryKey!, fromDate, toDate) });
   }
   const hasGAServiceAccount = Boolean(
     creds.gaClientEmail && creds.gaPrivateKey

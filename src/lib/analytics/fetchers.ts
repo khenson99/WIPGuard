@@ -32,7 +32,7 @@ const HUBSPOT_STAGE_MAP: Record<string, string> = {
   "176498593": "Budgetary Quote Sent",
   "176498594": "Payment Link Sent",
   "1524801846": "Free Trial",
-  "1499784891": "Unlikely",
+  "1499784891": "Closed Lost",
   "1722537990": "Freemium",
   contractsent: "Subscription",
   closedwon: "Closed Won",
@@ -42,7 +42,11 @@ const HUBSPOT_STAGE_MAP: Record<string, string> = {
   "1916862197": "On Hold",
 };
 
-export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData> {
+export async function fetchHubSpotData(
+  accessToken: string,
+  from: Date,
+  to: Date
+): Promise<HubSpotData> {
   const token = accessToken.trim();
   const baseUrl = "https://api.hubapi.com";
   const headers: Record<string, string> = {
@@ -55,7 +59,7 @@ export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData
   const allDeals: { properties: Record<string, string> }[] = [];
   let after: string | undefined;
   const properties =
-    "dealstage,amount,dealname,closedate,createdate,hs_analytics_source,num_associated_contacts,hubspot_owner_id,hs_lastmodifieddate,stripe_customer_id,stripe_customer";
+    "dealstage,amount,dealname,closedate,createdate,hs_analytics_source,num_associated_contacts,hubspot_owner_id,hs_lastmodifieddate,hs_lastactivitydate,stripe_customer_id,stripe_customer";
 
   for (let page = 0; page < 10; page++) {
     const url = new URL(`${baseUrl}/crm/v3/objects/deals`);
@@ -79,25 +83,111 @@ export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData
     if (!after || results.length === 0) break;
   }
 
-  const totalDeals = allDeals.length;
+  // ── Fetch owners ──
+  const ownerMap: Record<string, string> = {};
+  try {
+    const ownersUrl = `${baseUrl}/crm/v3/owners?limit=100`;
+    const ownersRes = await fetch(ownersUrl, { headers });
+    if (ownersRes.ok) {
+      const ownersData = await ownersRes.json();
+      for (const owner of ownersData.results || []) {
+        ownerMap[owner.id] = owner.firstName && owner.lastName 
+          ? `${owner.firstName} ${owner.lastName}`
+          : owner.email || "Unknown";
+      }
+    }
+  } catch {
+    // Non-critical
+  }
 
-  // Aggregate by stage
-  const stageAgg: Record<string, { count: number; value: number }> = {};
-  const sourceAgg: Record<string, { count: number; value: number }> = {};
+  // Filter out inactive pre-demo deals
+  const now = new Date();
+  const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+  const activeDeals = [];
 
   for (const deal of allDeals) {
     const props = deal.properties || {};
+    const stageId = props.dealstage || "unknown";
+    const mappedStage = HUBSPOT_STAGE_MAP[stageId] || stageId;
+
+    if (mappedStage === "Prospect" || mappedStage === "Lead") {
+      const lastModified = props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate) : null;
+      const lastActivity = props.hs_lastactivitydate ? new Date(props.hs_lastactivitydate) : null;
+      
+      const mostRecent = 
+        lastActivity && lastModified ? new Date(Math.max(lastActivity.getTime(), lastModified.getTime()))
+        : lastActivity || lastModified || null;
+
+      if (!mostRecent || mostRecent < ninetyDaysAgo) {
+        continue; // Skip this deal
+      }
+    }
+    activeDeals.push(deal);
+  }
+
+  const totalDeals = activeDeals.length;
+
+  // Aggregate by stage
+  const stageAgg: Record<string, { count: number; value: number }> = {};
+  const sourceAgg: Record<string, { count: number; value: number; closedWon: number; followUpNeeded: number; churned: number }> = {};
+  const repAgg: Record<string, { count: number; value: number; closedWon: number; closedWonValue: number }> = {};
+
+  let notActivatedCount = 0;
+  let actualChurnCount = 0;
+
+  for (const deal of activeDeals) {
+    const props = deal.properties || {};
+    // Skip if deal is not within the date range depending on stage type
+    // We typically want to filter closed deals by closedate, created deals by createdate
+    const rawCloseDate = props.closedate ? new Date(props.closedate) : null;
+    const rawCreateDate = props.createdate ? new Date(props.createdate) : null;
+    
+    // Simple filter: only include if it was created before 'to' 
+    // AND (not closed OR closed after 'from')
+    if (rawCreateDate && rawCreateDate > to) continue;
+    if (rawCloseDate && rawCloseDate < from) continue;
+
     const stage = props.dealstage || "unknown";
+    const mappedLabel = HUBSPOT_STAGE_MAP[stage] || stage;
     const amount = parseFloat(props.amount) || 0;
     const source = props.hs_analytics_source || "Unknown";
+    const ownerId = props.hubspot_owner_id;
+    const repName = ownerId ? ownerMap[ownerId] || "Unknown" : "Unassigned";
 
     if (!stageAgg[stage]) stageAgg[stage] = { count: 0, value: 0 };
     stageAgg[stage].count++;
     stageAgg[stage].value += amount;
 
-    if (!sourceAgg[source]) sourceAgg[source] = { count: 0, value: 0 };
+    if (!sourceAgg[source]) sourceAgg[source] = { count: 0, value: 0, closedWon: 0, followUpNeeded: 0, churned: 0 };
     sourceAgg[source].count++;
     sourceAgg[source].value += amount;
+    
+    if (stage === "closedwon") sourceAgg[source].closedWon++;
+    if (mappedLabel === "Demo Follow-Up") sourceAgg[source].followUpNeeded++;
+    if (mappedLabel === "Churn") {
+      sourceAgg[source].churned++;
+      
+      const createdMs = rawCreateDate ? rawCreateDate.getTime() : 0;
+      const updatedMs = props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).getTime() 
+        : rawCloseDate ? rawCloseDate.getTime() 
+        : new Date().getTime();
+      
+      const daysSinceCreation = createdMs > 0 ? (updatedMs - createdMs) / 86_400_000 : Infinity;
+      
+      if (createdMs > 0 && daysSinceCreation <= 60) {
+        notActivatedCount++;
+      } else {
+        actualChurnCount++;
+      }
+    }
+
+    if (!repAgg[repName]) repAgg[repName] = { count: 0, value: 0, closedWon: 0, closedWonValue: 0 };
+    repAgg[repName].count++;
+    repAgg[repName].value += amount;
+    if (stage === "closedwon") {
+      repAgg[repName].closedWon++;
+      repAgg[repName].closedWonValue += amount;
+    }
   }
 
   const stages: DealStage[] = Object.entries(stageAgg).map(([id, data]) => ({
@@ -107,9 +197,10 @@ export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData
     value: data.value,
   }));
 
-  const deals = allDeals.map((deal) => {
+  const deals = activeDeals.map((deal) => {
     const props = deal.properties || {};
     const stageId = props.dealstage || "unknown";
+    const ownerId = props.hubspot_owner_id || null;
     return {
       dealId: String((deal as { id?: string }).id ?? ""),
       dealName: props.dealname || "Untitled deal",
@@ -117,7 +208,8 @@ export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData
       stageLabel: HUBSPOT_STAGE_MAP[stageId] || stageId,
       amount: parseFloat(props.amount) || 0,
       source: props.hs_analytics_source || "Unknown",
-      ownerId: props.hubspot_owner_id || null,
+      ownerId,
+      repName: ownerId ? ownerMap[ownerId] || "Unknown" : "Unassigned",
       updatedAt: props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).toISOString() : null,
       createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
       stripeCustomerId: props.stripe_customer_id || props.stripe_customer || null,
@@ -126,8 +218,10 @@ export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData
 
   const closedWon = stageAgg["closedwon"]?.count || 0;
   const closedLost = stageAgg["closedlost"]?.count || 0;
+  // Unlikely is now consolidated into Closed Lost, but if any stray remains check it
   const unlikely = stageAgg["1499784891"]?.count || 0;
-  const churn = stageAgg["1574807548"]?.count || 0;
+  const churn = actualChurnCount;
+  const notActivated = notActivatedCount;
   const subscriptions = stageAgg["contractsent"]?.count || 0;
   const noShows = stageAgg["1955958510"]?.count || 0;
   const demoScheduled = stageAgg["presentationscheduled"]?.count || 0;
@@ -136,7 +230,7 @@ export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData
   const wonValue = stageAgg["closedwon"]?.value || 0;
   const winRate = closedWon + closedLost > 0
     ? (closedWon / (closedWon + closedLost)) * 100 : 0;
-  const terminal = closedWon + closedLost + unlikely + churn;
+  const terminal = closedWon + closedLost + unlikely + churn + notActivated;
   const effectiveWinRate = terminal > 0 ? (closedWon / terminal) * 100 : 0;
   const noShowRate = demoScheduled + noShows > 0
     ? (noShows / (demoScheduled + noShows)) * 100 : 0;
@@ -163,6 +257,7 @@ export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData
       closedLost,
       unlikely,
       churn,
+      notActivated,
       activeSubscriptions: subscriptions,
       noShows,
       demoScheduled,
@@ -176,6 +271,16 @@ export async function fetchHubSpotData(accessToken: string): Promise<HubSpotData
         source,
         count: data.count,
         value: data.value,
+        closedWon: data.closedWon,
+        followUpNeeded: data.followUpNeeded,
+        churned: data.churned,
+      })),
+      dealsByRep: Object.entries(repAgg).map(([repName, data]) => ({
+        repName,
+        count: data.count,
+        value: data.value,
+        closedWon: data.closedWon,
+        closedWonValue: data.closedWonValue,
       })),
     },
     contacts: {
@@ -212,11 +317,16 @@ interface StripeCharge {
   status: string;
 }
 
-export async function fetchStripeData(apiKey: string): Promise<StripeData> {
+export async function fetchStripeData(
+  apiKey: string,
+  from: Date,
+  to: Date
+): Promise<StripeData> {
   const headers = { Authorization: `Bearer ${apiKey}` };
   const baseUrl = "https://api.stripe.com/v1";
-  const now = Math.floor(Date.now() / 1000);
-  const sixMonthsAgo = now - 180 * 24 * 60 * 60;
+  
+  const fromMs = Math.floor(from.getTime() / 1000);
+  const toMs = Math.floor(to.getTime() / 1000);
 
   const fetchStripe = async (url: string): Promise<Response> =>
     fetch(url, { headers, cache: "no-store" });
@@ -265,11 +375,11 @@ export async function fetchStripeData(apiKey: string): Promise<StripeData> {
   };
 
   const fetchChargesSixMonths = async (): Promise<StripeCharge[]> => {
-    // Paginate through all charges in the last 6 months
+    // Paginate through all charges in the specified date range
     const allCharges: StripeCharge[] = [];
     let startingAfter: string | undefined;
     for (let page = 0; page < 5; page++) {
-      let chargesUrl = `${baseUrl}/charges?limit=100&created[gte]=${sixMonthsAgo}`;
+      let chargesUrl = `${baseUrl}/charges?limit=100&created[gte]=${fromMs}&created[lte]=${toMs}`;
       if (startingAfter) chargesUrl += `&starting_after=${startingAfter}`;
 
       const chargesRes = await fetchStripe(chargesUrl);
@@ -316,9 +426,35 @@ export async function fetchStripeData(apiKey: string): Promise<StripeData> {
 
   const { pastDueCount, trialingCount } = counts;
 
-  // ── Bucket charges by month for trend ──
-  const thirtyDaysAgo = now - 30 * 24 * 60 * 60;
-  const sixtyDaysAgo = now - 60 * 24 * 60 * 60;
+  // ── Bucket charges into the range ──
+  // Calculate previous period for comparison based on the length of the selected range
+  const now = Math.floor(Date.now() / 1000);
+  const rangeLengthSecs = toMs - fromMs;
+  const prevToMs = fromMs;
+  const prevFromMs = fromMs - rangeLengthSecs;
+  
+  // Also fetch previous period charges for growth calculation
+  const fetchPrevCharges = async (): Promise<StripeCharge[]> => {
+    const prevCharges: StripeCharge[] = [];
+    let prevStartingAfter: string | undefined;
+    for (let page = 0; page < 5; page++) {
+      let chargesUrl = `${baseUrl}/charges?limit=100&created[gte]=${prevFromMs}&created[lte]=${prevToMs}`;
+      if (prevStartingAfter) chargesUrl += `&starting_after=${prevStartingAfter}`;
+
+      const chargesRes = await fetchStripe(chargesUrl);
+      if (!chargesRes.ok) break;
+      const chargesData = await chargesRes.json();
+      const batch = chargesData.data || [];
+      prevCharges.push(...batch);
+
+      if (!chargesData.has_more || batch.length === 0) break;
+      prevStartingAfter = batch[batch.length - 1].id;
+    }
+    return prevCharges;
+  };
+  
+  const prevCharges = await fetchPrevCharges();
+
   const monthBuckets: Record<string, number> = {};
 
   let rev30d = 0, revPrev30d = 0, succeeded = 0, failed = 0;
@@ -329,13 +465,17 @@ export async function fetchStripeData(apiKey: string): Promise<StripeData> {
 
     if (charge.status === "succeeded") {
       monthBuckets[monthKey] = (monthBuckets[monthKey] || 0) + amt;
+      rev30d += amt;
+      succeeded++;
+    } else if (charge.status === "failed") {
+      failed++;
     }
-
-    if (charge.created >= thirtyDaysAgo) {
-      if (charge.status === "succeeded") { rev30d += amt; succeeded++; }
-      else if (charge.status === "failed") failed++;
-    } else if (charge.created >= sixtyDaysAgo) {
-      if (charge.status === "succeeded") revPrev30d += amt;
+  }
+  
+  for (const charge of prevCharges) {
+    const amt = (charge.amount || 0) / 100;
+    if (charge.status === "succeeded") {
+      revPrev30d += amt;
     }
   }
 
@@ -391,7 +531,11 @@ export async function fetchStripeData(apiKey: string): Promise<StripeData> {
 // MERCURY FETCHER
 // ═══════════════════════════════════════════════════════════
 
-export async function fetchMercuryData(apiKey: string): Promise<MercuryData> {
+export async function fetchMercuryData(
+  apiKey: string,
+  from: Date,
+  to: Date
+): Promise<MercuryData> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
@@ -416,14 +560,14 @@ export async function fetchMercuryData(apiKey: string): Promise<MercuryData> {
   const totalBalance = accounts.reduce((s: number, a: { balance: number }) => s + a.balance, 0);
 
   // Fetch recent transactions for cash flow
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-    .toISOString().split("T")[0];
+  const fromIsoDate = from.toISOString().split("T")[0];
+  const toIsoDate = to.toISOString().split("T")[0];
 
   let inflows = 0, outflows = 0;
   for (const account of accounts) {
     try {
       const txRes = await fetch(
-        `${baseUrl}/account/${account.accountId}/transactions?start=${thirtyDaysAgo}&limit=500`,
+        `${baseUrl}/account/${account.accountId}/transactions?start=${fromIsoDate}&end=${toIsoDate}&limit=500`,
         { headers }
       );
       if (!txRes.ok) continue;

@@ -606,9 +606,9 @@ export async function GET(request: Request) {
   });
 
   const fetchers = ([
-    { key: "hubspot", fn: () => (creds.hubspotToken ? fetchHubSpotData(creds.hubspotToken) : Promise.reject(new Error("Missing HubSpot credential"))) },
-    { key: "stripe", fn: () => (creds.stripeKey ? fetchStripeData(creds.stripeKey) : Promise.reject(new Error("Missing Stripe credential"))) },
-    { key: "mercury", fn: () => (creds.mercuryKey ? fetchMercuryData(creds.mercuryKey) : Promise.reject(new Error("Missing Mercury credential"))) },
+    { key: "hubspot", fn: () => (creds.hubspotToken ? fetchHubSpotData(creds.hubspotToken, fromDate, toDate) : Promise.reject(new Error("Missing HubSpot credential"))) },
+    { key: "stripe", fn: () => (creds.stripeKey ? fetchStripeData(creds.stripeKey, fromDate, toDate) : Promise.reject(new Error("Missing Stripe credential"))) },
+    { key: "mercury", fn: () => (creds.mercuryKey ? fetchMercuryData(creds.mercuryKey, fromDate, toDate) : Promise.reject(new Error("Missing Mercury credential"))) },
     {
       key: "googleAnalytics",
       fn: () => {
@@ -618,7 +618,7 @@ export async function GET(request: Request) {
         const hasOAuth = process.env.GA_REFRESH_TOKEN && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET;
         
         if (propId && ((email && key) || hasOAuth)) {
-          return fetchGAData(propId, hasOAuth ? null : email, hasOAuth ? null : key);
+          return fetchGAData(propId, hasOAuth ? null : email, hasOAuth ? null : key, fromDate, toDate);
         }
         return Promise.reject(new Error("Missing Google Analytics credential"));
       },
@@ -637,7 +637,9 @@ export async function GET(request: Request) {
               creds.googleAdsRefreshToken,
               creds.googleAdsClientId,
               creds.googleAdsClientSecret,
-              creds.googleAdsLoginCustomerId
+              creds.googleAdsLoginCustomerId,
+              fromDate,
+              toDate
             )
           : Promise.reject(new Error("Missing Google Ads credential")),
     },
@@ -645,14 +647,14 @@ export async function GET(request: Request) {
       key: "metaAds",
       fn: () =>
         creds.metaAccessToken && creds.metaAdAccountId
-          ? fetchMetaAdsData(creds.metaAccessToken, creds.metaAdAccountId)
+          ? fetchMetaAdsData(creds.metaAccessToken, creds.metaAdAccountId, fromDate, toDate)
           : Promise.reject(new Error("Missing Meta Ads credential")),
     },
     {
       key: "metaPage",
       fn: () =>
         creds.metaAccessToken && creds.metaPageId
-          ? fetchMetaPageData(creds.metaAccessToken, creds.metaPageId)
+          ? fetchMetaPageData(creds.metaAccessToken, creds.metaPageId, fromDate, toDate)
           : Promise.reject(new Error("Missing Meta Page credential")),
     },
     {
@@ -664,7 +666,9 @@ export async function GET(request: Request) {
               creds.redditClientSecret,
               creds.redditRefreshToken,
               creds.redditAdAccountId,
-              creds.redditUserAgent
+              creds.redditUserAgent,
+              fromDate,
+              toDate
             )
           : Promise.reject(new Error("Missing Reddit Ads credential")),
     },
@@ -672,7 +676,7 @@ export async function GET(request: Request) {
       key: "webflow",
       fn: () =>
         creds.webflowApiToken && creds.webflowSiteId
-          ? fetchWebflowData(creds.webflowApiToken, creds.webflowSiteId)
+          ? fetchWebflowData(creds.webflowApiToken, creds.webflowSiteId, fromDate, toDate)
           : Promise.reject(new Error("Missing Webflow credential")),
     },
     {

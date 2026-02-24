@@ -303,16 +303,26 @@ function buildJourneyPathAnalysis(data: AnalyticsDashboardData): JourneyPathRow[
         churnedAt: stripeEvent?.canceledAt ?? deal.updatedAt ?? null,
       }];
     });
-    const churned = churnedDeals.length;
 
-    // Not Activated: churned within 30 days of deal creation (signup)
-    const notActivated = churnedDeals.filter(({ deal, churnedAt }) => {
+    // Not Activated: churned within 60 days of deal creation (signup)
+    const notActivatedDeals = churnedDeals.filter(({ deal, churnedAt }) => {
       if (!deal.createdAt || !churnedAt) return false;
       const createdMs = new Date(deal.createdAt).getTime();
       const churnedMs = new Date(churnedAt).getTime();
       const daysSinceCreation = (churnedMs - createdMs) / 86_400_000;
-      return daysSinceCreation <= 30;
-    }).length;
+      return daysSinceCreation <= 60;
+    });
+    const notActivated = notActivatedDeals.length;
+
+    // Actual Churned: churned > 60 days of deal creation OR missing dates
+    const actualChurnedDeals = churnedDeals.filter(({ deal, churnedAt }) => {
+      if (!deal.createdAt || !churnedAt) return true;
+      const createdMs = new Date(deal.createdAt).getTime();
+      const churnedMs = new Date(churnedAt).getTime();
+      const daysSinceCreation = (churnedMs - createdMs) / 86_400_000;
+      return daysSinceCreation > 60;
+    });
+    const churned = actualChurnedDeals.length;
 
     rows.push({
       source,
@@ -333,7 +343,7 @@ function buildJourneyPathAnalysis(data: AnalyticsDashboardData): JourneyPathRow[
       churned,
       churnedPct: pct(churned, closedWon),
       notActivated,
-      notActivatedPct: pct(notActivated, churned),
+      notActivatedPct: pct(notActivated, closedWon),
     });
   }
 
