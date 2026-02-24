@@ -456,6 +456,7 @@ enum IntegrationProvider {
   META_PAGE
   SEMRUSH
   PYLON
+  GOOGLE_ANALYTICS
 }
 
 enum IntegrationConnectionStatus {

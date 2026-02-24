@@ -1027,7 +1027,7 @@ export interface AnalyticsDashboardData {
   googleAds: GoogleAdsData | null;
   metaAds: MetaAdsData | null;
   metaPage: MetaPageData | null;
-  instagram: InstagramData | null;
+  instagram?: InstagramData | null;
   redditAds: RedditAdsData | null;
   webflow: WebflowData | null;
   coda: CodaKanbanData | null;

@@ -773,6 +773,11 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
       null,
       Boolean(process.env.GA_PROPERTY_ID && ((process.env.GA_CLIENT_EMAIL && process.env.GA_PRIVATE_KEY) || (process.env.GA_REFRESH_TOKEN && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)))
     ),
+    [IntegrationProvider.SEMRUSH]: buildFreshness(
+      IntegrationProvider.SEMRUSH,
+      null,
+      Boolean(process.env.SEMRUSH_API_TOKEN)
+    ),
     [IntegrationProvider.PYLON]: buildFreshness(
       IntegrationProvider.PYLON,
       pylonConnection,
