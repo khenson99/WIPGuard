@@ -853,6 +853,27 @@ export function SalesSlackDashboard({ data }: IntegrationChildDashboardProps) {
   );
 }
 
+export function SalesPerformanceDashboard({ data }: IntegrationChildDashboardProps) {
+  if (!data) {
+    return (
+      <EmptyProviderState
+        title="Sales performance data is unavailable"
+        description="Sales performance metrics are unavailable for this range."
+        reasons={providerErrors(data, ["lifecycleFunnel", "funnelJourney"])}
+      />
+    );
+  }
+
+  return (
+    <DashboardShell
+      title="Sales Performance"
+      subtitle="Pipeline conversion and velocity metrics used to understand sales motion health."
+    >
+      <SalesFunnelTab data={data} />
+    </DashboardShell>
+  );
+}
+
 export function CustomerSuccessPylonDashboard({ data }: IntegrationChildDashboardProps) {
   const pylon = data?.pylon;
   const reasons = providerErrors(data, ["pylon"]);
@@ -945,6 +966,7 @@ export const INTEGRATION_CHILD_DASHBOARD_REGISTRY: Record<string, (props: Integr
   "finance-hubspot": FinanceHubSpotDashboard,
   "sales-hubspot": SalesHubSpotDashboard,
   "sales-stripe": SalesStripeDashboard,
+  "sales-performance": SalesPerformanceDashboard,
   "sales-google-workspace": SalesGoogleWorkspaceDashboard,
   "sales-slack": SalesSlackDashboard,
   "cs-pylon": CustomerSuccessPylonDashboard,

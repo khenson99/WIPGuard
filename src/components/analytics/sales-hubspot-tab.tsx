@@ -204,7 +204,11 @@ export function SalesHubspotTab({ data }: SalesHubspotTabProps) {
         />
       </div>
 
-      <RepScoreboardCard rows={repRows} />
+      <RepScoreboardCard
+        rows={repRows}
+        deals={deals}
+        stripeChurnEvents={data?.stripe?.subscriptions?.recentChurnEvents ?? []}
+      />
 
       {/* ── Sales Funnel ──────────────────────────── */}
       <SectionCard title="Sales Pipeline Funnel" subtitle="Deal progression through stages">

@@ -110,6 +110,9 @@ export function IntegrationsTab() {
   const [semrushToken, setSemrushToken] = useState("");
   const [semrushDomain, setSemrushDomain] = useState("");
 
+  const [pylonToken, setPylonToken] = useState("");
+  const [pylonBaseUrl, setPylonBaseUrl] = useState("");
+
   const [ruleStates, setRuleStates] = useState<Record<string, RuleLoadState>>(createInitialRuleStates);
   const [expandedProviderSlug, setExpandedProviderSlug] = useState<string | null>(null);
 
@@ -169,6 +172,10 @@ export function IntegrationsTab() {
 
       const coda = integrations.find((item) => item.slug === "coda");
       setCodaDocInput(coda?.docId ?? "");
+
+      const pylon = integrations.find((item) => item.slug === "pylon");
+      const storedBaseUrl = asRecord(pylon?.metadata ?? null).baseUrl;
+      setPylonBaseUrl(typeof storedBaseUrl === "string" ? storedBaseUrl : "");
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : "Could not load integrations.");
     } finally {
@@ -445,6 +452,37 @@ export function IntegrationsTab() {
     }
   }, [semrushDomain, semrushToken, fetchIntegrations]);
 
+  const connectPylon = useCallback(async () => {
+    setLoadingProviderAction("pylon");
+    setError(null);
+
+    try {
+      const token = pylonToken.trim();
+      const baseUrl = pylonBaseUrl.trim();
+      const payload: { token?: string; baseUrl?: string } = {};
+
+      if (token) payload.token = token;
+      if (baseUrl) payload.baseUrl = baseUrl;
+
+      const response = await fetch("/api/integrations/pylon/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseErrorMessage(response, "Failed to connect Pylon"));
+      }
+
+      setPylonToken("");
+      await fetchIntegrations();
+    } catch (connectError) {
+      setError(connectError instanceof Error ? connectError.message : "Failed to connect Pylon");
+    } finally {
+      setLoadingProviderAction(null);
+    }
+  }, [fetchIntegrations, pylonBaseUrl, pylonToken]);
+
   const saveRule = useCallback(
     async (
       ruleId: string,
@@ -687,6 +725,11 @@ export function IntegrationsTab() {
               onSemrushTokenChange={setSemrushToken}
               onSemrushDomainChange={setSemrushDomain}
               onConnectSemrush={connectSemrush}
+              pylonToken={pylonToken}
+              pylonBaseUrl={pylonBaseUrl}
+              onPylonTokenChange={setPylonToken}
+              onPylonBaseUrlChange={setPylonBaseUrl}
+              onConnectPylon={connectPylon}
               onRuleReload={(ruleId) => loadRule(ruleId)}
               onRuleSave={saveRule}
               onRuleRun={runRule}

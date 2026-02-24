@@ -714,7 +714,12 @@ export async function GET(request: Request) {
       key: "pylon",
       fn: () =>
         creds.pylonApiKey
-          ? fetchPylonData({ apiKey: creds.pylonApiKey, from: range.from, to: range.to })
+          ? fetchPylonData({
+              apiKey: creds.pylonApiKey,
+              from: range.from,
+              to: range.to,
+              baseUrl: creds.pylonBaseUrl ?? undefined,
+            })
           : Promise.reject(new Error("Missing Pylon credential")),
     },
     {

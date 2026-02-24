@@ -449,6 +449,7 @@ async function fetchProviderPayload(input: {
       apiKey: creds.pylonApiKey,
       from: range.from,
       to: range.to,
+      baseUrl: creds.pylonBaseUrl ?? undefined,
     });
   }
 

@@ -130,7 +130,11 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
         </div>
       </div>
 
-      <RepScoreboardCard rows={funnel.dealsByRep ?? []} />
+      <RepScoreboardCard
+        rows={funnel.dealsByRep ?? []}
+        deals={data.hubspot.deals ?? []}
+        stripeChurnEvents={data.stripe?.subscriptions?.recentChurnEvents ?? []}
+      />
 
       {/* Bottleneck Analysis + Terminal Stages */}
       <div className="grid gap-4 lg:grid-cols-2">

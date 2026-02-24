@@ -6,6 +6,12 @@ export const TASK_STATUS_OPTIONS = [
   { label: "Not Done", value: "NOT_DONE" },
 ] as const;
 
+export const RANGE_PRESET_OPTIONS = [
+  { label: "Last 7 days", value: "7d" },
+  { label: "Last 30 days", value: "30d" },
+  { label: "Last 90 days", value: "90d" },
+] as const;
+
 export const RULE_DESCRIPTORS: RuleDescriptor[] = [
   {
     id: "gmail-capture",
@@ -317,6 +323,40 @@ export const RULE_DESCRIPTORS: RuleDescriptor[] = [
       { key: "dueColumn", label: "Due Column", type: "text" },
       { key: "ownerColumn", label: "Owner Column", type: "text" },
       { key: "maxRows", label: "Max Rows", type: "number", min: 1, max: 500 },
+    ],
+  },
+  {
+    id: "pylon-conversation-sync",
+    provider: "pylon",
+    title: "Pylon Conversation Sync",
+    ruleKey: "pylon_conversation_sync",
+    endpoint: "/api/integrations/pylon/conversation-sync",
+    runAction: "sync",
+    supportsDryRun: true,
+    supportsStatusOverride: true,
+    editorType: "generic",
+    fields: [
+      { key: "rangePreset", label: "Range", type: "enum", options: [...RANGE_PRESET_OPTIONS] },
+      { key: "contextKey", label: "Context Key", type: "text" },
+    ],
+  },
+  {
+    id: "pylon-issue-task-sync",
+    provider: "pylon",
+    title: "Pylon Issues → Task Sync",
+    ruleKey: "pylon_issue_task_sync",
+    endpoint: "/api/integrations/pylon/issue-task-sync",
+    runAction: "sync",
+    supportsDryRun: true,
+    supportsStatusOverride: true,
+    editorType: "generic",
+    fields: [
+      { key: "rangePreset", label: "Range", type: "enum", options: [...RANGE_PRESET_OPTIONS] },
+      { key: "onlyUrgent", label: "Only Urgent", type: "boolean" },
+      { key: "includeTags", label: "Include Tags", type: "string-list", description: "One tag per line." },
+      { key: "excludeTags", label: "Exclude Tags", type: "string-list", description: "One tag per line." },
+      { key: "defaultTaskStatus", label: "Default Task Status", type: "enum", options: [...TASK_STATUS_OPTIONS] },
+      { key: "pylonStatusToTaskStatus", label: "Pylon Status → Task Status", type: "string-status-map" },
     ],
   },
 ];
