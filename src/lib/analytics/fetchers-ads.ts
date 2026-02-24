@@ -152,7 +152,7 @@ function extractRedditSpend(metric: UnknownRecord): number {
     metric.total_spend ??
     null;
   if (direct !== null) {
-    return readNumber(direct) / 1_000_000;
+    return readNumber(direct);
   }
 
   const micros =

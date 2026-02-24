@@ -314,15 +314,7 @@ function buildJourneyPathAnalysis(data: AnalyticsDashboardData): JourneyPathRow[
     });
     const notActivated = notActivatedDeals.length;
 
-    // Actual Churned: churned > 60 days of deal creation OR missing dates
-    const actualChurnedDeals = churnedDeals.filter(({ deal, churnedAt }) => {
-      if (!deal.createdAt || !churnedAt) return true;
-      const createdMs = new Date(deal.createdAt).getTime();
-      const churnedMs = new Date(churnedAt).getTime();
-      const daysSinceCreation = (churnedMs - createdMs) / 86_400_000;
-      return daysSinceCreation > 60;
-    });
-    const churned = actualChurnedDeals.length;
+    const churned = churnedDeals.length;
 
     rows.push({
       source,

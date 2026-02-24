@@ -8,6 +8,7 @@ import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
 import { StatCard } from "@/components/analytics/stat-card";
 import { BarDisplay, RingStat } from "@/components/analytics/bar-display";
+import { RepScoreboardCard } from "./rep-scoreboard-card";
 import {
   fmt$, fmtN, fmtPct,
   AlertBanner, DataTable, InsightCard,
@@ -35,6 +36,7 @@ export function SalesHubspotTab({ data }: SalesHubspotTabProps) {
 
   const funnel = hs.funnel;
   const deals = hs.deals ?? [];
+  const repRows = funnel.dealsByRep ?? [];
 
   /* ── Alerts ──────────────────────────────────────── */
 
@@ -201,6 +203,8 @@ export function SalesHubspotTab({ data }: SalesHubspotTabProps) {
           icon={<Target className="h-4 w-4" />}
         />
       </div>
+
+      <RepScoreboardCard rows={repRows} />
 
       {/* ── Sales Funnel ──────────────────────────── */}
       <SectionCard title="Sales Pipeline Funnel" subtitle="Deal progression through stages">
