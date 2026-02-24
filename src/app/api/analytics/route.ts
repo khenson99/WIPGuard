@@ -614,11 +614,11 @@ export async function GET(request: Request) {
       fn: () => {
         const propId = creds.gaPropertyId || process.env.GA_PROPERTY_ID;
         const email = creds.gaClientEmail || process.env.GA_CLIENT_EMAIL;
-        const key = creds.gaPrivateKey || process.env.GA_PRIVATE_KEY?.replace(/\\n/g, "\\n");
+        const key = creds.gaPrivateKey || process.env.GA_PRIVATE_KEY?.replace(/\\n/g, "\n");
         const hasOAuth = process.env.GA_REFRESH_TOKEN && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET;
         
         if (propId && ((email && key) || hasOAuth)) {
-          return fetchGAData(propId, email, key);
+          return fetchGAData(propId, hasOAuth ? null : email, hasOAuth ? null : key);
         }
         return Promise.reject(new Error("Missing Google Analytics credential"));
       },

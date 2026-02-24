@@ -144,8 +144,8 @@ async function refreshForUserAndRange(input: {
       run: () =>
         fetchGAData(
           creds.gaPropertyId!,
-          creds.gaClientEmail ?? "",
-          creds.gaPrivateKey ?? ""
+          hasGAServiceAccount ? creds.gaClientEmail : null,
+          hasGAServiceAccount ? creds.gaPrivateKey : null
         ),
     });
   }

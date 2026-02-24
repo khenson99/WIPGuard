@@ -454,6 +454,7 @@ enum IntegrationProvider {
   GOOGLE_ADS
   META_ADS
   META_PAGE
+  SEMRUSH
   PYLON
 }
 

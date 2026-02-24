@@ -3,6 +3,7 @@ import {
   GoogleAdsData,
   MetaAdsData,
   MetaPageData,
+  InstagramData,
   RedditAdsData,
   AnalyticsTimestamp,
 } from "./types";
@@ -151,7 +152,7 @@ function extractRedditSpend(metric: UnknownRecord): number {
     metric.total_spend ??
     null;
   if (direct !== null) {
-    return readNumber(direct);
+    return readNumber(direct) / 1_000_000;
   }
 
   const micros =
@@ -544,6 +545,10 @@ export async function fetchMetaPageData(
     pageFollowers,
     postReach30d,
     postEngagement30d,
+    traffic: 0,
+    bounceRate: 0,
+    clicks: 0,
+    returningVisitors: 0,
     topPosts,
     _meta: makeMeta("live"),
   };
@@ -553,7 +558,7 @@ export async function fetchMetaInstagramData(
   accessToken: string,
   instagramAccountId: string,
   options?: { pageId?: string }
-): Promise<Record<string, unknown>> {
+): Promise<InstagramData> {
   const token = normalizeBearerToken(accessToken);
   if (looksLikeMetaAppAccessToken(token)) {
     throw new Error(
@@ -612,14 +617,22 @@ export async function fetchMetaInstagramData(
 
   const engagement30d = media.reduce((sum, item) => sum + item.likes + item.comments, 0);
 
+  const topPosts = media.slice(0, 5).map((m) => ({
+    message: m.caption,
+    reach: m.likes + m.comments, // Using engagements as proxy reach if reach isn't pulled via insights
+    engagement: m.likes + m.comments,
+    createdAt: m.timestamp,
+  }));
+
   return {
-    accountId: accountData.id ?? accountId,
-    username: accountData.username ?? null,
     followers: readNumber(accountData.followers_count),
-    mediaCount: readNumber(accountData.media_count),
+    reach30d: engagement30d, // Using engagements as proxy for reach30d
     engagement30d,
-    linkedPageId: options?.pageId ?? null,
-    media,
+    traffic: 0,
+    bounceRate: 0,
+    clicks: 0,
+    returningVisitors: 0,
+    topPosts,
     _meta: makeMeta("live"),
   };
 }

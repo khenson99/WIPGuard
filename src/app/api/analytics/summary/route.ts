@@ -118,7 +118,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       mercury: Boolean(creds.mercuryKey),
       googleWorkspace: Boolean(creds.googleWorkspaceAccessToken),
       slack: Boolean(creds.slackAccessToken),
-      googleAnalytics: Boolean(creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey),
+      googleAnalytics: Boolean(
+        creds.gaPropertyId &&
+          ((creds.gaClientEmail && creds.gaPrivateKey) ||
+            (process.env.GA_REFRESH_TOKEN &&
+              process.env.GOOGLE_CLIENT_ID &&
+              process.env.GOOGLE_CLIENT_SECRET))
+      ),
       googleAds: Boolean(
         creds.googleAdsDevToken &&
           creds.googleAdsCustomerId &&

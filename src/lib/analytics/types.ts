@@ -254,6 +254,26 @@ export interface MetaPageData {
   pageFollowers: number;
   postReach30d: number;
   postEngagement30d: number;
+  traffic: number;
+  bounceRate: number;
+  clicks: number;
+  returningVisitors: number;
+  topPosts: { message: string; reach: number; engagement: number; createdAt: string }[];
+  _meta: AnalyticsTimestamp;
+}
+
+// ══════════════════════════════════════════════════════════
+// INSTAGRAM PAGE TYPES
+// ══════════════════════════════════════════════════════════
+
+export interface InstagramData {
+  followers: number;
+  reach30d: number;
+  engagement30d: number;
+  traffic: number;
+  bounceRate: number;
+  clicks: number;
+  returningVisitors: number;
   topPosts: { message: string; reach: number; engagement: number; createdAt: string }[];
   _meta: AnalyticsTimestamp;
 }
@@ -288,6 +308,10 @@ export interface WebflowData {
   totalCollections: number;
   formSubmissions: WebflowFormEntry[];
   customDomains: string[];
+  traffic: number;
+  bounceRate: number;
+  clicks: number;
+  returningVisitors: number;
   _meta: AnalyticsTimestamp;
 }
 
@@ -987,6 +1011,7 @@ export interface AnalyticsDashboardData {
   googleAds: GoogleAdsData | null;
   metaAds: MetaAdsData | null;
   metaPage: MetaPageData | null;
+  instagram: InstagramData | null;
   redditAds: RedditAdsData | null;
   webflow: WebflowData | null;
   coda: CodaKanbanData | null;

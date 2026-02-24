@@ -107,6 +107,9 @@ export function IntegrationsTab() {
   const [codaToken, setCodaToken] = useState("");
   const [codaDocInput, setCodaDocInput] = useState("");
 
+  const [semrushToken, setSemrushToken] = useState("");
+  const [semrushDomain, setSemrushDomain] = useState("");
+
   const [ruleStates, setRuleStates] = useState<Record<string, RuleLoadState>>(createInitialRuleStates);
   const [expandedProviderSlug, setExpandedProviderSlug] = useState<string | null>(null);
 
@@ -403,6 +406,45 @@ export function IntegrationsTab() {
     }
   }, [codaDocInput, codaToken, fetchIntegrations]);
 
+  const connectSemrush = useCallback(async () => {
+    setLoadingProviderAction("semrush");
+    setError(null);
+
+    try {
+      const token = semrushToken.trim();
+      const domain = semrushDomain.trim();
+      const payload: { token?: string; domain?: string } = {};
+
+      if (token) payload.token = token;
+      if (domain) payload.domain = domain;
+
+      const response = await fetch("/api/integrations/semrush/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseErrorMessage(response, "Failed to connect SEMrush"));
+      }
+
+      const successPayload = (await response.json().catch(() => null)) as
+        | { domain?: string | null }
+        | null;
+
+      setSemrushToken("");
+      if (typeof successPayload?.domain === "string") {
+        setSemrushDomain(successPayload.domain);
+      }
+
+      await fetchIntegrations();
+    } catch (connectError) {
+      setError(connectError instanceof Error ? connectError.message : "Failed to connect SEMrush");
+    } finally {
+      setLoadingProviderAction(null);
+    }
+  }, [semrushDomain, semrushToken, fetchIntegrations]);
+
   const saveRule = useCallback(
     async (
       ruleId: string,
@@ -640,6 +682,11 @@ export function IntegrationsTab() {
               onCodaTokenChange={setCodaToken}
               onCodaDocChange={setCodaDocInput}
               onConnectCoda={connectCoda}
+              semrushToken={semrushToken}
+              semrushDomain={semrushDomain}
+              onSemrushTokenChange={setSemrushToken}
+              onSemrushDomainChange={setSemrushDomain}
+              onConnectSemrush={connectSemrush}
               onRuleReload={(ruleId) => loadRule(ruleId)}
               onRuleSave={saveRule}
               onRuleRun={runRule}

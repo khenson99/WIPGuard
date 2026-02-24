@@ -29,6 +29,7 @@ export function createEmptyAnalyticsDashboardData(input: {
     googleAds: null,
     metaAds: null,
     metaPage: null,
+    instagram: null,
     redditAds: null,
     webflow: null,
     coda: null,

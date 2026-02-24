@@ -414,6 +414,10 @@ export async function fetchWebflowData(
     totalCollections: collections.length,
     formSubmissions,
     customDomains,
+    traffic: 0,
+    bounceRate: 0,
+    clicks: 0,
+    returningVisitors: 0,
     _meta: makeMeta("live"),
   };
 }
