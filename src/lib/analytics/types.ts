@@ -747,6 +747,7 @@ export interface JourneyPath {
   count: number;
   kanbanCards: number;
   freeTrials: number;
+  demos: number;
   avgDaysToClose: number;
   avgValue: number;
 }
@@ -760,6 +761,7 @@ export interface ChannelAttribution {
   lastTouchDeals: number;
   kanbanCards: number;
   freeTrials: number;
+  demos: number;
   totalRevenue: number;
   avgDealValue: number;
   roi: number | null;

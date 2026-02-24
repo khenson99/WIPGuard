@@ -30,6 +30,7 @@ export function PathExploration({ paths }: PathExplorationProps) {
         count: path.count,
         kanbanCards: path.kanbanCards,
         freeTrials: path.freeTrials,
+        demos: path.demos,
         avgDays: path.avgDaysToClose,
         value: path.avgValue,
       };
@@ -56,6 +57,7 @@ export function PathExploration({ paths }: PathExplorationProps) {
               <th className="pb-2 text-right">Accounts</th>
               <th className="pb-2 text-right">Kanban Actions</th>
               <th className="pb-2 text-right">Free Trials</th>
+              <th className="pb-2 text-right">Demos</th>
               <th className="pb-2 text-right">Average Value</th>
             </tr>
           </thead>
@@ -87,6 +89,9 @@ export function PathExploration({ paths }: PathExplorationProps) {
                 </td>
                 <td className="py-3 text-right tabular-nums text-muted-foreground">
                   {row.freeTrials > 0 ? row.freeTrials : "-"}
+                </td>
+                <td className="py-3 text-right tabular-nums text-muted-foreground">
+                  {row.demos > 0 ? row.demos : "-"}
                 </td>
                 <td className="py-3 text-right font-medium tabular-nums text-foreground">
                   ${row.value.toLocaleString()}

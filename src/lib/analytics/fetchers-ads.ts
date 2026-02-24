@@ -759,7 +759,7 @@ export async function fetchRedditAdsData(
           ends_at: endsAtIso,
           time_zone_id: "UTC",
           breakdowns: ["CAMPAIGN_ID"],
-          fields: ["CAMPAIGN_ID", "SPEND", "IMPRESSIONS", "CLICKS"],
+          fields: ["CAMPAIGN_ID", "SPEND", "IMPRESSIONS", "CLICKS", "CONVERSIONS"],
         },
       }),
     }
@@ -782,7 +782,8 @@ export async function fetchRedditAdsData(
   let totalSpend = 0;
   let totalImpressions = 0;
   let totalClicks = 0;
-  const campaignRollup = new Map<string, { spend: number; impressions: number; clicks: number }>();
+  let totalConversions = 0;
+  const campaignRollup = new Map<string, { spend: number; impressions: number; clicks: number; conversions: number }>();
 
   for (const metricRaw of reportsPayload.data?.metrics ?? []) {
     const metric = asRecord(metricRaw);
@@ -791,15 +792,18 @@ export async function fetchRedditAdsData(
     const spend = extractRedditSpend(metric);
     const impressions = readNumber(metric.impressions ?? metric.IMPRESSIONS);
     const clicks = readNumber(metric.clicks ?? metric.CLICKS);
+    const conversions = readNumber(metric.conversions ?? metric.CONVERSIONS);
 
     totalSpend += spend;
     totalImpressions += impressions;
     totalClicks += clicks;
+    totalConversions += conversions;
 
-    const existing = campaignRollup.get(campaignId) ?? { spend: 0, impressions: 0, clicks: 0 };
+    const existing = campaignRollup.get(campaignId) ?? { spend: 0, impressions: 0, clicks: 0, conversions: 0 };
     existing.spend += spend;
     existing.impressions += impressions;
     existing.clicks += clicks;
+    existing.conversions += conversions;
     campaignRollup.set(campaignId, existing);
   }
 
@@ -811,7 +815,7 @@ export async function fetchRedditAdsData(
       spend: data.spend,
       impressions: data.impressions,
       clicks: data.clicks,
-      conversions: 0,
+      conversions: data.conversions,
       ctr,
       cpc,
     };
@@ -819,13 +823,14 @@ export async function fetchRedditAdsData(
 
   const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
   const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+  const cpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
 
   return {
     totalSpend30d: totalSpend,
     totalImpressions,
     totalClicks,
-    totalConversions: 0,
-    cpa: 0,
+    totalConversions,
+    cpa,
     ctr,
     cpc,
     campaigns,
