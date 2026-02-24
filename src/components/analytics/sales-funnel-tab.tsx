@@ -7,6 +7,7 @@ import {
 import type { AnalyticsDashboardData, DealStage } from "@/lib/analytics/types";
 import { StatCard } from "./stat-card";
 import { RingStat } from "./bar-display";
+import { RepScoreboardCard } from "./rep-scoreboard-card";
 
 function fmt$(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
@@ -128,6 +129,8 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
           })}
         </div>
       </div>
+
+      <RepScoreboardCard rows={funnel.dealsByRep ?? []} />
 
       {/* Bottleneck Analysis + Terminal Stages */}
       <div className="grid gap-4 lg:grid-cols-2">

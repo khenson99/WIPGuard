@@ -305,6 +305,7 @@ interface StripeSubItem {
 }
 
 interface StripeSub {
+  id: string;
   items: { data: StripeSubItem[] };
   customer: string;
   canceled_at: number;
@@ -350,28 +351,41 @@ export async function fetchStripeData(
     pastDueCount: number;
     trialingCount: number;
   }> => {
-    let pastDueCount = 0;
-    let trialingCount = 0;
     try {
-      const [pastDueRes, trialingRes] = await Promise.all([
-        fetchStripe(`${baseUrl}/subscriptions?limit=1&status=past_due`),
-        fetchStripe(`${baseUrl}/subscriptions?limit=1&status=trialing`),
+      const countSubscriptionsByStatus = async (status: string): Promise<number> => {
+        let count = 0;
+        let startingAfter: string | undefined;
+
+        for (let page = 0; page < 1000; page++) {
+          let url = `${baseUrl}/subscriptions?limit=100&status=${encodeURIComponent(status)}`;
+          if (startingAfter) url += `&starting_after=${startingAfter}`;
+
+          const res = await fetchStripe(url);
+          if (!res.ok) {
+            throw new Error(`Stripe subscriptions(${status}) error ${res.status}`);
+          }
+
+          const data = await res.json();
+          const batch = (data?.data || []) as StripeSub[];
+          count += batch.length;
+
+          if (!data?.has_more || batch.length === 0) break;
+          startingAfter = batch[batch.length - 1]?.id;
+          if (!startingAfter) break;
+        }
+
+        return count;
+      };
+
+      const [pastDueCount, trialingCount] = await Promise.all([
+        countSubscriptionsByStatus("past_due"),
+        countSubscriptionsByStatus("trialing"),
       ]);
-      if (pastDueRes.ok) {
-        const pd = await pastDueRes.json();
-        pastDueCount = pd.data?.length || 0;
-        // Stripe doesn't return total count on list, but we fetch all if needed
-        if (pd.has_more) pastDueCount = 99; // approximate; indicates "many"
-      }
-      if (trialingRes.ok) {
-        const tr = await trialingRes.json();
-        trialingCount = tr.data?.length || 0;
-        if (tr.has_more) trialingCount = 99;
-      }
+      return { pastDueCount, trialingCount };
     } catch {
       // Non-critical
     }
-    return { pastDueCount, trialingCount };
+    return { pastDueCount: 0, trialingCount: 0 };
   };
 
   const fetchChargesSixMonths = async (): Promise<StripeCharge[]> => {
