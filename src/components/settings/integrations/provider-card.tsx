@@ -73,6 +73,11 @@ interface ProviderCardProps {
   onCodaTokenChange: (value: string) => void;
   onCodaDocChange: (value: string) => void;
   onConnectCoda: () => Promise<void>;
+  semrushToken?: string;
+  semrushDomain?: string;
+  onSemrushTokenChange?: (value: string) => void;
+  onSemrushDomainChange?: (value: string) => void;
+  onConnectSemrush?: () => Promise<void>;
   onRuleReload: (ruleId: string) => Promise<void>;
   onRuleSave: (
     ruleId: string,

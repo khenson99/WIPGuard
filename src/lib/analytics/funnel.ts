@@ -550,6 +550,30 @@ function buildInsights(
     });
   }
 
+  // Check top paths and trials for insights
+  const trials = data.stripe?.subscriptions?.trialing ?? 0;
+  if (trials > 0) {
+     insights.push({
+      id: "funnel-trials",
+      severity: "info",
+      headline: `Healthy top-of-funnel with ${trials} active trials`,
+      detail: `Ensure automated email sequences are active for trial users to maximize conversion to paid.`,
+     });
+  }
+
+  // Evaluate ad spend ROI if applicable
+  const googleSpend = data.googleAds?.totalSpend30d ?? 0;
+  const metaSpend = data.metaAds?.totalSpend30d ?? 0;
+  
+  if (googleSpend > 0 && metaSpend > 0) {
+     insights.push({
+       id: "ad-diversification",
+       severity: "info",
+       headline: "Ad spend diversified",
+       detail: `Monitor Channel ROI table closely to determine if Google Ads ($${googleSpend}) or Meta ($${metaSpend}) provides more efficient CPL/CAC.`,
+     });
+  }
+
   if (insights.length === 0) {
     insights.push({
       id: "funnel-stable",

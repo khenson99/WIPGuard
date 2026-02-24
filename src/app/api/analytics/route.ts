@@ -882,6 +882,10 @@ export async function GET(request: Request) {
   if (domains.has("aiInsights")) {
     result.aiInsights = buildAiInsightsBundle(result);
   }
+  
+  if (domains.has("customerJourney")) {
+    result.customerJourney = buildCustomerJourneyData(result);
+  }
   if (domains.has("recommendations")) {
     result.recommendations = buildRecommendations(result);
   }

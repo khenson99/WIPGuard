@@ -745,17 +745,24 @@ export interface TouchpointSummary {
 export interface JourneyPath {
   sequence: TouchpointChannel[];
   count: number;
+  kanbanCards: number;
+  freeTrials: number;
   avgDaysToClose: number;
   avgValue: number;
 }
 
 export interface ChannelAttribution {
   channel: TouchpointChannel;
+  traffic: number | null;
+  cost: number | null;
   firstTouchDeals: number;
   assistedDeals: number;
   lastTouchDeals: number;
+  kanbanCards: number;
+  freeTrials: number;
   totalRevenue: number;
   avgDealValue: number;
+  roi: number | null;
 }
 
 export interface CustomerJourneyData {

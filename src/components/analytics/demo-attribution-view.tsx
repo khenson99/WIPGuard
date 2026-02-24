@@ -10,6 +10,7 @@ const OUTCOME_COLORS: Record<DemoOutcome, string> = {
   "no-show": "#ef4444",
   rescheduled: "#fbbf24",
   pending: "#6b7280",
+  unknown: "#94a3b8",
 };
 
 function fmt$(n: number) {

@@ -9,6 +9,7 @@ const OUTCOME_CONFIG: Record<DemoOutcome, { label: string; color: string; icon: 
   "no-show": { label: "No-Show", color: "#ef4444", icon: XCircle },
   rescheduled: { label: "Rescheduled", color: "#fbbf24", icon: RotateCw },
   pending: { label: "Pending", color: "#6b7280", icon: Clock },
+  unknown: { label: "Unknown", color: "#94a3b8", icon: Clock },
 };
 
 export function DemoSchedulingView({ data }: { data: AnalyticsDashboardData | null }) {

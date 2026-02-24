@@ -101,6 +101,8 @@ describe("analytics lifecycle funnel", () => {
       totalSpend30d: 400,
       totalImpressions: 90000,
       totalClicks: 1000,
+      totalConversions: 0,
+      cpa: 0,
       ctr: 1.1,
       cpc: 0.4,
       campaigns: [],

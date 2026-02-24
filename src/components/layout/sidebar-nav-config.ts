@@ -71,7 +71,6 @@ export function buildNavItems(): NavItem[] {
   });
 
   const newPages: NavItem[] = [
-    { id: "customer-journey", href: "/analytics/customer-journey", label: "Customer Journey", icon: Route },
     { id: "ai-insights", href: "/analytics/ai-insights", label: "AI Insights", icon: Sparkles },
   ];
 
