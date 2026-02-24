@@ -229,6 +229,9 @@ function buildTopPaths(journeys: CustomerJourneyRecord[]): JourneyPath[] {
     if (journey.touchpoints.some((tp) => tp.channel === "stripe" && tp.value === null)) {
       entry.freeTrials += 1;
     }
+    if (journey.currentStage !== "Prospect" && journey.currentStage !== "Lead") {
+      entry.demos += 1;
+    }
     if (journey.touchpoints.some((tp) => tp.channel === "hubspot" && tp.detail.toLowerCase().includes("demo"))) {
       entry.demos += 1;
     }

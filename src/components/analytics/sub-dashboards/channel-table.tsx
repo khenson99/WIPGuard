@@ -24,6 +24,7 @@ export function ChannelTable({ attribution }: ChannelTableProps) {
         cost: attr.cost ?? null,
         kanbanCards: attr.kanbanCards,
         freeTrials: attr.freeTrials,
+        demos: attr.demos,
         deals: attr.firstTouchDeals + attr.assistedDeals + attr.lastTouchDeals,
         revenue: attr.totalRevenue,
         roi: attr.roi ?? null,
@@ -50,7 +51,7 @@ export function ChannelTable({ attribution }: ChannelTableProps) {
               <th className="pb-2">Channel</th>
               <th className="pb-2 text-right">Traffic</th>
               <th className="pb-2 text-right">Cost</th>
-              <th className="pb-2 text-right">Kanban / Trials</th>
+              <th className="pb-2 text-right">Kanban / Trials / Demos</th>
               <th className="pb-2 text-right">Deals</th>
               <th className="pb-2 text-right">Revenue</th>
               <th className="pb-2 text-right">ROI</th>
@@ -67,7 +68,7 @@ export function ChannelTable({ attribution }: ChannelTableProps) {
                   {row.cost !== null ? `$${row.cost.toLocaleString()}` : "-"}
                 </td>
                 <td className="py-3 text-right tabular-nums text-muted-foreground">
-                  {row.kanbanCards} / {row.freeTrials}
+                  {row.kanbanCards} / {row.freeTrials} / {row.demos}
                 </td>
                 <td className="py-3 text-right tabular-nums text-muted-foreground">
                   {row.deals}

@@ -12,6 +12,7 @@ import {
   fetchMetaAdsData,
   fetchMetaPageData,
   fetchRedditAdsData,
+  fetchMetaInstagramData,
 } from "@/lib/analytics/fetchers-ads";
 import { fetchCodaData } from "@/lib/analytics/fetchers-coda";
 import { fetchSemrushData } from "@/lib/analytics/fetchers-semrush";
@@ -51,6 +52,7 @@ type DomainKey =
   | "googleAds"
   | "metaAds"
   | "metaPage"
+  | "instagram"
   | "redditAds"
   | "webflow"
   | "coda"
@@ -79,6 +81,7 @@ const ALL_DOMAINS: DomainKey[] = [
   "googleAds",
   "metaAds",
   "metaPage",
+  "instagram",
   "redditAds",
   "webflow",
   "coda",
@@ -120,6 +123,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "googleAnalytics",
     "googleAds",
     "metaAds",
+    "instagram",
     "redditAds",
     "webflow",
     "semrush",
@@ -172,7 +176,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   ],
   "ads-google-analytics": ["googleAnalytics"],
   "ads-google-ads": ["googleAds"],
-  "ads-meta-ads": ["metaAds"],
+  "ads-meta-ads": ["metaAds", "metaPage", "instagram"],
   "ads-reddit-ads": ["redditAds", "redditOps"],
   "ads-webflow": ["webflow"],
   "ads-semrush": ["semrush"],
@@ -193,18 +197,18 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "customer-journey": [
     "hubspot", "stripe", "mercury", "googleWorkspace", "slack",
     "webflow", "coda", "googleAnalytics", "googleAds", "metaAds",
-    "redditAds", "pylon", "customerJourney",
+    "instagram", "redditAds", "pylon", "customerJourney",
     "lifecycleFunnel", "funnelJourney", "aiInsights", "recommendations", "distilledInsights",
   ],
-  "cj-overview": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "redditAds", "pylon", "customerJourney"],
-  "cj-touchpoints": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "redditAds", "pylon", "customerJourney"],
+  "cj-overview": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
+  "cj-touchpoints": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
 
   "demo-analytics": [
     "hubspot", "googleWorkspace", "demoAnalytics",
     "lifecycleFunnel", "funnelJourney", "aiInsights", "recommendations", "distilledInsights",
   ],
   "demo-scheduling": ["hubspot", "googleWorkspace", "demoAnalytics"],
-  "demo-attribution": ["hubspot", "googleAds", "metaAds", "redditAds", "googleAnalytics", "webflow", "demoAnalytics"],
+  "demo-attribution": ["hubspot", "googleAds", "metaAds", "instagram", "redditAds", "googleAnalytics", "webflow", "demoAnalytics"],
 
   "process-analytics": [
     "hubspot", "stripe", "processAnalytics",
@@ -656,6 +660,13 @@ export async function GET(request: Request) {
         creds.metaAccessToken && creds.metaPageId
           ? fetchMetaPageData(creds.metaAccessToken, creds.metaPageId, fromDate, toDate)
           : Promise.reject(new Error("Missing Meta Page credential")),
+    },
+    {
+      key: "instagram",
+      fn: () =>
+        creds.metaAccessToken && creds.metaInstagramAccountId
+          ? fetchMetaInstagramData(creds.metaAccessToken, creds.metaInstagramAccountId, undefined, fromDate, toDate)
+          : Promise.reject(new Error("Missing Instagram credential")),
     },
     {
       key: "redditAds",
