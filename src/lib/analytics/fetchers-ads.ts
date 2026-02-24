@@ -759,7 +759,7 @@ export async function fetchRedditAdsData(
           ends_at: endsAtIso,
           time_zone_id: "UTC",
           breakdowns: ["CAMPAIGN_ID"],
-          fields: ["CAMPAIGN_ID", "SPEND", "IMPRESSIONS", "CLICKS", "CONVERSIONS"],
+          fields: ["CAMPAIGN_ID", "SPEND", "IMPRESSIONS", "CLICKS", "CONVERSION_LEAD_COUNT", "CONVERSION_PURCHASE_COUNT", "CONVERSION_SIGN_UP_COUNT", "CONVERSION_CUSTOM_COUNT"],
         },
       }),
     }
@@ -792,7 +792,11 @@ export async function fetchRedditAdsData(
     const spend = extractRedditSpend(metric);
     const impressions = readNumber(metric.impressions ?? metric.IMPRESSIONS);
     const clicks = readNumber(metric.clicks ?? metric.CLICKS);
-    const conversions = readNumber(metric.conversions ?? metric.CONVERSIONS);
+    const conversions = 
+      readNumber(metric.conversion_lead_count ?? metric.CONVERSION_LEAD_COUNT) +
+      readNumber(metric.conversion_purchase_count ?? metric.CONVERSION_PURCHASE_COUNT) +
+      readNumber(metric.conversion_sign_up_count ?? metric.CONVERSION_SIGN_UP_COUNT) +
+      readNumber(metric.conversion_custom_count ?? metric.CONVERSION_CUSTOM_COUNT);
 
     totalSpend += spend;
     totalImpressions += impressions;
