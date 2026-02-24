@@ -694,7 +694,13 @@ export async function GET(request: Request) {
       key: "coda",
       fn: () =>
         creds.codaApiToken && creds.codaDocId
-          ? fetchCodaData(creds.codaApiToken, creds.codaDocId)
+          ? fetchCodaData(creds.codaApiToken, creds.codaDocId, {
+              fromDate,
+              toDate,
+              now: toDate,
+              hubspotAccessToken: creds.hubspotToken,
+              maxRecentSubmitters: 25,
+            })
           : Promise.reject(new Error("Missing Coda credential")),
     },
     {

@@ -379,6 +379,14 @@ export interface CodaCreatorTrends {
   cardsCreated90d: Array<{ date: string; count: number }>;
 }
 
+export interface HubSpotContactSummary {
+  id: string;
+  recordUrl: string;
+  name: string | null;
+  jobTitle: string | null;
+  company: string | null;
+}
+
 export type CodaLeadFunnelStatus = "inFunnel" | "notInFunnel" | "unknown";
 
 export interface CodaEngagedLeadCandidate {
@@ -391,6 +399,18 @@ export interface CodaEngagedLeadCandidate {
   engagementScore: number;
   reasons: string[];
   funnelStatus: CodaLeadFunnelStatus;
+  hubspotSearchUrl: string;
+  hubspotContact?: HubSpotContactSummary | null;
+}
+
+export interface CodaRecentSubmitter {
+  creator: string;
+  email: string;
+  cardsCreated: number;
+  firstSubmittedAt: string | null;
+  lastSubmittedAt: string | null;
+  hubspotContact: HubSpotContactSummary | null;
+  hubspotStatus: CodaLeadFunnelStatus;
   hubspotSearchUrl: string;
 }
 
@@ -409,6 +429,14 @@ export interface CodaKanbanData {
   newCreatorFeed?: CodaNewCreatorFeedEntry[];
   trends?: CodaCreatorTrends;
   engagedLeadCandidates?: CodaEngagedLeadCandidate[];
+  rangeSummary?: {
+    from: string;
+    to: string;
+    cardsCreated: number;
+    submissions: number;
+    unknownEmailCards: number;
+  };
+  recentSubmitters?: CodaRecentSubmitter[];
   diagnostics?: CodaDiagnostics;
   _meta: AnalyticsTimestamp;
 }
