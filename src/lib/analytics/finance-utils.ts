@@ -42,7 +42,7 @@ export function computeProgressPct(
     return Math.min(Math.max((target / current) * 100, 0), 100);
   }
 
-  if (target === 0) return current > 0 ? 100 : 0;
+  if (target <= 0) return 0;
   return Math.min(Math.max((current / target) * 100, 0), 100);
 }
 
