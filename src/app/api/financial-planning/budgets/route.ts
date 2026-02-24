@@ -4,9 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 
-export async function GET(
-  _request: NextRequest,
-): Promise<NextResponse> {
+export async function GET(): Promise<NextResponse> {
   try {
     const session = await auth();
     if (!session?.user) {

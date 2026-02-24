@@ -192,7 +192,17 @@ async function refreshForUserAndRange(input: {
     jobs.push({ providerKey: "webflow", run: () => fetchWebflowData(creds.webflowApiToken!, creds.webflowSiteId!) });
   }
   if (creds.codaApiToken && creds.codaDocId) {
-    jobs.push({ providerKey: "coda", run: () => fetchCodaData(creds.codaApiToken!, creds.codaDocId!) });
+    jobs.push({
+      providerKey: "coda",
+      run: () =>
+        fetchCodaData(creds.codaApiToken!, creds.codaDocId!, {
+          fromDate,
+          toDate,
+          now: toDate,
+          hubspotAccessToken: creds.hubspotToken,
+          maxRecentSubmitters: 25,
+        }),
+    });
   }
   if (creds.semrushApiToken && creds.semrushDomain) {
     jobs.push({

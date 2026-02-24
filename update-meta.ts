@@ -3,7 +3,7 @@ import { protectIntegrationSecret } from "./src/lib/integrations/token-crypto.js
 
 async function main() {
   const metaConnection = await prisma.integrationConnection.findFirst({
-    where: { provider: "META_ADS" as any },
+    where: { provider: "META_ADS" },
   });
 
   if (!metaConnection) {
