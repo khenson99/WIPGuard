@@ -14,9 +14,7 @@ const VALID_METRICS = new Set([
   "CUSTOMER_COUNT",
 ]);
 
-export async function GET(
-  _request: NextRequest,
-): Promise<NextResponse> {
+export async function GET(): Promise<NextResponse> {
   try {
     const session = await auth();
     if (!session?.user) {
