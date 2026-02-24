@@ -5,6 +5,7 @@ import { AnalyticsDashboardData } from '@/lib/analytics/types';
 import { StatCard } from './stat-card';
 import { BarDisplay } from './bar-display';
 import ChannelTable from './channel-table';
+import { AiInsightsPanel } from './ai-insights-panel';
 import {
   Globe,
   MousePointerClick,
@@ -337,6 +338,8 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
 
   return (
     <div className="space-y-6">
+      <AiInsightsPanel bundle={data.aiInsights || null} defaultFilter="ads-traffic" />
+
       {/* Top KPI Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard

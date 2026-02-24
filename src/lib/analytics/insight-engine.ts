@@ -217,6 +217,99 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
     });
   }
 
+  // 5. SEO Dependency (Semrush)
+  const organicTraffic = data.semrush?.organicTraffic ?? 0;
+  const organicKw = data.semrush?.organicKeywords ?? 0;
+  const paidKw = data.semrush?.paidKeywords ?? 0;
+
+  if (organicTraffic > 100 && organicTraffic < sessionsCurrent * 0.1) {
+    insights.push({
+      id: "ai-ads-seo-underperforming",
+      section: "ads-traffic",
+      severity: "warning",
+      title: "Organic search heavily underperforming relative to overall traffic",
+      why: `Organic traffic is only ${toPct(organicTraffic / sessionsCurrent)} of total sessions (${organicTraffic} out of ${sessionsCurrent}). High paid dependency.`,
+      confidence: clampConfidence(0.85),
+      expectedImpact: "Scaling SEO can significantly reduce blended customer acquisition cost over 6-12 months.",
+      stale: data.staleDomains.includes("semrush") || data.staleDomains.includes("googleAnalytics"),
+      evidence: [
+        {
+          source: "Semrush",
+          domain: "semrush",
+          metric: "Organic Share",
+          value: toPct(organicTraffic / sessionsCurrent),
+          delta: `${organicKw} ranking keywords`,
+        },
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: "Audit technical SEO and content gaps",
+          payload: { title: "Technical SEO and Content Gap Audit", priority: "P2", status: "QUEUED" },
+        },
+      ],
+    });
+  } else if (organicKw > 0 && paidKw > organicKw * 2) {
+    insights.push({
+      id: "ai-ads-paid-heavy",
+      section: "ads-traffic",
+      severity: "warning",
+      title: "Over-reliance on Paid Keywords vs Organic",
+      why: `Bidding on ${paidKw} keywords but only ranking organically for ${organicKw}. Missing opportunity to capture free traffic for proven terms.`,
+      confidence: clampConfidence(0.82),
+      expectedImpact: "Building content for top-converting paid keywords can eliminate those ad costs permanently.",
+      stale: data.staleDomains.includes("semrush"),
+      evidence: [
+        {
+          source: "Semrush",
+          domain: "semrush",
+          metric: "Keywords",
+          value: `${paidKw} paid / ${organicKw} org`,
+          delta: "Paid terms outnumber organic 2:1",
+        },
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: "Map converting paid keywords to content plan",
+          payload: { title: "Paid-to-Organic Content Strategy", priority: "P2", status: "QUEUED" },
+        },
+      ],
+    });
+  }
+
+  // 6. Webflow Conversion (Webflow)
+  const submissions = data.webflow?.formSubmissions?.length ?? 0;
+  const pages = data.webflow?.totalPages ?? 0;
+  if (sessionsCurrent > 500 && submissions === 0 && pages > 0) {
+    insights.push({
+      id: "ai-ads-webflow-zero-conv",
+      section: "ads-traffic",
+      severity: "critical",
+      title: "0 form submissions despite meaningful traffic",
+      why: `The site generated ${sessionsCurrent} sessions but recorded 0 form submissions in Webflow.`,
+      confidence: clampConfidence(0.9),
+      expectedImpact: "Fixing broken forms immediately restores inbound lead flow.",
+      stale: data.staleDomains.includes("webflow") || data.staleDomains.includes("googleAnalytics"),
+      evidence: [
+        {
+          source: "Webflow",
+          domain: "webflow",
+          metric: "Form Submissions",
+          value: "0",
+          delta: `${sessionsCurrent} sessions`,
+        },
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: "Test all Webflow forms for functionality",
+          payload: { title: "Urgent: Webflow form QA", priority: "P0", status: "WORKING_ON_TODAY" },
+        },
+      ],
+    });
+  }
+
   return insights;
 }
 
@@ -1165,6 +1258,89 @@ function buildCrossdomainInsights(data: AnalyticsDashboardData): AiInsight[] {
           payload: { title: "Deal size optimization initiative", priority: "P1", status: "QUEUED" },
         },
       ],
+    });
+  }
+
+  // 4. Marketing intent mismatch: High traffic/demos but critical no-show rate
+  const gaSessions = data.googleAnalytics?.sessions30d ?? 0;
+  const demoScheduled = data.demoAnalytics?.totalScheduled ?? 0;
+  const noShowRate = data.demoAnalytics?.noShowRate ?? 0;
+  if (gaSessions > 2000 && demoScheduled > 10 && noShowRate > 35) {
+    insights.push({
+      id: "ai-xd-traffic-vs-noshow",
+      section: "demo-analytics",
+      severity: "critical",
+      title: "Marketing traffic is generating low-intent demos",
+      why: `${gaSessions.toLocaleString()} sessions drove ${demoScheduled} demos, but the no-show rate is ${noShowRate.toFixed(1)}%. Traffic quality or booking friction is an issue.`,
+      confidence: clampConfidence(0.89),
+      expectedImpact: "Adding qualification friction to the booking form can improve sales efficiency and demo attendance.",
+      stale: data.staleDomains.includes("googleAnalytics") || data.staleDomains.includes("demoAnalytics"),
+      crossDomain: true,
+      evidence: [
+        {
+          source: "Google Analytics",
+          domain: "googleAnalytics",
+          metric: "Traffic",
+          value: `${gaSessions.toLocaleString()} sessions`,
+          delta: "30d period",
+        },
+        {
+          source: "Demo Analytics",
+          domain: "demoAnalytics",
+          metric: "No-Show Rate",
+          value: `${noShowRate.toFixed(1)}%`,
+          delta: `${demoScheduled} booked`,
+        }
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: "Add qualification questions to demo form",
+          payload: { title: "Demo booking form qualification step", priority: "P1", status: "QUEUED" }
+        }
+      ]
+    });
+  }
+
+  // 5. Product delivery risk vs Runway
+  const runwayNew = data.mercury?.cashFlow?.runway ?? 0;
+  const backlogGrowth = data.product?.backlogGrowth ?? 0;
+  const throughputRate = data.product?.throughputRate ?? 0;
+
+  if (runwayNew > 0 && runwayNew < 6 && backlogGrowth > 10 && throughputRate < 0.5) {
+    insights.push({
+      id: "ai-xd-runway-vs-product",
+      section: "finance",
+      severity: runwayNew < 4 ? "critical" : "warning",
+      title: "Product delivery stalled while runway is critically low",
+      why: `Runway is ${runwayNew.toFixed(1)} months but product throughput is only ${(throughputRate * 100).toFixed(0)}% with a growing backlog. Risk of missing key milestones before next fundraise.`,
+      confidence: clampConfidence(0.85),
+      expectedImpact: "Scoping down near-term roadmap to strictly revenue-unlocking features extends runway.",
+      stale: data.staleDomains.includes("mercury") || data.staleDomains.includes("codaOps"),
+      crossDomain: true,
+      evidence: [
+        {
+          source: "Mercury",
+          domain: "mercury",
+          metric: "Runway",
+          value: `${runwayNew.toFixed(1)} months`,
+          delta: "Critical window",
+        },
+        {
+          source: "Product Signals",
+          domain: "product",
+          metric: "Throughput",
+          value: `${(throughputRate * 100).toFixed(0)}%`,
+          delta: `${backlogGrowth} tickets added`,
+        }
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: "Urgent roadmap reprioritization",
+          payload: { title: "Cut scope to minimum rev-generating features", priority: "P0", status: "WORKING_ON_TODAY" }
+        }
+      ]
     });
   }
 

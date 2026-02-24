@@ -755,7 +755,7 @@ export interface CustomerJourneyData {
 // DEMO ANALYTICS TYPES
 // ══════════════════════════════════════════════════════════
 
-export type DemoOutcome = "completed" | "no-show" | "rescheduled" | "pending";
+export type DemoOutcome = "completed" | "no-show" | "rescheduled" | "pending" | "unknown";
 
 export interface DemoRecord {
   dealId: string;

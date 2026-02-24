@@ -13,6 +13,7 @@ import {
   AlertBanner, InsightCard,
   SectionCard,
 } from "./dashboard-primitives";
+import { AiInsightsPanel } from "./ai-insights-panel";
 
 interface CsPylonTabProps {
   data: AnalyticsDashboardData | null;
@@ -159,6 +160,8 @@ export function CsPylonTab({ data }: CsPylonTabProps) {
 
   return (
     <div className="space-y-6">
+      <AiInsightsPanel bundle={data.aiInsights || null} defaultFilter="customer-success" />
+
       {/* Alerts */}
       {alerts.length > 0 && (
         <div className="space-y-2">

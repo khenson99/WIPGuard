@@ -35,12 +35,12 @@ function channelColor(channel: string): string {
 }
 
 export function AdsGoogleAnalyticsTab({ data }: AdsGoogleAnalyticsTabProps) {
-  const ga = data?.ga;
+  const ga = data?.googleAnalytics ?? data?.ga;
   const reasons = [
     ...(data?.errors ?? [])
       .filter((entry) => entry.source === "ga" || entry.source === "googleAnalytics")
       .map((entry) => entry.message),
-    ...(data?.freshness?.ga?.lastError ? [data.freshness.ga.lastError] : []),
+    ...(data?.freshness?.google_workspace?.lastError ? [data.freshness.google_workspace.lastError] : []),
   ];
 
   if (!ga) {

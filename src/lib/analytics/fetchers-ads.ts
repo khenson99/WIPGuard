@@ -727,6 +727,7 @@ export async function fetchRedditAdsData(
         data: {
           starts_at: startsAtIso,
           ends_at: endsAtIso,
+          time_zone_id: "UTC",
           breakdowns: ["CAMPAIGN_ID"],
           fields: ["CAMPAIGN_ID", "SPEND", "IMPRESSIONS", "CLICKS"],
         },

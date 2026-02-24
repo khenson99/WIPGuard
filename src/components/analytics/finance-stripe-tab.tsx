@@ -13,6 +13,7 @@ import {
   AlertBanner, ChangeIndicator, DataTable, InsightCard,
   SectionCard, type DataTableColumn,
 } from "./dashboard-primitives";
+import { AiInsightsPanel } from "./ai-insights-panel";
 
 interface FinanceStripeTabProps {
   data: AnalyticsDashboardData | null;
@@ -108,6 +109,8 @@ export function FinanceStripeTab({ data }: FinanceStripeTabProps) {
 
   return (
     <div className="space-y-6">
+      <AiInsightsPanel bundle={data.aiInsights || null} defaultFilter="finance" />
+
       {/* Alerts */}
       {alerts.length > 0 && (
         <div className="space-y-2">

@@ -14,6 +14,7 @@ import {
   SectionCard,
   type DataTableColumn,
 } from "./dashboard-primitives";
+import { AiInsightsPanel } from "./ai-insights-panel";
 
 interface SalesHubspotTabProps {
   data: AnalyticsDashboardData | null;
@@ -149,6 +150,8 @@ export function SalesHubspotTab({ data }: SalesHubspotTabProps) {
 
   return (
     <div className="space-y-6">
+      <AiInsightsPanel bundle={data.aiInsights || null} defaultFilter="sales-pipeline" />
+
       {/* Alerts */}
       {alerts.map((a, i) => (
         <AlertBanner key={i} severity={a.severity} title={a.title} description={a.description} />
