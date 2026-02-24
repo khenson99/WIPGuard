@@ -186,7 +186,7 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
             />
           </div>
           <div className="space-y-2">
-            {terminalStages
+            {[...terminalStages]
               .sort((a, b) => b.count - a.count)
               .map((stage) => (
                 <div key={stage.stageId} className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2">
@@ -227,7 +227,7 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
                 </tr>
               </thead>
               <tbody>
-                {funnel.dealsBySource
+                {[...funnel.dealsBySource]
                   .sort((a, b) => b.value - a.value)
                   .map((s, i) => {
                     const share = funnel.totalDeals > 0 ? (s.count / funnel.totalDeals) * 100 : 0;

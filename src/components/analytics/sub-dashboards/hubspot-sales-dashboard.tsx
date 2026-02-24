@@ -66,7 +66,7 @@ export function HubspotSalesDashboard({ data }: HubspotSalesDashboardProps) {
   const repRows = [...(funnel.dealsByRep || [])].sort((a, b) => b.value - a.value);
 
   /* ── Source attribution table ─── */
-  const sourceRows = funnel.dealsBySource
+  const sourceRows = [...(funnel.dealsBySource || [])]
     .sort((a, b) => b.value - a.value)
     .map((src) => {
       const winPct = src.count > 0 ? ((src.closedWon || 0) / src.count) * 100 : 0;

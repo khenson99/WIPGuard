@@ -345,7 +345,7 @@ export function FinanceHubSpotTab({ data }: FinanceHubSpotTabProps) {
                 </tr>
               </thead>
               <tbody>
-                {funnel.dealsBySource
+                {[...funnel.dealsBySource]
                   .sort((a, b) => b.value - a.value)
                   .map((s, i) => {
                     const share = funnel.totalDeals > 0 ? (s.count / funnel.totalDeals) * 100 : 0;
