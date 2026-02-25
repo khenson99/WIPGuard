@@ -112,10 +112,110 @@ export interface HubSpotData {
     repName?: string;
     updatedAt: string | null;
     createdAt: string | null;
+    closedAt?: string | null;
     stripeCustomerId?: string | null;
   }>;
   _meta: AnalyticsTimestamp;
 }
+
+export interface HubSpotContactRecord {
+  contactId: string;
+  createdAt: string | null;
+  ownerId: string | null;
+  repName: string;
+  rawSource: string | null;
+}
+
+// ══════════════════════════════════════════════════════════
+// SALES PERFORMANCE PACK (HubSpot + Stripe)
+// ══════════════════════════════════════════════════════════
+
+export type ChannelGroup = "Inbound" | "Outbound" | "Partner" | "Product-led" | "Unknown";
+
+export type SalesPerformanceChannelMappingRow = {
+  rawSource: string;
+  channelGroup: ChannelGroup;
+};
+
+export type SalesPerformanceRepMonthRow = {
+  month: string; // YYYY-MM (UTC)
+  repName: string;
+
+  leadsCreatedCount: number;
+  opportunitiesCreatedCount: number;
+  leadToOpportunityRate: number | null;
+
+  signedDealsCount: number;
+  signedDealsBookedValue: number;
+  avgSignedDealSizeBooked: number | null;
+  medianSignedDealSizeBooked: number | null;
+
+  signedDealsRealizedValue30d: number;
+  bookedToRealizedRatio30d: number | null;
+
+  opportunityToClosedRate90d: number | null;
+  winRateDecided: number | null;
+
+  signedInboundShare: number | null;
+  signedOutboundShare: number | null;
+  signedPartnerShare: number | null;
+  signedProductLedShare: number | null;
+  signedUnknownShare: number | null;
+
+  dataQuality: {
+    signedDealsMissingSourcePct: number | null;
+    signedDealsMissingCloseDatePct: number | null;
+    signedDealsMissingOwnerPct: number | null;
+    opportunitiesMissingOwnerPct: number | null;
+    leadsMissingOwnerPct: number | null;
+  };
+};
+
+export type SalesPerformanceRepMonthChannelRow = {
+  month: string; // YYYY-MM (UTC)
+  repName: string;
+  channelGroup: ChannelGroup;
+  rawSource: string;
+
+  opportunitiesCreatedCount: number;
+  signedDealsCount: number;
+  bookedValue: number;
+  avgBookedDealSize: number | null;
+  realizedValue30d: number;
+  winRateDecided: number | null;
+  avgDaysToClose: number | null;
+};
+
+export type SalesPerformanceDealAuditRow = {
+  hubspotDealId: string;
+  dealName: string;
+  ownerId: string | null;
+  repName: string;
+  createdAt: string | null;
+  closedAt: string | null;
+  stageId: string;
+  stageLabel: string;
+  amount: number;
+  rawSource: string;
+  channelGroup: ChannelGroup;
+  stripeCustomerId: string | null;
+  stripeLinked: boolean;
+  stripeRealized30d: number;
+  flags: string[];
+};
+
+export type SalesPerformancePack = {
+  from: string; // ISO
+  to: string; // ISO
+  generatedAt: string; // ISO
+  fromSnapshot: boolean;
+
+  channelMapping: SalesPerformanceChannelMappingRow[];
+  repMonthRows: SalesPerformanceRepMonthRow[];
+  repMonthChannelRows: SalesPerformanceRepMonthChannelRow[];
+  dealAuditRows: SalesPerformanceDealAuditRow[];
+  errors: string[];
+};
 
 // ══════════════════════════════════════════════════════════
 // STRIPE TYPES
@@ -1057,6 +1157,7 @@ export interface FinancialPlanningData {
 
 export interface AnalyticsDashboardData {
   hubspot: HubSpotData | null;
+  salesPerformance: SalesPerformancePack | null;
   stripe: StripeData | null;
   mercury: MercuryData | null;
   googleAnalytics: GAData | null;

@@ -61,6 +61,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           providerKey: {
             in: [
               "hubspot",
+              "salesPerformance",
               "stripe",
               "mercury",
               "googleAnalytics",
@@ -114,6 +115,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const domainConnected: Record<AnalyticsSubSection["dataDomain"], boolean> = {
       hubspot: Boolean(creds.hubspotToken),
+      salesPerformance: Boolean(creds.hubspotToken),
       stripe: Boolean(creds.stripeKey),
       mercury: Boolean(creds.mercuryKey),
       googleWorkspace: Boolean(creds.googleWorkspaceAccessToken),
@@ -157,6 +159,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const domainSnapshotKey: Partial<Record<AnalyticsSubSection["dataDomain"], string>> = {
       hubspot: "hubspot",
+      salesPerformance: "salesPerformance",
       stripe: "stripe",
       mercury: "mercury",
       googleWorkspace: "googleWorkspace",
