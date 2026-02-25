@@ -8,7 +8,7 @@ import type {
   SalesPerformancePack,
   SalesPerformanceRepMonthChannelRow,
   SalesPerformanceRepMonthRow,
-} from "@/lib/analytics/sales-performance-types";
+} from "@/lib/analytics/types";
 
 type TabId = "repMonth" | "repMonthChannel" | "dealAudit" | "channelMapping";
 
@@ -120,6 +120,38 @@ export function SalesPerformanceView({ pack }: { pack: SalesPerformancePack | nu
     return rows.filter((row) => repFilter === "All" || row.repName === repFilter);
   }, [pack, repFilter]);
 
+  const dataQuality = useMemo(() => {
+    if (!pack) return null;
+
+    const from = new Date(pack.from);
+    const to = new Date(pack.to);
+    const inRange = (iso: string | null) => {
+      if (!iso) return false;
+      const d = new Date(iso);
+      if (!Number.isFinite(d.getTime())) return false;
+      return d >= from && d <= to;
+    };
+
+    const signedDeals = dealAuditRows.filter(
+      (row) => row.stageId.toLowerCase() === "closedwon" && inRange(row.closedAt)
+    );
+    const total = signedDeals.length;
+    const pct = (n: number) => (total > 0 ? (n / total) * 100 : null);
+
+    const missingSource = signedDeals.filter((row) => row.flags.includes("missing_source")).length;
+    const missingOwner = signedDeals.filter((row) => row.flags.includes("missing_owner")).length;
+    const amountZero = signedDeals.filter((row) => row.flags.includes("amount_zero")).length;
+    const missingCloseDate = signedDeals.filter((row) => row.flags.includes("missing_close_date")).length;
+
+    return {
+      total,
+      missingSourcePct: pct(missingSource),
+      missingOwnerPct: pct(missingOwner),
+      amountZeroPct: pct(amountZero),
+      missingCloseDatePct: pct(missingCloseDate),
+    };
+  }, [pack, dealAuditRows]);
+
   const repAverages = useMemo(() => {
     if (!pack) return [];
     const reps = repNames.filter((r) => r !== "All");
@@ -168,6 +200,8 @@ export function SalesPerformanceView({ pack }: { pack: SalesPerformancePack | nu
     { key: "winRateDecided", header: "Win Rate (decided)", align: "right", render: (r) => formatRate(r.winRateDecided) },
     { key: "signedInboundShare", header: "Inbound %", align: "right", render: (r) => formatRate(r.signedInboundShare) },
     { key: "signedOutboundShare", header: "Outbound %", align: "right", render: (r) => formatRate(r.signedOutboundShare) },
+    { key: "signedPartnerShare", header: "Partner %", align: "right", render: (r) => formatRate(r.signedPartnerShare) },
+    { key: "signedProductLedShare", header: "Product-led %", align: "right", render: (r) => formatRate(r.signedProductLedShare) },
     { key: "signedUnknownShare", header: "Unknown %", align: "right", render: (r) => formatRate(r.signedUnknownShare) },
   ];
 
@@ -249,6 +283,18 @@ export function SalesPerformanceView({ pack }: { pack: SalesPerformancePack | nu
               <li key={idx}>{e}</li>
             ))}
           </ul>
+        </div>
+      ) : null}
+
+      {dataQuality && dataQuality.total > 0 ? (
+        <div className="rounded-xl border border-border bg-card p-4 text-sm">
+          <p className="font-medium text-foreground">Data quality (Closed Won in range)</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {fmtN(dataQuality.total)} signed deals · Missing source {dataQuality.missingSourcePct == null ? "—" : fmtPct(dataQuality.missingSourcePct)} · Missing owner{" "}
+            {dataQuality.missingOwnerPct == null ? "—" : fmtPct(dataQuality.missingOwnerPct)} · Amount = 0{" "}
+            {dataQuality.amountZeroPct == null ? "—" : fmtPct(dataQuality.amountZeroPct)} · Missing close date{" "}
+            {dataQuality.missingCloseDatePct == null ? "—" : fmtPct(dataQuality.missingCloseDatePct)}
+          </p>
         </div>
       ) : null}
 
@@ -429,8 +475,8 @@ export function SalesPerformanceView({ pack }: { pack: SalesPerformancePack | nu
           {tab === "channelMapping" ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-xs text-muted-foreground">
-                  Mapping is heuristic; update classification rules in `src/lib/analytics/sales-performance.ts` if needed.
+                  <p className="text-xs text-muted-foreground">
+                  Mapping is heuristic; update classification rules in `src/lib/analytics/fetchers.ts` (`classifyChannelGroup`) if needed.
                 </p>
                 <button
                   type="button"
@@ -448,4 +494,3 @@ export function SalesPerformanceView({ pack }: { pack: SalesPerformancePack | nu
     </div>
   );
 }
-

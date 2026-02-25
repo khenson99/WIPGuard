@@ -5,7 +5,14 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCredentials } from "@/lib/analytics/credentials";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
-import { fetchHubSpotData, fetchMercuryData, fetchStripeData } from "@/lib/analytics/fetchers";
+import {
+  buildSalesPerformancePack,
+  fetchHubSpotContacts,
+  fetchHubSpotData,
+  fetchMercuryData,
+  fetchStripeChargesByCustomer,
+  fetchStripeData,
+} from "@/lib/analytics/fetchers";
 import { fetchGAData, fetchWebflowData } from "@/lib/analytics/fetchers-ga-webflow";
 import {
   fetchGoogleAdsData,
@@ -46,6 +53,7 @@ export const revalidate = 300;
 
 type DomainKey =
   | "hubspot"
+  | "salesPerformance"
   | "stripe"
   | "mercury"
   | "googleAnalytics"
@@ -218,6 +226,8 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "process-velocity": ["hubspot", "processAnalytics"],
   "process-health": ["hubspot", "stripe", "processAnalytics"],
   "process-throughput": ["hubspot", "processAnalytics"],
+
+  "sales-performance": ["salesPerformance"],
 };
 
 function requiredDomainsForSection(section: string | null): Set<DomainKey> {
@@ -611,6 +621,70 @@ export async function GET(request: Request) {
 
   const fetchers = ([
     { key: "hubspot", fn: () => (creds.hubspotToken ? fetchHubSpotData(creds.hubspotToken, fromDate, toDate) : Promise.reject(new Error("Missing HubSpot credential"))) },
+    {
+      key: "salesPerformance",
+      fn: async () => {
+        if (!creds.hubspotToken) {
+          throw new Error("Missing HubSpot credential");
+        }
+
+        const errors: string[] = [];
+
+        const [hubspot, contacts] = await Promise.all([
+          fetchHubSpotData(creds.hubspotToken, fromDate, toDate, { includeInactiveProspects: true }),
+          fetchHubSpotContacts(creds.hubspotToken, fromDate, toDate),
+        ]);
+
+        const tmp = createEmptyAnalyticsDashboardData({
+          freshness: {},
+          timeRange: range,
+          lastFullRefresh: new Date().toISOString(),
+        });
+        tmp.hubspot = hubspot;
+
+        await hydrateStripeCustomerLinks(userId, tmp);
+        const deals = tmp.hubspot?.deals ?? [];
+
+        const customerIds = new Set<string>();
+        for (const deal of deals) {
+          if ((deal.stageId || "").toLowerCase() !== "closedwon") continue;
+          if (!deal.closedAt) continue;
+          const closedAt = new Date(deal.closedAt);
+          if (!Number.isFinite(closedAt.getTime())) continue;
+          if (closedAt < fromDate || closedAt > toDate) continue;
+          const customerId = deal.stripeCustomerId?.trim();
+          if (customerId) customerIds.add(customerId);
+        }
+
+        const toPlus30 = new Date(toDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+        const chargesByCustomerId = creds.stripeKey
+          ? await fetchStripeChargesByCustomer(
+              creds.stripeKey,
+              [...customerIds].map((customerId) => ({
+                customerId,
+                createdGte: fromDate,
+                createdLte: toPlus30,
+              }))
+            )
+          : {};
+
+        if (!creds.stripeKey) {
+          errors.push("Stripe not connected; realized revenue fields will be 0.");
+        }
+
+        return buildSalesPerformancePack({
+          from: fromDate,
+          to: toDate,
+          generatedAt: new Date(),
+          fromSnapshot: false,
+          deals,
+          contacts,
+          chargesByCustomerId,
+          errors,
+        });
+      },
+    },
     { key: "stripe", fn: () => (creds.stripeKey ? fetchStripeData(creds.stripeKey, fromDate, toDate) : Promise.reject(new Error("Missing Stripe credential"))) },
     { key: "mercury", fn: () => (creds.mercuryKey ? fetchMercuryData(creds.mercuryKey, fromDate, toDate) : Promise.reject(new Error("Missing Mercury credential"))) },
     {

@@ -22,6 +22,7 @@ const AdsSemrushTab = dynamic(() => import("@/components/analytics/ads-semrush-t
 const AdsCodaKanbanTab = dynamic(() => import("@/components/analytics/ads-coda-kanban-tab").then((m) => m.AdsCodaKanbanTab));
 const SalesHubspotTab = dynamic(() => import("@/components/analytics/sales-hubspot-tab").then((m) => m.SalesHubspotTab));
 const SalesStripeTab = dynamic(() => import("@/components/analytics/sales-stripe-tab").then((m) => m.SalesStripeTab));
+const SalesPerformanceView = dynamic(() => import("@/components/analytics/sales-performance-view").then((m) => m.SalesPerformanceView));
 const GenericWorkspaceTab = dynamic(() => import("@/components/analytics/generic-workspace-tab").then((m) => m.GenericWorkspaceTab));
 const GenericSlackTab = dynamic(() => import("@/components/analytics/generic-slack-tab").then((m) => m.GenericSlackTab));
 const CsPylonTab = dynamic(() => import("@/components/analytics/cs-pylon-tab").then((m) => m.CsPylonTab));
@@ -89,6 +90,7 @@ export type AnalyticsChildRenderKind =
   | "finance-mercury"
   | "sales-hubspot"
   | "sales-stripe"
+  | "sales-performance"
   | "sales-google-workspace"
   | "sales-slack"
   | "ads-google-analytics"
@@ -133,6 +135,7 @@ export function resolveAnalyticsChildRenderKind(input: {
   // Sales
   if (input.childId === "sales-hubspot") return "sales-hubspot";
   if (input.childId === "sales-stripe") return "sales-stripe";
+  if (input.childId === "sales-performance") return "sales-performance";
   if (input.childId === "sales-google-workspace") return "sales-google-workspace";
   if (input.childId === "sales-slack") return "sales-slack";
   // Ads & Traffic
@@ -406,6 +409,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     // Sales
     if (renderKind === "sales-hubspot") return <SalesHubspotTab data={analyticsData} />;
     if (renderKind === "sales-stripe") return <SalesStripeTab data={analyticsData} />;
+    if (renderKind === "sales-performance") return <SalesPerformanceView pack={analyticsData?.salesPerformance ?? null} />;
     if (renderKind === "sales-google-workspace") return <GenericWorkspaceTab data={analyticsData} />;
     if (renderKind === "sales-slack") return <GenericSlackTab data={analyticsData} />;
     // Ads & Traffic

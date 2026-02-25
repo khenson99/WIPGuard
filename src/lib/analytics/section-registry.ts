@@ -22,6 +22,7 @@ export interface AnalyticsSubSection {
   dataDomain:
     | "googleWorkspace"
     | "hubspot"
+    | "salesPerformance"
     | "stripe"
     | "mercury"
     | "slack"
@@ -112,6 +113,7 @@ export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
 
   { id: "sales-hubspot", label: "HubSpot", path: "/analytics/sales-hubspot", parentId: "sales-pipeline", dataDomain: "hubspot" },
   { id: "sales-stripe", label: "Stripe", path: "/analytics/sales-stripe", parentId: "sales-pipeline", dataDomain: "stripe" },
+  { id: "sales-performance", label: "Performance Pack", path: "/analytics/sales-performance", parentId: "sales-pipeline", dataDomain: "salesPerformance" },
   { id: "sales-google-workspace", label: "Google Workspace", path: "/analytics/sales-google-workspace", parentId: "sales-pipeline", dataDomain: "googleWorkspace" },
   { id: "sales-slack", label: "Slack", path: "/analytics/sales-slack", parentId: "sales-pipeline", dataDomain: "slack" },
 
