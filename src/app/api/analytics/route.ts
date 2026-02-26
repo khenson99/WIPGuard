@@ -457,7 +457,7 @@ async function buildFinancialPlanningData(
     customer_count: stripe?.subscriptions.active ?? 0,
   };
 
-  const goals: FinancialGoalData[] = dbGoals.map((g: { id: string; name: string; metric: string; targetValue: number; deadline: Date; notes: string | null }) => {
+  const goals: FinancialGoalData[] = dbGoals.map((g: { id: string; metric: GoalMetric | string; targetValue: number; deadline: Date; }) => {
     const metricKey = g.metric.toLowerCase() as GoalMetric;
     const currentValue = currentMetrics[metricKey] ?? 0;
     const direction = metricKey === "burn_rate" ? "lower" : "higher";
