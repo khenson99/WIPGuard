@@ -58,7 +58,7 @@ export function AiInsightsPage() {
     };
   }, []);
 
-  const allInsights = data?.aiInsights?.global ?? [];
+  const allInsights = useMemo(() => data?.aiInsights?.global ?? [], [data?.aiInsights?.global]);
 
   const filtered = useMemo(() => {
     let result = allInsights;
