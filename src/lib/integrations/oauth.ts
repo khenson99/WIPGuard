@@ -39,7 +39,14 @@ function getString(record: Record<string, unknown>, key: string): string | null 
 
 function getNumber(record: Record<string, unknown>, key: string): number | null {
   const value = record[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 function normalizeScopes(rawScope: unknown): string[] {
@@ -176,6 +183,73 @@ export async function exchangeOAuthCode(input: {
   return {
     accessToken,
     refreshToken,
+    tokenType,
+    scopes: normalizeScopes(tokenPayload.scope),
+    expiresAt,
+    raw,
+  };
+}
+
+export async function refreshOAuthToken(input: {
+  definition: OAuthIntegrationDefinition;
+  refreshToken: string;
+  clientId: string;
+  clientSecret: string;
+}): Promise<OAuthTokenResponse> {
+  const { definition, refreshToken, clientId, clientSecret } = input;
+
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+  });
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+
+  if (definition.oauth.tokenClientAuthMethod === "basic") {
+    headers.Authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
+  } else {
+    body.set("client_id", clientId);
+    body.set("client_secret", clientSecret);
+  }
+
+  const response = await fetch(definition.oauth.tokenEndpoint, {
+    method: "POST",
+    headers,
+    body,
+    cache: "no-store",
+  });
+
+  const raw = (await response.json().catch(() => null)) as unknown;
+  if (!response.ok) {
+    const details = asRecord(raw);
+    throw new Error(
+      getString(details ?? {}, "error_description") ||
+        getString(details ?? {}, "error") ||
+        `OAuth token refresh failed for ${definition.slug}`
+    );
+  }
+
+  const tokenPayload = asRecord(raw);
+  if (!tokenPayload) {
+    throw new Error(`Invalid OAuth refresh token response for ${definition.slug}`);
+  }
+
+  const accessToken = getString(tokenPayload, "access_token");
+  if (!accessToken) {
+    throw new Error(`Missing access token for ${definition.slug}`);
+  }
+
+  const refreshedRefreshToken = getString(tokenPayload, "refresh_token");
+  const tokenType = getString(tokenPayload, "token_type");
+  const expiresIn = getNumber(tokenPayload, "expires_in");
+  const expiresAt =
+    expiresIn && expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000) : null;
+
+  return {
+    accessToken,
+    refreshToken: refreshedRefreshToken,
     tokenType,
     scopes: normalizeScopes(tokenPayload.scope),
     expiresAt,
@@ -670,7 +744,7 @@ export async function fetchOAuthAccountProfile(
 ): Promise<AccountProfile> {
   const tokenPayload = asRecord(tokenRaw);
 
-  if (definition.slug === "google-workspace") {
+  if (definition.slug === "google-workspace" || definition.slug === "google-ads") {
     return fetchGoogleProfile(accessToken);
   }
   if (definition.slug === "hubspot") {

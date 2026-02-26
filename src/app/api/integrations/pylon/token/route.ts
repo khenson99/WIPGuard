@@ -8,7 +8,7 @@ import {
 } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { compactErrorMessage, verifyPylonApiToken } from "@/lib/integrations/oauth";
-import { protectIntegrationSecret } from "@/lib/integrations/token-crypto";
+import { protectIntegrationSecret, unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
 import { enforcePermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 
@@ -17,39 +17,44 @@ interface ConnectPylonBody {
   baseUrl?: string;
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
-  try {
-    const session = await auth();
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const baseUrl = body.baseUrl?.trim() ? body.baseUrl.trim() : null;
 
-    const permission = await enforcePermission({
-      userId: session.user.id,
-      action: "profile.write",
-      request,
-      targetType: "integration",
-      targetId: IntegrationProvider.PYLON,
+    const existing = await prisma.integrationConnection.findUnique({
+      where: {
+        userId_provider: {
+          userId: session.user.id,
+          provider: IntegrationProvider.PYLON,
+        },
+      },
+      select: {
+        accessToken: true,
+        metadata: true,
+      },
     });
-    if (permission.deniedResponse) {
-      return permission.deniedResponse;
-    }
 
-    const body = (await request.json().catch(() => ({}))) as ConnectPylonBody;
-    const token = body.token?.trim() || process.env.PYLON_API_KEY?.trim();
-    if (!token) {
+    const existingToken = existing?.accessToken
+      ? unprotectIntegrationSecret(existing.accessToken)
+      : null;
+
+    const token =
+      body.token?.trim() || existingToken?.trim() || process.env.PYLON_API_KEY?.trim();
+    if (!token || token.trim().length === 0) {
       return NextResponse.json(
         { error: "Pylon API token is required (or set PYLON_API_KEY on the server)" },
         { status: 400 }
       );
     }
 
-    const profile = await verifyPylonApiToken(token, { baseUrl: body.baseUrl });
+    const preservedBaseUrl = baseUrl ?? readBaseUrl(existing?.metadata ?? null);
+    const profile = await verifyPylonApiToken(token, {
+      baseUrl: preservedBaseUrl ?? undefined,
+    });
     const metadata: Prisma.InputJsonObject = {
-      ...(profile.metadata ?? {}),
+      ...asRecord(existing?.metadata ?? null),
+      ...asRecord(profile.metadata ?? null),
       authType: "api_token",
       connectedByUserId: session.user.id,
-      ...(body.baseUrl?.trim() ? { baseUrl: body.baseUrl.trim() } : {}),
+      ...(preservedBaseUrl ? { baseUrl: preservedBaseUrl } : {}),
     };
 
     await prisma.integrationConnection.upsert({

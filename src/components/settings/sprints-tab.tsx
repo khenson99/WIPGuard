@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Plus, Calendar, Check, Pencil } from "lucide-react";
+import { formatSprintRangeLabel, getSprintLabel } from "@/lib/sprints";
 
 interface Sprint {
   id: string;
@@ -13,14 +14,12 @@ interface Sprint {
 }
 
 interface SprintForm {
-  name: string;
   startDate: string;
   endDate: string;
   isActive: boolean;
 }
 
 const emptyForm: SprintForm = {
-  name: "",
   startDate: "",
   endDate: "",
   isActive: false,
@@ -61,7 +60,6 @@ export function SprintsTab() {
   const openEdit = (sprint: Sprint) => {
     setEditingId(sprint.id);
     setForm({
-      name: sprint.name,
       startDate: sprint.startDate.split("T")[0],
       endDate: sprint.endDate.split("T")[0],
       isActive: sprint.isActive,
@@ -77,7 +75,11 @@ export function SprintsTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name || !form.startDate || !form.endDate) return;
+    if (!form.startDate || !form.endDate) return;
+    const computedName =
+      formatSprintRangeLabel(form, { includeYear: true }) ??
+      formatSprintRangeLabel(form) ??
+      "Sprint";
 
     setSaving(true);
     try {
@@ -87,7 +89,7 @@ export function SprintsTab() {
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, name: computedName }),
       });
 
       if (res.ok) {
@@ -112,14 +114,6 @@ export function SprintsTab() {
     } catch {
       // Silently handle
     }
-  };
-
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
   };
 
   const getSprintStatus = (sprint: Sprint) => {
@@ -174,16 +168,12 @@ export function SprintsTab() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <label className="mb-1 block text-xs text-muted-foreground">
-                Sprint Name
+                Sprint Label
               </label>
-              <input
-                type="text"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="e.g. Sprint 12"
-                className="w-full rounded border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:border-ring focus:outline-none"
-                required
-              />
+              <div className="w-full rounded border border-border bg-secondary px-3 py-2 text-sm text-foreground">
+                {formatSprintRangeLabel(form, { includeYear: true }) ??
+                  "Pick dates to generate a label"}
+              </div>
             </div>
 
             <div>
@@ -282,9 +272,9 @@ export function SprintsTab() {
 
                 {/* Sprint info */}
                 <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-foreground">
-                      {sprint.name}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-foreground">
+                      {getSprintLabel(sprint, { includeYear: true })}
                     </span>
                     {sprint.isActive && (
                       <span className="rounded-full bg-[var(--success)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--success)]">
@@ -293,11 +283,9 @@ export function SprintsTab() {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {formatDate(sprint.startDate)} –{" "}
-                    {formatDate(sprint.endDate)}
                     {sprint._count?.tasks !== undefined && (
-                      <span className="ml-2 text-muted-foreground">
-                        · {sprint._count.tasks} tasks
+                      <span className="text-muted-foreground">
+                        {sprint._count.tasks} task{sprint._count.tasks === 1 ? "" : "s"}
                       </span>
                     )}
                   </p>

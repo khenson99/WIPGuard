@@ -18,22 +18,22 @@ function timeAgo(dateStr?: string): string {
 }
 
 const PRIORITY_COLORS: Record<string, string> = {
-  critical: "bg-red-500/10 text-red-500",
-  p1: "bg-red-500/10 text-red-500",
-  high: "bg-orange-500/10 text-orange-500",
-  p2: "bg-orange-500/10 text-orange-500",
-  medium: "bg-yellow-500/10 text-yellow-500",
-  p3: "bg-yellow-500/10 text-yellow-500",
-  low: "bg-blue-500/10 text-blue-500",
-  p4: "bg-blue-500/10 text-blue-500",
+  critical: "bg-red-500/10 text-red-500 border-red-500/20",
+  p1: "bg-red-500/10 text-red-500 border-red-500/20",
+  high: "bg-orange-500/10 text-orange-500 border-orange-500/20",
+  p2: "bg-orange-500/10 text-orange-500 border-orange-500/20",
+  medium: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+  p3: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+  low: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+  p4: "bg-blue-500/10 text-blue-500 border-blue-500/20",
 };
 
 function PriorityBadge({ priority }: { priority?: string }) {
   if (!priority) return null;
   const key = priority.toLowerCase();
-  const colors = PRIORITY_COLORS[key] || "bg-secondary text-muted-foreground";
+  const colors = PRIORITY_COLORS[key] || "bg-secondary text-muted-foreground border-border/40";
   return (
-    <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium ${colors}`}>
+    <span className={`inline-flex rounded-md border px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase shadow-sm ${colors}`}>
       {priority}
     </span>
   );
@@ -89,20 +89,20 @@ export function TasksTab({ data }: { data: AnalyticsDashboardData | null }) {
       </div>
 
       {/* Kanban Board */}
-      <div className="rounded-xl border border-border bg-card p-5">
+      <div className="rounded-xl border border-border/40 bg-card/60 p-5 shadow-sm backdrop-blur-md">
         <h3 className="mb-4 text-sm font-semibold text-foreground">Task Board</h3>
         <div className="flex gap-4 overflow-x-auto pb-2">
           {statuses.map((statusGroup) => (
             <div
               key={statusGroup.status}
-              className="min-w-[240px] flex-1 rounded-lg bg-secondary/30 p-3"
+              className="min-w-[240px] flex-1 rounded-xl border border-border/40 bg-column-bg/80 p-4 shadow-sm backdrop-blur-md"
             >
               {/* Column header */}
-              <div className="mb-3 flex items-center justify-between">
-                <span className="text-sm font-semibold text-foreground">
+              <div className="mb-4 flex items-center justify-between">
+                <span className="text-sm font-bold tracking-tight text-foreground">
                   {statusGroup.status}
                 </span>
-                <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary/10 px-1.5 text-[10px] font-bold text-primary">
+                <span className="flex h-5 min-w-[20px] items-center justify-center rounded-md border border-primary/20 bg-primary/10 px-1.5 text-[11px] font-bold text-primary shadow-sm">
                   {statusGroup.count}
                 </span>
               </div>
@@ -117,20 +117,20 @@ export function TasksTab({ data }: { data: AnalyticsDashboardData | null }) {
                   (cardsByStatus[statusGroup.status] || []).map((card) => (
                     <div
                       key={card.id}
-                      className="rounded-lg border border-border bg-card p-3 transition-colors hover:bg-secondary/40"
+                      className="group cursor-pointer rounded-xl border border-border/50 bg-card p-3.5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md"
                     >
-                      <p className="mb-2 text-sm font-medium text-foreground line-clamp-2">
+                      <p className="mb-3 text-[13px] font-semibold leading-snug tracking-tight text-foreground line-clamp-2">
                         {card.name}
                       </p>
                       <div className="flex flex-wrap items-center gap-2">
                         <PriorityBadge priority={card.priority} />
                         {card.assignee && (
-                          <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                            <User className="h-2.5 w-2.5" />
+                          <span className="flex items-center gap-1.5 rounded-full border border-border/50 bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground shadow-sm">
+                            <User className="h-3 w-3" />
                             {card.assignee}
                           </span>
                         )}
-                        <span className="ml-auto text-[10px] text-muted-foreground">
+                        <span className="ml-auto text-[10px] font-medium text-muted-foreground">
                           {timeAgo(card.updatedAt)}
                         </span>
                       </div>
@@ -144,7 +144,7 @@ export function TasksTab({ data }: { data: AnalyticsDashboardData | null }) {
       </div>
 
       {/* Recent Activity Table */}
-      <div className="rounded-xl border border-border bg-card p-5">
+      <div className="rounded-xl border border-border/40 bg-card/60 p-5 shadow-sm backdrop-blur-md">
         <h3 className="mb-4 text-sm font-semibold text-foreground">Recent Activity</h3>
         {recentCards.length === 0 ? (
           <p className="py-4 text-center text-sm text-muted-foreground">No recent activity</p>
@@ -152,35 +152,42 @@ export function TasksTab({ data }: { data: AnalyticsDashboardData | null }) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="pb-2 pr-4 font-medium">Card</th>
-                  <th className="pb-2 pr-4 font-medium">Status</th>
-                  <th className="pb-2 pr-4 font-medium">Priority</th>
-                  <th className="pb-2 pr-4 font-medium">Assignee</th>
-                  <th className="pb-2 font-medium">Updated</th>
+                <tr className="border-b border-border/40 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <th className="pb-3 pr-4">Card</th>
+                  <th className="pb-3 pr-4">Status</th>
+                  <th className="pb-3 pr-4">Priority</th>
+                  <th className="pb-3 pr-4">Assignee</th>
+                  <th className="pb-3">Updated</th>
                 </tr>
               </thead>
               <tbody>
                 {recentCards.map((card) => (
                   <tr
                     key={card.id}
-                    className="border-b border-border/50 transition-colors hover:bg-secondary/20"
+                    className="group border-b border-border/40 transition-colors hover:bg-gradient-to-r hover:from-muted/40 hover:to-transparent"
                   >
-                    <td className="py-2.5 pr-4 font-medium text-foreground">
+                    <td className="py-3 pr-4 font-semibold text-foreground">
                       {card.name}
                     </td>
-                    <td className="py-2.5 pr-4">
-                      <span className="rounded bg-secondary px-2 py-0.5 text-xs text-foreground">
+                    <td className="py-3 pr-4">
+                      <span className="rounded-md border border-border/40 bg-secondary/50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-secondary-foreground shadow-sm">
                         {card.status}
                       </span>
                     </td>
-                    <td className="py-2.5 pr-4">
+                    <td className="py-3 pr-4">
                       <PriorityBadge priority={card.priority} />
                     </td>
-                    <td className="py-2.5 pr-4 text-muted-foreground">
-                      {card.assignee || "—"}
+                    <td className="py-3 pr-4 text-[13px] font-medium text-muted-foreground">
+                      {card.assignee ? (
+                        <span className="flex items-center gap-1.5">
+                          <User className="h-3 w-3" />
+                          {card.assignee}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
                     </td>
-                    <td className="py-2.5 text-muted-foreground">
+                    <td className="py-3 text-[13px] font-medium text-muted-foreground">
                       {timeAgo(card.updatedAt)}
                     </td>
                   </tr>

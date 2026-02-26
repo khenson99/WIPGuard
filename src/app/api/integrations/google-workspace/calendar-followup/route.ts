@@ -11,6 +11,7 @@ import {
   serializeGoogleCalendarRule,
   type GoogleCalendarRuleConfig,
 } from "@/lib/integrations/google-calendar-followup";
+import { withSyncObservability } from "@/lib/integrations/sync-observability";
 
 interface GoogleCalendarRequestBody {
   action?: "sync" | "configure";
@@ -86,10 +87,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       });
     }
 
-    const result = await runGoogleCalendarPrepFollowup({
-      userId: session.user.id,
-      dryRun: body.dryRun,
-    });
+    const result = await withSyncObservability(
+      "google_calendar", "calendar-followup", session.user.id,
+      () => runGoogleCalendarPrepFollowup({ userId: session.user.id, dryRun: body.dryRun }),
+      { dryRun: body.dryRun },
+    );
 
     return NextResponse.json({
       ok: true,

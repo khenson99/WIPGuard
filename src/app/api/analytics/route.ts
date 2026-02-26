@@ -5,13 +5,21 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCredentials } from "@/lib/analytics/credentials";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
-import { fetchHubSpotData, fetchMercuryData, fetchStripeData } from "@/lib/analytics/fetchers";
+import {
+  buildSalesPerformancePack,
+  fetchHubSpotContacts,
+  fetchHubSpotData,
+  fetchMercuryData,
+  fetchStripeChargesByCustomer,
+  fetchStripeData,
+} from "@/lib/analytics/fetchers";
 import { fetchGAData, fetchWebflowData } from "@/lib/analytics/fetchers-ga-webflow";
 import {
   fetchGoogleAdsData,
   fetchMetaAdsData,
   fetchMetaPageData,
   fetchRedditAdsData,
+  fetchMetaInstagramData,
 } from "@/lib/analytics/fetchers-ads";
 import { fetchCodaData } from "@/lib/analytics/fetchers-coda";
 import { fetchSemrushData } from "@/lib/analytics/fetchers-semrush";
@@ -45,12 +53,14 @@ export const revalidate = 300;
 
 type DomainKey =
   | "hubspot"
+  | "salesPerformance"
   | "stripe"
   | "mercury"
   | "googleAnalytics"
   | "googleAds"
   | "metaAds"
   | "metaPage"
+  | "instagram"
   | "redditAds"
   | "webflow"
   | "coda"
@@ -79,6 +89,7 @@ const ALL_DOMAINS: DomainKey[] = [
   "googleAds",
   "metaAds",
   "metaPage",
+  "instagram",
   "redditAds",
   "webflow",
   "coda",
@@ -120,6 +131,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "googleAnalytics",
     "googleAds",
     "metaAds",
+    "instagram",
     "redditAds",
     "webflow",
     "semrush",
@@ -141,6 +153,10 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "recommendations",
     "distilledInsights",
   ],
+  "finance-planning": ["stripe", "mercury"],
+  "finance-forecast": ["stripe", "mercury"],
+  "finance-pnl": ["stripe", "mercury"],
+  "finance-unit-economics": ["stripe", "mercury", "hubspot"],
   "sales-pipeline": [
     "hubspot",
     "stripe",
@@ -168,7 +184,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   ],
   "ads-google-analytics": ["googleAnalytics"],
   "ads-google-ads": ["googleAds"],
-  "ads-meta-ads": ["metaAds"],
+  "ads-meta-ads": ["metaAds", "metaPage", "instagram"],
   "ads-reddit-ads": ["redditAds", "redditOps"],
   "ads-webflow": ["webflow"],
   "ads-semrush": ["semrush"],
@@ -189,18 +205,18 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "customer-journey": [
     "hubspot", "stripe", "mercury", "googleWorkspace", "slack",
     "webflow", "coda", "googleAnalytics", "googleAds", "metaAds",
-    "redditAds", "pylon", "customerJourney",
+    "instagram", "redditAds", "pylon", "customerJourney",
     "lifecycleFunnel", "funnelJourney", "aiInsights", "recommendations", "distilledInsights",
   ],
-  "cj-overview": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "redditAds", "pylon", "customerJourney"],
-  "cj-touchpoints": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "redditAds", "pylon", "customerJourney"],
+  "cj-overview": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
+  "cj-touchpoints": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
 
   "demo-analytics": [
     "hubspot", "googleWorkspace", "demoAnalytics",
     "lifecycleFunnel", "funnelJourney", "aiInsights", "recommendations", "distilledInsights",
   ],
   "demo-scheduling": ["hubspot", "googleWorkspace", "demoAnalytics"],
-  "demo-attribution": ["hubspot", "googleAds", "metaAds", "redditAds", "googleAnalytics", "webflow", "demoAnalytics"],
+  "demo-attribution": ["hubspot", "googleAds", "metaAds", "instagram", "redditAds", "googleAnalytics", "webflow", "demoAnalytics"],
 
   "process-analytics": [
     "hubspot", "stripe", "processAnalytics",
@@ -210,357 +226,9 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "process-velocity": ["hubspot", "processAnalytics"],
   "process-health": ["hubspot", "stripe", "processAnalytics"],
   "process-throughput": ["hubspot", "processAnalytics"],
-};
-
-function requiredDomainsForSection(section: string | null): Set<DomainKey> {
-  if (!section) return new Set(ALL_DOMAINS);
-  return new Set(SECTION_DOMAINS[section] ?? ALL_DOMAINS);
-}
-
-function withTimeout<T>(fn: () => Promise<T>, timeoutMs: number, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
-    fn()
-      .then((value) => {
-        clearTimeout(timeout);
-        resolve(value);
-      })
-      .catch((error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-  });
-}
-
-async function computeProductSuccessData(from: Date, to: Date): Promise<ProductSuccessData> {
-  const [createdTasksInRange, completedTasksInRange, overdueOpenTasks, contributors] = await Promise.all([
-    prisma.task.count({ where: { createdAt: { gte: from, lte: to } } }),
-    prisma.task.count({ where: { completedOn: { gte: from, lte: to } } }),
-    prisma.task.count({
-      where: {
-        status: { not: "DONE" },
-        dueDate: { lt: to },
-      },
-    }),
-    prisma.statusHistory.findMany({
-      where: {
-        changedAt: { gte: from, lte: to },
-        changedBy: { not: null },
-      },
-      distinct: ["changedBy"],
-      select: { changedBy: true },
-    }),
-  ]);
-
-  const activeContributors = contributors.filter((entry) => Boolean(entry.changedBy)).length;
-  const backlogGrowth = createdTasksInRange - completedTasksInRange;
-  const throughputRate =
-    createdTasksInRange > 0 ? Math.round((completedTasksInRange / createdTasksInRange) * 10000) / 100 : null;
-
-  return {
-    activeContributors,
-    createdTasksInRange,
-    completedTasksInRange,
-    overdueOpenTasks,
-    backlogGrowth,
-    throughputRate,
-    _meta: {
-      fetchedAt: new Date().toISOString(),
-      nextRefresh: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-      source: "live",
-    },
-  };
-}
-
-function buildRecommendations(data: AnalyticsDashboardData): AnalyticsRecommendation[] {
-  const recommendations: AnalyticsRecommendation[] = [];
-
-  if ((data.googleAnalytics?.bounceRate ?? 0) > 0.55) {
-    recommendations.push({
-      id: "ads-bounce",
-      section: "ads-traffic",
-      severity: "warning",
-      title: "Reduce high bounce traffic",
-      insight: `Bounce rate is ${((data.googleAnalytics?.bounceRate ?? 0) * 100).toFixed(1)}%, indicating weak landing relevance.`,
-      suggestedAction: "Launch A/B tests on top entry pages and tighten ad-to-page message match.",
-    });
-  }
-
-  if ((data.hubspot?.funnel?.noShowRate ?? 0) > 15) {
-    recommendations.push({
-      id: "sales-noshow",
-      section: "sales-pipeline",
-      severity: "critical",
-      title: "No-show rate is hurting conversion",
-      insight: `${data.hubspot?.funnel?.noShows ?? 0} no-shows detected in the selected period.`,
-      suggestedAction: "Create an automated reminder + reschedule sequence with a 24h and 1h cadence.",
-    });
-  }
-
-  if ((data.mercury?.cashFlow?.runway ?? 0) > 0 && (data.mercury?.cashFlow?.runway ?? 0) < 4) {
-    recommendations.push({
-      id: "finance-runway",
-      section: "finance",
-      severity: "critical",
-      title: "Cash runway is below 4 months",
-      insight: `Estimated runway is ${(data.mercury?.cashFlow?.runway ?? 0).toFixed(1)} months.`,
-      suggestedAction: "Cut non-performing spend and prioritize collections/revenue acceleration this month.",
-    });
-  }
-
-  if ((data.product?.backlogGrowth ?? 0) > 0) {
-    recommendations.push({
-      id: "cs-backlog",
-      section: "customer-success",
-      severity: "warning",
-      title: "Execution backlog is growing",
-      insight: `Backlog grew by ${data.product?.backlogGrowth ?? 0} items in the selected range.`,
-      suggestedAction: "Enable queue-throttling automations and rebalance owner load across active contributors.",
-    });
-  }
-
-  if (recommendations.length === 0) {
-    recommendations.push({
-      id: "general-steady",
-      section: "sales-pipeline",
-      severity: "info",
-      title: "Performance is stable",
-      insight: "No major risk spikes were detected across the selected range.",
-      suggestedAction: "Use this window to run one growth experiment in Ads and one cycle-time experiment in execution.",
-    });
-  }
-
-  return recommendations;
-}
-
-function providerForDomain(domain: DomainKey): "google_workspace" | "hubspot" | "slack" | "coda" | "reddit" | null {
-  if (domain === "hubspot" || domain === "hubspotOps") return "hubspot";
-  if (domain === "googleWorkspace") return "google_workspace";
-  if (domain === "slack") return "slack";
-  if (domain === "coda" || domain === "codaOps") return "coda";
-  if (domain === "redditOps") return "reddit";
-  return null;
-}
-
-type FetchEntry = {
-  key: Exclude<
-    DomainKey,
-    | "lifecycleFunnel"
-    | "funnelJourney"
-    | "aiInsights"
-    | "recommendations"
-    | "distilledInsights"
-    | "customerJourney"
-    | "demoAnalytics"
-    | "processAnalytics"
-  >;
-  fn: () => Promise<unknown>;
-};
-
-type FetchOutcome = {
-  key: FetchEntry["key"];
-  payload: unknown;
-  stale: boolean;
-  capturedAt: string | null;
-  source: "snapshot" | "live";
-  fallbackError?: string;
-};
-
-type RefreshInput = {
-  userId: string;
-  rangePreset: string;
-  fromDate: Date;
-  toDate: Date;
-  snapshotExpiresAt: Date;
-  entry: FetchEntry;
-};
-
-const inFlightStaleRefreshes = new Map<string, Promise<void>>();
-
-function staleRefreshKey(input: RefreshInput): string {
-  return [
-    input.userId,
-    input.entry.key,
-    input.rangePreset,
-    input.fromDate.toISOString(),
-    input.toDate.toISOString(),
-  ].join(":");
-}
-
-async function refreshDomainSnapshot(input: RefreshInput): Promise<void> {
-  try {
-    const live = await withTimeout(input.entry.fn, 8_500, input.entry.key);
-    await storeAnalyticsSnapshot({
-      userId: input.userId,
-      providerKey: input.entry.key,
-      contextKey: "default",
-      rangePreset: input.rangePreset,
-      fromDate: input.fromDate,
-      toDate: input.toDate,
-      payload: live,
-      expiresAt: input.snapshotExpiresAt,
-    });
-  } catch (error) {
-    await storeAnalyticsSnapshotFailure({
-      userId: input.userId,
-      providerKey: input.entry.key,
-      contextKey: "default",
-      rangePreset: input.rangePreset,
-      fromDate: input.fromDate,
-      toDate: input.toDate,
-      error: error instanceof Error ? error.message : "Failed",
-      expiresAt: input.snapshotExpiresAt,
-    });
-    throw error;
-  }
-}
-
-function queueStaleSnapshotRefresh(input: RefreshInput): void {
-  const key = staleRefreshKey(input);
-  if (inFlightStaleRefreshes.has(key)) {
-    return;
-  }
-
-  const job = refreshDomainSnapshot(input)
-    .catch((error) => {
-      console.error("analytics stale snapshot refresh failed", {
-        domain: input.entry.key,
-        userId: input.userId,
-        message: error instanceof Error ? error.message : "Unknown error",
-      });
-    })
-    .finally(() => {
-      inFlightStaleRefreshes.delete(key);
-    });
-
-  inFlightStaleRefreshes.set(key, job);
-  void job;
-}
-
-export async function GET(request: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const url = new URL(request.url);
-  const forceRefresh = url.searchParams.get("refresh") === "true";
-  const section = url.searchParams.get("section");
-  const domains = requiredDomainsForSection(section);
-  const range = parseAnalyticsTimeRange(url.searchParams);
-  const fromDate = new Date(`${range.from}T00:00:00.000Z`);
-  const toDate = new Date(`${range.to}T23:59:59.999Z`);
-
-  const userId = (session.user as { id?: string }).id;
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const creds = await getCredentials(userId);
-
-  const result: AnalyticsDashboardData = createEmptyAnalyticsDashboardData({
-    freshness: {
-      google_workspace: {
-        provider: "google_workspace",
-        source: creds.freshness.GOOGLE_WORKSPACE.source,
-        status: creds.freshness.GOOGLE_WORKSPACE.status,
-        connectedAt: creds.freshness.GOOGLE_WORKSPACE.connectedAt,
-        lastSyncedAt: creds.freshness.GOOGLE_WORKSPACE.lastSyncedAt,
-        lastError: creds.freshness.GOOGLE_WORKSPACE.lastError,
-        stale: false,
-        lastSnapshotAt: null,
-      },
-      hubspot: {
-        provider: "hubspot",
-        source: creds.freshness.HUBSPOT.source,
-        status: creds.freshness.HUBSPOT.status,
-        connectedAt: creds.freshness.HUBSPOT.connectedAt,
-        lastSyncedAt: creds.freshness.HUBSPOT.lastSyncedAt,
-        lastError: creds.freshness.HUBSPOT.lastError,
-        stale: false,
-        lastSnapshotAt: null,
-      },
-      slack: {
-        provider: "slack",
-        source: creds.freshness.SLACK.source,
-        status: creds.freshness.SLACK.status,
-        connectedAt: creds.freshness.SLACK.connectedAt,
-        lastSyncedAt: creds.freshness.SLACK.lastSyncedAt,
-        lastError: creds.freshness.SLACK.lastError,
-        stale: false,
-        lastSnapshotAt: null,
-      },
-      coda: {
-        provider: "coda",
-        source: creds.freshness.CODA.source,
-        status: creds.freshness.CODA.status,
-        connectedAt: creds.freshness.CODA.connectedAt,
-        lastSyncedAt: creds.freshness.CODA.lastSyncedAt,
-        lastError: creds.freshness.CODA.lastError,
-        stale: false,
-        lastSnapshotAt: null,
-      },
-      reddit: {
-        provider: "reddit",
-        source: creds.freshness.REDDIT.source,
-        status: creds.freshness.REDDIT.status,
-        connectedAt: creds.freshness.REDDIT.connectedAt,
-        lastSyncedAt: creds.freshness.REDDIT.lastSyncedAt,
-        lastError: creds.freshness.REDDIT.lastError,
-        stale: false,
-        lastSnapshotAt: null,
-      },
-      stripe: {
-        provider: "stripe",
-        source: creds.freshness.STRIPE.source,
-        status: creds.freshness.STRIPE.status,
-        connectedAt: creds.freshness.STRIPE.connectedAt,
-        lastSyncedAt: creds.freshness.STRIPE.lastSyncedAt,
-        lastError: creds.freshness.STRIPE.lastError,
-        stale: false,
-        lastSnapshotAt: null,
-      },
-      mercury: {
-        provider: "mercury",
-        source: creds.freshness.MERCURY.source,
-        status: creds.freshness.MERCURY.status,
-        connectedAt: creds.freshness.MERCURY.connectedAt,
-        lastSyncedAt: creds.freshness.MERCURY.lastSyncedAt,
-        lastError: creds.freshness.MERCURY.lastError,
-        stale: false,
-        lastSnapshotAt: null,
-      },
-    },
-    timeRange: range,
-    lastFullRefresh: new Date().toISOString(),
-  });
-
-  const fetchers = ([
-    { key: "hubspot", fn: () => (creds.hubspotToken ? fetchHubSpotData(creds.hubspotToken) : Promise.reject(new Error("Missing HubSpot credential"))) },
-    { key: "stripe", fn: () => (creds.stripeKey ? fetchStripeData(creds.stripeKey) : Promise.reject(new Error("Missing Stripe credential"))) },
-    { key: "mercury", fn: () => (creds.mercuryKey ? fetchMercuryData(creds.mercuryKey) : Promise.reject(new Error("Missing Mercury credential"))) },
-    {
-      key: "googleAnalytics",
-      fn: () =>
-        creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey
-          ? fetchGAData(creds.gaPropertyId, creds.gaClientEmail, creds.gaPrivateKey)
-          : Promise.reject(new Error("Missing Google Analytics credential")),
-    },
-    {
-      key: "googleAds",
-      fn: () =>
-        creds.googleAdsDevToken &&
-        creds.googleAdsCustomerId &&
-        creds.googleAdsRefreshToken &&
-        creds.googleAdsClientId &&
-        creds.googleAdsClientSecret
-          ? fetchGoogleAdsData(
-              creds.googleAdsDevToken,
-              creds.googleAdsCustomerId,
-              creds.googleAdsRefreshToken,
-              creds.googleAdsClientId,
-              creds.googleAdsClientSecret,
-              creds.googleAdsLoginCustomerId
+              creds.googleAdsLoginCustomerId,
+              fromDate,
+              toDate
             )
           : Promise.reject(new Error("Missing Google Ads credential")),
     },
@@ -568,15 +236,28 @@ export async function GET(request: Request) {
       key: "metaAds",
       fn: () =>
         creds.metaAccessToken && creds.metaAdAccountId
-          ? fetchMetaAdsData(creds.metaAccessToken, creds.metaAdAccountId)
+          ? fetchMetaAdsData(creds.metaAccessToken, creds.metaAdAccountId, fromDate, toDate)
           : Promise.reject(new Error("Missing Meta Ads credential")),
     },
     {
       key: "metaPage",
       fn: () =>
         creds.metaAccessToken && creds.metaPageId
-          ? fetchMetaPageData(creds.metaAccessToken, creds.metaPageId)
+          ? fetchMetaPageData(creds.metaAccessToken, creds.metaPageId, fromDate, toDate)
           : Promise.reject(new Error("Missing Meta Page credential")),
+    },
+    {
+      key: "instagram",
+      fn: () =>
+        creds.metaAccessToken && creds.metaInstagramAccountId
+          ? fetchMetaInstagramData(
+              creds.metaAccessToken,
+              creds.metaInstagramAccountId,
+              { pageId: creds.metaPageId ?? undefined },
+              fromDate,
+              toDate
+            )
+          : Promise.reject(new Error("Missing Instagram credential")),
     },
     {
       key: "redditAds",
@@ -587,7 +268,9 @@ export async function GET(request: Request) {
               creds.redditClientSecret,
               creds.redditRefreshToken,
               creds.redditAdAccountId,
-              creds.redditUserAgent
+              creds.redditUserAgent,
+              fromDate,
+              toDate
             )
           : Promise.reject(new Error("Missing Reddit Ads credential")),
     },
@@ -595,14 +278,20 @@ export async function GET(request: Request) {
       key: "webflow",
       fn: () =>
         creds.webflowApiToken && creds.webflowSiteId
-          ? fetchWebflowData(creds.webflowApiToken, creds.webflowSiteId)
+          ? fetchWebflowData(creds.webflowApiToken, creds.webflowSiteId, fromDate, toDate)
           : Promise.reject(new Error("Missing Webflow credential")),
     },
     {
       key: "coda",
       fn: () =>
         creds.codaApiToken && creds.codaDocId
-          ? fetchCodaData(creds.codaApiToken, creds.codaDocId)
+          ? fetchCodaData(creds.codaApiToken, creds.codaDocId, {
+              fromDate,
+              toDate,
+              now: toDate,
+              hubspotAccessToken: creds.hubspotToken,
+              maxRecentSubmitters: 25,
+            })
           : Promise.reject(new Error("Missing Coda credential")),
     },
     {
@@ -616,7 +305,12 @@ export async function GET(request: Request) {
       key: "pylon",
       fn: () =>
         creds.pylonApiKey
-          ? fetchPylonData({ apiKey: creds.pylonApiKey, from: range.from, to: range.to })
+          ? fetchPylonData({
+              apiKey: creds.pylonApiKey,
+              from: range.from,
+              to: range.to,
+              baseUrl: creds.pylonBaseUrl ?? undefined,
+            })
           : Promise.reject(new Error("Missing Pylon credential")),
     },
     {
@@ -644,6 +338,11 @@ export async function GET(request: Request) {
       fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.REDDIT, from: fromDate, to: toDate }),
     },
   ] as FetchEntry[]).filter((entry) => domains.has(entry.key));
+
+  const TIMEOUT_OVERRIDES: Partial<Record<DomainKey, number>> = {
+    stripe: 20000,
+  };
+  const DEFAULT_TIMEOUT = 12000;
 
   const snapshotExpiresAt = snapshotExpiryFromNow(1);
 
@@ -680,7 +379,11 @@ export async function GET(request: Request) {
       }
 
       try {
-        const live = await withTimeout(entry.fn, 8_500, entry.key);
+        const live = await withTimeout(
+          entry.fn,
+          TIMEOUT_OVERRIDES[entry.key] ?? DEFAULT_TIMEOUT,
+          entry.key
+        );
         await storeAnalyticsSnapshot({
           userId,
           providerKey: entry.key,
@@ -781,6 +484,8 @@ export async function GET(request: Request) {
     }
   });
 
+  await hydrateStripeCustomerLinks(userId, result);
+
   if (domains.has("funnelJourney")) {
     result.funnelJourney = buildCrossFunnelData(result);
   }
@@ -789,6 +494,10 @@ export async function GET(request: Request) {
   }
   if (domains.has("aiInsights")) {
     result.aiInsights = buildAiInsightsBundle(result);
+  }
+  
+  if (domains.has("customerJourney")) {
+    result.customerJourney = buildCustomerJourneyData(result);
   }
   if (domains.has("recommendations")) {
     result.recommendations = buildRecommendations(result);

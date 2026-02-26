@@ -11,6 +11,7 @@ import {
   serializeCodaRuleState,
   type CodaRowSyncConfig,
 } from "@/lib/integrations/coda-row-sync";
+import { withSyncObservability } from "@/lib/integrations/sync-observability";
 
 interface CodaSyncRequestBody {
   action?: "sync" | "configure";
@@ -86,10 +87,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       });
     }
 
-    const result = await runCodaRowSync({
-      userId: session.user.id,
-      dryRun: body.dryRun,
-    });
+    const result = await withSyncObservability(
+      "coda", "row-sync", session.user.id,
+      () => runCodaRowSync({ userId: session.user.id, dryRun: body.dryRun }),
+      { dryRun: body.dryRun },
+    );
 
     return NextResponse.json({
       ok: true,

@@ -10,6 +10,10 @@ const NON_INTEGRATION_DOMAINS = new Set([
   "customerJourney",
   "demoAnalytics",
   "processAnalytics",
+  "financePlanning",
+  "financeForecast",
+  "financePnl",
+  "financeUnitEconomics",
 ]);
 
 describe("integration child dashboard registry", () => {

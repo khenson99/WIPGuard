@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   FolderKanban,
+  CalendarDays,
   CheckSquare,
   Gauge,
   Megaphone,
@@ -11,6 +12,7 @@ import {
   Presentation,
   Activity,
   Bot,
+  Sparkles,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -49,6 +51,7 @@ export function buildNavItems(): NavItem[] {
   const topStatic: NavItem[] = [
     { id: "dashboard", href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "projects", href: "/projects", label: "Projects", icon: FolderKanban },
+    { id: "conferences", href: "/conferences", label: "Conferences", icon: CalendarDays },
     { id: "tasks", href: "/tasks", label: "Tasks", icon: CheckSquare },
     { id: "whip", href: "/whip", label: "Whip View", icon: Gauge },
   ];
@@ -69,10 +72,14 @@ export function buildNavItems(): NavItem[] {
     };
   });
 
+  const newPages: NavItem[] = [
+    { id: "ai-insights", href: "/analytics/ai-insights", label: "AI Insights", icon: Sparkles },
+  ];
+
   const bottomStatic: NavItem[] = [
     { id: "standup", href: "/today", label: "Standup Hub", icon: Users },
     { id: "automations", href: "/automations", label: "Automations", icon: Bot },
   ];
 
-  return [...topStatic, ...analyticsGroups, ...bottomStatic];
+  return [...topStatic, ...analyticsGroups, ...newPages, ...bottomStatic];
 }

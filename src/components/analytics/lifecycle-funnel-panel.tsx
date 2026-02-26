@@ -45,7 +45,24 @@ export function LifecycleFunnelPanel({ lifecycle, insights = [], sectionFocus = 
   const [activeStageId, setActiveStageId] = useState<LifecycleStageId | null>(visibleStages[0]?.id ?? null);
   const [hoveredStageId, setHoveredStageId] = useState<LifecycleStageId | null>(null);
 
-  if (!lifecycle || visibleStages.length === 0) {
+  const firstStage = visibleStages[0] ?? null;
+  const activeStage = visibleStages.find((stage) => stage.id === activeStageId) ?? firstStage;
+  const hoveredStage = visibleStages.find((stage) => stage.id === hoveredStageId) ?? null;
+  const displayStage = hoveredStage ?? activeStage;
+  const displayStageId = displayStage?.id ?? null;
+  const displayStageSection = displayStage?.section ?? null;
+
+  const visibleTransitions = useMemo(() => {
+    if (!lifecycle || !displayStageId) return [];
+    return lifecycle.transitions.filter((item) => item.fromStageId === displayStageId);
+  }, [lifecycle, displayStageId]);
+
+  const relatedInsights = useMemo(() => {
+    if (!displayStageSection) return [];
+    return insights.filter((item) => item.section === displayStageSection);
+  }, [insights, displayStageSection]);
+
+  if (!lifecycle || visibleStages.length === 0 || !displayStage) {
     return (
       <section className="rounded-xl border border-border bg-card p-4">
         <h2 className="text-sm font-semibold text-foreground">Lifecycle Funnel</h2>
@@ -53,13 +70,6 @@ export function LifecycleFunnelPanel({ lifecycle, insights = [], sectionFocus = 
       </section>
     );
   }
-
-  const activeStage = visibleStages.find((stage) => stage.id === activeStageId) ?? visibleStages[0];
-  const hoveredStage = visibleStages.find((stage) => stage.id === hoveredStageId) ?? null;
-  const displayStage = hoveredStage ?? activeStage;
-
-  const visibleTransitions = lifecycle.transitions.filter((item) => item.fromStageId === displayStage.id);
-  const relatedInsights = insights.filter((item) => item.section === displayStage.section);
 
   const maxVolume = Math.max(1, ...visibleStages.map((stage) => stage.volume));
 

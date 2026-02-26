@@ -24,6 +24,9 @@ model User {
   integrationConnections IntegrationConnection[]
   integrationRules       IntegrationRule[]
   analyticsSnapshots     AnalyticsSnapshot[]
+  stripeCustomerLinks    StripeCustomerLink[]
+  metricHistory          MetricHistory[]
+  insightFeedback        InsightFeedback[]
   uiPreference           UserUiPreference?
   savedViews             UserSavedView[]
   ownedWorkflows         WorkflowDefinition[] @relation("WorkflowOwner")
@@ -54,404 +57,9 @@ model User {
   financialGoals    FinancialGoal[]
   forecastScenarios ForecastScenario[]
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-}
-
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-}
-
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
-}
-
-// ============================================================
-// COMPANY PRIORITIES
-// ============================================================
-
-model CompanyPriority {
-  id       String  @id @default(cuid())
-  name     String
-  summary  String? @db.Text
-  priority Int     @default(1)
-  color    String?
-
-  responsible User[] @relation("PriorityResponsible")
-  accountable User[] @relation("PriorityAccountable")
-  consulted   User[] @relation("PriorityConsulted")
-  informed    User[] @relation("PriorityInformed")
-
-  projects Project[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// ============================================================
-// DEPARTMENTS (Swim Lanes)
-// ============================================================
-
-model Department {
-  id        String    @id @default(cuid())
-  name      String    @unique
-  color     String?
-  projects  Project[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// ============================================================
-// PROJECTS
-// ============================================================
-
-model Project {
-  id          String        @id @default(cuid())
-  name        String
-  description String?       @db.Text
-  status      ProjectStatus @default(ACTIVE)
-  projectType ProjectType   @default(ONE_OFF)
-
-  parentId String?
-  parent   Project?  @relation("ProjectHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
-  children Project[] @relation("ProjectHierarchy")
-
-  companyPriorityId String?
-  companyPriority   CompanyPriority? @relation(fields: [companyPriorityId], references: [id])
-  businessFunction  String?
-
-  departmentId String?
-  department   Department? @relation(fields: [departmentId], references: [id])
-
-  responsible User[] @relation("ProjectResponsible")
-  accountable User[] @relation("ProjectAccountable")
-  consulted   User[] @relation("ProjectConsulted")
-  informed    User[] @relation("ProjectInformed")
-  sponsor     User[] @relation("ProjectSponsor")
-
-  tasks Task[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-enum ProjectStatus {
-  ACTIVE
-  ON_HOLD
-  COMPLETED
-  ARCHIVED
-}
-
-enum ProjectType {
-  RECURRING
-  PERPETUAL
-  ONE_OFF
-}
-
-// ============================================================
-// TASKS
-// ============================================================
-
-model Task {
-  id     String     @id @default(cuid())
-  title  String
-  notes  String?    @db.Text
-  status TaskStatus @default(BACKLOG)
-
-  priority           Priority        @default(P2)
-  degreeOfDifficulty DifficultyLevel @default(MEDIUM)
-
-  startDate   DateTime?
-  dueDate     DateTime?
-  completedOn DateTime?
-  assignedOn  DateTime?
-
-  parentId String?
-  parent   Task?   @relation("TaskHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
-  children Task[]  @relation("TaskHierarchy")
-
-  projectId String?
-  project   Project? @relation(fields: [projectId], references: [id])
-
-  sprintId String?
-  sprint   Sprint? @relation(fields: [sprintId], references: [id])
-
-  responsible User[] @relation("TaskResponsible")
-  accountable User[] @relation("TaskAccountable")
-  consulted   User[] @relation("TaskConsulted")
-  informed    User[] @relation("TaskInformed")
-
-  dependsOn  Task[] @relation("TaskDependency")
-  dependedBy Task[] @relation("TaskDependency")
-  waitingOn  User[] @relation("TaskWaitingOn")
-
-  unplanned       Boolean          @default(false)
-  unplannedReason UnplannedReason?
-  unplannedNote   String?          @db.Text
-  addedBy         String?
-
-  planningSessionId String?
-  planningSession   PlanningSession? @relation(fields: [planningSessionId], references: [id])
-
-  slackThread String?
-  metadata    Json?
-  columnOrder Int     @default(0)
-
-  statusHistory   StatusHistory[]
-  logbookEntries  LogbookEntry[]
-  policyOverrides PolicyOverride[]
-  integrationReceipts IntegrationReceipt[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-enum TaskStatus {
-  BACKLOG
-  QUEUED
-  WORKING_ON_TODAY
-  ACTIVE
-  NOT_DONE
-  DONE
-}
-
-enum Priority {
-  P0
-  P1
-  P2
-  P3
-}
-
-enum DifficultyLevel {
-  LOW
-  MEDIUM
-  HIGH
-  EPIC
-}
-
-enum UnplannedReason {
-  ESCALATION
-  BUG_FIX
-  CUSTOMER_REQUEST
-  SCOPE_CHANGE
-  DEPENDENCY
-  OTHER
-}
-
-// ============================================================
-// SPRINTS
-// ============================================================
-
-model Sprint {
-  id        String   @id @default(cuid())
-  name      String
-  startDate DateTime
-  endDate   DateTime
-  isActive  Boolean  @default(false)
-
-  tasks             Task[]
-  commitments       SprintCommitment[]
-  planningSessions  PlanningSession[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// ============================================================
-// SPRINT COMMITMENT LEDGER
-// ============================================================
-
-// Immutable snapshot of tasks committed at sprint start.
-// Append-only: never UPDATE or DELETE — only INSERT.
-model SprintCommitment {
-  id            String   @id @default(cuid())
-  sprintId      String
-  sprint        Sprint   @relation(fields: [sprintId], references: [id], onDelete: Cascade)
-  snapshotAt    DateTime @default(now())
-  createdBy     String
-  taskSnapshots Json     // Array of {taskId, title, status, projectId, priority}
-
-  @@index([sprintId, snapshotAt])
-}
-
-model PlanningSession {
-  id          String    @id @default(cuid())
-  sprintId    String
-  sprint      Sprint    @relation(fields: [sprintId], references: [id], onDelete: Cascade)
-  createdBy   String
-  startedAt   DateTime  @default(now())
-  completedAt DateTime?
-  notes       String?   @db.Text
-
-  tasks Task[]
-
-  @@index([sprintId])
-}
-
-// ============================================================
-// STATUS HISTORY
-// ============================================================
-
-model StatusHistory {
-  id         String      @id @default(cuid())
-  taskId     String
-  task       Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  fromStatus TaskStatus?
-  toStatus   TaskStatus
-  changedAt  DateTime    @default(now())
-  changedBy  String?
-}
-
-// ============================================================
-// LOGBOOK
-// ============================================================
-
-model LogbookEntry {
-  id          String     @id @default(cuid())
-  taskId      String
-  task        Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  taskTitle   String
-  taskNotes   String?    @db.Text
-  projectName String?
-  sprintName  String?
-  priority    Priority
-  status      TaskStatus
-  responsible String?
-  accountable String?
-  completedOn DateTime
-  archivedAt  DateTime   @default(now())
-  metadata    Json?
-}
-
-// ============================================================
-// BOARD SETTINGS
-// ============================================================
-
-model BoardSettings {
-  id          String @id @default(cuid())
-  columnName  String @unique
-  wipLimit    Int    @default(0)
-  columnOrder Int    @default(0)
-  color       String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// ============================================================
-// WIP POLICY
-// ============================================================
-
-model WipPolicy {
-  id            String          @id @default(cuid())
-  columnName    String          @unique
-  wipLimit      Int             @default(0)
-  enforcement   EnforcementMode @default(WARN)
-  overrideRoles String[]        @default(["admin"])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-enum EnforcementMode {
-  WARN
-  BLOCK
-}
-
-// ============================================================
-// POLICY OVERRIDE AUDIT
-// ============================================================
-
-model PolicyOverride {
-  id        String     @id @default(cuid())
-  taskId    String
-  task      Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  action    String
-  reason    String     @db.Text
-  actorId   String
-  actorName String?
-  actorRole String?
-  column    String
-  wipCount  Int
-  wipLimit  Int
-
-  createdAt DateTime @default(now())
-}
-
-// ============================================================
-// SECURITY AUDIT
-// ============================================================
-
-model SecurityAuditEvent {
-  id        String  @id @default(cuid())
-  action    String
-  category  String
-  outcome   String
-
-  actorId   String?
-  actor     User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
-  actorRole String?
-
-  targetType String?
-  targetId   String?
-
-  details   Json?
-  ipAddress String?
-  userAgent String?
-
-  createdAt DateTime @default(now())
-
-  @@index([category, createdAt])
-  @@index([action, createdAt])
-  @@index([actorId, createdAt])
-}
-
-// ============================================================
-// EXTERNAL INTEGRATIONS
-// ============================================================
-
-enum IntegrationProvider {
-  GOOGLE_WORKSPACE
-  HUBSPOT
-  SLACK
-  CODA
-  REDDIT
-  STRIPE
-  MERCURY
-  WEBFLOW
-  GOOGLE_ADS
-  META_ADS
-  META_PAGE
+  SEMRUSH
   PYLON
+  GOOGLE_ANALYTICS
 }
 
 enum IntegrationConnectionStatus {
@@ -514,6 +122,67 @@ model AnalyticsSnapshot {
   @@index([userId, providerKey, contextKey, rangePreset, toDate])
   @@index([expiresAt])
   @@index([capturedAt])
+}
+
+model StripeCustomerLink {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  stripeCustomerId String
+  hubspotDealId    String
+  hubspotDealName  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, stripeCustomerId])
+  @@unique([userId, hubspotDealId])
+  @@index([userId])
+}
+
+// ============================================================
+// AI ANALYTICS: METRIC HISTORY & INSIGHT FEEDBACK
+// ============================================================
+
+model MetricHistory {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  metricKey   String
+  section     String
+  value       Float
+  periodStart DateTime
+  periodEnd   DateTime
+  rangePreset String
+
+  capturedAt DateTime @default(now())
+
+  @@index([userId, metricKey, periodEnd(sort: Desc)])
+  @@index([userId, section, periodEnd(sort: Desc)])
+  @@index([capturedAt])
+}
+
+enum InsightFeedbackAction {
+  USEFUL
+  NOT_USEFUL
+  ACTED_ON
+  DISMISSED
+}
+
+model InsightFeedback {
+  id        String                @id @default(cuid())
+  userId    String
+  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  insightId String
+  action    InsightFeedbackAction
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, insightId])
+  @@index([createdAt])
 }
 
 model IntegrationRule {

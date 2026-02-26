@@ -1,82 +1,107 @@
-// Shared computation helpers for financial planning features.
-// UI formatters (fmt$, fmtPct, pctChange, etc.) live in
-// @/components/analytics/dashboard-primitives — this module is
-// for pure computation logic that runs on both server and client.
+// ─── Finance Utility Helpers ─────────────────────────────
+// Shared computation helpers for financial planning engines.
+// Pure functions used by forecast-engine, pnl-builder,
+// unit-economics, budget-variance, and finance UI tabs.
 
-/** Variance between planned and actual amounts. */
-export function computeVariance(
-  planned: number,
-  actual: number | null,
-): { variance: number | null; variancePct: number | null } {
-  if (actual == null) return { variance: null, variancePct: null };
-  const variance = actual - planned;
-  const variancePct = planned === 0 ? (actual === 0 ? 0 : 100) : (variance / planned) * 100;
-  return { variance, variancePct };
+/**
+ * SaaS-standard expense allocation ratios.
+ * Mercury only provides aggregate inflows/outflows — no transaction-level
+ * detail — so we estimate category breakdowns using these ratios.
+ */
+export type ExpenseRatios = {
+  cogs: number;
+  payroll: number;
+  marketing: number;
+  infrastructure: number;
+  ops: number;
+};
+
+export const DEFAULT_EXPENSE_RATIOS: ExpenseRatios = {
+  cogs: 0.25,
+  payroll: 0.35,
+  marketing: 0.15,
+  infrastructure: 0.10,
+  ops: 0.15,
+};
+
+/** Budget vs actual variance as a percentage. */
+export function computeVariance(actual: number, budget: number): number {
+  if (budget === 0) return actual === 0 ? 0 : 100;
+  return ((actual - budget) / budget) * 100;
 }
 
 /** Progress toward a target value as a clamped 0-100 percentage. */
-export function computeProgressPct(current: number, target: number): number {
-  if (target === 0) return current > 0 ? 100 : 0;
+export function computeProgressPct(
+  current: number,
+  target: number,
+  direction: "higher" | "lower" = "higher",
+): number {
+  if (direction === "lower") {
+    if (current === 0) return target >= 0 ? 100 : 0;
+    if (target === 0) return current <= 0 ? 100 : 0;
+    return Math.min(Math.max((target / current) * 100, 0), 100);
+  }
+
+  if (target <= 0) return 0;
   return Math.min(Math.max((current / target) * 100, 0), 100);
 }
 
-/** Format a signed delta with + / − prefix and dollar sign. */
-export function fmtDelta(value: number): string {
-  const abs = Math.abs(value);
-  const formatted = abs >= 1_000
-    ? `$${(abs / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`
-    : `$${abs.toFixed(0)}`;
-  if (value > 0) return `+${formatted}`;
-  if (value < 0) return `−${formatted}`;
-  return formatted;
+/** Format a numeric delta as a compact dollar string: "+$1.2K" or "-$500". */
+export function fmtDelta(n: number): string {
+  const sign = n >= 0 ? "+" : "-";
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+  return `${sign}$${Math.round(abs)}`;
 }
 
-/** Format months with a short suffix, handling infinity. */
+/** Format a number of months as a readable string: "12.5 mo" or ">24 mo". */
 export function fmtMonths(n: number): string {
-  if (!Number.isFinite(n) || n >= 999) return "∞";
-  return `${n.toFixed(1)}mo`;
+  if (n > 24) return ">24 mo";
+  return `${n.toFixed(1)} mo`;
 }
 
-/** Format a ratio like LTV:CAC as "3.2×". */
-export function fmtRatio(value: number): string {
-  if (!Number.isFinite(value)) return "—";
-  return `${value.toFixed(1)}×`;
+/** Format a ratio with one decimal place: "3.2x". */
+export function fmtRatio(n: number): string {
+  return `${n.toFixed(1)}x`;
 }
 
-/** Tailwind text color class for runway month thresholds. */
+/** Runway health color: <6 red, <12 yellow, else green. */
 export function runwayColor(months: number): string {
-  if (months >= 999 || months >= 12) return "text-emerald-500";
-  if (months >= 6) return "text-yellow-500";
-  return "text-red-500";
+  if (months < 6) return "#ef4444";
+  if (months < 12) return "#eab308";
+  return "#22c55e";
 }
 
-/** Tailwind background color class for runway month thresholds. */
+/** Runway health background color (lighter tints). */
 export function runwayBgColor(months: number): string {
-  if (months >= 999 || months >= 12) return "bg-emerald-500";
-  if (months >= 6) return "bg-yellow-500";
-  return "bg-red-500";
+  if (months < 6) return "#fef2f2";
+  if (months < 12) return "#fefce8";
+  return "#f0fdf4";
 }
 
-/** HSL color string for a 0-100 health score. */
+/** Health score color: <40 red, <70 yellow, else green. */
 export function healthScoreColor(score: number): string {
-  if (score >= 80) return "hsl(142, 71%, 45%)";
-  if (score >= 60) return "hsl(48, 96%, 53%)";
-  if (score >= 40) return "hsl(25, 95%, 53%)";
-  return "hsl(0, 84%, 60%)";
+  if (score < 40) return "#ef4444";
+  if (score < 70) return "#eab308";
+  return "#22c55e";
 }
 
-/** Tailwind text color for a letter grade. */
+/** Letter-grade color: A green, B blue, C yellow, D/F red. */
 export function gradeColor(grade: string): string {
-  if (grade === "A") return "text-emerald-500";
-  if (grade === "B") return "text-blue-500";
-  if (grade === "C") return "text-yellow-500";
-  if (grade === "D") return "text-orange-500";
-  return "text-red-500";
+  const g = grade.toUpperCase().charAt(0);
+  if (g === "A") return "#22c55e";
+  if (g === "B") return "#3b82f6";
+  if (g === "C") return "#eab308";
+  return "#ef4444";
 }
 
-/** Severity color for LTV:CAC ratio health. */
-export function ltvCacSeverity(ratio: number): "positive" | "neutral" | "negative" {
-  if (ratio >= 3) return "positive";
-  if (ratio >= 1) return "neutral";
-  return "negative";
+/** LTV:CAC ratio severity band. */
+export function ltvCacSeverity(
+  ratio: number,
+): "critical" | "warning" | "info" | "success" {
+  if (ratio < 1) return "critical";
+  if (ratio < 3) return "warning";
+  if (ratio < 5) return "info";
+  return "success";
 }

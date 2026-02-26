@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -73,48 +73,16 @@ interface ProviderCardProps {
   onCodaTokenChange: (value: string) => void;
   onCodaDocChange: (value: string) => void;
   onConnectCoda: () => Promise<void>;
-  onRuleReload: (ruleId: string) => Promise<void>;
-  onRuleSave: (
-    ruleId: string,
-    payload: {
-      enabled?: boolean;
-      statusOverride?: "QUEUED" | "ACTIVE" | "NOT_DONE" | null;
-      config: Record<string, unknown>;
-    }
-  ) => Promise<void>;
-  onRuleRun: (
-    ruleId: string,
-    payload?: { dryRun?: boolean; payload?: Record<string, unknown> }
-  ) => Promise<void>;
-  onChannelRoutingAddPolicy: (ruleId: string, policy: Record<string, unknown>) => Promise<void>;
-  onChannelRoutingRemovePolicy: (ruleId: string, policyIndex: number) => Promise<void>;
-  hubspotDiagnostics: {
-    loading: boolean;
-    error: string | null;
-    data: HubSpotDiagnosticsResponse | null;
-    driftLoading: boolean;
-    driftReport: HubSpotDriftReport | null;
-  };
-  onReloadHubspotDiagnostics: () => Promise<void>;
-  onRunHubspotDrift: () => Promise<void>;
-}
-
-export function ProviderCard({
-  item,
-  isExpanded,
-  onToggleExpand,
-  attentionCount,
-  loadingProviderAction,
-  remediationSteps,
-  ruleStates,
-  onStartOAuthConnect,
-  onDisconnect,
-  onRefresh,
-  codaToken,
-  codaDocInput,
-  onCodaTokenChange,
-  onCodaDocChange,
-  onConnectCoda,
+  semrushToken,
+  semrushDomain,
+  onSemrushTokenChange,
+  onSemrushDomainChange,
+  onConnectSemrush,
+  pylonToken,
+  pylonBaseUrl,
+  onPylonTokenChange,
+  onPylonBaseUrlChange,
+  onConnectPylon,
   onRuleReload,
   onRuleSave,
   onRuleRun,
@@ -148,31 +116,24 @@ export function ProviderCard({
   const health = getHealthTone(item);
 
   const [openRuleId, setOpenRuleId] = useState<string | null>(null);
-  const didUserToggleRuleRef = useRef(false);
+  const [didUserToggleRule, setDidUserToggleRule] = useState(false);
 
-  useEffect(() => {
-    if (!isExpanded || didUserToggleRuleRef.current) {
-      return;
+  const effectiveOpenRuleId = useMemo(() => {
+    if (!isExpanded) return null;
+
+    if (openRuleId && sortedRules.some((entry) => entry.descriptor.id === openRuleId)) {
+      return openRuleId;
     }
+
+    if (didUserToggleRule) return null;
 
     const firstFailingRule = sortedRules.find((entry) => Boolean(entry.state?.rule?.lastError));
-    setOpenRuleId(firstFailingRule?.descriptor.id ?? null);
-  }, [isExpanded, sortedRules]);
-
-  useEffect(() => {
-    if (!openRuleId) {
-      return;
-    }
-
-    const stillExists = sortedRules.some((entry) => entry.descriptor.id === openRuleId);
-    if (!stillExists) {
-      setOpenRuleId(null);
-    }
-  }, [openRuleId, sortedRules]);
+    return firstFailingRule?.descriptor.id ?? null;
+  }, [didUserToggleRule, isExpanded, openRuleId, sortedRules]);
 
   const toggleRule = (ruleId: string) => {
-    didUserToggleRuleRef.current = true;
-    setOpenRuleId((previous) => (previous === ruleId ? null : ruleId));
+    setDidUserToggleRule(true);
+    setOpenRuleId(effectiveOpenRuleId === ruleId ? null : ruleId);
   };
 
   return (
@@ -237,7 +198,7 @@ export function ProviderCard({
 
         <div className="flex flex-wrap items-center gap-1.5">
           {item.authType === "oauth" ? (
-            item.connected ? (
+            item.status === "CONNECTED" ? (
               <>
                 <button
                   type="button"
@@ -366,7 +327,7 @@ export function ProviderCard({
                     "Connect Coda"
                   )}
                 </button>
-                {item.connected ? (
+                {item.status === "CONNECTED" ? (
                   <button
                     type="button"
                     onClick={() => onDisconnect(item.slug)}
@@ -381,108 +342,7 @@ export function ProviderCard({
             </div>
           ) : null}
 
-          {item.slug === "hubspot" ? (
-            <div className="rounded-lg border border-border p-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium text-foreground">HubSpot Diagnostics</p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onReloadHubspotDiagnostics()}
-                    disabled={hubspotDiagnostics.loading}
-                    className="rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
-                  >
-                    Reload
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onRunHubspotDrift()}
-                    disabled={hubspotDiagnostics.driftLoading}
-                    className="rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
-                  >
-                    {hubspotDiagnostics.driftLoading ? "Running..." : "Run Drift Report"}
-                  </button>
-                </div>
-              </div>
-
-              {hubspotDiagnostics.error ? (
-                <p className="mt-2 text-xs text-[var(--danger)]">{hubspotDiagnostics.error}</p>
-              ) : null}
-
-              {hubspotDiagnostics.data ? (
-                <div className="mt-2 space-y-2 text-xs text-muted-foreground">
-                  <p>
-                    Connection status: {hubspotDiagnostics.data.connection?.status || "unknown"} · Last synced:{" "}
-                    {formatDate(hubspotDiagnostics.data.connection?.lastSyncedAt ?? null)}
-                  </p>
-                  {hubspotDiagnostics.data.mappingValidation.length > 0 ? (
-                    <div className="rounded-md border border-[var(--warning)]/40 bg-[var(--warning)]/10 p-2">
-                      <p className="font-medium text-foreground">Mapping validation issues</p>
-                      <ul className="mt-1 space-y-1">
-                        {hubspotDiagnostics.data.mappingValidation.map((issue, index) => (
-                          <li key={`${issue}-${index}`}>{issue}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : (
-                    <p className="text-[var(--success)]">No mapping validation issues detected.</p>
-                  )}
-                  <div>
-                    <p className="font-medium text-foreground">Recent receipts</p>
-                    {hubspotDiagnostics.data.recentReceipts.length === 0 ? (
-                      <p>No recent sync receipts.</p>
-                    ) : (
-                      <ul className="mt-1 space-y-1">
-                        {hubspotDiagnostics.data.recentReceipts.slice(0, 5).map((receipt) => (
-                          <li key={receipt.id}>
-                            {receipt.direction} · deal {receipt.dealId} · task {receipt.taskId || "none"} ·{" "}
-                            {formatDate(receipt.createdAt)}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-              ) : null}
-
-              {hubspotDiagnostics.driftReport ? (
-                <div className="mt-2 rounded-md border border-border bg-background p-2 text-xs text-muted-foreground">
-                  <p className="font-medium text-foreground">Latest Drift Report</p>
-                  <p>Drift count: {hubspotDiagnostics.driftReport.drifts.length}</p>
-                  <p>
-                    Scanned deals: {hubspotDiagnostics.driftReport.scannedDeals} · tasks:{" "}
-                    {hubspotDiagnostics.driftReport.scannedTasks}
-                  </p>
-                  {hubspotDiagnostics.driftReport.drifts.length > 0 ? (
-                    <ul className="mt-1 space-y-1">
-                      {hubspotDiagnostics.driftReport.drifts.slice(0, 5).map((drift, index) => (
-                        <li key={`${drift.dealId}-${index}`}>
-                          {drift.kind}: {drift.detail}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p>No drift entries returned.</p>
-                  )}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {sortedRules.length > 0 ? (
-            <div className="space-y-2">
-              <div className="flex items-center gap-1 text-sm font-medium text-foreground">
-                <Wrench className="h-4 w-4" />
-                Rule Editors
-              </div>
-
-              <div className="space-y-2">
-                {sortedRules.map(({ descriptor, state }) => {
-                  if (!state) {
-                    return null;
-                  }
-
-                  const isOpen = openRuleId === descriptor.id;
+                  const isOpen = effectiveOpenRuleId === descriptor.id;
                   const rowStatus = getRuleStatusLabel(state);
                   const panelId = `${contentId}-${descriptor.id}`;
 

@@ -1,7 +1,14 @@
-import type { CodaEngagedLeadCandidate } from "@/lib/analytics/types";
+import type { CodaEngagedLeadCandidate, HubSpotContactSummary } from "@/lib/analytics/types";
 
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
 const HUBSPOT_SEARCH_ENDPOINT = "https://api.hubapi.com/crm/v3/objects/contacts/search";
+const HUBSPOT_BATCH_READ_ENDPOINT = "https://api.hubapi.com/crm/v3/objects/contacts/batch/read";
+
+type HubSpotContactLookupStatus = "inFunnel" | "notInFunnel" | "unknown";
+type HubSpotContactLookupResult = {
+  status: HubSpotContactLookupStatus;
+  contact: HubSpotContactSummary | null;
+};
 
 export interface CodaLeadScoringInput {
   creator: string;
@@ -81,124 +88,11 @@ export function buildHubspotSearchUrl(email: string): string {
   return `https://app.hubspot.com/contacts?query=${encodeURIComponent(email)}`;
 }
 
-export function scoreCodaEngagedLeads(input: {
-  creators: CodaLeadScoringInput[];
-  now?: Date;
-}): CodaEngagedLeadCandidate[] {
-  const now = input.now ?? new Date();
-  const candidates = input.creators
-    .map((item) => {
-      const email = normalizeEmail(item.email);
-      if (!email) return null;
-      return {
-        creator: item.creator,
-        email,
-        cards30d: Math.max(0, item.cards30d),
-        cardsPrevious30d: Math.max(0, item.cardsPrevious30d),
-        activeDays30d: Math.max(0, item.activeDays30d),
-        lastActivityAt: item.lastActivityAt,
-      };
-    })
-    .filter((item): item is NonNullable<typeof item> => Boolean(item));
-
-  if (candidates.length === 0) return [];
-
-  const maxCards30d = Math.max(1, ...candidates.map((item) => item.cards30d));
-  const maxActiveDays = Math.max(1, ...candidates.map((item) => item.activeDays30d));
-
-  const scored = candidates.map((item): CodaEngagedLeadCandidate => {
-    const volumeNorm = clamp01(item.cards30d / maxCards30d);
-    const activeNorm = clamp01(item.activeDays30d / maxActiveDays);
-    const recencyNorm = clamp01(1 - daysSince(item.lastActivityAt, now) / 30);
-    const accel = acceleration({
-      current: item.cards30d,
-      previous: item.cardsPrevious30d,
-    });
-
-    const score =
-      volumeNorm * 0.45 + activeNorm * 0.25 + recencyNorm * 0.2 + accel.normalized * 0.1;
-
-    return {
-      creator: item.creator,
-      email: item.email,
-      cards30d: item.cards30d,
-      activeDays30d: item.activeDays30d,
-      lastActivityAt: item.lastActivityAt,
-      trend30dVsPrevious30d: accel.trendPct,
-      engagementScore: round2(score * 100),
-      reasons: reasonList({
-        volumeNorm,
-        activeNorm,
-        recencyNorm,
-        trendPct: accel.trendPct,
-      }),
-      funnelStatus: "unknown",
-      hubspotSearchUrl: buildHubspotSearchUrl(item.email),
-    };
-  });
-
-  return scored.sort((a, b) => b.engagementScore - a.engagementScore || b.cards30d - a.cards30d);
-}
-
-async function checkHubspotContactPresence(input: {
-  accessToken: string;
-  email: string;
-}): Promise<"inFunnel" | "notInFunnel" | "unknown"> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 6_000);
-
-  try {
-    const response = await fetch(HUBSPOT_SEARCH_ENDPOINT, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${input.accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        filterGroups: [
-          {
-            filters: [
-              {
-                propertyName: "email",
-                operator: "EQ",
-                value: input.email,
-              },
-            ],
-          },
-        ],
-        limit: 1,
-        properties: ["email"],
-      }),
-      signal: controller.signal,
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      return "unknown";
-    }
-
-    const payload = (await response.json().catch(() => null)) as
-      | { total?: number; results?: unknown[] }
-      | null;
-    if (!payload) return "unknown";
-
-    const total = typeof payload.total === "number" ? payload.total : payload.results?.length ?? 0;
-    return total > 0 ? "inFunnel" : "notInFunnel";
-  } catch {
-    return "unknown";
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-export async function enrichCodaLeadFunnelStatus(input: {
-  candidates: CodaEngagedLeadCandidate[];
-  hubspotAccessToken?: string | null;
-  maxCandidates?: number;
-}): Promise<{ candidates: CodaEngagedLeadCandidate[]; hubspotMatchingErrors: number }> {
-  if (!input.hubspotAccessToken) {
-    return {
-      candidates: input.candidates.map((candidate) => ({ ...candidate, funnelStatus: "unknown" })),
+      candidates: input.candidates.map((candidate) => ({
+        ...candidate,
+        funnelStatus: "unknown",
+        hubspotContact: null,
+      })),
       hubspotMatchingErrors: 0,
     };
   }
@@ -206,36 +100,22 @@ export async function enrichCodaLeadFunnelStatus(input: {
   const maxCandidates = Math.max(1, Math.min(input.maxCandidates ?? 25, input.candidates.length));
   const top = input.candidates.slice(0, maxCandidates);
 
-  const settled = await Promise.all(
-    top.map(async (candidate) => {
-      const status = await checkHubspotContactPresence({
-        accessToken: input.hubspotAccessToken!,
-        email: candidate.email,
-      });
-      return {
-        candidate,
-        status,
-      };
-    })
-  );
+  const lookup = await resolveHubspotContactsByEmail({
+    accessToken: input.hubspotAccessToken!,
+    emails: top.map((candidate) => candidate.email),
+  });
 
-  let hubspotMatchingErrors = 0;
-  const statusByEmail = new Map<string, "inFunnel" | "notInFunnel" | "unknown">();
-
-  for (const row of settled) {
-    statusByEmail.set(row.candidate.email, row.status);
-    if (row.status === "unknown") {
-      hubspotMatchingErrors += 1;
-    }
-  }
-
-  const merged = input.candidates.map((candidate) => ({
-    ...candidate,
-    funnelStatus: statusByEmail.get(candidate.email) ?? "unknown",
-  }));
+  const merged = input.candidates.map((candidate) => {
+    const result = lookup.results.get(candidate.email);
+    return {
+      ...candidate,
+      funnelStatus: result?.status ?? "unknown",
+      hubspotContact: result?.contact ?? null,
+    };
+  });
 
   return {
     candidates: merged,
-    hubspotMatchingErrors,
+    hubspotMatchingErrors: lookup.errors,
   };
 }

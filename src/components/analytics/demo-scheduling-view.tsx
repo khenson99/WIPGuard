@@ -9,36 +9,17 @@ const OUTCOME_CONFIG: Record<DemoOutcome, { label: string; color: string; icon: 
   "no-show": { label: "No-Show", color: "#ef4444", icon: XCircle },
   rescheduled: { label: "Rescheduled", color: "#fbbf24", icon: RotateCw },
   pending: { label: "Pending", color: "#6b7280", icon: Clock },
-};
-
-export function DemoSchedulingView({ data }: { data: AnalyticsDashboardData | null }) {
-  const demo = data?.demoAnalytics;
-  const [search, setSearch] = useState("");
-  const [outcomeFilter, setOutcomeFilter] = useState<string>("all");
-
-  const filtered = useMemo(() => {
-    if (!demo) return [];
-    return demo.demos.filter((d) => {
-      if (search) {
-        const q = search.toLowerCase();
-        if (!d.dealName.toLowerCase().includes(q) && !d.contactEmail?.toLowerCase().includes(q)) return false;
-      }
-      if (outcomeFilter !== "all" && d.outcome !== outcomeFilter) return false;
-      return true;
-    });
-  }, [demo, search, outcomeFilter]);
-
-  if (!demo || demo.totalScheduled === 0) return <EmptyState />;
-
   // Weekly density
   const weeklyDensity = useMemo(() => {
-    if (!demo.weeklyTrend.length) return [];
+    if (!demo || !demo.weeklyTrend.length) return [];
     const maxScheduled = Math.max(...demo.weeklyTrend.map((w) => w.scheduled), 1);
     return demo.weeklyTrend.slice(-12).map((w) => ({
       ...w,
       density: w.scheduled / maxScheduled,
     }));
-  }, [demo.weeklyTrend]);
+  }, [demo]);
+
+  if (!demo || demo.totalScheduled === 0) return <EmptyState />;
 
   return (
     <div className="space-y-6">

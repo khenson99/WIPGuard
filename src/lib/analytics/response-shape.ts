@@ -23,12 +23,14 @@ export function createEmptyAnalyticsDashboardData(input: {
 }): AnalyticsDashboardData {
   return {
     hubspot: null,
+    salesPerformance: null,
     stripe: null,
     mercury: null,
     googleAnalytics: null,
     googleAds: null,
     metaAds: null,
     metaPage: null,
+    instagram: null,
     redditAds: null,
     webflow: null,
     coda: null,

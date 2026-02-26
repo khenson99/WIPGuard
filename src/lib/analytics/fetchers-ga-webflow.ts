@@ -118,8 +118,10 @@ async function getGAAccessToken(opts: {
 
 export async function fetchGAData(
   propertyId: string,
-  clientEmail: string,
-  privateKey: string
+  clientEmail?: string | null,
+  privateKey?: string | null,
+  from?: Date,
+  to?: Date
 ): Promise<GAData> {
   // Get access token using whichever auth method is configured
   const accessToken = await getGAAccessToken({
@@ -137,6 +139,24 @@ export async function fetchGAData(
 
   const apiUrl = `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`;
 
+  // Calculate precise date strings (YYYY-MM-DD)
+  const defaultTo = new Date();
+  const defaultFrom = new Date(defaultTo.getTime() - 30 * 24 * 60 * 60 * 1000);
+  
+  const fromDate = from || defaultFrom;
+  const toDate = to || defaultTo;
+  
+  const startDateStr = fromDate.toISOString().split("T")[0];
+  const endDateStr = toDate.toISOString().split("T")[0];
+  
+  // Calculate previous period of equal length
+  const rangeLengthMs = toDate.getTime() - fromDate.getTime();
+  const prevToDate = new Date(fromDate.getTime() - 24 * 60 * 60 * 1000); // Day before fromDate
+  const prevFromDate = new Date(fromDate.getTime() - rangeLengthMs - 24 * 60 * 60 * 1000);
+  
+  const prevStartDateStr = prevFromDate.toISOString().split("T")[0];
+  const prevEndDateStr = prevToDate.toISOString().split("T")[0];
+
   // Run all requests in parallel
   const [current30d, previous30d, trafficAndTrend, topPagesRaw] = await Promise.all([
     // Request 1: Current 30d metrics
@@ -144,7 +164,7 @@ export async function fetchGAData(
       method: "POST",
       headers,
       body: JSON.stringify({
-        dateRanges: [{ startDate: "30daysAgo", endDate: "today" }],
+        dateRanges: [{ startDate: startDateStr, endDate: endDateStr }],
         metrics: [
           { name: "sessions" },
           { name: "totalUsers" },
@@ -160,7 +180,7 @@ export async function fetchGAData(
       method: "POST",
       headers,
       body: JSON.stringify({
-        dateRanges: [{ startDate: "60daysAgo", endDate: "31daysAgo" }],
+        dateRanges: [{ startDate: prevStartDateStr, endDate: prevEndDateStr }],
         metrics: [
           { name: "sessions" },
           { name: "totalUsers" },
@@ -176,7 +196,7 @@ export async function fetchGAData(
       method: "POST",
       headers,
       body: JSON.stringify({
-        dateRanges: [{ startDate: "30daysAgo", endDate: "today" }],
+        dateRanges: [{ startDate: startDateStr, endDate: endDateStr }],
         dimensions: [
           { name: "sessionDefaultChannelGroup" },
           { name: "date" },
@@ -194,7 +214,7 @@ export async function fetchGAData(
       method: "POST",
       headers,
       body: JSON.stringify({
-        dateRanges: [{ startDate: "30daysAgo", endDate: "today" }],
+        dateRanges: [{ startDate: startDateStr, endDate: endDateStr }],
         dimensions: [{ name: "pagePath" }],
         metrics: [
           { name: "screenPageViews" },
@@ -297,7 +317,9 @@ export async function fetchGAData(
 
 export async function fetchWebflowData(
   apiToken: string,
-  siteId: string
+  siteId: string,
+  from?: Date,
+  to?: Date
 ): Promise<WebflowData> {
   const baseUrl = "https://api.webflow.com/v2";
   const headers = {
@@ -395,25 +417,10 @@ export async function fetchWebflowData(
       const formMap: Record<string, number> = {};
       items.forEach((submission) => {
         const row = requireObject(submission);
-        const formName = String(row.formName || row.formId || "Unknown");
-        formMap[formName] = (formMap[formName] || 0) + 1;
-      });
-      formSubmissions = Object.entries(formMap).map(([formName, count]) => ({
-        formName,
-        count,
-      }));
-    }
-  } catch {
-    formSubmissions = [];
-  }
-
-  return {
-    siteName,
-    lastPublished,
-    totalPages: pages.length,
-    totalCollections: collections.length,
-    formSubmissions,
-    customDomains,
+    traffic: 0,
+    bounceRate: 0,
+    clicks: 0,
+    returningVisitors: 0,
     _meta: makeMeta("live"),
   };
 }

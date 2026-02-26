@@ -1,6 +1,7 @@
 import {
-  enrichCodaLeadFunnelStatus,
+  buildHubspotSearchUrl,
   scoreCodaEngagedLeads,
+  resolveHubspotContactsByEmail,
 } from "@/lib/analytics/coda-lead-intelligence";
 import type {
   AnalyticsTimestamp,
@@ -9,66 +10,9 @@ import type {
   CodaCreatorWindow,
   CodaKanbanData,
   CodaNewCreatorFeedEntry,
-} from "./types";
-
-const CODA_API_BASE = "https://coda.io/apis/v1";
-
-function makeMeta(source: "live" | "cached" = "live"): AnalyticsTimestamp {
-  const now = new Date();
-  return {
-    fetchedAt: now.toISOString(),
-    nextRefresh: new Date(now.getTime() + 60 * 60 * 1000).toISOString(),
-    source,
-  };
-}
-
-interface CodaTable {
-  id: string;
-  name: string;
-}
-
-interface CodaColumn {
-  id: string;
-  name: string;
-}
-
-type CodaRowCell =
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
-  | {
-      name?: string;
-      email?: string;
-      displayName?: string;
-    };
-
-interface CodaRow {
-  id: string;
-  name?: string;
-  createdAt?: string;
-  updatedAt?: string;
-  values: Record<string, CodaRowCell> | CodaRowCell[];
-}
-
-interface CodaTablesResponse {
-  items: CodaTable[];
-}
-
-interface CodaColumnsResponse {
-  items: CodaColumn[];
-}
-
-interface CodaRowsResponse {
-  items: CodaRow[];
-  nextPageToken?: string;
-}
-
-export interface FetchCodaDataOptions {
-  creatorColumn?: string;
-  hubspotAccessToken?: string | null;
-  maxLeadCandidates?: number;
+  maxRecentSubmitters?: number;
+  fromDate?: Date;
+  toDate?: Date;
   now?: Date;
 }
 
@@ -121,216 +65,7 @@ function isWithinPreviousWindow(iso: string | null, days: number, now: Date): bo
   return ageMs > windowMs && ageMs <= windowMs * 2;
 }
 
-function readRowValue(
-  row: CodaRow,
-  columnId: string | null,
-  columns: CodaColumn[]
-): CodaRowCell {
-  if (!columnId) return undefined;
-
-  if (Array.isArray(row.values)) {
-    const index = columns.findIndex((column) => column.id === columnId);
-    if (index < 0) return undefined;
-    return row.values[index];
-  }
-
-  return row.values[columnId];
-}
-
-function parseCreator(cell: CodaRowCell): { creator: string; email: string | null } {
-  if (!cell) {
-    return { creator: "Unknown", email: null };
-  }
-  if (typeof cell === "string") {
-    const trimmed = cell.trim();
-    if (trimmed.includes("@")) {
-      return { creator: trimmed, email: normalizeEmail(trimmed) };
-    }
-    return { creator: normalizeName(trimmed), email: null };
-  }
-  if (typeof cell === "object") {
-    const creator = normalizeName(cell.displayName || cell.name || cell.email);
-    return {
-      creator,
-      email: normalizeEmail(cell.email),
-    };
-  }
-  return { creator: "Unknown", email: null };
-}
-
-function buildCreatorWindow(
-  cards: EnrichedCard[],
-  windowDays: 30 | 60 | 90,
-  now: Date
-): CodaCreatorWindow {
-  const currentWindowCards = cards.filter((card) =>
-    isWithinDays(card.createdAtIso, windowDays, now)
-  );
-  const previousWindowCards = cards.filter((card) =>
-    isWithinPreviousWindow(card.createdAtIso, windowDays, now)
-  );
-
-  const byCreatorMap = new Map<
-    string,
-    {
-      creator: string;
-      email: string | null;
-      cardCount: number;
-      activeDays: Set<string>;
-      firstCardAt: string | null;
-      lastCardAt: string | null;
-    }
-  >();
-
-  for (const card of currentWindowCards) {
-    const key = `${card.creator.toLowerCase()}::${card.creatorEmail ?? "unknown"}`;
-    const existing = byCreatorMap.get(key) ?? {
-      creator: card.creator,
-      email: card.creatorEmail,
-      cardCount: 0,
-      activeDays: new Set<string>(),
-      firstCardAt: null,
-      lastCardAt: null,
-    };
-
-    existing.cardCount += 1;
-    const day = toDayKey(card.createdAtIso);
-    if (day) existing.activeDays.add(day);
-    if (!existing.firstCardAt || (card.createdAtIso && card.createdAtIso < existing.firstCardAt)) {
-      existing.firstCardAt = card.createdAtIso;
-    }
-    if (!existing.lastCardAt || (card.createdAtIso && card.createdAtIso > existing.lastCardAt)) {
-      existing.lastCardAt = card.createdAtIso;
-    }
-    byCreatorMap.set(key, existing);
-  }
-
-  const byCreator: CodaCreatorBreakdown[] = [...byCreatorMap.values()]
-    .map((entry) => ({
-      creator: entry.creator,
-      email: entry.email,
-      cardCount: entry.cardCount,
-      activeDays: entry.activeDays.size,
-      firstCardAt: entry.firstCardAt,
-      lastCardAt: entry.lastCardAt,
-    }))
-    .sort((a, b) => b.cardCount - a.cardCount || b.activeDays - a.activeDays);
-
-  return {
-    windowDays,
-    totalCards: currentWindowCards.length,
-    previousWindowTotalCards: previousWindowCards.length,
-    trendDeltaPct: pctDelta(currentWindowCards.length, previousWindowCards.length),
-    uniqueCreators: byCreator.length,
-    byCreator,
-  };
-}
-
-function buildNewCreatorFeed(cards: EnrichedCard[]): CodaNewCreatorFeedEntry[] {
-  const byCreator = new Map<
-    string,
-    {
-      creator: string;
-      email: string | null;
-      firstSeenAt: string | null;
-      lastSeenAt: string | null;
-      cardsCreated: number;
-      isUnknown: boolean;
-    }
-  >();
-
-  for (const card of cards) {
-    const key = `${card.creator.toLowerCase()}::${card.creatorEmail ?? "unknown"}`;
-    const existing = byCreator.get(key) ?? {
-      creator: card.creator,
-      email: card.creatorEmail,
-      firstSeenAt: null,
-      lastSeenAt: null,
-      cardsCreated: 0,
-      isUnknown: card.creator === "Unknown",
-    };
-    existing.cardsCreated += 1;
-    if (!existing.firstSeenAt || (card.createdAtIso && card.createdAtIso < existing.firstSeenAt)) {
-      existing.firstSeenAt = card.createdAtIso;
-    }
-    if (!existing.lastSeenAt || (card.createdAtIso && card.createdAtIso > existing.lastSeenAt)) {
-      existing.lastSeenAt = card.createdAtIso;
-    }
-    byCreator.set(key, existing);
-  }
-
-  return [...byCreator.values()]
-    .sort((a, b) => {
-      if (a.firstSeenAt && b.firstSeenAt) {
-        return b.firstSeenAt.localeCompare(a.firstSeenAt);
-      }
-      if (a.firstSeenAt) return -1;
-      if (b.firstSeenAt) return 1;
-      return b.cardsCreated - a.cardsCreated;
-    })
-    .map((entry) => ({
-      creator: entry.creator,
-      email: entry.email,
-      firstSeenAt: entry.firstSeenAt,
-      lastSeenAt: entry.lastSeenAt,
-      cardsCreated: entry.cardsCreated,
-      isUnknown: entry.isUnknown,
-    }));
-}
-
-function buildDailyTrend(
-  cards: EnrichedCard[],
-  days: number
-): Array<{ date: string; count: number }> {
-  const counts = new Map<string, number>();
-  for (const card of cards) {
-    const day = toDayKey(card.createdAtIso);
-    if (!day) continue;
-    counts.set(day, (counts.get(day) ?? 0) + 1);
-  }
-
-  return [...counts.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .slice(-days)
-    .map(([date, count]) => ({ date, count }));
-}
-
-function detectCreatorColumn(
-  columns: CodaColumn[],
-  overrideName: string | undefined
-): { columnId: string | null; mode: "override" | "auto_detect" | "unknown_heavy" } {
-  if (overrideName?.trim()) {
-    const matched = columns.find(
-      (column) => column.name.trim().toLowerCase() === overrideName.trim().toLowerCase()
-    );
-    if (matched) {
-      return { columnId: matched.id, mode: "override" };
-    }
-  }
-
-  const candidates = ["created by", "creator", "author", "owner"];
-  for (const candidate of candidates) {
-    const matched = columns.find((column) =>
-      column.name.trim().toLowerCase().includes(candidate)
-    );
-    if (matched) {
-      return { columnId: matched.id, mode: "auto_detect" };
-    }
-  }
-
-  return { columnId: null, mode: "unknown_heavy" };
-}
-
-function asHeaderValue(token: string | null): Record<string, string> {
-  return token ? { "X-Coda-Page-Token": token } : {};
-}
-
-export async function fetchCodaData(
-  apiToken: string,
-  docId: string,
-  options: FetchCodaDataOptions = {}
-): Promise<CodaKanbanData> {
-  const now = options.now ?? new Date();
+  const now = options.now ?? options.toDate ?? new Date();
   const headers = {
     Authorization: `Bearer ${apiToken}`,
     Accept: "application/json",
@@ -439,8 +174,13 @@ export async function fetchCodaData(
     };
   });
 
+  const shouldFilterByRange = Boolean(options.fromDate && options.toDate);
+  const cardsInRange = shouldFilterByRange
+    ? cards.filter((card) => isWithinRange(card.createdAtIso, options.fromDate!, options.toDate!))
+    : cards;
+
   const statusMap = new Map<string, number>();
-  for (const card of cards) {
+  for (const card of cardsInRange) {
     statusMap.set(card.status, (statusMap.get(card.status) ?? 0) + 1);
   }
 
@@ -448,7 +188,7 @@ export async function fetchCodaData(
     .map(([status, count]) => ({ status, count }))
     .sort((a, b) => b.count - a.count);
 
-  const recentCards = [...cards]
+  const recentCards = [...cardsInRange]
     .sort((a, b) => {
       const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
       const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
@@ -456,100 +196,45 @@ export async function fetchCodaData(
     })
     .slice(0, 10);
 
-  const creatorWindows: CodaCreatorWindow[] = [
-    buildCreatorWindow(cards, 30, now),
-    buildCreatorWindow(cards, 60, now),
-    buildCreatorWindow(cards, 90, now),
-  ];
+  const maxLeadCandidates = Math.max(1, options.maxLeadCandidates ?? 25);
+  const topLeadCandidates = scoredLeads.slice(0, maxLeadCandidates);
 
-  const unknownCards = cards.filter((card) => card.creator === "Unknown").length;
-  const unknownCreatorRatio = cards.length > 0 ? (unknownCards / cards.length) * 100 : 0;
-  const creatorResolutionMode =
-    creatorColumn.mode === "override"
-      ? "override"
-      : unknownCreatorRatio >= 50
-        ? "unknown_heavy"
-        : "auto_detect";
+  let hubspotMatchingErrors = 0;
+  const hubspotLookup =
+    options.hubspotAccessToken && (recentSubmitters.length > 0 || topLeadCandidates.length > 0)
+      ? await resolveHubspotContactsByEmail({
+          accessToken: options.hubspotAccessToken,
+          emails: [
+            ...recentSubmitters.map((entry) => entry.email),
+            ...topLeadCandidates.map((entry) => entry.email),
+          ],
+        })
+      : null;
 
-  const newCreatorFeed = buildNewCreatorFeed(cards);
-
-  const cardsCreated90d = buildDailyTrend(
-    cards.filter((card) => isWithinDays(card.createdAtIso, 90, now)),
-    90
-  );
-  const creatorFirstSeenCards = cards.filter((card) => card.creator !== "Unknown");
-  const byCreatorFirstSeen = new Map<string, EnrichedCard>();
-  for (const card of creatorFirstSeenCards) {
-    const key = `${card.creator.toLowerCase()}::${card.creatorEmail ?? "unknown"}`;
-    const existing = byCreatorFirstSeen.get(key);
-    if (!existing || ((card.createdAtIso ?? "") < (existing.createdAtIso ?? ""))) {
-      byCreatorFirstSeen.set(key, card);
-    }
+  if (hubspotLookup) {
+    hubspotMatchingErrors = hubspotLookup.errors;
   }
-  const newCreators30d = buildDailyTrend(
-    [...byCreatorFirstSeen.values()].filter((card) => isWithinDays(card.createdAtIso, 30, now)),
-    30
-  );
 
-  const creatorsByKey = new Map<
-    string,
-    {
-      creator: string;
-      email: string;
-      cards30d: number;
-      cardsPrevious30d: number;
-      activeDays30d: Set<string>;
-      lastActivityAt: string | null;
-    }
-  >();
-
-  for (const card of cards) {
-    const email = normalizeEmail(card.creatorEmail);
-    if (!email) continue;
-    const key = `${card.creator.toLowerCase()}::${email}`;
-    const existing = creatorsByKey.get(key) ?? {
-      creator: card.creator,
-      email,
-      cards30d: 0,
-      cardsPrevious30d: 0,
-      activeDays30d: new Set<string>(),
-      lastActivityAt: null,
+  const engagedLeadCandidates = scoredLeads.map((candidate) => {
+    const result = hubspotLookup?.results.get(candidate.email);
+    return {
+      ...candidate,
+      funnelStatus: result?.status ?? "unknown",
+      hubspotContact: result?.contact ?? null,
     };
-
-    if (isWithinDays(card.createdAtIso, 30, now)) {
-      existing.cards30d += 1;
-      const day = toDayKey(card.createdAtIso);
-      if (day) existing.activeDays30d.add(day);
-    } else if (isWithinPreviousWindow(card.createdAtIso, 30, now)) {
-      existing.cardsPrevious30d += 1;
-    }
-
-    if (!existing.lastActivityAt || ((card.createdAtIso ?? "") > existing.lastActivityAt)) {
-      existing.lastActivityAt = card.createdAtIso;
-    }
-    creatorsByKey.set(key, existing);
-  }
-
-  const scoredLeads = scoreCodaEngagedLeads({
-    creators: [...creatorsByKey.values()].map((creator) => ({
-      creator: creator.creator,
-      email: creator.email,
-      cards30d: creator.cards30d,
-      cardsPrevious30d: creator.cardsPrevious30d,
-      activeDays30d: creator.activeDays30d.size,
-      lastActivityAt: creator.lastActivityAt,
-    })),
-    now,
   });
 
-  const leadEnrichment = await enrichCodaLeadFunnelStatus({
-    candidates: scoredLeads,
-    hubspotAccessToken: options.hubspotAccessToken,
-    maxCandidates: options.maxLeadCandidates,
+  const enrichedRecentSubmitters = recentSubmitters.map((entry) => {
+    const result = hubspotLookup?.results.get(entry.email);
+    return {
+      ...entry,
+      hubspotStatus: result?.status ?? "unknown",
+      hubspotContact: result?.contact ?? null,
+    };
   });
 
   return {
-    totalCards: cards.length,
+    totalCards: cardsInRange.length,
     cardsByStatus,
     recentCards,
     creatorWindows,
@@ -558,12 +243,14 @@ export async function fetchCodaData(
       newCreators30d,
       cardsCreated90d,
     },
-    engagedLeadCandidates: leadEnrichment.candidates,
+    engagedLeadCandidates,
+    rangeSummary,
+    recentSubmitters: enrichedRecentSubmitters,
     diagnostics: {
       creatorResolutionMode,
       unknownCreatorRatio: Math.round(unknownCreatorRatio * 10) / 10,
       unknownCardCount: unknownCards,
-      hubspotMatchingErrors: leadEnrichment.hubspotMatchingErrors,
+      hubspotMatchingErrors,
     },
     _meta: makeMeta("live"),
   };

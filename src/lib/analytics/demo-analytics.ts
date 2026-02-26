@@ -7,30 +7,27 @@ import type {
   DemoRecord,
   DemoSourceBreakdown,
   DemoWeeklyTrend,
-} from "@/lib/analytics/types";
+    let outcome = inferOutcome(deal.stageLabel);
+    
+    // Fallback scheduledAt to createdAt since updatedAt gets overwritten too often
+    const scheduledAt = deal.createdAt ?? new Date().toISOString();
 
-const DEMO_STAGES = new Set(["Demo Scheduled", "No-Show/Reschedule", "Demo Follow-Up"]);
-const POST_DEMO_STAGES = ["Demo Follow-Up", "Budgetary Quote Sent", "Payment Link Sent", "Free Trial", "Freemium", "Subscription", "Closed Won"];
+    // If a demo is "pending" but the scheduled date is in the past, mark it unknown (or rescheduled if preferred, 
+    // pending should strictly be future)
+    // We will mark them as "no-show" or "rescheduled" if they are in the past and still pending.
+    // The user requested: "pending demos that are in the past are just ones that we haven't updated. They should be unknown. Pending demos should just bei n the future"
+    // Since "unknown" isn't a DemoOutcome, we can add it, or map to "pending" but handle it later. We will add "unknown" to DemoOutcome.
+    if (outcome === "pending" && scheduledAt) {
+      // rough heuristic: if created > 14 days ago and still pending, it's unknown.
+      // better yet, just look at the date.
+      const daysSinceScheduled = Math.round(
+        (Date.now() - new Date(scheduledAt).getTime()) / 86_400_000
+      );
+      if (daysSinceScheduled > 1) { // 1 day grace period
+        outcome = "unknown" as DemoOutcome; 
+      }
+    }
 
-function inferOutcome(stageLabel: string): DemoOutcome {
-  if (stageLabel === "No-Show/Reschedule") return "no-show";
-  if (stageLabel === "Demo Scheduled") return "pending";
-  if (POST_DEMO_STAGES.includes(stageLabel)) return "completed";
-  return "rescheduled";
-}
-
-function buildDemoRecords(data: AnalyticsDashboardData): DemoRecord[] {
-  const deals = data.hubspot?.deals ?? [];
-  const stages = data.hubspot?.funnel?.stages ?? [];
-  const stageMap = new Map(stages.map((s) => [s.label, s]));
-
-  // Deals that ever reached Demo Scheduled or beyond
-  const demoDeals = deals.filter(
-    (deal) => DEMO_STAGES.has(deal.stageLabel) || POST_DEMO_STAGES.includes(deal.stageLabel)
-  );
-
-  return demoDeals.map((deal) => {
-    const outcome = inferOutcome(deal.stageLabel);
     const currentStageIdx = POST_DEMO_STAGES.indexOf(deal.stageLabel);
     const hasFollowUp = currentStageIdx >= 0;
 
@@ -49,7 +46,7 @@ function buildDemoRecords(data: AnalyticsDashboardData): DemoRecord[] {
       dealId: deal.dealId,
       dealName: deal.dealName,
       contactEmail: null,
-      scheduledAt: deal.updatedAt ?? new Date().toISOString(),
+      scheduledAt,
       source: deal.source || "Unknown",
       outcome,
       followUpSent: hasFollowUp,
@@ -85,7 +82,7 @@ function buildSourceBreakdown(demos: DemoRecord[]): DemoSourceBreakdown[] {
 
 function buildOutcomeBreakdown(demos: DemoRecord[]): DemoOutcomeBreakdown[] {
   const total = demos.length;
-  const counts: Record<DemoOutcome, number> = { completed: 0, "no-show": 0, rescheduled: 0, pending: 0 };
+  const counts: Record<DemoOutcome, number> = { completed: 0, "no-show": 0, rescheduled: 0, pending: 0, unknown: 0 };
 
   for (const demo of demos) {
     counts[demo.outcome] += 1;
@@ -163,33 +160,6 @@ function buildWeeklyTrend(demos: DemoRecord[]): DemoWeeklyTrend[] {
     .sort((a, b) => a.week.localeCompare(b.week));
 }
 
-export function buildDemoAnalyticsData(data: AnalyticsDashboardData): DemoAnalyticsData {
-  const demos = buildDemoRecords(data);
-  const totalScheduled = demos.length;
-  const totalCompleted = demos.filter((d) => d.outcome === "completed").length;
-  const totalNoShows = demos.filter((d) => d.outcome === "no-show").length;
-  const noShowRate = totalScheduled > 0
-    ? Math.round((totalNoShows / totalScheduled) * 1000) / 10
-    : 0;
-
-  // Avg lead time from scheduling to next stage
-  const withNextStage = demos.filter((d) => d.daysToNextStage !== null);
-  const avgLeadTimeDays = withNextStage.length > 0
-    ? Math.round(
-        (withNextStage.reduce((sum, d) => sum + (d.daysToNextStage ?? 0), 0) / withNextStage.length) * 10
-      ) / 10
-    : 0;
-
-  return {
-    totalScheduled,
-    totalCompleted,
-    totalNoShows,
-    noShowRate,
-    avgLeadTimeDays,
-    demos,
-    bySource: buildSourceBreakdown(demos),
-    byOutcome: buildOutcomeBreakdown(demos),
-    conversionFunnel: buildConversionFunnel(data, demos),
-    weeklyTrend: buildWeeklyTrend(demos),
+    journeyPaths: buildJourneyPathAnalysis(data),
   };
 }

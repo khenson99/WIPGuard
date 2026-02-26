@@ -20,28 +20,17 @@
    - `META_ACCESS_TOKEN`
    - `META_AD_ACCOUNT_ID`
    - `META_PAGE_ID`
-   - `REDDIT_CLIENT_ID`
-   - `REDDIT_CLIENT_SECRET`
-   - `REDDIT_AD_ACCOUNT_ID`
-   - `REDDIT_USER_AGENT`
-   - `WEBFLOW_API_TOKEN`
-   - `WEBFLOW_SITE_ID`
-   - `SEMRUSH_API_TOKEN`
-   - `SEMRUSH_DOMAIN`
-3. Optional:
-   - `GOOGLE_ADS_LOGIN_CUSTOMER_ID`
+## Step 3: Google OAuth Scope Backfill
+1. Run once (with `DATABASE_URL` set):
+   - `npm run ops:backfill-google-oauth-scopes`
+2. Trigger an analytics refresh / provider sync to generate a fresh Google Ads snapshot.
 
-## Step 2: Deploy
-1. Deploy the current revision to staging.
-2. Validate staging analytics endpoints and UI behavior.
-3. Deploy to production.
-
-## Step 3: Reddit Reconnect
+## Step 4: Reddit Reconnect
 1. Reconnect existing Reddit integrations through Settings.
 2. Confirm re-consent includes `adsread`.
 3. Validate Reddit Ads card no longer returns scope errors.
 
-## Step 4: Smoke Tests
+## Step 5: Smoke Tests
 1. Open Analytics and verify each provider card can show:
    - Not configured
    - Configured but failing
@@ -51,7 +40,7 @@
 3. Verify SEMrush loads metrics for `SEMRUSH_DOMAIN` (not hardcoded values).
 4. Verify Reddit campaign metrics populate from v3 report responses.
 
-## Step 5: Post-Deploy Monitoring (24h)
+## Step 6: Post-Deploy Monitoring (24h)
 1. Watch for spikes in `analyticsData.errors`.
 2. Watch stale snapshot growth in ads-related domains.
 3. Confirm failure messages are actionable (not silent zero payloads).
