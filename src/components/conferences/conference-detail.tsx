@@ -433,7 +433,7 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
         <DashboardErrorBanner message={actionError} onRetry={() => setActionError(null)} retryLabel="Dismiss" />
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 rounded-xl border border-border bg-card p-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 rounded-xl border border-border bg-secondary p-4 lg:grid-cols-3">
         <div className="space-y-3 lg:col-span-2">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <TextInput
@@ -503,7 +503,7 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 rounded-xl border border-border bg-card p-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 rounded-xl border border-border bg-secondary p-4 lg:grid-cols-2">
         <TextInput
           label="Slack Channel URL"
           value={conference.slackChannelUrl}
@@ -530,7 +530,7 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
         />
       </div>
 
-      <div className="flex flex-wrap gap-2 rounded-xl border border-border bg-card p-2">
+      <div className="flex flex-wrap gap-2 rounded-xl border border-border bg-secondary p-2">
         <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>
           Overview
         </TabButton>
@@ -571,14 +571,14 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rounded-xl border border-border bg-secondary p-4">
               <h2 className="text-sm font-semibold text-foreground">Upcoming Deadlines</h2>
               {upcomingDeadlines.length === 0 ? (
                 <p className="mt-2 text-sm text-muted-foreground">No upcoming deadlines.</p>
               ) : (
                 <div className="mt-3 space-y-2">
                   {upcomingDeadlines.map((d) => (
-                    <div key={d.id} className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-background px-3 py-2">
+                    <div key={d.id} className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-card px-3 py-2">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-foreground">{d.name}</p>
                         <p className="text-xs text-muted-foreground">
@@ -587,7 +587,7 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
                       </div>
                       <button
                         type="button"
-                        className="rounded-md border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground"
+                        className="rounded-md border border-border bg-secondary px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground"
                         onClick={() => {
                           setTab("deadlines");
                         }}
@@ -600,11 +600,11 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
               )}
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rounded-xl border border-border bg-secondary p-4">
               <h2 className="text-sm font-semibold text-foreground">Lead Status</h2>
               <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {Object.entries(summary.leads.byStatus).map(([status, count]) => (
-                  <div key={status} className="rounded-lg border border-border/60 bg-background px-3 py-2">
+                  <div key={status} className="rounded-lg border border-border/60 bg-card px-3 py-2">
                     <p className="text-[11px] text-muted-foreground">
                       {CONFERENCE_LEAD_STATUS_LABELS[status as ConferenceLeadStatus] ?? status}
                     </p>
@@ -746,13 +746,13 @@ function DeadlinesTab({
       </div>
 
       {creating ? (
-        <form onSubmit={create} className="grid grid-cols-1 gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-4">
+        <form onSubmit={create} className="grid grid-cols-1 gap-3 rounded-xl border border-border bg-secondary p-4 sm:grid-cols-4">
           <div className="sm:col-span-2">
             <label className="mb-1 block text-xs font-medium text-muted-foreground">Name</label>
             <input
               value={form.name}
               onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+              className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
               placeholder="e.g. Swag order placed"
               required
             />
@@ -762,7 +762,7 @@ function DeadlinesTab({
             <select
               value={form.type}
               onChange={(e) => setForm((p) => ({ ...p, type: e.target.value as ConferenceDeadlineType }))}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+              className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
             >
               {deadlineTypeOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -777,7 +777,7 @@ function DeadlinesTab({
               type="date"
               value={form.dueAt}
               onChange={(e) => setForm((p) => ({ ...p, dueAt: e.target.value }))}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+              className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
               required
             />
           </div>
@@ -786,7 +786,7 @@ function DeadlinesTab({
             <select
               value={form.ownerId}
               onChange={(e) => setForm((p) => ({ ...p, ownerId: e.target.value }))}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+              className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
             >
               {ownerOptions.map((opt) => (
                 <option key={opt.value || "__none__"} value={opt.value}>
@@ -814,9 +814,9 @@ function DeadlinesTab({
         </form>
       ) : null}
 
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="overflow-hidden rounded-xl border border-border bg-secondary">
         <table className="w-full text-sm">
-          <thead className="border-b border-border bg-secondary/50">
+          <thead className="border-b border-border bg-secondary">
             <tr>
               <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Done</th>
               <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Name</th>
@@ -827,7 +827,7 @@ function DeadlinesTab({
           </thead>
           <tbody className="divide-y divide-border/50">
             {deadlines.length === 0 ? (
-              <tr>
+              <tr className="bg-card">
                 <td colSpan={5} className="px-4 py-6 text-center text-sm text-muted-foreground">
                   No deadlines yet.
                 </td>
@@ -922,7 +922,7 @@ function DeadlineRow({
   };
 
   return (
-    <tr className="align-top hover:bg-secondary/20">
+    <tr className="bg-card align-top hover:bg-secondary/40">
       <td className="px-4 py-2.5">
         <input
           type="checkbox"
@@ -937,7 +937,7 @@ function DeadlineRow({
           <input
             value={draft.name}
             onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))}
-            className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+            className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground"
           />
         ) : (
           <div className="font-medium text-foreground">{deadline.name}</div>
@@ -948,7 +948,7 @@ function DeadlineRow({
           <select
             value={draft.type}
             onChange={(e) => setDraft((p) => ({ ...p, type: e.target.value as ConferenceDeadlineType }))}
-            className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+            className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground"
           >
             {deadlineTypeOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -966,7 +966,7 @@ function DeadlineRow({
             type="date"
             value={draft.dueAt}
             onChange={(e) => setDraft((p) => ({ ...p, dueAt: e.target.value }))}
-            className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+            className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground"
           />
         ) : (
           formatDate(deadline.dueAt)
@@ -977,7 +977,7 @@ function DeadlineRow({
             <select
               value={draft.ownerId}
               onChange={(e) => setDraft((p) => ({ ...p, ownerId: e.target.value }))}
-              className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+              className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground"
             >
               {ownerOptions.map((opt) => (
                 <option key={opt.value || "__none__"} value={opt.value}>
@@ -1120,7 +1120,7 @@ function BudgetTab({
         <SummaryCard label="Variance" value={formatMoney(actualTotal - plannedTotal, currency)} />
       </div>
 
-      <div className="rounded-xl border border-border bg-card p-4">
+      <div className="rounded-xl border border-border bg-secondary p-4">
         <h2 className="text-sm font-semibold text-foreground">Budget Line Items</h2>
         {!budget ? (
           <p className="mt-2 text-sm text-muted-foreground">No budget seeded yet. Use “Seed Playbook” to scaffold it.</p>
@@ -1163,7 +1163,7 @@ function BudgetTab({
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-border bg-card p-4">
+        <div className="rounded-xl border border-border bg-secondary p-4">
           <h2 className="text-sm font-semibold text-foreground">Add Expense</h2>
           <form onSubmit={createExpense} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
@@ -1171,7 +1171,7 @@ function BudgetTab({
               <select
                 value={expenseForm.category}
                 onChange={(e) => setExpenseForm((p) => ({ ...p, category: e.target.value as ConferenceExpenseCategory }))}
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
               >
                 {expenseCategoryOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -1185,7 +1185,7 @@ function BudgetTab({
               <input
                 value={expenseForm.amount}
                 onChange={(e) => setExpenseForm((p) => ({ ...p, amount: e.target.value }))}
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
                 placeholder="0.00"
                 required
               />
@@ -1196,7 +1196,7 @@ function BudgetTab({
                 type="date"
                 value={expenseForm.incurredAt}
                 onChange={(e) => setExpenseForm((p) => ({ ...p, incurredAt: e.target.value }))}
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
                 required
               />
             </div>
@@ -1205,7 +1205,7 @@ function BudgetTab({
               <input
                 value={expenseForm.vendor}
                 onChange={(e) => setExpenseForm((p) => ({ ...p, vendor: e.target.value }))}
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
               />
             </div>
             <div className="sm:col-span-2">
@@ -1213,7 +1213,7 @@ function BudgetTab({
               <select
                 value={expenseForm.budgetLineItemId}
                 onChange={(e) => setExpenseForm((p) => ({ ...p, budgetLineItemId: e.target.value }))}
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
                 disabled={!budget || budget.lineItems.length === 0}
               >
                 <option value="">No line item</option>
@@ -1236,14 +1236,14 @@ function BudgetTab({
           </form>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-4">
+        <div className="rounded-xl border border-border bg-secondary p-4">
           <h2 className="text-sm font-semibold text-foreground">Expenses</h2>
           {expenses.length === 0 ? (
             <p className="mt-2 text-sm text-muted-foreground">No expenses logged.</p>
           ) : (
             <div className="mt-3 space-y-2">
               {expenses.slice(0, 10).map((e) => (
-                <div key={e.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background px-3 py-2">
+                <div key={e.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card px-3 py-2">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-foreground">
                       {CONFERENCE_EXPENSE_CATEGORY_LABELS[e.category] ?? e.category}
@@ -1345,7 +1345,7 @@ function LeadsTab({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-border bg-card p-4">
+      <div className="rounded-xl border border-border bg-secondary p-4">
         <h2 className="text-sm font-semibold text-foreground">Add Lead</h2>
         <form onSubmit={createLead} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-6">
           <div className="sm:col-span-1">
@@ -1353,7 +1353,7 @@ function LeadsTab({
             <input
               value={form.firstName}
               onChange={(e) => setForm((p) => ({ ...p, firstName: e.target.value }))}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+              className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
             />
           </div>
           <div className="sm:col-span-1">
@@ -1361,7 +1361,7 @@ function LeadsTab({
             <input
               value={form.lastName}
               onChange={(e) => setForm((p) => ({ ...p, lastName: e.target.value }))}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+              className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
             />
           </div>
           <div className="sm:col-span-2">
@@ -1369,7 +1369,7 @@ function LeadsTab({
             <input
               value={form.email}
               onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+              className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
               placeholder="name@company.com"
             />
           </div>
@@ -1378,7 +1378,7 @@ function LeadsTab({
             <input
               value={form.companyName}
               onChange={(e) => setForm((p) => ({ ...p, companyName: e.target.value }))}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+              className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
             />
           </div>
           <div className="sm:col-span-2">
@@ -1386,7 +1386,7 @@ function LeadsTab({
             <select
               value={form.status}
               onChange={(e) => setForm((p) => ({ ...p, status: e.target.value as ConferenceLeadStatus }))}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+              className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
             >
               {leadStatusOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -1400,7 +1400,7 @@ function LeadsTab({
             <select
               value={form.assignedToUserId}
               onChange={(e) => setForm((p) => ({ ...p, assignedToUserId: e.target.value }))}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+              className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
             >
               {assigneeOptions.map((opt) => (
                 <option key={opt.value || "__none__"} value={opt.value}>
@@ -1421,9 +1421,9 @@ function LeadsTab({
         </form>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="overflow-hidden rounded-xl border border-border bg-secondary">
         <table className="w-full text-sm">
-          <thead className="border-b border-border bg-secondary/50">
+          <thead className="border-b border-border bg-secondary">
             <tr>
               <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Lead</th>
               <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Company</th>
@@ -1434,7 +1434,7 @@ function LeadsTab({
           </thead>
           <tbody className="divide-y divide-border/50">
             {leads.length === 0 ? (
-              <tr>
+              <tr className="bg-card">
                 <td colSpan={5} className="px-4 py-6 text-center text-sm text-muted-foreground">
                   No leads yet.
                 </td>
@@ -1443,7 +1443,7 @@ function LeadsTab({
               leads.map((lead) => {
                 const name = [lead.firstName, lead.lastName].filter(Boolean).join(" ") || lead.email || "Unnamed lead";
                 return (
-                  <tr key={lead.id} className="hover:bg-secondary/20">
+                  <tr key={lead.id} className="bg-card hover:bg-secondary/40">
                     <td className="px-4 py-2.5 font-medium text-foreground">
                       <div className="min-w-0">
                         <p className="truncate">{name}</p>
@@ -1458,7 +1458,7 @@ function LeadsTab({
                         value={lead.status}
                         disabled={saving}
                         onChange={(e) => void patchLead(lead.id, { status: e.target.value })}
-                        className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+                        className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground"
                       >
                         {leadStatusOptions.map((opt) => (
                           <option key={opt.value} value={opt.value}>
@@ -1472,7 +1472,7 @@ function LeadsTab({
                         value={lead.assignedToUserId ?? ""}
                         disabled={saving}
                         onChange={(e) => void patchLead(lead.id, { assignedToUserId: e.target.value || null })}
-                        className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+                        className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground"
                       >
                         {assigneeOptions.map((opt) => (
                           <option key={opt.value || "__none__"} value={opt.value}>
