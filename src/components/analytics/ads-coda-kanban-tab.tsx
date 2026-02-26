@@ -4,7 +4,7 @@ import {
   LayoutGrid, CheckCircle2, Clock, AlertCircle,
   User, Calendar,
 } from "lucide-react";
-import type { AnalyticsDashboardData, CodaCard } from "@/lib/analytics/types";
+import type { AnalyticsDashboardData, CodaCard, CodaRecentSubmitter } from "@/lib/analytics/types";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
 import { RingStat } from "@/components/analytics/bar-display";
 import { StatCard } from "@/components/analytics/stat-card";
@@ -19,11 +19,12 @@ interface AdsCodaKanbanTabProps {
 }
 
 export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
-  const coda = data?.codaKanban;
+  const coda = data?.coda ?? data?.codaKanban;
   const reasons = [
     ...(data?.errors ?? [])
-      .filter((entry) => entry.source === "codaKanban")
+      .filter((entry) => entry.source === "coda" || entry.source === "codaKanban")
       .map((entry) => entry.message),
+    ...(data?.freshness?.coda?.lastError ? [data.freshness.coda.lastError] : []),
     ...(data?.freshness?.codaKanban?.lastError ? [data.freshness.codaKanban.lastError] : []),
   ];
 
@@ -39,17 +40,10 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
   }
 
   const { totalCards, cardsByStatus, recentCards } = coda;
-
-  if (totalCards === 0 && cardsByStatus.length === 0) {
-    return (
-      <FinanceDataEmptyState
-        title="No Coda Kanban cards found"
-        message="Coda is connected, but no card data is available for this period."
-        reasons={reasons}
-        reconnectHref="/settings?tab=integrations"
-      />
-    );
-  }
+  const submissions = coda.rangeSummary?.submissions ?? 0;
+  const cardsCreated = coda.rangeSummary?.cardsCreated ?? totalCards;
+  const unknownEmailCards = coda.rangeSummary?.unknownEmailCards ?? 0;
+  const cardsPerSubmission = submissions > 0 ? (cardsCreated / submissions).toFixed(2) : "—";
 
   // ── Derived metrics ──
   const doneStatuses = ["done", "complete", "completed", "shipped", "closed"];
@@ -145,6 +139,61 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
     return DEFAULT_COLORS[index % DEFAULT_COLORS.length];
   }
 
+  // ── Recent submitters table ──
+  const recentSubmitters = coda.recentSubmitters ?? [];
+  const submitterColumns: DataTableColumn<CodaRecentSubmitter>[] = [
+    { key: "email", header: "Email", render: (r) => <span className="font-medium text-foreground">{r.email}</span> },
+    {
+      key: "creator",
+      header: "Name",
+      render: (r) => <span className="text-xs text-muted-foreground">{r.hubspotContact?.name ?? r.creator ?? "—"}</span>,
+    },
+    {
+      key: "hubspotContact",
+      header: "Position",
+      render: (r) => <span className="text-xs text-muted-foreground">{r.hubspotContact?.jobTitle ?? "—"}</span>,
+    },
+    {
+      key: "hubspotStatus",
+      header: "Company",
+      render: (r) => <span className="text-xs text-muted-foreground">{r.hubspotContact?.company ?? "—"}</span>,
+    },
+    {
+      key: "lastSubmittedAt",
+      header: "Last submitted",
+      align: "right",
+      render: (r) => (
+        <span
+          className="text-xs text-muted-foreground"
+          title={r.lastSubmittedAt ? new Date(r.lastSubmittedAt).toLocaleString() : ""}
+        >
+          {r.lastSubmittedAt ? timeAgo(r.lastSubmittedAt) : "—"}
+        </span>
+      ),
+    },
+    {
+      key: "cardsCreated",
+      header: "Cards",
+      align: "right",
+      render: (r) => <span className="text-xs tabular-nums text-foreground">{fmtN(r.cardsCreated)}</span>,
+    },
+    {
+      key: "hubspotSearchUrl",
+      header: "HubSpot",
+      align: "right",
+      render: (r) => (
+        <a
+          href={r.hubspotContact?.recordUrl ?? r.hubspotSearchUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs font-medium text-primary hover:underline"
+        >
+          {r.hubspotContact ? "Open record" : "Search"}
+        </a>
+      ),
+    },
+  ];
+
   // ── Recent cards table ──
   const cardColumns: DataTableColumn<CodaCard>[] = [
     { key: "name", header: "Card", render: (r) => <span className="max-w-[250px] truncate font-medium text-foreground">{r.name}</span> },
@@ -171,6 +220,23 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
 
   return (
     <div className="space-y-6">
+      {/* Range Summary */}
+      <SectionCard
+        title="Range Summary"
+        subtitle={
+          coda.rangeSummary
+            ? `${coda.rangeSummary.from} → ${coda.rangeSummary.to}`
+            : "Selected date range"
+        }
+      >
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatCard label="Submissions" value={fmtN(submissions)} icon={User} />
+          <StatCard label="Cards Created" value={fmtN(cardsCreated)} icon={LayoutGrid} />
+          <StatCard label="Cards / Submission" value={cardsPerSubmission} icon={Calendar} />
+          <StatCard label="Unknown-email cards" value={fmtN(unknownEmailCards)} icon={AlertCircle} />
+        </div>
+      </SectionCard>
+
       {/* Alerts */}
       {alerts.length > 0 && (
         <div className="space-y-2">
@@ -206,6 +272,22 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
           iconColor={blockedCount > 0 ? "text-red-500" : "text-primary"}
         />
       </div>
+
+      {/* Recent Submitters */}
+      <SectionCard
+        title="Recent Submitters"
+        subtitle={`${recentSubmitters.length} submitter${recentSubmitters.length !== 1 ? "s" : ""} (distinct emails)`}
+      >
+        <DataTable columns={submitterColumns} rows={recentSubmitters} emptyMessage="No submitters in this range" />
+      </SectionCard>
+
+      {totalCards === 0 && cardsByStatus.length === 0 && (
+        <SectionCard title="No cards in this range" subtitle="Coda is connected, but no cards were created in the selected period.">
+          <p className="text-xs text-muted-foreground">
+            Try widening the date range, or verify the Coda doc/table selection in Integrations.
+          </p>
+        </SectionCard>
+      )}
 
       {/* Status Distribution + Completion */}
       <div className="grid gap-4 lg:grid-cols-2">

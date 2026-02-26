@@ -1,0 +1,36 @@
+  skip: 20260219094000_backfill_meta_provider_split (already applied)
+  skip: 20260216190000_add_analytics_snapshots (already applied)
+Running migrations...
+  skip: 0001_init (already applied)
+  skip: 20260213161912_add_wip_policy_and_override (already applied)
+  skip: 20260216201000_add_stripe_mercury_integration_providers (already applied)
+  skip: 20260213173500_auth_hardening_audit (already applied)
+  skip: 20260215060742_add_departments (already applied)
+  skip: 20260218035500_add_webflow_integration_provider (already applied)
+  skip: 20260215114000_add_integrations (already applied)
+  skip: 20260215145624_sprint_commitment_ledger (already applied)
+  skip: 20260218113000_add_google_ads_meta_pylon_integration_providers (already applied)
+  skip: 20260215150000_hierarchy_integrity_constraints (already applied)
+  skip: 20260218120000_add_prospecting_models (already applied)
+  skip: 20260215213000_outbox_event_bus (already applied)
+  skip: 20260215220000_integration_rules (already applied)
+  skip: 20260219093000_reconcile_integration_provider_enum (already applied)
+  skip: 20260216004100_add_reddit_integration_provider (already applied)
+  skip: 20260216173000_add_ia_workflow_models (already applied)
+  skip: 20260220120000_add_financial_planning (already applied)
+  skip: 20260220130000_restore_ai_insights_models (already applied)
+  skip: 20260220193000_add_stripe_customer_links (already applied)
+  All migrations already applied.
+Starting server...
+▲ Next.js 16.1.6
+- Local:         http://c55599d6667f:8080
+- Network:       http://c55599d6667f:8080
+
+✓ Starting...
+✓ Ready in 69ms
+[socket.io] Initializing Socket.IO server...
+Starting Container
+[socket.io] client connected: 1FbpFzr4j2mu2Qy1AAAB
+[socket.io] client connected: sVcj_-cVcer_peuhAAAD
+[socket.io] client connected: 3bDuhXd_CuL5kqA_AAAF
+[socket.io] client connected: 2QYEFP_59qZwMRy_AAAH

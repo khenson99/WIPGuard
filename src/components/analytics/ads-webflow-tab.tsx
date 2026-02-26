@@ -1,14 +1,14 @@
 "use client";
 
 import {
-  Globe, FileText, Database, Calendar,
+  FileText, Database, Calendar,
   FormInput, Link2,
 } from "lucide-react";
 import type { AnalyticsDashboardData, WebflowFormEntry } from "@/lib/analytics/types";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
 import { StatCard } from "@/components/analytics/stat-card";
 import {
-  fmtN, timeAgo,
+  timeAgo,
   AlertBanner, DataTable, InsightCard,
   SectionCard, type DataTableColumn,
 } from "./dashboard-primitives";

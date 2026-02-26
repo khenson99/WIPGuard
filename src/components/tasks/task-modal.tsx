@@ -24,6 +24,8 @@ import {
   PRIORITY_COLORS,
   STATUS_COLORS,
 } from "@/types";
+import { useSession } from "next-auth/react";
+import { getSprintLabel } from "@/lib/sprints";
 
 interface TaskModalProps {
   task: TaskWithRelations | null;
@@ -72,9 +74,13 @@ function MultiSelectDropdown({
 }
 
 export function TaskModal({ task, onClose }: TaskModalProps) {
-  const { projects, sprints, teamMembers } = useBoardStore();
+  const { data: session } = useSession();
+  const { projects, sprints, teamMembers, filterSprint } = useBoardStore();
   const isNew = !task;
   const dialogRef = useRef<HTMLDivElement>(null);
+  const currentUserId = session?.user?.id ?? null;
+  const preferredSprintId =
+    sprints.find((s) => s.isActive)?.id ?? filterSprint ?? null;
 
   // Focus trapping and Escape key handling
   useEffect(() => {
@@ -131,6 +137,31 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
     informedIds: task?.informed?.map((u) => u.id) || [],
     dependsOnIds: task?.dependsOn?.map((d) => d.id) || [],
   });
+
+  useEffect(() => {
+    if (!isNew) return;
+    if (!currentUserId && !preferredSprintId) return;
+
+    setForm((prev) => {
+      let changed = false;
+      const next = { ...prev };
+
+      if (!next.responsibleId && currentUserId) {
+        next.responsibleId = currentUserId;
+        changed = true;
+      }
+      if (!next.accountableId && currentUserId) {
+        next.accountableId = currentUserId;
+        changed = true;
+      }
+      if (!next.sprintId && preferredSprintId) {
+        next.sprintId = preferredSprintId;
+        changed = true;
+      }
+
+      return changed ? next : prev;
+    });
+  }, [currentUserId, isNew, preferredSprintId]);
 
   const [saving, setSaving] = useState(false);
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
@@ -463,7 +494,8 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                 <option value="">No Sprint</option>
                 {sprints.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name}
+                    {getSprintLabel(s)}
+                    {s.isActive ? " (active)" : ""}
                   </option>
                 ))}
               </select>

@@ -55,17 +55,6 @@ export function FinanceUnitEconomicsTab({
     [data],
   );
 
-  // Empty state
-  if (!data?.stripe) {
-    return (
-      <FinanceDataEmptyState
-        title="Unit economics data is unavailable"
-        message="Connect Stripe to calculate LTV, CAC, and other unit economics metrics."
-        reconnectHref="/settings?tab=integrations"
-      />
-    );
-  }
-
   // Alerts
   const alerts: {
     severity: "critical" | "warning" | "info";
@@ -181,6 +170,17 @@ export function FinanceUnitEconomicsTab({
 
     return items;
   }, [ue]);
+
+  // Empty state
+  if (!data?.stripe) {
+    return (
+      <FinanceDataEmptyState
+        title="Unit economics data is unavailable"
+        message="Connect Stripe to calculate LTV, CAC, and other unit economics metrics."
+        reconnectHref="/settings?tab=integrations"
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">

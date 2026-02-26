@@ -8,13 +8,21 @@
  * Mercury only provides aggregate inflows/outflows — no transaction-level
  * detail — so we estimate category breakdowns using these ratios.
  */
-export const DEFAULT_EXPENSE_RATIOS = {
+export type ExpenseRatios = {
+  cogs: number;
+  payroll: number;
+  marketing: number;
+  infrastructure: number;
+  ops: number;
+};
+
+export const DEFAULT_EXPENSE_RATIOS: ExpenseRatios = {
   cogs: 0.25,
   payroll: 0.35,
   marketing: 0.15,
   infrastructure: 0.10,
   ops: 0.15,
-} as const;
+};
 
 /** Budget vs actual variance as a percentage. */
 export function computeVariance(actual: number, budget: number): number {
@@ -34,7 +42,7 @@ export function computeProgressPct(
     return Math.min(Math.max((target / current) * 100, 0), 100);
   }
 
-  if (target === 0) return current > 0 ? 100 : 0;
+  if (target <= 0) return 0;
   return Math.min(Math.max((current / target) * 100, 0), 100);
 }
 

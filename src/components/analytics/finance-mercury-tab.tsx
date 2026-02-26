@@ -12,6 +12,7 @@ import {
   fmt$, fmtN,
   AlertBanner, InsightCard, SectionCard,
 } from "./dashboard-primitives";
+import { AiInsightsPanel } from "./ai-insights-panel";
 
 interface FinanceMercuryTabProps {
   data: AnalyticsDashboardData | null;
@@ -141,6 +142,8 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
 
   return (
     <div className="space-y-6">
+      <AiInsightsPanel bundle={data.aiInsights || null} defaultFilter="finance" />
+
       {/* Alerts */}
       {alerts.length > 0 && (
         <div className="space-y-2">

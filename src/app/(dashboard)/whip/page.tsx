@@ -7,13 +7,7 @@ import { ScopeTimeline } from "@/components/whip/scope-timeline";
 import { WipPressureHeatmap } from "@/components/whip/wip-pressure-heatmap";
 import { QuickActionsPanel } from "@/components/whip/quick-actions-panel";
 import { RetroExport } from "@/components/whip/retro-export";
-
-function formatSprintDay(dateValue: string | null | undefined): string | null {
-  if (!dateValue) return null;
-  const parsed = new Date(`${dateValue}T00:00:00Z`);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-}
+import { getSprintLabel } from "@/lib/sprints";
 
 export default function WhipPage() {
   const {
@@ -29,8 +23,6 @@ export default function WhipPage() {
   } = useWhipData();
 
   const activeSprint = sprints.find((s) => s.id === filters.sprintId);
-  const sprintStartLabel = formatSprintDay(activeSprint?.startDate);
-  const sprintEndLabel = formatSprintDay(activeSprint?.endDate);
 
   return (
     <div className="space-y-6 p-6">
@@ -48,12 +40,7 @@ export default function WhipPage() {
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
             <span className="text-sm font-medium text-foreground">
-              {activeSprint.name}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {sprintStartLabel && sprintEndLabel
-                ? `${sprintStartLabel} -- ${sprintEndLabel}`
-                : "Date range unavailable"}
+              {getSprintLabel(activeSprint)}
             </span>
           </div>
         )}
@@ -107,7 +94,11 @@ export default function WhipPage() {
 
           {/* Retrospective export */}
           <RetroExport
-            sprintName={activeSprint?.name ?? null}
+            sprintName={
+              activeSprint
+                ? getSprintLabel(activeSprint, { includeYear: true })
+                : null
+            }
             sprintData={sprintData}
             riskReport={riskReport}
             tasks={tasks}

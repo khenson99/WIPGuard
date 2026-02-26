@@ -120,19 +120,36 @@ export function FinanceTab({ data }: FinanceTabProps) {
   const stripeFreshness: ProviderFreshness | undefined = data.freshness?.stripe;
   const mercuryFreshness: ProviderFreshness | undefined = data.freshness?.mercury;
 
-  const stripeConnected = Boolean(
-    stripeFreshness &&
-      stripeFreshness.source !== "none" &&
-      stripeFreshness.status !== "DISCONNECTED"
-  );
-  const mercuryConnected = Boolean(
-    mercuryFreshness &&
-      mercuryFreshness.source !== "none" &&
-      mercuryFreshness.status !== "DISCONNECTED"
+  const stripeHasStatus = Boolean(stripeFreshness && stripeFreshness.source !== "none");
+  const mercuryHasStatus = Boolean(mercuryFreshness && mercuryFreshness.source !== "none");
+
+  const stripeDisconnected = stripeHasStatus && stripeFreshness?.status === "DISCONNECTED";
+  const mercuryDisconnected = mercuryHasStatus && mercuryFreshness?.status === "DISCONNECTED";
+
+  const stripeConnected = stripeHasStatus && stripeFreshness?.status !== "DISCONNECTED";
+  const mercuryConnected = mercuryHasStatus && mercuryFreshness?.status !== "DISCONNECTED";
+
+  const shouldFilterMissingCredentialReason = (reason: string): boolean => {
+    const trimmed = reason.trim();
+    return (
+      trimmed.includes("Missing STRIPE_SECRET_KEY") ||
+      trimmed.includes("Missing MERCURY_API_TOKEN")
+    );
+  };
+
+  const emptyStateReasons = [...financeErrors, ...freshnessErrors].filter(
+    (reason) => !shouldFilterMissingCredentialReason(reason)
   );
 
-  // If neither integration is connected, show a full empty state
-  if (!stripe && !mercury && !stripeConnected && !mercuryConnected) {
+  const shouldShowConnectPrompt =
+    !stripe &&
+    !mercury &&
+    stripeDisconnected &&
+    mercuryDisconnected &&
+    emptyStateReasons.length === 0;
+
+  // If neither integration is connected (explicitly disconnected), show a full empty state
+  if (shouldShowConnectPrompt) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-4">
         <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
@@ -156,24 +173,48 @@ export function FinanceTab({ data }: FinanceTabProps) {
 
   // Connection status banners
   const connectionBanners: { label: string; status: "warning" | "error" }[] = [];
-  if (!stripeConnected) {
+  if (stripeDisconnected) {
     connectionBanners.push({ label: "Stripe is not connected", status: "warning" });
-  } else if (stripeFreshness?.status === "ERROR") {
+  } else if (stripeConnected && stripeFreshness?.status === "ERROR") {
     connectionBanners.push({ label: `Stripe connection error: ${stripeFreshness.lastError ?? "unknown"}`, status: "error" });
   }
-  if (!mercuryConnected) {
+  if (mercuryDisconnected) {
     connectionBanners.push({ label: "Mercury is not connected", status: "warning" });
-  } else if (mercuryFreshness?.status === "ERROR") {
+  } else if (mercuryConnected && mercuryFreshness?.status === "ERROR") {
     connectionBanners.push({ label: `Mercury connection error: ${mercuryFreshness.lastError ?? "unknown"}`, status: "error" });
   }
 
   if (!stripe && !mercury) {
     return (
-      <FinanceDataEmptyState
-        title="Finance dashboard data is unavailable"
-        message="Stripe and Mercury data could not be loaded for this range."
-        reasons={[...financeErrors, ...freshnessErrors]}
-      />
+      <div className="space-y-6">
+        {/* Connection Banners */}
+        {connectionBanners.length > 0 && (
+          <div className="space-y-2">
+            {connectionBanners.map((banner) => (
+	              <div
+	                key={banner.label}
+	                className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm ${
+	                  banner.status === "error"
+	                    ? "border-red-500/40 bg-red-500/10 text-red-600"
+	                    : "border-amber-500/40 bg-amber-500/10 text-amber-600"
+	                }`}
+	              >
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span className="flex-1">{banner.label}</span>
+                <Link href="/settings?tab=integrations" className="font-medium underline underline-offset-2 hover:no-underline">
+                  Settings
+                </Link>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <FinanceDataEmptyState
+          title="Finance dashboard data is unavailable"
+          message="Stripe and Mercury data could not be loaded for this range."
+          reasons={emptyStateReasons}
+        />
+      </div>
     );
   }
 

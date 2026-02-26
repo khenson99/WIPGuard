@@ -5,13 +5,21 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCredentials } from "@/lib/analytics/credentials";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
-import { fetchHubSpotData, fetchMercuryData, fetchStripeData } from "@/lib/analytics/fetchers";
+import {
+  buildSalesPerformancePack,
+  fetchHubSpotContacts,
+  fetchHubSpotData,
+  fetchMercuryData,
+  fetchStripeChargesByCustomer,
+  fetchStripeData,
+} from "@/lib/analytics/fetchers";
 import { fetchGAData, fetchWebflowData } from "@/lib/analytics/fetchers-ga-webflow";
 import {
   fetchGoogleAdsData,
   fetchMetaAdsData,
   fetchMetaPageData,
   fetchRedditAdsData,
+  fetchMetaInstagramData,
 } from "@/lib/analytics/fetchers-ads";
 import { fetchCodaData } from "@/lib/analytics/fetchers-coda";
 import { fetchSemrushData } from "@/lib/analytics/fetchers-semrush";
@@ -45,12 +53,14 @@ export const revalidate = 300;
 
 type DomainKey =
   | "hubspot"
+  | "salesPerformance"
   | "stripe"
   | "mercury"
   | "googleAnalytics"
   | "googleAds"
   | "metaAds"
   | "metaPage"
+  | "instagram"
   | "redditAds"
   | "webflow"
   | "coda"
@@ -79,6 +89,7 @@ const ALL_DOMAINS: DomainKey[] = [
   "googleAds",
   "metaAds",
   "metaPage",
+  "instagram",
   "redditAds",
   "webflow",
   "coda",
@@ -120,6 +131,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "googleAnalytics",
     "googleAds",
     "metaAds",
+    "instagram",
     "redditAds",
     "webflow",
     "semrush",
@@ -172,7 +184,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   ],
   "ads-google-analytics": ["googleAnalytics"],
   "ads-google-ads": ["googleAds"],
-  "ads-meta-ads": ["metaAds"],
+  "ads-meta-ads": ["metaAds", "metaPage", "instagram"],
   "ads-reddit-ads": ["redditAds", "redditOps"],
   "ads-webflow": ["webflow"],
   "ads-semrush": ["semrush"],
@@ -193,18 +205,18 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "customer-journey": [
     "hubspot", "stripe", "mercury", "googleWorkspace", "slack",
     "webflow", "coda", "googleAnalytics", "googleAds", "metaAds",
-    "redditAds", "pylon", "customerJourney",
+    "instagram", "redditAds", "pylon", "customerJourney",
     "lifecycleFunnel", "funnelJourney", "aiInsights", "recommendations", "distilledInsights",
   ],
-  "cj-overview": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "redditAds", "pylon", "customerJourney"],
-  "cj-touchpoints": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "redditAds", "pylon", "customerJourney"],
+  "cj-overview": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
+  "cj-touchpoints": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
 
   "demo-analytics": [
     "hubspot", "googleWorkspace", "demoAnalytics",
     "lifecycleFunnel", "funnelJourney", "aiInsights", "recommendations", "distilledInsights",
   ],
   "demo-scheduling": ["hubspot", "googleWorkspace", "demoAnalytics"],
-  "demo-attribution": ["hubspot", "googleAds", "metaAds", "redditAds", "googleAnalytics", "webflow", "demoAnalytics"],
+  "demo-attribution": ["hubspot", "googleAds", "metaAds", "instagram", "redditAds", "googleAnalytics", "webflow", "demoAnalytics"],
 
   "process-analytics": [
     "hubspot", "stripe", "processAnalytics",
@@ -214,11 +226,20 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "process-velocity": ["hubspot", "processAnalytics"],
   "process-health": ["hubspot", "stripe", "processAnalytics"],
   "process-throughput": ["hubspot", "processAnalytics"],
+
+  "sales-performance": ["salesPerformance"],
 };
 
 function requiredDomainsForSection(section: string | null): Set<DomainKey> {
   if (!section) return new Set(ALL_DOMAINS);
   return new Set(SECTION_DOMAINS[section] ?? ALL_DOMAINS);
+}
+
+const DEFAULT_DOMAIN_TIMEOUT_MS = 8_500;
+const STRIPE_DOMAIN_TIMEOUT_MS = 20_000;
+
+function timeoutMsForDomain(domain: DomainKey): number {
+  return domain === "stripe" ? STRIPE_DOMAIN_TIMEOUT_MS : DEFAULT_DOMAIN_TIMEOUT_MS;
 }
 
 function withTimeout<T>(fn: () => Promise<T>, timeoutMs: number, label: string): Promise<T> {
@@ -240,6 +261,20 @@ function normalizeLookupKey(value: string | null | undefined): string {
   return value?.trim().toLowerCase() ?? "";
 }
 
+type StripeCustomerLinkDelegateLike = {
+  findMany(args: {
+    where: {
+      userId: string;
+    };
+  }): Promise<
+    Array<{
+      hubspotDealId: string;
+      hubspotDealName: string | null;
+      stripeCustomerId: string;
+    }>
+  >;
+};
+
 async function hydrateStripeCustomerLinks(
   userId: string,
   data: AnalyticsDashboardData
@@ -247,7 +282,7 @@ async function hydrateStripeCustomerLinks(
   if (!data.hubspot?.deals?.length) return;
 
   const stripeCustomerLink = (
-    prisma as unknown as { stripeCustomerLink?: { findMany: Function } }
+    prisma as unknown as { stripeCustomerLink?: StripeCustomerLinkDelegateLike }
   ).stripeCustomerLink;
   if (!stripeCustomerLink) {
     console.warn("[analytics] Prisma client missing StripeCustomerLink delegate");
@@ -434,7 +469,11 @@ function staleRefreshKey(input: RefreshInput): string {
 
 async function refreshDomainSnapshot(input: RefreshInput): Promise<void> {
   try {
-    const live = await withTimeout(input.entry.fn, 8_500, input.entry.key);
+    const live = await withTimeout(
+      input.entry.fn,
+      timeoutMsForDomain(input.entry.key),
+      input.entry.key
+    );
     await storeAnalyticsSnapshot({
       userId: input.userId,
       providerKey: input.entry.key,
@@ -581,15 +620,86 @@ export async function GET(request: Request) {
   });
 
   const fetchers = ([
-    { key: "hubspot", fn: () => (creds.hubspotToken ? fetchHubSpotData(creds.hubspotToken) : Promise.reject(new Error("Missing HubSpot credential"))) },
-    { key: "stripe", fn: () => (creds.stripeKey ? fetchStripeData(creds.stripeKey) : Promise.reject(new Error("Missing Stripe credential"))) },
-    { key: "mercury", fn: () => (creds.mercuryKey ? fetchMercuryData(creds.mercuryKey) : Promise.reject(new Error("Missing Mercury credential"))) },
+    { key: "hubspot", fn: () => (creds.hubspotToken ? fetchHubSpotData(creds.hubspotToken, fromDate, toDate) : Promise.reject(new Error("Missing HubSpot credential"))) },
+    {
+      key: "salesPerformance",
+      fn: async () => {
+        if (!creds.hubspotToken) {
+          throw new Error("Missing HubSpot credential");
+        }
+
+        const errors: string[] = [];
+
+        const [hubspot, contacts] = await Promise.all([
+          fetchHubSpotData(creds.hubspotToken, fromDate, toDate, { includeInactiveProspects: true }),
+          fetchHubSpotContacts(creds.hubspotToken, fromDate, toDate),
+        ]);
+
+        const tmp = createEmptyAnalyticsDashboardData({
+          freshness: {},
+          timeRange: range,
+          lastFullRefresh: new Date().toISOString(),
+        });
+        tmp.hubspot = hubspot;
+
+        await hydrateStripeCustomerLinks(userId, tmp);
+        const deals = tmp.hubspot?.deals ?? [];
+
+        const customerIds = new Set<string>();
+        for (const deal of deals) {
+          if ((deal.stageId || "").toLowerCase() !== "closedwon") continue;
+          if (!deal.closedAt) continue;
+          const closedAt = new Date(deal.closedAt);
+          if (!Number.isFinite(closedAt.getTime())) continue;
+          if (closedAt < fromDate || closedAt > toDate) continue;
+          const customerId = deal.stripeCustomerId?.trim();
+          if (customerId) customerIds.add(customerId);
+        }
+
+        const toPlus30 = new Date(toDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+        const chargesByCustomerId = creds.stripeKey
+          ? await fetchStripeChargesByCustomer(
+              creds.stripeKey,
+              [...customerIds].map((customerId) => ({
+                customerId,
+                createdGte: fromDate,
+                createdLte: toPlus30,
+              }))
+            )
+          : {};
+
+        if (!creds.stripeKey) {
+          errors.push("Stripe not connected; realized revenue fields will be 0.");
+        }
+
+        return buildSalesPerformancePack({
+          from: fromDate,
+          to: toDate,
+          generatedAt: new Date(),
+          fromSnapshot: false,
+          deals,
+          contacts,
+          chargesByCustomerId,
+          errors,
+        });
+      },
+    },
+    { key: "stripe", fn: () => (creds.stripeKey ? fetchStripeData(creds.stripeKey, fromDate, toDate) : Promise.reject(new Error("Missing Stripe credential"))) },
+    { key: "mercury", fn: () => (creds.mercuryKey ? fetchMercuryData(creds.mercuryKey, fromDate, toDate) : Promise.reject(new Error("Missing Mercury credential"))) },
     {
       key: "googleAnalytics",
-      fn: () =>
-        creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey
-          ? fetchGAData(creds.gaPropertyId, creds.gaClientEmail, creds.gaPrivateKey)
-          : Promise.reject(new Error("Missing Google Analytics credential")),
+      fn: () => {
+        const propId = creds.gaPropertyId || process.env.GA_PROPERTY_ID;
+        const email = creds.gaClientEmail || process.env.GA_CLIENT_EMAIL;
+        const key = creds.gaPrivateKey || process.env.GA_PRIVATE_KEY?.replace(/\\n/g, "\n");
+        const hasOAuth = process.env.GA_REFRESH_TOKEN && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET;
+        
+        if (propId && ((email && key) || hasOAuth)) {
+          return fetchGAData(propId, hasOAuth ? null : email, hasOAuth ? null : key, fromDate, toDate);
+        }
+        return Promise.reject(new Error("Missing Google Analytics credential"));
+      },
     },
     {
       key: "googleAds",
@@ -605,7 +715,9 @@ export async function GET(request: Request) {
               creds.googleAdsRefreshToken,
               creds.googleAdsClientId,
               creds.googleAdsClientSecret,
-              creds.googleAdsLoginCustomerId
+              creds.googleAdsLoginCustomerId,
+              fromDate,
+              toDate
             )
           : Promise.reject(new Error("Missing Google Ads credential")),
     },
@@ -613,15 +725,28 @@ export async function GET(request: Request) {
       key: "metaAds",
       fn: () =>
         creds.metaAccessToken && creds.metaAdAccountId
-          ? fetchMetaAdsData(creds.metaAccessToken, creds.metaAdAccountId)
+          ? fetchMetaAdsData(creds.metaAccessToken, creds.metaAdAccountId, fromDate, toDate)
           : Promise.reject(new Error("Missing Meta Ads credential")),
     },
     {
       key: "metaPage",
       fn: () =>
         creds.metaAccessToken && creds.metaPageId
-          ? fetchMetaPageData(creds.metaAccessToken, creds.metaPageId)
+          ? fetchMetaPageData(creds.metaAccessToken, creds.metaPageId, fromDate, toDate)
           : Promise.reject(new Error("Missing Meta Page credential")),
+    },
+    {
+      key: "instagram",
+      fn: () =>
+        creds.metaAccessToken && creds.metaInstagramAccountId
+          ? fetchMetaInstagramData(
+              creds.metaAccessToken,
+              creds.metaInstagramAccountId,
+              { pageId: creds.metaPageId ?? undefined },
+              fromDate,
+              toDate
+            )
+          : Promise.reject(new Error("Missing Instagram credential")),
     },
     {
       key: "redditAds",
@@ -632,7 +757,9 @@ export async function GET(request: Request) {
               creds.redditClientSecret,
               creds.redditRefreshToken,
               creds.redditAdAccountId,
-              creds.redditUserAgent
+              creds.redditUserAgent,
+              fromDate,
+              toDate
             )
           : Promise.reject(new Error("Missing Reddit Ads credential")),
     },
@@ -640,14 +767,20 @@ export async function GET(request: Request) {
       key: "webflow",
       fn: () =>
         creds.webflowApiToken && creds.webflowSiteId
-          ? fetchWebflowData(creds.webflowApiToken, creds.webflowSiteId)
+          ? fetchWebflowData(creds.webflowApiToken, creds.webflowSiteId, fromDate, toDate)
           : Promise.reject(new Error("Missing Webflow credential")),
     },
     {
       key: "coda",
       fn: () =>
         creds.codaApiToken && creds.codaDocId
-          ? fetchCodaData(creds.codaApiToken, creds.codaDocId)
+          ? fetchCodaData(creds.codaApiToken, creds.codaDocId, {
+              fromDate,
+              toDate,
+              now: toDate,
+              hubspotAccessToken: creds.hubspotToken,
+              maxRecentSubmitters: 25,
+            })
           : Promise.reject(new Error("Missing Coda credential")),
     },
     {
@@ -661,7 +794,12 @@ export async function GET(request: Request) {
       key: "pylon",
       fn: () =>
         creds.pylonApiKey
-          ? fetchPylonData({ apiKey: creds.pylonApiKey, from: range.from, to: range.to })
+          ? fetchPylonData({
+              apiKey: creds.pylonApiKey,
+              from: range.from,
+              to: range.to,
+              baseUrl: creds.pylonBaseUrl ?? undefined,
+            })
           : Promise.reject(new Error("Missing Pylon credential")),
     },
     {
@@ -689,6 +827,11 @@ export async function GET(request: Request) {
       fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.REDDIT, from: fromDate, to: toDate }),
     },
   ] as FetchEntry[]).filter((entry) => domains.has(entry.key));
+
+  const TIMEOUT_OVERRIDES: Partial<Record<DomainKey, number>> = {
+    stripe: 20000,
+  };
+  const DEFAULT_TIMEOUT = 12000;
 
   const snapshotExpiresAt = snapshotExpiryFromNow(1);
 
@@ -725,7 +868,11 @@ export async function GET(request: Request) {
       }
 
       try {
-        const live = await withTimeout(entry.fn, 8_500, entry.key);
+        const live = await withTimeout(
+          entry.fn,
+          TIMEOUT_OVERRIDES[entry.key] ?? DEFAULT_TIMEOUT,
+          entry.key
+        );
         await storeAnalyticsSnapshot({
           userId,
           providerKey: entry.key,
@@ -836,6 +983,10 @@ export async function GET(request: Request) {
   }
   if (domains.has("aiInsights")) {
     result.aiInsights = buildAiInsightsBundle(result);
+  }
+  
+  if (domains.has("customerJourney")) {
+    result.customerJourney = buildCustomerJourneyData(result);
   }
   if (domains.has("recommendations")) {
     result.recommendations = buildRecommendations(result);

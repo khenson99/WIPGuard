@@ -8,12 +8,14 @@ import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
 import { StatCard } from "@/components/analytics/stat-card";
 import { BarDisplay, RingStat } from "@/components/analytics/bar-display";
+import { RepScoreboardCard } from "./rep-scoreboard-card";
 import {
   fmt$, fmtN, fmtPct,
   AlertBanner, DataTable, InsightCard,
   SectionCard,
   type DataTableColumn,
 } from "./dashboard-primitives";
+import { AiInsightsPanel } from "./ai-insights-panel";
 
 interface SalesHubspotTabProps {
   data: AnalyticsDashboardData | null;
@@ -34,6 +36,7 @@ export function SalesHubspotTab({ data }: SalesHubspotTabProps) {
 
   const funnel = hs.funnel;
   const deals = hs.deals ?? [];
+  const repRows = funnel.dealsByRep ?? [];
 
   /* ── Alerts ──────────────────────────────────────── */
 
@@ -149,6 +152,8 @@ export function SalesHubspotTab({ data }: SalesHubspotTabProps) {
 
   return (
     <div className="space-y-6">
+      <AiInsightsPanel bundle={data.aiInsights || null} defaultFilter="sales-pipeline" />
+
       {/* Alerts */}
       {alerts.map((a, i) => (
         <AlertBanner key={i} severity={a.severity} title={a.title} description={a.description} />
@@ -198,6 +203,12 @@ export function SalesHubspotTab({ data }: SalesHubspotTabProps) {
           icon={<Target className="h-4 w-4" />}
         />
       </div>
+
+      <RepScoreboardCard
+        rows={repRows}
+        deals={deals}
+        stripeChurnEvents={data?.stripe?.subscriptions?.recentChurnEvents ?? []}
+      />
 
       {/* ── Sales Funnel ──────────────────────────── */}
       <SectionCard title="Sales Pipeline Funnel" subtitle="Deal progression through stages">

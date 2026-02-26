@@ -1,16 +1,16 @@
 "use client";
 
 import {
-  BarChart3, Users, Eye, TrendingDown, TrendingUp,
-  Clock, AlertTriangle, Globe, Activity,
+  BarChart3, Users, Eye, TrendingDown,
+  Clock, Activity,
 } from "lucide-react";
-import type { AnalyticsDashboardData, GATrafficChannel, GATopPage } from "@/lib/analytics/types";
+import type { AnalyticsDashboardData, GATopPage } from "@/lib/analytics/types";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
 import { RingStat } from "@/components/analytics/bar-display";
 import { StatCard } from "@/components/analytics/stat-card";
 import {
-  fmt$, fmtN, fmtPct, pctChange, fmtDuration,
-  AlertBanner, ChangeIndicator, DataTable, InsightCard,
+  fmtN, fmtPct, pctChange, fmtDuration,
+  AlertBanner, DataTable, InsightCard,
   SectionCard, type DataTableColumn,
 } from "./dashboard-primitives";
 
@@ -35,12 +35,12 @@ function channelColor(channel: string): string {
 }
 
 export function AdsGoogleAnalyticsTab({ data }: AdsGoogleAnalyticsTabProps) {
-  const ga = data?.ga;
+  const ga = data?.googleAnalytics ?? data?.ga;
   const reasons = [
     ...(data?.errors ?? [])
       .filter((entry) => entry.source === "ga" || entry.source === "googleAnalytics")
       .map((entry) => entry.message),
-    ...(data?.freshness?.ga?.lastError ? [data.freshness.ga.lastError] : []),
+    ...(data?.freshness?.google_workspace?.lastError ? [data.freshness.google_workspace.lastError] : []),
   ];
 
   if (!ga) {

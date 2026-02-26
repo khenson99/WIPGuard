@@ -16,7 +16,8 @@ export type IntegrationSlug =
   | "google-ads"
   | "meta-ads"
   | "meta-page"
-  | "pylon";
+  | "pylon"
+  | "semrush";
 export type IntegrationAuthType = "oauth" | "token";
 
 interface OAuthSettings {
@@ -255,6 +256,9 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
         "ads_read",
         "ads_management",
         "business_management",
+        "pages_show_list",
+        "pages_read_engagement",
+        "pages_read_user_content"
       ]),
       scopeSeparator: ",",
       clientIdEnv: "META_APP_ID",
@@ -275,6 +279,14 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     name: "Pylon",
     description: "Connect customer conversation telemetry from Pylon.",
     capabilities: ["Conversations", "Customer support metrics"],
+    authType: "token",
+  },
+  {
+    slug: "semrush",
+    provider: IntegrationProvider.SEMRUSH,
+    name: "SEMrush",
+    description: "Connect SEMrush SEO metrics and keyword ranks into WIPGuard.",
+    capabilities: ["Organic Search", "Paid Traffic", "Authority"],
     authType: "token",
   },
 ] as const;

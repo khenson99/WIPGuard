@@ -58,6 +58,7 @@ const CATEGORY_CONFIG: Array<{ key: BudgetCategoryApi; label: string }> = [
   { key: "OTHER", label: "Other" },
 ];
 
+
 function emptyAmounts(): Record<BudgetCategoryApi, string> {
   return {
     COGS: "",
@@ -124,14 +125,87 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
 
   /* ── Empty state ──────────────────────────────────── */
 
-  if (!data?.stripe && !data?.mercury) {
-    return (
-      <FinanceDataEmptyState
-        provider="Finance"
-        reasons={["No Stripe or Mercury data"]}
-      />
-    );
-  }
+  const hasFinanceData = Boolean(data?.stripe || data?.mercury);
+
+  const loadBudgets = useCallback(async () => {
+    setBudgetsLoading(true);
+    setBudgetError(null);
+    try {
+      const response = await fetch("/api/financial-planning/budgets", { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`Failed to load budgets (${response.status})`);
+      }
+      const payload = (await response.json()) as BudgetApi[];
+      setBudgets(Array.isArray(payload) ? payload : []);
+    } catch (error) {
+      setBudgetError(error instanceof Error ? error.message : "Failed to load budgets");
+      setBudgets([]);
+    } finally {
+      setBudgetsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hasFinanceData) return;
+    void loadBudgets();
+  }, [hasFinanceData, loadBudgets]);
+
+  const activeBudget = budgets[0] ?? null;
+
+  const seedFormDefaults = useCallback((period: BudgetPeriodApi = "MONTHLY") => {
+    const range = defaultDateRange(period);
+    setFormName("Baseline Budget");
+    setFormPeriod(period);
+    setFormStartDate(range.start);
+    setFormEndDate(range.end);
+    setFormAmounts(emptyAmounts());
+  }, []);
+
+  const seedFormFromBudget = useCallback((budget: BudgetApi) => {
+    setFormName(budget.name ?? "Baseline Budget");
+    setFormPeriod(budget.period ?? "MONTHLY");
+    setFormStartDate(budget.startDate ? budget.startDate.slice(0, 10) : "");
+    setFormEndDate(budget.endDate ? budget.endDate.slice(0, 10) : "");
+    const nextAmounts = emptyAmounts();
+    for (const item of budget.lineItems ?? []) {
+      nextAmounts[item.category] = String(item.plannedAmount ?? "");
+    }
+    setFormAmounts(nextAmounts);
+  }, []);
+
+  useEffect(() => {
+    if (!hasFinanceData) return;
+    if (formInitialized || budgetsLoading) return;
+    if (activeBudget) {
+      seedFormFromBudget(activeBudget);
+      setFormOpen(false);
+    } else {
+      seedFormDefaults("MONTHLY");
+      setFormOpen(true);
+    }
+    setFormInitialized(true);
+  }, [
+    activeBudget,
+    budgetsLoading,
+    formInitialized,
+    hasFinanceData,
+    seedFormDefaults,
+    seedFormFromBudget,
+  ]);
+
+  const budgetAmounts = useMemo(() => {
+    if (!activeBudget || !activeBudget.lineItems?.length) return undefined;
+    const amounts: Record<string, number> = {};
+    for (const config of CATEGORY_CONFIG) {
+      amounts[config.label] = 0;
+    }
+    for (const item of activeBudget.lineItems) {
+      const config = CATEGORY_CONFIG.find((entry) => entry.key === item.category);
+      if (!config) continue;
+      amounts[config.label] = item.plannedAmount ?? 0;
+    }
+    return amounts;
+  }, [activeBudget]);
 
   const loadBudgets = useCallback(async () => {
     setBudgetsLoading(true);
@@ -431,6 +505,15 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
   );
 
   /* ── Render ───────────────────────────────────────── */
+
+  if (!hasFinanceData) {
+    return (
+      <FinanceDataEmptyState
+        provider="Finance"
+        reasons={["No Stripe or Mercury data"]}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">

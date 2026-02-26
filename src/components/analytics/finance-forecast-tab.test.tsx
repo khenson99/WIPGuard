@@ -5,8 +5,8 @@ import type {
   AnalyticsDashboardData,
   StripeData,
   MercuryData,
+  ForecastScenarioData,
 } from "@/lib/analytics/types";
-import type { ForecastScenarioData } from "@/lib/analytics/forecast-engine";
 
 vi.mock("@/lib/analytics/forecast-engine", async () => {
   const actual = await vi.importActual<typeof import("@/lib/analytics/forecast-engine")>(
@@ -131,7 +131,7 @@ describe("FinanceForecastTab", () => {
     // Each scenario name appears in multiple places (stat card, chart legend, details).
     // Verify at least one element per scenario name is present.
     expect(screen.getAllByText("Optimistic").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Base").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Base Case").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Conservative").length).toBeGreaterThanOrEqual(1);
   });
 
@@ -186,29 +186,31 @@ describe("FinanceForecastTab", () => {
     const makeScenario = (
       id: string,
       name: string,
-      runway: number,
+      runwayMonths: number,
       mrr12: number,
     ): ForecastScenarioData => ({
       id,
       name,
-      monthlyGrowthRate: 0.1,
-      monthlyChurnRate: 0.04,
-      additionalBurn: 0,
-      revenue: Array.from({ length: 13 }, (_, i) => ({
-        month: i,
-        label: `M${i}`,
-        value: mrr12,
+      assumptions: {
+        revenueGrowthRate: 0,
+        churnRateDelta: 0,
+        burnRateDelta: 0,
+        additionalMonthlyExpense: 0,
+        additionalMonthlyRevenue: 0,
+      },
+      months: Array.from({ length: 13 }, (_, i) => ({
+        month: `M${i}`,
+        projectedRevenue: mrr12,
+        projectedExpenses: 10_000,
+        projectedCashBalance: 10_000,
+        projectedMrr: mrr12,
+        projectedRunway: runwayMonths,
       })),
-      cash: Array.from({ length: 13 }, (_, i) => ({
-        month: i,
-        label: `M${i}`,
-        value: 10_000,
-      })),
-      runway,
+      runwayMonths,
     });
 
     const scenarios = [
-      makeScenario("base", "Base", 12, 20_000),
+      makeScenario("default-base", "Base Case", 12, 20_000),
       makeScenario("optimistic", "Optimistic", 5, 30_000),
       makeScenario("conservative", "Conservative", 14, 10_000),
     ];

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowUpDown } from "lucide-react";
-import { COLUMN_LABELS, PRIORITY_COLORS, type Priority, type TaskStatus, type TaskWithRelations } from "@/types";
+import { COLUMN_LABELS, PRIORITY_COLORS, STATUS_COLORS, type Priority, type TaskStatus, type TaskWithRelations } from "@/types";
 import { useBoardStore } from "@/store/board-store";
 import { TaskModal } from "@/components/tasks/task-modal";
 import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
@@ -128,9 +128,9 @@ export function TaskTableView({ assigneeId, statusFilter, compact = false }: Tas
   const renderSortHeader = (field: SortField, label: string) => (
     <th
       onClick={() => handleSort(field)}
-      className="cursor-pointer px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground"
+      className="cursor-pointer px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
     >
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1.5">
         {label}
         <ArrowUpDown className="h-3 w-3" />
       </div>
@@ -146,9 +146,9 @@ export function TaskTableView({ assigneeId, statusFilter, compact = false }: Tas
   }
 
   return (
-    <div className="h-full overflow-auto">
+    <div className="h-full overflow-auto rounded-xl border border-border/40 bg-card shadow-sm">
       <table className="w-full text-sm">
-        <thead className="sticky top-0 border-b border-border bg-background">
+        <thead className="sticky top-0 z-10 border-b border-border/40 bg-muted/40 backdrop-blur-md">
           <tr>
             {renderSortHeader("title", "Title")}
             {renderSortHeader("status", "Status")}
@@ -156,43 +156,58 @@ export function TaskTableView({ assigneeId, statusFilter, compact = false }: Tas
             {renderSortHeader("project", "Project")}
             {renderSortHeader("dueDate", "Due Date")}
             {!compact && (
-              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                 Assignee
               </th>
             )}
           </tr>
         </thead>
-        <tbody className="divide-y divide-border/50">
+        <tbody className="divide-y divide-border/40">
           {sorted.map((task) => (
             <tr
               key={task.id}
               onClick={() => openTaskModal(task)}
-              className="cursor-pointer hover:bg-card"
+              className="group cursor-pointer transition-colors hover:bg-gradient-to-r hover:from-muted/40 hover:to-transparent"
             >
-              <td className="px-4 py-2.5 font-medium text-foreground">{task.title}</td>
-              <td className="px-4 py-2.5">
-                <span className="rounded bg-secondary px-2 py-0.5 text-xs text-foreground">
+              <td className="px-4 py-3 font-semibold tracking-tight text-foreground">{task.title}</td>
+              <td className="px-4 py-3">
+                <span 
+                  className="rounded-md px-2 py-0.5 text-[11px] font-bold tracking-wider uppercase shadow-sm border"
+                  style={{
+                    backgroundColor: `${STATUS_COLORS[task.status]}15`,
+                    color: STATUS_COLORS[task.status],
+                    borderColor: `${STATUS_COLORS[task.status]}30`
+                  }}
+                >
                   {COLUMN_LABELS[task.status]}
                 </span>
               </td>
-              <td className="px-4 py-2.5">
+              <td className="px-4 py-3">
                 <span
-                  className="inline-block h-2 w-2 rounded-full"
-                  style={{ backgroundColor: PRIORITY_COLORS[task.priority] }}
-                />{" "}
-                <span className="text-xs text-muted-foreground">{task.priority}</span>
+                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-bold tracking-wider shadow-sm border border-border/40"
+                  style={{ 
+                    backgroundColor: `${PRIORITY_COLORS[task.priority]}15`,
+                    color: PRIORITY_COLORS[task.priority],
+                  }}
+                >
+                  <span
+                    className="h-1.5 w-1.5 rounded-full"
+                    style={{ backgroundColor: PRIORITY_COLORS[task.priority] }}
+                  />
+                  {task.priority}
+                </span>
               </td>
-              <td className="px-4 py-2.5 text-xs text-muted-foreground">{task.project?.name || "—"}</td>
-              <td className="px-4 py-2.5 text-xs text-muted-foreground">
+              <td className="px-4 py-3 text-xs font-medium text-muted-foreground">{task.project?.name || "—"}</td>
+              <td className="px-4 py-3 text-xs font-medium text-muted-foreground">
                 {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "—"}
               </td>
               {!compact && (
-                <td className="px-4 py-2.5">
-                  <div className="flex -space-x-1">
+                <td className="px-4 py-3">
+                  <div className="flex -space-x-1.5 hover:space-x-0.5 transition-all duration-300">
                     {task.responsible?.slice(0, 3).map((user) => (
                       <div
                         key={user.id}
-                        className="flex h-5 w-5 items-center justify-center rounded-full border border-background bg-avatar-bg text-[9px] font-medium text-avatar-text"
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-card bg-secondary text-[10px] font-bold text-secondary-foreground shadow-sm ring-1 ring-border/20 transition-transform hover:scale-110 hover:z-10"
                         title={user.name || user.email}
                       >
                         {(user.name || user.email)[0]?.toUpperCase()}

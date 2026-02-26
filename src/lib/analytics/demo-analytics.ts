@@ -31,7 +31,27 @@ function buildDemoRecords(data: AnalyticsDashboardData): DemoRecord[] {
   );
 
   return demoDeals.map((deal) => {
-    const outcome = inferOutcome(deal.stageLabel);
+    let outcome = inferOutcome(deal.stageLabel);
+    
+    // Fallback scheduledAt to createdAt since updatedAt gets overwritten too often
+    const scheduledAt = deal.createdAt ?? new Date().toISOString();
+
+    // If a demo is "pending" but the scheduled date is in the past, mark it unknown (or rescheduled if preferred, 
+    // pending should strictly be future)
+    // We will mark them as "no-show" or "rescheduled" if they are in the past and still pending.
+    // The user requested: "pending demos that are in the past are just ones that we haven't updated. They should be unknown. Pending demos should just bei n the future"
+    // Since "unknown" isn't a DemoOutcome, we can add it, or map to "pending" but handle it later. We will add "unknown" to DemoOutcome.
+    if (outcome === "pending" && scheduledAt) {
+      // rough heuristic: if created > 14 days ago and still pending, it's unknown.
+      // better yet, just look at the date.
+      const daysSinceScheduled = Math.round(
+        (Date.now() - new Date(scheduledAt).getTime()) / 86_400_000
+      );
+      if (daysSinceScheduled > 1) { // 1 day grace period
+        outcome = "unknown" as DemoOutcome; 
+      }
+    }
+
     const currentStageIdx = POST_DEMO_STAGES.indexOf(deal.stageLabel);
     const hasFollowUp = currentStageIdx >= 0;
 
@@ -50,7 +70,7 @@ function buildDemoRecords(data: AnalyticsDashboardData): DemoRecord[] {
       dealId: deal.dealId,
       dealName: deal.dealName,
       contactEmail: null,
-      scheduledAt: deal.updatedAt ?? new Date().toISOString(),
+      scheduledAt,
       source: deal.source || "Unknown",
       outcome,
       followUpSent: hasFollowUp,
@@ -86,7 +106,7 @@ function buildSourceBreakdown(demos: DemoRecord[]): DemoSourceBreakdown[] {
 
 function buildOutcomeBreakdown(demos: DemoRecord[]): DemoOutcomeBreakdown[] {
   const total = demos.length;
-  const counts: Record<DemoOutcome, number> = { completed: 0, "no-show": 0, rescheduled: 0, pending: 0 };
+  const counts: Record<DemoOutcome, number> = { completed: 0, "no-show": 0, rescheduled: 0, pending: 0, unknown: 0 };
 
   for (const demo of demos) {
     counts[demo.outcome] += 1;
@@ -283,16 +303,18 @@ function buildJourneyPathAnalysis(data: AnalyticsDashboardData): JourneyPathRow[
         churnedAt: stripeEvent?.canceledAt ?? deal.updatedAt ?? null,
       }];
     });
-    const churned = churnedDeals.length;
 
-    // Not Activated: churned within 30 days of deal creation (signup)
-    const notActivated = churnedDeals.filter(({ deal, churnedAt }) => {
+    // Not Activated: churned within 60 days of deal creation (signup)
+    const notActivatedDeals = churnedDeals.filter(({ deal, churnedAt }) => {
       if (!deal.createdAt || !churnedAt) return false;
       const createdMs = new Date(deal.createdAt).getTime();
       const churnedMs = new Date(churnedAt).getTime();
       const daysSinceCreation = (churnedMs - createdMs) / 86_400_000;
-      return daysSinceCreation <= 30;
-    }).length;
+      return daysSinceCreation <= 60;
+    });
+    const notActivated = notActivatedDeals.length;
+
+    const churned = churnedDeals.length;
 
     rows.push({
       source,
@@ -313,7 +335,7 @@ function buildJourneyPathAnalysis(data: AnalyticsDashboardData): JourneyPathRow[
       churned,
       churnedPct: pct(churned, closedWon),
       notActivated,
-      notActivatedPct: pct(notActivated, churned),
+      notActivatedPct: pct(notActivated, closedWon),
     });
   }
 
