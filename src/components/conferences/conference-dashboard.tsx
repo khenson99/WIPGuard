@@ -60,17 +60,18 @@ export function ConferenceDashboard() {
   const conferences = resource.data?.conferences ?? [];
 
   const filtered = useMemo(() => {
-    const now = Date.now();
+    const now = resource.lastUpdatedAt ? Date.parse(resource.lastUpdatedAt) : null;
     const q = query.trim().toLowerCase();
 
     return conferences.filter((conf) => {
       if (statusFilter && conf.status !== statusFilter) return false;
       if (timingFilter === "upcoming") {
         const end = Date.parse(conf.endDate);
-        if (!Number.isNaN(end) && end < now) return false;
+        if (now !== null && !Number.isNaN(end) && end < now) return false;
       }
       if (timingFilter === "past") {
         const end = Date.parse(conf.endDate);
+        if (now === null) return false;
         if (Number.isNaN(end) || end >= now) return false;
       }
       if (q) {
@@ -79,7 +80,7 @@ export function ConferenceDashboard() {
       }
       return true;
     });
-  }, [conferences, query, statusFilter, timingFilter]);
+  }, [conferences, query, resource.lastUpdatedAt, statusFilter, timingFilter]);
 
   const onCreated = async (created: { id: string }, opts: { seedPlaybook: boolean }) => {
     setCreateOpen(false);
@@ -213,4 +214,3 @@ export function ConferenceDashboard() {
     </div>
   );
 }
-

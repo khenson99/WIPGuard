@@ -44,17 +44,13 @@ function isConferenceType(value: unknown): value is (typeof ConferenceType)[keyo
 async function ensureUniqueSlug(input: { slug: string }): Promise<string> {
   const baseSlug = slugify(input.slug);
   let candidate = baseSlug;
-  let suffix = 2;
-
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  for (let suffix = 2; ; suffix += 1) {
     const existing = await prisma.conference.findUnique({
       where: { slug: candidate },
       select: { id: true },
     });
     if (!existing) return candidate;
     candidate = `${baseSlug}-${suffix}`;
-    suffix += 1;
   }
 }
 
@@ -212,4 +208,3 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 }
-
