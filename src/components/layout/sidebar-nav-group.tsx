@@ -26,24 +26,24 @@ function parseIds(value: unknown): string[] {
 }
 
 function readExpandedPreference(): SidebarExpandedPreference {
-  if (typeof window === "undefined") return { explicit: false, ids: new Set() };
+  if (typeof window === "undefined") return { explicit: true, ids: new Set() };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      return { explicit: false, ids: new Set() };
+      return { explicit: true, ids: new Set() };
     }
 
     const parsed = JSON.parse(raw) as unknown;
     if (Array.isArray(parsed)) {
       const ids = parseIds(parsed);
       if (ids.length === 0) {
-        return { explicit: false, ids: new Set() };
+        return { explicit: true, ids: new Set() };
       }
       return { explicit: true, ids: new Set(ids) };
     }
 
     if (!parsed || typeof parsed !== "object") {
-      return { explicit: false, ids: new Set() };
+      return { explicit: true, ids: new Set() };
     }
 
     const record = parsed as Record<string, unknown>;
@@ -52,7 +52,7 @@ function readExpandedPreference(): SidebarExpandedPreference {
       ids: new Set(parseIds(record.ids)),
     };
   } catch {
-    return { explicit: false, ids: new Set() };
+    return { explicit: true, ids: new Set() };
   }
 }
 
@@ -131,10 +131,10 @@ export function SidebarNavGroup({ item }: { item: NavItem }) {
         <button
           type="button"
           onClick={toggle}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+          className="ml-1 rounded-md p-2.5 text-muted-foreground hover:bg-secondary/70 hover:text-foreground active:bg-secondary"
           aria-label={expanded ? `Collapse ${item.label}` : `Expand ${item.label}`}
         >
-          {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
       </div>
 
