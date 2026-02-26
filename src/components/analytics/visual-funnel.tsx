@@ -1,7 +1,18 @@
 "use client";
 
 import { useMemo } from "react";
-import { ArrowDown } from "lucide-react";
+import { 
+  ArrowDown, 
+  Eye, 
+  Target, 
+  Calendar, 
+  MessageSquare, 
+  FileText, 
+  Link as LinkIcon, 
+  CheckCircle2,
+  TrendingUp,
+  XCircle
+} from "lucide-react";
 
 export interface FunnelStageData {
   id: string;
@@ -25,6 +36,28 @@ const MAIN_PATH = [
   "Payment Link Sent",
   "Subscription",
 ];
+
+// Helper to get stage aesthetics
+function getStageStyle(label: string, pct: number) {
+  switch (label) {
+    case "Prospect":
+      return { icon: Eye, color: "text-blue-500", bg: "bg-blue-500/10", border: "border-blue-500/20", gradient: "to-blue-500/5" };
+    case "Lead":
+      return { icon: Target, color: "text-indigo-500", bg: "bg-indigo-500/10", border: "border-indigo-500/20", gradient: "to-indigo-500/5" };
+    case "Demo Scheduled":
+      return { icon: Calendar, color: "text-violet-500", bg: "bg-violet-500/10", border: "border-violet-500/20", gradient: "to-violet-500/5" };
+    case "Demo Follow-Up":
+      return { icon: MessageSquare, color: "text-purple-500", bg: "bg-purple-500/10", border: "border-purple-500/20", gradient: "to-purple-500/5" };
+    case "Budgetary Quote Sent":
+      return { icon: FileText, color: "text-fuchsia-500", bg: "bg-fuchsia-500/10", border: "border-fuchsia-500/20", gradient: "to-fuchsia-500/5" };
+    case "Payment Link Sent":
+      return { icon: LinkIcon, color: "text-pink-500", bg: "bg-pink-500/10", border: "border-pink-500/20", gradient: "to-pink-500/5" };
+    case "Subscription":
+      return { icon: CheckCircle2, color: "text-rose-500", bg: "bg-rose-500/10", border: "border-rose-500/20", gradient: "to-rose-500/5" };
+    default:
+      return { icon: Target, color: "text-primary", bg: "bg-primary/10", border: "border-primary/20", gradient: "to-primary/5" };
+  }
+}
 
 export function VisualFunnel({ stages, onStageClick }: VisualFunnelProps) {
   const stageMap = useMemo(() => {
@@ -50,85 +83,130 @@ export function VisualFunnel({ stages, onStageClick }: VisualFunnelProps) {
   }
 
   return (
-    <div className="flex w-full flex-col items-center space-y-2 py-6">
-      {mainStages.map((stage, idx) => {
-        const pct = Math.max((stage.count / maxCount) * 100, 15);
-        const hasNext = idx < mainStages.length - 1 || closedWon || closedLost;
-        // Find previous count to show conversion
-        const prevCount = idx > 0 ? mainStages[idx - 1].count : null;
-        const conversion = prevCount ? Math.round((stage.count / prevCount) * 100) : null;
+    <div className="flex w-full flex-col items-center py-8">
+      {/* Container for the connected line and nodes */}
+      <div className="relative flex w-full max-w-2xl flex-col items-center">
+        
+        {mainStages.map((stage, idx) => {
+          const pct = Math.max((stage.count / maxCount) * 100, 15);
+          const hasNext = idx < mainStages.length - 1 || closedWon || closedLost;
+          const prevCount = idx > 0 ? mainStages[idx - 1].count : null;
+          const conversion = prevCount ? Math.round((stage.count / prevCount) * 100) : null;
+          
+          const { icon: StageIcon, color, bg, border, gradient } = getStageStyle(stage.label, pct);
 
-        return (
-          <div key={stage.id} className="flex w-full flex-col items-center">
-            {/* Conversion indicator above this stage */}
-            {conversion !== null && (
-              <div className="flex w-full items-center justify-center p-2 text-[10px] text-muted-foreground lg:w-1/2">
-                <span className="rounded bg-muted/30 px-2 py-0.5">{conversion}% conversion</span>
-              </div>
-            )}
+          return (
+            <div key={stage.id} className="relative flex w-full flex-col items-center group/stage">
+              {/* Vertical connector line from previous stage */}
+              {idx > 0 && (
+                <div className="relative flex h-12 w-full items-center justify-center">
+                  <div className="absolute top-0 bottom-0 w-px bg-gradient-to-b from-border/80 to-border/30" />
+                  
+                  {/* Conversion Badge */}
+                  {conversion !== null && (
+                    <div className="relative z-10 rounded-full border border-border/50 bg-background/95 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm transition-colors group-hover/stage:border-border group-hover/stage:text-foreground">
+                      {conversion}% conversion
+                    </div>
+                  )}
+                </div>
+              )}
 
-            {/* Stage Bar */}
-            <div 
-              className="group relative flex h-14 cursor-pointer items-center justify-between overflow-hidden rounded-md border border-border/50 bg-card shadow-sm transition-colors hover:border-primary/40 lg:w-1/2"
-              style={{ width: `max(300px, ${pct}%)` }}
-              onClick={() => onStageClick?.(stage)}
-            >
-              {/* Background fill */}
-              <div className="absolute inset-0 bg-[#fc5a29]/5" />
+              {/* Stage Card */}
               <div 
-                className="absolute bottom-0 left-0 top-0 bg-[#fc5a29]/20 transition-all group-hover:bg-[#fc5a29]/30"
-                style={{ width: `${pct}%` }}
-              />
-              
-              <div className="relative z-10 pl-4 font-medium text-foreground">{stage.label}</div>
-              <div className="relative z-10 flex shrink-0 items-center justify-end gap-4 pr-4">
-                <div className="text-right">
-                  <div className="font-bold tabular-nums text-foreground">{stage.count}</div>
-                  <div className="text-[10px] tabular-nums text-muted-foreground lg:text-xs">
-                    ${(stage.value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                className={`relative flex w-full cursor-pointer items-center overflow-hidden rounded-xl border bg-card p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${border}`}
+                onClick={() => onStageClick?.(stage)}
+              >
+                {/* Background glow and percentage fill */}
+                <div className="absolute inset-x-0 bottom-0 top-0 opacity-0 transition-opacity duration-300 group-hover/stage:opacity-100">
+                  <div className={`absolute inset-0 bg-gradient-to-r from-transparent via-transparent ${gradient}`} />
+                </div>
+                
+                {/* Subtle percentage indicator on the left edge */}
+                <div 
+                  className={`absolute left-0 top-0 bottom-0 w-1 ${bg} opacity-50`} 
+                  style={{ height: `${pct}%`, top: 'auto', bottom: 0 }}
+                />
+
+                {/* Content */}
+                <div className="relative z-10 flex w-full items-center gap-4">
+                  {/* Icon Circle */}
+                  <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${bg} ${color} border border-white/5 shadow-inner`}>
+                    <StageIcon className="h-5 w-5" />
+                  </div>
+
+                  {/* Labels */}
+                  <div className="flex flex-1 flex-col">
+                    <h4 className="text-base font-semibold tracking-tight text-foreground">{stage.label}</h4>
+                    <div className="mt-1 flex items-center gap-3">
+                      
+                      {/* Completion bar mini */}
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary/50">
+                        <div 
+                          className={`h-full rounded-full bg-current ${color}`} 
+                          style={{ width: `${pct}%` }} 
+                        />
+                      </div>
+                      <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
+                        {Math.round(pct)}% of max
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Metrics */}
+                  <div className="flex shrink-0 flex-col items-end pl-4 border-l border-border/40">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-2xl font-bold tabular-nums tracking-tight text-foreground">{stage.count}</span>
+                      <span className="text-xs font-medium text-muted-foreground">qty</span>
+                    </div>
+                    <div className="text-sm font-medium tabular-nums text-muted-foreground">
+                      ${(stage.value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
+          );
+        })}
 
-            {/* Down Arrow */}
-            {hasNext && (
-              <div className="py-2 text-muted-foreground/30">
-                <ArrowDown className="h-5 w-5" />
+        {/* Split path for Won / Lost */}
+        {(closedWon || closedLost) && (
+          <div className="relative mt-2 flex w-full max-w-2xl">
+            {/* Split connector lines */}
+            <div className="absolute -top-2 left-1/4 right-1/4 h-8 border-t border-l border-r border-border/50 rounded-t-xl" />
+            <div className="absolute top-6 left-1/4 h-6 w-px bg-border/50" />
+            <div className="absolute top-6 right-1/4 h-6 w-px bg-border/50" />
+            
+            {/* Closed Won Branch */}
+            <div className="flex w-1/2 flex-col items-center px-3 pt-12">
+              <div className="group flex w-full flex-col items-center justify-center rounded-xl border border-emerald-500/20 bg-gradient-to-b from-emerald-500/5 to-transparent p-5 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-500/40 hover:shadow-md">
+                <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <TrendingUp className="h-5 w-5" />
+                </div>
+                <div className="mb-1 text-sm font-semibold tracking-wide text-emerald-600 dark:text-emerald-400 uppercase">Closed Won</div>
+                <div className="text-3xl font-bold tabular-nums tracking-tight text-foreground">{closedWon?.count || 0}</div>
+                <div className="mt-1 text-sm font-medium text-muted-foreground tabular-nums">
+                  ${(closedWon?.value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </div>
               </div>
-            )}
-          </div>
-        );
-      })}
+            </div>
 
-      {/* Split path for Won / Lost */}
-      {(closedWon || closedLost) && (
-        <div className="mt-4 flex w-full max-w-2xl px-4 lg:w-1/2">
-          {/* Closed Won Branch */}
-          <div className="flex w-1/2 flex-col items-center border-r border-border/50 pr-4">
-            <div className="mb-4 h-8 w-px bg-border/50" />
-            <div className="w-full rounded-md border-2 border-emerald-500/20 bg-emerald-500/5 p-4 text-center transition-colors hover:border-emerald-500/40">
-              <div className="mb-1 text-sm font-semibold text-emerald-600 dark:text-emerald-400">Closed Won</div>
-              <div className="text-2xl font-bold tabular-nums text-foreground">{closedWon?.count || 0}</div>
-              <div className="text-xs text-muted-foreground tabular-nums">
-                ${(closedWon?.value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            {/* Closed Lost Branch */}
+            <div className="flex w-1/2 flex-col items-center px-3 pt-12">
+              <div className="group flex w-full flex-col items-center justify-center rounded-xl border border-red-500/20 bg-gradient-to-b from-red-500/5 to-transparent p-5 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-red-500/40 hover:shadow-md">
+                <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10 text-red-600 dark:text-red-400">
+                  <XCircle className="h-5 w-5" />
+                </div>
+                <div className="mb-1 text-sm font-semibold tracking-wide text-red-600 dark:text-red-400 uppercase">Closed Lost</div>
+                <div className="text-3xl font-bold tabular-nums tracking-tight text-foreground">{closedLost?.count || 0}</div>
+                <div className="mt-1 flex items-center gap-1.5 text-sm font-medium text-muted-foreground tabular-nums">
+                  <span>${(closedLost?.value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div className="mt-1 text-[10px] text-muted-foreground/70 uppercase tracking-wider">(Inc. Unlikely)</div>
               </div>
             </div>
           </div>
-
-          {/* Closed Lost Branch */}
-          <div className="flex w-1/2 flex-col items-center pl-4">
-            <div className="mb-4 h-8 w-px bg-border/50" />
-            <div className="w-full rounded-md border-2 border-red-500/20 bg-red-500/5 p-4 text-center transition-colors hover:border-red-500/40">
-              <div className="mb-1 text-sm font-semibold text-red-600 dark:text-red-400">Closed Lost (inc. Unlikely)</div>
-              <div className="text-2xl font-bold tabular-nums text-foreground">{closedLost?.count || 0}</div>
-              <div className="text-xs text-muted-foreground tabular-nums">
-                ${(closedLost?.value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
