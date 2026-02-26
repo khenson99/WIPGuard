@@ -5,6 +5,7 @@ import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 function baseData(): AnalyticsDashboardData {
   return {
     hubspot: null,
+    salesPerformance: null,
     stripe: null,
     mercury: null,
     googleAnalytics: null,
