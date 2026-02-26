@@ -472,7 +472,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
   }
 
   return (
-    <div className="h-full space-y-4 overflow-y-auto p-4">
+    <div className="h-full space-y-6 overflow-y-auto p-6 lg:p-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground">{title}</h1>

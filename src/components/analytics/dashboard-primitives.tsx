@@ -81,9 +81,9 @@ export function AlertBanner({
 }) {
   const cfg = ALERT_CONFIG[severity];
   return (
-    <div className={`flex items-start gap-2 rounded-lg border ${cfg.border} ${cfg.bg} px-3 py-2.5`}>
+    <div className={`flex items-start gap-3 rounded-lg border ${cfg.border} ${cfg.bg} px-4 py-3 shadow-sm`}>
       {cfg.icon}
-      <div className="text-xs">
+      <div className="text-sm">
         <p className={`font-semibold ${cfg.titleColor}`}>{title}</p>
         <p className="mt-0.5 text-muted-foreground">{description}</p>
       </div>
@@ -318,10 +318,10 @@ export function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <h3 className="mb-1 text-sm font-semibold text-foreground">{title}</h3>
-      {subtitle && <p className="mb-4 text-xs text-muted-foreground">{subtitle}</p>}
-      {!subtitle && <div className="mb-4" />}
+    <div className="rounded-xl border border-border bg-card p-6 shadow-card hover:shadow-md transition-shadow duration-200">
+      <h3 className="mb-1.5 text-base font-semibold text-foreground tracking-tight">{title}</h3>
+      {subtitle && <p className="mb-5 text-sm text-muted-foreground">{subtitle}</p>}
+      {!subtitle && <div className="mb-5" />}
       {children}
     </div>
   );
@@ -339,13 +339,13 @@ export function EmptyDashboard({
   description: string;
 }) {
   return (
-    <div className="flex h-64 items-center justify-center">
-      <div className="text-center">
-        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center text-muted-foreground/40">
+    <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-border/60 bg-secondary/20">
+      <div className="flex flex-col items-center max-w-[280px] text-center">
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-secondary/50 text-muted-foreground/60">
           {icon}
         </div>
-        <p className="text-sm text-muted-foreground">{title}</p>
-        <p className="text-xs text-muted-foreground">{description}</p>
+        <p className="mb-1 font-medium text-foreground">{title}</p>
+        <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
       </div>
     </div>
   );
