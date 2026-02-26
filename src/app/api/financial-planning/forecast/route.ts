@@ -56,9 +56,7 @@ async function loadFinancialData(
   return { stripe, mercury };
 }
 
-export async function GET(
-  _request: NextRequest,
-): Promise<NextResponse> {
+export async function GET(): Promise<NextResponse> {
   try {
     const session = await auth();
     if (!session?.user) {

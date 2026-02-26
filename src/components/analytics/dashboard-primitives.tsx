@@ -175,10 +175,12 @@ export function DataTable<T>({
   columns,
   rows,
   emptyMessage = "No data available",
+  rowClassName,
 }: {
   columns: DataTableColumn<T>[];
   rows: T[];
   emptyMessage?: string;
+  rowClassName?: (row: T) => string;
 }) {
   if (rows.length === 0) {
     return <p className="py-6 text-center text-sm text-muted-foreground">{emptyMessage}</p>;
@@ -203,7 +205,12 @@ export function DataTable<T>({
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={i} className="border-b border-border/50 last:border-0 transition-colors hover:bg-secondary/20">
+            <tr
+              key={i}
+              className={`border-b border-border/50 last:border-0 transition-colors hover:bg-secondary/20 ${
+                rowClassName?.(row) ?? ""
+              }`}
+            >
               {columns.map((col) => (
                 <td
                   key={col.key}

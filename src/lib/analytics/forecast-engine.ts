@@ -101,11 +101,11 @@ export function buildForecastScenario(
   assumptions: ForecastAssumptions,
   opts: { id?: string; name?: string; months?: number } = {},
 ): ForecastScenarioData {
-  const currentMrr = stripe?.revenue.mrr ?? 0;
-  const baseGrowthRate = (stripe?.revenue.revenueGrowth ?? 0) / 100;
-  const baseChurnRate = (stripe?.subscriptions.churnRate ?? 0) / 100;
-  const cashBalance = mercury?.cashFlow.totalBalance ?? 0;
-  const baseBurnRate = mercury?.cashFlow.burnRate ?? 0;
+  const currentMrr = stripe?.revenue?.mrr ?? 0;
+  const baseGrowthRate = (stripe?.revenue?.revenueGrowth ?? 0) / 100;
+  const baseChurnRate = (stripe?.subscriptions?.churnRate ?? 0) / 100;
+  const cashBalance = mercury?.cashFlow?.totalBalance ?? 0;
+  const baseBurnRate = mercury?.cashFlow?.burnRate ?? 0;
 
   // Apply assumption deltas
   const growthRate = baseGrowthRate + assumptions.revenueGrowthRate / 100;
@@ -113,7 +113,8 @@ export function buildForecastScenario(
   const monthlyExpenses =
     baseBurnRate +
     assumptions.burnRateDelta +
-    assumptions.additionalMonthlyExpense;
+    assumptions.additionalMonthlyExpense -
+    assumptions.additionalMonthlyRevenue;
 
   // Effective starting MRR includes additional recurring revenue
   const effectiveMrr = currentMrr + assumptions.additionalMonthlyRevenue;
@@ -155,7 +156,7 @@ export function buildDefaultScenarios(
   mercury: MercuryData | null,
   months: number = 18,
 ): ForecastScenarioData[] {
-  const baseBurn = mercury?.cashFlow.burnRate ?? 0;
+  const baseBurn = mercury?.cashFlow?.burnRate ?? 0;
 
   const base: ForecastAssumptions = {
     revenueGrowthRate: 0,

@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { AnalyticsDashboardData } from '@/lib/analytics/types';
 import { StatCard } from './stat-card';
 import { BarDisplay } from './bar-display';
+import ChannelTable from './channel-table';
+import { AiInsightsPanel } from './ai-insights-panel';
 import {
   Globe,
   MousePointerClick,
@@ -18,6 +20,7 @@ import {
   Search,
   Award,
   Link2,
+  Instagram,
 } from 'lucide-react';
 
 interface MarketingTabNewProps {
@@ -56,15 +59,6 @@ function calculateChange(current: number | null | undefined, previous: number | 
   return ((current - previous) / previous) * 100;
 }
 
-const CHANNEL_COLORS: Record<string, string> = {
-  direct: '#3b82f6',
-  organic: '#10b981',
-  referral: '#f59e0b',
-  paid: '#ef4444',
-  social: '#8b5cf6',
-  email: '#06b6d4',
-};
-
 type ProviderHealthState = 'not_configured' | 'failing' | 'no_data' | 'healthy';
 
 function isMissingCredentialError(message: string | undefined): boolean {
@@ -96,12 +90,12 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
     redditAds: false,
   });
 
-  const togglePlatform = useCallback((platform: string) => {
+  const togglePlatform = (platform: string) => {
     setExpandedPlatforms((prev) => ({
       ...prev,
       [platform]: !prev[platform],
     }));
-  }, []);
+  };
 
   if (!data) {
     return (
@@ -118,160 +112,234 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
   const metaAds = data.metaAds;
   const redditAds = data.redditAds;
   const metaPage = data.metaPage;
+  const instagram = data.instagram;
   const webflow = data.webflow;
   const semrush = data.semrush;
   const ga = data.googleAnalytics;
 
-  const errorBySource = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const entry of data.errors || []) {
-      if (!map.has(entry.source)) {
-        map.set(entry.source, entry.message);
-      }
+  const errorBySource = new Map<string, string>();
+  for (const entry of data.errors || []) {
+    if (!errorBySource.has(entry.source)) {
+      errorBySource.set(entry.source, entry.message);
     }
-    return map;
-  }, [data.errors]);
+  }
 
-  const providerStates = useMemo(() => {
-    const hasGoogleAdsSignal = Boolean(
-      googleAds &&
-        (googleAds.totalSpend30d > 0 ||
-          googleAds.totalImpressions > 0 ||
-          googleAds.totalClicks > 0 ||
-          googleAds.totalConversions > 0 ||
-          googleAds.campaigns.length > 0)
-    );
-
-    const hasMetaAdsSignal = Boolean(
-      metaAds &&
-        (metaAds.totalSpend30d > 0 ||
-          metaAds.totalImpressions > 0 ||
-          metaAds.totalClicks > 0 ||
-          metaAds.totalConversions > 0 ||
-          metaAds.campaigns.length > 0)
-    );
-
-    const hasRedditAdsSignal = Boolean(
-      redditAds &&
-        (redditAds.totalSpend30d > 0 ||
-          redditAds.totalImpressions > 0 ||
-          redditAds.totalClicks > 0 ||
-          redditAds.campaigns.length > 0)
-    );
-
-    const hasMetaPageSignal = Boolean(
-      metaPage &&
-        (metaPage.pageLikes > 0 ||
-          metaPage.pageFollowers > 0 ||
-          metaPage.postReach30d > 0 ||
-          metaPage.postEngagement30d > 0 ||
-          metaPage.topPosts.length > 0)
-    );
-
-    const hasWebflowSignal = Boolean(
-      webflow &&
-        (webflow.totalPages > 0 ||
-          webflow.totalCollections > 0 ||
-          webflow.formSubmissions.length > 0 ||
-          webflow.customDomains.length > 0 ||
-          Boolean(webflow.siteName) ||
-          Boolean(webflow.lastPublished))
-    );
-
-    const hasGASignal = Boolean(
-      ga &&
-        (ga.sessions30d > 0 ||
-          ga.users30d > 0 ||
-          ga.pageviews30d > 0 ||
-          ga.trafficByChannel.length > 0 ||
-          ga.topPages.length > 0)
-    );
-
-    const semrushHasSignal = Boolean(
-      semrush &&
-        (semrush.organicKeywords > 0 ||
-          semrush.organicTraffic > 0 ||
-          semrush.paidKeywords > 0 ||
-          semrush.topKeywords.length > 0 ||
-          semrush.organicCompetitors.length > 0)
-    );
-
-    const gaStatus = resolveProviderState({ payload: ga, hasSignal: hasGASignal, error: errorBySource.get('googleAnalytics') });
-    const googleAdsStatus = resolveProviderState({ payload: googleAds, hasSignal: hasGoogleAdsSignal, error: errorBySource.get('googleAds') });
-    const metaAdsStatus = resolveProviderState({ payload: metaAds, hasSignal: hasMetaAdsSignal, error: errorBySource.get('metaAds') });
-    const redditAdsStatus = resolveProviderState({ payload: redditAds, hasSignal: hasRedditAdsSignal, error: errorBySource.get('redditAds') });
-    const metaPageStatus = resolveProviderState({ payload: metaPage, hasSignal: hasMetaPageSignal, error: errorBySource.get('metaPage') });
-    const webflowStatus = resolveProviderState({ payload: webflow, hasSignal: hasWebflowSignal, error: errorBySource.get('webflow') });
-    const semrushStatus = resolveProviderState({ payload: semrush, hasSignal: semrushHasSignal, error: errorBySource.get('semrush') });
-
-    const paidProviders = [googleAdsStatus, metaAdsStatus, redditAdsStatus];
-    const conversionProviders = [googleAdsStatus, metaAdsStatus];
-
-    return {
-      gaStatus,
-      googleAdsStatus,
-      metaAdsStatus,
-      redditAdsStatus,
-      metaPageStatus,
-      webflowStatus,
-      semrushStatus,
-      paidConfigured: paidProviders.some((p) => p.state !== 'not_configured'),
-      paidFailure: paidProviders.find((p) => p.state === 'failing'),
-      paidHealthy: paidProviders.some((p) => p.state === 'healthy'),
-      conversionConfigured: conversionProviders.some((p) => p.state !== 'not_configured'),
-      conversionFailure: conversionProviders.find((p) => p.state === 'failing'),
-      conversionHealthy: conversionProviders.some((p) => p.state === 'healthy'),
-    };
-  }, [googleAds, metaAds, redditAds, metaPage, webflow, semrush, ga, errorBySource]);
-
-  const {
-    gaStatus, googleAdsStatus, metaAdsStatus, redditAdsStatus,
-    metaPageStatus, webflowStatus, semrushStatus,
-    paidConfigured, paidFailure, paidHealthy,
-    conversionConfigured, conversionFailure, conversionHealthy,
-  } = providerStates;
-
-  // Calculate KPI metrics
-  const sessions30d = ga?.sessions30d || 0;
-  const sessionsPrev30d = ga?.sessionsPrev30d || 0;
-  const sessionsChange = calculateChange(sessions30d, sessionsPrev30d);
-
-  const googleSpend = googleAds?.totalSpend30d || 0;
-  const metaSpend = metaAds?.totalSpend30d || 0;
-  const redditSpend = redditAds?.totalSpend30d || 0;
-  const totalAdSpend = googleSpend + metaSpend + redditSpend;
-
-  const googleConversions = googleAds?.totalConversions || 0;
-  const metaConversions = metaAds?.totalConversions || 0;
-  const totalConversions = googleConversions + metaConversions;
-
-  const pageFollowers = metaPage?.pageFollowers || 0;
-
-  // Traffic by channel data
-  const trafficByChannel = ga?.trafficByChannel || [];
-
-  const barItems = useMemo(
-    () =>
-      trafficByChannel.map((item) => ({
-        label: item.channel || 'Unknown',
-        value: item.sessions || 0,
-        color: CHANNEL_COLORS[item.channel?.toLowerCase()] || '#6b7280',
-      })),
-    [trafficByChannel]
+  const hasGoogleAdsSignal = Boolean(
+    googleAds &&
+      (googleAds.totalSpend30d > 0 ||
+        googleAds.totalImpressions > 0 ||
+        googleAds.totalClicks > 0 ||
+        googleAds.totalConversions > 0 ||
+        googleAds.campaigns.length > 0)
   );
 
+  const hasMetaAdsSignal = Boolean(
+    metaAds &&
+      (metaAds.totalSpend30d > 0 ||
+        metaAds.totalImpressions > 0 ||
+        metaAds.totalClicks > 0 ||
+        metaAds.totalConversions > 0 ||
+        metaAds.campaigns.length > 0)
+  );
+
+  const hasRedditAdsSignal = Boolean(
+    redditAds &&
+      (redditAds.totalSpend30d > 0 ||
+        redditAds.totalImpressions > 0 ||
+        redditAds.totalClicks > 0 ||
+        redditAds.campaigns.length > 0)
+  );
+
+  const hasMetaPageSignal = Boolean(
+    metaPage &&
+      (metaPage.pageLikes > 0 ||
+        metaPage.pageFollowers > 0 ||
+        metaPage.postReach30d > 0 ||
+        metaPage.postEngagement30d > 0 ||
+        metaPage.topPosts.length > 0)
+  );
+
+  const hasInstagramSignal = Boolean(
+    instagram &&
+      (instagram.followers > 0 ||
+        instagram.reach30d > 0 ||
+        instagram.engagement30d > 0 ||
+        instagram.topPosts.length > 0)
+  );
+
+  const hasWebflowSignal = Boolean(
+    webflow &&
+      (webflow.totalPages > 0 ||
+        webflow.totalCollections > 0 ||
+        webflow.formSubmissions.length > 0 ||
+        webflow.customDomains.length > 0 ||
+        Boolean(webflow.siteName) ||
+        Boolean(webflow.lastPublished))
+  );
+
+  const hasGASignal = Boolean(
+    ga &&
+      (ga.sessions30d > 0 ||
+        ga.users30d > 0 ||
+        ga.pageviews30d > 0 ||
+        ga.trafficByChannel.length > 0 ||
+        ga.topPages.length > 0)
+  );
+
+  const gaStatus = resolveProviderState({
+    payload: ga,
+    hasSignal: hasGASignal,
+    error: errorBySource.get('googleAnalytics'),
+  });
+  const googleAdsStatus = resolveProviderState({
+    payload: googleAds,
+    hasSignal: hasGoogleAdsSignal,
+    error: errorBySource.get('googleAds'),
+  });
+  const metaAdsStatus = resolveProviderState({
+    payload: metaAds,
+    hasSignal: hasMetaAdsSignal,
+    error: errorBySource.get('metaAds'),
+  });
+  const redditAdsStatus = resolveProviderState({
+    payload: redditAds,
+    hasSignal: hasRedditAdsSignal,
+    error: errorBySource.get('redditAds'),
+  });
+  const metaPageStatus = resolveProviderState({
+    payload: metaPage,
+    hasSignal: hasMetaPageSignal,
+    error: errorBySource.get('metaPage'),
+  });
+  const instagramStatus = resolveProviderState({
+    payload: instagram,
+    hasSignal: hasInstagramSignal,
+    error: errorBySource.get('instagram'),
+  });
+  const webflowStatus = resolveProviderState({
+    payload: webflow,
+    hasSignal: hasWebflowSignal,
+    error: errorBySource.get('webflow'),
+  });
+  const semrushHasSignal = Boolean(
+    semrush &&
+      (semrush.organicKeywords > 0 ||
+        semrush.organicTraffic > 0 ||
+        semrush.paidKeywords > 0 ||
+        semrush.topKeywords.length > 0 ||
+        semrush.organicCompetitors.length > 0)
+  );
+  const semrushStatus = resolveProviderState({
+    payload: semrush,
+    hasSignal: semrushHasSignal,
+    error: errorBySource.get('semrush'),
+  });
+
+  const paidProviders = [googleAdsStatus, metaAdsStatus, redditAdsStatus];
+  const paidConfigured = paidProviders.some((provider) => provider.state !== 'not_configured');
+  const paidFailure = paidProviders.find((provider) => provider.state === 'failing');
+  const paidHealthy = paidProviders.some((provider) => provider.state === 'healthy');
+
+  const conversionProviders = [googleAdsStatus, metaAdsStatus];
+  const conversionConfigured = conversionProviders.some((provider) => provider.state !== 'not_configured');
+  const conversionFailure = conversionProviders.find((provider) => provider.state === 'failing');
+  const conversionHealthy = conversionProviders.some((provider) => provider.state === 'healthy');
+
+  // Calculate KPI metrics
+  const sessions30d = data.googleAnalytics?.sessions30d || 0;
+  const sessionsPrev30d = data.googleAnalytics?.sessionsPrev30d || 0;
+  const sessionsChange = calculateChange(sessions30d, sessionsPrev30d);
+
+  const googleSpend = data.googleAds?.totalSpend30d || 0;
+  const metaSpend = data.metaAds?.totalSpend30d || 0;
+  const redditSpend = data.redditAds?.totalSpend30d || 0;
+  const totalAdSpend = googleSpend + metaSpend + redditSpend;
+
+  const googleConversions = data.googleAds?.totalConversions || 0;
+  const metaConversions = data.metaAds?.totalConversions || 0;
+  const redditConversions = data.redditAds?.totalConversions || 0;
+  const totalConversions = googleConversions + metaConversions + redditConversions;
+
+  const pageFollowers = data.metaPage?.pageFollowers || 0;
+
+  // Compute byPlatform data
+  const byPlatform: Record<string, { impressions: number; clicks: number; cost: number; conversions: number; ctr: number; costPerConversion: number }> = {};
+  if (hasGoogleAdsSignal && googleAds) {
+    byPlatform["google"] = {
+      impressions: googleAds.totalImpressions || 0,
+      clicks: googleAds.totalClicks || 0,
+      cost: googleAds.totalSpend30d || 0,
+      conversions: googleAds.totalConversions || 0,
+      ctr: googleAds.ctr || 0,
+      costPerConversion: googleAds.cpa || 0,
+    };
+  }
+  if (hasMetaAdsSignal && metaAds) {
+    byPlatform["meta"] = {
+      impressions: metaAds.totalImpressions || 0,
+      clicks: metaAds.totalClicks || 0,
+      cost: metaAds.totalSpend30d || 0,
+      conversions: metaAds.totalConversions || 0,
+      ctr: metaAds.ctr || 0,
+      costPerConversion: metaAds.cpa || 0,
+    };
+  }
+  if (hasRedditAdsSignal && redditAds) {
+    byPlatform["reddit"] = {
+      impressions: redditAds.totalImpressions || 0,
+      clicks: redditAds.totalClicks || 0,
+      cost: redditAds.totalSpend30d || 0,
+      conversions: redditAds.totalConversions || 0,
+      ctr: redditAds.ctr || 0,
+      costPerConversion: redditAds.cpa || 0,
+    };
+  }
+
+  // Traffic by channel data
+  const trafficByChannel = data.googleAnalytics?.trafficByChannel || [];
+  const channelColors: Record<string, string> = {
+    direct: '#3b82f6',
+    organic: '#10b981',
+    referral: '#f59e0b',
+    paid: '#ef4444',
+    social: '#8b5cf6',
+    email: '#06b6d4',
+  };
+
+  const barItems = trafficByChannel.map((item) => ({
+    label: item.channel || 'Unknown',
+    value: item.sessions || 0,
+    color: channelColors[item.channel?.toLowerCase()] || '#6b7280',
+  }));
+
   // Top pages data
-  const topPages = ga?.topPages || [];
+  const topPages = data.googleAnalytics?.topPages || [];
 
   // Meta page data
-  const metaPageLikes = metaPage?.pageLikes || 0;
-  const metaPageFollowers = metaPage?.pageFollowers || 0;
-  const metaPostReach = metaPage?.postReach30d || 0;
-  const metaPostEngagement = metaPage?.postEngagement30d || 0;
-  const metaTopPosts = metaPage?.topPosts || [];
+  const metaPageLikes = data.metaPage?.pageLikes || 0;
+  const metaPageFollowers = data.metaPage?.pageFollowers || 0;
+  const metaPostReach = data.metaPage?.postReach30d || 0;
+  const metaPostEngagement = data.metaPage?.postEngagement30d || 0;
+  const metaTraffic = data.metaPage?.traffic || 0;
+  const metaBounceRate = data.metaPage?.bounceRate || 0;
+  const metaClicks = data.metaPage?.clicks || 0;
+  const metaReturningVisitors = data.metaPage?.returningVisitors || 0;
+  const metaTopPosts = data.metaPage?.topPosts || [];
+
+  // Instagram data
+  const igFollowers = data.instagram?.followers || 0;
+  const igReach = data.instagram?.reach30d || 0;
+  const igEngagement = data.instagram?.engagement30d || 0;
+  const igTraffic = data.instagram?.traffic || 0;
+  const igBounceRate = data.instagram?.bounceRate || 0;
+  const igClicks = data.instagram?.clicks || 0;
+  const igReturningVisitors = data.instagram?.returningVisitors || 0;
+  const igTopPosts = data.instagram?.topPosts || [];
 
   return (
     <div className="space-y-6">
+      <AiInsightsPanel bundle={data.aiInsights || null} defaultFilter="ads-traffic" />
+
       {/* Top KPI Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
@@ -423,6 +491,14 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
           )}
         </div>
       </div>
+      
+      {/* Channel Comparison */}
+      {paidConfigured && paidHealthy ? (
+        <div className="bg-card border border-border rounded-xl p-6">
+          <h3 className="text-lg font-semibold text-foreground mb-4">Channel Comparison</h3>
+          <ChannelTable byPlatform={byPlatform} />
+        </div>
+      ) : null}
 
       {/* Ad Performance Section */}
       <div className="space-y-4">
@@ -696,7 +772,7 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
             <p className="text-muted-foreground text-center py-8">No Meta Page data in selected range</p>
           ) : (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-secondary/40 rounded-lg p-3">
                   <p className="text-xs text-muted-foreground mb-1">Likes</p>
                   <p className="text-lg font-semibold text-foreground">{fmtNum(metaPageLikes)}</p>
@@ -713,6 +789,22 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
                   <p className="text-xs text-muted-foreground mb-1">Engagement (30d)</p>
                   <p className="text-lg font-semibold text-foreground">{fmtNum(metaPostEngagement)}</p>
                 </div>
+                <div className="bg-secondary/40 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Visits</p>
+                  <p className="text-lg font-semibold text-foreground">{fmtNum(metaTraffic)}</p>
+                </div>
+                <div className="bg-secondary/40 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Clicks</p>
+                  <p className="text-lg font-semibold text-foreground">{fmtNum(metaClicks)}</p>
+                </div>
+                <div className="bg-secondary/40 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Bounce Rate</p>
+                  <p className="text-lg font-semibold text-foreground">{fmtPct(metaBounceRate)}</p>
+                </div>
+                <div className="bg-secondary/40 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Returning</p>
+                  <p className="text-lg font-semibold text-foreground">{fmtNum(metaReturningVisitors)}</p>
+                </div>
               </div>
 
               {metaTopPosts.length > 0 && (
@@ -720,6 +812,70 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
                   <p className="text-sm font-semibold text-foreground mb-3">Top Posts</p>
                   <div className="space-y-2 max-h-48 overflow-y-auto">
                     {metaTopPosts.slice(0, 5).map((post, idx) => (
+                      <div key={idx} className="p-2 bg-secondary/40 rounded text-sm">
+                        <p className="text-foreground line-clamp-2">{post.message}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {fmtNum(post.reach)} reach · {fmtNum(post.engagement)} engagement
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Instagram Page Insights */}
+        <div className="bg-card border border-border rounded-xl p-6">
+          <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+            <Instagram className="w-5 h-5 text-pink-500" />
+            Instagram
+          </h3>
+          {instagramStatus.state === 'not_configured' ? (
+            <p className="text-muted-foreground text-center py-8">Not configured</p>
+          ) : instagramStatus.state === 'failing' ? (
+            <p className="text-destructive text-center py-8">Configured but failing: {instagramStatus.error}</p>
+          ) : instagramStatus.state === 'no_data' ? (
+            <p className="text-muted-foreground text-center py-8">No Instagram data in selected range</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-secondary/40 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Followers</p>
+                  <p className="text-lg font-semibold text-foreground">{fmtNum(igFollowers)}</p>
+                </div>
+                <div className="bg-secondary/40 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Reach (30d)</p>
+                  <p className="text-lg font-semibold text-foreground">{fmtNum(igReach)}</p>
+                </div>
+                <div className="bg-secondary/40 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Engagement (30d)</p>
+                  <p className="text-lg font-semibold text-foreground">{fmtNum(igEngagement)}</p>
+                </div>
+                <div className="bg-secondary/40 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Visits</p>
+                  <p className="text-lg font-semibold text-foreground">{fmtNum(igTraffic)}</p>
+                </div>
+                <div className="bg-secondary/40 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Clicks</p>
+                  <p className="text-lg font-semibold text-foreground">{fmtNum(igClicks)}</p>
+                </div>
+                <div className="bg-secondary/40 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Bounce Rate</p>
+                  <p className="text-lg font-semibold text-foreground">{fmtPct(igBounceRate)}</p>
+                </div>
+                <div className="bg-secondary/40 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Returning</p>
+                  <p className="text-lg font-semibold text-foreground">{fmtNum(igReturningVisitors)}</p>
+                </div>
+              </div>
+
+              {igTopPosts.length > 0 && (
+                <div>
+                  <p className="text-sm font-semibold text-foreground mb-3">Top Posts</p>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {igTopPosts.slice(0, 5).map((post, idx) => (
                       <div key={idx} className="p-2 bg-secondary/40 rounded text-sm">
                         <p className="text-foreground line-clamp-2">{post.message}</p>
                         <p className="text-xs text-muted-foreground mt-1">
@@ -766,7 +922,23 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-secondary/40 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Traffic / Visits</p>
+                  <p className="text-lg font-semibold text-foreground">{fmtNum(webflow.traffic)}</p>
+                </div>
+                <div className="bg-secondary/40 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Bounce Rate</p>
+                  <p className="text-lg font-semibold text-foreground">{fmtPct(webflow.bounceRate)}</p>
+                </div>
+                <div className="bg-secondary/40 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Clicks</p>
+                  <p className="text-lg font-semibold text-foreground">{fmtNum(webflow.clicks)}</p>
+                </div>
+                <div className="bg-secondary/40 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Repeat Visitors</p>
+                  <p className="text-lg font-semibold text-foreground">{fmtNum(webflow.returningVisitors)}</p>
+                </div>
                 <div className="bg-secondary/40 rounded-lg p-3">
                   <p className="text-xs text-muted-foreground mb-1">Pages</p>
                   <p className="text-lg font-semibold text-foreground">{webflow.totalPages || 0}</p>

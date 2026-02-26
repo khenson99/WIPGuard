@@ -2,6 +2,7 @@ ALTER TYPE "IntegrationProvider" ADD VALUE IF NOT EXISTS 'META_ADS';
 ALTER TYPE "IntegrationProvider" ADD VALUE IF NOT EXISTS 'META_PAGE';
 ALTER TYPE "IntegrationProvider" ADD VALUE IF NOT EXISTS 'PYLON';
 
+
 DO $$
 BEGIN
   IF EXISTS (
@@ -261,3 +262,4 @@ BEGIN
     WHERE "provider"::text = 'META';
   END IF;
 END $$;
+

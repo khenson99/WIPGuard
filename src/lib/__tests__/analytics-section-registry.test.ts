@@ -14,6 +14,9 @@ describe("analytics section registry", () => {
     expect(ids.has("finance")).toBe(true);
     expect(ids.has("sales-pipeline")).toBe(true);
     expect(ids.has("customer-success")).toBe(true);
+    expect(ids.has("customer-journey")).toBe(true);
+    expect(ids.has("demo-analytics")).toBe(true);
+    expect(ids.has("process-analytics")).toBe(true);
   });
 
   it("includes customer-success and ops child sections", () => {
@@ -33,6 +36,9 @@ describe("analytics section registry", () => {
     expect(LEGACY_ANALYTICS_TAB_REDIRECTS.finance).toBe("/analytics/finance");
     expect(LEGACY_ANALYTICS_TAB_REDIRECTS.marketing).toBe("/analytics/ads-traffic");
     expect(LEGACY_ANALYTICS_TAB_REDIRECTS.tasks).toBe("/analytics/customer-success");
+    expect(LEGACY_ANALYTICS_TAB_REDIRECTS.journey).toBe("/analytics/customer-journey");
+    expect(LEGACY_ANALYTICS_TAB_REDIRECTS.demos).toBe("/analytics/demo-analytics");
+    expect(LEGACY_ANALYTICS_TAB_REDIRECTS.process).toBe("/analytics/process-analytics");
   });
 
   it("returns the owning primary section for child routes", () => {
@@ -40,6 +46,9 @@ describe("analytics section registry", () => {
     expect(getAnalyticsPrimaryForSection("finance-stripe")?.id).toBe("finance");
     expect(getAnalyticsPrimaryForSection("sales-hubspot")?.id).toBe("sales-pipeline");
     expect(getAnalyticsPrimaryForSection("cs-pylon")?.id).toBe("customer-success");
+    expect(getAnalyticsPrimaryForSection("cj-overview")?.id).toBe("customer-journey");
+    expect(getAnalyticsPrimaryForSection("demo-scheduling")?.id).toBe("demo-analytics");
+    expect(getAnalyticsPrimaryForSection("process-bottlenecks")?.id).toBe("process-analytics");
     expect(getAnalyticsPrimaryForSection("missing")).toBeNull();
   });
 
@@ -48,5 +57,8 @@ describe("analytics section registry", () => {
     expect(getAnalyticsSecondaryForPrimary("finance").length).toBeGreaterThan(0);
     expect(getAnalyticsSecondaryForPrimary("sales-pipeline").length).toBeGreaterThan(0);
     expect(getAnalyticsSecondaryForPrimary("customer-success").length).toBeGreaterThan(0);
+    expect(getAnalyticsSecondaryForPrimary("customer-journey").length).toBeGreaterThan(0);
+    expect(getAnalyticsSecondaryForPrimary("demo-analytics").length).toBeGreaterThan(0);
+    expect(getAnalyticsSecondaryForPrimary("process-analytics").length).toBeGreaterThan(0);
   });
 });

@@ -13,6 +13,7 @@ import {
   AlertBanner, InsightCard,
   SectionCard,
 } from "./dashboard-primitives";
+import { AiInsightsPanel } from "./ai-insights-panel";
 
 interface CsProductTabProps {
   data: AnalyticsDashboardData | null;
@@ -140,6 +141,8 @@ export function CsProductTab({ data }: CsProductTabProps) {
 
   return (
     <div className="space-y-6">
+      <AiInsightsPanel bundle={data.aiInsights || null} defaultFilter="customer-success" />
+
       {/* Alerts */}
       {alerts.map((a, i) => (
         <AlertBanner key={i} severity={a.severity} title={a.title} description={a.description} />

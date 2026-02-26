@@ -70,6 +70,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      allowDangerousEmailAccountLinking: true,
     }),
   );
 }
@@ -125,8 +126,25 @@ export const authOptions: NextAuthOptions = {
     maxAge: 60 * 60 * 8,
   },
   callbacks: {
-    async signIn({ user, account }) {
+    async signIn({ user, account, profile }) {
       try {
+        if (account?.provider === "google") {
+          const emailVerified = (profile as { email_verified?: unknown } | null)?.email_verified;
+          if (emailVerified === false) {
+            await recordSecurityAuditEvent({
+              action: "auth.signin",
+              category: "auth",
+              outcome: "DENIED",
+              actorId: user.id,
+              details: {
+                reason: "GOOGLE_EMAIL_UNVERIFIED",
+                provider: account.provider,
+              },
+            });
+            return false;
+          }
+        }
+
         // Hygiene check: reject sign-ins that arrive with already expired OAuth tokens.
         if (
           account?.provider &&

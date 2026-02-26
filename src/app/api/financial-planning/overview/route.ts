@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { AnalyticsSnapshotStatus } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -29,7 +29,7 @@ async function loadLatestProviderPayload<T>(
   return (snapshot?.payload as T | null) ?? null;
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export async function GET(): Promise<NextResponse> {
   try {
     const session = await auth();
     if (!session?.user) {
@@ -44,10 +44,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       loadLatestProviderPayload<HubSpotData>(userId, "hubspot"),
     ]);
 
-    const timeRange =
-      request.nextUrl.searchParams.get("timeRange") ?? "Last 30 days";
-
-    const pnl = buildProfitAndLoss(stripe, mercury, { timeRange });
+    const pnl = buildProfitAndLoss(stripe, mercury);
     const unitEconomics = computeUnitEconomics(stripe, mercury, hubspot);
 
     return NextResponse.json(

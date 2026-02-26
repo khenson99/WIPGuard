@@ -1,163 +1,144 @@
-// Budget-vs-actual variance analysis — computes estimated actuals per budget
-// line item using Mercury aggregate outflow data.
-//
-// Mercury data only provides aggregate inflows/outflows totals (no transaction-
-// level detail such as merchant names, categories, or descriptions). Therefore,
-// actual expenses per category are **estimated** using the same SaaS-standard
-// ratios defined in pnl-builder.ts. The "other" category absorbs any remainder
-// not covered by the known ratios.
-//
-// This module is pure computation — no database calls, no side effects.
 
-import type {
-  BudgetData,
-  BudgetLineItemData,
-  ExpenseCategory,
-  MercuryData,
-} from "@/lib/analytics/types";
-import { computeVariance } from "@/lib/analytics/finance-utils";
+// ─── Budget Variance Analysis ────────────────────────────
+// Computes budget-vs-actual variance for expense categories.
+// Mercury only provides aggregate inflows/outflows — no
+// transaction-level detail — so actual category amounts are
+// estimated using SaaS-standard ratios. Budget baselines
+// can be supplied explicitly or derived automatically.
 
-// ---------------------------------------------------------------------------
-// Default expense category splits (fraction of total outflows)
-// Must stay in sync with DEFAULT_RATIOS in pnl-builder.ts.
-// ---------------------------------------------------------------------------
+import type { AnalyticsDashboardData } from "./types";
+import { DEFAULT_EXPENSE_RATIOS } from "./finance-utils";
 
-const CATEGORY_RATIOS: Record<ExpenseCategory, number> = {
-  cogs: 0.25,
-  payroll: 0.35,
-  marketing: 0.15,
-  infrastructure: 0.10,
-  ops: 0.15,
-  other: 0, // "other" is a catch-all not covered by standard ratios
+// Re-export for convenience so consumers don't need two imports
+export const CATEGORY_RATIOS = DEFAULT_EXPENSE_RATIOS;
+
+// ── Exported interfaces ──────────────────────────────────
+
+export interface BudgetActualItem {
+  category: string;
+  budgeted: number;
+  actual: number;
+  /** actual - budget (positive = over budget) */
+  variance: number;
+  /** (actual - budget) / budget * 100 */
+  variancePct: number;
+  /** "over" if variancePct > 10, "under" if < -10, else "on-track" */
+  status: "under" | "on-track" | "over";
+}
+
+export interface BudgetSummaryData {
+  totalBudget: number;
+  totalActual: number;
+  totalVariance: number;
+  totalVariancePct: number;
+  items: BudgetActualItem[];
+  overspendCategories: string[];
+}
+
+// ── Helpers ──────────────────────────────────────────────
+
+/** Human-readable labels for each ratio key. */
+const CATEGORY_LABELS: Record<keyof typeof DEFAULT_EXPENSE_RATIOS, string> = {
+  cogs: "Cost of Goods Sold",
+  payroll: "Payroll & Benefits",
+  marketing: "Sales & Marketing",
+  infrastructure: "Infrastructure & Hosting",
+  ops: "General & Administrative",
 };
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Round a number to two decimal places (monetary precision). */
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+/** Determine variance status from percentage. */
+function varianceStatus(pct: number): "under" | "on-track" | "over" {
+  if (pct > 10) return "over";
+  if (pct < -10) return "under";
+  return "on-track";
 }
 
-// ---------------------------------------------------------------------------
-// computeBudgetActuals
-// ---------------------------------------------------------------------------
+// ── Core computation ─────────────────────────────────────
 
 /**
- * Estimate actual amounts for each budget line item using Mercury's total
- * outflows and the SaaS-standard category ratios.
+ * Compute budget-vs-actual items for each expense category.
  *
- * For every line item, `actualAmount` is derived from:
- *   `mercury.cashFlow.outflows30d * CATEGORY_RATIOS[category]`
+ * Actuals are estimated from Mercury outflows * category ratio.
+ * If `budgetAmounts` is not provided, budgets are derived as
+ * actuals * 1.1 (10% headroom above current spend).
  *
- * The "other" category receives whatever is left after all known-ratio
- * categories have been allocated.
- *
- * When `mercury` is null (disconnected / unavailable), all actuals fields
- * are returned as null.
+ * @param mercury  - Mercury provider data (nullable)
+ * @param budgetAmounts - Optional explicit budgets keyed by category label
  */
 export function computeBudgetActuals(
-  budget: BudgetData,
-  mercury: MercuryData | null,
-): BudgetLineItemData[] {
-  if (!mercury) {
-    return budget.lineItems.map((item) => ({
-      ...item,
-      actualAmount: null,
-      variance: null,
-      variancePct: null,
-    }));
+  mercury: AnalyticsDashboardData["mercury"],
+  budgetAmounts?: Record<string, number>,
+): BudgetActualItem[] {
+  const totalOutflows = mercury?.cashFlow?.outflows30d ?? 0;
+  const items: BudgetActualItem[] = [];
+
+  const ratioKeys = Object.keys(DEFAULT_EXPENSE_RATIOS) as Array<
+    keyof typeof DEFAULT_EXPENSE_RATIOS
+  >;
+
+  for (const key of ratioKeys) {
+    const label = CATEGORY_LABELS[key];
+    const ratio = DEFAULT_EXPENSE_RATIOS[key];
+    const actual = Math.round(totalOutflows * ratio * 100) / 100;
+
+    // Use explicit budget if provided, otherwise derive with 10% headroom
+    const budgeted =
+      budgetAmounts && budgetAmounts[label] !== undefined
+        ? budgetAmounts[label]
+        : Math.round(actual * 1.1 * 100) / 100;
+
+    const variance = Math.round((actual - budgeted) * 100) / 100;
+    const variancePct =
+      budgeted > 0
+        ? Math.round(((actual - budgeted) / budgeted) * 10000) / 100
+        : actual === 0
+          ? 0
+          : 100;
+
+    items.push({
+      category: label,
+      budgeted,
+      actual,
+      variance,
+      variancePct,
+      status: varianceStatus(variancePct),
+    });
   }
 
-  const totalOutflows = mercury.cashFlow.outflows30d;
-
-  // First pass: compute actuals for all known-ratio categories and track the
-  // sum so we can derive the "other" remainder.
-  let knownCategoryActualsSum = 0;
-
-  const withActuals: BudgetLineItemData[] = budget.lineItems.map((item) => {
-    if (item.category !== "other") {
-      const actualAmount = round2(totalOutflows * CATEGORY_RATIOS[item.category]);
-      knownCategoryActualsSum += actualAmount;
-      const { variance, variancePct } = computeVariance(item.plannedAmount, actualAmount);
-      return {
-        ...item,
-        actualAmount,
-        variance: variance != null ? round2(variance) : null,
-        variancePct: variancePct != null ? round2(variancePct) : null,
-      };
-    }
-    // Placeholder for "other" — filled in the second pass below.
-    return { ...item };
-  });
-
-  // Second pass: assign "other" category the remainder.
-  for (let i = 0; i < withActuals.length; i++) {
-    if (withActuals[i].category === "other") {
-      const actualAmount = round2(totalOutflows - knownCategoryActualsSum);
-      const { variance, variancePct } = computeVariance(withActuals[i].plannedAmount, actualAmount);
-      withActuals[i] = {
-        ...withActuals[i],
-        actualAmount,
-        variance: variance != null ? round2(variance) : null,
-        variancePct: variancePct != null ? round2(variancePct) : null,
-      };
-    }
-  }
-
-  return withActuals;
+  return items;
 }
 
-// ---------------------------------------------------------------------------
-// computeBudgetSummary
-// ---------------------------------------------------------------------------
-
 /**
- * Aggregate budget line items into totals.
- *
- * - `totalPlanned` — sum of all `plannedAmount` values.
- * - `totalActual`  — sum of all `actualAmount` values, or null if any are null.
- * - `totalVariance` — `totalActual - totalPlanned`, or null when totalActual
- *    is null.
+ * Build a full budget summary from individual line items.
  */
 export function computeBudgetSummary(
-  lineItems: BudgetLineItemData[],
-): { totalPlanned: number; totalActual: number | null; totalVariance: number | null } {
-  const totalPlanned = round2(
-    lineItems.reduce((sum, item) => sum + item.plannedAmount, 0),
-  );
+  items: BudgetActualItem[],
+): BudgetSummaryData {
+  const totalBudget = items.reduce((sum, i) => sum + i.budgeted, 0);
+  const totalActual = items.reduce((sum, i) => sum + i.actual, 0);
+  const totalVariance = Math.round((totalActual - totalBudget) * 100) / 100;
+  const totalVariancePct =
+    totalBudget > 0
+      ? Math.round(((totalActual - totalBudget) / totalBudget) * 10000) / 100
+      : 0;
 
-  const hasNullActual = lineItems.some((item) => item.actualAmount == null);
-
-  if (hasNullActual) {
-    return { totalPlanned, totalActual: null, totalVariance: null };
-  }
-
-  const totalActual = round2(
-    lineItems.reduce((sum, item) => sum + (item.actualAmount as number), 0),
-  );
-  const totalVariance = round2(totalActual - totalPlanned);
-
-  return { totalPlanned, totalActual, totalVariance };
+  return {
+    totalBudget: Math.round(totalBudget * 100) / 100,
+    totalActual: Math.round(totalActual * 100) / 100,
+    totalVariance,
+    totalVariancePct,
+    items,
+    overspendCategories: identifyOverspendCategories(items),
+  };
 }
 
-// ---------------------------------------------------------------------------
-// identifyOverspendCategories
-// ---------------------------------------------------------------------------
-
 /**
- * Return line items where spending exceeds the planned amount by more than
- * `threshold` percent. Results are sorted by `variancePct` descending so the
- * worst overspend appears first.
- *
- * Used by the insight engine to surface budget alerts.
+ * Return category names that are over budget (variancePct > 10).
  */
 export function identifyOverspendCategories(
-  lineItems: BudgetLineItemData[],
-  threshold: number = 15,
-): BudgetLineItemData[] {
-  return lineItems
-    .filter((item) => item.variancePct != null && item.variancePct > threshold)
-    .sort((a, b) => (b.variancePct ?? 0) - (a.variancePct ?? 0));
+  items: BudgetActualItem[],
+): string[] {
+  return items
+    .filter((item) => item.status === "over")
+    .map((item) => item.category);
 }

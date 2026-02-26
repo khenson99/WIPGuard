@@ -31,6 +31,11 @@ function timeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+function timeoutMsForRefreshJob(providerKey: string): number {
+  if (providerKey === "stripe") return 25_000;
+  return 10_000;
+}
+
 async function computeProductSnapshot(userId: string, fromDate: Date, toDate: Date) {
   const [createdTasksInRange, completedTasksInRange, overdueOpenTasks, contributors] = await Promise.all([
     prisma.task.count({ where: { createdAt: { gte: fromDate, lte: toDate } } }),
@@ -116,13 +121,13 @@ async function refreshForUserAndRange(input: {
   const jobs: Array<{ providerKey: string; run: () => Promise<unknown> }> = [];
 
   if (creds.hubspotToken) {
-    jobs.push({ providerKey: "hubspot", run: () => fetchHubSpotData(creds.hubspotToken!) });
+    jobs.push({ providerKey: "hubspot", run: () => fetchHubSpotData(creds.hubspotToken!, fromDate, toDate) });
   }
   if (creds.stripeKey) {
-    jobs.push({ providerKey: "stripe", run: () => fetchStripeData(creds.stripeKey!) });
+    jobs.push({ providerKey: "stripe", run: () => fetchStripeData(creds.stripeKey!, fromDate, toDate) });
   }
   if (creds.mercuryKey) {
-    jobs.push({ providerKey: "mercury", run: () => fetchMercuryData(creds.mercuryKey!) });
+    jobs.push({ providerKey: "mercury", run: () => fetchMercuryData(creds.mercuryKey!, fromDate, toDate) });
   }
   const hasGAServiceAccount = Boolean(
     creds.gaClientEmail && creds.gaPrivateKey
@@ -139,8 +144,8 @@ async function refreshForUserAndRange(input: {
       run: () =>
         fetchGAData(
           creds.gaPropertyId!,
-          creds.gaClientEmail ?? "",
-          creds.gaPrivateKey ?? ""
+          hasGAServiceAccount ? creds.gaClientEmail : null,
+          hasGAServiceAccount ? creds.gaPrivateKey : null
         ),
     });
   }
@@ -187,7 +192,17 @@ async function refreshForUserAndRange(input: {
     jobs.push({ providerKey: "webflow", run: () => fetchWebflowData(creds.webflowApiToken!, creds.webflowSiteId!) });
   }
   if (creds.codaApiToken && creds.codaDocId) {
-    jobs.push({ providerKey: "coda", run: () => fetchCodaData(creds.codaApiToken!, creds.codaDocId!) });
+    jobs.push({
+      providerKey: "coda",
+      run: () =>
+        fetchCodaData(creds.codaApiToken!, creds.codaDocId!, {
+          fromDate,
+          toDate,
+          now: toDate,
+          hubspotAccessToken: creds.hubspotToken,
+          maxRecentSubmitters: 25,
+        }),
+    });
   }
   if (creds.semrushApiToken && creds.semrushDomain) {
     jobs.push({
@@ -196,7 +211,16 @@ async function refreshForUserAndRange(input: {
     });
   }
   if (creds.pylonApiKey) {
-    jobs.push({ providerKey: "pylon", run: () => fetchPylonData({ apiKey: creds.pylonApiKey!, from: range.from, to: range.to }) });
+    jobs.push({
+      providerKey: "pylon",
+      run: () =>
+        fetchPylonData({
+          apiKey: creds.pylonApiKey!,
+          from: range.from,
+          to: range.to,
+          baseUrl: creds.pylonBaseUrl ?? undefined,
+        }),
+    });
   }
 
   jobs.push({ providerKey: "product", run: () => computeProductSnapshot(input.userId, fromDate, toDate) });
@@ -260,7 +284,7 @@ async function refreshForUserAndRange(input: {
     const provider = providerForSnapshotKey(job.providerKey);
 
     try {
-      const payload = await timeout(job.run(), 10_000);
+      const payload = await timeout(job.run(), timeoutMsForRefreshJob(job.providerKey));
       await storeAnalyticsSnapshot({
         userId: input.userId,
         providerKey: job.providerKey,

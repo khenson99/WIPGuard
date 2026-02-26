@@ -107,6 +107,12 @@ export function IntegrationsTab() {
   const [codaToken, setCodaToken] = useState("");
   const [codaDocInput, setCodaDocInput] = useState("");
 
+  const [semrushToken, setSemrushToken] = useState("");
+  const [semrushDomain, setSemrushDomain] = useState("");
+
+  const [pylonToken, setPylonToken] = useState("");
+  const [pylonBaseUrl, setPylonBaseUrl] = useState("");
+
   const [ruleStates, setRuleStates] = useState<Record<string, RuleLoadState>>(createInitialRuleStates);
   const [expandedProviderSlug, setExpandedProviderSlug] = useState<string | null>(null);
 
@@ -166,6 +172,10 @@ export function IntegrationsTab() {
 
       const coda = integrations.find((item) => item.slug === "coda");
       setCodaDocInput(coda?.docId ?? "");
+
+      const pylon = integrations.find((item) => item.slug === "pylon");
+      const storedBaseUrl = asRecord(pylon?.metadata ?? null).baseUrl;
+      setPylonBaseUrl(typeof storedBaseUrl === "string" ? storedBaseUrl : "");
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : "Could not load integrations.");
     } finally {
@@ -402,6 +412,76 @@ export function IntegrationsTab() {
       setLoadingProviderAction(null);
     }
   }, [codaDocInput, codaToken, fetchIntegrations]);
+
+  const connectSemrush = useCallback(async () => {
+    setLoadingProviderAction("semrush");
+    setError(null);
+
+    try {
+      const token = semrushToken.trim();
+      const domain = semrushDomain.trim();
+      const payload: { token?: string; domain?: string } = {};
+
+      if (token) payload.token = token;
+      if (domain) payload.domain = domain;
+
+      const response = await fetch("/api/integrations/semrush/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseErrorMessage(response, "Failed to connect SEMrush"));
+      }
+
+      const successPayload = (await response.json().catch(() => null)) as
+        | { domain?: string | null }
+        | null;
+
+      setSemrushToken("");
+      if (typeof successPayload?.domain === "string") {
+        setSemrushDomain(successPayload.domain);
+      }
+
+      await fetchIntegrations();
+    } catch (connectError) {
+      setError(connectError instanceof Error ? connectError.message : "Failed to connect SEMrush");
+    } finally {
+      setLoadingProviderAction(null);
+    }
+  }, [semrushDomain, semrushToken, fetchIntegrations]);
+
+  const connectPylon = useCallback(async () => {
+    setLoadingProviderAction("pylon");
+    setError(null);
+
+    try {
+      const token = pylonToken.trim();
+      const baseUrl = pylonBaseUrl.trim();
+      const payload: { token?: string; baseUrl?: string } = {};
+
+      if (token) payload.token = token;
+      if (baseUrl) payload.baseUrl = baseUrl;
+
+      const response = await fetch("/api/integrations/pylon/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseErrorMessage(response, "Failed to connect Pylon"));
+      }
+
+      setPylonToken("");
+      await fetchIntegrations();
+    } catch (connectError) {
+      setError(connectError instanceof Error ? connectError.message : "Failed to connect Pylon");
+    } finally {
+      setLoadingProviderAction(null);
+    }
+  }, [fetchIntegrations, pylonBaseUrl, pylonToken]);
 
   const saveRule = useCallback(
     async (
@@ -640,6 +720,16 @@ export function IntegrationsTab() {
               onCodaTokenChange={setCodaToken}
               onCodaDocChange={setCodaDocInput}
               onConnectCoda={connectCoda}
+              semrushToken={semrushToken}
+              semrushDomain={semrushDomain}
+              onSemrushTokenChange={setSemrushToken}
+              onSemrushDomainChange={setSemrushDomain}
+              onConnectSemrush={connectSemrush}
+              pylonToken={pylonToken}
+              pylonBaseUrl={pylonBaseUrl}
+              onPylonTokenChange={setPylonToken}
+              onPylonBaseUrlChange={setPylonBaseUrl}
+              onConnectPylon={connectPylon}
               onRuleReload={(ruleId) => loadRule(ruleId)}
               onRuleSave={saveRule}
               onRuleRun={runRule}

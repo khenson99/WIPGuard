@@ -22,6 +22,7 @@ const AdsSemrushTab = dynamic(() => import("@/components/analytics/ads-semrush-t
 const AdsCodaKanbanTab = dynamic(() => import("@/components/analytics/ads-coda-kanban-tab").then((m) => m.AdsCodaKanbanTab));
 const SalesHubspotTab = dynamic(() => import("@/components/analytics/sales-hubspot-tab").then((m) => m.SalesHubspotTab));
 const SalesStripeTab = dynamic(() => import("@/components/analytics/sales-stripe-tab").then((m) => m.SalesStripeTab));
+const SalesPerformanceView = dynamic(() => import("@/components/analytics/sales-performance-view").then((m) => m.SalesPerformanceView));
 const GenericWorkspaceTab = dynamic(() => import("@/components/analytics/generic-workspace-tab").then((m) => m.GenericWorkspaceTab));
 const GenericSlackTab = dynamic(() => import("@/components/analytics/generic-slack-tab").then((m) => m.GenericSlackTab));
 const CsPylonTab = dynamic(() => import("@/components/analytics/cs-pylon-tab").then((m) => m.CsPylonTab));
@@ -33,7 +34,6 @@ const FlowRiskView = dynamic(() => import("@/components/analytics/ops-insights")
 const ObservabilityView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.ObservabilityView));
 const LifecycleFunnelPanel = dynamic(() => import("@/components/analytics/lifecycle-funnel-panel").then((m) => m.LifecycleFunnelPanel));
 const AiInsightsPanel = dynamic(() => import("@/components/analytics/ai-insights-panel").then((m) => m.AiInsightsPanel));
-const EnhancedInsightsPanel = dynamic(() => import("@/components/analytics/enhanced-insights-panel").then((m) => m.EnhancedInsightsPanel));
 const GoogleAnalyticsDashboard = dynamic(() => import("./sub-dashboards/google-analytics-dashboard").then((m) => m.GoogleAnalyticsDashboard));
 const StripeDashboard = dynamic(() => import("./sub-dashboards/stripe-dashboard").then((m) => m.StripeDashboard));
 const HubspotSalesDashboard = dynamic(() => import("./sub-dashboards/hubspot-sales-dashboard").then((m) => m.HubspotSalesDashboard));
@@ -45,7 +45,11 @@ const DemoSchedulingView = dynamic(() => import("@/components/analytics/demo-sch
 const DemoAttributionView = dynamic(() => import("@/components/analytics/demo-attribution-view").then((m) => m.DemoAttributionView));
 const ProcessBottlenecksView = dynamic(() => import("@/components/analytics/process-bottlenecks-view").then((m) => m.ProcessBottlenecksView));
 const ProcessHealthView = dynamic(() => import("@/components/analytics/process-health-view").then((m) => m.ProcessHealthView));
-import type { AnalyticsDashboardData, AnalyticsSectionId, EnhancedInsightsBundle } from "@/lib/analytics/types";
+const FinancePlanningTab = dynamic(() => import("@/components/analytics/finance-planning-tab").then((m) => m.FinancePlanningTab));
+const FinanceForecastTab = dynamic(() => import("@/components/analytics/finance-forecast-tab").then((m) => m.FinanceForecastTab));
+const FinancePnlTab = dynamic(() => import("@/components/analytics/finance-pnl-tab").then((m) => m.FinancePnlTab));
+const FinanceUnitEconomicsTab = dynamic(() => import("@/components/analytics/finance-unit-economics-tab").then((m) => m.FinanceUnitEconomicsTab));
+import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import { buildRangeQuery } from "@/lib/analytics/time-range";
 import {
   getAnalyticsPrimaryForSection,
@@ -86,6 +90,7 @@ export type AnalyticsChildRenderKind =
   | "finance-mercury"
   | "sales-hubspot"
   | "sales-stripe"
+  | "sales-performance"
   | "sales-google-workspace"
   | "sales-slack"
   | "ads-google-analytics"
@@ -109,6 +114,10 @@ export type AnalyticsChildRenderKind =
   | "demoAttribution"
   | "processBottlenecks"
   | "processHealth"
+  | "finance-planning"
+  | "finance-forecast"
+  | "finance-pnl"
+  | "finance-unit-economics"
   | "snapshot";
 
 export function resolveAnalyticsChildRenderKind(input: {
@@ -119,9 +128,14 @@ export function resolveAnalyticsChildRenderKind(input: {
   if (input.childId === "finance-stripe") return "finance-stripe";
   if (input.childId === "finance-hubspot") return "finance-hubspot";
   if (input.childId === "finance-mercury") return "finance-mercury";
+  if (input.childId === "finance-planning") return "finance-planning";
+  if (input.childId === "finance-forecast") return "finance-forecast";
+  if (input.childId === "finance-pnl") return "finance-pnl";
+  if (input.childId === "finance-unit-economics") return "finance-unit-economics";
   // Sales
   if (input.childId === "sales-hubspot") return "sales-hubspot";
   if (input.childId === "sales-stripe") return "sales-stripe";
+  if (input.childId === "sales-performance") return "sales-performance";
   if (input.childId === "sales-google-workspace") return "sales-google-workspace";
   if (input.childId === "sales-slack") return "sales-slack";
   // Ads & Traffic
@@ -186,6 +200,8 @@ function SnapshotCards({
   payload: Record<string, unknown> | null;
   errors?: string[];
 }) {
+  const summary = useMemo(() => summarizePayload(payload ?? {}), [payload]);
+
   if (!payload) {
     if (errors && errors.length > 0) {
       return (
@@ -201,8 +217,6 @@ function SnapshotCards({
       </div>
     );
   }
-
-  const summary = useMemo(() => summarizePayload(payload), [payload]);
 
   if (summary.scalarEntries.length === 0) {
     return (
@@ -362,17 +376,9 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     },
   });
 
-  if (!primary) {
-    return (
-      <div className="p-6 text-sm text-muted-foreground">
-        Unknown section. <Link href="/analytics" className="text-primary">Back to analytics</Link>
-      </div>
-    );
-  }
-
   const analyticsData = resource.data?.analyticsData ?? null;
   const auxPayload = resource.data?.auxPayload ?? null;
-  const title = child?.label ?? primary.label;
+  const title = child?.label ?? primary?.label ?? "Analytics";
 
   const primaryContent = useMemo(() => {
     if (sectionId === "ads-traffic") return <MarketingTabNew data={analyticsData} />;
@@ -396,9 +402,14 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     if (renderKind === "finance-stripe") return <FinanceStripeTab data={analyticsData} />;
     if (renderKind === "finance-hubspot") return <FinanceHubSpotTab data={analyticsData} />;
     if (renderKind === "finance-mercury") return <FinanceMercuryTab data={analyticsData} />;
+    if (renderKind === "finance-planning") return <FinancePlanningTab data={analyticsData} />;
+    if (renderKind === "finance-forecast") return <FinanceForecastTab data={analyticsData} />;
+    if (renderKind === "finance-pnl") return <FinancePnlTab data={analyticsData} />;
+    if (renderKind === "finance-unit-economics") return <FinanceUnitEconomicsTab data={analyticsData} />;
     // Sales
     if (renderKind === "sales-hubspot") return <SalesHubspotTab data={analyticsData} />;
     if (renderKind === "sales-stripe") return <SalesStripeTab data={analyticsData} />;
+    if (renderKind === "sales-performance") return <SalesPerformanceView pack={analyticsData?.salesPerformance ?? null} />;
     if (renderKind === "sales-google-workspace") return <GenericWorkspaceTab data={analyticsData} />;
     if (renderKind === "sales-slack") return <GenericSlackTab data={analyticsData} />;
     // Ads & Traffic
@@ -447,7 +458,18 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         errors={domainErrors}
       />
     );
-  }, [child, analyticsData, auxPayload]);
+  }, [child, analyticsData, auxPayload, sectionId]);
+
+  if (!primary) {
+    return (
+      <div className="p-6 text-sm text-muted-foreground">
+        Unknown section.{" "}
+        <Link href="/analytics" className="text-primary">
+          Back to analytics
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full space-y-4 overflow-y-auto p-4">
@@ -533,14 +555,6 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
             lifecycle={analyticsData?.lifecycleFunnel ?? null}
             insights={analyticsData?.aiInsights?.global ?? []}
             sectionFocus={primary.id}
-          />
-          <EnhancedInsightsPanel
-            section={primary.id as AnalyticsSectionId}
-            insights={
-              (analyticsData?.aiInsights as EnhancedInsightsBundle | undefined)?.sections?.[
-                primary.id as AnalyticsSectionId
-              ] ?? null
-            }
           />
           <AiInsightsPanel bundle={analyticsData?.aiInsights ?? null} defaultFilter={primary.id} />
         </div>

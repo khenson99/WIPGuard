@@ -6,6 +6,16 @@ import { prisma } from "@/lib/prisma";
 
 const VALID_ACTIONS = new Set<string>(Object.values(InsightFeedbackAction));
 
+type InsightFeedbackDelegateLike = {
+  create(args: {
+    data: {
+      userId: string;
+      insightId: string;
+      action: InsightFeedbackAction;
+    };
+  }): Promise<{ id: string }>;
+};
+
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
   const userId = (session?.user as { id?: string } | undefined)?.id;
@@ -26,7 +36,17 @@ export async function POST(request: Request) {
     );
   }
 
-  const feedback = await prisma.insightFeedback.create({
+  const insightFeedback = (prisma as unknown as { insightFeedback?: InsightFeedbackDelegateLike })
+    .insightFeedback;
+  if (!insightFeedback) {
+    console.warn("[insights-feedback] Prisma client missing InsightFeedback delegate");
+    return NextResponse.json(
+      { error: "Insight feedback not available" },
+      { status: 501 },
+    );
+  }
+
+  const feedback = await insightFeedback.create({
     data: {
       userId,
       insightId,

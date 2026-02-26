@@ -231,7 +231,17 @@ describe("GET /api/integrations", () => {
 
     expect(response.status).toBe(200);
     expect(body.length).toBeGreaterThanOrEqual(12);
+    for (const item of body) {
+      expect(item).toHaveProperty("metadata");
+      expect(
+        item.metadata === null || (typeof item.metadata === "object" && !Array.isArray(item.metadata))
+      ).toBe(true);
+    }
     expect(body.some((item) => item.provider === IntegrationProvider.PYLON)).toBe(true);
+    expect(
+      body.find((item) => item.provider === IntegrationProvider.GOOGLE_ADS)?.connected
+    ).toBe(true);
+    expect(body.find((item) => item.provider === IntegrationProvider.PYLON)?.connected).toBe(true);
     expect(
       body.find((item) => item.provider === IntegrationProvider.GOOGLE_ADS)?.credentialSource
     ).toBe("env");

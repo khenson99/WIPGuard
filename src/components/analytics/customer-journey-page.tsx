@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { HorizontalFunnel } from "@/components/charts";
 import { StatCard } from "./stat-card";
 import { DashboardSectionCard } from "./dashboard-section-card";
+import { AiInsightsPanel } from "./ai-insights-panel";
 import type {
   AnalyticsDashboardData,
   LifecycleStageId,
@@ -121,6 +122,8 @@ export function CustomerJourneyPage() {
 
   return (
     <div className="space-y-6">
+      <AiInsightsPanel bundle={data?.aiInsights || null} defaultFilter="customer-journey" />
+
       {/* Header */}
       <div>
         <h2 className="text-lg font-bold text-foreground">Customer Journey</h2>

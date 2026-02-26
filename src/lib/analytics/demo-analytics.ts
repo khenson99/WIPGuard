@@ -7,6 +7,7 @@ import type {
   DemoRecord,
   DemoSourceBreakdown,
   DemoWeeklyTrend,
+  JourneyPathRow,
 } from "@/lib/analytics/types";
 
 const DEMO_STAGES = new Set(["Demo Scheduled", "No-Show/Reschedule", "Demo Follow-Up"]);
@@ -30,7 +31,27 @@ function buildDemoRecords(data: AnalyticsDashboardData): DemoRecord[] {
   );
 
   return demoDeals.map((deal) => {
-    const outcome = inferOutcome(deal.stageLabel);
+    let outcome = inferOutcome(deal.stageLabel);
+    
+    // Fallback scheduledAt to createdAt since updatedAt gets overwritten too often
+    const scheduledAt = deal.createdAt ?? new Date().toISOString();
+
+    // If a demo is "pending" but the scheduled date is in the past, mark it unknown (or rescheduled if preferred, 
+    // pending should strictly be future)
+    // We will mark them as "no-show" or "rescheduled" if they are in the past and still pending.
+    // The user requested: "pending demos that are in the past are just ones that we haven't updated. They should be unknown. Pending demos should just bei n the future"
+    // Since "unknown" isn't a DemoOutcome, we can add it, or map to "pending" but handle it later. We will add "unknown" to DemoOutcome.
+    if (outcome === "pending" && scheduledAt) {
+      // rough heuristic: if created > 14 days ago and still pending, it's unknown.
+      // better yet, just look at the date.
+      const daysSinceScheduled = Math.round(
+        (Date.now() - new Date(scheduledAt).getTime()) / 86_400_000
+      );
+      if (daysSinceScheduled > 1) { // 1 day grace period
+        outcome = "unknown" as DemoOutcome; 
+      }
+    }
+
     const currentStageIdx = POST_DEMO_STAGES.indexOf(deal.stageLabel);
     const hasFollowUp = currentStageIdx >= 0;
 
@@ -49,7 +70,7 @@ function buildDemoRecords(data: AnalyticsDashboardData): DemoRecord[] {
       dealId: deal.dealId,
       dealName: deal.dealName,
       contactEmail: null,
-      scheduledAt: deal.updatedAt ?? new Date().toISOString(),
+      scheduledAt,
       source: deal.source || "Unknown",
       outcome,
       followUpSent: hasFollowUp,
@@ -85,7 +106,7 @@ function buildSourceBreakdown(demos: DemoRecord[]): DemoSourceBreakdown[] {
 
 function buildOutcomeBreakdown(demos: DemoRecord[]): DemoOutcomeBreakdown[] {
   const total = demos.length;
-  const counts: Record<DemoOutcome, number> = { completed: 0, "no-show": 0, rescheduled: 0, pending: 0 };
+  const counts: Record<DemoOutcome, number> = { completed: 0, "no-show": 0, rescheduled: 0, pending: 0, unknown: 0 };
 
   for (const demo of demos) {
     counts[demo.outcome] += 1;
@@ -163,6 +184,164 @@ function buildWeeklyTrend(demos: DemoRecord[]): DemoWeeklyTrend[] {
     .sort((a, b) => a.week.localeCompare(b.week));
 }
 
+const TERMINAL_STAGES = new Set(["Closed Won", "Closed Lost", "Unlikely"]);
+const DEMO_ENTRY_STAGES = new Set([
+  "Demo Scheduled", "No-Show/Reschedule",
+  ...POST_DEMO_STAGES,
+]);
+
+function pct(num: number, denom: number): number {
+  return denom > 0 ? Math.round((num / denom) * 1000) / 10 : 0;
+}
+
+// Stages that indicate the customer has been onboarded (reached Subscription or beyond)
+const ONBOARDED_STAGES = new Set(["Subscription", "Closed Won"]);
+const HUBSPOT_CHURN_STAGES = new Set(["Churn", "Closed Lost"]);
+
+type StripeChurnEvent = NonNullable<
+  AnalyticsDashboardData["stripe"]
+>["subscriptions"]["recentChurnEvents"][number];
+
+function normalizeKey(value: string | null | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function buildStripeChurnLookup(events: StripeChurnEvent[]): Map<string, StripeChurnEvent> {
+  const lookup = new Map<string, StripeChurnEvent>();
+  for (const event of events) {
+    const key = normalizeKey(event.customer);
+    if (!key) continue;
+    const existing = lookup.get(key);
+    if (!existing) {
+      lookup.set(key, event);
+      continue;
+    }
+    const existingTime = new Date(existing.canceledAt).getTime();
+    const nextTime = new Date(event.canceledAt).getTime();
+    if (nextTime > existingTime) {
+      lookup.set(key, event);
+    }
+  }
+  return lookup;
+}
+
+function resolveStripeChurnEvent(
+  deal: { dealId: string; dealName: string; stripeCustomerId?: string | null },
+  lookup: Map<string, StripeChurnEvent>
+): StripeChurnEvent | null {
+  const candidates = [
+    normalizeKey(deal.stripeCustomerId),
+    normalizeKey(deal.dealId),
+    normalizeKey(deal.dealName),
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    const match = lookup.get(candidate);
+    if (match) return match;
+  }
+  return null;
+}
+
+function buildJourneyPathAnalysis(data: AnalyticsDashboardData): JourneyPathRow[] {
+  const deals = data.hubspot?.deals ?? [];
+  const stripeChurnEvents = data.stripe?.subscriptions?.recentChurnEvents ?? [];
+
+  // Build a lookup of Stripe-churned customer IDs for cross-referencing
+  const stripeChurnLookup = buildStripeChurnLookup(stripeChurnEvents);
+
+  const bySource = new Map<string, typeof deals>();
+  for (const deal of deals) {
+    const source = deal.source || "Unknown";
+    const group = bySource.get(source) ?? [];
+    group.push(deal);
+    bySource.set(source, group);
+  }
+
+  const rows: JourneyPathRow[] = [];
+
+  for (const [source, sourceDeals] of bySource) {
+    const totalLeads = sourceDeals.length;
+    const demosBooked = sourceDeals.filter((d) => DEMO_ENTRY_STAGES.has(d.stageLabel)).length;
+    const demoCompleted = sourceDeals.filter((d) => POST_DEMO_STAGES.includes(d.stageLabel)).length;
+    const demoNoShow = sourceDeals.filter((d) => d.stageLabel === "No-Show/Reschedule").length;
+
+    // Avg days to decision for terminal-stage deals (approximate from updatedAt)
+    const terminalDeals = sourceDeals.filter(
+      (d) => TERMINAL_STAGES.has(d.stageLabel) && d.updatedAt,
+    );
+    let avgDaysToDecision: number | null = null;
+    if (terminalDeals.length > 0) {
+      const totalDays = terminalDeals.reduce((sum, d) => {
+        const days = Math.round((Date.now() - new Date(d.updatedAt!).getTime()) / 86_400_000);
+        return sum + Math.max(days, 0);
+      }, 0);
+      avgDaysToDecision = Math.round((totalDays / terminalDeals.length) * 10) / 10;
+    }
+
+    const wonDeals = sourceDeals.filter((d) => d.stageLabel === "Closed Won");
+    const closedWon = wonDeals.length;
+    const closedLost = sourceDeals.filter((d) => d.stageLabel === "Closed Lost").length;
+
+    // Onboarding: deals that reached Subscription or Closed Won stage
+    // (indicates the customer completed onboarding after signing up)
+    // TODO: Replace with actual Google Calendar onboarding call detection with Mat
+    // once calendar event data is available in the analytics pipeline
+    const onboarding = sourceDeals.filter((d) => ONBOARDED_STAGES.has(d.stageLabel)).length;
+
+    const wonWithValue = wonDeals.filter((d) => d.amount > 0);
+    const avgContractValue = wonWithValue.length > 0
+      ? Math.round(wonWithValue.reduce((s, d) => s + d.amount, 0) / wonWithValue.length)
+      : null;
+
+    // Churn: HubSpot "Churn" / "Closed Lost" stages OR Stripe subscription cancellation
+    // Stripe churn events are matched by customer ID (deal name used as fallback identifier)
+    const churnedDeals = sourceDeals.flatMap((deal) => {
+      const stripeEvent = resolveStripeChurnEvent(deal, stripeChurnLookup);
+      const hubspotChurned = HUBSPOT_CHURN_STAGES.has(deal.stageLabel);
+      if (!hubspotChurned && !stripeEvent) return [];
+      return [{
+        deal,
+        churnedAt: stripeEvent?.canceledAt ?? deal.updatedAt ?? null,
+      }];
+    });
+
+    // Not Activated: churned within 60 days of deal creation (signup)
+    const notActivatedDeals = churnedDeals.filter(({ deal, churnedAt }) => {
+      if (!deal.createdAt || !churnedAt) return false;
+      const createdMs = new Date(deal.createdAt).getTime();
+      const churnedMs = new Date(churnedAt).getTime();
+      const daysSinceCreation = (churnedMs - createdMs) / 86_400_000;
+      return daysSinceCreation <= 60;
+    });
+    const notActivated = notActivatedDeals.length;
+
+    const churned = churnedDeals.length;
+
+    rows.push({
+      source,
+      totalLeads,
+      demosBooked,
+      demosBookedPct: pct(demosBooked, totalLeads),
+      demoCompleted,
+      demoCompletedPct: pct(demoCompleted, demosBooked),
+      demoNoShow,
+      demoNoShowPct: pct(demoNoShow, demosBooked),
+      avgDaysToDecision,
+      closedWon,
+      closedWonPct: pct(closedWon, demoCompleted),
+      closedLost,
+      onboarding,
+      onboardingPct: pct(onboarding, closedWon),
+      avgContractValue,
+      churned,
+      churnedPct: pct(churned, closedWon),
+      notActivated,
+      notActivatedPct: pct(notActivated, closedWon),
+    });
+  }
+
+  return rows.sort((a, b) => b.totalLeads - a.totalLeads);
+}
+
 export function buildDemoAnalyticsData(data: AnalyticsDashboardData): DemoAnalyticsData {
   const demos = buildDemoRecords(data);
   const totalScheduled = demos.length;
@@ -191,5 +370,6 @@ export function buildDemoAnalyticsData(data: AnalyticsDashboardData): DemoAnalyt
     byOutcome: buildOutcomeBreakdown(demos),
     conversionFunnel: buildConversionFunnel(data, demos),
     weeklyTrend: buildWeeklyTrend(demos),
+    journeyPaths: buildJourneyPathAnalysis(data),
   };
 }
