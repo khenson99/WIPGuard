@@ -639,15 +639,15 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
 
   /* ----- Render ----- */
   return (
-    <div className="h-full overflow-x-auto overflow-y-auto" onKeyDown={handleBoardKeyDown} tabIndex={0}>
+    <div className="relative h-full overflow-x-auto overflow-y-auto" onKeyDown={handleBoardKeyDown} tabIndex={0}>
       <div className="inline-flex min-w-full flex-col">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
+      <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b border-border/40 bg-background/95 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 shadow-sm">
+        <div className="flex min-w-0 flex-1 items-center gap-4">
           <BoardFilters />
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             {/* Group By selector */}
-            <div className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1">
-              <Layers className="h-3.5 w-3.5 text-muted-foreground" />
+            <div className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/50 px-2.5 py-1.5 shadow-sm transition-colors hover:bg-secondary">
+              <Layers className="h-4 w-4 text-muted-foreground" />
               <select
                 value={groupBy}
                 onChange={(e) => setGroupBy(e.target.value as GroupByMode)}
@@ -662,7 +662,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
             <select
               value={displayPreset}
               onChange={(e) => applyPreset(e.target.value as DisplayPreset)}
-              className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground"
+              className="rounded-lg border border-border/50 bg-secondary/50 px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-secondary outline-none"
               title="Display preset"
             >
               <option value="standard">Standard</option>
@@ -671,7 +671,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
             </select>
             <button
               onClick={() => setShowMetadata((current) => !current)}
-              className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+              className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/50 px-2.5 py-1.5 text-xs font-medium text-muted-foreground shadow-sm transition-colors hover:bg-secondary hover:text-foreground outline-none"
               title="Toggle metadata disclosure"
             >
               {showMetadata ? (
@@ -694,27 +694,27 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
         </div>
         <button
           onClick={handleCreateTask}
-          className="btn-primary-theme flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium"
+          className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-primary to-primary/80 px-4 py-2 text-sm font-bold text-primary-foreground shadow-md transition-all hover:scale-105 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-background"
         >
           <Plus className="h-4 w-4" />
-          New Task
+          <span className="hidden sm:inline">New Task</span>
         </button>
       </div>
       {replenishmentNotice && (
-        <div className="mx-4 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs">
-          <span className="text-emerald-700">
-            Replenished <strong>{replenishmentNotice.title}</strong> to Queued. Logged in status history.
+        <div className="mx-6 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 to-transparent px-4 py-3 text-sm shadow-sm backdrop-blur-sm animate-in fade-in slide-in-from-top-2">
+          <span className="font-medium text-emerald-600 dark:text-emerald-400">
+            Replenished <strong className="font-bold">{replenishmentNotice.title}</strong> to Queued. Logged in status history.
           </span>
           <div className="flex items-center gap-2">
             <button
               onClick={handleUndoReplenish}
-              className="rounded border border-emerald-600/40 px-2 py-0.5 font-medium text-emerald-700 hover:bg-emerald-500/20"
+              className="rounded-lg border border-emerald-500/30 px-3 py-1 text-xs font-bold text-emerald-600 shadow-sm transition-colors hover:bg-emerald-500/20 dark:text-emerald-400"
             >
               Undo
             </button>
             <button
               onClick={() => setReplenishmentNotice(null)}
-              className="rounded px-2 py-0.5 text-emerald-700 hover:bg-emerald-500/20"
+              className="rounded-lg px-3 py-1 text-xs font-bold text-emerald-600 transition-colors hover:bg-emerald-500/20 dark:text-emerald-400"
             >
               Dismiss
             </button>
@@ -722,7 +722,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
         </div>
       )}
 
-      <div className="px-4 pb-4">
+      <div className="p-6 pt-4">
         <DragDropContext onDragEnd={handleDragEnd}>
           {groupBy === "status" && (
             <div className="flex h-full gap-3">
