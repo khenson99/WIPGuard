@@ -88,6 +88,7 @@ export function buildHubspotSearchUrl(email: string): string {
   return `https://app.hubspot.com/contacts?query=${encodeURIComponent(email)}`;
 }
 
+
 function trimOrNull(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -295,6 +296,7 @@ export async function resolveHubspotContactsByEmail(input: {
 
   return { results, errors };
 }
+
 
 export function scoreCodaEngagedLeads(input: {
   creators: CodaLeadScoringInput[];

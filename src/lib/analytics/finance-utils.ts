@@ -1,3 +1,4 @@
+
 // ─── Finance Utility Helpers ─────────────────────────────
 // Shared computation helpers for financial planning engines.
 // Pure functions used by forecast-engine, pnl-builder,

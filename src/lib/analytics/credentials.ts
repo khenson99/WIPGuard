@@ -150,7 +150,6 @@ function looksInvalidMetaInstagramAccountId(value: string | null): boolean {
   if (/^act_/i.test(trimmed)) return true;
   return false;
 }
-
 function buildFreshness(
   provider: IntegrationProvider,
   connection: ConnectionRecord | null,
@@ -208,6 +207,21 @@ function envGoogleAdsReady(): boolean {
       envOrNull(process.env.GOOGLE_ADS_REFRESH_TOKEN) &&
       envOrNull(process.env.GOOGLE_ADS_CLIENT_ID) &&
       envOrNull(process.env.GOOGLE_ADS_CLIENT_SECRET)
+  );
+}
+
+function envMetaAdsReady(): boolean {
+  return Boolean(
+    envOrNull(process.env.META_ACCESS_TOKEN) &&
+      envOrNull(process.env.META_AD_ACCOUNT_ID)
+  );
+}
+
+function envMetaPageReady(): boolean {
+  return Boolean(
+    envOrNull(process.env.META_ACCESS_TOKEN) &&
+      (envOrNull(process.env.META_PAGE_ID) ||
+        envOrNull(process.env.META_INSTAGRAM_ACCOUNT_ID))
   );
 }
 
@@ -609,6 +623,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
       ? unprotectIntegrationSecret(metaPageConnection.accessToken)
       : null);
 
+
   let metaAdAccountId =
     envMetaAdAccountId ??
     metadataString(metaAdsConnection?.metadata, "adAccountId");
@@ -725,6 +740,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     }
   }
 
+
   const pylonApiKey =
     envPylonApiKey ??
     (pylonConnection?.status === IntegrationConnectionStatus.CONNECTED
@@ -733,7 +749,6 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
 
   const pylonBaseUrl =
     metadataString(pylonConnection?.metadata, "baseUrl") ?? envPylonBaseUrl;
-
   const freshness: Record<IntegrationProvider, ProviderFreshnessSnapshot> = {
     [IntegrationProvider.GOOGLE_WORKSPACE]: buildFreshness(
       IntegrationProvider.GOOGLE_WORKSPACE,
@@ -779,7 +794,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     [IntegrationProvider.META_ADS]: buildFreshness(
       IntegrationProvider.META_ADS,
       metaAdsConnection,
-      Boolean(envMetaAccessToken)
+      envMetaAdsReady()
     ),
     [IntegrationProvider.META_PAGE]: buildFreshness(
       IntegrationProvider.META_PAGE,

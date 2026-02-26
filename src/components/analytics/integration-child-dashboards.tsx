@@ -873,7 +873,6 @@ export function SalesPerformanceDashboard({ data }: IntegrationChildDashboardPro
     </DashboardShell>
   );
 }
-
 export function CustomerSuccessPylonDashboard({ data }: IntegrationChildDashboardProps) {
   const pylon = data?.pylon;
   const reasons = providerErrors(data, ["pylon"]);

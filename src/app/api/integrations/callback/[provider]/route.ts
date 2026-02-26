@@ -245,10 +245,11 @@ export async function GET(
       tokenResponse.raw
     );
 
+    // Validate granted scopes against required scopes
     // Some providers (e.g. Meta) do not return granted scopes in their token response.
     // Avoid flagging false negatives when scope data is absent.
     const scopeValidation =
-      tokenResponse.scopes.length > 0
+      tokenResponse.scopes && tokenResponse.scopes.length > 0
         ? validateIntegrationScopes(definition, tokenResponse.scopes)
         : null;
     const hasMissingScopes =
@@ -281,7 +282,6 @@ export async function GET(
         console.warn("[integrations] Meta page discovery failed:", error);
       }
     }
-
     const metadata: Prisma.InputJsonObject = {
       ...(accountProfile.metadata ?? {}),
       oauthProvider: definition.slug,

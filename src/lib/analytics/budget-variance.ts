@@ -1,3 +1,4 @@
+
 // ─── Budget Variance Analysis ────────────────────────────
 // Computes budget-vs-actual variance for expense categories.
 // Mercury only provides aggregate inflows/outflows — no

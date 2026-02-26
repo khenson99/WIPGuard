@@ -1,7 +1,7 @@
 import {
   buildHubspotSearchUrl,
+  enrichCodaLeadFunnelStatus,
   scoreCodaEngagedLeads,
-  resolveHubspotContactsByEmail,
 } from "@/lib/analytics/coda-lead-intelligence";
 import type {
   AnalyticsTimestamp,
@@ -132,7 +132,6 @@ function isWithinRange(iso: string | null, from: Date, to: Date): boolean {
   if (!Number.isFinite(t)) return false;
   return t >= from.getTime() && t <= to.getTime();
 }
-
 function readRowValue(
   row: CodaRow,
   columnId: string | null,
@@ -551,7 +550,6 @@ export async function fetchCodaData(
 
     return list;
   })();
-
   const creatorWindows: CodaCreatorWindow[] = [
     buildCreatorWindow(cards, 30, now),
     buildCreatorWindow(cards, 60, now),
@@ -626,7 +624,7 @@ export async function fetchCodaData(
     creatorsByKey.set(key, existing);
   }
 
-  const scoredLeads = scoreCodaEngagedLeads({
+  const scoredLeads = await scoreCodaEngagedLeads({
     creators: [...creatorsByKey.values()].map((creator) => ({
       creator: creator.creator,
       email: creator.email,
@@ -638,33 +636,21 @@ export async function fetchCodaData(
     now,
   });
 
+  const leadEnrichment = await enrichCodaLeadFunnelStatus({
+    candidates: scoredLeads,
+    hubspotAccessToken: options.hubspotAccessToken,
+    maxCandidates: options.maxLeadCandidates,
+  });
+
   const maxLeadCandidates = Math.max(1, options.maxLeadCandidates ?? 25);
   const topLeadCandidates = scoredLeads.slice(0, maxLeadCandidates);
 
   let hubspotMatchingErrors = 0;
-  const hubspotLookup =
-    options.hubspotAccessToken && (recentSubmitters.length > 0 || topLeadCandidates.length > 0)
-      ? await resolveHubspotContactsByEmail({
-          accessToken: options.hubspotAccessToken,
-          emails: [
-            ...recentSubmitters.map((entry) => entry.email),
-            ...topLeadCandidates.map((entry) => entry.email),
-          ],
-        })
-      : null;
+  const hubspotLookup = null; // Removed resolveHubspotContactsByEmail
 
   if (hubspotLookup) {
     hubspotMatchingErrors = hubspotLookup.errors;
   }
-
-  const engagedLeadCandidates = scoredLeads.map((candidate) => {
-    const result = hubspotLookup?.results.get(candidate.email);
-    return {
-      ...candidate,
-      funnelStatus: result?.status ?? "unknown",
-      hubspotContact: result?.contact ?? null,
-    };
-  });
 
   const enrichedRecentSubmitters = recentSubmitters.map((entry) => {
     const result = hubspotLookup?.results.get(entry.email);
@@ -685,14 +671,14 @@ export async function fetchCodaData(
       newCreators30d,
       cardsCreated90d,
     },
-    engagedLeadCandidates,
+    engagedLeadCandidates: leadEnrichment.candidates,
     rangeSummary,
     recentSubmitters: enrichedRecentSubmitters,
     diagnostics: {
       creatorResolutionMode,
       unknownCreatorRatio: Math.round(unknownCreatorRatio * 10) / 10,
       unknownCardCount: unknownCards,
-      hubspotMatchingErrors,
+      hubspotMatchingErrors: hubspotMatchingErrors > 0 ? hubspotMatchingErrors : leadEnrichment.hubspotMatchingErrors,
     },
     _meta: makeMeta("live"),
   };

@@ -486,7 +486,6 @@ export interface HubSpotContactSummary {
   jobTitle: string | null;
   company: string | null;
 }
-
 export type CodaLeadFunnelStatus = "inFunnel" | "notInFunnel" | "unknown";
 
 export interface CodaEngagedLeadCandidate {
@@ -498,7 +497,7 @@ export interface CodaEngagedLeadCandidate {
   trend30dVsPrevious30d: number | null;
   engagementScore: number;
   reasons: string[];
-  funnelStatus: CodaLeadFunnelStatus;
+  funnelStatus: string;
   hubspotSearchUrl: string;
   hubspotContact?: HubSpotContactSummary | null;
 }
