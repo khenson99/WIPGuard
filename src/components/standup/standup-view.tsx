@@ -7,11 +7,13 @@ import {
   ChevronRight,
   Clock,
   Expand,
+  Info,
   Minimize2,
   RefreshCw,
   Pause,
   Play,
   User,
+  X,
   XCircle,
   Zap,
   CalendarClock,
@@ -109,6 +111,19 @@ export function StandupView() {
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [staleThreshold] = useState(() => new Date(Date.now() - 3 * 24 * 60 * 60 * 1000));
   const [error, setError] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: "error" | "info" }>>([]);
+
+  const addToast = useCallback((message: string, type: "error" | "info") => {
+    const id = Date.now();
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  }, []);
+
+  const removeToast = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
 
   const fetchStandup = useCallback(async () => {
     setLoading(true);
@@ -151,13 +166,13 @@ export function StandupView() {
   ) => {
     if (action === "defer") {
       const ok = await deferTask(taskId);
-      if (!ok) window.alert("Failed to defer task.");
+      if (!ok) addToast("Failed to defer task.", "error");
     } else if (action === "advance") {
       const ok = await advanceTask(taskId);
-      if (!ok) window.alert("Failed to advance task.");
+      if (!ok) addToast("Failed to advance task.", "error");
     } else if (action === "split") {
-      // Open task modal for splitting — for now just alert
-      window.alert("Split action: open the task to create subtasks.");
+      // Open task modal for splitting — for now show info toast
+      addToast("Split action: open the task to create subtasks.", "info");
     }
     fetchStandup();
   };
@@ -406,6 +421,37 @@ export function StandupView() {
           </div>
         ))}
       </div>
+
+      {/* Toast notifications */}
+      {toasts.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className={clsx(
+                "flex items-center gap-2 rounded-lg border px-3 py-2.5 shadow-lg",
+                toast.type === "error"
+                  ? "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400"
+                  : "border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400"
+              )}
+            >
+              {toast.type === "error" ? (
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              ) : (
+                <Info className="h-4 w-4 flex-shrink-0" />
+              )}
+              <span className="text-xs font-medium">{toast.message}</span>
+              <button
+                onClick={() => removeToast(toast.id)}
+                className="ml-1 flex-shrink-0 rounded p-0.5 hover:bg-black/10 dark:hover:bg-white/10"
+                title="Dismiss"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
