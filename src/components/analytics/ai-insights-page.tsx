@@ -112,6 +112,7 @@ export function AiInsightsPage() {
           {(["all", "critical", "warning", "info"] as SeverityFilter[]).map((sev) => (
             <button
               key={sev}
+              aria-pressed={severityFilter === sev}
               onClick={() => setSeverityFilter(sev)}
               className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 severityFilter === sev ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
@@ -126,6 +127,7 @@ export function AiInsightsPage() {
           {(["all", "ads-traffic", "finance", "sales-pipeline", "customer-success"] as SectionFilter[]).map((sec) => (
             <button
               key={sec}
+              aria-pressed={sectionFilter === sec}
               onClick={() => setSectionFilter(sec)}
               className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 sectionFilter === sec ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
@@ -140,6 +142,7 @@ export function AiInsightsPage() {
           {(["severity", "confidence"] as SortMode[]).map((mode) => (
             <button
               key={mode}
+              aria-pressed={sortMode === mode}
               onClick={() => setSortMode(mode)}
               className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 sortMode === mode ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"

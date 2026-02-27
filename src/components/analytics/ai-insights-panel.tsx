@@ -122,22 +122,6 @@ export function AiInsightsPanel({ bundle, defaultFilter = "all", compact = false
     setFilter(defaultFilter);
   }, [defaultFilter]);
 
-  useEffect(() => {
-    setFilter(defaultFilter);
-  }, [defaultFilter]);
-
-  useEffect(() => {
-    setFilter(defaultFilter);
-  }, [defaultFilter]);
-
-  useEffect(() => {
-    setFilter(defaultFilter);
-  }, [defaultFilter]);
-
-  useEffect(() => {
-    setFilter(defaultFilter);
-  }, [defaultFilter]);
-
   const visible = useMemo(() => {
     if (!bundle) return [];
     const items = filter === "all" ? bundle.global : bundle.bySection[filter];
@@ -198,6 +182,7 @@ export function AiInsightsPanel({ bundle, defaultFilter = "all", compact = false
             <button
               key={item.id}
               type="button"
+              aria-pressed={filter === item.id}
               onClick={() => setFilter(item.id)}
               className={`rounded-md px-2 py-1 text-xs ${
                 filter === item.id ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground"
