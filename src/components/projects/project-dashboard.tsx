@@ -355,6 +355,7 @@ export function ProjectDashboard() {
           onChange={(event) => applySavedView(event.target.value)}
           className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground"
           disabled={savedViews.length === 0}
+          aria-label="Saved views"
         >
           {savedViews.map((view) => (
             <option key={view.id} value={view.id}>
@@ -375,6 +376,7 @@ export function ProjectDashboard() {
           value={filterStatus}
           onChange={(event) => setFilterStatus(event.target.value as ProjectStatus | "")}
           className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground"
+          aria-label="Filter by status"
         >
           {STATUS_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
@@ -387,6 +389,7 @@ export function ProjectDashboard() {
           value={filterDepartment}
           onChange={(event) => setFilterDepartment(event.target.value)}
           className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground"
+          aria-label="Filter by department"
         >
           <option value="">All Departments</option>
           {departments.map((department) => (
@@ -409,7 +412,7 @@ export function ProjectDashboard() {
           </button>
         ) : null}
 
-        <div className="ml-auto flex rounded-lg border border-border">
+        <div className="ml-auto flex rounded-lg border border-border" role="group" aria-label="View mode">
           <button
             onClick={() => setViewMode("grid")}
             className={`rounded-l-lg px-3 py-2 text-sm ${
@@ -418,6 +421,8 @@ export function ProjectDashboard() {
                 : "bg-card text-muted-foreground hover:text-foreground"
             }`}
             title="Grid view"
+            aria-label="Switch to grid view"
+            aria-pressed={viewMode === "grid"}
           >
             <LayoutGrid className="h-4 w-4" />
           </button>
@@ -429,6 +434,8 @@ export function ProjectDashboard() {
                 : "bg-card text-muted-foreground hover:text-foreground"
             }`}
             title="Swim lane view"
+            aria-label="Switch to swim lane view"
+            aria-pressed={viewMode === "swimlane"}
           >
             <Rows3 className="h-4 w-4" />
           </button>
@@ -440,6 +447,8 @@ export function ProjectDashboard() {
                 : "bg-card text-muted-foreground hover:text-foreground"
             }`}
             title="List view"
+            aria-label="Switch to list view"
+            aria-pressed={viewMode === "list"}
           >
             <List className="h-4 w-4" />
           </button>
