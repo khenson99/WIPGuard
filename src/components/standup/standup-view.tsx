@@ -108,17 +108,19 @@ export function StandupView() {
   const [timerRunning, setTimerRunning] = useState(false);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [staleThreshold] = useState(() => new Date(Date.now() - 3 * 24 * 60 * 60 * 1000));
+  const [error, setError] = useState<string | null>(null);
 
   const fetchStandup = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/standup");
-      if (res.ok) {
-        const json = await res.json();
-        setData(json);
-      }
-    } catch {
-      // silently handle
+      if (!res.ok) throw new Error("Failed to fetch standup data");
+      const json = await res.json();
+      setData(json);
+      setError(null);
+    } catch (err) {
+      setError("Failed to load standup data. Please check your connection.");
+      console.error("Standup fetch failed:", err);
     } finally {
       setLoading(false);
     }
@@ -178,6 +180,21 @@ export function StandupView() {
   }
 
   if (!data) {
+    if (error) {
+      return (
+        <div className="flex h-64 flex-col items-center justify-center gap-4 p-6 text-center">
+          <AlertTriangle className="h-10 w-10 text-yellow-500" />
+          <p className="text-sm font-medium text-foreground">{error}</p>
+          <button
+            onClick={fetchStandup}
+            className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Retry
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="p-6 text-center text-muted-foreground">
         Failed to load standup data.
@@ -209,16 +226,22 @@ export function StandupView() {
           {/* Timer */}
           <div className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1">
             <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className={clsx(
-              "font-mono text-sm",
-              timer > 900 ? "text-red-500" : "text-foreground"
-            )}>
+            <span
+              role="timer"
+              aria-live="polite"
+              aria-atomic="true"
+              className={clsx(
+                "font-mono text-sm",
+                timer > 900 ? "text-red-500" : "text-foreground"
+              )}
+            >
               {formatTime(timer)}
             </span>
             <button
               onClick={() => setTimerRunning(!timerRunning)}
               className="rounded p-0.5 text-muted-foreground hover:text-foreground"
               title={timerRunning ? "Pause timer" : "Start timer"}
+              aria-label={timerRunning ? "Pause timer" : "Start timer"}
             >
               {timerRunning ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
             </button>
@@ -239,6 +262,8 @@ export function StandupView() {
                 : "border-border bg-card text-muted-foreground hover:text-foreground"
             )}
             title="Facilitator mode for screen-share"
+            aria-label={facilitatorMode ? "Exit facilitator mode" : "Enter facilitator mode"}
+            aria-pressed={facilitatorMode}
           >
             {facilitatorMode ? <Minimize2 className="h-3.5 w-3.5" /> : <Expand className="h-3.5 w-3.5" />}
             {facilitatorMode ? "Exit Facilitator" : "Facilitator Mode"}
@@ -249,6 +274,7 @@ export function StandupView() {
             onClick={fetchStandup}
             className="rounded-md border border-border bg-card p-1.5 text-muted-foreground hover:text-foreground"
             title="Refresh"
+            aria-label="Refresh standup data"
           >
             <RefreshCw className={clsx("h-3.5 w-3.5", loading && "animate-spin")} />
           </button>
@@ -359,7 +385,7 @@ export function StandupView() {
       </div>
 
       {/* WIP status bar */}
-      <div className="flex items-center gap-3 border-t border-border bg-card px-4 py-2">
+      <div role="status" aria-label="WIP limits" className="flex items-center gap-3 border-t border-border bg-card px-4 py-2">
         <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           WIP
         </span>
@@ -492,6 +518,8 @@ function TaskRow({
       <button
         onClick={onToggle}
         className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
+        aria-expanded={expanded}
+        aria-label={`Toggle details for ${task.title}`}
       >
         <div
           className="h-2 w-2 flex-shrink-0 rounded-full"

@@ -95,6 +95,7 @@ export default function LogbookPage() {
             <Calendar className="h-4 w-4 text-muted-foreground" />
             <input
               type="date"
+              aria-label="Start date"
               value={startDate}
               onChange={(e) => {
                 setStartDate(e.target.value);
@@ -105,6 +106,7 @@ export default function LogbookPage() {
             <span className="text-xs text-muted-foreground">to</span>
             <input
               type="date"
+              aria-label="End date"
               value={endDate}
               onChange={(e) => {
                 setEndDate(e.target.value);
@@ -165,23 +167,25 @@ export default function LogbookPage() {
         )}
 
         {/* Pagination */}
-        <div className="mt-4 flex items-center justify-center gap-3">
+        <nav aria-label="Pagination" className="mt-4 flex items-center justify-center gap-3">
           <button
+            aria-label="Previous page"
             onClick={() => setPage(Math.max(1, page - 1))}
             disabled={page === 1}
             className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary disabled:opacity-30"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <span className="text-xs text-muted-foreground">Page {page}</span>
+          <span aria-live="polite" className="text-xs text-muted-foreground">Page {page}</span>
           <button
+            aria-label="Next page"
             onClick={() => setPage(page + 1)}
             disabled={entries.length < 25}
             className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary disabled:opacity-30"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
-        </div>
+        </nav>
       </div>
     </div>
   );

@@ -61,6 +61,7 @@ export default function AutomationBuilderPage() {
   const [edges, setEdges] = useState<WorkflowEdge[]>([]);
   const [selectedNodeKey, setSelectedNodeKey] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string>("");
+  const [deleteConfirm, setDeleteConfirm] = useState<{nodeId: string; nodeName: string} | null>(null);
 
   const validation = useMemo(
     () =>
@@ -497,7 +498,7 @@ export default function AutomationBuilderPage() {
                 />
 
                 <button
-                  onClick={() => removeNode(selectedNode.key)}
+                  onClick={() => setDeleteConfirm({ nodeId: selectedNode.key, nodeName: selectedNode.label })}
                   className="rounded-md border border-border bg-background px-2 py-1.5 text-xs text-red-500 hover:text-red-400"
                 >
                   Delete Node
@@ -519,6 +520,35 @@ export default function AutomationBuilderPage() {
           </section>
         </aside>
       </div>
+
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-lg">
+            <h2 className="text-sm font-semibold text-foreground">Delete this node?</h2>
+            <p className="mt-2 text-xs text-muted-foreground">
+              This will remove <span className="font-medium text-foreground">{deleteConfirm.nodeName}</span> and
+              disconnect any linked nodes.
+            </p>
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  removeNode(deleteConfirm.nodeId);
+                  setDeleteConfirm(null);
+                }}
+                className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs text-red-500 hover:bg-red-500/20"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

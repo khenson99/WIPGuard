@@ -9,7 +9,7 @@ import type {
   AnalyticsDashboardData,
   LifecycleStageId,
 } from "@/lib/analytics/types";
-import { Users, TrendingUp, ArrowRight, Sparkles } from "lucide-react";
+import { Users, TrendingUp, ArrowRight, Sparkles, AlertTriangle } from "lucide-react";
 import { populateConnectionStatus } from "@/hooks/use-connection-status";
 
 function readOverviewCache(): AnalyticsDashboardData | null {
@@ -39,6 +39,30 @@ export function CustomerJourneyPage() {
   const [data, setData] = useState<AnalyticsDashboardData | null>(readOverviewCache);
   const [selectedStage, setSelectedStage] = useState<LifecycleStageId | null>(null);
   const [loading, setLoading] = useState(() => readOverviewCache() === null);
+  const [error, setError] = useState<string | null>(null);
+  const [fetchController, setFetchController] = useState<AbortController | null>(null);
+
+  const fetchJourneyData = (signal?: AbortSignal) => {
+    setError(null);
+    setLoading(true);
+
+    fetch("/api/analytics?section=overview", { signal })
+      .then((r) => r.json())
+      .then((json: AnalyticsDashboardData) => {
+        if (signal?.aborted) return;
+        setData(json);
+        populateConnectionStatus(json.freshness, json);
+        sessionStorage.setItem("analytics:overview", JSON.stringify(json));
+      })
+      .catch((err) => {
+        if (signal?.aborted) return;
+        console.error(err);
+        setError("Failed to load journey data");
+      })
+      .finally(() => {
+        if (!signal?.aborted) setLoading(false);
+      });
+  };
 
   useEffect(() => {
     const cached = readOverviewCache();
@@ -46,27 +70,21 @@ export function CustomerJourneyPage() {
       populateConnectionStatus(cached.freshness, cached);
     }
 
-    let active = true;
     const controller = new AbortController();
-
-    fetch("/api/analytics?section=overview", { signal: controller.signal })
-      .then((r) => r.json())
-      .then((json: AnalyticsDashboardData) => {
-        if (!active) return;
-        setData(json);
-        populateConnectionStatus(json.freshness, json);
-        sessionStorage.setItem("analytics:overview", JSON.stringify(json));
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    setFetchController(controller);
+    fetchJourneyData(controller.signal);
 
     return () => {
-      active = false;
       controller.abort();
     };
   }, []);
+
+  const handleRetry = () => {
+    fetchController?.abort();
+    const controller = new AbortController();
+    setFetchController(controller);
+    fetchJourneyData(controller.signal);
+  };
 
   const lifecycle = data?.lifecycleFunnel ?? null;
   const insights = data?.aiInsights?.global ?? [];
@@ -75,6 +93,26 @@ export function CustomerJourneyPage() {
     return (
       <div className="flex h-64 items-center justify-center">
         <p className="text-sm text-muted-foreground">Loading journey data…</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <div className="text-center">
+          <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-destructive/60" />
+          <p className="text-sm font-medium text-destructive">{error}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Check your connection and try again
+          </p>
+          <button
+            onClick={handleRetry}
+            className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-secondary"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }

@@ -12,6 +12,8 @@ import {
   Send,
   Save,
   User,
+  AlertTriangle,
+  X,
 } from "lucide-react";
 
 interface TeamMember {
@@ -40,16 +42,19 @@ export function TeamTab() {
   const [profileName, setProfileName] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const canInvite = session?.user?.role === "admin";
 
   const fetchMembers = useCallback(async () => {
+    setError(null);
     try {
       const res = await fetch("/api/team");
       if (res.ok) {
         setMembers(await res.json());
       }
-    } catch {
-      // Silently handle
+    } catch (err) {
+      setError("Failed to load team members");
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -119,6 +124,7 @@ export function TeamTab() {
   const handleSaveProfile = async () => {
     setSavingProfile(true);
     setProfileSaved(false);
+    setError(null);
     try {
       const res = await fetch("/api/profile", {
         method: "PATCH",
@@ -131,8 +137,9 @@ export function TeamTab() {
         await updateSession();
         fetchMembers();
       }
-    } catch {
-      // silently handle
+    } catch (err) {
+      setError("Failed to save profile");
+      console.error(err);
     } finally {
       setSavingProfile(false);
     }
@@ -156,6 +163,37 @@ export function TeamTab() {
 
   return (
     <div className="max-w-3xl space-y-8">
+      {error && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-destructive" />
+            <span className="text-sm text-destructive">{error}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setError(null);
+                if (error === "Failed to load team members") {
+                  setLoading(true);
+                  fetchMembers();
+                } else {
+                  handleSaveProfile();
+                }
+              }}
+              className="rounded-md px-2 py-1 text-xs font-medium text-destructive hover:bg-destructive/20"
+            >
+              Retry
+            </button>
+            <button
+              onClick={() => setError(null)}
+              className="rounded-md p-1 text-destructive hover:bg-destructive/20"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Profile section ── */}
       <section className="space-y-3">
         <div className="flex items-center gap-2 text-foreground">

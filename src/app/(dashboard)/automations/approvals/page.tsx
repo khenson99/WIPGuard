@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 
@@ -31,6 +31,9 @@ export default function AutomationApprovalsPage() {
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notesFor, setNotesFor] = useState<{ id: string; action: "approve" | "reject" } | null>(null);
+  const [notesText, setNotesText] = useState("");
+  const notesRef = useRef<HTMLTextAreaElement>(null);
 
   const fetchApprovals = async (options?: { preserveExisting?: boolean; signal?: AbortSignal }) => {
     if (!options?.preserveExisting) {
@@ -81,13 +84,11 @@ export default function AutomationApprovalsPage() {
     };
   }, []);
 
-  const decide = async (approvalId: string, action: "approve" | "reject") => {
-    const note = window.prompt(`${action === "approve" ? "Approve" : "Reject"} note (optional)`) || undefined;
-
+  const decide = async (approvalId: string, action: "approve" | "reject", note?: string) => {
     const response = await fetch(`/api/automations/approvals/${approvalId}/${action}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ note }),
+      body: JSON.stringify({ note: note || undefined }),
     });
 
     if (!response.ok) {
@@ -96,7 +97,26 @@ export default function AutomationApprovalsPage() {
       return;
     }
 
+    setNotesFor(null);
+    setNotesText("");
     await fetchApprovals({ preserveExisting: true });
+  };
+
+  const openNotes = (id: string, action: "approve" | "reject") => {
+    setNotesFor({ id, action });
+    setNotesText("");
+    // Auto-focus textarea on next render
+    setTimeout(() => notesRef.current?.focus(), 0);
+  };
+
+  const cancelNotes = () => {
+    setNotesFor(null);
+    setNotesText("");
+  };
+
+  const submitNotes = () => {
+    if (!notesFor) return;
+    void decide(notesFor.id, notesFor.action, notesText);
   };
 
   return (
@@ -145,19 +165,50 @@ export default function AutomationApprovalsPage() {
                     Open
                   </Link>
                   <button
-                    onClick={() => decide(approval.id, "reject")}
+                    onClick={() => openNotes(approval.id, "reject")}
                     className="rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1 text-xs text-red-500"
                   >
                     Reject
                   </button>
                   <button
-                    onClick={() => decide(approval.id, "approve")}
+                    onClick={() => openNotes(approval.id, "approve")}
                     className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-600"
                   >
                     Approve
                   </button>
                 </div>
               </div>
+
+              {notesFor?.id === approval.id && (
+                <div className="mt-3 space-y-2 border-t border-border pt-3">
+                  <textarea
+                    ref={notesRef}
+                    value={notesText}
+                    onChange={(e) => setNotesText(e.target.value)}
+                    placeholder="Add notes (optional)..."
+                    rows={2}
+                    className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={submitNotes}
+                      className={`rounded-md px-3 py-1 text-xs font-medium ${
+                        notesFor.action === "approve"
+                          ? "border border-emerald-500/40 bg-emerald-500/10 text-emerald-600"
+                          : "border border-red-500/40 bg-red-500/10 text-red-500"
+                      }`}
+                    >
+                      {notesFor.action === "approve" ? "Confirm Approve" : "Confirm Reject"}
+                    </button>
+                    <button
+                      onClick={cancelNotes}
+                      className="rounded-md border border-border bg-background px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
