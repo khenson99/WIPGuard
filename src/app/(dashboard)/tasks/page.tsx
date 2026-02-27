@@ -163,6 +163,7 @@ export default function TasksPage() {
             onChange={(event) => applySavedView(event.target.value)}
             className="rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground"
             disabled={loadingViews || savedViews.length === 0}
+            aria-label="Saved views"
           >
             {savedViews.map((view) => (
               <option key={view.id} value={view.id}>
@@ -193,11 +194,13 @@ export default function TasksPage() {
             </button>
           )}
 
-          <div className="ml-auto flex rounded-md border border-border bg-card">
+          <div className="ml-auto flex rounded-md border border-border bg-card" role="group" aria-label="Layout options">
             <button
               onClick={() => setLayout("kanban")}
               className={`px-2 py-1.5 ${activeLayout === "kanban" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
               title="Kanban"
+              aria-label="Switch to board view"
+              aria-pressed={activeLayout === "kanban"}
             >
               <LayoutGrid className="h-4 w-4" />
             </button>
@@ -205,6 +208,8 @@ export default function TasksPage() {
               onClick={() => setLayout("table")}
               className={`px-2 py-1.5 ${activeLayout === "table" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
               title="Table"
+              aria-label="Switch to table view"
+              aria-pressed={activeLayout === "table"}
             >
               <TableProperties className="h-4 w-4" />
             </button>
@@ -212,6 +217,8 @@ export default function TasksPage() {
               onClick={() => setLayout("split")}
               className={`px-2 py-1.5 ${activeLayout === "split" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
               title="Split"
+              aria-label="Switch to split view"
+              aria-pressed={activeLayout === "split"}
             >
               <PanelsTopLeft className="h-4 w-4" />
             </button>
