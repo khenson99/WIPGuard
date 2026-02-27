@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, CalendarPlus, RefreshCw } from "lucide-react";
+import { ArrowLeft, CalendarPlus, RefreshCw, Trash2 } from "lucide-react";
 import { clsx } from "clsx";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-error-banner";
@@ -199,6 +199,8 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
+  const [showSeedConfirm, setShowSeedConfirm] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: string; id: string; label: string } | null>(null);
 
   const resource = useDashboardResource<ConferenceDetailPayload>({
     cacheKey: `dashboard:conference:${conferenceId}:v1`,
@@ -297,6 +299,25 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
       setActionError(e instanceof Error ? e.message : "Failed to apply playbook.");
     } finally {
       setActionBusy(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/conferences/${conferenceId}/${deleteConfirm.type}/${deleteConfirm.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error || `Delete failed (${res.status}).`);
+      }
+      await resource.refresh();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Failed to delete item.");
+    } finally {
+      setDeleteConfirm(null);
     }
   };
 
@@ -407,7 +428,7 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
           {!conference.primaryProjectId ? (
             <button
               type="button"
-              onClick={() => void applyPlaybook()}
+              onClick={() => setShowSeedConfirm(true)}
               disabled={actionBusy}
               className="btn-primary-theme inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
               title="Seed projects, deadlines, and budget from playbook"
@@ -625,6 +646,7 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
           deadlineTypeOptions={deadlineTypeOptions}
           onRefresh={resource.refresh}
           setActionError={setActionError}
+          onDeleteRequest={(id: string, label: string) => setDeleteConfirm({ type: "deadlines", id, label })}
         />
       ) : null}
 
@@ -637,6 +659,7 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
           expenseCategoryOptions={expenseCategoryOptions}
           onRefresh={resource.refresh}
           setActionError={setActionError}
+          onDeleteRequest={(id: string, label: string) => setDeleteConfirm({ type: "expenses", id, label })}
         />
       ) : null}
 
@@ -648,7 +671,72 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
           leadStatusOptions={leadStatusOptions}
           onRefresh={resource.refresh}
           setActionError={setActionError}
+          onDeleteRequest={(id: string, label: string) => setDeleteConfirm({ type: "leads", id, label })}
         />
+      ) : null}
+
+      {showSeedConfirm ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="mx-4 w-full max-w-md rounded-xl bg-card p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-foreground">Seed Playbook</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              This will create projects, deadlines, and budget items from the playbook template.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowSeedConfirm(false)}
+                disabled={actionBusy}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSeedConfirm(false);
+                  void applyPlaybook();
+                }}
+                disabled={actionBusy}
+                className="btn-primary-theme rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteConfirm ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setDeleteConfirm(null);
+          }}
+        >
+          <div role="alertdialog" aria-modal="true" className="mx-4 w-full max-w-md rounded-xl bg-card p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-foreground">
+              Delete {deleteConfirm.type.replace(/s$/, "")}?
+            </h3>
+            <p className="mt-2 text-sm text-muted-foreground">{deleteConfirm.label}</p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirm(null)}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDelete()}
+                className="rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-white hover:bg-destructive/90"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );
@@ -661,6 +749,7 @@ function DeadlinesTab({
   deadlineTypeOptions,
   onRefresh,
   setActionError,
+  onDeleteRequest,
 }: {
   conferenceId: string;
   deadlines: ConferenceDetailPayload["conference"]["deadlines"];
@@ -668,6 +757,7 @@ function DeadlinesTab({
   deadlineTypeOptions: Array<{ value: ConferenceDeadlineType; label: string }>;
   onRefresh: () => Promise<void>;
   setActionError: (value: string | null) => void;
+  onDeleteRequest: (id: string, label: string) => void;
 }) {
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -845,6 +935,7 @@ function DeadlinesTab({
                   onRefresh={onRefresh}
                   setActionError={setActionError}
                   setSaving={setSaving}
+                  onDeleteRequest={onDeleteRequest}
                 />
               ))
             )}
@@ -865,6 +956,7 @@ function DeadlineRow({
   onRefresh,
   setActionError,
   setSaving,
+  onDeleteRequest,
 }: {
   conferenceId: string;
   deadline: ConferenceDetailPayload["conference"]["deadlines"][number];
@@ -875,6 +967,7 @@ function DeadlineRow({
   onRefresh: () => Promise<void>;
   setActionError: (value: string | null) => void;
   setSaving: (value: boolean) => void;
+  onDeleteRequest: (id: string, label: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(() => ({
@@ -1015,15 +1108,33 @@ function DeadlineRow({
             >
               Save
             </button>
+            <button
+              type="button"
+              onClick={() => onDeleteRequest(deadline.id, deadline.name)}
+              className="rounded-md border border-border bg-card p-1 text-muted-foreground hover:text-destructive"
+              title="Delete deadline"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="rounded-md border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground"
-          >
-            Edit
-          </button>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="rounded-md border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground"
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => onDeleteRequest(deadline.id, deadline.name)}
+              className="rounded-md border border-border bg-card p-1 text-muted-foreground hover:text-destructive"
+              title="Delete deadline"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         )}
       </td>
     </tr>
@@ -1038,6 +1149,7 @@ function BudgetTab({
   expenseCategoryOptions,
   onRefresh,
   setActionError,
+  onDeleteRequest,
 }: {
   conferenceId: string;
   currency: string;
@@ -1046,6 +1158,7 @@ function BudgetTab({
   expenseCategoryOptions: Array<{ value: ConferenceExpenseCategory; label: string }>;
   onRefresh: () => Promise<void>;
   setActionError: (value: string | null) => void;
+  onDeleteRequest: (id: string, label: string) => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [expenseForm, setExpenseForm] = useState(() => ({
@@ -1251,7 +1364,22 @@ function BudgetTab({
                     </p>
                     <p className="text-xs text-muted-foreground">{formatDate(e.incurredAt)}</p>
                   </div>
-                  <div className="text-sm font-semibold text-foreground">{formatMoney(e.amount, currency)}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-semibold text-foreground">{formatMoney(e.amount, currency)}</div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onDeleteRequest(
+                          e.id,
+                          `${CONFERENCE_EXPENSE_CATEGORY_LABELS[e.category] ?? e.category}${e.vendor ? ` • ${e.vendor}` : ""}`
+                        )
+                      }
+                      className="rounded-md border border-border bg-card p-1 text-muted-foreground hover:text-destructive"
+                      title="Delete expense"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1269,6 +1397,7 @@ function LeadsTab({
   leadStatusOptions,
   onRefresh,
   setActionError,
+  onDeleteRequest,
 }: {
   conferenceId: string;
   leads: ConferenceDetailPayload["conference"]["leads"];
@@ -1276,6 +1405,7 @@ function LeadsTab({
   leadStatusOptions: Array<{ value: ConferenceLeadStatus; label: string }>;
   onRefresh: () => Promise<void>;
   setActionError: (value: string | null) => void;
+  onDeleteRequest: (id: string, label: string) => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(() => ({
@@ -1430,12 +1560,13 @@ function LeadsTab({
               <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
               <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Assignee</th>
               <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Captured</th>
+              <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border/50">
             {leads.length === 0 ? (
               <tr className="bg-card">
-                <td colSpan={5} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                <td colSpan={6} className="px-4 py-6 text-center text-sm text-muted-foreground">
                   No leads yet.
                 </td>
               </tr>
@@ -1483,6 +1614,16 @@ function LeadsTab({
                     </td>
                     <td className="px-4 py-2.5 text-xs text-muted-foreground" title={formatDateTime(lead.capturedAt)}>
                       {formatDate(lead.capturedAt)}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <button
+                        type="button"
+                        onClick={() => onDeleteRequest(lead.id, name)}
+                        className="rounded-md border border-border bg-card p-1 text-muted-foreground hover:text-destructive"
+                        title="Delete lead"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </td>
                   </tr>
                 );
