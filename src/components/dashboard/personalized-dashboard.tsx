@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { AlertTriangle, CalendarClock, Clock3, Flame } from "lucide-react";
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-state";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
@@ -92,10 +93,12 @@ function TaskList({
   title,
   items,
   empty,
+  onTaskClick,
 }: {
   title: string;
   items: DashboardTask[];
   empty: string;
+  onTaskClick?: (taskId: string) => void;
 }) {
   return (
     <section className="rounded-xl border border-border bg-card p-4" aria-label={title}>
@@ -105,7 +108,27 @@ function TaskList({
       ) : (
         <div className="space-y-2">
           {items.map((task) => (
-            <div key={task.id} className="rounded-lg border border-border/60 px-3 py-2">
+            <div
+              key={task.id}
+              role={onTaskClick ? "button" : undefined}
+              tabIndex={onTaskClick ? 0 : undefined}
+              onClick={onTaskClick ? () => onTaskClick(task.id) : undefined}
+              onKeyDown={
+                onTaskClick
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onTaskClick(task.id);
+                      }
+                    }
+                  : undefined
+              }
+              className={`rounded-lg border border-border/60 px-3 py-2${
+                onTaskClick
+                  ? " cursor-pointer hover:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                  : ""
+              }`}
+            >
               <p className="truncate text-sm font-medium text-foreground">{task.title}</p>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 {task.project?.name || "No project"} · {task.priority} · {relativeDate(task.dueDate)}
@@ -119,6 +142,8 @@ function TaskList({
 }
 
 export function PersonalizedDashboard() {
+  const router = useRouter();
+
   const resource = useDashboardResource<PersonalizedDashboardPayload>({
     cacheKey: PERSONALIZED_DASHBOARD_CACHE_KEY,
     deps: [],
@@ -239,7 +264,20 @@ export function PersonalizedDashboard() {
         ) : (
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
             {data.personal.recommendations.map((task) => (
-              <div key={task.id} className="rounded-lg border border-border/60 px-3 py-2" aria-label={task.title}>
+              <div
+                key={task.id}
+                role="button"
+                tabIndex={0}
+                aria-label={task.title}
+                onClick={() => router.push(`/tasks?task=${task.id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    router.push(`/tasks?task=${task.id}`);
+                  }
+                }}
+                className="cursor-pointer rounded-lg border border-border/60 px-3 py-2 hover:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+              >
                 <p className="truncate text-sm font-medium text-foreground">{task.title}</p>
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   Score {task.recommendationScore ?? 0} · {task.priority} · {relativeDate(task.dueDate)}
@@ -255,11 +293,13 @@ export function PersonalizedDashboard() {
           title="My Blockers"
           items={data.personal.myBlocked}
           empty="No blocked tasks."
+          onTaskClick={(id) => router.push(`/tasks?task=${id}`)}
         />
         <TaskList
           title="My Due Soon"
           items={data.personal.myDueSoon}
           empty="No due-soon tasks."
+          onTaskClick={(id) => router.push(`/tasks?task=${id}`)}
         />
       </div>
 
@@ -283,7 +323,19 @@ export function PersonalizedDashboard() {
         {(data.projects.active?.length ?? 0) > 0 && (
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
             {data.projects.active.map((project) => (
-              <div key={project.id} className="rounded-lg border border-border/60 px-3 py-2">
+              <div
+                key={project.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => router.push(`/projects/${project.id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    router.push(`/projects/${project.id}`);
+                  }
+                }}
+                className="cursor-pointer rounded-lg border border-border/60 px-3 py-2 hover:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+              >
                 <p className="truncate text-sm font-medium text-foreground">{project.name}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {project.doneTasks ?? 0}/{project.totalTasks ?? 0} done
