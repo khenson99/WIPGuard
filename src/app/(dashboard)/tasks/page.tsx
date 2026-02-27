@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { AlertTriangle, LayoutGrid, PanelsTopLeft, TableProperties } from "lucide-react";
+import { AlertTriangle, LayoutGrid, Loader2, PanelsTopLeft, TableProperties } from "lucide-react";
 import { KanbanBoard } from "@/components/board/kanban-board";
 import { TaskTableView } from "@/components/tasks/task-table-view";
 import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
@@ -31,6 +31,9 @@ export default function TasksPage() {
   const [layout, setLayout] = useState<TaskLayout>("kanban");
   const [loadingViews, setLoadingViews] = useState(true);
   const [viewsError, setViewsError] = useState<string | null>(null);
+  const [showSaveViewModal, setShowSaveViewModal] = useState(false);
+  const [saveViewName, setSaveViewName] = useState("");
+  const [savingView, setSavingView] = useState(false);
 
   const builtInView = viewFromQuery(searchParams?.get("view") ?? null);
 
@@ -118,30 +121,41 @@ export default function TasksPage() {
   const kanbanFilterByStatus: TaskStatus[] | undefined =
     builtInView === "today-focus" ? ["WORKING_ON_TODAY", "ACTIVE"] : undefined;
 
-  const saveCurrentAsView = async () => {
-    const name = window.prompt("Saved view name");
-    if (!name) return;
+  const openSaveViewModal = () => {
+    setSaveViewName("");
+    setShowSaveViewModal(true);
+  };
 
-    const payload = {
-      scope: "tasks",
-      name,
-      config: {
-        layout: activeLayout,
-        builtInView,
-      },
-    };
+  const handleSaveView = async () => {
+    const trimmed = saveViewName.trim();
+    if (!trimmed) return;
 
-    const response = await fetch("/api/views", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    setSavingView(true);
+    try {
+      const payload = {
+        scope: "tasks",
+        name: trimmed,
+        config: {
+          layout: activeLayout,
+          builtInView,
+        },
+      };
 
-    if (!response.ok) return;
+      const response = await fetch("/api/views", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    const created = (await response.json()) as UserSavedView;
-    setSavedViews((current) => [...current, created]);
-    setSelectedSavedViewId(created.id);
+      if (!response.ok) return;
+
+      const created = (await response.json()) as UserSavedView;
+      setSavedViews((current) => [...current, created]);
+      setSelectedSavedViewId(created.id);
+      setShowSaveViewModal(false);
+    } finally {
+      setSavingView(false);
+    }
   };
 
   const applySavedView = (viewId: string) => {
@@ -199,7 +213,7 @@ export default function TasksPage() {
           )}
 
           <button
-            onClick={saveCurrentAsView}
+            onClick={openSaveViewModal}
             className="rounded-md border border-border bg-card px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground"
           >
             Save Current as View
@@ -285,6 +299,51 @@ export default function TasksPage() {
           </div>
         )}
       </div>
+
+      {showSaveViewModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-4 shadow-lg">
+            <h2 className="text-sm font-semibold text-foreground">Save Current View</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Give this view a name so you can return to it later.
+            </p>
+
+            <input
+              type="text"
+              autoFocus
+              value={saveViewName}
+              onChange={(e) => setSaveViewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && saveViewName.trim()) handleSaveView();
+                if (e.key === "Escape") setShowSaveViewModal(false);
+              }}
+              placeholder="View name"
+              className="mt-3 w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              disabled={savingView}
+            />
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowSaveViewModal(false)}
+                disabled={savingView}
+                className="rounded-md border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveView}
+                disabled={savingView || !saveViewName.trim()}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                {savingView && <Loader2 className="h-3 w-3 animate-spin" />}
+                {savingView ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
