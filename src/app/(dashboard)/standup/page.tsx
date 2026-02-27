@@ -58,6 +58,7 @@ export default function StandupPage() {
   const [activeMemberId, setActiveMemberId] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<StandupMetrics | null>(null);
   const [slackMessage, setSlackMessage] = useState<string>("");
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
   const startTimeRef = useRef<Date | null>(null);
 
   // Mutable group actions tracked via state
@@ -121,8 +122,19 @@ export default function StandupPage() {
     console.log("Coaching action:", action);
   }, []);
 
-  const handleCopySlack = useCallback(() => {
-    void navigator.clipboard.writeText(slackMessage);
+  const handleCopySlack = useCallback(async () => {
+    try {
+      if (!navigator.clipboard) {
+        setCopyStatus("error");
+        return;
+      }
+      await navigator.clipboard.writeText(slackMessage);
+      setCopyStatus("copied");
+      setTimeout(() => setCopyStatus("idle"), 2000);
+    } catch {
+      setCopyStatus("error");
+      setTimeout(() => setCopyStatus("idle"), 3000);
+    }
   }, [slackMessage]);
 
   // --- Render ---
@@ -197,6 +209,12 @@ export default function StandupPage() {
         facilitatorMode={facilitatorMode}
         onCopyToClipboard={handleCopySlack}
       />
+      {copyStatus === "copied" && (
+        <p className="text-xs text-emerald-600">Copied to clipboard!</p>
+      )}
+      {copyStatus === "error" && (
+        <p className="text-xs text-red-500">Failed to copy — try selecting and copying manually</p>
+      )}
     </div>
   );
 }
