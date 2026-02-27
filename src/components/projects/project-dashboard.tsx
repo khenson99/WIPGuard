@@ -517,7 +517,15 @@ export function ProjectDashboard() {
                 <tr
                   key={project.id}
                   onClick={() => router.push(`/projects/${project.id}`)}
-                  className="cursor-pointer hover:bg-secondary/40"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      router.push(`/projects/${project.id}`);
+                    }
+                  }}
+                  tabIndex={0}
+                  role="link"
+                  className="cursor-pointer hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
                 >
                   <td className="px-4 py-2.5 font-medium text-foreground">{project.name}</td>
                   <td className="px-4 py-2.5 text-xs text-muted-foreground">{project.status}</td>
