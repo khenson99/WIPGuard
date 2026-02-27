@@ -205,27 +205,27 @@ export function PersonalizedDashboard() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6" role="region" aria-label="Personal statistics">
         <div className="rounded-xl border border-border bg-card px-4 py-3" role="group" aria-label={`My Active: ${data.personal.myActive.length}`}>
           <p className="text-xs text-muted-foreground">My Active</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{data.personal.myActive.length}</p>
+          <p className="mt-1 text-2xl font-semibold text-foreground">{data.personal.myActive?.length ?? "\u2014"}</p>
         </div>
         <div className="rounded-xl border border-border bg-card px-4 py-3" role="group" aria-label={`My Blocked: ${data.personal.myBlocked.length}`}>
           <p className="text-xs text-muted-foreground">My Blocked</p>
-          <p className="mt-1 text-2xl font-semibold text-orange-500">{data.personal.myBlocked.length}</p>
+          <p className="mt-1 text-2xl font-semibold text-orange-500">{data.personal.myBlocked?.length ?? "\u2014"}</p>
         </div>
         <div className="rounded-xl border border-border bg-card px-4 py-3" role="group" aria-label={`My Overdue: ${data.personal.myOverdue.length}`}>
           <p className="text-xs text-muted-foreground">My Overdue</p>
-          <p className="mt-1 text-2xl font-semibold text-red-500">{data.personal.myOverdue.length}</p>
+          <p className="mt-1 text-2xl font-semibold text-red-500">{data.personal.myOverdue?.length ?? "\u2014"}</p>
         </div>
         <div className="rounded-xl border border-border bg-card px-4 py-3" role="group" aria-label={`Completed (7d): ${data.personal.myCompletedWeek}`}>
           <p className="text-xs text-muted-foreground">Completed (7d)</p>
-          <p className="mt-1 text-2xl font-semibold text-emerald-600">{data.personal.myCompletedWeek}</p>
+          <p className="mt-1 text-2xl font-semibold text-emerald-600">{data.personal.myCompletedWeek ?? "\u2014"}</p>
         </div>
         <div className="rounded-xl border border-border bg-card px-4 py-3" role="group" aria-label={`Team Overdue: ${data.team.overdueTasks}`}>
           <p className="text-xs text-muted-foreground">Team Overdue</p>
-          <p className="mt-1 text-2xl font-semibold text-red-500">{data.team.overdueTasks}</p>
+          <p className="mt-1 text-2xl font-semibold text-red-500">{data.team.overdueTasks ?? "\u2014"}</p>
         </div>
         <div className="rounded-xl border border-border bg-card px-4 py-3" role="group" aria-label={`Task Total: ${taskTotal}`}>
           <p className="text-xs text-muted-foreground">Task Total</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{taskTotal}</p>
+          <p className="mt-1 text-2xl font-semibold text-foreground">{taskTotal ?? "\u2014"}</p>
         </div>
       </div>
 
@@ -234,7 +234,7 @@ export function PersonalizedDashboard() {
           <Flame className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold text-foreground">Recommended Next Actions</h2>
         </div>
-        {data.personal.recommendations.length === 0 ? (
+        {(data.personal.recommendations?.length ?? 0) === 0 ? (
           <p className="text-xs text-muted-foreground">No urgent recommendations right now.</p>
         ) : (
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -242,7 +242,7 @@ export function PersonalizedDashboard() {
               <div key={task.id} className="rounded-lg border border-border/60 px-3 py-2" aria-label={task.title}>
                 <p className="truncate text-sm font-medium text-foreground">{task.title}</p>
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  Score {task.recommendationScore || 0} · {task.priority} · {relativeDate(task.dueDate)}
+                  Score {task.recommendationScore ?? 0} · {task.priority} · {relativeDate(task.dueDate)}
                 </p>
               </div>
             ))}
@@ -268,30 +268,30 @@ export function PersonalizedDashboard() {
         <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <div className="rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" /> Stale Tasks</div>
-            <p className="mt-1 text-lg font-semibold text-foreground">{data.team.staleTasks}</p>
+            <p className="mt-1 text-lg font-semibold text-foreground">{data.team.staleTasks ?? "\u2014"}</p>
           </div>
           <div className="rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5"><AlertTriangle className="h-3.5 w-3.5" /> Blocked Tasks</div>
-            <p className="mt-1 text-lg font-semibold text-foreground">{data.team.blockedTasks}</p>
+            <p className="mt-1 text-lg font-semibold text-foreground">{data.team.blockedTasks ?? "\u2014"}</p>
           </div>
           <div className="rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5"><CalendarClock className="h-3.5 w-3.5" /> Overdue Tasks</div>
-            <p className="mt-1 text-lg font-semibold text-foreground">{data.team.overdueTasks}</p>
+            <p className="mt-1 text-lg font-semibold text-foreground">{data.team.overdueTasks ?? "\u2014"}</p>
           </div>
         </div>
 
-        {data.projects.active.length > 0 && (
+        {(data.projects.active?.length ?? 0) > 0 && (
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
             {data.projects.active.map((project) => (
               <div key={project.id} className="rounded-lg border border-border/60 px-3 py-2">
                 <p className="truncate text-sm font-medium text-foreground">{project.name}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {project.doneTasks}/{project.totalTasks} done
+                  {project.doneTasks ?? 0}/{project.totalTasks ?? 0} done
                 </p>
                 <div className="mt-2 h-1.5 w-full rounded-full bg-secondary" role="progressbar" aria-valuenow={project.progress} aria-valuemin={0} aria-valuemax={100} aria-label={`${project.name} progress`}>
                   <div
                     className="h-1.5 rounded-full bg-primary"
-                    style={{ width: `${project.progress}%` }}
+                    style={{ width: `${project.progress ?? 0}%` }}
                   />
                 </div>
               </div>
