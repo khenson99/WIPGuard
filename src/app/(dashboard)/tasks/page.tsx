@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { LayoutGrid, PanelsTopLeft, TableProperties } from "lucide-react";
+import { AlertTriangle, LayoutGrid, PanelsTopLeft, TableProperties } from "lucide-react";
 import { KanbanBoard } from "@/components/board/kanban-board";
 import { TaskTableView } from "@/components/tasks/task-table-view";
 import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
@@ -30,8 +30,47 @@ export default function TasksPage() {
   const [selectedSavedViewId, setSelectedSavedViewId] = useState<string>("");
   const [layout, setLayout] = useState<TaskLayout>("kanban");
   const [loadingViews, setLoadingViews] = useState(true);
+  const [viewsError, setViewsError] = useState<string | null>(null);
 
   const builtInView = viewFromQuery(searchParams?.get("view") ?? null);
+
+  const fetchViews = useCallback((signal?: AbortSignal) => {
+    setLoadingViews(true);
+    return fetch("/api/views?scope=tasks", { signal })
+      .then((response) => {
+        if (!response.ok) throw new Error(`Views request failed (${response.status})`);
+        return response.json();
+      })
+      .then((payload) => {
+        const views = Array.isArray(payload) ? (payload as UserSavedView[]) : [];
+        setSavedViews(views);
+        setViewsError(null);
+        writeSessionCache<UserSavedView[]>(TASK_VIEWS_CACHE_KEY, views);
+        const defaultView = views.find((view) => view.isDefault) || views[0];
+        if (defaultView) {
+          setSelectedSavedViewId(defaultView.id);
+          const configuredLayout =
+            typeof defaultView.config?.layout === "string"
+              ? defaultView.config.layout
+              : null;
+          if (
+            configuredLayout === "kanban" ||
+            configuredLayout === "table" ||
+            configuredLayout === "split"
+          ) {
+            setLayout(configuredLayout);
+          }
+        }
+      })
+      .catch((error) => {
+        if (error instanceof Error && error.name === "AbortError") return;
+        setViewsError("Failed to load saved views");
+        console.error("Views fetch failed:", error);
+      })
+      .finally(() => {
+        setLoadingViews(false);
+      });
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -61,43 +100,13 @@ export default function TasksPage() {
       });
     }
 
-    fetch("/api/views?scope=tasks", { signal: controller.signal })
-      .then((response) => response.json())
-      .then((payload) => {
-        if (!active) return;
-        const views = Array.isArray(payload) ? (payload as UserSavedView[]) : [];
-        setSavedViews(views);
-        writeSessionCache<UserSavedView[]>(TASK_VIEWS_CACHE_KEY, views);
-        const defaultView = views.find((view) => view.isDefault) || views[0];
-        if (defaultView) {
-          setSelectedSavedViewId(defaultView.id);
-          const configuredLayout =
-            typeof defaultView.config?.layout === "string"
-              ? defaultView.config.layout
-              : null;
-          if (
-            configuredLayout === "kanban" ||
-            configuredLayout === "table" ||
-            configuredLayout === "split"
-          ) {
-            setLayout(configuredLayout);
-          }
-        }
-      })
-      .catch((error) => {
-        if (!active || (error instanceof Error && error.name === "AbortError")) return;
-      })
-      .finally(() => {
-        if (active) {
-          setLoadingViews(false);
-        }
-      });
+    fetchViews(controller.signal);
 
     return () => {
       active = false;
       controller.abort();
     };
-  }, []);
+  }, [fetchViews]);
 
   const selectedView = useMemo(
     () => savedViews.find((view) => view.id === selectedSavedViewId) || null,
@@ -170,6 +179,23 @@ export default function TasksPage() {
               </option>
             ))}
           </select>
+
+          {viewsError && (
+            <span className="inline-flex items-center gap-1 text-xs text-destructive">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              {viewsError}
+              <button
+                onClick={() => fetchViews()}
+                className="ml-1 underline hover:text-destructive/80"
+              >
+                Retry
+              </button>
+            </span>
+          )}
+
+          {!loadingViews && savedViews.length === 0 && !viewsError && (
+            <span className="text-xs text-muted-foreground">No saved views yet</span>
+          )}
 
           <button
             onClick={saveCurrentAsView}
