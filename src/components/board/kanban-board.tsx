@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
   DragDropContext,
   type DropResult,
@@ -20,7 +20,7 @@ import type {
 } from "@/types";
 import { COLUMN_ORDER, COLUMN_LABELS } from "@/types";
 import type { GroupByMode } from "./task-card";
-import { Eye, EyeOff, Keyboard, Plus, Layers } from "lucide-react";
+import { Eye, EyeOff, Keyboard, Plus, Layers, X, AlertTriangle, CheckCircle2, Info } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 
@@ -75,6 +75,132 @@ interface ReplenishmentNotice {
   updatedAt?: string;
 }
 
+/* ============================================================
+   Confirm Dialog & Toast types
+   ============================================================ */
+
+interface ConfirmDialogState {
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  variant?: "warning" | "destructive";
+  resolve: (confirmed: boolean) => void;
+}
+
+type ToastVariant = "error" | "warning" | "success" | "info";
+
+interface Toast {
+  id: string;
+  message: string;
+  variant: ToastVariant;
+}
+
+/* ============================================================
+   Inline Toast Component
+   ============================================================ */
+
+function ToastContainer({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: string) => void }) {
+  if (toasts.length === 0) return null;
+
+  return (
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+      {toasts.map((toast) => {
+        const variantStyles: Record<ToastVariant, string> = {
+          error: "border-red-500/30 bg-red-950/90 text-red-200",
+          warning: "border-amber-500/30 bg-amber-950/90 text-amber-200",
+          success: "border-emerald-500/30 bg-emerald-950/90 text-emerald-200",
+          info: "border-blue-500/30 bg-blue-950/90 text-blue-200",
+        };
+
+        const iconMap: Record<ToastVariant, React.ReactNode> = {
+          error: <AlertTriangle className="h-4 w-4 shrink-0 text-red-400" />,
+          warning: <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />,
+          success: <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />,
+          info: <Info className="h-4 w-4 shrink-0 text-blue-400" />,
+        };
+
+        return (
+          <div
+            key={toast.id}
+            className={`flex items-start gap-3 rounded-xl border px-4 py-3 shadow-lg backdrop-blur-sm animate-in fade-in slide-in-from-bottom-2 ${variantStyles[toast.variant]}`}
+            role="alert"
+          >
+            {iconMap[toast.variant]}
+            <p className="text-sm font-medium leading-snug">{toast.message}</p>
+            <button
+              onClick={() => onDismiss(toast.id)}
+              className="ml-2 shrink-0 rounded-md p-0.5 opacity-70 transition-opacity hover:opacity-100"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ============================================================
+   Inline Confirm Dialog Component
+   ============================================================ */
+
+function ConfirmDialog({
+  dialog,
+  onConfirm,
+  onCancel,
+}: {
+  dialog: ConfirmDialogState;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!dialog.open) return null;
+
+  const isDestructive = dialog.variant === "destructive";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in"
+        onClick={onCancel}
+      />
+      {/* Dialog */}
+      <div className="relative z-10 mx-4 w-full max-w-md rounded-2xl border border-border/60 bg-background p-6 shadow-2xl animate-in fade-in zoom-in-95" role="dialog" aria-modal="true">
+        <div className="flex items-start gap-4">
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${isDestructive ? "bg-red-500/15" : "bg-amber-500/15"}`}>
+            <AlertTriangle className={`h-5 w-5 ${isDestructive ? "text-red-500" : "text-amber-500"}`} />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-base font-semibold text-foreground">{dialog.title}</h3>
+            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{dialog.message}</p>
+          </div>
+        </div>
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <button
+            onClick={onCancel}
+            className="rounded-lg border border-border/60 px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
+          >
+            {dialog.cancelLabel || "Cancel"}
+          </button>
+          <button
+            onClick={onConfirm}
+            autoFocus
+            className={`rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-background ${
+              isDestructive
+                ? "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500"
+                : "bg-primary text-primary-foreground hover:bg-primary/90 focus:ring-primary"
+            }`}
+          >
+            {dialog.confirmLabel || "Confirm"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) {
   const { data: session } = useSession();
   const {
@@ -110,6 +236,57 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
   const [activeSprintId, setActiveSprintId] = useState<string | null>(null);
   const [committedTaskIds, setCommittedTaskIds] = useState<Set<string>>(new Set());
   const [replenishmentNotice, setReplenishmentNotice] = useState<ReplenishmentNotice | null>(null);
+
+  /* ----- Confirm Dialog state ----- */
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
+  const confirmResolveRef = useRef<((confirmed: boolean) => void) | null>(null);
+
+  const showConfirm = useCallback(
+    (opts: { title: string; message: string; confirmLabel?: string; cancelLabel?: string; variant?: "warning" | "destructive" }): Promise<boolean> => {
+      return new Promise<boolean>((resolve) => {
+        confirmResolveRef.current = resolve;
+        setConfirmDialog({
+          open: true,
+          title: opts.title,
+          message: opts.message,
+          confirmLabel: opts.confirmLabel,
+          cancelLabel: opts.cancelLabel,
+          variant: opts.variant ?? "warning",
+          resolve,
+        });
+      });
+    },
+    []
+  );
+
+  const handleConfirmDialogConfirm = useCallback(() => {
+    confirmResolveRef.current?.(true);
+    confirmResolveRef.current = null;
+    setConfirmDialog(null);
+  }, []);
+
+  const handleConfirmDialogCancel = useCallback(() => {
+    confirmResolveRef.current?.(false);
+    confirmResolveRef.current = null;
+    setConfirmDialog(null);
+  }, []);
+
+  /* ----- Toast state ----- */
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const toastIdCounter = useRef(0);
+
+  const addToast = useCallback((message: string, variant: ToastVariant = "error") => {
+    const id = `toast-${++toastIdCounter.current}`;
+    setToasts((prev) => [...prev, { id, message, variant }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  }, []);
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
   const boardCacheKey = useMemo(() => {
     const statusKey = filterByStatus && filterByStatus.length > 0 ? filterByStatus.join(",") : "all";
     return [
@@ -491,9 +668,12 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
         const limit = wipLimits[toColumn];
         const col = columns.find((c) => c.id === toColumn);
         if (limit > 0 && col && col.tasks.length >= limit) {
-          const proceed = window.confirm(
-            `WIP limit (${limit}) exceeded for "${COLUMN_LABELS[toColumn]}". Override?`
-          );
+          const proceed = await showConfirm({
+            title: "WIP Limit Exceeded",
+            message: `The WIP limit (${limit}) for "${COLUMN_LABELS[toColumn]}" has been reached. Do you want to override it?`,
+            confirmLabel: "Override",
+            variant: "warning",
+          });
           if (!proceed) return;
         }
       }
@@ -531,7 +711,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
               conflict?.conflict?.message ||
               conflict?.error ||
               "This task changed before your move was applied. Refreshing board.";
-            window.alert(message);
+            addToast(message, "warning");
           }
           throw new Error("Failed to reorder task");
         }
@@ -540,7 +720,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
         fetchBoard();
       }
     },
-    [columns, wipLimits, moveTask, fetchBoard, groupBy]
+    [columns, wipLimits, moveTask, fetchBoard, groupBy, showConfirm, addToast]
   );
 
   const handleCreateTask = () => {
@@ -558,9 +738,12 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
 
       const queuedLimit = wipLimits.QUEUED;
       if (queuedLimit > 0 && queuedTaskCount >= queuedLimit) {
-        const proceed = window.confirm(
-          `Queued WIP budget is full (${queuedTaskCount}/${queuedLimit}). Replenish anyway?`
-        );
+        const proceed = await showConfirm({
+          title: "Queued Budget Full",
+          message: `The Queued WIP budget is full (${queuedTaskCount}/${queuedLimit}). Do you want to replenish anyway?`,
+          confirmLabel: "Replenish",
+          variant: "warning",
+        });
         if (!proceed) return;
       }
 
@@ -576,13 +759,14 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
       if (!response.ok) {
         if (response.status === 409) {
           const conflict = await response.json().catch(() => null);
-          window.alert(
+          addToast(
             conflict?.conflict?.message ||
               conflict?.error ||
-              "Task changed before replenish was applied. Refreshing board."
+              "Task changed before replenish was applied. Refreshing board.",
+            "warning"
           );
         } else {
-          window.alert("Failed to replenish task. Please try again.");
+          addToast("Failed to replenish task. Please try again.", "error");
         }
         void fetchBoard();
         return;
@@ -596,7 +780,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
       });
       void fetchBoard();
     },
-    [fetchBoard, queuedTaskCount, wipLimits.QUEUED]
+    [fetchBoard, queuedTaskCount, wipLimits.QUEUED, showConfirm, addToast]
   );
 
   const handleUndoReplenish = useCallback(async () => {
@@ -615,19 +799,20 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
     if (!response.ok) {
       if (response.status === 409) {
         const conflict = await response.json().catch(() => null);
-        window.alert(
+        addToast(
           conflict?.conflict?.message ||
             conflict?.error ||
-            "Task changed before undo was applied. Refreshing board."
+            "Task changed before undo was applied. Refreshing board.",
+          "warning"
         );
       } else {
-        window.alert("Failed to undo replenish action.");
+        addToast("Failed to undo replenish action.", "error");
       }
     }
 
     setReplenishmentNotice(null);
     void fetchBoard();
-  }, [fetchBoard, replenishmentNotice]);
+  }, [fetchBoard, replenishmentNotice, addToast]);
 
   if (loading) {
     return (
@@ -888,6 +1073,18 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
           }}
         />
       )}
+
+      {/* Confirm Dialog */}
+      {confirmDialog && (
+        <ConfirmDialog
+          dialog={confirmDialog}
+          onConfirm={handleConfirmDialogConfirm}
+          onCancel={handleConfirmDialogCancel}
+        />
+      )}
+
+      {/* Toast notifications */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }
