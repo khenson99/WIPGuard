@@ -199,6 +199,7 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
+  const [showSeedConfirm, setShowSeedConfirm] = useState(false);
 
   const resource = useDashboardResource<ConferenceDetailPayload>({
     cacheKey: `dashboard:conference:${conferenceId}:v1`,
@@ -407,7 +408,7 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
           {!conference.primaryProjectId ? (
             <button
               type="button"
-              onClick={() => void applyPlaybook()}
+              onClick={() => setShowSeedConfirm(true)}
               disabled={actionBusy}
               className="btn-primary-theme inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
               title="Seed projects, deadlines, and budget from playbook"
@@ -649,6 +650,38 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
           onRefresh={resource.refresh}
           setActionError={setActionError}
         />
+      ) : null}
+
+      {showSeedConfirm ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="mx-4 w-full max-w-md rounded-xl bg-card p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-foreground">Seed Playbook</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              This will create projects, deadlines, and budget items from the playbook template.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowSeedConfirm(false)}
+                disabled={actionBusy}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSeedConfirm(false);
+                  void applyPlaybook();
+                }}
+                disabled={actionBusy}
+                className="btn-primary-theme rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );
@@ -1048,6 +1081,7 @@ function BudgetTab({
   setActionError: (value: string | null) => void;
 }) {
   const [saving, setSaving] = useState(false);
+  const [visibleExpenses, setVisibleExpenses] = useState(10);
   const [expenseForm, setExpenseForm] = useState(() => ({
     category: "OTHER" as ConferenceExpenseCategory,
     amount: "",
@@ -1237,12 +1271,14 @@ function BudgetTab({
         </div>
 
         <div className="rounded-xl border border-border bg-secondary p-4">
-          <h2 className="text-sm font-semibold text-foreground">Expenses</h2>
+          <h2 className="text-sm font-semibold text-foreground">
+            Expenses {expenses.length > 0 && <span className="text-xs font-normal text-muted-foreground">({expenses.length})</span>}
+          </h2>
           {expenses.length === 0 ? (
             <p className="mt-2 text-sm text-muted-foreground">No expenses logged.</p>
           ) : (
             <div className="mt-3 space-y-2">
-              {expenses.slice(0, 10).map((e) => (
+              {expenses.slice(0, visibleExpenses).map((e) => (
                 <div key={e.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card px-3 py-2">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-foreground">
@@ -1255,6 +1291,31 @@ function BudgetTab({
                 </div>
               ))}
             </div>
+            {expenses.length > 10 && (
+              <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                <span>Showing {Math.min(visibleExpenses, expenses.length)} of {expenses.length}</span>
+                <div className="flex gap-2">
+                  {visibleExpenses < expenses.length && (
+                    <button
+                      type="button"
+                      onClick={() => setVisibleExpenses((v) => Math.min(v + 10, expenses.length))}
+                      className="text-primary hover:underline"
+                    >
+                      Show more
+                    </button>
+                  )}
+                  {visibleExpenses > 10 && (
+                    <button
+                      type="button"
+                      onClick={() => setVisibleExpenses(10)}
+                      className="text-primary hover:underline"
+                    >
+                      Show less
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           )}
         </div>
       </div>
