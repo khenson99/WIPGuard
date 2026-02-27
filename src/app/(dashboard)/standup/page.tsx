@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { Monitor, MonitorOff } from "lucide-react";
 
@@ -125,6 +125,56 @@ export default function StandupPage() {
     void navigator.clipboard.writeText(slackMessage);
   }, [slackMessage]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip if user is typing in an input
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      switch (e.key) {
+        case " ": {
+          e.preventDefault();
+          // Toggle timer - need to check if timer is running
+          // This depends on how the timer state is exposed
+          break;
+        }
+        case "n":
+        case "ArrowRight": {
+          e.preventDefault();
+          if (!groups.length) return;
+          const currentIdxN = groups.findIndex((g) => g.member.id === activeMemberId);
+          const nextIdx = (currentIdxN + 1) % groups.length;
+          setActiveMemberId(groups[nextIdx].member.id);
+          break;
+        }
+        case "p":
+        case "ArrowLeft": {
+          e.preventDefault();
+          if (!groups.length) return;
+          const currentIdxP = groups.findIndex((g) => g.member.id === activeMemberId);
+          const prevIdx = (currentIdxP - 1 + groups.length) % groups.length;
+          setActiveMemberId(groups[prevIdx].member.id);
+          break;
+        }
+        case "d": {
+          if (activeMemberId) {
+            handleMemberAction(activeMemberId, "completed");
+          }
+          break;
+        }
+        case "s": {
+          if (activeMemberId) {
+            handleMemberAction(activeMemberId, "skipped");
+          }
+          break;
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [activeMemberId, groups, handleMemberAction]);
+
   // --- Render ---
 
   return (
@@ -156,6 +206,14 @@ export default function StandupPage() {
           )}
           {facilitatorMode ? "Exit Facilitator" : "Facilitator Mode"}
         </button>
+      </div>
+
+      {/* Keyboard shortcut legend */}
+      <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+        <span><kbd className="rounded border border-border bg-secondary px-1.5 py-0.5 font-mono text-[10px]">N</kbd> Next</span>
+        <span><kbd className="rounded border border-border bg-secondary px-1.5 py-0.5 font-mono text-[10px]">P</kbd> Prev</span>
+        <span><kbd className="rounded border border-border bg-secondary px-1.5 py-0.5 font-mono text-[10px]">D</kbd> Done</span>
+        <span><kbd className="rounded border border-border bg-secondary px-1.5 py-0.5 font-mono text-[10px]">S</kbd> Skip</span>
       </div>
 
       {/* Timer */}
