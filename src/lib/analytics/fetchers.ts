@@ -156,15 +156,6 @@ export async function fetchHubSpotData(
 
   for (const deal of activeDeals) {
     const props = deal.properties || {};
-    // Skip if deal is not within the date range depending on stage type
-    // We typically want to filter closed deals by closedate, created deals by createdate
-    const rawCloseDate = props.closedate ? new Date(props.closedate) : null;
-    const rawCreateDate = props.createdate ? new Date(props.createdate) : null;
-    
-    // Simple filter: only include if it was created before 'to' 
-    // AND (not closed OR closed after 'from')
-    if (rawCreateDate && rawCreateDate > to) continue;
-    if (rawCloseDate && rawCloseDate < from) continue;
 
     const stage = props.dealstage || "unknown";
     const mappedLabel = HUBSPOT_STAGE_MAP[stage] || stage;
@@ -186,9 +177,9 @@ export async function fetchHubSpotData(
     if (mappedLabel === "Churn") {
       sourceAgg[source].churned++;
       
-      const createdMs = rawCreateDate ? rawCreateDate.getTime() : 0;
+      const createdMs = props.createdate ? new Date(props.createdate).getTime() : 0;
       const updatedMs = props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).getTime() 
-        : rawCloseDate ? rawCloseDate.getTime() 
+        : props.closedate ? new Date(props.closedate).getTime() 
         : new Date().getTime();
       
       const daysSinceCreation = createdMs > 0 ? (updatedMs - createdMs) / 86_400_000 : Infinity;
