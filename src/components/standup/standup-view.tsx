@@ -108,17 +108,19 @@ export function StandupView() {
   const [timerRunning, setTimerRunning] = useState(false);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [staleThreshold] = useState(() => new Date(Date.now() - 3 * 24 * 60 * 60 * 1000));
+  const [error, setError] = useState<string | null>(null);
 
   const fetchStandup = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/standup");
-      if (res.ok) {
-        const json = await res.json();
-        setData(json);
-      }
-    } catch {
-      // silently handle
+      if (!res.ok) throw new Error("Failed to fetch standup data");
+      const json = await res.json();
+      setData(json);
+      setError(null);
+    } catch (err) {
+      setError("Failed to load standup data. Please check your connection.");
+      console.error("Standup fetch failed:", err);
     } finally {
       setLoading(false);
     }
@@ -178,6 +180,21 @@ export function StandupView() {
   }
 
   if (!data) {
+    if (error) {
+      return (
+        <div className="flex h-64 flex-col items-center justify-center gap-4 p-6 text-center">
+          <AlertTriangle className="h-10 w-10 text-yellow-500" />
+          <p className="text-sm font-medium text-foreground">{error}</p>
+          <button
+            onClick={fetchStandup}
+            className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Retry
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="p-6 text-center text-muted-foreground">
         Failed to load standup data.
