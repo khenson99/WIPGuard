@@ -20,10 +20,15 @@ import {
   computeBudgetSummary,
   type BudgetActualItem,
 } from "@/lib/analytics/budget-variance";
+import {
+  defaultDateRange,
+  endDateForPeriod,
+  type BudgetPeriod,
+} from "@/lib/analytics/budget-period";
 import { computeVariance, fmtDelta, runwayColor } from "@/lib/analytics/finance-utils";
 import { computeFinancialGoals, type FinancialGoal } from "@/lib/analytics/finance-modeling";
 
-type BudgetPeriodApi = "MONTHLY" | "QUARTERLY" | "ANNUAL";
+type BudgetPeriodApi = BudgetPeriod;
 type BudgetCategoryApi = "COGS" | "PAYROLL" | "MARKETING" | "INFRASTRUCTURE" | "OPS" | "OTHER";
 
 type BudgetLineItemApi = {
@@ -53,37 +58,6 @@ const CATEGORY_CONFIG: Array<{ key: BudgetCategoryApi; label: string }> = [
   { key: "OTHER", label: "Other" },
 ];
 
-function formatDateInput(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function parseDateInput(value: string): Date | null {
-  if (!value) return null;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return null;
-  return date;
-}
-
-function addMonths(date: Date, months: number): Date {
-  const d = new Date(date);
-  d.setMonth(d.getMonth() + months);
-  return d;
-}
-
-function endDateForPeriod(startDate: string, period: BudgetPeriodApi): string {
-  const parsed = parseDateInput(startDate);
-  if (!parsed) return "";
-  const months = period === "MONTHLY" ? 1 : period === "QUARTERLY" ? 3 : 12;
-  const end = addMonths(parsed, months);
-  end.setDate(end.getDate() - 1);
-  return formatDateInput(end);
-}
-
-function defaultDateRange(period: BudgetPeriodApi): { start: string; end: string } {
-  const now = new Date();
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  return { start: formatDateInput(start), end: endDateForPeriod(formatDateInput(start), period) };
-}
 
 function emptyAmounts(): Record<BudgetCategoryApi, string> {
   return {
@@ -148,6 +122,8 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
   const [formAmounts, setFormAmounts] = useState<Record<BudgetCategoryApi, string>>(emptyAmounts());
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  /* ── Empty state ──────────────────────────────────── */
 
   const hasFinanceData = Boolean(data?.stripe || data?.mercury);
 
@@ -216,6 +192,77 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
     seedFormDefaults,
     seedFormFromBudget,
   ]);
+
+  const budgetAmounts = useMemo(() => {
+    if (!activeBudget || !activeBudget.lineItems?.length) return undefined;
+    const amounts: Record<string, number> = {};
+    for (const config of CATEGORY_CONFIG) {
+      amounts[config.label] = 0;
+    }
+    for (const item of activeBudget.lineItems) {
+      const config = CATEGORY_CONFIG.find((entry) => entry.key === item.category);
+      if (!config) continue;
+      amounts[config.label] = item.plannedAmount ?? 0;
+    }
+    return amounts;
+  }, [activeBudget]);
+
+  const loadBudgets = useCallback(async () => {
+    setBudgetsLoading(true);
+    setBudgetError(null);
+    try {
+      const response = await fetch("/api/financial-planning/budgets", { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`Failed to load budgets (${response.status})`);
+      }
+      const payload = (await response.json()) as BudgetApi[];
+      setBudgets(Array.isArray(payload) ? payload : []);
+    } catch (error) {
+      setBudgetError(error instanceof Error ? error.message : "Failed to load budgets");
+      setBudgets([]);
+    } finally {
+      setBudgetsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadBudgets();
+  }, [loadBudgets]);
+
+  const activeBudget = budgets[0] ?? null;
+
+  const seedFormDefaults = useCallback((period: BudgetPeriodApi = "MONTHLY") => {
+    const range = defaultDateRange(period);
+    setFormName("Baseline Budget");
+    setFormPeriod(period);
+    setFormStartDate(range.start);
+    setFormEndDate(range.end);
+    setFormAmounts(emptyAmounts());
+  }, []);
+
+  const seedFormFromBudget = useCallback((budget: BudgetApi) => {
+    setFormName(budget.name ?? "Baseline Budget");
+    setFormPeriod(budget.period ?? "MONTHLY");
+    setFormStartDate(budget.startDate ? budget.startDate.slice(0, 10) : "");
+    setFormEndDate(budget.endDate ? budget.endDate.slice(0, 10) : "");
+    const nextAmounts = emptyAmounts();
+    for (const item of budget.lineItems ?? []) {
+      nextAmounts[item.category] = String(item.plannedAmount ?? "");
+    }
+    setFormAmounts(nextAmounts);
+  }, []);
+
+  useEffect(() => {
+    if (formInitialized || budgetsLoading) return;
+    if (activeBudget) {
+      seedFormFromBudget(activeBudget);
+      setFormOpen(false);
+    } else {
+      seedFormDefaults("MONTHLY");
+      setFormOpen(true);
+    }
+    setFormInitialized(true);
+  }, [activeBudget, budgetsLoading, formInitialized, seedFormDefaults, seedFormFromBudget]);
 
   const budgetAmounts = useMemo(() => {
     if (!activeBudget || !activeBudget.lineItems?.length) return undefined;
