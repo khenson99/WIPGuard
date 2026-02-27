@@ -20,6 +20,8 @@ interface WhipData {
   setFilters: (filters: Partial<WhipFilters>) => void;
   refreshRisk: () => void;
   updateTask: (taskId: string, patch: Record<string, unknown>) => Promise<boolean>;
+  retry: () => void;
+  clearError: () => void;
 }
 
 export function useWhipData(): WhipData {
@@ -34,9 +36,20 @@ export function useWhipData(): WhipData {
     priority: null,
     ownerId: null,
   });
+  const [retryKey, setRetryKey] = useState(0);
 
   const setFilters = useCallback((partial: Partial<WhipFilters>) => {
     setFiltersState((prev) => ({ ...prev, ...partial }));
+  }, []);
+
+  const retry = useCallback(() => {
+    setError(null);
+    setLoading(true);
+    setRetryKey((k) => k + 1);
+  }, []);
+
+  const clearError = useCallback(() => {
+    setError(null);
   }, []);
 
   // Fetch sprints on mount
@@ -59,7 +72,7 @@ export function useWhipData(): WhipData {
       }
     }
     fetchSprints();
-  }, []);
+  }, [retryKey]);
 
   // Fetch planned vs unplanned when sprint changes
   useEffect(() => {
@@ -162,5 +175,7 @@ export function useWhipData(): WhipData {
     setFilters,
     refreshRisk: fetchRisk,
     updateTask,
+    retry,
+    clearError,
   };
 }
