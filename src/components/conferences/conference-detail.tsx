@@ -199,6 +199,7 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
+  const [showSeedConfirm, setShowSeedConfirm] = useState(false);
 
   const resource = useDashboardResource<ConferenceDetailPayload>({
     cacheKey: `dashboard:conference:${conferenceId}:v1`,
@@ -407,7 +408,7 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
           {!conference.primaryProjectId ? (
             <button
               type="button"
-              onClick={() => void applyPlaybook()}
+              onClick={() => setShowSeedConfirm(true)}
               disabled={actionBusy}
               className="btn-primary-theme inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
               title="Seed projects, deadlines, and budget from playbook"
@@ -649,6 +650,38 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
           onRefresh={resource.refresh}
           setActionError={setActionError}
         />
+      ) : null}
+
+      {showSeedConfirm ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="mx-4 w-full max-w-md rounded-xl bg-card p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-foreground">Seed Playbook</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              This will create projects, deadlines, and budget items from the playbook template.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowSeedConfirm(false)}
+                disabled={actionBusy}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSeedConfirm(false);
+                  void applyPlaybook();
+                }}
+                disabled={actionBusy}
+                className="btn-primary-theme rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );
