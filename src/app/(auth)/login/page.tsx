@@ -1,8 +1,9 @@
 "use client";
 
 import { getProviders, signIn } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import { Shield } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 
 interface DevUser {
   id: string;
@@ -30,6 +31,15 @@ const authErrors: Record<string, string> = {
 };
 
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginPageContent />
+    </Suspense>
+  );
+}
+
+function LoginPageContent() {
+  const searchParams = useSearchParams();
   const [devUsers, setDevUsers] = useState<DevUser[]>([]);
   const [loadingProviders, setLoadingProviders] = useState(true);
   const [googleEnabled, setGoogleEnabled] = useState(false);
@@ -71,16 +81,14 @@ export default function LoginPage() {
   }, [isDev]);
 
   useEffect(() => {
-    const error = new URLSearchParams(window.location.search).get("error");
+    const error = searchParams.get("error");
     if (error) {
       Promise.resolve().then(() => setAuthErrorCode(error));
     }
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => {
-    const inviteToken = new URLSearchParams(window.location.search).get(
-      "inviteToken"
-    );
+    const inviteToken = searchParams.get("inviteToken");
     if (!inviteToken) return;
 
     fetch(`/api/team/invite?token=${encodeURIComponent(inviteToken)}`)
@@ -103,7 +111,7 @@ export default function LoginPage() {
       .catch(() => {
         setInviteMessage("Invite link is invalid or expired.");
       });
-  }, []);
+  }, [searchParams]);
 
   const handleDevLogin = async () => {
     if (!selectedEmail) return;
