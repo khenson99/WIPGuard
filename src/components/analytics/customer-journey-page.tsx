@@ -1,21 +1,24 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { HorizontalFunnel } from "@/components/charts";
 import { StatCard } from "./stat-card";
 import { DashboardSectionCard } from "./dashboard-section-card";
 import { AiInsightsPanel } from "./ai-insights-panel";
+import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-controls";
+import { buildRangeQuery } from "@/lib/analytics/time-range";
 import type {
   AnalyticsDashboardData,
   LifecycleStageId,
 } from "@/lib/analytics/types";
-import { Users, TrendingUp, ArrowRight, Sparkles } from "lucide-react";
+import { Users, TrendingUp, ArrowRight, Sparkles, AlertTriangle } from "lucide-react";
 import { populateConnectionStatus } from "@/hooks/use-connection-status";
 
-function readOverviewCache(): AnalyticsDashboardData | null {
+function readOverviewCache(key: string): AnalyticsDashboardData | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = sessionStorage.getItem("analytics:overview");
+    const raw = sessionStorage.getItem(key);
     return raw ? (JSON.parse(raw) as AnalyticsDashboardData) : null;
   } catch {
     return null;
@@ -36,37 +39,60 @@ const STAGE_ORDER: LifecycleStageId[] = [
 ];
 
 export function CustomerJourneyPage() {
-  const [data, setData] = useState<AnalyticsDashboardData | null>(readOverviewCache);
+  const searchParams = useSearchParams();
+  const rangeQuery = useMemo(() => buildRangeQuery(searchParams), [searchParams]);
+  const cacheKey = `analytics:overview:${rangeQuery || "all"}`;
+
+  const [data, setData] = useState<AnalyticsDashboardData | null>(() => readOverviewCache(cacheKey));
   const [selectedStage, setSelectedStage] = useState<LifecycleStageId | null>(null);
-  const [loading, setLoading] = useState(() => readOverviewCache() === null);
+  const [loading, setLoading] = useState(() => readOverviewCache(cacheKey) === null);
+  const [error, setError] = useState<string | null>(null);
+  const [fetchController, setFetchController] = useState<AbortController | null>(null);
+
+  const fetchJourneyData = (signal?: AbortSignal, key?: string) => {
+    setError(null);
+    setLoading(true);
+
+    fetch(`/api/analytics?section=overview${rangeQuery ? `&${rangeQuery}` : ""}`, { signal })
+      .then((r) => r.json())
+      .then((json: AnalyticsDashboardData) => {
+        if (signal?.aborted) return;
+        setData(json);
+        populateConnectionStatus(json.freshness, json);
+        sessionStorage.setItem(key ?? cacheKey, JSON.stringify(json));
+      })
+      .catch((err) => {
+        if (signal?.aborted) return;
+        console.error(err);
+        setError("Failed to load journey data");
+      })
+      .finally(() => {
+        if (!signal?.aborted) setLoading(false);
+      });
+  };
 
   useEffect(() => {
-    const cached = readOverviewCache();
+    const cached = readOverviewCache(cacheKey);
     if (cached) {
+      setData(cached);
       populateConnectionStatus(cached.freshness, cached);
     }
 
-    let active = true;
     const controller = new AbortController();
-
-    fetch("/api/analytics?section=overview", { signal: controller.signal })
-      .then((r) => r.json())
-      .then((json: AnalyticsDashboardData) => {
-        if (!active) return;
-        setData(json);
-        populateConnectionStatus(json.freshness, json);
-        sessionStorage.setItem("analytics:overview", JSON.stringify(json));
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    setFetchController(controller);
+    fetchJourneyData(controller.signal, cacheKey);
 
     return () => {
-      active = false;
       controller.abort();
     };
-  }, []);
+  }, [rangeQuery]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleRetry = () => {
+    fetchController?.abort();
+    const controller = new AbortController();
+    setFetchController(controller);
+    fetchJourneyData(controller.signal, cacheKey);
+  };
 
   const lifecycle = data?.lifecycleFunnel ?? null;
   const insights = data?.aiInsights?.global ?? [];
@@ -75,6 +101,26 @@ export function CustomerJourneyPage() {
     return (
       <div className="flex h-64 items-center justify-center">
         <p className="text-sm text-muted-foreground">Loading journey data…</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <div className="text-center">
+          <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-destructive/60" />
+          <p className="text-sm font-medium text-destructive">{error}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Check your connection and try again
+          </p>
+          <button
+            onClick={handleRetry}
+            className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-secondary"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -125,11 +171,14 @@ export function CustomerJourneyPage() {
       <AiInsightsPanel bundle={data?.aiInsights || null} defaultFilter="customer-journey" />
 
       {/* Header */}
-      <div>
-        <h2 className="text-lg font-bold text-foreground">Customer Journey</h2>
-        <p className="text-sm text-muted-foreground">
-          Full lifecycle funnel from awareness to expansion — click a stage to inspect
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-foreground">Customer Journey</h2>
+          <p className="text-sm text-muted-foreground">
+            Full lifecycle funnel from awareness to expansion — click a stage to inspect
+          </p>
+        </div>
+        <AnalyticsTimeRangeControls />
       </div>
 
       {/* KPI Strip */}
