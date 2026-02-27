@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { InsightCardFull } from "./insight-card-full";
 import { StatCard } from "./stat-card";
 import type { AnalyticsDashboardData, AnalyticsSectionId } from "@/lib/analytics/types";
@@ -26,6 +26,8 @@ function readOverviewCache(): AnalyticsDashboardData | null {
 export function AiInsightsPage() {
   const [data, setData] = useState<AnalyticsDashboardData | null>(readOverviewCache);
   const [loading, setLoading] = useState(() => readOverviewCache() === null);
+  const [error, setError] = useState<string | null>(null);
+  const [fetchKey, setFetchKey] = useState(0);
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
   const [sectionFilter, setSectionFilter] = useState<SectionFilter>("all");
   const [sortMode, setSortMode] = useState<SortMode>("severity");
@@ -39,6 +41,8 @@ export function AiInsightsPage() {
     let active = true;
     const controller = new AbortController();
 
+    setError(null);
+    setLoading(true);
     fetch("/api/analytics?section=overview", { signal: controller.signal })
       .then((r) => r.json())
       .then((json: AnalyticsDashboardData) => {
@@ -47,7 +51,11 @@ export function AiInsightsPage() {
         populateConnectionStatus(json.freshness, json);
         sessionStorage.setItem("analytics:overview", JSON.stringify(json));
       })
-      .catch(() => {})
+      .catch((err) => {
+        if (!active) return;
+        console.error(err);
+        setError("Failed to load AI insights");
+      })
       .finally(() => {
         if (active) setLoading(false);
       });
@@ -56,6 +64,10 @@ export function AiInsightsPage() {
       active = false;
       controller.abort();
     };
+  }, [fetchKey]);
+
+  const handleRetry = useCallback(() => {
+    setFetchKey((k) => k + 1);
   }, []);
 
   const allInsights = useMemo(() => data?.aiInsights?.global ?? [], [data?.aiInsights?.global]);
@@ -87,6 +99,25 @@ export function AiInsightsPage() {
     return (
       <div className="flex h-64 items-center justify-center">
         <p className="text-sm text-muted-foreground">Loading insights…</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <div className="flex flex-col items-center gap-4 rounded-xl border border-red-200 bg-red-50 px-8 py-6 dark:border-red-900 dark:bg-red-950/50">
+          <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+            <AlertTriangle className="h-5 w-5" />
+            <p className="text-sm font-medium">{error}</p>
+          </div>
+          <button
+            onClick={handleRetry}
+            className="rounded-md bg-red-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
