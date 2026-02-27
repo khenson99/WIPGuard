@@ -645,19 +645,13 @@ export async function fetchCodaData(
   const maxLeadCandidates = Math.max(1, options.maxLeadCandidates ?? 25);
   const topLeadCandidates = scoredLeads.slice(0, maxLeadCandidates);
 
-  let hubspotMatchingErrors = 0;
-  const hubspotLookup = null; // Removed resolveHubspotContactsByEmail
-
-  if (hubspotLookup) {
-    hubspotMatchingErrors = hubspotLookup.errors;
-  }
+  const hubspotMatchingErrors = 0;
 
   const enrichedRecentSubmitters = recentSubmitters.map((entry) => {
-    const result = hubspotLookup?.results.get(entry.email);
     return {
       ...entry,
-      hubspotStatus: result?.status ?? "unknown",
-      hubspotContact: result?.contact ?? null,
+      hubspotStatus: "unknown" as const,
+      hubspotContact: null,
     };
   });
 

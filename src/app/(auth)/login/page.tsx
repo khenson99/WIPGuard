@@ -81,14 +81,14 @@ function LoginPageContent() {
   }, [isDev]);
 
   useEffect(() => {
-    const error = searchParams.get("error");
+    const error = searchParams?.get("error");
     if (error) {
       Promise.resolve().then(() => setAuthErrorCode(error));
     }
   }, [searchParams]);
 
   useEffect(() => {
-    const inviteToken = searchParams.get("inviteToken");
+    const inviteToken = searchParams?.get("inviteToken");
     if (!inviteToken) return;
 
     fetch(`/api/team/invite?token=${encodeURIComponent(inviteToken)}`)
