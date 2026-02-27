@@ -98,7 +98,7 @@ function TaskList({
   empty: string;
 }) {
   return (
-    <section className="rounded-xl border border-border bg-card p-4">
+    <section className="rounded-xl border border-border bg-card p-4" aria-label={title}>
       <h3 className="mb-3 text-sm font-semibold text-foreground">{title}</h3>
       {items.length === 0 ? (
         <p className="text-xs text-muted-foreground">{empty}</p>
@@ -186,6 +186,8 @@ export function PersonalizedDashboard() {
           type="button"
           onClick={resource.refresh}
           disabled={resource.refreshing}
+          aria-label="Refresh dashboard"
+          aria-busy={resource.refreshing}
           className="rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-70"
         >
           {resource.refreshing ? "Refreshing..." : "Refresh now"}
@@ -200,34 +202,34 @@ export function PersonalizedDashboard() {
         <DashboardErrorBanner message={resource.error} onRetry={resource.refresh} />
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-        <div className="rounded-xl border border-border bg-card px-4 py-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6" role="region" aria-label="Personal statistics">
+        <div className="rounded-xl border border-border bg-card px-4 py-3" role="group" aria-label={`My Active: ${data.personal.myActive.length}`}>
           <p className="text-xs text-muted-foreground">My Active</p>
           <p className="mt-1 text-2xl font-semibold text-foreground">{data.personal.myActive.length}</p>
         </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-3">
+        <div className="rounded-xl border border-border bg-card px-4 py-3" role="group" aria-label={`My Blocked: ${data.personal.myBlocked.length}`}>
           <p className="text-xs text-muted-foreground">My Blocked</p>
           <p className="mt-1 text-2xl font-semibold text-orange-500">{data.personal.myBlocked.length}</p>
         </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-3">
+        <div className="rounded-xl border border-border bg-card px-4 py-3" role="group" aria-label={`My Overdue: ${data.personal.myOverdue.length}`}>
           <p className="text-xs text-muted-foreground">My Overdue</p>
           <p className="mt-1 text-2xl font-semibold text-red-500">{data.personal.myOverdue.length}</p>
         </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-3">
+        <div className="rounded-xl border border-border bg-card px-4 py-3" role="group" aria-label={`Completed (7d): ${data.personal.myCompletedWeek}`}>
           <p className="text-xs text-muted-foreground">Completed (7d)</p>
           <p className="mt-1 text-2xl font-semibold text-emerald-600">{data.personal.myCompletedWeek}</p>
         </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-3">
+        <div className="rounded-xl border border-border bg-card px-4 py-3" role="group" aria-label={`Team Overdue: ${data.team.overdueTasks}`}>
           <p className="text-xs text-muted-foreground">Team Overdue</p>
           <p className="mt-1 text-2xl font-semibold text-red-500">{data.team.overdueTasks}</p>
         </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-3">
+        <div className="rounded-xl border border-border bg-card px-4 py-3" role="group" aria-label={`Task Total: ${taskTotal}`}>
           <p className="text-xs text-muted-foreground">Task Total</p>
           <p className="mt-1 text-2xl font-semibold text-foreground">{taskTotal}</p>
         </div>
       </div>
 
-      <section className="rounded-xl border border-border bg-card p-4">
+      <section className="rounded-xl border border-border bg-card p-4" aria-label="Recommended next actions">
         <div className="mb-3 flex items-center gap-2">
           <Flame className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold text-foreground">Recommended Next Actions</h2>
@@ -237,7 +239,7 @@ export function PersonalizedDashboard() {
         ) : (
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
             {data.personal.recommendations.map((task) => (
-              <div key={task.id} className="rounded-lg border border-border/60 px-3 py-2">
+              <div key={task.id} className="rounded-lg border border-border/60 px-3 py-2" aria-label={task.title}>
                 <p className="truncate text-sm font-medium text-foreground">{task.title}</p>
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   Score {task.recommendationScore || 0} · {task.priority} · {relativeDate(task.dueDate)}
@@ -248,7 +250,7 @@ export function PersonalizedDashboard() {
         )}
       </section>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" role="region" aria-label="Task lists">
         <TaskList
           title="My Blockers"
           items={data.personal.myBlocked}
@@ -261,7 +263,7 @@ export function PersonalizedDashboard() {
         />
       </div>
 
-      <section className="rounded-xl border border-border bg-card p-4">
+      <section className="rounded-xl border border-border bg-card p-4" aria-label="Team and project context">
         <h2 className="mb-3 text-sm font-semibold text-foreground">Team and Project Context</h2>
         <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <div className="rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground">
@@ -286,7 +288,7 @@ export function PersonalizedDashboard() {
                 <p className="mt-1 text-xs text-muted-foreground">
                   {project.doneTasks}/{project.totalTasks} done
                 </p>
-                <div className="mt-2 h-1.5 w-full rounded-full bg-secondary">
+                <div className="mt-2 h-1.5 w-full rounded-full bg-secondary" role="progressbar" aria-valuenow={project.progress} aria-valuemin={0} aria-valuemax={100} aria-label={`${project.name} progress`}>
                   <div
                     className="h-1.5 rounded-full bg-primary"
                     style={{ width: `${project.progress}%` }}
