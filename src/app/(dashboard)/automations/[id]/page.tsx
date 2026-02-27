@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Play, Save, Send, Plus, Trash2 } from "lucide-react";
@@ -62,6 +62,8 @@ export default function AutomationBuilderPage() {
   const [selectedNodeKey, setSelectedNodeKey] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string>("");
   const [deleteConfirm, setDeleteConfirm] = useState<{nodeId: string; nodeName: string} | null>(null);
+  const [editingNodeField, setEditingNodeField] = useState<{nodeId: string, field: string, value: string} | null>(null);
+  const inlineInputRef = useRef<HTMLInputElement>(null);
 
   const validation = useMemo(
     () =>
@@ -129,6 +131,12 @@ export default function AutomationBuilderPage() {
       controller.abort();
     };
   }, [cacheKey, workflowId]);
+
+  useEffect(() => {
+    if (editingNodeField && inlineInputRef.current) {
+      inlineInputRef.current.focus();
+    }
+  }, [editingNodeField]);
 
   const selectedNode = nodes.find((node) => node.key === selectedNodeKey) || null;
 
@@ -289,21 +297,50 @@ export default function AutomationBuilderPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          {providers.length > 0 ? `Providers: ${providers.join(", ")}` : "No providers selected"}
-          <button
-            onClick={() => {
-              const value = window.prompt("Providers (comma separated, e.g. SLACK,HUBSPOT)", providers.join(","));
-              if (!value) return;
-              const next = value
-                .split(",")
-                .map((item) => item.trim().toUpperCase())
-                .filter(Boolean);
-              setProviders(Array.from(new Set(next)));
-            }}
-            className="rounded-md border border-border bg-card px-2 py-1 hover:text-foreground"
-          >
-            Edit Providers
-          </button>
+          {editingNodeField?.nodeId === "providers" && editingNodeField?.field === "providers" ? (
+            <input
+              ref={inlineInputRef}
+              type="text"
+              value={editingNodeField.value}
+              onChange={(event) =>
+                setEditingNodeField((prev) =>
+                  prev ? { ...prev, value: event.target.value } : prev
+                )
+              }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  const next = editingNodeField.value
+                    .split(",")
+                    .map((item) => item.trim().toUpperCase())
+                    .filter(Boolean);
+                  setProviders(Array.from(new Set(next)));
+                  setEditingNodeField(null);
+                } else if (event.key === "Escape") {
+                  setEditingNodeField(null);
+                }
+              }}
+              onBlur={() => setEditingNodeField(null)}
+              className="rounded-md border border-primary bg-card px-2 py-1 text-xs text-foreground outline-none"
+              placeholder="e.g. SLACK,HUBSPOT"
+              autoFocus
+            />
+          ) : (
+            <>
+              {providers.length > 0 ? `Providers: ${providers.join(", ")}` : "No providers selected"}
+              <button
+                onClick={() =>
+                  setEditingNodeField({
+                    nodeId: "providers",
+                    field: "providers",
+                    value: providers.join(","),
+                  })
+                }
+                className="rounded-md border border-border bg-card px-2 py-1 hover:text-foreground"
+              >
+                Edit Providers
+              </button>
+            </>
+          )}
           {saveMessage && <span className="text-primary">{saveMessage}</span>}
         </div>
       </div>
