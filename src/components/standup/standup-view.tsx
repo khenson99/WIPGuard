@@ -209,16 +209,22 @@ export function StandupView() {
           {/* Timer */}
           <div className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1">
             <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className={clsx(
-              "font-mono text-sm",
-              timer > 900 ? "text-red-500" : "text-foreground"
-            )}>
+            <span
+              role="timer"
+              aria-live="polite"
+              aria-atomic="true"
+              className={clsx(
+                "font-mono text-sm",
+                timer > 900 ? "text-red-500" : "text-foreground"
+              )}
+            >
               {formatTime(timer)}
             </span>
             <button
               onClick={() => setTimerRunning(!timerRunning)}
               className="rounded p-0.5 text-muted-foreground hover:text-foreground"
               title={timerRunning ? "Pause timer" : "Start timer"}
+              aria-label={timerRunning ? "Pause timer" : "Start timer"}
             >
               {timerRunning ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
             </button>
@@ -239,6 +245,8 @@ export function StandupView() {
                 : "border-border bg-card text-muted-foreground hover:text-foreground"
             )}
             title="Facilitator mode for screen-share"
+            aria-label={facilitatorMode ? "Exit facilitator mode" : "Enter facilitator mode"}
+            aria-pressed={facilitatorMode}
           >
             {facilitatorMode ? <Minimize2 className="h-3.5 w-3.5" /> : <Expand className="h-3.5 w-3.5" />}
             {facilitatorMode ? "Exit Facilitator" : "Facilitator Mode"}
@@ -249,6 +257,7 @@ export function StandupView() {
             onClick={fetchStandup}
             className="rounded-md border border-border bg-card p-1.5 text-muted-foreground hover:text-foreground"
             title="Refresh"
+            aria-label="Refresh standup data"
           >
             <RefreshCw className={clsx("h-3.5 w-3.5", loading && "animate-spin")} />
           </button>
@@ -359,7 +368,7 @@ export function StandupView() {
       </div>
 
       {/* WIP status bar */}
-      <div className="flex items-center gap-3 border-t border-border bg-card px-4 py-2">
+      <div role="status" aria-label="WIP limits" className="flex items-center gap-3 border-t border-border bg-card px-4 py-2">
         <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           WIP
         </span>
@@ -492,6 +501,8 @@ function TaskRow({
       <button
         onClick={onToggle}
         className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
+        aria-expanded={expanded}
+        aria-label={`Toggle details for ${task.title}`}
       >
         <div
           className="h-2 w-2 flex-shrink-0 rounded-full"
