@@ -161,6 +161,7 @@ export function ConferenceDashboard() {
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as ConferenceStatus | "")}
           className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground"
+          aria-label="Filter by status"
         >
           {STATUS_OPTIONS.map((opt) => (
             <option key={opt.label} value={opt.value}>
@@ -173,6 +174,7 @@ export function ConferenceDashboard() {
           value={timingFilter}
           onChange={(e) => setTimingFilter(e.target.value as TimingFilter)}
           className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground"
+          aria-label="Filter by timing"
         >
           <option value="all">All</option>
           <option value="upcoming">Upcoming</option>
@@ -184,6 +186,7 @@ export function ConferenceDashboard() {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search name or location…"
           className="w-full max-w-sm rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground"
+          aria-label="Search conferences by name or location"
         />
       </div>
 
