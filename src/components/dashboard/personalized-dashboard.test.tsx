@@ -3,6 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PersonalizedDashboard } from "@/components/dashboard/personalized-dashboard";
 import { clearDashboardCache, useDashboardCacheStore } from "@/lib/client/dashboard-cache-store";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+  }),
+}));
+
 describe("PersonalizedDashboard", () => {
   beforeEach(() => {
     clearDashboardCache();
