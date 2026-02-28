@@ -1,6 +1,7 @@
 "use client";
 
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { useConnectionStatus } from "@/hooks/use-connection-status";
 import { SubDashboardTemplate } from "../sub-dashboard-template";
 import { StatCard } from "../stat-card";
@@ -32,7 +33,7 @@ export function StripeDashboard({ data }: StripeDashboardProps) {
   const connectionStatus = useConnectionStatus((s) => s.getStatus("stripe"));
   const stripe = data?.stripe ?? null;
 
-  if (!stripe) {
+  if (!data || !stripe) {
     return (
       <div className="flex items-center justify-center py-16">
         <p className="text-muted-foreground">No Stripe data available</p>
@@ -41,6 +42,9 @@ export function StripeDashboard({ data }: StripeDashboardProps) {
   }
 
   const { revenue, subscriptions, payments, revenueTrend } = stripe;
+  const kpis = data.kpis ?? computeAnalyticsKpis(data);
+  const mrr = kpis.finance.mrr ?? revenue.mrr;
+  const paymentSuccessPct = kpis.finance.paymentSuccessPct ?? payments.successRate;
 
   /* ── Subscription health donut ─── */
   const subSegments = [
@@ -60,7 +64,7 @@ export function StripeDashboard({ data }: StripeDashboardProps) {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             label="MRR"
-            value={fmt$(revenue.mrr)}
+            value={fmt$(mrr)}
             change={revenue.mrrChange !== 0 ? fmt$(revenue.mrrChange) : undefined}
             changeType={revenue.mrrChange > 0 ? "positive" : revenue.mrrChange < 0 ? "negative" : "neutral"}
             trend={{
@@ -74,8 +78,8 @@ export function StripeDashboard({ data }: StripeDashboardProps) {
           />
           <StatCard
             label="Payment Success"
-            value={fmtPct(payments.successRate * 100)}
-            changeType={payments.successRate >= 0.95 ? "positive" : "negative"}
+            value={fmtPct(paymentSuccessPct)}
+            changeType={paymentSuccessPct >= 95 ? "positive" : "negative"}
             subtitle={`${payments.succeeded.toLocaleString()} succeeded / ${payments.failed.toLocaleString()} failed`}
           />
           <StatCard
