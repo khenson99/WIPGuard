@@ -40,29 +40,7 @@ export function CustomerJourneyPage() {
   const [selectedStage, setSelectedStage] = useState<LifecycleStageId | null>(null);
   const [loading, setLoading] = useState(() => readOverviewCache() === null);
   const [error, setError] = useState<string | null>(null);
-  const [fetchController, setFetchController] = useState<AbortController | null>(null);
-
-  const fetchJourneyData = (signal?: AbortSignal) => {
-    setError(null);
-    setLoading(true);
-
-    fetch("/api/analytics?section=overview", { signal })
-      .then((r) => r.json())
-      .then((json: AnalyticsDashboardData) => {
-        if (signal?.aborted) return;
-        setData(json);
-        populateConnectionStatus(json.freshness, json);
-        sessionStorage.setItem("analytics:overview", JSON.stringify(json));
-      })
-      .catch((err) => {
-        if (signal?.aborted) return;
-        console.error(err);
-        setError("Failed to load journey data");
-      })
-      .finally(() => {
-        if (!signal?.aborted) setLoading(false);
-      });
-  };
+  const [fetchKey, setFetchKey] = useState(0);
 
   useEffect(() => {
     const cached = readOverviewCache();
@@ -70,20 +48,36 @@ export function CustomerJourneyPage() {
       populateConnectionStatus(cached.freshness, cached);
     }
 
+    let active = true;
     const controller = new AbortController();
-    setFetchController(controller);
-    fetchJourneyData(controller.signal);
+
+    fetch("/api/analytics?section=overview", { signal: controller.signal })
+      .then((r) => r.json())
+      .then((json: AnalyticsDashboardData) => {
+        if (!active) return;
+        setData(json);
+        populateConnectionStatus(json.freshness, json);
+        sessionStorage.setItem("analytics:overview", JSON.stringify(json));
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.error(err);
+        setError("Failed to load journey data");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
 
     return () => {
+      active = false;
       controller.abort();
     };
-  }, []);
+  }, [fetchKey]);
 
   const handleRetry = () => {
-    fetchController?.abort();
-    const controller = new AbortController();
-    setFetchController(controller);
-    fetchJourneyData(controller.signal);
+    setError(null);
+    setLoading(true);
+    setFetchKey((k) => k + 1);
   };
 
   const lifecycle = data?.lifecycleFunnel ?? null;
