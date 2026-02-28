@@ -191,8 +191,8 @@ export async function isCircuitClosed(
 /**
  * Record a successful request. Resets the circuit to CLOSED.
  */
-export function recordSuccess(provider: string, userId: string): void {
-  void (async () => {
+export async function recordSuccess(provider: string, userId: string): Promise<void> {
+  try {
     const entry = await loadEntry(provider, userId);
 
     if (entry.state !== "CLOSED" || entry.consecutiveFailures > 0) {
@@ -210,19 +210,21 @@ export function recordSuccess(provider: string, userId: string): void {
     entry.currentCooldownMs = 0;
     entry.openCount = 0;
     await saveEntry(provider, userId, entry);
-  })();
+  } catch (err) {
+    console.error("integration.circuit_breaker.recordSuccess failed", { provider, userId, err });
+  }
 }
 
 /**
  * Record a failed request. If the failure threshold is reached, the circuit
  * opens with an exponential cooldown.
  */
-export function recordFailure(
+export async function recordFailure(
   provider: string,
   userId: string,
   opts?: CircuitBreakerOptions
-): void {
-  void (async () => {
+): Promise<void> {
+  try {
     const entry = await loadEntry(provider, userId);
     const _opts = resolvedOptions(opts);
 
@@ -249,7 +251,9 @@ export function recordFailure(
     }
 
     await saveEntry(provider, userId, entry);
-  })();
+  } catch (err) {
+    console.error("integration.circuit_breaker.recordFailure failed", { provider, userId, err });
+  }
 }
 
 /**
@@ -297,10 +301,10 @@ export async function withCircuitBreaker<T>(
 
   try {
     const result = await fn();
-    recordSuccess(provider, userId);
+    await recordSuccess(provider, userId);
     return result;
   } catch (error) {
-    recordFailure(provider, userId, opts);
+    await recordFailure(provider, userId, opts);
     throw error;
   }
 }
@@ -308,9 +312,9 @@ export async function withCircuitBreaker<T>(
 /**
  * Reset a specific circuit (e.g., when a user reconnects an integration).
  */
-export function resetCircuit(provider: string, userId: string): void {
+export async function resetCircuit(provider: string, userId: string): Promise<void> {
   cache.delete(cacheKey(provider, userId));
-  void prisma.integrationCircuitState.deleteMany({
+  await prisma.integrationCircuitState.deleteMany({
     where: { userId, key: provider },
   });
 }
@@ -318,7 +322,7 @@ export function resetCircuit(provider: string, userId: string): void {
 /**
  * Reset all circuits (useful for testing).
  */
-export function resetAllCircuits(): void {
+export async function resetAllCircuits(): Promise<void> {
   cache.clear();
-  void prisma.integrationCircuitState.deleteMany({});
+  await prisma.integrationCircuitState.deleteMany({});
 }

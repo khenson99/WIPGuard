@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { runAnalyticsRefresh } from "@/lib/analytics/refresh-runner";
 import { pruneAnalyticsSnapshots } from "@/lib/analytics/snapshots";
@@ -10,6 +11,11 @@ import {
 } from "@/lib/integrations/ownership";
 import { runIntegrationHealthChecks } from "@/lib/integrations/health-checks";
 
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
 function isAuthorized(request: NextRequest): boolean {
   const expected = process.env.CRON_SYNC_SECRET?.trim() || process.env.INTEGRATION_SYNC_SECRET?.trim();
   if (!expected) return false;
@@ -17,7 +23,7 @@ function isAuthorized(request: NextRequest): boolean {
     request.headers.get("x-cron-secret")?.trim() ||
     request.headers.get("x-integration-sync-secret")?.trim() ||
     "";
-  return Boolean(provided && provided === expected);
+  return Boolean(provided && safeEqual(provided, expected));
 }
 
 function parseRetentionDays(): number {
@@ -47,23 +53,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       bestEffortMigrateRulesToOwner(ownerUserId),
     ]);
 
-    const [analytics, rules, health, pruning] = await Promise.all([
-      runAnalyticsRefresh({ userIds: [ownerUserId], rangePresets: ["7d", "30d"] }),
-      runRules({
-        mode: "incremental",
-        dryRun: false,
-        userIds: [ownerUserId],
-        startedAt,
-      }),
-      runIntegrationHealthChecks({ userId: ownerUserId }),
-      pruneAnalyticsSnapshots({ olderThanDays: parseRetentionDays() }),
-    ]);
+    // Run sequentially to avoid token-refresh races and snapshot pruning conflicts
+    const analytics = await runAnalyticsRefresh({ userIds: [ownerUserId], rangePresets: ["7d", "30d"] });
+    const rules = await runRules({
+      mode: "incremental",
+      dryRun: false,
+      userIds: [ownerUserId],
+      startedAt,
+    });
+    const health = await runIntegrationHealthChecks({ userId: ownerUserId });
+    const pruning = await pruneAnalyticsSnapshots({ olderThanDays: parseRetentionDays() });
 
     return NextResponse.json({
       ok: true,
       startedAt,
       finishedAt: new Date().toISOString(),
-      ownerUserId,
       migrations: {
         connections: connectionsMigration,
         rules: rulesMigration,
