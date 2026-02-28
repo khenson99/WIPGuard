@@ -52,6 +52,8 @@ export default function AutomationsPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | WorkflowListItem["status"]>("all");
   const [providerFilter, setProviderFilter] = useState<string>("all");
   const [healthFilter, setHealthFilter] = useState<"all" | "healthy" | "needs-attention" | "never-run">("all");
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const fetchData = async (signal?: AbortSignal) => {
     setError(null);
@@ -131,48 +133,60 @@ export default function AutomationsPage() {
   }, [data, scopeFilter, statusFilter, providerFilter, healthFilter]);
 
   const createBlankWorkflow = async () => {
-    const response = await fetch("/api/automations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "New Workflow",
-        scope: "PRIVATE",
-        graph: {
-          nodes: [
-            {
-              key: "trigger_1",
-              type: "TRIGGER",
-              label: "Trigger",
-              config: {},
-              positionX: 80,
-              positionY: 80,
-            },
-          ],
-          edges: [],
-        },
-      }),
-    });
-
-    if (!response.ok) return;
-    const created = (await response.json()) as { id: string };
-    router.push(`/automations/${created.id}`);
+    setIsCreating(true);
+    setCreateError(null);
+    try {
+      const response = await fetch("/api/automations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "New Workflow",
+          scope: "PRIVATE",
+          graph: {
+            nodes: [
+              {
+                key: "trigger_1",
+                type: "TRIGGER",
+                label: "Trigger",
+                config: {},
+                positionX: 80,
+                positionY: 80,
+              },
+            ],
+            edges: [],
+          },
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to create workflow");
+      const created = (await response.json()) as { id: string };
+      router.push(`/automations/${created.id}`);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Failed to create workflow");
+      setIsCreating(false);
+    }
   };
 
   const createFromTemplate = async (template: TemplateItem) => {
-    const response = await fetch("/api/automations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: template.name,
-        description: template.description,
-        providers: template.providers,
-        graph: template.graph,
-      }),
-    });
-
-    if (!response.ok) return;
-    const created = (await response.json()) as { id: string };
-    router.push(`/automations/${created.id}`);
+    setIsCreating(true);
+    setCreateError(null);
+    try {
+      const response = await fetch("/api/automations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: template.name,
+          description: template.description,
+          providers: template.providers,
+          graph: template.graph,
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to create workflow");
+      const created = (await response.json()) as { id: string };
+      router.push(`/automations/${created.id}`);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Failed to create workflow");
+      setIsCreating(false);
+    }
   };
 
   return (
@@ -194,12 +208,19 @@ export default function AutomationsPage() {
           </Link>
           <button
             onClick={createBlankWorkflow}
-            className="btn-primary-theme flex items-center gap-1.5 rounded-md px-3 py-2 text-sm"
+            disabled={isCreating}
+            className="btn-primary-theme flex items-center gap-1.5 rounded-md px-3 py-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <PlusCircle className="h-4 w-4" />
-            New Workflow
+            {isCreating ? "Creating..." : "New Workflow"}
           </button>
         </div>
+        {createError && (
+          <div className="mt-2 flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs text-red-600 dark:text-red-400">
+            <span>{createError}</span>
+            <button type="button" onClick={() => setCreateError(null)} className="ml-auto text-red-500 hover:text-red-700">×</button>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-3 py-3">
@@ -317,7 +338,8 @@ export default function AutomationsPage() {
               <p className="mt-2 text-[11px] text-muted-foreground">{template.providers.join(", ")}</p>
               <button
                 onClick={() => createFromTemplate(template)}
-                className="mt-3 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+                disabled={isCreating}
+                className="mt-3 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 Use Template
               </button>
