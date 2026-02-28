@@ -226,7 +226,8 @@ export function PersonalizedDashboard() {
 
   const completedSpark = useMemo(() => {
     if (!data?.personal.completedByDay) return [];
-    return data.personal.completedByDay.map((p) => p.count);
+    // Show last 7 days to match the "Completed (7d)" label
+    return data.personal.completedByDay.slice(-7).map((p) => p.count);
   }, [data]);
 
   const myWorkloadSegments = useMemo(() => {
@@ -448,7 +449,7 @@ export function PersonalizedDashboard() {
               <div key={key} className="flex items-center justify-between gap-2 rounded-md border border-border/60 px-2.5 py-1.5">
                 <span className="flex items-center gap-2 truncate">
                   <span className="h-2 w-2 rounded-full" style={{ backgroundColor: getChartColor(index) }} aria-hidden="true" />
-                  <span className="truncate">{key}</span>
+                  <span className="truncate">{key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\bId\b/g, "ID")}</span>
                 </span>
                 <span className="tabular-nums text-foreground">{data.team.taskStatusOverview[key] ?? 0}</span>
               </div>
@@ -503,15 +504,17 @@ export function PersonalizedDashboard() {
             onFooterAction={() => router.push("/tasks?view=my-work")}
           />
         ) : null}
-        <TaskList
-          title="My Due Soon"
-          items={data.personal.myDueSoon}
-          empty="No due-soon tasks."
-          maxItems={6}
-          onTaskClick={(id) => router.push(`/tasks?task=${id}`)}
-          footerActionLabel="Open tasks"
-          onFooterAction={() => router.push("/tasks?view=my-work")}
-        />
+        {focusKey !== "dueSoon" && (
+          <TaskList
+            title="My Due Soon"
+            items={data.personal.myDueSoon}
+            empty="No due-soon tasks."
+            maxItems={6}
+            onTaskClick={(id) => router.push(`/tasks?task=${id}`)}
+            footerActionLabel="Open tasks"
+            onFooterAction={() => router.push("/tasks?view=my-work")}
+          />
+        )}
       </div>
 
       <section className="rounded-xl border border-border bg-card p-4" aria-label="Team and project context">
