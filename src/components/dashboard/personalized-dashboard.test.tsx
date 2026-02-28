@@ -1,49 +1,53 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PersonalizedDashboard } from "@/components/dashboard/personalized-dashboard";
+import { clearDashboardCache, useDashboardCacheStore } from "@/lib/client/dashboard-cache-store";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+  }),
+}));
 
 describe("PersonalizedDashboard", () => {
   beforeEach(() => {
-    window.sessionStorage.clear();
+    clearDashboardCache();
     vi.restoreAllMocks();
   });
 
   it("keeps cached content visible when fetch fails and marks state stale", async () => {
-    window.sessionStorage.setItem(
-      "dashboard:personalized:v2",
-      JSON.stringify({
-        data: {
-          generatedAt: "2026-02-17T00:00:00.000Z",
-          personal: {
-            myActive: [],
-            myBlocked: [],
-            myOverdue: [],
-            myDueSoon: [],
-            myCompletedWeek: 2,
-            recommendations: [
-              {
-                id: "task-1",
-                title: "Call customer",
-                status: "ACTIVE",
-                priority: "P1",
-                dueDate: null,
-                project: null,
-              },
-            ],
-          },
-          team: {
-            staleTasks: 1,
-            blockedTasks: 2,
-            overdueTasks: 3,
-            taskStatusOverview: { ACTIVE: 3 },
-          },
-          projects: {
-            active: [],
-          },
+    useDashboardCacheStore.getState().write("dashboard:personalized:v2", {
+      data: {
+        generatedAt: "2026-02-17T00:00:00.000Z",
+        personal: {
+          myActive: [],
+          myBlocked: [],
+          myOverdue: [],
+          myDueSoon: [],
+          myCompletedWeek: 2,
+          recommendations: [
+            {
+              id: "task-1",
+              title: "Call customer",
+              status: "ACTIVE",
+              priority: "P1",
+              dueDate: null,
+              project: null,
+            },
+          ],
         },
-        lastUpdatedAt: "2026-02-17T00:00:00.000Z",
-      })
-    );
+        team: {
+          staleTasks: 1,
+          blockedTasks: 2,
+          overdueTasks: 3,
+          taskStatusOverview: { ACTIVE: 3 },
+        },
+        projects: {
+          active: [],
+        },
+      },
+      lastUpdatedAt: "2026-02-17T00:00:00.000Z",
+    });
 
     vi.stubGlobal(
       "fetch",

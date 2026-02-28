@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AnalyticsSectionPage } from "@/components/analytics/analytics-section-page";
 import { createEmptyAnalyticsDashboardData } from "@/lib/analytics/response-shape";
+import { clearDashboardCache } from "@/lib/client/dashboard-cache-store";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -13,7 +14,7 @@ vi.mock("next/navigation", () => ({
 
 describe("AnalyticsSectionPage", () => {
   beforeEach(() => {
-    window.sessionStorage.clear();
+    clearDashboardCache();
     vi.restoreAllMocks();
   });
 

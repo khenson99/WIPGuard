@@ -482,7 +482,7 @@ export async function runCodaRowSync(input: {
   }
 
   const CB_PROVIDER = "coda";
-  if (!isCircuitClosed(CB_PROVIDER, input.userId)) {
+  if (!(await isCircuitClosed(CB_PROVIDER, input.userId))) {
     throw new CircuitOpenError(CB_PROVIDER, input.userId, getCircuitState(CB_PROVIDER, input.userId));
   }
   let _cbSuccess = false;

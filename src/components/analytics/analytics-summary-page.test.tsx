@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AnalyticsSummaryPage } from "@/components/analytics/analytics-summary-page";
 import { createEmptyAnalyticsDashboardData } from "@/lib/analytics/response-shape";
+import { clearDashboardCache, useDashboardCacheStore } from "@/lib/client/dashboard-cache-store";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -13,7 +14,7 @@ vi.mock("next/navigation", () => ({
 
 describe("AnalyticsSummaryPage", () => {
   beforeEach(() => {
-    window.sessionStorage.clear();
+    clearDashboardCache();
     vi.restoreAllMocks();
   });
 
@@ -58,13 +59,10 @@ describe("AnalyticsSummaryPage", () => {
       ],
     };
 
-    window.sessionStorage.setItem(
-      "analytics:summary:v1:default",
-      JSON.stringify({
-        data: { summary, overview },
-        lastUpdatedAt: "2026-02-17T00:00:00.000Z",
-      })
-    );
+    useDashboardCacheStore.getState().write("analytics:summary:v1:default", {
+      data: { summary, overview },
+      lastUpdatedAt: "2026-02-17T00:00:00.000Z",
+    });
 
     vi.stubGlobal(
       "fetch",

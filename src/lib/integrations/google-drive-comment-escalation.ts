@@ -2,19 +2,17 @@ import {
   IntegrationConnectionStatus,
   IntegrationProvider,
   Prisma,
-  type IntegrationConnection,
   type IntegrationRule,
   type TaskStatus,
 } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { protectIntegrationSecret, unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
 import { getNextColumnOrder } from "@/lib/task-order";
 import { buildOutboxIdempotencyKey, publishDomainEvent } from "@/lib/event-bus";
 import { withRetries } from "@/lib/integrations/with-retries";
 import { isCircuitClosed, recordSuccess, recordFailure, CircuitOpenError, getCircuitState } from "@/lib/integrations/circuit-breaker";
+import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
 
 export const GOOGLE_DRIVE_RULE_KEY = "google_drive_comment_escalation";
-const GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 
 type SupportedAutoTaskStatus = "QUEUED" | "ACTIVE" | "NOT_DONE";
 type DriveEscalationVariant = "assigned_comment" | "review_request";
@@ -321,129 +319,11 @@ async function markConnectionError(userId: string, message: string): Promise<voi
   });
 }
 
-function parseTokenResponse(raw: unknown): {
-  accessToken: string;
-  expiresAt: Date | null;
-  refreshToken: string | null;
-  tokenType: string | null;
-} {
-  const body = asRecord(raw);
-  const accessToken =
-    typeof body.access_token === "string" && body.access_token.trim().length > 0
-      ? body.access_token.trim()
-      : null;
-
-  if (!accessToken) {
-    throw new GoogleDriveIntegrationAuthError("Google token refresh response missing access token");
-  }
-
-  const expiresIn = typeof body.expires_in === "number" ? body.expires_in : null;
-  const expiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000) : null;
-  const refreshToken = typeof body.refresh_token === "string" ? body.refresh_token : null;
-  const tokenType = typeof body.token_type === "string" ? body.token_type : null;
-
-  return { accessToken, expiresAt, refreshToken, tokenType };
-}
-
-async function refreshGoogleAccessToken(connection: IntegrationConnection): Promise<string> {
-  const refreshToken = unprotectIntegrationSecret(connection.refreshToken);
-  if (!refreshToken) {
-    throw new GoogleDriveIntegrationAuthError("Google refresh token is missing");
-  }
-
-  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-    throw new GoogleDriveIntegrationAuthError("Google OAuth client credentials are missing");
-  }
-
-  const body = new URLSearchParams({
-    grant_type: "refresh_token",
-    refresh_token: refreshToken,
-    client_id: process.env.GOOGLE_CLIENT_ID,
-    client_secret: process.env.GOOGLE_CLIENT_SECRET,
-  });
-
-  const parsed = await withRetries(
-    async () => {
-      const response = await fetch(GOOGLE_TOKEN_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body,
-        cache: "no-store",
-      });
-
-      const json = (await response.json().catch(() => ({}))) as unknown;
-      if (!response.ok) {
-        const details = asRecord(json);
-        const reason =
-          (typeof details.error_description === "string" && details.error_description) ||
-          (typeof details.error === "string" && details.error) ||
-          "Google token refresh failed";
-        throw new GoogleDriveIntegrationAuthError(reason);
-      }
-
-      return parseTokenResponse(json);
-    },
-    { maxAttempts: 2, baseDelayMs: 500, maxDelayMs: 2000 }
-  );
-
-  await prisma.integrationConnection.update({
-    where: {
-      userId_provider: {
-        userId: connection.userId,
-        provider: IntegrationProvider.GOOGLE_WORKSPACE,
-      },
-    },
-    data: {
-      accessToken: protectIntegrationSecret(parsed.accessToken),
-      refreshToken: protectIntegrationSecret(parsed.refreshToken) ?? connection.refreshToken,
-      tokenType: parsed.tokenType ?? connection.tokenType,
-      expiresAt: parsed.expiresAt,
-      status: IntegrationConnectionStatus.CONNECTED,
-      lastError: null,
-      lastSyncedAt: new Date(),
-    },
-  });
-
-  return parsed.accessToken;
-}
-
-/** In-flight refresh promises keyed by userId to prevent concurrent refresh races. */
-const inflightRefreshes = new Map<string, Promise<string>>();
-
 async function getValidGoogleAccessToken(userId: string): Promise<string> {
-  const connection = await prisma.integrationConnection.findUnique({
-    where: {
-      userId_provider: {
-        userId,
-        provider: IntegrationProvider.GOOGLE_WORKSPACE,
-      },
-    },
+  return getValidIntegrationAccessToken({
+    userId,
+    provider: IntegrationProvider.GOOGLE_WORKSPACE,
   });
-
-  if (!connection || connection.status !== IntegrationConnectionStatus.CONNECTED) {
-    throw new GoogleDriveIntegrationAuthError("Google Workspace is not connected");
-  }
-
-  const token = unprotectIntegrationSecret(connection.accessToken);
-  if (!token) {
-    throw new GoogleDriveIntegrationAuthError("Google access token is missing");
-  }
-
-  const expiresSoon =
-    Boolean(connection.expiresAt) && connection.expiresAt!.getTime() <= Date.now() + 60_000;
-
-  if (expiresSoon) {
-    const existing = inflightRefreshes.get(userId);
-    if (existing) return existing;
-
-    const promise = refreshGoogleAccessToken(connection).finally(() => {
-      inflightRefreshes.delete(userId);
-    });
-    inflightRefreshes.set(userId, promise);
-    return promise;
-  }
-
-  return token;
 }
 
 async function googleFetchJson<T>(token: string, url: URL): Promise<T> {
@@ -654,7 +534,7 @@ export async function runGoogleDriveCommentEscalation(input: {
   }
 
   const CB_PROVIDER = "google_drive";
-  if (!isCircuitClosed(CB_PROVIDER, input.userId)) {
+  if (!(await isCircuitClosed(CB_PROVIDER, input.userId))) {
     throw new CircuitOpenError(CB_PROVIDER, input.userId, getCircuitState(CB_PROVIDER, input.userId));
   }
   let _cbSuccess = false;
