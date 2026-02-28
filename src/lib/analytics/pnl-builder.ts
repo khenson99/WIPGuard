@@ -58,6 +58,18 @@ function estimatePreviousOutflows(mercury: MercuryData | null): number {
   return mercury?.cashFlow.outflows30d ?? 0;
 }
 
+function previousPeriodLabel(periodLabel: string): string {
+  const normalized = periodLabel.trim();
+
+  const daysMatch = normalized.match(/^Last\s+(\d+)\s+days$/i);
+  if (daysMatch) return `Prior ${daysMatch[1]} days`;
+
+  const monthsMatch = normalized.match(/^Last\s+(\d+)\s+months$/i);
+  if (monthsMatch) return `Prior ${monthsMatch[1]} months`;
+
+  return "Previous period";
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -212,7 +224,7 @@ export function buildProfitAndLoss(
 
   return {
     period: pnl.periodLabel,
-    previousPeriod: "Previous period",
+    previousPeriod: previousPeriodLabel(pnl.periodLabel),
     items,
     netIncome: pnl.netIncome.currentPeriod,
     previousNetIncome: pnl.netIncome.previousPeriod,
