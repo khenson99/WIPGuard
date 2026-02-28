@@ -213,14 +213,29 @@ function buildTouchpointSummary(journeys: CustomerJourneyRecord[]): TouchpointSu
 }
 
 function buildTopPaths(journeys: CustomerJourneyRecord[]): JourneyPath[] {
-  const pathCounts = new Map<string, { count: number; totalDays: number; totalValue: number }>();
+  const pathCounts = new Map<string, { count: number; kanbanCards: number; freeTrials: number; demos: number; totalDays: number; totalValue: number }>();
 
   for (const journey of journeys) {
     const channels = [...new Set(journey.touchpoints.map((tp) => tp.channel))];
     if (channels.length === 0) continue;
     const key = channels.join(" → ");
-    const entry = pathCounts.get(key) ?? { count: 0, totalDays: 0, totalValue: 0 };
+    const entry = pathCounts.get(key) ?? { count: 0, kanbanCards: 0, freeTrials: 0, demos: 0, totalDays: 0, totalValue: 0 };
     entry.count += 1;
+    
+    // Simplistic heuristic: if there's a coda touchpoint, it's a kanban card; if there's a stripe touchpoint without revenue, it could be a trial.
+    if (journey.touchpoints.some((tp) => tp.channel === "coda")) {
+      entry.kanbanCards += 1;
+    }
+    if (journey.touchpoints.some((tp) => tp.channel === "stripe" && tp.value === null)) {
+      entry.freeTrials += 1;
+    }
+    if (journey.currentStage !== "Prospect" && journey.currentStage !== "Lead") {
+      entry.demos += 1;
+    }
+    if (journey.touchpoints.some((tp) => tp.channel === "hubspot" && tp.detail.toLowerCase().includes("demo"))) {
+      entry.demos += 1;
+    }
+
     entry.totalDays += journey.daysInPipeline;
     entry.totalValue += journey.value;
     pathCounts.set(key, entry);
@@ -230,6 +245,9 @@ function buildTopPaths(journeys: CustomerJourneyRecord[]): JourneyPath[] {
     .map(([key, stats]) => ({
       sequence: key.split(" → ") as TouchpointChannel[],
       count: stats.count,
+      kanbanCards: stats.kanbanCards,
+      freeTrials: stats.freeTrials,
+      demos: stats.demos,
       avgDaysToClose: stats.count > 0 ? Math.round(stats.totalDays / stats.count) : 0,
       avgValue: stats.count > 0 ? Math.round(stats.totalValue / stats.count) : 0,
     }))
@@ -237,8 +255,8 @@ function buildTopPaths(journeys: CustomerJourneyRecord[]): JourneyPath[] {
     .slice(0, 10);
 }
 
-function buildAttribution(journeys: CustomerJourneyRecord[]): ChannelAttribution[] {
-  const byChannel = new Map<TouchpointChannel, { firstTouch: number; assisted: number; lastTouch: number; revenue: number; dealValues: number[] }>();
+function buildAttribution(journeys: CustomerJourneyRecord[], data?: AnalyticsDashboardData): ChannelAttribution[] {
+  const byChannel = new Map<TouchpointChannel, { firstTouch: number; assisted: number; lastTouch: number; kanbanCards: number; freeTrials: number; demos: number; revenue: number; dealValues: number[] }>();
 
   for (const journey of journeys) {
     const tps = journey.touchpoints;
@@ -247,8 +265,13 @@ function buildAttribution(journeys: CustomerJourneyRecord[]): ChannelAttribution
     const last = tps[tps.length - 1].channel;
 
     for (const tp of tps) {
-      const entry = byChannel.get(tp.channel) ?? { firstTouch: 0, assisted: 0, lastTouch: 0, revenue: 0, dealValues: [] };
+      const entry = byChannel.get(tp.channel) ?? { firstTouch: 0, assisted: 0, lastTouch: 0, kanbanCards: 0, freeTrials: 0, demos: 0, revenue: 0, dealValues: [] };
       entry.assisted += 1;
+      
+      if (tp.channel === "coda") entry.kanbanCards += 1;
+      if (tp.channel === "stripe" && tp.value === null) entry.freeTrials += 1;
+      if (tp.channel === "hubspot" && tp.detail.toLowerCase().includes("demo")) entry.demos += 1;
+
       byChannel.set(tp.channel, entry);
     }
 
@@ -262,16 +285,43 @@ function buildAttribution(journeys: CustomerJourneyRecord[]): ChannelAttribution
   }
 
   return Array.from(byChannel.entries())
-    .map(([channel, stats]) => ({
-      channel,
-      firstTouchDeals: stats.firstTouch,
-      assistedDeals: stats.assisted,
-      lastTouchDeals: stats.lastTouch,
-      totalRevenue: stats.revenue,
-      avgDealValue: stats.dealValues.length > 0
-        ? Math.round(stats.dealValues.reduce((a, b) => a + b, 0) / stats.dealValues.length)
-        : 0,
-    }))
+    .map(([channel, stats]) => {
+      // Lookup costs from ad networks
+      let cost: number | null = null;
+      let traffic: number | null = null;
+      
+      if (channel === "google-ads" && data?.googleAds) {
+        cost = data.googleAds.totalSpend30d;
+        traffic = data.googleAds.totalClicks;
+      } else if (channel === "meta-ads" && data?.metaAds) {
+        cost = data.metaAds.totalSpend30d;
+        traffic = data.metaAds.totalClicks;
+      } else if (channel === "reddit-ads" && data?.redditAds) {
+        cost = data.redditAds.totalSpend30d;
+        traffic = data.redditAds.totalClicks;
+      } else if (channel === "google-analytics" && data?.googleAnalytics) {
+        traffic = data.googleAnalytics.sessions30d;
+      }
+
+      const roi = cost && cost > 0 ? ((stats.revenue - cost) / cost) * 100 : null;
+
+      return {
+        channel,
+        traffic,
+        cost,
+        firstTouchDeals: stats.firstTouch,
+        assistedDeals: stats.assisted,
+        lastTouchDeals: stats.lastTouch,
+        kanbanCards: stats.kanbanCards,
+        freeTrials: stats.freeTrials,
+        demos: stats.demos,
+        totalRevenue: stats.revenue,
+        roi,
+        avgDealValue: stats.dealValues.length > 0
+          ? Math.round(stats.dealValues.reduce((a, b) => a + b, 0) / stats.dealValues.length)
+          : 0,
+      };
+    })
     .sort((a, b) => b.totalRevenue - a.totalRevenue);
 }
 
@@ -295,6 +345,6 @@ export function buildCustomerJourneyData(data: AnalyticsDashboardData): Customer
     avgTouchpoints,
     medianDaysToClose,
     topPaths: buildTopPaths(journeys),
-    attribution: buildAttribution(journeys),
+    attribution: buildAttribution(journeys, data),
   };
 }

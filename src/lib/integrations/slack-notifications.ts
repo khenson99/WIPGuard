@@ -16,7 +16,7 @@ import {
 } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
-import { computeRetryDelayMs } from "@/lib/outbox-worker";
+import { withRetries } from "@/lib/integrations/with-retries";
 import { buildOutboxIdempotencyKey, publishDomainEvent } from "@/lib/event-bus";
 
 // ---------------------------------------------------------------------------
@@ -229,32 +229,6 @@ export function buildNotificationDedupeKey(payload: SlackNotificationPayload): s
 // Slack API helpers
 // ---------------------------------------------------------------------------
 
-async function sleep(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function withRetries<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
-  let lastError: unknown = null;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error;
-      if (attempt === maxAttempts) {
-        throw error;
-      }
-
-      const waitMs = computeRetryDelayMs(attempt, {
-        baseDelayMs: 250,
-        maxDelayMs: 3000,
-      });
-      await sleep(waitMs);
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error("Unknown retry failure");
-}
 
 class SlackAuthError extends Error {
   constructor(message: string) {

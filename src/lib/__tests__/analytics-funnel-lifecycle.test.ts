@@ -5,6 +5,7 @@ import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 function baseData(): AnalyticsDashboardData {
   return {
     hubspot: null,
+    salesPerformance: null,
     stripe: null,
     mercury: null,
     googleAnalytics: null,
@@ -39,6 +40,9 @@ function baseData(): AnalyticsDashboardData {
         "process-analytics": [],
       },
     },
+    customerJourney: null,
+    demoAnalytics: null,
+    processAnalytics: null,
     freshness: {},
     staleDomains: [],
     timeRange: {
@@ -50,9 +54,6 @@ function baseData(): AnalyticsDashboardData {
     },
     lastFullRefresh: "2026-01-30T00:00:00.000Z",
     financialPlanning: null,
-    customerJourney: null,
-    demoAnalytics: null,
-    processAnalytics: null,
     errors: [],
   };
 }
@@ -101,6 +102,8 @@ describe("analytics lifecycle funnel", () => {
       totalSpend30d: 400,
       totalImpressions: 90000,
       totalClicks: 1000,
+      totalConversions: 0,
+      cpa: 0,
       ctr: 1.1,
       cpc: 0.4,
       campaigns: [],

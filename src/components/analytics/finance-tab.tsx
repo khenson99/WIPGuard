@@ -6,7 +6,6 @@ import {
   CreditCard,
   Wallet,
   TrendingDown,
-  TrendingUp,
   Activity,
   ArrowUpRight,
   ArrowDownRight,

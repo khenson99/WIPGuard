@@ -65,3 +65,39 @@ describe("fetchOAuthAccountProfile webflow", () => {
     expect(profile.metadata).toMatchObject({ siteId: "site_abc" });
   });
 });
+
+describe("fetchOAuthAccountProfile google ads", () => {
+  const googleAds = getIntegrationBySlug("google-ads");
+  if (!googleAds || !isOAuthIntegration(googleAds)) {
+    throw new Error("Google Ads integration definition must exist");
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("uses OpenID Connect userinfo profile", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          sub: "google-sub",
+          email: "ads@example.com",
+          name: "Ads User",
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      )
+    );
+
+    const profile = await fetchOAuthAccountProfile(googleAds, "token");
+
+    expect(profile.providerAccountId).toBe("google-sub");
+    expect(profile.accountLabel).toBe("ads@example.com");
+    expect(profile.metadata).toMatchObject({
+      email: "ads@example.com",
+      name: "Ads User",
+    });
+  });
+});

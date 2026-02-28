@@ -34,9 +34,9 @@ RUN adduser --system --uid 1001 nextjs
 
 # Copy standalone server (includes traced node_modules via serverExternalPackages)
 COPY --from=builder /app/.next/standalone ./
-# Ensure runtime dependencies required by health checks and migration runner
-# (for example `pg`) are present in the final image.
-COPY --from=deps /app/node_modules ./node_modules
+# Next.js standalone output already includes a minimal traced `node_modules/`.
+# Avoid copying the full dependency tree into the runtime image (large and slow).
+RUN node -e "require('pg'); require('@prisma/adapter-pg'); require('@prisma/client/runtime/client')"
 # Copy static assets
 COPY --from=builder /app/.next/static ./.next/static
 # Copy public assets
@@ -45,8 +45,12 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 # Copy generated Prisma client (output to src/generated/prisma)
 COPY --from=builder /app/src/generated ./src/generated
+# Ensure Next.js cache dir is writable by the runtime user
+RUN mkdir -p /app/.next/cache && chown -R nextjs:nodejs /app/.next
 # Copy lightweight migration runner (uses pg from standalone trace)
 COPY --from=builder /app/migrate.cjs ./migrate.cjs
+# Copy ops scripts used by runbooks (e.g. OAuth scope backfills)
+COPY --from=builder /app/scripts/backfill-google-oauth-scope-aliases.cjs ./scripts/backfill-google-oauth-scope-aliases.cjs
 # Copy entrypoint script
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 # Verify migrate.cjs exists

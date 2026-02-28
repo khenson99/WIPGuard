@@ -5,6 +5,10 @@ import type {
   AnalyticsSectionId,
   DistilledInsight,
 } from "@/lib/analytics/types";
+import { computeBudgetActuals, computeBudgetSummary } from "./budget-variance";
+import { buildDefaultScenarios } from "./forecast-engine";
+import { buildProfitAndLoss } from "./pnl-builder";
+import { computeUnitEconomics } from "./unit-economics";
 
 const SECTION_ORDER: AnalyticsSectionId[] = [
   "ads-traffic",
@@ -213,6 +217,99 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
     });
   }
 
+  // 5. SEO Dependency (Semrush)
+  const organicTraffic = data.semrush?.organicTraffic ?? 0;
+  const organicKw = data.semrush?.organicKeywords ?? 0;
+  const paidKw = data.semrush?.paidKeywords ?? 0;
+
+  if (organicTraffic > 100 && organicTraffic < sessionsCurrent * 0.1) {
+    insights.push({
+      id: "ai-ads-seo-underperforming",
+      section: "ads-traffic",
+      severity: "warning",
+      title: "Organic search heavily underperforming relative to overall traffic",
+      why: `Organic traffic is only ${toPct(organicTraffic / sessionsCurrent)} of total sessions (${organicTraffic} out of ${sessionsCurrent}). High paid dependency.`,
+      confidence: clampConfidence(0.85),
+      expectedImpact: "Scaling SEO can significantly reduce blended customer acquisition cost over 6-12 months.",
+      stale: data.staleDomains.includes("semrush") || data.staleDomains.includes("googleAnalytics"),
+      evidence: [
+        {
+          source: "Semrush",
+          domain: "semrush",
+          metric: "Organic Share",
+          value: toPct(organicTraffic / sessionsCurrent),
+          delta: `${organicKw} ranking keywords`,
+        },
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: "Audit technical SEO and content gaps",
+          payload: { title: "Technical SEO and Content Gap Audit", priority: "P2", status: "QUEUED" },
+        },
+      ],
+    });
+  } else if (organicKw > 0 && paidKw > organicKw * 2) {
+    insights.push({
+      id: "ai-ads-paid-heavy",
+      section: "ads-traffic",
+      severity: "warning",
+      title: "Over-reliance on Paid Keywords vs Organic",
+      why: `Bidding on ${paidKw} keywords but only ranking organically for ${organicKw}. Missing opportunity to capture free traffic for proven terms.`,
+      confidence: clampConfidence(0.82),
+      expectedImpact: "Building content for top-converting paid keywords can eliminate those ad costs permanently.",
+      stale: data.staleDomains.includes("semrush"),
+      evidence: [
+        {
+          source: "Semrush",
+          domain: "semrush",
+          metric: "Keywords",
+          value: `${paidKw} paid / ${organicKw} org`,
+          delta: "Paid terms outnumber organic 2:1",
+        },
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: "Map converting paid keywords to content plan",
+          payload: { title: "Paid-to-Organic Content Strategy", priority: "P2", status: "QUEUED" },
+        },
+      ],
+    });
+  }
+
+  // 6. Webflow Conversion (Webflow)
+  const submissions = data.webflow?.formSubmissions?.length ?? 0;
+  const pages = data.webflow?.totalPages ?? 0;
+  if (sessionsCurrent > 500 && submissions === 0 && pages > 0) {
+    insights.push({
+      id: "ai-ads-webflow-zero-conv",
+      section: "ads-traffic",
+      severity: "critical",
+      title: "0 form submissions despite meaningful traffic",
+      why: `The site generated ${sessionsCurrent} sessions but recorded 0 form submissions in Webflow.`,
+      confidence: clampConfidence(0.9),
+      expectedImpact: "Fixing broken forms immediately restores inbound lead flow.",
+      stale: data.staleDomains.includes("webflow") || data.staleDomains.includes("googleAnalytics"),
+      evidence: [
+        {
+          source: "Webflow",
+          domain: "webflow",
+          metric: "Form Submissions",
+          value: "0",
+          delta: `${sessionsCurrent} sessions`,
+        },
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: "Test all Webflow forms for functionality",
+          payload: { title: "Urgent: Webflow form QA", priority: "P0", status: "WORKING_ON_TODAY" },
+        },
+      ],
+    });
+  }
+
   return insights;
 }
 
@@ -368,7 +465,441 @@ function buildFinanceInsights(data: AnalyticsDashboardData): AiInsight[] {
     });
   }
 
+  // 5. Budget variance — flag overspend categories
+  insights.push(...buildBudgetVarianceInsights(data, financeStale));
+
+  // 6. Runway vs. forecast — conservative scenario warns early
+  insights.push(...buildRunwayForecastInsights(data, financeStale));
+
+  // 7. P&L margin erosion detection
+  insights.push(...buildPnlMarginInsights(data, financeStale));
+
+  // 8. Unit economics health check
+  insights.push(...buildUnitEconomicsInsights(data, financeStale));
+
+  // 9. Burn rate trend (rising burn outpacing revenue growth)
+  insights.push(...buildBurnRateTrendInsights(data, financeStale));
+
+  // 10. Revenue vs. forecast gap
+  insights.push(...buildRevenueVsForecastInsights(data, financeStale));
+
   return insights;
+}
+
+// ── Financial Planning Sub-Insights ──────────────────────
+
+function buildBudgetVarianceInsights(
+  data: AnalyticsDashboardData,
+  stale: boolean,
+): AiInsight[] {
+  const mercury = data.mercury;
+  if (!mercury) return [];
+
+  const items = computeBudgetActuals(mercury);
+  const summary = computeBudgetSummary(items);
+
+  if (summary.overspendCategories.length === 0) return [];
+
+  const worstItem = items.reduce((a, b) =>
+    b.variancePct > a.variancePct ? b : a,
+  );
+  const overCount = summary.overspendCategories.length;
+
+  return [
+    {
+      id: "ai-finance-budget-variance",
+      section: "finance",
+      subsectionId: "finance-planning",
+      severity: worstItem.variancePct > 25 || overCount >= 3 ? "critical" : "warning",
+      title: `${overCount} expense ${overCount === 1 ? "category" : "categories"} over budget`,
+      why: `${worstItem.category} is ${worstItem.variancePct.toFixed(1)}% over budget ($${worstItem.actual.toLocaleString()} vs $${worstItem.budgeted.toLocaleString()}). Total spend variance: ${summary.totalVariancePct.toFixed(1)}%.`,
+      confidence: clampConfidence(0.84),
+      expectedImpact: "Correcting overspend categories can save 10-20% on monthly operating expenses.",
+      stale,
+      evidence: [
+        {
+          source: "Budget Analysis",
+          domain: "financePlanning",
+          metric: "Worst Overspend",
+          value: `${worstItem.category}: +${worstItem.variancePct.toFixed(1)}%`,
+          delta: `$${Math.abs(worstItem.variance).toLocaleString()} over`,
+        },
+        {
+          source: "Budget Analysis",
+          domain: "financePlanning",
+          metric: "Total Variance",
+          value: `${summary.totalVariancePct.toFixed(1)}%`,
+          delta: `${overCount} categories over budget`,
+        },
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: `Review ${worstItem.category} spend`,
+          payload: {
+            title: `Budget variance audit: ${worstItem.category}`,
+            priority: "P1",
+            status: "QUEUED",
+          },
+        },
+      ],
+    },
+  ];
+}
+
+function buildRunwayForecastInsights(
+  data: AnalyticsDashboardData,
+  stale: boolean,
+  ): AiInsight[] {
+    if (!data.stripe && !data.mercury) return [];
+
+    const scenarios = buildDefaultScenarios(data.stripe ?? null, data.mercury ?? null);
+    const conservative = scenarios.find((s) => s.id === "default-conservative");
+    const base = scenarios.find((s) => s.id === "default-base");
+
+    if (!conservative || !base) return [];
+
+    // Only alert when conservative scenario shows significantly shorter runway
+    if (conservative.runwayMonths === null || base.runwayMonths === null) return [];
+    const runwayGap = base.runwayMonths - conservative.runwayMonths;
+    if (conservative.runwayMonths >= 12 || runwayGap < 3) return [];
+
+    return [
+      {
+        id: "ai-finance-forecast-runway",
+        section: "finance",
+        subsectionId: "finance-forecast",
+        severity: conservative.runwayMonths < 6 ? "critical" : "warning",
+        title: "Conservative forecast shows shortened runway",
+        why: `Under conservative assumptions (growth Δ ${conservative.assumptions.revenueGrowthRate.toFixed(0)}%, churn Δ ${conservative.assumptions.churnRateDelta.toFixed(0)}pp), runway drops to ${conservative.runwayMonths.toFixed(1)} months — ${runwayGap.toFixed(1)} months shorter than base case.`,
+        confidence: clampConfidence(0.80),
+        expectedImpact: "Scenario planning enables proactive cost cuts before runway becomes critical.",
+        stale,
+        evidence: [
+          {
+            source: "Forecast Engine",
+            domain: "financeForecast",
+            metric: "Conservative Runway",
+            value: `${conservative.runwayMonths.toFixed(1)} months`,
+            delta: `${runwayGap.toFixed(1)}mo shorter than base`,
+          },
+          {
+            source: "Forecast Engine",
+            domain: "financeForecast",
+            metric: "Base Runway",
+            value: `${base.runwayMonths.toFixed(1)} months`,
+            delta: `growth Δ ${base.assumptions.revenueGrowthRate.toFixed(0)}%`,
+          },
+        ],
+        actions: [
+          {
+            type: "create_task",
+          label: "Create contingency cost-reduction plan",
+          payload: {
+            title: "Contingency plan for conservative runway scenario",
+            priority: "P1",
+            status: "QUEUED",
+          },
+        },
+      ],
+    },
+  ];
+}
+
+function buildPnlMarginInsights(
+  data: AnalyticsDashboardData,
+  stale: boolean,
+): AiInsight[] {
+  if (!data.stripe && !data.mercury) return [];
+
+  const pnl = buildProfitAndLoss(data.stripe ?? null, data.mercury ?? null);
+
+  // Flag when operating margin is negative or gross margin is deteriorating
+  if (pnl.operatingMargin >= 0 && pnl.grossMargin >= 60) return [];
+
+  const insights: AiInsight[] = [];
+
+  if (pnl.operatingMargin < -20) {
+    insights.push({
+      id: "ai-finance-pnl-operating-loss",
+      section: "finance",
+      subsectionId: "finance-pnl",
+      severity: pnl.operatingMargin < -40 ? "critical" : "warning",
+      title: "Operating margin deeply negative",
+      why: `Operating margin is ${pnl.operatingMargin.toFixed(1)}% — expenses of $${Math.abs(pnl.netIncome).toLocaleString()} exceed revenue. Net loss: $${Math.abs(pnl.netIncome).toLocaleString()}.`,
+      confidence: clampConfidence(0.88),
+      expectedImpact: "Reaching breakeven or reducing losses extends runway and improves fundraising position.",
+      stale,
+      evidence: [
+        {
+          source: "P&L Statement",
+          domain: "financePnl",
+          metric: "Operating Margin",
+          value: `${pnl.operatingMargin.toFixed(1)}%`,
+          delta: `Net income: $${pnl.netIncome.toLocaleString()}`,
+        },
+        {
+          source: "P&L Statement",
+          domain: "financePnl",
+          metric: "Gross Margin",
+          value: `${pnl.grossMargin.toFixed(1)}%`,
+          delta: `Previous net: $${pnl.previousNetIncome.toLocaleString()}`,
+        },
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: "Build path-to-breakeven model",
+          payload: {
+            title: "Operating margin improvement roadmap",
+            priority: "P1",
+            status: "QUEUED",
+          },
+        },
+      ],
+    });
+  }
+
+  if (pnl.grossMargin < 60 && pnl.grossMargin > 0) {
+    insights.push({
+      id: "ai-finance-pnl-gross-margin",
+      section: "finance",
+      subsectionId: "finance-pnl",
+      severity: pnl.grossMargin < 40 ? "critical" : "warning",
+      title: "Gross margin below SaaS benchmarks",
+      why: `Gross margin is ${pnl.grossMargin.toFixed(1)}% — healthy SaaS companies target 60-80%. Low margin limits reinvestment capacity.`,
+      confidence: clampConfidence(0.82),
+      expectedImpact: "Improving gross margin by 10pp unlocks significant capital for growth investment.",
+      stale,
+      evidence: [
+        {
+          source: "P&L Statement",
+          domain: "financePnl",
+          metric: "Gross Margin",
+          value: `${pnl.grossMargin.toFixed(1)}%`,
+          delta: "Target: 60-80%",
+        },
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: "Audit COGS and hosting costs",
+          payload: {
+            title: "Gross margin optimization: reduce COGS",
+            priority: "P2",
+            status: "QUEUED",
+          },
+        },
+      ],
+    });
+  }
+
+  return insights;
+}
+
+function buildUnitEconomicsInsights(
+  data: AnalyticsDashboardData,
+  stale: boolean,
+): AiInsight[] {
+  if (!data.stripe) return [];
+
+  const ue = computeUnitEconomics(
+    data.stripe,
+    data.mercury ?? null,
+    data.hubspot ?? null,
+  );
+
+  const insights: AiInsight[] = [];
+
+  // LTV:CAC ratio check — healthy is 3:1+, warning below 2:1
+  if (ue.cac > 0 && ue.ltvCacRatio < 2) {
+    insights.push({
+      id: "ai-finance-ltv-cac",
+      section: "finance",
+      subsectionId: "finance-unit-economics",
+      severity: ue.ltvCacRatio < 1 ? "critical" : "warning",
+      title: "LTV:CAC ratio below efficient threshold",
+      why: `LTV:CAC is ${ue.ltvCacRatio.toFixed(1)}x (LTV: $${ue.ltv.toLocaleString()}, CAC: $${ue.cac.toLocaleString()}). Healthy SaaS targets 3:1+. Payback: ${ue.paybackMonths.toFixed(1)} months.`,
+      confidence: clampConfidence(0.83),
+      expectedImpact: "Improving LTV:CAC to 3:1 through lower CAC or higher retention makes unit economics sustainable.",
+      stale,
+      evidence: [
+        {
+          source: "Unit Economics",
+          domain: "financeUnitEconomics",
+          metric: "LTV:CAC",
+          value: `${ue.ltvCacRatio.toFixed(1)}x`,
+          delta: `LTV $${ue.ltv.toLocaleString()} / CAC $${ue.cac.toLocaleString()}`,
+        },
+        {
+          source: "Unit Economics",
+          domain: "financeUnitEconomics",
+          metric: "Payback Period",
+          value: `${ue.paybackMonths.toFixed(1)} months`,
+          delta: `ARPA: $${ue.arpa.toLocaleString()}`,
+        },
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: "Create unit economics improvement plan",
+          payload: {
+            title: "LTV:CAC optimization — reduce CAC or improve retention",
+            priority: "P1",
+            status: "QUEUED",
+          },
+        },
+      ],
+    });
+  }
+
+  // Long payback period — flag when > 18 months
+  if (ue.paybackMonths > 18 && ue.cac > 0) {
+    insights.push({
+      id: "ai-finance-payback-long",
+      section: "finance",
+      subsectionId: "finance-unit-economics",
+      severity: ue.paybackMonths > 24 ? "critical" : "warning",
+      title: "CAC payback period exceeds healthy range",
+      why: `Payback period is ${ue.paybackMonths.toFixed(1)} months — sustainable SaaS targets under 12-18 months. Long payback strains cash and limits growth investment.`,
+      confidence: clampConfidence(0.79),
+      expectedImpact: "Shortening payback by 6 months frees working capital for faster growth.",
+      stale,
+      evidence: [
+        {
+          source: "Unit Economics",
+          domain: "financeUnitEconomics",
+          metric: "Payback Period",
+          value: `${ue.paybackMonths.toFixed(1)} months`,
+          delta: "Target: <18 months",
+        },
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: "Review pricing and onboarding efficiency",
+          payload: {
+            title: "Payback period reduction sprint",
+            priority: "P2",
+            status: "QUEUED",
+          },
+        },
+      ],
+    });
+  }
+
+  return insights;
+}
+
+function buildBurnRateTrendInsights(
+  data: AnalyticsDashboardData,
+  stale: boolean,
+): AiInsight[] {
+  const burnRate = data.mercury?.cashFlow?.burnRate ?? 0;
+  const revenueGrowth = data.stripe?.revenue?.revenueGrowth ?? 0;
+  const mrr = data.stripe?.revenue?.mrr ?? 0;
+
+  if (burnRate <= 0 || mrr <= 0) return [];
+
+  // Burn-to-revenue ratio — unhealthy when burn > 2x revenue
+  const burnRevenueRatio = burnRate / mrr;
+  if (burnRevenueRatio <= 2) return [];
+
+  return [
+    {
+      id: "ai-finance-burn-rate-trend",
+      section: "finance",
+      subsectionId: "finance-mercury",
+      severity: burnRevenueRatio > 3 ? "critical" : "warning",
+      title: "Burn rate significantly outpacing revenue",
+      why: `Monthly burn ($${burnRate.toLocaleString()}) is ${burnRevenueRatio.toFixed(1)}x MRR ($${mrr.toLocaleString()}). Revenue growth at ${revenueGrowth.toFixed(1)}% may not close the gap fast enough.`,
+      confidence: clampConfidence(0.86),
+      expectedImpact: "Reducing burn-to-revenue ratio below 2x is critical for sustainable growth.",
+      stale,
+      evidence: [
+        {
+          source: "Mercury",
+          domain: "mercury",
+          metric: "Burn Rate",
+          value: `$${burnRate.toLocaleString()}/mo`,
+          delta: `${burnRevenueRatio.toFixed(1)}x MRR`,
+        },
+        {
+          source: "Stripe",
+          domain: "stripe",
+          metric: "MRR",
+          value: `$${mrr.toLocaleString()}`,
+          delta: `Growth: ${revenueGrowth.toFixed(1)}%`,
+        },
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: "Create burn-reduction roadmap",
+          payload: {
+            title: "Burn rate reduction and efficiency plan",
+            priority: "P0",
+            status: "WORKING_ON_TODAY",
+          },
+        },
+      ],
+    },
+  ];
+}
+
+function buildRevenueVsForecastInsights(
+  data: AnalyticsDashboardData,
+  stale: boolean,
+  ): AiInsight[] {
+    if (!data.stripe) return [];
+
+    const scenarios = buildDefaultScenarios(data.stripe ?? null, data.mercury ?? null);
+    const base = scenarios.find((s) => s.id === "default-base");
+    if (!base || base.months.length < 1) return [];
+
+    // Compare current MRR to month-0 of forecast — detect if already behind
+    const currentMrr = data.stripe?.revenue?.mrr ?? 0;
+    const forecastMonth1 = base.months[0]?.projectedMrr ?? 0;
+
+  if (forecastMonth1 <= 0 || currentMrr <= 0) return [];
+
+  // If current MRR is >15% below what the forecast projects for next month
+  const gap = ((forecastMonth1 - currentMrr) / currentMrr) * 100;
+  if (gap < 15) return [];
+
+  return [
+    {
+      id: "ai-finance-revenue-vs-forecast",
+      section: "finance",
+      subsectionId: "finance-forecast",
+      severity: gap > 30 ? "critical" : "warning",
+      title: "Revenue tracking below forecast trajectory",
+      why: `Current MRR ($${currentMrr.toLocaleString()}) needs to grow ${gap.toFixed(1)}% to meet base forecast of $${forecastMonth1.toLocaleString()} next month. Growth assumptions may be too aggressive.`,
+      confidence: clampConfidence(0.77),
+      expectedImpact: "Adjusting forecast expectations or accelerating growth initiatives keeps planning grounded in reality.",
+      stale,
+      evidence: [
+        {
+          source: "Forecast Engine",
+          domain: "financeForecast",
+          metric: "Forecast Gap",
+          value: `${gap.toFixed(1)}% below`,
+          delta: `$${currentMrr.toLocaleString()} vs $${forecastMonth1.toLocaleString()}`,
+        },
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: "Recalibrate revenue forecast assumptions",
+          payload: {
+            title: "Forecast recalibration with updated growth inputs",
+            priority: "P2",
+            status: "QUEUED",
+          },
+        },
+      ],
+    },
+  ];
 }
 
 // ── Sales & Pipeline ─────────────────────────────────────
@@ -727,6 +1258,89 @@ function buildCrossdomainInsights(data: AnalyticsDashboardData): AiInsight[] {
           payload: { title: "Deal size optimization initiative", priority: "P1", status: "QUEUED" },
         },
       ],
+    });
+  }
+
+  // 4. Marketing intent mismatch: High traffic/demos but critical no-show rate
+  const gaSessions = data.googleAnalytics?.sessions30d ?? 0;
+  const demoScheduled = data.demoAnalytics?.totalScheduled ?? 0;
+  const noShowRate = data.demoAnalytics?.noShowRate ?? 0;
+  if (gaSessions > 2000 && demoScheduled > 10 && noShowRate > 35) {
+    insights.push({
+      id: "ai-xd-traffic-vs-noshow",
+      section: "demo-analytics",
+      severity: "critical",
+      title: "Marketing traffic is generating low-intent demos",
+      why: `${gaSessions.toLocaleString()} sessions drove ${demoScheduled} demos, but the no-show rate is ${noShowRate.toFixed(1)}%. Traffic quality or booking friction is an issue.`,
+      confidence: clampConfidence(0.89),
+      expectedImpact: "Adding qualification friction to the booking form can improve sales efficiency and demo attendance.",
+      stale: data.staleDomains.includes("googleAnalytics") || data.staleDomains.includes("demoAnalytics"),
+      crossDomain: true,
+      evidence: [
+        {
+          source: "Google Analytics",
+          domain: "googleAnalytics",
+          metric: "Traffic",
+          value: `${gaSessions.toLocaleString()} sessions`,
+          delta: "30d period",
+        },
+        {
+          source: "Demo Analytics",
+          domain: "demoAnalytics",
+          metric: "No-Show Rate",
+          value: `${noShowRate.toFixed(1)}%`,
+          delta: `${demoScheduled} booked`,
+        }
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: "Add qualification questions to demo form",
+          payload: { title: "Demo booking form qualification step", priority: "P1", status: "QUEUED" }
+        }
+      ]
+    });
+  }
+
+  // 5. Product delivery risk vs Runway
+  const runwayNew = data.mercury?.cashFlow?.runway ?? 0;
+  const backlogGrowth = data.product?.backlogGrowth ?? 0;
+  const throughputRate = data.product?.throughputRate ?? 0;
+
+  if (runwayNew > 0 && runwayNew < 6 && backlogGrowth > 10 && throughputRate < 0.5) {
+    insights.push({
+      id: "ai-xd-runway-vs-product",
+      section: "finance",
+      severity: runwayNew < 4 ? "critical" : "warning",
+      title: "Product delivery stalled while runway is critically low",
+      why: `Runway is ${runwayNew.toFixed(1)} months but product throughput is only ${(throughputRate * 100).toFixed(0)}% with a growing backlog. Risk of missing key milestones before next fundraise.`,
+      confidence: clampConfidence(0.85),
+      expectedImpact: "Scoping down near-term roadmap to strictly revenue-unlocking features extends runway.",
+      stale: data.staleDomains.includes("mercury") || data.staleDomains.includes("codaOps"),
+      crossDomain: true,
+      evidence: [
+        {
+          source: "Mercury",
+          domain: "mercury",
+          metric: "Runway",
+          value: `${runwayNew.toFixed(1)} months`,
+          delta: "Critical window",
+        },
+        {
+          source: "Product Signals",
+          domain: "product",
+          metric: "Throughput",
+          value: `${(throughputRate * 100).toFixed(0)}%`,
+          delta: `${backlogGrowth} tickets added`,
+        }
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: "Urgent roadmap reprioritization",
+          payload: { title: "Cut scope to minimum rev-generating features", priority: "P0", status: "WORKING_ON_TODAY" }
+        }
+      ]
     });
   }
 

@@ -61,6 +61,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           providerKey: {
             in: [
               "hubspot",
+              "salesPerformance",
               "stripe",
               "mercury",
               "googleAnalytics",
@@ -114,11 +115,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const domainConnected: Record<AnalyticsSubSection["dataDomain"], boolean> = {
       hubspot: Boolean(creds.hubspotToken),
+      salesPerformance: Boolean(creds.hubspotToken),
       stripe: Boolean(creds.stripeKey),
       mercury: Boolean(creds.mercuryKey),
       googleWorkspace: Boolean(creds.googleWorkspaceAccessToken),
       slack: Boolean(creds.slackAccessToken),
-      googleAnalytics: Boolean(creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey),
+      googleAnalytics: Boolean(
+        creds.gaPropertyId &&
+          ((creds.gaClientEmail && creds.gaPrivateKey) ||
+            (process.env.GA_REFRESH_TOKEN &&
+              process.env.GOOGLE_CLIENT_ID &&
+              process.env.GOOGLE_CLIENT_SECRET))
+      ),
       googleAds: Boolean(
         creds.googleAdsDevToken &&
           creds.googleAdsCustomerId &&
@@ -135,6 +143,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       coda: Boolean(creds.codaApiToken && creds.codaDocId),
       semrush: Boolean(creds.semrushApiToken && creds.semrushDomain),
       pylon: Boolean(creds.pylonApiKey),
+      financePlanning: Boolean(creds.stripeKey || creds.mercuryKey),
+      financeForecast: Boolean(creds.stripeKey || creds.mercuryKey),
+      financePnl: Boolean(creds.stripeKey || creds.mercuryKey),
+      financeUnitEconomics: Boolean(creds.stripeKey),
       product: true,
       decisionDashboard: true,
       flowMetrics: true,
@@ -147,6 +159,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const domainSnapshotKey: Partial<Record<AnalyticsSubSection["dataDomain"], string>> = {
       hubspot: "hubspot",
+      salesPerformance: "salesPerformance",
       stripe: "stripe",
       mercury: "mercury",
       googleWorkspace: "googleWorkspace",

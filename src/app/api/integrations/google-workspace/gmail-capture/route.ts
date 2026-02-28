@@ -11,6 +11,7 @@ import {
   serializeGmailRuleState,
   type GmailCaptureRuleConfig,
 } from "@/lib/integrations/google-gmail-capture";
+import { withSyncObservability } from "@/lib/integrations/sync-observability";
 
 interface SyncRequestBody {
   action?: "sync" | "configure";
@@ -86,10 +87,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       });
     }
 
-    const result = await runGmailCapture({
-      userId: session.user.id,
-      dryRun: body.dryRun,
-    });
+    const result = await withSyncObservability(
+      "google_gmail", "gmail-capture", session.user.id,
+      () => runGmailCapture({ userId: session.user.id, dryRun: body.dryRun }),
+      { dryRun: body.dryRun },
+    );
 
     return NextResponse.json({
       ok: true,

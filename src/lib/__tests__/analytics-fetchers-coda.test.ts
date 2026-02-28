@@ -13,6 +13,71 @@ describe("coda analytics fetcher", () => {
     vi.restoreAllMocks();
   });
 
+  it("filters cards by provided date range and builds recent submitters summary", async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [{ id: "grid-tasks", name: "Tasks" }],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            { id: "col-1", name: "Name" },
+            { id: "col-2", name: "Status" },
+            { id: "col-3", name: "Created By" },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            // In range, has email
+            {
+              id: "row-in-1",
+              createdAt: "2026-02-10T10:00:00.000Z",
+              updatedAt: "2026-02-10T10:00:00.000Z",
+              values: ["Card A", "Backlog", { name: "Alice", email: "alice@example.com" }],
+            },
+            // In range, missing email
+            {
+              id: "row-in-2",
+              createdAt: "2026-02-12T10:00:00.000Z",
+              updatedAt: "2026-02-12T10:00:00.000Z",
+              values: ["Card B", "Active", { name: "No Email" }],
+            },
+            // Out of range
+            {
+              id: "row-out-1",
+              createdAt: "2026-01-15T10:00:00.000Z",
+              updatedAt: "2026-01-15T10:00:00.000Z",
+              values: ["Card C", "Done", { name: "Bob", email: "bob@example.com" }],
+            },
+          ],
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchCodaData("token", "doc-id", {
+      creatorColumn: "Created By",
+      fromDate: new Date("2026-02-01T00:00:00.000Z"),
+      toDate: new Date("2026-02-28T23:59:59.999Z"),
+    });
+
+    expect(data.totalCards).toBe(2);
+    expect(data.rangeSummary?.cardsCreated).toBe(2);
+    expect(data.rangeSummary?.submissions).toBe(1);
+    expect(data.rangeSummary?.unknownEmailCards).toBe(1);
+    expect(data.rangeSummary?.from).toBe("2026-02-01");
+    expect(data.rangeSummary?.to).toBe("2026-02-28");
+
+    expect(data.recentSubmitters?.length).toBe(1);
+    expect(data.recentSubmitters?.[0]?.email).toBe("alice@example.com");
+    expect(data.recentSubmitters?.[0]?.cardsCreated).toBe(1);
+  });
+
   it("uses explicit creator column override and builds creator intelligence windows", async () => {
     const fetchMock = vi.fn();
     fetchMock

@@ -1,4 +1,4 @@
-import type { IntegrationDefinition, OAuthIntegrationDefinition } from "@/lib/integrations/catalog";
+import type { IntegrationDefinition } from "@/lib/integrations/catalog";
 import { isOAuthIntegration } from "@/lib/integrations/catalog";
 
 export interface ScopeValidationResult {
@@ -49,8 +49,21 @@ export function validateGrantedScopes(
     return { valid: true, missing: [] };
   }
 
-  const grantedSet = new Set(granted);
-  const missing = required.filter((scope) => !grantedSet.has(scope));
+  const canonicalizeScope = (scope: string): string => {
+    switch (scope) {
+      case "https://www.googleapis.com/auth/userinfo.email":
+        return "email";
+      case "https://www.googleapis.com/auth/userinfo.profile":
+        return "profile";
+      default:
+        return scope;
+    }
+  };
+
+  const grantedSet = new Set(granted.map(canonicalizeScope));
+  const missing = required.filter(
+    (scope) => !grantedSet.has(canonicalizeScope(scope))
+  );
 
   return {
     valid: missing.length === 0,

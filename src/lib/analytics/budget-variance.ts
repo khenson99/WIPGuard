@@ -71,7 +71,7 @@ function estimateOutflowMultiplier(budget: BudgetData): number {
  * When `mercury` is null (disconnected / unavailable), all actuals fields
  * are returned as null.
  */
-export function computeBudgetActuals(
+function computeBudgetActualsCore(
   budget: BudgetData,
   mercury: MercuryData | null,
 ): BudgetLineItemData[] {
@@ -136,7 +136,7 @@ export function computeBudgetActuals(
  * - `totalVariance` — `totalActual - totalPlanned`, or null when totalActual
  *    is null.
  */
-export function computeBudgetSummary(
+function computeBudgetSummaryCore(
   lineItems: BudgetLineItemData[],
 ): { totalPlanned: number; totalActual: number | null; totalVariance: number | null } {
   const totalPlanned = round2(
@@ -168,11 +168,169 @@ export function computeBudgetSummary(
  *
  * Used by the insight engine to surface budget alerts.
  */
+/** Return categories over budget from BudgetActualItem rows. */
+export function identifyOverspendCategories(
+  items: BudgetActualItem[],
+): string[];
+/** Return line items over budget from BudgetLineItemData rows. */
 export function identifyOverspendCategories(
   lineItems: BudgetLineItemData[],
+  threshold?: number,
+): BudgetLineItemData[];
+export function identifyOverspendCategories(
+  items: BudgetActualItem[] | BudgetLineItemData[],
   threshold: number = 15,
-): BudgetLineItemData[] {
-  return lineItems
+): string[] | BudgetLineItemData[] {
+  if (items.length === 0) return [];
+  // Discriminate: BudgetActualItem has `budgeted`.
+  if ("budgeted" in items[0]) {
+    return (items as BudgetActualItem[])
+      .filter((i) => i.status === "over")
+      .map((i) => i.category);
+  }
+  return (items as BudgetLineItemData[])
     .filter((item) => item.variancePct != null && item.variancePct > threshold)
     .sort((a, b) => (b.variancePct ?? 0) - (a.variancePct ?? 0));
+}
+
+// ---------------------------------------------------------------------------
+// BudgetActualItem — flat row type used by finance-planning-tab
+// ---------------------------------------------------------------------------
+
+export interface BudgetActualItem {
+  category: string;
+  budgeted: number;
+  actual: number;
+  variance: number;
+  variancePct: number;
+  status: "under" | "on_track" | "over";
+}
+
+/**
+ * Label-keyed expense ratios used by the simplified BudgetActualItem API.
+ * Keys match the CATEGORY_CONFIG labels in finance-planning-tab.
+ */
+export const EXPENSE_LABEL_RATIOS: Record<string, number> = {
+  "Cost of Goods Sold": 0.25,
+  "Payroll & Benefits": 0.35,
+  "Sales & Marketing": 0.15,
+  "Infrastructure & Hosting": 0.10,
+  "General & Administrative": 0.15,
+};
+
+const DEFAULT_LABELS = Object.keys(EXPENSE_LABEL_RATIOS);
+
+/** Determine status from variancePct using a 10% threshold. */
+function statusFromPct(pct: number): BudgetActualItem["status"] {
+  if (pct > 10) return "over";
+  if (pct < -10) return "under";
+  return "on_track";
+}
+
+/** Map a label->planned-amount record into BudgetActualItem rows. */
+function toBudgetActualItems(
+  mercury: MercuryData | null,
+  budgetAmounts?: Record<string, number>,
+): BudgetActualItem[] {
+  const totalOutflows = mercury?.cashFlow.outflows30d ?? 0;
+
+  // When no explicit budgets are provided, generate rows for each default
+  // label with a derived budget of actual * 1.1.
+  const labels = budgetAmounts ? Object.keys(budgetAmounts) : DEFAULT_LABELS;
+
+  const items: BudgetActualItem[] = labels.map((label) => {
+    const ratio = EXPENSE_LABEL_RATIOS[label] ?? 0;
+    const actual = round2(totalOutflows * ratio);
+    const planned = budgetAmounts?.[label] ?? round2(actual * 1.1);
+    const variance = round2(actual - planned);
+    const variancePct = planned === 0 ? (actual === 0 ? 0 : 100) : round2((variance / planned) * 100);
+    return {
+      category: label,
+      budgeted: planned,
+      actual,
+      variance,
+      variancePct,
+      status: statusFromPct(variancePct),
+    };
+  });
+
+  return items;
+}
+
+// ---------------------------------------------------------------------------
+// BudgetSummary — summary type used by finance-planning-tab
+// ---------------------------------------------------------------------------
+
+export interface BudgetSummary {
+  totalBudget: number;
+  totalActual: number;
+  totalVariance: number;
+  totalVariancePct: number;
+  overspendCategories: string[];
+  items: BudgetActualItem[];
+}
+
+function toBudgetSummary(items: BudgetActualItem[]): BudgetSummary {
+  const totalBudget = round2(items.reduce((s, i) => s + i.budgeted, 0));
+  const totalActual = round2(items.reduce((s, i) => s + i.actual, 0));
+  const totalVariance = round2(totalActual - totalBudget);
+  const totalVariancePct = totalBudget === 0
+    ? (totalActual === 0 ? 0 : 100)
+    : round2((totalVariance / totalBudget) * 100);
+  const overspendCategories = items
+    .filter((i) => i.status === "over")
+    .map((i) => i.category);
+  return { totalBudget, totalActual, totalVariance, totalVariancePct, overspendCategories, items };
+}
+
+// Re-export overloads so finance-planning-tab can call with the simpler
+// (mercury, budgetAmounts?) signature while the original BudgetData-based
+// signature continues to work.
+
+/** Compute budget-vs-actual items from Mercury data only (derives default budgets). */
+export function computeBudgetActuals(
+  mercury: MercuryData | null,
+): BudgetActualItem[];
+/** Compute budget-vs-actual items from Mercury data and a label->amount map. */
+export function computeBudgetActuals(
+  mercury: MercuryData | null,
+  budgetAmounts: Record<string, number> | undefined,
+): BudgetActualItem[];
+/** Compute budget-vs-actual items from a full BudgetData record. */
+export function computeBudgetActuals(
+  budget: BudgetData,
+  mercury: MercuryData | null,
+): BudgetLineItemData[];
+export function computeBudgetActuals(
+  first: MercuryData | null | BudgetData,
+  second?: MercuryData | null | Record<string, number>,
+): BudgetActualItem[] | BudgetLineItemData[] {
+  // Discriminate by checking for `lineItems` (BudgetData has it).
+  if (first != null && typeof first === "object" && "lineItems" in first) {
+    return computeBudgetActualsCore(first as BudgetData, second as MercuryData | null);
+  }
+  return toBudgetActualItems(
+    first as MercuryData | null,
+    second as Record<string, number> | undefined,
+  );
+}
+
+/** Compute budget summary from BudgetActualItem rows. */
+export function computeBudgetSummary(items: BudgetActualItem[]): BudgetSummary;
+/** Compute budget summary from BudgetLineItemData rows. */
+export function computeBudgetSummary(
+  items: BudgetLineItemData[],
+): { totalPlanned: number; totalActual: number | null; totalVariance: number | null };
+export function computeBudgetSummary(
+  items: BudgetActualItem[] | BudgetLineItemData[],
+): BudgetSummary | { totalPlanned: number; totalActual: number | null; totalVariance: number | null } {
+  if (items.length === 0) {
+    // Return BudgetSummary-shaped zero result by default.
+    return { totalBudget: 0, totalActual: 0, totalVariance: 0, totalVariancePct: 0, overspendCategories: [], items: [] };
+  }
+  // Discriminate: BudgetActualItem has `budgeted`, BudgetLineItemData has `plannedAmount`.
+  if ("budgeted" in items[0]) {
+    return toBudgetSummary(items as BudgetActualItem[]);
+  }
+  return computeBudgetSummaryCore(items as BudgetLineItemData[]);
 }

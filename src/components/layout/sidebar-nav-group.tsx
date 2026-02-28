@@ -6,80 +6,111 @@ import { usePathname } from "next/navigation";
 import { ChevronRight, ChevronDown } from "lucide-react";
 import { clsx } from "clsx";
 import type { NavItem } from "./sidebar-nav-config";
+import { ConnectionDot } from "@/components/analytics/connection-dot";
+import { useConnectionStatus } from "@/hooks/use-connection-status";
 
 const STORAGE_KEY = "sidebar:expanded";
 
-function readExpanded(): Set<string> {
-  if (typeof window === "undefined") return new Set();
+type SidebarExpandedPreference = {
+  /**
+   * When true: `ids` is the explicit allowlist of expanded group IDs.
+   * When false: `ids` is the explicit blocklist of collapsed group IDs.
+   */
+  explicit: boolean;
+  ids: Set<string>;
+};
+
+function parseIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((id): id is string => typeof id === "string" && id.trim().length > 0);
+}
+
+function readExpandedPreference(): SidebarExpandedPreference {
+  if (typeof window === "undefined") return { explicit: true, ids: new Set() };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+    if (!raw) {
+      return { explicit: true, ids: new Set() };
+    }
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) {
+      const ids = parseIds(parsed);
+      if (ids.length === 0) {
+        return { explicit: true, ids: new Set() };
+      }
+      return { explicit: true, ids: new Set(ids) };
+    }
+
+    if (!parsed || typeof parsed !== "object") {
+      return { explicit: true, ids: new Set() };
+    }
+
+    const record = parsed as Record<string, unknown>;
+    return {
+      explicit: record.explicit === true,
+      ids: new Set(parseIds(record.ids)),
+    };
   } catch {
-    return new Set();
+    return { explicit: true, ids: new Set() };
   }
 }
 
-function writeExpanded(ids: Set<string>): void {
+function writeExpandedPreference(preference: SidebarExpandedPreference): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...ids]));
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        ids: [...preference.ids],
+        explicit: preference.explicit,
+      }),
+    );
   } catch {
     // Ignore storage write failures.
   }
 }
 
-export type AnalyticsSectionStatus = "connected" | "partial" | "degraded" | "missing";
-
-const STATUS_DOT_CLASS: Record<AnalyticsSectionStatus, string> = {
-  connected: "bg-emerald-500",
-  partial: "bg-amber-500",
-  degraded: "bg-orange-500",
-  missing: "bg-muted-foreground/50",
-};
-
-function StatusDot({ status }: { status?: AnalyticsSectionStatus }) {
-  if (!status) return null;
-  return (
-    <span
-      className={clsx("h-1.5 w-1.5 rounded-full", STATUS_DOT_CLASS[status])}
-      title={`Status: ${status}`}
-      aria-label={`Status: ${status}`}
-    />
-  );
-}
-
-export function SidebarNavGroup({
-  item,
-  status,
-  childStatusMap,
-}: {
-  item: NavItem;
-  status?: AnalyticsSectionStatus;
-  childStatusMap?: Record<string, AnalyticsSectionStatus>;
-}) {
+export function SidebarNavGroup({ item }: { item: NavItem }) {
   const pathname = usePathname() ?? "";
+  const getStatus = useConnectionStatus((s) => s.getStatus);
 
   const isChildActive = item.children?.some((child) => {
     return pathname === child.href || pathname.startsWith(`${child.href}/`);
   });
   const isParentActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
-  const [storedExpanded, setStoredExpanded] = useState(() => {
-    return readExpanded().has(item.id);
+  const [preference, setPreference] = useState<SidebarExpandedPreference>(() => {
+    return readExpandedPreference();
   });
 
+  const storedExpanded = preference.explicit
+    ? preference.ids.has(item.id)
+    : !preference.ids.has(item.id);
   const expanded = storedExpanded || Boolean(isChildActive);
 
   const toggle = () => {
-    setStoredExpanded((previous) => {
-      const next = !previous;
-      const stored = readExpanded();
-      if (next) {
-        stored.add(item.id);
+    setPreference(() => {
+      const stored = readExpandedPreference();
+      const currentlyExpanded = stored.explicit
+        ? stored.ids.has(item.id)
+        : !stored.ids.has(item.id);
+
+      if (stored.explicit) {
+        if (currentlyExpanded) {
+          stored.ids.delete(item.id);
+        } else {
+          stored.ids.add(item.id);
+        }
       } else {
-        stored.delete(item.id);
+        if (currentlyExpanded) {
+          stored.ids.add(item.id);
+        } else {
+          stored.ids.delete(item.id);
+        }
       }
-      writeExpanded(stored);
-      return next;
+
+      writeExpandedPreference(stored);
+      return stored;
     });
   };
 
@@ -96,17 +127,14 @@ export function SidebarNavGroup({
         >
           <item.icon className="h-4 w-4" aria-hidden="true" />
           {item.label}
-          <span className="ml-auto">
-            <StatusDot status={status} />
-          </span>
         </Link>
         <button
           type="button"
           onClick={toggle}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+          className="ml-1 rounded-md p-2.5 text-muted-foreground hover:bg-secondary/70 hover:text-foreground active:bg-secondary"
           aria-label={expanded ? `Collapse ${item.label}` : `Expand ${item.label}`}
         >
-          {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
       </div>
 
@@ -125,7 +153,7 @@ export function SidebarNavGroup({
                 )}
               >
                 <span>{child.label}</span>
-                <StatusDot status={childStatusMap?.[child.id]} />
+                <ConnectionDot status={getStatus(child.dataDomain)} size="sm" />
               </Link>
             );
           })}

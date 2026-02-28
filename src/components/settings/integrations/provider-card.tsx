@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -73,6 +73,16 @@ interface ProviderCardProps {
   onCodaTokenChange: (value: string) => void;
   onCodaDocChange: (value: string) => void;
   onConnectCoda: () => Promise<void>;
+  semrushToken?: string;
+  semrushDomain?: string;
+  onSemrushTokenChange?: (value: string) => void;
+  onSemrushDomainChange?: (value: string) => void;
+  onConnectSemrush?: () => Promise<void>;
+  pylonToken?: string;
+  pylonBaseUrl?: string;
+  onPylonTokenChange?: (value: string) => void;
+  onPylonBaseUrlChange?: (value: string) => void;
+  onConnectPylon?: () => Promise<void>;
   onRuleReload: (ruleId: string) => Promise<void>;
   onRuleSave: (
     ruleId: string,
@@ -115,6 +125,16 @@ export function ProviderCard({
   onCodaTokenChange,
   onCodaDocChange,
   onConnectCoda,
+  semrushToken,
+  semrushDomain,
+  onSemrushTokenChange,
+  onSemrushDomainChange,
+  onConnectSemrush,
+  pylonToken,
+  pylonBaseUrl,
+  onPylonTokenChange,
+  onPylonBaseUrlChange,
+  onConnectPylon,
   onRuleReload,
   onRuleSave,
   onRuleRun,
@@ -148,31 +168,24 @@ export function ProviderCard({
   const health = getHealthTone(item);
 
   const [openRuleId, setOpenRuleId] = useState<string | null>(null);
-  const didUserToggleRuleRef = useRef(false);
+  const [didUserToggleRule, setDidUserToggleRule] = useState(false);
 
-  useEffect(() => {
-    if (!isExpanded || didUserToggleRuleRef.current) {
-      return;
+  const effectiveOpenRuleId = useMemo(() => {
+    if (!isExpanded) return null;
+
+    if (openRuleId && sortedRules.some((entry) => entry.descriptor.id === openRuleId)) {
+      return openRuleId;
     }
+
+    if (didUserToggleRule) return null;
 
     const firstFailingRule = sortedRules.find((entry) => Boolean(entry.state?.rule?.lastError));
-    setOpenRuleId(firstFailingRule?.descriptor.id ?? null);
-  }, [isExpanded, sortedRules]);
-
-  useEffect(() => {
-    if (!openRuleId) {
-      return;
-    }
-
-    const stillExists = sortedRules.some((entry) => entry.descriptor.id === openRuleId);
-    if (!stillExists) {
-      setOpenRuleId(null);
-    }
-  }, [openRuleId, sortedRules]);
+    return firstFailingRule?.descriptor.id ?? null;
+  }, [didUserToggleRule, isExpanded, openRuleId, sortedRules]);
 
   const toggleRule = (ruleId: string) => {
-    didUserToggleRuleRef.current = true;
-    setOpenRuleId((previous) => (previous === ruleId ? null : ruleId));
+    setDidUserToggleRule(true);
+    setOpenRuleId(effectiveOpenRuleId === ruleId ? null : ruleId);
   };
 
   return (
@@ -237,7 +250,7 @@ export function ProviderCard({
 
         <div className="flex flex-wrap items-center gap-1.5">
           {item.authType === "oauth" ? (
-            item.connected ? (
+            item.status === "CONNECTED" ? (
               <>
                 <button
                   type="button"
@@ -366,7 +379,7 @@ export function ProviderCard({
                     "Connect Coda"
                   )}
                 </button>
-                {item.connected ? (
+                {item.status === "CONNECTED" ? (
                   <button
                     type="button"
                     onClick={() => onDisconnect(item.slug)}
@@ -378,6 +391,63 @@ export function ProviderCard({
                 ) : null}
               </div>
               <p className="mt-1 text-xs text-muted-foreground">Current doc: {item.docId || "Not configured"}</p>
+            </div>
+          ) : null}
+
+          {item.slug === "pylon" ? (
+            <div className="rounded-lg border border-border p-3">
+              <p className="text-sm font-medium text-foreground">Pylon Connection</p>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  Pylon Base URL (optional)
+                  <input
+                    type="text"
+                    value={pylonBaseUrl ?? ""}
+                    onChange={(event) => onPylonBaseUrlChange?.(event.target.value)}
+                    placeholder="https://api.usepylon.com"
+                    className="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  Pylon API Token (optional if already saved)
+                  <input
+                    type="password"
+                    value={pylonToken ?? ""}
+                    onChange={(event) => onPylonTokenChange?.(event.target.value)}
+                    placeholder="pylon_..."
+                    className="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                  />
+                </label>
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={onConnectPylon}
+                  disabled={!onConnectPylon || loadingProviderAction === "pylon"}
+                  className="btn-primary-theme rounded-md px-3 py-1.5 text-xs disabled:opacity-60"
+                >
+                  {loadingProviderAction === "pylon" ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Saving...
+                    </span>
+                  ) : item.connected ? (
+                    "Save Pylon Settings"
+                  ) : (
+                    "Connect Pylon"
+                  )}
+                </button>
+                {item.status === "CONNECTED" ? (
+                  <button
+                    type="button"
+                    onClick={() => onDisconnect(item.slug)}
+                    disabled={loadingProviderAction === item.slug}
+                    className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-60"
+                  >
+                    Disconnect
+                  </button>
+                ) : null}
+              </div>
             </div>
           ) : null}
 
@@ -482,7 +552,7 @@ export function ProviderCard({
                     return null;
                   }
 
-                  const isOpen = openRuleId === descriptor.id;
+                  const isOpen = effectiveOpenRuleId === descriptor.id;
                   const rowStatus = getRuleStatusLabel(state);
                   const panelId = `${contentId}-${descriptor.id}`;
 

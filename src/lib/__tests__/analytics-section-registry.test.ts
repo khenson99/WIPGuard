@@ -47,6 +47,7 @@ describe("analytics section registry", () => {
     expect(getAnalyticsPrimaryForSection("sales-hubspot")?.id).toBe("sales-pipeline");
     expect(getAnalyticsPrimaryForSection("cs-pylon")?.id).toBe("customer-success");
     expect(getAnalyticsPrimaryForSection("cj-overview")?.id).toBe("customer-journey");
+    expect(getAnalyticsPrimaryForSection("cj-conversion")?.id).toBe("customer-journey");
     expect(getAnalyticsPrimaryForSection("demo-scheduling")?.id).toBe("demo-analytics");
     expect(getAnalyticsPrimaryForSection("process-bottlenecks")?.id).toBe("process-analytics");
     expect(getAnalyticsPrimaryForSection("missing")).toBeNull();

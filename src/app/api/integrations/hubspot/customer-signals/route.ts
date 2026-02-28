@@ -11,6 +11,7 @@ import {
   serializeHubSpotCustomerSignalRule,
   type HubSpotCustomerSignalConfig,
 } from "@/lib/integrations/hubspot-customer-signals";
+import { withSyncObservability } from "@/lib/integrations/sync-observability";
 
 interface HubSpotCustomerSignalRequestBody {
   action?: "sync" | "configure";
@@ -86,10 +87,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       });
     }
 
-    const result = await runHubSpotCustomerSignalAutomation({
-      userId: session.user.id,
-      dryRun: body.dryRun,
-    });
+    const result = await withSyncObservability(
+      "hubspot", "customer-signals", session.user.id,
+      () => runHubSpotCustomerSignalAutomation({ userId: session.user.id, dryRun: body.dryRun }),
+      { dryRun: body.dryRun },
+    );
 
     return NextResponse.json({
       ok: true,

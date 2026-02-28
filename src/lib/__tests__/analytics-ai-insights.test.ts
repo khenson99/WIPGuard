@@ -7,6 +7,7 @@ const { sortInsights } = __private__;
 function baseData(): AnalyticsDashboardData {
   return {
     hubspot: null,
+    salesPerformance: null,
     stripe: null,
     mercury: null,
     googleAnalytics: null,

@@ -11,6 +11,7 @@ import {
   serializeCodaDependencyGateRule,
   type CodaDependencyGateConfig,
 } from "@/lib/integrations/coda-dependency-gates";
+import { withSyncObservability } from "@/lib/integrations/sync-observability";
 
 interface CodaDependencyGateRequestBody {
   action?: "sync" | "configure";
@@ -86,10 +87,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       });
     }
 
-    const result = await runCodaDependencyGateAutomation({
-      userId: session.user.id,
-      dryRun: body.dryRun,
-    });
+    const result = await withSyncObservability(
+      "coda", "dependency-gates", session.user.id,
+      () => runCodaDependencyGateAutomation({ userId: session.user.id, dryRun: body.dryRun }),
+      { dryRun: body.dryRun },
+    );
 
     return NextResponse.json({
       ok: true,

@@ -10,6 +10,8 @@ import { buildOutboxIdempotencyKey, publishDomainEvent } from "@/lib/event-bus";
 import { prisma } from "@/lib/prisma";
 import { getNextColumnOrder } from "@/lib/task-order";
 import { protectIntegrationSecret, unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
+import { withRetries } from "@/lib/integrations/with-retries";
+import { isCircuitClosed, recordSuccess, recordFailure, CircuitOpenError, getCircuitState } from "@/lib/integrations/circuit-breaker";
 
 export const HUBSPOT_BIDIRECTIONAL_RULE_KEY = "hubspot_bidirectional_sync";
 
@@ -341,36 +343,49 @@ async function extractHubSpotAuth(input: {
     refresh_token: refreshToken,
   });
 
-  const response = await fetch(HUBSPOT_TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-    cache: "no-store",
-  });
+  const { accessToken, expiresIn, newRefreshToken, tokenType } = await withRetries(
+    async () => {
+      const response = await fetch(HUBSPOT_TOKEN_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+        cache: "no-store",
+      });
 
-  const payload = (await response.json().catch(() => null)) as unknown;
-  const payloadRecord = asRecord(payload);
+      const payloadRaw = (await response.json().catch(() => null)) as unknown;
+      const pr = asRecord(payloadRaw);
 
-  if (!response.ok) {
-    const message =
-      (typeof payloadRecord.error_description === "string" && payloadRecord.error_description) ||
-      (typeof payloadRecord.error === "string" && payloadRecord.error) ||
-      `HubSpot token refresh failed (${response.status})`;
-    throw new HubSpotBidirectionalAuthError(message);
-  }
+      if (!response.ok) {
+        const message =
+          (typeof pr.error_description === "string" && pr.error_description) ||
+          (typeof pr.error === "string" && pr.error) ||
+          `HubSpot token refresh failed (${response.status})`;
+        throw new HubSpotBidirectionalAuthError(message);
+      }
 
-  const accessToken =
-    typeof payloadRecord.access_token === "string" && payloadRecord.access_token.length > 0
-      ? payloadRecord.access_token
-      : null;
-  if (!accessToken) {
-    throw new HubSpotBidirectionalAuthError("HubSpot token refresh response missing access token");
-  }
+      const at =
+        typeof pr.access_token === "string" && pr.access_token.length > 0
+          ? pr.access_token
+          : null;
+      if (!at) {
+        throw new HubSpotBidirectionalAuthError("HubSpot token refresh response missing access token");
+      }
 
-  const expiresIn =
-    typeof payloadRecord.expires_in === "number" && Number.isFinite(payloadRecord.expires_in)
-      ? payloadRecord.expires_in
-      : null;
+      return {
+        accessToken: at,
+        expiresIn:
+          typeof pr.expires_in === "number" && Number.isFinite(pr.expires_in)
+            ? pr.expires_in
+            : null,
+        newRefreshToken:
+          typeof pr.refresh_token === "string" && pr.refresh_token.length > 0
+            ? pr.refresh_token
+            : null,
+        tokenType: typeof pr.token_type === "string" ? pr.token_type : null,
+      };
+    },
+    { maxAttempts: 2, baseDelayMs: 500, maxDelayMs: 2000 },
+  );
 
   const refreshed = await prisma.integrationConnection.update({
     where: {
@@ -381,12 +396,10 @@ async function extractHubSpotAuth(input: {
     },
     data: {
       accessToken: protectIntegrationSecret(accessToken),
-      refreshToken:
-        typeof payloadRecord.refresh_token === "string" && payloadRecord.refresh_token.length > 0
-          ? protectIntegrationSecret(payloadRecord.refresh_token)
-          : connection.refreshToken,
-      tokenType:
-        typeof payloadRecord.token_type === "string" ? payloadRecord.token_type : connection.tokenType,
+      refreshToken: newRefreshToken
+        ? protectIntegrationSecret(newRefreshToken)
+        : connection.refreshToken,
+      tokenType: tokenType ?? connection.tokenType,
       expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : connection.expiresAt,
       status: IntegrationConnectionStatus.CONNECTED,
       lastError: null,
@@ -625,6 +638,13 @@ export async function runHubSpotBidirectionalSync(input: {
       checkpoint,
     };
   }
+
+  const CB_PROVIDER = "hubspot";
+  if (!isCircuitClosed(CB_PROVIDER, input.userId)) {
+    throw new CircuitOpenError(CB_PROVIDER, input.userId, getCircuitState(CB_PROVIDER, input.userId));
+  }
+  let _cbSuccess = false;
+  try {
 
   let accessToken: string;
   try {
@@ -1003,6 +1023,7 @@ export async function runHubSpotBidirectionalSync(input: {
     },
   });
 
+  _cbSuccess = true;
   return {
     ruleId: rule.id,
     enabled: true,
@@ -1016,6 +1037,10 @@ export async function runHubSpotBidirectionalSync(input: {
     errors,
     checkpoint: checkpointOut,
   };
+  } finally {
+    if (_cbSuccess) recordSuccess(CB_PROVIDER, input.userId);
+    else recordFailure(CB_PROVIDER, input.userId);
+  }
 }
 
 export { getOrCreateHubSpotBidirectionalRule, parseDealIdFromExternalObjectId };

@@ -3,11 +3,14 @@ import {
   GoogleAdsData,
   MetaAdsData,
   MetaPageData,
+  InstagramData,
   RedditAdsData,
   AnalyticsTimestamp,
 } from "./types";
 
 type UnknownRecord = Record<string, unknown>;
+
+const META_GRAPH_VERSION = "v21.0";
 
 function makeMeta(source: "live" | "cached" = "live"): AnalyticsTimestamp {
   const now = new Date();
@@ -42,13 +45,59 @@ function readNumber(value: unknown): number {
   return 0;
 }
 
+function extractApiErrorMessage(payload: unknown): string | null {
+  const record = asRecord(payload);
+  if (!record) return null;
+
+  const nestedError = asRecord(record.error);
+  const candidates = [
+    nestedError?.message,
+    record.message,
+    record.error_description,
+    typeof record.error === "string" ? record.error : null,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      if (trimmed) return trimmed;
+    }
+  }
+
+  return null;
+}
+
 async function parseErrorBody(response: Response): Promise<string> {
   const text = await response.text().catch(() => "");
-  return text ? text.slice(0, 500) : response.statusText || "Unknown error";
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return response.statusText || "Unknown error";
+  }
+
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      const message = extractApiErrorMessage(parsed);
+      if (message) return message.slice(0, 500);
+    } catch {
+      // Fall back to raw text.
+    }
+  }
+
+  return trimmed.slice(0, 500);
+}
+
+function normalizeBearerToken(value: string): string {
+  return value.replace(/^Bearer\s+/i, "").trim();
 }
 
 function normalizeMetaAdAccountId(adAccountId: string): string {
   return adAccountId.trim().replace(/^act_/i, "");
+}
+
+function looksLikeMetaAppAccessToken(accessToken: string): boolean {
+  const normalized = accessToken.trim();
+  return Boolean(normalized && /^\d+\|/.test(normalized));
 }
 
 function extractMetaConversions(actions: unknown): number {
@@ -165,7 +214,9 @@ export async function fetchGoogleAdsData(
   refreshToken: string,
   clientId: string,
   clientSecret: string,
-  loginCustomerId?: string | null
+  loginCustomerId?: string | null,
+  from?: Date,
+  to?: Date
 ): Promise<GoogleAdsData> {
   const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -194,10 +245,14 @@ export async function fetchGoogleAdsData(
 
   const cleanCustomerId = customerId.replace(/-/g, "").trim();
   const cleanLoginCustomerId = loginCustomerId?.replace(/-/g, "").trim();
+  
+  const fromIso = (from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).toISOString().split("T")[0];
+  const toIso = (to || new Date()).toISOString().split("T")[0];
+
   const gaqlQuery = `
     SELECT campaign.name, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions
     FROM campaign
-    WHERE segments.date DURING LAST_30_DAYS AND campaign.status = 'ENABLED'
+    WHERE segments.date BETWEEN '${fromIso}' AND '${toIso}' AND campaign.status = 'ENABLED'
   `;
 
   const headers: Record<string, string> = {
@@ -210,7 +265,7 @@ export async function fetchGoogleAdsData(
   }
 
   const adsResponse = await fetch(
-    `https://googleads.googleapis.com/v17/customers/${cleanCustomerId}:searchStream`,
+    `https://googleads.googleapis.com/v21/customers/${cleanCustomerId}/googleAds:searchStream`,
     {
       method: "POST",
       headers,
@@ -295,14 +350,32 @@ export async function fetchGoogleAdsData(
  */
 export async function fetchMetaAdsData(
   accessToken: string,
-  adAccountId: string
+  adAccountId: string,
+  from?: Date,
+  to?: Date
 ): Promise<MetaAdsData> {
-  const accountId = normalizeMetaAdAccountId(adAccountId);
-  const encodedToken = encodeURIComponent(accessToken);
+  const token = normalizeBearerToken(accessToken);
+  if (looksLikeMetaAppAccessToken(token)) {
+    throw new Error(
+      "Meta Ads token error: META_ACCESS_TOKEN looks like an app access token (app_id|app_secret). WIPGuard requires a User/System User token with ads_read or ads_management and access to the configured ad account."
+    );
+  }
 
-  const insightsResponse = await fetch(
-    `https://graph.facebook.com/v18.0/act_${accountId}/insights?fields=spend,impressions,clicks,actions&date_preset=last_30d&level=account&access_token=${encodedToken}`
+  const accountId = normalizeMetaAdAccountId(adAccountId);
+  const baseHeaders = { Authorization: `Bearer ${token}` };
+
+  const fromIso = (from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).toISOString().split("T")[0];
+  const toIso = (to || new Date()).toISOString().split("T")[0];
+  const timeRange = JSON.stringify({ since: fromIso, until: toIso });
+
+  const insightsUrl = new URL(
+    `https://graph.facebook.com/${META_GRAPH_VERSION}/act_${accountId}/insights`
   );
+  insightsUrl.searchParams.set("fields", "spend,impressions,clicks,actions");
+  insightsUrl.searchParams.set("time_range", timeRange);
+  insightsUrl.searchParams.set("level", "account");
+
+  const insightsResponse = await fetch(insightsUrl, { headers: baseHeaders });
   if (!insightsResponse.ok) {
     throw new Error(
       `Meta Ads insights error (${insightsResponse.status}): ${await parseErrorBody(insightsResponse)}`
@@ -331,9 +404,13 @@ export async function fetchMetaAdsData(
     totalConversions = extractMetaConversions(accountInsight.actions);
   }
 
-  const campaignsResponse = await fetch(
-    `https://graph.facebook.com/v18.0/act_${accountId}/campaigns?fields=name,insights{spend,impressions,clicks,actions}&date_preset=last_30d&access_token=${encodedToken}`
+  const campaignsUrl = new URL(
+    `https://graph.facebook.com/${META_GRAPH_VERSION}/act_${accountId}/campaigns`
   );
+  campaignsUrl.searchParams.set("fields", "name,insights{spend,impressions,clicks,actions}");
+  campaignsUrl.searchParams.set("time_range", timeRange);
+
+  const campaignsResponse = await fetch(campaignsUrl, { headers: baseHeaders });
   if (!campaignsResponse.ok) {
     throw new Error(
       `Meta Ads campaigns error (${campaignsResponse.status}): ${await parseErrorBody(campaignsResponse)}`
@@ -399,14 +476,26 @@ export async function fetchMetaAdsData(
  */
 export async function fetchMetaPageData(
   accessToken: string,
-  pageId: string
+  pageId: string,
+  from?: Date,
+  to?: Date
 ): Promise<MetaPageData> {
-  const encodedToken = encodeURIComponent(accessToken);
+  const token = normalizeBearerToken(accessToken);
+  if (looksLikeMetaAppAccessToken(token)) {
+    throw new Error(
+      "Meta Page token error: META_ACCESS_TOKEN looks like an app access token (app_id|app_secret). WIPGuard requires a User/System User token with ads_read or ads_management and access to the configured Page."
+    );
+  }
+
+  const baseHeaders = { Authorization: `Bearer ${token}` };
   const normalizedPageId = pageId.trim();
 
-  const pageResponse = await fetch(
-    `https://graph.facebook.com/v18.0/${normalizedPageId}?fields=fan_count,followers_count&access_token=${encodedToken}`
+  const pageUrl = new URL(
+    `https://graph.facebook.com/${META_GRAPH_VERSION}/${normalizedPageId}`
   );
+  pageUrl.searchParams.set("fields", "fan_count,followers_count");
+
+  const pageResponse = await fetch(pageUrl, { headers: baseHeaders });
   if (!pageResponse.ok) {
     throw new Error(
       `Meta Page profile error (${pageResponse.status}): ${await parseErrorBody(pageResponse)}`
@@ -420,9 +509,17 @@ export async function fetchMetaPageData(
   const pageLikes = readNumber(pageData.fan_count);
   const pageFollowers = readNumber(pageData.followers_count);
 
-  const insightsResponse = await fetch(
-    `https://graph.facebook.com/v18.0/${normalizedPageId}/insights?metric=page_impressions,page_engaged_users&period=days_28&access_token=${encodedToken}`
+  const insightsUrl = new URL(
+    `https://graph.facebook.com/${META_GRAPH_VERSION}/${normalizedPageId}/insights`
   );
+  insightsUrl.searchParams.set("metric", "page_impressions,page_engaged_users");
+
+  const fromTime = Math.floor((from || new Date(Date.now() - 28 * 24 * 60 * 60 * 1000)).getTime() / 1000);
+  const toTime = Math.floor((to || new Date()).getTime() / 1000);
+  insightsUrl.searchParams.set("since", fromTime.toString());
+  insightsUrl.searchParams.set("until", toTime.toString());
+
+  const insightsResponse = await fetch(insightsUrl, { headers: baseHeaders });
   if (!insightsResponse.ok) {
     throw new Error(
       `Meta Page insights error (${insightsResponse.status}): ${await parseErrorBody(insightsResponse)}`
@@ -447,9 +544,16 @@ export async function fetchMetaPageData(
     }
   }
 
-  const postsResponse = await fetch(
-    `https://graph.facebook.com/v18.0/${normalizedPageId}/posts?fields=message,insights{metric(post_impressions,post_engaged_users)},created_time&limit=5&access_token=${encodedToken}`
+  const postsUrl = new URL(
+    `https://graph.facebook.com/${META_GRAPH_VERSION}/${normalizedPageId}/posts`
   );
+  postsUrl.searchParams.set(
+    "fields",
+    "message,insights{metric(post_impressions,post_engaged_users)},created_time"
+  );
+  postsUrl.searchParams.set("limit", "5");
+
+  const postsResponse = await fetch(postsUrl, { headers: baseHeaders });
   if (!postsResponse.ok) {
     throw new Error(
       `Meta Page posts error (${postsResponse.status}): ${await parseErrorBody(postsResponse)}`
@@ -496,6 +600,10 @@ export async function fetchMetaPageData(
     pageFollowers,
     postReach30d,
     postEngagement30d,
+    traffic: 0,
+    bounceRate: 0,
+    clicks: 0,
+    returningVisitors: 0,
     topPosts,
     _meta: makeMeta("live"),
   };
@@ -504,30 +612,143 @@ export async function fetchMetaPageData(
 export async function fetchMetaInstagramData(
   accessToken: string,
   instagramAccountId: string,
-  options?: { pageId?: string }
-): Promise<Record<string, unknown>> {
-  const encodedToken = encodeURIComponent(accessToken);
-  const accountId = instagramAccountId.trim();
-
-  const accountResponse = await fetch(
-    `https://graph.facebook.com/v18.0/${accountId}?fields=id,username,followers_count,media_count&access_token=${encodedToken}`
-  );
-  if (!accountResponse.ok) {
+  options?: { pageId?: string },
+  from?: Date,
+  to?: Date
+): Promise<InstagramData> {
+  const token = normalizeBearerToken(accessToken);
+  if (looksLikeMetaAppAccessToken(token)) {
     throw new Error(
-      `Meta Instagram profile error (${accountResponse.status}): ${await parseErrorBody(accountResponse)}`
+      "Meta Instagram token error: META_ACCESS_TOKEN looks like an app access token (app_id|app_secret). WIPGuard requires a User/System User token with ads_read or ads_management and access to the configured Instagram account."
     );
   }
 
-  const accountData = (await accountResponse.json()) as {
-    id?: string;
-    username?: string;
-    followers_count?: string | number;
-    media_count?: string | number;
+  const baseHeaders = { Authorization: `Bearer ${token}` };
+  const configuredAccountId = instagramAccountId.trim();
+
+  type InstagramProfile = {
+    id: string;
+    username: string | null;
+    followersCount: number;
+    mediaCount: number;
   };
 
-  const mediaResponse = await fetch(
-    `https://graph.facebook.com/v18.0/${accountId}/media?fields=id,caption,timestamp,like_count,comments_count&limit=25&access_token=${encodedToken}`
+  const isNonexistentUsernameError = (message: string): boolean => {
+    const normalized = message.toLowerCase();
+    return normalized.includes("nonexistent field") && normalized.includes("username");
+  };
+
+  const fetchInstagramProfile = async (accountId: string): Promise<InstagramProfile> => {
+    const accountUrl = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${accountId}`);
+    accountUrl.searchParams.set("fields", "id,username,followers_count,media_count");
+
+    const accountResponse = await fetch(accountUrl, { headers: baseHeaders });
+    if (!accountResponse.ok) {
+      throw new Error(
+        `Meta Instagram profile error (${accountResponse.status}): ${await parseErrorBody(accountResponse)}`
+      );
+    }
+
+    const accountData = (await accountResponse.json()) as {
+      id?: string;
+      username?: string;
+      followers_count?: string | number;
+      media_count?: string | number;
+    };
+
+    const id = String(accountData.id ?? "").trim();
+    if (!id) {
+      throw new Error("Meta Instagram profile error: response did not include an id.");
+    }
+
+    return {
+      id,
+      username: typeof accountData.username === "string" ? accountData.username : null,
+      followersCount: readNumber(accountData.followers_count),
+      mediaCount: readNumber(accountData.media_count),
+    };
+  };
+
+  const resolveInstagramProfileViaPage = async (
+    pageId: string
+  ): Promise<InstagramProfile | null> => {
+    const normalizedPageId = pageId.trim();
+    if (!normalizedPageId) return null;
+
+    const pageUrl = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${normalizedPageId}`);
+    pageUrl.searchParams.set(
+      "fields",
+      "instagram_business_account{id,username,followers_count,media_count},connected_instagram_account{id,username,followers_count,media_count}"
+    );
+
+    const pageResponse = await fetch(pageUrl, { headers: baseHeaders });
+    if (!pageResponse.ok) {
+      return null;
+    }
+
+    const pageData = (await pageResponse.json()) as {
+      instagram_business_account?: {
+        id?: string;
+        username?: string;
+        followers_count?: string | number;
+        media_count?: string | number;
+      } | null;
+      connected_instagram_account?: {
+        id?: string;
+        username?: string;
+        followers_count?: string | number;
+        media_count?: string | number;
+      } | null;
+    };
+
+    const candidate =
+      pageData.instagram_business_account ?? pageData.connected_instagram_account ?? null;
+    const id = String(candidate?.id ?? "").trim();
+    if (!id) return null;
+
+    return {
+      id,
+      username: typeof candidate?.username === "string" ? candidate.username : null,
+      followersCount: readNumber(candidate?.followers_count),
+      mediaCount: readNumber(candidate?.media_count),
+    };
+  };
+
+  let resolvedProfile: InstagramProfile | null =
+    options?.pageId?.trim() ? await resolveInstagramProfileViaPage(options.pageId) : null;
+
+  if (!resolvedProfile) {
+    try {
+      resolvedProfile = await fetchInstagramProfile(configuredAccountId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (isNonexistentUsernameError(message)) {
+        resolvedProfile = await resolveInstagramProfileViaPage(configuredAccountId);
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  if (!resolvedProfile) {
+    throw new Error(
+      "Meta Instagram configuration error: META_INSTAGRAM_ACCOUNT_ID is not an Instagram Business Account ID. Set META_PAGE_ID (or connect a Meta Page) so WIPGuard can resolve the linked instagram_business_account, or update the configured Instagram Account ID."
+    );
+  }
+
+  const mediaUrl = new URL(
+    `https://graph.facebook.com/${META_GRAPH_VERSION}/${resolvedProfile.id}/media`
   );
+  mediaUrl.searchParams.set("fields", "id,caption,timestamp,like_count,comments_count");
+  
+  const fromTime = Math.floor((from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).getTime() / 1000);
+  const toTime = Math.floor((to || new Date()).getTime() / 1000);
+  mediaUrl.searchParams.set("since", fromTime.toString());
+  mediaUrl.searchParams.set("until", toTime.toString());
+  
+  mediaUrl.searchParams.set("limit", "100");
+
+  const mediaResponse = await fetch(mediaUrl, { headers: baseHeaders });
   if (!mediaResponse.ok) {
     throw new Error(
       `Meta Instagram media error (${mediaResponse.status}): ${await parseErrorBody(mediaResponse)}`
@@ -554,17 +775,26 @@ export async function fetchMetaInstagramData(
 
   const engagement30d = media.reduce((sum, item) => sum + item.likes + item.comments, 0);
 
+  const topPosts = media.slice(0, 5).map((m) => ({
+    message: m.caption,
+    reach: m.likes + m.comments, // Using engagements as proxy reach if reach isn't pulled via insights
+    engagement: m.likes + m.comments,
+    createdAt: m.timestamp,
+  }));
+
   return {
-    accountId: accountData.id ?? accountId,
-    username: accountData.username ?? null,
-    followers: readNumber(accountData.followers_count),
-    mediaCount: readNumber(accountData.media_count),
+    followers: resolvedProfile.followersCount,
+    reach30d: engagement30d, // Using engagements as proxy for reach30d
     engagement30d,
-    linkedPageId: options?.pageId ?? null,
-    media,
+    traffic: 0,
+    bounceRate: 0,
+    clicks: 0,
+    returningVisitors: 0,
+    topPosts,
     _meta: makeMeta("live"),
   };
 }
+
 
 /**
  * Fetch Reddit Ads data for the last 30 days using v3 endpoints.
@@ -574,7 +804,9 @@ export async function fetchRedditAdsData(
   clientSecret: string,
   refreshToken: string,
   adAccountId: string,
-  userAgent?: string | null
+  userAgent?: string | null,
+  from?: Date,
+  to?: Date
 ): Promise<RedditAdsData> {
   const normalizedUserAgent = (userAgent || process.env.REDDIT_USER_AGENT || "WIPGuard/1.0").trim();
   const baseHeaders = {
@@ -635,8 +867,16 @@ export async function fetchRedditAdsData(
     campaignNameById.set(id, campaign.name || id);
   }
 
-  const now = new Date();
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const defaultTo = new Date();
+  const defaultFrom = new Date(defaultTo);
+  defaultFrom.setUTCDate(defaultFrom.getUTCDate() - 29);
+  defaultFrom.setUTCHours(0, 0, 0, 0);
+
+  const startsAt = from || defaultFrom;
+  const endsAt = to || defaultTo;
+
+  const startsAtIso = startsAt.toISOString().replace(/\.\d{3}Z$/, "Z");
+  const endsAtIso = endsAt.toISOString().replace(/\.\d{3}Z$/, "Z");
   const reportsResponse = await fetch(
     `https://ads-api.reddit.com/api/v3/ad_accounts/${cleanAccountId}/reports`,
     {
@@ -648,10 +888,11 @@ export async function fetchRedditAdsData(
       },
       body: JSON.stringify({
         data: {
-          starts_at: thirtyDaysAgo.toISOString().slice(0, 10),
-          ends_at: now.toISOString().slice(0, 10),
+          starts_at: startsAtIso,
+          ends_at: endsAtIso,
+          time_zone_id: "UTC",
           breakdowns: ["CAMPAIGN_ID"],
-          fields: ["CAMPAIGN_ID", "SPEND", "IMPRESSIONS", "CLICKS"],
+          fields: ["CAMPAIGN_ID", "SPEND", "IMPRESSIONS", "CLICKS", "CONVERSION_LEAD_COUNT", "CONVERSION_PURCHASE_COUNT", "CONVERSION_SIGN_UP_COUNT", "CONVERSION_CUSTOM_COUNT"],
         },
       }),
     }
@@ -659,7 +900,9 @@ export async function fetchRedditAdsData(
 
   if (!reportsResponse.ok) {
     throw new Error(
-      `Reddit reports error (${reportsResponse.status}): ${await parseErrorBody(reportsResponse)}`
+      `Reddit reports error (${reportsResponse.status}): ${await parseErrorBody(
+        reportsResponse
+      )}. starts_at=${startsAtIso} ends_at=${endsAtIso}`
     );
   }
 
@@ -672,7 +915,8 @@ export async function fetchRedditAdsData(
   let totalSpend = 0;
   let totalImpressions = 0;
   let totalClicks = 0;
-  const campaignRollup = new Map<string, { spend: number; impressions: number; clicks: number }>();
+  let totalConversions = 0;
+  const campaignRollup = new Map<string, { spend: number; impressions: number; clicks: number; conversions: number }>();
 
   for (const metricRaw of reportsPayload.data?.metrics ?? []) {
     const metric = asRecord(metricRaw);
@@ -681,15 +925,22 @@ export async function fetchRedditAdsData(
     const spend = extractRedditSpend(metric);
     const impressions = readNumber(metric.impressions ?? metric.IMPRESSIONS);
     const clicks = readNumber(metric.clicks ?? metric.CLICKS);
+    const conversions = 
+      readNumber(metric.conversion_lead_count ?? metric.CONVERSION_LEAD_COUNT) +
+      readNumber(metric.conversion_purchase_count ?? metric.CONVERSION_PURCHASE_COUNT) +
+      readNumber(metric.conversion_sign_up_count ?? metric.CONVERSION_SIGN_UP_COUNT) +
+      readNumber(metric.conversion_custom_count ?? metric.CONVERSION_CUSTOM_COUNT);
 
     totalSpend += spend;
     totalImpressions += impressions;
     totalClicks += clicks;
+    totalConversions += conversions;
 
-    const existing = campaignRollup.get(campaignId) ?? { spend: 0, impressions: 0, clicks: 0 };
+    const existing = campaignRollup.get(campaignId) ?? { spend: 0, impressions: 0, clicks: 0, conversions: 0 };
     existing.spend += spend;
     existing.impressions += impressions;
     existing.clicks += clicks;
+    existing.conversions += conversions;
     campaignRollup.set(campaignId, existing);
   }
 
@@ -701,7 +952,7 @@ export async function fetchRedditAdsData(
       spend: data.spend,
       impressions: data.impressions,
       clicks: data.clicks,
-      conversions: 0,
+      conversions: data.conversions,
       ctr,
       cpc,
     };
@@ -709,11 +960,14 @@ export async function fetchRedditAdsData(
 
   const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
   const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+  const cpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
 
   return {
     totalSpend30d: totalSpend,
     totalImpressions,
     totalClicks,
+    totalConversions,
+    cpa,
     ctr,
     cpc,
     campaigns,

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { Bot, Filter, PlusCircle, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Bot, Filter, PlusCircle, ShieldCheck } from "lucide-react";
 import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 
 type WorkflowListItem = {
@@ -47,20 +47,26 @@ export default function AutomationsPage() {
   const router = useRouter();
   const [data, setData] = useState<AutomationsResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [scopeFilter, setScopeFilter] = useState<"all" | "PRIVATE" | "SHARED">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | WorkflowListItem["status"]>("all");
   const [providerFilter, setProviderFilter] = useState<string>("all");
   const [healthFilter, setHealthFilter] = useState<"all" | "healthy" | "needs-attention" | "never-run">("all");
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const fetchData = async (signal?: AbortSignal) => {
+    setError(null);
     try {
       const response = await fetch("/api/automations", { signal });
       const payload = (await response.json()) as AutomationsResponse;
       if (signal?.aborted) return;
       setData(payload);
       writeSessionCache<AutomationsResponse>(AUTOMATIONS_CACHE_KEY, payload);
-    } catch {
+    } catch (err) {
       if (!signal?.aborted) {
+        setError("Failed to load workflows");
+        console.error(err);
         setData(null);
       }
     } finally {
@@ -127,48 +133,60 @@ export default function AutomationsPage() {
   }, [data, scopeFilter, statusFilter, providerFilter, healthFilter]);
 
   const createBlankWorkflow = async () => {
-    const response = await fetch("/api/automations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "New Workflow",
-        scope: "PRIVATE",
-        graph: {
-          nodes: [
-            {
-              key: "trigger_1",
-              type: "TRIGGER",
-              label: "Trigger",
-              config: {},
-              positionX: 80,
-              positionY: 80,
-            },
-          ],
-          edges: [],
-        },
-      }),
-    });
-
-    if (!response.ok) return;
-    const created = (await response.json()) as { id: string };
-    router.push(`/automations/${created.id}`);
+    setIsCreating(true);
+    setCreateError(null);
+    try {
+      const response = await fetch("/api/automations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "New Workflow",
+          scope: "PRIVATE",
+          graph: {
+            nodes: [
+              {
+                key: "trigger_1",
+                type: "TRIGGER",
+                label: "Trigger",
+                config: {},
+                positionX: 80,
+                positionY: 80,
+              },
+            ],
+            edges: [],
+          },
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to create workflow");
+      const created = (await response.json()) as { id: string };
+      router.push(`/automations/${created.id}`);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Failed to create workflow");
+      setIsCreating(false);
+    }
   };
 
   const createFromTemplate = async (template: TemplateItem) => {
-    const response = await fetch("/api/automations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: template.name,
-        description: template.description,
-        providers: template.providers,
-        graph: template.graph,
-      }),
-    });
-
-    if (!response.ok) return;
-    const created = (await response.json()) as { id: string };
-    router.push(`/automations/${created.id}`);
+    setIsCreating(true);
+    setCreateError(null);
+    try {
+      const response = await fetch("/api/automations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: template.name,
+          description: template.description,
+          providers: template.providers,
+          graph: template.graph,
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to create workflow");
+      const created = (await response.json()) as { id: string };
+      router.push(`/automations/${created.id}`);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Failed to create workflow");
+      setIsCreating(false);
+    }
   };
 
   return (
@@ -190,18 +208,26 @@ export default function AutomationsPage() {
           </Link>
           <button
             onClick={createBlankWorkflow}
-            className="btn-primary-theme flex items-center gap-1.5 rounded-md px-3 py-2 text-sm"
+            disabled={isCreating}
+            className="btn-primary-theme flex items-center gap-1.5 rounded-md px-3 py-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <PlusCircle className="h-4 w-4" />
-            New Workflow
+            {isCreating ? "Creating..." : "New Workflow"}
           </button>
         </div>
+        {createError && (
+          <div className="mt-2 flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs text-red-600 dark:text-red-400">
+            <span>{createError}</span>
+            <button type="button" onClick={() => setCreateError(null)} className="ml-auto text-red-500 hover:text-red-700">×</button>
+          </div>
+        )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-3 py-3">
+      <div role="group" aria-label="Workflow filters" className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-3 py-3">
         <Filter className="h-4 w-4 text-muted-foreground" />
 
         <select
+          aria-label="Filter by scope"
           value={scopeFilter}
           onChange={(event) => setScopeFilter(event.target.value as typeof scopeFilter)}
           className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
@@ -212,6 +238,7 @@ export default function AutomationsPage() {
         </select>
 
         <select
+          aria-label="Filter by status"
           value={statusFilter}
           onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
           className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
@@ -225,6 +252,7 @@ export default function AutomationsPage() {
         </select>
 
         <select
+          aria-label="Filter by provider"
           value={providerFilter}
           onChange={(event) => setProviderFilter(event.target.value)}
           className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
@@ -237,6 +265,7 @@ export default function AutomationsPage() {
         </select>
 
         <select
+          aria-label="Filter by health"
           value={healthFilter}
           onChange={(event) => setHealthFilter(event.target.value as typeof healthFilter)}
           className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
@@ -247,6 +276,22 @@ export default function AutomationsPage() {
           <option value="never-run">Never Run</option>
         </select>
       </div>
+
+      {error && (
+        <div className="flex items-center gap-3 rounded-xl border border-destructive/50 bg-destructive/10 px-4 py-3">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+          <p className="flex-1 text-sm text-destructive">{error}</p>
+          <button
+            onClick={() => {
+              setLoading(true);
+              void fetchData();
+            }}
+            className="rounded-md border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-foreground">Workflows</h2>
@@ -297,7 +342,8 @@ export default function AutomationsPage() {
               <p className="mt-2 text-[11px] text-muted-foreground">{template.providers.join(", ")}</p>
               <button
                 onClick={() => createFromTemplate(template)}
-                className="mt-3 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+                disabled={isCreating}
+                className="mt-3 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 Use Template
               </button>

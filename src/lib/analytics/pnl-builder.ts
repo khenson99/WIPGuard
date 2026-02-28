@@ -72,7 +72,7 @@ function estimatePreviousOutflows(mercury: MercuryData | null): number {
  * estimated using `ratios` (defaults to SaaS-standard splits). Override these
  * when actual breakdowns are known (e.g., from budget data).
  */
-export function buildProfitAndLoss(
+export function buildProfitAndLossCore(
   stripe: StripeData | null,
   mercury: MercuryData | null,
   opts: {
@@ -140,5 +140,83 @@ export function buildProfitAndLoss(
     totalOpex: makePnLRow("Total Operating Expenses", currentTotalOpex, previousTotalOpex),
     operatingIncome: makePnLRow("Operating Income", currentOperatingIncome, previousOperatingIncome),
     netIncome: makePnLRow("Net Income", currentNetIncome, previousNetIncome),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Flat P&L types used by finance-pnl-tab
+// ---------------------------------------------------------------------------
+
+export interface PnlLineItem {
+  label: string;
+  category: "revenue" | "expense" | "subtotal" | "total";
+  current: number;
+  previous: number;
+}
+
+export interface ProfitAndLossData {
+  period: string;
+  previousPeriod: string;
+  items: PnlLineItem[];
+  netIncome: number;
+  previousNetIncome: number;
+  grossMargin: number;
+  operatingMargin: number;
+}
+
+/**
+ * Transform the structured ProfitAndLoss into the flat ProfitAndLossData
+ * representation expected by the P&L tab component.
+ *
+ * Wraps `buildProfitAndLoss` so the tab can consume a single call.
+ */
+export function buildProfitAndLoss(
+  stripe: StripeData | null,
+  mercury: MercuryData | null,
+  opts?: {
+    timeRange?: string;
+    ratios?: Partial<ExpenseRatios>;
+  },
+): ProfitAndLossData {
+  const pnl = buildProfitAndLossCore(stripe, mercury, opts);
+
+  const items: PnlLineItem[] = [];
+
+  // Revenue section
+  items.push({ label: "Total Revenue", category: "revenue", current: pnl.revenue.currentPeriod, previous: pnl.revenue.previousPeriod });
+
+  // COGS
+  items.push({ label: pnl.cogs.label, category: "expense", current: pnl.cogs.currentPeriod, previous: pnl.cogs.previousPeriod });
+
+  // Gross Profit (subtotal)
+  items.push({ label: pnl.grossProfit.label, category: "subtotal", current: pnl.grossProfit.currentPeriod, previous: pnl.grossProfit.previousPeriod });
+
+  // Operating expenses
+  for (const row of pnl.operatingExpenses) {
+    items.push({ label: row.label, category: "expense", current: row.currentPeriod, previous: row.previousPeriod });
+  }
+
+  // Total opex (subtotal)
+  items.push({ label: pnl.totalOpex.label, category: "subtotal", current: pnl.totalOpex.currentPeriod, previous: pnl.totalOpex.previousPeriod });
+
+  // Operating income
+  items.push({ label: pnl.operatingIncome.label, category: "subtotal", current: pnl.operatingIncome.currentPeriod, previous: pnl.operatingIncome.previousPeriod });
+
+  // Net income (total)
+  items.push({ label: pnl.netIncome.label, category: "total", current: pnl.netIncome.currentPeriod, previous: pnl.netIncome.previousPeriod });
+
+  // Derived metrics
+  const revenue = pnl.revenue.currentPeriod;
+  const grossMargin = revenue === 0 ? 0 : ((pnl.grossProfit.currentPeriod / revenue) * 100);
+  const operatingMargin = revenue === 0 ? 0 : ((pnl.operatingIncome.currentPeriod / revenue) * 100);
+
+  return {
+    period: pnl.periodLabel,
+    previousPeriod: "Previous period",
+    items,
+    netIncome: pnl.netIncome.currentPeriod,
+    previousNetIncome: pnl.netIncome.previousPeriod,
+    grossMargin: Math.round(grossMargin * 10) / 10,
+    operatingMargin: Math.round(operatingMargin * 10) / 10,
   };
 }

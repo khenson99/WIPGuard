@@ -1,7 +1,14 @@
-import type { CodaEngagedLeadCandidate } from "@/lib/analytics/types";
+import type { CodaEngagedLeadCandidate, HubSpotContactSummary } from "@/lib/analytics/types";
 
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
 const HUBSPOT_SEARCH_ENDPOINT = "https://api.hubapi.com/crm/v3/objects/contacts/search";
+const HUBSPOT_BATCH_READ_ENDPOINT = "https://api.hubapi.com/crm/v3/objects/contacts/batch/read";
+
+type HubSpotContactLookupStatus = "inFunnel" | "notInFunnel" | "unknown";
+type HubSpotContactLookupResult = {
+  status: HubSpotContactLookupStatus;
+  contact: HubSpotContactSummary | null;
+};
 
 export interface CodaLeadScoringInput {
   creator: string;
@@ -80,6 +87,216 @@ function reasonList(input: {
 export function buildHubspotSearchUrl(email: string): string {
   return `https://app.hubspot.com/contacts?query=${encodeURIComponent(email)}`;
 }
+
+
+function trimOrNull(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function contactRecordUrl(contactId: string): string {
+  return `https://app.hubspot.com/contacts/record/0-1/${encodeURIComponent(contactId)}`;
+}
+
+function toContactSummary(input: {
+  id: string;
+  properties?: Record<string, unknown> | null;
+}): HubSpotContactSummary {
+  const props = input.properties ?? {};
+  const firstName = trimOrNull(props.firstname);
+  const lastName = trimOrNull(props.lastname);
+  const name =
+    firstName && lastName
+      ? `${firstName} ${lastName}`
+      : firstName
+        ? firstName
+        : lastName
+          ? lastName
+          : null;
+
+  return {
+    id: input.id,
+    recordUrl: contactRecordUrl(input.id),
+    name,
+    jobTitle: trimOrNull(props.jobtitle),
+    company: trimOrNull(props.company),
+  };
+}
+
+async function batchReadHubspotContactsByEmail(input: {
+  accessToken: string;
+  emails: string[];
+}): Promise<Map<string, HubSpotContactSummary> | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6_000);
+
+  try {
+    const response = await fetch(HUBSPOT_BATCH_READ_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        idProperty: "email",
+        inputs: input.emails.map((email) => ({ id: email })),
+        properties: ["email", "firstname", "lastname", "jobtitle", "company"],
+      }),
+      signal: controller.signal,
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = (await response.json().catch(() => null)) as
+      | { results?: Array<{ id?: string; properties?: Record<string, unknown> }> }
+      | null;
+    if (!payload?.results) return new Map();
+
+    const byEmail = new Map<string, HubSpotContactSummary>();
+    for (const entry of payload.results) {
+      const id = typeof entry.id === "string" ? entry.id : null;
+      if (!id) continue;
+      const email = normalizeEmail(String(entry.properties?.email ?? ""));
+      if (!email) continue;
+      byEmail.set(email, toContactSummary({ id, properties: entry.properties ?? null }));
+    }
+
+    return byEmail;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function searchHubspotContactByEmail(input: {
+  accessToken: string;
+  email: string;
+}): Promise<HubSpotContactLookupResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6_000);
+
+  try {
+    const response = await fetch(HUBSPOT_SEARCH_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        filterGroups: [
+          {
+            filters: [
+              {
+                propertyName: "email",
+                operator: "EQ",
+                value: input.email,
+              },
+            ],
+          },
+        ],
+        limit: 1,
+        properties: ["email", "firstname", "lastname", "jobtitle", "company"],
+      }),
+      signal: controller.signal,
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      return { status: "unknown", contact: null };
+    }
+
+    const payload = (await response.json().catch(() => null)) as
+      | { results?: Array<{ id?: string; properties?: Record<string, unknown> }> }
+      | null;
+    const first = payload?.results?.[0];
+    if (!first) return { status: "notInFunnel", contact: null };
+    const id = typeof first?.id === "string" ? first.id : null;
+    if (!id) return { status: "unknown", contact: null };
+
+    return {
+      status: "inFunnel",
+      contact: toContactSummary({ id, properties: first?.properties ?? null }),
+    };
+  } catch {
+    return { status: "unknown", contact: null };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function runWithConcurrencyLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = [];
+  let index = 0;
+
+  const workers = Array.from({ length: Math.max(1, limit) }, async () => {
+    while (index < items.length) {
+      const current = items[index];
+      index += 1;
+      results.push(await fn(current));
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
+}
+
+export async function resolveHubspotContactsByEmail(input: {
+  accessToken: string;
+  emails: string[];
+}): Promise<{ results: Map<string, HubSpotContactLookupResult>; errors: number }> {
+  const normalized = [...new Set(input.emails.map((email) => normalizeEmail(email)).filter(Boolean))] as string[];
+  const results = new Map<string, HubSpotContactLookupResult>();
+
+  if (normalized.length === 0) return { results, errors: 0 };
+
+  // HubSpot batch endpoints typically accept up to 100 inputs; chunk defensively.
+  const chunks: string[][] = [];
+  for (let i = 0; i < normalized.length; i += 100) {
+    chunks.push(normalized.slice(i, i + 100));
+  }
+
+  let errors = 0;
+
+  for (const chunk of chunks) {
+    const batch = await batchReadHubspotContactsByEmail({
+      accessToken: input.accessToken,
+      emails: chunk,
+    });
+
+    if (batch) {
+      for (const email of chunk) {
+        const contact = batch.get(email) ?? null;
+        results.set(email, {
+          status: contact ? "inFunnel" : "notInFunnel",
+          contact,
+        });
+      }
+      continue;
+    }
+
+    const fallbackResults = await runWithConcurrencyLimit(chunk, 4, async (email) => {
+      const result = await searchHubspotContactByEmail({ accessToken: input.accessToken, email });
+      return { email, result };
+    });
+
+    for (const entry of fallbackResults) {
+      if (entry.result.status === "unknown") errors += 1;
+      results.set(entry.email, entry.result);
+    }
+  }
+
+  return { results, errors };
+}
+
 
 export function scoreCodaEngagedLeads(input: {
   creators: CodaLeadScoringInput[];
@@ -198,7 +415,11 @@ export async function enrichCodaLeadFunnelStatus(input: {
 }): Promise<{ candidates: CodaEngagedLeadCandidate[]; hubspotMatchingErrors: number }> {
   if (!input.hubspotAccessToken) {
     return {
-      candidates: input.candidates.map((candidate) => ({ ...candidate, funnelStatus: "unknown" })),
+      candidates: input.candidates.map((candidate) => ({
+        ...candidate,
+        funnelStatus: "unknown",
+        hubspotContact: null,
+      })),
       hubspotMatchingErrors: 0,
     };
   }
@@ -206,36 +427,22 @@ export async function enrichCodaLeadFunnelStatus(input: {
   const maxCandidates = Math.max(1, Math.min(input.maxCandidates ?? 25, input.candidates.length));
   const top = input.candidates.slice(0, maxCandidates);
 
-  const settled = await Promise.all(
-    top.map(async (candidate) => {
-      const status = await checkHubspotContactPresence({
-        accessToken: input.hubspotAccessToken!,
-        email: candidate.email,
-      });
-      return {
-        candidate,
-        status,
-      };
-    })
-  );
+  const lookup = await resolveHubspotContactsByEmail({
+    accessToken: input.hubspotAccessToken!,
+    emails: top.map((candidate) => candidate.email),
+  });
 
-  let hubspotMatchingErrors = 0;
-  const statusByEmail = new Map<string, "inFunnel" | "notInFunnel" | "unknown">();
-
-  for (const row of settled) {
-    statusByEmail.set(row.candidate.email, row.status);
-    if (row.status === "unknown") {
-      hubspotMatchingErrors += 1;
-    }
-  }
-
-  const merged = input.candidates.map((candidate) => ({
-    ...candidate,
-    funnelStatus: statusByEmail.get(candidate.email) ?? "unknown",
-  }));
+  const merged = input.candidates.map((candidate) => {
+    const result = lookup.results.get(candidate.email);
+    return {
+      ...candidate,
+      funnelStatus: result?.status ?? "unknown",
+      hubspotContact: result?.contact ?? null,
+    };
+  });
 
   return {
     candidates: merged,
-    hubspotMatchingErrors,
+    hubspotMatchingErrors: lookup.errors,
   };
 }

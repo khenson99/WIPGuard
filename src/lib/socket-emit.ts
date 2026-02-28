@@ -25,7 +25,10 @@ export function emitBoardEvent(
   eventId?: string
 ): void {
   const io = getIO();
-  if (!io) return;
+  if (!io) {
+    console.warn(`[socket.io] event dropped (server not initialised): ${event}`);
+    return;
+  }
   const envelope: SocketEnvelope = {
     eventId: eventId ?? `${event}:${randomUUID()}`,
     emittedAt: new Date().toISOString(),

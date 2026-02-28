@@ -1,5 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IntegrationsTab } from "@/components/settings/integrations-tab";
 
@@ -137,7 +136,6 @@ describe("IntegrationsTab", () => {
       ],
     });
 
-    const user = userEvent.setup();
     render(<IntegrationsTab />);
 
     await waitFor(() => {
@@ -146,7 +144,7 @@ describe("IntegrationsTab", () => {
     expect(screen.getByLabelText("Toggle Slack").getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByText("Slack Status Thread Sync")).toBeNull();
 
-    await user.click(screen.getByLabelText("Toggle Slack"));
+    fireEvent.click(screen.getByLabelText("Toggle Slack"));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Toggle Slack").getAttribute("aria-expanded")).toBe("true");
@@ -158,20 +156,20 @@ describe("IntegrationsTab", () => {
     });
     expect(screen.queryByText("Save Config")).toBeNull();
 
-    await user.click(screen.getByText("Slack Status Thread Sync"));
+    fireEvent.click(screen.getByText("Slack Status Thread Sync"));
 
     await waitFor(() => {
       expect(screen.getByText("Statuses To Sync")).toBeTruthy();
     });
 
-    await user.click(screen.getByText("Slack Unanswered Request Detector"));
+    fireEvent.click(screen.getByText("Slack Unanswered Request Detector"));
 
     await waitFor(() => {
       expect(screen.getByText("Channel IDs")).toBeTruthy();
     });
     expect(screen.queryByText("Statuses To Sync")).toBeNull();
 
-    await user.click(screen.getByLabelText("Toggle Webflow"));
+    fireEvent.click(screen.getByLabelText("Toggle Webflow"));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Toggle Webflow").getAttribute("aria-expanded")).toBe("true");

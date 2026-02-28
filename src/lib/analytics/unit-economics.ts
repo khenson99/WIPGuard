@@ -36,6 +36,15 @@ function r2(x: number): number {
 }
 
 // ---------------------------------------------------------------------------
+// Extended type used by finance-unit-economics-tab
+// ---------------------------------------------------------------------------
+
+export type UnitEconomicsData = UnitEconomics & {
+  arpa: number;
+  magicNumber: number | null;
+};
+
+// ---------------------------------------------------------------------------
 // Core computation
 // ---------------------------------------------------------------------------
 
@@ -49,7 +58,7 @@ export function computeUnitEconomics(
   stripe: StripeData | null,
   mercury: MercuryData | null,
   hubspot: HubSpotData | null,
-): UnitEconomics {
+): UnitEconomicsData {
   // -- Early exit: nothing to compute ---
   if (!stripe && !mercury && !hubspot) {
     return {
@@ -57,8 +66,10 @@ export function computeUnitEconomics(
       cac: 0,
       ltvCacRatio: 0,
       avgRevenuePerAccount: 0,
+      arpa: 0,
       paybackMonths: 0,
       grossMarginPct: 0,
+      magicNumber: null,
     };
   }
 
@@ -139,12 +150,24 @@ export function computeUnitEconomics(
   // Result
   // ---------------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------------
+  // 8. Magic number — growth efficiency metric
+  //    (net new ARR in period) / (S&M spend in previous period)
+  //    Without historical snapshots we approximate using 30-day figures.
+  // ---------------------------------------------------------------------------
+
+  const netNewArr = stripe ? stripe.revenue.mrrChange * 12 : 0;
+  const magicNumber: number | null =
+    marketingSpend > 0 ? r2(netNewArr / marketingSpend) : null;
+
   return {
     ltv: r2(ltv),
     cac: r2(cac),
     ltvCacRatio: r2(ltvCacRatio),
     avgRevenuePerAccount: r2(arpa),
+    arpa: r2(arpa),
     paybackMonths: r2(paybackMonths),
     grossMarginPct: r2(grossMarginPct),
+    magicNumber,
   };
 }

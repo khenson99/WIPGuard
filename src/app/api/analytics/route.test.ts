@@ -55,6 +55,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     task: { count: vi.fn() },
     statusHistory: { findMany: vi.fn() },
+    stripeCustomerLink: { findMany: vi.fn() },
   },
 }));
 
@@ -374,6 +375,15 @@ describe("GET /api/analytics", () => {
     const { prisma } = await import("@/lib/prisma");
     vi.mocked(prisma.task.count).mockResolvedValue(0 as never);
     vi.mocked(prisma.statusHistory.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.stripeCustomerLink.findMany).mockResolvedValue([
+      {
+        id: "link-1",
+        userId: "user-1",
+        stripeCustomerId: "cus_123",
+        hubspotDealId: "deal-1",
+        hubspotDealName: "Acme Corp",
+      },
+    ] as never);
   });
 
   it("returns customer journey domain data", async () => {
@@ -396,6 +406,15 @@ describe("GET /api/analytics", () => {
     expect(body.demoAnalytics.totalScheduled).toBeGreaterThan(0);
   });
 
+  it("hydrates stripe customer links onto hubspot deals", async () => {
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=demo-analytics"));
+    const body = await response.json();
+
+    const deal = body.hubspot.deals.find((entry: { dealId: string }) => entry.dealId === "deal-1");
+    expect(deal.stripeCustomerId).toBe("cus_123");
+  });
+
   it("returns process analytics domain data", async () => {
     const { GET } = await import("@/app/api/analytics/route");
     const response = await GET(new Request("http://localhost/api/analytics?section=process-analytics"));
@@ -404,5 +423,37 @@ describe("GET /api/analytics", () => {
     expect(response.status).toBe(200);
     expect(body.processAnalytics).toBeTruthy();
     expect(body.processAnalytics.healthScore).toBeGreaterThanOrEqual(0);
+  });
+
+  it("does not time out stripe at the default 8.5s budget", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const { fetchStripeData } = await import("@/lib/analytics/fetchers");
+      vi.mocked(fetchStripeData).mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => resolve(STRIPE_DATA as never), 9_000);
+          }) as never
+      );
+
+      const { GET } = await import("@/app/api/analytics/route");
+      const responsePromise = GET(
+        new Request("http://localhost/api/analytics?section=finance-stripe")
+      );
+
+      await vi.advanceTimersByTimeAsync(9_000);
+
+      const response = await responsePromise;
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.stripe).toBeTruthy();
+      expect(
+        body.errors.some((entry: { source: string }) => entry.source === "stripe")
+      ).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -24,6 +24,9 @@ model User {
   integrationConnections IntegrationConnection[]
   integrationRules       IntegrationRule[]
   analyticsSnapshots     AnalyticsSnapshot[]
+  stripeCustomerLinks    StripeCustomerLink[]
+  metricHistory          MetricHistory[]
+  insightFeedback        InsightFeedback[]
   uiPreference           UserUiPreference?
   savedViews             UserSavedView[]
   ownedWorkflows         WorkflowDefinition[] @relation("WorkflowOwner")
@@ -53,6 +56,14 @@ model User {
   budgets           Budget[]
   financialGoals    FinancialGoal[]
   forecastScenarios ForecastScenario[]
+
+  ownedConferences Conference[] @relation("ConferenceOwner")
+  ownedConferenceDeadlines ConferenceDeadline[] @relation("ConferenceDeadlineOwner")
+  paidConferenceExpenses ConferenceExpense[] @relation("ConferenceExpensePaidBy")
+  capturedConferenceLeads ConferenceLead[] @relation("ConferenceLeadCapturedBy")
+  assignedConferenceLeads ConferenceLead[] @relation("ConferenceLeadAssignedTo")
+  conferenceTeamMemberships ConferenceTeamMember[] @relation("ConferenceTeamMemberUser")
+  ownedConferenceInventoryItems ConferenceInventoryItem[] @relation("ConferenceInventoryItemOwner")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -141,6 +152,10 @@ model Project {
   status      ProjectStatus @default(ACTIVE)
   projectType ProjectType   @default(ONE_OFF)
 
+  conferenceId String?
+  conference   Conference? @relation("ConferenceProjects", fields: [conferenceId], references: [id], onDelete: SetNull)
+  primaryForConference Conference? @relation("ConferencePrimaryProject")
+
   parentId String?
   parent   Project?  @relation("ProjectHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
   children Project[] @relation("ProjectHierarchy")
@@ -162,6 +177,8 @@ model Project {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([conferenceId])
 }
 
 enum ProjectStatus {
@@ -194,6 +211,12 @@ model Task {
   dueDate     DateTime?
   completedOn DateTime?
   assignedOn  DateTime?
+
+  conferenceId String?
+  conference   Conference? @relation("ConferenceTasks", fields: [conferenceId], references: [id], onDelete: SetNull)
+
+  conferenceDeadline ConferenceDeadline? @relation("ConferenceDeadlineTask")
+  conferenceLeadFollowup ConferenceLead? @relation("ConferenceLeadFollowupTask")
 
   parentId String?
   parent   Task?   @relation("TaskHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
@@ -233,6 +256,8 @@ model Task {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([conferenceId])
 }
 
 enum TaskStatus {
@@ -265,6 +290,308 @@ enum UnplannedReason {
   SCOPE_CHANGE
   DEPENDENCY
   OTHER
+}
+
+// ============================================================
+// CONFERENCES
+// ============================================================
+
+enum ConferenceStatus {
+  DRAFT
+  PLANNING
+  COMMITTED
+  ONSITE
+  WRAP_UP
+  COMPLETE
+  CANCELED
+}
+
+enum ConferenceType {
+  EXHIBIT
+  SPONSOR
+  SPEAK
+  ATTEND
+  HYBRID
+}
+
+enum ConferenceDeadlineType {
+  SPONSORSHIP
+  REGISTRATION
+  CFP
+  BOOTH
+  SWAG
+  SHIPPING
+  TRAVEL
+  MARKETING
+  MEETINGS
+  LEAD_UPLOAD
+  POSTMORTEM
+  OTHER
+}
+
+enum ConferenceLeadStatus {
+  NEW
+  QUALIFIED
+  FOLLOW_UP_SCHEDULED
+  CONTACTED
+  CONVERTED
+  DISQUALIFIED
+}
+
+enum ConferenceExpenseCategory {
+  SPONSORSHIP
+  BOOTH
+  SWAG
+  SHIPPING
+  TRAVEL
+  LODGING
+  MEALS
+  EVENTS
+  SOFTWARE
+  OTHER
+}
+
+enum ConferenceTeamRole {
+  ORGANIZER
+  ATTENDEE
+  BOOTH_STAFF
+  SPEAKER
+  EXEC
+}
+
+enum ConferenceReimbursementStatus {
+  NONE
+  REQUESTED
+  APPROVED
+  PAID
+}
+
+model Conference {
+  id         String @id @default(cuid())
+  slug       String @unique
+  name       String
+  websiteUrl String?
+
+  startDate DateTime
+  endDate   DateTime
+  timezone  String  @default("UTC")
+
+  city    String?
+  region  String?
+  country String?
+  venue   String?
+
+  status ConferenceStatus @default(PLANNING)
+  type   ConferenceType   @default(EXHIBIT)
+  notes  String?          @db.Text
+
+  slackChannelId   String?
+  slackChannelName String?
+  slackChannelUrl  String?
+  driveFolderUrl   String?
+  codaDocUrl       String?
+
+  ownerId String?
+  owner   User? @relation("ConferenceOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  primaryProjectId String? @unique
+  primaryProject   Project? @relation("ConferencePrimaryProject", fields: [primaryProjectId], references: [id], onDelete: SetNull)
+
+  projects Project[] @relation("ConferenceProjects")
+  tasks    Task[]    @relation("ConferenceTasks")
+
+  deadlines      ConferenceDeadline[]
+  budget         ConferenceBudget?
+  expenses       ConferenceExpense[]
+  leads          ConferenceLead[]
+  teamMembers    ConferenceTeamMember[]
+  inventoryItems ConferenceInventoryItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([startDate])
+  @@index([status])
+  @@index([ownerId])
+}
+
+model ConferenceDeadline {
+  id           String     @id @default(cuid())
+  conferenceId String
+  conference   Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+
+  type ConferenceDeadlineType
+  name String
+  dueAt DateTime
+
+  completedAt DateTime?
+  ownerId     String?
+  owner       User? @relation("ConferenceDeadlineOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  notes     String? @db.Text
+  sourceUrl String?
+
+  taskId String? @unique
+  task   Task? @relation("ConferenceDeadlineTask", fields: [taskId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([conferenceId, dueAt])
+  @@index([ownerId, dueAt])
+  @@index([taskId])
+}
+
+model ConferenceBudget {
+  id           String     @id @default(cuid())
+  conferenceId String     @unique
+  conference   Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+
+  currency String @default("USD")
+  notes    String? @db.Text
+
+  lineItems ConferenceBudgetLineItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ConferenceBudgetLineItem {
+  id       String           @id @default(cuid())
+  budgetId String
+  budget   ConferenceBudget @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+
+  category      ConferenceExpenseCategory
+  label         String
+  plannedAmount Float
+  notes         String?
+
+  expenses ConferenceExpense[] @relation("ConferenceExpenseBudgetLineItem")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([budgetId])
+}
+
+model ConferenceExpense {
+  id           String     @id @default(cuid())
+  conferenceId String
+  conference   Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+
+  category  ConferenceExpenseCategory
+  amount    Float
+  currency  String @default("USD")
+  incurredAt DateTime
+
+  vendor      String?
+  description String? @db.Text
+  receiptUrl  String?
+
+  reimbursable Boolean @default(false)
+  reimbursementStatus ConferenceReimbursementStatus @default(NONE)
+
+  paidByUserId String?
+  paidByUser   User? @relation("ConferenceExpensePaidBy", fields: [paidByUserId], references: [id], onDelete: SetNull)
+
+  budgetLineItemId String?
+  budgetLineItem   ConferenceBudgetLineItem? @relation("ConferenceExpenseBudgetLineItem", fields: [budgetLineItemId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([conferenceId, incurredAt])
+  @@index([category])
+  @@index([budgetLineItemId])
+}
+
+model ConferenceLead {
+  id           String     @id @default(cuid())
+  conferenceId String
+  conference   Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+
+  status ConferenceLeadStatus @default(NEW)
+
+  firstName String?
+  lastName  String?
+  email     String?
+  title     String?
+  phone     String?
+
+  companyName   String?
+  companyDomain String?
+  linkedinUrl   String?
+
+  notes String? @db.Text
+
+  capturedAt DateTime @default(now())
+
+  capturedByUserId String?
+  capturedByUser   User? @relation("ConferenceLeadCapturedBy", fields: [capturedByUserId], references: [id], onDelete: SetNull)
+
+  assignedToUserId String?
+  assignedToUser   User? @relation("ConferenceLeadAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  followupTaskId String? @unique
+  followupTask   Task? @relation("ConferenceLeadFollowupTask", fields: [followupTaskId], references: [id], onDelete: SetNull)
+
+  followedUpAt DateTime?
+
+  hubspotCompanyId String?
+  hubspotContactId String?
+  hubspotDealId    String?
+  pushedToHubspotAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([conferenceId, status])
+  @@index([assignedToUserId, status])
+  @@index([followupTaskId])
+}
+
+model ConferenceTeamMember {
+  id           String     @id @default(cuid())
+  conferenceId String
+  conference   Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User @relation("ConferenceTeamMemberUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  role ConferenceTeamRole
+  arrivalAt   DateTime?
+  departureAt DateTime?
+  notes       String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([conferenceId, userId])
+  @@index([conferenceId, role])
+}
+
+model ConferenceInventoryItem {
+  id           String     @id @default(cuid())
+  conferenceId String
+  conference   Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+
+  name     String
+  category String?
+
+  qtyPlanned   Int @default(0)
+  qtyPacked    Int @default(0)
+  qtyOnsite    Int @default(0)
+  qtyRemaining Int @default(0)
+
+  ownerId String?
+  owner   User? @relation("ConferenceInventoryItemOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([conferenceId, name])
 }
 
 // ============================================================
@@ -451,7 +778,9 @@ enum IntegrationProvider {
   GOOGLE_ADS
   META_ADS
   META_PAGE
+  SEMRUSH
   PYLON
+  GOOGLE_ANALYTICS
 }
 
 enum IntegrationConnectionStatus {
@@ -514,6 +843,67 @@ model AnalyticsSnapshot {
   @@index([userId, providerKey, contextKey, rangePreset, toDate])
   @@index([expiresAt])
   @@index([capturedAt])
+}
+
+model StripeCustomerLink {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  stripeCustomerId String
+  hubspotDealId    String
+  hubspotDealName  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, stripeCustomerId])
+  @@unique([userId, hubspotDealId])
+  @@index([userId])
+}
+
+// ============================================================
+// AI ANALYTICS: METRIC HISTORY & INSIGHT FEEDBACK
+// ============================================================
+
+model MetricHistory {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  metricKey   String
+  section     String
+  value       Float
+  periodStart DateTime
+  periodEnd   DateTime
+  rangePreset String
+
+  capturedAt DateTime @default(now())
+
+  @@index([userId, metricKey, periodEnd(sort: Desc)])
+  @@index([userId, section, periodEnd(sort: Desc)])
+  @@index([capturedAt])
+}
+
+enum InsightFeedbackAction {
+  USEFUL
+  NOT_USEFUL
+  ACTED_ON
+  DISMISSED
+}
+
+model InsightFeedback {
+  id        String                @id @default(cuid())
+  userId    String
+  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  insightId String
+  action    InsightFeedbackAction
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, insightId])
+  @@index([createdAt])
 }
 
 model IntegrationRule {

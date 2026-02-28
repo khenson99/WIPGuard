@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { AlertTriangle, CalendarClock, Clock3, Flame } from "lucide-react";
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-state";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
@@ -92,20 +93,42 @@ function TaskList({
   title,
   items,
   empty,
+  onTaskClick,
 }: {
   title: string;
   items: DashboardTask[];
   empty: string;
+  onTaskClick?: (taskId: string) => void;
 }) {
   return (
-    <section className="rounded-xl border border-border bg-card p-4">
+    <section className="rounded-xl border border-border bg-card p-4" aria-label={title}>
       <h3 className="mb-3 text-sm font-semibold text-foreground">{title}</h3>
       {items.length === 0 ? (
         <p className="text-xs text-muted-foreground">{empty}</p>
       ) : (
         <div className="space-y-2">
           {items.map((task) => (
-            <div key={task.id} className="rounded-lg border border-border/60 px-3 py-2">
+            <div
+              key={task.id}
+              role={onTaskClick ? "button" : undefined}
+              tabIndex={onTaskClick ? 0 : undefined}
+              onClick={onTaskClick ? () => onTaskClick(task.id) : undefined}
+              onKeyDown={
+                onTaskClick
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onTaskClick(task.id);
+                      }
+                    }
+                  : undefined
+              }
+              className={`rounded-lg border border-border/60 px-3 py-2${
+                onTaskClick
+                  ? " cursor-pointer hover:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                  : ""
+              }`}
+            >
               <p className="truncate text-sm font-medium text-foreground">{task.title}</p>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 {task.project?.name || "No project"} · {task.priority} · {relativeDate(task.dueDate)}
@@ -119,6 +142,8 @@ function TaskList({
 }
 
 export function PersonalizedDashboard() {
+  const router = useRouter();
+
   const resource = useDashboardResource<PersonalizedDashboardPayload>({
     cacheKey: PERSONALIZED_DASHBOARD_CACHE_KEY,
     deps: [],
@@ -186,6 +211,8 @@ export function PersonalizedDashboard() {
           type="button"
           onClick={resource.refresh}
           disabled={resource.refreshing}
+          aria-label="Refresh dashboard"
+          aria-busy={resource.refreshing}
           className="rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-70"
         >
           {resource.refreshing ? "Refreshing..." : "Refresh now"}
@@ -200,47 +227,60 @@ export function PersonalizedDashboard() {
         <DashboardErrorBanner message={resource.error} onRetry={resource.refresh} />
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-        <div className="rounded-xl border border-border bg-card px-4 py-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6" role="region" aria-label="Personal statistics">
+        <div className="rounded-xl border border-border bg-card px-4 py-3" role="group" aria-label={`My Active: ${data.personal.myActive.length}`}>
           <p className="text-xs text-muted-foreground">My Active</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{data.personal.myActive.length}</p>
+          <p className="mt-1 text-2xl font-semibold text-foreground">{data.personal.myActive?.length ?? "\u2014"}</p>
         </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-3">
+        <div className="rounded-xl border border-border bg-card px-4 py-3" role="group" aria-label={`My Blocked: ${data.personal.myBlocked.length}`}>
           <p className="text-xs text-muted-foreground">My Blocked</p>
-          <p className="mt-1 text-2xl font-semibold text-orange-500">{data.personal.myBlocked.length}</p>
+          <p className="mt-1 text-2xl font-semibold text-orange-500">{data.personal.myBlocked?.length ?? "\u2014"}</p>
         </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-3">
+        <div className="rounded-xl border border-border bg-card px-4 py-3" role="group" aria-label={`My Overdue: ${data.personal.myOverdue.length}`}>
           <p className="text-xs text-muted-foreground">My Overdue</p>
-          <p className="mt-1 text-2xl font-semibold text-red-500">{data.personal.myOverdue.length}</p>
+          <p className="mt-1 text-2xl font-semibold text-red-500">{data.personal.myOverdue?.length ?? "\u2014"}</p>
         </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-3">
+        <div className="rounded-xl border border-border bg-card px-4 py-3" role="group" aria-label={`Completed (7d): ${data.personal.myCompletedWeek}`}>
           <p className="text-xs text-muted-foreground">Completed (7d)</p>
-          <p className="mt-1 text-2xl font-semibold text-emerald-600">{data.personal.myCompletedWeek}</p>
+          <p className="mt-1 text-2xl font-semibold text-emerald-600">{data.personal.myCompletedWeek ?? "\u2014"}</p>
         </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-3">
+        <div className="rounded-xl border border-border bg-card px-4 py-3" role="group" aria-label={`Team Overdue: ${data.team.overdueTasks}`}>
           <p className="text-xs text-muted-foreground">Team Overdue</p>
-          <p className="mt-1 text-2xl font-semibold text-red-500">{data.team.overdueTasks}</p>
+          <p className="mt-1 text-2xl font-semibold text-red-500">{data.team.overdueTasks ?? "\u2014"}</p>
         </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-3">
+        <div className="rounded-xl border border-border bg-card px-4 py-3" role="group" aria-label={`Task Total: ${taskTotal}`}>
           <p className="text-xs text-muted-foreground">Task Total</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{taskTotal}</p>
+          <p className="mt-1 text-2xl font-semibold text-foreground">{taskTotal ?? "\u2014"}</p>
         </div>
       </div>
 
-      <section className="rounded-xl border border-border bg-card p-4">
+      <section className="rounded-xl border border-border bg-card p-4" aria-label="Recommended next actions">
         <div className="mb-3 flex items-center gap-2">
           <Flame className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold text-foreground">Recommended Next Actions</h2>
         </div>
-        {data.personal.recommendations.length === 0 ? (
+        {(data.personal.recommendations?.length ?? 0) === 0 ? (
           <p className="text-xs text-muted-foreground">No urgent recommendations right now.</p>
         ) : (
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
             {data.personal.recommendations.map((task) => (
-              <div key={task.id} className="rounded-lg border border-border/60 px-3 py-2">
+              <div
+                key={task.id}
+                role="button"
+                tabIndex={0}
+                aria-label={task.title}
+                onClick={() => router.push(`/tasks?task=${task.id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    router.push(`/tasks?task=${task.id}`);
+                  }
+                }}
+                className="cursor-pointer rounded-lg border border-border/60 px-3 py-2 hover:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+              >
                 <p className="truncate text-sm font-medium text-foreground">{task.title}</p>
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  Score {task.recommendationScore || 0} · {task.priority} · {relativeDate(task.dueDate)}
+                  Score {task.recommendationScore ?? 0} · {task.priority} · {relativeDate(task.dueDate)}
                 </p>
               </div>
             ))}
@@ -248,48 +288,62 @@ export function PersonalizedDashboard() {
         )}
       </section>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" role="region" aria-label="Task lists">
         <TaskList
           title="My Blockers"
           items={data.personal.myBlocked}
           empty="No blocked tasks."
+          onTaskClick={(id) => router.push(`/tasks?task=${id}`)}
         />
         <TaskList
           title="My Due Soon"
           items={data.personal.myDueSoon}
           empty="No due-soon tasks."
+          onTaskClick={(id) => router.push(`/tasks?task=${id}`)}
         />
       </div>
 
-      <section className="rounded-xl border border-border bg-card p-4">
+      <section className="rounded-xl border border-border bg-card p-4" aria-label="Team and project context">
         <h2 className="mb-3 text-sm font-semibold text-foreground">Team and Project Context</h2>
         <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <div className="rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" /> Stale Tasks</div>
-            <p className="mt-1 text-lg font-semibold text-foreground">{data.team.staleTasks}</p>
+            <p className="mt-1 text-lg font-semibold text-foreground">{data.team.staleTasks ?? "\u2014"}</p>
           </div>
           <div className="rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5"><AlertTriangle className="h-3.5 w-3.5" /> Blocked Tasks</div>
-            <p className="mt-1 text-lg font-semibold text-foreground">{data.team.blockedTasks}</p>
+            <p className="mt-1 text-lg font-semibold text-foreground">{data.team.blockedTasks ?? "\u2014"}</p>
           </div>
           <div className="rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5"><CalendarClock className="h-3.5 w-3.5" /> Overdue Tasks</div>
-            <p className="mt-1 text-lg font-semibold text-foreground">{data.team.overdueTasks}</p>
+            <p className="mt-1 text-lg font-semibold text-foreground">{data.team.overdueTasks ?? "\u2014"}</p>
           </div>
         </div>
 
-        {data.projects.active.length > 0 && (
+        {(data.projects.active?.length ?? 0) > 0 && (
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
             {data.projects.active.map((project) => (
-              <div key={project.id} className="rounded-lg border border-border/60 px-3 py-2">
+              <div
+                key={project.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => router.push(`/projects/${project.id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    router.push(`/projects/${project.id}`);
+                  }
+                }}
+                className="cursor-pointer rounded-lg border border-border/60 px-3 py-2 hover:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+              >
                 <p className="truncate text-sm font-medium text-foreground">{project.name}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {project.doneTasks}/{project.totalTasks} done
+                  {project.doneTasks ?? 0}/{project.totalTasks ?? 0} done
                 </p>
-                <div className="mt-2 h-1.5 w-full rounded-full bg-secondary">
+                <div className="mt-2 h-1.5 w-full rounded-full bg-secondary" role="progressbar" aria-valuenow={project.progress} aria-valuemin={0} aria-valuemax={100} aria-label={`${project.name} progress`}>
                   <div
                     className="h-1.5 rounded-full bg-primary"
-                    style={{ width: `${project.progress}%` }}
+                    style={{ width: `${project.progress ?? 0}%` }}
                   />
                 </div>
               </div>

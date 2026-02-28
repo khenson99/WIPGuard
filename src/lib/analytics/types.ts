@@ -59,6 +59,17 @@ export interface DealsBySource {
   source: string;
   count: number;
   value: number;
+  closedWon?: number;
+  followUpNeeded?: number;
+  churned?: number;
+}
+
+export interface DealsByRep {
+  repName: string;
+  count: number;
+  value: number;
+  closedWon: number;
+  closedWonValue: number;
 }
 
 export interface FunnelMetrics {
@@ -67,6 +78,7 @@ export interface FunnelMetrics {
   closedLost: number;
   unlikely: number;
   churn: number;
+  notActivated?: number;
   activeSubscriptions: number;
   noShows: number;
   demoScheduled: number;
@@ -77,6 +89,7 @@ export interface FunnelMetrics {
   noShowRate: number;
   stages: DealStage[];
   dealsBySource: DealsBySource[];
+  dealsByRep?: DealsByRep[];
 }
 
 export interface ContactMetrics {
@@ -96,10 +109,113 @@ export interface HubSpotData {
     amount: number;
     source: string;
     ownerId: string | null;
+    repName?: string;
     updatedAt: string | null;
+    createdAt: string | null;
+    closedAt?: string | null;
+    stripeCustomerId?: string | null;
   }>;
   _meta: AnalyticsTimestamp;
 }
+
+export interface HubSpotContactRecord {
+  contactId: string;
+  createdAt: string | null;
+  ownerId: string | null;
+  repName: string;
+  rawSource: string | null;
+}
+
+// ══════════════════════════════════════════════════════════
+// SALES PERFORMANCE PACK (HubSpot + Stripe)
+// ══════════════════════════════════════════════════════════
+
+export type ChannelGroup = "Inbound" | "Outbound" | "Partner" | "Product-led" | "Unknown";
+
+export type SalesPerformanceChannelMappingRow = {
+  rawSource: string;
+  channelGroup: ChannelGroup;
+};
+
+export type SalesPerformanceRepMonthRow = {
+  month: string; // YYYY-MM (UTC)
+  repName: string;
+
+  leadsCreatedCount: number;
+  opportunitiesCreatedCount: number;
+  leadToOpportunityRate: number | null;
+
+  signedDealsCount: number;
+  signedDealsBookedValue: number;
+  avgSignedDealSizeBooked: number | null;
+  medianSignedDealSizeBooked: number | null;
+
+  signedDealsRealizedValue30d: number;
+  bookedToRealizedRatio30d: number | null;
+
+  opportunityToClosedRate90d: number | null;
+  winRateDecided: number | null;
+
+  signedInboundShare: number | null;
+  signedOutboundShare: number | null;
+  signedPartnerShare: number | null;
+  signedProductLedShare: number | null;
+  signedUnknownShare: number | null;
+
+  dataQuality: {
+    signedDealsMissingSourcePct: number | null;
+    signedDealsMissingCloseDatePct: number | null;
+    signedDealsMissingOwnerPct: number | null;
+    opportunitiesMissingOwnerPct: number | null;
+    leadsMissingOwnerPct: number | null;
+  };
+};
+
+export type SalesPerformanceRepMonthChannelRow = {
+  month: string; // YYYY-MM (UTC)
+  repName: string;
+  channelGroup: ChannelGroup;
+  rawSource: string;
+
+  opportunitiesCreatedCount: number;
+  signedDealsCount: number;
+  bookedValue: number;
+  avgBookedDealSize: number | null;
+  realizedValue30d: number;
+  winRateDecided: number | null;
+  avgDaysToClose: number | null;
+};
+
+export type SalesPerformanceDealAuditRow = {
+  hubspotDealId: string;
+  dealName: string;
+  ownerId: string | null;
+  repName: string;
+  createdAt: string | null;
+  closedAt: string | null;
+  stageId: string;
+  stageLabel: string;
+  amount: number;
+  rawSource: string;
+  channelGroup: ChannelGroup;
+  stripeCustomerId: string | null;
+  stripeLinked: boolean;
+  stripeRealized30d: number;
+  flags: string[];
+};
+
+export type SalesPerformancePack = {
+  from: string; // ISO
+  to: string; // ISO
+  generatedAt: string; // ISO
+  fromSnapshot: boolean;
+
+  channelMapping: SalesPerformanceChannelMappingRow[];
+  repMonthRows: SalesPerformanceRepMonthRow[];
+  repMonthChannelRows: SalesPerformanceRepMonthChannelRow[];
+  dealAuditRows: SalesPerformanceDealAuditRow[];
+  errors: string[];
+};
 
 // ══════════════════════════════════════════════════════════
 // STRIPE TYPES
@@ -252,6 +368,26 @@ export interface MetaPageData {
   pageFollowers: number;
   postReach30d: number;
   postEngagement30d: number;
+  traffic: number;
+  bounceRate: number;
+  clicks: number;
+  returningVisitors: number;
+  topPosts: { message: string; reach: number; engagement: number; createdAt: string }[];
+  _meta: AnalyticsTimestamp;
+}
+
+// ══════════════════════════════════════════════════════════
+// INSTAGRAM PAGE TYPES
+// ══════════════════════════════════════════════════════════
+
+export interface InstagramData {
+  followers: number;
+  reach30d: number;
+  engagement30d: number;
+  traffic: number;
+  bounceRate: number;
+  clicks: number;
+  returningVisitors: number;
   topPosts: { message: string; reach: number; engagement: number; createdAt: string }[];
   _meta: AnalyticsTimestamp;
 }
@@ -264,6 +400,8 @@ export interface RedditAdsData {
   totalSpend30d: number;
   totalImpressions: number;
   totalClicks: number;
+  totalConversions: number;
+  cpa: number;
   ctr: number;
   cpc: number;
   campaigns: AdCampaign[];
@@ -286,6 +424,10 @@ export interface WebflowData {
   totalCollections: number;
   formSubmissions: WebflowFormEntry[];
   customDomains: string[];
+  traffic: number;
+  bounceRate: number;
+  clicks: number;
+  returningVisitors: number;
   _meta: AnalyticsTimestamp;
 }
 
@@ -337,6 +479,13 @@ export interface CodaCreatorTrends {
   cardsCreated90d: Array<{ date: string; count: number }>;
 }
 
+export interface HubSpotContactSummary {
+  id: string;
+  recordUrl: string;
+  name: string | null;
+  jobTitle: string | null;
+  company: string | null;
+}
 export type CodaLeadFunnelStatus = "inFunnel" | "notInFunnel" | "unknown";
 
 export interface CodaEngagedLeadCandidate {
@@ -348,7 +497,19 @@ export interface CodaEngagedLeadCandidate {
   trend30dVsPrevious30d: number | null;
   engagementScore: number;
   reasons: string[];
-  funnelStatus: CodaLeadFunnelStatus;
+  funnelStatus: string;
+  hubspotSearchUrl: string;
+  hubspotContact?: HubSpotContactSummary | null;
+}
+
+export interface CodaRecentSubmitter {
+  creator: string;
+  email: string;
+  cardsCreated: number;
+  firstSubmittedAt: string | null;
+  lastSubmittedAt: string | null;
+  hubspotContact: HubSpotContactSummary | null;
+  hubspotStatus: CodaLeadFunnelStatus;
   hubspotSearchUrl: string;
 }
 
@@ -367,6 +528,14 @@ export interface CodaKanbanData {
   newCreatorFeed?: CodaNewCreatorFeedEntry[];
   trends?: CodaCreatorTrends;
   engagedLeadCandidates?: CodaEngagedLeadCandidate[];
+  rangeSummary?: {
+    from: string;
+    to: string;
+    cardsCreated: number;
+    submissions: number;
+    unknownEmailCards: number;
+  };
+  recentSubmitters?: CodaRecentSubmitter[];
   diagnostics?: CodaDiagnostics;
   _meta: AnalyticsTimestamp;
 }
@@ -633,6 +802,20 @@ export interface AiInsightsBundle {
   bySection: Record<AnalyticsSectionId, AiInsight[]>;
 }
 
+export interface CrossDomainInsights {
+  narrative: string;
+  overallHealth: Record<AnalyticsSectionId, "green" | "yellow" | "red">;
+  topRisks: Array<{
+    severity: "warning" | "critical";
+    title: string;
+    sections: AnalyticsSectionId[];
+  }>;
+  correlations: Array<{
+    correlation: number;
+    interpretation: string;
+  }>;
+}
+
 // ══════════════════════════════════════════════════════════
 // CUSTOMER JOURNEY TYPES
 // ══════════════════════════════════════════════════════════
@@ -689,17 +872,26 @@ export interface TouchpointSummary {
 export interface JourneyPath {
   sequence: TouchpointChannel[];
   count: number;
+  kanbanCards: number;
+  freeTrials: number;
+  demos: number;
   avgDaysToClose: number;
   avgValue: number;
 }
 
 export interface ChannelAttribution {
   channel: TouchpointChannel;
+  traffic: number | null;
+  cost: number | null;
   firstTouchDeals: number;
   assistedDeals: number;
   lastTouchDeals: number;
+  kanbanCards: number;
+  freeTrials: number;
+  demos: number;
   totalRevenue: number;
   avgDealValue: number;
+  roi: number | null;
 }
 
 export interface CustomerJourneyData {
@@ -715,7 +907,7 @@ export interface CustomerJourneyData {
 // DEMO ANALYTICS TYPES
 // ══════════════════════════════════════════════════════════
 
-export type DemoOutcome = "completed" | "no-show" | "rescheduled" | "pending";
+export type DemoOutcome = "completed" | "no-show" | "rescheduled" | "pending" | "unknown";
 
 export interface DemoRecord {
   dealId: string;
@@ -756,6 +948,28 @@ export interface DemoWeeklyTrend {
   noShows: number;
 }
 
+export interface JourneyPathRow {
+  source: string;
+  totalLeads: number;
+  demosBooked: number;
+  demosBookedPct: number;
+  demoCompleted: number;
+  demoCompletedPct: number;
+  demoNoShow: number;
+  demoNoShowPct: number;
+  avgDaysToDecision: number | null;
+  closedWon: number;
+  closedWonPct: number;
+  closedLost: number;
+  onboarding: number;
+  onboardingPct: number;
+  avgContractValue: number | null;
+  churned: number;
+  churnedPct: number;
+  notActivated: number;
+  notActivatedPct: number;
+}
+
 export interface DemoAnalyticsData {
   totalScheduled: number;
   totalCompleted: number;
@@ -767,6 +981,7 @@ export interface DemoAnalyticsData {
   byOutcome: DemoOutcomeBreakdown[];
   conversionFunnel: DemoConversionStep[];
   weeklyTrend: DemoWeeklyTrend[];
+  journeyPaths: JourneyPathRow[];
 }
 
 // ══════════════════════════════════════════════════════════
@@ -941,6 +1156,7 @@ export interface FinancialPlanningData {
 
 export interface AnalyticsDashboardData {
   hubspot: HubSpotData | null;
+  salesPerformance: SalesPerformancePack | null;
   stripe: StripeData | null;
   mercury: MercuryData | null;
   googleAnalytics: GAData | null;
@@ -948,6 +1164,7 @@ export interface AnalyticsDashboardData {
   googleAds: GoogleAdsData | null;
   metaAds: MetaAdsData | null;
   metaPage: MetaPageData | null;
+  instagram?: InstagramData | null;
   redditAds: RedditAdsData | null;
   webflow: WebflowData | null;
   coda: CodaKanbanData | null;

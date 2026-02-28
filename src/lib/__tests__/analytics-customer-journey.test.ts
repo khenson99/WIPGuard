@@ -56,6 +56,7 @@ describe("buildCustomerJourneyData", () => {
           amount: 5000,
           source: "Organic",
           ownerId: "owner-1",
+          createdAt: "2026-02-01T00:00:00.000Z",
           updatedAt: "2026-02-10T00:00:00.000Z",
         },
         {
@@ -66,6 +67,7 @@ describe("buildCustomerJourneyData", () => {
           amount: 3000,
           source: "Paid",
           ownerId: "owner-2",
+          createdAt: "2026-02-02T00:00:00.000Z",
           updatedAt: "2026-02-11T00:00:00.000Z",
         },
       ],

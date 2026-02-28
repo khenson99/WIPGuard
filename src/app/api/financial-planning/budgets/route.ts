@@ -23,9 +23,7 @@ function computeEndDate(startDate: Date, period: string): Date {
   return endDate;
 }
 
-export async function GET(
-  _request: NextRequest,
-): Promise<NextResponse> {
+export async function GET(): Promise<NextResponse> {
   try {
     const session = await auth();
     if (!session?.user) {
@@ -91,6 +89,12 @@ export async function POST(
     if (!Number.isFinite(endDate.getTime())) {
       return NextResponse.json(
         { error: "endDate must be a valid date" },
+        { status: 400 },
+      );
+    }
+    if (endDate < startDate) {
+      return NextResponse.json(
+        { error: "endDate must be on or after startDate" },
         { status: 400 },
       );
     }

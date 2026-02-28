@@ -1,18 +1,22 @@
 "use client";
 
-import { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import { buildRangeQuery } from "@/lib/analytics/time-range";
 import { ANALYTICS_PRIMARY_SECTIONS } from "@/lib/analytics/section-registry";
 import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-controls";
 import { LifecycleFunnelPanel } from "@/components/analytics/lifecycle-funnel-panel";
 import { AiInsightsPanel } from "@/components/analytics/ai-insights-panel";
+import { CrossDomainInsightsPanel } from "@/components/analytics/cross-domain-insights";
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-state";
 import { DashboardStaleBanner } from "@/components/dashboard/dashboard-stale-banner";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-error-banner";
+import { CheckCircle, AlertTriangle, XCircle } from "lucide-react";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
+import { Download } from "lucide-react";
 
 interface SummaryPayload {
   generatedAt: string;
@@ -53,22 +57,42 @@ interface SummaryPayload {
   }>;
 }
 
+const STATUS_CLASS: Record<string, string> = {
+  connected: "text-emerald-600",
+  degraded: "text-amber-600",
+  partial: "text-amber-600",
+  missing: "text-muted-foreground",
+};
+
+const STATUS_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+  connected: CheckCircle,
+  degraded: AlertTriangle,
+  partial: AlertTriangle,
+  missing: XCircle,
+};
+
 const SUMMARY_CACHE_PREFIX = "analytics:summary:v1:";
+
+function downloadCsv(filename: string, headers: string[], rows: string[][]): void {
+  const escape = (value: string) =>
+    value.includes(",") || value.includes('"') || value.includes("\n")
+      ? `"${value.replace(/"/g, '""')}"`
+      : value;
+  const lines = [headers.map(escape).join(","), ...rows.map((row) => row.map(escape).join(","))];
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+}
 
 interface SummaryViewModel {
   summary: SummaryPayload;
   overview: AnalyticsDashboardData;
-}
-
-function buildRangeQuery(searchParams: URLSearchParams | null): string {
-  const params = new URLSearchParams();
-  const range = searchParams?.get("range");
-  const from = searchParams?.get("from");
-  const to = searchParams?.get("to");
-  if (range) params.set("range", range);
-  if (from) params.set("from", from);
-  if (to) params.set("to", to);
-  return params.toString();
 }
 
 function summaryCacheKey(rangeQuery: string): string {
@@ -143,6 +167,37 @@ export function AnalyticsSummaryPage() {
   const summary = resource.data?.summary ?? null;
   const overview = resource.data?.overview ?? null;
 
+  const exportHighlightsCsv = useCallback(() => {
+    if (!summary) return;
+    const h = summary.highlights;
+    downloadCsv(
+      "analytics-highlights.csv",
+      ["Metric", "Value"],
+      [
+        ["Total Tasks", String(h.totalTasks)],
+        ["Overdue Tasks", String(h.overdueTasks)],
+        ["Active Projects", String(h.activeProjects)],
+        ["Active Contributors", String(h.activeContributors)],
+        ["Discipline Coverage (%)", String(h.disciplineCoverage)],
+      ],
+    );
+  }, [summary]);
+
+  const exportSectionsCsv = useCallback(() => {
+    if (!summary) return;
+    downloadCsv(
+      "analytics-sections.csv",
+      ["ID", "Label", "Status", "Integration Count", "Connected Count"],
+      summary.primarySections.map((s) => [
+        s.id,
+        s.label,
+        s.status,
+        String(s.integrationCount),
+        String(s.connectedCount),
+      ]),
+    );
+  }, [summary]);
+
   if (resource.loading && !resource.data) {
     return <DashboardLoadingState message="Loading analytics summary..." />;
   }
@@ -161,6 +216,13 @@ export function AnalyticsSummaryPage() {
   }
 
   const staleDomains = unique([...(overview?.staleDomains ?? []), ...(overview?.meta?.staleDomains ?? [])]);
+  const erroredDomains = unique([
+    ...(overview?.errors ?? []).map((item) => item.source),
+    ...(overview?.meta?.erroredDomains ?? []),
+  ]);
+  const connected = summary.primarySections.filter((section) => section.status === "connected").length;
+  const degraded = summary.primarySections.filter((section) => section.status === "degraded").length;
+  const missing = summary.primarySections.filter((section) => section.status === "missing").length;
 
   return (
     <div className="h-full space-y-4 overflow-y-auto p-4">
@@ -181,6 +243,7 @@ export function AnalyticsSummaryPage() {
             type="button"
             onClick={resource.refresh}
             disabled={resource.refreshing}
+            aria-label="Refresh analytics data"
             className="rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-70"
           >
             {resource.refreshing ? "Refreshing..." : "Refresh now"}
@@ -188,24 +251,57 @@ export function AnalyticsSummaryPage() {
         </div>
       </div>
 
-      {(resource.stale || staleDomains.length > 0) && (
-        <DashboardStaleBanner
-          lastUpdatedAt={resource.lastUpdatedAt}
-          refreshing={resource.refreshing}
-          onRefresh={resource.refresh}
-          label="Showing cached analytics while background refresh completes or retries."
-        />
-      )}
+      <div aria-live="polite">
+        {(resource.stale || staleDomains.length > 0) && (
+          <DashboardStaleBanner
+            lastUpdatedAt={resource.lastUpdatedAt}
+            refreshing={resource.refreshing}
+            onRefresh={resource.refresh}
+            label="Showing cached analytics while background refresh completes or retries."
+          />
+        )}
 
-      {resource.error ? (
-        <DashboardErrorBanner
-          message={resource.error}
-          onRetry={resource.refresh}
-          settingsHref="/settings?tab=integrations"
-        />
-      ) : null}
+        {resource.error ? (
+          <DashboardErrorBanner
+            message={resource.error}
+            onRetry={resource.refresh}
+            settingsHref="/settings?tab=integrations"
+          />
+        ) : null}
+      </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div role="region" aria-label="Section status summary" className="rounded-xl border border-border bg-card px-4 py-3">
+        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <span>
+            Sections: <span className="font-semibold text-foreground">{connected}</span> connected
+          </span>
+          <span>
+            <span className="font-semibold text-amber-600">{degraded}</span> degraded
+          </span>
+          <span>
+            <span className="font-semibold text-muted-foreground">{missing}</span> missing
+          </span>
+          <span>
+            Stale domains: <span className="font-semibold text-foreground">{staleDomains.length}</span>
+          </span>
+          <span>
+            Error domains: <span className="font-semibold text-foreground">{erroredDomains.length}</span>
+          </span>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-foreground">Key Metrics</h2>
+        <button
+          type="button"
+          onClick={exportHighlightsCsv}
+          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+        >
+          <Download className="h-3 w-3" aria-hidden="true" />
+          Export CSV
+        </button>
+      </div>
+      <div role="region" aria-label="Key metrics" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <div className="rounded-xl border border-border bg-card px-4 py-3">
           <p className="text-xs text-muted-foreground">Discipline Coverage</p>
           <p className="mt-1 text-2xl font-semibold text-foreground">{summary.highlights.disciplineCoverage}%</p>
@@ -228,19 +324,63 @@ export function AnalyticsSummaryPage() {
         </div>
       </div>
 
-      <LifecycleFunnelPanel lifecycle={overview?.lifecycleFunnel ?? null} insights={overview?.aiInsights?.global ?? []} sectionFocus="all" />
-      <AiInsightsPanel bundle={overview?.aiInsights ?? null} defaultFilter="all" />
+      <div tabIndex={0} role="group" aria-label="Lifecycle funnel chart">
+        <LifecycleFunnelPanel lifecycle={overview?.lifecycleFunnel ?? null} insights={overview?.aiInsights?.global ?? []} sectionFocus="all" />
+      </div>
+      <div tabIndex={0} role="group" aria-label="Cross-domain insights chart">
+        <CrossDomainInsightsPanel
+          data={null}
+        />
+      </div>
+      <div tabIndex={0} role="group" aria-label="AI insights panel">
+        <AiInsightsPanel bundle={overview?.aiInsights ?? null} defaultFilter="all" />
+      </div>
 
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-foreground">Primary Sections</h2>
+        <button
+          type="button"
+          onClick={exportSectionsCsv}
+          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+        >
+          <Download className="h-3 w-3" aria-hidden="true" />
+          Export CSV
+        </button>
+      </div>
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
         {ANALYTICS_PRIMARY_SECTIONS.map((primary) => {
+          const section = summary.primarySections.find((item) => item.id === primary.id);
           return (
             <Link
               key={primary.id}
               href={`${primary.path}${rangeQuery ? `?${rangeQuery}` : ""}`}
+              aria-label={`${primary.label}: ${section?.status ?? "missing"}`}
               className="rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40"
             >
-              <h3 className="text-sm font-semibold text-foreground">{primary.label}</h3>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-foreground">{primary.label}</h3>
+                {(() => {
+                  const status = section?.status ?? "missing";
+                  const Icon = STATUS_ICON[status] ?? XCircle;
+                  return (
+                    <span className={`flex items-center gap-1 text-[11px] uppercase ${STATUS_CLASS[status] ?? "text-muted-foreground"}`}>
+                      <Icon className="h-3 w-3" aria-hidden="true" />
+                      {status}
+                    </span>
+                  );
+                })()}
+              </div>
               <p className="mt-1 text-xs text-muted-foreground">{primary.description}</p>
+              {section && (
+                <>
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    {section.connectedCount}/{section.integrationCount} integrations connected
+                  </p>
+                  {section.children?.some((child) => child.lastError) ? (
+                    <p className="mt-1 text-[11px] text-amber-600">Some integrations are failing and need attention.</p>
+                  ) : null}
+                </>
+              )}
             </Link>
           );
         })}

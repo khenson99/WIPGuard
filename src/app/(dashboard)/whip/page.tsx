@@ -1,5 +1,6 @@
 "use client";
 
+import { AlertTriangle, X } from "lucide-react";
 import { useWhipData } from "@/components/whip/use-whip-data";
 import { WhipFilterBar } from "@/components/whip/whip-filter-bar";
 import { ScopeCreepSummary } from "@/components/whip/scope-creep-summary";
@@ -7,13 +8,7 @@ import { ScopeTimeline } from "@/components/whip/scope-timeline";
 import { WipPressureHeatmap } from "@/components/whip/wip-pressure-heatmap";
 import { QuickActionsPanel } from "@/components/whip/quick-actions-panel";
 import { RetroExport } from "@/components/whip/retro-export";
-
-function formatSprintDay(dateValue: string | null | undefined): string | null {
-  if (!dateValue) return null;
-  const parsed = new Date(`${dateValue}T00:00:00Z`);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-}
+import { getSprintLabel } from "@/lib/sprints";
 
 export default function WhipPage() {
   const {
@@ -26,11 +21,11 @@ export default function WhipPage() {
     filters,
     setFilters,
     updateTask,
+    retry,
+    clearError,
   } = useWhipData();
 
   const activeSprint = sprints.find((s) => s.id === filters.sprintId);
-  const sprintStartLabel = formatSprintDay(activeSprint?.startDate);
-  const sprintEndLabel = formatSprintDay(activeSprint?.endDate);
 
   return (
     <div className="space-y-6 p-6">
@@ -48,12 +43,7 @@ export default function WhipPage() {
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
             <span className="text-sm font-medium text-foreground">
-              {activeSprint.name}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {sprintStartLabel && sprintEndLabel
-                ? `${sprintStartLabel} -- ${sprintEndLabel}`
-                : "Date range unavailable"}
+              {getSprintLabel(activeSprint)}
             </span>
           </div>
         )}
@@ -61,8 +51,28 @@ export default function WhipPage() {
 
       {/* Error banner */}
       {error && (
-        <div className="rounded-lg border border-wip-over-border bg-wip-over-bg px-4 py-3 text-sm text-wip-over-text">
-          {error}
+        <div className="flex items-center justify-between rounded-lg border border-wip-over-border bg-wip-over-bg px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-wip-over-text">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={retry}
+              className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={clearError}
+              className="rounded-md p-1 text-wip-over-text/70 hover:text-wip-over-text"
+              aria-label="Dismiss error"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -107,7 +117,11 @@ export default function WhipPage() {
 
           {/* Retrospective export */}
           <RetroExport
-            sprintName={activeSprint?.name ?? null}
+            sprintName={
+              activeSprint
+                ? getSprintLabel(activeSprint, { includeYear: true })
+                : null
+            }
             sprintData={sprintData}
             riskReport={riskReport}
             tasks={tasks}

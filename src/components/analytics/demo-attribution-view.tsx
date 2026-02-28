@@ -10,6 +10,7 @@ const OUTCOME_COLORS: Record<DemoOutcome, string> = {
   "no-show": "#ef4444",
   rescheduled: "#fbbf24",
   pending: "#6b7280",
+  unknown: "#94a3b8",
 };
 
 function fmt$(n: number) {
@@ -123,6 +124,108 @@ export function DemoAttributionView({ data }: { data: AnalyticsDashboardData | n
         </div>
       </div>
 
+      {/* Customer Journey Path Analysis */}
+      {demo.journeyPaths && demo.journeyPaths.length > 0 && (
+        <div className="rounded-xl border border-border bg-card p-5">
+          <h3 className="mb-1 text-sm font-semibold text-foreground">
+            Customer Journey Path Analysis
+          </h3>
+          <p className="mb-4 text-xs text-muted-foreground">
+            Full lifecycle from lead to churn, grouped by acquisition channel
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
+                  <th className="pb-2 text-left font-medium">Channel</th>
+                  <th className="pb-2 text-right font-medium">Leads</th>
+                  <th className="pb-2 text-right font-medium">Demos</th>
+                  <th className="pb-2 text-right font-medium">Completed</th>
+                  <th className="pb-2 text-right font-medium">No-Show</th>
+                  <th className="pb-2 text-right font-medium">Avg Days</th>
+                  <th className="pb-2 text-right font-medium">Won</th>
+                  <th className="pb-2 text-right font-medium">Lost</th>
+                  <th className="pb-2 text-right font-medium">Onboard</th>
+                  <th className="pb-2 text-right font-medium">Avg Value</th>
+                  <th className="pb-2 text-right font-medium">Churned</th>
+                  <th className="pb-2 text-right font-medium">Not Activated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {demo.journeyPaths.map((row) => (
+                  <tr key={row.source} className="border-b border-border/50 last:border-0">
+                    <td className="py-2.5 font-medium text-foreground">{row.source}</td>
+                    <td className="py-2.5 text-right tabular-nums">{row.totalLeads}</td>
+                    <td className="py-2.5 text-right tabular-nums">
+                      <span>{row.demosBooked}</span>
+                      <span className="ml-1 text-[10px] text-muted-foreground">
+                        ({row.demosBookedPct}%)
+                      </span>
+                    </td>
+                    <td className="py-2.5 text-right tabular-nums text-emerald-500">
+                      <span>{row.demoCompleted}</span>
+                      <span className="ml-1 text-[10px] text-emerald-500/60">
+                        ({row.demoCompletedPct}%)
+                      </span>
+                    </td>
+                    <td className="py-2.5 text-right tabular-nums text-red-500">
+                      <span>{row.demoNoShow}</span>
+                      <span className="ml-1 text-[10px] text-red-500/60">
+                        ({row.demoNoShowPct}%)
+                      </span>
+                    </td>
+                    <td className="py-2.5 text-right tabular-nums">
+                      <span className={row.avgDaysToDecision != null && row.avgDaysToDecision > 14
+                        ? "text-yellow-500" : "text-foreground"}>
+                        {row.avgDaysToDecision != null ? `${row.avgDaysToDecision}d` : "—"}
+                      </span>
+                    </td>
+                    <td className="py-2.5 text-right tabular-nums text-emerald-500">
+                      <span>{row.closedWon}</span>
+                      <span className="ml-1 text-[10px] text-emerald-500/60">
+                        ({row.closedWonPct}%)
+                      </span>
+                    </td>
+                    <td className="py-2.5 text-right tabular-nums text-red-500">{row.closedLost}</td>
+                    <td className="py-2.5 text-right tabular-nums">
+                      <span>{row.onboarding}</span>
+                      {row.onboarding > 0 && (
+                        <span className="ml-1 text-[10px] text-muted-foreground">
+                          ({row.onboardingPct}%)
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2.5 text-right tabular-nums text-foreground">
+                      {row.avgContractValue != null ? fmt$(row.avgContractValue) : "—"}
+                    </td>
+                    <td className="py-2.5 text-right tabular-nums">
+                      <span className={row.churned > 0 ? "text-red-500" : "text-muted-foreground"}>
+                        {row.churned}
+                      </span>
+                      {row.churned > 0 && (
+                        <span className="ml-1 text-[10px] text-red-500/60">
+                          ({row.churnedPct}%)
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2.5 text-right tabular-nums">
+                      <span className={row.notActivated > 0 ? "text-orange-500" : "text-muted-foreground"}>
+                        {row.notActivated}
+                      </span>
+                      {row.notActivated > 0 && (
+                        <span className="ml-1 text-[10px] text-orange-500/60">
+                          ({row.notActivatedPct}%)
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Source Quality Breakdown */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Source Conversion Rates */}
@@ -131,6 +234,7 @@ export function DemoAttributionView({ data }: { data: AnalyticsDashboardData | n
           <div className="space-y-2">
             {[...demo.bySource]
               .sort((a, b) => b.conversionRate - a.conversionRate)
+              .slice(0, 5)
               .map((src) => {
                 const maxRate = demo.bySource[0]
                   ? Math.max(...demo.bySource.map((s) => s.conversionRate), 1)

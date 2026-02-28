@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, Calendar, ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertTriangle, BookOpen, Calendar, ChevronLeft, ChevronRight } from "lucide-react";
 import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 
 interface LogbookEntry {
@@ -21,6 +21,7 @@ interface LogbookEntry {
 export default function LogbookPage() {
   const [entries, setEntries] = useState<LogbookEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -54,21 +55,29 @@ export default function LogbookPage() {
     if (endDate) params.set("endDate", endDate);
 
     fetch(`/api/logbook?${params}`, { signal: controller.signal })
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed to fetch");
+        return r.json();
+      })
       .then((data) => {
         if (active && id === fetchIdRef.current) {
           const nextEntries = (data?.entries ?? (Array.isArray(data) ? data : [])) as LogbookEntry[];
           setEntries(nextEntries);
+          setError(null);
           writeSessionCache<LogbookEntry[]>(cacheKey, nextEntries);
           setLoading(false);
         }
       })
-      .catch((error) => {
-        if (!active || (error instanceof Error && error.name === "AbortError")) {
+      .catch((err) => {
+        if (!active || (err instanceof Error && err.name === "AbortError")) {
           return;
         }
-        if (id === fetchIdRef.current && !cached) {
-          setLoading(false);
+        if (id === fetchIdRef.current) {
+          setError("Failed to load log entries");
+          console.error("Logbook fetch failed:", err);
+          if (!cached) {
+            setLoading(false);
+          }
         }
       });
 
@@ -95,6 +104,7 @@ export default function LogbookPage() {
             <Calendar className="h-4 w-4 text-muted-foreground" />
             <input
               type="date"
+              aria-label="Start date"
               value={startDate}
               onChange={(e) => {
                 setStartDate(e.target.value);
@@ -105,6 +115,7 @@ export default function LogbookPage() {
             <span className="text-xs text-muted-foreground">to</span>
             <input
               type="date"
+              aria-label="End date"
               value={endDate}
               onChange={(e) => {
                 setEndDate(e.target.value);
@@ -120,6 +131,49 @@ export default function LogbookPage() {
         {loading ? (
           <div className="flex h-32 items-center justify-center">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-primary" />
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+            <AlertTriangle className="h-8 w-8 text-yellow-500" />
+            <p className="text-sm text-muted-foreground">{error}</p>
+            <button
+              onClick={() => {
+                setError(null);
+                setLoading(true);
+                fetchIdRef.current++;
+                const retryParams = new URLSearchParams({
+                  page: page.toString(),
+                  limit: "25",
+                });
+                if (startDate) retryParams.set("startDate", startDate);
+                if (endDate) retryParams.set("endDate", endDate);
+                const retryId = fetchIdRef.current;
+                fetch(`/api/logbook?${retryParams}`)
+                  .then((r) => {
+                    if (!r.ok) throw new Error("Failed to fetch");
+                    return r.json();
+                  })
+                  .then((data) => {
+                    if (retryId === fetchIdRef.current) {
+                      const nextEntries = (data?.entries ?? (Array.isArray(data) ? data : [])) as LogbookEntry[];
+                      setEntries(nextEntries);
+                      setError(null);
+                      writeSessionCache<LogbookEntry[]>(cacheKey, nextEntries);
+                      setLoading(false);
+                    }
+                  })
+                  .catch((err) => {
+                    if (retryId === fetchIdRef.current) {
+                      setError("Failed to load log entries");
+                      console.error("Logbook fetch failed:", err);
+                      setLoading(false);
+                    }
+                  });
+              }}
+              className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90"
+            >
+              Retry
+            </button>
           </div>
         ) : entries.length === 0 ? (
           <div className="mt-12 text-center text-sm text-muted-foreground">
@@ -165,23 +219,25 @@ export default function LogbookPage() {
         )}
 
         {/* Pagination */}
-        <div className="mt-4 flex items-center justify-center gap-3">
+        <nav aria-label="Pagination" className="mt-4 flex items-center justify-center gap-3">
           <button
+            aria-label="Previous page"
             onClick={() => setPage(Math.max(1, page - 1))}
             disabled={page === 1}
             className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary disabled:opacity-30"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <span className="text-xs text-muted-foreground">Page {page}</span>
+          <span aria-live="polite" className="text-xs text-muted-foreground">Page {page}</span>
           <button
+            aria-label="Next page"
             onClick={() => setPage(page + 1)}
             disabled={entries.length < 25}
             className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary disabled:opacity-30"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
-        </div>
+        </nav>
       </div>
     </div>
   );
