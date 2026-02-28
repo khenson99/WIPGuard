@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { buildDailyCountSeriesUtc } from "@/lib/dashboard-trends";
 
 const USER_SELECT = {
   id: true,
@@ -33,6 +34,9 @@ export async function GET(): Promise<NextResponse> {
     }
 
     const now = new Date();
+    const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const completedTrendStartUtc = new Date(todayUtc.getTime() - 13 * 24 * 60 * 60 * 1000);
+    const completedTrendEndExclusiveUtc = new Date(todayUtc.getTime() + 24 * 60 * 60 * 1000);
     const in7d = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
     const fiveDaysAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -43,6 +47,7 @@ export async function GET(): Promise<NextResponse> {
       myOverdue,
       myDueSoon,
       myCompletedWeek,
+      completedTimestamps,
       staleTeam,
       blockedTeam,
       overdueTeam,
@@ -110,6 +115,14 @@ export async function GET(): Promise<NextResponse> {
           updatedAt: { gte: sevenDaysAgo },
         },
       }),
+      prisma.task.findMany({
+        where: {
+          responsible: { some: { id: session.user.id } },
+          status: "DONE",
+          updatedAt: { gte: completedTrendStartUtc, lt: completedTrendEndExclusiveUtc },
+        },
+        select: { updatedAt: true },
+      }),
       prisma.task.count({
         where: {
           status: { in: ["ACTIVE", "WORKING_ON_TODAY", "QUEUED"] },
@@ -141,6 +154,12 @@ export async function GET(): Promise<NextResponse> {
         _count: { status: true },
       }),
     ]);
+
+    const completedByDay = buildDailyCountSeriesUtc({
+      now,
+      days: 14,
+      timestamps: completedTimestamps.map((row) => row.updatedAt),
+    });
 
     const taskMap = new Map<string, (typeof myActive)[number]>();
     for (const task of [...myOverdue, ...myBlocked, ...myDueSoon, ...myActive]) {
@@ -192,6 +211,7 @@ export async function GET(): Promise<NextResponse> {
           myOverdue,
           myDueSoon,
           myCompletedWeek,
+          completedByDay,
           recommendations,
         },
         team: {
