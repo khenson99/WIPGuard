@@ -448,7 +448,10 @@ export default function AutomationBuilderPage() {
               <p className="mt-1 text-xs text-muted-foreground">Select a node from canvas.</p>
             ) : (
               <div className="mt-2 space-y-2">
+                <label htmlFor="node-label" className="text-[11px] font-medium text-muted-foreground">Label</label>
                 <input
+                  id="node-label"
+                  aria-label="Node label"
                   value={selectedNode.label}
                   onChange={(event) =>
                     setNodes((current) =>
@@ -461,7 +464,10 @@ export default function AutomationBuilderPage() {
                   placeholder="Node label"
                 />
 
+                <label htmlFor="node-type" className="text-[11px] font-medium text-muted-foreground">Type</label>
                 <select
+                  id="node-type"
+                  aria-label="Node type"
                   value={selectedNode.type}
                   onChange={(event) =>
                     setNodes((current) =>
@@ -484,9 +490,11 @@ export default function AutomationBuilderPage() {
                   <option value="DELAY">DELAY</option>
                 </select>
 
+                <p className="text-[11px] font-medium text-muted-foreground">Position</p>
                 <div className="grid grid-cols-2 gap-2">
                   <input
                     type="number"
+                    aria-label="X position"
                     value={selectedNode.positionX}
                     onChange={(event) =>
                       setNodes((current) =>
@@ -502,6 +510,7 @@ export default function AutomationBuilderPage() {
                   />
                   <input
                     type="number"
+                    aria-label="Y position"
                     value={selectedNode.positionY}
                     onChange={(event) =>
                       setNodes((current) =>
@@ -517,7 +526,10 @@ export default function AutomationBuilderPage() {
                   />
                 </div>
 
+                <label htmlFor="node-config" className="text-[11px] font-medium text-muted-foreground">Configuration (JSON)</label>
                 <textarea
+                  id="node-config"
+                  aria-label="Node configuration JSON"
                   value={JSON.stringify(selectedNode.config || {}, null, 2)}
                   onChange={(event) => {
                     try {
