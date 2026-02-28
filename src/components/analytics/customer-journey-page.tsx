@@ -48,7 +48,7 @@ export function CustomerJourneyPage() {
       return (await response.json()) as AnalyticsDashboardData;
     },
     getLastUpdatedAt: (payload) =>
-      payload.meta?.servedAt ?? payload.lastFullRefresh ?? payload.generatedAt ?? null,
+      payload.meta?.servedAt ?? payload.lastFullRefresh ?? null,
     mapError: (error) =>
       error instanceof Error && error.message ? error.message : "Could not load journey data.",
   });
