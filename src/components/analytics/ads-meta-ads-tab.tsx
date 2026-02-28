@@ -5,6 +5,7 @@ import {
   TrendingUp, AlertTriangle,
 } from "lucide-react";
 import type { AnalyticsDashboardData, AdCampaign } from "@/lib/analytics/types";
+import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
 import { RingStat } from "@/components/analytics/bar-display";
 import { StatCard } from "@/components/analytics/stat-card";
@@ -47,6 +48,8 @@ export function AdsMetaAdsTab({ data }: AdsMetaAdsTabProps) {
     totalSpend30d, totalImpressions, totalClicks, totalConversions,
     ctr, cpc, cpa, campaigns,
   } = meta;
+
+  const kpis = data?.kpis ?? computeAnalyticsKpis(data);
 
   if (totalSpend30d === 0 && campaigns.length === 0) {
     return (
@@ -275,7 +278,7 @@ export function AdsMetaAdsTab({ data }: AdsMetaAdsTabProps) {
             <div className="flex flex-wrap items-center justify-center gap-6">
               {totalConversions > 0 && (
                 <RingStat
-                  value={Math.min(100 - (cpa / 100) * 50, 100)}
+                  value={kpis.ads.meta.cpaScore ?? 0}
                   max={100}
                   label="CPA Score"
                   color={cpa <= 25 ? "#22c55e" : cpa <= 50 ? "#eab308" : "#ef4444"}
@@ -283,7 +286,7 @@ export function AdsMetaAdsTab({ data }: AdsMetaAdsTabProps) {
                 />
               )}
               <RingStat
-                value={Math.min(ctr * 25, 100)}
+                value={kpis.ads.meta.engagementScore ?? 0}
                 max={100}
                 label="Engagement"
                 color={ctr >= 1.5 ? "#22c55e" : ctr >= 0.8 ? "#eab308" : "#ef4444"}

@@ -26,7 +26,7 @@ const TASK_INCLUDE = {
  * Returns data structured for the daily standup cockpit:
  * - Active tasks grouped by owner
  * - Blocked tasks (tasks whose dependencies aren't done)
- * - Stale tasks (not updated in 3+ days)
+ * - Stale tasks (not updated in 21+ days)
  * - WIP policy state per column
  * - Flow coaching signals
  */

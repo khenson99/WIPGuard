@@ -8,6 +8,8 @@ interface FinanceDataEmptyStateProps {
   provider?: string;
   reasons?: string[];
   reconnectHref?: string;
+  primaryActionLabel?: string;
+  primaryActionHref?: string;
 }
 
 export function FinanceDataEmptyState({
@@ -16,10 +18,14 @@ export function FinanceDataEmptyState({
   provider,
   reasons = [],
   reconnectHref = "/settings?tab=integrations",
+  primaryActionLabel,
+  primaryActionHref,
 }: FinanceDataEmptyStateProps) {
   const resolvedTitle = title ?? `${provider ?? "Integration"} data is unavailable`;
   const resolvedMessage =
     message ?? `We could not load ${provider ?? "integration"} data for this range.`;
+  const resolvedPrimaryLabel = primaryActionLabel ?? "Reconnect Integration";
+  const resolvedPrimaryHref = primaryActionHref ?? reconnectHref;
 
   return (
     <div className="rounded-xl border border-border bg-card p-6">
@@ -36,10 +42,10 @@ export function FinanceDataEmptyState({
 
       <div className="mt-4 flex flex-wrap gap-2">
         <Link
-          href={reconnectHref}
+          href={resolvedPrimaryHref}
           className="btn-primary-theme rounded-lg px-3 py-2 text-xs"
         >
-          Reconnect Integration
+          {resolvedPrimaryLabel}
         </Link>
         <button
           type="button"

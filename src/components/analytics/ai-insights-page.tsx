@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { InsightCardFull } from "./insight-card-full";
 import { StatCard } from "./stat-card";
 import type { AnalyticsDashboardData, AnalyticsSectionId } from "@/lib/analytics/types";
+import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { AlertTriangle, AlertCircle, Info, BarChart3 } from "lucide-react";
 import { populateConnectionStatus } from "@/hooks/use-connection-status";
 
@@ -88,12 +89,15 @@ export function AiInsightsPage() {
     return result;
   }, [allInsights, severityFilter, sectionFilter, sortMode]);
 
-  const criticalCount = allInsights.filter((i) => i.severity === "critical").length;
-  const warningCount = allInsights.filter((i) => i.severity === "warning").length;
-  const infoCount = allInsights.filter((i) => i.severity === "info").length;
-  const avgConfidence = allInsights.length > 0
-    ? allInsights.reduce((sum, i) => sum + i.confidence, 0) / allInsights.length
-    : 0;
+  const kpis = data ? (data.kpis ?? computeAnalyticsKpis(data)) : null;
+  const criticalCount = kpis?.ai.criticalCount ?? allInsights.filter((i) => i.severity === "critical").length;
+  const warningCount = kpis?.ai.warningCount ?? allInsights.filter((i) => i.severity === "warning").length;
+  const infoCount = kpis?.ai.infoCount ?? allInsights.filter((i) => i.severity === "info").length;
+  const avgConfidencePct =
+    kpis?.ai.avgConfidencePct ??
+    (allInsights.length > 0
+      ? Math.round((allInsights.reduce((sum, i) => sum + i.confidence, 0) / allInsights.length) * 100)
+      : 0);
 
   if (loading) {
     return (
@@ -135,7 +139,7 @@ export function AiInsightsPage() {
         <StatCard label="Critical" value={String(criticalCount)} icon={AlertTriangle} iconColor="text-red-500" />
         <StatCard label="Warnings" value={String(warningCount)} icon={AlertCircle} iconColor="text-yellow-500" />
         <StatCard label="Info" value={String(infoCount)} icon={Info} iconColor="text-blue-500" />
-        <StatCard label="Avg Confidence" value={`${(avgConfidence * 100).toFixed(0)}%`} icon={BarChart3} />
+        <StatCard label="Avg Confidence" value={`${avgConfidencePct}%`} icon={BarChart3} />
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

@@ -65,12 +65,16 @@ export async function GET(): Promise<NextResponse> {
       prisma.task.findMany({
         where: {
           responsible: { some: { id: session.user.id } },
-          status: "NOT_DONE",
+          OR: [
+            { status: "NOT_DONE" },
+            { dependsOn: { some: { status: { not: "DONE" } } } },
+          ],
         },
         include: {
           project: { select: { id: true, name: true } },
           responsible: { select: USER_SELECT },
           dependedBy: { select: { id: true } },
+          dependsOn: { select: { id: true, status: true } },
         },
         orderBy: { updatedAt: "asc" },
         take: 20,

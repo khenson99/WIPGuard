@@ -26,24 +26,24 @@ function parseIds(value: unknown): string[] {
 }
 
 function readExpandedPreference(): SidebarExpandedPreference {
-  if (typeof window === "undefined") return { explicit: true, ids: new Set() };
+  if (typeof window === "undefined") return { explicit: false, ids: new Set() };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      return { explicit: true, ids: new Set() };
+      return { explicit: false, ids: new Set() };
     }
 
     const parsed = JSON.parse(raw) as unknown;
     if (Array.isArray(parsed)) {
       const ids = parseIds(parsed);
       if (ids.length === 0) {
-        return { explicit: true, ids: new Set() };
+        return { explicit: false, ids: new Set() };
       }
       return { explicit: true, ids: new Set(ids) };
     }
 
     if (!parsed || typeof parsed !== "object") {
-      return { explicit: true, ids: new Set() };
+      return { explicit: false, ids: new Set() };
     }
 
     const record = parsed as Record<string, unknown>;
@@ -52,7 +52,7 @@ function readExpandedPreference(): SidebarExpandedPreference {
       ids: new Set(parseIds(record.ids)),
     };
   } catch {
-    return { explicit: true, ids: new Set() };
+    return { explicit: false, ids: new Set() };
   }
 }
 

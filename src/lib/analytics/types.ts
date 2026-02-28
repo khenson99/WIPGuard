@@ -259,6 +259,70 @@ export interface StripeData {
 }
 
 // ══════════════════════════════════════════════════════════
+// CANONICAL KPIs (computed once server-side)
+// ══════════════════════════════════════════════════════════
+
+export interface AnalyticsKpis {
+  finance: {
+    mrr: number | null;
+    arr: number | null;
+    paymentSuccessPct: number | null;
+    churnRatePct: number | null;
+    revenueGrowthPct: number | null;
+    runwayMonths: number | null;
+    runwayMonthsCapped24: number | null;
+  };
+  sales: {
+    totalDeals: number | null;
+    activeDeals: number | null;
+    winRatePct: number | null;
+    noShowRatePct: number | null;
+  };
+  demo: {
+    demosScheduledInRange: number | null;
+    demosInPipeline: number | null;
+    avgConversionRatePct: number | null;
+  };
+  traffic: {
+    bounceRatePct: number | null;
+    avgSessionDurationSeconds: number | null;
+    avgSessionDurationLabel: string | null;
+    pagesPerSession: number | null;
+    engagementScore: number | null;
+    pageDepthScore: number | null;
+  };
+  ads: {
+    google: {
+      roasScore: number | null;
+      cpaScore: number | null;
+    };
+    meta: {
+      cpaScore: number | null;
+      engagementScore: number | null;
+    };
+    reddit: {
+      ctrScore: number | null;
+      cpcScore: number | null;
+    };
+  };
+  ops: {
+    failureRatioPctByProvider: Partial<Record<IntegrationProviderKey, number | null>>;
+  };
+  support: {
+    avgFirstResponseMinutes: number | null;
+    avgFirstResponseLabel: string | null;
+    csatScore: number | null;
+    csatPct: number | null;
+  };
+  ai: {
+    criticalCount: number | null;
+    warningCount: number | null;
+    infoCount: number | null;
+    avgConfidencePct: number | null;
+  };
+}
+
+// ══════════════════════════════════════════════════════════
 // MERCURY TYPES
 // ══════════════════════════════════════════════════════════
 
@@ -1182,6 +1246,7 @@ export interface FinancialPlanningData {
 // ══════════════════════════════════════════════════════════
 
 export interface AnalyticsDashboardData {
+  kpis?: AnalyticsKpis;
   hubspot: HubSpotData | null;
   salesPerformance: SalesPerformancePack | null;
   stripe: StripeData | null;

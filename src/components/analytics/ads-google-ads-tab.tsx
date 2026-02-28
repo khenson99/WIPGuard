@@ -5,6 +5,7 @@ import {
   TrendingUp, AlertTriangle, Zap,
 } from "lucide-react";
 import type { AnalyticsDashboardData, AdCampaign } from "@/lib/analytics/types";
+import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
 import { RingStat } from "@/components/analytics/bar-display";
 import { StatCard } from "@/components/analytics/stat-card";
@@ -47,6 +48,8 @@ export function AdsGoogleAdsTab({ data }: AdsGoogleAdsTabProps) {
     totalSpend30d, totalImpressions, totalClicks, totalConversions,
     ctr, cpc, cpa, roas, campaigns,
   } = googleAds;
+
+  const kpis = data?.kpis ?? computeAnalyticsKpis(data);
 
   if (totalSpend30d === 0 && campaigns.length === 0) {
     return (
@@ -292,7 +295,7 @@ export function AdsGoogleAdsTab({ data }: AdsGoogleAdsTabProps) {
           <div className="flex flex-col items-center gap-4">
             <div className="flex flex-wrap items-center justify-center gap-6">
               <RingStat
-                value={Math.min(roas * 10, 100)}
+                value={kpis.ads.google.roasScore ?? 0}
                 max={100}
                 label="ROAS"
                 color={roas >= 3 ? "#22c55e" : roas >= 1 ? "#eab308" : "#ef4444"}
@@ -300,7 +303,7 @@ export function AdsGoogleAdsTab({ data }: AdsGoogleAdsTabProps) {
               />
               {totalConversions > 0 && (
                 <RingStat
-                  value={Math.min(100 - (cpa / Math.max(totalSpend30d / Math.max(totalConversions, 1), 1)) * 50, 100)}
+                  value={kpis.ads.google.cpaScore ?? 0}
                   max={100}
                   label="CPA Score"
                   color={cpa <= 20 ? "#22c55e" : cpa <= 50 ? "#eab308" : "#ef4444"}

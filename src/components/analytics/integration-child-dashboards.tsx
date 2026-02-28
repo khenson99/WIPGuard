@@ -6,6 +6,7 @@ import type {
   CodaKanbanData,
   IntegrationTelemetryData,
 } from "@/lib/analytics/types";
+import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { FinanceStripeTab } from "@/components/analytics/finance-stripe-tab";
 import { FinanceHubSpotTab } from "@/components/analytics/finance-hubspot-tab";
 import { SalesFunnelTab } from "@/components/analytics/sales-funnel-tab";
@@ -140,11 +141,13 @@ function TelemetryDashboard({
   subtitle,
   telemetry,
   reasons,
+  failureRatioPct,
 }: {
   title: string;
   subtitle: string;
   telemetry: IntegrationTelemetryData | null;
   reasons: string[];
+  failureRatioPct?: number | null;
 }) {
   if (!telemetry) {
     return <EmptyProviderState title={`${title} data is unavailable`} description={subtitle} reasons={reasons} />;
@@ -161,7 +164,7 @@ function TelemetryDashboard({
           { label: "Receipts", value: fmtInt(telemetry.receiptsInRange) },
           { label: "Tasks Created", value: fmtInt(telemetry.tasksCreatedInRange) },
           { label: "Failures", value: fmtInt(telemetry.failuresInRange) },
-          { label: "Failure Ratio", value: fmtPct((telemetry.failuresInRange / Math.max(1, telemetry.eventsInRange)) * 100) },
+          { label: "Failure Ratio", value: fmtPct(failureRatioPct) },
         ]}
       />
 
@@ -473,6 +476,12 @@ export function AdsGoogleAnalyticsDashboard({ data }: IntegrationChildDashboardP
     return <EmptyProviderState title="Google Analytics data is unavailable" description="Connect Google Analytics to see traffic quality and engagement trends." reasons={reasons} />;
   }
 
+  const kpis = data ? (data.kpis ?? computeAnalyticsKpis(data)) : null;
+  const bounceRatePct = kpis?.traffic.bounceRatePct ?? 0;
+  const avgSessionLabel =
+    kpis?.traffic.avgSessionDurationLabel ??
+    `${Math.floor(ga.avgSessionDuration / 60)}m ${Math.round(ga.avgSessionDuration % 60)}s`;
+
   return (
     <DashboardShell title="Google Analytics" subtitle="Traffic quality, channel mix, and top content performance.">
       <MetricGrid
@@ -480,8 +489,8 @@ export function AdsGoogleAnalyticsDashboard({ data }: IntegrationChildDashboardP
           { label: "Sessions (30d)", value: fmtInt(ga.sessions30d), subtitle: `Prev ${fmtInt(ga.sessionsPrev30d)}` },
           { label: "Users (30d)", value: fmtInt(ga.users30d), subtitle: `Prev ${fmtInt(ga.usersPrev30d)}` },
           { label: "Pageviews", value: fmtInt(ga.pageviews30d), subtitle: `Prev ${fmtInt(ga.pageviewsPrev30d)}` },
-          { label: "Bounce Rate", value: fmtPct(ga.bounceRate * 100) },
-          { label: "Avg Session", value: `${Math.floor(ga.avgSessionDuration / 60)}m ${Math.round(ga.avgSessionDuration % 60)}s` },
+          { label: "Bounce Rate", value: fmtPct(bounceRatePct) },
+          { label: "Avg Session", value: avgSessionLabel },
           { label: "Top Channels", value: fmtInt(ga.trafficByChannel.length) },
         ]}
       />
@@ -795,11 +804,13 @@ export function SalesStripeDashboard({ data }: IntegrationChildDashboardProps) {
     return <EmptyProviderState title="Stripe sales data is unavailable" description="Connect Stripe to monitor subscription-led sales outcomes." reasons={reasons} />;
   }
 
+  const mrr = data?.kpis?.finance?.mrr ?? stripe.revenue.mrr;
+
   return (
     <DashboardShell title="Stripe Sales Lens" subtitle="Commercial outcomes from subscription motion and payment behavior.">
       <MetricGrid
         metrics={[
-          { label: "MRR", value: fmtCurrency(stripe.revenue.mrr), subtitle: `${stripe.revenue.mrrChange.toFixed(1)}% MoM` },
+          { label: "MRR", value: fmtCurrency(mrr), subtitle: `${stripe.revenue.mrrChange.toFixed(1)}% MoM` },
           { label: "Active Subs", value: fmtInt(stripe.subscriptions.active) },
           { label: "Trialing", value: fmtInt(stripe.subscriptions.trialing) },
           { label: "Past Due", value: fmtInt(stripe.subscriptions.pastDue) },
@@ -832,23 +843,27 @@ export function SalesStripeDashboard({ data }: IntegrationChildDashboardProps) {
 }
 
 export function SalesGoogleWorkspaceDashboard({ data }: IntegrationChildDashboardProps) {
+  const kpis = data ? (data.kpis ?? computeAnalyticsKpis(data)) : null;
   return (
     <TelemetryDashboard
       title="Google Workspace"
       subtitle="Sales workflow automation health across Gmail/Calendar/Drive processing rules."
       telemetry={data?.googleWorkspace ?? null}
       reasons={providerErrors(data, ["googleWorkspace"])}
+      failureRatioPct={kpis?.ops.failureRatioPctByProvider.googleWorkspace ?? null}
     />
   );
 }
 
 export function SalesSlackDashboard({ data }: IntegrationChildDashboardProps) {
+  const kpis = data ? (data.kpis ?? computeAnalyticsKpis(data)) : null;
   return (
     <TelemetryDashboard
       title="Slack"
       subtitle="Sales execution automations and failure diagnostics from Slack workflows."
       telemetry={data?.slack ?? null}
       reasons={providerErrors(data, ["slack"])}
+      failureRatioPct={kpis?.ops.failureRatioPctByProvider.slack ?? null}
     />
   );
 }
@@ -880,6 +895,11 @@ export function CustomerSuccessPylonDashboard({ data }: IntegrationChildDashboar
     return <EmptyProviderState title="Pylon data is unavailable" description="Connect Pylon to inspect support load and response quality." reasons={reasons} />;
   }
 
+  const kpis = data ? (data.kpis ?? computeAnalyticsKpis(data)) : null;
+  const avgFirstResponseLabel =
+    kpis?.support.avgFirstResponseLabel ??
+    (pylon.avgFirstResponseMinutes === null ? "—" : `${Math.round(pylon.avgFirstResponseMinutes)} min`);
+
   return (
     <DashboardShell title="Pylon" subtitle="Support urgency, queue depth, and customer response quality.">
       <MetricGrid
@@ -888,7 +908,7 @@ export function CustomerSuccessPylonDashboard({ data }: IntegrationChildDashboar
           { label: "Urgent", value: fmtInt(pylon.urgentConversations) },
           { label: "Waiting on Team", value: fmtInt(pylon.waitingOnTeam) },
           { label: "Resolved", value: fmtInt(pylon.resolvedInRange) },
-          { label: "Avg First Response", value: pylon.avgFirstResponseMinutes === null ? "—" : `${Math.round(pylon.avgFirstResponseMinutes)} min` },
+          { label: "Avg First Response", value: avgFirstResponseLabel },
           { label: "CSAT", value: pylon.csat === null ? "—" : pylon.csat.toFixed(2) },
         ]}
       />
@@ -931,23 +951,27 @@ export function CustomerSuccessProductDashboard({ data }: IntegrationChildDashbo
 }
 
 export function CustomerSuccessGoogleWorkspaceDashboard({ data }: IntegrationChildDashboardProps) {
+  const kpis = data ? (data.kpis ?? computeAnalyticsKpis(data)) : null;
   return (
     <TelemetryDashboard
       title="Google Workspace"
       subtitle="Customer-success workflow automation health from Workspace triggers and processors."
       telemetry={data?.googleWorkspace ?? null}
       reasons={providerErrors(data, ["googleWorkspace"])}
+      failureRatioPct={kpis?.ops.failureRatioPctByProvider.googleWorkspace ?? null}
     />
   );
 }
 
 export function CustomerSuccessSlackDashboard({ data }: IntegrationChildDashboardProps) {
+  const kpis = data ? (data.kpis ?? computeAnalyticsKpis(data)) : null;
   return (
     <TelemetryDashboard
       title="Slack"
       subtitle="Customer-success automation throughput and failure diagnostics in Slack."
       telemetry={data?.slack ?? null}
       reasons={providerErrors(data, ["slack"])}
+      failureRatioPct={kpis?.ops.failureRatioPctByProvider.slack ?? null}
     />
   );
 }

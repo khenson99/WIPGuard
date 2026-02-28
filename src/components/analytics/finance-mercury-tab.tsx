@@ -5,6 +5,7 @@ import {
   AlertTriangle, ArrowDownRight, ArrowUpRight, Wallet,
 } from "lucide-react";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
 import { RingStat } from "@/components/analytics/bar-display";
 import { StatCard } from "@/components/analytics/stat-card";
@@ -55,7 +56,10 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
     );
   }
 
+  const kpis = data?.kpis ?? computeAnalyticsKpis(data);
+
   const { accounts, cashFlow } = mercury;
+  const runwayCapped24 = kpis.finance.runwayMonthsCapped24 ?? Math.min(cashFlow.runway, 24);
 
   if (accounts.length === 0 && cashFlow.totalBalance === 0) {
     return (
@@ -264,7 +268,7 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
         <SectionCard title="Runway Projection" subtitle="Months remaining at current burn rate">
           <div className="flex flex-col items-center gap-4">
             <RingStat
-              value={Math.min(cashFlow.runway, 24)}
+              value={runwayCapped24}
               max={24}
               label="Runway"
               color={runwayBgColor(cashFlow.runway)}
@@ -291,7 +295,7 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
                 <div
                   className="h-full rounded-full transition-all"
                   style={{
-                    width: `${Math.min((cashFlow.runway / 24) * 100, 100)}%`,
+                    width: `${Math.min((runwayCapped24 / 24) * 100, 100)}%`,
                     backgroundColor: runwayBgColor(cashFlow.runway),
                   }}
                 />

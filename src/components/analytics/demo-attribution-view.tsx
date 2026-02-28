@@ -2,6 +2,7 @@
 
 import { TrendingUp, BarChart3, ArrowRight } from "lucide-react";
 import type { AnalyticsDashboardData, DemoOutcome } from "@/lib/analytics/types";
+import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { StatCard } from "./stat-card";
 import { RingStat } from "./bar-display";
 
@@ -22,6 +23,8 @@ function fmt$(n: number) {
 export function DemoAttributionView({ data }: { data: AnalyticsDashboardData | null }) {
   const demo = data?.demoAnalytics;
   if (!demo || demo.totalScheduled === 0) return <EmptyState />;
+
+  const kpis = data?.kpis ?? computeAnalyticsKpis(data);
 
   // Source attribution: best source for conversion
   const bestSource = demo.bySource.reduce<typeof demo.bySource[0] | null>((best, src) => {
@@ -52,9 +55,7 @@ export function DemoAttributionView({ data }: { data: AnalyticsDashboardData | n
         />
         <StatCard
           label="Avg Conversion"
-          value={`${demo.bySource.length > 0
-            ? Math.round(demo.bySource.reduce((s, x) => s + x.conversionRate, 0) / demo.bySource.length * 10) / 10
-            : 0}%`}
+          value={`${(kpis.demo.avgConversionRatePct ?? 0).toFixed(1)}%`}
           subtitle="across all sources"
           icon={ArrowRight}
         />

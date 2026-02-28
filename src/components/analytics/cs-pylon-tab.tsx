@@ -5,6 +5,7 @@ import {
   Star, Users,
 } from "lucide-react";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
 import { RingStat } from "@/components/analytics/bar-display";
 import { StatCard } from "@/components/analytics/stat-card";
@@ -43,6 +44,9 @@ export function CsPylonTab({ data }: CsPylonTabProps) {
     openConversations, urgentConversations, waitingOnTeam,
     resolvedInRange, avgFirstResponseMinutes, csat,
   } = pylon;
+
+  const kpis = data?.kpis ?? computeAnalyticsKpis(data);
+  const csatPct = kpis.support.csatPct;
 
   const totalActive = openConversations + urgentConversations + waitingOnTeam;
 
@@ -253,7 +257,7 @@ export function CsPylonTab({ data }: CsPylonTabProps) {
             <div className="flex flex-wrap items-center justify-center gap-6">
               {csat !== null && (
                 <RingStat
-                  value={(csat / 5) * 100}
+                  value={csatPct ?? 0}
                   max={100}
                   label="CSAT"
                   color={csat >= 4.0 ? "#22c55e" : csat >= 3.0 ? "#eab308" : "#ef4444"}

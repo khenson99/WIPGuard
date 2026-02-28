@@ -2,6 +2,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PersonalizedDashboard } from "@/components/dashboard/personalized-dashboard";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
 describe("PersonalizedDashboard", () => {
   beforeEach(() => {
     window.sessionStorage.clear();

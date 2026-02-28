@@ -36,6 +36,7 @@ import { buildDefaultScenarios, buildForecastScenario } from "@/lib/analytics/fo
 import { computeBudgetActuals, computeBudgetSummary } from "@/lib/analytics/budget-variance";
 import { computeProgressPct } from "@/lib/analytics/finance-utils";
 import { createEmptyAnalyticsDashboardData, patchFreshnessWithStale } from "@/lib/analytics/response-shape";
+import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import {
   analyticsErrorFromReason,
   createAnalyticsDomainError,
@@ -1172,6 +1173,8 @@ export async function GET(request: Request) {
       // Non-fatal — leave as null
     }
   }
+
+  result.kpis = computeAnalyticsKpis(result);
 
   const staleDomains = Array.from(new Set(result.staleDomains));
   const erroredDomains = Array.from(new Set(result.errors.map((entry) => entry.source)));

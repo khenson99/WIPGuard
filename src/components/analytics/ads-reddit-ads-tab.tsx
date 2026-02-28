@@ -5,6 +5,7 @@ import {
   TrendingUp, BarChart3,
 } from "lucide-react";
 import type { AnalyticsDashboardData, AdCampaign } from "@/lib/analytics/types";
+import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
 import { RingStat } from "@/components/analytics/bar-display";
 import { StatCard } from "@/components/analytics/stat-card";
@@ -44,6 +45,7 @@ export function AdsRedditAdsTab({ data }: AdsRedditAdsTabProps) {
   }
 
   const { totalSpend30d, totalImpressions, totalClicks, ctr, cpc, campaigns } = reddit;
+  const kpis = data?.kpis ?? computeAnalyticsKpis(data);
 
   if (totalSpend30d === 0 && campaigns.length === 0) {
     return (
@@ -265,14 +267,14 @@ export function AdsRedditAdsTab({ data }: AdsRedditAdsTabProps) {
           <div className="flex flex-col items-center gap-4">
             <div className="flex flex-wrap items-center justify-center gap-6">
               <RingStat
-                value={Math.min(ctr * 50, 100)}
+                value={kpis.ads.reddit.ctrScore ?? 0}
                 max={100}
                 label="CTR Score"
                 color={ctr >= 1.0 ? "#22c55e" : ctr >= 0.5 ? "#eab308" : "#ef4444"}
                 size={100}
               />
               <RingStat
-                value={Math.min(100 - (cpc / 10) * 50, 100)}
+                value={kpis.ads.reddit.cpcScore ?? 0}
                 max={100}
                 label="CPC Score"
                 color={cpc <= 2 ? "#22c55e" : cpc <= 5 ? "#eab308" : "#ef4444"}

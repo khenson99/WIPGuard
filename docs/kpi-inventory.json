@@ -1,0 +1,4380 @@
+{
+  "generatedAt": "2026-02-28T11:45:31.039Z",
+  "occurrences": [
+    {
+      "kind": "api",
+      "featureArea": "dashboard",
+      "file": "src/app/api/dashboard/route.ts",
+      "line": 223,
+      "column": 7,
+      "label": null,
+      "fieldPath": "velocity",
+      "expression": "{\n        thisWeek: recentlyCompleted.length,\n        lastWeek: lastWeekCompleted,\n      }",
+      "inputs": [
+        "recentlyCompleted.length"
+      ]
+    },
+    {
+      "kind": "api",
+      "featureArea": "dashboard",
+      "file": "src/app/api/dashboard/personalized/route.ts",
+      "line": 202,
+      "column": 11,
+      "label": null,
+      "fieldPath": "team.staleTasks",
+      "expression": "staleTeam",
+      "inputs": []
+    },
+    {
+      "kind": "api",
+      "featureArea": "dashboard",
+      "file": "src/app/api/dashboard/personalized/route.ts",
+      "line": 203,
+      "column": 11,
+      "label": null,
+      "fieldPath": "team.blockedTasks",
+      "expression": "blockedTeam",
+      "inputs": []
+    },
+    {
+      "kind": "api",
+      "featureArea": "dashboard",
+      "file": "src/app/api/dashboard/personalized/route.ts",
+      "line": 204,
+      "column": 11,
+      "label": null,
+      "fieldPath": "team.overdueTasks",
+      "expression": "overdueTeam",
+      "inputs": []
+    },
+    {
+      "kind": "api",
+      "featureArea": "api",
+      "file": "src/app/api/deals/analytics/route.ts",
+      "line": 211,
+      "column": 7,
+      "label": null,
+      "fieldPath": "velocity",
+      "expression": "{ avgDaysPerStage, avgTotalDays, trend: velocityTrend }",
+      "inputs": []
+    },
+    {
+      "kind": "api",
+      "featureArea": "api",
+      "file": "src/app/api/deals/analytics/route.ts",
+      "line": 213,
+      "column": 7,
+      "label": null,
+      "fieldPath": "closeRate",
+      "expression": "closeRateData",
+      "inputs": []
+    },
+    {
+      "kind": "api",
+      "featureArea": "api",
+      "file": "src/app/api/integrations/slack/notifications/route.ts",
+      "line": 69,
+      "column": 11,
+      "label": null,
+      "fieldPath": "summary.total",
+      "expression": "results.length",
+      "inputs": [
+        "results.length"
+      ]
+    },
+    {
+      "kind": "api",
+      "featureArea": "api",
+      "file": "src/app/api/logbook/route.ts",
+      "line": 65,
+      "column": 9,
+      "label": null,
+      "fieldPath": "pagination.totalPages",
+      "expression": "Math.ceil(total / limit)",
+      "inputs": [
+        "Math.ceil"
+      ]
+    },
+    {
+      "kind": "api",
+      "featureArea": "api",
+      "file": "src/app/api/migration/coda/route.ts",
+      "line": 203,
+      "column": 9,
+      "label": null,
+      "fieldPath": "totalMigrationReceipts",
+      "expression": "0",
+      "inputs": []
+    },
+    {
+      "kind": "api",
+      "featureArea": "api",
+      "file": "src/app/api/migration/coda/route.ts",
+      "line": 228,
+      "column": 7,
+      "label": null,
+      "fieldPath": "totalMigrationReceipts",
+      "expression": "receipts.length",
+      "inputs": [
+        "receipts.length"
+      ]
+    },
+    {
+      "kind": "api",
+      "featureArea": "api",
+      "file": "src/app/api/migration/coda/route.ts",
+      "line": 455,
+      "column": 9,
+      "label": null,
+      "fieldPath": "summary.totalSourceRows",
+      "expression": "result.totalSourceRows",
+      "inputs": [
+        "result.totalSourceRows"
+      ]
+    },
+    {
+      "kind": "api",
+      "featureArea": "api",
+      "file": "src/app/api/policy/audit/route.ts",
+      "line": 48,
+      "column": 9,
+      "label": null,
+      "fieldPath": "pagination.totalPages",
+      "expression": "Math.ceil(total / limit)",
+      "inputs": [
+        "Math.ceil"
+      ]
+    },
+    {
+      "kind": "api",
+      "featureArea": "api",
+      "file": "src/app/api/release/status/route.ts",
+      "line": 90,
+      "column": 9,
+      "label": null,
+      "fieldPath": "readiness.blockerCount",
+      "expression": "evaluation.blockers.length",
+      "inputs": [
+        "evaluation.blockers",
+        "evaluation.blockers.length"
+      ]
+    },
+    {
+      "kind": "api",
+      "featureArea": "api",
+      "file": "src/app/api/release/status/route.ts",
+      "line": 91,
+      "column": 9,
+      "label": null,
+      "fieldPath": "readiness.warningCount",
+      "expression": "evaluation.warnings.length",
+      "inputs": [
+        "evaluation.warnings",
+        "evaluation.warnings.length"
+      ]
+    },
+    {
+      "kind": "api",
+      "featureArea": "standup",
+      "file": "src/app/api/standup/route.ts",
+      "line": 203,
+      "column": 7,
+      "label": null,
+      "fieldPath": "totalActive",
+      "expression": "activeTasks.length",
+      "inputs": [
+        "activeTasks.length"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-stripe-tab.tsx",
+      "line": 129,
+      "column": 9,
+      "label": "MRR",
+      "fieldPath": null,
+      "expression": "fmt$(revenue.mrr)",
+      "inputs": [
+        "revenue.mrr"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-stripe-tab.tsx",
+      "line": 136,
+      "column": 9,
+      "label": "Revenue (30d)",
+      "fieldPath": null,
+      "expression": "fmt$(revenue.totalRevenue30d)",
+      "inputs": [
+        "revenue.totalRevenue30d"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-stripe-tab.tsx",
+      "line": 144,
+      "column": 9,
+      "label": "Active Subs",
+      "fieldPath": null,
+      "expression": "subscriptions.active.toLocaleString()",
+      "inputs": [
+        "subscriptions.active",
+        "subscriptions.active.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-stripe-tab.tsx",
+      "line": 150,
+      "column": 9,
+      "label": "Trialing",
+      "fieldPath": null,
+      "expression": "subscriptions.trialing.toLocaleString()",
+      "inputs": [
+        "subscriptions.trialing",
+        "subscriptions.trialing.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-stripe-tab.tsx",
+      "line": 155,
+      "column": 9,
+      "label": "Past Due",
+      "fieldPath": null,
+      "expression": "subscriptions.pastDue.toLocaleString()",
+      "inputs": [
+        "subscriptions.pastDue",
+        "subscriptions.pastDue.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-stripe-tab.tsx",
+      "line": 162,
+      "column": 9,
+      "label": "Canceled",
+      "fieldPath": null,
+      "expression": "subscriptions.canceled.toLocaleString()",
+      "inputs": [
+        "subscriptions.canceled",
+        "subscriptions.canceled.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-stripe-tab.tsx",
+      "line": 167,
+      "column": 9,
+      "label": "Churn Rate",
+      "fieldPath": null,
+      "expression": "fmtPct(churnRatePct)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-stripe-tab.tsx",
+      "line": 173,
+      "column": 9,
+      "label": "Payment Success",
+      "fieldPath": null,
+      "expression": "fmtPct(paymentSuccessPct)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-stripe-tab.tsx",
+      "line": 208,
+      "column": 13,
+      "label": "Active",
+      "fieldPath": null,
+      "expression": "subscriptions.active",
+      "inputs": [
+        "subscriptions.active"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-stripe-tab.tsx",
+      "line": 209,
+      "column": 13,
+      "label": "Trialing",
+      "fieldPath": null,
+      "expression": "subscriptions.trialing",
+      "inputs": [
+        "subscriptions.trialing"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-stripe-tab.tsx",
+      "line": 210,
+      "column": 13,
+      "label": "Past Due",
+      "fieldPath": null,
+      "expression": "subscriptions.pastDue",
+      "inputs": [
+        "subscriptions.pastDue"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-stripe-tab.tsx",
+      "line": 211,
+      "column": 13,
+      "label": "Canceled",
+      "fieldPath": null,
+      "expression": "subscriptions.canceled",
+      "inputs": [
+        "subscriptions.canceled"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-stripe-tab.tsx",
+      "line": 230,
+      "column": 13,
+      "label": "Success Rate",
+      "fieldPath": null,
+      "expression": "paymentSuccessPct",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-hubspot-tab.tsx",
+      "line": 192,
+      "column": 9,
+      "label": "Total Deals",
+      "fieldPath": null,
+      "expression": "funnel.totalDeals.toLocaleString()",
+      "inputs": [
+        "funnel.totalDeals",
+        "funnel.totalDeals.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-hubspot-tab.tsx",
+      "line": 197,
+      "column": 9,
+      "label": "Closed Won",
+      "fieldPath": null,
+      "expression": "funnel.closedWon.toLocaleString()",
+      "inputs": [
+        "funnel.closedWon",
+        "funnel.closedWon.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-hubspot-tab.tsx",
+      "line": 203,
+      "column": 9,
+      "label": "Active Subs",
+      "fieldPath": null,
+      "expression": "funnel.activeSubscriptions.toLocaleString()",
+      "inputs": [
+        "funnel.activeSubscriptions",
+        "funnel.activeSubscriptions.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-hubspot-tab.tsx",
+      "line": 208,
+      "column": 9,
+      "label": "Avg Deal Size",
+      "fieldPath": null,
+      "expression": "fmt$(funnel.avgDealSize)",
+      "inputs": [
+        "funnel.avgDealSize"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-hubspot-tab.tsx",
+      "line": 213,
+      "column": 9,
+      "label": "Win Rate",
+      "fieldPath": null,
+      "expression": "fmtPct(funnel.winRate)",
+      "inputs": [
+        "funnel.winRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-hubspot-tab.tsx",
+      "line": 220,
+      "column": 9,
+      "label": "No-Show Rate",
+      "fieldPath": null,
+      "expression": "fmtPct(funnel.noShowRate)",
+      "inputs": [
+        "funnel.noShowRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-hubspot-tab.tsx",
+      "line": 227,
+      "column": 9,
+      "label": "Churn",
+      "fieldPath": null,
+      "expression": "funnel.churn.toLocaleString()",
+      "inputs": [
+        "funnel.churn",
+        "funnel.churn.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-hubspot-tab.tsx",
+      "line": 234,
+      "column": 9,
+      "label": "Pipeline Value",
+      "fieldPath": null,
+      "expression": "fmt$(totalPipelineValue)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-hubspot-tab.tsx",
+      "line": 281,
+      "column": 15,
+      "label": "stage.label.length > 14 ? stage.label.slice(0, 12) + \"...\" : stage.label",
+      "fieldPath": null,
+      "expression": "stage.count",
+      "inputs": [
+        "stage.count"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-funnel-tab.tsx",
+      "line": 65,
+      "column": 9,
+      "label": "Total Deals",
+      "fieldPath": null,
+      "expression": "(kpis?.sales.totalDeals ?? funnel.totalDeals).toLocaleString()",
+      "inputs": [
+        "funnel.totalDeals",
+        "kpis.sales",
+        "kpis.sales.totalDeals"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-funnel-tab.tsx",
+      "line": 70,
+      "column": 9,
+      "label": "Win Rate",
+      "fieldPath": null,
+      "expression": "`${funnel.winRate.toFixed(1)}%`",
+      "inputs": [
+        "funnel.winRate",
+        "funnel.winRate.toFixed"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-funnel-tab.tsx",
+      "line": 77,
+      "column": 9,
+      "label": "Effective Win Rate",
+      "fieldPath": null,
+      "expression": "`${funnel.effectiveWinRate.toFixed(1)}%`",
+      "inputs": [
+        "funnel.effectiveWinRate",
+        "funnel.effectiveWinRate.toFixed"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-funnel-tab.tsx",
+      "line": 83,
+      "column": 9,
+      "label": "No-Show Rate",
+      "fieldPath": null,
+      "expression": "`${funnel.noShowRate.toFixed(1)}%`",
+      "inputs": [
+        "funnel.noShowRate",
+        "funnel.noShowRate.toFixed"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-funnel-tab.tsx",
+      "line": 90,
+      "column": 9,
+      "label": "Avg Deal Size",
+      "fieldPath": null,
+      "expression": "fmt$(funnel.avgDealSize)",
+      "inputs": [
+        "funnel.avgDealSize"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-funnel-tab.tsx",
+      "line": 187,
+      "column": 13,
+      "label": "Win Rate",
+      "fieldPath": null,
+      "expression": "funnel.winRate",
+      "inputs": [
+        "funnel.winRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-funnel-tab.tsx",
+      "line": 188,
+      "column": 13,
+      "label": "Loss Rate",
+      "fieldPath": null,
+      "expression": "100 - funnel.winRate",
+      "inputs": [
+        "funnel.winRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 158,
+      "column": 7,
+      "label": "Total Rules",
+      "fieldPath": null,
+      "expression": "fmtInt(telemetry.totalRules)",
+      "inputs": [
+        "telemetry.totalRules"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 158,
+      "column": 7,
+      "label": "Enabled Rules",
+      "fieldPath": null,
+      "expression": "fmtInt(telemetry.enabledRules)",
+      "inputs": [
+        "telemetry.enabledRules"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 158,
+      "column": 7,
+      "label": "Errored Rules",
+      "fieldPath": null,
+      "expression": "fmtInt(telemetry.erroredRules)",
+      "inputs": [
+        "telemetry.erroredRules"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 158,
+      "column": 7,
+      "label": "Events in Range",
+      "fieldPath": null,
+      "expression": "fmtInt(telemetry.eventsInRange)",
+      "inputs": [
+        "telemetry.eventsInRange"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 158,
+      "column": 7,
+      "label": "Receipts",
+      "fieldPath": null,
+      "expression": "fmtInt(telemetry.receiptsInRange)",
+      "inputs": [
+        "telemetry.receiptsInRange"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 158,
+      "column": 7,
+      "label": "Tasks Created",
+      "fieldPath": null,
+      "expression": "fmtInt(telemetry.tasksCreatedInRange)",
+      "inputs": [
+        "telemetry.tasksCreatedInRange"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 158,
+      "column": 7,
+      "label": "Failures",
+      "fieldPath": null,
+      "expression": "fmtInt(telemetry.failuresInRange)",
+      "inputs": [
+        "telemetry.failuresInRange"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 158,
+      "column": 7,
+      "label": "Failure Ratio",
+      "fieldPath": null,
+      "expression": "fmtPct(failureRatioPct)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 247,
+      "column": 7,
+      "label": "Total Cards",
+      "fieldPath": null,
+      "expression": "fmtInt(coda.totalCards)",
+      "inputs": [
+        "coda.totalCards"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 247,
+      "column": 7,
+      "label": "Unique Statuses",
+      "fieldPath": null,
+      "expression": "fmtInt(coda.cardsByStatus.length)",
+      "inputs": [
+        "coda.cardsByStatus",
+        "coda.cardsByStatus.length"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 247,
+      "column": 7,
+      "label": "Recent Cards",
+      "fieldPath": null,
+      "expression": "fmtInt(coda.recentCards.length)",
+      "inputs": [
+        "coda.recentCards",
+        "coda.recentCards.length"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 247,
+      "column": 7,
+      "label": "Top Status",
+      "fieldPath": null,
+      "expression": "coda.cardsByStatus.length ? coda.cardsByStatus[0].status : \"—\"",
+      "inputs": [
+        "coda.cardsByStatus",
+        "coda.cardsByStatus.length"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 487,
+      "column": 7,
+      "label": "Sessions (30d)",
+      "fieldPath": null,
+      "expression": "fmtInt(ga.sessions30d)",
+      "inputs": [
+        "ga.sessions30d"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 487,
+      "column": 7,
+      "label": "Users (30d)",
+      "fieldPath": null,
+      "expression": "fmtInt(ga.users30d)",
+      "inputs": [
+        "ga.users30d"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 487,
+      "column": 7,
+      "label": "Pageviews",
+      "fieldPath": null,
+      "expression": "fmtInt(ga.pageviews30d)",
+      "inputs": [
+        "ga.pageviews30d"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 487,
+      "column": 7,
+      "label": "Bounce Rate",
+      "fieldPath": null,
+      "expression": "fmtPct(bounceRatePct)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 487,
+      "column": 7,
+      "label": "Avg Session",
+      "fieldPath": null,
+      "expression": "avgSessionLabel",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 487,
+      "column": 7,
+      "label": "Top Channels",
+      "fieldPath": null,
+      "expression": "fmtInt(ga.trafficByChannel.length)",
+      "inputs": [
+        "ga.trafficByChannel",
+        "ga.trafficByChannel.length"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 538,
+      "column": 7,
+      "label": "Ad Spend",
+      "fieldPath": null,
+      "expression": "fmtCurrency(googleAds.totalSpend30d)",
+      "inputs": [
+        "googleAds.totalSpend30d"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 538,
+      "column": 7,
+      "label": "Impressions",
+      "fieldPath": null,
+      "expression": "fmtInt(googleAds.totalImpressions)",
+      "inputs": [
+        "googleAds.totalImpressions"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 538,
+      "column": 7,
+      "label": "Clicks",
+      "fieldPath": null,
+      "expression": "fmtInt(googleAds.totalClicks)",
+      "inputs": [
+        "googleAds.totalClicks"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 538,
+      "column": 7,
+      "label": "Conversions",
+      "fieldPath": null,
+      "expression": "fmtInt(googleAds.totalConversions)",
+      "inputs": [
+        "googleAds.totalConversions"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 538,
+      "column": 7,
+      "label": "CTR",
+      "fieldPath": null,
+      "expression": "fmtPct(googleAds.ctr)",
+      "inputs": [
+        "googleAds.ctr"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 538,
+      "column": 7,
+      "label": "CPC",
+      "fieldPath": null,
+      "expression": "fmtCurrency(googleAds.cpc)",
+      "inputs": [
+        "googleAds.cpc"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 538,
+      "column": 7,
+      "label": "CPA",
+      "fieldPath": null,
+      "expression": "fmtCurrency(googleAds.cpa)",
+      "inputs": [
+        "googleAds.cpa"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 538,
+      "column": 7,
+      "label": "ROAS",
+      "fieldPath": null,
+      "expression": "googleAds.roas.toFixed(2)",
+      "inputs": [
+        "googleAds.roas",
+        "googleAds.roas.toFixed"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 564,
+      "column": 7,
+      "label": "Ad Spend",
+      "fieldPath": null,
+      "expression": "fmtCurrency(metaAds.totalSpend30d)",
+      "inputs": [
+        "metaAds.totalSpend30d"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 564,
+      "column": 7,
+      "label": "Impressions",
+      "fieldPath": null,
+      "expression": "fmtInt(metaAds.totalImpressions)",
+      "inputs": [
+        "metaAds.totalImpressions"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 564,
+      "column": 7,
+      "label": "Clicks",
+      "fieldPath": null,
+      "expression": "fmtInt(metaAds.totalClicks)",
+      "inputs": [
+        "metaAds.totalClicks"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 564,
+      "column": 7,
+      "label": "Conversions",
+      "fieldPath": null,
+      "expression": "fmtInt(metaAds.totalConversions)",
+      "inputs": [
+        "metaAds.totalConversions"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 564,
+      "column": 7,
+      "label": "CTR",
+      "fieldPath": null,
+      "expression": "fmtPct(metaAds.ctr)",
+      "inputs": [
+        "metaAds.ctr"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 564,
+      "column": 7,
+      "label": "CPC",
+      "fieldPath": null,
+      "expression": "fmtCurrency(metaAds.cpc)",
+      "inputs": [
+        "metaAds.cpc"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 564,
+      "column": 7,
+      "label": "CPA",
+      "fieldPath": null,
+      "expression": "fmtCurrency(metaAds.cpa)",
+      "inputs": [
+        "metaAds.cpa"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 564,
+      "column": 7,
+      "label": "Campaigns",
+      "fieldPath": null,
+      "expression": "fmtInt(metaAds.campaigns.length)",
+      "inputs": [
+        "metaAds.campaigns",
+        "metaAds.campaigns.length"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 590,
+      "column": 7,
+      "label": "Ad Spend",
+      "fieldPath": null,
+      "expression": "fmtCurrency(redditAds.totalSpend30d)",
+      "inputs": [
+        "redditAds.totalSpend30d"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 590,
+      "column": 7,
+      "label": "Impressions",
+      "fieldPath": null,
+      "expression": "fmtInt(redditAds.totalImpressions)",
+      "inputs": [
+        "redditAds.totalImpressions"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 590,
+      "column": 7,
+      "label": "Clicks",
+      "fieldPath": null,
+      "expression": "fmtInt(redditAds.totalClicks)",
+      "inputs": [
+        "redditAds.totalClicks"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 590,
+      "column": 7,
+      "label": "CTR",
+      "fieldPath": null,
+      "expression": "fmtPct(redditAds.ctr)",
+      "inputs": [
+        "redditAds.ctr"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 590,
+      "column": 7,
+      "label": "CPC",
+      "fieldPath": null,
+      "expression": "fmtCurrency(redditAds.cpc)",
+      "inputs": [
+        "redditAds.cpc"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 590,
+      "column": 7,
+      "label": "Campaigns",
+      "fieldPath": null,
+      "expression": "fmtInt(redditAds.campaigns.length)",
+      "inputs": [
+        "redditAds.campaigns",
+        "redditAds.campaigns.length"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 620,
+      "column": 7,
+      "label": "Site",
+      "fieldPath": null,
+      "expression": "webflow.siteName || \"—\"",
+      "inputs": [
+        "webflow.siteName"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 620,
+      "column": 7,
+      "label": "Pages",
+      "fieldPath": null,
+      "expression": "fmtInt(webflow.totalPages)",
+      "inputs": [
+        "webflow.totalPages"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 620,
+      "column": 7,
+      "label": "Collections",
+      "fieldPath": null,
+      "expression": "fmtInt(webflow.totalCollections)",
+      "inputs": [
+        "webflow.totalCollections"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 620,
+      "column": 7,
+      "label": "Custom Domains",
+      "fieldPath": null,
+      "expression": "fmtInt(webflow.customDomains.length)",
+      "inputs": [
+        "webflow.customDomains",
+        "webflow.customDomains.length"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 620,
+      "column": 7,
+      "label": "Form Types",
+      "fieldPath": null,
+      "expression": "fmtInt(webflow.formSubmissions.length)",
+      "inputs": [
+        "webflow.formSubmissions",
+        "webflow.formSubmissions.length"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 620,
+      "column": 7,
+      "label": "Last Published",
+      "fieldPath": null,
+      "expression": "webflow.lastPublished ? new Date(webflow.lastPublished).toLocaleDateString() : \"—\"",
+      "inputs": [
+        "webflow.lastPublished"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 676,
+      "column": 7,
+      "label": "Domain",
+      "fieldPath": null,
+      "expression": "semrush.domain || \"—\"",
+      "inputs": [
+        "semrush.domain"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 676,
+      "column": 7,
+      "label": "Authority Score",
+      "fieldPath": null,
+      "expression": "fmtInt(semrush.authorityScore)",
+      "inputs": [
+        "semrush.authorityScore"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 676,
+      "column": 7,
+      "label": "Backlinks",
+      "fieldPath": null,
+      "expression": "fmtInt(semrush.backlinks)",
+      "inputs": [
+        "semrush.backlinks"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 676,
+      "column": 7,
+      "label": "Organic Keywords",
+      "fieldPath": null,
+      "expression": "fmtInt(semrush.organicKeywords)",
+      "inputs": [
+        "semrush.organicKeywords"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 676,
+      "column": 7,
+      "label": "Organic Traffic",
+      "fieldPath": null,
+      "expression": "fmtInt(semrush.organicTraffic)",
+      "inputs": [
+        "semrush.organicTraffic"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 676,
+      "column": 7,
+      "label": "Paid Keywords",
+      "fieldPath": null,
+      "expression": "fmtInt(semrush.paidKeywords)",
+      "inputs": [
+        "semrush.paidKeywords"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 676,
+      "column": 7,
+      "label": "Paid Traffic",
+      "fieldPath": null,
+      "expression": "fmtInt(semrush.paidTraffic)",
+      "inputs": [
+        "semrush.paidTraffic"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 676,
+      "column": 7,
+      "label": "Traffic Cost",
+      "fieldPath": null,
+      "expression": "fmtCurrency(semrush.organicTrafficCost + semrush.paidTrafficCost)",
+      "inputs": [
+        "semrush.organicTrafficCost",
+        "semrush.paidTrafficCost"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 743,
+      "column": 7,
+      "label": "Total Balance",
+      "fieldPath": null,
+      "expression": "fmtCurrency(mercury.cashFlow.totalBalance)",
+      "inputs": [
+        "mercury.cashFlow",
+        "mercury.cashFlow.totalBalance"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 743,
+      "column": 7,
+      "label": "Inflows (30d)",
+      "fieldPath": null,
+      "expression": "fmtCurrency(mercury.cashFlow.inflows30d)",
+      "inputs": [
+        "mercury.cashFlow",
+        "mercury.cashFlow.inflows30d"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 743,
+      "column": 7,
+      "label": "Outflows (30d)",
+      "fieldPath": null,
+      "expression": "fmtCurrency(mercury.cashFlow.outflows30d)",
+      "inputs": [
+        "mercury.cashFlow",
+        "mercury.cashFlow.outflows30d"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 743,
+      "column": 7,
+      "label": "Net Cash Flow",
+      "fieldPath": null,
+      "expression": "fmtCurrency(mercury.cashFlow.netCashFlow)",
+      "inputs": [
+        "mercury.cashFlow",
+        "mercury.cashFlow.netCashFlow"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 743,
+      "column": 7,
+      "label": "Runway",
+      "fieldPath": null,
+      "expression": "`${mercury.cashFlow.runway.toFixed(1)} mo`",
+      "inputs": [
+        "mercury.cashFlow",
+        "mercury.cashFlow.runway",
+        "mercury.cashFlow.runway.toFixed"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 743,
+      "column": 7,
+      "label": "Burn Rate",
+      "fieldPath": null,
+      "expression": "fmtCurrency(mercury.cashFlow.burnRate)",
+      "inputs": [
+        "mercury.cashFlow",
+        "mercury.cashFlow.burnRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 811,
+      "column": 7,
+      "label": "MRR",
+      "fieldPath": null,
+      "expression": "fmtCurrency(mrr)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 811,
+      "column": 7,
+      "label": "Active Subs",
+      "fieldPath": null,
+      "expression": "fmtInt(stripe.subscriptions.active)",
+      "inputs": [
+        "stripe.subscriptions",
+        "stripe.subscriptions.active"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 811,
+      "column": 7,
+      "label": "Trialing",
+      "fieldPath": null,
+      "expression": "fmtInt(stripe.subscriptions.trialing)",
+      "inputs": [
+        "stripe.subscriptions",
+        "stripe.subscriptions.trialing"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 811,
+      "column": 7,
+      "label": "Past Due",
+      "fieldPath": null,
+      "expression": "fmtInt(stripe.subscriptions.pastDue)",
+      "inputs": [
+        "stripe.subscriptions",
+        "stripe.subscriptions.pastDue"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 811,
+      "column": 7,
+      "label": "Churn Rate",
+      "fieldPath": null,
+      "expression": "fmtRatio(stripe.subscriptions.churnRate)",
+      "inputs": [
+        "stripe.subscriptions",
+        "stripe.subscriptions.churnRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 811,
+      "column": 7,
+      "label": "Canceled",
+      "fieldPath": null,
+      "expression": "fmtInt(stripe.subscriptions.canceled)",
+      "inputs": [
+        "stripe.subscriptions",
+        "stripe.subscriptions.canceled"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 811,
+      "column": 7,
+      "label": "Payment Success",
+      "fieldPath": null,
+      "expression": "fmtRatio(stripe.payments.successRate)",
+      "inputs": [
+        "stripe.payments",
+        "stripe.payments.successRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 811,
+      "column": 7,
+      "label": "Failed Payments",
+      "fieldPath": null,
+      "expression": "fmtInt(stripe.payments.failed)",
+      "inputs": [
+        "stripe.payments",
+        "stripe.payments.failed"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 905,
+      "column": 7,
+      "label": "Open Conversations",
+      "fieldPath": null,
+      "expression": "fmtInt(pylon.openConversations)",
+      "inputs": [
+        "pylon.openConversations"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 905,
+      "column": 7,
+      "label": "Urgent",
+      "fieldPath": null,
+      "expression": "fmtInt(pylon.urgentConversations)",
+      "inputs": [
+        "pylon.urgentConversations"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 905,
+      "column": 7,
+      "label": "Waiting on Team",
+      "fieldPath": null,
+      "expression": "fmtInt(pylon.waitingOnTeam)",
+      "inputs": [
+        "pylon.waitingOnTeam"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 905,
+      "column": 7,
+      "label": "Resolved",
+      "fieldPath": null,
+      "expression": "fmtInt(pylon.resolvedInRange)",
+      "inputs": [
+        "pylon.resolvedInRange"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 905,
+      "column": 7,
+      "label": "Avg First Response",
+      "fieldPath": null,
+      "expression": "avgFirstResponseLabel",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 905,
+      "column": 7,
+      "label": "CSAT",
+      "fieldPath": null,
+      "expression": "pylon.csat === null ? \"—\" : pylon.csat.toFixed(2)",
+      "inputs": [
+        "pylon.csat",
+        "pylon.csat.toFixed"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 939,
+      "column": 7,
+      "label": "Active Contributors",
+      "fieldPath": null,
+      "expression": "fmtInt(product.activeContributors)",
+      "inputs": [
+        "product.activeContributors"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 939,
+      "column": 7,
+      "label": "Created Tasks",
+      "fieldPath": null,
+      "expression": "fmtInt(product.createdTasksInRange)",
+      "inputs": [
+        "product.createdTasksInRange"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 939,
+      "column": 7,
+      "label": "Completed Tasks",
+      "fieldPath": null,
+      "expression": "fmtInt(product.completedTasksInRange)",
+      "inputs": [
+        "product.completedTasksInRange"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 939,
+      "column": 7,
+      "label": "Overdue Open",
+      "fieldPath": null,
+      "expression": "fmtInt(product.overdueOpenTasks)",
+      "inputs": [
+        "product.overdueOpenTasks"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 939,
+      "column": 7,
+      "label": "Backlog Growth",
+      "fieldPath": null,
+      "expression": "fmtInt(product.backlogGrowth)",
+      "inputs": [
+        "product.backlogGrowth"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/integration-child-dashboards.tsx",
+      "line": 939,
+      "column": 7,
+      "label": "Throughput",
+      "fieldPath": null,
+      "expression": "fmtRatio(product.throughputRate)",
+      "inputs": [
+        "product.throughputRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/marketing-tab-new.tsx",
+      "line": 345,
+      "column": 9,
+      "label": "Sessions (30d)",
+      "fieldPath": null,
+      "expression": "gaStatus.state === 'not_configured'\n              ? \"Not configured\"\n              : gaStatus.state === 'failing'\n                ? \"Configured but failing\"\n                : gaStatus.state === 'no_data'\n                  ? \"No data\"\n                  : fmtNum(sessions30d)",
+      "inputs": [
+        "gaStatus.state"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/marketing-tab-new.tsx",
+      "line": 375,
+      "column": 9,
+      "label": "Total Ad Spend",
+      "fieldPath": null,
+      "expression": "!paidConfigured\n              ? \"Not configured\"\n              : paidFailure\n                ? \"Configured but failing\"\n                : paidHealthy\n                  ? fmtCurrency(totalAdSpend)\n                  : \"No data\"",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/marketing-tab-new.tsx",
+      "line": 397,
+      "column": 9,
+      "label": "Total Conversions",
+      "fieldPath": null,
+      "expression": "!conversionConfigured\n              ? \"Not configured\"\n              : conversionFailure\n                ? \"Configured but failing\"\n                : conversionHealthy\n                  ? fmtNum(totalConversions)\n                  : \"No data\"",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/marketing-tab-new.tsx",
+      "line": 419,
+      "column": 9,
+      "label": "Page Followers",
+      "fieldPath": null,
+      "expression": "metaPageStatus.state === 'not_configured'\n              ? \"Not configured\"\n              : metaPageStatus.state === 'failing'\n                ? \"Configured but failing\"\n                : metaPageStatus.state === 'no_data'\n                  ? \"No data\"\n                  : fmtNum(pageFollowers)",
+      "inputs": [
+        "metaPageStatus.state"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/marketing-tab-new.tsx",
+      "line": 1004,
+      "column": 15,
+      "label": "Authority Score",
+      "fieldPath": null,
+      "expression": "String(semrush!.authorityScore)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/marketing-tab-new.tsx",
+      "line": 1005,
+      "column": 15,
+      "label": "Backlinks",
+      "fieldPath": null,
+      "expression": "fmtNum(semrush!.backlinks)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/marketing-tab-new.tsx",
+      "line": 1006,
+      "column": 15,
+      "label": "Organic Keywords",
+      "fieldPath": null,
+      "expression": "fmtNum(semrush!.organicKeywords)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/marketing-tab-new.tsx",
+      "line": 1007,
+      "column": 15,
+      "label": "Organic Traffic",
+      "fieldPath": null,
+      "expression": "fmtNum(semrush!.organicTraffic)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-tab.tsx",
+      "line": 356,
+      "column": 9,
+      "label": "Monthly Recurring Revenue",
+      "fieldPath": null,
+      "expression": "fmt$(mrr)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-tab.tsx",
+      "line": 364,
+      "column": 9,
+      "label": "Runway",
+      "fieldPath": null,
+      "expression": "runway > 0 ? fmtMonths(runway) : \"—\"",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-tab.tsx",
+      "line": 370,
+      "column": 9,
+      "label": "Cash Balance",
+      "fieldPath": null,
+      "expression": "fmt$(cashBalance)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-tab.tsx",
+      "line": 376,
+      "column": 9,
+      "label": "Monthly Burn",
+      "fieldPath": null,
+      "expression": "burnRate > 0 ? `${fmt$(burnRate)}/mo` : \"—\"",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-tab.tsx",
+      "line": 394,
+      "column": 13,
+      "label": "Health Score",
+      "fieldPath": null,
+      "expression": "health.score",
+      "inputs": [
+        "health.score"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-tab.tsx",
+      "line": 688,
+      "column": 15,
+      "label": "Payment Success Rate",
+      "fieldPath": null,
+      "expression": "successRate",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-tab.tsx",
+      "line": 934,
+      "column": 23,
+      "label": "Progress",
+      "fieldPath": null,
+      "expression": "goal.progressPct",
+      "inputs": [
+        "goal.progressPct"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-mercury-tab.tsx",
+      "line": 162,
+      "column": 9,
+      "label": "Total Balance",
+      "fieldPath": null,
+      "expression": "fmt$(cashFlow.totalBalance)",
+      "inputs": [
+        "cashFlow.totalBalance"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-mercury-tab.tsx",
+      "line": 167,
+      "column": 9,
+      "label": "Net Cash Flow",
+      "fieldPath": null,
+      "expression": "fmt$(cashFlow.netCashFlow)",
+      "inputs": [
+        "cashFlow.netCashFlow"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-mercury-tab.tsx",
+      "line": 174,
+      "column": 9,
+      "label": "Inflows (30d)",
+      "fieldPath": null,
+      "expression": "fmt$(cashFlow.inflows30d)",
+      "inputs": [
+        "cashFlow.inflows30d"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-mercury-tab.tsx",
+      "line": 179,
+      "column": 9,
+      "label": "Outflows (30d)",
+      "fieldPath": null,
+      "expression": "fmt$(cashFlow.outflows30d)",
+      "inputs": [
+        "cashFlow.outflows30d"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-mercury-tab.tsx",
+      "line": 184,
+      "column": 9,
+      "label": "Burn Rate",
+      "fieldPath": null,
+      "expression": "fmt$(cashFlow.burnRate)",
+      "inputs": [
+        "cashFlow.burnRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-mercury-tab.tsx",
+      "line": 191,
+      "column": 9,
+      "label": "Runway",
+      "fieldPath": null,
+      "expression": "cashFlow.runway > 0 ? fmtRunway(cashFlow.runway) : \"∞\"",
+      "inputs": [
+        "cashFlow.runway"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-mercury-tab.tsx",
+      "line": 270,
+      "column": 13,
+      "label": "Runway",
+      "fieldPath": null,
+      "expression": "runwayCapped24",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-google-analytics-tab.tsx",
+      "line": 195,
+      "column": 9,
+      "label": "Sessions",
+      "fieldPath": null,
+      "expression": "fmtN(sessions30d)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-google-analytics-tab.tsx",
+      "line": 203,
+      "column": 9,
+      "label": "Users",
+      "fieldPath": null,
+      "expression": "fmtN(users30d)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-google-analytics-tab.tsx",
+      "line": 211,
+      "column": 9,
+      "label": "Pageviews",
+      "fieldPath": null,
+      "expression": "fmtN(pageviews30d)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-google-analytics-tab.tsx",
+      "line": 219,
+      "column": 9,
+      "label": "Bounce Rate",
+      "fieldPath": null,
+      "expression": "fmtPct(bounceRatePct)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-google-analytics-tab.tsx",
+      "line": 226,
+      "column": 9,
+      "label": "Avg Session",
+      "fieldPath": null,
+      "expression": "fmtDuration(avgSessionDuration / 60)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-google-analytics-tab.tsx",
+      "line": 231,
+      "column": 9,
+      "label": "Pages / Session",
+      "fieldPath": null,
+      "expression": "pagesPerSession.toFixed(1)",
+      "inputs": [
+        "pagesPerSession.toFixed"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-google-analytics-tab.tsx",
+      "line": 317,
+      "column": 13,
+      "label": "Engagement",
+      "fieldPath": null,
+      "expression": "engagementScore",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-google-analytics-tab.tsx",
+      "line": 324,
+      "column": 13,
+      "label": "Page Depth",
+      "fieldPath": null,
+      "expression": "pageDepthScore",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-google-ads-tab.tsx",
+      "line": 194,
+      "column": 9,
+      "label": "Total Spend",
+      "fieldPath": null,
+      "expression": "fmt$(totalSpend30d)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-google-ads-tab.tsx",
+      "line": 200,
+      "column": 9,
+      "label": "Impressions",
+      "fieldPath": null,
+      "expression": "fmtN(totalImpressions)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-google-ads-tab.tsx",
+      "line": 205,
+      "column": 9,
+      "label": "Clicks",
+      "fieldPath": null,
+      "expression": "fmtN(totalClicks)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-google-ads-tab.tsx",
+      "line": 210,
+      "column": 9,
+      "label": "Conversions",
+      "fieldPath": null,
+      "expression": "totalConversions.toLocaleString()",
+      "inputs": [
+        "totalConversions.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-google-ads-tab.tsx",
+      "line": 215,
+      "column": 9,
+      "label": "CTR",
+      "fieldPath": null,
+      "expression": "fmtPct(ctr)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-google-ads-tab.tsx",
+      "line": 221,
+      "column": 9,
+      "label": "CPC",
+      "fieldPath": null,
+      "expression": "fmtCurrency(cpc)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-google-ads-tab.tsx",
+      "line": 226,
+      "column": 9,
+      "label": "CPA",
+      "fieldPath": null,
+      "expression": "totalConversions > 0 ? fmtCurrency(cpa) : \"—\"",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-google-ads-tab.tsx",
+      "line": 232,
+      "column": 9,
+      "label": "ROAS",
+      "fieldPath": null,
+      "expression": "roas > 0 ? `${roas.toFixed(2)}x` : \"—\"",
+      "inputs": [
+        "roas.toFixed"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-google-ads-tab.tsx",
+      "line": 297,
+      "column": 15,
+      "label": "ROAS",
+      "fieldPath": null,
+      "expression": "kpis.ads.google.roasScore ?? 0",
+      "inputs": [
+        "kpis.ads",
+        "kpis.ads.google",
+        "kpis.ads.google.roasScore"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-google-ads-tab.tsx",
+      "line": 305,
+      "column": 17,
+      "label": "CPA Score",
+      "fieldPath": null,
+      "expression": "kpis.ads.google.cpaScore ?? 0",
+      "inputs": [
+        "kpis.ads",
+        "kpis.ads.google",
+        "kpis.ads.google.cpaScore"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-meta-ads-tab.tsx",
+      "line": 183,
+      "column": 9,
+      "label": "Total Spend",
+      "fieldPath": null,
+      "expression": "fmt$(totalSpend30d)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-meta-ads-tab.tsx",
+      "line": 189,
+      "column": 9,
+      "label": "Impressions",
+      "fieldPath": null,
+      "expression": "fmtN(totalImpressions)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-meta-ads-tab.tsx",
+      "line": 194,
+      "column": 9,
+      "label": "Clicks",
+      "fieldPath": null,
+      "expression": "fmtN(totalClicks)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-meta-ads-tab.tsx",
+      "line": 199,
+      "column": 9,
+      "label": "Conversions",
+      "fieldPath": null,
+      "expression": "totalConversions.toLocaleString()",
+      "inputs": [
+        "totalConversions.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-meta-ads-tab.tsx",
+      "line": 204,
+      "column": 9,
+      "label": "CTR",
+      "fieldPath": null,
+      "expression": "fmtPct(ctr)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-meta-ads-tab.tsx",
+      "line": 210,
+      "column": 9,
+      "label": "CPC",
+      "fieldPath": null,
+      "expression": "fmtCurrency(cpc)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-meta-ads-tab.tsx",
+      "line": 215,
+      "column": 9,
+      "label": "CPA",
+      "fieldPath": null,
+      "expression": "totalConversions > 0 ? fmtCurrency(cpa) : \"—\"",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-meta-ads-tab.tsx",
+      "line": 280,
+      "column": 17,
+      "label": "CPA Score",
+      "fieldPath": null,
+      "expression": "kpis.ads.meta.cpaScore ?? 0",
+      "inputs": [
+        "kpis.ads",
+        "kpis.ads.meta",
+        "kpis.ads.meta.cpaScore"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-meta-ads-tab.tsx",
+      "line": 288,
+      "column": 15,
+      "label": "Engagement",
+      "fieldPath": null,
+      "expression": "kpis.ads.meta.engagementScore ?? 0",
+      "inputs": [
+        "kpis.ads",
+        "kpis.ads.meta",
+        "kpis.ads.meta.engagementScore"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-reddit-ads-tab.tsx",
+      "line": 178,
+      "column": 9,
+      "label": "Total Spend",
+      "fieldPath": null,
+      "expression": "fmt$(totalSpend30d)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-reddit-ads-tab.tsx",
+      "line": 184,
+      "column": 9,
+      "label": "Impressions",
+      "fieldPath": null,
+      "expression": "fmtN(totalImpressions)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-reddit-ads-tab.tsx",
+      "line": 189,
+      "column": 9,
+      "label": "Clicks",
+      "fieldPath": null,
+      "expression": "fmtN(totalClicks)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-reddit-ads-tab.tsx",
+      "line": 194,
+      "column": 9,
+      "label": "CTR",
+      "fieldPath": null,
+      "expression": "fmtPct(ctr)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-reddit-ads-tab.tsx",
+      "line": 200,
+      "column": 9,
+      "label": "CPC",
+      "fieldPath": null,
+      "expression": "fmtCurrency(cpc)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-reddit-ads-tab.tsx",
+      "line": 205,
+      "column": 9,
+      "label": "CPM",
+      "fieldPath": null,
+      "expression": "cpm > 0 ? fmtCurrency(cpm) : \"—\"",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-reddit-ads-tab.tsx",
+      "line": 269,
+      "column": 15,
+      "label": "CTR Score",
+      "fieldPath": null,
+      "expression": "kpis.ads.reddit.ctrScore ?? 0",
+      "inputs": [
+        "kpis.ads",
+        "kpis.ads.reddit",
+        "kpis.ads.reddit.ctrScore"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-reddit-ads-tab.tsx",
+      "line": 276,
+      "column": 15,
+      "label": "CPC Score",
+      "fieldPath": null,
+      "expression": "kpis.ads.reddit.cpcScore ?? 0",
+      "inputs": [
+        "kpis.ads",
+        "kpis.ads.reddit",
+        "kpis.ads.reddit.cpcScore"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-webflow-tab.tsx",
+      "line": 139,
+      "column": 11,
+      "label": "Total Pages",
+      "fieldPath": null,
+      "expression": "totalPages.toString()",
+      "inputs": [
+        "totalPages.toString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-webflow-tab.tsx",
+      "line": 144,
+      "column": 11,
+      "label": "CMS Collections",
+      "fieldPath": null,
+      "expression": "totalCollections.toString()",
+      "inputs": [
+        "totalCollections.toString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-webflow-tab.tsx",
+      "line": 149,
+      "column": 11,
+      "label": "Form Submissions",
+      "fieldPath": null,
+      "expression": "totalFormSubmissions.toString()",
+      "inputs": [
+        "totalFormSubmissions.toString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-webflow-tab.tsx",
+      "line": 154,
+      "column": 11,
+      "label": "Last Published",
+      "fieldPath": null,
+      "expression": "lastPublished ? timeAgo(lastPublished) : \"Never\"",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-semrush-tab.tsx",
+      "line": 189,
+      "column": 9,
+      "label": "Authority Score",
+      "fieldPath": null,
+      "expression": "`${authorityScore}/100`",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-semrush-tab.tsx",
+      "line": 195,
+      "column": 9,
+      "label": "Backlinks",
+      "fieldPath": null,
+      "expression": "fmtN(backlinks)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-semrush-tab.tsx",
+      "line": 200,
+      "column": 9,
+      "label": "Organic Keywords",
+      "fieldPath": null,
+      "expression": "fmtN(organicKeywords)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-semrush-tab.tsx",
+      "line": 205,
+      "column": 9,
+      "label": "Organic Traffic",
+      "fieldPath": null,
+      "expression": "fmtN(organicTraffic)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-semrush-tab.tsx",
+      "line": 211,
+      "column": 9,
+      "label": "Organic Traffic Cost",
+      "fieldPath": null,
+      "expression": "fmt$(organicTrafficCost)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-semrush-tab.tsx",
+      "line": 217,
+      "column": 9,
+      "label": "Paid Keywords",
+      "fieldPath": null,
+      "expression": "fmtN(paidKeywords)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-semrush-tab.tsx",
+      "line": 222,
+      "column": 9,
+      "label": "Paid Traffic",
+      "fieldPath": null,
+      "expression": "fmtN(paidTraffic)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-semrush-tab.tsx",
+      "line": 227,
+      "column": 9,
+      "label": "Paid Traffic Cost",
+      "fieldPath": null,
+      "expression": "fmt$(paidTrafficCost)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-semrush-tab.tsx",
+      "line": 239,
+      "column": 13,
+      "label": "Authority",
+      "fieldPath": null,
+      "expression": "authorityScore",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-coda-kanban-tab.tsx",
+      "line": 305,
+      "column": 11,
+      "label": "Downloaders",
+      "fieldPath": null,
+      "expression": "fmtN(downloaders)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-coda-kanban-tab.tsx",
+      "line": 313,
+      "column": 11,
+      "label": "Whitepapers downloaded",
+      "fieldPath": null,
+      "expression": "fmtN(downloads)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-coda-kanban-tab.tsx",
+      "line": 321,
+      "column": 11,
+      "label": "Downloads / Downloader",
+      "fieldPath": null,
+      "expression": "downloadsPerDownloader",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-coda-kanban-tab.tsx",
+      "line": 322,
+      "column": 11,
+      "label": "Unknown-email downloads",
+      "fieldPath": null,
+      "expression": "fmtN(unknownEmailCards)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-coda-kanban-tab.tsx",
+      "line": 363,
+      "column": 9,
+      "label": "Total Downloads",
+      "fieldPath": null,
+      "expression": "totalCards.toString()",
+      "inputs": [
+        "totalCards.toString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-coda-kanban-tab.tsx",
+      "line": 368,
+      "column": 9,
+      "label": "Completed",
+      "fieldPath": null,
+      "expression": "completedCount.toString()",
+      "inputs": [
+        "completedCount.toString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-coda-kanban-tab.tsx",
+      "line": 374,
+      "column": 9,
+      "label": "In Progress",
+      "fieldPath": null,
+      "expression": "inProgressCount.toString()",
+      "inputs": [
+        "inProgressCount.toString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-coda-kanban-tab.tsx",
+      "line": 380,
+      "column": 9,
+      "label": "Blocked",
+      "fieldPath": null,
+      "expression": "blockedCount.toString()",
+      "inputs": [
+        "blockedCount.toString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ads-coda-kanban-tab.tsx",
+      "line": 448,
+      "column": 13,
+      "label": "Completion",
+      "fieldPath": null,
+      "expression": "completionRate",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-hubspot-tab.tsx",
+      "line": 164,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(funnel.totalDeals)",
+      "inputs": [
+        "funnel.totalDeals"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-hubspot-tab.tsx",
+      "line": 169,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(funnel.closedWon)",
+      "inputs": [
+        "funnel.closedWon"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-hubspot-tab.tsx",
+      "line": 174,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtPct(funnel.winRate)",
+      "inputs": [
+        "funnel.winRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-hubspot-tab.tsx",
+      "line": 179,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmt$(funnel.avgDealSize)",
+      "inputs": [
+        "funnel.avgDealSize"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-hubspot-tab.tsx",
+      "line": 184,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(funnel.activeSubscriptions)",
+      "inputs": [
+        "funnel.activeSubscriptions"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-hubspot-tab.tsx",
+      "line": 189,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(funnel.demoScheduled)",
+      "inputs": [
+        "funnel.demoScheduled"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-hubspot-tab.tsx",
+      "line": 194,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtPct(funnel.noShowRate)",
+      "inputs": [
+        "funnel.noShowRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-hubspot-tab.tsx",
+      "line": 200,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtPct(funnel.effectiveWinRate)",
+      "inputs": [
+        "funnel.effectiveWinRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-hubspot-tab.tsx",
+      "line": 239,
+      "column": 13,
+      "label": "Outcomes",
+      "fieldPath": null,
+      "expression": null,
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-stripe-tab.tsx",
+      "line": 149,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmt$(rev.mrr)",
+      "inputs": [
+        "rev.mrr"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-stripe-tab.tsx",
+      "line": 155,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(subs.active)",
+      "inputs": [
+        "subs.active"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-stripe-tab.tsx",
+      "line": 160,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(subs.trialing)",
+      "inputs": [
+        "subs.trialing"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-stripe-tab.tsx",
+      "line": 165,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtPct(subs.churnRate)",
+      "inputs": [
+        "subs.churnRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-stripe-tab.tsx",
+      "line": 171,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(subs.pastDue)",
+      "inputs": [
+        "subs.pastDue"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-stripe-tab.tsx",
+      "line": 177,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmt$(rev.totalRevenue30d)",
+      "inputs": [
+        "rev.totalRevenue30d"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-stripe-tab.tsx",
+      "line": 183,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtPct(pay.successRate)",
+      "inputs": [
+        "pay.successRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-stripe-tab.tsx",
+      "line": 188,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmt$(rev.avgRevenuePerCustomer)",
+      "inputs": [
+        "rev.avgRevenuePerCustomer"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-stripe-tab.tsx",
+      "line": 199,
+      "column": 13,
+      "label": "Subscriptions",
+      "fieldPath": null,
+      "expression": null,
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sales-stripe-tab.tsx",
+      "line": 238,
+      "column": 13,
+      "label": "Payments",
+      "fieldPath": null,
+      "expression": null,
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/generic-workspace-tab.tsx",
+      "line": 147,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(totalRules)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/generic-workspace-tab.tsx",
+      "line": 152,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(enabledRules)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/generic-workspace-tab.tsx",
+      "line": 157,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(erroredRules)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/generic-workspace-tab.tsx",
+      "line": 163,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(eventsInRange)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/generic-workspace-tab.tsx",
+      "line": 168,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(receiptsInRange)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/generic-workspace-tab.tsx",
+      "line": 173,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(tasksCreatedInRange)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/generic-workspace-tab.tsx",
+      "line": 178,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(failuresInRange)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/generic-workspace-tab.tsx",
+      "line": 184,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "`${errorRate.toFixed(1)}%`",
+      "inputs": [
+        "errorRate.toFixed"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/generic-workspace-tab.tsx",
+      "line": 196,
+      "column": 13,
+      "label": "Rules",
+      "fieldPath": null,
+      "expression": null,
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-pylon-tab.tsx",
+      "line": 180,
+      "column": 9,
+      "label": "Open Conversations",
+      "fieldPath": null,
+      "expression": "openConversations.toString()",
+      "inputs": [
+        "openConversations.toString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-pylon-tab.tsx",
+      "line": 185,
+      "column": 9,
+      "label": "Urgent",
+      "fieldPath": null,
+      "expression": "urgentConversations.toString()",
+      "inputs": [
+        "urgentConversations.toString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-pylon-tab.tsx",
+      "line": 191,
+      "column": 9,
+      "label": "Waiting on Team",
+      "fieldPath": null,
+      "expression": "waitingOnTeam.toString()",
+      "inputs": [
+        "waitingOnTeam.toString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-pylon-tab.tsx",
+      "line": 197,
+      "column": 9,
+      "label": "Resolved",
+      "fieldPath": null,
+      "expression": "resolvedInRange.toString()",
+      "inputs": [
+        "resolvedInRange.toString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-pylon-tab.tsx",
+      "line": 204,
+      "column": 9,
+      "label": "Avg First Response",
+      "fieldPath": null,
+      "expression": "avgFirstResponseMinutes !== null ? fmtDuration(avgFirstResponseMinutes) : \"—\"",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-pylon-tab.tsx",
+      "line": 210,
+      "column": 9,
+      "label": "CSAT Score",
+      "fieldPath": null,
+      "expression": "csat !== null ? `${csat.toFixed(1)}/5` : \"—\"",
+      "inputs": [
+        "csat.toFixed"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-pylon-tab.tsx",
+      "line": 259,
+      "column": 17,
+      "label": "CSAT",
+      "fieldPath": null,
+      "expression": "csatPct ?? 0",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-pylon-tab.tsx",
+      "line": 267,
+      "column": 15,
+      "label": "Resolved",
+      "fieldPath": null,
+      "expression": "resolutionRate",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-coda-tab.tsx",
+      "line": 157,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(contributors)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-coda-tab.tsx",
+      "line": 162,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(created)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-coda-tab.tsx",
+      "line": 167,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(completed)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-coda-tab.tsx",
+      "line": 172,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(overdue)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-coda-tab.tsx",
+      "line": 178,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "`${backlogGrowth >= 0 ? \"+\" : \"\"}${backlogGrowth.toFixed(1)}%`",
+      "inputs": [
+        "backlogGrowth.toFixed"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-coda-tab.tsx",
+      "line": 184,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "throughput !== null ? fmtPct(throughput * 100) : \"—\"",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-coda-tab.tsx",
+      "line": 234,
+      "column": 13,
+      "label": "Total",
+      "fieldPath": null,
+      "expression": null,
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-product-tab.tsx",
+      "line": 170,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(contributors)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-product-tab.tsx",
+      "line": 176,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(created)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-product-tab.tsx",
+      "line": 181,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(completed)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-product-tab.tsx",
+      "line": 186,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "fmtN(overdue)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-product-tab.tsx",
+      "line": 192,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "`${backlogGrowth >= 0 ? \"+\" : \"\"}${backlogGrowth.toFixed(1)}%`",
+      "inputs": [
+        "backlogGrowth.toFixed"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-product-tab.tsx",
+      "line": 198,
+      "column": 9,
+      "label": null,
+      "fieldPath": null,
+      "expression": "throughput !== null ? fmtPct(throughput * 100) : \"—\"",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/cs-product-tab.tsx",
+      "line": 209,
+      "column": 13,
+      "label": "Tasks",
+      "fieldPath": null,
+      "expression": null,
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sub-dashboards/google-analytics-dashboard.tsx",
+      "line": 93,
+      "column": 11,
+      "label": "Sessions (30d)",
+      "fieldPath": null,
+      "expression": "fmtNum(ga.sessions30d)",
+      "inputs": [
+        "ga.sessions30d"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sub-dashboards/google-analytics-dashboard.tsx",
+      "line": 102,
+      "column": 11,
+      "label": "Users (30d)",
+      "fieldPath": null,
+      "expression": "fmtNum(ga.users30d)",
+      "inputs": [
+        "ga.users30d"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sub-dashboards/google-analytics-dashboard.tsx",
+      "line": 108,
+      "column": 11,
+      "label": "Bounce Rate",
+      "fieldPath": null,
+      "expression": "fmtPct(bounceRatePct)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sub-dashboards/google-analytics-dashboard.tsx",
+      "line": 113,
+      "column": 11,
+      "label": "Avg Duration",
+      "fieldPath": null,
+      "expression": "fmtDuration(ga.avgSessionDuration)",
+      "inputs": [
+        "ga.avgSessionDuration"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sub-dashboards/stripe-dashboard.tsx",
+      "line": 65,
+      "column": 11,
+      "label": "MRR",
+      "fieldPath": null,
+      "expression": "fmt$(mrr)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sub-dashboards/stripe-dashboard.tsx",
+      "line": 74,
+      "column": 11,
+      "label": "Active Subscriptions",
+      "fieldPath": null,
+      "expression": "subscriptions.active.toLocaleString()",
+      "inputs": [
+        "subscriptions.active",
+        "subscriptions.active.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sub-dashboards/stripe-dashboard.tsx",
+      "line": 79,
+      "column": 11,
+      "label": "Payment Success",
+      "fieldPath": null,
+      "expression": "fmtPct(paymentSuccessPct)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sub-dashboards/stripe-dashboard.tsx",
+      "line": 85,
+      "column": 11,
+      "label": "Revenue Growth",
+      "fieldPath": null,
+      "expression": "fmtPct(revenue.revenueGrowth)",
+      "inputs": [
+        "revenue.revenueGrowth"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sub-dashboards/hubspot-sales-dashboard.tsx",
+      "line": 90,
+      "column": 11,
+      "label": "Total Deals",
+      "fieldPath": null,
+      "expression": "funnel.totalDeals.toLocaleString()",
+      "inputs": [
+        "funnel.totalDeals",
+        "funnel.totalDeals.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sub-dashboards/hubspot-sales-dashboard.tsx",
+      "line": 95,
+      "column": 11,
+      "label": "Win Rate",
+      "fieldPath": null,
+      "expression": "fmtPct(funnel.winRate)",
+      "inputs": [
+        "funnel.winRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sub-dashboards/hubspot-sales-dashboard.tsx",
+      "line": 101,
+      "column": 11,
+      "label": "No-Show Rate",
+      "fieldPath": null,
+      "expression": "fmtPct(funnel.noShowRate)",
+      "inputs": [
+        "funnel.noShowRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/sub-dashboards/hubspot-sales-dashboard.tsx",
+      "line": 107,
+      "column": 11,
+      "label": "Avg Deal Size",
+      "fieldPath": null,
+      "expression": "fmt$(funnel.avgDealSize)",
+      "inputs": [
+        "funnel.avgDealSize"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/customer-journey-tab.tsx",
+      "line": 57,
+      "column": 9,
+      "label": "Total Journeys",
+      "fieldPath": null,
+      "expression": "journey.journeys.length.toLocaleString()",
+      "inputs": [
+        "journey.journeys",
+        "journey.journeys.length",
+        "journey.journeys.length.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/customer-journey-tab.tsx",
+      "line": 62,
+      "column": 9,
+      "label": "Avg Touchpoints",
+      "fieldPath": null,
+      "expression": "journey.avgTouchpoints.toFixed(1)",
+      "inputs": [
+        "journey.avgTouchpoints",
+        "journey.avgTouchpoints.toFixed"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/customer-journey-tab.tsx",
+      "line": 68,
+      "column": 9,
+      "label": "Median Days to Close",
+      "fieldPath": null,
+      "expression": "`${journey.medianDaysToClose}`",
+      "inputs": [
+        "journey.medianDaysToClose"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/customer-journey-tab.tsx",
+      "line": 74,
+      "column": 9,
+      "label": "Top Channel",
+      "fieldPath": null,
+      "expression": "topChannel ? CHANNEL_LABELS[topChannel.channel] : \"—\"",
+      "inputs": [
+        "topChannel.channel"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/demo-analytics-tab.tsx",
+      "line": 43,
+      "column": 9,
+      "label": "Demos Scheduled",
+      "fieldPath": null,
+      "expression": "demo.totalScheduled.toLocaleString()",
+      "inputs": [
+        "demo.totalScheduled",
+        "demo.totalScheduled.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/demo-analytics-tab.tsx",
+      "line": 48,
+      "column": 9,
+      "label": "Completed",
+      "fieldPath": null,
+      "expression": "demo.totalCompleted.toLocaleString()",
+      "inputs": [
+        "demo.totalCompleted",
+        "demo.totalCompleted.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/demo-analytics-tab.tsx",
+      "line": 55,
+      "column": 9,
+      "label": "No-Show Rate",
+      "fieldPath": null,
+      "expression": "`${demo.noShowRate}%`",
+      "inputs": [
+        "demo.noShowRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/demo-analytics-tab.tsx",
+      "line": 62,
+      "column": 9,
+      "label": "Avg Lead Time",
+      "fieldPath": null,
+      "expression": "`${demo.avgLeadTimeDays}d`",
+      "inputs": [
+        "demo.avgLeadTimeDays"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/demo-analytics-tab.tsx",
+      "line": 68,
+      "column": 9,
+      "label": "Demo → Close",
+      "fieldPath": null,
+      "expression": "demoToCloseRate != null ? `${demoToCloseRate}%` : \"—\"",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/demo-analytics-tab.tsx",
+      "line": 123,
+      "column": 13,
+      "label": "Completed",
+      "fieldPath": null,
+      "expression": "completionRate",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/demo-analytics-tab.tsx",
+      "line": 124,
+      "column": 13,
+      "label": "No-Show",
+      "fieldPath": null,
+      "expression": "demo.noShowRate",
+      "inputs": [
+        "demo.noShowRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/process-analytics-tab.tsx",
+      "line": 62,
+      "column": 9,
+      "label": "Health Score",
+      "fieldPath": null,
+      "expression": "`${process.healthScore}/100`",
+      "inputs": [
+        "process.healthScore"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/process-analytics-tab.tsx",
+      "line": 69,
+      "column": 9,
+      "label": "Avg Cycle Time",
+      "fieldPath": null,
+      "expression": "`${process.avgCycleTimeDays}d`",
+      "inputs": [
+        "process.avgCycleTimeDays"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/process-analytics-tab.tsx",
+      "line": 75,
+      "column": 9,
+      "label": "Bottlenecks",
+      "fieldPath": null,
+      "expression": "process.bottlenecks.length.toLocaleString()",
+      "inputs": [
+        "process.bottlenecks",
+        "process.bottlenecks.length",
+        "process.bottlenecks.length.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/process-analytics-tab.tsx",
+      "line": 82,
+      "column": 9,
+      "label": "Active Deals",
+      "fieldPath": null,
+      "expression": "totalDeals.toLocaleString()",
+      "inputs": [
+        "totalDeals.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/process-analytics-tab.tsx",
+      "line": 96,
+      "column": 13,
+      "label": "Health",
+      "fieldPath": null,
+      "expression": "process.healthScore",
+      "inputs": [
+        "process.healthScore"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/customer-journey-conversion-tab.tsx",
+      "line": 60,
+      "column": 9,
+      "label": "Overall Conversion",
+      "fieldPath": null,
+      "expression": "`${overallConversionRate}%`",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/customer-journey-conversion-tab.tsx",
+      "line": 66,
+      "column": 9,
+      "label": "Converted Revenue",
+      "fieldPath": null,
+      "expression": "fmt$(totalRevenue)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/customer-journey-conversion-tab.tsx",
+      "line": 72,
+      "column": 9,
+      "label": "Avg Deal Value",
+      "fieldPath": null,
+      "expression": "avgDealValue > 0 ? fmt$(avgDealValue) : \"—\"",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/customer-journey-conversion-tab.tsx",
+      "line": 78,
+      "column": 9,
+      "label": "Median Days to Close",
+      "fieldPath": null,
+      "expression": "`${journey.medianDaysToClose}`",
+      "inputs": [
+        "journey.medianDaysToClose"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/demo-attribution-view.tsx",
+      "line": 44,
+      "column": 9,
+      "label": "Top Source",
+      "fieldPath": null,
+      "expression": "bestSource?.source ?? \"—\"",
+      "inputs": [
+        "bestSource.source"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/demo-attribution-view.tsx",
+      "line": 50,
+      "column": 9,
+      "label": "Sources Tracked",
+      "fieldPath": null,
+      "expression": "demo.bySource.length.toString()",
+      "inputs": [
+        "demo.bySource",
+        "demo.bySource.length",
+        "demo.bySource.length.toString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/demo-attribution-view.tsx",
+      "line": 56,
+      "column": 9,
+      "label": "Avg Conversion",
+      "fieldPath": null,
+      "expression": "`${(kpis.demo.avgConversionRatePct ?? 0).toFixed(1)}%`",
+      "inputs": [
+        "kpis.demo",
+        "kpis.demo.avgConversionRatePct"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/demo-attribution-view.tsx",
+      "line": 62,
+      "column": 9,
+      "label": "Lowest Conversion",
+      "fieldPath": null,
+      "expression": "worstSource?.source ?? \"—\"",
+      "inputs": [
+        "worstSource.source"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/process-bottlenecks-view.tsx",
+      "line": 46,
+      "column": 9,
+      "label": "Total Bottlenecks",
+      "fieldPath": null,
+      "expression": "process.bottlenecks.length.toString()",
+      "inputs": [
+        "process.bottlenecks",
+        "process.bottlenecks.length",
+        "process.bottlenecks.length.toString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/process-bottlenecks-view.tsx",
+      "line": 53,
+      "column": 9,
+      "label": "Deals Affected",
+      "fieldPath": null,
+      "expression": "totalDealsAffected.toLocaleString()",
+      "inputs": [
+        "totalDealsAffected.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/process-bottlenecks-view.tsx",
+      "line": 59,
+      "column": 9,
+      "label": "Worst Stage",
+      "fieldPath": null,
+      "expression": "worstBottleneck?.stageLabel ?? \"—\"",
+      "inputs": [
+        "worstBottleneck.stageLabel"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/process-bottlenecks-view.tsx",
+      "line": 65,
+      "column": 9,
+      "label": "Avg Cycle Time",
+      "fieldPath": null,
+      "expression": "`${process.avgCycleTimeDays}d`",
+      "inputs": [
+        "process.avgCycleTimeDays"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/process-health-view.tsx",
+      "line": 51,
+      "column": 9,
+      "label": "Health Score",
+      "fieldPath": null,
+      "expression": "`${process.healthScore}/100`",
+      "inputs": [
+        "process.healthScore"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/process-health-view.tsx",
+      "line": 58,
+      "column": 9,
+      "label": "Strong Factors",
+      "fieldPath": null,
+      "expression": "strongFactors.length.toString()",
+      "inputs": [
+        "strongFactors.length",
+        "strongFactors.length.toString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/process-health-view.tsx",
+      "line": 65,
+      "column": 9,
+      "label": "Weak Factors",
+      "fieldPath": null,
+      "expression": "weakFactors.length.toString()",
+      "inputs": [
+        "weakFactors.length",
+        "weakFactors.length.toString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/process-health-view.tsx",
+      "line": 72,
+      "column": 9,
+      "label": "Avg Cycle",
+      "fieldPath": null,
+      "expression": "`${process.avgCycleTimeDays}d`",
+      "inputs": [
+        "process.avgCycleTimeDays"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/process-health-view.tsx",
+      "line": 86,
+      "column": 13,
+      "label": "healthGrade",
+      "fieldPath": null,
+      "expression": "process.healthScore",
+      "inputs": [
+        "process.healthScore"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-planning-tab.tsx",
+      "line": 613,
+      "column": 9,
+      "label": "Total Budget",
+      "fieldPath": null,
+      "expression": "fmt$(budgetSummary.totalBudget)",
+      "inputs": [
+        "budgetSummary.totalBudget"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-planning-tab.tsx",
+      "line": 619,
+      "column": 9,
+      "label": "Total Actual",
+      "fieldPath": null,
+      "expression": "fmt$(budgetSummary.totalActual)",
+      "inputs": [
+        "budgetSummary.totalActual"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-planning-tab.tsx",
+      "line": 638,
+      "column": 9,
+      "label": "Variance",
+      "fieldPath": null,
+      "expression": "hasBudgetBaseline ? fmtDelta(budgetSummary.totalVariance) : \"—\"",
+      "inputs": [
+        "budgetSummary.totalVariance"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-planning-tab.tsx",
+      "line": 653,
+      "column": 9,
+      "label": "Overspend Areas",
+      "fieldPath": null,
+      "expression": "hasBudgetBaseline ? budgetSummary.overspendCategories.length.toString() : \"—\"",
+      "inputs": [
+        "budgetSummary.overspendCategories",
+        "budgetSummary.overspendCategories.length",
+        "budgetSummary.overspendCategories.length.toString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-forecast-tab.tsx",
+      "line": 250,
+      "column": 13,
+      "label": "s.name",
+      "fieldPath": null,
+      "expression": "fmt$(last12)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-pnl-tab.tsx",
+      "line": 228,
+      "column": 9,
+      "label": "Net Income",
+      "fieldPath": null,
+      "expression": "fmt$(pnl.netIncome)",
+      "inputs": [
+        "pnl.netIncome"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-pnl-tab.tsx",
+      "line": 234,
+      "column": 9,
+      "label": "Gross Margin",
+      "fieldPath": null,
+      "expression": "fmtPct(pnl.grossMargin)",
+      "inputs": [
+        "pnl.grossMargin"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-pnl-tab.tsx",
+      "line": 239,
+      "column": 9,
+      "label": "Operating Margin",
+      "fieldPath": null,
+      "expression": "fmtPct(pnl.operatingMargin)",
+      "inputs": [
+        "pnl.operatingMargin"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-pnl-tab.tsx",
+      "line": 244,
+      "column": 9,
+      "label": "Revenue",
+      "fieldPath": null,
+      "expression": "fmt$(totalRevenue)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-unit-economics-tab.tsx",
+      "line": 205,
+      "column": 9,
+      "label": "Lifetime Value",
+      "fieldPath": null,
+      "expression": "fmt$(ue.ltv)",
+      "inputs": [
+        "ue.ltv"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-unit-economics-tab.tsx",
+      "line": 210,
+      "column": 9,
+      "label": "Acquisition Cost",
+      "fieldPath": null,
+      "expression": "fmt$(ue.cac)",
+      "inputs": [
+        "ue.cac"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-unit-economics-tab.tsx",
+      "line": 215,
+      "column": 9,
+      "label": "LTV:CAC",
+      "fieldPath": null,
+      "expression": "fmtRatio(ue.ltvCacRatio)",
+      "inputs": [
+        "ue.ltvCacRatio"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/finance-unit-economics-tab.tsx",
+      "line": 234,
+      "column": 11,
+      "label": "LTV:CAC",
+      "fieldPath": null,
+      "expression": "ue.ltvCacRatio",
+      "inputs": [
+        "ue.ltvCacRatio"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ai-insights-page.tsx",
+      "line": 139,
+      "column": 9,
+      "label": "Critical",
+      "fieldPath": null,
+      "expression": "String(criticalCount)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ai-insights-page.tsx",
+      "line": 140,
+      "column": 9,
+      "label": "Warnings",
+      "fieldPath": null,
+      "expression": "String(warningCount)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ai-insights-page.tsx",
+      "line": 141,
+      "column": 9,
+      "label": "Info",
+      "fieldPath": null,
+      "expression": "String(infoCount)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/ai-insights-page.tsx",
+      "line": 142,
+      "column": 9,
+      "label": "Avg Confidence",
+      "fieldPath": null,
+      "expression": "`${avgConfidencePct}%`",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/customer-journey-page.tsx",
+      "line": 199,
+      "column": 9,
+      "label": "Total Contacts",
+      "fieldPath": null,
+      "expression": "totalVolume.toLocaleString()",
+      "inputs": [
+        "totalVolume.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/customer-journey-page.tsx",
+      "line": 200,
+      "column": 9,
+      "label": "Avg Conversion",
+      "fieldPath": null,
+      "expression": "avgConversion !== null ? `${avgConversion.toFixed(1)}%` : \"—\"",
+      "inputs": [
+        "avgConversion.toFixed"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/customer-journey-page.tsx",
+      "line": 205,
+      "column": 9,
+      "label": "Stages",
+      "fieldPath": null,
+      "expression": "String(lifecycle.stages.length)",
+      "inputs": [
+        "lifecycle.stages",
+        "lifecycle.stages.length"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/customer-journey-page.tsx",
+      "line": 206,
+      "column": 9,
+      "label": "Active Insights",
+      "fieldPath": null,
+      "expression": "String(insights.length)",
+      "inputs": [
+        "insights.length"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "whip",
+      "file": "src/components/whip/scope-creep-summary.tsx",
+      "line": 77,
+      "column": 7,
+      "label": "Planned tasks",
+      "fieldPath": null,
+      "expression": "summary.totalPlanned",
+      "inputs": [
+        "summary.totalPlanned"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "whip",
+      "file": "src/components/whip/scope-creep-summary.tsx",
+      "line": 82,
+      "column": 7,
+      "label": "Unplanned (scope creep)",
+      "fieldPath": null,
+      "expression": "summary.totalUnplanned",
+      "inputs": [
+        "summary.totalUnplanned"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "whip",
+      "file": "src/components/whip/scope-creep-summary.tsx",
+      "line": 88,
+      "column": 7,
+      "label": "Creep ratio",
+      "fieldPath": null,
+      "expression": "`${creepPercent}%`",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "whip",
+      "file": "src/components/whip/scope-creep-summary.tsx",
+      "line": 94,
+      "column": 7,
+      "label": "Sprint completion",
+      "fieldPath": null,
+      "expression": "`${completionRate}%`",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/overview-tab.tsx",
+      "line": 54,
+      "column": 9,
+      "label": "Monthly Recurring Revenue",
+      "fieldPath": null,
+      "expression": "kpis?.finance.mrr != null ? fmt$(kpis.finance.mrr) : revenue ? fmt$(revenue.mrr) : \"—\"",
+      "inputs": [
+        "kpis.finance",
+        "kpis.finance.mrr",
+        "revenue.mrr"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/overview-tab.tsx",
+      "line": 61,
+      "column": 9,
+      "label": "Website Sessions (30d)",
+      "fieldPath": null,
+      "expression": "ga ? fmtN(ga.sessions30d) : \"—\"",
+      "inputs": [
+        "ga.sessions30d"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/overview-tab.tsx",
+      "line": 68,
+      "column": 9,
+      "label": "Active Pipeline Deals",
+      "fieldPath": null,
+      "expression": "kpis?.sales.activeDeals != null ? kpis.sales.activeDeals.toLocaleString() : funnel ? funnel.totalDeals.toLocaleString() : \"—\"",
+      "inputs": [
+        "funnel.totalDeals",
+        "funnel.totalDeals.toLocaleString",
+        "kpis.sales",
+        "kpis.sales.activeDeals",
+        "kpis.sales.activeDeals.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/overview-tab.tsx",
+      "line": 74,
+      "column": 9,
+      "label": "Cash Balance",
+      "fieldPath": null,
+      "expression": "cash ? fmt$(cash.totalBalance) : \"—\"",
+      "inputs": [
+        "cash.totalBalance"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/overview-tab.tsx",
+      "line": 85,
+      "column": 9,
+      "label": "Active Subscriptions",
+      "fieldPath": null,
+      "expression": "subs ? subs.active.toLocaleString() : \"—\"",
+      "inputs": [
+        "subs.active",
+        "subs.active.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/overview-tab.tsx",
+      "line": 91,
+      "column": 9,
+      "label": "Total Ad Spend (30d)",
+      "fieldPath": null,
+      "expression": "hasAdData ? fmt$(totalAdSpend) : \"—\"",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/overview-tab.tsx",
+      "line": 100,
+      "column": 9,
+      "label": "Unique Visitors (30d)",
+      "fieldPath": null,
+      "expression": "ga ? fmtN(ga.users30d) : \"—\"",
+      "inputs": [
+        "ga.users30d"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/overview-tab.tsx",
+      "line": 107,
+      "column": 9,
+      "label": "Bounce Rate",
+      "fieldPath": null,
+      "expression": "kpis.traffic.bounceRatePct == null ? \"—\" : fmtPct(kpis.traffic.bounceRatePct)",
+      "inputs": [
+        "kpis.traffic",
+        "kpis.traffic.bounceRatePct"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/overview-tab.tsx",
+      "line": 121,
+      "column": 13,
+      "label": "Revenue (30d)",
+      "fieldPath": null,
+      "expression": "revenue ? fmt$(revenue.totalRevenue30d) : \"—\"",
+      "inputs": [
+        "revenue.totalRevenue30d"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/overview-tab.tsx",
+      "line": 126,
+      "column": 13,
+      "label": "Inflows (30d)",
+      "fieldPath": null,
+      "expression": "cash ? fmt$(cash.inflows30d) : \"—\"",
+      "inputs": [
+        "cash.inflows30d"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/overview-tab.tsx",
+      "line": 131,
+      "column": 13,
+      "label": "Outflows (30d)",
+      "fieldPath": null,
+      "expression": "cash ? fmt$(cash.outflows30d) : \"—\"",
+      "inputs": [
+        "cash.outflows30d"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/overview-tab.tsx",
+      "line": 136,
+      "column": 13,
+      "label": "Net Cash Flow",
+      "fieldPath": null,
+      "expression": "cash ? fmt$(cash.netCashFlow) : \"—\"",
+      "inputs": [
+        "cash.netCashFlow"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/overview-tab.tsx",
+      "line": 158,
+      "column": 17,
+      "label": "Win Rate",
+      "fieldPath": null,
+      "expression": "funnel.winRate",
+      "inputs": [
+        "funnel.winRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/overview-tab.tsx",
+      "line": 165,
+      "column": 17,
+      "label": "Effective",
+      "fieldPath": null,
+      "expression": "funnel.effectiveWinRate",
+      "inputs": [
+        "funnel.effectiveWinRate"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/stat-card.test.tsx",
+      "line": 8,
+      "column": 12,
+      "label": "Test",
+      "fieldPath": null,
+      "expression": null,
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/stat-card.test.tsx",
+      "line": 13,
+      "column": 12,
+      "label": "Test",
+      "fieldPath": null,
+      "expression": null,
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/tasks-tab.tsx",
+      "line": 73,
+      "column": 9,
+      "label": "Total Cards",
+      "fieldPath": null,
+      "expression": "coda.totalCards.toLocaleString()",
+      "inputs": [
+        "coda.totalCards",
+        "coda.totalCards.toLocaleString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/tasks-tab.tsx",
+      "line": 78,
+      "column": 9,
+      "label": "Status Columns",
+      "fieldPath": null,
+      "expression": "statuses.length.toString()",
+      "inputs": [
+        "statuses.length",
+        "statuses.length.toString"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "analytics",
+      "file": "src/components/analytics/tasks-tab.tsx",
+      "line": 84,
+      "column": 9,
+      "label": "Most Recent Update",
+      "fieldPath": null,
+      "expression": "timeAgo(mostRecentUpdate)",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "dashboard",
+      "file": "src/components/board/dashboard-view.tsx",
+      "line": 697,
+      "column": 9,
+      "label": "Total Tasks",
+      "fieldPath": null,
+      "expression": "totalTasks",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "dashboard",
+      "file": "src/components/board/dashboard-view.tsx",
+      "line": 703,
+      "column": 9,
+      "label": "In Progress",
+      "fieldPath": null,
+      "expression": "activeCount",
+      "inputs": []
+    },
+    {
+      "kind": "ui",
+      "featureArea": "dashboard",
+      "file": "src/components/board/dashboard-view.tsx",
+      "line": 709,
+      "column": 9,
+      "label": "Overdue",
+      "fieldPath": null,
+      "expression": "overdueTasks.length",
+      "inputs": [
+        "overdueTasks.length"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "dashboard",
+      "file": "src/components/board/dashboard-view.tsx",
+      "line": 716,
+      "column": 9,
+      "label": "Blocked",
+      "fieldPath": null,
+      "expression": "blockedTasks.length",
+      "inputs": [
+        "blockedTasks.length"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "dashboard",
+      "file": "src/components/board/dashboard-view.tsx",
+      "line": 722,
+      "column": 9,
+      "label": "Going Stale",
+      "fieldPath": null,
+      "expression": "staleTasks.length",
+      "inputs": [
+        "staleTasks.length"
+      ]
+    },
+    {
+      "kind": "ui",
+      "featureArea": "dashboard",
+      "file": "src/components/board/dashboard-view.tsx",
+      "line": 729,
+      "column": 9,
+      "label": "Dep. Chains",
+      "fieldPath": null,
+      "expression": "atRiskDependencies.length",
+      "inputs": [
+        "atRiskDependencies.length"
+      ]
+    }
+  ]
+}

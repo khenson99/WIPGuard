@@ -129,7 +129,7 @@ export function FinanceForecastTab({
   if (scenarios.length === 0) return null;
 
   // Derive current MRR for insight comparison
-  const currentMrr = data?.stripe?.revenue?.mrr ?? 0;
+  const currentMrr = data?.kpis?.finance?.mrr ?? data?.stripe?.revenue?.mrr ?? 0;
 
   // Worst and base scenarios
   const baseScenario = scenarios.find((s) => s.id === "default-base") ?? scenarios[0];

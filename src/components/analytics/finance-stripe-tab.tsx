@@ -5,6 +5,7 @@ import {
   Users, AlertTriangle, BarChart3, Activity,
 } from "lucide-react";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
 import { RingStat } from "@/components/analytics/bar-display";
 import { StatCard } from "@/components/analytics/stat-card";
@@ -40,21 +41,24 @@ export function FinanceStripeTab({ data }: FinanceStripeTabProps) {
   }
 
   const { revenue, subscriptions, payments, revenueTrend } = stripe;
+  const kpis = data?.kpis ?? computeAnalyticsKpis(data);
+  const churnRatePct = kpis.finance.churnRatePct ?? subscriptions.churnRate;
+  const paymentSuccessPct = kpis.finance.paymentSuccessPct ?? payments.successRate;
   const maxTrend = Math.max(...(revenueTrend?.map((t) => t.revenue) ?? [0]), 1);
 
   // Determine alerts
   const alerts: { severity: "critical" | "warning" | "info"; title: string; description: string }[] = [];
-  if (subscriptions.churnRate > 5) {
+  if (churnRatePct > 5) {
     alerts.push({
       severity: "critical",
-      title: `Churn rate at ${fmtPct(subscriptions.churnRate)}`,
+      title: `Churn rate at ${fmtPct(churnRatePct)}`,
       description: `${subscriptions.canceled} subscriptions canceled. Implement retention workflows and 30/60/90-day check-ins.`,
     });
   }
-  if (payments.successRate < 95) {
+  if (paymentSuccessPct < 95) {
     alerts.push({
       severity: "critical",
-      title: `Payment success rate at ${fmtPct(payments.successRate)}`,
+      title: `Payment success rate at ${fmtPct(paymentSuccessPct)}`,
       description: `${payments.failed} failed payments out of ${payments.succeeded + payments.failed}. Review failed payment retry logic and card updater.`,
     });
   }
@@ -92,7 +96,7 @@ export function FinanceStripeTab({ data }: FinanceStripeTabProps) {
       severity: trialPct > 30 ? "warning" : "info",
     });
   }
-  if (subscriptions.churnRate <= 5 && payments.successRate >= 95) {
+  if (churnRatePct <= 5 && paymentSuccessPct >= 95) {
     insights.push({
       title: "Subscription Health",
       insight: "Churn rate and payment success are within healthy ranges.",
@@ -162,14 +166,14 @@ export function FinanceStripeTab({ data }: FinanceStripeTabProps) {
         />
         <StatCard
           label="Churn Rate"
-          value={fmtPct(subscriptions.churnRate)}
-          changeType={subscriptions.churnRate > 5 ? "negative" : "positive"}
+          value={fmtPct(churnRatePct)}
+          changeType={churnRatePct > 5 ? "negative" : "positive"}
           icon={Activity}
         />
         <StatCard
           label="Payment Success"
-          value={fmtPct(payments.successRate)}
-          changeType={payments.successRate >= 95 ? "positive" : "negative"}
+          value={fmtPct(paymentSuccessPct)}
+          changeType={paymentSuccessPct >= 95 ? "positive" : "negative"}
           icon={ShieldCheck}
         />
       </div>
@@ -224,10 +228,10 @@ export function FinanceStripeTab({ data }: FinanceStripeTabProps) {
         <SectionCard title="Payment Reliability" subtitle="Payment success and failure breakdown">
           <div className="flex items-center justify-center gap-6">
             <RingStat
-              value={payments.successRate}
+              value={paymentSuccessPct}
               max={100}
               label="Success Rate"
-              color={payments.successRate >= 95 ? "#22c55e" : "#ef4444"}
+              color={paymentSuccessPct >= 95 ? "#22c55e" : "#ef4444"}
               size={110}
             />
           </div>
@@ -244,7 +248,7 @@ export function FinanceStripeTab({ data }: FinanceStripeTabProps) {
             <div className="mt-2 h-3 overflow-hidden rounded-full bg-secondary">
               <div
                 className="h-full rounded-full bg-emerald-500 transition-all"
-                style={{ width: `${payments.successRate}%` }}
+                style={{ width: `${paymentSuccessPct}%` }}
               />
             </div>
           </div>

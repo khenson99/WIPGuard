@@ -44,6 +44,7 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
   if (!data?.hubspot) return <EmptyState />;
 
   const { funnel } = data.hubspot;
+  const kpis = data.kpis;
 
   // Build ordered funnel stages
   const orderedStages = FUNNEL_ORDER
@@ -63,7 +64,7 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <StatCard
           label="Total Deals"
-          value={funnel.totalDeals.toLocaleString()}
+          value={(kpis?.sales.totalDeals ?? funnel.totalDeals).toLocaleString()}
           icon={Target}
         />
         <StatCard

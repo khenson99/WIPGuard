@@ -7,6 +7,7 @@ import {
   Globe, Megaphone,
 } from "lucide-react";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { StatCard } from "./stat-card";
 import { BarDisplay, RingStat } from "./bar-display";
 
@@ -34,6 +35,7 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
   if (!data) return <EmptyState />;
 
   const { hubspot, stripe, mercury, googleAnalytics, googleAds, metaAds } = data;
+  const kpis = data.kpis ?? computeAnalyticsKpis(data);
   const funnel = hubspot?.funnel;
   const revenue = stripe?.revenue;
   const subs = stripe?.subscriptions;
@@ -51,7 +53,7 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label="Monthly Recurring Revenue"
-          value={revenue ? fmt$(revenue.mrr) : "—"}
+          value={kpis?.finance.mrr != null ? fmt$(kpis.finance.mrr) : revenue ? fmt$(revenue.mrr) : "—"}
           change={revenue ? `${revenue.revenueGrowth >= 0 ? "+" : ""}${revenue.revenueGrowth.toFixed(1)}% vs prev 30d` : undefined}
           changeType={revenue && revenue.revenueGrowth >= 0 ? "positive" : "negative"}
           icon={DollarSign}
@@ -64,8 +66,8 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
           icon={Globe}
         />
         <StatCard
-          label="Pipeline Deals"
-          value={funnel ? funnel.totalDeals.toLocaleString() : "—"}
+          label="Active Pipeline Deals"
+          value={kpis?.sales.activeDeals != null ? kpis.sales.activeDeals.toLocaleString() : funnel ? funnel.totalDeals.toLocaleString() : "—"}
           subtitle={funnel ? `${funnel.closedWon} won · ${funnel.closedLost} lost` : undefined}
           icon={Users}
         />
@@ -104,8 +106,8 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
         />
         <StatCard
           label="Bounce Rate"
-          value={ga ? fmtPct(ga.bounceRate * 100) : "—"}
-          subtitle={ga ? `Avg session: ${Math.round(ga.avgSessionDuration)}s` : undefined}
+          value={kpis.traffic.bounceRatePct == null ? "—" : fmtPct(kpis.traffic.bounceRatePct)}
+          subtitle={kpis.traffic.avgSessionDurationLabel ? `Avg session: ${kpis.traffic.avgSessionDurationLabel}` : undefined}
           icon={Activity}
         />
       </div>
