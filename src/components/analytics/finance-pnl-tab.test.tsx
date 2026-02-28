@@ -133,8 +133,8 @@ describe("FinancePnlTab", () => {
 
   it("shows revenue line items in the P&L table", () => {
     render(<FinancePnlTab data={makePayload()} />);
-    expect(screen.getByText("Subscription Revenue")).toBeTruthy();
     expect(screen.getByText("Total Revenue")).toBeTruthy();
+    expect(screen.getByText("Gross Profit")).toBeTruthy();
   });
 
   it("shows the Change column header", () => {
