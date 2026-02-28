@@ -223,10 +223,11 @@ export default function AutomationsPage() {
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-3 py-3">
+      <div role="group" aria-label="Workflow filters" className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-3 py-3">
         <Filter className="h-4 w-4 text-muted-foreground" />
 
         <select
+          aria-label="Filter by scope"
           value={scopeFilter}
           onChange={(event) => setScopeFilter(event.target.value as typeof scopeFilter)}
           className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
@@ -237,6 +238,7 @@ export default function AutomationsPage() {
         </select>
 
         <select
+          aria-label="Filter by status"
           value={statusFilter}
           onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
           className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
@@ -250,6 +252,7 @@ export default function AutomationsPage() {
         </select>
 
         <select
+          aria-label="Filter by provider"
           value={providerFilter}
           onChange={(event) => setProviderFilter(event.target.value)}
           className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
@@ -262,6 +265,7 @@ export default function AutomationsPage() {
         </select>
 
         <select
+          aria-label="Filter by health"
           value={healthFilter}
           onChange={(event) => setHealthFilter(event.target.value as typeof healthFilter)}
           className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
