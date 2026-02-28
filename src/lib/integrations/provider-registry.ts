@@ -106,7 +106,7 @@ const INTEGRATION_PROVIDER_REGISTRY: readonly IntegrationProviderRegistryEntry[]
   {
     provider: IntegrationProvider.META_PAGE,
     slug: "meta-page",
-    authType: "token",
+    authType: "oauth",
     snapshotKeys: ["metaPage", "instagram"],
     settingsVisible: true,
     envManaged: true,

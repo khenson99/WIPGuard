@@ -12,6 +12,8 @@
  *  - HALF_OPEN – one probe request is allowed through to test recovery
  */
 
+import { prisma } from "@/lib/prisma";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -50,28 +52,83 @@ const DEFAULT_OPTIONS: Required<CircuitBreakerOptions> = {
 };
 
 // ---------------------------------------------------------------------------
-// In-memory store keyed by "provider:userId"
+// Durable store (DB) + small in-memory cache
 // ---------------------------------------------------------------------------
 
-const circuits = new Map<string, CircuitEntry>();
+const cache = new Map<string, { entry: CircuitEntry; loadedAt: number }>();
+const CACHE_TTL_MS = 10_000;
 
-function circuitKey(provider: string, userId: string): string {
+function cacheKey(provider: string, userId: string): string {
   return `${provider}:${userId}`;
 }
 
-function getOrCreate(key: string): CircuitEntry {
-  let entry = circuits.get(key);
-  if (!entry) {
-    entry = {
-      consecutiveFailures: 0,
-      state: "CLOSED",
-      openedAt: null,
-      currentCooldownMs: 0,
-      openCount: 0,
-    };
-    circuits.set(key, entry);
+function defaultEntry(): CircuitEntry {
+  return {
+    consecutiveFailures: 0,
+    state: "CLOSED",
+    openedAt: null,
+    currentCooldownMs: 0,
+    openCount: 0,
+  };
+}
+
+function normalizeState(value: unknown): CircuitState {
+  return value === "OPEN" || value === "HALF_OPEN" || value === "CLOSED" ? value : "CLOSED";
+}
+
+async function loadEntry(provider: string, userId: string): Promise<CircuitEntry> {
+  const key = cacheKey(provider, userId);
+  const cached = cache.get(key);
+  if (cached && Date.now() - cached.loadedAt <= CACHE_TTL_MS) {
+    return cached.entry;
   }
+
+  const row = await prisma.integrationCircuitState.findUnique({
+    where: { userId_key: { userId, key: provider } },
+    select: {
+      state: true,
+      consecutiveFailures: true,
+      openedAt: true,
+      currentCooldownMs: true,
+      openCount: true,
+    },
+  });
+
+  const entry: CircuitEntry = row
+    ? {
+        consecutiveFailures: row.consecutiveFailures,
+        state: normalizeState(row.state),
+        openedAt: row.openedAt ? row.openedAt.getTime() : null,
+        currentCooldownMs: row.currentCooldownMs,
+        openCount: row.openCount,
+      }
+    : defaultEntry();
+
+  cache.set(key, { entry, loadedAt: Date.now() });
   return entry;
+}
+
+async function saveEntry(provider: string, userId: string, entry: CircuitEntry): Promise<void> {
+  await prisma.integrationCircuitState.upsert({
+    where: { userId_key: { userId, key: provider } },
+    create: {
+      userId,
+      key: provider,
+      state: entry.state,
+      consecutiveFailures: entry.consecutiveFailures,
+      openedAt: entry.openedAt ? new Date(entry.openedAt) : null,
+      currentCooldownMs: entry.currentCooldownMs,
+      openCount: entry.openCount,
+    },
+    update: {
+      state: entry.state,
+      consecutiveFailures: entry.consecutiveFailures,
+      openedAt: entry.openedAt ? new Date(entry.openedAt) : null,
+      currentCooldownMs: entry.currentCooldownMs,
+      openCount: entry.openCount,
+    },
+  });
+  cache.set(cacheKey(provider, userId), { entry, loadedAt: Date.now() });
 }
 
 function resolvedOptions(opts?: CircuitBreakerOptions): Required<CircuitBreakerOptions> {
@@ -95,10 +152,10 @@ export function isCircuitClosed(
   provider: string,
   userId: string,
   opts?: CircuitBreakerOptions
-): boolean {
-  const key = circuitKey(provider, userId);
-  const entry = getOrCreate(key);
-  const _opts = resolvedOptions(opts);
+): Promise<boolean> {
+  return (async () => {
+  const entry = await loadEntry(provider, userId);
+  void resolvedOptions(opts);
 
   if (entry.state === "CLOSED") {
     return true;
@@ -119,19 +176,21 @@ export function isCircuitClosed(
       cooldownMs: entry.currentCooldownMs,
       openCount: entry.openCount,
     });
+    await saveEntry(provider, userId, entry);
     return true;
   }
 
   // Still within cooldown
   return false;
+  })();
 }
 
 /**
  * Record a successful request. Resets the circuit to CLOSED.
  */
 export function recordSuccess(provider: string, userId: string): void {
-  const key = circuitKey(provider, userId);
-  const entry = getOrCreate(key);
+  void (async () => {
+    const entry = await loadEntry(provider, userId);
 
   if (entry.state !== "CLOSED" || entry.consecutiveFailures > 0) {
     console.info("integration.circuit_breaker.closed", {
@@ -147,6 +206,8 @@ export function recordSuccess(provider: string, userId: string): void {
   entry.openedAt = null;
   entry.currentCooldownMs = 0;
   entry.openCount = 0;
+    await saveEntry(provider, userId, entry);
+  })();
 }
 
 /**
@@ -158,39 +219,43 @@ export function recordFailure(
   userId: string,
   opts?: CircuitBreakerOptions
 ): void {
-  const key = circuitKey(provider, userId);
-  const entry = getOrCreate(key);
-  const _opts = resolvedOptions(opts);
+  void (async () => {
+    const entry = await loadEntry(provider, userId);
+    const _opts = resolvedOptions(opts);
 
-  entry.consecutiveFailures += 1;
+    entry.consecutiveFailures += 1;
 
-  if (entry.consecutiveFailures >= _opts.failureThreshold && entry.state !== "OPEN") {
-    entry.state = "OPEN";
-    entry.openedAt = Date.now();
-    entry.openCount += 1;
+    if (entry.consecutiveFailures >= _opts.failureThreshold && entry.state !== "OPEN") {
+      entry.state = "OPEN";
+      entry.openedAt = Date.now();
+      entry.openCount += 1;
 
-    // Exponential cooldown: base * multiplier^(openCount - 1), capped at max
-    entry.currentCooldownMs = Math.min(
-      _opts.baseCooldownMs * Math.pow(_opts.cooldownMultiplier, entry.openCount - 1),
-      _opts.maxCooldownMs
-    );
+      // Exponential cooldown: base * multiplier^(openCount - 1), capped at max
+      entry.currentCooldownMs = Math.min(
+        _opts.baseCooldownMs * Math.pow(_opts.cooldownMultiplier, entry.openCount - 1),
+        _opts.maxCooldownMs
+      );
 
-    console.warn("integration.circuit_breaker.opened", {
-      provider,
-      userId,
-      consecutiveFailures: entry.consecutiveFailures,
-      cooldownMs: entry.currentCooldownMs,
-      openCount: entry.openCount,
-    });
-  }
+      console.warn("integration.circuit_breaker.opened", {
+        provider,
+        userId,
+        consecutiveFailures: entry.consecutiveFailures,
+        cooldownMs: entry.currentCooldownMs,
+        openCount: entry.openCount,
+      });
+    }
+
+    await saveEntry(provider, userId, entry);
+  })();
 }
 
 /**
  * Get the current circuit state for observability.
  */
 export function getCircuitState(provider: string, userId: string): CircuitState {
-  const key = circuitKey(provider, userId);
-  return getOrCreate(key).state;
+  const cached = cache.get(cacheKey(provider, userId));
+  if (cached) return cached.entry.state;
+  return "CLOSED";
 }
 
 /**
@@ -223,7 +288,7 @@ export async function withCircuitBreaker<T>(
   fn: () => Promise<T>,
   opts?: CircuitBreakerOptions
 ): Promise<T> {
-  if (!isCircuitClosed(provider, userId, opts)) {
+  if (!(await isCircuitClosed(provider, userId, opts))) {
     throw new CircuitOpenError(provider, userId, getCircuitState(provider, userId));
   }
 
@@ -241,12 +306,16 @@ export async function withCircuitBreaker<T>(
  * Reset a specific circuit (e.g., when a user reconnects an integration).
  */
 export function resetCircuit(provider: string, userId: string): void {
-  circuits.delete(circuitKey(provider, userId));
+  cache.delete(cacheKey(provider, userId));
+  void prisma.integrationCircuitState.deleteMany({
+    where: { userId, key: provider },
+  });
 }
 
 /**
  * Reset all circuits (useful for testing).
  */
 export function resetAllCircuits(): void {
-  circuits.clear();
+  cache.clear();
+  void prisma.integrationCircuitState.deleteMany({});
 }

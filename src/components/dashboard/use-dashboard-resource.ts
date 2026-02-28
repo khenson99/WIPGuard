@@ -1,12 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
-
-interface DashboardCacheEnvelope<T> {
-  data: T;
-  lastUpdatedAt: string | null;
-}
+import { useDashboardCacheStore } from "@/lib/client/dashboard-cache-store";
 
 interface UseDashboardResourceInput<T> {
   cacheKey: string;
@@ -36,6 +31,9 @@ function defaultMapError(error: unknown): string {
 
 export function useDashboardResource<T>(input: UseDashboardResourceInput<T>): DashboardResourceState<T> {
   const { cacheKey, deps, load, getLastUpdatedAt, mapError = defaultMapError } = input;
+
+  const readCache = useDashboardCacheStore((state) => state.read);
+  const writeCache = useDashboardCacheStore((state) => state.write);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -118,10 +116,7 @@ export function useDashboardResource<T>(input: UseDashboardResourceInput<T>): Da
         setError(null);
         setStale(false);
         setFromCache(false);
-        writeSessionCache<DashboardCacheEnvelope<T>>(cacheKey, {
-          data: payload,
-          lastUpdatedAt: updatedAt,
-        });
+        writeCache<T>(cacheKey, { data: payload, lastUpdatedAt: updatedAt });
       } catch (loadError) {
         if (opts.signal?.aborted || !mountedRef.current) return;
 
@@ -150,7 +145,7 @@ export function useDashboardResource<T>(input: UseDashboardResourceInput<T>): Da
   useEffect(() => {
     let active = true;
     const controller = new AbortController();
-    const cached = readSessionCache<DashboardCacheEnvelope<T>>(cacheKey);
+    const cached = readCache<T>(cacheKey);
 
     if (cached) {
       dataRef.current = cached.data ?? null;

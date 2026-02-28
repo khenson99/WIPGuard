@@ -415,7 +415,9 @@ async function fetchSlackProfile(accessToken: string): Promise<AccountProfile> {
 
   const teamId = getString(profile, "team_id");
   const userId = getString(profile, "user_id");
-  const providerAccountId = teamId || userId;
+  // Store Slack user id as the canonical providerAccountId so Events API lookups
+  // can reliably map event.user -> IntegrationConnection.providerAccountId.
+  const providerAccountId = userId || teamId;
   if (!providerAccountId) {
     throw new Error("Slack profile did not include an account identifier");
   }
@@ -434,7 +436,10 @@ async function fetchSlackProfile(accessToken: string): Promise<AccountProfile> {
 }
 
 async function fetchRedditProfile(accessToken: string): Promise<AccountProfile> {
-  const userAgent = process.env.REDDIT_USER_AGENT?.trim() || "WIPGuard/1.0";
+  const userAgent = process.env.REDDIT_USER_AGENT?.trim();
+  if (!userAgent) {
+    throw new Error("Reddit OAuth config error: REDDIT_USER_AGENT is required.");
+  }
   const response = await fetch("https://oauth.reddit.com/api/v1/me", {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -745,6 +750,9 @@ export async function fetchOAuthAccountProfile(
   const tokenPayload = asRecord(tokenRaw);
 
   if (definition.slug === "google-workspace" || definition.slug === "google-ads") {
+    return fetchGoogleProfile(accessToken);
+  }
+  if (definition.slug === "google-ads") {
     return fetchGoogleProfile(accessToken);
   }
   if (definition.slug === "hubspot") {

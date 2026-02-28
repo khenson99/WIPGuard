@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { getIntegrationBySlug } from "@/lib/integrations/catalog";
 import { enforcePermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 
 interface RouteParams {
   params: Promise<{ provider: string }>;
@@ -27,9 +28,11 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
+
     const permission = await enforcePermission({
       userId: session.user.id,
-      action: "profile.write",
+      action: "integration.manage",
       request,
       targetType: "integration",
       targetId: definition.provider,
@@ -40,7 +43,7 @@ export async function DELETE(
 
     await prisma.integrationConnection.updateMany({
       where: {
-        userId: session.user.id,
+        userId: ownerUserId,
         provider: definition.provider,
       },
       data: {
