@@ -186,6 +186,8 @@ function LoginPageContent() {
             </div>
             <div className="space-y-3">
               <select
+                id="dev-user-select"
+                aria-label="Select development user"
                 value={selectedEmail}
                 onChange={(e) => setSelectedEmail(e.target.value)}
                 className="w-full rounded-lg border border-border bg-secondary px-4 py-3 text-sm text-foreground outline-none focus:border-ring"

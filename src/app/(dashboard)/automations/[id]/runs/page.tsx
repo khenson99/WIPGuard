@@ -3,8 +3,25 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, CheckCircle, XCircle, Loader2, Clock, Pause } from "lucide-react";
 import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
+
+function getStatusDisplay(status: string) {
+  switch (status) {
+    case "SUCCEEDED":
+      return { icon: CheckCircle, color: "text-emerald-500", label: "Succeeded" };
+    case "FAILED":
+      return { icon: XCircle, color: "text-red-500", label: "Failed" };
+    case "RUNNING":
+      return { icon: Loader2, color: "text-blue-500 animate-spin", label: "Running" };
+    case "PENDING":
+      return { icon: Clock, color: "text-yellow-500", label: "Pending" };
+    case "PAUSED":
+      return { icon: Pause, color: "text-orange-500", label: "Paused" };
+    default:
+      return { icon: Clock, color: "text-muted-foreground", label: status };
+  }
+}
 
 interface RunStep {
   id: string;
@@ -153,7 +170,15 @@ export default function AutomationRunsPage() {
             <div key={run.id} className="rounded-xl border border-border bg-card p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-semibold text-foreground">Run {run.id.slice(0, 8)}</p>
-                <span className="text-xs text-muted-foreground">{run.status}</span>
+                {(() => {
+                  const { icon: StatusIcon, color, label } = getStatusDisplay(run.status);
+                  return (
+                    <span className={`flex items-center gap-1 text-xs ${color}`}>
+                      <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                      {label}
+                    </span>
+                  );
+                })()}
               </div>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 Created {new Date(run.createdAt).toLocaleString()}

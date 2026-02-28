@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
@@ -13,6 +13,7 @@ import { CrossDomainInsightsPanel } from "@/components/analytics/cross-domain-in
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-state";
 import { DashboardStaleBanner } from "@/components/dashboard/dashboard-stale-banner";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-error-banner";
+import { CheckCircle, AlertTriangle, XCircle } from "lucide-react";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
 import { Download } from "lucide-react";
@@ -61,6 +62,13 @@ const STATUS_CLASS: Record<string, string> = {
   degraded: "text-amber-600",
   partial: "text-amber-600",
   missing: "text-muted-foreground",
+};
+
+const STATUS_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+  connected: CheckCircle,
+  degraded: AlertTriangle,
+  partial: AlertTriangle,
+  missing: XCircle,
 };
 
 const SUMMARY_CACHE_PREFIX = "analytics:summary:v1:";
@@ -351,9 +359,16 @@ export function AnalyticsSummaryPage() {
             >
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-foreground">{primary.label}</h3>
-                <span className={`text-xs uppercase ${STATUS_CLASS[section?.status ?? "missing"]}`}>
-                  {section?.status ?? "missing"}
-                </span>
+                {(() => {
+                  const status = section?.status ?? "missing";
+                  const Icon = STATUS_ICON[status] ?? XCircle;
+                  return (
+                    <span className={`flex items-center gap-1 text-[11px] uppercase ${STATUS_CLASS[status] ?? "text-muted-foreground"}`}>
+                      <Icon className="h-3 w-3" aria-hidden="true" />
+                      {status}
+                    </span>
+                  );
+                })()}
               </div>
               <p className="mt-1 text-xs text-muted-foreground">{primary.description}</p>
               {section && (
