@@ -100,11 +100,12 @@ export async function runRules(input: RunRulesInput): Promise<RunRulesResult> {
 
   let executedRules = 0;
 
-  for (const rawUserId of userIds) {
-    if (executedRules >= maxRules) break;
+  const executionUserIds = Array.from(
+    new Set(userIds.map((rawUserId) => resolveIntegrationOwnerUserId(rawUserId)))
+  );
 
-    // In org-level ownership mode, rules should operate with shared integration credentials.
-    const userId = resolveIntegrationOwnerUserId(rawUserId);
+  for (const userId of executionUserIds) {
+    if (executedRules >= maxRules) break;
 
     const rules = await prisma.integrationRule.findMany({
       where: {

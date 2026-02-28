@@ -148,14 +148,13 @@ function resolvedOptions(opts?: CircuitBreakerOptions): Required<CircuitBreakerO
  * When the cooldown has elapsed the circuit transitions to HALF_OPEN,
  * allowing a single probe request.
  */
-export function isCircuitClosed(
+export async function isCircuitClosed(
   provider: string,
   userId: string,
   opts?: CircuitBreakerOptions
 ): Promise<boolean> {
-  return (async () => {
   const entry = await loadEntry(provider, userId);
-  void resolvedOptions(opts);
+  const options = resolvedOptions(opts);
 
   if (entry.state === "CLOSED") {
     return true;
@@ -167,13 +166,18 @@ export function isCircuitClosed(
   }
 
   // State is OPEN — check if cooldown has elapsed
+  const cooldownMs =
+    entry.currentCooldownMs && entry.currentCooldownMs > 0
+      ? entry.currentCooldownMs
+      : options.baseCooldownMs;
   const elapsed = Date.now() - (entry.openedAt ?? 0);
-  if (elapsed >= entry.currentCooldownMs) {
+  if (elapsed >= cooldownMs) {
     entry.state = "HALF_OPEN";
+    entry.currentCooldownMs = cooldownMs;
     console.info("integration.circuit_breaker.half_open", {
       provider,
       userId,
-      cooldownMs: entry.currentCooldownMs,
+      cooldownMs,
       openCount: entry.openCount,
     });
     await saveEntry(provider, userId, entry);
@@ -182,7 +186,6 @@ export function isCircuitClosed(
 
   // Still within cooldown
   return false;
-  })();
 }
 
 /**
@@ -192,20 +195,20 @@ export function recordSuccess(provider: string, userId: string): void {
   void (async () => {
     const entry = await loadEntry(provider, userId);
 
-  if (entry.state !== "CLOSED" || entry.consecutiveFailures > 0) {
-    console.info("integration.circuit_breaker.closed", {
-      provider,
-      userId,
-      previousState: entry.state,
-      previousFailures: entry.consecutiveFailures,
-    });
-  }
+    if (entry.state !== "CLOSED" || entry.consecutiveFailures > 0) {
+      console.info("integration.circuit_breaker.closed", {
+        provider,
+        userId,
+        previousState: entry.state,
+        previousFailures: entry.consecutiveFailures,
+      });
+    }
 
-  entry.consecutiveFailures = 0;
-  entry.state = "CLOSED";
-  entry.openedAt = null;
-  entry.currentCooldownMs = 0;
-  entry.openCount = 0;
+    entry.consecutiveFailures = 0;
+    entry.state = "CLOSED";
+    entry.openedAt = null;
+    entry.currentCooldownMs = 0;
+    entry.openCount = 0;
     await saveEntry(provider, userId, entry);
   })();
 }
