@@ -21,32 +21,38 @@ import { COLUMN_LABELS } from "@/types";
 import type { UserSummary, TaskStatus as TStatus } from "@/types";
 /* Simple inline toast since sonner isn't installed */
 function useToast() {
-  const show = (msg: string, type: "success" | "error") => {
-    // Lightweight notification — creates a toast div at bottom-right
-    const div = document.createElement("div");
-    div.textContent = msg;
-    Object.assign(div.style, {
-      position: "fixed",
-      bottom: "1.5rem",
-      right: "1.5rem",
-      padding: "0.6rem 1rem",
-      borderRadius: "0.5rem",
-      fontSize: "0.8rem",
-      fontWeight: "500",
-      color: "#fff",
-      background: type === "success" ? "#22c55e" : "#ef4444",
-      zIndex: "9999",
-      transition: "opacity 0.3s",
-      opacity: "1",
-    });
-    document.body.appendChild(div);
-    setTimeout(() => { div.style.opacity = "0"; }, 2000);
-    setTimeout(() => { div.remove(); }, 2500);
-  };
-  return {
-    success: (msg: string) => show(msg, "success"),
-    error: (msg: string) => show(msg, "error"),
-  };
+  const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: "success" | "error" }>>([]);
+  const nextId = useRef(0);
+
+  const show = useCallback((message: string, type: "success" | "error") => {
+    const id = nextId.current++;
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 2500);
+  }, []);
+
+  const success = useCallback((msg: string) => show(msg, "success"), [show]);
+  const error = useCallback((msg: string) => show(msg, "error"), [show]);
+
+  const ToastContainer = useCallback(() => (
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          className={`rounded-lg px-4 py-2 text-sm font-medium shadow-lg transition-opacity ${
+            t.type === "success"
+              ? "bg-emerald-600 text-white"
+              : "bg-red-600 text-white"
+          }`}
+        >
+          {t.message}
+        </div>
+      ))}
+    </div>
+  ), [toasts]);
+
+  return { success, error, ToastContainer };
 }
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
@@ -1026,6 +1032,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           </div>
         </div>
       )}
+      <toast.ToastContainer />
     </div>
   );
 }
