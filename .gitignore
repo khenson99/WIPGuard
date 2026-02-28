@@ -47,9 +47,7 @@ next-env.d.ts
 # Ralph/Codex agent artifacts
 .ralph-team/logs/
 agents/
-scripts/
-!scripts/
-!scripts/ads-analytics-preflight.sh
+scripts/ralph-team-v2/
 firebase-debug.log
 
 # Local AI agent worktrees

@@ -29,9 +29,6 @@ vi.mock("recharts", () => {
   };
 });
 
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
-}));
 describe("PersonalizedDashboard", () => {
   beforeEach(() => {
     clearDashboardCache();
