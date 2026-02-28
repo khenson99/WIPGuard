@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Settings as SettingsIcon } from "lucide-react";
 import { clsx } from "clsx";
@@ -35,12 +36,38 @@ export default function SettingsPage() {
       ? (tabParam as TabId)
       : "board";
 
-  const handleTabChange = (tabId: TabId) => {
+  const handleTabChange = useCallback((tabId: TabId) => {
     const params = new URLSearchParams(searchParams?.toString() ?? "");
     params.set("tab", tabId);
     const basePath = pathname || "/settings";
     router.replace(`${basePath}?${params.toString()}`, { scroll: false });
-  };
+  }, [pathname, router, searchParams]);
+
+  const handleTabKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const tabIds = TABS.map((t) => t.id);
+      const currentIndex = tabIds.indexOf(activeTab);
+      let nextIndex: number | null = null;
+
+      if (e.key === "ArrowRight") {
+        nextIndex = (currentIndex + 1) % tabIds.length;
+      } else if (e.key === "ArrowLeft") {
+        nextIndex = (currentIndex - 1 + tabIds.length) % tabIds.length;
+      } else if (e.key === "Home") {
+        nextIndex = 0;
+      } else if (e.key === "End") {
+        nextIndex = tabIds.length - 1;
+      }
+
+      if (nextIndex !== null) {
+        e.preventDefault();
+        const nextTab = tabIds[nextIndex];
+        handleTabChange(nextTab);
+        document.getElementById(`tab-${nextTab}`)?.focus();
+      }
+    },
+    [activeTab, handleTabChange],
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -55,10 +82,15 @@ export default function SettingsPage() {
       </div>
 
       {/* Tab bar */}
-      <div className="flex border-b border-border px-6">
+      <div role="tablist" aria-label="Settings sections" onKeyDown={handleTabKeyDown} className="flex border-b border-border px-6">
         {TABS.map((tab) => (
           <button
             key={tab.id}
+            id={`tab-${tab.id}`}
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            aria-controls={`tabpanel-${tab.id}`}
+            tabIndex={activeTab === tab.id ? 0 : -1}
             onClick={() => handleTabChange(tab.id)}
             className={clsx(
               "border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
@@ -73,7 +105,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-auto px-6 py-5">
+      <div role="tabpanel" id={`tabpanel-${activeTab}`} aria-labelledby={`tab-${activeTab}`} className="flex-1 overflow-auto px-6 py-5">
         {activeTab === "board" && <BoardSettingsTab />}
         {activeTab === "sprints" && <SprintsTab />}
         {activeTab === "projects" && <ProjectsTab />}
