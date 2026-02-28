@@ -516,11 +516,12 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         />
       ) : null}
 
-      <div className="flex flex-wrap gap-1 border-b border-border pb-2">
+      <nav aria-label="Section navigation" className="flex flex-wrap gap-1 border-b border-border pb-2">
         {secondaryItems.map((item) => (
           <Link
             key={item.id}
             href={`${item.path}${rangeQuery ? `?${rangeQuery}` : ""}`}
+            aria-current={item.id === child?.id ? "page" : undefined}
             className={`rounded-md px-2 py-1 text-xs ${
               item.id === child?.id
                 ? "bg-primary/90 text-primary-foreground"
@@ -530,7 +531,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
             {item.label}
           </Link>
         ))}
-      </div>
+      </nav>
 
       {resource.loading && !resource.data ? (
         <DashboardLoadingState message="Loading section..." className="h-[30vh]" />
