@@ -1,5 +1,6 @@
 "use client";
 
+import { AlertTriangle, X } from "lucide-react";
 import { useWhipData } from "@/components/whip/use-whip-data";
 import { WhipFilterBar } from "@/components/whip/whip-filter-bar";
 import { ScopeCreepSummary } from "@/components/whip/scope-creep-summary";
@@ -20,6 +21,8 @@ export default function WhipPage() {
     filters,
     setFilters,
     updateTask,
+    retry,
+    clearError,
   } = useWhipData();
 
   const activeSprint = sprints.find((s) => s.id === filters.sprintId);
@@ -48,8 +51,28 @@ export default function WhipPage() {
 
       {/* Error banner */}
       {error && (
-        <div className="rounded-lg border border-wip-over-border bg-wip-over-bg px-4 py-3 text-sm text-wip-over-text">
-          {error}
+        <div className="flex items-center justify-between rounded-lg border border-wip-over-border bg-wip-over-bg px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-wip-over-text">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={retry}
+              className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={clearError}
+              className="rounded-md p-1 text-wip-over-text/70 hover:text-wip-over-text"
+              aria-label="Dismiss error"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       )}
 

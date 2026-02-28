@@ -41,8 +41,6 @@ export function AiInsightsPage() {
     let active = true;
     const controller = new AbortController();
 
-    setError(null);
-    setLoading(true);
     fetch("/api/analytics?section=overview", { signal: controller.signal })
       .then((r) => r.json())
       .then((json: AnalyticsDashboardData) => {
@@ -67,6 +65,8 @@ export function AiInsightsPage() {
   }, [fetchKey]);
 
   const handleRetry = useCallback(() => {
+    setError(null);
+    setLoading(true);
     setFetchKey((k) => k + 1);
   }, []);
 

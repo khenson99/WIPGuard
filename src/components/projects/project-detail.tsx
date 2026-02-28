@@ -249,6 +249,7 @@ function InlineSelect({
   renderValue?: (v: string) => React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -266,18 +267,53 @@ function InlineSelect({
   return (
     <div ref={ref} className="relative inline-block">
       <button
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (!open) {
+            setHighlightedIndex(options.findIndex((o) => o.value === value));
+          }
+          setOpen(!open);
+        }}
+        aria-expanded={open}
+        aria-haspopup="listbox"
         className="group flex items-center gap-1 rounded-md px-1 -mx-1 transition-colors hover:bg-secondary"
         title="Click to change"
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            setOpen(false);
+          } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            if (!open) {
+              setOpen(true);
+              setHighlightedIndex(options.findIndex((o) => o.value === value));
+            } else {
+              setHighlightedIndex((prev) => {
+                if (e.key === "ArrowDown") return (prev + 1) % options.length;
+                return (prev - 1 + options.length) % options.length;
+              });
+            }
+          } else if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            if (open && highlightedIndex >= 0) {
+              const selected = options[highlightedIndex];
+              onSave(selected.value);
+              setOpen(false);
+            } else if (!open) {
+              setOpen(true);
+              setHighlightedIndex(options.findIndex((o) => o.value === value));
+            }
+          }
+        }}
       >
         {renderValue ? renderValue(value) : (selected?.label || value)}
         <ChevronDown className="h-3 w-3 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 min-w-[140px] rounded-lg border border-border bg-card p-1 shadow-lg">
-          {options.map((opt) => (
+        <div role="listbox" className="absolute left-0 top-full z-50 mt-1 min-w-[140px] rounded-lg border border-border bg-card p-1 shadow-lg">
+          {options.map((opt, i) => (
             <button
               key={opt.value}
+              role="option"
+              aria-selected={opt.value === value}
               onClick={() => {
                 if (opt.value !== value) onSave(opt.value);
                 setOpen(false);
@@ -286,7 +322,7 @@ function InlineSelect({
                 opt.value === value
                   ? "bg-primary/10 text-primary font-medium"
                   : "text-foreground hover:bg-secondary"
-              }`}
+              } ${i === highlightedIndex ? "bg-primary/10" : ""}`}
             >
               {opt.value === value && <Check className="h-3 w-3" />}
               {opt.label}

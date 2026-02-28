@@ -21,7 +21,7 @@ describe("DEFAULT_EXPENSE_RATIOS", () => {
   });
 
   it("values sum to 1.0", () => {
-    const sum = Object.values(DEFAULT_EXPENSE_RATIOS).reduce(
+    const sum = (Object.values(DEFAULT_EXPENSE_RATIOS) as number[]).reduce(
       (acc, v) => acc + v,
       0,
     );

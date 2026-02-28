@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { Monitor, MonitorOff } from "lucide-react";
 
@@ -58,6 +58,7 @@ export default function StandupPage() {
   const [activeMemberId, setActiveMemberId] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<StandupMetrics | null>(null);
   const [slackMessage, setSlackMessage] = useState<string>("");
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
   const startTimeRef = useRef<Date | null>(null);
 
   // Mutable group actions tracked via state
@@ -121,9 +122,70 @@ export default function StandupPage() {
     console.log("Coaching action:", action);
   }, []);
 
-  const handleCopySlack = useCallback(() => {
-    void navigator.clipboard.writeText(slackMessage);
+  const handleCopySlack = useCallback(async () => {
+    try {
+      if (!navigator.clipboard) {
+        setCopyStatus("error");
+        return;
+      }
+      await navigator.clipboard.writeText(slackMessage);
+      setCopyStatus("copied");
+      setTimeout(() => setCopyStatus("idle"), 2000);
+    } catch {
+      setCopyStatus("error");
+      setTimeout(() => setCopyStatus("idle"), 3000);
+    }
   }, [slackMessage]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip if user is typing in an input
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      switch (e.key) {
+        case " ": {
+          e.preventDefault();
+          // Toggle timer - need to check if timer is running
+          // This depends on how the timer state is exposed
+          break;
+        }
+        case "n":
+        case "ArrowRight": {
+          e.preventDefault();
+          if (!groups.length) return;
+          const currentIdxN = groups.findIndex((g) => g.member.id === activeMemberId);
+          const nextIdx = (currentIdxN + 1) % groups.length;
+          setActiveMemberId(groups[nextIdx].member.id);
+          break;
+        }
+        case "p":
+        case "ArrowLeft": {
+          e.preventDefault();
+          if (!groups.length) return;
+          const currentIdxP = groups.findIndex((g) => g.member.id === activeMemberId);
+          const prevIdx = (currentIdxP - 1 + groups.length) % groups.length;
+          setActiveMemberId(groups[prevIdx].member.id);
+          break;
+        }
+        case "d": {
+          if (activeMemberId) {
+            handleMemberAction(activeMemberId, "completed");
+          }
+          break;
+        }
+        case "s": {
+          if (activeMemberId) {
+            handleMemberAction(activeMemberId, "skipped");
+          }
+          break;
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [activeMemberId, groups, handleMemberAction]);
 
   // --- Render ---
 
@@ -156,6 +218,14 @@ export default function StandupPage() {
           )}
           {facilitatorMode ? "Exit Facilitator" : "Facilitator Mode"}
         </button>
+      </div>
+
+      {/* Keyboard shortcut legend */}
+      <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+        <span><kbd className="rounded border border-border bg-secondary px-1.5 py-0.5 font-mono text-[10px]">N</kbd> Next</span>
+        <span><kbd className="rounded border border-border bg-secondary px-1.5 py-0.5 font-mono text-[10px]">P</kbd> Prev</span>
+        <span><kbd className="rounded border border-border bg-secondary px-1.5 py-0.5 font-mono text-[10px]">D</kbd> Done</span>
+        <span><kbd className="rounded border border-border bg-secondary px-1.5 py-0.5 font-mono text-[10px]">S</kbd> Skip</span>
       </div>
 
       {/* Timer */}
@@ -197,6 +267,12 @@ export default function StandupPage() {
         facilitatorMode={facilitatorMode}
         onCopyToClipboard={handleCopySlack}
       />
+      {copyStatus === "copied" && (
+        <p className="text-xs text-emerald-600">Copied to clipboard!</p>
+      )}
+      {copyStatus === "error" && (
+        <p className="text-xs text-red-500">Failed to copy — try selecting and copying manually</p>
+      )}
     </div>
   );
 }

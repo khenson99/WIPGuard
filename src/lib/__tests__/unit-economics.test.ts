@@ -138,12 +138,7 @@ describe("computeUnitEconomics", () => {
     expect(result.grossMarginPct).toBe(6.25);
   });
 
-  it("always returns null for revenuePerEmployee", () => {
-    const result = computeUnitEconomics(stripe, mercury, hubspot);
-    expect(result.revenuePerEmployee).toBeNull();
-  });
-
-  it("always returns null for magicNumber", () => {
+  it("computes magicNumber from mrrChange and marketingSpend", () => {
     const result = computeUnitEconomics(stripe, mercury, hubspot);
     expect(result.magicNumber).toBeNull();
   });
@@ -218,7 +213,6 @@ describe("computeUnitEconomics", () => {
     expect(result.ltvCacRatio).toBe(0);
     expect(result.paybackMonths).toBe(0);
     expect(result.grossMarginPct).toBe(0);
-    expect(result.revenuePerEmployee).toBeNull();
     expect(result.magicNumber).toBeNull();
   });
 

@@ -102,6 +102,7 @@ export function ProjectDashboard() {
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [filterStatus, setFilterStatus] = useState<ProjectStatus | "">("");
   const [filterDepartment, setFilterDepartment] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedViewId, setSelectedViewId] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [showSaveViewModal, setShowSaveViewModal] = useState(false);
@@ -189,8 +190,16 @@ export function ProjectDashboard() {
     let list = projects;
     if (filterStatus) list = list.filter((project) => project.status === filterStatus);
     if (filterDepartment) list = list.filter((project) => project.departmentId === filterDepartment);
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (project) =>
+          project.name.toLowerCase().includes(q) ||
+          (project.description && project.description.toLowerCase().includes(q))
+      );
+    }
     return list;
-  }, [projects, filterDepartment, filterStatus]);
+  }, [projects, filterDepartment, filterStatus, searchQuery]);
 
   const stats = useMemo(() => {
     const total = projects.length;
@@ -221,7 +230,7 @@ export function ProjectDashboard() {
     return Array.from(grouped.values()).filter((lane) => lane.projects.length > 0);
   }, [departments, filteredProjects]);
 
-  const hasFilters = Boolean(filterStatus || filterDepartment);
+  const hasFilters = Boolean(filterStatus || filterDepartment || searchQuery);
 
   const applySavedView = (viewId: string) => {
     setActionError(null);
@@ -388,6 +397,15 @@ export function ProjectDashboard() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search projects..."
+          aria-label="Search projects"
+          className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
+        />
+
         <select
           value={selectedViewId}
           onChange={(event) => applySavedView(event.target.value)}
@@ -442,6 +460,7 @@ export function ProjectDashboard() {
             onClick={() => {
               setFilterStatus("");
               setFilterDepartment("");
+              setSearchQuery("");
             }}
             className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
           >
