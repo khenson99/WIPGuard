@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { HorizontalFunnel } from "@/components/charts";
 import { StatCard } from "./stat-card";
 import { DashboardSectionCard } from "./dashboard-section-card";
@@ -82,6 +82,26 @@ export function CustomerJourneyPage() {
 
   const lifecycle = data?.lifecycleFunnel ?? null;
   const insights = data?.aiInsights?.global ?? [];
+
+  const stageGroupRef = useRef<HTMLDivElement>(null);
+
+  const handleStageKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      const group = stageGroupRef.current;
+      if (!group) return;
+      const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>("button"));
+      const currentIndex = buttons.findIndex((btn) => btn === document.activeElement);
+      if (currentIndex === -1) return;
+      const nextIndex =
+        e.key === "ArrowRight"
+          ? (currentIndex + 1) % buttons.length
+          : (currentIndex - 1 + buttons.length) % buttons.length;
+      buttons[nextIndex].focus();
+    },
+    [],
+  );
 
   if (loading) {
     return (
@@ -178,13 +198,22 @@ export function CustomerJourneyPage() {
 
       {/* Hero Funnel */}
       <DashboardSectionCard title="Lifecycle Funnel" subtitle="Click a stage to see details">
-        <HorizontalFunnel stages={stages} height={360} />
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div aria-label="Lifecycle funnel visualization">
+          <HorizontalFunnel stages={stages} height={360} />
+        </div>
+        <div
+          ref={stageGroupRef}
+          role="group"
+          aria-label="Lifecycle stages"
+          onKeyDown={handleStageKeyDown}
+          className="mt-3 flex flex-wrap gap-2"
+        >
           {STAGE_ORDER.map((id) => {
             const stage = lifecycle.stages.find((s) => s.id === id);
             return (
               <button
                 key={id}
+                aria-pressed={selectedStage === id}
                 onClick={() => setSelectedStage(selectedStage === id ? null : id)}
                 className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                   selectedStage === id
@@ -201,46 +230,48 @@ export function CustomerJourneyPage() {
       </DashboardSectionCard>
 
       {/* Stage Detail Panel */}
-      {selectedStageData && (
-        <DashboardSectionCard title={selectedStageData.label} subtitle="Stage evidence and transitions">
-          <div className="grid gap-4 lg:grid-cols-2">
-            {/* Evidence (LifecycleSegment[]) */}
-            <div>
-              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Evidence Sources</h4>
-              <div className="space-y-2">
-                {selectedStageData.evidence.length > 0 ? (
-                  selectedStageData.evidence.map((ev, i) => (
-                    <div key={i} className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2 text-sm">
-                      <span className="text-foreground">{ev.source}: {ev.detail}</span>
-                      <span className="font-semibold tabular-nums text-foreground">{ev.contribution}</span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-xs text-muted-foreground">No evidence data for this stage</p>
-                )}
+      <div aria-live="polite">
+        {selectedStageData && (
+          <DashboardSectionCard title={selectedStageData.label} subtitle="Stage evidence and transitions">
+            <div className="grid gap-4 lg:grid-cols-2">
+              {/* Evidence (LifecycleSegment[]) */}
+              <div>
+                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Evidence Sources</h4>
+                <div className="space-y-2">
+                  {selectedStageData.evidence.length > 0 ? (
+                    selectedStageData.evidence.map((ev, i) => (
+                      <div key={i} className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2 text-sm">
+                        <span className="text-foreground">{ev.source}: {ev.detail}</span>
+                        <span className="font-semibold tabular-nums text-foreground">{ev.contribution}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No evidence data for this stage</p>
+                  )}
+                </div>
+              </div>
+              {/* Transitions (from LifecycleFunnelData.transitions filtered by fromStageId) */}
+              <div>
+                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Transitions</h4>
+                <div className="space-y-2">
+                  {selectedTransitions.length > 0 ? (
+                    selectedTransitions.map((tr) => (
+                      <div key={tr.id} className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2 text-sm">
+                        <span className="text-muted-foreground">→ {tr.toStageId}</span>
+                        <span className="font-semibold tabular-nums text-foreground">
+                          {tr.conversionRate !== null ? `${tr.conversionRate.toFixed(1)}%` : "—"}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No transition data for this stage</p>
+                  )}
+                </div>
               </div>
             </div>
-            {/* Transitions (from LifecycleFunnelData.transitions filtered by fromStageId) */}
-            <div>
-              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Transitions</h4>
-              <div className="space-y-2">
-                {selectedTransitions.length > 0 ? (
-                  selectedTransitions.map((tr) => (
-                    <div key={tr.id} className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2 text-sm">
-                      <span className="text-muted-foreground">→ {tr.toStageId}</span>
-                      <span className="font-semibold tabular-nums text-foreground">
-                        {tr.conversionRate !== null ? `${tr.conversionRate.toFixed(1)}%` : "—"}
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-xs text-muted-foreground">No transition data for this stage</p>
-                )}
-              </div>
-            </div>
-          </div>
-        </DashboardSectionCard>
-      )}
+          </DashboardSectionCard>
+        )}
+      </div>
 
       {/* Journey Insights */}
       {insights.length > 0 && (
