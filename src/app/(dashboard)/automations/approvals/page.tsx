@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 
@@ -9,6 +9,7 @@ interface ApprovalItem {
   nodeKey: string;
   status: string;
   timeoutAt: string | null;
+  createdAt?: string | null;
   run: {
     id: string;
     status: string;
@@ -36,6 +37,9 @@ export default function AutomationApprovalsPage() {
   const notesRef = useRef<HTMLTextAreaElement>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [processingAction, setProcessingAction] = useState<"approve" | "reject" | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const fetchApprovals = async (options?: { preserveExisting?: boolean; signal?: AbortSignal }) => {
     if (!options?.preserveExisting) {
@@ -132,6 +136,34 @@ export default function AutomationApprovalsPage() {
     void decide(notesFor.id, notesFor.action, notesText);
   };
 
+  const filteredApprovals = useMemo(() => {
+    let list = [...approvals];
+
+    // Status filter
+    if (statusFilter !== "all") {
+      list = list.filter((a) => a.status === statusFilter);
+    }
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (a) =>
+          a.run.workflow.name.toLowerCase().includes(q) ||
+          a.nodeKey.toLowerCase().includes(q)
+      );
+    }
+
+    // Sort
+    list.sort((a, b) => {
+      const dateA = new Date(a.createdAt ?? 0).getTime();
+      const dateB = new Date(b.createdAt ?? 0).getTime();
+      return sortOrder === "newest" ? dateB - dateA : dateA - dateB;
+    });
+
+    return list;
+  }, [approvals, statusFilter, searchQuery, sortOrder]);
+
   return (
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between">
@@ -149,13 +181,48 @@ export default function AutomationApprovalsPage() {
 
       {error && <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-500">{error}</div>}
 
+      <div role="group" aria-label="Approval filters" className="flex flex-wrap items-center gap-2">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search approvals..."
+          aria-label="Search approvals"
+          className="rounded-md border border-border bg-secondary px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground"
+        />
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          aria-label="Filter by status"
+          className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+        >
+          <option value="all">All Statuses</option>
+          <option value="PENDING">Pending</option>
+          <option value="APPROVED">Approved</option>
+          <option value="REJECTED">Rejected</option>
+        </select>
+        <select
+          value={sortOrder}
+          onChange={(e) => setSortOrder(e.target.value as "newest" | "oldest")}
+          aria-label="Sort order"
+          className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+        >
+          <option value="newest">Newest First</option>
+          <option value="oldest">Oldest First</option>
+        </select>
+      </div>
+
       {loading ? (
         <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">Loading approvals...</div>
-      ) : approvals.length === 0 ? (
-        <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No pending approvals.</div>
+      ) : filteredApprovals.length === 0 ? (
+        <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
+          {statusFilter !== "all" || searchQuery.trim()
+            ? "No approvals match the current filters."
+            : "No pending approvals."}
+        </div>
       ) : (
         <div className="space-y-2">
-          {approvals.map((approval) => (
+          {filteredApprovals.map((approval) => (
             <div key={approval.id} className="rounded-xl border border-border bg-card p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
