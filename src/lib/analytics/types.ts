@@ -477,6 +477,8 @@ export interface CodaNewCreatorFeedEntry {
 export interface CodaCreatorTrends {
   newCreators30d: Array<{ date: string; count: number }>;
   cardsCreated90d: Array<{ date: string; count: number }>;
+  downloadsDaily: Array<{ date: string; count: number }>;
+  downloadersDaily: Array<{ date: string; count: number }>;
 }
 
 export interface HubSpotContactSummary {
@@ -487,6 +489,26 @@ export interface HubSpotContactSummary {
   company: string | null;
 }
 export type CodaLeadFunnelStatus = "inFunnel" | "notInFunnel" | "unknown";
+
+export type StripeSubscriptionStatus =
+  | "active"
+  | "trialing"
+  | "past_due"
+  | "paused"
+  | "canceled"
+  | "none"
+  | "unknown";
+
+export interface StripeEmailEnrichment {
+  matched: boolean;
+  customerId: string | null;
+  customerCount: number;
+  customerUrl: string | null;
+  subscriptionStatus: StripeSubscriptionStatus;
+  mrr: number | null;
+  paid12mo: number | null;
+  lastPaymentAt: string | null;
+}
 
 export interface CodaEngagedLeadCandidate {
   creator: string;
@@ -511,6 +533,7 @@ export interface CodaRecentSubmitter {
   hubspotContact: HubSpotContactSummary | null;
   hubspotStatus: CodaLeadFunnelStatus;
   hubspotSearchUrl: string;
+  stripe?: StripeEmailEnrichment | null;
 }
 
 export interface CodaDiagnostics {
@@ -534,6 +557,10 @@ export interface CodaKanbanData {
     cardsCreated: number;
     submissions: number;
     unknownEmailCards: number;
+    downloadsPrev?: number;
+    downloadersPrev?: number;
+    downloadsDeltaPct?: number | null;
+    downloadersDeltaPct?: number | null;
   };
   recentSubmitters?: CodaRecentSubmitter[];
   diagnostics?: CodaDiagnostics;

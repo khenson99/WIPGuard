@@ -13,6 +13,54 @@ describe("coda analytics fetcher", () => {
     vi.restoreAllMocks();
   });
 
+  it("prefers the Individual Cards table when present", async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            { id: "grid-tasks", name: "Tasks" },
+            { id: "grid-individual", name: "Individual Cards" },
+            { id: "grid-kanban", name: "Kanban" },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            { id: "col-1", name: "Name" },
+            { id: "col-2", name: "Status" },
+            { id: "col-3", name: "Created By" },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              id: "row-1",
+              createdAt: "2026-02-10T10:00:00.000Z",
+              updatedAt: "2026-02-10T10:00:00.000Z",
+              values: ["Download A", "Downloaded", { name: "Alice", email: "alice@example.com" }],
+            },
+          ],
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchCodaData("token", "doc-id", {
+      fromDate: new Date("2026-02-01T00:00:00.000Z"),
+      toDate: new Date("2026-02-28T23:59:59.999Z"),
+    });
+
+    expect(data.totalCards).toBe(1);
+
+    const calledUrls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(calledUrls.some((url) => url.includes("/tables/grid-individual/columns"))).toBe(true);
+    expect(calledUrls.some((url) => url.includes("/tables/grid-individual/rows"))).toBe(true);
+  });
+
   it("filters cards by provided date range and builds recent submitters summary", async () => {
     const fetchMock = vi.fn();
     fetchMock
@@ -76,6 +124,200 @@ describe("coda analytics fetcher", () => {
     expect(data.recentSubmitters?.length).toBe(1);
     expect(data.recentSubmitters?.[0]?.email).toBe("alice@example.com");
     expect(data.recentSubmitters?.[0]?.cardsCreated).toBe(1);
+  });
+
+  it("uses an Email column when present (even if Created By lacks email)", async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [{ id: "grid-tasks", name: "Tasks" }],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            { id: "col-1", name: "Name" },
+            { id: "col-2", name: "Status" },
+            { id: "col-3", name: "Email" },
+            { id: "col-4", name: "Created By" },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              id: "row-1",
+              createdAt: "2026-02-10T10:00:00.000Z",
+              updatedAt: "2026-02-10T10:00:00.000Z",
+              values: ["Download A", "Downloaded", "alice@example.com", { name: "Alice" }],
+            },
+          ],
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchCodaData("token", "doc-id", {
+      fromDate: new Date("2026-02-01T00:00:00.000Z"),
+      toDate: new Date("2026-02-28T23:59:59.999Z"),
+    });
+
+    expect(data.rangeSummary?.unknownEmailCards).toBe(0);
+    expect(data.recentSubmitters?.[0]?.email).toBe("alice@example.com");
+    expect(data.recentSubmitters?.[0]?.creator).toBe("Alice");
+  });
+
+  it("enriches recent downloaders with Stripe data when stripeKey is provided", async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [{ id: "grid-tasks", name: "Tasks" }],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            { id: "col-1", name: "Name" },
+            { id: "col-2", name: "Status" },
+            { id: "col-3", name: "Created By" },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              id: "row-1",
+              createdAt: "2026-02-10T10:00:00.000Z",
+              updatedAt: "2026-02-10T10:00:00.000Z",
+              values: ["Download A", "Downloaded", { name: "Alice", email: "alice@example.com" }],
+            },
+          ],
+        })
+      )
+      // Stripe: customers.search
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [{ id: "cus_123", created: 1700000000, email: "alice@example.com" }],
+          has_more: false,
+        })
+      )
+      // Stripe: subscriptions
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: "sub_123",
+              status: "active",
+              items: {
+                data: [
+                  {
+                    price: {
+                      unit_amount: 1000,
+                      recurring: { interval: "month", interval_count: 1 },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          has_more: false,
+        })
+      )
+      // Stripe: charges
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            { id: "ch_1", amount: 2000, amount_refunded: 0, created: 1700000100, status: "succeeded", paid: true },
+          ],
+          has_more: false,
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchCodaData("token", "doc-id", {
+      stripeKey: "sk_test_123",
+      fromDate: new Date("2026-02-01T00:00:00.000Z"),
+      toDate: new Date("2026-02-28T23:59:59.999Z"),
+    });
+
+    const submitter = data.recentSubmitters?.[0];
+    expect(submitter?.email).toBe("alice@example.com");
+    expect(submitter?.stripe?.matched).toBe(true);
+    expect(submitter?.stripe?.customerId).toBe("cus_123");
+    expect(submitter?.stripe?.subscriptionStatus).toBe("active");
+    expect(submitter?.stripe?.mrr).toBe(10);
+    expect(submitter?.stripe?.paid12mo).toBe(20);
+    expect(submitter?.stripe?.lastPaymentAt).toBeTruthy();
+  });
+
+  it("computes previous-period growth for downloads and downloaders", async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [{ id: "grid-tasks", name: "Tasks" }],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            { id: "col-1", name: "Name" },
+            { id: "col-2", name: "Status" },
+            { id: "col-3", name: "Created By" },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            // Previous window (Jan 29 → Feb 9 for this selected range)
+            {
+              id: "row-prev-1",
+              createdAt: "2026-02-05T10:00:00.000Z",
+              updatedAt: "2026-02-05T10:00:00.000Z",
+              values: ["Prev Download", "Downloaded", { name: "Alice", email: "alice@example.com" }],
+            },
+            // Current window (Feb 10 → Feb 20)
+            {
+              id: "row-cur-1",
+              createdAt: "2026-02-12T10:00:00.000Z",
+              updatedAt: "2026-02-12T10:00:00.000Z",
+              values: ["Cur A", "Downloaded", { name: "Alice", email: "alice@example.com" }],
+            },
+            {
+              id: "row-cur-2",
+              createdAt: "2026-02-13T10:00:00.000Z",
+              updatedAt: "2026-02-13T10:00:00.000Z",
+              values: ["Cur B", "Downloaded", { name: "Bob", email: "bob@example.com" }],
+            },
+            {
+              id: "row-cur-3",
+              createdAt: "2026-02-14T10:00:00.000Z",
+              updatedAt: "2026-02-14T10:00:00.000Z",
+              values: ["Cur C", "Downloaded", { name: "Bob", email: "bob@example.com" }],
+            },
+          ],
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchCodaData("token", "doc-id", {
+      fromDate: new Date("2026-02-10T00:00:00.000Z"),
+      toDate: new Date("2026-02-20T23:59:59.999Z"),
+    });
+
+    expect(data.rangeSummary?.cardsCreated).toBe(3);
+    expect(data.rangeSummary?.submissions).toBe(2);
+    expect(data.rangeSummary?.downloadsPrev).toBe(1);
+    expect(data.rangeSummary?.downloadersPrev).toBe(1);
+    expect(data.rangeSummary?.downloadsDeltaPct).toBe(200);
+    expect(data.rangeSummary?.downloadersDeltaPct).toBe(100);
   });
 
   it("uses explicit creator column override and builds creator intelligence windows", async () => {
