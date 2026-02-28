@@ -422,6 +422,123 @@ export interface ConferenceDetailPayload {
   meta?: { servedAt: string; isPartial: boolean };
 }
 
+// ── Deals CRM ──
+
+export type DealStage =
+  | "LEAD"
+  | "QUALIFIED"
+  | "PROPOSAL"
+  | "NEGOTIATION"
+  | "CLOSED_WON"
+  | "CLOSED_LOST";
+
+export type DealSource =
+  | "ADS"
+  | "WEBSITE"
+  | "ORGANIC"
+  | "REFERRAL"
+  | "CONFERENCE"
+  | "OUTBOUND"
+  | "PARTNER"
+  | "OTHER";
+
+export type MeetingStatus =
+  | "SCHEDULED"
+  | "COMPLETED"
+  | "CANCELED"
+  | "NO_SHOW";
+
+export const DEAL_STAGE_ORDER: DealStage[] = [
+  "LEAD",
+  "QUALIFIED",
+  "PROPOSAL",
+  "NEGOTIATION",
+  "CLOSED_WON",
+  "CLOSED_LOST",
+];
+
+export const DEAL_STAGE_LABELS: Record<DealStage, string> = {
+  LEAD: "Lead",
+  QUALIFIED: "Qualified",
+  PROPOSAL: "Proposal",
+  NEGOTIATION: "Negotiation",
+  CLOSED_WON: "Closed Won",
+  CLOSED_LOST: "Closed Lost",
+};
+
+export const DEAL_SOURCE_LABELS: Record<DealSource, string> = {
+  ADS: "Ads",
+  WEBSITE: "Website",
+  ORGANIC: "Organic",
+  REFERRAL: "Referral",
+  CONFERENCE: "Conference",
+  OUTBOUND: "Outbound",
+  PARTNER: "Partner",
+  OTHER: "Other",
+};
+
+export const MEETING_STATUS_LABELS: Record<MeetingStatus, string> = {
+  SCHEDULED: "Scheduled",
+  COMPLETED: "Completed",
+  CANCELED: "Canceled",
+  NO_SHOW: "No Show",
+};
+
+export interface DealCompanySummary {
+  id: string;
+  name: string;
+  domain: string | null;
+  industry: string | null;
+  _count?: { contacts: number; deals: number };
+}
+
+export interface DealContactSummary {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  title: string | null;
+  companyId: string | null;
+  company?: { id: string; name: string } | null;
+}
+
+export interface DealListItem {
+  id: string;
+  name: string;
+  stage: DealStage;
+  amount: number;
+  source: DealSource;
+  expectedCloseDate: string | null;
+  closedAt: string | null;
+  companyId: string | null;
+  company: { id: string; name: string } | null;
+  ownerId: string | null;
+  owner: UserSummary | null;
+  contacts: DealContactSummary[];
+  _count: { meetings: number; contacts: number };
+  lastMeetingAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DealMeetingListItem {
+  id: string;
+  title: string;
+  status: MeetingStatus;
+  startAt: string;
+  endAt: string | null;
+  location: string | null;
+  expectedAttendees: number;
+  actualAttendees: number;
+  dealId: string | null;
+  deal: { id: string; name: string } | null;
+  companyId: string | null;
+  company: { id: string; name: string } | null;
+  _count: { attendees: number };
+  createdAt: string;
+}
+
 export type SavedViewScope = "TASKS" | "PROJECTS";
 
 export interface UserUiPreference {

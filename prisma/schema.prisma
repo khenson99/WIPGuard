@@ -57,6 +57,8 @@ model User {
   financialGoals    FinancialGoal[]
   forecastScenarios ForecastScenario[]
 
+  ownedDeals Deal[] @relation("DealOwner")
+
   ownedConferences Conference[] @relation("ConferenceOwner")
   ownedConferenceDeadlines ConferenceDeadline[] @relation("ConferenceDeadlineOwner")
   paidConferenceExpenses ConferenceExpense[] @relation("ConferenceExpensePaidBy")
@@ -1324,6 +1326,157 @@ model ManufacturerProspect {
   @@unique([userId, domain])
   @@index([userId, status])
   @@index([discoveredAt])
+}
+
+// ============================================================
+// DEALS CRM
+// ============================================================
+
+enum DealStage {
+  LEAD
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  CLOSED_WON
+  CLOSED_LOST
+}
+
+enum DealSource {
+  ADS
+  WEBSITE
+  ORGANIC
+  REFERRAL
+  CONFERENCE
+  OUTBOUND
+  PARTNER
+  OTHER
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELED
+  NO_SHOW
+}
+
+model DealCompany {
+  id       String  @id @default(cuid())
+  name     String
+  domain   String?
+  industry String?
+  notes    String? @db.Text
+
+  hubspotCompanyId String? @unique
+
+  contacts DealContact[]
+  deals    Deal[]
+  meetings DealMeeting[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name])
+}
+
+model DealContact {
+  id        String  @id @default(cuid())
+  firstName String
+  lastName  String
+  email     String?
+  phone     String?
+  title     String?
+  notes     String? @db.Text
+
+  companyId String?
+  company   DealCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  hubspotContactId String? @unique
+
+  deals    Deal[]        @relation("DealContacts")
+  meetings DealMeeting[] @relation("MeetingAttendees")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([email])
+}
+
+model Deal {
+  id     String    @id @default(cuid())
+  name   String
+  stage  DealStage @default(LEAD)
+  amount Float     @default(0)
+  source DealSource @default(OTHER)
+
+  expectedCloseDate DateTime?
+  closedAt          DateTime?
+  notes             String? @db.Text
+
+  companyId String?
+  company   DealCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  ownerId String?
+  owner   User? @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  hubspotDealId String? @unique
+
+  contacts     DealContact[]    @relation("DealContacts")
+  meetings     DealMeeting[]
+  stageHistory DealStageHistory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([stage])
+  @@index([ownerId])
+  @@index([companyId])
+  @@index([source])
+  @@index([closedAt])
+}
+
+model DealStageHistory {
+  id        String     @id @default(cuid())
+  dealId    String
+  deal      Deal       @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  fromStage DealStage?
+  toStage   DealStage
+  changedAt DateTime   @default(now())
+  changedBy String?
+
+  @@index([dealId, changedAt])
+}
+
+model DealMeeting {
+  id     String        @id @default(cuid())
+  title  String
+  status MeetingStatus @default(SCHEDULED)
+
+  startAt  DateTime
+  endAt    DateTime?
+  location String?
+  notes    String? @db.Text
+
+  expectedAttendees Int @default(0)
+  actualAttendees   Int @default(0)
+
+  dealId String?
+  deal   Deal? @relation(fields: [dealId], references: [id], onDelete: SetNull)
+
+  companyId String?
+  company   DealCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  hubspotMeetingId String? @unique
+
+  attendees DealContact[] @relation("MeetingAttendees")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dealId])
+  @@index([companyId])
+  @@index([startAt])
+  @@index([status])
 }
 
 // ── Financial Planning ──
