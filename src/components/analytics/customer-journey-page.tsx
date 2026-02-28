@@ -52,7 +52,6 @@ export function CustomerJourneyPage() {
   useEffect(() => {
     const cached = readOverviewCache(cacheKey);
     if (cached) {
-      setData(cached);
       populateConnectionStatus(cached.freshness, cached);
     }
 
