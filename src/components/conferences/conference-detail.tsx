@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, CalendarPlus, RefreshCw } from "lucide-react";
@@ -69,17 +69,26 @@ function formatDate(value: string | null | undefined): string {
 }
 
 function TabButton({
+  id,
   active,
   children,
   onClick,
+  "aria-controls": ariaControls,
 }: {
+  id?: string;
   active: boolean;
   children: React.ReactNode;
   onClick: () => void;
+  "aria-controls"?: string;
 }) {
   return (
     <button
+      id={id}
       type="button"
+      role="tab"
+      aria-selected={active}
+      aria-controls={ariaControls}
+      tabIndex={active ? 0 : -1}
       onClick={onClick}
       className={clsx(
         "rounded-lg px-3 py-2 text-sm font-medium",
@@ -200,6 +209,28 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [showSeedConfirm, setShowSeedConfirm] = useState(false);
+
+  const TAB_IDS: TabId[] = ["overview", "deadlines", "budget", "leads"];
+  const tablistRef = useRef<HTMLDivElement>(null);
+
+  const handleTablistKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      const currentIndex = TAB_IDS.indexOf(tab);
+      let nextIndex: number;
+      if (e.key === "ArrowRight") {
+        nextIndex = (currentIndex + 1) % TAB_IDS.length;
+      } else {
+        nextIndex = (currentIndex - 1 + TAB_IDS.length) % TAB_IDS.length;
+      }
+      const nextTab = TAB_IDS[nextIndex];
+      setTab(nextTab);
+      const nextButton = document.getElementById(`tab-${nextTab}`);
+      nextButton?.focus();
+    },
+    [tab],
+  );
 
   const resource = useDashboardResource<ConferenceDetailPayload>({
     cacheKey: `dashboard:conference:${conferenceId}:v1`,
@@ -531,23 +562,23 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
         />
       </div>
 
-      <div className="flex flex-wrap gap-2 rounded-xl border border-border bg-secondary p-2">
-        <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>
+      <div ref={tablistRef} role="tablist" aria-label="Conference sections" onKeyDown={handleTablistKeyDown} className="flex flex-wrap gap-2 rounded-xl border border-border bg-secondary p-2">
+        <TabButton id="tab-overview" aria-controls="tabpanel-overview" active={tab === "overview"} onClick={() => setTab("overview")}>
           Overview
         </TabButton>
-        <TabButton active={tab === "deadlines"} onClick={() => setTab("deadlines")}>
+        <TabButton id="tab-deadlines" aria-controls="tabpanel-deadlines" active={tab === "deadlines"} onClick={() => setTab("deadlines")}>
           Deadlines
         </TabButton>
-        <TabButton active={tab === "budget"} onClick={() => setTab("budget")}>
+        <TabButton id="tab-budget" aria-controls="tabpanel-budget" active={tab === "budget"} onClick={() => setTab("budget")}>
           Budget
         </TabButton>
-        <TabButton active={tab === "leads"} onClick={() => setTab("leads")}>
+        <TabButton id="tab-leads" aria-controls="tabpanel-leads" active={tab === "leads"} onClick={() => setTab("leads")}>
           Leads
         </TabButton>
       </div>
 
       {tab === "overview" ? (
-        <div className="space-y-4">
+        <div role="tabpanel" id="tabpanel-overview" aria-labelledby="tab-overview" className="space-y-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <SummaryCard
               label="Tasks"
@@ -619,37 +650,43 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
       ) : null}
 
       {tab === "deadlines" ? (
-        <DeadlinesTab
-          conferenceId={conferenceId}
-          deadlines={conference.deadlines}
-          ownerOptions={ownerOptions}
-          deadlineTypeOptions={deadlineTypeOptions}
-          onRefresh={resource.refresh}
-          setActionError={setActionError}
-        />
+        <div role="tabpanel" id="tabpanel-deadlines" aria-labelledby="tab-deadlines">
+          <DeadlinesTab
+            conferenceId={conferenceId}
+            deadlines={conference.deadlines}
+            ownerOptions={ownerOptions}
+            deadlineTypeOptions={deadlineTypeOptions}
+            onRefresh={resource.refresh}
+            setActionError={setActionError}
+          />
+        </div>
       ) : null}
 
       {tab === "budget" ? (
-        <BudgetTab
-          conferenceId={conferenceId}
-          currency={budgetCurrency}
-          budget={conference.budget}
-          expenses={conference.expenses}
-          expenseCategoryOptions={expenseCategoryOptions}
-          onRefresh={resource.refresh}
-          setActionError={setActionError}
-        />
+        <div role="tabpanel" id="tabpanel-budget" aria-labelledby="tab-budget">
+          <BudgetTab
+            conferenceId={conferenceId}
+            currency={budgetCurrency}
+            budget={conference.budget}
+            expenses={conference.expenses}
+            expenseCategoryOptions={expenseCategoryOptions}
+            onRefresh={resource.refresh}
+            setActionError={setActionError}
+          />
+        </div>
       ) : null}
 
       {tab === "leads" ? (
-        <LeadsTab
-          conferenceId={conferenceId}
-          leads={conference.leads}
-          team={team}
-          leadStatusOptions={leadStatusOptions}
-          onRefresh={resource.refresh}
-          setActionError={setActionError}
-        />
+        <div role="tabpanel" id="tabpanel-leads" aria-labelledby="tab-leads">
+          <LeadsTab
+            conferenceId={conferenceId}
+            leads={conference.leads}
+            team={team}
+            leadStatusOptions={leadStatusOptions}
+            onRefresh={resource.refresh}
+            setActionError={setActionError}
+          />
+        </div>
       ) : null}
 
       {showSeedConfirm ? (
