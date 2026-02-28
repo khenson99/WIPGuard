@@ -3,6 +3,7 @@ import {
   enrichCodaLeadFunnelStatus,
   scoreCodaEngagedLeads,
 } from "@/lib/analytics/coda-lead-intelligence";
+import { enrichStripeEmails } from "@/lib/analytics/stripe-email-enrichment";
 import type {
   AnalyticsTimestamp,
   CodaCard,
@@ -70,6 +71,7 @@ interface CodaRowsResponse {
 export interface FetchCodaDataOptions {
   creatorColumn?: string;
   hubspotAccessToken?: string | null;
+  stripeKey?: string | null;
   maxLeadCandidates?: number;
   maxRecentSubmitters?: number;
   fromDate?: Date;
@@ -104,6 +106,10 @@ function parseIso(value: string | undefined): string | null {
 function toDayKey(iso: string | null): string | null {
   if (!iso) return null;
   return iso.slice(0, 10);
+}
+
+function toUtcDayKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
 }
 
 function pctDelta(current: number, previous: number): number | null {
@@ -332,8 +338,66 @@ function detectCreatorColumn(
   return { columnId: null, mode: "unknown_heavy" };
 }
 
+function detectEmailColumn(columns: CodaColumn[]): string | null {
+  const candidates = ["email", "e-mail"];
+  for (const column of columns) {
+    const name = column.name.trim().toLowerCase();
+    if (candidates.some((candidate) => name === candidate)) return column.id;
+  }
+  for (const column of columns) {
+    const name = column.name.trim().toLowerCase();
+    if (candidates.some((candidate) => name.includes(candidate))) return column.id;
+  }
+  return null;
+}
+
 function asHeaderValue(token: string | null): Record<string, string> {
   return token ? { "X-Coda-Page-Token": token } : {};
+}
+
+function normalizeTableName(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function selectBestTable(tables: CodaTable[]): CodaTable | null {
+  const scored = tables
+    .map((t) => {
+      const name = normalizeTableName(t.name || "");
+      let score = 0;
+      if (name.includes("individual") && name.includes("card")) score = Math.max(score, 100);
+      if (name.includes("whitepaper")) score = Math.max(score, 90);
+      if (name.includes("download")) score = Math.max(score, 80);
+      if (name.includes("kanban generator") || (name.includes("kanban") && name.includes("generator"))) {
+        score = Math.max(score, 70);
+      }
+      return { t, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  return scored[0]?.score > 0 ? scored[0]!.t : null;
+}
+
+function buildDenseDailySeries(
+  start: Date,
+  end: Date,
+  countsByDay: Map<string, number>
+): Array<{ date: string; count: number }> {
+  const startKey = toUtcDayKey(start);
+  const endKey = toUtcDayKey(end);
+  const out: Array<{ date: string; count: number }> = [];
+
+  const cursor = new Date(`${startKey}T00:00:00.000Z`);
+  const endCursor = new Date(`${endKey}T00:00:00.000Z`);
+
+  for (let i = 0; i < 5000; i++) {
+    const key = toUtcDayKey(cursor);
+    out.push({ date: key, count: countsByDay.get(key) ?? 0 });
+    if (key === endKey) break;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    if (cursor.getTime() > endCursor.getTime() + 36 * 60 * 60 * 1000) break;
+  }
+
+  return out;
 }
 
 export async function fetchCodaData(
@@ -361,14 +425,11 @@ export async function fetchCodaData(
     throw new Error("No tables found in Coda document");
   }
 
-  let selectedTable = tablesData.items[0];
-  const tasksTable = tablesData.items.find((table) => table.name.toLowerCase() === "tasks");
-  const kanbanTable = tablesData.items.find((table) => table.name.toLowerCase() === "kanban");
-  if (tasksTable) {
-    selectedTable = tasksTable;
-  } else if (kanbanTable) {
-    selectedTable = kanbanTable;
-  }
+  // Prefer the whitepaper download table ("Individual Cards") when present.
+  // Otherwise, fall back to legacy behavior.
+  const tasksTable = tablesData.items.find((table) => normalizeTableName(table.name) === "tasks");
+  const kanbanTable = tablesData.items.find((table) => normalizeTableName(table.name) === "kanban");
+  const selectedTable = selectBestTable(tablesData.items) ?? tasksTable ?? kanbanTable ?? tablesData.items[0]!;
   const tableId = selectedTable.id;
 
   const columnsUrl = `${CODA_API_BASE}/docs/${docId}/tables/${tableId}/columns`;
@@ -392,6 +453,7 @@ export async function fetchCodaData(
   const priorityColumnId = columnNameToId.priority ?? null;
   const assigneeColumnId = columnNameToId.assignee ?? null;
   const creatorColumn = detectCreatorColumn(columns, options.creatorColumn);
+  const emailColumnId = detectEmailColumn(columns);
 
   const rows: CodaRow[] = [];
   let nextPageToken: string | null = null;
@@ -424,8 +486,19 @@ export async function fetchCodaData(
     const priorityValue = readRowValue(row, priorityColumnId, columns);
     const assigneeValue = readRowValue(row, assigneeColumnId, columns);
     const creatorValue = readRowValue(row, creatorColumn.columnId, columns);
+    const emailValue = readRowValue(row, emailColumnId, columns);
 
     const creator = parseCreator(creatorValue);
+    const emailFromEmailColumn = (() => {
+      if (!emailValue) return null;
+      if (typeof emailValue === "string") return normalizeEmail(emailValue);
+      if (typeof emailValue === "object") {
+        const candidate = (emailValue as { email?: string }).email;
+        return normalizeEmail(candidate);
+      }
+      return null;
+    })();
+
     const cardName =
       typeof nameValue === "string" && nameValue.trim().length > 0
         ? nameValue.trim()
@@ -435,6 +508,9 @@ export async function fetchCodaData(
         ? statusValue.trim()
         : "Backlog";
     const createdAtIso = parseIso(row.createdAt) ?? parseIso(row.updatedAt);
+    const resolvedEmail = emailFromEmailColumn ?? normalizeEmail(creator.email);
+    const resolvedCreator =
+      creator.creator === "Unknown" && resolvedEmail ? resolvedEmail : creator.creator;
 
     return {
       id: row.id,
@@ -442,8 +518,8 @@ export async function fetchCodaData(
       status,
       priority: typeof priorityValue === "string" ? priorityValue : undefined,
       assignee: typeof assigneeValue === "string" ? assigneeValue : undefined,
-      creator: creator.creator,
-      creatorEmail: creator.email,
+      creator: resolvedCreator,
+      creatorEmail: resolvedEmail,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       createdAtIso,
@@ -485,12 +561,26 @@ export async function fetchCodaData(
           emailSet.add(email);
         }
 
+        const windowMs = options.toDate!.getTime() - options.fromDate!.getTime();
+        const prevTo = new Date(options.fromDate!.getTime() - 1);
+        const prevFrom = new Date(prevTo.getTime() - windowMs);
+        const prevCards = cards.filter((card) => isWithinRange(card.createdAtIso, prevFrom, prevTo));
+        const prevEmailSet = new Set<string>();
+        for (const card of prevCards) {
+          const email = normalizeEmail(card.creatorEmail);
+          if (email) prevEmailSet.add(email);
+        }
+
         return {
           from: options.fromDate!.toISOString().slice(0, 10),
           to: options.toDate!.toISOString().slice(0, 10),
           cardsCreated: cardsInRange.length,
           submissions: emailSet.size,
           unknownEmailCards,
+          downloadsPrev: prevCards.length,
+          downloadersPrev: prevEmailSet.size,
+          downloadsDeltaPct: pctDelta(cardsInRange.length, prevCards.length),
+          downloadersDeltaPct: pctDelta(emailSet.size, prevEmailSet.size),
         };
       })()
     : undefined;
@@ -585,6 +675,32 @@ export async function fetchCodaData(
     30
   );
 
+  const dailyTrendStart = shouldFilterByRange
+    ? options.fromDate!
+    : new Date(now.getTime() - 89 * 24 * 60 * 60 * 1000);
+  const dailyTrendEnd = shouldFilterByRange ? options.toDate! : now;
+
+  const downloadsByDay = new Map<string, number>();
+  const downloadersByDay = new Map<string, Set<string>>();
+  for (const card of cards) {
+    if (!isWithinRange(card.createdAtIso, dailyTrendStart, dailyTrendEnd)) continue;
+    const day = toDayKey(card.createdAtIso);
+    if (!day) continue;
+    downloadsByDay.set(day, (downloadsByDay.get(day) ?? 0) + 1);
+    const email = normalizeEmail(card.creatorEmail);
+    if (!email) continue;
+    const existing = downloadersByDay.get(day) ?? new Set<string>();
+    existing.add(email);
+    downloadersByDay.set(day, existing);
+  }
+  const downloadersCountByDay = new Map<string, number>();
+  for (const [day, set] of downloadersByDay.entries()) {
+    downloadersCountByDay.set(day, set.size);
+  }
+
+  const downloadsDaily = buildDenseDailySeries(dailyTrendStart, dailyTrendEnd, downloadsByDay);
+  const downloadersDaily = buildDenseDailySeries(dailyTrendStart, dailyTrendEnd, downloadersCountByDay);
+
   const creatorsByKey = new Map<
     string,
     {
@@ -647,11 +763,20 @@ export async function fetchCodaData(
 
   const hubspotMatchingErrors = 0;
 
+  const stripeByEmail = await enrichStripeEmails({
+    apiKey: options.stripeKey,
+    emails: recentSubmitters.map((entry) => entry.email),
+    now,
+    concurrency: 4,
+    timeoutMs: 2500,
+  });
+
   const enrichedRecentSubmitters = recentSubmitters.map((entry) => {
     return {
       ...entry,
       hubspotStatus: "unknown" as const,
       hubspotContact: null,
+      stripe: stripeByEmail.get(entry.email) ?? null,
     };
   });
 
@@ -664,6 +789,8 @@ export async function fetchCodaData(
     trends: {
       newCreators30d,
       cardsCreated90d,
+      downloadsDaily,
+      downloadersDaily,
     },
     engagedLeadCandidates: leadEnrichment.candidates,
     rangeSummary,

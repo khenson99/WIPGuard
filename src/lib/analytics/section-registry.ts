@@ -101,7 +101,7 @@ export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
   { id: "ads-reddit-ads", label: "Reddit Ads", path: "/analytics/ads-reddit-ads", parentId: "ads-traffic", dataDomain: "redditAds" },
   { id: "ads-webflow", label: "Webflow", path: "/analytics/ads-webflow", parentId: "ads-traffic", dataDomain: "webflow" },
   { id: "ads-semrush", label: "SEMrush", path: "/analytics/ads-semrush", parentId: "ads-traffic", dataDomain: "semrush" },
-  { id: "ads-coda-kanban", label: "Free Kanban Creator (Coda)", path: "/analytics/ads-coda-kanban", parentId: "ads-traffic", dataDomain: "coda" },
+  { id: "ads-coda-kanban", label: "Free Kanban Generator (Whitepaper)", path: "/analytics/ads-coda-kanban", parentId: "ads-traffic", dataDomain: "coda" },
 
   { id: "finance-mercury", label: "Mercury", path: "/analytics/finance-mercury", parentId: "finance", dataDomain: "mercury" },
   { id: "finance-stripe", label: "Stripe", path: "/analytics/finance-stripe", parentId: "finance", dataDomain: "stripe" },

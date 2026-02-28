@@ -1,6 +1,7 @@
 "use client";
 
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { useConnectionStatus } from "@/hooks/use-connection-status";
 import { SubDashboardTemplate } from "../sub-dashboard-template";
 import { StatCard } from "../stat-card";
@@ -61,13 +62,16 @@ export function GoogleAnalyticsDashboard({ data }: GoogleAnalyticsDashboardProps
   const connectionStatus = useConnectionStatus((s) => s.getStatus("googleAnalytics"));
   const ga = data?.googleAnalytics ?? null;
 
-  if (!ga) {
+  if (!data || !ga) {
     return (
       <div className="flex items-center justify-center py-16">
         <p className="text-muted-foreground">No Google Analytics data available</p>
       </div>
     );
   }
+
+  const kpis = data.kpis ?? computeAnalyticsKpis(data);
+  const bounceRatePct = kpis.traffic.bounceRatePct ?? 0;
 
   const sessionsChange = calculateChange(ga.sessions30d, ga.sessionsPrev30d);
   const usersChange = calculateChange(ga.users30d, ga.usersPrev30d);
@@ -103,8 +107,8 @@ export function GoogleAnalyticsDashboard({ data }: GoogleAnalyticsDashboardProps
           />
           <StatCard
             label="Bounce Rate"
-            value={fmtPct(ga.bounceRate)}
-            changeType={ga.bounceRate > 0.6 ? "negative" : "neutral"}
+            value={fmtPct(bounceRatePct)}
+            changeType={bounceRatePct > 60 ? "negative" : "neutral"}
           />
           <StatCard
             label="Avg Duration"

@@ -937,6 +937,7 @@ export async function GET(request: Request) {
               toDate,
               now: toDate,
               hubspotAccessToken: creds.hubspotToken,
+              stripeKey: creds.stripeKey,
               maxRecentSubmitters: 25,
             })
           : Promise.reject(new Error("Missing Coda credential")),
