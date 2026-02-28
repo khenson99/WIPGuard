@@ -1231,6 +1231,18 @@ export interface AnalyticsDashboardData {
   };
   lastFullRefresh: string;
   financialPlanning: FinancialPlanningData | null;
+  kpis?: {
+    traffic: {
+      bounceRatePct: number;
+      pagesPerSession: number;
+      engagementScore: number;
+      pageDepthScore: number;
+    };
+    finance: {
+      mrr: number;
+      paymentSuccessPct: number;
+    };
+  };
   errors: { source: string; message: string }[];
 }
 
