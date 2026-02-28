@@ -99,7 +99,9 @@ export function FinanceUnitEconomicsTab({
     }[] = [];
 
     // LTV:CAC health
-    const ltvSev = ltvCacSeverity(ue.ltvCacRatio);
+    const ltvSevRaw = ltvCacSeverity(ue.ltvCacRatio);
+    const ltvSev: "success" | "warning" | "critical" =
+      ltvSevRaw === "positive" ? "success" : ltvSevRaw === "neutral" ? "warning" : "critical";
     items.push({
       title: "LTV:CAC Health",
       insight:
@@ -214,9 +216,9 @@ export function FinanceUnitEconomicsTab({
           label="LTV:CAC"
           value={fmtRatio(ue.ltvCacRatio)}
           changeType={
-            ltvCacSeverity(ue.ltvCacRatio) === "success"
+            ltvCacSeverity(ue.ltvCacRatio) === "positive"
               ? "positive"
-              : ltvCacSeverity(ue.ltvCacRatio) === "critical"
+              : ltvCacSeverity(ue.ltvCacRatio) === "negative"
                 ? "negative"
                 : "neutral"
           }

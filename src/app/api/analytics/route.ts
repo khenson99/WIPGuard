@@ -30,6 +30,11 @@ import { buildCustomerJourneyData } from "@/lib/analytics/customer-journey";
 import { buildDemoAnalyticsData } from "@/lib/analytics/demo-analytics";
 import { buildProcessAnalyticsData } from "@/lib/analytics/process-analytics";
 import { buildAiInsightsBundle, buildDistilledInsights } from "@/lib/analytics/insight-engine";
+import { buildProfitAndLossCore as buildProfitAndLoss } from "@/lib/analytics/pnl-builder";
+import { computeUnitEconomics } from "@/lib/analytics/unit-economics";
+import { buildDefaultScenarios, buildForecastScenario } from "@/lib/analytics/forecast-engine";
+import { computeBudgetActuals, computeBudgetSummary } from "@/lib/analytics/budget-variance";
+import { computeProgressPct } from "@/lib/analytics/finance-utils";
 import { createEmptyAnalyticsDashboardData, patchFreshnessWithStale } from "@/lib/analytics/response-shape";
 import {
   analyticsErrorFromReason,
@@ -46,7 +51,18 @@ import { buildAnalyticsRouteMeta } from "@/lib/analytics/route-meta";
 import type {
   AnalyticsDashboardData,
   AnalyticsRecommendation,
+  BudgetData,
+  BudgetLineItemData,
+  FinancialGoalData,
+  FinancialPlanningData,
+  ForecastAssumptions,
+  ForecastScenarioData,
+  GoalMetric,
+  GoalStatus,
   ProductSuccessData,
+  StripeData,
+  MercuryData,
+  HubSpotData,
 } from "@/lib/analytics/types";
 
 export const revalidate = 300;
@@ -411,6 +427,148 @@ function buildRecommendations(data: AnalyticsDashboardData): AnalyticsRecommenda
   }
 
   return recommendations;
+}
+
+function isForecastAssumptions(value: unknown): value is ForecastAssumptions {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const c = value as Partial<ForecastAssumptions>;
+  return (
+    typeof c.revenueGrowthRate === "number" &&
+    typeof c.churnRateDelta === "number" &&
+    typeof c.burnRateDelta === "number" &&
+    typeof c.additionalMonthlyExpense === "number" &&
+    typeof c.additionalMonthlyRevenue === "number"
+  );
+}
+
+const DEFAULT_ASSUMPTIONS: ForecastAssumptions = {
+  revenueGrowthRate: 0,
+  churnRateDelta: 0,
+  burnRateDelta: 0,
+  additionalMonthlyExpense: 0,
+  additionalMonthlyRevenue: 0,
+};
+
+async function buildFinancialPlanningData(
+  userId: string,
+  data: AnalyticsDashboardData,
+): Promise<FinancialPlanningData> {
+  const stripe = data.stripe as StripeData | null;
+  const mercury = data.mercury as MercuryData | null;
+  const hubspot = data.hubspot as HubSpotData | null;
+
+  const [dbBudgets, dbGoals, dbForecasts] = await Promise.all([
+    prisma.budget.findMany({
+      where: { userId },
+      include: { lineItems: true },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.financialGoal.findMany({
+      where: { userId },
+      orderBy: { deadline: "asc" },
+    }),
+    prisma.forecastScenario.findMany({ where: { userId } }),
+  ]);
+
+  // --- P&L ---
+  const pnl = buildProfitAndLoss(stripe, mercury);
+
+  // --- Unit Economics ---
+  const unitEconomics = computeUnitEconomics(stripe, mercury, hubspot);
+
+  // --- Forecasts: defaults + custom saved scenarios ---
+  const defaultForecasts = buildDefaultScenarios(stripe, mercury);
+  const customForecasts: ForecastScenarioData[] = dbForecasts.map((s: { id: string; name: string; assumptions: unknown }) =>
+    buildForecastScenario(
+      stripe,
+      mercury,
+      isForecastAssumptions(s.assumptions) ? s.assumptions : DEFAULT_ASSUMPTIONS,
+      { id: s.id, name: s.name },
+    ),
+  );
+  const forecasts = [...defaultForecasts, ...customForecasts];
+
+  // --- Budgets with variance ---
+  const budgets: BudgetData[] = dbBudgets.map((b: { id: string; name: string; period: string; startDate: Date; endDate: Date; lineItems: { id: string; category: string; plannedAmount: number; notes: string | null }[] }) => {
+    const lineItems: BudgetLineItemData[] = computeBudgetActuals(
+      {
+        id: b.id,
+        name: b.name,
+        period: b.period.toLowerCase() as BudgetData["period"],
+        startDate: b.startDate.toISOString(),
+        endDate: b.endDate.toISOString(),
+        lineItems: b.lineItems.map((li: { id: string; category: string; plannedAmount: number; notes: string | null }) => ({
+          id: li.id,
+          category: li.category.toLowerCase() as BudgetLineItemData["category"],
+          plannedAmount: li.plannedAmount,
+          actualAmount: null,
+          variance: null,
+          variancePct: null,
+          notes: li.notes ?? undefined,
+        })),
+        totalPlanned: b.lineItems.reduce((s: number, li: { plannedAmount: number }) => s + li.plannedAmount, 0),
+        totalActual: null,
+        totalVariance: null,
+      },
+      mercury,
+    );
+    const summary = computeBudgetSummary(lineItems);
+    return {
+      id: b.id,
+      name: b.name,
+      period: b.period.toLowerCase() as BudgetData["period"],
+      startDate: b.startDate.toISOString(),
+      endDate: b.endDate.toISOString(),
+      lineItems,
+      totalPlanned: summary.totalPlanned,
+      totalActual: summary.totalActual,
+      totalVariance: summary.totalVariance,
+    };
+  });
+
+  // --- Goals with current progress ---
+  const currentMetrics: Record<string, number> = {
+    mrr: stripe?.revenue.mrr ?? 0,
+    arr: (stripe?.revenue.mrr ?? 0) * 12,
+    runway: mercury?.cashFlow.runway ?? 0,
+    burn_rate: mercury?.cashFlow.burnRate ?? 0,
+    net_cash_flow: mercury?.cashFlow.netCashFlow ?? 0,
+    revenue: stripe?.revenue.totalRevenue30d ?? 0,
+    customer_count: stripe?.subscriptions.active ?? 0,
+  };
+
+  const goals: FinancialGoalData[] = dbGoals.map((g: { id: string; metric: GoalMetric | string; targetValue: number; deadline: Date; }) => {
+    const metricKey = g.metric.toLowerCase() as GoalMetric;
+    const currentValue = currentMetrics[metricKey] ?? 0;
+    const direction = metricKey === "burn_rate" ? "lower" : "higher";
+    const progressPct = computeProgressPct(currentValue, g.targetValue, direction);
+    const isPastDeadline = new Date(g.deadline) < new Date();
+    let status: GoalStatus = "active";
+    const achieved =
+      direction === "lower"
+        ? currentValue <= g.targetValue
+        : currentValue >= g.targetValue;
+    if (achieved) status = "achieved";
+    else if (isPastDeadline) status = "missed";
+    return {
+      id: g.id,
+      metric: metricKey,
+      targetValue: g.targetValue,
+      currentValue,
+      progressPct,
+      deadline: g.deadline.toISOString(),
+      status,
+    };
+  });
+
+  return {
+    budgets,
+    activeBudget: budgets[0] ?? null,
+    forecasts,
+    goals,
+    pnl,
+    unitEconomics,
+  };
 }
 
 function providerForDomain(domain: DomainKey): "google_workspace" | "hubspot" | "slack" | "coda" | "reddit" | null {
@@ -1002,6 +1160,16 @@ export async function GET(request: Request) {
   }
   if (domains.has("processAnalytics")) {
     result.processAnalytics = buildProcessAnalyticsData(result);
+  }
+
+  // Populate financial planning data when the finance section is requested
+  if (section === "finance" || section === null) {
+    try {
+      result.financialPlanning = await buildFinancialPlanningData(userId, result);
+    } catch (error) {
+      console.error("Failed to build financial planning data:", error);
+      // Non-fatal — leave as null
+    }
   }
 
   const staleDomains = Array.from(new Set(result.staleDomains));

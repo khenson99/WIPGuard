@@ -3,10 +3,9 @@ import {
   computeBudgetActuals,
   computeBudgetSummary,
   identifyOverspendCategories,
-  CATEGORY_RATIOS,
+  EXPENSE_LABEL_RATIOS,
 } from "@/lib/analytics/budget-variance";
 import type { BudgetActualItem } from "@/lib/analytics/budget-variance";
-import { DEFAULT_EXPENSE_RATIOS } from "@/lib/analytics/finance-utils";
 import type { MercuryData } from "@/lib/analytics/types";
 
 /* ─── Fixtures ────────────────────────────────────────────── */
@@ -44,7 +43,7 @@ function makeItem(overrides: Partial<BudgetActualItem> = {}): BudgetActualItem {
     actual: 11_250,
     variance: -1_125,
     variancePct: -9.09,
-    status: "on-track",
+    status: "on_track",
     ...overrides,
   };
 }
@@ -207,7 +206,7 @@ describe("computeBudgetActuals", () => {
     expect(items[1].status).toBe("under");
   });
 
-  it('status is "on-track" when variancePct is between -10 and 10', () => {
+  it('status is "on_track" when variancePct is between -10 and 10', () => {
     const budgets: Record<string, number> = {
       "Cost of Goods Sold": 11_000, // actual 11250: (11250-11000)/11000*100 = 2.27%
     };
@@ -215,7 +214,7 @@ describe("computeBudgetActuals", () => {
     const items = computeBudgetActuals(makeMercury(), budgets);
     expect(items[0].variancePct).toBeGreaterThanOrEqual(-10);
     expect(items[0].variancePct).toBeLessThanOrEqual(10);
-    expect(items[0].status).toBe("on-track");
+    expect(items[0].status).toBe("on_track");
   });
 
   it("without explicit budgets, derived budgets always produce on-track status", () => {
@@ -224,7 +223,7 @@ describe("computeBudgetActuals", () => {
     const items = computeBudgetActuals(makeMercury());
 
     for (const item of items) {
-      expect(item.status).toBe("on-track");
+      expect(item.status).toBe("on_track");
     }
   });
 
@@ -237,7 +236,7 @@ describe("computeBudgetActuals", () => {
       expect(item.budgeted).toBe(0);
       expect(item.variance).toBe(0);
       expect(item.variancePct).toBe(0);
-      expect(item.status).toBe("on-track");
+      expect(item.status).toBe("on_track");
     }
   });
 
@@ -261,7 +260,7 @@ describe("computeBudgetActuals", () => {
       expect(item.budgeted).toBe(0);
       expect(item.variance).toBe(0);
       expect(item.variancePct).toBe(0);
-      expect(item.status).toBe("on-track");
+      expect(item.status).toBe("on_track");
     }
   });
 });
@@ -360,10 +359,10 @@ describe("identifyOverspendCategories", () => {
   it('returns categories with "over" status', () => {
     const items: BudgetActualItem[] = [
       makeItem({ category: "Cost of Goods Sold", status: "over" }),
-      makeItem({ category: "Payroll & Benefits", status: "on-track" }),
+      makeItem({ category: "Payroll & Benefits", status: "on_track" }),
       makeItem({ category: "Sales & Marketing", status: "over" }),
       makeItem({ category: "Infrastructure & Hosting", status: "under" }),
-      makeItem({ category: "General & Administrative", status: "on-track" }),
+      makeItem({ category: "General & Administrative", status: "on_track" }),
     ];
 
     const result = identifyOverspendCategories(items);
@@ -372,9 +371,9 @@ describe("identifyOverspendCategories", () => {
 
   it("returns empty array when no items are over budget", () => {
     const items: BudgetActualItem[] = [
-      makeItem({ category: "Cost of Goods Sold", status: "on-track" }),
+      makeItem({ category: "Cost of Goods Sold", status: "on_track" }),
       makeItem({ category: "Payroll & Benefits", status: "under" }),
-      makeItem({ category: "Sales & Marketing", status: "on-track" }),
+      makeItem({ category: "Sales & Marketing", status: "on_track" }),
     ];
 
     const result = identifyOverspendCategories(items);
@@ -403,20 +402,19 @@ describe("identifyOverspendCategories", () => {
    4. CATEGORY_RATIOS
    ═══════════════════════════════════════════════════════════ */
 
-describe("CATEGORY_RATIOS", () => {
-  it("equals DEFAULT_EXPENSE_RATIOS", () => {
-    expect(CATEGORY_RATIOS).toBe(DEFAULT_EXPENSE_RATIOS);
-    expect(CATEGORY_RATIOS).toEqual({
-      cogs: 0.25,
-      payroll: 0.35,
-      marketing: 0.15,
-      infrastructure: 0.10,
-      ops: 0.15,
+describe("EXPENSE_LABEL_RATIOS", () => {
+  it("has the expected category ratios", () => {
+    expect(EXPENSE_LABEL_RATIOS).toEqual({
+      "Cost of Goods Sold": 0.25,
+      "Payroll & Benefits": 0.35,
+      "Sales & Marketing": 0.15,
+      "Infrastructure & Hosting": 0.10,
+      "General & Administrative": 0.15,
     });
   });
 
   it("values sum to 1.0", () => {
-    const sum = Object.values(CATEGORY_RATIOS).reduce((s, v) => s + v, 0);
+    const sum = Object.values(EXPENSE_LABEL_RATIOS).reduce((s: number, v: number) => s + v, 0);
     expect(sum).toBeCloseTo(1.0, 10);
   });
 });

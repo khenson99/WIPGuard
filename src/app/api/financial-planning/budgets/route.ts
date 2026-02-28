@@ -4,6 +4,25 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 
+const VALID_PERIODS = new Set(["MONTHLY", "QUARTERLY", "ANNUAL"]);
+
+function computeEndDate(startDate: Date, period: string): Date {
+  const endDate = new Date(startDate);
+  switch (period) {
+    case "QUARTERLY":
+      endDate.setMonth(endDate.getMonth() + 3);
+      break;
+    case "ANNUAL":
+      endDate.setFullYear(endDate.getFullYear() + 1);
+      break;
+    case "MONTHLY":
+    default:
+      endDate.setMonth(endDate.getMonth() + 1);
+      break;
+  }
+  return endDate;
+}
+
 export async function GET(): Promise<NextResponse> {
   try {
     const session = await auth();
@@ -41,15 +60,15 @@ export async function POST(
     const userId = (session.user as { id: string }).id;
     const body = await request.json();
 
-    if (!body.name || !body.startDate || !body.endDate) {
+    if (!body.name || !body.startDate) {
       return NextResponse.json(
-        { error: "name, startDate, and endDate are required" },
+        { error: "name and startDate are required" },
         { status: 400 },
       );
     }
 
-    const allowedPeriods = new Set(["MONTHLY", "QUARTERLY", "ANNUAL"]);
-    if (body.period && !allowedPeriods.has(body.period)) {
+    const period = body.period ?? "MONTHLY";
+    if (!VALID_PERIODS.has(period)) {
       return NextResponse.json(
         { error: "period must be MONTHLY, QUARTERLY, or ANNUAL" },
         { status: 400 },
@@ -57,10 +76,19 @@ export async function POST(
     }
 
     const startDate = new Date(body.startDate);
-    const endDate = new Date(body.endDate);
-    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    if (!Number.isFinite(startDate.getTime())) {
       return NextResponse.json(
-        { error: "startDate and endDate must be valid dates" },
+        { error: "startDate must be a valid date" },
+        { status: 400 },
+      );
+    }
+
+    const endDate = body.endDate
+      ? new Date(body.endDate)
+      : computeEndDate(startDate, period);
+    if (!Number.isFinite(endDate.getTime())) {
+      return NextResponse.json(
+        { error: "endDate must be a valid date" },
         { status: 400 },
       );
     }
@@ -75,7 +103,7 @@ export async function POST(
       data: {
         userId,
         name: body.name,
-        period: body.period ?? "MONTHLY",
+        period,
         startDate,
         endDate,
         lineItems: body.lineItems
