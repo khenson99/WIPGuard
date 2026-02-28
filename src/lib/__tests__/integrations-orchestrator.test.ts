@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IntegrationProvider } from "@/generated/prisma/client";
 import { runRules } from "@/lib/integrations/orchestrator";
-import { prisma } from "@/lib/prisma";
 import { runGmailCapture } from "@/lib/integrations/google-gmail-capture";
 import { runGoogleDriveCommentEscalation } from "@/lib/integrations/google-drive-comment-escalation";
 import { runGoogleCalendarPrepFollowup } from "@/lib/integrations/google-calendar-followup";
 import { runProviderMetricsRule } from "@/lib/integrations/provider-metrics-sync";
+import { prisma } from "@/lib/prisma";
 
 vi.mock("@/lib/integrations/google-gmail-capture", () => ({
   runGmailCapture: vi.fn(),
@@ -28,27 +28,55 @@ vi.mock("@/lib/integrations/provider-metrics-sync", async () => {
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    $queryRaw: vi.fn(),
-    integrationConnection: {
-      findMany: vi.fn(),
-      updateMany: vi.fn(),
-    },
     integrationRule: {
-      updateMany: vi.fn(),
+      findMany: vi.fn(),
     },
   },
 }));
 
-describe("integrations orchestrator (no-op)", () => {
+describe("integrations orchestrator", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("returns metadata with executedRules = 0", async () => {
+  it("runs enabled rules for the requested provider/user", async () => {
+    vi.mocked(prisma.integrationRule.findMany).mockResolvedValueOnce([
+      {
+        id: "r1",
+        userId: "user_1",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        key: "gmail_commitment_capture",
+        enabled: true,
+        statusOverride: null,
+        config: {},
+        checkpoint: {},
+        lastObservedAt: null,
+        lastRunAt: null,
+        lastError: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: "r2",
+        userId: "user_1",
+        provider: IntegrationProvider.GOOGLE_ADS,
+        key: "google_ads_metrics_pull",
+        enabled: true,
+        statusOverride: null,
+        config: {},
+        checkpoint: {},
+        lastObservedAt: null,
+        lastRunAt: null,
+        lastError: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
+
     const result = await runRules({
       mode: "incremental",
-      providers: [IntegrationProvider.GOOGLE_ADS],
       userIds: ["user_1"],
+      providers: [IntegrationProvider.GOOGLE_WORKSPACE, IntegrationProvider.GOOGLE_ADS],
       dryRun: true,
       pageBudget: 3,
       startedAt: "2026-02-18T00:00:00.000Z",
@@ -59,30 +87,67 @@ describe("integrations orchestrator (no-op)", () => {
         mode: "incremental",
         dryRun: true,
         startedAt: "2026-02-18T00:00:00.000Z",
-        providers: [IntegrationProvider.GOOGLE_ADS],
+        providers: [IntegrationProvider.GOOGLE_WORKSPACE, IntegrationProvider.GOOGLE_ADS],
         userIds: ["user_1"],
         pageBudget: 3,
-        executedRules: 0,
+        executedRules: 2,
       })
     );
     expect(result.finishedAt).toEqual(expect.any(String));
+
+    expect(runGmailCapture).toHaveBeenCalledWith({ userId: "user_1", dryRun: true });
+    expect(runProviderMetricsRule).toHaveBeenCalledWith({
+      userId: "user_1",
+      ruleKey: "google_ads_metrics_pull",
+      dryRun: true,
+    });
   });
 
-  it("does not run rule engines or touch integration state", async () => {
+  it("respects pageBudget", async () => {
+    vi.mocked(prisma.integrationRule.findMany).mockResolvedValueOnce([
+      {
+        id: "r1",
+        userId: "user_1",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        key: "gmail_commitment_capture",
+        enabled: true,
+        statusOverride: null,
+        config: {},
+        checkpoint: {},
+        lastObservedAt: null,
+        lastRunAt: null,
+        lastError: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: "r3",
+        userId: "user_1",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        key: "google_drive_comment_escalation",
+        enabled: true,
+        statusOverride: null,
+        config: {},
+        checkpoint: {},
+        lastObservedAt: null,
+        lastRunAt: null,
+        lastError: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
+
     await runRules({
       mode: "incremental",
-      providers: [IntegrationProvider.GOOGLE_ADS],
+      providers: [IntegrationProvider.GOOGLE_WORKSPACE],
       dryRun: false,
+      userIds: ["user_1"],
+      pageBudget: 1,
       startedAt: "2026-02-18T00:00:00.000Z",
     });
 
-    expect(runGmailCapture).not.toHaveBeenCalled();
-    expect(runGoogleDriveCommentEscalation).not.toHaveBeenCalled();
-    expect(runGoogleCalendarPrepFollowup).not.toHaveBeenCalled();
-    expect(runProviderMetricsRule).not.toHaveBeenCalled();
-    expect(prisma.$queryRaw).not.toHaveBeenCalled();
-    expect(prisma.integrationConnection.findMany).not.toHaveBeenCalled();
-    expect(prisma.integrationConnection.updateMany).not.toHaveBeenCalled();
-    expect(prisma.integrationRule.updateMany).not.toHaveBeenCalled();
+    expect(runGmailCapture).toHaveBeenCalledTimes(1);
+    expect(runGoogleDriveCommentEscalation).toHaveBeenCalledTimes(0);
+    expect(runGoogleCalendarPrepFollowup).toHaveBeenCalledTimes(0);
   });
 });

@@ -36,12 +36,32 @@ function contextKeyOrDefault(value?: string): string {
 }
 
 export async function storeAnalyticsSnapshot(input: SnapshotUpsertInput): Promise<void> {
-  await prisma.analyticsSnapshot.create({
-    data: {
+  const contextKey = contextKeyOrDefault(input.contextKey);
+  await prisma.analyticsSnapshot.upsert({
+    where: {
+      userId_providerKey_contextKey_rangePreset_toDate_status: {
+        userId: input.userId,
+        providerKey: input.providerKey,
+        contextKey,
+        rangePreset: input.rangePreset,
+        toDate: input.toDate,
+        status: AnalyticsSnapshotStatus.SUCCESS,
+      },
+    },
+    create: {
       userId: input.userId,
       providerKey: input.providerKey,
-      contextKey: contextKeyOrDefault(input.contextKey),
+      contextKey,
       rangePreset: input.rangePreset,
+      fromDate: input.fromDate,
+      toDate: input.toDate,
+      payload: input.payload as Prisma.InputJsonValue,
+      status: AnalyticsSnapshotStatus.SUCCESS,
+      lastError: null,
+      capturedAt: new Date(),
+      expiresAt: input.expiresAt,
+    },
+    update: {
       fromDate: input.fromDate,
       toDate: input.toDate,
       payload: input.payload as Prisma.InputJsonValue,
@@ -54,12 +74,32 @@ export async function storeAnalyticsSnapshot(input: SnapshotUpsertInput): Promis
 }
 
 export async function storeAnalyticsSnapshotFailure(input: SnapshotFailureInput): Promise<void> {
-  await prisma.analyticsSnapshot.create({
-    data: {
+  const contextKey = contextKeyOrDefault(input.contextKey);
+  await prisma.analyticsSnapshot.upsert({
+    where: {
+      userId_providerKey_contextKey_rangePreset_toDate_status: {
+        userId: input.userId,
+        providerKey: input.providerKey,
+        contextKey,
+        rangePreset: input.rangePreset,
+        toDate: input.toDate,
+        status: AnalyticsSnapshotStatus.ERROR,
+      },
+    },
+    create: {
       userId: input.userId,
       providerKey: input.providerKey,
-      contextKey: contextKeyOrDefault(input.contextKey),
+      contextKey,
       rangePreset: input.rangePreset,
+      fromDate: input.fromDate,
+      toDate: input.toDate,
+      payload: Prisma.JsonNull,
+      status: AnalyticsSnapshotStatus.ERROR,
+      lastError: input.error,
+      capturedAt: new Date(),
+      expiresAt: input.expiresAt,
+    },
+    update: {
       fromDate: input.fromDate,
       toDate: input.toDate,
       payload: Prisma.JsonNull,
@@ -149,4 +189,18 @@ export async function readLatestSuccessfulSnapshot<T = unknown>(
 
 export function snapshotExpiryFromNow(hours = 1): Date {
   return new Date(Date.now() + Math.max(1, hours) * 60 * 60 * 1000);
+}
+
+export async function pruneAnalyticsSnapshots(input: { olderThanDays: number }): Promise<{
+  deleted: number;
+  cutoff: string;
+}> {
+  const olderThanDays = Math.max(1, Math.floor(input.olderThanDays));
+  const cutoffDate = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
+  const result = await prisma.analyticsSnapshot.deleteMany({
+    where: {
+      capturedAt: { lt: cutoffDate },
+    },
+  });
+  return { deleted: result.count, cutoff: cutoffDate.toISOString() };
 }

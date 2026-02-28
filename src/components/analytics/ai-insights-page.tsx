@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { InsightCardFull } from "./insight-card-full";
 import { StatCard } from "./stat-card";
 import type { AnalyticsDashboardData, AnalyticsSectionId } from "@/lib/analytics/types";
 import { AlertTriangle, AlertCircle, Info, BarChart3 } from "lucide-react";
 import { populateConnectionStatus } from "@/hooks/use-connection-status";
+import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
 
 type SeverityFilter = "all" | "critical" | "warning" | "info";
 type SectionFilter = "all" | AnalyticsSectionId;
@@ -13,50 +14,33 @@ type SortMode = "severity" | "confidence";
 
 const SEVERITY_ORDER: Record<string, number> = { critical: 0, warning: 1, info: 2 };
 
-function readOverviewCache(): AnalyticsDashboardData | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = sessionStorage.getItem("analytics:overview");
-    return raw ? (JSON.parse(raw) as AnalyticsDashboardData) : null;
-  } catch {
-    return null;
-  }
-}
-
 export function AiInsightsPage() {
-  const [data, setData] = useState<AnalyticsDashboardData | null>(readOverviewCache);
-  const [loading, setLoading] = useState(() => readOverviewCache() === null);
+  const resource = useDashboardResource<AnalyticsDashboardData>({
+    cacheKey: "analytics:overview:v1",
+    deps: [],
+    load: async ({ signal }) => {
+      const response = await fetch("/api/analytics?section=overview", { signal });
+      if (!response.ok) {
+        throw new Error(`Analytics overview request failed (${response.status})`);
+      }
+      return (await response.json()) as AnalyticsDashboardData;
+    },
+    getLastUpdatedAt: (payload) =>
+      payload.meta?.servedAt ?? payload.lastFullRefresh ?? payload.generatedAt ?? null,
+    mapError: (error) =>
+      error instanceof Error && error.message ? error.message : "Could not load insights.",
+  });
+
+  const data = resource.data;
+  const loading = resource.loading && !resource.data;
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
   const [sectionFilter, setSectionFilter] = useState<SectionFilter>("all");
   const [sortMode, setSortMode] = useState<SortMode>("severity");
 
   useEffect(() => {
-    const cached = readOverviewCache();
-    if (cached) {
-      populateConnectionStatus(cached.freshness, cached);
-    }
-
-    let active = true;
-    const controller = new AbortController();
-
-    fetch("/api/analytics?section=overview", { signal: controller.signal })
-      .then((r) => r.json())
-      .then((json: AnalyticsDashboardData) => {
-        if (!active) return;
-        setData(json);
-        populateConnectionStatus(json.freshness, json);
-        sessionStorage.setItem("analytics:overview", JSON.stringify(json));
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, []);
+    if (!data) return;
+    populateConnectionStatus(data.freshness, data);
+  }, [data]);
 
   const allInsights = data?.aiInsights?.global ?? [];
 

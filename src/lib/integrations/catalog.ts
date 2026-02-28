@@ -267,7 +267,21 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     name: "Meta Page",
     description: "Connect Meta Page insights and engagement data into WIPGuard.",
     capabilities: ["Page insights", "Post engagement"],
-    authType: "token",
+    authType: "oauth",
+    oauth: {
+      authorizationEndpoint: "https://www.facebook.com/v21.0/dialog/oauth",
+      tokenEndpoint: "https://graph.facebook.com/v21.0/oauth/access_token",
+      scopes: getScopesFromEnv("META_PAGE_SCOPES", [
+        "pages_read_engagement",
+        "pages_read_user_content",
+        "read_insights",
+        "instagram_basic",
+        "instagram_manage_insights",
+      ]),
+      scopeSeparator: ",",
+      clientIdEnv: "META_APP_ID",
+      clientSecretEnv: "META_APP_SECRET",
+    },
   },
   {
     slug: "pylon",

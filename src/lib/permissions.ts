@@ -17,6 +17,8 @@ export type PermissionAction =
   | "team.invite"
   | "team.role.write"
   | "profile.write"
+  | "integration.read"
+  | "integration.manage"
   | "automation.write"
   | "automation.approve";
 
@@ -34,6 +36,8 @@ const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> 
       "team.invite",
       "team.role.write",
       "profile.write",
+      "integration.read",
+      "integration.manage",
       "automation.write",
       "automation.approve",
     ],
@@ -46,10 +50,11 @@ const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> 
       "priority.write",
       "policy.override",
       "profile.write",
+      "integration.read",
       "automation.write",
       "automation.approve",
     ],
-    observer: ["profile.write", "automation.approve"],
+    observer: ["profile.write", "integration.read", "automation.approve"],
   };
 
 export function normalizeRole(role: string | null | undefined): AppRole {

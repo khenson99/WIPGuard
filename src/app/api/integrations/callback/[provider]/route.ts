@@ -23,9 +23,54 @@ import { validateIntegrationScopes } from "@/lib/integrations/scope-validation";
 import { enforcePermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { protectIntegrationSecret } from "@/lib/integrations/token-crypto";
+import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 
 interface RouteParams {
   params: Promise<{ provider: string }>;
+}
+
+type UnknownRecord = Record<string, unknown>;
+function asRecord(value: unknown): UnknownRecord | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as UnknownRecord;
+}
+
+async function augmentMetaMetadata(input: {
+  providerSlug: "meta-ads" | "meta-page";
+  accessToken: string;
+}): Promise<Record<string, unknown>> {
+  const base = `https://graph.facebook.com/v21.0`;
+  const headers = { Authorization: `Bearer ${input.accessToken}` };
+
+  try {
+    if (input.providerSlug === "meta-ads") {
+      const url = new URL(`${base}/me/adaccounts`);
+      url.searchParams.set("fields", "id,name");
+      url.searchParams.set("limit", "5");
+      const response = await fetch(url.toString(), { headers, cache: "no-store" });
+      const payload = (await response.json().catch(() => null)) as unknown;
+      const record = asRecord(payload);
+      const first = Array.isArray(record?.data) ? asRecord(record?.data[0]) : null;
+      const adAccountId = typeof first?.id === "string" ? first.id : null;
+      const adAccountName = typeof first?.name === "string" ? first.name : null;
+      return adAccountId ? { adAccountId, adAccountName } : {};
+    }
+
+    const url = new URL(`${base}/me/accounts`);
+    url.searchParams.set("fields", "id,name,instagram_business_account");
+    url.searchParams.set("limit", "5");
+    const response = await fetch(url.toString(), { headers, cache: "no-store" });
+    const payload = (await response.json().catch(() => null)) as unknown;
+    const record = asRecord(payload);
+    const first = Array.isArray(record?.data) ? asRecord(record?.data[0]) : null;
+    const pageId = typeof first?.id === "string" ? first.id : null;
+    const pageName = typeof first?.name === "string" ? first.name : null;
+    const ig = asRecord(first?.instagram_business_account);
+    const instagramAccountId = typeof ig?.id === "string" ? ig.id : null;
+    return pageId ? { pageId, pageName, instagramAccountId } : {};
+  } catch {
+    return {};
+  }
 }
 
 function getBaseUrl(request: NextRequest): string {
@@ -108,9 +153,11 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
+
   const permission = await enforcePermission({
     userId: session.user.id,
-    action: "profile.write",
+    action: "integration.manage",
     request,
     targetType: "integration",
     targetId: definition.provider,
@@ -129,7 +176,7 @@ export async function GET(
   if (oauthError) {
     const message = `OAuth denied: ${oauthError}`;
     await markConnectionError({
-      userId: session.user.id,
+      userId: ownerUserId,
       provider: definition.provider,
       message,
     });
@@ -143,7 +190,7 @@ export async function GET(
 
   if (!code || !state || !statePayload) {
     await markConnectionError({
-      userId: session.user.id,
+      userId: ownerUserId,
       provider: definition.provider,
       message: "OAuth callback missing code/state",
     });
@@ -164,7 +211,7 @@ export async function GET(
     userIdFromCookie !== session.user.id
   ) {
     await markConnectionError({
-      userId: session.user.id,
+      userId: ownerUserId,
       provider: definition.provider,
       message: "OAuth state mismatch",
     });
@@ -177,7 +224,7 @@ export async function GET(
   }
   if (definition.oauth.pkce && !statePayload.codeVerifier) {
     await markConnectionError({
-      userId: session.user.id,
+      userId: ownerUserId,
       provider: definition.provider,
       message: "OAuth PKCE verifier missing",
     });
@@ -192,7 +239,7 @@ export async function GET(
   const credentials = getIntegrationOAuthCredentials(definition);
   if (!credentials) {
     await markConnectionError({
-      userId: session.user.id,
+      userId: ownerUserId,
       provider: definition.provider,
       message: "Missing provider OAuth configuration",
     });
@@ -220,6 +267,14 @@ export async function GET(
       tokenResponse.raw
     );
 
+    const metaMetadata =
+      definition.slug === "meta-ads" || definition.slug === "meta-page"
+        ? await augmentMetaMetadata({
+            providerSlug: definition.slug,
+            accessToken: tokenResponse.accessToken,
+          })
+        : {};
+
     // Validate granted scopes against required scopes
     const scopeValidation = validateIntegrationScopes(
       definition,
@@ -230,6 +285,7 @@ export async function GET(
 
     const metadata: Prisma.InputJsonObject = {
       ...(accountProfile.metadata ?? {}),
+      ...(metaMetadata ?? {}),
       oauthProvider: definition.slug,
       connectedByUserId: session.user.id,
       ...(hasMissingScopes
@@ -247,12 +303,12 @@ export async function GET(
     await prisma.integrationConnection.upsert({
       where: {
         userId_provider: {
-          userId: session.user.id,
+          userId: ownerUserId,
           provider: definition.provider,
         },
       },
       create: {
-        userId: session.user.id,
+        userId: ownerUserId,
         provider: definition.provider,
         status: IntegrationConnectionStatus.CONNECTED,
         providerAccountId: accountProfile.providerAccountId,
@@ -291,7 +347,7 @@ export async function GET(
     );
   } catch (error) {
     await markConnectionError({
-      userId: session.user.id,
+      userId: ownerUserId,
       provider: definition.provider,
       message: compactErrorMessage(error),
     });

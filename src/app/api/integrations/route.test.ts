@@ -1,17 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AnalyticsSnapshotStatus, IntegrationProvider } from "@/generated/prisma/client";
+import { IntegrationProvider } from "@/generated/prisma/client";
 
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(),
 }));
 
+vi.mock("@/lib/permissions", () => ({
+  enforcePermission: vi.fn(async () => ({ role: "admin" })),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    user: {
+      findUnique: vi.fn(),
+    },
     integrationConnection: {
       findMany: vi.fn(),
     },
     analyticsSnapshot: {
       findMany: vi.fn(),
+      groupBy: vi.fn(),
     },
   },
 }));
@@ -174,7 +182,7 @@ describe("GET /api/integrations", () => {
 
     vi.mocked(auth).mockResolvedValue({ user: { id: "user-1" } } as never);
     vi.mocked(prisma.integrationConnection.findMany).mockResolvedValue([] as never);
-    vi.mocked(prisma.analyticsSnapshot.findMany)
+    vi.mocked(prisma.analyticsSnapshot.groupBy)
       .mockResolvedValueOnce([] as never)
       .mockResolvedValueOnce([] as never);
 
@@ -226,7 +234,7 @@ describe("GET /api/integrations", () => {
     } as never);
 
     const { GET } = await import("@/app/api/integrations/route");
-    const response = await GET();
+    const response = await GET({} as never);
     const body = (await response.json()) as Array<Record<string, unknown>>;
 
     expect(response.status).toBe(200);
@@ -235,21 +243,7 @@ describe("GET /api/integrations", () => {
     expect(
       body.find((item) => item.provider === IntegrationProvider.GOOGLE_ADS)?.credentialSource
     ).toBe("env");
-    expect(prisma.analyticsSnapshot.findMany).toHaveBeenCalledTimes(2);
-    expect(prisma.analyticsSnapshot.findMany).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        distinct: ["providerKey"],
-      })
-    );
-    expect(prisma.analyticsSnapshot.findMany).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        where: expect.objectContaining({
-          status: AnalyticsSnapshotStatus.SUCCESS,
-        }),
-      })
-    );
+    expect(prisma.analyticsSnapshot.groupBy).toHaveBeenCalledTimes(2);
   });
 
   it("falls back to safe freshness when a provider freshness entry is missing", async () => {
@@ -259,7 +253,7 @@ describe("GET /api/integrations", () => {
 
     vi.mocked(auth).mockResolvedValue({ user: { id: "user-2" } } as never);
     vi.mocked(prisma.integrationConnection.findMany).mockResolvedValue([] as never);
-    vi.mocked(prisma.analyticsSnapshot.findMany)
+    vi.mocked(prisma.analyticsSnapshot.groupBy)
       .mockResolvedValueOnce([] as never)
       .mockResolvedValueOnce([] as never);
 
@@ -313,7 +307,7 @@ describe("GET /api/integrations", () => {
     } as never);
 
     const { GET } = await import("@/app/api/integrations/route");
-    const response = await GET();
+    const response = await GET({} as never);
     const body = (await response.json()) as Array<Record<string, unknown>>;
     const metaPage = body.find((item) => item.provider === IntegrationProvider.META_PAGE);
 

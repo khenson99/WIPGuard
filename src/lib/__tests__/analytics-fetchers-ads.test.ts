@@ -240,7 +240,13 @@ describe("analytics ads fetchers", () => {
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
     await expect(
-      fetchRedditAdsData("reddit-client", "reddit-secret", "reddit-refresh", "acc-1")
+      fetchRedditAdsData(
+        "reddit-client",
+        "reddit-secret",
+        "reddit-refresh",
+        "acc-1",
+        "WIPGuard-Test/1.0"
+      )
     ).rejects.toThrow("Reddit campaigns error (403): insufficient_scope");
   });
 });

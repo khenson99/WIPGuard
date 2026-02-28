@@ -634,7 +634,10 @@ export async function fetchRedditAdsData(
   adAccountId: string,
   userAgent?: string | null
 ): Promise<RedditAdsData> {
-  const normalizedUserAgent = (userAgent || process.env.REDDIT_USER_AGENT || "WIPGuard/1.0").trim();
+  const normalizedUserAgent = (userAgent || process.env.REDDIT_USER_AGENT || "").trim();
+  if (!normalizedUserAgent) {
+    throw new Error("Reddit Ads config error: REDDIT_USER_AGENT is required.");
+  }
   const baseHeaders = {
     "User-Agent": normalizedUserAgent,
   };

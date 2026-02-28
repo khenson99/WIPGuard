@@ -5,7 +5,14 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "jsdom",
-    exclude: ["**/.claude/**", "**/.worktrees/**"],
+    exclude: [
+      "**/node_modules/**",
+      "**/.claude/**",
+      "**/.worktrees/**",
+      "**/dist/**",
+      "**/.next/**",
+      "**/src/generated/**",
+    ],
   },
   resolve: {
     alias: {

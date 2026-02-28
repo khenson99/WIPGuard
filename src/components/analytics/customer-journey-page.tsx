@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { HorizontalFunnel } from "@/components/charts";
 import { StatCard } from "./stat-card";
 import { DashboardSectionCard } from "./dashboard-section-card";
@@ -10,16 +10,7 @@ import type {
 } from "@/lib/analytics/types";
 import { Users, TrendingUp, ArrowRight, Sparkles } from "lucide-react";
 import { populateConnectionStatus } from "@/hooks/use-connection-status";
-
-function readOverviewCache(): AnalyticsDashboardData | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = sessionStorage.getItem("analytics:overview");
-    return raw ? (JSON.parse(raw) as AnalyticsDashboardData) : null;
-  } catch {
-    return null;
-  }
-}
+import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
 
 const STAGE_COLORS: Record<LifecycleStageId, string> = {
   awareness: "#3b82f6",
@@ -35,42 +26,34 @@ const STAGE_ORDER: LifecycleStageId[] = [
 ];
 
 export function CustomerJourneyPage() {
-  const [data, setData] = useState<AnalyticsDashboardData | null>(readOverviewCache);
+  const resource = useDashboardResource<AnalyticsDashboardData>({
+    cacheKey: "analytics:overview:v1",
+    deps: [],
+    load: async ({ signal }) => {
+      const response = await fetch("/api/analytics?section=overview", { signal });
+      if (!response.ok) {
+        throw new Error(`Analytics overview request failed (${response.status})`);
+      }
+      return (await response.json()) as AnalyticsDashboardData;
+    },
+    getLastUpdatedAt: (payload) =>
+      payload.meta?.servedAt ?? payload.lastFullRefresh ?? payload.generatedAt ?? null,
+    mapError: (error) =>
+      error instanceof Error && error.message ? error.message : "Could not load journey data.",
+  });
+
+  const data = resource.data;
   const [selectedStage, setSelectedStage] = useState<LifecycleStageId | null>(null);
-  const [loading, setLoading] = useState(() => readOverviewCache() === null);
 
   useEffect(() => {
-    const cached = readOverviewCache();
-    if (cached) {
-      populateConnectionStatus(cached.freshness, cached);
-    }
-
-    let active = true;
-    const controller = new AbortController();
-
-    fetch("/api/analytics?section=overview", { signal: controller.signal })
-      .then((r) => r.json())
-      .then((json: AnalyticsDashboardData) => {
-        if (!active) return;
-        setData(json);
-        populateConnectionStatus(json.freshness, json);
-        sessionStorage.setItem("analytics:overview", JSON.stringify(json));
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, []);
+    if (!data) return;
+    populateConnectionStatus(data.freshness, data);
+  }, [data]);
 
   const lifecycle = data?.lifecycleFunnel ?? null;
   const insights = data?.aiInsights?.global ?? [];
 
-  if (loading) {
+  if (resource.loading && !resource.data) {
     return (
       <div className="flex h-64 items-center justify-center">
         <p className="text-sm text-muted-foreground">Loading journey data…</p>

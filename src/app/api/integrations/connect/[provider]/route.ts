@@ -52,7 +52,7 @@ export async function GET(
 
   const permission = await enforcePermission({
     userId: session.user.id,
-    action: "profile.write",
+    action: "integration.manage",
     request,
     targetType: "integration",
     targetId: definition.provider,

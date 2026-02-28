@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   AnalyticsSnapshotStatus,
   IntegrationConnectionStatus,
@@ -21,6 +21,11 @@ import {
   listIntegrationDefinitions,
 } from "@/lib/integrations/catalog";
 import { normalizeCodaDocId } from "@/lib/integrations/coda-config";
+import {
+  bestEffortMigrateConnectionsToOwner,
+  resolveIntegrationOwnerUserId,
+} from "@/lib/integrations/ownership";
+import { enforcePermission } from "@/lib/permissions";
 
 function readCodaDocId(metadata: unknown): string | null {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
@@ -76,15 +81,35 @@ function hasCredentialForProvider(
   }
 }
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const permission = await enforcePermission({
+      userId: session.user.id,
+      action: "integration.read",
+      request,
+      targetType: "integration",
+      targetId: "integrations",
+    });
+    if (permission.deniedResponse) {
+      return permission.deniedResponse;
+    }
+
+    const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
+    const isAdmin = permission.role === "admin";
+
+    // Best-effort migration so existing per-user connections don't disappear
+    // when switching to org-level ownership.
+    if (isAdmin && ownerUserId !== session.user.id) {
+      await bestEffortMigrateConnectionsToOwner(ownerUserId);
+    }
+
     const connections = await prisma.integrationConnection.findMany({
-      where: { userId: session.user.id },
+      where: { userId: ownerUserId },
       select: {
         provider: true,
         status: true,
@@ -96,7 +121,7 @@ export async function GET(): Promise<NextResponse> {
       },
     });
 
-    const credentials = await getCredentials(session.user.id);
+    const credentials = await getCredentials(ownerUserId);
 
     const allSnapshotKeys = Array.from(
       new Set(
@@ -106,38 +131,64 @@ export async function GET(): Promise<NextResponse> {
       )
     );
 
-    const [latestSnapshots, latestSuccessfulSnapshots] = await Promise.all([
-      prisma.analyticsSnapshot.findMany({
-        where: {
-          userId: session.user.id,
-          providerKey: { in: allSnapshotKeys },
-        },
-        select: {
-          providerKey: true,
-          status: true,
-          capturedAt: true,
-          expiresAt: true,
-          lastError: true,
-        },
-        distinct: ["providerKey"],
-        orderBy: [{ providerKey: "asc" }, { capturedAt: "desc" }],
+    const [latestRows, latestSuccessRows] = await Promise.all([
+      prisma.analyticsSnapshot.groupBy({
+        by: ["providerKey"],
+        where: { userId: ownerUserId, providerKey: { in: allSnapshotKeys } },
+        _max: { capturedAt: true },
       }),
-      prisma.analyticsSnapshot.findMany({
+      prisma.analyticsSnapshot.groupBy({
+        by: ["providerKey"],
         where: {
-          userId: session.user.id,
+          userId: ownerUserId,
           providerKey: { in: allSnapshotKeys },
           status: AnalyticsSnapshotStatus.SUCCESS,
         },
-        select: {
-          providerKey: true,
-          status: true,
-          capturedAt: true,
-          expiresAt: true,
-          lastError: true,
-        },
-        distinct: ["providerKey"],
-        orderBy: [{ providerKey: "asc" }, { capturedAt: "desc" }],
+        _max: { capturedAt: true },
       }),
+    ]);
+
+    const latestOr = latestRows
+      .map((row) =>
+        row._max.capturedAt
+          ? { providerKey: row.providerKey, capturedAt: row._max.capturedAt }
+          : null
+      )
+      .filter(Boolean) as Array<{ providerKey: string; capturedAt: Date }>;
+
+    const latestSuccessOr = latestSuccessRows
+      .map((row) =>
+        row._max.capturedAt
+          ? { providerKey: row.providerKey, capturedAt: row._max.capturedAt }
+          : null
+      )
+      .filter(Boolean) as Array<{ providerKey: string; capturedAt: Date }>;
+
+    const [latestSnapshots, latestSuccessfulSnapshots] = await Promise.all([
+      latestOr.length === 0
+        ? Promise.resolve([])
+        : prisma.analyticsSnapshot.findMany({
+            where: { userId: ownerUserId, OR: latestOr },
+            select: {
+              providerKey: true,
+              status: true,
+              capturedAt: true,
+              expiresAt: true,
+              lastError: true,
+            },
+          }),
+      latestSuccessOr.length === 0
+        ? Promise.resolve([])
+        : prisma.analyticsSnapshot.findMany({
+            where: { userId: ownerUserId, OR: latestSuccessOr },
+            select: {
+              providerKey: true,
+              status: true,
+              capturedAt: true,
+              expiresAt: true,
+              lastError: true,
+            },
+          }),
     ]);
 
     const latestSuccessByProviderKey = new Map(
@@ -192,6 +243,8 @@ export async function GET(): Promise<NextResponse> {
         syncHealthReason: syncHealth.syncHealthReason,
         lastSnapshotAt: syncHealth.lastSnapshotAt,
         lastSnapshotStatus: syncHealth.lastSnapshotStatus,
+        canManage: isAdmin,
+        ownerUserId: isAdmin ? ownerUserId : null,
         docId:
           definition.provider === IntegrationProvider.CODA
             ? readCodaDocId(connection?.metadata ?? null)
