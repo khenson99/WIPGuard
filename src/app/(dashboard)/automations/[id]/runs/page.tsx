@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { AlertTriangle } from "lucide-react";
 import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 
 interface RunStep {
@@ -42,6 +43,8 @@ export default function AutomationRunsPage() {
 
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   useEffect(() => {
     if (!workflowId) return;
@@ -64,7 +67,10 @@ export default function AutomationRunsPage() {
     }
 
     fetch(`/api/automations/${workflowId}/runs`, { signal: controller.signal })
-      .then((response) => response.json())
+      .then((response) => {
+        if (!response.ok) throw new Error("Failed to fetch");
+        return response.json();
+      })
       .then((payload) => {
         if (!active) return;
         const next = Array.isArray(payload) ? (payload as WorkflowRun[]) : [];
@@ -73,6 +79,8 @@ export default function AutomationRunsPage() {
       })
       .catch((error) => {
         if (!active || (error instanceof Error && error.name === "AbortError")) return;
+        setError("Failed to load run history");
+        console.error("Runs fetch failed:", error);
       })
       .finally(() => {
         if (active) {
@@ -101,13 +109,47 @@ export default function AutomationRunsPage() {
         </Link>
       </div>
 
+      {/* Status filter */}
+      <div className="flex items-center gap-2">
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          aria-label="Filter by status"
+          className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+        >
+          <option value="all">All Statuses</option>
+          <option value="SUCCEEDED">Succeeded</option>
+          <option value="FAILED">Failed</option>
+          <option value="RUNNING">Running</option>
+          <option value="PENDING">Pending</option>
+        </select>
+      </div>
+
+      {error && (
+        <div className="flex items-center justify-between rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-yellow-700 dark:text-yellow-400">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => { setError(null); setLoading(true); }}
+            className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">Loading runs...</div>
-      ) : runs.length === 0 ? (
-        <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No runs yet.</div>
+      ) : runs.filter((r) => statusFilter === "all" || r.status === statusFilter).length === 0 ? (
+        <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
+          {statusFilter !== "all" ? "No runs match the selected filter." : "No runs yet."}
+        </div>
       ) : (
         <div className="space-y-3">
-          {runs.map((run) => (
+          {runs.filter((r) => statusFilter === "all" || r.status === statusFilter).map((run) => (
             <div key={run.id} className="rounded-xl border border-border bg-card p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-semibold text-foreground">Run {run.id.slice(0, 8)}</p>
