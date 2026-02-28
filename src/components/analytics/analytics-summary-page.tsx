@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
@@ -15,6 +15,7 @@ import { DashboardStaleBanner } from "@/components/dashboard/dashboard-stale-ban
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-error-banner";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
+import { Download } from "lucide-react";
 
 interface SummaryPayload {
   generatedAt: string;
@@ -63,6 +64,23 @@ const STATUS_CLASS: Record<string, string> = {
 };
 
 const SUMMARY_CACHE_PREFIX = "analytics:summary:v1:";
+
+function downloadCsv(filename: string, headers: string[], rows: string[][]): void {
+  const escape = (value: string) =>
+    value.includes(",") || value.includes('"') || value.includes("\n")
+      ? `"${value.replace(/"/g, '""')}"`
+      : value;
+  const lines = [headers.map(escape).join(","), ...rows.map((row) => row.map(escape).join(","))];
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+}
 
 interface SummaryViewModel {
   summary: SummaryPayload;
@@ -140,6 +158,37 @@ export function AnalyticsSummaryPage() {
 
   const summary = resource.data?.summary ?? null;
   const overview = resource.data?.overview ?? null;
+
+  const exportHighlightsCsv = useCallback(() => {
+    if (!summary) return;
+    const h = summary.highlights;
+    downloadCsv(
+      "analytics-highlights.csv",
+      ["Metric", "Value"],
+      [
+        ["Total Tasks", String(h.totalTasks)],
+        ["Overdue Tasks", String(h.overdueTasks)],
+        ["Active Projects", String(h.activeProjects)],
+        ["Active Contributors", String(h.activeContributors)],
+        ["Discipline Coverage (%)", String(h.disciplineCoverage)],
+      ],
+    );
+  }, [summary]);
+
+  const exportSectionsCsv = useCallback(() => {
+    if (!summary) return;
+    downloadCsv(
+      "analytics-sections.csv",
+      ["ID", "Label", "Status", "Integration Count", "Connected Count"],
+      summary.primarySections.map((s) => [
+        s.id,
+        s.label,
+        s.status,
+        String(s.integrationCount),
+        String(s.connectedCount),
+      ]),
+    );
+  }, [summary]);
 
   if (resource.loading && !resource.data) {
     return <DashboardLoadingState message="Loading analytics summary..." />;
@@ -233,6 +282,17 @@ export function AnalyticsSummaryPage() {
         </div>
       </div>
 
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-foreground">Key Metrics</h2>
+        <button
+          type="button"
+          onClick={exportHighlightsCsv}
+          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+        >
+          <Download className="h-3 w-3" aria-hidden="true" />
+          Export CSV
+        </button>
+      </div>
       <div role="region" aria-label="Key metrics" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <div className="rounded-xl border border-border bg-card px-4 py-3">
           <p className="text-xs text-muted-foreground">Discipline Coverage</p>
@@ -256,12 +316,29 @@ export function AnalyticsSummaryPage() {
         </div>
       </div>
 
-      <LifecycleFunnelPanel lifecycle={overview?.lifecycleFunnel ?? null} insights={overview?.aiInsights?.global ?? []} sectionFocus="all" />
-      <CrossDomainInsightsPanel
-        data={null}
-      />
-      <AiInsightsPanel bundle={overview?.aiInsights ?? null} defaultFilter="all" />
+      <div tabIndex={0} role="group" aria-label="Lifecycle funnel chart">
+        <LifecycleFunnelPanel lifecycle={overview?.lifecycleFunnel ?? null} insights={overview?.aiInsights?.global ?? []} sectionFocus="all" />
+      </div>
+      <div tabIndex={0} role="group" aria-label="Cross-domain insights chart">
+        <CrossDomainInsightsPanel
+          data={null}
+        />
+      </div>
+      <div tabIndex={0} role="group" aria-label="AI insights panel">
+        <AiInsightsPanel bundle={overview?.aiInsights ?? null} defaultFilter="all" />
+      </div>
 
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-foreground">Primary Sections</h2>
+        <button
+          type="button"
+          onClick={exportSectionsCsv}
+          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+        >
+          <Download className="h-3 w-3" aria-hidden="true" />
+          Export CSV
+        </button>
+      </div>
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
         {ANALYTICS_PRIMARY_SECTIONS.map((primary) => {
           const section = summary.primarySections.find((item) => item.id === primary.id);
