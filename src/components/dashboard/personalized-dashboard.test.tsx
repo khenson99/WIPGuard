@@ -1,9 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PersonalizedDashboard } from "@/components/dashboard/personalized-dashboard";
 
 vi.mock("recharts", () => {
-  const Passthrough = ({ children }: { children?: unknown }) => <div>{children as any}</div>;
+  const Passthrough = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
   return {
     ResponsiveContainer: Passthrough,
     PieChart: Passthrough,
