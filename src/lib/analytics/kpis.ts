@@ -25,7 +25,9 @@ export function computeAnalyticsKpis(data: AnalyticsDashboardData) {
   // ── Finance KPIs ──
   const stripe = data.stripe;
   const mrr = stripe?.revenue.mrr ?? 0;
-  const paymentSuccessPct = stripe?.payments.successRate ?? 0;
+  // successRate is a 0–1 fraction; normalise to 0–100 like bounceRatePct.
+  const rawSuccess = stripe?.payments.successRate ?? 0;
+  const paymentSuccessPct = rawSuccess >= 0 && rawSuccess <= 1 ? rawSuccess * 100 : rawSuccess;
 
   return {
     traffic: { bounceRatePct, pagesPerSession, engagementScore, pageDepthScore },
