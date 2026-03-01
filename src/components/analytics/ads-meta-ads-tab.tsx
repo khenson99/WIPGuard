@@ -2,7 +2,7 @@
 
 import {
   DollarSign, Eye, MousePointerClick, Target,
-  TrendingUp, AlertTriangle, BarChart3,
+  TrendingUp, AlertTriangle,
 } from "lucide-react";
 import type { AnalyticsDashboardData, AdCampaign } from "@/lib/analytics/types";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";

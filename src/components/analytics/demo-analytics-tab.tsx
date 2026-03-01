@@ -13,6 +13,7 @@ const OUTCOME_COLORS: Record<DemoOutcome, string> = {
   "no-show": "#ef4444",
   rescheduled: "#fbbf24",
   pending: "#6b7280",
+  unknown: "#d1d5db",
 };
 
 const OUTCOME_LABELS: Record<DemoOutcome, string> = {
@@ -20,6 +21,7 @@ const OUTCOME_LABELS: Record<DemoOutcome, string> = {
   "no-show": "No-Show",
   rescheduled: "Rescheduled",
   pending: "Pending",
+  unknown: "Unknown",
 };
 
 export function DemoAnalyticsTab({ data }: { data: AnalyticsDashboardData | null }) {
@@ -260,6 +262,81 @@ export function DemoAnalyticsTab({ data }: { data: AnalyticsDashboardData | null
                     </tr>
                   );
                 })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Recent Demos */}
+      {demo.demos.length > 0 && (
+        <div className="rounded-xl border border-border bg-card p-5">
+          <h3 className="mb-1 text-sm font-semibold text-foreground">Recent Demos</h3>
+          <p className="mb-4 text-xs text-muted-foreground">Latest scheduled demos and recommended next steps</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
+                  <th className="pb-2 text-left font-medium">Deal</th>
+                  <th className="pb-2 text-left font-medium">Scheduled</th>
+                  <th className="pb-2 text-left font-medium">Outcome</th>
+                  <th className="pb-2 text-left font-medium">Follow-Up</th>
+                  <th className="pb-2 text-left font-medium">Suggested Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {demo.demos
+                  .slice()
+                  .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime())
+                  .slice(0, 5)
+                  .map((demoRecord) => {
+                    const scheduledDateDate = new Date(demoRecord.scheduledAt);
+                    const formattedDate = scheduledDateDate.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "numeric" });
+                    
+                    let suggestedAction = "None";
+                    let actionColor = "text-muted-foreground";
+
+                    if (demoRecord.outcome === "completed" && !demoRecord.followUpSent) {
+                      suggestedAction = "Send Demo Follow-up & Deck";
+                      actionColor = "text-blue-500 font-medium";
+                    } else if (demoRecord.outcome === "no-show") {
+                      suggestedAction = "Send Reschedule Link via Email/SMS";
+                      actionColor = "text-yellow-500 font-medium";
+                    } else if (demoRecord.outcome === "pending") {
+                      suggestedAction = "Send 24hr Reminder";
+                      actionColor = "text-emerald-500 font-medium";
+                    } else if (demoRecord.outcome === "unknown") {
+                      suggestedAction = "Verify Attendance in CRM";
+                      actionColor = "text-red-500 font-medium";
+                    }
+
+                    return (
+                      <tr key={demoRecord.dealId} className="border-b border-border/50 last:border-0">
+                        <td className="py-2.5 font-medium text-foreground">{demoRecord.dealName}</td>
+                        <td className="py-2.5 text-xs text-muted-foreground whitespace-nowrap">{formattedDate}</td>
+                        <td className="py-2.5">
+                          <span 
+                            className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
+                            style={{ backgroundColor: OUTCOME_COLORS[demoRecord.outcome] }}
+                          >
+                            {OUTCOME_LABELS[demoRecord.outcome]}
+                          </span>
+                        </td>
+                        <td className="py-2.5">
+                          {demoRecord.followUpSent ? (
+                            <span className="flex items-center gap-1 text-xs font-medium text-emerald-500">
+                              <CheckCircle className="h-3 w-3" /> Sent
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Pending</span>
+                          )}
+                        </td>
+                        <td className={`py-2.5 text-xs ${actionColor}`}>
+                          {suggestedAction}
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>

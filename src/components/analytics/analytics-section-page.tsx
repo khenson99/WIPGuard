@@ -6,48 +6,50 @@ import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-controls";
 
-const MarketingTabNew = dynamic(() => import("@/components/analytics/marketing-tab-new").then((m) => m.MarketingTabNew));
-const FinanceTab = dynamic(() => import("@/components/analytics/finance-tab").then((m) => m.FinanceTab));
-const FinanceStripeTab = dynamic(() => import("@/components/analytics/finance-stripe-tab").then((m) => m.FinanceStripeTab));
-const FinanceHubSpotTab = dynamic(() => import("@/components/analytics/finance-hubspot-tab").then((m) => m.FinanceHubSpotTab));
-const FinanceMercuryTab = dynamic(() => import("@/components/analytics/finance-mercury-tab").then((m) => m.FinanceMercuryTab));
-const SalesFunnelTab = dynamic(() => import("@/components/analytics/sales-funnel-tab").then((m) => m.SalesFunnelTab));
-const CustomerSuccessTab = dynamic(() => import("@/components/analytics/customer-success-tab").then((m) => m.CustomerSuccessTab));
-const AdsGoogleAnalyticsTab = dynamic(() => import("@/components/analytics/ads-google-analytics-tab").then((m) => m.AdsGoogleAnalyticsTab));
-const AdsGoogleAdsTab = dynamic(() => import("@/components/analytics/ads-google-ads-tab").then((m) => m.AdsGoogleAdsTab));
-const AdsMetaAdsTab = dynamic(() => import("@/components/analytics/ads-meta-ads-tab").then((m) => m.AdsMetaAdsTab));
-const AdsRedditAdsTab = dynamic(() => import("@/components/analytics/ads-reddit-ads-tab").then((m) => m.AdsRedditAdsTab));
-const AdsWebflowTab = dynamic(() => import("@/components/analytics/ads-webflow-tab").then((m) => m.AdsWebflowTab));
-const AdsSemrushTab = dynamic(() => import("@/components/analytics/ads-semrush-tab").then((m) => m.AdsSemrushTab));
-const AdsCodaKanbanTab = dynamic(() => import("@/components/analytics/ads-coda-kanban-tab").then((m) => m.AdsCodaKanbanTab));
-const SalesHubspotTab = dynamic(() => import("@/components/analytics/sales-hubspot-tab").then((m) => m.SalesHubspotTab));
-const SalesStripeTab = dynamic(() => import("@/components/analytics/sales-stripe-tab").then((m) => m.SalesStripeTab));
-const GenericWorkspaceTab = dynamic(() => import("@/components/analytics/generic-workspace-tab").then((m) => m.GenericWorkspaceTab));
-const GenericSlackTab = dynamic(() => import("@/components/analytics/generic-slack-tab").then((m) => m.GenericSlackTab));
-const CsPylonTab = dynamic(() => import("@/components/analytics/cs-pylon-tab").then((m) => m.CsPylonTab));
-const CsCodaTab = dynamic(() => import("@/components/analytics/cs-coda-tab").then((m) => m.CsCodaTab));
-const CsProductTab = dynamic(() => import("@/components/analytics/cs-product-tab").then((m) => m.CsProductTab));
-const DecisionDashboardView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.DecisionDashboardView));
-const FlowMetricsView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.FlowMetricsView));
-const FlowRiskView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.FlowRiskView));
-const ObservabilityView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.ObservabilityView));
-const LifecycleFunnelPanel = dynamic(() => import("@/components/analytics/lifecycle-funnel-panel").then((m) => m.LifecycleFunnelPanel));
-const AiInsightsPanel = dynamic(() => import("@/components/analytics/ai-insights-panel").then((m) => m.AiInsightsPanel));
-const GoogleAnalyticsDashboard = dynamic(() => import("./sub-dashboards/google-analytics-dashboard").then((m) => m.GoogleAnalyticsDashboard));
-const StripeDashboard = dynamic(() => import("./sub-dashboards/stripe-dashboard").then((m) => m.StripeDashboard));
-const HubspotSalesDashboard = dynamic(() => import("./sub-dashboards/hubspot-sales-dashboard").then((m) => m.HubspotSalesDashboard));
-const CustomerJourneyTab = dynamic(() => import("@/components/analytics/customer-journey-tab").then((m) => m.CustomerJourneyTab));
-const DemoAnalyticsTab = dynamic(() => import("@/components/analytics/demo-analytics-tab").then((m) => m.DemoAnalyticsTab));
-const ProcessAnalyticsTab = dynamic(() => import("@/components/analytics/process-analytics-tab").then((m) => m.ProcessAnalyticsTab));
-const CustomerJourneyDrillDown = dynamic(() => import("@/components/analytics/customer-journey-drill-down").then((m) => m.CustomerJourneyDrillDown));
-const DemoSchedulingView = dynamic(() => import("@/components/analytics/demo-scheduling-view").then((m) => m.DemoSchedulingView));
-const DemoAttributionView = dynamic(() => import("@/components/analytics/demo-attribution-view").then((m) => m.DemoAttributionView));
-const ProcessBottlenecksView = dynamic(() => import("@/components/analytics/process-bottlenecks-view").then((m) => m.ProcessBottlenecksView));
-const ProcessHealthView = dynamic(() => import("@/components/analytics/process-health-view").then((m) => m.ProcessHealthView));
-const FinancePlanningTab = dynamic(() => import("@/components/analytics/finance-planning-tab").then((m) => m.FinancePlanningTab));
-const FinanceForecastTab = dynamic(() => import("@/components/analytics/finance-forecast-tab").then((m) => m.FinanceForecastTab));
-const FinancePnlTab = dynamic(() => import("@/components/analytics/finance-pnl-tab").then((m) => m.FinancePnlTab));
-const FinanceUnitEconomicsTab = dynamic(() => import("@/components/analytics/finance-unit-economics-tab").then((m) => m.FinanceUnitEconomicsTab));
+const MarketingTabNew = dynamic(() => import("@/components/analytics/marketing-tab-new").then((m) => m.MarketingTabNew), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const FinanceTab = dynamic(() => import("@/components/analytics/finance-tab").then((m) => m.FinanceTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const FinanceStripeTab = dynamic(() => import("@/components/analytics/finance-stripe-tab").then((m) => m.FinanceStripeTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const FinanceHubSpotTab = dynamic(() => import("@/components/analytics/finance-hubspot-tab").then((m) => m.FinanceHubSpotTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const FinanceMercuryTab = dynamic(() => import("@/components/analytics/finance-mercury-tab").then((m) => m.FinanceMercuryTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const SalesFunnelTab = dynamic(() => import("@/components/analytics/sales-funnel-tab").then((m) => m.SalesFunnelTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const CustomerSuccessTab = dynamic(() => import("@/components/analytics/customer-success-tab").then((m) => m.CustomerSuccessTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const AdsGoogleAnalyticsTab = dynamic(() => import("@/components/analytics/ads-google-analytics-tab").then((m) => m.AdsGoogleAnalyticsTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const AdsGoogleAdsTab = dynamic(() => import("@/components/analytics/ads-google-ads-tab").then((m) => m.AdsGoogleAdsTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const AdsMetaAdsTab = dynamic(() => import("@/components/analytics/ads-meta-ads-tab").then((m) => m.AdsMetaAdsTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const AdsRedditAdsTab = dynamic(() => import("@/components/analytics/ads-reddit-ads-tab").then((m) => m.AdsRedditAdsTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const AdsWebflowTab = dynamic(() => import("@/components/analytics/ads-webflow-tab").then((m) => m.AdsWebflowTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const AdsSemrushTab = dynamic(() => import("@/components/analytics/ads-semrush-tab").then((m) => m.AdsSemrushTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const AdsCodaKanbanTab = dynamic(() => import("@/components/analytics/ads-coda-kanban-tab").then((m) => m.AdsCodaKanbanTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const SalesHubspotTab = dynamic(() => import("@/components/analytics/sales-hubspot-tab").then((m) => m.SalesHubspotTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const SalesStripeTab = dynamic(() => import("@/components/analytics/sales-stripe-tab").then((m) => m.SalesStripeTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const SalesPerformanceView = dynamic(() => import("@/components/analytics/sales-performance-view").then((m) => m.SalesPerformanceView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const GenericWorkspaceTab = dynamic(() => import("@/components/analytics/generic-workspace-tab").then((m) => m.GenericWorkspaceTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const GenericSlackTab = dynamic(() => import("@/components/analytics/generic-slack-tab").then((m) => m.GenericSlackTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const CsPylonTab = dynamic(() => import("@/components/analytics/cs-pylon-tab").then((m) => m.CsPylonTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const CsCodaTab = dynamic(() => import("@/components/analytics/cs-coda-tab").then((m) => m.CsCodaTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const CsProductTab = dynamic(() => import("@/components/analytics/cs-product-tab").then((m) => m.CsProductTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const DecisionDashboardView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.DecisionDashboardView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const FlowMetricsView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.FlowMetricsView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const FlowRiskView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.FlowRiskView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const ObservabilityView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.ObservabilityView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const LifecycleFunnelPanel = dynamic(() => import("@/components/analytics/lifecycle-funnel-panel").then((m) => m.LifecycleFunnelPanel), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const AiInsightsPanel = dynamic(() => import("@/components/analytics/ai-insights-panel").then((m) => m.AiInsightsPanel), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const GoogleAnalyticsDashboard = dynamic(() => import("./sub-dashboards/google-analytics-dashboard").then((m) => m.GoogleAnalyticsDashboard), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const StripeDashboard = dynamic(() => import("./sub-dashboards/stripe-dashboard").then((m) => m.StripeDashboard), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const HubspotSalesDashboard = dynamic(() => import("./sub-dashboards/hubspot-sales-dashboard").then((m) => m.HubspotSalesDashboard), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const CustomerJourneyTab = dynamic(() => import("@/components/analytics/customer-journey-tab").then((m) => m.CustomerJourneyTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const DemoAnalyticsTab = dynamic(() => import("@/components/analytics/demo-analytics-tab").then((m) => m.DemoAnalyticsTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const ProcessAnalyticsTab = dynamic(() => import("@/components/analytics/process-analytics-tab").then((m) => m.ProcessAnalyticsTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const CustomerJourneyDrillDown = dynamic(() => import("@/components/analytics/customer-journey-drill-down").then((m) => m.CustomerJourneyDrillDown), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const CustomerJourneyConversionTab = dynamic(() => import("@/components/analytics/customer-journey-conversion-tab").then((m) => m.CustomerJourneyConversionTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const DemoSchedulingView = dynamic(() => import("@/components/analytics/demo-scheduling-view").then((m) => m.DemoSchedulingView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const DemoAttributionView = dynamic(() => import("@/components/analytics/demo-attribution-view").then((m) => m.DemoAttributionView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const ProcessBottlenecksView = dynamic(() => import("@/components/analytics/process-bottlenecks-view").then((m) => m.ProcessBottlenecksView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const ProcessHealthView = dynamic(() => import("@/components/analytics/process-health-view").then((m) => m.ProcessHealthView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const FinancePlanningTab = dynamic(() => import("@/components/analytics/finance-planning-tab").then((m) => m.FinancePlanningTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const FinanceForecastTab = dynamic(() => import("@/components/analytics/finance-forecast-tab").then((m) => m.FinanceForecastTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const FinancePnlTab = dynamic(() => import("@/components/analytics/finance-pnl-tab").then((m) => m.FinancePnlTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const FinanceUnitEconomicsTab = dynamic(() => import("@/components/analytics/finance-unit-economics-tab").then((m) => m.FinanceUnitEconomicsTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import { buildRangeQuery } from "@/lib/analytics/time-range";
 import {
@@ -89,6 +91,7 @@ export type AnalyticsChildRenderKind =
   | "finance-mercury"
   | "sales-hubspot"
   | "sales-stripe"
+  | "sales-performance"
   | "sales-google-workspace"
   | "sales-slack"
   | "ads-google-analytics"
@@ -108,6 +111,7 @@ export type AnalyticsChildRenderKind =
   | "flowRisk"
   | "observability"
   | "customerJourneyDrillDown"
+  | "customerJourneyConversion"
   | "demoScheduling"
   | "demoAttribution"
   | "processBottlenecks"
@@ -118,51 +122,77 @@ export type AnalyticsChildRenderKind =
   | "finance-unit-economics"
   | "snapshot";
 
+const CHILD_ID_TO_RENDER_KIND = {
+  // Finance
+  "finance-stripe": "finance-stripe",
+  "finance-hubspot": "finance-hubspot",
+  "finance-mercury": "finance-mercury",
+  "finance-planning": "finance-planning",
+  "finance-forecast": "finance-forecast",
+  "finance-pnl": "finance-pnl",
+  "finance-unit-economics": "finance-unit-economics",
+  // Sales
+  "sales-hubspot": "sales-hubspot",
+  "sales-stripe": "sales-stripe",
+  "sales-performance": "sales-performance",
+  "sales-google-workspace": "sales-google-workspace",
+  "sales-slack": "sales-slack",
+  // Ads & Traffic
+  "ads-google-analytics": "ads-google-analytics",
+  "ads-google-ads": "ads-google-ads",
+  "ads-meta-ads": "ads-meta-ads",
+  "ads-reddit-ads": "ads-reddit-ads",
+  "ads-webflow": "ads-webflow",
+  "ads-semrush": "ads-semrush",
+  "ads-coda-kanban": "ads-coda-kanban",
+  // Customer Success
+  "cs-pylon": "cs-pylon",
+  "cs-coda": "cs-coda",
+  "cs-product": "cs-product",
+  "cs-google-workspace": "cs-google-workspace",
+  "cs-slack": "cs-slack",
+  // Customer Journey
+  "cj-touchpoints": "customerJourneyDrillDown",
+  "cj-conversion": "customerJourneyConversion",
+  // Demo Analytics
+  "demo-scheduling": "demoScheduling",
+  "demo-attribution": "demoAttribution",
+  // Process Analytics
+  "process-bottlenecks": "processBottlenecks",
+  "process-velocity": "processBottlenecks",
+  "process-health": "processHealth",
+  "process-throughput": "processHealth",
+} as const satisfies Record<string, AnalyticsChildRenderKind>;
+
+const DATA_DOMAIN_TO_RENDER_KIND = {
+  decisionDashboard: "decisionDashboard",
+  flowMetrics: "flowMetrics",
+  flowRisk: "flowRisk",
+  observability: "observability",
+  customerJourney: "customerJourneyDrillDown",
+  demoAnalytics: "demoScheduling",
+  processAnalytics: "processBottlenecks",
+} as const satisfies Record<string, AnalyticsChildRenderKind>;
+
+/**
+ * Resolve which render variant to use for an analytics child section.
+ *
+ * Resolution order is intentional: `childId` is checked before `childDataDomain`
+ * because it is the more specific identifier. Several Ops sub-sections share a
+ * `dataDomain` (e.g. multiple entries map to "processAnalytics"), so resolving by
+ * `childId` first ensures the correct specialised view is selected. The previous
+ * if-chain checked `childDataDomain` first for some Ops entries, but that was a
+ * latent inconsistency -- `childId` should always take priority.
+ */
 export function resolveAnalyticsChildRenderKind(input: {
   childId: string;
   childDataDomain: ChildDataDomain;
 }): AnalyticsChildRenderKind {
-  // Finance
-  if (input.childId === "finance-stripe") return "finance-stripe";
-  if (input.childId === "finance-hubspot") return "finance-hubspot";
-  if (input.childId === "finance-mercury") return "finance-mercury";
-  if (input.childId === "finance-planning") return "finance-planning";
-  if (input.childId === "finance-forecast") return "finance-forecast";
-  if (input.childId === "finance-pnl") return "finance-pnl";
-  if (input.childId === "finance-unit-economics") return "finance-unit-economics";
-  // Sales
-  if (input.childId === "sales-hubspot") return "sales-hubspot";
-  if (input.childId === "sales-stripe") return "sales-stripe";
-  if (input.childId === "sales-google-workspace") return "sales-google-workspace";
-  if (input.childId === "sales-slack") return "sales-slack";
-  // Ads & Traffic
-  if (input.childId === "ads-google-analytics") return "ads-google-analytics";
-  if (input.childId === "ads-google-ads") return "ads-google-ads";
-  if (input.childId === "ads-meta-ads") return "ads-meta-ads";
-  if (input.childId === "ads-reddit-ads") return "ads-reddit-ads";
-  if (input.childId === "ads-webflow") return "ads-webflow";
-  if (input.childId === "ads-semrush") return "ads-semrush";
-  if (input.childId === "ads-coda-kanban") return "ads-coda-kanban";
-  // Customer Success
-  if (input.childId === "cs-pylon") return "cs-pylon";
-  if (input.childId === "cs-coda") return "cs-coda";
-  if (input.childId === "cs-product") return "cs-product";
-  if (input.childId === "cs-google-workspace") return "cs-google-workspace";
-  if (input.childId === "cs-slack") return "cs-slack";
-  // Ops
-  if (input.childDataDomain === "decisionDashboard") return "decisionDashboard";
-  if (input.childDataDomain === "flowMetrics") return "flowMetrics";
-  if (input.childDataDomain === "flowRisk") return "flowRisk";
-  if (input.childDataDomain === "observability") return "observability";
-  if (input.childId === "cj-touchpoints") return "customerJourneyDrillDown";
-  if (input.childDataDomain === "customerJourney") return "customerJourneyDrillDown";
-  if (input.childId === "demo-scheduling") return "demoScheduling";
-  if (input.childId === "demo-attribution") return "demoAttribution";
-  if (input.childDataDomain === "demoAnalytics") return "demoScheduling";
-  if (input.childId === "process-bottlenecks" || input.childId === "process-velocity") return "processBottlenecks";
-  if (input.childId === "process-health" || input.childId === "process-throughput") return "processHealth";
-  if (input.childDataDomain === "processAnalytics") return "processBottlenecks";
-  return "snapshot";
+  return (
+    (CHILD_ID_TO_RENDER_KIND as Record<string, AnalyticsChildRenderKind>)[input.childId] ??
+    (DATA_DOMAIN_TO_RENDER_KIND as Record<string, AnalyticsChildRenderKind>)[input.childDataDomain] ??
+    "snapshot"
+  );
 }
 
 function sectionCacheKey(sectionId: string, rangeQuery: string): string {
@@ -197,6 +227,8 @@ function SnapshotCards({
   payload: Record<string, unknown> | null;
   errors?: string[];
 }) {
+  const summary = useMemo(() => summarizePayload(payload ?? {}), [payload]);
+
   if (!payload) {
     if (errors && errors.length > 0) {
       return (
@@ -212,8 +244,6 @@ function SnapshotCards({
       </div>
     );
   }
-
-  const summary = useMemo(() => summarizePayload(payload), [payload]);
 
   if (summary.scalarEntries.length === 0) {
     return (
@@ -373,17 +403,9 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     },
   });
 
-  if (!primary) {
-    return (
-      <div className="p-6 text-sm text-muted-foreground">
-        Unknown section. <Link href="/analytics" className="text-primary">Back to analytics</Link>
-      </div>
-    );
-  }
-
   const analyticsData = resource.data?.analyticsData ?? null;
   const auxPayload = resource.data?.auxPayload ?? null;
-  const title = child?.label ?? primary.label;
+  const title = child?.label ?? primary?.label ?? "Analytics";
 
   const primaryContent = useMemo(() => {
     if (sectionId === "ads-traffic") return <MarketingTabNew data={analyticsData} />;
@@ -414,6 +436,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     // Sales
     if (renderKind === "sales-hubspot") return <SalesHubspotTab data={analyticsData} />;
     if (renderKind === "sales-stripe") return <SalesStripeTab data={analyticsData} />;
+    if (renderKind === "sales-performance") return <SalesPerformanceView pack={analyticsData?.salesPerformance ?? null} />;
     if (renderKind === "sales-google-workspace") return <GenericWorkspaceTab data={analyticsData} />;
     if (renderKind === "sales-slack") return <GenericSlackTab data={analyticsData} />;
     // Ads & Traffic
@@ -436,6 +459,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     if (renderKind === "flowRisk") return <FlowRiskView payload={auxPayload} />;
     if (renderKind === "observability") return <ObservabilityView payload={auxPayload} />;
     if (renderKind === "customerJourneyDrillDown") return <CustomerJourneyDrillDown data={analyticsData} />;
+    if (renderKind === "customerJourneyConversion") return <CustomerJourneyConversionTab data={analyticsData} />;
     if (renderKind === "demoScheduling") return <DemoSchedulingView data={analyticsData} />;
     if (renderKind === "demoAttribution") return <DemoAttributionView data={analyticsData} />;
     if (renderKind === "processBottlenecks") return <ProcessBottlenecksView data={analyticsData} />;
@@ -462,10 +486,21 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         errors={domainErrors}
       />
     );
-  }, [child, analyticsData, auxPayload]);
+  }, [child, analyticsData, auxPayload, sectionId]);
+
+  if (!primary) {
+    return (
+      <div className="p-6 text-sm text-muted-foreground">
+        Unknown section.{" "}
+        <Link href="/analytics" className="text-primary">
+          Back to analytics
+        </Link>
+      </div>
+    );
+  }
 
   return (
-    <div className="h-full space-y-4 overflow-y-auto p-4">
+    <div className="h-full space-y-6 overflow-y-auto p-6 lg:p-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground">{title}</h1>

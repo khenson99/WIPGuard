@@ -20,10 +20,15 @@ import {
   computeBudgetSummary,
   type BudgetActualItem,
 } from "@/lib/analytics/budget-variance";
+import {
+  defaultDateRange,
+  endDateForPeriod,
+  type BudgetPeriod,
+} from "@/lib/analytics/budget-period";
 import { computeVariance, fmtDelta, runwayColor } from "@/lib/analytics/finance-utils";
 import { computeFinancialGoals, type FinancialGoal } from "@/lib/analytics/finance-modeling";
 
-type BudgetPeriodApi = "MONTHLY" | "QUARTERLY" | "ANNUAL";
+type BudgetPeriodApi = BudgetPeriod;
 type BudgetCategoryApi = "COGS" | "PAYROLL" | "MARKETING" | "INFRASTRUCTURE" | "OPS" | "OTHER";
 
 type BudgetLineItemApi = {
@@ -53,37 +58,6 @@ const CATEGORY_CONFIG: Array<{ key: BudgetCategoryApi; label: string }> = [
   { key: "OTHER", label: "Other" },
 ];
 
-function formatDateInput(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function parseDateInput(value: string): Date | null {
-  if (!value) return null;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return null;
-  return date;
-}
-
-function addMonths(date: Date, months: number): Date {
-  const d = new Date(date);
-  d.setMonth(d.getMonth() + months);
-  return d;
-}
-
-function endDateForPeriod(startDate: string, period: BudgetPeriodApi): string {
-  const parsed = parseDateInput(startDate);
-  if (!parsed) return "";
-  const months = period === "MONTHLY" ? 1 : period === "QUARTERLY" ? 3 : 12;
-  const end = addMonths(parsed, months);
-  end.setDate(end.getDate() - 1);
-  return formatDateInput(end);
-}
-
-function defaultDateRange(period: BudgetPeriodApi): { start: string; end: string } {
-  const now = new Date();
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  return { start: formatDateInput(start), end: endDateForPeriod(formatDateInput(start), period) };
-}
 
 function emptyAmounts(): Record<BudgetCategoryApi, string> {
   return {
@@ -151,14 +125,7 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
 
   /* ── Empty state ──────────────────────────────────── */
 
-  if (!data?.stripe && !data?.mercury) {
-    return (
-      <FinanceDataEmptyState
-        provider="Finance"
-        reasons={["No Stripe or Mercury data"]}
-      />
-    );
-  }
+  const hasFinanceData = Boolean(data?.stripe || data?.mercury);
 
   const loadBudgets = useCallback(async () => {
     setBudgetsLoading(true);
@@ -179,8 +146,9 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
   }, []);
 
   useEffect(() => {
+    if (!hasFinanceData) return;
     void loadBudgets();
-  }, [loadBudgets]);
+  }, [hasFinanceData, loadBudgets]);
 
   const activeBudget = budgets[0] ?? null;
 
@@ -206,6 +174,7 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
   }, []);
 
   useEffect(() => {
+    if (!hasFinanceData) return;
     if (formInitialized || budgetsLoading) return;
     if (activeBudget) {
       seedFormFromBudget(activeBudget);
@@ -215,7 +184,14 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
       setFormOpen(true);
     }
     setFormInitialized(true);
-  }, [activeBudget, budgetsLoading, formInitialized, seedFormDefaults, seedFormFromBudget]);
+  }, [
+    activeBudget,
+    budgetsLoading,
+    formInitialized,
+    hasFinanceData,
+    seedFormDefaults,
+    seedFormFromBudget,
+  ]);
 
   const budgetAmounts = useMemo(() => {
     if (!activeBudget || !activeBudget.lineItems?.length) return undefined;
@@ -458,6 +434,15 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
   );
 
   /* ── Render ───────────────────────────────────────── */
+
+  if (!hasFinanceData) {
+    return (
+      <FinanceDataEmptyState
+        provider="Finance"
+        reasons={["No Stripe or Mercury data"]}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">

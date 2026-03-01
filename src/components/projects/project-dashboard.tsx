@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
@@ -12,6 +12,8 @@ import {
   CheckCircle2,
   Circle,
   FilterX,
+  Loader2,
+  X,
 } from "lucide-react";
 import { ProjectCard } from "./project-card";
 import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
@@ -100,8 +102,13 @@ export function ProjectDashboard() {
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [filterStatus, setFilterStatus] = useState<ProjectStatus | "">("");
   const [filterDepartment, setFilterDepartment] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedViewId, setSelectedViewId] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showSaveViewModal, setShowSaveViewModal] = useState(false);
+  const [saveViewName, setSaveViewName] = useState("");
+  const [savingView, setSavingView] = useState(false);
+  const saveViewInputRef = useRef<HTMLInputElement>(null);
 
   const resource = useDashboardResource<ProjectDashboardData>({
     cacheKey: PROJECT_DASHBOARD_CACHE_KEY,
@@ -183,8 +190,16 @@ export function ProjectDashboard() {
     let list = projects;
     if (filterStatus) list = list.filter((project) => project.status === filterStatus);
     if (filterDepartment) list = list.filter((project) => project.departmentId === filterDepartment);
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (project) =>
+          project.name.toLowerCase().includes(q) ||
+          (project.description && project.description.toLowerCase().includes(q))
+      );
+    }
     return list;
-  }, [projects, filterDepartment, filterStatus]);
+  }, [projects, filterDepartment, filterStatus, searchQuery]);
 
   const stats = useMemo(() => {
     const total = projects.length;
@@ -215,7 +230,7 @@ export function ProjectDashboard() {
     return Array.from(grouped.values()).filter((lane) => lane.projects.length > 0);
   }, [departments, filteredProjects]);
 
-  const hasFilters = Boolean(filterStatus || filterDepartment);
+  const hasFilters = Boolean(filterStatus || filterDepartment || searchQuery);
 
   const applySavedView = (viewId: string) => {
     setActionError(null);
@@ -233,32 +248,64 @@ export function ProjectDashboard() {
     setFilterDepartment(defaults.filterDepartment);
   };
 
-  const saveCurrentAsView = async () => {
+  const openSaveViewModal = () => {
     setActionError(null);
-    const name = window.prompt("Saved view name");
-    if (!name) return;
-
-    const response = await fetch("/api/views", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        scope: "projects",
-        name,
-        config: {
-          defaultLayout: viewMode,
-          filterStatus: filterStatus || null,
-          filterDepartment: filterDepartment || null,
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      setActionError(`Could not save view (${response.status}).`);
-      return;
-    }
-
-    await resource.refresh();
+    setSaveViewName("");
+    setShowSaveViewModal(true);
   };
+
+  const closeSaveViewModal = () => {
+    if (savingView) return;
+    setShowSaveViewModal(false);
+    setSaveViewName("");
+  };
+
+  const submitSaveView = async () => {
+    const trimmed = saveViewName.trim();
+    if (!trimmed) return;
+
+    setSavingView(true);
+    try {
+      const response = await fetch("/api/views", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scope: "projects",
+          name: trimmed,
+          config: {
+            defaultLayout: viewMode,
+            filterStatus: filterStatus || null,
+            filterDepartment: filterDepartment || null,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        setActionError(`Could not save view (${response.status}).`);
+        return;
+      }
+
+      await resource.refresh();
+      setShowSaveViewModal(false);
+      setSaveViewName("");
+    } catch {
+      setActionError("Could not save view. Please try again.");
+    } finally {
+      setSavingView(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!showSaveViewModal) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeSaveViewModal();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    // Auto-focus the input after the modal renders
+    requestAnimationFrame(() => saveViewInputRef.current?.focus());
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [showSaveViewModal]);
 
   if (resource.loading && !resource.data) {
     return <DashboardLoadingState message="Loading projects dashboard..." className="h-[50vh]" />;
@@ -350,11 +397,21 @@ export function ProjectDashboard() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search projects..."
+          aria-label="Search projects"
+          className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
+        />
+
         <select
           value={selectedViewId}
           onChange={(event) => applySavedView(event.target.value)}
           className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground"
           disabled={savedViews.length === 0}
+          aria-label="Saved views"
         >
           {savedViews.map((view) => (
             <option key={view.id} value={view.id}>
@@ -364,7 +421,7 @@ export function ProjectDashboard() {
         </select>
 
         <button
-          onClick={saveCurrentAsView}
+          onClick={openSaveViewModal}
           className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
         >
           <BookmarkPlus className="h-3.5 w-3.5" />
@@ -375,6 +432,7 @@ export function ProjectDashboard() {
           value={filterStatus}
           onChange={(event) => setFilterStatus(event.target.value as ProjectStatus | "")}
           className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground"
+          aria-label="Filter by status"
         >
           {STATUS_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
@@ -387,6 +445,7 @@ export function ProjectDashboard() {
           value={filterDepartment}
           onChange={(event) => setFilterDepartment(event.target.value)}
           className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground"
+          aria-label="Filter by department"
         >
           <option value="">All Departments</option>
           {departments.map((department) => (
@@ -401,6 +460,7 @@ export function ProjectDashboard() {
             onClick={() => {
               setFilterStatus("");
               setFilterDepartment("");
+              setSearchQuery("");
             }}
             className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
           >
@@ -409,7 +469,7 @@ export function ProjectDashboard() {
           </button>
         ) : null}
 
-        <div className="ml-auto flex rounded-lg border border-border">
+        <div className="ml-auto flex rounded-lg border border-border" role="group" aria-label="View mode">
           <button
             onClick={() => setViewMode("grid")}
             className={`rounded-l-lg px-3 py-2 text-sm ${
@@ -418,6 +478,8 @@ export function ProjectDashboard() {
                 : "bg-card text-muted-foreground hover:text-foreground"
             }`}
             title="Grid view"
+            aria-label="Switch to grid view"
+            aria-pressed={viewMode === "grid"}
           >
             <LayoutGrid className="h-4 w-4" />
           </button>
@@ -429,6 +491,8 @@ export function ProjectDashboard() {
                 : "bg-card text-muted-foreground hover:text-foreground"
             }`}
             title="Swim lane view"
+            aria-label="Switch to swim lane view"
+            aria-pressed={viewMode === "swimlane"}
           >
             <Rows3 className="h-4 w-4" />
           </button>
@@ -440,6 +504,8 @@ export function ProjectDashboard() {
                 : "bg-card text-muted-foreground hover:text-foreground"
             }`}
             title="List view"
+            aria-label="Switch to list view"
+            aria-pressed={viewMode === "list"}
           >
             <List className="h-4 w-4" />
           </button>
@@ -508,7 +574,15 @@ export function ProjectDashboard() {
                 <tr
                   key={project.id}
                   onClick={() => router.push(`/projects/${project.id}`)}
-                  className="cursor-pointer hover:bg-secondary/40"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      router.push(`/projects/${project.id}`);
+                    }
+                  }}
+                  tabIndex={0}
+                  role="link"
+                  className="cursor-pointer hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
                 >
                   <td className="px-4 py-2.5 font-medium text-foreground">{project.name}</td>
                   <td className="px-4 py-2.5 text-xs text-muted-foreground">{project.status}</td>
@@ -525,6 +599,84 @@ export function ProjectDashboard() {
           </table>
         </div>
       )}
+
+      {showSaveViewModal ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={closeSaveViewModal}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="save-view-title"
+            className="relative w-full max-w-md rounded-xl border border-border bg-card shadow-lg focus:outline-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border px-6 py-4">
+              <h2 id="save-view-title" className="text-lg font-semibold text-foreground">
+                Save Current View
+              </h2>
+              <button
+                onClick={closeSaveViewModal}
+                disabled={savingView}
+                className="rounded-md p-2 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                aria-label="Close dialog"
+                title="Close"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                submitSaveView();
+              }}
+              className="space-y-5 px-6 py-5"
+            >
+              <div>
+                <label htmlFor="save-view-name" className="mb-1 block text-xs font-medium text-muted-foreground">
+                  View Name
+                </label>
+                <input
+                  ref={saveViewInputRef}
+                  id="save-view-name"
+                  value={saveViewName}
+                  onChange={(e) => setSaveViewName(e.target.value)}
+                  className="modal-input w-full rounded-md border px-3 py-2 text-sm"
+                  placeholder="e.g. Active Engineering"
+                  disabled={savingView}
+                />
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeSaveViewModal}
+                  disabled={savingView}
+                  className="btn-ghost-muted rounded-lg border border-border px-4 py-2 text-sm disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingView || !saveViewName.trim()}
+                  className="btn-primary-theme flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+                >
+                  {savingView ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save View"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

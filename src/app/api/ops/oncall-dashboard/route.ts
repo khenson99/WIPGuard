@@ -169,19 +169,3 @@ export async function GET(): Promise<NextResponse> {
  * GET /api/ops/oncall-dashboard/runbooks
  * (handled by separate route file if needed, but embedded here for simplicity)
  */
-
-// Export ring buffer push functions for use by instrumentation callers
-export function pushLog(entry: StructuredLogEntry): void {
-  recentLogs.unshift(entry);
-  if (recentLogs.length > 200) recentLogs.length = 200;
-}
-
-export function pushMetric(point: MetricPoint): void {
-  recentMetrics.unshift(point);
-  if (recentMetrics.length > 500) recentMetrics.length = 500;
-}
-
-export function pushTrace(span: TraceSpan): void {
-  recentTraces.unshift(span);
-  if (recentTraces.length > 100) recentTraces.length = 100;
-}

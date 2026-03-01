@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Play, Save, Send, Plus, Trash2 } from "lucide-react";
@@ -61,6 +61,9 @@ export default function AutomationBuilderPage() {
   const [edges, setEdges] = useState<WorkflowEdge[]>([]);
   const [selectedNodeKey, setSelectedNodeKey] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string>("");
+  const [deleteConfirm, setDeleteConfirm] = useState<{nodeId: string; nodeName: string} | null>(null);
+  const [editingNodeField, setEditingNodeField] = useState<{nodeId: string, field: string, value: string} | null>(null);
+  const inlineInputRef = useRef<HTMLInputElement>(null);
 
   const validation = useMemo(
     () =>
@@ -128,6 +131,12 @@ export default function AutomationBuilderPage() {
       controller.abort();
     };
   }, [cacheKey, workflowId]);
+
+  useEffect(() => {
+    if (editingNodeField && inlineInputRef.current) {
+      inlineInputRef.current.focus();
+    }
+  }, [editingNodeField]);
 
   const selectedNode = nodes.find((node) => node.key === selectedNodeKey) || null;
 
@@ -288,21 +297,50 @@ export default function AutomationBuilderPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          {providers.length > 0 ? `Providers: ${providers.join(", ")}` : "No providers selected"}
-          <button
-            onClick={() => {
-              const value = window.prompt("Providers (comma separated, e.g. SLACK,HUBSPOT)", providers.join(","));
-              if (!value) return;
-              const next = value
-                .split(",")
-                .map((item) => item.trim().toUpperCase())
-                .filter(Boolean);
-              setProviders(Array.from(new Set(next)));
-            }}
-            className="rounded-md border border-border bg-card px-2 py-1 hover:text-foreground"
-          >
-            Edit Providers
-          </button>
+          {editingNodeField?.nodeId === "providers" && editingNodeField?.field === "providers" ? (
+            <input
+              ref={inlineInputRef}
+              type="text"
+              value={editingNodeField.value}
+              onChange={(event) =>
+                setEditingNodeField((prev) =>
+                  prev ? { ...prev, value: event.target.value } : prev
+                )
+              }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  const next = editingNodeField.value
+                    .split(",")
+                    .map((item) => item.trim().toUpperCase())
+                    .filter(Boolean);
+                  setProviders(Array.from(new Set(next)));
+                  setEditingNodeField(null);
+                } else if (event.key === "Escape") {
+                  setEditingNodeField(null);
+                }
+              }}
+              onBlur={() => setEditingNodeField(null)}
+              className="rounded-md border border-primary bg-card px-2 py-1 text-xs text-foreground outline-none"
+              placeholder="e.g. SLACK,HUBSPOT"
+              autoFocus
+            />
+          ) : (
+            <>
+              {providers.length > 0 ? `Providers: ${providers.join(", ")}` : "No providers selected"}
+              <button
+                onClick={() =>
+                  setEditingNodeField({
+                    nodeId: "providers",
+                    field: "providers",
+                    value: providers.join(","),
+                  })
+                }
+                className="rounded-md border border-border bg-card px-2 py-1 hover:text-foreground"
+              >
+                Edit Providers
+              </button>
+            </>
+          )}
           {saveMessage && <span className="text-primary">{saveMessage}</span>}
         </div>
       </div>
@@ -410,7 +448,10 @@ export default function AutomationBuilderPage() {
               <p className="mt-1 text-xs text-muted-foreground">Select a node from canvas.</p>
             ) : (
               <div className="mt-2 space-y-2">
+                <label htmlFor="node-label" className="text-[11px] font-medium text-muted-foreground">Label</label>
                 <input
+                  id="node-label"
+                  aria-label="Node label"
                   value={selectedNode.label}
                   onChange={(event) =>
                     setNodes((current) =>
@@ -423,7 +464,10 @@ export default function AutomationBuilderPage() {
                   placeholder="Node label"
                 />
 
+                <label htmlFor="node-type" className="text-[11px] font-medium text-muted-foreground">Type</label>
                 <select
+                  id="node-type"
+                  aria-label="Node type"
                   value={selectedNode.type}
                   onChange={(event) =>
                     setNodes((current) =>
@@ -446,9 +490,11 @@ export default function AutomationBuilderPage() {
                   <option value="DELAY">DELAY</option>
                 </select>
 
+                <p className="text-[11px] font-medium text-muted-foreground">Position</p>
                 <div className="grid grid-cols-2 gap-2">
                   <input
                     type="number"
+                    aria-label="X position"
                     value={selectedNode.positionX}
                     onChange={(event) =>
                       setNodes((current) =>
@@ -464,6 +510,7 @@ export default function AutomationBuilderPage() {
                   />
                   <input
                     type="number"
+                    aria-label="Y position"
                     value={selectedNode.positionY}
                     onChange={(event) =>
                       setNodes((current) =>
@@ -479,7 +526,10 @@ export default function AutomationBuilderPage() {
                   />
                 </div>
 
+                <label htmlFor="node-config" className="text-[11px] font-medium text-muted-foreground">Configuration (JSON)</label>
                 <textarea
+                  id="node-config"
+                  aria-label="Node configuration JSON"
                   value={JSON.stringify(selectedNode.config || {}, null, 2)}
                   onChange={(event) => {
                     try {
@@ -497,7 +547,7 @@ export default function AutomationBuilderPage() {
                 />
 
                 <button
-                  onClick={() => removeNode(selectedNode.key)}
+                  onClick={() => setDeleteConfirm({ nodeId: selectedNode.key, nodeName: selectedNode.label })}
                   className="rounded-md border border-border bg-background px-2 py-1.5 text-xs text-red-500 hover:text-red-400"
                 >
                   Delete Node
@@ -519,6 +569,35 @@ export default function AutomationBuilderPage() {
           </section>
         </aside>
       </div>
+
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-lg">
+            <h2 className="text-sm font-semibold text-foreground">Delete this node?</h2>
+            <p className="mt-2 text-xs text-muted-foreground">
+              This will remove <span className="font-medium text-foreground">{deleteConfirm.nodeName}</span> and
+              disconnect any linked nodes.
+            </p>
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  removeNode(deleteConfirm.nodeId);
+                  setDeleteConfirm(null);
+                }}
+                className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs text-red-500 hover:bg-red-500/20"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

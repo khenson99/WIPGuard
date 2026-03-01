@@ -1,6 +1,8 @@
 import {
   LayoutDashboard,
   FolderKanban,
+  CalendarDays,
+  Handshake,
   CheckSquare,
   Gauge,
   Megaphone,
@@ -50,6 +52,8 @@ export function buildNavItems(): NavItem[] {
   const topStatic: NavItem[] = [
     { id: "dashboard", href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "projects", href: "/projects", label: "Projects", icon: FolderKanban },
+    { id: "conferences", href: "/conferences", label: "Conferences", icon: CalendarDays },
+    { id: "deals", href: "/deals", label: "Deals", icon: Handshake },
     { id: "tasks", href: "/tasks", label: "Tasks", icon: CheckSquare },
     { id: "whip", href: "/whip", label: "Whip View", icon: Gauge },
   ];
@@ -71,7 +75,6 @@ export function buildNavItems(): NavItem[] {
   });
 
   const newPages: NavItem[] = [
-    { id: "customer-journey", href: "/analytics/customer-journey", label: "Customer Journey", icon: Route },
     { id: "ai-insights", href: "/analytics/ai-insights", label: "AI Insights", icon: Sparkles },
   ];
 

@@ -7,6 +7,7 @@ import {
 import type { AnalyticsDashboardData, DealStage } from "@/lib/analytics/types";
 import { StatCard } from "./stat-card";
 import { RingStat } from "./bar-display";
+import { RepScoreboardCard } from "./rep-scoreboard-card";
 
 function fmt$(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
@@ -129,6 +130,12 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
         </div>
       </div>
 
+      <RepScoreboardCard
+        rows={funnel.dealsByRep ?? []}
+        deals={data.hubspot.deals ?? []}
+        stripeChurnEvents={data.stripe?.subscriptions?.recentChurnEvents ?? []}
+      />
+
       {/* Bottleneck Analysis + Terminal Stages */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Bottleneck Alerts */}
@@ -186,7 +193,7 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
             />
           </div>
           <div className="space-y-2">
-            {terminalStages
+            {[...terminalStages]
               .sort((a, b) => b.count - a.count)
               .map((stage) => (
                 <div key={stage.stageId} className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2">
@@ -227,7 +234,7 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
                 </tr>
               </thead>
               <tbody>
-                {funnel.dealsBySource
+                {[...funnel.dealsBySource]
                   .sort((a, b) => b.value - a.value)
                   .map((s, i) => {
                     const share = funnel.totalDeals > 0 ? (s.count / funnel.totalDeals) * 100 : 0;

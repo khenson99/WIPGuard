@@ -7,11 +7,13 @@ import {
   ChevronRight,
   Clock,
   Expand,
+  Info,
   Minimize2,
   RefreshCw,
   Pause,
   Play,
   User,
+  X,
   XCircle,
   Zap,
   CalendarClock,
@@ -108,17 +110,32 @@ export function StandupView() {
   const [timerRunning, setTimerRunning] = useState(false);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [staleThreshold] = useState(() => new Date(Date.now() - 3 * 24 * 60 * 60 * 1000));
+  const [error, setError] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: "error" | "info" }>>([]);
+
+  const addToast = useCallback((message: string, type: "error" | "info") => {
+    const id = Date.now();
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  }, []);
+
+  const removeToast = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
 
   const fetchStandup = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/standup");
-      if (res.ok) {
-        const json = await res.json();
-        setData(json);
-      }
-    } catch {
-      // silently handle
+      if (!res.ok) throw new Error("Failed to fetch standup data");
+      const json = await res.json();
+      setData(json);
+      setError(null);
+    } catch (err) {
+      setError("Failed to load standup data. Please check your connection.");
+      console.error("Standup fetch failed:", err);
     } finally {
       setLoading(false);
     }
@@ -149,13 +166,13 @@ export function StandupView() {
   ) => {
     if (action === "defer") {
       const ok = await deferTask(taskId);
-      if (!ok) window.alert("Failed to defer task.");
+      if (!ok) addToast("Failed to defer task.", "error");
     } else if (action === "advance") {
       const ok = await advanceTask(taskId);
-      if (!ok) window.alert("Failed to advance task.");
+      if (!ok) addToast("Failed to advance task.", "error");
     } else if (action === "split") {
-      // Open task modal for splitting — for now just alert
-      window.alert("Split action: open the task to create subtasks.");
+      // Open task modal for splitting — for now show info toast
+      addToast("Split action: open the task to create subtasks.", "info");
     }
     fetchStandup();
   };
@@ -178,6 +195,21 @@ export function StandupView() {
   }
 
   if (!data) {
+    if (error) {
+      return (
+        <div className="flex h-64 flex-col items-center justify-center gap-4 p-6 text-center">
+          <AlertTriangle className="h-10 w-10 text-yellow-500" />
+          <p className="text-sm font-medium text-foreground">{error}</p>
+          <button
+            onClick={fetchStandup}
+            className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Retry
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="p-6 text-center text-muted-foreground">
         Failed to load standup data.
@@ -209,16 +241,22 @@ export function StandupView() {
           {/* Timer */}
           <div className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1">
             <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className={clsx(
-              "font-mono text-sm",
-              timer > 900 ? "text-red-500" : "text-foreground"
-            )}>
+            <span
+              role="timer"
+              aria-live="polite"
+              aria-atomic="true"
+              className={clsx(
+                "font-mono text-sm",
+                timer > 900 ? "text-red-500" : "text-foreground"
+              )}
+            >
               {formatTime(timer)}
             </span>
             <button
               onClick={() => setTimerRunning(!timerRunning)}
               className="rounded p-0.5 text-muted-foreground hover:text-foreground"
               title={timerRunning ? "Pause timer" : "Start timer"}
+              aria-label={timerRunning ? "Pause timer" : "Start timer"}
             >
               {timerRunning ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
             </button>
@@ -239,6 +277,8 @@ export function StandupView() {
                 : "border-border bg-card text-muted-foreground hover:text-foreground"
             )}
             title="Facilitator mode for screen-share"
+            aria-label={facilitatorMode ? "Exit facilitator mode" : "Enter facilitator mode"}
+            aria-pressed={facilitatorMode}
           >
             {facilitatorMode ? <Minimize2 className="h-3.5 w-3.5" /> : <Expand className="h-3.5 w-3.5" />}
             {facilitatorMode ? "Exit Facilitator" : "Facilitator Mode"}
@@ -249,6 +289,7 @@ export function StandupView() {
             onClick={fetchStandup}
             className="rounded-md border border-border bg-card p-1.5 text-muted-foreground hover:text-foreground"
             title="Refresh"
+            aria-label="Refresh standup data"
           >
             <RefreshCw className={clsx("h-3.5 w-3.5", loading && "animate-spin")} />
           </button>
@@ -359,7 +400,7 @@ export function StandupView() {
       </div>
 
       {/* WIP status bar */}
-      <div className="flex items-center gap-3 border-t border-border bg-card px-4 py-2">
+      <div role="status" aria-label="WIP limits" className="flex items-center gap-3 border-t border-border bg-card px-4 py-2">
         <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           WIP
         </span>
@@ -380,6 +421,37 @@ export function StandupView() {
           </div>
         ))}
       </div>
+
+      {/* Toast notifications */}
+      {toasts.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className={clsx(
+                "flex items-center gap-2 rounded-lg border px-3 py-2.5 shadow-lg",
+                toast.type === "error"
+                  ? "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400"
+                  : "border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400"
+              )}
+            >
+              {toast.type === "error" ? (
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              ) : (
+                <Info className="h-4 w-4 flex-shrink-0" />
+              )}
+              <span className="text-xs font-medium">{toast.message}</span>
+              <button
+                onClick={() => removeToast(toast.id)}
+                className="ml-1 flex-shrink-0 rounded p-0.5 hover:bg-black/10 dark:hover:bg-white/10"
+                title="Dismiss"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -492,6 +564,8 @@ function TaskRow({
       <button
         onClick={onToggle}
         className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
+        aria-expanded={expanded}
+        aria-label={`Toggle details for ${task.title}`}
       >
         <div
           className="h-2 w-2 flex-shrink-0 rounded-full"

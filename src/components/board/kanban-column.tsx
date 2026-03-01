@@ -94,8 +94,8 @@ export function KanbanColumn({
   return (
     <div
       className={clsx(
-        "flex h-full flex-col",
-        !hideHeader && "rounded-lg bg-column-bg",
+        "flex h-full flex-col backdrop-blur-md transition-all",
+        !hideHeader && "rounded-xl bg-column-bg/80 border border-border/40 shadow-sm hover:shadow-md",
         !hideHeader && (isCompact ? "w-64 min-w-[16rem]" : "w-72 min-w-[18rem]")
       )}
     >
@@ -103,24 +103,24 @@ export function KanbanColumn({
       {!hideHeader && (
         <div
           className={clsx(
-            "flex items-center justify-between rounded-t-lg border-b px-3 py-2.5",
+            "flex items-center justify-between rounded-t-xl border-b px-4 py-3 bg-gradient-to-b from-transparent to-background/20",
             isOverLimit
               ? "border-wip-over-border bg-wip-over-bg"
               : isAtLimit
                 ? "border-wip-at-border bg-wip-at-bg"
-                : "border-column-border bg-column-header"
+                : "border-border/50 bg-column-header/50"
           )}
         >
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-foreground">
+          <div className="flex items-center gap-2.5">
+            <h3 className="text-sm font-bold tracking-tight text-foreground">
               {column.label}
             </h3>
             <span
               className={clsx(
-                "rounded-full px-1.5 py-0.5 text-xs font-medium",
+                "rounded-md px-2 py-0.5 text-[11px] font-bold shadow-sm border",
                 isOverLimit
-                  ? "bg-wip-over-border text-wip-over-text"
-                  : "bg-tag-bg text-muted-foreground"
+                  ? "bg-red-500/10 text-red-500 border-red-500/20"
+                  : "bg-primary/10 text-primary border-primary/20"
               )}
             >
               {column.tasks.length}
@@ -129,8 +129,10 @@ export function KanbanColumn({
           {wipLimit > 0 && (
             <span
               className={clsx(
-                "text-xs font-medium",
-                isOverLimit ? "text-wip-over-text" : "text-muted-foreground"
+                "text-[11px] font-bold px-2 py-0.5 rounded-md border",
+                isOverLimit 
+                  ? "bg-red-500/10 text-red-500 border-red-500/20" 
+                  : "bg-muted/50 text-muted-foreground border-border/40"
               )}
             >
               WIP: {wipLimit}

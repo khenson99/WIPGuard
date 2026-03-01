@@ -4,12 +4,13 @@ import {
   LayoutGrid, CheckCircle2, Clock, AlertCircle,
   User, Calendar,
 } from "lucide-react";
-import type { AnalyticsDashboardData, CodaCard } from "@/lib/analytics/types";
+import type { AnalyticsDashboardData, CodaCard, CodaRecentSubmitter } from "@/lib/analytics/types";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
 import { RingStat } from "@/components/analytics/bar-display";
 import { StatCard } from "@/components/analytics/stat-card";
+import { AreaTrend } from "@/components/charts";
 import {
-  fmtN, timeAgo,
+  fmt$, fmtN, timeAgo,
   AlertBanner, DataTable, InsightCard,
   SectionCard, type DataTableColumn,
 } from "./dashboard-primitives";
@@ -19,11 +20,12 @@ interface AdsCodaKanbanTabProps {
 }
 
 export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
-  const coda = data?.codaKanban;
+  const coda = data?.coda ?? data?.codaKanban;
   const reasons = [
     ...(data?.errors ?? [])
-      .filter((entry) => entry.source === "codaKanban")
+      .filter((entry) => entry.source === "coda" || entry.source === "codaKanban")
       .map((entry) => entry.message),
+    ...(data?.freshness?.coda?.lastError ? [data.freshness.coda.lastError] : []),
     ...(data?.freshness?.codaKanban?.lastError ? [data.freshness.codaKanban.lastError] : []),
   ];
 
@@ -39,17 +41,25 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
   }
 
   const { totalCards, cardsByStatus, recentCards } = coda;
+  const downloaders = coda.rangeSummary?.submissions ?? 0;
+  const downloads = coda.rangeSummary?.cardsCreated ?? totalCards;
+  const unknownEmailCards = coda.rangeSummary?.unknownEmailCards ?? 0;
+  const downloadsPerDownloader = downloaders > 0 ? (downloads / downloaders).toFixed(2) : "—";
 
-  if (totalCards === 0 && cardsByStatus.length === 0) {
-    return (
-      <FinanceDataEmptyState
-        title="No Coda Kanban cards found"
-        message="Coda is connected, but no card data is available for this period."
-        reasons={reasons}
-        reconnectHref="/settings?tab=integrations"
-      />
-    );
-  }
+  const downloadsPrev = coda.rangeSummary?.downloadsPrev ?? null;
+  const downloadersPrev = coda.rangeSummary?.downloadersPrev ?? null;
+  const downloadsDeltaPct = coda.rangeSummary?.downloadsDeltaPct ?? null;
+  const downloadersDeltaPct = coda.rangeSummary?.downloadersDeltaPct ?? null;
+
+  const downloadsChange =
+    typeof downloadsDeltaPct === "number" ? `${downloadsDeltaPct >= 0 ? "+" : ""}${downloadsDeltaPct}% vs prev` : "— vs prev";
+  const downloadersChange =
+    typeof downloadersDeltaPct === "number" ? `${downloadersDeltaPct >= 0 ? "+" : ""}${downloadersDeltaPct}% vs prev` : "— vs prev";
+
+  const downloadsChangeType =
+    typeof downloadsDeltaPct === "number" ? (downloadsDeltaPct > 0 ? "positive" : downloadsDeltaPct < 0 ? "negative" : "neutral") : "neutral";
+  const downloadersChangeType =
+    typeof downloadersDeltaPct === "number" ? (downloadersDeltaPct > 0 ? "positive" : downloadersDeltaPct < 0 ? "negative" : "neutral") : "neutral";
 
   // ── Derived metrics ──
   const doneStatuses = ["done", "complete", "completed", "shipped", "closed"];
@@ -70,15 +80,15 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
   if (blockedCount > 0) {
     alerts.push({
       severity: blockedCount >= 3 ? "critical" : "warning",
-      title: `${blockedCount} card${blockedCount !== 1 ? "s" : ""} blocked`,
-      description: "Blocked cards stall progress. Review blockers and assign owners to unblock them.",
+      title: `${blockedCount} download${blockedCount !== 1 ? "s" : ""} blocked`,
+      description: "Blocked downloads stall progress. Review blockers and assign owners to unblock them.",
     });
   }
   if (completionRate < 20 && totalCards > 5) {
     alerts.push({
       severity: "warning",
       title: `Low completion rate: ${completionRate.toFixed(0)}%`,
-      description: "Less than 20% of cards are completed. Review prioritization and team capacity.",
+      description: "Less than 20% of downloads are completed. Review processing and ownership.",
     });
   }
 
@@ -87,20 +97,20 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
   if (completionRate >= 70) {
     insights.push({
       title: "Strong Completion Rate",
-      insight: `${completionRate.toFixed(0)}% of cards are completed. The board is progressing well.`,
+      insight: `${completionRate.toFixed(0)}% of downloads are completed. Processing looks healthy.`,
       severity: "success",
     });
   }
   if (inProgressCount > 0 && inProgressCount <= 5) {
     insights.push({
       title: "Focused WIP",
-      insight: `${inProgressCount} card${inProgressCount !== 1 ? "s" : ""} in progress — a manageable work-in-progress limit.`,
+      insight: `${inProgressCount} download${inProgressCount !== 1 ? "s" : ""} in progress — a manageable work-in-progress limit.`,
       severity: "success",
     });
   } else if (inProgressCount > 10) {
     insights.push({
       title: "High WIP Count",
-      insight: `${inProgressCount} cards in progress simultaneously. Consider reducing WIP to improve throughput and focus.`,
+      insight: `${inProgressCount} downloads in progress simultaneously. Consider reducing WIP to improve throughput and focus.`,
       action: "Prioritize and move lower-priority items back to backlog.",
       severity: "warning",
     });
@@ -110,7 +120,7 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
     if (topStatus.count > totalCards * 0.5 && !doneStatuses.some((d) => topStatus.status.toLowerCase().includes(d))) {
       insights.push({
         title: "Status Bottleneck",
-        insight: `"${topStatus.status}" holds ${topStatus.count} cards (${((topStatus.count / totalCards) * 100).toFixed(0)}% of total). This may indicate a workflow bottleneck.`,
+        insight: `"${topStatus.status}" holds ${topStatus.count} downloads (${((topStatus.count / totalCards) * 100).toFixed(0)}% of total). This may indicate a processing bottleneck.`,
         severity: "info",
       });
     }
@@ -119,8 +129,8 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
     const withAssignees = recentCards.filter((c) => c.assignee);
     if (withAssignees.length < recentCards.length * 0.5) {
       insights.push({
-        title: "Unassigned Cards",
-        insight: `${recentCards.length - withAssignees.length} of ${recentCards.length} recent cards have no assignee.`,
+        title: "Unassigned Downloads",
+        insight: `${recentCards.length - withAssignees.length} of ${recentCards.length} recent downloads have no assignee.`,
         action: "Assign owners to ensure accountability and progress tracking.",
         severity: "info",
       });
@@ -145,9 +155,120 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
     return DEFAULT_COLORS[index % DEFAULT_COLORS.length];
   }
 
+  // ── Recent submitters table ──
+  const recentSubmitters = coda.recentSubmitters ?? [];
+  const submitterColumns: DataTableColumn<CodaRecentSubmitter>[] = [
+    { key: "email", header: "Email", render: (r) => <span className="font-medium text-foreground">{r.email}</span> },
+    {
+      key: "creator",
+      header: "Name",
+      render: (r) => <span className="text-xs text-muted-foreground">{r.hubspotContact?.name ?? r.creator ?? "—"}</span>,
+    },
+    {
+      key: "hubspotContact",
+      header: "Position",
+      render: (r) => <span className="text-xs text-muted-foreground">{r.hubspotContact?.jobTitle ?? "—"}</span>,
+    },
+    {
+      key: "hubspotStatus",
+      header: "Company",
+      render: (r) => <span className="text-xs text-muted-foreground">{r.hubspotContact?.company ?? "—"}</span>,
+    },
+    {
+      key: "lastSubmittedAt",
+      header: "Last submitted",
+      align: "right",
+      render: (r) => (
+        <span
+          className="text-xs text-muted-foreground"
+          title={r.lastSubmittedAt ? new Date(r.lastSubmittedAt).toLocaleString() : ""}
+        >
+          {r.lastSubmittedAt ? timeAgo(r.lastSubmittedAt) : "—"}
+        </span>
+      ),
+    },
+    {
+      key: "cardsCreated",
+      header: "Downloads",
+      align: "right",
+      render: (r) => <span className="text-xs tabular-nums text-foreground">{fmtN(r.cardsCreated)}</span>,
+    },
+    {
+      key: "stripeStatus",
+      header: "Stripe",
+      render: (r) => {
+        const stripe = r.stripe ?? null;
+        if (!stripe?.matched || !stripe.customerId || !stripe.customerUrl) {
+          return <span className="text-xs text-muted-foreground">—</span>;
+        }
+        return (
+          <a
+            href={stripe.customerUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs font-medium text-primary hover:underline"
+            title={stripe.customerId}
+          >
+            {stripe.customerId}
+          </a>
+        );
+      },
+    },
+    {
+      key: "stripeSub",
+      header: "Sub",
+      render: (r) => <span className="text-xs text-muted-foreground">{r.stripe?.subscriptionStatus ?? "—"}</span>,
+    },
+    {
+      key: "stripeMrr",
+      header: "MRR",
+      align: "right",
+      render: (r) => (
+        <span className="text-xs tabular-nums text-foreground">
+          {typeof r.stripe?.mrr === "number" ? fmt$(r.stripe.mrr) : "—"}
+        </span>
+      ),
+    },
+    {
+      key: "stripePaid12mo",
+      header: "Paid (12mo)",
+      align: "right",
+      render: (r) => (
+        <span className="text-xs tabular-nums text-foreground">
+          {typeof r.stripe?.paid12mo === "number" ? fmt$(r.stripe.paid12mo) : "—"}
+        </span>
+      ),
+    },
+    {
+      key: "stripeLastPay",
+      header: "Last pay",
+      align: "right",
+      render: (r) => (
+        <span className="text-xs text-muted-foreground" title={r.stripe?.lastPaymentAt ? new Date(r.stripe.lastPaymentAt).toLocaleString() : ""}>
+          {r.stripe?.lastPaymentAt ? timeAgo(r.stripe.lastPaymentAt) : "—"}
+        </span>
+      ),
+    },
+    {
+      key: "hubspotSearchUrl",
+      header: "HubSpot",
+      align: "right",
+      render: (r) => (
+        <a
+          href={r.hubspotContact?.recordUrl ?? r.hubspotSearchUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs font-medium text-primary hover:underline"
+        >
+          {r.hubspotContact ? "Open record" : "Search"}
+        </a>
+      ),
+    },
+  ];
+
   // ── Recent cards table ──
   const cardColumns: DataTableColumn<CodaCard>[] = [
-    { key: "name", header: "Card", render: (r) => <span className="max-w-[250px] truncate font-medium text-foreground">{r.name}</span> },
+    { key: "name", header: "Download", render: (r) => <span className="max-w-[250px] truncate font-medium text-foreground">{r.name}</span> },
     { key: "status", header: "Status", render: (r) => (
       <span className="rounded-full bg-secondary/60 px-2 py-0.5 text-xs font-medium text-foreground">{r.status}</span>
     )},
@@ -171,6 +292,63 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
 
   return (
     <div className="space-y-6">
+      {/* Range Summary */}
+      <SectionCard
+        title="Range Summary"
+        subtitle={
+          coda.rangeSummary
+            ? `${coda.rangeSummary.from} → ${coda.rangeSummary.to}`
+            : "Selected date range"
+        }
+      >
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatCard
+            label="Downloaders"
+            value={fmtN(downloaders)}
+            change={downloadersChange}
+            changeType={downloadersChangeType}
+            subtitle={typeof downloadersPrev === "number" ? `Prev: ${fmtN(downloadersPrev)}` : undefined}
+            icon={User}
+          />
+          <StatCard
+            label="Whitepapers downloaded"
+            value={fmtN(downloads)}
+            change={downloadsChange}
+            changeType={downloadsChangeType}
+            subtitle={typeof downloadsPrev === "number" ? `Prev: ${fmtN(downloadsPrev)}` : undefined}
+            icon={LayoutGrid}
+          />
+          <StatCard label="Downloads / Downloader" value={downloadsPerDownloader} icon={Calendar} />
+          <StatCard label="Unknown-email downloads" value={fmtN(unknownEmailCards)} icon={AlertCircle} />
+        </div>
+      </SectionCard>
+
+      {/* Trend */}
+      {coda.trends?.downloadsDaily?.length ? (
+        <SectionCard title="Trend" subtitle="Daily downloads and downloaders">
+          <AreaTrend
+            data={(() => {
+              const downloadsDaily = coda.trends?.downloadsDaily ?? [];
+              const downloadersDaily = coda.trends?.downloadersDaily ?? [];
+              const byDate = new Map<string, { date: string; downloads: number; downloaders: number }>();
+              for (const entry of downloadsDaily) {
+                byDate.set(entry.date, { date: entry.date, downloads: entry.count, downloaders: 0 });
+              }
+              for (const entry of downloadersDaily) {
+                const existing = byDate.get(entry.date) ?? { date: entry.date, downloads: 0, downloaders: 0 };
+                existing.downloaders = entry.count;
+                byDate.set(entry.date, existing);
+              }
+              return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+            })()}
+            xKey="date"
+            yKeys={["downloads", "downloaders"]}
+            colors={["#fc5a29", "#818cf8"]}
+            height={260}
+          />
+        </SectionCard>
+      ) : null}
+
       {/* Alerts */}
       {alerts.length > 0 && (
         <div className="space-y-2">
@@ -183,7 +361,7 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
       {/* KPI Grid */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
-          label="Total Cards"
+          label="Total Downloads"
           value={totalCards.toString()}
           icon={LayoutGrid}
         />
@@ -206,6 +384,22 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
           iconColor={blockedCount > 0 ? "text-red-500" : "text-primary"}
         />
       </div>
+
+      {/* Recent Submitters */}
+      <SectionCard
+        title="Recent Downloaders"
+        subtitle={`${recentSubmitters.length} downloader${recentSubmitters.length !== 1 ? "s" : ""} (distinct emails)`}
+      >
+        <DataTable columns={submitterColumns} rows={recentSubmitters} emptyMessage="No downloaders in this range" />
+      </SectionCard>
+
+      {totalCards === 0 && cardsByStatus.length === 0 && (
+        <SectionCard title="No downloads in this range" subtitle="Coda is connected, but no downloads were recorded in the selected period.">
+          <p className="text-xs text-muted-foreground">
+            Try widening the date range, or verify the Coda doc/table selection in Integrations.
+          </p>
+        </SectionCard>
+      )}
 
       {/* Status Distribution + Completion */}
       <div className="grid gap-4 lg:grid-cols-2">
@@ -286,11 +480,11 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
 
       {/* Recent Cards Table */}
       {recentCards.length > 0 && (
-        <SectionCard title="Recent Cards" subtitle={`${recentCards.length} most recent card${recentCards.length !== 1 ? "s" : ""}`}>
+        <SectionCard title="Recent Downloads" subtitle={`${recentCards.length} most recent download${recentCards.length !== 1 ? "s" : ""}`}>
           <DataTable
             columns={cardColumns}
             rows={recentCards}
-            emptyMessage="No recent cards"
+            emptyMessage="No recent downloads"
           />
         </SectionCard>
       )}

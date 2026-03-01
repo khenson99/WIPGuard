@@ -9,9 +9,9 @@ interface ConnectionDotProps {
 }
 
 const STATUS_STYLES = {
-  connected: "bg-emerald-500",
-  stale: "bg-amber-500",
-  disconnected: "bg-red-500",
+  connected: "bg-emerald-400",
+  stale: "bg-amber-400",
+  disconnected: "bg-slate-300", // Softened from red-500 to a neutral tone
 } as const;
 
 const STATUS_LABELS = {

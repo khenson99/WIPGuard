@@ -47,8 +47,9 @@ describe("analytics hubspot fetcher", () => {
     const data = await fetchHubSpotData("hs-token");
     expect(data.funnel.totalDeals).toBe(4);
     expect(data._meta.diagnostics?.archivedIncluded).toBe(true);
-    expect((data._meta.diagnostics?.pagesFetched as any)?.active).toBe(2);
-    expect((data._meta.diagnostics?.pagesFetched as any)?.archived).toBe(1);
+    const pagesFetched = data._meta.diagnostics?.pagesFetched as Record<string, number> | undefined;
+    expect(pagesFetched?.active).toBe(2);
+    expect(pagesFetched?.archived).toBe(1);
   });
 
   it("computes activity-in-range metrics from stage history", async () => {

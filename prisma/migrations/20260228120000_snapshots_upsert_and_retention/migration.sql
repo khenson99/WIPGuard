@@ -18,4 +18,3 @@ WHERE "id" IN (
 -- Enforce one SUCCESS row and one ERROR row per key.
 CREATE UNIQUE INDEX "AnalyticsSnapshot_userId_providerKey_contextKey_rangePreset_toDate_status_key"
 ON "AnalyticsSnapshot"("userId", "providerKey", "contextKey", "rangePreset", "toDate", "status");
-

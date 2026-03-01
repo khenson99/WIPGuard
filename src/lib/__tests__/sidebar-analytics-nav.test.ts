@@ -39,4 +39,11 @@ describe("sidebar analytics navigation", () => {
     expect(aiInsights).toBeTruthy();
     expect(aiInsights?.href).toBe("/analytics/ai-insights");
   });
+
+  it("includes conferences navigation entry", () => {
+    const conferences = navItems.find((item) => item.id === "conferences");
+
+    expect(conferences).toBeTruthy();
+    expect(conferences?.href).toBe("/conferences");
+  });
 });

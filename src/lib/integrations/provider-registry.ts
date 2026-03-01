@@ -121,6 +121,15 @@ const INTEGRATION_PROVIDER_REGISTRY: readonly IntegrationProviderRegistryEntry[]
     envManaged: true,
     aliases: [],
   },
+  {
+    provider: IntegrationProvider.SEMRUSH,
+    slug: "semrush",
+    authType: "token",
+    snapshotKeys: ["semrush"],
+    settingsVisible: true,
+    envManaged: true,
+    aliases: [],
+  },
 ] as const;
 
 const PROVIDER_LOOKUP = new Map(

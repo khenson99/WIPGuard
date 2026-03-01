@@ -5,13 +5,21 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCredentials } from "@/lib/analytics/credentials";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
-import { fetchHubSpotData, fetchMercuryData, fetchStripeData } from "@/lib/analytics/fetchers";
+import {
+  buildSalesPerformancePack,
+  fetchHubSpotContacts,
+  fetchHubSpotData,
+  fetchMercuryData,
+  fetchStripeChargesByCustomer,
+  fetchStripeData,
+} from "@/lib/analytics/fetchers";
 import { fetchGAData, fetchWebflowData } from "@/lib/analytics/fetchers-ga-webflow";
 import {
   fetchGoogleAdsData,
   fetchMetaAdsData,
   fetchMetaPageData,
   fetchRedditAdsData,
+  fetchMetaInstagramData,
 } from "@/lib/analytics/fetchers-ads";
 import { fetchCodaData } from "@/lib/analytics/fetchers-coda";
 import { fetchSemrushData } from "@/lib/analytics/fetchers-semrush";
@@ -22,6 +30,11 @@ import { buildCustomerJourneyData } from "@/lib/analytics/customer-journey";
 import { buildDemoAnalyticsData } from "@/lib/analytics/demo-analytics";
 import { buildProcessAnalyticsData } from "@/lib/analytics/process-analytics";
 import { buildAiInsightsBundle, buildDistilledInsights } from "@/lib/analytics/insight-engine";
+import { buildProfitAndLossCore as buildProfitAndLoss } from "@/lib/analytics/pnl-builder";
+import { computeUnitEconomics } from "@/lib/analytics/unit-economics";
+import { buildDefaultScenarios, buildForecastScenario } from "@/lib/analytics/forecast-engine";
+import { computeBudgetActuals, computeBudgetSummary } from "@/lib/analytics/budget-variance";
+import { computeProgressPct } from "@/lib/analytics/finance-utils";
 import { createEmptyAnalyticsDashboardData, patchFreshnessWithStale } from "@/lib/analytics/response-shape";
 import {
   analyticsErrorFromReason,
@@ -38,19 +51,32 @@ import { buildAnalyticsRouteMeta } from "@/lib/analytics/route-meta";
 import type {
   AnalyticsDashboardData,
   AnalyticsRecommendation,
+  BudgetData,
+  BudgetLineItemData,
+  FinancialGoalData,
+  FinancialPlanningData,
+  ForecastAssumptions,
+  ForecastScenarioData,
+  GoalMetric,
+  GoalStatus,
   ProductSuccessData,
+  StripeData,
+  MercuryData,
+  HubSpotData,
 } from "@/lib/analytics/types";
 
 export const revalidate = 300;
 
 type DomainKey =
   | "hubspot"
+  | "salesPerformance"
   | "stripe"
   | "mercury"
   | "googleAnalytics"
   | "googleAds"
   | "metaAds"
   | "metaPage"
+  | "instagram"
   | "redditAds"
   | "webflow"
   | "coda"
@@ -79,6 +105,7 @@ const ALL_DOMAINS: DomainKey[] = [
   "googleAds",
   "metaAds",
   "metaPage",
+  "instagram",
   "redditAds",
   "webflow",
   "coda",
@@ -120,6 +147,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "googleAnalytics",
     "googleAds",
     "metaAds",
+    "instagram",
     "redditAds",
     "webflow",
     "semrush",
@@ -172,7 +200,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   ],
   "ads-google-analytics": ["googleAnalytics"],
   "ads-google-ads": ["googleAds"],
-  "ads-meta-ads": ["metaAds"],
+  "ads-meta-ads": ["metaAds", "metaPage", "instagram"],
   "ads-reddit-ads": ["redditAds", "redditOps"],
   "ads-webflow": ["webflow"],
   "ads-semrush": ["semrush"],
@@ -193,18 +221,18 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "customer-journey": [
     "hubspot", "stripe", "mercury", "googleWorkspace", "slack",
     "webflow", "coda", "googleAnalytics", "googleAds", "metaAds",
-    "redditAds", "pylon", "customerJourney",
+    "instagram", "redditAds", "pylon", "customerJourney",
     "lifecycleFunnel", "funnelJourney", "aiInsights", "recommendations", "distilledInsights",
   ],
-  "cj-overview": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "redditAds", "pylon", "customerJourney"],
-  "cj-touchpoints": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "redditAds", "pylon", "customerJourney"],
+  "cj-overview": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
+  "cj-touchpoints": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
 
   "demo-analytics": [
     "hubspot", "googleWorkspace", "demoAnalytics",
     "lifecycleFunnel", "funnelJourney", "aiInsights", "recommendations", "distilledInsights",
   ],
   "demo-scheduling": ["hubspot", "googleWorkspace", "demoAnalytics"],
-  "demo-attribution": ["hubspot", "googleAds", "metaAds", "redditAds", "googleAnalytics", "webflow", "demoAnalytics"],
+  "demo-attribution": ["hubspot", "googleAds", "metaAds", "instagram", "redditAds", "googleAnalytics", "webflow", "demoAnalytics"],
 
   "process-analytics": [
     "hubspot", "stripe", "processAnalytics",
@@ -214,6 +242,8 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "process-velocity": ["hubspot", "processAnalytics"],
   "process-health": ["hubspot", "stripe", "processAnalytics"],
   "process-throughput": ["hubspot", "processAnalytics"],
+
+  "sales-performance": ["salesPerformance"],
 };
 
 function requiredDomainsForSection(section: string | null): Set<DomainKey> {
@@ -246,6 +276,20 @@ function withTimeout<T>(fn: () => Promise<T>, timeoutMs: number, label: string):
 function normalizeLookupKey(value: string | null | undefined): string {
   return value?.trim().toLowerCase() ?? "";
 }
+
+type StripeCustomerLinkDelegateLike = {
+  findMany(args: {
+    where: {
+      userId: string;
+    };
+  }): Promise<
+    Array<{
+      hubspotDealId: string;
+      hubspotDealName: string | null;
+      stripeCustomerId: string;
+    }>
+  >;
+};
 
 async function hydrateStripeCustomerLinks(
   userId: string,
@@ -392,6 +436,148 @@ function buildRecommendations(data: AnalyticsDashboardData): AnalyticsRecommenda
   }
 
   return recommendations;
+}
+
+function isForecastAssumptions(value: unknown): value is ForecastAssumptions {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const c = value as Partial<ForecastAssumptions>;
+  return (
+    typeof c.revenueGrowthRate === "number" &&
+    typeof c.churnRateDelta === "number" &&
+    typeof c.burnRateDelta === "number" &&
+    typeof c.additionalMonthlyExpense === "number" &&
+    typeof c.additionalMonthlyRevenue === "number"
+  );
+}
+
+const DEFAULT_ASSUMPTIONS: ForecastAssumptions = {
+  revenueGrowthRate: 0,
+  churnRateDelta: 0,
+  burnRateDelta: 0,
+  additionalMonthlyExpense: 0,
+  additionalMonthlyRevenue: 0,
+};
+
+async function buildFinancialPlanningData(
+  userId: string,
+  data: AnalyticsDashboardData,
+): Promise<FinancialPlanningData> {
+  const stripe = data.stripe as StripeData | null;
+  const mercury = data.mercury as MercuryData | null;
+  const hubspot = data.hubspot as HubSpotData | null;
+
+  const [dbBudgets, dbGoals, dbForecasts] = await Promise.all([
+    prisma.budget.findMany({
+      where: { userId },
+      include: { lineItems: true },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.financialGoal.findMany({
+      where: { userId },
+      orderBy: { deadline: "asc" },
+    }),
+    prisma.forecastScenario.findMany({ where: { userId } }),
+  ]);
+
+  // --- P&L ---
+  const pnl = buildProfitAndLoss(stripe, mercury);
+
+  // --- Unit Economics ---
+  const unitEconomics = computeUnitEconomics(stripe, mercury, hubspot);
+
+  // --- Forecasts: defaults + custom saved scenarios ---
+  const defaultForecasts = buildDefaultScenarios(stripe, mercury);
+  const customForecasts: ForecastScenarioData[] = dbForecasts.map((s: { id: string; name: string; assumptions: unknown }) =>
+    buildForecastScenario(
+      stripe,
+      mercury,
+      isForecastAssumptions(s.assumptions) ? s.assumptions : DEFAULT_ASSUMPTIONS,
+      { id: s.id, name: s.name },
+    ),
+  );
+  const forecasts = [...defaultForecasts, ...customForecasts];
+
+  // --- Budgets with variance ---
+  const budgets: BudgetData[] = dbBudgets.map((b: { id: string; name: string; period: string; startDate: Date; endDate: Date; lineItems: { id: string; category: string; plannedAmount: number; notes: string | null }[] }) => {
+    const lineItems: BudgetLineItemData[] = computeBudgetActuals(
+      {
+        id: b.id,
+        name: b.name,
+        period: b.period.toLowerCase() as BudgetData["period"],
+        startDate: b.startDate.toISOString(),
+        endDate: b.endDate.toISOString(),
+        lineItems: b.lineItems.map((li: { id: string; category: string; plannedAmount: number; notes: string | null }) => ({
+          id: li.id,
+          category: li.category.toLowerCase() as BudgetLineItemData["category"],
+          plannedAmount: li.plannedAmount,
+          actualAmount: null,
+          variance: null,
+          variancePct: null,
+          notes: li.notes ?? undefined,
+        })),
+        totalPlanned: b.lineItems.reduce((s: number, li: { plannedAmount: number }) => s + li.plannedAmount, 0),
+        totalActual: null,
+        totalVariance: null,
+      },
+      mercury,
+    );
+    const summary = computeBudgetSummary(lineItems);
+    return {
+      id: b.id,
+      name: b.name,
+      period: b.period.toLowerCase() as BudgetData["period"],
+      startDate: b.startDate.toISOString(),
+      endDate: b.endDate.toISOString(),
+      lineItems,
+      totalPlanned: summary.totalPlanned,
+      totalActual: summary.totalActual,
+      totalVariance: summary.totalVariance,
+    };
+  });
+
+  // --- Goals with current progress ---
+  const currentMetrics: Record<string, number> = {
+    mrr: stripe?.revenue.mrr ?? 0,
+    arr: (stripe?.revenue.mrr ?? 0) * 12,
+    runway: mercury?.cashFlow.runway ?? 0,
+    burn_rate: mercury?.cashFlow.burnRate ?? 0,
+    net_cash_flow: mercury?.cashFlow.netCashFlow ?? 0,
+    revenue: stripe?.revenue.totalRevenue30d ?? 0,
+    customer_count: stripe?.subscriptions.active ?? 0,
+  };
+
+  const goals: FinancialGoalData[] = dbGoals.map((g: { id: string; metric: GoalMetric | string; targetValue: number; deadline: Date; }) => {
+    const metricKey = g.metric.toLowerCase() as GoalMetric;
+    const currentValue = currentMetrics[metricKey] ?? 0;
+    const direction = metricKey === "burn_rate" ? "lower" : "higher";
+    const progressPct = computeProgressPct(currentValue, g.targetValue, direction);
+    const isPastDeadline = new Date(g.deadline) < new Date();
+    let status: GoalStatus = "active";
+    const achieved =
+      direction === "lower"
+        ? currentValue <= g.targetValue
+        : currentValue >= g.targetValue;
+    if (achieved) status = "achieved";
+    else if (isPastDeadline) status = "missed";
+    return {
+      id: g.id,
+      metric: metricKey,
+      targetValue: g.targetValue,
+      currentValue,
+      progressPct,
+      deadline: g.deadline.toISOString(),
+      status,
+    };
+  });
+
+  return {
+    budgets,
+    activeBudget: budgets[0] ?? null,
+    forecasts,
+    goals,
+    pnl,
+    unitEconomics,
+  };
 }
 
 function providerForDomain(domain: DomainKey): "google_workspace" | "hubspot" | "slack" | "coda" | "reddit" | null {
@@ -601,7 +787,7 @@ export async function GET(request: Request) {
   });
 
   const fetchers = ([
-    {
+{
       key: "hubspot",
       fn: () =>
         creds.hubspotToken
@@ -663,6 +849,19 @@ export async function GET(request: Request) {
           : Promise.reject(new Error("Missing Meta Page credential")),
     },
     {
+      key: "instagram",
+      fn: () =>
+        creds.metaAccessToken && creds.metaInstagramAccountId
+          ? fetchMetaInstagramData(
+              creds.metaAccessToken,
+              creds.metaInstagramAccountId,
+              { pageId: creds.metaPageId ?? undefined },
+              fromDate,
+              toDate
+            )
+          : Promise.reject(new Error("Missing Instagram credential")),
+    },
+    {
       key: "redditAds",
       fn: () =>
         creds.redditClientId && creds.redditClientSecret && creds.redditRefreshToken && creds.redditAdAccountId
@@ -680,7 +879,7 @@ export async function GET(request: Request) {
       key: "webflow",
       fn: () =>
         creds.webflowApiToken && creds.webflowSiteId
-          ? fetchWebflowData(creds.webflowApiToken, creds.webflowSiteId)
+          ? fetchWebflowData(creds.webflowApiToken, creds.webflowSiteId, fromDate, toDate)
           : Promise.reject(new Error("Missing Webflow credential")),
     },
     {
@@ -701,7 +900,12 @@ export async function GET(request: Request) {
       key: "pylon",
       fn: () =>
         creds.pylonApiKey
-          ? fetchPylonData({ apiKey: creds.pylonApiKey, from: range.from, to: range.to })
+          ? fetchPylonData({
+              apiKey: creds.pylonApiKey,
+              from: range.from,
+              to: range.to,
+              baseUrl: creds.pylonBaseUrl ?? undefined,
+            })
           : Promise.reject(new Error("Missing Pylon credential")),
     },
     {
@@ -729,6 +933,11 @@ export async function GET(request: Request) {
       fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.REDDIT, from: fromDate, to: toDate }),
     },
   ] as FetchEntry[]).filter((entry) => domains.has(entry.key));
+
+  const TIMEOUT_OVERRIDES: Partial<Record<DomainKey, number>> = {
+    stripe: 20000,
+  };
+  const DEFAULT_TIMEOUT = 12000;
 
   const snapshotExpiresAt = snapshotExpiryFromNow(1);
 
@@ -765,7 +974,11 @@ export async function GET(request: Request) {
       }
 
       try {
-        const live = await withTimeout(entry.fn, timeoutMsForDomain(entry.key), entry.key);
+        const live = await withTimeout(
+          entry.fn,
+          TIMEOUT_OVERRIDES[entry.key] ?? DEFAULT_TIMEOUT,
+          entry.key
+        );
         await storeAnalyticsSnapshot({
           userId,
           providerKey: entry.key,
@@ -877,6 +1090,10 @@ export async function GET(request: Request) {
   if (domains.has("aiInsights")) {
     result.aiInsights = buildAiInsightsBundle(result);
   }
+  
+  if (domains.has("customerJourney")) {
+    result.customerJourney = buildCustomerJourneyData(result);
+  }
   if (domains.has("recommendations")) {
     result.recommendations = buildRecommendations(result);
   }
@@ -891,6 +1108,16 @@ export async function GET(request: Request) {
   }
   if (domains.has("processAnalytics")) {
     result.processAnalytics = buildProcessAnalyticsData(result);
+  }
+
+  // Populate financial planning data when the finance section is requested
+  if (section === "finance" || section === null) {
+    try {
+      result.financialPlanning = await buildFinancialPlanningData(userId, result);
+    } catch (error) {
+      console.error("Failed to build financial planning data:", error);
+      // Non-fatal — leave as null
+    }
   }
 
   const staleDomains = Array.from(new Set(result.staleDomains));

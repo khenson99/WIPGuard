@@ -22,6 +22,7 @@ export interface AnalyticsSubSection {
   dataDomain:
     | "googleWorkspace"
     | "hubspot"
+    | "salesPerformance"
     | "stripe"
     | "mercury"
     | "slack"
@@ -100,7 +101,7 @@ export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
   { id: "ads-reddit-ads", label: "Reddit Ads", path: "/analytics/ads-reddit-ads", parentId: "ads-traffic", dataDomain: "redditAds" },
   { id: "ads-webflow", label: "Webflow", path: "/analytics/ads-webflow", parentId: "ads-traffic", dataDomain: "webflow" },
   { id: "ads-semrush", label: "SEMrush", path: "/analytics/ads-semrush", parentId: "ads-traffic", dataDomain: "semrush" },
-  { id: "ads-coda-kanban", label: "Free Kanban Creator (Coda)", path: "/analytics/ads-coda-kanban", parentId: "ads-traffic", dataDomain: "coda" },
+  { id: "ads-coda-kanban", label: "Free Kanban Generator (Whitepaper)", path: "/analytics/ads-coda-kanban", parentId: "ads-traffic", dataDomain: "coda" },
 
   { id: "finance-mercury", label: "Mercury", path: "/analytics/finance-mercury", parentId: "finance", dataDomain: "mercury" },
   { id: "finance-stripe", label: "Stripe", path: "/analytics/finance-stripe", parentId: "finance", dataDomain: "stripe" },
@@ -112,6 +113,7 @@ export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
 
   { id: "sales-hubspot", label: "HubSpot", path: "/analytics/sales-hubspot", parentId: "sales-pipeline", dataDomain: "hubspot" },
   { id: "sales-stripe", label: "Stripe", path: "/analytics/sales-stripe", parentId: "sales-pipeline", dataDomain: "stripe" },
+  { id: "sales-performance", label: "Performance Pack", path: "/analytics/sales-performance", parentId: "sales-pipeline", dataDomain: "salesPerformance" },
   { id: "sales-google-workspace", label: "Google Workspace", path: "/analytics/sales-google-workspace", parentId: "sales-pipeline", dataDomain: "googleWorkspace" },
   { id: "sales-slack", label: "Slack", path: "/analytics/sales-slack", parentId: "sales-pipeline", dataDomain: "slack" },
 
@@ -127,6 +129,7 @@ export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
 
   { id: "cj-overview", label: "Journey Overview", path: "/analytics/cj-overview", parentId: "customer-journey", dataDomain: "customerJourney" },
   { id: "cj-touchpoints", label: "Touchpoints", path: "/analytics/cj-touchpoints", parentId: "customer-journey", dataDomain: "customerJourney" },
+  { id: "cj-conversion", label: "Conversion Analysis", path: "/analytics/cj-conversion", parentId: "customer-journey", dataDomain: "customerJourney" },
 
   { id: "demo-scheduling", label: "Scheduling", path: "/analytics/demo-scheduling", parentId: "demo-analytics", dataDomain: "demoAnalytics" },
   { id: "demo-attribution", label: "Attribution", path: "/analytics/demo-attribution", parentId: "demo-analytics", dataDomain: "demoAnalytics" },

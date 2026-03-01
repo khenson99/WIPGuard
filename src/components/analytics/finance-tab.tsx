@@ -1,114 +1,163 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import Link from "next/link";
+import React from "react";
 import {
   DollarSign,
+  CreditCard,
   Wallet,
   TrendingDown,
-  Flame,
-  ShieldCheck,
+  Activity,
+  ArrowUpRight,
+  ArrowDownRight,
   Target,
-  Lightbulb,
-  ChevronRight,
-  Clock,
+  BarChart3,
+  Receipt,
+  Calculator,
   AlertTriangle,
-  CheckCircle2,
 } from "lucide-react";
-import { AnalyticsDashboardData, ProviderFreshness } from "@/lib/analytics/types";
+import type { AnalyticsDashboardData, PnLRow, ForecastScenarioData } from "@/lib/analytics/types";
+import { fmtDelta, fmtMonths, fmtRatio, runwayColor, ltvCacSeverity } from "@/lib/analytics/finance-utils";
 import { StatCard } from "./stat-card";
 import { RingStat } from "./bar-display";
 import { FinanceDataEmptyState } from "./finance-empty-state";
-import { SectionCard, InsightCard, fmt$, fmtPct } from "./dashboard-primitives";
-import {
-  projectMrr,
-  buildRunwayScenarios,
-  computeFinancialGoals,
-  runSensitivityAnalysis,
-  scoreFinancialHealth,
-  type MrrProjection,
-  type RunwayScenario,
-  type FinancialGoal,
-  type SensitivityResult,
-  type FinanceHealthScore,
-} from "@/lib/analytics/finance-modeling";
-
-/* ── Helpers ─────────────────────────────────────────── */
-
-function fmtMonths(n: number): string {
-  if (n >= 999) return "∞";
-  return `${n.toFixed(1)}mo`;
-}
-
-function runwayColor(months: number): string {
-  if (months >= 999) return "text-emerald-500";
-  if (months >= 12) return "text-emerald-500";
-  if (months >= 6) return "text-yellow-500";
-  return "text-red-500";
-}
-
-function runwayBgColor(months: number): string {
-  if (months >= 999) return "bg-emerald-500";
-  if (months >= 12) return "bg-emerald-500";
-  if (months >= 6) return "bg-yellow-500";
-  return "bg-red-500";
-}
-
-function healthColor(score: number): string {
-  if (score >= 80) return "hsl(142, 71%, 45%)"; // green
-  if (score >= 60) return "hsl(48, 96%, 53%)";  // yellow
-  if (score >= 40) return "hsl(25, 95%, 53%)";  // orange
-  return "hsl(0, 84%, 60%)";                     // red
-}
-
-function gradeColor(grade: string): string {
-  if (grade === "A") return "text-emerald-500";
-  if (grade === "B") return "text-emerald-400";
-  if (grade === "C") return "text-yellow-500";
-  if (grade === "D") return "text-orange-500";
-  return "text-red-500";
-}
-
-/* ── Props ───────────────────────────────────────────── */
 
 interface FinanceTabProps {
   data: AnalyticsDashboardData | null;
 }
 
-/* ── Component ───────────────────────────────────────── */
+/**
+ * Format number as currency with short notation
+ * @example fmt$(1234) => "$1.2K"
+ * @example fmt$(1500000) => "$1.5M"
+ */
+function fmt$(n: number): string {
+  if (n === 0) return "$0";
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  if (abs >= 1_000_000) {
+    return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+  }
+  if (abs >= 1_000) {
+    return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+  }
+  return `${sign}$${abs.toFixed(0)}`;
+}
 
-export function FinanceTab({ data }: FinanceTabProps) {
-  // --- All hooks must be called unconditionally (before any early returns) ---
-  const [churnDelta, setChurnDelta] = useState(0);
-  const [growthDelta, setGrowthDelta] = useState(0);
-  const [burnDelta, setBurnDelta] = useState(0);
+/**
+ * Format number as percentage
+ * @example fmtPct(0.856) => "85.6%"
+ * @example fmtPct(0.05) => "5.0%"
+ */
+function fmtPct(n: number): string {
+  return `${n.toFixed(1)}%`;
+}
 
-  // Computed models — safe with null data (functions handle missing providers gracefully)
-  const mrrProjections = useMemo(() => (data ? projectMrr(data, 12) : []), [data]);
-  const scenarios = useMemo(() => (data ? buildRunwayScenarios(data, 24) : []), [data]);
-  const goals = useMemo(() => (data ? computeFinancialGoals(data) : []), [data]);
-  const health = useMemo(() => (data ? scoreFinancialHealth(data) : null), [data]);
-  const sensitivityResults = useMemo(
-    () => (data ? runSensitivityAnalysis(data, {
-      churnDelta: churnDelta / 100,
-      growthDelta: growthDelta / 100,
-      burnDelta: burnDelta / 100,
-    }) : []),
-    [data, churnDelta, growthDelta, burnDelta]
+// ---------------------------------------------------------------------------
+// P&L Row component
+// ---------------------------------------------------------------------------
+function PnLRowDisplay({ row, bold = false }: { row: PnLRow; bold?: boolean }) {
+  const changeColor =
+    row.change > 0 ? "text-emerald-500" : row.change < 0 ? "text-red-500" : "text-muted-foreground";
+
+  return (
+    <div className={`grid grid-cols-4 gap-4 py-2.5 ${bold ? "font-semibold border-t border-border" : ""}`}>
+      <span className={`text-sm ${bold ? "text-foreground" : "text-muted-foreground"}`}>
+        {row.label}
+      </span>
+      <span className="text-sm text-foreground text-right tabular-nums">
+        {fmt$(row.currentPeriod)}
+      </span>
+      <span className="text-sm text-muted-foreground text-right tabular-nums">
+        {fmt$(row.previousPeriod)}
+      </span>
+      <span className={`text-sm text-right tabular-nums ${changeColor}`}>
+        {row.changePct > 0 ? "+" : ""}{row.changePct.toFixed(1)}%
+      </span>
+    </div>
   );
+}
 
-  // --- Empty state: no data at all ---
+// ---------------------------------------------------------------------------
+// Severity badge for LTV:CAC
+// ---------------------------------------------------------------------------
+function SeverityBadge({ severity }: { severity: "positive" | "neutral" | "negative" }) {
+  const styles = {
+    positive: "bg-emerald-500/10 text-emerald-500",
+    neutral: "bg-yellow-500/10 text-yellow-500",
+    negative: "bg-red-500/10 text-red-500",
+  };
+  const labels = { positive: "Healthy", neutral: "Moderate", negative: "Low" };
+  return (
+    <span className={`inline-block text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full ${styles[severity]}`}>
+      {labels[severity]}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Forecast scenario mini-chart
+// ---------------------------------------------------------------------------
+function ForecastMiniChart({ scenario }: { scenario: ForecastScenarioData }) {
+  const months = scenario.months;
+  if (months.length === 0) return null;
+
+  const maxCash = Math.max(...months.map((m) => m.projectedCashBalance), 1);
+  const minCash = Math.min(...months.map((m) => m.projectedCashBalance), 0);
+  const range = maxCash - minCash || 1;
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h4 className="text-sm font-semibold text-foreground">{scenario.name}</h4>
+          {scenario.runwayMonths !== null && (
+            <p className={`text-xs mt-0.5 ${runwayColor(scenario.runwayMonths)}`}>
+              Runway: {fmtMonths(scenario.runwayMonths)}
+            </p>
+          )}
+        </div>
+        <div className="text-right">
+          <p className="text-xs text-muted-foreground">End MRR</p>
+          <p className="text-sm font-semibold text-foreground tabular-nums">
+            {fmt$(months[months.length - 1].projectedMrr)}
+          </p>
+        </div>
+      </div>
+
+      {/* Sparkline-style cash balance trend */}
+      <div className="flex items-end gap-px h-16">
+        {months.map((m, i) => {
+          const h = ((m.projectedCashBalance - minCash) / range) * 100;
+          const isNegative = m.projectedCashBalance < 0;
+          return (
+            <div
+              key={i}
+              className={`flex-1 rounded-t-sm transition-all duration-200 ${isNegative ? "bg-red-500/60" : "bg-primary/50"}`}
+              style={{ height: `${Math.max(h, 2)}%` }}
+              title={`${m.month}: ${fmt$(m.projectedCashBalance)}`}
+            />
+          );
+        })}
+      </div>
+      <div className="flex justify-between mt-1">
+        <span className="text-[10px] text-muted-foreground">{months[0].month}</span>
+        <span className="text-[10px] text-muted-foreground">{months[months.length - 1].month}</span>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main FinanceTab
+// ---------------------------------------------------------------------------
+export function FinanceTab({ data }: FinanceTabProps) {
   if (!data) {
-    return (
-      <FinanceDataEmptyState
-        title="No financial data available"
-        message="Finance analytics payload is missing."
-      />
-    );
+    return <FinanceDataEmptyState title="No financial data available" message="Finance analytics payload is missing." />;
   }
 
   const stripe = data.stripe;
   const mercury = data.mercury;
+  const fp = data.financialPlanning;
   const financeErrors = data.errors
     .filter((entry) => entry.source === "stripe" || entry.source === "mercury")
     .map((entry) => `${entry.source}: ${entry.message}`);
@@ -116,56 +165,6 @@ export function FinanceTab({ data }: FinanceTabProps) {
     data.freshness.stripe?.lastError ? `stripe: ${data.freshness.stripe.lastError}` : null,
     data.freshness.mercury?.lastError ? `mercury: ${data.freshness.mercury.lastError}` : null,
   ].filter((entry): entry is string => Boolean(entry));
-
-  const stripeFreshness: ProviderFreshness | undefined = data.freshness?.stripe;
-  const mercuryFreshness: ProviderFreshness | undefined = data.freshness?.mercury;
-
-  const stripeConnected = Boolean(
-    stripeFreshness &&
-      stripeFreshness.source !== "none" &&
-      stripeFreshness.status !== "DISCONNECTED"
-  );
-  const mercuryConnected = Boolean(
-    mercuryFreshness &&
-      mercuryFreshness.source !== "none" &&
-      mercuryFreshness.status !== "DISCONNECTED"
-  );
-
-  // If neither integration is connected, show a full empty state
-  if (!stripe && !mercury && !stripeConnected && !mercuryConnected) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 gap-4">
-        <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
-          <DollarSign className="w-7 h-7 text-primary" />
-        </div>
-        <div className="text-center space-y-1">
-          <h3 className="text-foreground font-semibold">Connect your finance integrations</h3>
-          <p className="text-sm text-muted-foreground max-w-md">
-            Link Stripe and Mercury to see revenue, subscriptions, cash flow, and runway metrics here.
-          </p>
-        </div>
-        <Link
-          href="/settings?tab=integrations"
-          className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          Go to Settings
-        </Link>
-      </div>
-    );
-  }
-
-  // Connection status banners
-  const connectionBanners: { label: string; status: "warning" | "error" }[] = [];
-  if (!stripeConnected) {
-    connectionBanners.push({ label: "Stripe is not connected", status: "warning" });
-  } else if (stripeFreshness?.status === "ERROR") {
-    connectionBanners.push({ label: `Stripe connection error: ${stripeFreshness.lastError ?? "unknown"}`, status: "error" });
-  }
-  if (!mercuryConnected) {
-    connectionBanners.push({ label: "Mercury is not connected", status: "warning" });
-  } else if (mercuryFreshness?.status === "ERROR") {
-    connectionBanners.push({ label: `Mercury connection error: ${mercuryFreshness.lastError ?? "unknown"}`, status: "error" });
-  }
 
   if (!stripe && !mercury) {
     return (
@@ -177,561 +176,464 @@ export function FinanceTab({ data }: FinanceTabProps) {
     );
   }
 
-  // --- Extract current metrics ---
+  // Extract metrics with fallbacks
   const mrr = stripe?.revenue?.mrr ?? 0;
   const mrrChange = stripe?.revenue?.mrrChange ?? 0;
+  const activeSubs = stripe?.subscriptions?.active ?? 0;
+  const pastDue = stripe?.subscriptions?.pastDue ?? 0;
+  const trialing = stripe?.subscriptions?.trialing ?? 0;
   const cashBalance = mercury?.cashFlow?.totalBalance ?? 0;
-  const burnRate = mercury?.cashFlow?.burnRate ?? 0;
   const runway = mercury?.cashFlow?.runway ?? 0;
-
-  // Projected 6-month values from MRR model
-  const mrr6m = mrrProjections[6]?.mrr ?? mrr;
-  const expectedScenario = scenarios.find((s) => s.label === "Expected");
-  const cashBalance6m = expectedScenario?.projectedCash?.[6]?.cash ?? cashBalance;
+  const netCashFlow = mercury?.cashFlow?.netCashFlow ?? 0;
+  const successRate = stripe?.payments?.successRate ?? 0;
+  const churnRate = stripe?.subscriptions?.churnRate ?? 0;
+  const recentChurns = stripe?.subscriptions?.recentChurnEvents ?? [];
 
   return (
     <div className="space-y-6">
-      {/* Connection Banners */}
-      {connectionBanners.length > 0 && (
-        <div className="space-y-2">
-          {connectionBanners.map((banner) => (
-            <div
-              key={banner.label}
-              className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm ${
-                banner.status === "error"
-                  ? "border-red-500/40 bg-red-500/10 text-red-600"
-                  : "border-amber-500/40 bg-amber-500/10 text-amber-600"
-              }`}
-            >
-              <AlertTriangle className="w-4 h-4 shrink-0" />
-              <span className="flex-1">{banner.label}</span>
-              <Link href="/settings?tab=integrations" className="font-medium underline underline-offset-2 hover:no-underline">
-                Settings
-              </Link>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ═══ A — COMMAND STRIP ═══════════════════════════════ */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        {/* Health Score Gauge */}
-        {health && (
-          <div className="rounded-xl border border-border bg-card p-5 flex flex-col items-center justify-center">
-            <RingStat
-              value={health.overall}
-              max={100}
-              label="Financial Health"
-              color={healthColor(health.overall)}
-              size={100}
-            />
-            <p className={`mt-2 text-lg font-bold ${gradeColor(health.grade)}`}>
-              Grade {health.grade}
-            </p>
-          </div>
-        )}
-
-        {/* MRR */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* TOP KPI ROW                                               */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Monthly Recurring Revenue"
           value={fmt$(mrr)}
           change={fmtPct(Math.abs(mrrChange))}
           changeType={mrrChange >= 0 ? "positive" : "negative"}
-          subtitle={`→ ${fmt$(mrr6m)} in 6mo`}
           icon={DollarSign}
         />
-
-        {/* Runway */}
         <StatCard
-          label="Runway"
-          value={fmtMonths(runway)}
-          changeType={runway >= 12 ? "positive" : runway >= 6 ? "neutral" : "negative"}
-          subtitle={runway < 999 ? `Zero-cash ~${expectedScenario?.zeroDate ?? "N/A"}` : "Sustainable cash flow"}
-          icon={Clock}
+          label="Active Subscriptions"
+          value={activeSubs.toLocaleString()}
+          subtitle={`${pastDue} past due, ${trialing} trialing`}
+          icon={CreditCard}
         />
-
-        {/* Burn Rate */}
-        <StatCard
-          label="Monthly Burn"
-          value={fmt$(burnRate)}
-          subtitle="Net outflows / month"
-          icon={Flame}
-        />
-
-        {/* Cash Balance */}
         <StatCard
           label="Cash Balance"
           value={fmt$(cashBalance)}
-          subtitle={`→ ${fmt$(cashBalance6m)} in 6mo`}
+          subtitle={runway > 0 ? `${runway.toFixed(1)} months runway` : undefined}
           icon={Wallet}
+        />
+        <StatCard
+          label="Net Cash Flow (30d)"
+          value={fmt$(netCashFlow)}
+          changeType={netCashFlow >= 0 ? "positive" : "negative"}
+          icon={TrendingDown}
         />
       </div>
 
-      {/* ═══ B — MRR PROJECTION CHART ════════════════════════ */}
-      <SectionCard title="MRR Projection" subtitle="12-month forward model based on current growth and churn rates">
-        <MrrProjectionChart
-          projections={mrrProjections}
-          historicalTrend={stripe?.revenueTrend ?? []}
-        />
-      </SectionCard>
-
-      {/* ═══ C — RUNWAY SCENARIO PANEL ═══════════════════════ */}
-      <SectionCard title="Runway Scenarios" subtitle="Cash runway under best, expected, and worst-case burn assumptions">
-        <RunwayScenarioPanel scenarios={scenarios} cashBalance={cashBalance} />
-      </SectionCard>
-
-      {/* ═══ D — SENSITIVITY ANALYSIS ════════════════════════ */}
-      <SectionCard title="What-If Sensitivity" subtitle="Drag sliders to explore how changes affect runway and MRR">
-        <SensitivityPanel
-          results={sensitivityResults}
-          churnDelta={churnDelta}
-          growthDelta={growthDelta}
-          burnDelta={burnDelta}
-          onChurnChange={setChurnDelta}
-          onGrowthChange={setGrowthDelta}
-          onBurnChange={setBurnDelta}
-        />
-      </SectionCard>
-
-      {/* ═══ E — GOALS & MILESTONES ══════════════════════════ */}
-      {goals.length > 0 && (
-        <SectionCard title="Goals & Milestones" subtitle="Auto-generated targets based on your current metrics">
-          <GoalsPanel goals={goals} />
-        </SectionCard>
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* UNIT ECONOMICS                                            */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {fp?.unitEconomics && (
+        <div className="bg-card border border-border rounded-xl p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <Calculator className="w-5 h-5 text-muted-foreground" />
+            <h3 className="text-foreground font-semibold">Unit Economics</h3>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">LTV</p>
+              <p className="text-xl font-bold text-foreground tabular-nums">{fmt$(fp.unitEconomics.ltv)}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">CAC</p>
+              <p className="text-xl font-bold text-foreground tabular-nums">{fmt$(fp.unitEconomics.cac)}</p>
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">LTV:CAC</p>
+                <SeverityBadge severity={ltvCacSeverity(fp.unitEconomics.ltvCacRatio)} />
+              </div>
+              <p className="text-xl font-bold text-foreground tabular-nums">{fmtRatio(fp.unitEconomics.ltvCacRatio)}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">ARPA</p>
+              <p className="text-xl font-bold text-foreground tabular-nums">{fmt$(fp.unitEconomics.avgRevenuePerAccount)}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Payback</p>
+              <p className="text-xl font-bold text-foreground tabular-nums">{fmtMonths(fp.unitEconomics.paybackMonths)}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Gross Margin</p>
+              <p className="text-xl font-bold text-foreground tabular-nums">{fmtPct(fp.unitEconomics.grossMarginPct)}</p>
+            </div>
+          </div>
+        </div>
       )}
 
-      {/* ═══ F — SUGGESTIONS & NEXT ACTIONS ══════════════════ */}
-      {health && health.topSuggestions.length > 0 && (
-        <SectionCard title="Suggested Actions" subtitle="Prioritized recommendations to improve financial health">
-          <SuggestionsPanel health={health} />
-        </SectionCard>
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* REVENUE TREND                                             */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {stripe?.revenueTrend && stripe.revenueTrend.length > 0 && (
+        <div className="bg-card border border-border rounded-xl p-6">
+          <h3 className="text-foreground font-semibold mb-6">Revenue Trend</h3>
+          <div className="flex items-end gap-2 h-48">
+            {stripe.revenueTrend.slice(-6).map((point, idx) => {
+              const maxRevenue = Math.max(
+                ...stripe.revenueTrend!.map((p) => p.revenue)
+              );
+              const heightPercent = (point.revenue / maxRevenue) * 100;
+
+              return (
+                <div key={idx} className="flex-1 flex flex-col items-center gap-2">
+                  <div className="w-full bg-gradient-to-t from-primary/40 to-primary rounded-t-md transition-all duration-300 hover:from-primary/60 hover:to-primary/80"
+                    style={{ height: `${heightPercent}%`, minHeight: "4px" }}
+                  />
+                  <span className="text-xs text-muted-foreground text-center">
+                    {point.month}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
-    </div>
-  );
-}
 
-/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   SUB-COMPONENTS
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* P&L STATEMENT                                             */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {fp?.pnl && (
+        <div className="bg-card border border-border rounded-xl p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <Receipt className="w-5 h-5 text-muted-foreground" />
+            <h3 className="text-foreground font-semibold">Profit & Loss Statement</h3>
+            <span className="text-xs text-muted-foreground ml-auto">{fp.pnl.periodLabel}</span>
+          </div>
 
-/* ── B: MRR Projection Chart ─────────────────────────── */
+          {/* Header */}
+          <div className="grid grid-cols-4 gap-4 pb-2 border-b border-border">
+            <span className="text-xs font-semibold text-muted-foreground uppercase">Line Item</span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase text-right">Current</span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase text-right">Previous</span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase text-right">Change</span>
+          </div>
 
-function MrrProjectionChart({
-  projections,
-  historicalTrend,
-}: {
-  projections: MrrProjection[];
-  historicalTrend: { month: string; revenue: number }[];
-}) {
-  // Combine historical (last 6) + projected (months 1–12)
-  const historical = historicalTrend.slice(-6).map((p) => ({
-    label: p.month,
-    mrr: p.revenue,
-    type: "historical" as const,
-  }));
-  const projected = projections.slice(1).map((p) => ({
-    label: p.label,
-    mrr: p.mrr,
-    type: "projected" as const,
-  }));
-  const allPoints = [...historical, ...projected];
+          <PnLRowDisplay row={fp.pnl.revenue} />
+          <PnLRowDisplay row={fp.pnl.cogs} />
+          <PnLRowDisplay row={fp.pnl.grossProfit} bold />
 
-  if (allPoints.length === 0) {
-    return <p className="text-sm text-muted-foreground py-4">No MRR data available for projections.</p>;
-  }
+          {fp.pnl.operatingExpenses.map((row, i) => (
+            <PnLRowDisplay key={i} row={row} />
+          ))}
+          <PnLRowDisplay row={fp.pnl.totalOpex} bold />
+          <PnLRowDisplay row={fp.pnl.operatingIncome} bold />
+          <PnLRowDisplay row={fp.pnl.netIncome} bold />
+        </div>
+      )}
 
-  const maxMrr = Math.max(...allPoints.map((p) => p.mrr), 1);
-  const chartHeight = 200;
-  const chartWidth = allPoints.length * 50;
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* FORECAST SCENARIOS                                        */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {fp?.forecasts && fp.forecasts.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <BarChart3 className="w-5 h-5 text-muted-foreground" />
+            <h3 className="text-foreground font-semibold">Forecast Scenarios</h3>
+            <span className="text-xs text-muted-foreground ml-auto">18-month projections</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {fp.forecasts.map((scenario) => (
+              <ForecastMiniChart key={scenario.id} scenario={scenario} />
+            ))}
+          </div>
+        </div>
+      )}
 
-  return (
-    <div className="overflow-x-auto">
-      <div className="min-w-[600px]">
-        {/* Y-axis labels */}
-        <div className="flex items-end gap-0.5" style={{ height: chartHeight + 40 }}>
-          {allPoints.map((point, idx) => {
-            const heightPct = (point.mrr / maxMrr) * 100;
-            const isProjected = point.type === "projected";
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* TWO COLUMN: SUBSCRIPTION HEALTH + BANK ACCOUNTS           */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Subscription Health */}
+        <div className="space-y-6">
+          <div className="bg-card border border-border rounded-xl p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-foreground font-semibold">Subscription Health</h3>
+              <Activity className="w-5 h-5 text-muted-foreground" />
+            </div>
 
-            return (
-              <div key={idx} className="flex-1 flex flex-col items-center gap-1" style={{ minWidth: 36 }}>
-                <span className="text-[10px] tabular-nums text-muted-foreground">
-                  {fmt$(point.mrr)}
+            <div className="flex items-center justify-center mb-8">
+              <RingStat
+                value={successRate}
+                max={100}
+                label="Payment Success Rate"
+                color="hsl(var(--primary))"
+                size={120}
+              />
+            </div>
+
+            <div className="bg-secondary/40 rounded-lg p-4 mb-6">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground text-sm">Churn Rate</span>
+                <span className="text-foreground font-semibold">
+                  {fmtPct(churnRate)}
                 </span>
+              </div>
+            </div>
+
+            {recentChurns && recentChurns.length > 0 && (
+              <div>
+                <h4 className="text-muted-foreground text-xs font-semibold uppercase mb-3">
+                  Recent Churn
+                </h4>
+                <div className="space-y-3">
+                  {recentChurns.slice(0, 5).map((event, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between py-2 border-b border-border/50 last:border-b-0"
+                    >
+                      <div className="flex-1">
+                        <p className="text-sm text-foreground truncate">
+                          {event.customer}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {event.canceledAt}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-foreground">
+                          {fmt$(event.amount)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Bank Accounts */}
+        <div className="bg-card border border-border rounded-xl p-6">
+          <h3 className="text-foreground font-semibold mb-6">Bank Accounts</h3>
+
+          {mercury?.accounts && mercury.accounts.length > 0 ? (
+            <div className="space-y-4">
+              {mercury.accounts.map((account, idx) => (
                 <div
-                  className={`w-full rounded-t-md transition-all duration-300 ${
-                    isProjected
-                      ? "bg-gradient-to-t from-primary/20 to-primary/50 border border-dashed border-primary/40"
-                      : "bg-gradient-to-t from-primary/40 to-primary"
-                  }`}
-                  style={{ height: `${(heightPct / 100) * chartHeight}px`, minHeight: 4 }}
-                />
-                <span className={`text-[10px] text-center ${isProjected ? "text-primary/70" : "text-muted-foreground"}`}>
-                  {point.label}
+                  key={idx}
+                  className="flex items-center justify-between p-4 bg-secondary/40 rounded-lg border border-border/50"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Wallet className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        {account.accountName}
+                      </p>
+                      <p className="text-xs text-muted-foreground capitalize">
+                        {account.type}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-foreground">
+                      {fmt$(account.balance)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {account.accountId}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              No bank accounts connected
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* BUDGET VARIANCE                                           */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {fp?.activeBudget && (
+        <div className="bg-card border border-border rounded-xl p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <AlertTriangle className="w-5 h-5 text-muted-foreground" />
+            <h3 className="text-foreground font-semibold">Budget vs Actual</h3>
+            <span className="text-xs text-muted-foreground ml-auto">{fp.activeBudget.name}</span>
+          </div>
+
+          {/* Summary row */}
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="bg-secondary/40 rounded-lg p-4">
+              <p className="text-xs text-muted-foreground uppercase mb-1">Planned</p>
+              <p className="text-lg font-bold text-foreground tabular-nums">{fmt$(fp.activeBudget.totalPlanned)}</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-4">
+              <p className="text-xs text-muted-foreground uppercase mb-1">Actual</p>
+              <p className="text-lg font-bold text-foreground tabular-nums">
+                {fp.activeBudget.totalActual != null ? fmt$(fp.activeBudget.totalActual) : "—"}
+              </p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-4">
+              <p className="text-xs text-muted-foreground uppercase mb-1">Variance</p>
+              <p className={`text-lg font-bold tabular-nums ${
+                fp.activeBudget.totalVariance != null
+                  ? fp.activeBudget.totalVariance > 0
+                    ? "text-red-500"
+                    : fp.activeBudget.totalVariance < 0
+                    ? "text-emerald-500"
+                    : "text-foreground"
+                  : "text-muted-foreground"
+              }`}>
+                {fp.activeBudget.totalVariance != null ? fmtDelta(fp.activeBudget.totalVariance) : "—"}
+              </p>
+            </div>
+          </div>
+
+          {/* Line items table */}
+          <div className="grid grid-cols-5 gap-4 pb-2 border-b border-border">
+            <span className="text-xs font-semibold text-muted-foreground uppercase">Category</span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase text-right">Planned</span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase text-right">Actual</span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase text-right">Variance</span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase text-right">Var %</span>
+          </div>
+          {fp.activeBudget.lineItems.map((item) => {
+            const overBudget = (item.variancePct ?? 0) > 15;
+            return (
+              <div key={item.id} className={`grid grid-cols-5 gap-4 py-2.5 ${overBudget ? "bg-red-500/5 -mx-2 px-2 rounded" : ""}`}>
+                <span className="text-sm text-muted-foreground capitalize">{item.category}</span>
+                <span className="text-sm text-foreground text-right tabular-nums">{fmt$(item.plannedAmount)}</span>
+                <span className="text-sm text-foreground text-right tabular-nums">
+                  {item.actualAmount != null ? fmt$(item.actualAmount) : "—"}
+                </span>
+                <span className={`text-sm text-right tabular-nums ${
+                  item.variance != null
+                    ? item.variance > 0 ? "text-red-500" : item.variance < 0 ? "text-emerald-500" : "text-muted-foreground"
+                    : "text-muted-foreground"
+                }`}>
+                  {item.variance != null ? fmtDelta(item.variance) : "—"}
+                </span>
+                <span className={`text-sm text-right tabular-nums ${
+                  overBudget ? "text-red-500 font-medium" : "text-muted-foreground"
+                }`}>
+                  {item.variancePct != null ? `${item.variancePct > 0 ? "+" : ""}${item.variancePct.toFixed(1)}%` : "—"}
                 </span>
               </div>
             );
           })}
         </div>
+      )}
 
-        {/* Legend */}
-        <div className="flex items-center gap-4 mt-4 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm bg-primary" />
-            Historical
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm bg-primary/30 border border-dashed border-primary/40" />
-            Projected
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* FINANCIAL GOALS                                           */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {fp?.goals && fp.goals.length > 0 && (
+        <div className="bg-card border border-border rounded-xl p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <Target className="w-5 h-5 text-muted-foreground" />
+            <h3 className="text-foreground font-semibold">Financial Goals</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {fp.goals.map((goal) => {
+              const statusStyles = {
+                active: "border-primary/30",
+                achieved: "border-emerald-500/30 bg-emerald-500/5",
+                missed: "border-red-500/30 bg-red-500/5",
+              };
+              const statusLabels = {
+                active: "In Progress",
+                achieved: "Achieved",
+                missed: "Missed",
+              };
+              const statusColors = {
+                active: "text-primary",
+                achieved: "text-emerald-500",
+                missed: "text-red-500",
+              };
+              const progressColor =
+                goal.status === "achieved"
+                  ? "hsl(142, 71%, 45%)"
+                  : goal.status === "missed"
+                  ? "hsl(0, 84%, 60%)"
+                  : "hsl(var(--primary))";
 
-/* ── C: Runway Scenario Panel ────────────────────────── */
-
-function RunwayScenarioPanel({
-  scenarios,
-  cashBalance,
-}: {
-  scenarios: RunwayScenario[];
-  cashBalance: number;
-}) {
-  if (scenarios.length === 0) {
-    return <p className="text-sm text-muted-foreground py-4">No cash data available for runway modeling.</p>;
-  }
-
-  const maxRunway = Math.max(...scenarios.map((s) => Math.min(s.runway, 36)), 1);
-
-  return (
-    <div className="space-y-6">
-      {/* Scenario bars */}
-      <div className="space-y-4">
-        {scenarios.map((scenario) => {
-          const cappedRunway = Math.min(scenario.runway, 36);
-          const pct = (cappedRunway / maxRunway) * 100;
-          const color = runwayBgColor(scenario.runway);
-
-          return (
-            <div key={scenario.label}>
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-foreground">{scenario.label}</span>
-                  <span className="text-xs text-muted-foreground">
-                    Burn: {fmt$(scenario.monthlyBurn)}/mo
-                  </span>
+              return (
+                <div key={goal.id} className={`border rounded-xl p-5 ${statusStyles[goal.status]}`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase">
+                      {goal.metric.replace("_", " ")}
+                    </span>
+                    <span className={`text-[10px] font-semibold uppercase ${statusColors[goal.status]}`}>
+                      {statusLabels[goal.status]}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-center mb-3">
+                    <RingStat
+                      value={goal.progressPct}
+                      max={100}
+                      label="Progress"
+                      color={progressColor}
+                      size={90}
+                    />
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-muted-foreground">
+                      Current: <span className="text-foreground font-medium">{fmt$(goal.currentValue)}</span>
+                    </span>
+                    <span className="text-muted-foreground">
+                      Target: <span className="text-foreground font-medium">{fmt$(goal.targetValue)}</span>
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-2">
+                    Deadline: {new Date(goal.deadline).toLocaleDateString()}
+                  </p>
                 </div>
-                <span className={`text-sm font-bold tabular-nums ${runwayColor(scenario.runway)}`}>
-                  {fmtMonths(scenario.runway)}
-                </span>
-              </div>
-              <div className="h-3 w-full overflow-hidden rounded-full bg-secondary">
-                <div
-                  className={`h-full rounded-full transition-all duration-700 ${color}`}
-                  style={{ width: `${Math.min(pct, 100)}%` }}
-                />
-              </div>
-              {scenario.zeroDate && (
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Zero-cash date: {scenario.zeroDate}
-                </p>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Cash waterfall mini chart */}
-      {scenarios.length > 0 && (
-        <div>
-          <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-3">
-            Expected Cash Trajectory
-          </h4>
-          <CashWaterfallChart
-            points={scenarios.find((s) => s.label === "Expected")?.projectedCash ?? []}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function CashWaterfallChart({ points }: { points: { month: number; cash: number }[] }) {
-  if (points.length === 0) return null;
-
-  const maxCash = Math.max(...points.map((p) => Math.max(p.cash, 0)), 1);
-  const displayed = points.slice(0, 18); // Show up to 18 months
-
-  return (
-    <div className="flex items-end gap-px h-32">
-      {displayed.map((point) => {
-        const heightPct = Math.max((Math.max(point.cash, 0) / maxCash) * 100, 2);
-        const isNegative = point.cash <= 0;
-
-        return (
-          <div key={point.month} className="flex-1 flex flex-col items-center gap-0.5">
-            <div
-              className={`w-full rounded-t-sm transition-all duration-300 ${
-                isNegative ? "bg-red-500/60" : "bg-emerald-500/40"
-              }`}
-              style={{ height: `${heightPct}%`, minHeight: 2 }}
-            />
-            {point.month % 3 === 0 && (
-              <span className="text-[9px] text-muted-foreground">M{point.month}</span>
-            )}
+              );
+            })}
           </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/* ── D: Sensitivity Panel ────────────────────────────── */
-
-function SensitivityPanel({
-  results,
-  churnDelta,
-  growthDelta,
-  burnDelta,
-  onChurnChange,
-  onGrowthChange,
-  onBurnChange,
-}: {
-  results: SensitivityResult[];
-  churnDelta: number;
-  growthDelta: number;
-  burnDelta: number;
-  onChurnChange: (v: number) => void;
-  onGrowthChange: (v: number) => void;
-  onBurnChange: (v: number) => void;
-}) {
-  return (
-    <div className="space-y-6">
-      {/* Sliders */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <SliderControl
-          label="Churn Rate"
-          value={churnDelta}
-          min={-5}
-          max={5}
-          step={0.5}
-          unit="%"
-          onChange={onChurnChange}
-          description={churnDelta === 0 ? "No change" : `${churnDelta > 0 ? "+" : ""}${churnDelta}% churn`}
-        />
-        <SliderControl
-          label="Growth Rate"
-          value={growthDelta}
-          min={-10}
-          max={10}
-          step={1}
-          unit="%"
-          onChange={onGrowthChange}
-          description={growthDelta === 0 ? "No change" : `${growthDelta > 0 ? "+" : ""}${growthDelta}% growth`}
-        />
-        <SliderControl
-          label="Burn Rate"
-          value={burnDelta}
-          min={-20}
-          max={20}
-          step={2}
-          unit="%"
-          onChange={onBurnChange}
-          description={burnDelta === 0 ? "No change" : `${burnDelta > 0 ? "+" : ""}${burnDelta}% burn`}
-        />
-      </div>
-
-      {/* Impact results */}
-      {results.length > 0 && (churnDelta !== 0 || growthDelta !== 0 || burnDelta !== 0) && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {results.map((result) => (
-            <div
-              key={result.parameter}
-              className="rounded-lg border border-border bg-secondary/30 p-4"
-            >
-              <p className="text-xs font-medium text-muted-foreground mb-1">
-                {result.parameter}
-              </p>
-              <p className="text-sm text-foreground mb-2">{result.description}</p>
-              <div className="flex gap-4 text-xs">
-                <span>
-                  Runway:{" "}
-                  <span className={result.impactOnRunway >= 0 ? "text-emerald-500 font-semibold" : "text-red-500 font-semibold"}>
-                    {result.impactOnRunway >= 0 ? "+" : ""}{result.impactOnRunway.toFixed(1)}mo
-                  </span>
-                </span>
-                <span>
-                  MRR@12mo:{" "}
-                  <span className={result.impactOnMrr12m >= 0 ? "text-emerald-500 font-semibold" : "text-red-500 font-semibold"}>
-                    {result.impactOnMrr12m >= 0 ? "+" : ""}{fmt$(result.impactOnMrr12m)}
-                  </span>
-                </span>
-              </div>
-            </div>
-          ))}
         </div>
       )}
 
-      {churnDelta === 0 && growthDelta === 0 && burnDelta === 0 && (
-        <p className="text-sm text-muted-foreground text-center py-3">
-          Adjust the sliders above to see how changes impact your runway and MRR.
-        </p>
-      )}
-    </div>
-  );
-}
-
-function SliderControl({
-  label,
-  value,
-  min,
-  max,
-  step,
-  unit,
-  onChange,
-  description,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  unit: string;
-  onChange: (v: number) => void;
-  description: string;
-}) {
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <label className="text-sm font-medium text-foreground">{label}</label>
-        <span className="text-sm tabular-nums font-semibold text-primary">
-          {value > 0 ? "+" : ""}{value}{unit}
-        </span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
-        aria-label={`${label} adjustment`}
-      />
-      <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-    </div>
-  );
-}
-
-/* ── E: Goals Panel ──────────────────────────────────── */
-
-function GoalsPanel({ goals }: { goals: FinancialGoal[] }) {
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {goals.map((goal) => (
-        <div
-          key={goal.id}
-          className="rounded-lg border border-border bg-secondary/20 p-4"
-        >
-          <div className="flex items-start justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <Target className="w-4 h-4 text-primary" />
-              <span className="text-sm font-medium text-foreground">{goal.label}</span>
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* CASH FLOW MINI STATS                                      */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {mercury?.cashFlow && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-card border border-border rounded-xl p-6">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-muted-foreground text-sm font-medium">
+                Inflows (30d)
+              </span>
+              <ArrowDownRight className="w-4 h-4 text-green-600" />
             </div>
-            {goal.onTrack ? (
-              <span className="flex items-center gap-1 text-[11px] text-emerald-500 font-medium">
-                <CheckCircle2 className="w-3 h-3" /> On track
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 text-[11px] text-yellow-500 font-medium">
-                <AlertTriangle className="w-3 h-3" /> Needs attention
-              </span>
-            )}
+            <p className="text-2xl font-bold text-foreground">
+              {fmt$(mercury.cashFlow.inflows30d)}
+            </p>
           </div>
 
-          {/* Progress bar */}
-          <div className="mb-2">
-            <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-              <span>
-                {goal.unit === "currency" ? fmt$(goal.current) : goal.unit === "percent" ? fmtPct(goal.current) : goal.current.toFixed(1)}
+          <div className="bg-card border border-border rounded-xl p-6">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-muted-foreground text-sm font-medium">
+                Outflows (30d)
               </span>
-              <span>
-                {goal.unit === "currency" ? fmt$(goal.target) : goal.unit === "percent" ? fmtPct(goal.target) : goal.target.toFixed(1)}
-              </span>
+              <ArrowUpRight className="w-4 h-4 text-red-600" />
             </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${
-                  goal.onTrack ? "bg-emerald-500" : "bg-yellow-500"
-                }`}
-                style={{ width: `${Math.min(goal.progress, 100)}%` }}
-              />
-            </div>
+            <p className="text-2xl font-bold text-foreground">
+              {fmt$(mercury.cashFlow.outflows30d)}
+            </p>
           </div>
 
-          {/* Meta info */}
-          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-            <span>{Math.round(goal.progress)}% complete</span>
-            {goal.projectedDate && (
-              <span className="flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                Est. {goal.projectedDate}
+          <div className="bg-card border border-border rounded-xl p-6">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-muted-foreground text-sm font-medium">
+                Burn Rate
               </span>
-            )}
-          </div>
-
-          {/* Suggestion */}
-          <div className="mt-3 flex items-start gap-2 rounded-md bg-primary/5 px-3 py-2">
-            <Lightbulb className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
-            <p className="text-[11px] text-foreground">{goal.suggestion}</p>
+              <TrendingDown className="w-4 h-4 text-orange-600" />
+            </div>
+            <p className="text-2xl font-bold text-foreground">
+              {fmt$(mercury.cashFlow.burnRate)}
+              <span className="text-xs text-muted-foreground ml-2">/month</span>
+            </p>
           </div>
         </div>
-      ))}
-    </div>
-  );
-}
-
-/* ── F: Suggestions Panel ────────────────────────────── */
-
-function SuggestionsPanel({ health }: { health: FinanceHealthScore }) {
-  return (
-    <div className="space-y-4">
-      {/* Component scores mini row */}
-      <div className="flex flex-wrap gap-2 mb-2">
-        {health.components.map((comp) => (
-          <span
-            key={comp.label}
-            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium border ${
-              comp.score >= 80
-                ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-600"
-                : comp.score >= 60
-                  ? "border-yellow-500/20 bg-yellow-500/5 text-yellow-600"
-                  : "border-red-500/20 bg-red-500/5 text-red-600"
-            }`}
-          >
-            <ShieldCheck className="w-3 h-3" />
-            {comp.label}: {comp.score}
-          </span>
-        ))}
-      </div>
-
-      {/* Suggestion cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {health.topSuggestions.map((suggestion, idx) => {
-          const severity = suggestion.priority <= 1 ? "critical" : suggestion.priority <= 2 ? "warning" : "info";
-          return (
-            <InsightCard
-              key={idx}
-              title={suggestion.title}
-              insight={suggestion.action}
-              action={suggestion.expectedImpact}
-              severity={severity}
-            />
-          );
-        })}
-      </div>
+      )}
     </div>
   );
 }

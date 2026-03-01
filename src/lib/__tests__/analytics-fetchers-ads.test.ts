@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchGoogleAdsData,
   fetchMetaAdsData,
+  fetchMetaInstagramData,
   fetchRedditAdsData,
 } from "@/lib/analytics/fetchers-ads";
 
@@ -230,8 +231,8 @@ describe("analytics ads fetchers", () => {
     const payload = JSON.parse(reportInit.body as string) as {
       data?: { starts_at?: string; ends_at?: string };
     };
-    expect(payload.data?.starts_at).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/);
-    expect(payload.data?.ends_at).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/);
+    expect(payload.data?.starts_at).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00Z$/);
+    expect(payload.data?.ends_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
 
     for (const [, init] of fetchMock.mock.calls as Array<[unknown, RequestInit]>) {
       const headers = (init?.headers || {}) as Record<string, string>;
@@ -256,5 +257,117 @@ describe("analytics ads fetchers", () => {
         "WIPGuard-Test/1.0"
       )
     ).rejects.toThrow("Reddit campaigns error (403): insufficient_scope");
+  });
+
+  it("resolves Instagram account via Page when direct profile fetch fails", async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            error: {
+              message: "(#100) Tried accessing nonexistent field (username)",
+              type: "OAuthException",
+              code: 100,
+            },
+          },
+          400
+        )
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          instagram_business_account: {
+            id: "ig_123",
+            username: "acme",
+            followers_count: 912,
+            media_count: 2,
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: "media_1",
+              caption: "hello",
+              timestamp: "2026-02-01T00:00:00+0000",
+              like_count: 5,
+              comments_count: 1,
+            },
+          ],
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchMetaInstagramData(
+      "meta-token",
+      "page_999",
+      undefined,
+      new Date("2026-02-01T00:00:00.000Z"),
+      new Date("2026-02-24T00:00:00.000Z")
+    );
+
+    expect(data.followers).toBe(912);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    const mediaUrl = String(fetchMock.mock.calls[2]?.[0] ?? "");
+    expect(mediaUrl).toContain("/ig_123/media");
+  });
+
+  it("uses options.pageId to resolve Instagram account without failing first", async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          connected_instagram_account: {
+            id: "ig_999",
+            username: "brand",
+            followers_count: 321,
+            media_count: 1,
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: "media_2",
+              caption: "post",
+              timestamp: "2026-02-10T00:00:00+0000",
+              like_count: 2,
+              comments_count: 0,
+            },
+          ],
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchMetaInstagramData(
+      "meta-token",
+      "bad_instagram_id",
+      { pageId: "page_1" },
+      new Date("2026-02-01T00:00:00.000Z"),
+      new Date("2026-02-24T00:00:00.000Z")
+    );
+
+    expect(data.followers).toBe(321);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const firstUrl = String(fetchMock.mock.calls[0]?.[0] ?? "");
+    expect(firstUrl).toContain("/page_1");
+    expect(firstUrl).toContain("instagram_business_account");
+
+    const urls = fetchMock.mock.calls.map((call) => String(call[0] ?? ""));
+    expect(
+      urls.some(
+        (url) =>
+          url.includes("/bad_instagram_id") && url.includes("username") && url.includes("fields=")
+      )
+    ).toBe(false);
+
+    const mediaUrl = String(fetchMock.mock.calls[1]?.[0] ?? "");
+    expect(mediaUrl).toContain("/ig_999/media");
   });
 });

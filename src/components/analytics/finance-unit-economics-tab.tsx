@@ -55,17 +55,6 @@ export function FinanceUnitEconomicsTab({
     [data],
   );
 
-  // Empty state
-  if (!data?.stripe) {
-    return (
-      <FinanceDataEmptyState
-        title="Unit economics data is unavailable"
-        message="Connect Stripe to calculate LTV, CAC, and other unit economics metrics."
-        reconnectHref="/settings?tab=integrations"
-      />
-    );
-  }
-
   // Alerts
   const alerts: {
     severity: "critical" | "warning" | "info";
@@ -110,7 +99,9 @@ export function FinanceUnitEconomicsTab({
     }[] = [];
 
     // LTV:CAC health
-    const ltvSev = ltvCacSeverity(ue.ltvCacRatio);
+    const ltvSevRaw = ltvCacSeverity(ue.ltvCacRatio);
+    const ltvSev: "success" | "warning" | "critical" =
+      ltvSevRaw === "positive" ? "success" : ltvSevRaw === "neutral" ? "warning" : "critical";
     items.push({
       title: "LTV:CAC Health",
       insight:
@@ -182,6 +173,17 @@ export function FinanceUnitEconomicsTab({
     return items;
   }, [ue]);
 
+  // Empty state
+  if (!data?.stripe) {
+    return (
+      <FinanceDataEmptyState
+        title="Unit economics data is unavailable"
+        message="Connect Stripe to calculate LTV, CAC, and other unit economics metrics."
+        reconnectHref="/settings?tab=integrations"
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Alerts */}
@@ -214,9 +216,9 @@ export function FinanceUnitEconomicsTab({
           label="LTV:CAC"
           value={fmtRatio(ue.ltvCacRatio)}
           changeType={
-            ltvCacSeverity(ue.ltvCacRatio) === "success"
+            ltvCacSeverity(ue.ltvCacRatio) === "positive"
               ? "positive"
-              : ltvCacSeverity(ue.ltvCacRatio) === "critical"
+              : ltvCacSeverity(ue.ltvCacRatio) === "negative"
                 ? "negative"
                 : "neutral"
           }

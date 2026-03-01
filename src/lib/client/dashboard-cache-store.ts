@@ -37,4 +37,3 @@ export const useDashboardCacheStore = create<DashboardCacheState>((set, get) => 
 export function clearDashboardCache(): void {
   useDashboardCacheStore.getState().clear();
 }
-

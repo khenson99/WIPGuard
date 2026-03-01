@@ -1,11 +1,14 @@
 "use client";
 
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { useConnectionStatus } from "@/hooks/use-connection-status";
 import { SubDashboardTemplate } from "../sub-dashboard-template";
 import { StatCard } from "../stat-card";
 import { DashboardSectionCard } from "../dashboard-section-card";
 import { AreaTrend, StackedBarChart } from "@/components/charts";
+import { PathExploration } from "./path-exploration";
+import { ChannelTable } from "./channel-table";
 
 /* ── Formatting helpers ────────────────────────────── */
 
@@ -16,10 +19,21 @@ function fmtNum(n: number): string {
 }
 
 function fmtPct(n: number): string {
-  return `${(n * 100).toFixed(1)}%`;
+  // GA4 returns bounce rate as a literal percentage number sometimes (e.g. 65.4 instead of 0.654),
+  // but usually it's a fraction. Since the user complained it shows 0.7%, n was likely 0.007.
+  // Wait, if GA4 returns it as a fraction (like 0.65), n * 100 is 65%.
+  // If GA4 returns it as a fraction, but it's really low, it could be a bug in how GA4 calculates it.
+  // Wait! Let's check the GA4 API docs. `bounceRate` is a percentage.
+  const isFraction = n <= 1.0 && n >= 0;
+  const val = isFraction ? n * 100 : n;
+  return `${val.toFixed(1)}%`;
 }
 
 function fmtDuration(seconds: number): string {
+  if (!seconds || isNaN(seconds)) return "0m 0s";
+  // The user says "average dwell time is not 1m". 
+  // Maybe `averageSessionDuration` is returned as a millisecond value but parsed as seconds? Wait.
+  // GA4 averageSessionDuration is in seconds.
   const m = Math.floor(seconds / 60);
   const s = Math.round(seconds % 60);
   return `${m}m ${s}s`;
@@ -48,13 +62,16 @@ export function GoogleAnalyticsDashboard({ data }: GoogleAnalyticsDashboardProps
   const connectionStatus = useConnectionStatus((s) => s.getStatus("googleAnalytics"));
   const ga = data?.googleAnalytics ?? null;
 
-  if (!ga) {
+  if (!data || !ga) {
     return (
       <div className="flex items-center justify-center py-16">
         <p className="text-muted-foreground">No Google Analytics data available</p>
       </div>
     );
   }
+
+  const kpis = data.kpis ?? computeAnalyticsKpis(data);
+  const bounceRatePct = kpis.traffic.bounceRatePct ?? 0;
 
   const sessionsChange = calculateChange(ga.sessions30d, ga.sessionsPrev30d);
   const usersChange = calculateChange(ga.users30d, ga.usersPrev30d);
@@ -90,8 +107,8 @@ export function GoogleAnalyticsDashboard({ data }: GoogleAnalyticsDashboardProps
           />
           <StatCard
             label="Bounce Rate"
-            value={fmtPct(ga.bounceRate)}
-            changeType={ga.bounceRate > 0.6 ? "negative" : "neutral"}
+            value={fmtPct(bounceRatePct)}
+            changeType={bounceRatePct > 60 ? "negative" : "neutral"}
           />
           <StatCard
             label="Avg Duration"
@@ -110,6 +127,16 @@ export function GoogleAnalyticsDashboard({ data }: GoogleAnalyticsDashboardProps
       }
       panels={
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {data?.customerJourney?.topPaths && (
+            <div className="col-span-1 lg:col-span-2">
+              <PathExploration paths={data.customerJourney.topPaths} />
+            </div>
+          )}
+          {data?.customerJourney?.attribution && (
+            <div className="col-span-1 lg:col-span-2">
+              <ChannelTable attribution={data.customerJourney.attribution} />
+            </div>
+          )}
           <DashboardSectionCard title="Channel Breakdown">
             <StackedBarChart
               data={channelData}

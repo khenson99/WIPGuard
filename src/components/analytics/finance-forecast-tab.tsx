@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import type { AnalyticsDashboardData, ForecastScenarioData } from "@/lib/analytics/types";
 import {
   fmt$,
   fmtPct,
@@ -17,7 +17,6 @@ import {
 } from "./forecast-chart";
 import {
   buildDefaultScenarios,
-  type ForecastScenarioData,
 } from "@/lib/analytics/forecast-engine";
 import { fmtMonths, runwayColor } from "@/lib/analytics/finance-utils";
 

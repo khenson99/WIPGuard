@@ -420,18 +420,24 @@ async function fetchProviderPayload(input: {
     );
   }
 
+  const params = new URLSearchParams();
+  params.set("range", input.config.rangePreset);
+  const range = parseAnalyticsTimeRange(params);
+  const fromDate = new Date(`${range.from}T00:00:00.000Z`);
+  const toDate = new Date(`${range.to}T23:59:59.999Z`);
+
   if (input.ruleKey === STRIPE_REVENUE_SYNC_RULE_KEY) {
     if (!creds.stripeKey) {
       throw new Error("Missing Stripe credential");
     }
-    return fetchStripeData(creds.stripeKey, { fromDate: input.fromDate, toDate: input.toDate });
+return fetchStripeData(creds.stripeKey, { fromDate: input.fromDate, toDate: input.toDate });
   }
 
   if (input.ruleKey === MERCURY_CASHFLOW_SYNC_RULE_KEY) {
     if (!creds.mercuryKey) {
       throw new Error("Missing Mercury credential");
     }
-    return fetchMercuryData(creds.mercuryKey, { fromDate: input.fromDate, toDate: input.toDate });
+return fetchMercuryData(creds.mercuryKey, { fromDate: input.fromDate, toDate: input.toDate });
   }
 
   if (input.ruleKey === PYLON_CONVERSATION_SYNC_RULE_KEY) {
@@ -447,6 +453,7 @@ async function fetchProviderPayload(input: {
       apiKey: creds.pylonApiKey,
       from: range.from,
       to: range.to,
+      baseUrl: creds.pylonBaseUrl ?? undefined,
     });
   }
 

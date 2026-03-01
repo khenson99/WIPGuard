@@ -10,6 +10,7 @@ const OUTCOME_COLORS: Record<DemoOutcome, string> = {
   "no-show": "#ef4444",
   rescheduled: "#fbbf24",
   pending: "#6b7280",
+  unknown: "#94a3b8",
 };
 
 function fmt$(n: number) {
@@ -233,6 +234,7 @@ export function DemoAttributionView({ data }: { data: AnalyticsDashboardData | n
           <div className="space-y-2">
             {[...demo.bySource]
               .sort((a, b) => b.conversionRate - a.conversionRate)
+              .slice(0, 5)
               .map((src) => {
                 const maxRate = demo.bySource[0]
                   ? Math.max(...demo.bySource.map((s) => s.conversionRate), 1)

@@ -33,6 +33,7 @@ export function AiInsightsPage() {
 
   const data = resource.data;
   const loading = resource.loading && !resource.data;
+  const error = resource.error;
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
   const [sectionFilter, setSectionFilter] = useState<SectionFilter>("all");
   const [sortMode, setSortMode] = useState<SortMode>("severity");

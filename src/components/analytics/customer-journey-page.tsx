@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { HorizontalFunnel } from "@/components/charts";
 import { StatCard } from "./stat-card";
 import { DashboardSectionCard } from "./dashboard-section-card";
+import { AiInsightsPanel } from "./ai-insights-panel";
+import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-controls";
 import type {
   AnalyticsDashboardData,
   LifecycleStageId,

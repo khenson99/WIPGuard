@@ -1,16 +1,17 @@
 "use client";
 
 import {
-  BarChart3, Users, Eye, TrendingDown, TrendingUp,
-  Clock, AlertTriangle, Globe, Activity,
+  BarChart3, Users, Eye, TrendingDown,
+  Clock, Activity,
 } from "lucide-react";
-import type { AnalyticsDashboardData, GATrafficChannel, GATopPage } from "@/lib/analytics/types";
+import type { AnalyticsDashboardData, GATopPage } from "@/lib/analytics/types";
+import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
 import { RingStat } from "@/components/analytics/bar-display";
 import { StatCard } from "@/components/analytics/stat-card";
 import {
-  fmt$, fmtN, fmtPct, pctChange, fmtDuration,
-  AlertBanner, ChangeIndicator, DataTable, InsightCard,
+  fmtN, fmtPct, pctChange, fmtDuration,
+  AlertBanner, DataTable, InsightCard,
   SectionCard, type DataTableColumn,
 } from "./dashboard-primitives";
 
@@ -35,15 +36,15 @@ function channelColor(channel: string): string {
 }
 
 export function AdsGoogleAnalyticsTab({ data }: AdsGoogleAnalyticsTabProps) {
-  const ga = data?.ga;
+  const ga = data?.googleAnalytics ?? data?.ga;
   const reasons = [
     ...(data?.errors ?? [])
       .filter((entry) => entry.source === "ga" || entry.source === "googleAnalytics")
       .map((entry) => entry.message),
-    ...(data?.freshness?.ga?.lastError ? [data.freshness.ga.lastError] : []),
+    ...(data?.freshness?.google_workspace?.lastError ? [data.freshness.google_workspace.lastError] : []),
   ];
 
-  if (!ga) {
+  if (!data || !ga) {
     return (
       <FinanceDataEmptyState
         title="Google Analytics data is unavailable"
@@ -62,7 +63,11 @@ export function AdsGoogleAnalyticsTab({ data }: AdsGoogleAnalyticsTabProps) {
     trafficByChannel, topPages, dailyTrend,
   } = ga;
 
-  const pagesPerSession = sessions30d > 0 ? pageviews30d / sessions30d : 0;
+  const kpis = data.kpis ?? computeAnalyticsKpis(data);
+  const bounceRatePct = kpis.traffic.bounceRatePct ?? 0;
+  const pagesPerSession = kpis.traffic.pagesPerSession ?? (sessions30d > 0 ? pageviews30d / sessions30d : 0);
+  const engagementScore = kpis.traffic.engagementScore ?? Math.round(100 - bounceRatePct);
+  const pageDepthScore = kpis.traffic.pageDepthScore ?? Math.min(Math.round(pagesPerSession * 20), 100);
 
   // ── Alerts ──
   const alerts: { severity: "critical" | "warning" | "info"; title: string; description: string }[] = [];
@@ -78,10 +83,10 @@ export function AdsGoogleAnalyticsTab({ data }: AdsGoogleAnalyticsTabProps) {
       description: `Sessions declined from ${fmtN(sessionsPrev30d)} to ${fmtN(sessions30d)}. Investigate traffic sources and campaign performance.`,
     });
   }
-  if (bounceRate > 70) {
+  if (bounceRatePct > 70) {
     alerts.push({
       severity: "critical",
-      title: `Bounce rate at ${fmtPct(bounceRate)}`,
+      title: `Bounce rate at ${fmtPct(bounceRatePct)}`,
       description: "High bounce rate indicates poor landing page experience or traffic mismatch. Review top pages and ad targeting.",
     });
   }
@@ -117,10 +122,10 @@ export function AdsGoogleAnalyticsTab({ data }: AdsGoogleAnalyticsTabProps) {
     }
   }
 
-  if (bounceRate <= 50 && avgSessionDuration >= 120) {
+  if (bounceRatePct <= 50 && avgSessionDuration >= 120) {
     insights.push({
       title: "Strong Engagement",
-      insight: `Bounce rate at ${fmtPct(bounceRate)} and avg session ${fmtDuration(avgSessionDuration / 60)}. Users are engaged with content.`,
+      insight: `Bounce rate at ${fmtPct(bounceRatePct)} and avg session ${fmtDuration(avgSessionDuration / 60)}. Users are engaged with content.`,
       severity: "success",
     });
   }
@@ -213,10 +218,10 @@ export function AdsGoogleAnalyticsTab({ data }: AdsGoogleAnalyticsTabProps) {
         />
         <StatCard
           label="Bounce Rate"
-          value={fmtPct(bounceRate)}
-          changeType={bounceRate > 60 ? "negative" : "positive"}
+          value={fmtPct(bounceRatePct)}
+          changeType={bounceRatePct > 60 ? "negative" : "positive"}
           icon={TrendingDown}
-          iconColor={bounceRate > 60 ? "text-red-500" : "text-primary"}
+          iconColor={bounceRatePct > 60 ? "text-red-500" : "text-primary"}
         />
         <StatCard
           label="Avg Session"
@@ -310,14 +315,14 @@ export function AdsGoogleAnalyticsTab({ data }: AdsGoogleAnalyticsTabProps) {
         <SectionCard title="Engagement Overview" subtitle="Key engagement quality metrics">
           <div className="flex flex-wrap items-center justify-center gap-6">
             <RingStat
-              value={Math.round(100 - bounceRate)}
+              value={engagementScore}
               max={100}
               label="Engagement"
-              color={bounceRate <= 50 ? "#22c55e" : bounceRate <= 70 ? "#eab308" : "#ef4444"}
+              color={bounceRatePct <= 50 ? "#22c55e" : bounceRatePct <= 70 ? "#eab308" : "#ef4444"}
               size={100}
             />
             <RingStat
-              value={Math.min(Math.round(pagesPerSession * 20), 100)}
+              value={pageDepthScore}
               max={100}
               label="Page Depth"
               color={pagesPerSession >= 3 ? "#22c55e" : pagesPerSession >= 1.5 ? "#818cf8" : "#ef4444"}
@@ -327,8 +332,8 @@ export function AdsGoogleAnalyticsTab({ data }: AdsGoogleAnalyticsTabProps) {
           <div className="mt-4 grid grid-cols-3 gap-2 text-center">
             <div className="rounded-lg bg-secondary/40 p-2">
               <p className="text-[10px] text-muted-foreground">Bounce Rate</p>
-              <p className={`text-lg font-bold tabular-nums ${bounceRate <= 50 ? "text-emerald-500" : bounceRate <= 70 ? "text-yellow-500" : "text-red-500"}`}>
-                {fmtPct(bounceRate)}
+              <p className={`text-lg font-bold tabular-nums ${bounceRatePct <= 50 ? "text-emerald-500" : bounceRatePct <= 70 ? "text-yellow-500" : "text-red-500"}`}>
+                {fmtPct(bounceRatePct)}
               </p>
             </div>
             <div className="rounded-lg bg-secondary/40 p-2">

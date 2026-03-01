@@ -222,7 +222,16 @@ async function refreshForUserAndRange(input: {
     });
   }
   if (creds.pylonApiKey) {
-    jobs.push({ providerKey: "pylon", run: () => fetchPylonData({ apiKey: creds.pylonApiKey!, from: range.from, to: range.to }) });
+    jobs.push({
+      providerKey: "pylon",
+      run: () =>
+        fetchPylonData({
+          apiKey: creds.pylonApiKey!,
+          from: range.from,
+          to: range.to,
+          baseUrl: creds.pylonBaseUrl ?? undefined,
+        }),
+    });
   }
 
   jobs.push({ providerKey: "product", run: () => computeProductSnapshot(input.userId, fromDate, toDate) });

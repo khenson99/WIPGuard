@@ -49,8 +49,22 @@ describe("coda lead intelligence", () => {
   it("matches candidates against HubSpot contacts", async () => {
     const fetchMock = vi.fn();
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ total: 1 }))
-      .mockResolvedValueOnce(jsonResponse({ total: 0 }));
+      .mockResolvedValueOnce(
+        jsonResponse({
+          results: [
+            {
+              id: "contact-1",
+              properties: {
+                email: "alice@example.com",
+                firstname: "Alice",
+                lastname: "Example",
+                jobtitle: "CEO",
+                company: "Acme",
+              },
+            },
+          ],
+        })
+      );
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
     const result = await enrichCodaLeadFunnelStatus({
@@ -90,7 +104,11 @@ describe("coda lead intelligence", () => {
 
   it("falls back to unknown funnel status when HubSpot lookup fails", async () => {
     const fetchMock = vi.fn();
-    fetchMock.mockResolvedValueOnce(new Response("upstream unavailable", { status: 503 }));
+    fetchMock
+      // Batch lookup fails
+      .mockResolvedValueOnce(new Response("upstream unavailable", { status: 503 }))
+      // Per-email search fallback also fails
+      .mockResolvedValueOnce(new Response("upstream unavailable", { status: 503 }));
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
     const result = await enrichCodaLeadFunnelStatus({

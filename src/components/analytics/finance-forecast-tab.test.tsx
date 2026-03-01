@@ -5,8 +5,8 @@ import type {
   AnalyticsDashboardData,
   StripeData,
   MercuryData,
+  ForecastScenarioData,
 } from "@/lib/analytics/types";
-import type { ForecastScenarioData } from "@/lib/analytics/forecast-engine";
 
 vi.mock("@/lib/analytics/forecast-engine", async () => {
   const actual = await vi.importActual<typeof import("@/lib/analytics/forecast-engine")>(
@@ -219,7 +219,7 @@ describe("FinanceForecastTab", () => {
       .mockImplementationOnce(() => scenarios);
 
     render(<FinanceForecastTab data={makePayload()} />);
-    expect(screen.getByText("Conservative runway is only 5.0 mo")).toBeTruthy();
+    expect(screen.getByText("Conservative runway is only 5.0mo")).toBeTruthy();
   });
 
   /* ─── Graceful degradation ──────────────────────────── */

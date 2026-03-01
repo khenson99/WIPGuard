@@ -330,7 +330,9 @@ export async function fetchGAData(
 
 export async function fetchWebflowData(
   apiToken: string,
-  siteId: string
+  siteId: string,
+  from?: Date,
+  to?: Date
 ): Promise<WebflowData> {
   const baseUrl = "https://api.webflow.com/v2";
   const headers = {
@@ -428,6 +430,18 @@ export async function fetchWebflowData(
       const formMap: Record<string, number> = {};
       items.forEach((submission) => {
         const row = requireObject(submission);
+        
+        // Filter by date if createdOn is available and bounds exist
+        if (from && to && row.createdOn) {
+          const createdOnStr = String(row.createdOn);
+          const createdDate = new Date(createdOnStr);
+          if (!isNaN(createdDate.getTime())) {
+            if (createdDate < from || createdDate > to) {
+              return; // Skip submission outside range
+            }
+          }
+        }
+        
         const formName = String(row.formName || row.formId || "Unknown");
         formMap[formName] = (formMap[formName] || 0) + 1;
       });
@@ -447,6 +461,10 @@ export async function fetchWebflowData(
     totalCollections: collections.length,
     formSubmissions,
     customDomains,
+    traffic: 0,
+    bounceRate: 0,
+    clicks: 0,
+    returningVisitors: 0,
     _meta: makeMeta("live"),
   };
 }
