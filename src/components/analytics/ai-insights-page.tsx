@@ -78,6 +78,10 @@ export function AiInsightsPage() {
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
 
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
   const paginatedInsights = useMemo(() => {
     const start = (page - 1) * pageSize;
     return filtered.slice(start, start + pageSize);
@@ -192,12 +196,13 @@ export function AiInsightsPage() {
       </div>
 
       {filtered.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
+        <nav aria-label="Pagination" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">
               Showing {(page - 1) * pageSize + 1}&ndash;{Math.min(page * pageSize, filtered.length)} of {filtered.length}
             </span>
             <select
+              aria-label="Results per page"
               value={pageSize}
               onChange={(e) => {
                 setPageSize(Number(e.target.value));
@@ -232,7 +237,7 @@ export function AiInsightsPage() {
               Next
             </button>
           </div>
-        </div>
+        </nav>
       )}
     </div>
   );
