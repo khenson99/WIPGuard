@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useRef, useState } from "react";
 import type { FlowRiskIntelligenceReport, PersonWipPressure } from "./types";
 
 interface WipPressureHeatmapProps {
@@ -22,20 +23,50 @@ function pressureLabel(score: number): string {
   return "Healthy";
 }
 
-function PressureCell({ person }: { person: PersonWipPressure }) {
+function severityIndicator(score: number): string {
+  if (score >= 150) return "\u25C6"; // diamond
+  if (score >= 100) return "\u25B2"; // triangle up
+  if (score >= 75) return "\u25CF"; // filled circle
+  if (score >= 50) return "\u25CB"; // open circle
+  return "\u2713"; // checkmark
+}
+
+interface PressureCellProps {
+  person: PersonWipPressure;
+  cellRef: React.Ref<HTMLDivElement>;
+}
+
+function PressureCell({ person, cellRef }: PressureCellProps) {
   const color = pressureColor(person.pressureScore);
+  const label = pressureLabel(person.pressureScore);
+  const displayName = person.name ?? person.email ?? "Unassigned";
+
+  const ariaLabel = `${displayName}: ${label} pressure, ${person.activeTaskCount} active tasks out of ${person.wipLimit} WIP limit, ${Math.round(person.pressureScore)}% pressure score`;
 
   return (
     <div
-      className={`rounded-lg border-2 ${color} px-3 py-2.5 transition-all duration-200`}
-      title={`${person.name ?? "Unknown"}: ${person.activeTaskCount} active / ${person.wipLimit} limit`}
+      ref={cellRef}
+      role="gridcell"
+      tabIndex={0}
+      aria-label={ariaLabel}
+      className={`rounded-lg border-2 ${color} px-3 py-2.5 transition-all duration-200 outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1`}
+      title={`${displayName}: ${person.activeTaskCount} active / ${person.wipLimit} limit`}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="truncate text-sm font-medium">
-          {person.name ?? person.email ?? "Unassigned"}
+          {displayName}
         </span>
         {person.overloaded && (
-          <span className="shrink-0 text-xs font-bold">!!!</span>
+          <>
+            <span
+              role="img"
+              aria-label="Overloaded"
+              className="shrink-0 text-xs font-bold"
+            >
+              !!!
+            </span>
+            <span className="sr-only">Overloaded</span>
+          </>
         )}
       </div>
       <div className="mt-1 flex items-baseline gap-1.5">
@@ -45,8 +76,9 @@ function PressureCell({ person }: { person: PersonWipPressure }) {
         <span className="text-xs opacity-70">/ {person.wipLimit}</span>
       </div>
       <div className="mt-0.5 flex items-center justify-between">
-        <span className="text-[10px] font-medium uppercase tracking-wider opacity-80">
-          {pressureLabel(person.pressureScore)}
+        <span className="text-xs font-semibold uppercase tracking-wider opacity-80">
+          <span aria-hidden="true">{severityIndicator(person.pressureScore)}</span>{" "}
+          {label}
         </span>
         <span className="text-[10px] tabular-nums opacity-60">
           {Math.round(person.pressureScore)}%
@@ -54,7 +86,14 @@ function PressureCell({ person }: { person: PersonWipPressure }) {
       </div>
 
       {/* Mini pressure bar */}
-      <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-black/5">
+      <div
+        className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-black/5"
+        role="progressbar"
+        aria-valuenow={Math.round(person.pressureScore)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`Pressure: ${Math.round(person.pressureScore)}%`}
+      >
         <div
           className="h-full rounded-full bg-current opacity-60 transition-all duration-500"
           style={{ width: `${Math.min(100, person.pressureScore)}%` }}
@@ -65,6 +104,53 @@ function PressureCell({ person }: { person: PersonWipPressure }) {
 }
 
 export function WipPressureHeatmap({ riskReport }: WipPressureHeatmapProps) {
+  const [focusedIndex, setFocusedIndex] = useState(0);
+  const cellRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  const getColumnCount = useCallback((): number => {
+    // Match the responsive grid breakpoints: grid-cols-2 sm:grid-cols-3 lg:grid-cols-4
+    if (typeof window === "undefined") return 2;
+    const width = window.innerWidth;
+    if (width >= 1024) return 4; // lg
+    if (width >= 640) return 3;  // sm
+    return 2;                     // default
+  }, []);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>, totalCells: number) => {
+      const cols = getColumnCount();
+      let nextIndex = focusedIndex;
+
+      switch (e.key) {
+        case "ArrowRight":
+          nextIndex = Math.min(focusedIndex + 1, totalCells - 1);
+          break;
+        case "ArrowLeft":
+          nextIndex = Math.max(focusedIndex - 1, 0);
+          break;
+        case "ArrowDown":
+          nextIndex = Math.min(focusedIndex + cols, totalCells - 1);
+          break;
+        case "ArrowUp":
+          nextIndex = Math.max(focusedIndex - cols, 0);
+          break;
+        case "Home":
+          nextIndex = 0;
+          break;
+        case "End":
+          nextIndex = totalCells - 1;
+          break;
+        default:
+          return;
+      }
+
+      e.preventDefault();
+      setFocusedIndex(nextIndex);
+      cellRefs.current[nextIndex]?.focus();
+    },
+    [focusedIndex, getColumnCount]
+  );
+
   if (!riskReport) {
     return (
       <div className="h-40 animate-pulse rounded-lg border border-border bg-muted" />
@@ -104,9 +190,20 @@ export function WipPressureHeatmap({ riskReport }: WipPressureHeatmapProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-        {people.map((person) => (
-          <PressureCell key={person.userId} person={person} />
+      <div
+        role="grid"
+        aria-label="WIP pressure by team member"
+        className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4"
+        onKeyDown={(e) => handleKeyDown(e, people.length)}
+      >
+        {people.map((person, index) => (
+          <PressureCell
+            key={person.userId}
+            person={person}
+            cellRef={(el) => {
+              cellRefs.current[index] = el;
+            }}
+          />
         ))}
       </div>
     </div>
