@@ -1,6 +1,7 @@
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { describe, expect, it, beforeEach } from "vitest";
 import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
+import { clearDashboardCache, useDashboardCacheStore } from "@/lib/client/dashboard-cache-store";
 
 interface Payload {
   value: number;
@@ -9,17 +10,14 @@ interface Payload {
 
 describe("useDashboardResource", () => {
   beforeEach(() => {
-    window.sessionStorage.clear();
+    clearDashboardCache();
   });
 
   it("uses cache first and then updates from successful refresh", async () => {
-    window.sessionStorage.setItem(
-      "test:resource:1",
-      JSON.stringify({
-        data: { value: 1 },
-        lastUpdatedAt: "2026-01-01T00:00:00.000Z",
-      })
-    );
+    useDashboardCacheStore.getState().write("test:resource:1", {
+      data: { value: 1 },
+      lastUpdatedAt: "2026-01-01T00:00:00.000Z",
+    });
 
     const { result } = renderHook(() =>
       useDashboardResource<Payload>({
@@ -40,13 +38,10 @@ describe("useDashboardResource", () => {
   });
 
   it("keeps cached data and marks stale when refresh fails", async () => {
-    window.sessionStorage.setItem(
-      "test:resource:2",
-      JSON.stringify({
-        data: { value: 7 },
-        lastUpdatedAt: "2026-01-01T00:00:00.000Z",
-      })
-    );
+    useDashboardCacheStore.getState().write("test:resource:2", {
+      data: { value: 7 },
+      lastUpdatedAt: "2026-01-01T00:00:00.000Z",
+    });
 
     const { result } = renderHook(() =>
       useDashboardResource<Payload>({
@@ -88,13 +83,10 @@ describe("useDashboardResource", () => {
   });
 
   it("manual refresh replaces stale cached data and clears errors", async () => {
-    window.sessionStorage.setItem(
-      "test:resource:4",
-      JSON.stringify({
-        data: { value: 10 },
-        lastUpdatedAt: "2026-01-01T00:00:00.000Z",
-      })
-    );
+    useDashboardCacheStore.getState().write("test:resource:4", {
+      data: { value: 10 },
+      lastUpdatedAt: "2026-01-01T00:00:00.000Z",
+    });
 
     let callCount = 0;
     const { result } = renderHook(() =>

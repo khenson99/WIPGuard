@@ -1,0 +1,118 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { IntegrationConnectionStatus, IntegrationProvider } from "@/generated/prisma/client";
+import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
+import { prisma } from "@/lib/prisma";
+
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    integrationConnection: {
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },
+  },
+}));
+
+describe("token refresh", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    process.env.HUBSPOT_CLIENT_ID = "hubspot-client";
+    process.env.HUBSPOT_CLIENT_SECRET = "hubspot-secret";
+    process.env.META_APP_ID = "meta-app";
+    process.env.META_APP_SECRET = "meta-secret";
+  });
+
+  it("refreshes an expired HubSpot OAuth token and persists it", async () => {
+    vi.mocked(prisma.integrationConnection.findUnique).mockResolvedValueOnce({
+      id: "c1",
+      userId: "user_1",
+      provider: IntegrationProvider.HUBSPOT,
+      status: IntegrationConnectionStatus.CONNECTED,
+      providerAccountId: "hub-1",
+      accountLabel: "test",
+      scopes: [],
+      accessToken: "plainv1.old_access",
+      refreshToken: "plainv1.refresh",
+      tokenType: null,
+      expiresAt: new Date(Date.now() - 60_000),
+      connectedAt: new Date(),
+      lastSyncedAt: null,
+      lastError: null,
+      metadata: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        json: async () => ({
+          access_token: "new_access",
+          refresh_token: "new_refresh",
+          token_type: "bearer",
+          expires_in: 3600,
+        }),
+        text: async () => "",
+      }))
+    );
+
+    vi.mocked(prisma.integrationConnection.update).mockResolvedValueOnce({} as never);
+
+    const token = await getValidIntegrationAccessToken({
+      userId: "user_1",
+      provider: IntegrationProvider.HUBSPOT,
+    });
+
+    expect(token).toBe("new_access");
+    expect(prisma.integrationConnection.update).toHaveBeenCalled();
+  });
+
+  it("exchanges a Meta token for a long-lived token when expiring", async () => {
+    vi.mocked(prisma.integrationConnection.findUnique).mockResolvedValueOnce({
+      id: "c2",
+      userId: "user_1",
+      provider: IntegrationProvider.META_ADS,
+      status: IntegrationConnectionStatus.CONNECTED,
+      providerAccountId: "meta-1",
+      accountLabel: "test",
+      scopes: [],
+      accessToken: "plainv1.short_lived",
+      refreshToken: null,
+      tokenType: null,
+      expiresAt: new Date(Date.now() + 10_000),
+      connectedAt: new Date(),
+      lastSyncedAt: null,
+      lastError: null,
+      metadata: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        json: async () => ({
+          access_token: "long_lived",
+          expires_in: 60 * 24 * 60 * 60,
+        }),
+        text: async () => "",
+      }))
+    );
+
+    vi.mocked(prisma.integrationConnection.update).mockResolvedValueOnce({} as never);
+
+    const token = await getValidIntegrationAccessToken({
+      userId: "user_1",
+      provider: IntegrationProvider.META_ADS,
+    });
+
+    expect(token).toBe("long_lived");
+    expect(prisma.integrationConnection.update).toHaveBeenCalled();
+  });
+});
+

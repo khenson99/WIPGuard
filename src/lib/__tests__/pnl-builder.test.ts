@@ -143,14 +143,23 @@ describe("buildProfitAndLoss", () => {
 
   /* ── Expense calculations ── */
 
-  it("each expense equals outflows multiplied by the ratio", () => {
-    const result = buildDefault();
-    const cogs = result.items[1];
-    const opexItems = result.items.slice(3, 7);
+  it("cogs equals outflows multiplied by the cogs ratio", () => {
+    const item = buildDefault().items[1];
+    // outflows30d = 45000, cogs=0.25
+    expect(item.current).toBe(11_250);
+    expect(item.previous).toBe(11_250);
+  });
+
+  it("each operating expense equals outflows multiplied by the relative ratio", () => {
+    const items = buildDefault().items.slice(3, 7);
     // outflows30d = 45000
     // cogs=0.25, payroll=0.35, marketing=0.15, infrastructure=0.10, ops=0.15
-    expect(cogs.current).toBe(11_250);
-    expect(opexItems.map((item) => item.current)).toEqual([15_750, 6_750, 4_500, 6_750]);
+    // Operating expenses exclude COGS, so these map to the non-COGS portion.
+    const expectedCurrentValues = [15_750, 6_750, 4_500, 6_750];
+
+    for (let i = 0; i < items.length; i++) {
+      expect(items[i].current).toBe(expectedCurrentValues[i]);
+    }
   });
 
   it("previous expense values mirror current (no historical outflow data)", () => {
@@ -168,16 +177,24 @@ describe("buildProfitAndLoss", () => {
     expect(totalOpexItem.previous).toBe(33_750);
   });
 
+  it("total outflows equal COGS plus total operating expenses", () => {
+    const result = buildDefault();
+    const cogs = result.items[1];
+    const totalOpex = result.items[7];
+    expect(cogs.current + totalOpex.current).toBe(45_000);
+    expect(cogs.previous + totalOpex.previous).toBe(45_000);
+  });
+
   /* ── Net income ── */
 
-  it("net income equals revenue minus total expenses", () => {
+  it("net income equals revenue minus total outflows", () => {
     const result = buildDefault();
     // 12000 - 45000 = -33000
     expect(result.netIncome).toBe(-33_000);
     expect(result.items[9].current).toBe(-33_000);
   });
 
-  it("previous net income equals previous revenue minus total expenses", () => {
+  it("previous net income equals previous revenue minus total outflows", () => {
     const result = buildDefault();
     // 10800 - 45000 = -34200
     expect(result.previousNetIncome).toBe(-34_200);
@@ -188,7 +205,7 @@ describe("buildProfitAndLoss", () => {
 
   it("grossMargin is (revenue - COGS) / revenue * 100", () => {
     const result = buildDefault();
-    // (12000 - 11250) / 12000 * 100 = 6.25
+    // (12000 - 11250) / 12000 * 100 = 6.25 → rounded to 1 decimal
     expect(result.grossMargin).toBe(6.3);
   });
 
@@ -214,8 +231,10 @@ describe("buildProfitAndLoss", () => {
   it("handles null mercury (expenses are 0)", () => {
     const result = buildProfitAndLoss(makeStripe(), null);
 
-    const expenseItems = [result.items[1], ...result.items.slice(3, 7)];
-    for (const item of expenseItems) {
+    // COGS + operating expenses are all zero when Mercury data is unavailable
+    expect(result.items[1].current).toBe(0);
+    expect(result.items[1].previous).toBe(0);
+    for (const item of result.items.slice(3, 7)) {
       expect(item.current).toBe(0);
       expect(item.previous).toBe(0);
     }
@@ -257,14 +276,15 @@ describe("buildProfitAndLoss", () => {
       ratios: customRatios,
     });
 
-    const cogs = result.items[1];
-    const expenses = result.items.slice(3, 7);
     // outflows = 45000
+    const cogs = result.items[1];
     expect(cogs.current).toBe(22_500); // cogs: 45000 * 0.50
-    expect(expenses[0].current).toBe(9_000);  // payroll: 45000 * 0.20
-    expect(expenses[1].current).toBe(4_500);  // marketing: 45000 * 0.10
-    expect(expenses[2].current).toBe(4_500);  // infrastructure: 45000 * 0.10
-    expect(expenses[3].current).toBe(4_500);  // ops: 45000 * 0.10
+
+    const opex = result.items.slice(3, 7);
+    expect(opex[0].current).toBe(9_000);  // payroll: 45000 * 0.20
+    expect(opex[1].current).toBe(4_500);  // marketing: 45000 * 0.10
+    expect(opex[2].current).toBe(4_500);  // infrastructure: 45000 * 0.10
+    expect(opex[3].current).toBe(4_500);  // ops: 45000 * 0.10
 
     // grossMargin with custom COGS: (12000 - 22500) / 12000 * 100 = -87.5
     expect(result.grossMargin).toBe(-87.5);
@@ -288,17 +308,16 @@ describe("buildProfitAndLoss", () => {
     const result = buildProfitAndLoss(makeStripe(), mercury);
 
     // Verify all expense items are rounded to at most 2 decimal places
-    const expenseItems = [result.items[1], ...result.items.slice(3, 7)];
-    for (const item of expenseItems) {
+    for (const item of [result.items[1], ...result.items.slice(3, 7)]) {
       const currentDecimals = countDecimalPlaces(item.current);
       const previousDecimals = countDecimalPlaces(item.previous);
       expect(currentDecimals).toBeLessThanOrEqual(2);
       expect(previousDecimals).toBeLessThanOrEqual(2);
     }
 
-    // Verify totals and net income are rounded
-    const totalExpenses = result.items[7];
-    expect(countDecimalPlaces(totalExpenses.current)).toBeLessThanOrEqual(2);
+    // Verify key totals and net income are rounded
+    const totalOpex = result.items[7];
+    expect(countDecimalPlaces(totalOpex.current)).toBeLessThanOrEqual(2);
 
     const netIncomeItem = result.items[9];
     expect(countDecimalPlaces(netIncomeItem.current)).toBeLessThanOrEqual(2);

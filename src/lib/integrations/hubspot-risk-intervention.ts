@@ -8,16 +8,15 @@ import {
   type TaskStatus,
 } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { protectIntegrationSecret, unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
 import { getNextColumnOrder } from "@/lib/task-order";
 import { buildOutboxIdempotencyKey, publishDomainEvent } from "@/lib/event-bus";
 import { withRetries } from "@/lib/integrations/with-retries";
 import { isCircuitClosed, recordSuccess, recordFailure, CircuitOpenError, getCircuitState } from "@/lib/integrations/circuit-breaker";
+import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
 
 export const HUBSPOT_RISK_RULE_KEY = "hubspot_stale_risk_intervention";
 const HUBSPOT_DEALS_ENDPOINT = "https://api.hubapi.com/crm/v3/objects/deals";
 const HUBSPOT_OWNERS_ENDPOINT = "https://api.hubapi.com/crm/v3/owners";
-const HUBSPOT_TOKEN_ENDPOINT = "https://api.hubapi.com/oauth/v1/token";
 
 type SupportedAutoTaskStatus = "QUEUED" | "ACTIVE" | "NOT_DONE";
 type HubSpotRiskVariant = "stale" | "close_date_slip" | "health_drop";
@@ -432,87 +431,6 @@ async function markConnectionError(userId: string, message: string): Promise<voi
   });
 }
 
-function parseTokenResponse(raw: unknown): {
-  accessToken: string;
-  expiresAt: Date | null;
-  refreshToken: string | null;
-  tokenType: string | null;
-} {
-  const body = asRecord(raw);
-  const accessToken =
-    typeof body.access_token === "string" && body.access_token.trim().length > 0
-      ? body.access_token.trim()
-      : null;
-
-  if (!accessToken) {
-    throw new HubSpotRiskIntegrationAuthError("HubSpot token refresh response missing access token");
-  }
-
-  const expiresIn = typeof body.expires_in === "number" ? body.expires_in : null;
-  const expiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000) : null;
-  const refreshToken = typeof body.refresh_token === "string" ? body.refresh_token : null;
-  const tokenType = typeof body.token_type === "string" ? body.token_type : null;
-
-  return { accessToken, expiresAt, refreshToken, tokenType };
-}
-
-async function refreshHubSpotAccessToken(connection: IntegrationConnection): Promise<string> {
-  const refreshToken = unprotectIntegrationSecret(connection.refreshToken);
-  if (!refreshToken) {
-    throw new HubSpotRiskIntegrationAuthError("HubSpot refresh token is missing");
-  }
-
-  if (!process.env.HUBSPOT_CLIENT_ID || !process.env.HUBSPOT_CLIENT_SECRET) {
-    throw new HubSpotRiskIntegrationAuthError("HubSpot OAuth client credentials are missing");
-  }
-
-  const body = new URLSearchParams({
-    grant_type: "refresh_token",
-    client_id: process.env.HUBSPOT_CLIENT_ID,
-    client_secret: process.env.HUBSPOT_CLIENT_SECRET,
-    refresh_token: refreshToken,
-  });
-
-  const response = await fetch(HUBSPOT_TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-    cache: "no-store",
-  });
-
-  const json = (await response.json().catch(() => ({}))) as unknown;
-  if (!response.ok) {
-    const details = asRecord(json);
-    const reason =
-      (typeof details.error_description === "string" && details.error_description) ||
-      (typeof details.error === "string" && details.error) ||
-      "HubSpot token refresh failed";
-    throw new HubSpotRiskIntegrationAuthError(reason);
-  }
-
-  const parsed = parseTokenResponse(json);
-
-  await prisma.integrationConnection.update({
-    where: {
-      userId_provider: {
-        userId: connection.userId,
-        provider: IntegrationProvider.HUBSPOT,
-      },
-    },
-    data: {
-      accessToken: protectIntegrationSecret(parsed.accessToken),
-      refreshToken: protectIntegrationSecret(parsed.refreshToken) ?? connection.refreshToken,
-      tokenType: parsed.tokenType ?? connection.tokenType,
-      expiresAt: parsed.expiresAt,
-      status: IntegrationConnectionStatus.CONNECTED,
-      lastError: null,
-      lastSyncedAt: new Date(),
-    },
-  });
-
-  return parsed.accessToken;
-}
-
 async function getHubSpotConnection(userId: string): Promise<IntegrationConnection> {
   const connection = await prisma.integrationConnection.findUnique({
     where: {
@@ -534,10 +452,10 @@ async function getValidHubSpotAccessToken(
   userId: string
 ): Promise<{ accessToken: string; portalId: string | null }> {
   const connection = await getHubSpotConnection(userId);
-  const token = unprotectIntegrationSecret(connection.accessToken);
-  if (!token) {
-    throw new HubSpotRiskIntegrationAuthError("HubSpot access token is missing");
-  }
+  const token = await getValidIntegrationAccessToken({
+    userId,
+    provider: IntegrationProvider.HUBSPOT,
+  });
 
   const portalIdRaw = asRecord(connection.metadata).hubId;
   const portalId =
@@ -546,14 +464,6 @@ async function getValidHubSpotAccessToken(
       : typeof portalIdRaw === "string"
         ? portalIdRaw
         : null;
-
-  const expiresSoon =
-    Boolean(connection.expiresAt) && connection.expiresAt!.getTime() <= Date.now() + 60_000;
-
-  if (expiresSoon) {
-    const refreshed = await refreshHubSpotAccessToken(connection);
-    return { accessToken: refreshed, portalId };
-  }
 
   return { accessToken: token, portalId };
 }
@@ -801,7 +711,7 @@ export async function runHubSpotRiskIntervention(input: {
   }
 
   const CB_PROVIDER = "hubspot";
-  if (!isCircuitClosed(CB_PROVIDER, input.userId)) {
+  if (!(await isCircuitClosed(CB_PROVIDER, input.userId))) {
     throw new CircuitOpenError(CB_PROVIDER, input.userId, getCircuitState(CB_PROVIDER, input.userId));
   }
   let _cbSuccess = false;

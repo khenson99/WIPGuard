@@ -21,6 +21,7 @@ import { listProviderRegistryEntries } from "@/lib/integrations/provider-registr
 import { validateIntegrationScopes } from "@/lib/integrations/scope-validation";
 import { prisma } from "@/lib/prisma";
 import { protectIntegrationSecret, unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
+import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
 
 export interface ProviderFreshnessSnapshot {
   provider: IntegrationProvider;
@@ -86,6 +87,7 @@ export interface AnalyticsCredentials {
 }
 
 type ConnectionRecord = {
+  userId: string;
   provider: IntegrationProvider;
   status: IntegrationConnectionStatus;
   accessToken: string | null;
@@ -439,6 +441,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     const connections = await prisma.integrationConnection.findMany({
       where: { userId },
       select: {
+        userId: true,
         provider: true,
         status: true,
         accessToken: true,
@@ -457,6 +460,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
       connections.map((connection) => [
         connection.provider,
         {
+          userId: connection.userId,
           provider: connection.provider,
           status: connection.status,
           accessToken: connection.accessToken,
@@ -556,7 +560,10 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
   const hubspotToken =
     envHubspot ??
     (hubspotConnection?.status === IntegrationConnectionStatus.CONNECTED
-      ? unprotectIntegrationSecret(hubspotConnection.accessToken)
+      ? await getValidIntegrationAccessToken({
+          userId: hubspotConnection.userId,
+          provider: IntegrationProvider.HUBSPOT,
+        }).catch(() => null)
       : null);
 
   const codaApiToken =
@@ -573,7 +580,10 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
 
   const googleWorkspaceAccessToken =
     googleWorkspaceConnection?.status === IntegrationConnectionStatus.CONNECTED
-      ? unprotectIntegrationSecret(googleWorkspaceConnection.accessToken)
+      ? await getValidIntegrationAccessToken({
+          userId: googleWorkspaceConnection.userId,
+          provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        }).catch(() => null)
       : null;
 
   const slackAccessToken =
@@ -584,19 +594,28 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
   const stripeKey =
     envStripe ??
     (stripeConnection?.status === IntegrationConnectionStatus.CONNECTED
-      ? unprotectIntegrationSecret(stripeConnection.accessToken)
+      ? await getValidIntegrationAccessToken({
+          userId: stripeConnection.userId,
+          provider: IntegrationProvider.STRIPE,
+        }).catch(() => null)
       : null);
 
   const mercuryKey =
     envMercury ??
     (mercuryConnection?.status === IntegrationConnectionStatus.CONNECTED
-      ? unprotectIntegrationSecret(mercuryConnection.accessToken)
+      ? await getValidIntegrationAccessToken({
+          userId: mercuryConnection.userId,
+          provider: IntegrationProvider.MERCURY,
+        }).catch(() => null)
       : null);
 
   const webflowApiToken =
     envWebflowToken ??
     (webflowConnection?.status === IntegrationConnectionStatus.CONNECTED
-      ? unprotectIntegrationSecret(webflowConnection.accessToken)
+      ? await getValidIntegrationAccessToken({
+          userId: webflowConnection.userId,
+          provider: IntegrationProvider.WEBFLOW,
+        }).catch(() => null)
       : null);
 
   const webflowSiteId =
@@ -617,10 +636,16 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
   const metaAccessToken =
     envMetaAccessToken ??
     (metaAdsConnection?.status === IntegrationConnectionStatus.CONNECTED
-      ? unprotectIntegrationSecret(metaAdsConnection.accessToken)
+      ? await getValidIntegrationAccessToken({
+          userId: metaAdsConnection.userId,
+          provider: IntegrationProvider.META_ADS,
+        }).catch(() => null)
       : null) ??
     (metaPageConnection?.status === IntegrationConnectionStatus.CONNECTED
-      ? unprotectIntegrationSecret(metaPageConnection.accessToken)
+      ? await getValidIntegrationAccessToken({
+          userId: metaPageConnection.userId,
+          provider: IntegrationProvider.META_PAGE,
+        }).catch(() => null)
       : null);
 
 
@@ -858,7 +883,10 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     webflowSiteId,
 
     codaApiToken,
-    codaDocId: envOrNull(process.env.CODA_DOC_ID) || "lE7mWZbZCk",
+    codaDocId:
+      envOrNull(process.env.CODA_DOC_ID) ??
+      metadataString(codaConnection?.metadata, "docId") ??
+      null,
 
     pylonApiKey,
     pylonBaseUrl,

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, BookOpen, Calendar, ChevronLeft, ChevronRight } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertTriangle, BookOpen, Calendar, ChevronDown, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 
 interface LogbookEntry {
@@ -25,8 +25,88 @@ export default function LogbookPage() {
   const [page, setPage] = useState(1);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
   const fetchIdRef = useRef(0);
   const cacheKey = `dashboard:logbook:v1:${page}:${startDate || "all"}:${endDate || "all"}`;
+
+  const exportFilename = useCallback(
+    (ext: string) => {
+      if (startDate && endDate) return `logbook-${startDate}-to-${endDate}.${ext}`;
+      if (startDate) return `logbook-from-${startDate}.${ext}`;
+      if (endDate) return `logbook-to-${endDate}.${ext}`;
+      return `logbook-all.${ext}`;
+    },
+    [startDate, endDate],
+  );
+
+  const escapeCsvField = useCallback((value: string | null): string => {
+    if (value === null || value === undefined) return "";
+    const str = String(value);
+    if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  }, []);
+
+  const downloadBlob = useCallback((content: string, filename: string, mimeType: string) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const handleExport = useCallback(
+    (format: "csv" | "json") => {
+      setExportOpen(false);
+      if (entries.length === 0) return;
+
+      if (format === "json") {
+        const json = JSON.stringify(entries, null, 2);
+        downloadBlob(json, exportFilename("json"), "application/json");
+        return;
+      }
+
+      const columns: (keyof LogbookEntry)[] = [
+        "id",
+        "taskTitle",
+        "taskNotes",
+        "projectName",
+        "sprintName",
+        "priority",
+        "status",
+        "responsible",
+        "accountable",
+        "completedOn",
+        "archivedAt",
+      ];
+      const header = columns.join(",");
+      const rows = entries.map((entry) =>
+        columns.map((col) => escapeCsvField(entry[col])).join(","),
+      );
+      const csv = "\uFEFF" + [header, ...rows].join("\n");
+      downloadBlob(csv, exportFilename("csv"), "text/csv");
+    },
+    [entries, downloadBlob, escapeCsvField, exportFilename],
+  );
+
+  /* Close export dropdown on outside click */
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setExportOpen(false);
+      }
+    }
+    if (exportOpen) {
+      document.addEventListener("mousedown", onClickOutside);
+      return () => document.removeEventListener("mousedown", onClickOutside);
+    }
+  }, [exportOpen]);
 
   useEffect(() => {
     let active = true;
@@ -123,6 +203,38 @@ export default function LogbookPage() {
               }}
               className="rounded-md border border-border bg-secondary px-2 py-1 text-xs text-foreground"
             />
+            <div ref={exportRef} className="relative ml-2">
+              <button
+                aria-label="Export entries"
+                aria-expanded={exportOpen}
+                aria-haspopup="true"
+                onClick={() => setExportOpen((prev) => !prev)}
+                disabled={entries.length === 0}
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-secondary px-2.5 py-1 text-xs text-foreground hover:bg-secondary/80 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export
+                <ChevronDown className="h-3 w-3" />
+              </button>
+              {exportOpen && (
+                <div role="menu" className="absolute right-0 top-full z-10 mt-1 w-36 rounded-md border border-border bg-card py-1 shadow-lg">
+                  <button
+                    role="menuitem"
+                    onClick={() => handleExport("csv")}
+                    className="flex w-full items-center px-3 py-1.5 text-xs text-foreground hover:bg-secondary"
+                  >
+                    Export as CSV
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => handleExport("json")}
+                    className="flex w-full items-center px-3 py-1.5 text-xs text-foreground hover:bg-secondary"
+                  >
+                    Export as JSON
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

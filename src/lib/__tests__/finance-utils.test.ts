@@ -52,6 +52,10 @@ describe("computeVariance", () => {
   it("returns 100 variancePct when planned is zero and actual is positive", () => {
     expect(computeVariance(0, 50)).toEqual({ variance: 50, variancePct: 100 });
   });
+
+  it("returns 0 when actual exactly matches budget", () => {
+    expect(computeVariance(100, 100)).toEqual({ variance: 0, variancePct: 0 });
+  });
 });
 
 describe("computeProgressPct", () => {
@@ -96,6 +100,10 @@ describe("fmtDelta", () => {
   it("formats zero without a sign", () => {
     expect(fmtDelta(0)).toBe("$0");
   });
+
+  it("formats negative millions with minus sign", () => {
+    expect(fmtDelta(-2_000_000)).toBe("−$2000k");
+  });
 });
 
 describe("fmtMonths", () => {
@@ -132,6 +140,10 @@ describe("fmtRatio", () => {
 
   it("returns — for non-finite ratios", () => {
     expect(fmtRatio(Infinity)).toBe("—");
+  });
+
+  it("formats large ratios correctly", () => {
+    expect(fmtRatio(100.5)).toBe("100.5×");
   });
 });
 
@@ -202,6 +214,8 @@ describe("ltvCacSeverity", () => {
 
   it("returns positive for ratio of 3 or above", () => {
     expect(ltvCacSeverity(3)).toBe("positive");
+    expect(ltvCacSeverity(4)).toBe("positive");
+    expect(ltvCacSeverity(5)).toBe("positive");
     expect(ltvCacSeverity(7)).toBe("positive");
   });
 });

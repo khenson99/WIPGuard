@@ -197,7 +197,7 @@ describe("computeUnitEconomics", () => {
     expect(result.ltv).toBe(0);
     // revenue is 0 so grossMarginPct = 0
     expect(result.grossMarginPct).toBe(0);
-    // arpa is 0 so paybackMonths = 0
+    // arpa is 0 so monthlyGrossProfit = 0 → paybackMonths = 0
     expect(result.paybackMonths).toBe(0);
   });
 
@@ -205,7 +205,7 @@ describe("computeUnitEconomics", () => {
     const result = computeUnitEconomics(stripe, null, hubspot);
     // totalOutflows = 0, marketingSpend = 0, CAC = 0 / 50 = 0
     expect(result.cac).toBe(0);
-    // ltvCacRatio = 5000 / max(0, 1) = 5000
+    // ltvCacRatio = cac > 0 ? ltv/cac : ltv → returns ltv when cac is 0
     expect(result.ltvCacRatio).toBe(5000);
   });
 
@@ -235,6 +235,7 @@ describe("computeUnitEconomics", () => {
     });
     const result = computeUnitEconomics(zeroArpaStripe, mercury, hubspot);
     expect(result.arpa).toBe(0);
+    // monthlyGrossProfit = 0 when ARPA is zero → paybackMonths = 0
     expect(result.paybackMonths).toBe(0);
   });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { HorizontalFunnel } from "@/components/charts";
 import { StatCard } from "./stat-card";
@@ -14,16 +14,7 @@ import type {
 } from "@/lib/analytics/types";
 import { Users, TrendingUp, ArrowRight, Sparkles, AlertTriangle } from "lucide-react";
 import { populateConnectionStatus } from "@/hooks/use-connection-status";
-
-function readOverviewCache(key: string): AnalyticsDashboardData | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = sessionStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as AnalyticsDashboardData) : null;
-  } catch {
-    return null;
-  }
-}
+import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
 
 const STAGE_COLORS: Record<LifecycleStageId, string> = {
   awareness: "#3b82f6",
@@ -43,49 +34,32 @@ export function CustomerJourneyPage() {
   const rangeQuery = useMemo(() => buildRangeQuery(searchParams), [searchParams]);
   const cacheKey = `analytics:overview:${rangeQuery || "all"}`;
 
-  const [data, setData] = useState<AnalyticsDashboardData | null>(() => readOverviewCache(cacheKey));
+  const resource = useDashboardResource<AnalyticsDashboardData>({
+    cacheKey,
+    deps: [rangeQuery],
+    load: async ({ signal }) => {
+      const response = await fetch(
+        `/api/analytics?section=overview${rangeQuery ? `&${rangeQuery}` : ""}`,
+        { signal }
+      );
+      if (!response.ok) {
+        throw new Error(`Analytics overview request failed (${response.status})`);
+      }
+      return (await response.json()) as AnalyticsDashboardData;
+    },
+    getLastUpdatedAt: (payload) =>
+      payload.meta?.servedAt ?? payload.lastFullRefresh ?? null,
+    mapError: (error) =>
+      error instanceof Error && error.message ? error.message : "Could not load journey data.",
+  });
+
+  const data = resource.data;
   const [selectedStage, setSelectedStage] = useState<LifecycleStageId | null>(null);
-  const [loading, setLoading] = useState(() => readOverviewCache(cacheKey) === null);
-  const [error, setError] = useState<string | null>(null);
-  const [fetchKey, setFetchKey] = useState(0);
 
   useEffect(() => {
-    const cached = readOverviewCache(cacheKey);
-    if (cached) {
-      populateConnectionStatus(cached.freshness, cached);
-    }
-
-    let active = true;
-    const controller = new AbortController();
-
-    fetch(`/api/analytics?section=overview${rangeQuery ? `&${rangeQuery}` : ""}`, { signal: controller.signal })
-      .then((r) => r.json())
-      .then((json: AnalyticsDashboardData) => {
-        if (!active) return;
-        setData(json);
-        populateConnectionStatus(json.freshness, json);
-        sessionStorage.setItem(cacheKey, JSON.stringify(json));
-      })
-      .catch((err) => {
-        if (!active) return;
-        console.error(err);
-        setError("Failed to load journey data");
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [fetchKey, rangeQuery]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleRetry = () => {
-    setError(null);
-    setLoading(true);
-    setFetchKey((k) => k + 1);
-  };
+    if (!data) return;
+    populateConnectionStatus(data.freshness, data);
+  }, [data]);
 
   const lifecycle = data?.lifecycleFunnel ?? null;
   const insights = data?.aiInsights?.global ?? [];
@@ -110,7 +84,7 @@ export function CustomerJourneyPage() {
     [],
   );
 
-  if (loading) {
+  if (resource.loading && !data) {
     return (
       <div className="flex h-64 items-center justify-center">
         <p className="text-sm text-muted-foreground">Loading journey data…</p>
@@ -118,17 +92,20 @@ export function CustomerJourneyPage() {
     );
   }
 
-  if (error) {
+  if (!data) {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="text-center">
           <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-destructive/60" />
-          <p className="text-sm font-medium text-destructive">{error}</p>
+          <p className="text-sm font-medium text-destructive">
+            {resource.error ?? "Could not load journey data."}
+          </p>
           <p className="mt-1 text-xs text-muted-foreground">
             Check your connection and try again
           </p>
           <button
-            onClick={handleRetry}
+            type="button"
+            onClick={resource.refresh}
             className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-secondary"
           >
             Retry

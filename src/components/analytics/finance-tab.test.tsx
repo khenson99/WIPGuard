@@ -1,8 +1,17 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FinanceTab } from "@/components/analytics/finance-tab";
 import { createEmptyAnalyticsDashboardData } from "@/lib/analytics/response-shape";
-import type { AnalyticsDashboardData, StripeData, MercuryData } from "@/lib/analytics/types";
+import { buildProfitAndLossCore } from "@/lib/analytics/pnl-builder";
+import { buildDefaultScenarios } from "@/lib/analytics/forecast-engine";
+import type {
+  AnalyticsDashboardData,
+  FinancialPlanningData,
+  MercuryData,
+  StripeData,
+} from "@/lib/analytics/types";
+
+/* ── Helpers ───────────────────────────────────────────── */
 
 const defaultTimeRange: AnalyticsDashboardData["timeRange"] = {
   preset: "30d",
@@ -66,15 +75,43 @@ function makeMercury(overrides: Partial<MercuryData> = {}): MercuryData {
   };
 }
 
-function makePayload(opts: { stripe?: StripeData | null; mercury?: MercuryData | null } = {}): AnalyticsDashboardData {
-  const data = createEmptyAnalyticsDashboardData({ freshness: {}, timeRange: defaultTimeRange });
+function makeFinancialPlanning(
+  overrides: Partial<FinancialPlanningData> = {},
+): FinancialPlanningData {
+  return {
+    budgets: [],
+    activeBudget: null,
+    forecasts: [],
+    goals: [],
+    pnl: null,
+    unitEconomics: null,
+    ...overrides,
+  };
+}
+
+function makePayload(
+  opts: {
+    stripe?: StripeData | null;
+    mercury?: MercuryData | null;
+    financialPlanning?: FinancialPlanningData | null;
+  } = {},
+): AnalyticsDashboardData {
+  const data = createEmptyAnalyticsDashboardData({
+    freshness: {},
+    timeRange: defaultTimeRange,
+  });
   data.stripe = opts.stripe !== undefined ? opts.stripe : makeStripe();
   data.mercury = opts.mercury !== undefined ? opts.mercury : makeMercury();
+  data.financialPlanning = opts.financialPlanning !== undefined ? opts.financialPlanning : null;
   return data;
 }
 
 describe("FinanceTab", () => {
-  it("renders an empty state when payload is null", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("renders empty state when data is null", () => {
     render(<FinanceTab data={null} />);
     expect(screen.getByText("No financial data available")).toBeTruthy();
     expect(screen.getByText("Finance analytics payload is missing.")).toBeTruthy();
@@ -98,6 +135,79 @@ describe("FinanceTab", () => {
     expect(screen.getByText("Subscription Health")).toBeTruthy();
     expect(screen.getByText("Bank Accounts")).toBeTruthy();
     expect(screen.getByText("Operating")).toBeTruthy();
+  });
+
+  it("renders Revenue Trend section when Stripe provides a trend series", () => {
+    render(<FinanceTab data={makePayload()} />);
+    expect(screen.getByText("Revenue Trend")).toBeTruthy();
+  });
+
+  it("renders Unit Economics section when financial planning includes unit economics", () => {
+    const data = makePayload({
+      financialPlanning: makeFinancialPlanning({
+        unitEconomics: {
+          ltv: 10_000,
+          cac: 2_000,
+          ltvCacRatio: 5,
+          avgRevenuePerAccount: 100,
+          paybackMonths: 4,
+          grossMarginPct: 80,
+        },
+      }),
+    });
+    render(<FinanceTab data={data} />);
+    expect(screen.getByText("Unit Economics")).toBeTruthy();
+  });
+
+  it("renders P&L statement when financial planning includes pnl", () => {
+    const stripe = makeStripe();
+    const mercury = makeMercury();
+    const data = makePayload({
+      stripe,
+      mercury,
+      financialPlanning: makeFinancialPlanning({
+        pnl: buildProfitAndLossCore(stripe, mercury),
+      }),
+    });
+    render(<FinanceTab data={data} />);
+    expect(screen.getByText("Profit & Loss Statement")).toBeTruthy();
+    expect(screen.getByText("Gross Profit")).toBeTruthy();
+  });
+
+  it("renders Forecast Scenarios when financial planning includes forecasts", () => {
+    const stripe = makeStripe();
+    const mercury = makeMercury();
+    const data = makePayload({
+      stripe,
+      mercury,
+      financialPlanning: makeFinancialPlanning({
+        forecasts: buildDefaultScenarios(stripe, mercury),
+      }),
+    });
+    render(<FinanceTab data={data} />);
+    expect(screen.getByText("Forecast Scenarios")).toBeTruthy();
+    expect(screen.getByText("Base Case")).toBeTruthy();
+  });
+
+  it("renders Financial Goals when financial planning includes goals", () => {
+    const data = makePayload({
+      financialPlanning: makeFinancialPlanning({
+        goals: [
+          {
+            id: "g1",
+            metric: "mrr",
+            targetValue: 25_000,
+            currentValue: 15_000,
+            progressPct: 60,
+            deadline: "2026-12-31T00:00:00.000Z",
+            status: "active",
+          },
+        ],
+      }),
+    });
+    render(<FinanceTab data={data} />);
+    expect(screen.getByText("Financial Goals")).toBeTruthy();
+    expect(screen.getByText("In Progress")).toBeTruthy();
   });
 
   it("renders with only Stripe data (no Mercury)", () => {

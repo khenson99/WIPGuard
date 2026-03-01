@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { InsightCardFull } from "./insight-card-full";
 import { StatCard } from "./stat-card";
 import type { AnalyticsDashboardData, AnalyticsSectionId } from "@/lib/analytics/types";
 import { AlertTriangle, AlertCircle, Info, BarChart3 } from "lucide-react";
 import { populateConnectionStatus } from "@/hooks/use-connection-status";
+import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
 
 type SeverityFilter = "all" | "critical" | "warning" | "info";
 type SectionFilter = "all" | AnalyticsSectionId;
@@ -13,62 +14,49 @@ type SortMode = "severity" | "confidence";
 
 const SEVERITY_ORDER: Record<string, number> = { critical: 0, warning: 1, info: 2 };
 
-function readOverviewCache(): AnalyticsDashboardData | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = sessionStorage.getItem("analytics:overview");
-    return raw ? (JSON.parse(raw) as AnalyticsDashboardData) : null;
-  } catch {
-    return null;
-  }
-}
-
 export function AiInsightsPage() {
-  const [data, setData] = useState<AnalyticsDashboardData | null>(readOverviewCache);
-  const [loading, setLoading] = useState(() => readOverviewCache() === null);
-  const [error, setError] = useState<string | null>(null);
-  const [fetchKey, setFetchKey] = useState(0);
+  const resource = useDashboardResource<AnalyticsDashboardData>({
+    cacheKey: "analytics:overview:v1",
+    deps: [],
+    load: async ({ signal }) => {
+      const response = await fetch("/api/analytics?section=overview", { signal });
+      if (!response.ok) {
+        throw new Error(`Analytics overview request failed (${response.status})`);
+      }
+      return (await response.json()) as AnalyticsDashboardData;
+    },
+    getLastUpdatedAt: (payload) =>
+      payload.meta?.servedAt ?? payload.lastFullRefresh ?? null,
+    mapError: (error) =>
+      error instanceof Error && error.message ? error.message : "Could not load insights.",
+  });
+
+  const data = resource.data;
+  const loading = resource.loading && !data;
+  const error = resource.error;
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
   const [sectionFilter, setSectionFilter] = useState<SectionFilter>("all");
   const [sortMode, setSortMode] = useState<SortMode>("severity");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  const handleSeverityChange = (sev: SeverityFilter) => {
+    setSeverityFilter(sev);
+    setPage(1);
+  };
+  const handleSectionChange = (sec: SectionFilter) => {
+    setSectionFilter(sec);
+    setPage(1);
+  };
+  const handleSortChange = (mode: SortMode) => {
+    setSortMode(mode);
+    setPage(1);
+  };
 
   useEffect(() => {
-    const cached = readOverviewCache();
-    if (cached) {
-      populateConnectionStatus(cached.freshness, cached);
-    }
-
-    let active = true;
-    const controller = new AbortController();
-
-    fetch("/api/analytics?section=overview", { signal: controller.signal })
-      .then((r) => r.json())
-      .then((json: AnalyticsDashboardData) => {
-        if (!active) return;
-        setData(json);
-        populateConnectionStatus(json.freshness, json);
-        sessionStorage.setItem("analytics:overview", JSON.stringify(json));
-      })
-      .catch((err) => {
-        if (!active) return;
-        console.error(err);
-        setError("Failed to load AI insights");
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [fetchKey]);
-
-  const handleRetry = useCallback(() => {
-    setError(null);
-    setLoading(true);
-    setFetchKey((k) => k + 1);
-  }, []);
+    if (!data) return;
+    populateConnectionStatus(data.freshness, data);
+  }, [data]);
 
   const allInsights = useMemo(() => data?.aiInsights?.global ?? [], [data?.aiInsights?.global]);
 
@@ -88,6 +76,14 @@ export function AiInsightsPage() {
     return result;
   }, [allInsights, severityFilter, sectionFilter, sortMode]);
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+
+  const paginatedInsights = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, safePage, pageSize]);
+
   const criticalCount = allInsights.filter((i) => i.severity === "critical").length;
   const warningCount = allInsights.filter((i) => i.severity === "warning").length;
   const infoCount = allInsights.filter((i) => i.severity === "info").length;
@@ -103,16 +99,17 @@ export function AiInsightsPage() {
     );
   }
 
-  if (error) {
+  if (!data) {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="flex flex-col items-center gap-4 rounded-xl border border-red-200 bg-red-50 px-8 py-6 dark:border-red-900 dark:bg-red-950/50">
           <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
             <AlertTriangle className="h-5 w-5" />
-            <p className="text-sm font-medium">{error}</p>
+            <p className="text-sm font-medium">{error ?? "Failed to load AI insights"}</p>
           </div>
           <button
-            onClick={handleRetry}
+            type="button"
+            onClick={resource.refresh}
             className="rounded-md bg-red-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
           >
             Retry
@@ -144,7 +141,7 @@ export function AiInsightsPage() {
             <button
               key={sev}
               aria-pressed={severityFilter === sev}
-              onClick={() => setSeverityFilter(sev)}
+              onClick={() => handleSeverityChange(sev)}
               className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 severityFilter === sev ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               }`}
@@ -159,7 +156,7 @@ export function AiInsightsPage() {
             <button
               key={sec}
               aria-pressed={sectionFilter === sec}
-              onClick={() => setSectionFilter(sec)}
+              onClick={() => handleSectionChange(sec)}
               className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 sectionFilter === sec ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               }`}
@@ -174,7 +171,7 @@ export function AiInsightsPage() {
             <button
               key={mode}
               aria-pressed={sortMode === mode}
-              onClick={() => setSortMode(mode)}
+              onClick={() => handleSortChange(mode)}
               className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 sortMode === mode ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               }`}
@@ -191,9 +188,54 @@ export function AiInsightsPage() {
             <p className="text-sm text-muted-foreground">No insights match current filters</p>
           </div>
         ) : (
-          filtered.map((insight) => <InsightCardFull key={insight.id} insight={insight} />)
+          paginatedInsights.map((insight) => <InsightCardFull key={insight.id} insight={insight} />)
         )}
       </div>
+
+      {filtered.length > 0 && (
+        <nav aria-label="Pagination" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              Showing {(safePage - 1) * pageSize + 1}&ndash;{Math.min(safePage * pageSize, filtered.length)} of {filtered.length}
+            </span>
+            <select
+              aria-label="Results per page"
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground"
+            >
+              <option value={10}>10 / page</option>
+              <option value={25}>25 / page</option>
+              <option value={50}>50 / page</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={safePage <= 1}
+              onClick={() => setPage((p) => Math.max(1, Math.min(p, totalPages) - 1))}
+              className="rounded-md px-2.5 py-1 text-xs font-medium transition-colors bg-secondary/50 text-foreground hover:bg-secondary disabled:opacity-40 disabled:pointer-events-none"
+            >
+              Previous
+            </button>
+            <span className="text-xs text-muted-foreground">
+              Page {safePage} of {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={safePage >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              className="rounded-md px-2.5 py-1 text-xs font-medium transition-colors bg-secondary/50 text-foreground hover:bg-secondary disabled:opacity-40 disabled:pointer-events-none"
+            >
+              Next
+            </button>
+          </div>
+        </nav>
+      )}
     </div>
   );
 }

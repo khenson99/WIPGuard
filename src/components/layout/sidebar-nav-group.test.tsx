@@ -31,7 +31,7 @@ describe("SidebarNavGroup", () => {
     mockPathname = "/dashboard";
   });
 
-  it("defaults to expanded when no stored preference exists", () => {
+  it("defaults to collapsed when no stored preference exists", () => {
     render(<SidebarNavGroup item={BASE_ITEM} />);
 
     expect(screen.getByRole("button", { name: "Expand Ads & Traffic" })).toBeTruthy();
@@ -66,7 +66,7 @@ describe("SidebarNavGroup", () => {
     expect(screen.getByRole("button", { name: "Collapse Ads & Traffic" })).toBeTruthy();
   });
 
-  it("treats legacy empty-array preference as no preference and expands", () => {
+  it("treats legacy empty-array preference as no preference and collapses", () => {
     window.localStorage.setItem("sidebar:expanded", JSON.stringify([]));
 
     render(<SidebarNavGroup item={BASE_ITEM} />);
