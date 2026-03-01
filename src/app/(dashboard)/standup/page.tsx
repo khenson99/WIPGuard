@@ -126,11 +126,11 @@ function useStandupData() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (signal?: AbortSignal) => {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/standup");
+      const res = await fetch("/api/standup", { signal });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
@@ -138,6 +138,7 @@ function useStandupData() {
       const json = (await res.json()) as StandupApiResponse;
       setData(json);
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError(err instanceof Error ? err.message : "Failed to load standup data");
     } finally {
       setIsLoading(false);
@@ -145,7 +146,9 @@ function useStandupData() {
   }, []);
 
   useEffect(() => {
-    void fetchData();
+    const controller = new AbortController();
+    void fetchData(controller.signal);
+    return () => controller.abort();
   }, [fetchData]);
 
   return { data, error, isLoading, retry: fetchData };
@@ -180,21 +183,24 @@ export default function StandupPage() {
     }));
 
     const taskList: TaskSummary[] = [];
+    const seen = new Set<string>();
 
     for (const owner of data.owners) {
       for (const task of owner.tasks) {
-        // Avoid duplicate tasks (a task can appear under multiple owners)
-        if (!taskList.some((t) => t.id === task.id)) {
-          taskList.push(mapApiTaskToSummary(task, owner.userId, blockedTaskIds));
-        }
+        // Avoid duplicate tasks (a task can appear under multiple owners).
+        // Multi-owner tasks are assigned to the first responsible user
+        // encountered because the standup-engine uses a single-owner model.
+        if (seen.has(task.id)) continue;
+        seen.add(task.id);
+        taskList.push(mapApiTaskToSummary(task, owner.userId, blockedTaskIds));
       }
     }
 
     // Include unassigned tasks under a synthetic owner
     for (const task of data.unassigned) {
-      if (!taskList.some((t) => t.id === task.id)) {
-        taskList.push(mapApiTaskToSummary(task, "__unassigned__", blockedTaskIds));
-      }
+      if (seen.has(task.id)) continue;
+      seen.add(task.id);
+      taskList.push(mapApiTaskToSummary(task, "__unassigned__", blockedTaskIds));
     }
 
     return { members: memberList, tasks: taskList };
