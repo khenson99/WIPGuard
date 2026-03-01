@@ -89,7 +89,7 @@ export default function LogbookPage() {
       const rows = entries.map((entry) =>
         columns.map((col) => escapeCsvField(entry[col])).join(","),
       );
-      const csv = [header, ...rows].join("\n");
+      const csv = "\uFEFF" + [header, ...rows].join("\n");
       downloadBlob(csv, exportFilename("csv"), "text/csv");
     },
     [entries, downloadBlob, escapeCsvField, exportFilename],
@@ -217,14 +217,16 @@ export default function LogbookPage() {
                 <ChevronDown className="h-3 w-3" />
               </button>
               {exportOpen && (
-                <div className="absolute right-0 top-full z-10 mt-1 w-36 rounded-md border border-border bg-card py-1 shadow-lg">
+                <div role="menu" className="absolute right-0 top-full z-10 mt-1 w-36 rounded-md border border-border bg-card py-1 shadow-lg">
                   <button
+                    role="menuitem"
                     onClick={() => handleExport("csv")}
                     className="flex w-full items-center px-3 py-1.5 text-xs text-foreground hover:bg-secondary"
                   >
                     Export as CSV
                   </button>
                   <button
+                    role="menuitem"
                     onClick={() => handleExport("json")}
                     className="flex w-full items-center px-3 py-1.5 text-xs text-foreground hover:bg-secondary"
                   >
