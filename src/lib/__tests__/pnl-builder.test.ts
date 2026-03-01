@@ -162,12 +162,19 @@ describe("buildProfitAndLoss", () => {
     }
   });
 
-  it("previous operating expense values mirror current (no historical outflow data)", () => {
-    const items = buildDefault().items.slice(3, 7);
-
-    for (const item of items) {
+  it("previous expense values mirror current (no historical outflow data)", () => {
+    const result = buildDefault();
+    const expenseItems = [result.items[1], ...result.items.slice(3, 7)];
+    for (const item of expenseItems) {
       expect(item.previous).toBe(item.current);
     }
+  });
+
+  it("total operating expenses equal the sum of operating expense items", () => {
+    const result = buildDefault();
+    const totalOpexItem = result.items[7];
+    expect(totalOpexItem.current).toBe(33_750);
+    expect(totalOpexItem.previous).toBe(33_750);
   });
 
   it("total outflows equal COGS plus total operating expenses", () => {

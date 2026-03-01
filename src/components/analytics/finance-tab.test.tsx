@@ -106,8 +106,6 @@ function makePayload(
   return data;
 }
 
-/* ── Tests ──────────────────────────────────────────────── */
-
 describe("FinanceTab", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -116,20 +114,27 @@ describe("FinanceTab", () => {
   it("renders empty state when data is null", () => {
     render(<FinanceTab data={null} />);
     expect(screen.getByText("No financial data available")).toBeTruthy();
+    expect(screen.getByText("Finance analytics payload is missing.")).toBeTruthy();
   });
 
-  it("renders empty state when both stripe and mercury are missing", () => {
-    const data = makePayload({ stripe: null, mercury: null });
-    render(<FinanceTab data={data} />);
+  it("renders an empty state when both Stripe and Mercury are missing", () => {
+    render(<FinanceTab data={makePayload({ stripe: null, mercury: null })} />);
     expect(screen.getByText("Finance dashboard data is unavailable")).toBeTruthy();
+    expect(screen.getByText("Stripe and Mercury data could not be loaded for this range.")).toBeTruthy();
+    expect(screen.getByText("Reconnect Integration")).toBeTruthy();
+    expect(screen.getByText("Refresh Dashboard")).toBeTruthy();
+    expect(screen.getByText("Open Settings")).toBeTruthy();
   });
 
-  it("renders top KPI stat cards when finance data is present", () => {
+  it("renders KPI cards and core sections when data is present", () => {
     render(<FinanceTab data={makePayload()} />);
     expect(screen.getByText("Monthly Recurring Revenue")).toBeTruthy();
     expect(screen.getByText("Active Subscriptions")).toBeTruthy();
     expect(screen.getByText("Cash Balance")).toBeTruthy();
     expect(screen.getByText("Net Cash Flow (30d)")).toBeTruthy();
+    expect(screen.getByText("Subscription Health")).toBeTruthy();
+    expect(screen.getByText("Bank Accounts")).toBeTruthy();
+    expect(screen.getByText("Operating")).toBeTruthy();
   });
 
   it("renders Revenue Trend section when Stripe provides a trend series", () => {
@@ -206,17 +211,18 @@ describe("FinanceTab", () => {
   });
 
   it("renders with only Stripe data (no Mercury)", () => {
-    const data = makePayload({ mercury: null });
-    render(<FinanceTab data={data} />);
+    render(<FinanceTab data={makePayload({ mercury: null })} />);
     expect(screen.getByText("Monthly Recurring Revenue")).toBeTruthy();
-    expect(screen.getByText("Active Subscriptions")).toBeTruthy();
+    expect(screen.getByText("Subscription Health")).toBeTruthy();
+    expect(screen.getByText("Bank Accounts")).toBeTruthy();
+    expect(screen.getByText("No bank accounts connected")).toBeTruthy();
   });
 
   it("renders with only Mercury data (no Stripe)", () => {
-    const data = makePayload({ stripe: null });
-    render(<FinanceTab data={data} />);
+    render(<FinanceTab data={makePayload({ stripe: null })} />);
     expect(screen.getByText("Cash Balance")).toBeTruthy();
-    expect(screen.getByText("Net Cash Flow (30d)")).toBeTruthy();
+    expect(screen.getByText("Bank Accounts")).toBeTruthy();
+    expect(screen.getByText("Operating")).toBeTruthy();
   });
 });
 

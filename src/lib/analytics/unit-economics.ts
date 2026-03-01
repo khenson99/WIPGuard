@@ -133,18 +133,13 @@ export function computeUnitEconomics(
 
   const monthlyGrossProfit = arpa * (grossMarginPct / 100);
   const paybackMonths =
-    monthlyGrossProfit > 0 ? cac / monthlyGrossProfit : Infinity;
+    monthlyGrossProfit > 0 ? cac / monthlyGrossProfit : 0;
 
   // ---------------------------------------------------------------------------
   // 7. LTV:CAC ratio
   // ---------------------------------------------------------------------------
 
-  let ltvCacRatio: number;
-  if (cac === 0) {
-    ltvCacRatio = ltv > 0 ? Infinity : 0;
-  } else {
-    ltvCacRatio = ltv / cac;
-  }
+  const ltvCacRatio = cac > 0 ? ltv / cac : ltv;
 
   // ---------------------------------------------------------------------------
   // Result
