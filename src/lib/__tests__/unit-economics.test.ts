@@ -113,22 +113,24 @@ describe("computeUnitEconomics", () => {
 
   it("computes CAC = marketingSpend / newCustomers", () => {
     // marketingSpend = 45000 * 0.15 = 6750
-    // newCustomers = 50
-    // CAC = 6750 / 50 = 135
+    // newCustomers = hubspot.closedWon = 5
+    // CAC = 6750 / 5 = 1350
     const result = computeUnitEconomics(stripe, mercury, hubspot);
-    expect(result.cac).toBe(135);
+    expect(result.cac).toBe(1350);
   });
 
   it("computes LTV:CAC ratio", () => {
-    // ltvCacRatio = 5000 / max(135, 1) = 5000 / 135 = 37.037... rounded to 37.04
+    // ltvCacRatio = 5000 / 1350 = 3.703... rounded to 3.7
     const result = computeUnitEconomics(stripe, mercury, hubspot);
-    expect(result.ltvCacRatio).toBe(37.04);
+    expect(result.ltvCacRatio).toBe(3.7);
   });
 
-  it("computes paybackMonths = CAC / ARPA", () => {
-    // paybackMonths = 135 / max(200, 1) = 135 / 200 = 0.675 rounded to 0.68
+  it("computes paybackMonths from CAC and gross profit", () => {
+    // grossMarginPct = (12000 - 11250) / 12000 * 100 = 6.25
+    // monthlyGrossProfit = ARPA * grossMarginPct = 200 * 0.0625 = 12.5
+    // paybackMonths = CAC / monthlyGrossProfit = 1350 / 12.5 = 108
     const result = computeUnitEconomics(stripe, mercury, hubspot);
-    expect(result.paybackMonths).toBe(0.68);
+    expect(result.paybackMonths).toBe(108);
   });
 
   it("computes grossMarginPct from revenue and outflows-based COGS", () => {
@@ -140,12 +142,13 @@ describe("computeUnitEconomics", () => {
 
   it("computes magicNumber from mrrChange and marketingSpend", () => {
     const result = computeUnitEconomics(stripe, mercury, hubspot);
-    expect(result.magicNumber).toBeNull();
+    // (1200 * 12) / 6750 = 2.13
+    expect(result.magicNumber).toBe(2.13);
   });
 
   /* ─── Churn edge cases ──────────────────────────────────── */
 
-  it("floors effectiveChurn at 0.01 when churnRate is zero", () => {
+  it("caps LTV at 10 years when churnRate is zero", () => {
     const zeroChurnStripe = makeStripe({
       subscriptions: {
         active: 50,
@@ -157,8 +160,8 @@ describe("computeUnitEconomics", () => {
       },
     });
     const result = computeUnitEconomics(zeroChurnStripe, mercury, hubspot);
-    // LTV = 200 / 0.01 = 20000
-    expect(result.ltv).toBe(20000);
+    // churnRate=0 falls back to a 10-year cap (120 months)
+    expect(result.ltv).toBe(24000);
   });
 
   it("produces small LTV when churn is very high (100%)", () => {
@@ -180,10 +183,11 @@ describe("computeUnitEconomics", () => {
 
   /* ─── Missing provider fallbacks ────────────────────────── */
 
-  it("falls back to 10 new customers when HubSpot is null", () => {
+  it("falls back to churn replacement when HubSpot is null", () => {
     const result = computeUnitEconomics(stripe, mercury, null);
-    // CAC = (45000 * 0.15) / 10 = 6750 / 10 = 675
-    expect(result.cac).toBe(675);
+    // newCustomers falls back to active * churnDecimal = 50 * 0.04 = 2
+    // CAC = 6750 / 2 = 3375
+    expect(result.cac).toBe(3375);
   });
 
   it("returns zero-based values when Stripe is null", () => {

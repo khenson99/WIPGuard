@@ -130,11 +130,7 @@ export function buildForecastScenario(
     forecastMonths,
   );
 
-  const runwayMonths = projectRunway(
-    cashBalance,
-    baseBurnRate,
-    assumptions.burnRateDelta,
-  );
+  const runwayMonths = projectRunway(cashBalance, monthlyExpenses, 0);
 
   return {
     id: opts.id ?? crypto.randomUUID(),

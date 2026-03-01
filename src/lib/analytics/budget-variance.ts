@@ -234,9 +234,15 @@ function toBudgetActualItems(
 ): BudgetActualItem[] {
   const totalOutflows = mercury?.cashFlow.outflows30d ?? 0;
 
-  // When no explicit budgets are provided, generate rows for each default
-  // label with a derived budget of actual * 1.1.
-  const labels = budgetAmounts ? Object.keys(budgetAmounts) : DEFAULT_LABELS;
+  // When explicit budgets are provided, treat them as overrides. We still emit
+  // the default label set so partially-specified budgets fall back to derived
+  // values for missing categories.
+  const labels = budgetAmounts
+    ? [
+        ...DEFAULT_LABELS,
+        ...Object.keys(budgetAmounts).filter((label) => !DEFAULT_LABELS.includes(label)),
+      ]
+    : DEFAULT_LABELS;
 
   const items: BudgetActualItem[] = labels.map((label) => {
     const ratio = EXPENSE_LABEL_RATIOS[label] ?? 0;

@@ -210,9 +210,15 @@ export function buildProfitAndLoss(
   const grossMargin = revenue === 0 ? 0 : ((pnl.grossProfit.currentPeriod / revenue) * 100);
   const operatingMargin = revenue === 0 ? 0 : ((pnl.operatingIncome.currentPeriod / revenue) * 100);
 
+  const previousPeriodLabel = (() => {
+    const match = /^Last\s+(\d+)\s+days$/i.exec(pnl.periodLabel.trim());
+    if (match) return `Prior ${match[1]} days`;
+    return "Previous period";
+  })();
+
   return {
     period: pnl.periodLabel,
-    previousPeriod: "Previous period",
+    previousPeriod: previousPeriodLabel,
     items,
     netIncome: pnl.netIncome.currentPeriod,
     previousNetIncome: pnl.netIncome.previousPeriod,

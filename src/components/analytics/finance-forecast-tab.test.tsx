@@ -219,7 +219,7 @@ describe("FinanceForecastTab", () => {
       .mockImplementationOnce(() => scenarios);
 
     render(<FinanceForecastTab data={makePayload()} />);
-    expect(screen.getByText("Conservative runway is only 5.0 mo")).toBeTruthy();
+    expect(screen.getByText("Conservative runway is only 5.0mo")).toBeTruthy();
   });
 
   /* ─── Graceful degradation ──────────────────────────── */

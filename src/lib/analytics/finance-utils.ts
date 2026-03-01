@@ -86,10 +86,11 @@ export function healthScoreColor(score: number): string {
 
 /** Tailwind text color for a letter grade. */
 export function gradeColor(grade: string): string {
-  if (grade === "A") return "text-emerald-500";
-  if (grade === "B") return "text-blue-500";
-  if (grade === "C") return "text-yellow-500";
-  if (grade === "D") return "text-orange-500";
+  const normalized = grade.toUpperCase();
+  if (normalized === "A") return "text-emerald-500";
+  if (normalized === "B") return "text-blue-500";
+  if (normalized === "C") return "text-yellow-500";
+  if (normalized === "D") return "text-orange-500";
   return "text-red-500";
 }
 

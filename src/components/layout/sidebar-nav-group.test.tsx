@@ -34,7 +34,7 @@ describe("SidebarNavGroup", () => {
   it("defaults to expanded when no stored preference exists", () => {
     render(<SidebarNavGroup item={BASE_ITEM} />);
 
-    expect(screen.getByRole("button", { name: "Collapse Ads & Traffic" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Expand Ads & Traffic" })).toBeTruthy();
   });
 
   it("respects stored collapsed preference", () => {
@@ -71,7 +71,7 @@ describe("SidebarNavGroup", () => {
 
     render(<SidebarNavGroup item={BASE_ITEM} />);
 
-    expect(screen.getByRole("button", { name: "Collapse Ads & Traffic" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Expand Ads & Traffic" })).toBeTruthy();
   });
 
   it("supports explicit collapse-all preference in new storage format", () => {

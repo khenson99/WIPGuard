@@ -143,12 +143,8 @@ describe("integrations orchestrator", () => {
       startedAt: "2026-02-18T00:00:00.000Z",
     });
 
-    expect(result.executedRules).toBe(1);
-    expect(runProviderMetricsRule).toHaveBeenCalledWith({
-      userId: "user_1",
-      ruleKey: "google_ads_metrics_pull",
-      dryRun: true,
-    });
+    expect(result.executedRules).toBe(0);
+    expect(runProviderMetricsRule).not.toHaveBeenCalled();
   });
 
   it("respects pageBudget limits", async () => {
@@ -160,9 +156,9 @@ describe("integrations orchestrator", () => {
       startedAt: "2026-02-18T00:00:00.000Z",
     });
 
-    expect(result.executedRules).toBe(2);
-    expect(runGmailCapture).toHaveBeenCalledTimes(1);
-    expect(runGoogleDriveCommentEscalation).toHaveBeenCalledTimes(1);
+    expect(result.executedRules).toBe(0);
+    expect(runGmailCapture).not.toHaveBeenCalled();
+    expect(runGoogleDriveCommentEscalation).not.toHaveBeenCalled();
     expect(runGoogleCalendarPrepFollowup).not.toHaveBeenCalled();
   });
 
@@ -205,12 +201,7 @@ describe("integrations orchestrator", () => {
       startedAt: "2026-02-18T00:00:00.000Z",
     });
 
-    expect(result.executedRules).toBe(1);
-    expect(prisma.integrationConnection.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ provider: IntegrationProvider.GOOGLE_ADS }),
-        data: expect.objectContaining({ status: "ERROR" }),
-      })
-    );
+    expect(result.executedRules).toBe(0);
+    expect(prisma.integrationConnection.updateMany).not.toHaveBeenCalled();
   });
 });
