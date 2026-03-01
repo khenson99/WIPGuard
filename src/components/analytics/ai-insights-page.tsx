@@ -77,15 +77,12 @@ export function AiInsightsPage() {
   }, [allInsights, severityFilter, sectionFilter, sortMode]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+  const safePage = Math.min(page, totalPages);
 
   const paginatedInsights = useMemo(() => {
-    const start = (page - 1) * pageSize;
+    const start = (safePage - 1) * pageSize;
     return filtered.slice(start, start + pageSize);
-  }, [filtered, page, pageSize]);
+  }, [filtered, safePage, pageSize]);
 
   const criticalCount = allInsights.filter((i) => i.severity === "critical").length;
   const warningCount = allInsights.filter((i) => i.severity === "warning").length;
@@ -199,7 +196,7 @@ export function AiInsightsPage() {
         <nav aria-label="Pagination" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">
-              Showing {(page - 1) * pageSize + 1}&ndash;{Math.min(page * pageSize, filtered.length)} of {filtered.length}
+              Showing {(safePage - 1) * pageSize + 1}&ndash;{Math.min(safePage * pageSize, filtered.length)} of {filtered.length}
             </span>
             <select
               aria-label="Results per page"
@@ -219,18 +216,18 @@ export function AiInsightsPage() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePage <= 1}
+              onClick={() => setPage((p) => Math.max(1, Math.min(p, totalPages) - 1))}
               className="rounded-md px-2.5 py-1 text-xs font-medium transition-colors bg-secondary/50 text-foreground hover:bg-secondary disabled:opacity-40 disabled:pointer-events-none"
             >
               Previous
             </button>
             <span className="text-xs text-muted-foreground">
-              Page {page} of {totalPages}
+              Page {safePage} of {totalPages}
             </span>
             <button
               type="button"
-              disabled={page >= totalPages}
+              disabled={safePage >= totalPages}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               className="rounded-md px-2.5 py-1 text-xs font-medium transition-colors bg-secondary/50 text-foreground hover:bg-secondary disabled:opacity-40 disabled:pointer-events-none"
             >
