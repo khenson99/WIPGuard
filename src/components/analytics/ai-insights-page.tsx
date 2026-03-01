@@ -37,6 +37,21 @@ export function AiInsightsPage() {
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
   const [sectionFilter, setSectionFilter] = useState<SectionFilter>("all");
   const [sortMode, setSortMode] = useState<SortMode>("severity");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  const handleSeverityChange = (sev: SeverityFilter) => {
+    setSeverityFilter(sev);
+    setPage(1);
+  };
+  const handleSectionChange = (sec: SectionFilter) => {
+    setSectionFilter(sec);
+    setPage(1);
+  };
+  const handleSortChange = (mode: SortMode) => {
+    setSortMode(mode);
+    setPage(1);
+  };
 
   useEffect(() => {
     if (!data) return;
@@ -60,6 +75,13 @@ export function AiInsightsPage() {
     }
     return result;
   }, [allInsights, severityFilter, sectionFilter, sortMode]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+
+  const paginatedInsights = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page, pageSize]);
 
   const criticalCount = allInsights.filter((i) => i.severity === "critical").length;
   const warningCount = allInsights.filter((i) => i.severity === "warning").length;
@@ -118,7 +140,7 @@ export function AiInsightsPage() {
             <button
               key={sev}
               aria-pressed={severityFilter === sev}
-              onClick={() => setSeverityFilter(sev)}
+              onClick={() => handleSeverityChange(sev)}
               className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 severityFilter === sev ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               }`}
@@ -133,7 +155,7 @@ export function AiInsightsPage() {
             <button
               key={sec}
               aria-pressed={sectionFilter === sec}
-              onClick={() => setSectionFilter(sec)}
+              onClick={() => handleSectionChange(sec)}
               className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 sectionFilter === sec ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               }`}
@@ -148,7 +170,7 @@ export function AiInsightsPage() {
             <button
               key={mode}
               aria-pressed={sortMode === mode}
-              onClick={() => setSortMode(mode)}
+              onClick={() => handleSortChange(mode)}
               className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 sortMode === mode ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               }`}
@@ -165,9 +187,53 @@ export function AiInsightsPage() {
             <p className="text-sm text-muted-foreground">No insights match current filters</p>
           </div>
         ) : (
-          filtered.map((insight) => <InsightCardFull key={insight.id} insight={insight} />)
+          paginatedInsights.map((insight) => <InsightCardFull key={insight.id} insight={insight} />)
         )}
       </div>
+
+      {filtered.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              Showing {(page - 1) * pageSize + 1}&ndash;{Math.min(page * pageSize, filtered.length)} of {filtered.length}
+            </span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground"
+            >
+              <option value={10}>10 / page</option>
+              <option value={25}>25 / page</option>
+              <option value={50}>50 / page</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="rounded-md px-2.5 py-1 text-xs font-medium transition-colors bg-secondary/50 text-foreground hover:bg-secondary disabled:opacity-40 disabled:pointer-events-none"
+            >
+              Previous
+            </button>
+            <span className="text-xs text-muted-foreground">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              className="rounded-md px-2.5 py-1 text-xs font-medium transition-colors bg-secondary/50 text-foreground hover:bg-secondary disabled:opacity-40 disabled:pointer-events-none"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
