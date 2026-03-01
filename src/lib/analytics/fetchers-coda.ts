@@ -70,6 +70,8 @@ export interface FetchCodaDataOptions {
   hubspotAccessToken?: string | null;
   maxLeadCandidates?: number;
   now?: Date;
+  fromDate?: Date;
+  toDate?: Date;
 }
 
 interface EnrichedCard extends CodaCard {
@@ -331,6 +333,19 @@ export async function fetchCodaData(
   options: FetchCodaDataOptions = {}
 ): Promise<CodaKanbanData> {
   const now = options.now ?? new Date();
+  const rangeFrom = options.fromDate ?? null;
+  const rangeTo = options.toDate ?? null;
+  const useRange =
+    Boolean(rangeFrom && rangeTo) &&
+    !Number.isNaN(rangeFrom?.getTime() ?? NaN) &&
+    !Number.isNaN(rangeTo?.getTime() ?? NaN) &&
+    Boolean(rangeFrom && rangeTo && rangeFrom <= rangeTo);
+
+  const rangeDays = useRange
+    ? Math.max(1, Math.ceil((rangeTo!.getTime() - rangeFrom!.getTime()) / (1000 * 60 * 60 * 24)) + 1)
+    : 30;
+
+  const windowDays = Math.max(7, Math.min(120, rangeDays));
   const headers = {
     Authorization: `Bearer ${apiToken}`,
     Accept: "application/json",
@@ -456,11 +471,11 @@ export async function fetchCodaData(
     })
     .slice(0, 10);
 
-  const creatorWindows: CodaCreatorWindow[] = [
-    buildCreatorWindow(cards, 30, now),
-    buildCreatorWindow(cards, 60, now),
-    buildCreatorWindow(cards, 90, now),
-  ];
+  const creatorWindows: CodaCreatorWindow[] = windowDays <= 30
+    ? [buildCreatorWindow(cards, 30, now)]
+    : windowDays <= 60
+      ? [buildCreatorWindow(cards, 30, now), buildCreatorWindow(cards, 60, now)]
+      : [buildCreatorWindow(cards, 30, now), buildCreatorWindow(cards, 60, now), buildCreatorWindow(cards, 90, now)];
 
   const unknownCards = cards.filter((card) => card.creator === "Unknown").length;
   const unknownCreatorRatio = cards.length > 0 ? (unknownCards / cards.length) * 100 : 0;
@@ -473,9 +488,9 @@ export async function fetchCodaData(
 
   const newCreatorFeed = buildNewCreatorFeed(cards);
 
-  const cardsCreated90d = buildDailyTrend(
-    cards.filter((card) => isWithinDays(card.createdAtIso, 90, now)),
-    90
+  const cardsCreatedTrend = buildDailyTrend(
+    cards.filter((card) => isWithinDays(card.createdAtIso, windowDays, now)),
+    windowDays
   );
   const creatorFirstSeenCards = cards.filter((card) => card.creator !== "Unknown");
   const byCreatorFirstSeen = new Map<string, EnrichedCard>();
@@ -486,9 +501,9 @@ export async function fetchCodaData(
       byCreatorFirstSeen.set(key, card);
     }
   }
-  const newCreators30d = buildDailyTrend(
-    [...byCreatorFirstSeen.values()].filter((card) => isWithinDays(card.createdAtIso, 30, now)),
-    30
+  const newCreatorsTrend = buildDailyTrend(
+    [...byCreatorFirstSeen.values()].filter((card) => isWithinDays(card.createdAtIso, windowDays, now)),
+    windowDays
   );
 
   const creatorsByKey = new Map<
@@ -516,11 +531,11 @@ export async function fetchCodaData(
       lastActivityAt: null,
     };
 
-    if (isWithinDays(card.createdAtIso, 30, now)) {
+    if (isWithinDays(card.createdAtIso, windowDays, now)) {
       existing.cards30d += 1;
       const day = toDayKey(card.createdAtIso);
       if (day) existing.activeDays30d.add(day);
-    } else if (isWithinPreviousWindow(card.createdAtIso, 30, now)) {
+    } else if (isWithinPreviousWindow(card.createdAtIso, windowDays, now)) {
       existing.cardsPrevious30d += 1;
     }
 
@@ -555,8 +570,8 @@ export async function fetchCodaData(
     creatorWindows,
     newCreatorFeed,
     trends: {
-      newCreators30d,
-      cardsCreated90d,
+      newCreators30d: newCreatorsTrend,
+      cardsCreated90d: cardsCreatedTrend,
     },
     engagedLeadCandidates: leadEnrichment.candidates,
     diagnostics: {

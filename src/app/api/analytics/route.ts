@@ -253,9 +253,18 @@ async function hydrateStripeCustomerLinks(
 ): Promise<void> {
   if (!data.hubspot?.deals?.length) return;
 
-  const stripeCustomerLink = (
-    prisma as unknown as { stripeCustomerLink?: { findMany: Function } }
-  ).stripeCustomerLink;
+  type StripeCustomerLinkRow = {
+    hubspotDealId: string;
+    hubspotDealName: string | null;
+    stripeCustomerId: string;
+  };
+
+  type StripeCustomerLinkDelegate = {
+    findMany: (args: { where: { userId: string } }) => Promise<StripeCustomerLinkRow[]>;
+  };
+
+  const stripeCustomerLink = (prisma as unknown as { stripeCustomerLink?: StripeCustomerLinkDelegate })
+    .stripeCustomerLink;
   if (!stripeCustomerLink) {
     console.warn("[analytics] Prisma client missing StripeCustomerLink delegate");
     return;
@@ -592,14 +601,32 @@ export async function GET(request: Request) {
   });
 
   const fetchers = ([
-    { key: "hubspot", fn: () => (creds.hubspotToken ? fetchHubSpotData(creds.hubspotToken) : Promise.reject(new Error("Missing HubSpot credential"))) },
-    { key: "stripe", fn: () => (creds.stripeKey ? fetchStripeData(creds.stripeKey) : Promise.reject(new Error("Missing Stripe credential"))) },
-    { key: "mercury", fn: () => (creds.mercuryKey ? fetchMercuryData(creds.mercuryKey) : Promise.reject(new Error("Missing Mercury credential"))) },
+    {
+      key: "hubspot",
+      fn: () =>
+        creds.hubspotToken
+          ? fetchHubSpotData(creds.hubspotToken, { fromDate, toDate })
+          : Promise.reject(new Error("Missing HubSpot credential")),
+    },
+    {
+      key: "stripe",
+      fn: () =>
+        creds.stripeKey
+          ? fetchStripeData(creds.stripeKey, { fromDate, toDate })
+          : Promise.reject(new Error("Missing Stripe credential")),
+    },
+    {
+      key: "mercury",
+      fn: () =>
+        creds.mercuryKey
+          ? fetchMercuryData(creds.mercuryKey, { fromDate, toDate })
+          : Promise.reject(new Error("Missing Mercury credential")),
+    },
     {
       key: "googleAnalytics",
       fn: () =>
         creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey
-          ? fetchGAData(creds.gaPropertyId, creds.gaClientEmail, creds.gaPrivateKey)
+          ? fetchGAData(creds.gaPropertyId, creds.gaClientEmail, creds.gaPrivateKey, { fromDate, toDate })
           : Promise.reject(new Error("Missing Google Analytics credential")),
     },
     {
@@ -616,7 +643,8 @@ export async function GET(request: Request) {
               creds.googleAdsRefreshToken,
               creds.googleAdsClientId,
               creds.googleAdsClientSecret,
-              creds.googleAdsLoginCustomerId
+              creds.googleAdsLoginCustomerId,
+              { fromDate, toDate }
             )
           : Promise.reject(new Error("Missing Google Ads credential")),
     },
@@ -624,14 +652,14 @@ export async function GET(request: Request) {
       key: "metaAds",
       fn: () =>
         creds.metaAccessToken && creds.metaAdAccountId
-          ? fetchMetaAdsData(creds.metaAccessToken, creds.metaAdAccountId)
+          ? fetchMetaAdsData(creds.metaAccessToken, creds.metaAdAccountId, { fromDate, toDate })
           : Promise.reject(new Error("Missing Meta Ads credential")),
     },
     {
       key: "metaPage",
       fn: () =>
         creds.metaAccessToken && creds.metaPageId
-          ? fetchMetaPageData(creds.metaAccessToken, creds.metaPageId)
+          ? fetchMetaPageData(creds.metaAccessToken, creds.metaPageId, { fromDate, toDate })
           : Promise.reject(new Error("Missing Meta Page credential")),
     },
     {
@@ -643,7 +671,8 @@ export async function GET(request: Request) {
               creds.redditClientSecret,
               creds.redditRefreshToken,
               creds.redditAdAccountId,
-              creds.redditUserAgent
+              creds.redditUserAgent,
+              { fromDate, toDate }
             )
           : Promise.reject(new Error("Missing Reddit Ads credential")),
     },
@@ -658,7 +687,7 @@ export async function GET(request: Request) {
       key: "coda",
       fn: () =>
         creds.codaApiToken && creds.codaDocId
-          ? fetchCodaData(creds.codaApiToken, creds.codaDocId)
+          ? fetchCodaData(creds.codaApiToken, creds.codaDocId, { fromDate, toDate })
           : Promise.reject(new Error("Missing Coda credential")),
     },
     {

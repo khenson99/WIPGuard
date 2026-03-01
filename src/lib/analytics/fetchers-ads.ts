@@ -168,7 +168,7 @@ function extractRedditSpend(metric: UnknownRecord): number {
 }
 
 /**
- * Fetch Google Ads data for the last 30 days.
+ * Fetch Google Ads data for a date range (defaults to last 30d).
  */
 export async function fetchGoogleAdsData(
   devToken: string,
@@ -176,7 +176,8 @@ export async function fetchGoogleAdsData(
   refreshToken: string,
   clientId: string,
   clientSecret: string,
-  loginCustomerId?: string | null
+  loginCustomerId?: string | null,
+  options?: { fromDate?: Date; toDate?: Date }
 ): Promise<GoogleAdsData> {
   const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -205,10 +206,26 @@ export async function fetchGoogleAdsData(
 
   const cleanCustomerId = customerId.replace(/-/g, "").trim();
   const cleanLoginCustomerId = loginCustomerId?.replace(/-/g, "").trim();
+
+  const rangeFrom = options?.fromDate ?? null;
+  const rangeTo = options?.toDate ?? null;
+  const useRange =
+    Boolean(rangeFrom && rangeTo) &&
+    !Number.isNaN(rangeFrom?.getTime() ?? NaN) &&
+    !Number.isNaN(rangeTo?.getTime() ?? NaN) &&
+    Boolean(rangeFrom && rangeTo && rangeFrom <= rangeTo);
+
+  const fromKey = useRange ? rangeFrom!.toISOString().slice(0, 10) : null;
+  const toKey = useRange ? rangeTo!.toISOString().slice(0, 10) : null;
+
+  const dateWhere = useRange
+    ? `segments.date BETWEEN '${fromKey}' AND '${toKey}'`
+    : "segments.date DURING LAST_30_DAYS";
+
   const gaqlQuery = `
     SELECT campaign.name, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions
     FROM campaign
-    WHERE segments.date DURING LAST_30_DAYS AND campaign.status = 'ENABLED'
+    WHERE ${dateWhere} AND campaign.status = 'ENABLED'
   `;
 
   const headers: Record<string, string> = {
@@ -302,11 +319,12 @@ export async function fetchGoogleAdsData(
 }
 
 /**
- * Fetch Meta Ads data for the last 30 days.
+ * Fetch Meta Ads data for a date range (defaults to last 30d).
  */
 export async function fetchMetaAdsData(
   accessToken: string,
-  adAccountId: string
+  adAccountId: string,
+  options?: { fromDate?: Date; toDate?: Date }
 ): Promise<MetaAdsData> {
   const token = normalizeBearerToken(accessToken);
   if (looksLikeMetaAppAccessToken(token)) {
@@ -318,11 +336,26 @@ export async function fetchMetaAdsData(
   const accountId = normalizeMetaAdAccountId(adAccountId);
   const baseHeaders = { Authorization: `Bearer ${token}` };
 
+  const rangeFrom = options?.fromDate ?? null;
+  const rangeTo = options?.toDate ?? null;
+  const useRange =
+    Boolean(rangeFrom && rangeTo) &&
+    !Number.isNaN(rangeFrom?.getTime() ?? NaN) &&
+    !Number.isNaN(rangeTo?.getTime() ?? NaN) &&
+    Boolean(rangeFrom && rangeTo && rangeFrom <= rangeTo);
+
+  const since = useRange ? rangeFrom!.toISOString().slice(0, 10) : null;
+  const until = useRange ? rangeTo!.toISOString().slice(0, 10) : null;
+
   const insightsUrl = new URL(
     `https://graph.facebook.com/${META_GRAPH_VERSION}/act_${accountId}/insights`
   );
   insightsUrl.searchParams.set("fields", "spend,impressions,clicks,actions");
-  insightsUrl.searchParams.set("date_preset", "last_30d");
+  if (useRange) {
+    insightsUrl.searchParams.set("time_range", JSON.stringify({ since, until }));
+  } else {
+    insightsUrl.searchParams.set("date_preset", "last_30d");
+  }
   insightsUrl.searchParams.set("level", "account");
 
   const insightsResponse = await fetch(insightsUrl, { headers: baseHeaders });
@@ -358,7 +391,11 @@ export async function fetchMetaAdsData(
     `https://graph.facebook.com/${META_GRAPH_VERSION}/act_${accountId}/campaigns`
   );
   campaignsUrl.searchParams.set("fields", "name,insights{spend,impressions,clicks,actions}");
-  campaignsUrl.searchParams.set("date_preset", "last_30d");
+  if (useRange) {
+    campaignsUrl.searchParams.set("time_range", JSON.stringify({ since, until }));
+  } else {
+    campaignsUrl.searchParams.set("date_preset", "last_30d");
+  }
 
   const campaignsResponse = await fetch(campaignsUrl, { headers: baseHeaders });
   if (!campaignsResponse.ok) {
@@ -426,7 +463,8 @@ export async function fetchMetaAdsData(
  */
 export async function fetchMetaPageData(
   accessToken: string,
-  pageId: string
+  pageId: string,
+  options?: { fromDate?: Date; toDate?: Date }
 ): Promise<MetaPageData> {
   const token = normalizeBearerToken(accessToken);
   if (looksLikeMetaAppAccessToken(token)) {
@@ -437,6 +475,17 @@ export async function fetchMetaPageData(
 
   const baseHeaders = { Authorization: `Bearer ${token}` };
   const normalizedPageId = pageId.trim();
+
+  const rangeFrom = options?.fromDate ?? null;
+  const rangeTo = options?.toDate ?? null;
+  const useRange =
+    Boolean(rangeFrom && rangeTo) &&
+    !Number.isNaN(rangeFrom?.getTime() ?? NaN) &&
+    !Number.isNaN(rangeTo?.getTime() ?? NaN) &&
+    Boolean(rangeFrom && rangeTo && rangeFrom <= rangeTo);
+
+  const since = useRange ? rangeFrom!.toISOString().slice(0, 10) : null;
+  const until = useRange ? rangeTo!.toISOString().slice(0, 10) : null;
 
   const pageUrl = new URL(
     `https://graph.facebook.com/${META_GRAPH_VERSION}/${normalizedPageId}`
@@ -461,7 +510,13 @@ export async function fetchMetaPageData(
     `https://graph.facebook.com/${META_GRAPH_VERSION}/${normalizedPageId}/insights`
   );
   insightsUrl.searchParams.set("metric", "page_impressions,page_engaged_users");
-  insightsUrl.searchParams.set("period", "days_28");
+  if (useRange) {
+    insightsUrl.searchParams.set("period", "day");
+    insightsUrl.searchParams.set("since", since!);
+    insightsUrl.searchParams.set("until", until!);
+  } else {
+    insightsUrl.searchParams.set("period", "days_28");
+  }
 
   const insightsResponse = await fetch(insightsUrl, { headers: baseHeaders });
   if (!insightsResponse.ok) {
@@ -496,6 +551,10 @@ export async function fetchMetaPageData(
     "message,insights{metric(post_impressions,post_engaged_users)},created_time"
   );
   postsUrl.searchParams.set("limit", "5");
+  if (useRange) {
+    postsUrl.searchParams.set("since", since!);
+    postsUrl.searchParams.set("until", until!);
+  }
 
   const postsResponse = await fetch(postsUrl, { headers: baseHeaders });
   if (!postsResponse.ok) {
@@ -632,7 +691,8 @@ export async function fetchRedditAdsData(
   clientSecret: string,
   refreshToken: string,
   adAccountId: string,
-  userAgent?: string | null
+  userAgent?: string | null,
+  options?: { fromDate?: Date; toDate?: Date }
 ): Promise<RedditAdsData> {
   const normalizedUserAgent = (userAgent || process.env.REDDIT_USER_AGENT || "").trim();
   if (!normalizedUserAgent) {
@@ -696,10 +756,21 @@ export async function fetchRedditAdsData(
     campaignNameById.set(id, campaign.name || id);
   }
 
-  const now = new Date();
-  const startsAt = new Date(now);
-  startsAt.setUTCDate(startsAt.getUTCDate() - 29);
+  const rangeFrom = options?.fromDate ?? null;
+  const rangeTo = options?.toDate ?? null;
+  const useRange =
+    Boolean(rangeFrom && rangeTo) &&
+    !Number.isNaN(rangeFrom?.getTime() ?? NaN) &&
+    !Number.isNaN(rangeTo?.getTime() ?? NaN) &&
+    Boolean(rangeFrom && rangeTo && rangeFrom <= rangeTo);
+
+  const now = rangeTo ? new Date(rangeTo) : new Date();
+  const startsAt = useRange ? new Date(rangeFrom!) : new Date(now);
+  if (!useRange) {
+    startsAt.setUTCDate(startsAt.getUTCDate() - 29);
+  }
   startsAt.setUTCHours(0, 0, 0, 0);
+  now.setUTCHours(23, 59, 59, 999);
   const reportsResponse = await fetch(
     `https://ads-api.reddit.com/api/v3/ad_accounts/${cleanAccountId}/reports`,
     {

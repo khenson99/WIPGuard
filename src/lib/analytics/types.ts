@@ -5,6 +5,7 @@ export interface AnalyticsTimestamp {
   fetchedAt: string;
   nextRefresh: string;
   source: "live" | "cached";
+  diagnostics?: Record<string, unknown>;
 }
 
 export type AnalyticsSnapshotStatus = "SUCCESS" | "ERROR";
@@ -61,6 +62,25 @@ export interface DealsBySource {
   value: number;
 }
 
+export interface HubSpotRepScoreboardRow {
+  ownerId: string | null;
+  ownerName: string;
+  totalDeals: number;
+  totalPipeline: number;
+  avgDealSize: number;
+  demos: number;
+  noShows: number;
+  noShowRate: number;
+  wonCount: number;
+  wonRevenue: number;
+  avgWon: number;
+  lostCount: number;
+  winRate: number;
+  demoToWonRate: number;
+  churnedWon: number;
+  churnRate: number;
+}
+
 export interface FunnelMetrics {
   totalDeals: number;
   closedWon: number;
@@ -88,6 +108,7 @@ export interface ContactMetrics {
 export interface HubSpotData {
   funnel: FunnelMetrics;
   contacts: ContactMetrics;
+  repScoreboard?: HubSpotRepScoreboardRow[];
   deals?: Array<{
     dealId: string;
     dealName: string;

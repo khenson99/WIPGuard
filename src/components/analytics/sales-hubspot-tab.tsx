@@ -2,12 +2,12 @@
 
 import {
   Target, Users, DollarSign, BarChart3,
-  Calendar, ArrowRight, AlertTriangle,
+  Calendar, AlertTriangle,
 } from "lucide-react";
-import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import type { AnalyticsDashboardData, HubSpotRepScoreboardRow } from "@/lib/analytics/types";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
 import { StatCard } from "@/components/analytics/stat-card";
-import { BarDisplay, RingStat } from "@/components/analytics/bar-display";
+import { RingStat } from "@/components/analytics/bar-display";
 import {
   fmt$, fmtN, fmtPct,
   AlertBanner, DataTable, InsightCard,
@@ -106,6 +106,27 @@ export function SalesHubspotTab({ data }: SalesHubspotTabProps) {
       updatedAt: d.updatedAt,
     }));
 
+  /* ── Rep scoreboard ─────────────────────────────── */
+
+  const repRows = (hs.repScoreboard ?? []) as HubSpotRepScoreboardRow[];
+  const repColumns: DataTableColumn<HubSpotRepScoreboardRow>[] = [
+    { key: "ownerName", label: "Rep" },
+    { key: "totalDeals", label: "Deals", align: "right", render: (row) => fmtN(row.totalDeals) },
+    { key: "totalPipeline", label: "Pipeline", align: "right", render: (row) => fmt$(row.totalPipeline) },
+    { key: "avgDealSize", label: "Avg Deal", align: "right", render: (row) => fmt$(row.avgDealSize) },
+    { key: "demos", label: "Demos", align: "right", render: (row) => fmtN(row.demos) },
+    { key: "noShows", label: "No-Shows", align: "right", render: (row) => fmtN(row.noShows) },
+    { key: "noShowRate", label: "No-Show %", align: "right", render: (row) => fmtPct(row.noShowRate) },
+    { key: "wonCount", label: "Won", align: "right", render: (row) => fmtN(row.wonCount) },
+    { key: "wonRevenue", label: "Won $", align: "right", render: (row) => fmt$(row.wonRevenue) },
+    { key: "avgWon", label: "Avg Won", align: "right", render: (row) => fmt$(row.avgWon) },
+    { key: "lostCount", label: "Lost", align: "right", render: (row) => fmtN(row.lostCount) },
+    { key: "winRate", label: "Win %", align: "right", render: (row) => fmtPct(row.winRate) },
+    { key: "demoToWonRate", label: "Demo→Won %", align: "right", render: (row) => fmtPct(row.demoToWonRate) },
+    { key: "churnedWon", label: "Churned Won", align: "right", render: (row) => fmtN(row.churnedWon) },
+    { key: "churnRate", label: "Churn %", align: "right", render: (row) => fmtPct(row.churnRate) },
+  ];
+
   /* ── Win/Loss ring ───────────────────────────────── */
 
   const outcomeSegments = [
@@ -200,7 +221,7 @@ export function SalesHubspotTab({ data }: SalesHubspotTabProps) {
       </div>
 
       {/* ── Sales Funnel ──────────────────────────── */}
-      <SectionCard title="Sales Pipeline Funnel" subtitle="Deal progression through stages">
+      <SectionCard title="Sales Pipeline Funnel" subtitle="Stage entries in the selected time range (activity-based)">
         <div className="space-y-2">
           {salesStages.map((stage) => (
             <div key={stage.stageId} className="flex items-center gap-3">
@@ -241,15 +262,22 @@ export function SalesHubspotTab({ data }: SalesHubspotTabProps) {
 
       {/* ── Source Attribution ─────────────────────── */}
       {funnel.dealsBySource.length > 0 && (
-        <SectionCard title="Source Attribution" subtitle="Where pipeline deals originate">
+        <SectionCard title="Source Attribution" subtitle="Sources for deals touched in the selected time range">
           <DataTable columns={sourceColumns} rows={funnel.dealsBySource} emptyMessage="No source data available" />
         </SectionCard>
       )}
 
       {/* ── Deal Details ──────────────────────────── */}
       {dealRows.length > 0 && (
-        <SectionCard title="Deal Details" subtitle={`Top ${dealRows.length} deals by value`}>
+        <SectionCard title="Deal Details" subtitle={`Deals touched in range (showing top ${dealRows.length} by value)`}>
           <DataTable columns={dealColumns} rows={dealRows} emptyMessage="No deals found" />
+        </SectionCard>
+      )}
+
+      {/* ── Rep Scoreboard ─────────────────────────── */}
+      {repRows.length > 0 && (
+        <SectionCard title="Sales Rep Scoreboard" subtitle="Activity in the selected time range">
+          <DataTable columns={repColumns} rows={repRows} emptyMessage="No rep activity found in range" />
         </SectionCard>
       )}
 

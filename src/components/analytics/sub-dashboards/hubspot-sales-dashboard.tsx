@@ -78,6 +78,7 @@ export function HubspotSalesDashboard({ data }: HubspotSalesDashboardProps) {
 
   /* ── Top deals ─── */
   const topDeals = (deals ?? []).slice(0, 10);
+  const repRows = hubspot.repScoreboard ?? [];
 
   return (
     <SubDashboardTemplate
@@ -117,6 +118,20 @@ export function HubspotSalesDashboard({ data }: HubspotSalesDashboardProps) {
       }
       panels={
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <DashboardSectionCard
+            title="How to read this dashboard"
+            subtitle="All values are activity-based within the selected global time range."
+            className="lg:col-span-2"
+          >
+            <div className="text-xs text-muted-foreground">
+              <ul className="list-disc space-y-1 pl-4">
+                <li><span className="text-foreground">Funnel</span> counts stage entries (not current pipeline snapshot).</li>
+                <li><span className="text-foreground">Win / no-show rates</span> are computed from outcomes in-range.</li>
+                <li><span className="text-foreground">Scoreboard</span> groups deals by HubSpot owner for in-range activity.</li>
+              </ul>
+            </div>
+          </DashboardSectionCard>
+
           <DashboardSectionCard title="Source Attribution">
             {sourceSegments.length === 0 ? (
               <p className="py-4 text-center text-xs text-muted-foreground">No source data</p>
@@ -172,6 +187,49 @@ export function HubspotSalesDashboard({ data }: HubspotSalesDashboardProps) {
               </div>
             )}
           </DashboardSectionCard>
+
+          {repRows.length > 0 && (
+            <DashboardSectionCard
+              title="Sales Rep Scoreboard"
+              subtitle="Activity in the selected time range"
+              className="lg:col-span-2"
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border text-left text-muted-foreground">
+                      <th className="pb-2 font-medium">Rep</th>
+                      <th className="pb-2 text-right font-medium">Deals</th>
+                      <th className="pb-2 text-right font-medium">Pipeline</th>
+                      <th className="pb-2 text-right font-medium">Avg Deal</th>
+                      <th className="pb-2 text-right font-medium">Demos</th>
+                      <th className="pb-2 text-right font-medium">No-shows</th>
+                      <th className="pb-2 text-right font-medium">No-show %</th>
+                      <th className="pb-2 text-right font-medium">Won</th>
+                      <th className="pb-2 text-right font-medium">Won $</th>
+                      <th className="pb-2 text-right font-medium">Win %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {repRows.map((row) => (
+                      <tr key={row.ownerId ?? row.ownerName} className="border-b border-border/50">
+                        <td className="max-w-[180px] truncate py-2 text-foreground">{row.ownerName}</td>
+                        <td className="py-2 text-right tabular-nums text-foreground">{row.totalDeals}</td>
+                        <td className="py-2 text-right tabular-nums text-foreground">{fmt$(row.totalPipeline)}</td>
+                        <td className="py-2 text-right tabular-nums text-muted-foreground">{fmt$(row.avgDealSize)}</td>
+                        <td className="py-2 text-right tabular-nums text-foreground">{row.demos}</td>
+                        <td className="py-2 text-right tabular-nums text-foreground">{row.noShows}</td>
+                        <td className="py-2 text-right tabular-nums text-muted-foreground">{fmtPct(row.noShowRate)}</td>
+                        <td className="py-2 text-right tabular-nums text-foreground">{row.wonCount}</td>
+                        <td className="py-2 text-right tabular-nums text-foreground">{fmt$(row.wonRevenue)}</td>
+                        <td className="py-2 text-right tabular-nums text-muted-foreground">{fmtPct(row.winRate)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </DashboardSectionCard>
+          )}
         </div>
       }
     />
