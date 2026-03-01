@@ -122,53 +122,63 @@ export type AnalyticsChildRenderKind =
   | "finance-unit-economics"
   | "snapshot";
 
+const CHILD_ID_TO_RENDER_KIND: Record<string, AnalyticsChildRenderKind> = {
+  // Finance
+  "finance-stripe": "finance-stripe",
+  "finance-hubspot": "finance-hubspot",
+  "finance-mercury": "finance-mercury",
+  "finance-planning": "finance-planning",
+  "finance-forecast": "finance-forecast",
+  "finance-pnl": "finance-pnl",
+  "finance-unit-economics": "finance-unit-economics",
+  // Sales
+  "sales-hubspot": "sales-hubspot",
+  "sales-stripe": "sales-stripe",
+  "sales-performance": "sales-performance",
+  "sales-google-workspace": "sales-google-workspace",
+  "sales-slack": "sales-slack",
+  // Ads & Traffic
+  "ads-google-analytics": "ads-google-analytics",
+  "ads-google-ads": "ads-google-ads",
+  "ads-meta-ads": "ads-meta-ads",
+  "ads-reddit-ads": "ads-reddit-ads",
+  "ads-webflow": "ads-webflow",
+  "ads-semrush": "ads-semrush",
+  "ads-coda-kanban": "ads-coda-kanban",
+  // Customer Success
+  "cs-pylon": "cs-pylon",
+  "cs-coda": "cs-coda",
+  "cs-product": "cs-product",
+  "cs-google-workspace": "cs-google-workspace",
+  "cs-slack": "cs-slack",
+  // Customer Journey
+  "cj-touchpoints": "customerJourneyDrillDown",
+  "cj-conversion": "customerJourneyConversion",
+  // Demo Analytics
+  "demo-scheduling": "demoScheduling",
+  "demo-attribution": "demoAttribution",
+  // Process Analytics
+  "process-bottlenecks": "processBottlenecks",
+  "process-velocity": "processBottlenecks",
+  "process-health": "processHealth",
+  "process-throughput": "processHealth",
+};
+
+const DATA_DOMAIN_TO_RENDER_KIND: Record<string, AnalyticsChildRenderKind> = {
+  decisionDashboard: "decisionDashboard",
+  flowMetrics: "flowMetrics",
+  flowRisk: "flowRisk",
+  observability: "observability",
+  customerJourney: "customerJourneyDrillDown",
+  demoAnalytics: "demoScheduling",
+  processAnalytics: "processBottlenecks",
+};
+
 export function resolveAnalyticsChildRenderKind(input: {
   childId: string;
   childDataDomain: ChildDataDomain;
 }): AnalyticsChildRenderKind {
-  // Finance
-  if (input.childId === "finance-stripe") return "finance-stripe";
-  if (input.childId === "finance-hubspot") return "finance-hubspot";
-  if (input.childId === "finance-mercury") return "finance-mercury";
-  if (input.childId === "finance-planning") return "finance-planning";
-  if (input.childId === "finance-forecast") return "finance-forecast";
-  if (input.childId === "finance-pnl") return "finance-pnl";
-  if (input.childId === "finance-unit-economics") return "finance-unit-economics";
-  // Sales
-  if (input.childId === "sales-hubspot") return "sales-hubspot";
-  if (input.childId === "sales-stripe") return "sales-stripe";
-  if (input.childId === "sales-performance") return "sales-performance";
-  if (input.childId === "sales-google-workspace") return "sales-google-workspace";
-  if (input.childId === "sales-slack") return "sales-slack";
-  // Ads & Traffic
-  if (input.childId === "ads-google-analytics") return "ads-google-analytics";
-  if (input.childId === "ads-google-ads") return "ads-google-ads";
-  if (input.childId === "ads-meta-ads") return "ads-meta-ads";
-  if (input.childId === "ads-reddit-ads") return "ads-reddit-ads";
-  if (input.childId === "ads-webflow") return "ads-webflow";
-  if (input.childId === "ads-semrush") return "ads-semrush";
-  if (input.childId === "ads-coda-kanban") return "ads-coda-kanban";
-  // Customer Success
-  if (input.childId === "cs-pylon") return "cs-pylon";
-  if (input.childId === "cs-coda") return "cs-coda";
-  if (input.childId === "cs-product") return "cs-product";
-  if (input.childId === "cs-google-workspace") return "cs-google-workspace";
-  if (input.childId === "cs-slack") return "cs-slack";
-  // Ops
-  if (input.childDataDomain === "decisionDashboard") return "decisionDashboard";
-  if (input.childDataDomain === "flowMetrics") return "flowMetrics";
-  if (input.childDataDomain === "flowRisk") return "flowRisk";
-  if (input.childDataDomain === "observability") return "observability";
-  if (input.childId === "cj-touchpoints") return "customerJourneyDrillDown";
-  if (input.childId === "cj-conversion") return "customerJourneyConversion";
-  if (input.childDataDomain === "customerJourney") return "customerJourneyDrillDown";
-  if (input.childId === "demo-scheduling") return "demoScheduling";
-  if (input.childId === "demo-attribution") return "demoAttribution";
-  if (input.childDataDomain === "demoAnalytics") return "demoScheduling";
-  if (input.childId === "process-bottlenecks" || input.childId === "process-velocity") return "processBottlenecks";
-  if (input.childId === "process-health" || input.childId === "process-throughput") return "processHealth";
-  if (input.childDataDomain === "processAnalytics") return "processBottlenecks";
-  return "snapshot";
+  return CHILD_ID_TO_RENDER_KIND[input.childId] ?? DATA_DOMAIN_TO_RENDER_KIND[input.childDataDomain] ?? "snapshot";
 }
 
 function sectionCacheKey(sectionId: string, rangeQuery: string): string {
