@@ -34,9 +34,10 @@ function severityIndicator(score: number): string {
 interface PressureCellProps {
   person: PersonWipPressure;
   cellRef: React.Ref<HTMLDivElement>;
+  isFocused: boolean;
 }
 
-function PressureCell({ person, cellRef }: PressureCellProps) {
+function PressureCell({ person, cellRef, isFocused }: PressureCellProps) {
   const color = pressureColor(person.pressureScore);
   const label = pressureLabel(person.pressureScore);
   const displayName = person.name ?? person.email ?? "Unassigned";
@@ -47,7 +48,7 @@ function PressureCell({ person, cellRef }: PressureCellProps) {
     <div
       ref={cellRef}
       role="gridcell"
-      tabIndex={0}
+      tabIndex={isFocused ? 0 : -1}
       aria-label={ariaLabel}
       className={`rounded-lg border-2 ${color} px-3 py-2.5 transition-all duration-200 outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1`}
       title={`${displayName}: ${person.activeTaskCount} active / ${person.wipLimit} limit`}
@@ -57,16 +58,13 @@ function PressureCell({ person, cellRef }: PressureCellProps) {
           {displayName}
         </span>
         {person.overloaded && (
-          <>
-            <span
-              role="img"
-              aria-label="Overloaded"
-              className="shrink-0 text-xs font-bold"
-            >
-              !!!
-            </span>
-            <span className="sr-only">Overloaded</span>
-          </>
+          <span
+            role="img"
+            aria-label="Overloaded"
+            className="shrink-0 text-xs font-bold"
+          >
+            !!!
+          </span>
         )}
       </div>
       <div className="mt-1 flex items-baseline gap-1.5">
@@ -89,7 +87,7 @@ function PressureCell({ person, cellRef }: PressureCellProps) {
       <div
         className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-black/5"
         role="progressbar"
-        aria-valuenow={Math.round(person.pressureScore)}
+        aria-valuenow={Math.min(100, Math.round(person.pressureScore))}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label={`Pressure: ${Math.round(person.pressureScore)}%`}
@@ -105,8 +103,12 @@ function PressureCell({ person, cellRef }: PressureCellProps) {
 
 export function WipPressureHeatmap({ riskReport }: WipPressureHeatmapProps) {
   const [focusedIndex, setFocusedIndex] = useState(0);
+  const focusedIndexRef = useRef(0);
   const cellRefs = useRef<(HTMLDivElement | null)[]>([]);
 
+  // getColumnCount reads window.innerWidth on each call, so it always returns
+  // the current value even without a resize listener. This is acceptable
+  // because it is only invoked during keydown events, not during render.
   const getColumnCount = useCallback((): number => {
     // Match the responsive grid breakpoints: grid-cols-2 sm:grid-cols-3 lg:grid-cols-4
     if (typeof window === "undefined") return 2;
@@ -119,20 +121,21 @@ export function WipPressureHeatmap({ riskReport }: WipPressureHeatmapProps) {
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>, totalCells: number) => {
       const cols = getColumnCount();
-      let nextIndex = focusedIndex;
+      const current = focusedIndexRef.current;
+      let nextIndex = current;
 
       switch (e.key) {
         case "ArrowRight":
-          nextIndex = Math.min(focusedIndex + 1, totalCells - 1);
+          nextIndex = Math.min(current + 1, totalCells - 1);
           break;
         case "ArrowLeft":
-          nextIndex = Math.max(focusedIndex - 1, 0);
+          nextIndex = Math.max(current - 1, 0);
           break;
         case "ArrowDown":
-          nextIndex = Math.min(focusedIndex + cols, totalCells - 1);
+          nextIndex = Math.min(current + cols, totalCells - 1);
           break;
         case "ArrowUp":
-          nextIndex = Math.max(focusedIndex - cols, 0);
+          nextIndex = Math.max(current - cols, 0);
           break;
         case "Home":
           nextIndex = 0;
@@ -145,10 +148,11 @@ export function WipPressureHeatmap({ riskReport }: WipPressureHeatmapProps) {
       }
 
       e.preventDefault();
+      focusedIndexRef.current = nextIndex;
       setFocusedIndex(nextIndex);
       cellRefs.current[nextIndex]?.focus();
     },
-    [focusedIndex, getColumnCount]
+    [getColumnCount]
   );
 
   if (!riskReport) {
@@ -166,6 +170,9 @@ export function WipPressureHeatmap({ riskReport }: WipPressureHeatmapProps) {
       </div>
     );
   }
+
+  // Guard against focusedIndex exceeding bounds (e.g. if people list shrinks)
+  const safeFocusedIndex = Math.min(focusedIndex, people.length - 1);
 
   // Summary stats
   const overloaded = people.filter((p) => p.overloaded).length;
@@ -196,15 +203,19 @@ export function WipPressureHeatmap({ riskReport }: WipPressureHeatmapProps) {
         className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4"
         onKeyDown={(e) => handleKeyDown(e, people.length)}
       >
-        {people.map((person, index) => (
-          <PressureCell
-            key={person.userId}
-            person={person}
-            cellRef={(el) => {
-              cellRefs.current[index] = el;
-            }}
-          />
-        ))}
+        {/* Single ARIA row wrapper using display:contents to preserve CSS grid layout */}
+        <div role="row" style={{ display: "contents" }}>
+          {people.map((person, index) => (
+            <PressureCell
+              key={person.userId}
+              person={person}
+              isFocused={index === safeFocusedIndex}
+              cellRef={(el) => {
+                cellRefs.current[index] = el;
+              }}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
