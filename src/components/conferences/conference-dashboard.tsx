@@ -158,6 +158,19 @@ export function ConferenceDashboard() {
         </div>
       </div>
 
+      {resource.stale ? (
+        <DashboardStaleBanner
+          lastUpdatedAt={resource.lastUpdatedAt}
+          onRefresh={resource.refresh}
+          refreshing={resource.refreshing}
+          label="Showing cached conferences while refresh retries."
+        />
+      ) : null}
+
+      {resource.error ? (
+        <DashboardErrorBanner message={resource.error} onRetry={resource.refresh} />
+      ) : null}
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {[
           { label: "Total", value: stats.total, icon: CalendarDays, color: "var(--primary)" },
@@ -181,19 +194,6 @@ export function ConferenceDashboard() {
           </div>
         ))}
       </div>
-
-      {resource.stale ? (
-        <DashboardStaleBanner
-          lastUpdatedAt={resource.lastUpdatedAt}
-          onRefresh={resource.refresh}
-          refreshing={resource.refreshing}
-          label="Showing cached conferences while refresh retries."
-        />
-      ) : null}
-
-      {resource.error ? (
-        <DashboardErrorBanner message={resource.error} onRetry={resource.refresh} />
-      ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <select
