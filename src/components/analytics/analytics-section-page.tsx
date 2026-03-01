@@ -122,7 +122,7 @@ export type AnalyticsChildRenderKind =
   | "finance-unit-economics"
   | "snapshot";
 
-const CHILD_ID_TO_RENDER_KIND: Record<string, AnalyticsChildRenderKind> = {
+const CHILD_ID_TO_RENDER_KIND = {
   // Finance
   "finance-stripe": "finance-stripe",
   "finance-hubspot": "finance-hubspot",
@@ -162,9 +162,9 @@ const CHILD_ID_TO_RENDER_KIND: Record<string, AnalyticsChildRenderKind> = {
   "process-velocity": "processBottlenecks",
   "process-health": "processHealth",
   "process-throughput": "processHealth",
-};
+} as const satisfies Record<string, AnalyticsChildRenderKind>;
 
-const DATA_DOMAIN_TO_RENDER_KIND: Record<string, AnalyticsChildRenderKind> = {
+const DATA_DOMAIN_TO_RENDER_KIND = {
   decisionDashboard: "decisionDashboard",
   flowMetrics: "flowMetrics",
   flowRisk: "flowRisk",
@@ -172,13 +172,27 @@ const DATA_DOMAIN_TO_RENDER_KIND: Record<string, AnalyticsChildRenderKind> = {
   customerJourney: "customerJourneyDrillDown",
   demoAnalytics: "demoScheduling",
   processAnalytics: "processBottlenecks",
-};
+} as const satisfies Record<string, AnalyticsChildRenderKind>;
 
+/**
+ * Resolve which render variant to use for an analytics child section.
+ *
+ * Resolution order is intentional: `childId` is checked before `childDataDomain`
+ * because it is the more specific identifier. Several Ops sub-sections share a
+ * `dataDomain` (e.g. multiple entries map to "processAnalytics"), so resolving by
+ * `childId` first ensures the correct specialised view is selected. The previous
+ * if-chain checked `childDataDomain` first for some Ops entries, but that was a
+ * latent inconsistency -- `childId` should always take priority.
+ */
 export function resolveAnalyticsChildRenderKind(input: {
   childId: string;
   childDataDomain: ChildDataDomain;
 }): AnalyticsChildRenderKind {
-  return CHILD_ID_TO_RENDER_KIND[input.childId] ?? DATA_DOMAIN_TO_RENDER_KIND[input.childDataDomain] ?? "snapshot";
+  return (
+    (CHILD_ID_TO_RENDER_KIND as Record<string, AnalyticsChildRenderKind>)[input.childId] ??
+    (DATA_DOMAIN_TO_RENDER_KIND as Record<string, AnalyticsChildRenderKind>)[input.childDataDomain] ??
+    "snapshot"
+  );
 }
 
 function sectionCacheKey(sectionId: string, rangeQuery: string): string {
