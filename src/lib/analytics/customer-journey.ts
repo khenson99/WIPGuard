@@ -1,5 +1,6 @@
 import type {
   AnalyticsDashboardData,
+  BuyerJourneyPhase,
   ChannelAttribution,
   CustomerJourneyData,
   CustomerJourneyRecord,
@@ -8,6 +9,33 @@ import type {
   TouchpointChannel,
   TouchpointSummary,
 } from "@/lib/analytics/types";
+import { CANONICAL_STAGE_ORDER } from "@/lib/analytics/customer-journey-conversion";
+
+// ── HubSpot source → synthetic channel mapping ──
+
+function mapHubSpotSourceToChannel(
+  source: string | null,
+  utmMedium: string | null,
+): TouchpointChannel | null {
+  const s = (source ?? "").toUpperCase();
+  const medium = (utmMedium ?? "").toLowerCase();
+
+  // UTM medium overrides can refine the mapping
+  if (medium.includes("cpc") || medium.includes("ppc")) return "paid-search";
+
+  switch (s) {
+    case "PAID_SEARCH": return "paid-search";
+    case "PAID_SOCIAL": return "paid-social";
+    case "ORGANIC_SEARCH": return "organic-search";
+    case "ORGANIC_SOCIAL": return "referral";
+    case "REFERRALS": return "referral";
+    case "DIRECT_TRAFFIC": return "direct";
+    case "EMAIL_MARKETING": return "email";
+    case "OTHER_CAMPAIGNS": return "email";
+    case "OFFLINE_SOURCES": return "outbound";
+    default: return null;
+  }
+}
 
 // ── Touchpoint extraction from each domain ──
 
@@ -144,6 +172,60 @@ function telemetryTouchpoints(
   }];
 }
 
+// ── Synthetic touchpoints from HubSpot contact analytics ──
+
+function contactAnalyticsTouchpoints(data: AnalyticsDashboardData): Map<string, Touchpoint[]> {
+  const dealTouchpoints = new Map<string, Touchpoint[]>();
+  const deals = data.hubspot?.deals ?? [];
+
+  for (const deal of deals) {
+    const analytics = deal.primaryContactAnalytics;
+    if (!analytics?.source) continue;
+
+    const channel = mapHubSpotSourceToChannel(analytics.source, analytics.utmMedium);
+    if (!channel) continue;
+
+    const touchpoints: Touchpoint[] = [];
+
+    // First-seen touchpoint (awareness phase)
+    if (analytics.firstSeenAt) {
+      const detail = [
+        analytics.utmSource && `src=${analytics.utmSource}`,
+        analytics.utmMedium && `med=${analytics.utmMedium}`,
+        analytics.utmCampaign && `cmp=${analytics.utmCampaign}`,
+      ].filter(Boolean).join(", ");
+
+      touchpoints.push({
+        timestamp: analytics.firstSeenAt,
+        phase: "awareness" as BuyerJourneyPhase,
+        channel,
+        type: "first-touch",
+        detail: detail || `${analytics.source} (first visit)`,
+        value: null,
+      });
+    }
+
+    // Last-seen touchpoint (website phase — only if distinct from first-seen)
+    if (analytics.lastSeenAt && analytics.lastSeenAt !== analytics.firstSeenAt) {
+      const url = analytics.lastUrl || analytics.firstUrl;
+      touchpoints.push({
+        timestamp: analytics.lastSeenAt,
+        phase: "website" as BuyerJourneyPhase,
+        channel,
+        type: "engagement",
+        detail: url ? `Last page: ${url}` : `${analytics.source} (return visit)`,
+        value: null,
+      });
+    }
+
+    if (touchpoints.length > 0) {
+      dealTouchpoints.set(deal.dealId, touchpoints);
+    }
+  }
+
+  return dealTouchpoints;
+}
+
 // ── Journey assembly ──
 
 function buildJourneys(data: AnalyticsDashboardData): CustomerJourneyRecord[] {
@@ -161,13 +243,21 @@ function buildJourneys(data: AnalyticsDashboardData): CustomerJourneyRecord[] {
     ...telemetryTouchpoints(data, "slack", "slack"),
   ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
+  // Per-deal synthetic touchpoints from HubSpot contact analytics
+  const perDealContactTouchpoints = contactAnalyticsTouchpoints(data);
+
   return deals.map((deal) => {
-    const dealTouchpoints = allTouchpoints.filter(
+    const sharedTouchpoints = allTouchpoints.filter(
       (tp) =>
         tp.detail.includes(deal.dealName) ||
         tp.channel === "hubspot" ||
         tp.type === "first-touch"
     );
+
+    // Merge shared touchpoints with deal-specific contact analytics touchpoints
+    const dealContactTps = perDealContactTouchpoints.get(deal.dealId) ?? [];
+    const dealTouchpoints = [...dealContactTps, ...sharedTouchpoints]
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
     const timestamps = dealTouchpoints.map((tp) => new Date(tp.timestamp).getTime());
     const firstTouch = timestamps.length > 0 ? new Date(Math.min(...timestamps)).toISOString() : new Date().toISOString();
@@ -177,7 +267,7 @@ function buildJourneys(data: AnalyticsDashboardData): CustomerJourneyRecord[] {
     return {
       dealId: deal.dealId,
       dealName: deal.dealName,
-      contactEmail: null,
+      contactEmail: deal.primaryContactEmail ?? null,
       currentStage: deal.stageLabel,
       value: deal.amount,
       touchpoints: dealTouchpoints,
@@ -339,6 +429,14 @@ export function buildCustomerJourneyData(data: AnalyticsDashboardData): Customer
   const avgTouchpoints = journeys.length > 0 ? Math.round((totalTouchpoints / journeys.length) * 10) / 10 : 0;
   const medianDaysToClose = median(journeys.map((j) => j.daysInPipeline));
 
+  // Derive stage ordering from HubSpot pipeline metadata or fall back to canonical order
+  const pipelineStages = data.hubspot?.pipelineStages;
+  const stageOrder = pipelineStages && pipelineStages.length > 0
+    ? pipelineStages.map((s) => s.label)
+    : [...CANONICAL_STAGE_ORDER];
+  const stageOrderSource: "pipeline" | "fallback" =
+    pipelineStages && pipelineStages.length > 0 ? "pipeline" : "fallback";
+
   return {
     journeys,
     touchpointSummary,
@@ -346,5 +444,7 @@ export function buildCustomerJourneyData(data: AnalyticsDashboardData): Customer
     medianDaysToClose,
     topPaths: buildTopPaths(journeys),
     attribution: buildAttribution(journeys, data),
+    stageOrder,
+    stageOrderSource,
   };
 }

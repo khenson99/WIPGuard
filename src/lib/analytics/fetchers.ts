@@ -597,6 +597,23 @@ export async function fetchHubSpotData(
     // Non-critical — skip
   }
 
+  // ── Enrich deals with contact analytics for attribution ──
+  try {
+    const dealIdsForContacts = deals.map((d) => d.dealId).filter(Boolean);
+    const contactAnalytics = await fetchDealContactAnalytics(baseUrl, headers, dealIdsForContacts);
+    for (const deal of deals) {
+      const analytics = contactAnalytics.get(deal.dealId);
+      if (analytics) {
+        (deal as Record<string, unknown>).contactIds = analytics.contactIds;
+        (deal as Record<string, unknown>).primaryContactId = analytics.primaryContactId;
+        (deal as Record<string, unknown>).primaryContactEmail = analytics.primaryContactEmail;
+        (deal as Record<string, unknown>).primaryContactAnalytics = analytics.primaryContactAnalytics;
+      }
+    }
+  } catch {
+    // Non-critical — attribution will fall back to deal-level signals only
+  }
+
   const meta = makeMeta("live");
   meta.diagnostics = {
     dealsFetched,
@@ -649,6 +666,153 @@ export async function fetchHubSpotData(
     deals,
     _meta: meta,
   };
+}
+
+// ── Contact analytics enrichment for attribution ──
+
+interface ContactAnalyticsResult {
+  contactIds: string[];
+  primaryContactId: string | null;
+  primaryContactEmail: string | null;
+  primaryContactAnalytics: {
+    createdAt?: string | null;
+    source: string | null;
+    sourceData1: string | null;
+    sourceData2: string | null;
+    firstSeenAt: string | null;
+    lastSeenAt: string | null;
+    firstUrl: string | null;
+    lastUrl: string | null;
+    numVisits: number | null;
+    numPageViews: number | null;
+    utmSource: string | null;
+    utmMedium: string | null;
+    utmCampaign: string | null;
+  } | undefined;
+}
+
+const CONTACT_ANALYTICS_PROPERTIES = [
+  "email",
+  "createdate",
+  "hs_analytics_source",
+  "hs_analytics_source_data_1",
+  "hs_analytics_source_data_2",
+  "hs_analytics_first_url",
+  "hs_analytics_last_url",
+  "hs_analytics_num_visits",
+  "hs_analytics_num_page_views",
+  "hs_analytics_first_timestamp",
+  "hs_analytics_last_timestamp",
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+];
+
+async function fetchDealContactAnalytics(
+  baseUrl: string,
+  headers: Record<string, string>,
+  dealIds: string[],
+): Promise<Map<string, ContactAnalyticsResult>> {
+  const resultMap = new Map<string, ContactAnalyticsResult>();
+  if (dealIds.length === 0) return resultMap;
+
+  // Step 1: Batch-fetch deal→contact associations (100 per batch)
+  const dealContactMap = new Map<string, string[]>();
+  const batchSize = 100;
+
+  for (let i = 0; i < dealIds.length; i += batchSize) {
+    const batch = dealIds.slice(i, i + batchSize);
+    try {
+      const res = await fetch(`${baseUrl}/crm/v4/associations/deal/contact/batch/read`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ inputs: batch.map((id) => ({ id })) }),
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      for (const result of data.results ?? []) {
+        const fromId = String(result.from?.id ?? "");
+        const toIds = (result.to ?? []).map((t: { toObjectId?: number }) => String(t.toObjectId ?? "")).filter(Boolean);
+        if (fromId && toIds.length > 0) {
+          dealContactMap.set(fromId, toIds);
+        }
+      }
+    } catch {
+      // Non-critical — continue without associations for this batch
+    }
+  }
+
+  // Step 2: Collect unique contact IDs and batch-fetch their analytics properties
+  const allContactIds = new Set<string>();
+  for (const contactIds of dealContactMap.values()) {
+    for (const id of contactIds) allContactIds.add(id);
+  }
+  if (allContactIds.size === 0) {
+    // No contacts found — populate empty results
+    for (const dealId of dealIds) {
+      resultMap.set(dealId, { contactIds: [], primaryContactId: null, primaryContactEmail: null, primaryContactAnalytics: undefined });
+    }
+    return resultMap;
+  }
+
+  const contactPropsMap = new Map<string, Record<string, string>>();
+  const contactIdArray = [...allContactIds];
+
+  for (let i = 0; i < contactIdArray.length; i += batchSize) {
+    const batch = contactIdArray.slice(i, i + batchSize);
+    try {
+      const res = await fetch(`${baseUrl}/crm/v3/objects/contacts/batch/read`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          inputs: batch.map((id) => ({ id })),
+          properties: CONTACT_ANALYTICS_PROPERTIES,
+        }),
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      for (const contact of data.results ?? []) {
+        const id = String(contact.id ?? "");
+        if (id) contactPropsMap.set(id, contact.properties ?? {});
+      }
+    } catch {
+      // Non-critical — continue
+    }
+  }
+
+  // Step 3: Assemble results per deal
+  for (const dealId of dealIds) {
+    const contactIds = dealContactMap.get(dealId) ?? [];
+    const primaryContactId = contactIds[0] ?? null;
+    const primaryProps = primaryContactId ? contactPropsMap.get(primaryContactId) : undefined;
+
+    resultMap.set(dealId, {
+      contactIds,
+      primaryContactId,
+      primaryContactEmail: primaryProps?.email ?? null,
+      primaryContactAnalytics: primaryProps ? {
+        createdAt: primaryProps.createdate ? new Date(primaryProps.createdate).toISOString() : null,
+        source: primaryProps.hs_analytics_source || null,
+        sourceData1: primaryProps.hs_analytics_source_data_1 || null,
+        sourceData2: primaryProps.hs_analytics_source_data_2 || null,
+        firstSeenAt: primaryProps.hs_analytics_first_timestamp
+          ? new Date(Number(primaryProps.hs_analytics_first_timestamp)).toISOString()
+          : null,
+        lastSeenAt: primaryProps.hs_analytics_last_timestamp
+          ? new Date(Number(primaryProps.hs_analytics_last_timestamp)).toISOString()
+          : null,
+        firstUrl: primaryProps.hs_analytics_first_url || null,
+        lastUrl: primaryProps.hs_analytics_last_url || null,
+        numVisits: primaryProps.hs_analytics_num_visits ? Number(primaryProps.hs_analytics_num_visits) : null,
+        numPageViews: primaryProps.hs_analytics_num_page_views ? Number(primaryProps.hs_analytics_num_page_views) : null,
+        utmSource: primaryProps.utm_source || null,
+        utmMedium: primaryProps.utm_medium || null,
+        utmCampaign: primaryProps.utm_campaign || null,
+      } : undefined,
+    });
+  }
+
+  return resultMap;
 }
 
 export async function fetchHubSpotContacts(

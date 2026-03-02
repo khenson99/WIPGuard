@@ -228,6 +228,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   ],
   "cj-overview": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
   "cj-touchpoints": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
+  "cj-conversion": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
 
   "demo-analytics": [
     "hubspot", "googleWorkspace", "demoAnalytics",
@@ -1103,9 +1104,6 @@ export async function GET(request: Request) {
   }
   if (domains.has("distilledInsights")) {
     result.distilledInsights = buildDistilledInsights(result);
-  }
-  if (domains.has("customerJourney")) {
-    result.customerJourney = buildCustomerJourneyData(result);
   }
   if (domains.has("demoAnalytics")) {
     result.demoAnalytics = buildDemoAnalyticsData(result);
