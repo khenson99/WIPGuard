@@ -1,8 +1,9 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import {
   Target, AlertTriangle, TrendingDown, CheckCircle,
-  Clock, ArrowRight, Zap,
+  Clock, ArrowRight, Zap, Filter,
 } from "lucide-react";
 import type { AnalyticsDashboardData, DealStage } from "@/lib/analytics/types";
 import { StatCard } from "./stat-card";
@@ -20,6 +21,8 @@ const FUNNEL_ORDER = [
   "Demo Follow-Up", "Budgetary Quote Sent", "Payment Link Sent",
   "Free Trial", "Freemium", "Subscription", "Closed Won",
 ];
+
+const TERMINAL_LABELS = ["Closed Won", "Closed Lost", "Unlikely", "Churn", "Ping Later", "On Hold"];
 
 const STAGE_COLORS: Record<string, string> = {
   "Prospect": "#4379f0",
@@ -40,10 +43,182 @@ const STAGE_COLORS: Record<string, string> = {
   "On Hold": "#9ca3af",
 };
 
-export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }) {
-  if (!data?.hubspot) return <EmptyState />;
+type DatePreset = "all" | "7d" | "30d" | "90d";
 
-  const { funnel } = data.hubspot;
+const DATE_PRESETS: { value: DatePreset; label: string }[] = [
+  { value: "all", label: "All Time" },
+  { value: "7d", label: "7 Days" },
+  { value: "30d", label: "30 Days" },
+  { value: "90d", label: "90 Days" },
+];
+
+function daysAgo(n: number): number {
+  return Date.now() - n * 24 * 60 * 60 * 1000;
+}
+
+interface Deal {
+  dealId: string;
+  dealName: string;
+  stageId: string;
+  stageLabel: string;
+  amount: number;
+  source: string;
+  ownerId: string | null;
+  repName?: string;
+  updatedAt: string | null;
+  createdAt: string | null;
+  closedAt?: string | null;
+}
+
+/** Recompute funnel-like metrics from a filtered set of deals. */
+function computeFunnelFromDeals(deals: Deal[]) {
+  const totalDeals = deals.length;
+  const stageMap = new Map<string, { count: number; value: number }>();
+  const sourceMap = new Map<string, { count: number; value: number }>();
+  const repMap = new Map<string, { count: number; value: number; closedWon: number; closedWonValue: number }>();
+
+  let closedWon = 0;
+  let closedLost = 0;
+  let unlikely = 0;
+  let churn = 0;
+  let noShows = 0;
+  let demoFollowUp = 0;
+  let totalAmount = 0;
+
+  for (const deal of deals) {
+    const label = deal.stageLabel;
+    const amt = deal.amount || 0;
+    totalAmount += amt;
+
+    // Stage counts
+    const existing = stageMap.get(label) ?? { count: 0, value: 0 };
+    existing.count += 1;
+    existing.value += amt;
+    stageMap.set(label, existing);
+
+    // Source counts
+    const srcKey = deal.source || "Unknown";
+    const srcEntry = sourceMap.get(srcKey) ?? { count: 0, value: 0 };
+    srcEntry.count += 1;
+    srcEntry.value += amt;
+    sourceMap.set(srcKey, srcEntry);
+
+    // Rep counts
+    const repKey = deal.repName || "Unassigned";
+    const repEntry = repMap.get(repKey) ?? { count: 0, value: 0, closedWon: 0, closedWonValue: 0 };
+    repEntry.count += 1;
+    repEntry.value += amt;
+    if (label === "Closed Won") {
+      repEntry.closedWon += 1;
+      repEntry.closedWonValue += amt;
+    }
+    repMap.set(repKey, repEntry);
+
+    // Tally terminal categories
+    if (label === "Closed Won") closedWon += 1;
+    if (label === "Closed Lost") closedLost += 1;
+    if (label === "Unlikely") unlikely += 1;
+    if (label === "Churn") churn += 1;
+    if (label === "No-Show/Reschedule") noShows += 1;
+    if (label === "Demo Follow-Up") demoFollowUp += 1;
+  }
+
+  const decided = closedWon + closedLost;
+  const winRate = decided > 0 ? (closedWon / decided) * 100 : 0;
+  const effectiveDenom = closedWon + closedLost + unlikely + churn;
+  const effectiveWinRate = effectiveDenom > 0 ? (closedWon / effectiveDenom) * 100 : 0;
+  const demoStage = stageMap.get("Demo Scheduled");
+  const noShowRate = demoStage && demoStage.count > 0
+    ? (noShows / (demoStage.count + noShows)) * 100
+    : (totalDeals > 0 ? (noShows / totalDeals) * 100 : 0);
+  const avgDealSize = totalDeals > 0 ? totalAmount / totalDeals : 0;
+
+  const stages: DealStage[] = Array.from(stageMap.entries()).map(([label, { count, value }]) => ({
+    stageId: label.toLowerCase().replace(/\s+/g, "-"),
+    label,
+    count,
+    value,
+  }));
+
+  const dealsBySource = Array.from(sourceMap.entries()).map(([source, { count, value }]) => ({
+    source,
+    count,
+    value,
+  }));
+
+  const dealsByRep = Array.from(repMap.entries()).map(([repName, stats]) => ({
+    repName,
+    count: stats.count,
+    value: stats.value,
+    closedWon: stats.closedWon,
+    closedWonValue: stats.closedWonValue,
+  }));
+
+  return {
+    totalDeals,
+    closedWon,
+    closedLost,
+    unlikely,
+    churn,
+    noShows,
+    demoFollowUp,
+    winRate,
+    effectiveWinRate,
+    noShowRate,
+    avgDealSize,
+    stages,
+    dealsBySource,
+    dealsByRep,
+    activeSubscriptions: 0,
+    demoScheduled: demoStage?.count ?? 0,
+  };
+}
+
+export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }) {
+  const [datePreset, setDatePreset] = useState<DatePreset>("all");
+  const [repFilter, setRepFilter] = useState<string>("all");
+
+  const deals = useMemo(() => data?.hubspot?.deals ?? [], [data?.hubspot?.deals]);
+  const originalFunnel = data?.hubspot?.funnel;
+
+  // Unique rep names for the filter dropdown
+  const repNames = useMemo(() => {
+    const set = new Set<string>();
+    for (const deal of deals) {
+      const name = (deal as Deal).repName;
+      if (name) set.add(name);
+    }
+    return Array.from(set).sort();
+  }, [deals]);
+
+  // Filter deals by date + rep
+  const filteredDeals = useMemo(() => {
+    let result = deals as Deal[];
+
+    if (datePreset !== "all") {
+      const cutoff = daysAgo(datePreset === "7d" ? 7 : datePreset === "30d" ? 30 : 90);
+      result = result.filter((d) => {
+        const ts = d.createdAt ? new Date(d.createdAt).getTime() : 0;
+        return ts >= cutoff;
+      });
+    }
+
+    if (repFilter !== "all") {
+      result = result.filter((d) => d.repName === repFilter);
+    }
+
+    return result;
+  }, [deals, datePreset, repFilter]);
+
+  const isFiltered = datePreset !== "all" || repFilter !== "all";
+
+  // Use recomputed metrics when filtered, original metrics when unfiltered
+  const funnel = useMemo(() => {
+    if (!isFiltered && originalFunnel) return originalFunnel;
+    return computeFunnelFromDeals(filteredDeals);
+  }, [isFiltered, originalFunnel, filteredDeals]);
+
+  if (!data?.hubspot) return <EmptyState />;
 
   // Build ordered funnel stages
   const orderedStages = FUNNEL_ORDER
@@ -52,13 +227,71 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
 
   // Terminal stages
   const terminalStages = funnel.stages.filter(
-    (s) => ["Closed Won", "Closed Lost", "Unlikely", "Churn", "Ping Later", "On Hold"].includes(s.label)
+    (s) => TERMINAL_LABELS.includes(s.label)
   );
 
   const maxStageCount = Math.max(...orderedStages.map((s) => s.count), 1);
 
   return (
     <div className="space-y-6">
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3" role="toolbar" aria-label="Sales funnel filters">
+        <div className="flex items-center gap-1.5">
+          <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground">Date:</span>
+          <div className="flex gap-0.5 rounded-lg bg-secondary/50 p-0.5">
+            {DATE_PRESETS.map((preset) => (
+              <button
+                key={preset.value}
+                type="button"
+                onClick={() => setDatePreset(preset.value)}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  datePreset === preset.value
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                aria-pressed={datePreset === preset.value}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {repNames.length > 0 && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">Rep:</span>
+            <select
+              value={repFilter}
+              onChange={(e) => setRepFilter(e.target.value)}
+              aria-label="Filter by rep"
+              className="rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="all">All Reps</option>
+              {repNames.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {isFiltered && (
+          <button
+            type="button"
+            onClick={() => { setDatePreset("all"); setRepFilter("all"); }}
+            className="text-xs text-muted-foreground underline-offset-4 hover:underline hover:text-foreground"
+          >
+            Clear filters
+          </button>
+        )}
+
+        {isFiltered && (
+          <span className="text-[11px] text-muted-foreground">
+            Showing {filteredDeals.length} of {deals.length} deals
+          </span>
+        )}
+      </div>
+
       {/* Top KPI Row */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <StatCard
@@ -132,7 +365,7 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
 
       <RepScoreboardCard
         rows={funnel.dealsByRep ?? []}
-        deals={data.hubspot.deals ?? []}
+        deals={filteredDeals as typeof data.hubspot.deals}
         stripeChurnEvents={data.stripe?.subscriptions?.recentChurnEvents ?? []}
       />
 
@@ -244,7 +477,7 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
                         <td className="py-2.5 text-right tabular-nums">{s.count}</td>
                         <td className="py-2.5 text-right tabular-nums font-medium">{fmt$(s.value)}</td>
                         <td className="py-2.5 text-right tabular-nums text-muted-foreground">
-                          {s.count > 0 ? fmt$(s.value / s.count) : "—"}
+                          {s.count > 0 ? fmt$(s.value / s.count) : "\u2014"}
                         </td>
                         <td className="py-2.5 text-right">
                           <div className="inline-flex items-center gap-2">

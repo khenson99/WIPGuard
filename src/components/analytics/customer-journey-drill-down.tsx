@@ -2,10 +2,11 @@
 
 import { useState, useMemo } from "react";
 import {
-  Route, Search, ChevronDown, ChevronRight, ArrowRight,
+  Route, Search, ChevronDown, ChevronRight,
   Filter, Calendar, DollarSign,
 } from "lucide-react";
 import type { AnalyticsDashboardData, TouchpointChannel } from "@/lib/analytics/types";
+import { DrilldownPanel } from "./drilldown-panel";
 
 const CHANNEL_LABELS: Record<TouchpointChannel, string> = {
   hubspot: "HubSpot",
@@ -20,6 +21,14 @@ const CHANNEL_LABELS: Record<TouchpointChannel, string> = {
   "reddit-ads": "Reddit Ads",
   pylon: "Pylon",
   mercury: "Mercury",
+  "paid-search": "Paid Search",
+  "paid-social": "Paid Social",
+  "organic-search": "Organic Search",
+  referral: "Referral",
+  direct: "Direct",
+  email: "Email",
+  partner: "Partner",
+  outbound: "Outbound",
 };
 
 const CHANNEL_COLORS: Record<TouchpointChannel, string> = {
@@ -35,6 +44,14 @@ const CHANNEL_COLORS: Record<TouchpointChannel, string> = {
   "reddit-ads": "#ff4500",
   pylon: "#6366f1",
   mercury: "#1c1c1e",
+  "paid-search": "#4285f4",
+  "paid-social": "#0081fb",
+  "organic-search": "#22c55e",
+  referral: "#8b5cf6",
+  direct: "#6b7280",
+  email: "#f59e0b",
+  partner: "#06b6d4",
+  outbound: "#ec4899",
 };
 
 function fmt$(n: number) {
@@ -86,48 +103,61 @@ export function CustomerJourneyDrillDown({ data }: { data: AnalyticsDashboardDat
   if (!journey || journey.journeys.length === 0) return <EmptyState />;
 
   return (
-    <div className="space-y-4">
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search deal or contact…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-md border border-border bg-card py-1.5 pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-          />
+    <DrilldownPanel
+      title="Customer Journey Records"
+      subtitle="Expandable deal records with touchpoint timelines"
+      statusLine={`${filtered.length} of ${journey.journeys.length} journeys`}
+      csvExport={{
+        filename: `customer-journeys-${new Date().toISOString().slice(0, 10)}.csv`,
+        headers: ["Deal Name", "Contact Email", "Stage", "Touches", "Days in Pipeline", "Value"],
+        rows: () =>
+          filtered.map((j) => [
+            j.dealName,
+            j.contactEmail ?? "",
+            j.currentStage,
+            String(j.touchpoints.length),
+            String(j.daysInPipeline),
+            String(j.value),
+          ]),
+      }}
+      filters={
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search deal or contact\u2026"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-md border border-border bg-card py-1.5 pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+          <div className="flex items-center gap-1">
+            <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+            <select
+              value={channelFilter}
+              onChange={(e) => setChannelFilter(e.target.value)}
+              className="rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground focus:outline-none"
+            >
+              <option value="all">All Channels</option>
+              {allChannels.map((ch) => (
+                <option key={ch} value={ch}>{CHANNEL_LABELS[ch]}</option>
+              ))}
+            </select>
+            <select
+              value={stageFilter}
+              onChange={(e) => setStageFilter(e.target.value)}
+              className="rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground focus:outline-none"
+            >
+              <option value="all">All Stages</option>
+              {allStages.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          <Filter className="h-3.5 w-3.5 text-muted-foreground" />
-          <select
-            value={channelFilter}
-            onChange={(e) => setChannelFilter(e.target.value)}
-            className="rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground focus:outline-none"
-          >
-            <option value="all">All Channels</option>
-            {allChannels.map((ch) => (
-              <option key={ch} value={ch}>{CHANNEL_LABELS[ch]}</option>
-            ))}
-          </select>
-          <select
-            value={stageFilter}
-            onChange={(e) => setStageFilter(e.target.value)}
-            className="rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground focus:outline-none"
-          >
-            <option value="all">All Stages</option>
-            {allStages.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <p className="text-xs text-muted-foreground">
-        {filtered.length} of {journey.journeys.length} journeys
-      </p>
-
+      }
+    >
       {/* Journey Records */}
       <div className="space-y-2">
         {filtered.slice(0, 50).map((j) => {
@@ -213,7 +243,7 @@ export function CustomerJourneyDrillDown({ data }: { data: AnalyticsDashboardDat
           </p>
         )}
       </div>
-    </div>
+    </DrilldownPanel>
   );
 }
 

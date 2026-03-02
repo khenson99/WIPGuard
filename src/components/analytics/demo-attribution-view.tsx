@@ -3,7 +3,6 @@
 import { TrendingUp, BarChart3, ArrowRight } from "lucide-react";
 import type { AnalyticsDashboardData, DemoOutcome } from "@/lib/analytics/types";
 import { StatCard } from "./stat-card";
-import { RingStat } from "./bar-display";
 import { DemoVolumeChart } from "./demo-volume-chart";
 
 const OUTCOME_COLORS: Record<DemoOutcome, string> = {
