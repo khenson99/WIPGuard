@@ -43,8 +43,10 @@ export function useRovingTabindex(
   // Track the latest count/cols without invalidating callbacks
   const countRef = useRef(count);
   const colsRef = useRef(cols);
-  countRef.current = count;
-  colsRef.current = cols;
+  useEffect(() => {
+    countRef.current = count;
+    colsRef.current = cols;
+  }, [count, cols]);
 
   const clamp = useCallback((index: number): number => {
     const n = countRef.current;
