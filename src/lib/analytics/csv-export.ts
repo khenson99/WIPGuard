@@ -18,6 +18,10 @@ export function buildCsvString(headers: string[], rows: string[][]): string {
   return lines.join("\n");
 }
 
+function normalizeCsvFilename(filename: string): string {
+  return filename.toLowerCase().endsWith(".csv") ? filename : `${filename}.csv`;
+}
+
 /** Trigger a browser file download for the given CSV content. */
 export function downloadCsv(
   filename: string,
@@ -25,11 +29,12 @@ export function downloadCsv(
   rows: string[][],
 ): void {
   const csv = buildCsvString(headers, rows);
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  // Prepend UTF-8 BOM for Excel compatibility.
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = filename;
+  anchor.download = normalizeCsvFilename(filename);
   document.body.appendChild(anchor);
   anchor.click();
   document.body.removeChild(anchor);
