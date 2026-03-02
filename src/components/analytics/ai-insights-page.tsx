@@ -13,6 +13,13 @@ type SectionFilter = "all" | AnalyticsSectionId;
 type SortMode = "severity" | "confidence";
 
 const SEVERITY_ORDER: Record<string, number> = { critical: 0, warning: 1, info: 2 };
+const PAGE_SIZES = [10, 25, 50] as const;
+
+function clamp(value: number, min: number, max: number): number {
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
 
 export function AiInsightsPage() {
   const resource = useDashboardResource<AnalyticsDashboardData>({
@@ -37,6 +44,8 @@ export function AiInsightsPage() {
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
   const [sectionFilter, setSectionFilter] = useState<SectionFilter>("all");
   const [sortMode, setSortMode] = useState<SortMode>("severity");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(25);
 
   useEffect(() => {
     if (!data) return;
@@ -61,6 +70,25 @@ export function AiInsightsPage() {
     return result;
   }, [allInsights, severityFilter, sectionFilter, sortMode]);
 
+  const totalInsights = filtered.length;
+  const pageCount = Math.max(1, Math.ceil(totalInsights / pageSize));
+  const currentPage = clamp(page, 1, pageCount);
+  const pageStartIndex = (currentPage - 1) * pageSize;
+  const pageEndIndexExclusive = Math.min(pageStartIndex + pageSize, totalInsights);
+  const pagedInsights = useMemo(
+    () => filtered.slice(pageStartIndex, pageEndIndexExclusive),
+    [filtered, pageEndIndexExclusive, pageStartIndex],
+  );
+
+  const visiblePages = useMemo(() => {
+    if (pageCount <= 7) return Array.from({ length: pageCount }, (_, i) => i + 1);
+    const pages = new Set<number>([1, pageCount]);
+    for (let p = currentPage - 2; p <= currentPage + 2; p++) {
+      if (p > 1 && p < pageCount) pages.add(p);
+    }
+    return Array.from(pages).sort((a, b) => a - b);
+  }, [currentPage, pageCount]);
+
   const criticalCount = allInsights.filter((i) => i.severity === "critical").length;
   const warningCount = allInsights.filter((i) => i.severity === "warning").length;
   const infoCount = allInsights.filter((i) => i.severity === "info").length;
@@ -76,6 +104,14 @@ export function AiInsightsPage() {
     );
   }
 
+  if (!data) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <p className="text-sm text-muted-foreground">{error ?? "Could not load insights."}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -85,6 +121,12 @@ export function AiInsightsPage() {
         </p>
       </div>
 
+      {error && (
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="text-sm text-muted-foreground">{error}</p>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Critical" value={String(criticalCount)} icon={AlertTriangle} iconColor="text-red-500" />
         <StatCard label="Warnings" value={String(warningCount)} icon={AlertCircle} iconColor="text-yellow-500" />
@@ -93,11 +135,13 @@ export function AiInsightsPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex gap-1 rounded-lg bg-secondary/50 p-0.5">
+        <div className="flex gap-1 rounded-lg bg-secondary/50 p-0.5" role="group" aria-label="Severity filter">
           {(["all", "critical", "warning", "info"] as SeverityFilter[]).map((sev) => (
             <button
               key={sev}
+              type="button"
               onClick={() => setSeverityFilter(sev)}
+              aria-pressed={severityFilter === sev}
               className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 severityFilter === sev ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               }`}
@@ -107,11 +151,13 @@ export function AiInsightsPage() {
           ))}
         </div>
 
-        <div className="flex gap-1 rounded-lg bg-secondary/50 p-0.5">
+        <div className="flex gap-1 rounded-lg bg-secondary/50 p-0.5" role="group" aria-label="Section filter">
           {(["all", "ads-traffic", "finance", "sales-pipeline", "customer-success"] as SectionFilter[]).map((sec) => (
             <button
               key={sec}
+              type="button"
               onClick={() => setSectionFilter(sec)}
+              aria-pressed={sectionFilter === sec}
               className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 sectionFilter === sec ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               }`}
@@ -121,11 +167,13 @@ export function AiInsightsPage() {
           ))}
         </div>
 
-        <div className="flex gap-1 rounded-lg bg-secondary/50 p-0.5">
+        <div className="flex gap-1 rounded-lg bg-secondary/50 p-0.5" role="group" aria-label="Sort mode">
           {(["severity", "confidence"] as SortMode[]).map((mode) => (
             <button
               key={mode}
+              type="button"
               onClick={() => setSortMode(mode)}
+              aria-pressed={sortMode === mode}
               className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 sortMode === mode ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               }`}
@@ -142,9 +190,103 @@ export function AiInsightsPage() {
             <p className="text-sm text-muted-foreground">No insights match current filters</p>
           </div>
         ) : (
-          filtered.map((insight) => <InsightCardFull key={insight.id} insight={insight} />)
+          pagedInsights.map((insight) => <InsightCardFull key={insight.id} insight={insight} />)
         )}
       </div>
+
+      {totalInsights > 0 && (
+        <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs text-muted-foreground" aria-live="polite">
+              Page {currentPage} of {pageCount}
+            </p>
+            <span className="text-xs text-muted-foreground">•</span>
+            <p className="text-xs text-muted-foreground">
+              Showing{" "}
+              <span className="font-medium text-foreground tabular-nums">
+                {pageStartIndex + 1}
+              </span>
+              –
+              <span className="font-medium text-foreground tabular-nums">
+                {pageEndIndexExclusive}
+              </span>{" "}
+              of{" "}
+              <span className="font-medium text-foreground tabular-nums">
+                {totalInsights}
+              </span>
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-xs text-muted-foreground" htmlFor="ai-insights-page-size">
+              Per page
+            </label>
+            <select
+              id="ai-insights-page-size"
+              className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+              value={String(pageSize)}
+              onChange={(e) => setPageSize(Number(e.target.value) as (typeof PAGE_SIZES)[number])}
+            >
+              {PAGE_SIZES.map((size) => (
+                <option key={size} value={String(size)}>
+                  {size}
+                </option>
+              ))}
+            </select>
+
+            {pageCount > 1 && (
+              <nav aria-label="AI insights pagination" className="flex flex-wrap items-center gap-1">
+                <button
+                  type="button"
+                  className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => setPage(currentPage - 1)}
+                  disabled={currentPage <= 1}
+                  aria-label="Previous page"
+                >
+                  Prev
+                </button>
+
+                {visiblePages.map((p, idx) => {
+                  const prev = visiblePages[idx - 1];
+                  const showEllipsis = prev != null && p - prev > 1;
+                  return (
+                    <span key={p} className="flex items-center gap-1">
+                      {showEllipsis ? (
+                        <span className="px-1 text-xs text-muted-foreground" aria-hidden="true">
+                          …
+                        </span>
+                      ) : null}
+                      <button
+                        type="button"
+                        className={`h-8 min-w-8 rounded-md border px-2 text-xs font-medium tabular-nums ${
+                          p === currentPage
+                            ? "border-primary bg-primary/10 text-foreground"
+                            : "border-border bg-background text-muted-foreground hover:text-foreground"
+                        }`}
+                        onClick={() => setPage(p)}
+                        aria-label={`Go to page ${p}`}
+                        aria-current={p === currentPage ? "page" : undefined}
+                      >
+                        {p}
+                      </button>
+                    </span>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => setPage(currentPage + 1)}
+                  disabled={currentPage >= pageCount}
+                  aria-label="Next page"
+                >
+                  Next
+                </button>
+              </nav>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
