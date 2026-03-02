@@ -27,6 +27,14 @@ const CHANNEL_LABELS: Record<TouchpointChannel, string> = {
   "reddit-ads": "Reddit Ads",
   pylon: "Pylon",
   mercury: "Mercury",
+  "paid-search": "Paid Search",
+  "paid-social": "Paid Social",
+  "organic-search": "Organic Search",
+  referral: "Referral",
+  direct: "Direct",
+  email: "Email",
+  partner: "Partner",
+  outbound: "Outbound",
 };
 
 const CHANNEL_COLORS: Record<TouchpointChannel, string> = {
@@ -42,6 +50,14 @@ const CHANNEL_COLORS: Record<TouchpointChannel, string> = {
   "reddit-ads": "#ff4500",
   pylon: "#6366f1",
   mercury: "#1c1c1e",
+  "paid-search": "#34a853",
+  "paid-social": "#1877f2",
+  "organic-search": "#fbbc04",
+  referral: "#ea4335",
+  direct: "#9aa0a6",
+  email: "#f59e0b",
+  partner: "#8b5cf6",
+  outbound: "#10b981",
 };
 
 export function CustomerJourneyTab({ data }: { data: AnalyticsDashboardData | null }) {

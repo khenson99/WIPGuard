@@ -983,7 +983,7 @@ export type BuyerJourneyPhase =
 
 export interface Touchpoint {
   timestamp: string;
-  phase: BuyerJourneyPhase;
+  phase?: BuyerJourneyPhase;
   channel: TouchpointChannel;
   type: TouchpointType;
   detail: string;
@@ -1043,8 +1043,8 @@ export interface CustomerJourneyData {
   medianDaysToClose: number;
   topPaths: JourneyPath[];
   attribution: ChannelAttribution[];
-  stageOrder: string[];
-  stageOrderSource: "pipeline" | "fallback";
+  stageOrder?: string[];
+  stageOrderSource?: "pipeline" | "fallback";
 }
 
 // ══════════════════════════════════════════════════════════
