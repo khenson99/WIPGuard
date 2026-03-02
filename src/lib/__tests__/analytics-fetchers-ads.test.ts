@@ -232,7 +232,7 @@ describe("analytics ads fetchers", () => {
       data?: { starts_at?: string; ends_at?: string };
     };
     expect(payload.data?.starts_at).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00Z$/);
-    expect(payload.data?.ends_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+    expect(payload.data?.ends_at).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00Z$/);
 
     for (const [, init] of fetchMock.mock.calls as Array<[unknown, RequestInit]>) {
       const headers = (init?.headers || {}) as Record<string, string>;

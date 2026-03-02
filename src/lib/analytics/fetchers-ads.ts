@@ -919,12 +919,27 @@ export async function fetchRedditAdsData(
     Boolean(rangeFrom && rangeTo && rangeFrom <= rangeTo);
 
   const now = rangeTo ? new Date(rangeTo) : new Date();
-  const startsAt = useRange ? new Date(rangeFrom!) : new Date(now);
+
+  const rawStartsAt = useRange ? new Date(rangeFrom!) : new Date(now);
   if (!useRange) {
-    startsAt.setUTCDate(startsAt.getUTCDate() - 29);
+    rawStartsAt.setUTCDate(rawStartsAt.getUTCDate() - 29);
   }
-  startsAt.setUTCHours(0, 0, 0, 0);
-  now.setUTCHours(23, 59, 59, 999);
+  rawStartsAt.setUTCHours(0, 0, 0, 0);
+
+  const rawEndsAt = new Date(now);
+  rawEndsAt.setUTCHours(23, 59, 59, 999);
+
+  // Reddit Ads API v3 requires day-boundary (midnight) timestamps.
+  const startsAtNorm = new Date(rawStartsAt);
+  startsAtNorm.setUTCHours(0, 0, 0, 0);
+  const endsAtNorm = new Date(rawEndsAt);
+  endsAtNorm.setUTCHours(0, 0, 0, 0);
+  if (endsAtNorm.getTime() < rawEndsAt.getTime()) {
+    endsAtNorm.setUTCDate(endsAtNorm.getUTCDate() + 1);
+  }
+
+  const startsAtIso = startsAtNorm.toISOString().replace(/\.\d{3}Z$/, "Z");
+  const endsAtIso = endsAtNorm.toISOString().replace(/\.\d{3}Z$/, "Z");
   const reportsResponse = await fetch(
     `https://ads-api.reddit.com/api/v3/ad_accounts/${cleanAccountId}/reports`,
     {
