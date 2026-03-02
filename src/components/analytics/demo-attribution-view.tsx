@@ -3,7 +3,7 @@
 import { TrendingUp, BarChart3, ArrowRight } from "lucide-react";
 import type { AnalyticsDashboardData, DemoOutcome } from "@/lib/analytics/types";
 import { StatCard } from "./stat-card";
-import { AreaTrend } from "@/components/charts/area-trend";
+import { DemoVolumeChart } from "./demo-volume-chart";
 
 const OUTCOME_COLORS: Record<DemoOutcome, string> = {
   completed: "#22c55e",
@@ -67,41 +67,8 @@ export function DemoAttributionView({ data }: { data: AnalyticsDashboardData | n
         />
       </div>
 
-      {/* Weekly Demo Volume Trend */}
-      {demo.weeklyTrend && demo.weeklyTrend.length > 1 && (
-        <div className="rounded-xl border border-border bg-card p-5">
-          <h3 className="mb-1 text-sm font-semibold text-foreground">Demo Volume by Week</h3>
-          <p className="mb-4 text-xs text-muted-foreground">
-            Scheduled, completed, and no-show trends over time
-          </p>
-          <AreaTrend
-            data={demo.weeklyTrend as unknown as Array<Record<string, unknown>>}
-            xKey="week"
-            yKeys={["scheduled", "completed", "noShows"]}
-            colors={["#3b82f6", "#22c55e", "#ef4444"]}
-            height={240}
-            yFormatter={(v) => String(v)}
-            xFormatter={(w) => {
-              const d = new Date(w);
-              return isNaN(d.getTime()) ? w : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-            }}
-          />
-          <div className="mt-3 flex gap-4 text-[10px] text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <div className="h-2 w-2 rounded-full" style={{ backgroundColor: "#3b82f6" }} />
-              Scheduled
-            </span>
-            <span className="flex items-center gap-1">
-              <div className="h-2 w-2 rounded-full" style={{ backgroundColor: "#22c55e" }} />
-              Completed
-            </span>
-            <span className="flex items-center gap-1">
-              <div className="h-2 w-2 rounded-full" style={{ backgroundColor: "#ef4444" }} />
-              No-Shows
-            </span>
-          </div>
-        </div>
-      )}
+      {/* Demo Volume Chart */}
+      <DemoVolumeChart weeklyTrend={demo.weeklyTrend} demos={demo.demos} />
 
       {/* Source → Outcome Conversion Matrix */}
       <div className="rounded-xl border border-border bg-card p-5">
