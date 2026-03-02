@@ -83,7 +83,7 @@ export function CustomerJourneyConversionTab({ data }: { data: AnalyticsDashboar
   const stageTransitionTrends = useMemo<Map<string, TrendIndicator>>(() => {
     if (!journey?.journeys.length || !trendResult?.hasEnoughData) return new Map();
     const now = new Date();
-    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const currentMonthKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
 
     const completeBuckets = trendResult.buckets.filter((b) => b.key < currentMonthKey);
     if (completeBuckets.length < 2) return new Map();
@@ -92,12 +92,12 @@ export function CustomerJourneyConversionTab({ data }: { data: AnalyticsDashboar
 
     const curJourneys = journey.journeys.filter((j) => {
       const d = new Date(j.firstTouch);
-      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const k = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
       return k === curBucket.key;
     });
     const prevJourneys = journey.journeys.filter((j) => {
       const d = new Date(j.firstTouch);
-      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const k = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
       return k === prevBucket.key;
     });
 
