@@ -40,4 +40,9 @@ patterns, gotchas, and conventions.
 - Drawer pattern: `fixed inset-0 z-50` container, `absolute inset-0 bg-black/50` backdrop (click to close), `absolute right-0 top-0 h-full` panel; Escape via `document.addEventListener("keydown", handler)` in `useEffect`
 - `fireEvent.keyDown(document, { key: "Escape" })` triggers document-level Escape handler in tests
 - SVG links as filled `<path>` elements (not strokes): `fillOpacity` controlled via hover state — works well in jsdom tests with `getAttribute("fill-opacity")`
+- Client-side filter pattern: wrap raw deal array into typed interface; use `useMemo` for filtered set + `recomputeFunnelMetrics()` to derive all aggregates; pass recomputed values to sub-sections; compare `isFiltered` flag to decide which data source to use
+- Split component for hooks-before-return: when a component has an early `null` return, extract the inner logic into a sub-component (`SalesFunnelTabInner`) to keep hooks unconditional
+- `getDateRangeFromPreset` uses `setHours(0,0,0,0)` — causes diff to be slightly > N days; use ±0.5 day tolerance in date range tests
+- Avoid querying bare numeric text (e.g. `getByText("2")`) in integration tests — multiple matches cause failures; prefer `role="status"` aria-live indicators or labeled container queries
+- lib unit tests go in `src/lib/__tests__/` (confirmed); analytics component tests are colocated beside source files
 

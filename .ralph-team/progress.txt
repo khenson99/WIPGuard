@@ -146,3 +146,30 @@ Learnings:
   - fireEvent.keyDown(document, { key: 'Escape' }) triggers document-level keydown handlers in jsdom
   - Custom SVG Sankey avoids d3-sankey bundle dependency; layout engine is ~100 lines of pure TS
   - Drawer backdrop test: querySelector('.fixed.inset-0 > [aria-hidden="true"]') reliably finds it
+
+--- Frontend Agent Iteration | Issue #145 ---
+Timestamp: 2026-03-02T03:15:00Z
+Branch: agent/frontend/issue-145
+Status: completed
+Changes:
+  - src/lib/sales-funnel-filter-utils.ts — Pre-created: types (FunnelDeal, Rep, DateRangePreset), pure helpers
+    (getDateRangeFromPreset, extractReps, filterDeals, recomputeFunnelMetrics); single pass over deals
+    computes all aggregates (stages, dealsByRep, dealsBySource, KPIs)
+  - src/components/analytics/sales-funnel-filters.tsx — Pre-created: filter bar with date preset <select>
+    + rep <select>; aria-live="polite" deal count indicator; accessible labels
+  - src/components/analytics/sales-funnel-tab.tsx — Updated: added filter state (dateRangePreset, selectedRepId);
+    split into SalesFunnelTab wrapper + SalesFunnelTabInner (hooks-safe pattern); allDeals useMemo normalizes
+    raw deals; filteredDeals useMemo applies filters; activeFunnel recomputes when isFiltered; sub-sections
+    receive resolvedFunnel (filtered or original); RepScoreboardCard receives filtered deals + filtered rows
+  - src/lib/__tests__/sales-funnel-filter-utils.test.ts — NEW: 23 unit tests covering all helpers
+  - src/components/analytics/sales-funnel-filters.test.tsx — NEW: 12 component tests (render, callbacks,
+    indicator, option lists, current values)
+  - src/components/analytics/sales-funnel-tab-filters.test.tsx — NEW: 11 integration tests (filter controls,
+    rep selector population, active indicator, 30d date range, reset behavior, headings, empty states)
+Tests: 46 new tests passed. 182 total in analytics test suite — 0 regressions.
+Learnings:
+  - Client-side filter pattern: wrap raw deals into FunnelDeal; useMemo filteredDeals; useMemo recomputeFunnelMetrics; pass to sub-sections via resolvedFunnel
+  - Split component (outer wrapper + inner) needed when early-return precedes hooks
+  - setHours(0,0,0,0) causes date diff to be slightly > N days; use ±0.5 tolerance in tests
+  - Avoid getByText() with bare numbers — multiple elements match; use role="status" indicator for filter assertions
+  - lib tests: src/lib/__tests__/ directory (not colocated with source)
