@@ -1012,7 +1012,7 @@ export interface TouchpointSummary {
 }
 
 export interface JourneyPath {
-  segments: Array<{ phase: BuyerJourneyPhase; channels: TouchpointChannel[] }>;
+  sequence: TouchpointChannel[];
   count: number;
   kanbanCards: number;
   freeTrials: number;
