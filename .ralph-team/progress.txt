@@ -60,3 +60,29 @@ Learnings:
   - Hierarchy endpoint needs flat mode for table consumers (board uses tree, table uses flat)
   - vitest config uses @/ alias via resolve.alias in vitest.config.ts
 
+
+--- Frontend Agent | Issue #296 ---
+Timestamp: 2026-03-02T02:50:00Z
+Branch: agent/frontend/issue-296
+Status: completed
+Changes:
+  - src/lib/__mocks__/recharts.tsx — NEW: Shared recharts mock for vitest/jsdom
+    (ResponsiveContainer, LineChart, AreaChart, BarChart, PieChart, ComposedChart, etc.)
+  - src/components/charts/__tests__/spark-line.test.tsx — NEW: 5 tests (dimensions, null for <2 pts, custom color)
+  - src/components/charts/__tests__/donut-chart.test.tsx — NEW: 4 tests (center label/value, size, single segment)
+Tests: 19 passed (5 test files: dashboard-trends, spark-line, donut-chart, use-dashboard-resource, personalized-dashboard)
+Key patterns:
+  - Dashboard visual refresh (DonutChart workload, StackedBarChart team status, SparkLine completed trend)
+    was already merged to main via PR #276 (squash commit ed0f418). The 3 unshipped commits
+    (e9d953f, 9ad5703, 76217b2) were squash-merged.
+  - Recharts mock pattern: vi.mock("recharts", async () => import("@/lib/__mocks__/recharts"))
+    Works without a global vitest setup file.
+  - SparkLine returns null for data.length < 2 — guards against single-point render.
+  - DonutChart accepts centerLabel + centerValue for inside-ring text overlay.
+  - focusKey state in PersonalizedDashboard drives interactive focus list (blocked/overdue/dueSoon/active).
+  - completedByDay sparkline is sliced to last 7 days (.slice(-7)) to match "Completed (7d)" label.
+  - teamStatusKeys legend humanizes WORKING_ON_TODAY → Working On Today via .replace() chain.
+Gotchas:
+  - Pre-existing TS errors in deals/ and analytics customer-journey files — not related to dashboard.
+  - recharts mock needs to cover ALL exports used by all chart components (LineChart, AreaChart, BarChart,
+    PieChart, ComposedChart, Bar, Line, Area, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend).
