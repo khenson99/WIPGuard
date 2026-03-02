@@ -16,7 +16,9 @@ export function DismissUndoToast({
   durationMs = 5000,
 }: DismissUndoToastProps) {
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
