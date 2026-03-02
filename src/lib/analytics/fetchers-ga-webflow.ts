@@ -13,7 +13,10 @@ import {
   WebflowContentFreshness,
   AnalyticsTimestamp,
 } from "./types";
-import { safeJson } from "./fetcher-utils";
+
+type GAReportValue = { value?: string };
+type GAReportRow = { dimensionValues?: GAReportValue[]; metricValues?: GAReportValue[] };
+type GAReportResponse = { rows?: GAReportRow[] };
 
 function makeMeta(source: "live" | "cached" = "live"): AnalyticsTimestamp {
   const now = new Date();
@@ -195,7 +198,7 @@ export async function fetchGAData(
       }),
     }).then(async (r) => {
       if (!r.ok) throw new Error(`GA4 report (current) failed (${r.status})`);
-      return await safeJson<any>(r, "GA report (current)");
+      return await safeJson<GAReportResponse>(r, "GA report (current)");
     }),
 
     // Request 2: Previous 30d metrics
@@ -214,7 +217,7 @@ export async function fetchGAData(
       }),
     }).then(async (r) => {
       if (!r.ok) throw new Error(`GA4 report (previous) failed (${r.status})`);
-      return await safeJson<any>(r, "GA report (previous)");
+      return await safeJson<GAReportResponse>(r, "GA report (previous)");
     }),
 
     // Request 3: Traffic by channel + daily trend
@@ -235,7 +238,7 @@ export async function fetchGAData(
       }),
     }).then(async (r) => {
       if (!r.ok) throw new Error(`GA4 report (traffic) failed (${r.status})`);
-      return await safeJson<any>(r, "GA report (traffic)");
+      return await safeJson<GAReportResponse>(r, "GA report (traffic)");
     }),
 
     // Request 4: Top pages
@@ -259,7 +262,7 @@ export async function fetchGAData(
       }),
     }).then(async (r) => {
       if (!r.ok) throw new Error(`GA4 report (top pages) failed (${r.status})`);
-      return await safeJson<any>(r, "GA report (top pages)");
+      return await safeJson<GAReportResponse>(r, "GA report (top pages)");
     }),
   ]);
 

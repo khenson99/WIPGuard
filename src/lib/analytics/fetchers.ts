@@ -726,6 +726,22 @@ const CONTACT_ANALYTICS_PROPERTIES = [
   "utm_campaign",
 ];
 
+type HubSpotAssociationBatchReadResponse = {
+  results?: Array<{
+    from?: { id?: string | number };
+    to?: Array<{ toObjectId?: string | number }>;
+  }>;
+};
+
+type HubSpotBatchReadResponse<TProps extends Record<string, string>> = {
+  results?: Array<{ id?: string | number; properties?: TProps }>;
+};
+
+type HubSpotContactsSearchResponse = {
+  results?: Array<{ id?: string | number; properties?: Record<string, string> }>;
+  paging?: { next?: { after?: string } };
+};
+
 async function fetchDealContactAnalytics(
   baseUrl: string,
   headers: Record<string, string>,
@@ -747,10 +763,12 @@ async function fetchDealContactAnalytics(
         body: JSON.stringify({ inputs: batch.map((id) => ({ id })) }),
       });
       if (!res.ok) continue;
-      const data = await safeJson<any>(res, "hubspot deal contact associations");
+      const data = await safeJson<HubSpotAssociationBatchReadResponse>(res, "hubspot deal contact associations");
       for (const result of data.results ?? []) {
         const fromId = String(result.from?.id ?? "");
-        const toIds = (result.to ?? []).map((t: { toObjectId?: number }) => String(t.toObjectId ?? "")).filter(Boolean);
+        const toIds = (result.to ?? [])
+          .map((t) => String(t.toObjectId ?? ""))
+          .filter(Boolean);
         if (fromId && toIds.length > 0) {
           dealContactMap.set(fromId, toIds);
         }
@@ -788,7 +806,7 @@ async function fetchDealContactAnalytics(
         }),
       });
       if (!res.ok) continue;
-      const data = await safeJson<any>(res, "hubspot contact batch");
+      const data = await safeJson<HubSpotBatchReadResponse<Record<string, string>>>(res, "hubspot contact batch");
       for (const contact of data.results ?? []) {
         const id = String(contact.id ?? "");
         if (id) contactPropsMap.set(id, contact.properties ?? {});
@@ -887,7 +905,7 @@ export async function fetchHubSpotContacts(
       throw new Error(`HubSpot contacts API error ${res.status}: ${text}`);
     }
 
-    const data = await safeJson<any>(res, "hubspot contacts");
+    const data = await safeJson<HubSpotContactsSearchResponse>(res, "hubspot contacts");
     const results = data.results || [];
 
     for (const contact of results) {
@@ -992,11 +1010,11 @@ export async function fetchStripeData(
             throw new Error(`Stripe subscriptions(${status}) error ${res.status}`);
           }
 
-          const data = await safeJson<any>(res, `stripe subscriptions (${status})`);
-          const batch = (data?.data || []) as StripeSub[];
+          const data = await safeJson<{ data?: StripeSub[]; has_more?: boolean }>(res, `stripe subscriptions (${status})`);
+          const batch = data.data ?? [];
           count += batch.length;
 
-          if (!data?.has_more || batch.length === 0) break;
+          if (!data.has_more || batch.length === 0) break;
           startingAfter = batch[batch.length - 1]?.id;
           if (!startingAfter) break;
         }
