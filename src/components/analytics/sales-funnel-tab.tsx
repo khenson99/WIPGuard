@@ -71,7 +71,7 @@ function toFunnelDeal(d: HubspotDeal): FunnelDeal {
 
 export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }) {
   if (!data?.hubspot) return <EmptyState />;
-  return <SalesFunnelTabInner data={data} />;
+  return <SalesFunnelTabInner data={data as AnalyticsDashboardData & { hubspot: NonNullable<AnalyticsDashboardData["hubspot"]> }} />;
 }
 
 function SalesFunnelTabInner({
