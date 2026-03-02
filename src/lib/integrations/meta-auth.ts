@@ -222,6 +222,38 @@ export async function discoverMetaPageAndInstagram(input: {
     }
   }
 
+  // Fallback: if /me/accounts returned no pages, the token may be a Page
+  // Access Token. In that case, /me returns the page itself.
+  if (!pageId) {
+    try {
+      const meUrl = new URL(`https://graph.facebook.com/${graphVersion}/me`);
+      meUrl.searchParams.set("fields", "id,name,instagram_business_account{id}");
+
+      const meResponse = await fetchWithTimeout(
+        meUrl,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+        timeoutMs
+      );
+
+      if (meResponse.ok) {
+        const meBody = asRecord(await readJsonOrText(meResponse));
+        const meId = getString(meBody, "id");
+        if (meId) {
+          pageId = meId;
+          if (!instagramAccountId) {
+            const igBiz = asRecord(meBody?.instagram_business_account);
+            instagramAccountId = getString(igBiz, "id");
+          }
+        }
+      }
+    } catch {
+      // Best-effort fallback
+    }
+  }
+
   return { pageId, instagramAccountId };
 }
 
