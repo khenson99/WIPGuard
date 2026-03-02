@@ -25,4 +25,10 @@ patterns, gotchas, and conventions.
 ## Stack-Specific Notes
 - recharts mock shared module: `src/lib/__mocks__/recharts.tsx`
 - vitest config has no global setup file — mocks must be registered per test file
+- **Tailwind v4** (no tailwind.config.ts): all theme extensions (colors, custom animations, keyframes) go in `src/app/globals.css` inside `@theme { }`. Custom keyframes: define `@keyframes foo { }` + register `--animate-foo: foo 0.4s ease-out both` in `@theme`. Use `animate-foo` and `motion-safe:animate-foo` in JSX.
+- `motion-safe:` variant in Tailwind v4 automatically wraps rules in `@media (prefers-reduced-motion: no-preference)` — no manual media query needed.
+- Tooltip pattern for funnel badges: make the badge a `<button>` (free keyboard focus), add `onFocus`/`onBlur`/`onMouseEnter`/`onMouseLeave` state tracking, render `<FunnelTooltip>` with `visible={isVisible}` (returns null when not visible). Wire `aria-describedby={tooltipId}` on badge + `id={tooltipId}` + `role="tooltip"` on tooltip.
+- Test co-location: analytics component tests live alongside components (e.g., `visual-funnel.test.tsx` beside `visual-funnel.tsx`), NOT in a `__tests__` subdirectory.
+- `fireEvent.focus()` in jsdom correctly triggers `onFocus` handlers for tooltip-show tests without needing userEvent.
+- `useId()` from React 19 generates stable unique IDs for `aria-describedby` linkage in lists.
 
