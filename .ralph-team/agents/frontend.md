@@ -34,4 +34,10 @@ patterns, gotchas, and conventions.
 - **No @testing-library/jest-dom** — project does NOT have jest-dom matchers; use `.toBeTruthy()` / `.toBeNull()` / `.getAttribute("x")` instead of `toBeInTheDocument` / `toHaveAttribute`
 - `DemoRecord` uses `scheduledAt` (not `date`) and `DemoWeeklyTrend` uses `noShows` (not `noShow`) — always audit actual types before writing transforms
 - Stacked BarChart pattern: `stackId="group"`, dynamic `<Bar>` from `sources.map()`, adapter function to normalize field names for chart data
+- `JourneyPath` type originally had `segments` but runtime/usage code uses `sequence: TouchpointChannel[]` — fixed in #146 to match actual usage
+- Path matching: `matchJourneysToPath` derives unique channel sequence per journey via dedup loop (mirrors `buildTopPaths` logic); checks contiguous subsequence
+- Custom SVG Sankey: no external library needed; pure layout engine in `src/lib/analytics/sankey-layout.ts`; uses filled bezier paths (M/C/L/Z) for links
+- Drawer pattern: `fixed inset-0 z-50` container, `absolute inset-0 bg-black/50` backdrop (click to close), `absolute right-0 top-0 h-full` panel; Escape via `document.addEventListener("keydown", handler)` in `useEffect`
+- `fireEvent.keyDown(document, { key: "Escape" })` triggers document-level Escape handler in tests
+- SVG links as filled `<path>` elements (not strokes): `fillOpacity` controlled via hover state — works well in jsdom tests with `getAttribute("fill-opacity")`
 

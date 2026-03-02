@@ -122,3 +122,27 @@ Learnings:
   - No @testing-library/jest-dom setup — use .toBeTruthy() / .toBeNull() / .getAttribute() instead of toBeInTheDocument / toHaveAttribute
   - DemoWeeklyTrend.noShows (not noShow) — field name matters
   - Tests co-located alongside component files in src/components/analytics/ (confirmed again)
+
+--- Frontend Agent Iteration | Issue #146 ---
+Timestamp: 2026-03-02T03:05:00Z
+Branch: agent/frontend/issue-146
+Status: completed
+Changes:
+  - src/lib/analytics/types.ts — Fixed JourneyPath: replaced unused `segments` field with `sequence: TouchpointChannel[]` to match actual runtime usage
+  - src/lib/analytics/path-matching.ts — NEW: matchJourneysToPath() helper; contiguous subsequence matching on deduped touchpoint channel sequences
+  - src/lib/analytics/sankey-layout.ts — NEW: pure layout engine for Sankey diagram (no external deps); nodes, filled bezier links, column-based layout
+  - src/components/analytics/path-detail-drawer.tsx — NEW: accessible flyout drawer (role=dialog, aria-modal, Escape, backdrop click); shows matched journeys table with formatCurrency and relativeDate helpers
+  - src/components/analytics/path-sankey-diagram.tsx — NEW: custom SVG Sankey (viewBox, role=img, dark-mode HSL colors, hover fill-opacity, onPathClick)
+  - src/components/analytics/sub-dashboards/path-exploration.tsx — Added click/keyboard handlers to path rows; integrated PathSankeyDiagram above table; integrated PathDetailDrawer; added `journeys?` prop for matching
+  - src/components/analytics/sub-dashboards/google-analytics-dashboard.tsx — Pass `journeys` prop to PathExploration
+  - src/lib/analytics/path-matching.test.ts — NEW: 10 unit tests for pure matching helper
+  - src/components/analytics/path-sankey-diagram.test.tsx — NEW: 6 component tests (render, empty, click, hover, tooltips)
+  - src/components/analytics/path-exploration-drilldown.test.tsx — NEW: 9 component tests (click opens drawer, matching journeys shown, Escape/backdrop close, empty state, keyboard nav)
+Tests: 25 new tests passed (10 + 6 + 9). 2 pre-existing failures in analytics-fetchers-hubspot.test.ts unaffected.
+Learnings:
+  - JourneyPath runtime shape uses `sequence` but type said `segments` — pre-existing mismatch, fixed in this ticket
+  - matchJourneysToPath must derive deduplicated channel sequence from touchpoints (Set-based dedup, in-order)
+  - SVG filled bezier paths (M/C/L/Z closed shape) work well for Sankey links; more visible than strokes
+  - fireEvent.keyDown(document, { key: 'Escape' }) triggers document-level keydown handlers in jsdom
+  - Custom SVG Sankey avoids d3-sankey bundle dependency; layout engine is ~100 lines of pure TS
+  - Drawer backdrop test: querySelector('.fixed.inset-0 > [aria-hidden="true"]') reliably finds it
