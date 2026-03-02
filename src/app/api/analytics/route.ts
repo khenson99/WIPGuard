@@ -48,6 +48,8 @@ import {
   storeAnalyticsSnapshotFailure,
 } from "@/lib/analytics/snapshots";
 import { buildAnalyticsRouteMeta } from "@/lib/analytics/route-meta";
+import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
+import { computeKpiDelta } from "@/lib/analytics/kpi-deltas";
 import type {
   AnalyticsDashboardData,
   AnalyticsRecommendation,
@@ -940,6 +942,7 @@ export async function GET(request: Request) {
   const DEFAULT_TIMEOUT = 12000;
 
   const snapshotExpiresAt = snapshotExpiryFromNow(1);
+  const capturedAtByDomain: Partial<Record<DomainKey, string | null>> = {};
 
   const settled = await Promise.allSettled(
     fetchers.map(async (entry): Promise<FetchOutcome> => {
@@ -1058,6 +1061,7 @@ export async function GET(request: Request) {
 
     const { key, payload, stale, capturedAt, fallbackError } = outcome.value;
     (result as unknown as Record<string, unknown>)[key] = payload;
+    capturedAtByDomain[key] = capturedAt;
 
     if (stale) {
       result.staleDomains.push(key);
@@ -1117,6 +1121,84 @@ export async function GET(request: Request) {
     } catch (error) {
       console.error("Failed to build financial planning data:", error);
       // Non-fatal — leave as null
+    }
+  }
+
+  if (section === "overview") {
+    try {
+      const prevToDate = new Date(fromDate.getTime() - 1);
+      const prevFromDate = new Date(
+        prevToDate.getTime() - (Math.max(1, range.days) - 1) * 24 * 60 * 60 * 1000,
+      );
+      prevFromDate.setUTCHours(0, 0, 0, 0);
+
+      const [prevStripe, prevGa] = await Promise.all([
+        readLatestSuccessfulSnapshot<StripeData>({
+          userId,
+          providerKey: "stripe",
+          contextKey: "default",
+          rangePreset: range.preset,
+          fromDate: prevFromDate,
+          toDate: prevToDate,
+        }),
+        readLatestSuccessfulSnapshot<AnalyticsDashboardData["googleAnalytics"]>({
+          userId,
+          providerKey: "googleAnalytics",
+          contextKey: "default",
+          rangePreset: range.preset,
+          fromDate: prevFromDate,
+          toDate: prevToDate,
+        }),
+      ]);
+
+      const currentTraffic =
+        result.googleAnalytics || result.ga ? computeAnalyticsKpis(result).traffic : null;
+      const currentFinance = result.stripe ? computeAnalyticsKpis(result).finance : null;
+
+      const prevTraffic = prevGa.payload
+        ? computeAnalyticsKpis(
+            { googleAnalytics: prevGa.payload } as unknown as AnalyticsDashboardData,
+          ).traffic
+        : null;
+      const prevFinance = prevStripe.payload
+        ? computeAnalyticsKpis(
+            { stripe: prevStripe.payload } as unknown as AnalyticsDashboardData,
+          ).finance
+        : null;
+
+      result.deltas = {
+        traffic: {
+          bounceRatePct: computeKpiDelta({
+            current: currentTraffic?.bounceRatePct ?? null,
+            previous: prevTraffic?.bounceRatePct ?? null,
+            currentCapturedAt: capturedAtByDomain.googleAnalytics ?? null,
+            previousCapturedAt: prevGa.capturedAt,
+          }),
+          pagesPerSession: computeKpiDelta({
+            current: currentTraffic?.pagesPerSession ?? null,
+            previous: prevTraffic?.pagesPerSession ?? null,
+            currentCapturedAt: capturedAtByDomain.googleAnalytics ?? null,
+            previousCapturedAt: prevGa.capturedAt,
+          }),
+        },
+        finance: {
+          mrr: computeKpiDelta({
+            current: currentFinance?.mrr ?? null,
+            previous: prevFinance?.mrr ?? null,
+            currentCapturedAt: capturedAtByDomain.stripe ?? null,
+            previousCapturedAt: prevStripe.capturedAt,
+          }),
+          paymentSuccessPct: computeKpiDelta({
+            current: currentFinance?.paymentSuccessPct ?? null,
+            previous: prevFinance?.paymentSuccessPct ?? null,
+            currentCapturedAt: capturedAtByDomain.stripe ?? null,
+            previousCapturedAt: prevStripe.capturedAt,
+          }),
+        },
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      result.errors.push({ source: "deltas", message });
     }
   }
 

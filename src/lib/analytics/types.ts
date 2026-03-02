@@ -122,6 +122,9 @@ export interface HubSpotData {
   funnel: FunnelMetrics;
   contacts: ContactMetrics;
   repScoreboard?: HubSpotRepScoreboardRow[];
+  pipelineDetected?: { pipelineId: string; dealCount: number };
+  pipelineStageLabelsSource?: "api" | "fallback";
+  pipelineStages?: Array<{ stageId: string; label: string }>;
   deals?: Array<{
     dealId: string;
     dealName: string;
@@ -135,6 +138,26 @@ export interface HubSpotData {
     createdAt: string | null;
     closedAt?: string | null;
     stripeCustomerId?: string | null;
+    pipelineId: string | null;
+    contactIds: string[];
+    primaryContactId: string | null;
+    primaryContactEmail: string | null;
+    primaryContactAnalytics?: {
+      createdAt?: string | null;
+      source: string | null;
+      sourceData1: string | null;
+      sourceData2: string | null;
+      firstSeenAt: string | null;
+      lastSeenAt: string | null;
+      firstUrl: string | null;
+      lastUrl: string | null;
+      numVisits: number | null;
+      numPageViews: number | null;
+      utmSource: string | null;
+      utmMedium: string | null;
+      utmCampaign: string | null;
+    };
+    stageHistory?: Array<{ occurredAt: string; stageId: string; stageLabel: string }>;
   }>;
   _meta: AnalyticsTimestamp;
 }
@@ -933,7 +956,16 @@ export type TouchpointChannel =
   | "meta-ads"
   | "reddit-ads"
   | "pylon"
-  | "mercury";
+  | "mercury"
+  // Synthetic channels derived from HubSpot contact analytics (pre-HubSpot).
+  | "paid-search"
+  | "paid-social"
+  | "organic-search"
+  | "referral"
+  | "direct"
+  | "email"
+  | "partner"
+  | "outbound";
 
 export type TouchpointType =
   | "first-touch"
@@ -942,8 +974,16 @@ export type TouchpointType =
   | "support"
   | "expansion";
 
+export type BuyerJourneyPhase =
+  | "awareness"
+  | "website"
+  | "crm"
+  | "revenue"
+  | "retention";
+
 export interface Touchpoint {
   timestamp: string;
+  phase: BuyerJourneyPhase;
   channel: TouchpointChannel;
   type: TouchpointType;
   detail: string;
@@ -957,6 +997,7 @@ export interface CustomerJourneyRecord {
   currentStage: string;
   value: number;
   touchpoints: Touchpoint[];
+  stageHistory?: Array<{ occurredAt: string; stageId: string; stageLabel: string }>;
   firstTouch: string;
   lastTouch: string;
   daysInPipeline: number;
@@ -971,7 +1012,7 @@ export interface TouchpointSummary {
 }
 
 export interface JourneyPath {
-  sequence: TouchpointChannel[];
+  segments: Array<{ phase: BuyerJourneyPhase; channels: TouchpointChannel[] }>;
   count: number;
   kanbanCards: number;
   freeTrials: number;
@@ -1002,6 +1043,8 @@ export interface CustomerJourneyData {
   medianDaysToClose: number;
   topPaths: JourneyPath[];
   attribution: ChannelAttribution[];
+  stageOrder: string[];
+  stageOrderSource: "pipeline" | "fallback";
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1255,6 +1298,31 @@ export interface FinancialPlanningData {
 // COMBINED DASHBOARD
 // ══════════════════════════════════════════════════════════
 
+export type KpiDeltaDirection = "up" | "down" | "flat";
+
+export interface KpiDelta {
+  current: number | null;
+  previous: number | null;
+  delta: number | null;
+  deltaPct: number | null;
+  direction: KpiDeltaDirection;
+  dataRecency: {
+    currentCapturedAt: string | null;
+    previousCapturedAt: string | null;
+  };
+}
+
+export interface AnalyticsKpiDeltas {
+  traffic: {
+    bounceRatePct: KpiDelta;
+    pagesPerSession: KpiDelta;
+  };
+  finance: {
+    mrr: KpiDelta;
+    paymentSuccessPct: KpiDelta;
+  };
+}
+
 export interface AnalyticsDashboardData {
   hubspot: HubSpotData | null;
   salesPerformance: SalesPerformancePack | null;
@@ -1317,6 +1385,7 @@ export interface AnalyticsDashboardData {
       paymentSuccessPct: number;
     };
   };
+  deltas?: AnalyticsKpiDeltas;
   errors: { source: string; message: string }[];
 }
 
