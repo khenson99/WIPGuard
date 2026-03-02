@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { InsightCardFull } from "./insight-card-full";
 import { StatCard } from "./stat-card";
-import type { AnalyticsDashboardData, AnalyticsSectionId } from "@/lib/analytics/types";
+import { DismissUndoToast } from "./dismiss-undo-toast";
+import type { AnalyticsDashboardData, AnalyticsSectionId, AiInsight } from "@/lib/analytics/types";
 import { AlertTriangle, AlertCircle, Info, BarChart3 } from "lucide-react";
 import { populateConnectionStatus } from "@/hooks/use-connection-status";
 import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
+import { useInsightPreferences } from "@/lib/hooks/use-insight-preferences";
 
 type SeverityFilter = "all" | "critical" | "warning" | "info";
 type SectionFilter = "all" | AnalyticsSectionId;
@@ -46,6 +48,21 @@ export function AiInsightsPage() {
   const [sortMode, setSortMode] = useState<SortMode>("severity");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(25);
+  const [showDismissed, setShowDismissed] = useState(false);
+  const [recentlyDismissed, setRecentlyDismissed] = useState<{ id: string; title: string } | null>(null);
+  const [taskError, setTaskError] = useState<string | null>(null);
+
+  const {
+    isPinned,
+    isDismissed,
+    togglePin,
+    dismiss,
+    undoDismiss,
+    createTaskFromInsight,
+    creatingTaskForId,
+    sortAndFilter,
+    dismissedIds,
+  } = useInsightPreferences();
 
   useEffect(() => {
     if (!data) return;
@@ -54,21 +71,34 @@ export function AiInsightsPage() {
 
   const allInsights = data?.aiInsights?.global ?? [];
 
+  const dismissedCount = useMemo(
+    () => allInsights.filter((i) => isDismissed(i.id)).length,
+    [allInsights, isDismissed, dismissedIds]
+  );
+
   const filtered = useMemo(() => {
-    let result = allInsights;
+    // First apply sortAndFilter (handles pin order + dismissed filtering)
+    let result = sortAndFilter(allInsights, showDismissed);
+
+    // Then apply severity/section filters
     if (severityFilter !== "all") {
       result = result.filter((i) => i.severity === severityFilter);
     }
     if (sectionFilter !== "all") {
       result = result.filter((i) => i.section === sectionFilter);
     }
-    if (sortMode === "severity") {
-      result = [...result].sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9));
-    } else {
-      result = [...result].sort((a, b) => b.confidence - a.confidence);
-    }
-    return result;
-  }, [allInsights, severityFilter, sectionFilter, sortMode]);
+
+    // Sort within unpinned group (pinned always stay on top from sortAndFilter)
+    const pinned = result.filter((i) => isPinned(i.id));
+    const unpinned = result.filter((i) => !isPinned(i.id));
+
+    const sortFn = (a: AiInsight, b: AiInsight) =>
+      sortMode === "severity"
+        ? (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9)
+        : b.confidence - a.confidence;
+
+    return [...pinned, ...unpinned.sort(sortFn)];
+  }, [allInsights, severityFilter, sectionFilter, sortMode, sortAndFilter, showDismissed, isPinned, dismissedIds]);
 
   const totalInsights = filtered.length;
   const pageCount = Math.max(1, Math.ceil(totalInsights / pageSize));
@@ -95,6 +125,27 @@ export function AiInsightsPage() {
   const avgConfidence = allInsights.length > 0
     ? allInsights.reduce((sum, i) => sum + i.confidence, 0) / allInsights.length
     : 0;
+
+  const handleDismiss = useCallback((insight: AiInsight) => {
+    void dismiss(insight.id);
+    setRecentlyDismissed({ id: insight.id, title: insight.title });
+  }, [dismiss]);
+
+  const handleUndoDismiss = useCallback(() => {
+    if (recentlyDismissed) {
+      void undoDismiss(recentlyDismissed.id);
+      setRecentlyDismissed(null);
+    }
+  }, [recentlyDismissed, undoDismiss]);
+
+  const handleCreateTask = useCallback(async (insight: AiInsight) => {
+    setTaskError(null);
+    try {
+      await createTaskFromInsight(insight);
+    } catch {
+      setTaskError(`Failed to create task for "${insight.title}". Please try again.`);
+    }
+  }, [createTaskFromInsight]);
 
   if (loading) {
     return (
@@ -124,6 +175,12 @@ export function AiInsightsPage() {
       {error && (
         <div className="rounded-xl border border-border bg-card p-4">
           <p className="text-sm text-muted-foreground">{error}</p>
+        </div>
+      )}
+
+      {taskError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-900/10">
+          <p className="text-sm text-red-600 dark:text-red-400">{taskError}</p>
         </div>
       )}
 
@@ -190,9 +247,31 @@ export function AiInsightsPage() {
             <p className="text-sm text-muted-foreground">No insights match current filters</p>
           </div>
         ) : (
-          pagedInsights.map((insight) => <InsightCardFull key={insight.id} insight={insight} />)
+          pagedInsights.map((insight) => (
+            <InsightCardFull
+              key={insight.id}
+              insight={insight}
+              isPinned={isPinned(insight.id)}
+              onTogglePin={() => void togglePin(insight.id)}
+              onDismiss={() => handleDismiss(insight)}
+              onCreateTask={() => void handleCreateTask(insight)}
+              isCreatingTask={creatingTaskForId === insight.id}
+            />
+          ))
         )}
       </div>
+
+      {dismissedCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowDismissed((prev) => !prev)}
+          className="text-xs text-muted-foreground underline hover:text-foreground"
+        >
+          {showDismissed
+            ? "Hide dismissed insights"
+            : `Show ${dismissedCount} dismissed insight${dismissedCount !== 1 ? "s" : ""}`}
+        </button>
+      )}
 
       {totalInsights > 0 && (
         <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -286,6 +365,14 @@ export function AiInsightsPage() {
             )}
           </div>
         </div>
+      )}
+
+      {recentlyDismissed && (
+        <DismissUndoToast
+          insightTitle={recentlyDismissed.title}
+          onUndo={handleUndoDismiss}
+          onClose={() => setRecentlyDismissed(null)}
+        />
       )}
     </div>
   );
