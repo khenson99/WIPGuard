@@ -50,3 +50,16 @@ patterns, gotchas, and conventions.
 - **vitest config**: `@/` alias mapped via `resolve.alias` in `vitest.config.ts`
 - **Package scripts**: `npm test` runs `vitest run`, `npm run test:watch` for dev mode
 - **Prisma in worktrees**: Need to run `npx prisma generate` in worktrees before tests will pass (the generated client is gitignored)
+- **pretest hook**: `npm test` automatically runs `prisma generate` before vitest (via `pretest` in `package.json`) — no need to run it manually
+- **TaskStatus enum values**: BACKLOG | QUEUED | WORKING_ON_TODAY | ACTIVE | NOT_DONE | DONE — only DONE is a terminal status
+
+## Funnel Analytics Patterns (Issue #303)
+
+- **Separation of concerns**: Pure computation in `src/lib/funnel-analytics.ts` (no DB imports), data access in `src/lib/funnel-data.ts` — keeps unit tests dependency-free
+- **Conversion rate rounding**: `Math.round((n/d) * 10000) / 10000` for 4-decimal determinism across environments
+- **NaN/negative guard**: `Math.max(0, value || 0)` handles NaN, undefined, null, and negative inputs
+- **SubmissionEvent model**: New Prisma model in funnel analytics section at bottom of schema; relation on User added as `submissionEvents SubmissionEvent[]`
+- **Terminal statuses**: Hardcoded to `["DONE"]` in `funnel-data.ts` — matches `TaskStatus` enum; not configurable in MVP
+- **Funnel endpoint**: `GET /api/analytics/funnel?from=ISO&to=ISO&projectId=optional`
+- **Submission endpoint**: `POST /api/analytics/funnel/submissions` with body `{ type, referenceId?, metadata? }`
+- **Pre-existing test failures**: `analytics-fetchers-coda.test.ts` (8 fails) and `analytics-fetchers-hubspot.test.ts` (2 fails) are pre-existing, unrelated to funnel changes
