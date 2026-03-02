@@ -53,6 +53,10 @@ vi.mock("@/lib/analytics/provider-health", () => ({
   })),
 }));
 
+vi.mock("@/lib/integrations/env-diagnostic", () => ({
+  logIntegrationEnvDiagnostic: vi.fn(),
+}));
+
 vi.mock("@/lib/integrations/catalog", () => ({
   listIntegrationDefinitions: vi.fn(() => [
     {
