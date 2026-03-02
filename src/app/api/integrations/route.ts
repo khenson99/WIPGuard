@@ -20,6 +20,7 @@ import {
   isIntegrationConfigured,
   listIntegrationDefinitions,
 } from "@/lib/integrations/catalog";
+import { logIntegrationEnvDiagnostic } from "@/lib/integrations/env-diagnostic";
 import { normalizeCodaDocId } from "@/lib/integrations/coda-config";
 import {
   bestEffortMigrateConnectionsToOwner,
@@ -82,6 +83,8 @@ function hasCredentialForProvider(
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  logIntegrationEnvDiagnostic();
+
   try {
     const session = await auth();
     if (!session?.user) {
