@@ -20,7 +20,7 @@ import { compactErrorMessage, refreshOAuthToken } from "@/lib/integrations/oauth
 import { listProviderRegistryEntries } from "@/lib/integrations/provider-registry";
 import { validateIntegrationScopes } from "@/lib/integrations/scope-validation";
 import { prisma } from "@/lib/prisma";
-import { protectIntegrationSecret, unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
+import { unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
 import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
 
 export interface ProviderFreshnessSnapshot {

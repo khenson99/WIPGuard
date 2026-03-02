@@ -77,6 +77,8 @@ export interface FetchCodaDataOptions {
   fromDate?: Date;
   toDate?: Date;
   now?: Date;
+  fromDate?: Date;
+  toDate?: Date;
 }
 
 interface EnrichedCard extends CodaCard {
@@ -405,7 +407,20 @@ export async function fetchCodaData(
   docId: string,
   options: FetchCodaDataOptions = {}
 ): Promise<CodaKanbanData> {
-  const now = options.now ?? options.toDate ?? new Date();
+  const now = options.now ?? new Date();
+  const rangeFrom = options.fromDate ?? null;
+  const rangeTo = options.toDate ?? null;
+  const useRange =
+    Boolean(rangeFrom && rangeTo) &&
+    !Number.isNaN(rangeFrom?.getTime() ?? NaN) &&
+    !Number.isNaN(rangeTo?.getTime() ?? NaN) &&
+    Boolean(rangeFrom && rangeTo && rangeFrom <= rangeTo);
+
+  const rangeDays = useRange
+    ? Math.max(1, Math.ceil((rangeTo!.getTime() - rangeFrom!.getTime()) / (1000 * 60 * 60 * 24)) + 1)
+    : 30;
+
+  const windowDays = Math.max(7, Math.min(120, rangeDays));
   const headers = {
     Authorization: `Bearer ${apiToken}`,
     Accept: "application/json",
@@ -548,103 +563,11 @@ export async function fetchCodaData(
     })
     .slice(0, 10);
 
-  const rangeSummary = shouldFilterByRange
-    ? (() => {
-        const emailSet = new Set<string>();
-        let unknownEmailCards = 0;
-        for (const card of cardsInRange) {
-          const email = normalizeEmail(card.creatorEmail);
-          if (!email) {
-            unknownEmailCards += 1;
-            continue;
-          }
-          emailSet.add(email);
-        }
-
-        const windowMs = options.toDate!.getTime() - options.fromDate!.getTime();
-        const prevTo = new Date(options.fromDate!.getTime() - 1);
-        const prevFrom = new Date(prevTo.getTime() - windowMs);
-        const prevCards = cards.filter((card) => isWithinRange(card.createdAtIso, prevFrom, prevTo));
-        const prevEmailSet = new Set<string>();
-        for (const card of prevCards) {
-          const email = normalizeEmail(card.creatorEmail);
-          if (email) prevEmailSet.add(email);
-        }
-
-        return {
-          from: options.fromDate!.toISOString().slice(0, 10),
-          to: options.toDate!.toISOString().slice(0, 10),
-          cardsCreated: cardsInRange.length,
-          submissions: emailSet.size,
-          unknownEmailCards,
-          downloadsPrev: prevCards.length,
-          downloadersPrev: prevEmailSet.size,
-          downloadsDeltaPct: pctDelta(cardsInRange.length, prevCards.length),
-          downloadersDeltaPct: pctDelta(emailSet.size, prevEmailSet.size),
-        };
-      })()
-    : undefined;
-
-  const recentSubmitters: CodaRecentSubmitter[] = (() => {
-    const byEmail = new Map<
-      string,
-      {
-        email: string;
-        creator: string;
-        cardsCreated: number;
-        firstSubmittedAt: string | null;
-        lastSubmittedAt: string | null;
-      }
-    >();
-
-    for (const card of cardsInRange) {
-      const email = normalizeEmail(card.creatorEmail);
-      if (!email) continue;
-
-      const existing = byEmail.get(email) ?? {
-        email,
-        creator: card.creator || email,
-        cardsCreated: 0,
-        firstSubmittedAt: null,
-        lastSubmittedAt: null,
-      };
-
-      existing.cardsCreated += 1;
-      if (!existing.creator || existing.creator === "Unknown") {
-        existing.creator = card.creator || email;
-      }
-      if (!existing.firstSubmittedAt || ((card.createdAtIso ?? "") < existing.firstSubmittedAt)) {
-        existing.firstSubmittedAt = card.createdAtIso;
-      }
-      if (!existing.lastSubmittedAt || ((card.createdAtIso ?? "") > existing.lastSubmittedAt)) {
-        existing.lastSubmittedAt = card.createdAtIso;
-        existing.creator = card.creator || existing.creator;
-      }
-
-      byEmail.set(email, existing);
-    }
-
-    const list = [...byEmail.values()]
-      .sort((a, b) => (b.lastSubmittedAt ?? "").localeCompare(a.lastSubmittedAt ?? ""))
-      .slice(0, Math.max(1, options.maxRecentSubmitters ?? 25))
-      .map((entry): CodaRecentSubmitter => ({
-        creator: entry.creator || entry.email,
-        email: entry.email,
-        cardsCreated: entry.cardsCreated,
-        firstSubmittedAt: entry.firstSubmittedAt,
-        lastSubmittedAt: entry.lastSubmittedAt,
-        hubspotContact: null,
-        hubspotStatus: "unknown",
-        hubspotSearchUrl: buildHubspotSearchUrl(entry.email),
-      }));
-
-    return list;
-  })();
-  const creatorWindows: CodaCreatorWindow[] = [
-    buildCreatorWindow(cards, 30, now),
-    buildCreatorWindow(cards, 60, now),
-    buildCreatorWindow(cards, 90, now),
-  ];
+  const creatorWindows: CodaCreatorWindow[] = windowDays <= 30
+    ? [buildCreatorWindow(cards, 30, now)]
+    : windowDays <= 60
+      ? [buildCreatorWindow(cards, 30, now), buildCreatorWindow(cards, 60, now)]
+      : [buildCreatorWindow(cards, 30, now), buildCreatorWindow(cards, 60, now), buildCreatorWindow(cards, 90, now)];
 
   const unknownCards = cards.filter((card) => card.creator === "Unknown").length;
   const unknownCreatorRatio = cards.length > 0 ? (unknownCards / cards.length) * 100 : 0;
@@ -657,9 +580,9 @@ export async function fetchCodaData(
 
   const newCreatorFeed = buildNewCreatorFeed(cards);
 
-  const cardsCreated90d = buildDailyTrend(
-    cards.filter((card) => isWithinDays(card.createdAtIso, 90, now)),
-    90
+  const cardsCreatedTrend = buildDailyTrend(
+    cards.filter((card) => isWithinDays(card.createdAtIso, windowDays, now)),
+    windowDays
   );
   const creatorFirstSeenCards = cards.filter((card) => card.creator !== "Unknown");
   const byCreatorFirstSeen = new Map<string, EnrichedCard>();
@@ -670,9 +593,9 @@ export async function fetchCodaData(
       byCreatorFirstSeen.set(key, card);
     }
   }
-  const newCreators30d = buildDailyTrend(
-    [...byCreatorFirstSeen.values()].filter((card) => isWithinDays(card.createdAtIso, 30, now)),
-    30
+  const newCreatorsTrend = buildDailyTrend(
+    [...byCreatorFirstSeen.values()].filter((card) => isWithinDays(card.createdAtIso, windowDays, now)),
+    windowDays
   );
 
   const dailyTrendStart = shouldFilterByRange
@@ -726,11 +649,11 @@ export async function fetchCodaData(
       lastActivityAt: null,
     };
 
-    if (isWithinDays(card.createdAtIso, 30, now)) {
+    if (isWithinDays(card.createdAtIso, windowDays, now)) {
       existing.cards30d += 1;
       const day = toDayKey(card.createdAtIso);
       if (day) existing.activeDays30d.add(day);
-    } else if (isWithinPreviousWindow(card.createdAtIso, 30, now)) {
+    } else if (isWithinPreviousWindow(card.createdAtIso, windowDays, now)) {
       existing.cardsPrevious30d += 1;
     }
 
@@ -787,10 +710,8 @@ export async function fetchCodaData(
     creatorWindows,
     newCreatorFeed,
     trends: {
-      newCreators30d,
-      cardsCreated90d,
-      downloadsDaily,
-      downloadersDaily,
+      newCreators30d: newCreatorsTrend,
+      cardsCreated90d: cardsCreatedTrend,
     },
     engagedLeadCandidates: leadEnrichment.candidates,
     rangeSummary,

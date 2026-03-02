@@ -121,13 +121,22 @@ async function refreshForUserAndRange(input: {
   const jobs: Array<{ providerKey: string; run: () => Promise<unknown> }> = [];
 
   if (creds.hubspotToken) {
-    jobs.push({ providerKey: "hubspot", run: () => fetchHubSpotData(creds.hubspotToken!, fromDate, toDate) });
+    jobs.push({
+      providerKey: "hubspot",
+      run: () => fetchHubSpotData(creds.hubspotToken!, { fromDate, toDate }),
+    });
   }
   if (creds.stripeKey) {
-    jobs.push({ providerKey: "stripe", run: () => fetchStripeData(creds.stripeKey!, fromDate, toDate) });
+    jobs.push({
+      providerKey: "stripe",
+      run: () => fetchStripeData(creds.stripeKey!, { fromDate, toDate }),
+    });
   }
   if (creds.mercuryKey) {
-    jobs.push({ providerKey: "mercury", run: () => fetchMercuryData(creds.mercuryKey!, fromDate, toDate) });
+    jobs.push({
+      providerKey: "mercury",
+      run: () => fetchMercuryData(creds.mercuryKey!, { fromDate, toDate }),
+    });
   }
   const hasGAServiceAccount = Boolean(
     creds.gaClientEmail && creds.gaPrivateKey
@@ -144,8 +153,9 @@ async function refreshForUserAndRange(input: {
       run: () =>
         fetchGAData(
           creds.gaPropertyId!,
-          hasGAServiceAccount ? creds.gaClientEmail : null,
-          hasGAServiceAccount ? creds.gaPrivateKey : null
+          creds.gaClientEmail ?? "",
+          creds.gaPrivateKey ?? "",
+          { fromDate, toDate }
         ),
     });
   }
@@ -165,15 +175,22 @@ async function refreshForUserAndRange(input: {
           creds.googleAdsRefreshToken!,
           creds.googleAdsClientId!,
           creds.googleAdsClientSecret!,
-          creds.googleAdsLoginCustomerId
+          creds.googleAdsLoginCustomerId,
+          { fromDate, toDate }
         ),
     });
   }
   if (creds.metaAccessToken && creds.metaAdAccountId) {
-    jobs.push({ providerKey: "metaAds", run: () => fetchMetaAdsData(creds.metaAccessToken!, creds.metaAdAccountId!) });
+    jobs.push({
+      providerKey: "metaAds",
+      run: () => fetchMetaAdsData(creds.metaAccessToken!, creds.metaAdAccountId!, { fromDate, toDate }),
+    });
   }
   if (creds.metaAccessToken && creds.metaPageId) {
-    jobs.push({ providerKey: "metaPage", run: () => fetchMetaPageData(creds.metaAccessToken!, creds.metaPageId!) });
+    jobs.push({
+      providerKey: "metaPage",
+      run: () => fetchMetaPageData(creds.metaAccessToken!, creds.metaPageId!, { fromDate, toDate }),
+    });
   }
   if (creds.redditClientId && creds.redditClientSecret && creds.redditRefreshToken && creds.redditAdAccountId) {
     jobs.push({
@@ -184,7 +201,8 @@ async function refreshForUserAndRange(input: {
           creds.redditClientSecret!,
           creds.redditRefreshToken!,
           creds.redditAdAccountId!,
-          creds.redditUserAgent
+          creds.redditUserAgent,
+          { fromDate, toDate }
         ),
     });
   }
@@ -194,14 +212,7 @@ async function refreshForUserAndRange(input: {
   if (creds.codaApiToken && creds.codaDocId) {
     jobs.push({
       providerKey: "coda",
-      run: () =>
-        fetchCodaData(creds.codaApiToken!, creds.codaDocId!, {
-          fromDate,
-          toDate,
-          now: toDate,
-          hubspotAccessToken: creds.hubspotToken,
-          maxRecentSubmitters: 25,
-        }),
+      run: () => fetchCodaData(creds.codaApiToken!, creds.codaDocId!, { fromDate, toDate }),
     });
   }
   if (creds.semrushApiToken && creds.semrushDomain) {

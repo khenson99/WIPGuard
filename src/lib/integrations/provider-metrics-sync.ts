@@ -342,6 +342,8 @@ async function fetchProviderPayload(input: {
   ruleKey: ProviderMetricsRuleKey;
   userId: string;
   config: ProviderMetricsSyncConfig;
+  fromDate: Date;
+  toDate: Date;
 }): Promise<unknown> {
   const creds = await getCredentials(input.userId);
 
@@ -366,7 +368,8 @@ async function fetchProviderPayload(input: {
       creds.googleAdsRefreshToken,
       creds.googleAdsClientId,
       creds.googleAdsClientSecret,
-      loginCustomerId
+      loginCustomerId,
+      { fromDate: input.fromDate, toDate: input.toDate }
     );
   }
 
@@ -375,7 +378,7 @@ async function fetchProviderPayload(input: {
     if (!creds.metaAccessToken || !adAccountId) {
       throw new Error("Missing Meta Ads credential");
     }
-    return fetchMetaAdsData(creds.metaAccessToken, adAccountId);
+    return fetchMetaAdsData(creds.metaAccessToken, adAccountId, { fromDate: input.fromDate, toDate: input.toDate });
   }
 
   if (input.ruleKey === META_PAGE_METRICS_RULE_KEY) {
@@ -383,7 +386,7 @@ async function fetchProviderPayload(input: {
     if (!creds.metaAccessToken || !pageId) {
       throw new Error("Missing Meta Page credential");
     }
-    return fetchMetaPageData(creds.metaAccessToken, pageId);
+    return fetchMetaPageData(creds.metaAccessToken, pageId, { fromDate: input.fromDate, toDate: input.toDate });
   }
 
   if (input.ruleKey === META_INSTAGRAM_METRICS_RULE_KEY) {
@@ -412,7 +415,8 @@ async function fetchProviderPayload(input: {
       creds.redditClientSecret,
       creds.redditRefreshToken,
       adAccountId,
-      creds.redditUserAgent
+      creds.redditUserAgent,
+      { fromDate: input.fromDate, toDate: input.toDate }
     );
   }
 
@@ -426,14 +430,14 @@ async function fetchProviderPayload(input: {
     if (!creds.stripeKey) {
       throw new Error("Missing Stripe credential");
     }
-    return fetchStripeData(creds.stripeKey, fromDate, toDate);
+return fetchStripeData(creds.stripeKey, { fromDate: input.fromDate, toDate: input.toDate });
   }
 
   if (input.ruleKey === MERCURY_CASHFLOW_SYNC_RULE_KEY) {
     if (!creds.mercuryKey) {
       throw new Error("Missing Mercury credential");
     }
-    return fetchMercuryData(creds.mercuryKey, fromDate, toDate);
+return fetchMercuryData(creds.mercuryKey, { fromDate: input.fromDate, toDate: input.toDate });
   }
 
   if (input.ruleKey === PYLON_CONVERSATION_SYNC_RULE_KEY) {
@@ -508,6 +512,8 @@ export async function runProviderMetricsRule(input: {
       ruleKey: input.ruleKey,
       userId: input.userId,
       config,
+      fromDate,
+      toDate,
     });
 
     if (!input.dryRun) {

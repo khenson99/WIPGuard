@@ -118,10 +118,9 @@ async function getGAAccessToken(opts: {
 
 export async function fetchGAData(
   propertyId: string,
-  clientEmail?: string | null,
-  privateKey?: string | null,
-  from?: Date,
-  to?: Date
+  clientEmail: string,
+  privateKey: string,
+  options?: { fromDate?: Date; toDate?: Date }
 ): Promise<GAData> {
   // Get access token using whichever auth method is configured
   const accessToken = await getGAAccessToken({
@@ -139,23 +138,37 @@ export async function fetchGAData(
 
   const apiUrl = `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`;
 
-  // Calculate precise date strings (YYYY-MM-DD)
-  const defaultTo = new Date();
-  const defaultFrom = new Date(defaultTo.getTime() - 30 * 24 * 60 * 60 * 1000);
-  
-  const fromDate = from || defaultFrom;
-  const toDate = to || defaultTo;
-  
-  const startDateStr = fromDate.toISOString().split("T")[0];
-  const endDateStr = toDate.toISOString().split("T")[0];
-  
-  // Calculate previous period of equal length
-  const rangeLengthMs = toDate.getTime() - fromDate.getTime();
-  const prevToDate = new Date(fromDate.getTime() - 24 * 60 * 60 * 1000); // Day before fromDate
-  const prevFromDate = new Date(fromDate.getTime() - rangeLengthMs - 24 * 60 * 60 * 1000);
-  
-  const prevStartDateStr = prevFromDate.toISOString().split("T")[0];
-  const prevEndDateStr = prevToDate.toISOString().split("T")[0];
+  const rangeFrom = options?.fromDate ?? null;
+  const rangeTo = options?.toDate ?? null;
+  const useRange =
+    Boolean(rangeFrom && rangeTo) &&
+    !Number.isNaN(rangeFrom?.getTime() ?? NaN) &&
+    !Number.isNaN(rangeTo?.getTime() ?? NaN) &&
+    Boolean(rangeFrom && rangeTo && rangeFrom <= rangeTo);
+
+  const currentRange = useRange
+    ? [{ startDate: rangeFrom!.toISOString().slice(0, 10), endDate: rangeTo!.toISOString().slice(0, 10) }]
+    : [{ startDate: "30daysAgo", endDate: "today" }];
+
+  const days = useRange
+    ? Math.max(
+        1,
+        Math.ceil((rangeTo!.getTime() - rangeFrom!.getTime()) / (1000 * 60 * 60 * 24)) + 1
+      )
+    : 30;
+
+  const previousStart = useRange
+    ? new Date(rangeFrom!.getTime() - days * 24 * 60 * 60 * 1000)
+    : null;
+  const previousEnd = useRange ? new Date(rangeTo!.getTime() - days * 24 * 60 * 60 * 1000) : null;
+  const previousRange = useRange
+    ? [
+        {
+          startDate: previousStart!.toISOString().slice(0, 10),
+          endDate: previousEnd!.toISOString().slice(0, 10),
+        },
+      ]
+    : [{ startDate: "60daysAgo", endDate: "31daysAgo" }];
 
   // Run all requests in parallel
   const [current30d, previous30d, trafficAndTrend, topPagesRaw] = await Promise.all([
@@ -164,7 +177,7 @@ export async function fetchGAData(
       method: "POST",
       headers,
       body: JSON.stringify({
-        dateRanges: [{ startDate: startDateStr, endDate: endDateStr }],
+        dateRanges: currentRange,
         metrics: [
           { name: "sessions" },
           { name: "totalUsers" },
@@ -180,7 +193,7 @@ export async function fetchGAData(
       method: "POST",
       headers,
       body: JSON.stringify({
-        dateRanges: [{ startDate: prevStartDateStr, endDate: prevEndDateStr }],
+        dateRanges: previousRange,
         metrics: [
           { name: "sessions" },
           { name: "totalUsers" },
@@ -196,7 +209,7 @@ export async function fetchGAData(
       method: "POST",
       headers,
       body: JSON.stringify({
-        dateRanges: [{ startDate: startDateStr, endDate: endDateStr }],
+        dateRanges: currentRange,
         dimensions: [
           { name: "sessionDefaultChannelGroup" },
           { name: "date" },
@@ -214,7 +227,7 @@ export async function fetchGAData(
       method: "POST",
       headers,
       body: JSON.stringify({
-        dateRanges: [{ startDate: startDateStr, endDate: endDateStr }],
+        dateRanges: currentRange,
         dimensions: [{ name: "pagePath" }],
         metrics: [
           { name: "screenPageViews" },

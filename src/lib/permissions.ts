@@ -18,7 +18,7 @@ export type PermissionAction =
   | "team.invite"
   | "team.role.write"
   | "profile.write"
-  | "deals.write"
+
   | "integration.read"
   | "integration.manage"
   | "automation.write"

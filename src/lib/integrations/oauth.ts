@@ -752,6 +752,9 @@ export async function fetchOAuthAccountProfile(
   if (definition.slug === "google-workspace" || definition.slug === "google-ads") {
     return fetchGoogleProfile(accessToken);
   }
+  if (definition.slug === "google-ads") {
+    return fetchGoogleProfile(accessToken);
+  }
   if (definition.slug === "hubspot") {
     return fetchHubSpotProfile(accessToken);
   }

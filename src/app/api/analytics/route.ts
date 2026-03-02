@@ -297,9 +297,18 @@ async function hydrateStripeCustomerLinks(
 ): Promise<void> {
   if (!data.hubspot?.deals?.length) return;
 
-  const stripeCustomerLink = (
-    prisma as unknown as { stripeCustomerLink?: StripeCustomerLinkDelegateLike }
-  ).stripeCustomerLink;
+  type StripeCustomerLinkRow = {
+    hubspotDealId: string;
+    hubspotDealName: string | null;
+    stripeCustomerId: string;
+  };
+
+  type StripeCustomerLinkDelegate = {
+    findMany: (args: { where: { userId: string } }) => Promise<StripeCustomerLinkRow[]>;
+  };
+
+  const stripeCustomerLink = (prisma as unknown as { stripeCustomerLink?: StripeCustomerLinkDelegate })
+    .stripeCustomerLink;
   if (!stripeCustomerLink) {
     console.warn("[analytics] Prisma client missing StripeCustomerLink delegate");
     return;
@@ -778,86 +787,33 @@ export async function GET(request: Request) {
   });
 
   const fetchers = ([
-    { key: "hubspot", fn: () => (creds.hubspotToken ? fetchHubSpotData(creds.hubspotToken, fromDate, toDate) : Promise.reject(new Error("Missing HubSpot credential"))) },
-    {
-      key: "salesPerformance",
-      fn: async () => {
-        if (!creds.hubspotToken) {
-          throw new Error("Missing HubSpot credential");
-        }
-
-        const errors: string[] = [];
-
-        const [hubspot, contacts] = await Promise.all([
-          fetchHubSpotData(creds.hubspotToken, fromDate, toDate, { includeInactiveProspects: true }),
-          fetchHubSpotContacts(creds.hubspotToken, fromDate, toDate),
-        ]);
-
-        const tmp = createEmptyAnalyticsDashboardData({
-          freshness: {},
-          timeRange: range,
-          lastFullRefresh: new Date().toISOString(),
-        });
-        tmp.hubspot = hubspot;
-
-        await hydrateStripeCustomerLinks(userId, tmp);
-        const deals = tmp.hubspot?.deals ?? [];
-
-        const customerIds = new Set<string>();
-        for (const deal of deals) {
-          if ((deal.stageId || "").toLowerCase() !== "closedwon") continue;
-          if (!deal.closedAt) continue;
-          const closedAt = new Date(deal.closedAt);
-          if (!Number.isFinite(closedAt.getTime())) continue;
-          if (closedAt < fromDate || closedAt > toDate) continue;
-          const customerId = deal.stripeCustomerId?.trim();
-          if (customerId) customerIds.add(customerId);
-        }
-
-        const toPlus30 = new Date(toDate.getTime() + 30 * 24 * 60 * 60 * 1000);
-
-        const chargesByCustomerId = creds.stripeKey
-          ? await fetchStripeChargesByCustomer(
-              creds.stripeKey,
-              [...customerIds].map((customerId) => ({
-                customerId,
-                createdGte: fromDate,
-                createdLte: toPlus30,
-              }))
-            )
-          : {};
-
-        if (!creds.stripeKey) {
-          errors.push("Stripe not connected; realized revenue fields will be 0.");
-        }
-
-        return buildSalesPerformancePack({
-          from: fromDate,
-          to: toDate,
-          generatedAt: new Date(),
-          fromSnapshot: false,
-          deals,
-          contacts,
-          chargesByCustomerId,
-          errors,
-        });
-      },
+{
+      key: "hubspot",
+      fn: () =>
+        creds.hubspotToken
+          ? fetchHubSpotData(creds.hubspotToken, { fromDate, toDate })
+          : Promise.reject(new Error("Missing HubSpot credential")),
     },
-    { key: "stripe", fn: () => (creds.stripeKey ? fetchStripeData(creds.stripeKey, fromDate, toDate) : Promise.reject(new Error("Missing Stripe credential"))) },
-    { key: "mercury", fn: () => (creds.mercuryKey ? fetchMercuryData(creds.mercuryKey, fromDate, toDate) : Promise.reject(new Error("Missing Mercury credential"))) },
+    {
+      key: "stripe",
+      fn: () =>
+        creds.stripeKey
+          ? fetchStripeData(creds.stripeKey, { fromDate, toDate })
+          : Promise.reject(new Error("Missing Stripe credential")),
+    },
+    {
+      key: "mercury",
+      fn: () =>
+        creds.mercuryKey
+          ? fetchMercuryData(creds.mercuryKey, { fromDate, toDate })
+          : Promise.reject(new Error("Missing Mercury credential")),
+    },
     {
       key: "googleAnalytics",
-      fn: () => {
-        const propId = creds.gaPropertyId || process.env.GA_PROPERTY_ID;
-        const email = creds.gaClientEmail || process.env.GA_CLIENT_EMAIL;
-        const key = creds.gaPrivateKey || process.env.GA_PRIVATE_KEY?.replace(/\\n/g, "\n");
-        const hasOAuth = process.env.GA_REFRESH_TOKEN && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET;
-        
-        if (propId && ((email && key) || hasOAuth)) {
-          return fetchGAData(propId, hasOAuth ? null : email, hasOAuth ? null : key, fromDate, toDate);
-        }
-        return Promise.reject(new Error("Missing Google Analytics credential"));
-      },
+      fn: () =>
+        creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey
+          ? fetchGAData(creds.gaPropertyId, creds.gaClientEmail, creds.gaPrivateKey, { fromDate, toDate })
+          : Promise.reject(new Error("Missing Google Analytics credential")),
     },
     {
       key: "googleAds",
@@ -874,8 +830,7 @@ export async function GET(request: Request) {
               creds.googleAdsClientId,
               creds.googleAdsClientSecret,
               creds.googleAdsLoginCustomerId,
-              fromDate,
-              toDate
+              { fromDate, toDate }
             )
           : Promise.reject(new Error("Missing Google Ads credential")),
     },
@@ -883,14 +838,14 @@ export async function GET(request: Request) {
       key: "metaAds",
       fn: () =>
         creds.metaAccessToken && creds.metaAdAccountId
-          ? fetchMetaAdsData(creds.metaAccessToken, creds.metaAdAccountId, fromDate, toDate)
+          ? fetchMetaAdsData(creds.metaAccessToken, creds.metaAdAccountId, { fromDate, toDate })
           : Promise.reject(new Error("Missing Meta Ads credential")),
     },
     {
       key: "metaPage",
       fn: () =>
         creds.metaAccessToken && creds.metaPageId
-          ? fetchMetaPageData(creds.metaAccessToken, creds.metaPageId, fromDate, toDate)
+          ? fetchMetaPageData(creds.metaAccessToken, creds.metaPageId, { fromDate, toDate })
           : Promise.reject(new Error("Missing Meta Page credential")),
     },
     {
@@ -916,8 +871,7 @@ export async function GET(request: Request) {
               creds.redditRefreshToken,
               creds.redditAdAccountId,
               creds.redditUserAgent,
-              fromDate,
-              toDate
+              { fromDate, toDate }
             )
           : Promise.reject(new Error("Missing Reddit Ads credential")),
     },
@@ -932,14 +886,7 @@ export async function GET(request: Request) {
       key: "coda",
       fn: () =>
         creds.codaApiToken && creds.codaDocId
-          ? fetchCodaData(creds.codaApiToken, creds.codaDocId, {
-              fromDate,
-              toDate,
-              now: toDate,
-              hubspotAccessToken: creds.hubspotToken,
-              stripeKey: creds.stripeKey,
-              maxRecentSubmitters: 25,
-            })
+          ? fetchCodaData(creds.codaApiToken, creds.codaDocId, { fromDate, toDate })
           : Promise.reject(new Error("Missing Coda credential")),
     },
     {

@@ -1,18 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { HorizontalFunnel } from "@/components/charts";
 import { StatCard } from "./stat-card";
 import { DashboardSectionCard } from "./dashboard-section-card";
 import { AiInsightsPanel } from "./ai-insights-panel";
 import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-controls";
-import { buildRangeQuery } from "@/lib/analytics/time-range";
 import type {
   AnalyticsDashboardData,
   LifecycleStageId,
 } from "@/lib/analytics/types";
-import { Users, TrendingUp, ArrowRight, Sparkles, AlertTriangle } from "lucide-react";
+import { Users, TrendingUp, ArrowRight, Sparkles } from "lucide-react";
 import { populateConnectionStatus } from "@/hooks/use-connection-status";
 import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
 
@@ -30,25 +28,18 @@ const STAGE_ORDER: LifecycleStageId[] = [
 ];
 
 export function CustomerJourneyPage() {
-  const searchParams = useSearchParams();
-  const rangeQuery = useMemo(() => buildRangeQuery(searchParams), [searchParams]);
-  const cacheKey = `analytics:overview:${rangeQuery || "all"}`;
-
   const resource = useDashboardResource<AnalyticsDashboardData>({
-    cacheKey,
-    deps: [rangeQuery],
+    cacheKey: "analytics:overview:v1",
+    deps: [],
     load: async ({ signal }) => {
-      const response = await fetch(
-        `/api/analytics?section=overview${rangeQuery ? `&${rangeQuery}` : ""}`,
-        { signal }
-      );
+      const response = await fetch("/api/analytics?section=overview", { signal });
       if (!response.ok) {
         throw new Error(`Analytics overview request failed (${response.status})`);
       }
       return (await response.json()) as AnalyticsDashboardData;
     },
     getLastUpdatedAt: (payload) =>
-      payload.meta?.servedAt ?? payload.lastFullRefresh ?? null,
+      payload.meta?.servedAt ?? payload.lastFullRefresh ?? payload.generatedAt ?? null,
     mapError: (error) =>
       error instanceof Error && error.message ? error.message : "Could not load journey data.",
   });
@@ -64,53 +55,10 @@ export function CustomerJourneyPage() {
   const lifecycle = data?.lifecycleFunnel ?? null;
   const insights = data?.aiInsights?.global ?? [];
 
-  const stageGroupRef = useRef<HTMLDivElement>(null);
-
-  const handleStageKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-      e.preventDefault();
-      const group = stageGroupRef.current;
-      if (!group) return;
-      const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>("button"));
-      const currentIndex = buttons.findIndex((btn) => btn === document.activeElement);
-      if (currentIndex === -1) return;
-      const nextIndex =
-        e.key === "ArrowRight"
-          ? (currentIndex + 1) % buttons.length
-          : (currentIndex - 1 + buttons.length) % buttons.length;
-      buttons[nextIndex].focus();
-    },
-    [],
-  );
-
-  if (resource.loading && !data) {
+  if (resource.loading && !resource.data) {
     return (
       <div className="flex h-64 items-center justify-center">
         <p className="text-sm text-muted-foreground">Loading journey data…</p>
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="text-center">
-          <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-destructive/60" />
-          <p className="text-sm font-medium text-destructive">
-            {resource.error ?? "Could not load journey data."}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Check your connection and try again
-          </p>
-          <button
-            type="button"
-            onClick={resource.refresh}
-            className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-secondary"
-          >
-            Retry
-          </button>
-        </div>
       </div>
     );
   }
@@ -158,17 +106,12 @@ export function CustomerJourneyPage() {
 
   return (
     <div className="space-y-6">
-      <AiInsightsPanel bundle={data?.aiInsights || null} defaultFilter="customer-journey" />
-
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-foreground">Customer Journey</h2>
-          <p className="text-sm text-muted-foreground">
-            Full lifecycle funnel from awareness to expansion — click a stage to inspect
-          </p>
-        </div>
-        <AnalyticsTimeRangeControls />
+      <div>
+        <h2 className="text-lg font-bold text-foreground">Customer Journey</h2>
+        <p className="text-sm text-muted-foreground">
+          Full lifecycle funnel from awareness to expansion — click a stage to inspect
+        </p>
       </div>
 
       {/* KPI Strip */}
@@ -185,22 +128,13 @@ export function CustomerJourneyPage() {
 
       {/* Hero Funnel */}
       <DashboardSectionCard title="Lifecycle Funnel" subtitle="Click a stage to see details">
-        <div aria-label="Lifecycle funnel visualization">
-          <HorizontalFunnel stages={stages} height={360} />
-        </div>
-        <div
-          ref={stageGroupRef}
-          role="group"
-          aria-label="Lifecycle stages"
-          onKeyDown={handleStageKeyDown}
-          className="mt-3 flex flex-wrap gap-2"
-        >
+        <HorizontalFunnel stages={stages} height={360} />
+        <div className="mt-3 flex flex-wrap gap-2">
           {STAGE_ORDER.map((id) => {
             const stage = lifecycle.stages.find((s) => s.id === id);
             return (
               <button
                 key={id}
-                aria-pressed={selectedStage === id}
                 onClick={() => setSelectedStage(selectedStage === id ? null : id)}
                 className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                   selectedStage === id
@@ -217,48 +151,46 @@ export function CustomerJourneyPage() {
       </DashboardSectionCard>
 
       {/* Stage Detail Panel */}
-      <div aria-live="polite">
-        {selectedStageData && (
-          <DashboardSectionCard title={selectedStageData.label} subtitle="Stage evidence and transitions">
-            <div className="grid gap-4 lg:grid-cols-2">
-              {/* Evidence (LifecycleSegment[]) */}
-              <div>
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Evidence Sources</h4>
-                <div className="space-y-2">
-                  {selectedStageData.evidence.length > 0 ? (
-                    selectedStageData.evidence.map((ev, i) => (
-                      <div key={i} className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2 text-sm">
-                        <span className="text-foreground">{ev.source}: {ev.detail}</span>
-                        <span className="font-semibold tabular-nums text-foreground">{ev.contribution}</span>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-xs text-muted-foreground">No evidence data for this stage</p>
-                  )}
-                </div>
-              </div>
-              {/* Transitions (from LifecycleFunnelData.transitions filtered by fromStageId) */}
-              <div>
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Transitions</h4>
-                <div className="space-y-2">
-                  {selectedTransitions.length > 0 ? (
-                    selectedTransitions.map((tr) => (
-                      <div key={tr.id} className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2 text-sm">
-                        <span className="text-muted-foreground">→ {tr.toStageId}</span>
-                        <span className="font-semibold tabular-nums text-foreground">
-                          {tr.conversionRate !== null ? `${tr.conversionRate.toFixed(1)}%` : "—"}
-                        </span>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-xs text-muted-foreground">No transition data for this stage</p>
-                  )}
-                </div>
+      {selectedStageData && (
+        <DashboardSectionCard title={selectedStageData.label} subtitle="Stage evidence and transitions">
+          <div className="grid gap-4 lg:grid-cols-2">
+            {/* Evidence (LifecycleSegment[]) */}
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Evidence Sources</h4>
+              <div className="space-y-2">
+                {selectedStageData.evidence.length > 0 ? (
+                  selectedStageData.evidence.map((ev, i) => (
+                    <div key={i} className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2 text-sm">
+                      <span className="text-foreground">{ev.source}: {ev.detail}</span>
+                      <span className="font-semibold tabular-nums text-foreground">{ev.contribution}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-muted-foreground">No evidence data for this stage</p>
+                )}
               </div>
             </div>
-          </DashboardSectionCard>
-        )}
-      </div>
+            {/* Transitions (from LifecycleFunnelData.transitions filtered by fromStageId) */}
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Transitions</h4>
+              <div className="space-y-2">
+                {selectedTransitions.length > 0 ? (
+                  selectedTransitions.map((tr) => (
+                    <div key={tr.id} className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2 text-sm">
+                      <span className="text-muted-foreground">→ {tr.toStageId}</span>
+                      <span className="font-semibold tabular-nums text-foreground">
+                        {tr.conversionRate !== null ? `${tr.conversionRate.toFixed(1)}%` : "—"}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-muted-foreground">No transition data for this stage</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </DashboardSectionCard>
+      )}
 
       {/* Journey Insights */}
       {insights.length > 0 && (

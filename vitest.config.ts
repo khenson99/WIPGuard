@@ -1,4 +1,4 @@
-import { defineConfig, configDefaults } from "vitest/config";
+import { defineConfig } from "vitest/config";
 import path from "path";
 
 export default defineConfig({
@@ -6,9 +6,10 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     exclude: [
-      ...configDefaults.exclude,
+      "**/node_modules/**",
       "**/.claude/**",
       "**/.worktrees/**",
+      "**/dist/**",
       "**/.next/**",
       "**/src/generated/**",
     ],

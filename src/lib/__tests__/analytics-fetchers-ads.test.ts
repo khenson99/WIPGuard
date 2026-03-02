@@ -54,7 +54,8 @@ describe("analytics ads fetchers", () => {
       "refresh-token",
       "client-id",
       "client-secret",
-      "999-888-7777"
+      "999-888-7777",
+      { fromDate: new Date("2026-02-01T00:00:00.000Z"), toDate: new Date("2026-02-29T23:59:59.999Z") }
     );
 
     expect(data.totalSpend30d).toBeCloseTo(2.5);
@@ -147,7 +148,10 @@ describe("analytics ads fetchers", () => {
 
     vi.stubGlobal("fetch", firstFetchMock as unknown as typeof fetch);
 
-    const prefixed = await fetchMetaAdsData("meta-token", "act_12345");
+    const prefixed = await fetchMetaAdsData("meta-token", "act_12345", {
+      fromDate: new Date("2026-02-01T00:00:00.000Z"),
+      toDate: new Date("2026-02-29T23:59:59.999Z"),
+    });
     expect(prefixed.totalConversions).toBe(4);
     const firstInsightsUrl = String(firstFetchMock.mock.calls[0]?.[0]);
     expect(firstInsightsUrl).toContain("/act_12345/insights");
@@ -168,7 +172,10 @@ describe("analytics ads fetchers", () => {
 
     vi.stubGlobal("fetch", secondFetchMock as unknown as typeof fetch);
 
-    await fetchMetaAdsData("meta-token", "12345");
+    await fetchMetaAdsData("meta-token", "12345", {
+      fromDate: new Date("2026-02-01T00:00:00.000Z"),
+      toDate: new Date("2026-02-29T23:59:59.999Z"),
+    });
     const secondInsightsUrl = String(secondFetchMock.mock.calls[0]?.[0]);
     expect(secondInsightsUrl).toContain("/act_12345/insights");
     expect(secondInsightsUrl).not.toContain("access_token=");
@@ -206,7 +213,8 @@ describe("analytics ads fetchers", () => {
       "reddit-secret",
       "reddit-refresh",
       "acc-1",
-      "WIPGuard-Test/1.0"
+      "WIPGuard-Test/1.0",
+      { fromDate: new Date("2026-02-01T00:00:00.000Z"), toDate: new Date("2026-02-29T23:59:59.999Z") }
     );
 
     expect(data.totalSpend30d).toBeCloseTo(12.5);

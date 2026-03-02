@@ -76,10 +76,7 @@ describe("integrations orchestrator", () => {
     const result = await runRules({
       mode: "incremental",
       userIds: ["user_1"],
-      providers: [
-        IntegrationProvider.GOOGLE_WORKSPACE,
-        IntegrationProvider.GOOGLE_ADS,
-      ],
+      providers: [IntegrationProvider.GOOGLE_WORKSPACE, IntegrationProvider.GOOGLE_ADS],
       dryRun: true,
       pageBudget: 3,
       startedAt: "2026-02-18T00:00:00.000Z",
@@ -90,10 +87,7 @@ describe("integrations orchestrator", () => {
         mode: "incremental",
         dryRun: true,
         startedAt: "2026-02-18T00:00:00.000Z",
-        providers: [
-          IntegrationProvider.GOOGLE_WORKSPACE,
-          IntegrationProvider.GOOGLE_ADS,
-        ],
+        providers: [IntegrationProvider.GOOGLE_WORKSPACE, IntegrationProvider.GOOGLE_ADS],
         userIds: ["user_1"],
         pageBudget: 3,
         executedRules: 2,
@@ -101,10 +95,7 @@ describe("integrations orchestrator", () => {
     );
     expect(result.finishedAt).toEqual(expect.any(String));
 
-    expect(runGmailCapture).toHaveBeenCalledWith({
-      userId: "user_1",
-      dryRun: true,
-    });
+    expect(runGmailCapture).toHaveBeenCalledWith({ userId: "user_1", dryRun: true });
     expect(runProviderMetricsRule).toHaveBeenCalledWith({
       userId: "user_1",
       ruleKey: "google_ads_metrics_pull",
