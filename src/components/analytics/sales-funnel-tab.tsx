@@ -1,14 +1,23 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Target, AlertTriangle, TrendingDown, CheckCircle,
-  Clock, ArrowRight, Zap, Filter,
+  Clock, ArrowRight, Zap,
 } from "lucide-react";
 import type { AnalyticsDashboardData, DealStage } from "@/lib/analytics/types";
 import { StatCard } from "./stat-card";
 import { RingStat } from "./bar-display";
 import { RepScoreboardCard } from "./rep-scoreboard-card";
+import { SalesFunnelFilters } from "./sales-funnel-filters";
+import {
+  type DateRangePreset,
+  type FunnelDeal,
+  extractReps,
+  filterDeals,
+  getDateRangeFromPreset,
+  recomputeFunnelMetrics,
+} from "@/lib/sales-funnel-filter-utils";
 
 function fmt$(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
@@ -21,8 +30,6 @@ const FUNNEL_ORDER = [
   "Demo Follow-Up", "Budgetary Quote Sent", "Payment Link Sent",
   "Free Trial", "Freemium", "Subscription", "Closed Won",
 ];
-
-const TERMINAL_LABELS = ["Closed Won", "Closed Lost", "Unlikely", "Churn", "Ping Later", "On Hold"];
 
 const STAGE_COLORS: Record<string, string> = {
   "Prospect": "#4379f0",
@@ -43,285 +50,147 @@ const STAGE_COLORS: Record<string, string> = {
   "On Hold": "#9ca3af",
 };
 
-type DatePreset = "all" | "7d" | "30d" | "90d";
+type HubspotDeal = NonNullable<NonNullable<AnalyticsDashboardData["hubspot"]>["deals"]>[number];
 
-const DATE_PRESETS: { value: DatePreset; label: string }[] = [
-  { value: "all", label: "All Time" },
-  { value: "7d", label: "7 Days" },
-  { value: "30d", label: "30 Days" },
-  { value: "90d", label: "90 Days" },
-];
-
-function daysAgo(n: number): number {
-  return Date.now() - n * 24 * 60 * 60 * 1000;
-}
-
-interface Deal {
-  dealId: string;
-  dealName: string;
-  stageId: string;
-  stageLabel: string;
-  amount: number;
-  source: string;
-  ownerId: string | null;
-  repName?: string;
-  updatedAt: string | null;
-  createdAt: string | null;
-  closedAt?: string | null;
-}
-
-/** Recompute funnel-like metrics from a filtered set of deals. */
-function computeFunnelFromDeals(deals: Deal[]) {
-  const totalDeals = deals.length;
-  const stageMap = new Map<string, { count: number; value: number }>();
-  const sourceMap = new Map<string, { count: number; value: number }>();
-  const repMap = new Map<string, { count: number; value: number; closedWon: number; closedWonValue: number }>();
-
-  let closedWon = 0;
-  let closedLost = 0;
-  let unlikely = 0;
-  let churn = 0;
-  let noShows = 0;
-  let demoFollowUp = 0;
-  let totalAmount = 0;
-
-  for (const deal of deals) {
-    const label = deal.stageLabel;
-    const amt = deal.amount || 0;
-    totalAmount += amt;
-
-    // Stage counts
-    const existing = stageMap.get(label) ?? { count: 0, value: 0 };
-    existing.count += 1;
-    existing.value += amt;
-    stageMap.set(label, existing);
-
-    // Source counts
-    const srcKey = deal.source || "Unknown";
-    const srcEntry = sourceMap.get(srcKey) ?? { count: 0, value: 0 };
-    srcEntry.count += 1;
-    srcEntry.value += amt;
-    sourceMap.set(srcKey, srcEntry);
-
-    // Rep counts
-    const repKey = deal.repName || "Unassigned";
-    const repEntry = repMap.get(repKey) ?? { count: 0, value: 0, closedWon: 0, closedWonValue: 0 };
-    repEntry.count += 1;
-    repEntry.value += amt;
-    if (label === "Closed Won") {
-      repEntry.closedWon += 1;
-      repEntry.closedWonValue += amt;
-    }
-    repMap.set(repKey, repEntry);
-
-    // Tally terminal categories
-    if (label === "Closed Won") closedWon += 1;
-    if (label === "Closed Lost") closedLost += 1;
-    if (label === "Unlikely") unlikely += 1;
-    if (label === "Churn") churn += 1;
-    if (label === "No-Show/Reschedule") noShows += 1;
-    if (label === "Demo Follow-Up") demoFollowUp += 1;
-  }
-
-  const decided = closedWon + closedLost;
-  const winRate = decided > 0 ? (closedWon / decided) * 100 : 0;
-  const effectiveDenom = closedWon + closedLost + unlikely + churn;
-  const effectiveWinRate = effectiveDenom > 0 ? (closedWon / effectiveDenom) * 100 : 0;
-  const demoStage = stageMap.get("Demo Scheduled");
-  const noShowRate = demoStage && demoStage.count > 0
-    ? (noShows / (demoStage.count + noShows)) * 100
-    : (totalDeals > 0 ? (noShows / totalDeals) * 100 : 0);
-  const avgDealSize = totalDeals > 0 ? totalAmount / totalDeals : 0;
-
-  const stages: DealStage[] = Array.from(stageMap.entries()).map(([label, { count, value }]) => ({
-    stageId: label.toLowerCase().replace(/\s+/g, "-"),
-    label,
-    count,
-    value,
-  }));
-
-  const dealsBySource = Array.from(sourceMap.entries()).map(([source, { count, value }]) => ({
-    source,
-    count,
-    value,
-  }));
-
-  const dealsByRep = Array.from(repMap.entries()).map(([repName, stats]) => ({
-    repName,
-    count: stats.count,
-    value: stats.value,
-    closedWon: stats.closedWon,
-    closedWonValue: stats.closedWonValue,
-  }));
-
+/** Convert a raw HubSpot deal to the FunnelDeal shape for filtering/recomputation. */
+function toFunnelDeal(d: HubspotDeal): FunnelDeal {
   return {
-    totalDeals,
-    closedWon,
-    closedLost,
-    unlikely,
-    churn,
-    noShows,
-    demoFollowUp,
-    winRate,
-    effectiveWinRate,
-    noShowRate,
-    avgDealSize,
-    stages,
-    dealsBySource,
-    dealsByRep,
-    activeSubscriptions: 0,
-    demoScheduled: demoStage?.count ?? 0,
+    dealId: d.dealId,
+    dealName: d.dealName,
+    stageId: d.stageId,
+    stageLabel: d.stageLabel,
+    amount: d.amount,
+    source: d.source,
+    ownerId: d.ownerId,
+    repName: d.repName,
+    createdAt: d.createdAt,
+    closedAt: d.closedAt,
+    stripeCustomerId: d.stripeCustomerId,
   };
 }
 
 export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }) {
-  const [datePreset, setDatePreset] = useState<DatePreset>("all");
-  const [repFilter, setRepFilter] = useState<string>("all");
-
-  const deals = useMemo(() => data?.hubspot?.deals ?? [], [data?.hubspot?.deals]);
-  const originalFunnel = data?.hubspot?.funnel;
-
-  // Unique rep names for the filter dropdown
-  const repNames = useMemo(() => {
-    const set = new Set<string>();
-    for (const deal of deals) {
-      const name = (deal as Deal).repName;
-      if (name) set.add(name);
-    }
-    return Array.from(set).sort();
-  }, [deals]);
-
-  // Filter deals by date + rep
-  const filteredDeals = useMemo(() => {
-    let result = deals as Deal[];
-
-    if (datePreset !== "all") {
-      const cutoff = daysAgo(datePreset === "7d" ? 7 : datePreset === "30d" ? 30 : 90);
-      result = result.filter((d) => {
-        const ts = d.createdAt ? new Date(d.createdAt).getTime() : 0;
-        return ts >= cutoff;
-      });
-    }
-
-    if (repFilter !== "all") {
-      result = result.filter((d) => d.repName === repFilter);
-    }
-
-    return result;
-  }, [deals, datePreset, repFilter]);
-
-  const isFiltered = datePreset !== "all" || repFilter !== "all";
-
-  // Use recomputed metrics when filtered, original metrics when unfiltered
-  const funnel = useMemo(() => {
-    if (!isFiltered && originalFunnel) return originalFunnel;
-    return computeFunnelFromDeals(filteredDeals);
-  }, [isFiltered, originalFunnel, filteredDeals]);
-
   if (!data?.hubspot) return <EmptyState />;
+  return <SalesFunnelTabInner data={data as AnalyticsDashboardData & { hubspot: NonNullable<AnalyticsDashboardData["hubspot"]> }} />;
+}
+
+function SalesFunnelTabInner({
+  data,
+}: {
+  data: AnalyticsDashboardData & { hubspot: NonNullable<AnalyticsDashboardData["hubspot"]> };
+}) {
+  const { funnel } = data.hubspot;
+
+  // --- Filter state ---
+  const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>("all");
+  const [selectedRepId, setSelectedRepId] = useState<string | null>(null);
+
+  // --- Normalize all raw deals once ---
+  const allRawDeals = useMemo<HubspotDeal[]>(
+    () => data.hubspot.deals ?? [],
+    [data.hubspot.deals]
+  );
+
+  const allFunnelDeals = useMemo<FunnelDeal[]>(
+    () => allRawDeals.map(toFunnelDeal),
+    [allRawDeals]
+  );
+
+  // --- Extract reps from full deal set (never filtered) ---
+  const reps = useMemo(() => extractReps(allFunnelDeals), [allFunnelDeals]);
+
+  // --- Apply filters ---
+  const filteredFunnelDeals = useMemo(() => {
+    const range = getDateRangeFromPreset(dateRangePreset);
+    return filterDeals(allFunnelDeals, range, selectedRepId);
+  }, [allFunnelDeals, dateRangePreset, selectedRepId]);
+
+  // Keep track of filtered raw deals (same indices as filteredFunnelDeals) for RepScoreboardCard
+  const filteredRawDeals = useMemo<HubspotDeal[]>(() => {
+    const filteredIds = new Set(filteredFunnelDeals.map((d) => d.dealId));
+    return allRawDeals.filter((d) => filteredIds.has(d.dealId));
+  }, [allRawDeals, filteredFunnelDeals]);
+
+  // --- Decide which funnel metrics to use ---
+  // Default state: no filters → use server-computed funnel (more accurate).
+  // With any filter: recompute from filtered deals.
+  const isFiltered = dateRangePreset !== "all" || selectedRepId !== null;
+
+  const recomputedFunnel = useMemo(
+    () => (isFiltered ? recomputeFunnelMetrics(filteredFunnelDeals, FUNNEL_ORDER) : null),
+    [isFiltered, filteredFunnelDeals]
+  );
+
+  const resolvedFunnel = recomputedFunnel ?? funnel;
 
   // Build ordered funnel stages
-  const orderedStages = FUNNEL_ORDER
-    .map((label) => funnel.stages.find((s) => s.label === label))
-    .filter(Boolean) as DealStage[];
+  const orderedStages = useMemo(() => {
+    return FUNNEL_ORDER
+      .map((label) => resolvedFunnel.stages.find((s) => s.label === label))
+      .filter(Boolean) as DealStage[];
+  }, [resolvedFunnel.stages]);
 
   // Terminal stages
-  const terminalStages = funnel.stages.filter(
-    (s) => TERMINAL_LABELS.includes(s.label)
-  );
+  const terminalStages = useMemo(() => {
+    return resolvedFunnel.stages.filter(
+      (s) =>
+        ["Closed Won", "Closed Lost", "Unlikely", "Churn", "Ping Later", "On Hold"].includes(
+          s.label
+        )
+    );
+  }, [resolvedFunnel.stages]);
 
   const maxStageCount = Math.max(...orderedStages.map((s) => s.count), 1);
 
+  // Rep scoreboard: filtered raw deals + filtered dealsByRep
+  const scoreboardDeals = isFiltered ? filteredRawDeals : allRawDeals;
+  const scoreboardRows = isFiltered
+    ? (recomputedFunnel?.dealsByRep ?? [])
+    : (funnel.dealsByRep ?? []);
+
   return (
     <div className="space-y-6">
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3" role="toolbar" aria-label="Sales funnel filters">
-        <div className="flex items-center gap-1.5">
-          <Filter className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-xs text-muted-foreground">Date:</span>
-          <div className="flex gap-0.5 rounded-lg bg-secondary/50 p-0.5">
-            {DATE_PRESETS.map((preset) => (
-              <button
-                key={preset.value}
-                type="button"
-                onClick={() => setDatePreset(preset.value)}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  datePreset === preset.value
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-                aria-pressed={datePreset === preset.value}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {repNames.length > 0 && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">Rep:</span>
-            <select
-              value={repFilter}
-              onChange={(e) => setRepFilter(e.target.value)}
-              aria-label="Filter by rep"
-              className="rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              <option value="all">All Reps</option>
-              {repNames.map((name) => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {isFiltered && (
-          <button
-            type="button"
-            onClick={() => { setDatePreset("all"); setRepFilter("all"); }}
-            className="text-xs text-muted-foreground underline-offset-4 hover:underline hover:text-foreground"
-          >
-            Clear filters
-          </button>
-        )}
-
-        {isFiltered && (
-          <span className="text-[11px] text-muted-foreground">
-            Showing {filteredDeals.length} of {deals.length} deals
-          </span>
-        )}
-      </div>
+      {/* Global filters */}
+      <SalesFunnelFilters
+        reps={reps}
+        dateRange={dateRangePreset}
+        selectedRepId={selectedRepId}
+        filteredCount={filteredFunnelDeals.length}
+        totalCount={allFunnelDeals.length}
+        onDateRangeChange={setDateRangePreset}
+        onRepChange={setSelectedRepId}
+      />
 
       {/* Top KPI Row */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <StatCard
           label="Total Deals"
-          value={funnel.totalDeals.toLocaleString()}
+          value={resolvedFunnel.totalDeals.toLocaleString()}
           icon={Target}
         />
         <StatCard
           label="Win Rate"
-          value={`${funnel.winRate.toFixed(1)}%`}
-          subtitle={`${funnel.closedWon} won / ${funnel.closedWon + funnel.closedLost} decided`}
-          changeType={funnel.winRate > 50 ? "positive" : "negative"}
+          value={`${resolvedFunnel.winRate.toFixed(1)}%`}
+          subtitle={`${resolvedFunnel.closedWon} won / ${resolvedFunnel.closedWon + resolvedFunnel.closedLost} decided`}
+          changeType={resolvedFunnel.winRate > 50 ? "positive" : "negative"}
           icon={CheckCircle}
         />
         <StatCard
           label="Effective Win Rate"
-          value={`${funnel.effectiveWinRate.toFixed(1)}%`}
+          value={`${resolvedFunnel.effectiveWinRate.toFixed(1)}%`}
           subtitle="Won / (Won + Lost + Unlikely + Churn)"
           icon={Zap}
         />
         <StatCard
           label="No-Show Rate"
-          value={`${funnel.noShowRate.toFixed(1)}%`}
-          changeType={funnel.noShowRate > 15 ? "negative" : "positive"}
-          subtitle={`${funnel.noShows} no-shows`}
+          value={`${resolvedFunnel.noShowRate.toFixed(1)}%`}
+          changeType={resolvedFunnel.noShowRate > 15 ? "negative" : "positive"}
+          subtitle={`${resolvedFunnel.noShows} no-shows`}
           icon={Clock}
         />
         <StatCard
           label="Avg Deal Size"
-          value={fmt$(funnel.avgDealSize)}
+          value={fmt$(resolvedFunnel.avgDealSize)}
           icon={Target}
         />
       </div>
@@ -329,7 +198,9 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
       {/* Funnel Visualization */}
       <div className="rounded-xl border border-border bg-card p-5">
         <h3 className="mb-1 text-sm font-semibold text-foreground">Sales Pipeline Funnel</h3>
-        <p className="mb-5 text-xs text-muted-foreground">Active pipeline stages — ordered by sales process flow</p>
+        <p className="mb-5 text-xs text-muted-foreground">
+          Active pipeline stages — ordered by sales process flow
+        </p>
         <div className="space-y-2">
           {orderedStages.map((stage) => {
             const widthPct = Math.max((stage.count / maxStageCount) * 100, 8);
@@ -364,8 +235,8 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
       </div>
 
       <RepScoreboardCard
-        rows={funnel.dealsByRep ?? []}
-        deals={filteredDeals as typeof data.hubspot.deals}
+        rows={scoreboardRows}
+        deals={scoreboardDeals}
         stripeChurnEvents={data.stripe?.subscriptions?.recentChurnEvents ?? []}
       />
 
@@ -375,40 +246,42 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
         <div className="rounded-xl border border-border bg-card p-5">
           <h3 className="mb-4 text-sm font-semibold text-foreground">Bottleneck Analysis</h3>
           <div className="space-y-3">
-            {funnel.noShowRate > 15 && (
+            {resolvedFunnel.noShowRate > 15 && (
               <BottleneckAlert
                 severity="critical"
-                title={`${funnel.noShowRate.toFixed(0)}% No-Show Rate`}
-                description={`${funnel.noShows} prospects scheduled demos but didn't show. Implement SMS reminders + shorter booking windows.`}
+                title={`${resolvedFunnel.noShowRate.toFixed(0)}% No-Show Rate`}
+                description={`${resolvedFunnel.noShows} prospects scheduled demos but didn't show. Implement SMS reminders + shorter booking windows.`}
               />
             )}
-            {funnel.unlikely > 20 && (
+            {resolvedFunnel.unlikely > 20 && (
               <BottleneckAlert
                 severity="warning"
-                title={`${funnel.unlikely} Deals Marked "Unlikely"`}
+                title={`${resolvedFunnel.unlikely} Deals Marked "Unlikely"`}
                 description="Large number of deals stalled in unlikely. Review qualification criteria and consider archiving stale deals."
               />
             )}
-            {funnel.churn > 10 && (
+            {resolvedFunnel.churn > 10 && (
               <BottleneckAlert
                 severity="warning"
-                title={`${funnel.churn} Churned Customers`}
+                title={`${resolvedFunnel.churn} Churned Customers`}
                 description="Implement 30/60/90 day check-in cadence and build proactive retention workflows."
               />
             )}
-            {funnel.demoFollowUp > funnel.closedWon && (
+            {resolvedFunnel.demoFollowUp > resolvedFunnel.closedWon && (
               <BottleneckAlert
                 severity="info"
                 title="Follow-Up > Closed Won"
-                description={`${funnel.demoFollowUp} deals in follow-up vs ${funnel.closedWon} won. Speed up post-demo proposal delivery.`}
+                description={`${resolvedFunnel.demoFollowUp} deals in follow-up vs ${resolvedFunnel.closedWon} won. Speed up post-demo proposal delivery.`}
               />
             )}
-            {funnel.noShowRate <= 15 && funnel.unlikely <= 20 && funnel.churn <= 10 && (
-              <div className="flex items-center gap-2 rounded-lg bg-emerald-500/5 px-3 py-2.5">
-                <CheckCircle className="h-4 w-4 text-emerald-500" />
-                <span className="text-sm text-emerald-500">Pipeline health looks good!</span>
-              </div>
-            )}
+            {resolvedFunnel.noShowRate <= 15 &&
+              resolvedFunnel.unlikely <= 20 &&
+              resolvedFunnel.churn <= 10 && (
+                <div className="flex items-center gap-2 rounded-lg bg-emerald-500/5 px-3 py-2.5">
+                  <CheckCircle className="h-4 w-4 text-emerald-500" />
+                  <span className="text-sm text-emerald-500">Pipeline health looks good!</span>
+                </div>
+              )}
           </div>
         </div>
 
@@ -416,9 +289,15 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
         <div className="rounded-xl border border-border bg-card p-5">
           <h3 className="mb-4 text-sm font-semibold text-foreground">Terminal Stages</h3>
           <div className="mb-4 flex justify-center gap-4">
-            <RingStat value={funnel.winRate} max={100} label="Win Rate" color="#22c55e" size={90} />
             <RingStat
-              value={100 - funnel.winRate}
+              value={resolvedFunnel.winRate}
+              max={100}
+              label="Win Rate"
+              color="#22c55e"
+              size={90}
+            />
+            <RingStat
+              value={100 - resolvedFunnel.winRate}
               max={100}
               label="Loss Rate"
               color="#ef4444"
@@ -429,7 +308,10 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
             {[...terminalStages]
               .sort((a, b) => b.count - a.count)
               .map((stage) => (
-                <div key={stage.stageId} className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2">
+                <div
+                  key={stage.stageId}
+                  className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2"
+                >
                   <div className="flex items-center gap-2">
                     <div
                       className="h-2.5 w-2.5 rounded-full"
@@ -452,7 +334,7 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
       </div>
 
       {/* Deal Sources Performance */}
-      {funnel.dealsBySource.length > 0 && (
+      {resolvedFunnel.dealsBySource.length > 0 && (
         <div className="rounded-xl border border-border bg-card p-5">
           <h3 className="mb-4 text-sm font-semibold text-foreground">Performance by Source</h3>
           <div className="overflow-x-auto">
@@ -467,17 +349,22 @@ export function SalesFunnelTab({ data }: { data: AnalyticsDashboardData | null }
                 </tr>
               </thead>
               <tbody>
-                {[...funnel.dealsBySource]
+                {[...resolvedFunnel.dealsBySource]
                   .sort((a, b) => b.value - a.value)
                   .map((s, i) => {
-                    const share = funnel.totalDeals > 0 ? (s.count / funnel.totalDeals) * 100 : 0;
+                    const share =
+                      resolvedFunnel.totalDeals > 0
+                        ? (s.count / resolvedFunnel.totalDeals) * 100
+                        : 0;
                     return (
                       <tr key={i} className="border-b border-border/50 last:border-0">
                         <td className="py-2.5 font-medium text-foreground">{s.source}</td>
                         <td className="py-2.5 text-right tabular-nums">{s.count}</td>
-                        <td className="py-2.5 text-right tabular-nums font-medium">{fmt$(s.value)}</td>
+                        <td className="py-2.5 text-right tabular-nums font-medium">
+                          {fmt$(s.value)}
+                        </td>
                         <td className="py-2.5 text-right tabular-nums text-muted-foreground">
-                          {s.count > 0 ? fmt$(s.value / s.count) : "\u2014"}
+                          {s.count > 0 ? fmt$(s.value / s.count) : "—"}
                         </td>
                         <td className="py-2.5 text-right">
                           <div className="inline-flex items-center gap-2">
@@ -535,7 +422,9 @@ function BottleneckAlert({
   }[severity];
 
   return (
-    <div className={`flex items-start gap-2 rounded-lg border ${config.border} ${config.bg} px-3 py-2.5`}>
+    <div
+      className={`flex items-start gap-2 rounded-lg border ${config.border} ${config.bg} px-3 py-2.5`}
+    >
       {config.icon}
       <div className="text-xs">
         <p className={`font-semibold ${config.titleColor}`}>{title}</p>
