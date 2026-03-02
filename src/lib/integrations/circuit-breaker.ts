@@ -258,6 +258,44 @@ export function getCircuitState(provider: string, userId: string): CircuitState 
   return "CLOSED";
 }
 
+export interface CircuitSnapshot {
+  state: CircuitState;
+  consecutiveFailures: number;
+  currentCooldownMs: number;
+  openCount: number;
+  openedAt: number | null;
+  /** When the circuit will transition to HALF_OPEN (null if CLOSED or already past cooldown). */
+  nextRetryAt: Date | null;
+}
+
+/**
+ * Async read of the full circuit entry for observability endpoints.
+ * Reads from DB to ensure accuracy (in-memory cache may be cold).
+ */
+export async function getCircuitSnapshot(
+  provider: string,
+  userId: string,
+): Promise<CircuitSnapshot> {
+  const entry = await loadEntry(provider, userId);
+
+  let nextRetryAt: Date | null = null;
+  if (entry.state === "OPEN" && entry.openedAt !== null) {
+    const retryAtMs = entry.openedAt + entry.currentCooldownMs;
+    if (retryAtMs > Date.now()) {
+      nextRetryAt = new Date(retryAtMs);
+    }
+  }
+
+  return {
+    state: entry.state,
+    consecutiveFailures: entry.consecutiveFailures,
+    currentCooldownMs: entry.currentCooldownMs,
+    openCount: entry.openCount,
+    openedAt: entry.openedAt,
+    nextRetryAt,
+  };
+}
+
 /**
  * Error thrown when the circuit is open and the request is rejected.
  */
