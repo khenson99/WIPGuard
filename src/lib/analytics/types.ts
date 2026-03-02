@@ -438,6 +438,47 @@ export interface WebflowFormEntry {
   count: number;
 }
 
+export interface WebflowPageDetail {
+  id: string;
+  title: string;
+  slug: string;
+  createdOn: string | null;
+  updatedOn: string | null;
+  draft: boolean;
+  archived: boolean;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  openGraphImageUrl: string | null;
+}
+
+export interface WebflowCollectionDetail {
+  id: string;
+  displayName: string;
+  slug: string;
+  itemCount: number;
+  createdOn: string | null;
+}
+
+export interface WebflowFormTrendEntry {
+  date: string;
+  submissions: number;
+}
+
+export interface WebflowSeoAudit {
+  totalPages: number;
+  pagesWithSeoTitle: number;
+  pagesWithSeoDescription: number;
+  pagesWithOgImage: number;
+  seoScore: number;
+}
+
+export interface WebflowContentFreshness {
+  updatedLast7d: number;
+  updatedLast30d: number;
+  updatedLast90d: number;
+  staleOver90d: number;
+}
+
 export interface WebflowData {
   siteName: string;
   lastPublished: string;
@@ -445,10 +486,22 @@ export interface WebflowData {
   totalCollections: number;
   formSubmissions: WebflowFormEntry[];
   customDomains: string[];
-  traffic: number;
-  bounceRate: number;
-  clicks: number;
-  returningVisitors: number;
+
+  publishedPages: number;
+  draftPages: number;
+  archivedPages: number;
+  pages: WebflowPageDetail[];
+  seoAudit: WebflowSeoAudit;
+  contentFreshness: WebflowContentFreshness;
+  recentlyUpdatedPages: WebflowPageDetail[];
+
+  collections: WebflowCollectionDetail[];
+  totalCmsItems: number;
+  emptyCollections: number;
+
+  formTrend: WebflowFormTrendEntry[];
+  totalFormSubmissions: number;
+
   _meta: AnalyticsTimestamp;
 }
 

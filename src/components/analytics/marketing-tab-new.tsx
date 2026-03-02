@@ -924,20 +924,20 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
 
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-secondary/40 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Traffic / Visits</p>
-                  <p className="text-lg font-semibold text-foreground">{fmtNum(webflow.traffic)}</p>
+                  <p className="text-xs text-muted-foreground mb-1">Published Pages</p>
+                  <p className="text-lg font-semibold text-foreground">{fmtNum(webflow.publishedPages ?? webflow.totalPages)}</p>
                 </div>
                 <div className="bg-secondary/40 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Bounce Rate</p>
-                  <p className="text-lg font-semibold text-foreground">{fmtPct(webflow.bounceRate)}</p>
+                  <p className="text-xs text-muted-foreground mb-1">SEO Health</p>
+                  <p className="text-lg font-semibold text-foreground">{(webflow.seoAudit?.seoScore ?? 0)}%</p>
                 </div>
                 <div className="bg-secondary/40 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Clicks</p>
-                  <p className="text-lg font-semibold text-foreground">{fmtNum(webflow.clicks)}</p>
+                  <p className="text-xs text-muted-foreground mb-1">CMS Items</p>
+                  <p className="text-lg font-semibold text-foreground">{fmtNum(webflow.totalCmsItems ?? 0)}</p>
                 </div>
                 <div className="bg-secondary/40 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Repeat Visitors</p>
-                  <p className="text-lg font-semibold text-foreground">{fmtNum(webflow.returningVisitors)}</p>
+                  <p className="text-xs text-muted-foreground mb-1">Form Submissions</p>
+                  <p className="text-lg font-semibold text-foreground">{fmtNum(webflow.totalFormSubmissions ?? 0)}</p>
                 </div>
                 <div className="bg-secondary/40 rounded-lg p-3">
                   <p className="text-xs text-muted-foreground mb-1">Pages</p>

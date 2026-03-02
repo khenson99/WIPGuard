@@ -5,6 +5,11 @@ import {
   GATopPage,
   WebflowData,
   WebflowFormEntry,
+  WebflowPageDetail,
+  WebflowCollectionDetail,
+  WebflowFormTrendEntry,
+  WebflowSeoAudit,
+  WebflowContentFreshness,
   AnalyticsTimestamp,
 } from "./types";
 
@@ -409,14 +414,100 @@ export async function fetchWebflowData(
     return "";
   }).filter(Boolean);
 
-  const pages = asArray(pagesResponse.items).length
+  const rawPages = asArray(pagesResponse.items).length
     ? asArray(pagesResponse.items)
     : asArray(pagesResponse.pages);
-  const collections = asArray(collectionsResponse.items).length
+  const rawCollections = asArray(collectionsResponse.items).length
     ? asArray(collectionsResponse.items)
     : asArray(collectionsResponse.collections);
 
+  // ── Parse page details ──
+  const now = Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const daysSince = (dateStr: string | null): number => {
+    if (!dateStr) return Infinity;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return Infinity;
+    return Math.floor((now - d.getTime()) / dayMs);
+  };
+  const strOrNull = (v: unknown): string | null =>
+    typeof v === "string" && v.length > 0 ? v : null;
+
+  const pageDetails: WebflowPageDetail[] = rawPages.map((entry) => {
+    const p = requireObject(entry);
+    const seo = requireObject(p.seo);
+    const og = requireObject(p.openGraph);
+    return {
+      id: String(p.id || p._id || ""),
+      title: String(p.title || p.name || ""),
+      slug: String(p.slug || ""),
+      createdOn: strOrNull(p.createdOn),
+      updatedOn: strOrNull(p.updatedOn || p.lastUpdated),
+      draft: p.draft === true,
+      archived: p.archived === true,
+      seoTitle: strOrNull(seo.title || p.seoTitle),
+      seoDescription: strOrNull(seo.description || p.seoDescription),
+      openGraphImageUrl: strOrNull(og.imageUrl || og.image),
+    };
+  });
+
+  // ── SEO audit ──
+  const totalPageCount = pageDetails.length;
+  const pagesWithSeoTitle = pageDetails.filter((p) => p.seoTitle !== null).length;
+  const pagesWithSeoDescription = pageDetails.filter((p) => p.seoDescription !== null).length;
+  const pagesWithOgImage = pageDetails.filter((p) => p.openGraphImageUrl !== null).length;
+  const seoScore =
+    totalPageCount > 0
+      ? Math.round(
+          40 * (pagesWithSeoTitle / totalPageCount) +
+          40 * (pagesWithSeoDescription / totalPageCount) +
+          20 * (pagesWithOgImage / totalPageCount)
+        )
+      : 0;
+  const seoAudit: WebflowSeoAudit = {
+    totalPages: totalPageCount,
+    pagesWithSeoTitle,
+    pagesWithSeoDescription,
+    pagesWithOgImage,
+    seoScore,
+  };
+
+  // ── Content freshness ──
+  const contentFreshness: WebflowContentFreshness = {
+    updatedLast7d: pageDetails.filter((p) => daysSince(p.updatedOn) <= 7).length,
+    updatedLast30d: pageDetails.filter((p) => daysSince(p.updatedOn) <= 30).length,
+    updatedLast90d: pageDetails.filter((p) => daysSince(p.updatedOn) <= 90).length,
+    staleOver90d: pageDetails.filter((p) => daysSince(p.updatedOn) > 90).length,
+  };
+
+  // ── Recently updated pages (top 10) ──
+  const recentlyUpdatedPages = [...pageDetails]
+    .filter((p) => p.updatedOn !== null)
+    .sort((a, b) => new Date(b.updatedOn!).getTime() - new Date(a.updatedOn!).getTime())
+    .slice(0, 10);
+
+  // ── Draft / published / archived counts ──
+  const archivedPages = pageDetails.filter((p) => p.archived).length;
+  const draftPages = pageDetails.filter((p) => p.draft && !p.archived).length;
+  const publishedPages = totalPageCount - draftPages - archivedPages;
+
+  // ── Parse collection details ──
+  const collectionDetails: WebflowCollectionDetail[] = rawCollections.map((entry) => {
+    const c = requireObject(entry);
+    return {
+      id: String(c.id || c._id || ""),
+      displayName: String(c.displayName || c.name || c.slug || ""),
+      slug: String(c.slug || ""),
+      itemCount: typeof c.itemCount === "number" ? c.itemCount : 0,
+      createdOn: strOrNull(c.createdOn),
+    };
+  });
+  const totalCmsItems = collectionDetails.reduce((sum, c) => sum + c.itemCount, 0);
+  const emptyCollections = collectionDetails.filter((c) => c.itemCount === 0).length;
+
+  // ── Form submissions + trend ──
   let formSubmissions: WebflowFormEntry[] = [];
+  let formTrend: WebflowFormTrendEntry[] = [];
   try {
     const formsRes = await fetch(`${baseUrl}/sites/${siteId}/form_submissions`, {
       headers,
@@ -428,43 +519,70 @@ export async function fetchWebflowData(
         : asArray(formsResponse.formSubmissions);
 
       const formMap: Record<string, number> = {};
+      const trendMap: Record<string, number> = {};
       items.forEach((submission) => {
         const row = requireObject(submission);
-        
+
         // Filter by date if createdOn is available and bounds exist
-        if (from && to && row.createdOn) {
-          const createdOnStr = String(row.createdOn);
-          const createdDate = new Date(createdOnStr);
-          if (!isNaN(createdDate.getTime())) {
-            if (createdDate < from || createdDate > to) {
-              return; // Skip submission outside range
-            }
+        let createdDate: Date | null = null;
+        if (row.createdOn) {
+          const d = new Date(String(row.createdOn));
+          if (!isNaN(d.getTime())) createdDate = d;
+        }
+
+        if (from && to && createdDate) {
+          if (createdDate < from || createdDate > to) {
+            return; // Skip submission outside range
           }
         }
-        
+
         const formName = String(row.formName || row.formId || "Unknown");
         formMap[formName] = (formMap[formName] || 0) + 1;
+
+        // Bucket by day for trend
+        if (createdDate) {
+          const dayKey = createdDate.toISOString().split("T")[0];
+          trendMap[dayKey] = (trendMap[dayKey] || 0) + 1;
+        }
       });
       formSubmissions = Object.entries(formMap).map(([formName, count]) => ({
         formName,
         count,
       }));
+      formTrend = Object.entries(trendMap)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, submissions]) => ({ date, submissions }));
     }
   } catch {
     formSubmissions = [];
+    formTrend = [];
   }
+
+  const totalFormSubmissions = formSubmissions.reduce((sum, f) => sum + f.count, 0);
 
   return {
     siteName,
     lastPublished,
-    totalPages: pages.length,
-    totalCollections: collections.length,
+    totalPages: totalPageCount,
+    totalCollections: rawCollections.length,
     formSubmissions,
     customDomains,
-    traffic: 0,
-    bounceRate: 0,
-    clicks: 0,
-    returningVisitors: 0,
+
+    publishedPages,
+    draftPages,
+    archivedPages,
+    pages: pageDetails,
+    seoAudit,
+    contentFreshness,
+    recentlyUpdatedPages,
+
+    collections: collectionDetails,
+    totalCmsItems,
+    emptyCollections,
+
+    formTrend,
+    totalFormSubmissions,
+
     _meta: makeMeta("live"),
   };
 }
