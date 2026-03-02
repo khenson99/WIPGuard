@@ -3,7 +3,7 @@
 import { TrendingUp, BarChart3, ArrowRight } from "lucide-react";
 import type { AnalyticsDashboardData, DemoOutcome } from "@/lib/analytics/types";
 import { StatCard } from "./stat-card";
-import { RingStat } from "./bar-display";
+import { DemoVolumeChart } from "./demo-volume-chart";
 
 const OUTCOME_COLORS: Record<DemoOutcome, string> = {
   completed: "#22c55e",
@@ -66,6 +66,9 @@ export function DemoAttributionView({ data }: { data: AnalyticsDashboardData | n
           icon={TrendingUp}
         />
       </div>
+
+      {/* Demo Volume Chart */}
+      <DemoVolumeChart weeklyTrend={demo.weeklyTrend} demos={demo.demos} />
 
       {/* Source → Outcome Conversion Matrix */}
       <div className="rounded-xl border border-border bg-card p-5">

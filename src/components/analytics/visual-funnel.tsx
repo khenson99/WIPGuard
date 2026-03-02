@@ -1,24 +1,26 @@
 "use client";
 
-import { useMemo } from "react";
-import { 
-  ArrowDown, 
-  Eye, 
-  Target, 
-  Calendar, 
-  MessageSquare, 
-  FileText, 
-  Link as LinkIcon, 
+import { useMemo, useState, useId } from "react";
+import {
+  ArrowDown,
+  Eye,
+  Target,
+  Calendar,
+  MessageSquare,
+  FileText,
+  Link as LinkIcon,
   CheckCircle2,
   TrendingUp,
   XCircle
 } from "lucide-react";
+import { FunnelTooltip } from "./funnel-tooltip";
 
 export interface FunnelStageData {
   id: string;
   label: string;
   count: number;
   value: number;
+  avgDays?: number;
 }
 
 interface VisualFunnelProps {
@@ -59,7 +61,24 @@ function getStageStyle(label: string, pct: number) {
   }
 }
 
+function formatTimeInStage(avgDays: number): string {
+  if (avgDays < 1 / 24) {
+    const minutes = Math.round(avgDays * 24 * 60);
+    return `Avg: ${minutes} min in stage`;
+  }
+  if (avgDays < 1) {
+    const hours = Math.round(avgDays * 24);
+    return `Avg: ${hours} hour${hours !== 1 ? "s" : ""} in stage`;
+  }
+  const days = parseFloat(avgDays.toFixed(1));
+  return `Avg: ${days} day${days === 1 ? "" : "s"} in stage`;
+}
+
 export function VisualFunnel({ stages, onStageClick }: VisualFunnelProps) {
+  const [hoveredBadgeIndex, setHoveredBadgeIndex] = useState<number | null>(null);
+  const [focusedBadgeIndex, setFocusedBadgeIndex] = useState<number | null>(null);
+  const tooltipIdPrefix = useId();
+
   const stageMap = useMemo(() => {
     const map = new Map<string, FunnelStageData>();
     stages.forEach((s) => map.set(s.label, s));
@@ -86,33 +105,64 @@ export function VisualFunnel({ stages, onStageClick }: VisualFunnelProps) {
     <div className="flex w-full flex-col items-center py-8">
       {/* Container for the connected line and nodes */}
       <div className="relative flex w-full max-w-2xl flex-col items-center">
-        
+
         {mainStages.map((stage, idx) => {
           const pct = Math.max((stage.count / maxCount) * 100, 15);
-          const hasNext = idx < mainStages.length - 1 || closedWon || closedLost;
           const prevCount = idx > 0 ? mainStages[idx - 1].count : null;
           const conversion = prevCount ? Math.round((stage.count / prevCount) * 100) : null;
-          
+          // avgDays lives on the *previous* stage (time to get from prev → current)
+          const prevStage = idx > 0 ? mainStages[idx - 1] : null;
+          const badgeAvgDays = prevStage?.avgDays;
+          const tooltipId = `${tooltipIdPrefix}-tooltip-${idx}`;
+          const isTooltipVisible =
+            (hoveredBadgeIndex === idx || focusedBadgeIndex === idx) &&
+            badgeAvgDays != null;
+
           const { icon: StageIcon, color, bg, border, gradient } = getStageStyle(stage.label, pct);
 
           return (
-            <div key={stage.id} className="relative flex w-full flex-col items-center group/stage">
+            <div
+              key={stage.id}
+              className="relative flex w-full flex-col items-center group/stage motion-safe:animate-funnel-enter"
+              style={{ animationDelay: `${idx * 80}ms` }}
+            >
               {/* Vertical connector line from previous stage */}
               {idx > 0 && (
                 <div className="relative flex h-12 w-full items-center justify-center">
                   <div className="absolute top-0 bottom-0 w-px bg-gradient-to-b from-border/80 to-border/30" />
-                  
+
                   {/* Conversion Badge */}
                   {conversion !== null && (
-                    <div className="relative z-10 rounded-full border border-border/50 bg-background/95 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm transition-colors group-hover/stage:border-border group-hover/stage:text-foreground">
-                      {conversion}% conversion
+                    <div className="relative flex justify-center">
+                      <button
+                        type="button"
+                        className="relative z-10 rounded-full border border-border/50 bg-background/95 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm transition-colors group-hover/stage:border-border group-hover/stage:text-foreground hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-default motion-safe:animate-funnel-badge-enter"
+                        style={{ animationDelay: `${idx * 80 + 40}ms` }}
+                        aria-label={`${conversion}% conversion${badgeAvgDays != null ? `. ${formatTimeInStage(badgeAvgDays)}` : ""}`}
+                        aria-describedby={badgeAvgDays != null ? tooltipId : undefined}
+                        onMouseEnter={() => setHoveredBadgeIndex(idx)}
+                        onMouseLeave={() => setHoveredBadgeIndex(null)}
+                        onFocus={() => setFocusedBadgeIndex(idx)}
+                        onBlur={() => setFocusedBadgeIndex(null)}
+                      >
+                        {conversion}% conversion
+                      </button>
+
+                      {badgeAvgDays != null && (
+                        <FunnelTooltip
+                          id={tooltipId}
+                          content={formatTimeInStage(badgeAvgDays)}
+                          visible={isTooltipVisible}
+                          className="absolute -top-9 left-1/2 -translate-x-1/2"
+                        />
+                      )}
                     </div>
                   )}
                 </div>
               )}
 
               {/* Stage Card */}
-              <div 
+              <div
                 className={`relative flex w-full cursor-pointer items-center overflow-hidden rounded-xl border bg-card p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${border}`}
                 onClick={() => onStageClick?.(stage)}
               >
@@ -120,10 +170,10 @@ export function VisualFunnel({ stages, onStageClick }: VisualFunnelProps) {
                 <div className="absolute inset-x-0 bottom-0 top-0 opacity-0 transition-opacity duration-300 group-hover/stage:opacity-100">
                   <div className={`absolute inset-0 bg-gradient-to-r from-transparent via-transparent ${gradient}`} />
                 </div>
-                
+
                 {/* Subtle percentage indicator on the left edge */}
-                <div 
-                  className={`absolute left-0 top-0 bottom-0 w-1 ${bg} opacity-50`} 
+                <div
+                  className={`absolute left-0 top-0 bottom-0 w-1 ${bg} opacity-50`}
                   style={{ height: `${pct}%`, top: 'auto', bottom: 0 }}
                 />
 
@@ -138,12 +188,12 @@ export function VisualFunnel({ stages, onStageClick }: VisualFunnelProps) {
                   <div className="flex flex-1 flex-col">
                     <h4 className="text-base font-semibold tracking-tight text-foreground">{stage.label}</h4>
                     <div className="mt-1 flex items-center gap-3">
-                      
+
                       {/* Completion bar mini */}
                       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary/50">
-                        <div 
-                          className={`h-full rounded-full bg-current ${color}`} 
-                          style={{ width: `${pct}%` }} 
+                        <div
+                          className={`h-full rounded-full bg-current ${color}`}
+                          style={{ width: `${pct}%` }}
                         />
                       </div>
                       <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
@@ -175,7 +225,7 @@ export function VisualFunnel({ stages, onStageClick }: VisualFunnelProps) {
             <div className="absolute -top-2 left-1/4 right-1/4 h-8 border-t border-l border-r border-border/50 rounded-t-xl" />
             <div className="absolute top-6 left-1/4 h-6 w-px bg-border/50" />
             <div className="absolute top-6 right-1/4 h-6 w-px bg-border/50" />
-            
+
             {/* Closed Won Branch */}
             <div className="flex w-1/2 flex-col items-center px-3 pt-12">
               <div className="group flex w-full flex-col items-center justify-center rounded-xl border border-emerald-500/20 bg-gradient-to-b from-emerald-500/5 to-transparent p-5 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-500/40 hover:shadow-md">

@@ -2,14 +2,16 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, CalendarDays, CalendarCheck, CalendarClock } from "lucide-react";
+import { Plus } from "lucide-react";
 import { ConferenceCard } from "@/components/conferences/conference-card";
 import { ConferenceCreateModal } from "@/components/conferences/conference-create-modal";
+import { ConferenceStatCards } from "@/components/conferences/conference-stat-cards";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-error-banner";
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-state";
 import { DashboardStaleBanner } from "@/components/dashboard/dashboard-stale-banner";
 import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
+import { computeConferenceStats } from "@/lib/conferences/compute-conference-stats";
 import {
   CONFERENCE_STATUS_LABELS,
   type ConferenceListItem,
@@ -82,20 +84,10 @@ export function ConferenceDashboard() {
     });
   }, [conferences, query, resource.lastUpdatedAt, statusFilter, timingFilter]);
 
-  const stats = useMemo(() => {
-    const now = resource.lastUpdatedAt ? Date.parse(resource.lastUpdatedAt) : null;
-    let upcoming = 0;
-    let past = 0;
-    for (const conf of conferences) {
-      const end = Date.parse(conf.endDate);
-      if (now === null || Number.isNaN(end) || end >= now) {
-        upcoming++;
-      } else {
-        past++;
-      }
-    }
-    return { total: conferences.length, upcoming, past };
-  }, [conferences, resource.lastUpdatedAt]);
+  const stats = useMemo(
+    () => computeConferenceStats(conferences),
+    [conferences]
+  );
 
   const onCreated = async (created: { id: string }, opts: { seedPlaybook: boolean }) => {
     setCreateOpen(false);
@@ -171,29 +163,7 @@ export function ConferenceDashboard() {
         <DashboardErrorBanner message={resource.error} onRetry={resource.refresh} />
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {[
-          { label: "Total", value: stats.total, icon: CalendarDays, color: "var(--primary)" },
-          { label: "Upcoming", value: stats.upcoming, icon: CalendarClock, color: "#22c55e" },
-          { label: "Past", value: stats.past, icon: CalendarCheck, color: "#3b82f6" },
-        ].map((stat) => (
-          <div
-            key={stat.label}
-            className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3"
-          >
-            <div
-              className="flex h-9 w-9 items-center justify-center rounded-lg"
-              style={{ backgroundColor: `${stat.color}18` }}
-            >
-              <stat.icon className="h-4 w-4" style={{ color: stat.color }} />
-            </div>
-            <div>
-              <p className="text-lg font-bold text-foreground">{stat.value}</p>
-              <p className="text-xs text-muted-foreground">{stat.label}</p>
-            </div>
-          </div>
-        ))}
-      </div>
+      <ConferenceStatCards stats={stats} />
 
       <div className="flex flex-wrap items-center gap-3">
         <select

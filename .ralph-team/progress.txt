@@ -3,6 +3,33 @@
 # It serves as cumulative memory across fresh-context Ralph iterations.
 # =====================================================================
 
+--- Frontend Agent Iteration 1 | Issue #307 ---
+Timestamp: 2026-03-02T01:45:00Z
+Branch: agent/frontend/issue-307
+Status: completed
+
+## Changes
+- src/lib/conferences/compute-conference-stats.ts — NEW: pure function computing total/upcoming/inProgress/past/totalLeads from ConferenceListItem[]
+- src/components/conferences/conference-stat-cards.tsx — NEW: ConferenceStatCards component with responsive grid and proper ARIA labels
+- src/components/conferences/conference-dashboard.tsx — MODIFIED: removed inline stat card code, now uses ConferenceStatCards + computeConferenceStats
+- src/lib/conferences/__tests__/compute-conference-stats.test.ts — NEW: 8 unit tests
+- src/components/conferences/__tests__/conference-stat-cards.test.tsx — NEW: 4 component tests
+
+## Key Decisions
+- Stat cards render AFTER DashboardStaleBanner and DashboardErrorBanner — ordering is correct
+- Added "In Progress" as a third timing category (started but not ended); uses startDate < now < endDate
+- Added "Total Leads" using _count.leads from ConferenceListItem (no attendeeCount field exists)
+- Responsive grid: grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 (5 cards total)
+- Filename convention: kebab-case (conference-stat-cards.tsx, compute-conference-stats.ts)
+- Project uses lucide-react for icons; no separate icon library needed
+
+## Learnings
+- ConferenceListItem has _count.{deadlines,leads,expenses,tasks,projects} — use leads for total leads stat
+- No attendeeCount field on ConferenceListItem — plan assumption was wrong
+- Vitest config uses jsdom environment and @/ alias via resolve.alias
+- Tests use @testing-library/react + vitest; no global setup file needed
+- Pre-existing TS errors (missing Prisma client) throughout repo; new files have zero TS errors
+
 --- Architect Iteration 1 ---
 Timestamp: 2026-02-15T14:30:00Z
 
@@ -41,6 +68,29 @@ Timestamp: 2026-02-15T14:30:00Z
 - WGX-004 was split into subtasks #27-31; all closed — concurrency foundation is solid
 - Integration framework already scaffolded (IntegrationConnection model, /api/integrations routes)
 
+--- Frontend Agent Iteration 1 | Issue #306 ---
+Timestamp: 2026-03-02T01:51:00Z
+Branch: agent/frontend/issue-306
+Status: completed
+Changes:
+  - src/hooks/useRovingTabindex.ts — NEW: reusable hook for 2D keyboard navigation in flat arrays
+  - src/components/whip/wip-pressure-heatmap.tsx — Updated with proper ARIA grid pattern
+  - src/hooks/__tests__/useRovingTabindex.test.ts — NEW: 16 unit tests
+  - src/components/whip/__tests__/wip-pressure-heatmap.a11y.test.tsx — NEW: 17 a11y tests
+Tests: 33 passed (2 test files), 0 failed
+Key patterns:
+  - ARIA grid: role=grid → role=row (display:contents) → role=gridcell
+  - Responsive column tracking via matchMedia (lg:4, sm:3, default:2)
+  - Roving tabindex: only focused cell gets tabIndex=0, all others -1
+  - Arrow keys, Home/End, Ctrl+Home/Ctrl+End supported
+  - focus-visible:ring-2 for keyboard focus ring (not focus: to avoid mouse visual noise)
+Gotchas:
+  - jsdom sets window.innerWidth to 1024 by default — must mock to 0 in tests for 2-col layout
+  - window.matchMedia must also be mocked in jsdom tests
+  - display:contents on row wrappers may not expose role=row to all screen readers,
+    but aria-rowindex/aria-colindex on each gridcell ensures AT gets correct position info
+  - The act() warning from React on Ctrl+Home test is benign (userEvent handles it)
+
 --- Backend Agent Iteration 1 | Issue #5 ---
 Timestamp: 2026-02-15T15:10:00Z
 Status: completed
@@ -60,3 +110,47 @@ Learnings:
   - Hierarchy endpoint needs flat mode for table consumers (board uses tree, table uses flat)
   - vitest config uses @/ alias via resolve.alias in vitest.config.ts
 
+
+--- Frontend Agent | Issue #296 ---
+Timestamp: 2026-03-02T02:50:00Z
+Branch: agent/frontend/issue-296
+Status: completed
+Changes:
+  - src/lib/__mocks__/recharts.tsx — NEW: Shared recharts mock for vitest/jsdom
+    (ResponsiveContainer, LineChart, AreaChart, BarChart, PieChart, ComposedChart, etc.)
+  - src/components/charts/__tests__/spark-line.test.tsx — NEW: 5 tests (dimensions, null for <2 pts, custom color)
+  - src/components/charts/__tests__/donut-chart.test.tsx — NEW: 4 tests (center label/value, size, single segment)
+Tests: 19 passed (5 test files: dashboard-trends, spark-line, donut-chart, use-dashboard-resource, personalized-dashboard)
+Key patterns:
+  - Dashboard visual refresh (DonutChart workload, StackedBarChart team status, SparkLine completed trend)
+    was already merged to main via PR #276 (squash commit ed0f418). The 3 unshipped commits
+    (e9d953f, 9ad5703, 76217b2) were squash-merged.
+  - Recharts mock pattern: vi.mock("recharts", async () => import("@/lib/__mocks__/recharts"))
+    Works without a global vitest setup file.
+  - SparkLine returns null for data.length < 2 — guards against single-point render.
+  - DonutChart accepts centerLabel + centerValue for inside-ring text overlay.
+  - focusKey state in PersonalizedDashboard drives interactive focus list (blocked/overdue/dueSoon/active).
+  - completedByDay sparkline is sliced to last 7 days (.slice(-7)) to match "Completed (7d)" label.
+  - teamStatusKeys legend humanizes WORKING_ON_TODAY → Working On Today via .replace() chain.
+Gotchas:
+  - Pre-existing TS errors in deals/ and analytics customer-journey files — not related to dashboard.
+  - recharts mock needs to cover ALL exports used by all chart components (LineChart, AreaChart, BarChart,
+    PieChart, ComposedChart, Bar, Line, Area, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend).
+
+--- Frontend Agent Iteration | Issue #148 ---
+Timestamp: 2026-03-02T02:50:00Z
+Branch: agent/frontend/issue-148
+Status: completed
+Changes:
+  - src/app/globals.css — Added funnel animation keyframes (funnel-enter, funnel-badge-enter, tooltip-fade-in) via @keyframes + @theme (Tailwind v4 syntax). motion-safe: variant in Tailwind v4 handles prefers-reduced-motion automatically.
+  - src/components/analytics/funnel-tooltip.tsx — NEW: Accessible tooltip component (role="tooltip", conditional render, dark mode aware, motion-safe:animate-tooltip-fade-in)
+  - src/components/analytics/visual-funnel.tsx — Extended FunnelStageData with optional avgDays; added staggered entry animations (motion-safe:animate-funnel-enter) on stage rows + badge; converted conversion badge div → button with onFocus/onBlur/onMouseEnter/onMouseLeave + aria-describedby; integrated FunnelTooltip; time formatting helper (days/hours/minutes)
+  - src/components/analytics/visual-funnel.test.tsx — NEW: 11 component tests covering tooltip on focus/hover, hours format, blur hides, no tooltip when avgDays absent, aria-describedby wiring, empty state, onStageClick
+Tests: 11 passed, 0 failed
+Learnings:
+  - Tailwind v4 custom animations: define @keyframes + register in @theme { --animate-<name>: ... } in globals.css; use animate-<name> and motion-safe:animate-<name> in JSX
+  - Tailwind v4 has no tailwind.config.ts — all theme extensions go in globals.css @theme block
+  - Tests co-located with components (not in __tests__ subdir) in this project
+  - fireEvent.focus() in jsdom correctly triggers onFocus handlers; no need for userEvent.tab() for tooltip trigger tests
+  - avgDays on conversion badge: tooltips show the time spent in the *previous* stage (prevStage.avgDays)
+  - VisualFunnel only renders stages whose label is in MAIN_PATH array — test data must use those labels

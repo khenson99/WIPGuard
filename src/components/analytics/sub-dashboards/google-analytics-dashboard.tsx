@@ -129,7 +129,10 @@ export function GoogleAnalyticsDashboard({ data }: GoogleAnalyticsDashboardProps
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {data?.customerJourney?.topPaths && (
             <div className="col-span-1 lg:col-span-2">
-              <PathExploration paths={data.customerJourney.topPaths} />
+              <PathExploration
+                paths={data.customerJourney.topPaths}
+                journeys={data.customerJourney.journeys}
+              />
             </div>
           )}
           {data?.customerJourney?.attribution && (
