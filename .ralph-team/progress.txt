@@ -3,6 +3,33 @@
 # It serves as cumulative memory across fresh-context Ralph iterations.
 # =====================================================================
 
+--- Frontend Agent Iteration 1 | Issue #307 ---
+Timestamp: 2026-03-02T01:45:00Z
+Branch: agent/frontend/issue-307
+Status: completed
+
+## Changes
+- src/lib/conferences/compute-conference-stats.ts — NEW: pure function computing total/upcoming/inProgress/past/totalLeads from ConferenceListItem[]
+- src/components/conferences/conference-stat-cards.tsx — NEW: ConferenceStatCards component with responsive grid and proper ARIA labels
+- src/components/conferences/conference-dashboard.tsx — MODIFIED: removed inline stat card code, now uses ConferenceStatCards + computeConferenceStats
+- src/lib/conferences/__tests__/compute-conference-stats.test.ts — NEW: 8 unit tests
+- src/components/conferences/__tests__/conference-stat-cards.test.tsx — NEW: 4 component tests
+
+## Key Decisions
+- Stat cards render AFTER DashboardStaleBanner and DashboardErrorBanner — ordering is correct
+- Added "In Progress" as a third timing category (started but not ended); uses startDate < now < endDate
+- Added "Total Leads" using _count.leads from ConferenceListItem (no attendeeCount field exists)
+- Responsive grid: grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 (5 cards total)
+- Filename convention: kebab-case (conference-stat-cards.tsx, compute-conference-stats.ts)
+- Project uses lucide-react for icons; no separate icon library needed
+
+## Learnings
+- ConferenceListItem has _count.{deadlines,leads,expenses,tasks,projects} — use leads for total leads stat
+- No attendeeCount field on ConferenceListItem — plan assumption was wrong
+- Vitest config uses jsdom environment and @/ alias via resolve.alias
+- Tests use @testing-library/react + vitest; no global setup file needed
+- Pre-existing TS errors (missing Prisma client) throughout repo; new files have zero TS errors
+
 --- Architect Iteration 1 ---
 Timestamp: 2026-02-15T14:30:00Z
 
