@@ -104,3 +104,21 @@ Learnings:
   - fireEvent.focus() in jsdom correctly triggers onFocus handlers; no need for userEvent.tab() for tooltip trigger tests
   - avgDays on conversion badge: tooltips show the time spent in the *previous* stage (prevStage.avgDays)
   - VisualFunnel only renders stages whose label is in MAIN_PATH array — test data must use those labels
+
+--- Frontend Agent Iteration | Issue #147 ---
+Timestamp: 2026-03-02T03:00:00Z
+Branch: agent/frontend/issue-147
+Status: completed
+Changes:
+  - src/components/analytics/demo-volume-chart.tsx — NEW: DemoVolumeChart client component; stacked BarChart
+    with by-outcome / by-source toggle; uses recharts + date-fns; returns null when no data
+  - src/components/analytics/demo-attribution-view.tsx — Added DemoVolumeChart import + usage above Source → Outcome matrix
+  - src/components/analytics/demo-volume-chart.test.tsx — NEW: 14 component tests covering render, empty state,
+    toggle visibility, toggle interaction, aria attributes
+Tests: 14 passed, 0 failed
+Learnings:
+  - DemoRecord uses scheduledAt (not date) and noShows (not noShow) — always audit real types first
+  - date-fns v4 + recharts v3 already installed; no new deps needed
+  - No @testing-library/jest-dom setup — use .toBeTruthy() / .toBeNull() / .getAttribute() instead of toBeInTheDocument / toHaveAttribute
+  - DemoWeeklyTrend.noShows (not noShow) — field name matters
+  - Tests co-located alongside component files in src/components/analytics/ (confirmed again)

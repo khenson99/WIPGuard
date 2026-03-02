@@ -31,4 +31,7 @@ patterns, gotchas, and conventions.
 - Test co-location: analytics component tests live alongside components (e.g., `visual-funnel.test.tsx` beside `visual-funnel.tsx`), NOT in a `__tests__` subdirectory.
 - `fireEvent.focus()` in jsdom correctly triggers `onFocus` handlers for tooltip-show tests without needing userEvent.
 - `useId()` from React 19 generates stable unique IDs for `aria-describedby` linkage in lists.
+- **No @testing-library/jest-dom** — project does NOT have jest-dom matchers; use `.toBeTruthy()` / `.toBeNull()` / `.getAttribute("x")` instead of `toBeInTheDocument` / `toHaveAttribute`
+- `DemoRecord` uses `scheduledAt` (not `date`) and `DemoWeeklyTrend` uses `noShows` (not `noShow`) — always audit actual types before writing transforms
+- Stacked BarChart pattern: `stackId="group"`, dynamic `<Bar>` from `sources.map()`, adapter function to normalize field names for chart data
 
