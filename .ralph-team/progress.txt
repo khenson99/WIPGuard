@@ -68,6 +68,29 @@ Timestamp: 2026-02-15T14:30:00Z
 - WGX-004 was split into subtasks #27-31; all closed — concurrency foundation is solid
 - Integration framework already scaffolded (IntegrationConnection model, /api/integrations routes)
 
+--- Frontend Agent Iteration 1 | Issue #306 ---
+Timestamp: 2026-03-02T01:51:00Z
+Branch: agent/frontend/issue-306
+Status: completed
+Changes:
+  - src/hooks/useRovingTabindex.ts — NEW: reusable hook for 2D keyboard navigation in flat arrays
+  - src/components/whip/wip-pressure-heatmap.tsx — Updated with proper ARIA grid pattern
+  - src/hooks/__tests__/useRovingTabindex.test.ts — NEW: 16 unit tests
+  - src/components/whip/__tests__/wip-pressure-heatmap.a11y.test.tsx — NEW: 17 a11y tests
+Tests: 33 passed (2 test files), 0 failed
+Key patterns:
+  - ARIA grid: role=grid → role=row (display:contents) → role=gridcell
+  - Responsive column tracking via matchMedia (lg:4, sm:3, default:2)
+  - Roving tabindex: only focused cell gets tabIndex=0, all others -1
+  - Arrow keys, Home/End, Ctrl+Home/Ctrl+End supported
+  - focus-visible:ring-2 for keyboard focus ring (not focus: to avoid mouse visual noise)
+Gotchas:
+  - jsdom sets window.innerWidth to 1024 by default — must mock to 0 in tests for 2-col layout
+  - window.matchMedia must also be mocked in jsdom tests
+  - display:contents on row wrappers may not expose role=row to all screen readers,
+    but aria-rowindex/aria-colindex on each gridcell ensures AT gets correct position info
+  - The act() warning from React on Ctrl+Home test is benign (userEvent handles it)
+
 --- Backend Agent Iteration 1 | Issue #5 ---
 Timestamp: 2026-02-15T15:10:00Z
 Status: completed
