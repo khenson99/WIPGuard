@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   TrendingUp, TrendingDown, ArrowRight, Percent,
   DollarSign, Clock, BarChart3,
@@ -15,6 +15,15 @@ import {
   CLOSE_STAGES,
   pct,
 } from "@/lib/analytics/customer-journey-conversion";
+import {
+  bucketJourneysByMonth,
+  computeTrends,
+  computeTrendIndicator,
+  type TrendResult,
+  type TrendIndicator,
+} from "@/lib/journey-bucketing";
+import { TrendsToggle } from "./trends-toggle";
+import { TrendBadge } from "./trend-badge";
 import { StatCard } from "./stat-card";
 
 // ── Helpers ──
@@ -25,10 +34,23 @@ function fmt$(n: number) {
   return `$${n.toFixed(0)}`;
 }
 
+function fmtTrendChange(
+  indicator: TrendIndicator,
+  format: "percent" | "absolute",
+): string {
+  if (indicator.direction === "insufficient") return "—";
+  const sign = indicator.absoluteChange > 0 ? "+" : "";
+  if (format === "percent" && indicator.percentChange !== null) {
+    return `${sign}${indicator.percentChange.toFixed(1)}% vs ${indicator.previousPeriod}`;
+  }
+  return `${sign}${indicator.absoluteChange.toFixed(0)} vs ${indicator.previousPeriod}`;
+}
+
 // ── Component ──
 
 export function CustomerJourneyConversionTab({ data }: { data: AnalyticsDashboardData | null }) {
   const journey = data?.customerJourney;
+  const [viewMode, setViewMode] = useState<"snapshot" | "trends">("snapshot");
 
   const stageConversions = useMemo(
     () => (journey ? buildStageConversions(journey.journeys) : []),
@@ -45,6 +67,60 @@ export function CustomerJourneyConversionTab({ data }: { data: AnalyticsDashboar
     [journey],
   );
 
+  const trendResult = useMemo<TrendResult | null>(() => {
+    if (!journey?.journeys.length) return null;
+    const records = journey.journeys.map((j) => ({
+      id: j.dealId,
+      createdAt: j.firstTouch,
+      stage: j.currentStage,
+      isConverted: CLOSE_STAGES.has(j.currentStage),
+    }));
+    const buckets = bucketJourneysByMonth(records);
+    return computeTrends(buckets);
+  }, [journey]);
+
+  // Per-stage transition trends: compare the two most recent complete months by cohort
+  const stageTransitionTrends = useMemo<Map<string, TrendIndicator>>(() => {
+    if (!journey?.journeys.length || !trendResult?.hasEnoughData) return new Map();
+    const now = new Date();
+    const currentMonthKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+
+    const completeBuckets = trendResult.buckets.filter((b) => b.key < currentMonthKey);
+    if (completeBuckets.length < 2) return new Map();
+    const curBucket = completeBuckets[completeBuckets.length - 1];
+    const prevBucket = completeBuckets[completeBuckets.length - 2];
+
+    const curJourneys = journey.journeys.filter((j) => {
+      const d = new Date(j.firstTouch);
+      const k = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+      return k === curBucket.key;
+    });
+    const prevJourneys = journey.journeys.filter((j) => {
+      const d = new Date(j.firstTouch);
+      const k = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+      return k === prevBucket.key;
+    });
+
+    const curConversions = buildStageConversions(curJourneys);
+    const prevConversions = buildStageConversions(prevJourneys);
+
+    const map = new Map<string, TrendIndicator>();
+    for (const cur of curConversions) {
+      const key = `${cur.fromStage}→${cur.toStage}`;
+      const prev = prevConversions.find((p) => p.fromStage === cur.fromStage && p.toStage === cur.toStage);
+      map.set(
+        key,
+        computeTrendIndicator(
+          cur.conversionRate,
+          prev?.conversionRate ?? 0,
+          curBucket.label,
+          prevBucket.label,
+        ),
+      );
+    }
+    return map;
+  }, [journey, trendResult]);
+
   if (!journey || journey.journeys.length === 0) return <EmptyState />;
 
   const totalJourneys = journey.journeys.length;
@@ -55,12 +131,47 @@ export function CustomerJourneyConversionTab({ data }: { data: AnalyticsDashboar
 
   return (
     <div className="space-y-6">
+      {/* Header with Snapshot/Trends toggle */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Conversion Overview</h3>
+          <p className="text-xs text-muted-foreground">
+            {viewMode === "trends"
+              ? "Month-over-month comparison of the two most recent complete months"
+              : "Current snapshot of conversion metrics"}
+          </p>
+        </div>
+        <TrendsToggle value={viewMode} onChange={setViewMode} />
+      </div>
+
+      {/* Insufficient data notice */}
+      {viewMode === "trends" && trendResult && !trendResult.hasEnoughData && (
+        <p className="rounded-lg border border-border bg-secondary/30 px-4 py-3 text-sm text-muted-foreground">
+          Not enough historical data for trend comparison. At least two full calendar months of
+          journey data are needed.
+        </p>
+      )}
+
       {/* KPI Row */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label="Overall Conversion"
           value={`${overallConversionRate}%`}
           subtitle={`${closedJourneys.length} of ${totalJourneys} journeys`}
+          change={
+            viewMode === "trends" && trendResult?.hasEnoughData
+              ? fmtTrendChange(trendResult.kpiTrends.overallConversion, "percent")
+              : undefined
+          }
+          changeType={
+            viewMode === "trends" && trendResult?.hasEnoughData
+              ? trendResult.kpiTrends.overallConversion.direction === "up"
+                ? "positive"
+                : trendResult.kpiTrends.overallConversion.direction === "down"
+                  ? "negative"
+                  : "neutral"
+              : undefined
+          }
           icon={Percent}
         />
         <StatCard
@@ -76,9 +187,23 @@ export function CustomerJourneyConversionTab({ data }: { data: AnalyticsDashboar
           icon={TrendingUp}
         />
         <StatCard
-          label="Median Days to Close"
-          value={`${journey.medianDaysToClose}`}
+          label="Total Journeys"
+          value={totalJourneys.toLocaleString()}
           subtitle="across all journeys"
+          change={
+            viewMode === "trends" && trendResult?.hasEnoughData
+              ? fmtTrendChange(trendResult.kpiTrends.totalJourneys, "absolute")
+              : undefined
+          }
+          changeType={
+            viewMode === "trends" && trendResult?.hasEnoughData
+              ? trendResult.kpiTrends.totalJourneys.direction === "up"
+                ? "positive"
+                : trendResult.kpiTrends.totalJourneys.direction === "down"
+                  ? "negative"
+                  : "neutral"
+              : undefined
+          }
           icon={Clock}
         />
       </div>
@@ -97,6 +222,8 @@ export function CustomerJourneyConversionTab({ data }: { data: AnalyticsDashboar
                 : row.conversionRate >= 30
                   ? "#f59e0b"
                   : "#ef4444";
+              const stageKey = `${row.fromStage}→${row.toStage}`;
+              const stageTrend = viewMode === "trends" ? stageTransitionTrends.get(stageKey) : undefined;
               return (
                 <div key={`${row.fromStage}-${row.toStage}`} className="space-y-1">
                   <div className="flex items-center justify-between text-xs">
@@ -112,6 +239,9 @@ export function CustomerJourneyConversionTab({ data }: { data: AnalyticsDashboar
                       <span className="w-14 text-right font-semibold tabular-nums" style={{ color: barColor }}>
                         {row.conversionRate}%
                       </span>
+                      {stageTrend && (
+                        <TrendBadge trend={stageTrend} format="absolute" />
+                      )}
                     </div>
                   </div>
                   <div className="relative h-4 overflow-hidden rounded-md bg-secondary/40">
