@@ -136,3 +136,21 @@ Gotchas:
   - Pre-existing TS errors in deals/ and analytics customer-journey files — not related to dashboard.
   - recharts mock needs to cover ALL exports used by all chart components (LineChart, AreaChart, BarChart,
     PieChart, ComposedChart, Bar, Line, Area, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend).
+
+--- Frontend Agent Iteration | Issue #148 ---
+Timestamp: 2026-03-02T02:50:00Z
+Branch: agent/frontend/issue-148
+Status: completed
+Changes:
+  - src/app/globals.css — Added funnel animation keyframes (funnel-enter, funnel-badge-enter, tooltip-fade-in) via @keyframes + @theme (Tailwind v4 syntax). motion-safe: variant in Tailwind v4 handles prefers-reduced-motion automatically.
+  - src/components/analytics/funnel-tooltip.tsx — NEW: Accessible tooltip component (role="tooltip", conditional render, dark mode aware, motion-safe:animate-tooltip-fade-in)
+  - src/components/analytics/visual-funnel.tsx — Extended FunnelStageData with optional avgDays; added staggered entry animations (motion-safe:animate-funnel-enter) on stage rows + badge; converted conversion badge div → button with onFocus/onBlur/onMouseEnter/onMouseLeave + aria-describedby; integrated FunnelTooltip; time formatting helper (days/hours/minutes)
+  - src/components/analytics/visual-funnel.test.tsx — NEW: 11 component tests covering tooltip on focus/hover, hours format, blur hides, no tooltip when avgDays absent, aria-describedby wiring, empty state, onStageClick
+Tests: 11 passed, 0 failed
+Learnings:
+  - Tailwind v4 custom animations: define @keyframes + register in @theme { --animate-<name>: ... } in globals.css; use animate-<name> and motion-safe:animate-<name> in JSX
+  - Tailwind v4 has no tailwind.config.ts — all theme extensions go in globals.css @theme block
+  - Tests co-located with components (not in __tests__ subdir) in this project
+  - fireEvent.focus() in jsdom correctly triggers onFocus handlers; no need for userEvent.tab() for tooltip trigger tests
+  - avgDays on conversion badge: tooltips show the time spent in the *previous* stage (prevStage.avgDays)
+  - VisualFunnel only renders stages whose label is in MAIN_PATH array — test data must use those labels
