@@ -69,6 +69,7 @@ model User {
   ownedConferenceInventoryItems ConferenceInventoryItem[] @relation("ConferenceInventoryItemOwner")
 
   submissionEvents SubmissionEvent[]
+  insightPreferences InsightPreference[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1603,4 +1604,23 @@ model SubmissionEvent {
   @@index([createdAt])
   @@index([userId])
   @@index([type, createdAt])
+}
+
+// ============================================================
+// INSIGHT PREFERENCES
+// ============================================================
+
+model InsightPreference {
+  id        String   @id @default(cuid())
+  userId    String
+  insightId String   @db.VarChar(256)
+  status    String   @db.VarChar(20)  // "pinned" | "dismissed"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, insightId], name: "userId_insightId")
+  @@index([userId])
+  @@map("insight_preferences")
 }

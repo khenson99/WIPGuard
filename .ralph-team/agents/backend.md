@@ -63,3 +63,13 @@ patterns, gotchas, and conventions.
 - **Funnel endpoint**: `GET /api/analytics/funnel?from=ISO&to=ISO&projectId=optional`
 - **Submission endpoint**: `POST /api/analytics/funnel/submissions` with body `{ type, referenceId?, metadata? }`
 - **Pre-existing test failures**: `analytics-fetchers-coda.test.ts` (8 fails) and `analytics-fetchers-hubspot.test.ts` (2 fails) are pre-existing, unrelated to funnel changes
+
+## InsightPreference Patterns (Issue #300)
+
+- **insightId is opaque**: String slug/hash, NOT a FK to a DB table — insights are computed artifacts. Use VarChar(256) to prevent abuse.
+- **status as VARCHAR**: Avoids Prisma enum migration overhead; validation at API layer allows adding statuses (e.g., "snoozed") without a migration.
+- **"default" status = delete**: Rather than storing a "default" row, delete the preference row entirely to reset. Keeps the table small and queries simple.
+- **Compound unique for upsert**: `@@unique([userId, insightId], name: "userId_insightId")` maps to Prisma upsert key `{ userId_insightId: { userId, insightId } }`.
+- **User isolation**: Every query includes `userId: session.user.id` from session — never accepted as a client parameter.
+- **URL parsing in routes**: Use `new URL(req.url)` instead of `req.nextUrl` for compatibility with test environments that use standard `Request` objects.
+- **Manual migration**: When DATABASE_URL is unavailable in worktree, write migration SQL manually following the existing migration style; Prisma generate still works without DB access.
