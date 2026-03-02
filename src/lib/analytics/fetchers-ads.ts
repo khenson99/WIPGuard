@@ -1,3 +1,4 @@
+import { safeJson } from "@/lib/analytics/fetcher-utils";
 import {
   AdCampaign,
   GoogleAdsData,
@@ -236,7 +237,7 @@ export async function fetchGoogleAdsData(
     );
   }
 
-  const tokenData = (await tokenResponse.json()) as { access_token?: string };
+  const tokenData = await safeJson<{ access_token?: string }>(tokenResponse, "Google Ads token");
   const accessToken = tokenData.access_token?.trim();
   if (!accessToken) {
     throw new Error("Google token response did not include access_token.");
@@ -403,7 +404,14 @@ export async function fetchMetaAdsData(
     );
   }
 
-  const insightsData = (await insightsResponse.json()) as {
+  const insightsData = (await safeJson<{
+    data?: Array<{
+      spend?: string | number;
+      impressions?: string | number;
+      clicks?: string | number;
+      actions?: Array<{ action_type?: string; value?: string | number }>;
+    }>;
+  }>(insightsResponse, "Meta Ads insights")) as {
     data?: Array<{
       spend?: string | number;
       impressions?: string | number;
@@ -442,7 +450,19 @@ export async function fetchMetaAdsData(
     );
   }
 
-  const campaignsData = (await campaignsResponse.json()) as {
+  const campaignsData = (await safeJson<{
+    data?: Array<{
+      name?: string;
+      insights?: {
+        data?: Array<{
+          spend?: string | number;
+          impressions?: string | number;
+          clicks?: string | number;
+          actions?: Array<{ action_type?: string; value?: string | number }>;
+        }>;
+      };
+    }>;
+  }>(campaignsResponse, "Meta Ads campaigns")) as {
     data?: Array<{
       name?: string;
       insights?: {
@@ -536,7 +556,10 @@ export async function fetchMetaPageData(
       `Meta Page profile error (${pageResponse.status}): ${await parseErrorBody(pageResponse)}`
     );
   }
-  const pageData = (await pageResponse.json()) as {
+  const pageData = (await safeJson<{
+    fan_count?: string | number;
+    followers_count?: string | number;
+  }>(pageResponse, "Meta Page profile")) as {
     fan_count?: string | number;
     followers_count?: string | number;
   };
@@ -562,7 +585,12 @@ export async function fetchMetaPageData(
       `Meta Page insights error (${insightsResponse.status}): ${await parseErrorBody(insightsResponse)}`
     );
   }
-  const insightsData = (await insightsResponse.json()) as {
+  const insightsData = (await safeJson<{
+    data?: Array<{
+      name: string;
+      values?: Array<{ value: string | number }>;
+    }>;
+  }>(insightsResponse, "Meta Page insights")) as {
     data?: Array<{
       name: string;
       values?: Array<{ value: string | number }>;
@@ -601,7 +629,18 @@ export async function fetchMetaPageData(
     );
   }
 
-  const postsData = (await postsResponse.json()) as {
+  const postsData = (await safeJson<{
+    data?: Array<{
+      message?: string;
+      created_time?: string;
+      insights?: {
+        data?: Array<{
+          name: string;
+          values?: Array<{ value: string | number }>;
+        }>;
+      };
+    }>;
+  }>(postsResponse, "Meta Page posts")) as {
     data?: Array<{
       message?: string;
       created_time?: string;
@@ -690,7 +729,12 @@ export async function fetchMetaInstagramData(
       );
     }
 
-    const accountData = (await accountResponse.json()) as {
+    const accountData = (await safeJson<{
+      id?: string;
+      username?: string;
+      followers_count?: string | number;
+      media_count?: string | number;
+    }>(accountResponse, "Instagram profile")) as {
       id?: string;
       username?: string;
       followers_count?: string | number;
@@ -727,7 +771,20 @@ export async function fetchMetaInstagramData(
       return null;
     }
 
-    const pageData = (await pageResponse.json()) as {
+    const pageData = (await safeJson<{
+      instagram_business_account?: {
+        id?: string;
+        username?: string;
+        followers_count?: string | number;
+        media_count?: string | number;
+      } | null;
+      connected_instagram_account?: {
+        id?: string;
+        username?: string;
+        followers_count?: string | number;
+        media_count?: string | number;
+      } | null;
+    }>(pageResponse, "Instagram profile via page")) as {
       instagram_business_account?: {
         id?: string;
         username?: string;
@@ -796,7 +853,15 @@ export async function fetchMetaInstagramData(
     );
   }
 
-  const mediaData = (await mediaResponse.json()) as {
+  const mediaData = (await safeJson<{
+    data?: Array<{
+      id?: string;
+      caption?: string;
+      timestamp?: string;
+      like_count?: string | number;
+      comments_count?: string | number;
+    }>;
+  }>(mediaResponse, "Instagram media")) as {
     data?: Array<{
       id?: string;
       caption?: string;
@@ -876,7 +941,7 @@ export async function fetchRedditAdsData(
     );
   }
 
-  const tokenData = (await tokenResponse.json()) as { access_token?: string };
+  const tokenData = await safeJson<{ access_token?: string }>(tokenResponse, "Reddit token");
   const accessToken = tokenData.access_token?.trim();
   if (!accessToken) {
     throw new Error("Reddit token response did not include access_token.");
@@ -900,7 +965,9 @@ export async function fetchRedditAdsData(
     );
   }
 
-  const campaignsPayload = (await campaignResponse.json()) as {
+  const campaignsPayload = (await safeJson<{
+    data?: Array<{ id?: string; name?: string }>;
+  }>(campaignResponse, "Reddit campaigns")) as {
     data?: Array<{ id?: string; name?: string }>;
   };
   const campaignNameById = new Map<string, string>();
@@ -969,7 +1036,11 @@ export async function fetchRedditAdsData(
     );
   }
 
-  const reportsPayload = (await reportsResponse.json()) as {
+  const reportsPayload = (await safeJson<{
+    data?: {
+      metrics?: UnknownRecord[];
+    };
+  }>(reportsResponse, "Reddit reports")) as {
     data?: {
       metrics?: UnknownRecord[];
     };

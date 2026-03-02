@@ -199,6 +199,15 @@ function sectionCacheKey(sectionId: string, rangeQuery: string): string {
   return `${SECTION_CACHE_PREFIX}${sectionId}:${rangeQuery || "default"}`;
 }
 
+async function fetchWithRetry(url: string, init: RequestInit, retries = 1): Promise<Response> {
+  for (let i = 0; i <= retries; i++) {
+    const res = await fetch(url, init);
+    if (res.ok || i === retries || res.status < 500) return res;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  throw new Error("unreachable");
+}
+
 function summarizePayload(payload: Record<string, unknown>) {
   const keys = Object.keys(payload);
   const scalarEntries = keys.filter((key) => {
@@ -305,7 +314,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
             lookback = Number((params.get("range") || "30d").replace("d", "")) || 30;
           }
 
-          const response = await fetch(
+          const response = await fetchWithRetry(
             `/api/analytics/decision-dashboard?lookbackDays=${Math.max(7, Math.min(120, lookback))}`,
             { signal, cache: refresh ? "no-store" : "default" }
           );
@@ -325,7 +334,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
             params.set("from", new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
             params.set("to", now.toISOString().slice(0, 10));
           }
-          const response = await fetch(`/api/flow/metrics?${params.toString()}&interval=week`, {
+          const response = await fetchWithRetry(`/api/flow/metrics?${params.toString()}&interval=week`, {
             signal,
             cache: refresh ? "no-store" : "default",
           });
@@ -340,7 +349,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         }
 
         if (child?.dataDomain === "flowRisk") {
-          const response = await fetch("/api/flow/risk?blockerLookbackDays=30&fixedDateLookaheadDays=14", {
+          const response = await fetchWithRetry("/api/flow/risk?blockerLookbackDays=30&fixedDateLookaheadDays=14", {
             signal,
             cache: refresh ? "no-store" : "default",
           });
@@ -355,7 +364,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         }
 
         if (child?.dataDomain === "observability") {
-          const response = await fetch("/api/ops/observability", {
+          const response = await fetchWithRetry("/api/ops/observability", {
             signal,
             cache: refresh ? "no-store" : "default",
           });
@@ -524,7 +533,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         </div>
       </div>
 
-      {(resource.stale || (analyticsData?.staleDomains.length ?? 0) > 0) && (
+      {!resource.error && (resource.stale || (analyticsData?.staleDomains.length ?? 0) > 0) && (
         <DashboardStaleBanner
           lastUpdatedAt={resource.lastUpdatedAt}
           onRefresh={resource.refresh}

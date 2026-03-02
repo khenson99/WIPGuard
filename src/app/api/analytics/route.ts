@@ -276,6 +276,42 @@ function withTimeout<T>(fn: () => Promise<T>, timeoutMs: number, label: string):
   });
 }
 
+function isRetryableError(error: unknown): boolean {
+  if (error instanceof TypeError) return true;
+  if (error instanceof Error) {
+    const msg = error.message;
+    if (msg.includes("timed out")) return true;
+    if (msg.includes("fetch failed")) return true;
+    const statusMatch = msg.match(/\((\d{3})\)/);
+    if (statusMatch) {
+      const status = Number(statusMatch[1]);
+      return status === 429 || (status >= 500 && status <= 599);
+    }
+  }
+  return false;
+}
+
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  opts: { maxAttempts?: number; baseDelayMs?: number } = {},
+): Promise<T> {
+  const { maxAttempts = 2, baseDelayMs = 500 } = opts;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxAttempts - 1 && isRetryableError(error)) {
+        await new Promise((r) => setTimeout(r, baseDelayMs * (attempt + 1)));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+}
+
 function normalizeLookupKey(value: string | null | undefined): string {
   return value?.trim().toLowerCase() ?? "";
 }
@@ -639,10 +675,8 @@ function staleRefreshKey(input: RefreshInput): string {
 
 async function refreshDomainSnapshot(input: RefreshInput): Promise<void> {
   try {
-    const live = await withTimeout(
-      input.entry.fn,
-      timeoutMsForDomain(input.entry.key),
-      input.entry.key
+    const live = await withRetry(() =>
+      withTimeout(input.entry.fn, timeoutMsForDomain(input.entry.key), input.entry.key)
     );
     await storeAnalyticsSnapshot({
       userId: input.userId,
@@ -790,157 +824,95 @@ export async function GET(request: Request) {
   });
 
   const fetchers = ([
-{
-      key: "hubspot",
-      fn: () =>
-        creds.hubspotToken
-          ? fetchHubSpotData(creds.hubspotToken, { fromDate, toDate })
-          : Promise.reject(new Error("Missing HubSpot credential")),
-    },
-    {
-      key: "stripe",
-      fn: () =>
-        creds.stripeKey
-          ? fetchStripeData(creds.stripeKey, { fromDate, toDate })
-          : Promise.reject(new Error("Missing Stripe credential")),
-    },
-    {
-      key: "mercury",
-      fn: () =>
-        creds.mercuryKey
-          ? fetchMercuryData(creds.mercuryKey, { fromDate, toDate })
-          : Promise.reject(new Error("Missing Mercury credential")),
-    },
-    {
-      key: "googleAnalytics",
-      fn: () =>
-        creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey
-          ? fetchGAData(creds.gaPropertyId, creds.gaClientEmail, creds.gaPrivateKey, { fromDate, toDate })
-          : Promise.reject(new Error("Missing Google Analytics credential")),
-    },
-    {
-      key: "googleAds",
-      fn: () =>
-        creds.googleAdsDevToken &&
-        creds.googleAdsCustomerId &&
-        creds.googleAdsRefreshToken &&
-        creds.googleAdsClientId &&
-        creds.googleAdsClientSecret
-          ? fetchGoogleAdsData(
-              creds.googleAdsDevToken,
-              creds.googleAdsCustomerId,
-              creds.googleAdsRefreshToken,
-              creds.googleAdsClientId,
-              creds.googleAdsClientSecret,
-              creds.googleAdsLoginCustomerId,
-              { fromDate, toDate }
-            )
-          : Promise.reject(new Error("Missing Google Ads credential")),
-    },
-    {
-      key: "metaAds",
-      fn: () =>
-        creds.metaAccessToken && creds.metaAdAccountId
-          ? fetchMetaAdsData(creds.metaAccessToken, creds.metaAdAccountId, { fromDate, toDate })
-          : Promise.reject(new Error("Missing Meta Ads credential")),
-    },
-    {
-      key: "metaPage",
-      fn: () =>
-        creds.metaAccessToken && creds.metaPageId
-          ? fetchMetaPageData(creds.metaAccessToken, creds.metaPageId, { fromDate, toDate })
-          : Promise.reject(new Error("Missing Meta Page credential")),
-    },
-    {
-      key: "instagram",
-      fn: () =>
-        creds.metaAccessToken && creds.metaInstagramAccountId
-          ? fetchMetaInstagramData(
-              creds.metaAccessToken,
-              creds.metaInstagramAccountId,
-              { pageId: creds.metaPageId ?? undefined },
-              fromDate,
-              toDate
-            )
-          : Promise.reject(new Error("Missing Instagram credential")),
-    },
-    {
-      key: "redditAds",
-      fn: () =>
-        creds.redditClientId && creds.redditClientSecret && creds.redditRefreshToken && creds.redditAdAccountId
-          ? fetchRedditAdsData(
-              creds.redditClientId,
-              creds.redditClientSecret,
-              creds.redditRefreshToken,
-              creds.redditAdAccountId,
-              creds.redditUserAgent,
-              { fromDate, toDate }
-            )
-          : Promise.reject(new Error("Missing Reddit Ads credential")),
-    },
-    {
-      key: "webflow",
-      fn: () =>
-        creds.webflowApiToken && creds.webflowSiteId
-          ? fetchWebflowData(creds.webflowApiToken, creds.webflowSiteId, fromDate, toDate)
-          : Promise.reject(new Error("Missing Webflow credential")),
-    },
-    {
-      key: "coda",
-      fn: () =>
-        creds.codaApiToken && creds.codaDocId
-          ? fetchCodaData(creds.codaApiToken, creds.codaDocId, { fromDate, toDate })
-          : Promise.reject(new Error("Missing Coda credential")),
-    },
-    {
-      key: "semrush",
-      fn: () =>
-        creds.semrushApiToken && creds.semrushDomain
-          ? fetchSemrushData(creds.semrushApiToken, creds.semrushDomain)
-          : Promise.reject(new Error("Missing SEMrush credential")),
-    },
-    {
-      key: "pylon",
-      fn: () =>
-        creds.pylonApiKey
-          ? fetchPylonData({
-              apiKey: creds.pylonApiKey,
-              from: range.from,
-              to: range.to,
-              baseUrl: creds.pylonBaseUrl ?? undefined,
-            })
-          : Promise.reject(new Error("Missing Pylon credential")),
-    },
-    {
-      key: "product",
-      fn: () => computeProductSuccessData(fromDate, toDate),
-    },
-    {
-      key: "googleWorkspace",
-      fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.GOOGLE_WORKSPACE, from: fromDate, to: toDate }),
-    },
-    {
-      key: "hubspotOps",
-      fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.HUBSPOT, from: fromDate, to: toDate }),
-    },
-    {
-      key: "slack",
-      fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.SLACK, from: fromDate, to: toDate }),
-    },
-    {
-      key: "codaOps",
-      fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.CODA, from: fromDate, to: toDate }),
-    },
-    {
-      key: "redditOps",
-      fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.REDDIT, from: fromDate, to: toDate }),
-    },
+    ...(creds.hubspotToken
+      ? [{ key: "hubspot" as const, fn: () => fetchHubSpotData(creds.hubspotToken!, { fromDate, toDate }) }]
+      : []),
+    ...(creds.stripeKey
+      ? [{ key: "stripe" as const, fn: () => fetchStripeData(creds.stripeKey!, { fromDate, toDate }) }]
+      : []),
+    ...(creds.mercuryKey
+      ? [{ key: "mercury" as const, fn: () => fetchMercuryData(creds.mercuryKey!, { fromDate, toDate }) }]
+      : []),
+    ...(creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey
+      ? [{ key: "googleAnalytics" as const, fn: () => fetchGAData(creds.gaPropertyId!, creds.gaClientEmail!, creds.gaPrivateKey!, { fromDate, toDate }) }]
+      : []),
+    ...(creds.googleAdsDevToken && creds.googleAdsCustomerId && creds.googleAdsRefreshToken && creds.googleAdsClientId && creds.googleAdsClientSecret
+      ? [{
+          key: "googleAds" as const,
+          fn: () => fetchGoogleAdsData(
+            creds.googleAdsDevToken!,
+            creds.googleAdsCustomerId!,
+            creds.googleAdsRefreshToken!,
+            creds.googleAdsClientId!,
+            creds.googleAdsClientSecret!,
+            creds.googleAdsLoginCustomerId,
+            { fromDate, toDate },
+          ),
+        }]
+      : []),
+    ...(creds.metaAccessToken && creds.metaAdAccountId
+      ? [{ key: "metaAds" as const, fn: () => fetchMetaAdsData(creds.metaAccessToken!, creds.metaAdAccountId!, { fromDate, toDate }) }]
+      : []),
+    ...(creds.metaAccessToken && creds.metaPageId
+      ? [{ key: "metaPage" as const, fn: () => fetchMetaPageData(creds.metaAccessToken!, creds.metaPageId!, { fromDate, toDate }) }]
+      : []),
+    ...(creds.metaAccessToken && creds.metaInstagramAccountId
+      ? [{
+          key: "instagram" as const,
+          fn: () => fetchMetaInstagramData(
+            creds.metaAccessToken!,
+            creds.metaInstagramAccountId!,
+            { pageId: creds.metaPageId ?? undefined },
+            fromDate,
+            toDate,
+          ),
+        }]
+      : []),
+    ...(creds.redditClientId && creds.redditClientSecret && creds.redditRefreshToken && creds.redditAdAccountId
+      ? [{
+          key: "redditAds" as const,
+          fn: () => fetchRedditAdsData(
+            creds.redditClientId!,
+            creds.redditClientSecret!,
+            creds.redditRefreshToken!,
+            creds.redditAdAccountId!,
+            creds.redditUserAgent,
+            { fromDate, toDate },
+          ),
+        }]
+      : []),
+    ...(creds.webflowApiToken && creds.webflowSiteId
+      ? [{ key: "webflow" as const, fn: () => fetchWebflowData(creds.webflowApiToken!, creds.webflowSiteId!, fromDate, toDate) }]
+      : []),
+    ...(creds.codaApiToken && creds.codaDocId
+      ? [{ key: "coda" as const, fn: () => fetchCodaData(creds.codaApiToken!, creds.codaDocId!, { fromDate, toDate }) }]
+      : []),
+    ...(creds.semrushApiToken && creds.semrushDomain
+      ? [{ key: "semrush" as const, fn: () => fetchSemrushData(creds.semrushApiToken!, creds.semrushDomain!) }]
+      : []),
+    ...(creds.pylonApiKey
+      ? [{
+          key: "pylon" as const,
+          fn: () => fetchPylonData({
+            apiKey: creds.pylonApiKey!,
+            from: range.from,
+            to: range.to,
+            baseUrl: creds.pylonBaseUrl ?? undefined,
+          }),
+        }]
+      : []),
+    { key: "product" as const, fn: () => computeProductSuccessData(fromDate, toDate) },
+    { key: "googleWorkspace" as const, fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.GOOGLE_WORKSPACE, from: fromDate, to: toDate }) },
+    { key: "hubspotOps" as const, fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.HUBSPOT, from: fromDate, to: toDate }) },
+    { key: "slack" as const, fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.SLACK, from: fromDate, to: toDate }) },
+    { key: "codaOps" as const, fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.CODA, from: fromDate, to: toDate }) },
+    { key: "redditOps" as const, fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.REDDIT, from: fromDate, to: toDate }) },
   ] as FetchEntry[]).filter((entry) => domains.has(entry.key));
 
   const TIMEOUT_OVERRIDES: Partial<Record<DomainKey, number>> = {
-    stripe: 20000,
+    stripe: 15_000,
   };
-  const DEFAULT_TIMEOUT = 12000;
+  const DEFAULT_TIMEOUT = 8_000;
 
   const snapshotExpiresAt = snapshotExpiryFromNow(1);
   const capturedAtByDomain: Partial<Record<DomainKey, string | null>> = {};
@@ -957,7 +929,7 @@ export async function GET(request: Request) {
       });
 
       if (!forceRefresh && latestSnapshot.payload) {
-        if (latestSnapshot.stale) {
+        if (latestSnapshot.needsRefresh) {
           queueStaleSnapshotRefresh({
             userId,
             rangePreset: range.preset,
@@ -978,10 +950,8 @@ export async function GET(request: Request) {
       }
 
       try {
-        const live = await withTimeout(
-          entry.fn,
-          TIMEOUT_OVERRIDES[entry.key] ?? DEFAULT_TIMEOUT,
-          entry.key
+        const live = await withRetry(
+          () => withTimeout(entry.fn, TIMEOUT_OVERRIDES[entry.key] ?? DEFAULT_TIMEOUT, entry.key),
         );
         await storeAnalyticsSnapshot({
           userId,

@@ -15,6 +15,7 @@ import type {
   AnalyticsTimestamp,
   DealStage,
 } from "./types";
+import { safeJson } from "@/lib/analytics/fetcher-utils";
 
 function makeMeta(source: "live" | "cached" = "live"): AnalyticsTimestamp {
   const now = new Date();
@@ -249,6 +250,14 @@ export async function fetchHubSpotData(
     "Content-Type": "application/json",
   };
 
+  const rangeFrom = options?.fromDate ?? null;
+  const rangeTo = options?.toDate ?? null;
+  const useActivityInRange =
+    Boolean(rangeFrom && rangeTo) &&
+    !Number.isNaN(rangeFrom?.getTime() ?? NaN) &&
+    !Number.isNaN(rangeTo?.getTime() ?? NaN) &&
+    Boolean(rangeFrom && rangeTo && rangeFrom <= rangeTo);
+
   const properties =
     "dealstage,amount,dealname,closedate,createdate,hs_analytics_source,num_associated_contacts,hubspot_owner_id,hs_lastmodifieddate,stripe_customer_id,stripe_customer";
   const historyKey = "dealstage";
@@ -289,6 +298,28 @@ export async function fetchHubSpotData(
   let notActivatedCount = 0;
   let actualChurnCount = 0;
 
+  const activeDeals = activeDealsResult.deals;
+  const shouldLoadOwners =
+    useActivityInRange ||
+    allDeals.some((deal) => Boolean(deal.properties?.hubspot_owner_id));
+
+  const ownerNameById = new Map<string, string>();
+  let ownerLookupDiagnostics: { ownersFetched: number; source: string } | null = null;
+  if (shouldLoadOwners) {
+    const { owners, source } = await fetchHubSpotOwners({ baseUrl, headers });
+    ownerLookupDiagnostics = { ownersFetched: owners.length, source };
+    for (const owner of owners) {
+      ownerNameById.set(owner.id, owner.name);
+    }
+  }
+
+  const resolveOwnerName = (ownerId: string | null | undefined): string => {
+    if (!ownerId) return "Unassigned";
+    const trimmed = String(ownerId).trim();
+    if (!trimmed) return "Unassigned";
+    return ownerNameById.get(trimmed) || `Owner ${trimmed}`;
+  };
+
   for (const deal of activeDeals) {
     const props = deal.properties || {};
 
@@ -297,7 +328,7 @@ export async function fetchHubSpotData(
     const amount = parseFloat(props.amount) || 0;
     const source = props.hs_analytics_source || "Unknown";
     const ownerId = props.hubspot_owner_id;
-    const repName = ownerId ? ownerMap[ownerId] || "Unknown" : "Unassigned";
+    const repName = resolveOwnerName(ownerId);
 
     if (!stageAgg[stage]) stageAgg[stage] = { count: 0, value: 0 };
     stageAgg[stage].count++;
@@ -354,21 +385,13 @@ export async function fetchHubSpotData(
       amount: parseFloat(props.amount) || 0,
       source: props.hs_analytics_source || "Unknown",
       ownerId,
-      repName: ownerId ? ownerMap[ownerId] || "Unknown" : "Unassigned",
+      repName: resolveOwnerName(ownerId),
       updatedAt: props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).toISOString() : null,
       createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
       closedAt: props.closedate ? new Date(props.closedate).toISOString() : null,
       stripeCustomerId: props.stripe_customer_id || props.stripe_customer || null,
     };
   });
-
-  const rangeFrom = options?.fromDate ?? null;
-  const rangeTo = options?.toDate ?? null;
-  const useActivityInRange =
-    Boolean(rangeFrom && rangeTo) &&
-    !Number.isNaN(rangeFrom?.getTime() ?? NaN) &&
-    !Number.isNaN(rangeTo?.getTime() ?? NaN) &&
-    Boolean(rangeFrom && rangeTo && rangeFrom <= rangeTo);
 
   const STAGE_CLOSED_WON = "closedwon";
   const STAGE_CLOSED_LOST = "closedlost";
@@ -397,7 +420,6 @@ export async function fetchHubSpotData(
   let wonValue = stageAgg[STAGE_CLOSED_WON]?.value || 0;
 
   let repScoreboard: HubSpotData["repScoreboard"] = undefined;
-  let ownerLookupDiagnostics: { ownersFetched: number; source: string } | null = null;
 
   if (useActivityInRange && rangeFrom && rangeTo) {
     const fromMs = rangeFrom.getTime();
@@ -467,10 +489,6 @@ export async function fetchHubSpotData(
       count: data.count,
       value: data.value,
     }));
-
-    const { owners, source } = await fetchHubSpotOwners({ baseUrl, headers });
-    const ownerNameById = new Map<string, string>(owners.map((o) => [o.id, o.name]));
-    ownerLookupDiagnostics = { ownersFetched: owners.length, source };
 
     const scoreboardByOwner = new Map<
       string,
@@ -589,7 +607,7 @@ export async function fetchHubSpotData(
     const contactsUrl = `${baseUrl}/crm/v3/objects/contacts?limit=1&properties=createdate`;
     const contactsRes = await fetch(contactsUrl, { headers });
     if (contactsRes.ok) {
-      const contactsData = await contactsRes.json();
+      const contactsData = await safeJson<{ total?: number }>(contactsRes, "hubspot contacts");
       // The list endpoint returns total count in the response
       recentContacts = contactsData.total || 0;
     }
@@ -645,7 +663,7 @@ export async function fetchHubSpotData(
       closedLost,
       unlikely,
       churn,
-      notActivated,
+      notActivated: notActivatedCount,
       activeSubscriptions: subscriptions,
       noShows,
       demoScheduled,
@@ -708,6 +726,22 @@ const CONTACT_ANALYTICS_PROPERTIES = [
   "utm_campaign",
 ];
 
+type HubSpotAssociationBatchReadResponse = {
+  results?: Array<{
+    from?: { id?: string | number };
+    to?: Array<{ toObjectId?: string | number }>;
+  }>;
+};
+
+type HubSpotBatchReadResponse<TProps extends Record<string, string>> = {
+  results?: Array<{ id?: string | number; properties?: TProps }>;
+};
+
+type HubSpotContactsSearchResponse = {
+  results?: Array<{ id?: string | number; properties?: Record<string, string> }>;
+  paging?: { next?: { after?: string } };
+};
+
 async function fetchDealContactAnalytics(
   baseUrl: string,
   headers: Record<string, string>,
@@ -729,10 +763,12 @@ async function fetchDealContactAnalytics(
         body: JSON.stringify({ inputs: batch.map((id) => ({ id })) }),
       });
       if (!res.ok) continue;
-      const data = await res.json();
+      const data = await safeJson<HubSpotAssociationBatchReadResponse>(res, "hubspot deal contact associations");
       for (const result of data.results ?? []) {
         const fromId = String(result.from?.id ?? "");
-        const toIds = (result.to ?? []).map((t: { toObjectId?: number }) => String(t.toObjectId ?? "")).filter(Boolean);
+        const toIds = (result.to ?? [])
+          .map((t) => String(t.toObjectId ?? ""))
+          .filter(Boolean);
         if (fromId && toIds.length > 0) {
           dealContactMap.set(fromId, toIds);
         }
@@ -770,7 +806,7 @@ async function fetchDealContactAnalytics(
         }),
       });
       if (!res.ok) continue;
-      const data = await res.json();
+      const data = await safeJson<HubSpotBatchReadResponse<Record<string, string>>>(res, "hubspot contact batch");
       for (const contact of data.results ?? []) {
         const id = String(contact.id ?? "");
         if (id) contactPropsMap.set(id, contact.properties ?? {});
@@ -869,7 +905,7 @@ export async function fetchHubSpotContacts(
       throw new Error(`HubSpot contacts API error ${res.status}: ${text}`);
     }
 
-    const data = await res.json();
+    const data = await safeJson<HubSpotContactsSearchResponse>(res, "hubspot contacts");
     const results = data.results || [];
 
     for (const contact of results) {
@@ -946,13 +982,13 @@ export async function fetchStripeData(
     if (!subsRes.ok) {
       throw new Error(`Stripe subscriptions error ${subsRes.status}`);
     }
-    const subsData = await subsRes.json();
+    const subsData = await safeJson<{ data?: StripeSub[] }>(subsRes, "stripe subscriptions");
     return subsData.data || [];
   };
 
   const fetchCanceledSubscriptions = async (): Promise<StripeSub[]> => {
     const canceledRes = await fetchStripe(`${baseUrl}/subscriptions?limit=50&status=canceled`);
-    const canceledData = await canceledRes.json();
+    const canceledData = await safeJson<{ data?: StripeSub[] }>(canceledRes, "stripe canceled subscriptions");
     return canceledData.data || [];
   };
 
@@ -974,11 +1010,11 @@ export async function fetchStripeData(
             throw new Error(`Stripe subscriptions(${status}) error ${res.status}`);
           }
 
-          const data = await res.json();
-          const batch = (data?.data || []) as StripeSub[];
+          const data = await safeJson<{ data?: StripeSub[]; has_more?: boolean }>(res, `stripe subscriptions (${status})`);
+          const batch = data.data ?? [];
           count += batch.length;
 
-          if (!data?.has_more || batch.length === 0) break;
+          if (!data.has_more || batch.length === 0) break;
           startingAfter = batch[batch.length - 1]?.id;
           if (!startingAfter) break;
         }
@@ -1006,7 +1042,7 @@ export async function fetchStripeData(
 
       const chargesRes = await fetchStripe(chargesUrl);
       if (!chargesRes.ok) break;
-      const chargesData = await chargesRes.json();
+      const chargesData = await safeJson<{ data?: StripeCharge[]; has_more?: boolean }>(chargesRes, "stripe charges");
       const batch = chargesData.data || [];
       allCharges.push(...batch);
 
@@ -1220,7 +1256,7 @@ async function fetchStripeChargesForCustomer(
       throw new Error(`Stripe charges error (${res.status}) for customer ${request.customerId}: ${text}`);
     }
 
-    const body = (await res.json()) as StripeChargeListResponse;
+    const body = await safeJson<StripeChargeListResponse>(res, "stripe charges list");
     const batch = body.data ?? [];
 
     for (const charge of batch) {
@@ -1297,7 +1333,7 @@ export async function fetchMercuryData(
   if (!accountsRes.ok) {
     throw new Error(`Mercury accounts error ${accountsRes.status}`);
   }
-  const accountsData = await accountsRes.json();
+  const accountsData = await safeJson<{ accounts?: unknown[] }>(accountsRes, "mercury accounts");
   const accounts = (accountsData.accounts || []).map((a: {
     id: string; name: string; currentBalance: number; type: string;
   }) => ({
@@ -1330,7 +1366,7 @@ export async function fetchMercuryData(
         { headers }
       );
       if (!txRes.ok) continue;
-      const txData = await txRes.json();
+      const txData = await safeJson<{ transactions?: unknown[] }>(txRes, "mercury transactions");
       for (const tx of txData.transactions || []) {
         if (useRange && rangeTo) {
           const postedAt = (tx.postedAt || tx.createdAt || tx.timestamp || "") as string;
