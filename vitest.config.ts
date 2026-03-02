@@ -8,7 +8,9 @@ export default defineConfig({
     exclude: [
       "**/node_modules/**",
       "**/.claude/**",
+      "**/.claire/**",
       "**/.worktrees/**",
+      "**/.ralph-team/**",
       "**/dist/**",
       "**/.next/**",
       "**/src/generated/**",

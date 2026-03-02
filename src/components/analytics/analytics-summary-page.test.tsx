@@ -77,7 +77,11 @@ describe("AnalyticsSummaryPage", () => {
       expect(screen.getByText("Analytics Overview")).toBeTruthy();
     });
 
-    expect(screen.getByText("Showing cached analytics while background refresh completes or retries.")).toBeTruthy();
+    expect(
+      screen.queryByText("Showing cached analytics while background refresh completes or retries.")
+    ).toBeNull();
+    expect(screen.getByText("Data could not be refreshed.")).toBeTruthy();
+    expect(screen.getByText("summary refresh failed")).toBeTruthy();
     expect(screen.getAllByText("Refresh now").length).toBeGreaterThan(0);
   });
 });

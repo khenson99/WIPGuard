@@ -24,11 +24,22 @@ export interface SnapshotResult<T = unknown> {
   payload: T | null;
   capturedAt: string | null;
   expiresAt: string | null;
+  /** Soft expiry: snapshot data should be refreshed in the background. */
+  needsRefresh: boolean;
+  /** Hard expiry: snapshot data is stale enough to surface to the user. */
   stale: boolean;
   fromSnapshot: boolean;
   status: "SUCCESS" | "ERROR" | null;
   error: string | null;
 }
+
+/**
+ * Grace period after soft expiry before data is considered hard-stale.
+ * Soft expiry (expiresAt) triggers a background refresh; the banner only
+ * appears once expiresAt + HARD_STALE_GRACE_MS has elapsed, giving the
+ * background refresh time to succeed invisibly.
+ */
+export const HARD_STALE_GRACE_MS = 3 * 60 * 60 * 1000; // 3 hours
 
 function contextKeyOrDefault(value?: string): string {
   const trimmed = value?.trim();
@@ -128,6 +139,7 @@ export async function readLatestSnapshot<T = unknown>(input: SnapshotQueryInput)
       payload: null,
       capturedAt: null,
       expiresAt: null,
+      needsRefresh: false,
       stale: false,
       fromSnapshot: false,
       status: null,
@@ -137,12 +149,15 @@ export async function readLatestSnapshot<T = unknown>(input: SnapshotQueryInput)
 
   const isSuccess = snapshot.status === AnalyticsSnapshotStatus.SUCCESS;
   const payload = (isSuccess ? (snapshot.payload as T | null) : null) ?? null;
+  const expiresAtMs = snapshot.expiresAt.getTime();
+  const now = Date.now();
 
   return {
     payload,
     capturedAt: snapshot.capturedAt.toISOString(),
     expiresAt: snapshot.expiresAt.toISOString(),
-    stale: snapshot.expiresAt.getTime() < Date.now(),
+    needsRefresh: expiresAtMs < now,
+    stale: expiresAtMs + HARD_STALE_GRACE_MS < now,
     fromSnapshot: true,
     status: snapshot.status,
     error: snapshot.lastError,
@@ -169,6 +184,7 @@ export async function readLatestSuccessfulSnapshot<T = unknown>(
       payload: null,
       capturedAt: null,
       expiresAt: null,
+      needsRefresh: false,
       stale: false,
       fromSnapshot: false,
       status: null,
@@ -176,11 +192,15 @@ export async function readLatestSuccessfulSnapshot<T = unknown>(
     };
   }
 
+  const expiresAtMs = snapshot.expiresAt.getTime();
+  const now = Date.now();
+
   return {
     payload: (snapshot.payload as T | null) ?? null,
     capturedAt: snapshot.capturedAt.toISOString(),
     expiresAt: snapshot.expiresAt.toISOString(),
-    stale: snapshot.expiresAt.getTime() < Date.now(),
+    needsRefresh: expiresAtMs < now,
+    stale: expiresAtMs + HARD_STALE_GRACE_MS < now,
     fromSnapshot: true,
     status: snapshot.status,
     error: snapshot.lastError,

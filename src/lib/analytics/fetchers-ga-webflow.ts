@@ -1,4 +1,5 @@
 import { createSign } from "crypto";
+import { safeJson } from "@/lib/analytics/fetcher-utils";
 import {
   GAData,
   GATrafficChannel,
@@ -12,6 +13,7 @@ import {
   WebflowContentFreshness,
   AnalyticsTimestamp,
 } from "./types";
+import { safeJson } from "./fetcher-utils";
 
 function makeMeta(source: "live" | "cached" = "live"): AnalyticsTimestamp {
   const now = new Date();
@@ -57,7 +59,7 @@ async function getGAAccessToken(opts: {
       );
     }
 
-    const tokenData = (await tokenResponse.json()) as { access_token: string };
+    const tokenData = await safeJson<{ access_token: string }>(tokenResponse, "ga4 oauth token");
     return tokenData.access_token;
   }
 
@@ -111,7 +113,7 @@ async function getGAAccessToken(opts: {
       );
     }
 
-    const tokenData = (await tokenResponse.json()) as { access_token: string };
+    const tokenData = await safeJson<{ access_token: string }>(tokenResponse, "ga4 service account token");
     return tokenData.access_token;
   }
 
@@ -191,7 +193,10 @@ export async function fetchGAData(
           { name: "averageSessionDuration" },
         ],
       }),
-    }).then((r) => r.json()),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`GA4 report (current) failed (${r.status})`);
+      return await safeJson<any>(r, "GA report (current)");
+    }),
 
     // Request 2: Previous 30d metrics
     fetch(apiUrl, {
@@ -207,7 +212,10 @@ export async function fetchGAData(
           { name: "averageSessionDuration" },
         ],
       }),
-    }).then((r) => r.json()),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`GA4 report (previous) failed (${r.status})`);
+      return await safeJson<any>(r, "GA report (previous)");
+    }),
 
     // Request 3: Traffic by channel + daily trend
     fetch(apiUrl, {
@@ -225,7 +233,10 @@ export async function fetchGAData(
           { name: "screenPageViews" },
         ],
       }),
-    }).then((r) => r.json()),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`GA4 report (traffic) failed (${r.status})`);
+      return await safeJson<any>(r, "GA report (traffic)");
+    }),
 
     // Request 4: Top pages
     fetch(apiUrl, {
@@ -246,7 +257,10 @@ export async function fetchGAData(
           },
         ],
       }),
-    }).then((r) => r.json()),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`GA4 report (top pages) failed (${r.status})`);
+      return await safeJson<any>(r, "GA report (top pages)");
+    }),
   ]);
 
   // Parse current 30d metrics

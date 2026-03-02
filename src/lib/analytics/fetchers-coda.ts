@@ -3,6 +3,7 @@ import {
   enrichCodaLeadFunnelStatus,
   scoreCodaEngagedLeads,
 } from "@/lib/analytics/coda-lead-intelligence";
+import { safeJson } from "@/lib/analytics/fetcher-utils";
 import { enrichStripeEmails } from "@/lib/analytics/stripe-email-enrichment";
 import type {
   AnalyticsTimestamp,
@@ -435,7 +436,7 @@ export async function fetchCodaData(
     );
   }
 
-  const tablesData = (await tablesResponse.json()) as CodaTablesResponse;
+  const tablesData = await safeJson<CodaTablesResponse>(tablesResponse, "Coda tables");
   if (!tablesData.items || tablesData.items.length === 0) {
     throw new Error("No tables found in Coda document");
   }
@@ -455,7 +456,7 @@ export async function fetchCodaData(
     );
   }
 
-  const columnsData = (await columnsResponse.json()) as CodaColumnsResponse;
+  const columnsData = await safeJson<CodaColumnsResponse>(columnsResponse, "Coda columns");
   const columns = columnsData.items || [];
 
   const columnNameToId: Record<string, string> = {};
@@ -490,7 +491,7 @@ export async function fetchCodaData(
       );
     }
 
-    const rowsData = (await rowsResponse.json()) as CodaRowsResponse;
+    const rowsData = await safeJson<CodaRowsResponse>(rowsResponse, "Coda rows");
     rows.push(...(rowsData.items || []));
     nextPageToken = rowsData.nextPageToken ?? null;
   } while (nextPageToken);
@@ -685,6 +686,97 @@ export async function fetchCodaData(
   const topLeadCandidates = scoredLeads.slice(0, maxLeadCandidates);
 
   const hubspotMatchingErrors = 0;
+
+  const unknownEmailCards = cardsInRange.filter((card) => !normalizeEmail(card.creatorEmail)).length;
+
+  const submitterAgg = new Map<
+    string,
+    { creator: string; email: string; cardsCreated: number; firstSubmittedAt: string | null; lastSubmittedAt: string | null }
+  >();
+
+  for (const card of cardsInRange) {
+    const email = normalizeEmail(card.creatorEmail);
+    if (!email) continue;
+    const existing = submitterAgg.get(email) ?? {
+      creator: card.creator,
+      email,
+      cardsCreated: 0,
+      firstSubmittedAt: null,
+      lastSubmittedAt: null,
+    };
+
+    existing.cardsCreated += 1;
+    if (!existing.firstSubmittedAt || ((card.createdAtIso ?? "") < existing.firstSubmittedAt)) {
+      existing.firstSubmittedAt = card.createdAtIso ?? null;
+    }
+    if (!existing.lastSubmittedAt || ((card.createdAtIso ?? "") > existing.lastSubmittedAt)) {
+      existing.lastSubmittedAt = card.createdAtIso ?? null;
+    }
+
+    if (existing.creator === "Unknown" && card.creator !== "Unknown") {
+      existing.creator = card.creator;
+    }
+
+    submitterAgg.set(email, existing);
+  }
+
+  const recentSubmitters = [...submitterAgg.values()]
+    .sort((a, b) => {
+      if (b.cardsCreated !== a.cardsCreated) return b.cardsCreated - a.cardsCreated;
+      return String(b.lastSubmittedAt ?? "").localeCompare(String(a.lastSubmittedAt ?? ""));
+    })
+    .slice(0, 25)
+    .map((entry) => ({
+      creator: entry.creator,
+      email: entry.email,
+      cardsCreated: entry.cardsCreated,
+      firstSubmittedAt: entry.firstSubmittedAt,
+      lastSubmittedAt: entry.lastSubmittedAt,
+      hubspotContact: null,
+      hubspotStatus: "unknown" as const,
+      hubspotSearchUrl: buildHubspotSearchUrl(entry.email),
+    }));
+
+  const rangeSummary = shouldFilterByRange
+    ? (() => {
+        const from = options.fromDate!.toISOString().slice(0, 10);
+        const to = options.toDate!.toISOString().slice(0, 10);
+        const cardsCreated = cardsInRange.length;
+        const submissions = recentSubmitters.length;
+
+        const msPerDay = 24 * 60 * 60 * 1000;
+        const days = Math.max(1, Math.round((options.toDate!.getTime() - options.fromDate!.getTime()) / msPerDay) + 1);
+        const prevStart = new Date(options.fromDate!.getTime() - days * msPerDay);
+        const prevEnd = new Date(options.fromDate!.getTime() - msPerDay);
+
+        let downloadsPrev = 0;
+        const prevEmails = new Set<string>();
+        for (const card of cards) {
+          if (!isWithinRange(card.createdAtIso, prevStart, prevEnd)) continue;
+          downloadsPrev += 1;
+          const email = normalizeEmail(card.creatorEmail);
+          if (email) prevEmails.add(email);
+        }
+        const downloadersPrev = prevEmails.size;
+
+        const downloadsDeltaPct =
+          downloadsPrev > 0 ? Math.round(((cardsCreated - downloadsPrev) / downloadsPrev) * 100) : null;
+        const downloadersDeltaPct =
+          downloadersPrev > 0 ? Math.round(((submissions - downloadersPrev) / downloadersPrev) * 100) : null;
+
+        return {
+          from,
+          to,
+          cardsCreated,
+          submissions,
+          unknownEmailCards,
+          downloadsPrev,
+          downloadersPrev,
+          downloadsDeltaPct,
+          downloadersDeltaPct,
+        };
+      })()
+    : undefined;
 
   const stripeByEmail = await enrichStripeEmails({
     apiKey: options.stripeKey,

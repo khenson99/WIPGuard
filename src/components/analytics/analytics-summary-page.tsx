@@ -76,7 +76,7 @@ const SUMMARY_CACHE_PREFIX = "analytics:summary:v1:";
 
 interface SummaryViewModel {
   summary: SummaryPayload;
-  overview: AnalyticsDashboardData;
+  overview: AnalyticsDashboardData | null;
 }
 
 function summaryCacheKey(rangeQuery: string): string {
@@ -106,7 +106,7 @@ export function AnalyticsSummaryPage() {
         overviewParams.set("refresh", "true");
       }
 
-      const [summaryResponse, overviewResponse] = await Promise.all([
+      const [summarySettled, overviewSettled] = await Promise.allSettled([
         fetch(`/api/analytics/summary${summaryParams.toString() ? `?${summaryParams.toString()}` : ""}`, {
           signal,
           cache: refresh ? "no-store" : "default",
@@ -117,28 +117,38 @@ export function AnalyticsSummaryPage() {
         }),
       ]);
 
+      if (summarySettled.status === "rejected") {
+        throw summarySettled.reason;
+      }
+      const summaryResponse = summarySettled.value;
       if (!summaryResponse.ok) {
         throw new Error(`Analytics summary request failed (${summaryResponse.status})`);
       }
-      if (!overviewResponse.ok) {
-        throw new Error(`Analytics overview request failed (${overviewResponse.status})`);
+
+      let overview: AnalyticsDashboardData | null = null;
+      if (overviewSettled.status === "rejected") {
+        console.warn("Analytics overview request failed:", overviewSettled.reason);
+      } else {
+        const overviewResponse = overviewSettled.value;
+        if (overviewResponse.ok) {
+          overview = (await overviewResponse.json()) as AnalyticsDashboardData;
+        } else {
+          console.warn(`Analytics overview request failed (${overviewResponse.status})`);
+        }
       }
 
-      const [summaryPayload, overviewPayload] = await Promise.all([
-        summaryResponse.json(),
-        overviewResponse.json(),
-      ]);
+      const summaryPayload = (await summaryResponse.json()) as SummaryPayload;
 
       return {
-        summary: summaryPayload as SummaryPayload,
-        overview: overviewPayload as AnalyticsDashboardData,
+        summary: summaryPayload,
+        overview,
       };
     },
     getLastUpdatedAt: (payload) => {
       return (
         payload.summary.meta?.servedAt ??
-        payload.overview.meta?.servedAt ??
-        payload.overview.lastFullRefresh ??
+        payload.overview?.meta?.servedAt ??
+        payload.overview?.lastFullRefresh ??
         payload.summary.generatedAt
       );
     },
@@ -236,7 +246,7 @@ export function AnalyticsSummaryPage() {
       </div>
 
       <div aria-live="polite">
-        {(resource.stale || staleDomains.length > 0) && (
+        {!resource.error && (resource.stale || staleDomains.length > 0) && (
           <DashboardStaleBanner
             lastUpdatedAt={resource.lastUpdatedAt}
             refreshing={resource.refreshing}

@@ -16,6 +16,7 @@ import {
   type SectionStatus,
 } from "@/lib/analytics/summary-health";
 import { buildSummaryChildDiagnostics } from "@/lib/analytics/route-meta";
+import { HARD_STALE_GRACE_MS } from "@/lib/analytics/snapshots";
 
 function aggregateStatus(statuses: SectionStatus[]): SectionStatus {
   if (statuses.every((status) => status === "connected")) return "connected";
@@ -107,7 +108,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       if (latestSnapshotByProvider.has(snapshot.providerKey)) continue;
       latestSnapshotByProvider.set(snapshot.providerKey, {
         status: snapshot.status,
-        stale: snapshot.expiresAt.getTime() < now,
+        stale: snapshot.expiresAt.getTime() + HARD_STALE_GRACE_MS < now,
         capturedAt: snapshot.capturedAt.toISOString(),
         lastError: snapshot.lastError,
       });
