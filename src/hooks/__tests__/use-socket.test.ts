@@ -40,7 +40,7 @@ describe("useSocket", () => {
 
     // Find the reconnect handler registered on socket.io manager
     const reconnectCall = mockSocket.io.on.mock.calls.find(
-      (call: [string, Function]) => call[0] === "reconnect"
+      (call: [string, (...args: unknown[]) => unknown]) => call[0] === "reconnect"
     );
     expect(reconnectCall).toBeDefined();
 
@@ -59,7 +59,7 @@ describe("useSocket", () => {
     renderHook(() => useSocket({ refreshBoard }));
 
     const reconnectCall = mockSocket.io.on.mock.calls.find(
-      (call: [string, Function]) => call[0] === "reconnect"
+      (call: [string, (...args: unknown[]) => unknown]) => call[0] === "reconnect"
     );
     const reconnectHandler = reconnectCall![1];
 
@@ -76,7 +76,7 @@ describe("useSocket", () => {
     renderHook(() => useSocket({ showToast }));
 
     const reconnectCall = mockSocket.io.on.mock.calls.find(
-      (call: [string, Function]) => call[0] === "reconnect"
+      (call: [string, (...args: unknown[]) => unknown]) => call[0] === "reconnect"
     );
     const reconnectHandler = reconnectCall![1];
 
@@ -95,7 +95,7 @@ describe("useSocket", () => {
     renderHook(() => useSocket({ onReconnect }));
 
     const reconnectCall = mockSocket.io.on.mock.calls.find(
-      (call: [string, Function]) => call[0] === "reconnect"
+      (call: [string, (...args: unknown[]) => unknown]) => call[0] === "reconnect"
     );
     const reconnectHandler = reconnectCall![1];
 
@@ -110,7 +110,7 @@ describe("useSocket", () => {
     renderHook(() => useSocket());
 
     const reconnectCall = mockSocket.io.on.mock.calls.find(
-      (call: [string, Function]) => call[0] === "reconnect"
+      (call: [string, (...args: unknown[]) => unknown]) => call[0] === "reconnect"
     );
     const reconnectHandler = reconnectCall![1];
 
@@ -127,7 +127,7 @@ describe("useSocket", () => {
     renderHook(() => useSocket({ refreshBoard }));
 
     const reconnectCall = mockSocket.io.on.mock.calls.find(
-      (call: [string, Function]) => call[0] === "reconnect"
+      (call: [string, (...args: unknown[]) => unknown]) => call[0] === "reconnect"
     );
     const reconnectHandler = reconnectCall![1];
 
@@ -142,7 +142,7 @@ describe("useSocket", () => {
     renderHook(() => useSocket());
 
     const registeredEvents = mockSocket.on.mock.calls.map(
-      (call: [string, Function]) => call[0]
+      (call: [string, (...args: unknown[]) => unknown]) => call[0]
     );
 
     expect(registeredEvents).toContain("task:created");
@@ -156,7 +156,7 @@ describe("useSocket", () => {
 
     // Find the second connect handler (the one that emits join-board)
     const connectCalls = mockSocket.on.mock.calls.filter(
-      (call: [string, Function]) => call[0] === "connect"
+      (call: [string, (...args: unknown[]) => unknown]) => call[0] === "connect"
     );
 
     // There should be at least one connect handler that emits join-board
@@ -187,7 +187,7 @@ describe("useSocket", () => {
     renderHook(() => useSocket({ refreshBoard, showToast }));
 
     const reconnectCall = mockSocket.io.on.mock.calls.find(
-      (call: [string, Function]) => call[0] === "reconnect"
+      (call: [string, (...args: unknown[]) => unknown]) => call[0] === "reconnect"
     );
     const reconnectHandler = reconnectCall![1];
 
@@ -205,7 +205,7 @@ describe("useSocket", () => {
     const { result } = renderHook(() => useSocket());
 
     const reconnectCall = mockSocket.io.on.mock.calls.find(
-      (call: [string, Function]) => call[0] === "reconnect"
+      (call: [string, (...args: unknown[]) => unknown]) => call[0] === "reconnect"
     );
     const reconnectHandler = reconnectCall![1];
 

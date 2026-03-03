@@ -4,10 +4,10 @@ import React, { ReactNode } from "react";
 import { SocketProvider, useSocketContext } from "../socket-provider";
 
 // Capture the options passed to useSocket so we can simulate events
-let capturedOptions: Record<string, any> = {};
+let capturedOptions: Record<string, unknown> = {};
 
 vi.mock("../../hooks/use-socket", () => ({
-  useSocket: (options: Record<string, any>) => {
+  useSocket: (options: Record<string, unknown>) => {
     capturedOptions = options;
     return {
       getSocket: vi.fn(() => ({
