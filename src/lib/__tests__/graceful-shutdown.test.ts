@@ -1,3 +1,5 @@
+import type { Server } from "node:http";
+import type { Server as IOServer } from "socket.io";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   drainConnections,
@@ -135,10 +137,10 @@ describe("graceful-shutdown", () => {
     it("registers handlers for SIGTERM and SIGINT", () => {
       const mockServer = {
         close: vi.fn((cb: (err?: Error) => void) => cb()),
-      } as any;
+      } as unknown as Server;
       const mockIo = {
         disconnectSockets: vi.fn(),
-      } as any;
+      } as unknown as IOServer;
 
       registerShutdownHandlers(mockServer, mockIo);
 
@@ -150,10 +152,10 @@ describe("graceful-shutdown", () => {
     it("calls server.close, io.disconnectSockets, and prisma.$disconnect on shutdown", async () => {
       const mockServer = {
         close: vi.fn((cb: (err?: Error) => void) => cb()),
-      } as any;
+      } as unknown as Server;
       const mockIo = {
         disconnectSockets: vi.fn(),
-      } as any;
+      } as unknown as IOServer;
 
       const stopOutboxWorker = vi.fn().mockResolvedValue(undefined);
 
@@ -178,10 +180,10 @@ describe("graceful-shutdown", () => {
     it("calls onShutdownStart callback if provided", async () => {
       const mockServer = {
         close: vi.fn((cb: (err?: Error) => void) => cb()),
-      } as any;
+      } as unknown as Server;
       const mockIo = {
         disconnectSockets: vi.fn(),
-      } as any;
+      } as unknown as IOServer;
 
       const onShutdownStart = vi.fn().mockResolvedValue(undefined);
 
