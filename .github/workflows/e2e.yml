@@ -12,6 +12,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wipguard_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wipguard_test?schema=public
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: e2e-secret
+      PRISMA_TENANT_BYPASS: "true"
+      E2E_BASE_URL: http://localhost:3000
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,13 +50,31 @@ jobs:
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium
 
+      - name: Wait for Postgres
+        run: |
+          for i in {1..30}; do
+            if nc -z localhost 5432; then
+              echo "Postgres is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Postgres did not become ready in time"
+          exit 1
+
+      - name: Run database migrations
+        run: npx prisma migrate deploy --schema prisma/schema.prisma
+
+      - name: Seed E2E user
+        run: |
+          echo "INSERT INTO \"User\" (\"id\",\"email\",\"name\",\"role\",\"updatedAt\") VALUES ('e2e_user_1','e2e-test@wipguard.local','E2E Test User','member',CURRENT_TIMESTAMP) ON CONFLICT (\"email\") DO UPDATE SET \"name\"=EXCLUDED.\"name\", \"role\"=EXCLUDED.\"role\", \"updatedAt\"=EXCLUDED.\"updatedAt\";" | npx prisma db execute --stdin
+
       - name: Build application
         run: npm run build
 
       - name: Run E2E tests
         run: npx playwright test
         env:
-          E2E_BASE_URL: http://localhost:3000
           E2E_TEST_USER_EMAIL: ${{ secrets.E2E_TEST_USER_EMAIL }}
           E2E_TEST_USER_PASSWORD: ${{ secrets.E2E_TEST_USER_PASSWORD }}
 

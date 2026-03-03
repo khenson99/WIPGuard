@@ -72,8 +72,10 @@ export const DEAL_STAGES = [
  * Board columns for Kanban tests.
  */
 export const BOARD_COLUMNS = [
-  'To Do',
-  'In Progress',
-  'In Review',
+  'Backlog',
+  'Queued',
+  'Working on Today',
+  'Active',
+  'Not Done',
   'Done',
 ] as const;

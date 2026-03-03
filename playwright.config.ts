@@ -57,7 +57,9 @@ export default defineConfig({
   ],
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: process.env.CI ? 'npm run start' : 'npm run dev',
+    // Use `next dev` in CI so the dev-only credentials login is available and
+    // NextAuth doesn't require production secrets.
+    command: 'npm run dev -- -p 3000',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
