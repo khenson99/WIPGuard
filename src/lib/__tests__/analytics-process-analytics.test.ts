@@ -62,6 +62,10 @@ describe("buildProcessAnalyticsData", () => {
           ownerId: "owner-1",
           createdAt: oldDate,
           updatedAt: oldDate,
+          pipelineId: null,
+          contactIds: [],
+          primaryContactId: null,
+          primaryContactEmail: null,
         },
         {
           dealId: "deal-2",
@@ -73,6 +77,10 @@ describe("buildProcessAnalyticsData", () => {
           ownerId: "owner-2",
           createdAt: recentDate,
           updatedAt: recentDate,
+          pipelineId: null,
+          contactIds: [],
+          primaryContactId: null,
+          primaryContactEmail: null,
         },
       ],
       _meta: META,
@@ -104,6 +112,10 @@ describe("buildSalesPerformancePack", () => {
         createdAt: "2026-01-31T23:00:00.000Z",
         closedAt: "2026-02-01T00:00:00.000Z",
         stripeCustomerId: null,
+        pipelineId: null,
+        contactIds: [],
+        primaryContactId: null,
+        primaryContactEmail: null,
       },
     ];
 
@@ -137,6 +149,10 @@ describe("buildSalesPerformancePack", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
         closedAt: "2026-02-10T00:00:00.000Z",
         stripeCustomerId: null,
+        pipelineId: null,
+        contactIds: [],
+        primaryContactId: null,
+        primaryContactEmail: null,
       },
     ];
 
@@ -167,6 +183,10 @@ describe("buildSalesPerformancePack", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
         closedAt: "2026-03-15T00:00:00.000Z",
         stripeCustomerId: null,
+        pipelineId: null,
+        contactIds: [],
+        primaryContactId: null,
+        primaryContactEmail: null,
       },
       {
         dealId: "d2",
@@ -181,6 +201,10 @@ describe("buildSalesPerformancePack", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
         closedAt: "2026-05-05T00:00:00.000Z",
         stripeCustomerId: null,
+        pipelineId: null,
+        contactIds: [],
+        primaryContactId: null,
+        primaryContactEmail: null,
       },
     ];
 
@@ -213,6 +237,10 @@ describe("buildSalesPerformancePack", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
         closedAt: "2026-02-01T00:00:00.000Z",
         stripeCustomerId: "cus_1",
+        pipelineId: null,
+        contactIds: [],
+        primaryContactId: null,
+        primaryContactEmail: null,
       },
       {
         dealId: "d2",
@@ -227,6 +255,10 @@ describe("buildSalesPerformancePack", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
         closedAt: "2026-02-20T00:00:00.000Z",
         stripeCustomerId: "cus_1",
+        pipelineId: null,
+        contactIds: [],
+        primaryContactId: null,
+        primaryContactEmail: null,
       },
     ];
 
@@ -268,6 +300,10 @@ describe("buildSalesPerformancePack", () => {
         createdAt: "2026-02-10T00:00:00.000Z",
         closedAt: null,
         stripeCustomerId: null,
+        pipelineId: null,
+        contactIds: [],
+        primaryContactId: null,
+        primaryContactEmail: null,
       },
     ];
 

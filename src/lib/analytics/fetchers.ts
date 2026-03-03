@@ -390,6 +390,10 @@ export async function fetchHubSpotData(
       createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
       closedAt: props.closedate ? new Date(props.closedate).toISOString() : null,
       stripeCustomerId: props.stripe_customer_id || props.stripe_customer || null,
+      pipelineId: props.pipeline || null,
+      contactIds: [] as string[],
+      primaryContactId: null as string | null,
+      primaryContactEmail: null as string | null,
     };
   });
 
@@ -867,7 +871,9 @@ export async function fetchHubSpotContacts(
   const envMaxPages = Number(process.env.HUBSPOT_CONTACTS_MAX_PAGES || "");
   const maxPages = Math.max(1, Math.min(opts?.maxPages ?? (Number.isFinite(envMaxPages) ? envMaxPages : 1000), 1000));
 
-  const ownerMap = await fetchHubSpotOwnerMap(baseUrl, headers);
+  const { owners } = await fetchHubSpotOwners({ baseUrl, headers });
+  const ownerMap: Record<string, string> = {};
+  for (const o of owners) ownerMap[o.id] = o.name;
 
   const fromMs = from.getTime();
   const toMs = to.getTime();
@@ -1096,14 +1102,11 @@ export async function fetchStripeData(
 
     if (charge.status === "succeeded") {
       monthBuckets[monthKey] = (monthBuckets[monthKey] || 0) + amt;
-      rev30d += amt;
+      revInRange += amt;
       succeeded++;
     } else if (charge.status === "failed") {
       failed++;
     }
-
-    if (charge.status === "succeeded") { revInRange += amt; succeeded++; }
-      else if (charge.status === "failed") failed++;
   }
   for (const charge of chargesPrevRange) {
     if (charge.status === "succeeded") {
@@ -1333,10 +1336,8 @@ export async function fetchMercuryData(
   if (!accountsRes.ok) {
     throw new Error(`Mercury accounts error ${accountsRes.status}`);
   }
-  const accountsData = await safeJson<{ accounts?: unknown[] }>(accountsRes, "mercury accounts");
-  const accounts = (accountsData.accounts || []).map((a: {
-    id: string; name: string; currentBalance: number; type: string;
-  }) => ({
+  const accountsData = await safeJson<{ accounts?: Array<{ id: string; name: string; currentBalance: number; type: string }> }>(accountsRes, "mercury accounts");
+  const accounts = (accountsData.accounts || []).map((a) => ({
     accountId: a.id,
     accountName: a.name,
     balance: a.currentBalance || 0,
@@ -1366,18 +1367,18 @@ export async function fetchMercuryData(
         { headers }
       );
       if (!txRes.ok) continue;
-      const txData = await safeJson<{ transactions?: unknown[] }>(txRes, "mercury transactions");
+      const txData = await safeJson<{ transactions?: Array<{ postedAt?: string; createdAt?: string; timestamp?: string; status?: string; amount?: number }> }>(txRes, "mercury transactions");
       for (const tx of txData.transactions || []) {
         if (useRange && rangeTo) {
-          const postedAt = (tx.postedAt || tx.createdAt || tx.timestamp || "") as string;
+          const postedAt = tx.postedAt || tx.createdAt || tx.timestamp || "";
           if (postedAt) {
             const postedMs = Date.parse(postedAt);
             if (Number.isFinite(postedMs) && postedMs > rangeTo.getTime()) continue;
           }
         }
         if (tx.status === "sent") {
-          const amt = Math.abs(tx.amount || 0);
-          if (tx.amount > 0) inflows += amt;
+          const amt = Math.abs(tx.amount ?? 0);
+          if ((tx.amount ?? 0) > 0) inflows += amt;
           else outflows += amt;
         }
       }

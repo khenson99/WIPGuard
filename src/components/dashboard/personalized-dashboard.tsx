@@ -210,7 +210,7 @@ export function PersonalizedDashboard() {
       }
       return payload;
     },
-    getLastUpdatedAt: (payload) => payload.meta?.servedAt ?? payload.generatedAt,
+    getLastUpdatedAt: (payload) => payload.meta?.servedAt ?? null,
     mapError: (error) => {
       if (error instanceof Error && error.message.trim().length > 0) return error.message;
       return "Could not load personalized dashboard.";

@@ -96,7 +96,7 @@ describe("GET /api/insights/preferences", () => {
     const { GET } = await import("../route");
     await GET(makeGetRequest("http://localhost/api/insights/preferences"));
 
-    const call = vi.mocked(prisma.insightPreference.findMany).mock.calls[0][0];
+    const call = vi.mocked(prisma.insightPreference.findMany).mock.calls[0]![0]!;
     expect((call.where as { userId: string }).userId).toBe("user-2");
   });
 });

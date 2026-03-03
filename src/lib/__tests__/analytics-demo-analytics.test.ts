@@ -58,6 +58,10 @@ describe("buildDemoAnalyticsData", () => {
           ownerId: "owner-1",
           updatedAt: "2026-02-10T00:00:00.000Z",
           createdAt: "2026-01-15T00:00:00.000Z",
+          pipelineId: null,
+          contactIds: [],
+          primaryContactId: null,
+          primaryContactEmail: null,
         },
         {
           dealId: "deal-2",
@@ -69,6 +73,10 @@ describe("buildDemoAnalyticsData", () => {
           ownerId: "owner-2",
           updatedAt: "2026-02-11T00:00:00.000Z",
           createdAt: "2026-01-20T00:00:00.000Z",
+          pipelineId: null,
+          contactIds: [],
+          primaryContactId: null,
+          primaryContactEmail: null,
         },
         {
           dealId: "deal-3",
@@ -80,6 +88,10 @@ describe("buildDemoAnalyticsData", () => {
           ownerId: "owner-3",
           updatedAt: "2026-02-12T00:00:00.000Z",
           createdAt: "2026-01-25T00:00:00.000Z",
+          pipelineId: null,
+          contactIds: [],
+          primaryContactId: null,
+          primaryContactEmail: null,
         },
       ],
       _meta: META,
@@ -118,14 +130,14 @@ describe("buildDemoAnalyticsData", () => {
       contacts: { totalContacts: 10, recentContacts: 2, bySource: [] },
       deals: [
         // Organic channel: prospect, demo completed → won, churned
-        { dealId: "o1", dealName: "Org Prospect", stageId: "p", stageLabel: "Prospect", amount: 0, source: "Organic", ownerId: null, updatedAt: "2026-02-01T00:00:00.000Z", createdAt: "2026-01-01T00:00:00.000Z" },
-        { dealId: "o2", dealName: "Org Demo", stageId: "d", stageLabel: "Demo Scheduled", amount: 3000, source: "Organic", ownerId: null, updatedAt: "2026-02-02T00:00:00.000Z", createdAt: "2026-01-05T00:00:00.000Z" },
-        { dealId: "o3", dealName: "Org Won", stageId: "w", stageLabel: "Closed Won", amount: 5000, source: "Organic", ownerId: null, updatedAt: "2026-02-05T00:00:00.000Z", createdAt: "2026-01-10T00:00:00.000Z" },
-        { dealId: "o4", dealName: "Org Churn", stageId: "ch", stageLabel: "Churn", amount: 2000, source: "Organic", ownerId: null, updatedAt: "2026-02-10T00:00:00.000Z", createdAt: "2026-01-15T00:00:00.000Z" },
+        { dealId: "o1", dealName: "Org Prospect", stageId: "p", stageLabel: "Prospect", amount: 0, source: "Organic", ownerId: null, updatedAt: "2026-02-01T00:00:00.000Z", createdAt: "2026-01-01T00:00:00.000Z", pipelineId: null, contactIds: [], primaryContactId: null, primaryContactEmail: null },
+        { dealId: "o2", dealName: "Org Demo", stageId: "d", stageLabel: "Demo Scheduled", amount: 3000, source: "Organic", ownerId: null, updatedAt: "2026-02-02T00:00:00.000Z", createdAt: "2026-01-05T00:00:00.000Z", pipelineId: null, contactIds: [], primaryContactId: null, primaryContactEmail: null },
+        { dealId: "o3", dealName: "Org Won", stageId: "w", stageLabel: "Closed Won", amount: 5000, source: "Organic", ownerId: null, updatedAt: "2026-02-05T00:00:00.000Z", createdAt: "2026-01-10T00:00:00.000Z", pipelineId: null, contactIds: [], primaryContactId: null, primaryContactEmail: null },
+        { dealId: "o4", dealName: "Org Churn", stageId: "ch", stageLabel: "Churn", amount: 2000, source: "Organic", ownerId: null, updatedAt: "2026-02-10T00:00:00.000Z", createdAt: "2026-01-15T00:00:00.000Z", pipelineId: null, contactIds: [], primaryContactId: null, primaryContactEmail: null },
         // Paid channel: no-show, demo follow-up → lost
-        { dealId: "p1", dealName: "Paid NoShow", stageId: "ns", stageLabel: "No-Show/Reschedule", amount: 1000, source: "Paid", ownerId: null, updatedAt: "2026-02-03T00:00:00.000Z", createdAt: "2026-01-20T00:00:00.000Z" },
-        { dealId: "p2", dealName: "Paid Follow", stageId: "fu", stageLabel: "Demo Follow-Up", amount: 4000, source: "Paid", ownerId: null, updatedAt: "2026-02-04T00:00:00.000Z", createdAt: "2026-01-22T00:00:00.000Z" },
-        { dealId: "p3", dealName: "Paid Lost", stageId: "l", stageLabel: "Closed Lost", amount: 3000, source: "Paid", ownerId: null, updatedAt: "2026-02-06T00:00:00.000Z", createdAt: "2026-01-25T00:00:00.000Z" },
+        { dealId: "p1", dealName: "Paid NoShow", stageId: "ns", stageLabel: "No-Show/Reschedule", amount: 1000, source: "Paid", ownerId: null, updatedAt: "2026-02-03T00:00:00.000Z", createdAt: "2026-01-20T00:00:00.000Z", pipelineId: null, contactIds: [], primaryContactId: null, primaryContactEmail: null },
+        { dealId: "p2", dealName: "Paid Follow", stageId: "fu", stageLabel: "Demo Follow-Up", amount: 4000, source: "Paid", ownerId: null, updatedAt: "2026-02-04T00:00:00.000Z", createdAt: "2026-01-22T00:00:00.000Z", pipelineId: null, contactIds: [], primaryContactId: null, primaryContactEmail: null },
+        { dealId: "p3", dealName: "Paid Lost", stageId: "l", stageLabel: "Closed Lost", amount: 3000, source: "Paid", ownerId: null, updatedAt: "2026-02-06T00:00:00.000Z", createdAt: "2026-01-25T00:00:00.000Z", pipelineId: null, contactIds: [], primaryContactId: null, primaryContactEmail: null },
       ],
       _meta: META,
     };
@@ -171,8 +183,8 @@ describe("buildDemoAnalyticsData", () => {
       },
       contacts: { totalContacts: 5, recentContacts: 1, bySource: [] },
       deals: [
-        { dealId: "cus_stripe1", dealName: "Stripe Customer", stageId: "w", stageLabel: "Closed Won", amount: 5000, source: "Organic", ownerId: null, updatedAt: "2026-03-05T00:00:00.000Z", createdAt: "2026-01-01T00:00:00.000Z" },
-        { dealId: "d2", dealName: "Active Deal", stageId: "s", stageLabel: "Subscription", amount: 3000, source: "Organic", ownerId: null, updatedAt: "2026-02-01T00:00:00.000Z", createdAt: "2026-01-10T00:00:00.000Z" },
+        { dealId: "cus_stripe1", dealName: "Stripe Customer", stageId: "w", stageLabel: "Closed Won", amount: 5000, source: "Organic", ownerId: null, updatedAt: "2026-03-05T00:00:00.000Z", createdAt: "2026-01-01T00:00:00.000Z", pipelineId: null, contactIds: [], primaryContactId: null, primaryContactEmail: null },
+        { dealId: "d2", dealName: "Active Deal", stageId: "s", stageLabel: "Subscription", amount: 3000, source: "Organic", ownerId: null, updatedAt: "2026-02-01T00:00:00.000Z", createdAt: "2026-01-10T00:00:00.000Z", pipelineId: null, contactIds: [], primaryContactId: null, primaryContactEmail: null },
       ],
       _meta: META,
     };

@@ -68,6 +68,10 @@ describe("RepScoreboardCard", () => {
             updatedAt: null,
             createdAt: null,
             stripeCustomerId: "cus_1",
+            pipelineId: null,
+            contactIds: [],
+            primaryContactId: null,
+            primaryContactEmail: null,
           },
           {
             dealId: "2",
@@ -81,6 +85,10 @@ describe("RepScoreboardCard", () => {
             updatedAt: null,
             createdAt: null,
             stripeCustomerId: null,
+            pipelineId: null,
+            contactIds: [],
+            primaryContactId: null,
+            primaryContactEmail: null,
           },
           {
             dealId: "3",
@@ -94,6 +102,10 @@ describe("RepScoreboardCard", () => {
             updatedAt: null,
             createdAt: null,
             stripeCustomerId: null,
+            pipelineId: null,
+            contactIds: [],
+            primaryContactId: null,
+            primaryContactEmail: null,
           },
           {
             dealId: "4",
@@ -107,6 +119,10 @@ describe("RepScoreboardCard", () => {
             updatedAt: null,
             createdAt: null,
             stripeCustomerId: "cus_churn",
+            pipelineId: null,
+            contactIds: [],
+            primaryContactId: null,
+            primaryContactEmail: null,
           },
         ]}
         stripeChurnEvents={[{ customer: "cus_churn", canceledAt: new Date().toISOString(), amount: 99 }]}

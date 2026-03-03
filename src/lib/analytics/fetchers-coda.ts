@@ -78,8 +78,6 @@ export interface FetchCodaDataOptions {
   fromDate?: Date;
   toDate?: Date;
   now?: Date;
-  fromDate?: Date;
-  toDate?: Date;
 }
 
 interface EnrichedCard extends CodaCard {
@@ -474,7 +472,7 @@ export async function fetchCodaData(
   const rows: CodaRow[] = [];
   let nextPageToken: string | null = null;
   do {
-    const rowsResponse = await fetch(
+    const rowsResponse: Response = await fetch(
       `${CODA_API_BASE}/docs/${docId}/tables/${tableId}/rows?limit=500&valueFormat=simple`,
       {
         headers: {
@@ -804,6 +802,8 @@ export async function fetchCodaData(
     trends: {
       newCreators30d: newCreatorsTrend,
       cardsCreated90d: cardsCreatedTrend,
+      downloadsDaily,
+      downloadersDaily,
     },
     engagedLeadCandidates: leadEnrichment.candidates,
     rangeSummary,

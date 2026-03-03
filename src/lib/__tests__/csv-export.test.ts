@@ -57,15 +57,15 @@ describe("downloadCsv", () => {
     });
 
     clickMock = vi.fn();
-    vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
+    vi.spyOn(document, "createElement").mockImplementation(((tag: string) => {
       if (tag === "a") {
         const el = realCreateElement("a") as HTMLAnchorElement;
-        el.click = clickMock;
+        el.click = clickMock as () => void;
         capturedAnchor = el;
         return el;
       }
       return realCreateElement(tag);
-    });
+    }) as typeof document.createElement);
     appendChildSpy = vi.spyOn(document.body, "appendChild").mockImplementation((node) => node);
     removeChildSpy = vi.spyOn(document.body, "removeChild").mockImplementation((node) => node);
   });

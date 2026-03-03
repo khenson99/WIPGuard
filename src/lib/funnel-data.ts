@@ -3,12 +3,10 @@
 // Separating this from funnel-analytics.ts enables clean unit testing of the
 // computation without DB access.
 
-import { PrismaClient } from "@/generated/prisma/client";
+import { PrismaClient, TaskStatus } from "@/generated/prisma/client";
 import type { FunnelInput } from "./funnel-analytics";
 
-// TaskStatus enum values from prisma/schema.prisma
-// BACKLOG | QUEUED | WORKING_ON_TODAY | ACTIVE | NOT_DONE | DONE
-const TERMINAL_STATUSES = ["DONE"] as const;
+const TERMINAL_STATUSES: TaskStatus[] = [TaskStatus.DONE];
 
 export interface FunnelQueryParams {
   from: Date;
@@ -43,7 +41,7 @@ export async function fetchFunnelInput(
   const completed = await prisma.task.count({
     where: {
       ...taskWhere,
-      status: { in: TERMINAL_STATUSES as unknown as string[] },
+      status: { in: TERMINAL_STATUSES },
     },
   });
 
