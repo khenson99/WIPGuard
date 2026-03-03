@@ -12,16 +12,19 @@ import {
  * Next.js Middleware
  *
  * Handles:
- * 1. API version header injection on all /api/* responses
- * 2. Unversioned /api/* route rewriting to /api/v1/*
- * 3. Unsupported version rejection
+ * 1. Runtime security headers on all responses
+ * 2. API version header injection on all /api/* responses
+ * 3. Unversioned /api/* route rewriting to /api/v1/*
+ * 4. Unsupported version rejection
  */
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Only process API routes
+  // For non-API routes, just add security headers
   if (!pathname.startsWith("/api/")) {
-    return NextResponse.next();
+    const response = NextResponse.next();
+    addSecurityHeaders(response);
+    return response;
   }
 
   // Check if the path contains an explicit version
@@ -59,17 +62,32 @@ export function middleware(request: NextRequest) {
       }
     }
 
+    addSecurityHeaders(response);
     return response;
   }
 
   // Unversioned API request — add version header indicating current version
-  // The actual route handling stays at /api/* for backwards compatibility
-  // This means /api/tasks and /api/v1/tasks both work
   const response = NextResponse.next();
   response.headers.set("API-Version", CURRENT_API_VERSION);
+  addSecurityHeaders(response);
   return response;
 }
 
+function addSecurityHeaders(response: NextResponse) {
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+}
+
 export const config = {
-  matcher: ["/api/:path*"],
+  matcher: [
+    /*
+     * Match all request paths except:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - public folder assets
+     */
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 };
