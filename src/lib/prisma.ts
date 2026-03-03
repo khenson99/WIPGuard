@@ -1,38 +1,35 @@
-import { PrismaClient } from "@/generated/prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from '@prisma/client';
+import { createTenantMiddleware } from './prisma-tenant-middleware';
 
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
+};
 
 function createPrismaClient(): PrismaClient {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error("DATABASE_URL environment variable is not set");
-  }
-
-  const useSSL = process.env.NODE_ENV === "production" || process.env.DATABASE_SSL === "true";
-
-  const adapter = new PrismaPg({
-    connectionString,
-    max: 10,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-    ...(useSSL ? { ssl: { rejectUnauthorized: false } } : {}),
+  const client = new PrismaClient({
+    log:
+      process.env.NODE_ENV === 'development'
+        ? ['query', 'error', 'warn']
+        : ['error'],
   });
 
-  return new PrismaClient({ adapter });
+  // Apply tenant isolation middleware.
+  // allowBypass is false by default — all tenant-scoped queries MUST
+  // have an organization context or they will throw.
+  // For admin/system operations, use runWithContext() to set context.
+  client.$use(
+    createTenantMiddleware({
+      allowBypass: process.env.PRISMA_TENANT_BYPASS === 'true',
+    })
+  );
+
+  return client;
 }
 
-// Lazy singleton — only creates the client when first accessed at runtime,
-// not at module import time (avoids build-time errors when DATABASE_URL is unset)
-function getPrismaClient(): PrismaClient {
-  if (!globalForPrisma.prisma) {
-    globalForPrisma.prisma = createPrismaClient();
-  }
-  return globalForPrisma.prisma;
+export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = prisma;
 }
 
-export const prisma = new Proxy({} as PrismaClient, {
-  get(_target, prop) {
-    return getPrismaClient()[prop as keyof PrismaClient];
-  },
-});
+export default prisma;
