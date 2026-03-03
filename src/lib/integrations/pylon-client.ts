@@ -89,6 +89,9 @@ export async function fetchPylonIssues(input: {
   const endpoints = [
     `${baseUrl}/issues?${query.toString()}`,
     `${baseUrl}/v1/issues?${query.toString()}`,
+    // Some Pylon tenants expose the issues collection under conversations.
+    `${baseUrl}/conversations?${query.toString()}`,
+    `${baseUrl}/v1/conversations?${query.toString()}`,
   ];
 
   let lastError: { status: number; message: string } | null = null;
@@ -164,4 +167,3 @@ export function getPylonIssueUrl(issue: PylonIssue): string | null {
     asString(issue.html_url)
   );
 }
-

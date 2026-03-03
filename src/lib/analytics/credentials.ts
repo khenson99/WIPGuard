@@ -168,10 +168,21 @@ function buildFreshness(
     };
   }
 
-  if (connection) {
+  if (connection && connection.status === IntegrationConnectionStatus.CONNECTED) {
     return {
       provider,
       source: "connection",
+      status: connection.status,
+      connectedAt: connection.connectedAt.toISOString(),
+      lastSyncedAt: connection.lastSyncedAt?.toISOString() ?? null,
+      lastError: connection.lastError,
+    };
+  }
+
+  if (connection) {
+    return {
+      provider,
+      source: "none",
       status: connection.status,
       connectedAt: connection.connectedAt.toISOString(),
       lastSyncedAt: connection.lastSyncedAt?.toISOString() ?? null,
@@ -558,25 +569,31 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
   const envMetaInstagramAccountId = envOrNull(process.env.META_INSTAGRAM_ACCOUNT_ID);
 
   const hubspotToken =
-    envHubspot ??
-    (hubspotConnection?.status === IntegrationConnectionStatus.CONNECTED
+    hubspotConnection && hubspotConnection.status !== IntegrationConnectionStatus.DISCONNECTED
       ? await getValidIntegrationAccessToken({
           userId: hubspotConnection.userId,
           provider: IntegrationProvider.HUBSPOT,
         }).catch(() => null)
-      : null);
+      : envHubspot;
+  const usingHubspotEnvFallback =
+    Boolean(envHubspot) &&
+    (!hubspotConnection || hubspotConnection.status === IntegrationConnectionStatus.DISCONNECTED);
 
   const codaApiToken =
-    envCoda ??
-    (codaConnection?.status === IntegrationConnectionStatus.CONNECTED
+    codaConnection && codaConnection.status !== IntegrationConnectionStatus.DISCONNECTED
       ? unprotectIntegrationSecret(codaConnection.accessToken)
-      : null);
+      : envCoda;
+  const usingCodaEnvFallback =
+    Boolean(envCoda) &&
+    (!codaConnection || codaConnection.status === IntegrationConnectionStatus.DISCONNECTED);
 
   const redditRefreshToken =
-    envRedditRefresh ??
-    (redditConnection?.status === IntegrationConnectionStatus.CONNECTED
+    redditConnection && redditConnection.status !== IntegrationConnectionStatus.DISCONNECTED
       ? unprotectIntegrationSecret(redditConnection.refreshToken)
-      : null);
+      : envRedditRefresh;
+  const usingRedditEnvFallback =
+    Boolean(envRedditRefresh) &&
+    (!redditConnection || redditConnection.status === IntegrationConnectionStatus.DISCONNECTED);
 
   const googleWorkspaceAccessToken =
     googleWorkspaceConnection?.status === IntegrationConnectionStatus.CONNECTED
@@ -592,36 +609,43 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
       : null;
 
   const stripeKey =
-    envStripe ??
-    (stripeConnection?.status === IntegrationConnectionStatus.CONNECTED
+    stripeConnection && stripeConnection.status !== IntegrationConnectionStatus.DISCONNECTED
       ? await getValidIntegrationAccessToken({
           userId: stripeConnection.userId,
           provider: IntegrationProvider.STRIPE,
         }).catch(() => null)
-      : null);
+      : envStripe;
+  const usingStripeEnvFallback =
+    Boolean(envStripe) &&
+    (!stripeConnection || stripeConnection.status === IntegrationConnectionStatus.DISCONNECTED);
 
   const mercuryKey =
-    envMercury ??
-    (mercuryConnection?.status === IntegrationConnectionStatus.CONNECTED
+    mercuryConnection && mercuryConnection.status !== IntegrationConnectionStatus.DISCONNECTED
       ? await getValidIntegrationAccessToken({
           userId: mercuryConnection.userId,
           provider: IntegrationProvider.MERCURY,
         }).catch(() => null)
-      : null);
+      : envMercury;
+  const usingMercuryEnvFallback =
+    Boolean(envMercury) &&
+    (!mercuryConnection || mercuryConnection.status === IntegrationConnectionStatus.DISCONNECTED);
 
   const webflowApiToken =
-    envWebflowToken ??
-    (webflowConnection?.status === IntegrationConnectionStatus.CONNECTED
+    webflowConnection && webflowConnection.status !== IntegrationConnectionStatus.DISCONNECTED
       ? await getValidIntegrationAccessToken({
           userId: webflowConnection.userId,
           provider: IntegrationProvider.WEBFLOW,
         }).catch(() => null)
-      : null);
+      : envWebflowToken;
+  const usingWebflowEnvFallback =
+    Boolean(envWebflowToken) &&
+    (!webflowConnection || webflowConnection.status === IntegrationConnectionStatus.DISCONNECTED);
 
   const webflowSiteId =
-    envWebflowSiteId ??
-    metadataString(webflowConnection?.metadata, "siteId") ??
-    metadataString(webflowConnection?.metadata, "defaultSiteId");
+    (webflowConnection && webflowConnection.status !== IntegrationConnectionStatus.DISCONNECTED
+      ? metadataString(webflowConnection?.metadata, "siteId") ??
+        metadataString(webflowConnection?.metadata, "defaultSiteId")
+      : null) ?? envWebflowSiteId;
 
   const googleAdsConnectionRefreshToken =
     googleAdsConnection?.status === IntegrationConnectionStatus.CONNECTED
@@ -633,33 +657,48 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
   const usingGoogleAdsEnvFallback =
     !googleAdsConnectionRefreshToken && envGoogleAdsReady();
 
-  const metaAccessToken =
-    envMetaAccessToken ??
-    (metaAdsConnection?.status === IntegrationConnectionStatus.CONNECTED
+  const metaAccessTokenFromAds =
+    metaAdsConnection && metaAdsConnection.status !== IntegrationConnectionStatus.DISCONNECTED
       ? await getValidIntegrationAccessToken({
           userId: metaAdsConnection.userId,
           provider: IntegrationProvider.META_ADS,
         }).catch(() => null)
-      : null) ??
-    (metaPageConnection?.status === IntegrationConnectionStatus.CONNECTED
+      : null;
+  const metaAccessTokenFromPage =
+    metaPageConnection && metaPageConnection.status !== IntegrationConnectionStatus.DISCONNECTED
       ? await getValidIntegrationAccessToken({
           userId: metaPageConnection.userId,
           provider: IntegrationProvider.META_PAGE,
         }).catch(() => null)
-      : null);
+      : null;
+  const usingMetaEnvFallback =
+    Boolean(envMetaAccessToken) &&
+    (!metaAdsConnection || metaAdsConnection.status === IntegrationConnectionStatus.DISCONNECTED) &&
+    (!metaPageConnection || metaPageConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+  const metaAccessToken =
+    metaAccessTokenFromAds ??
+    metaAccessTokenFromPage ??
+    (usingMetaEnvFallback ? envMetaAccessToken : null);
 
 
-  let metaAdAccountId =
-    envMetaAdAccountId ??
-    metadataString(metaAdsConnection?.metadata, "adAccountId");
+  const metaAdsMetadata =
+    metaAdsConnection && metaAdsConnection.status !== IntegrationConnectionStatus.DISCONNECTED
+      ? metaAdsConnection.metadata
+      : null;
+  const metaPageMetadata =
+    metaPageConnection && metaPageConnection.status !== IntegrationConnectionStatus.DISCONNECTED
+      ? metaPageConnection.metadata
+      : null;
+
+  let metaAdAccountId = metadataString(metaAdsMetadata, "adAccountId") ?? envMetaAdAccountId;
   let metaPageId =
-    envMetaPageId ??
-    metadataString(metaPageConnection?.metadata, "pageId") ??
-    metadataString(metaAdsConnection?.metadata, "pageId");
+    metadataString(metaPageMetadata, "pageId") ??
+    metadataString(metaAdsMetadata, "pageId") ??
+    envMetaPageId;
   let metaInstagramAccountId =
-    envMetaInstagramAccountId ??
-    metadataString(metaPageConnection?.metadata, "instagramAccountId") ??
-    metadataString(metaAdsConnection?.metadata, "instagramAccountId");
+    metadataString(metaPageMetadata, "instagramAccountId") ??
+    metadataString(metaAdsMetadata, "instagramAccountId") ??
+    envMetaInstagramAccountId;
 
   if (looksInvalidMetaInstagramAccountId(metaInstagramAccountId)) {
     metaInstagramAccountId = null;
@@ -767,10 +806,12 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
 
 
   const pylonApiKey =
-    envPylonApiKey ??
-    (pylonConnection?.status === IntegrationConnectionStatus.CONNECTED
+    pylonConnection && pylonConnection.status !== IntegrationConnectionStatus.DISCONNECTED
       ? unprotectIntegrationSecret(pylonConnection.accessToken)
-      : null);
+      : envPylonApiKey;
+  const usingPylonEnvFallback =
+    hasValue(envPylonApiKey) &&
+    (!pylonConnection || pylonConnection.status === IntegrationConnectionStatus.DISCONNECTED);
 
   const pylonBaseUrl =
     metadataString(pylonConnection?.metadata, "baseUrl") ?? envPylonBaseUrl;
@@ -783,33 +824,33 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     [IntegrationProvider.HUBSPOT]: buildFreshness(
       IntegrationProvider.HUBSPOT,
       hubspotConnection,
-      Boolean(envHubspot)
+      usingHubspotEnvFallback
     ),
     [IntegrationProvider.SLACK]: buildFreshness(IntegrationProvider.SLACK, slackConnection, false),
     [IntegrationProvider.CODA]: buildFreshness(
       IntegrationProvider.CODA,
       codaConnection,
-      Boolean(envCoda)
+      usingCodaEnvFallback
     ),
     [IntegrationProvider.REDDIT]: buildFreshness(
       IntegrationProvider.REDDIT,
       redditConnection,
-      Boolean(envRedditRefresh)
+      usingRedditEnvFallback
     ),
     [IntegrationProvider.STRIPE]: buildFreshness(
       IntegrationProvider.STRIPE,
       stripeConnection,
-      Boolean(envStripe)
+      usingStripeEnvFallback
     ),
     [IntegrationProvider.MERCURY]: buildFreshness(
       IntegrationProvider.MERCURY,
       mercuryConnection,
-      Boolean(envMercury)
+      usingMercuryEnvFallback
     ),
     [IntegrationProvider.WEBFLOW]: buildFreshness(
       IntegrationProvider.WEBFLOW,
       webflowConnection,
-      Boolean(envWebflowToken)
+      usingWebflowEnvFallback
     ),
     [IntegrationProvider.GOOGLE_ADS]: buildFreshness(
       IntegrationProvider.GOOGLE_ADS,
@@ -819,12 +860,12 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     [IntegrationProvider.META_ADS]: buildFreshness(
       IntegrationProvider.META_ADS,
       metaAdsConnection,
-      envMetaAdsReady()
+      usingMetaEnvFallback && envMetaAdsReady()
     ),
     [IntegrationProvider.META_PAGE]: buildFreshness(
       IntegrationProvider.META_PAGE,
       metaPageConnection,
-      Boolean(envMetaAccessToken)
+      usingMetaEnvFallback && envMetaPageReady()
     ),
     [IntegrationProvider.GOOGLE_ANALYTICS]: buildFreshness(
       IntegrationProvider.GOOGLE_ANALYTICS,
@@ -839,7 +880,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     [IntegrationProvider.PYLON]: buildFreshness(
       IntegrationProvider.PYLON,
       pylonConnection,
-      hasValue(envPylonApiKey)
+      usingPylonEnvFallback
     ),
   };
 

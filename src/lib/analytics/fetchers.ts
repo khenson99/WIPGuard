@@ -91,7 +91,9 @@ async function fetchAllHubSpotDeals(input: {
 
   for (;;) {
     const url = new URL(`${input.baseUrl}/crm/v3/objects/deals`);
-    url.searchParams.set("limit", "100");
+    // HubSpot restricts requests that include `propertiesWithHistory` to a
+    // smaller page size (currently max 50 objects per request).
+    url.searchParams.set("limit", input.propertiesWithHistory ? "50" : "100");
     url.searchParams.set("properties", input.properties);
     url.searchParams.set("archived", input.archived ? "true" : "false");
     if (input.propertiesWithHistory) {
@@ -1088,7 +1090,10 @@ export async function fetchStripeData(
   // ── Bucket charges by month for trend ──
   const monthBuckets: Record<string, number> = {};
 
-  let revInRange = 0, revPrev = 0, succeeded = 0, failed = 0;
+  let revInRange = 0;
+  let revPrev = 0;
+  let succeeded = 0;
+  let failed = 0;
   for (const charge of chargesInRange) {
     const amt = (charge.amount || 0) / 100;
     const chargeDate = new Date(charge.created * 1000);
@@ -1096,14 +1101,11 @@ export async function fetchStripeData(
 
     if (charge.status === "succeeded") {
       monthBuckets[monthKey] = (monthBuckets[monthKey] || 0) + amt;
-      rev30d += amt;
+      revInRange += amt;
       succeeded++;
     } else if (charge.status === "failed") {
       failed++;
     }
-
-    if (charge.status === "succeeded") { revInRange += amt; succeeded++; }
-      else if (charge.status === "failed") failed++;
   }
   for (const charge of chargesPrevRange) {
     if (charge.status === "succeeded") {

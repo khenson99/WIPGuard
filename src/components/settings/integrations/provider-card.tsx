@@ -298,26 +298,49 @@ export function ProviderCard({
           <div className="grid gap-3 md:grid-cols-2">
             <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground">
               <p>
-                <span className="font-medium text-foreground">Connection:</span>{" "}
-                {item.connected ? `Connected as ${item.accountLabel || "unknown account"}` : "Not connected"}
+                <span className="font-medium text-foreground">Stored Connection:</span>{" "}
+                {item.status === "CONNECTED"
+                  ? "Connected"
+                  : item.status === "ERROR"
+                    ? "Error"
+                    : "Not connected"}
               </p>
-              <p>
-                <span className="font-medium text-foreground">Connected At:</span> {formatDate(item.connectedAt)}
-              </p>
+              {item.accountLabel ? (
+                <p>
+                  <span className="font-medium text-foreground">Account:</span> {item.accountLabel}
+                </p>
+              ) : null}
+              {item.connectedAt && item.status !== "DISCONNECTED" ? (
+                <p>
+                  <span className="font-medium text-foreground">Connected At:</span>{" "}
+                  {formatDate(item.connectedAt)}
+                </p>
+              ) : null}
               <p>
                 <span className="font-medium text-foreground">Credential Source:</span>{" "}
                 {credentialSourceLabel(item.credentialSource)}
               </p>
-              {item.syncHealthReason ? (
-                <p>
-                  <span className="font-medium text-foreground">Data Health:</span> {item.syncHealthReason}
-                </p>
-              ) : null}
               {item.lastError ? (
                 <p className="text-[var(--danger)]">
-                  <span className="font-medium">Last Error:</span> {item.lastError}
+                  <span className="font-medium">Connection Error:</span> {item.lastError}
                 </p>
               ) : null}
+
+              <div className="mt-2 space-y-1 rounded-md border border-border bg-background/40 p-2">
+                <p className="font-medium text-foreground">Data Health</p>
+                <p>
+                  <span className="font-medium text-foreground">Sync Health:</span> {item.syncHealth}
+                </p>
+                {item.lastSnapshotAt ? (
+                  <p>
+                    <span className="font-medium text-foreground">Last Snapshot:</span>{" "}
+                    {formatDate(item.lastSnapshotAt)}
+                    {item.lastSnapshotStatus ? ` (${item.lastSnapshotStatus})` : ""}
+                  </p>
+                ) : null}
+                {item.syncHealthReason ? <p>{item.syncHealthReason}</p> : null}
+              </div>
+
               {!item.configured && item.authType === "oauth" ? (
                 <p className="text-[var(--warning)]">Missing env: {item.missingEnv.join(", ")}</p>
               ) : null}
