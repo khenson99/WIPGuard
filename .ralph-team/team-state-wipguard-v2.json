@@ -1,0 +1,52 @@
+{
+  "tickets": {
+    "293": { "status": "done", "agent": "backend" },
+    "294": { "status": "done", "agent": "backend" },
+    "301": { "status": "done", "agent": "backend" },
+    "297": { "status": "done", "agent": "backend" },
+    "295": { "status": "done", "agent": "frontend" },
+    "337": { "status": "in_progress", "agent": "backend", "title": "Add missing DB indexes", "complexity": "S" },
+    "338": { "status": "in_progress", "agent": "backend-2", "title": "Fail hard on missing token encryption secret", "complexity": "S" },
+    "345": { "status": "in_progress", "agent": "backend-3", "title": "Remove unauthenticated debug endpoints", "complexity": "S" },
+    "360": { "status": "in_progress", "agent": "backend-4", "title": "Fix Node version mismatch CI vs Docker", "complexity": "S" },
+    "361": { "status": "in_progress", "agent": "backend-5", "title": "Fix SSL cert verification in migration", "complexity": "S" },
+    "336": { "status": "ready", "agent": null, "title": "Add enforcePermission() to GET endpoints", "complexity": "S" },
+    "339": { "status": "ready", "agent": null, "title": "Add pagination to list endpoints", "complexity": "M" },
+    "340": { "status": "ready", "agent": null, "title": "Configure Vitest coverage + CI", "complexity": "S" },
+    "341": { "status": "ready", "agent": null, "title": "Standardize API error responses", "complexity": "M" },
+    "342": { "status": "ready", "agent": null, "title": "Add rate limiting", "complexity": "M" },
+    "343": { "status": "ready", "agent": null, "title": "Fix N+1 queries", "complexity": "M" },
+    "344": { "status": "ready", "agent": null, "title": "Add Next.js error boundaries", "complexity": "S" },
+    "346": { "status": "ready", "agent": null, "title": "Wire structured logger + tracing", "complexity": "M" },
+    "347": { "status": "ready", "agent": null, "title": "Docker HEALTHCHECK + /api/health", "complexity": "S" },
+    "349": { "status": "ready", "agent": null, "title": "Fix orchestrator silent errors", "complexity": "S" },
+    "350": { "status": "ready", "agent": null, "title": "Distributed lock for cron sync", "complexity": "S" },
+    "352": { "status": "ready", "agent": null, "title": "Fix circuit breaker race condition", "complexity": "S" },
+    "354": { "status": "ready", "agent": null, "title": "Webhook timeout + status codes", "complexity": "S" },
+    "356": { "status": "ready", "agent": null, "title": "Remove ignoreBuildErrors + tsc CI", "complexity": "M" },
+    "357": { "status": "ready", "agent": null, "title": "Add Zod validation to API inputs", "complexity": "M" },
+    "358": { "status": "ready", "agent": null, "title": "Deal stage transaction", "complexity": "S" },
+    "362": { "status": "ready", "agent": null, "title": "Dependabot + npm audit", "complexity": "S" },
+    "365": { "status": "ready", "agent": null, "title": "Pre-commit hooks", "complexity": "S" },
+    "370": { "status": "ready", "agent": null, "title": ".env.example", "complexity": "S" }
+  },
+  "agents": {
+    "architect": { "status": "active", "current_ticket": null, "iterations": 1 },
+    "backend": { "status": "working", "current_ticket": 337, "iterations": 1 },
+    "backend-2": { "status": "working", "current_ticket": 338, "iterations": 1 },
+    "backend-3": { "status": "working", "current_ticket": 345, "iterations": 1 },
+    "backend-4": { "status": "working", "current_ticket": 360, "iterations": 1 },
+    "backend-5": { "status": "working", "current_ticket": 361, "iterations": 1 },
+    "frontend": { "status": "idle", "current_ticket": null, "iterations": 0 },
+    "qa": { "status": "idle", "current_ticket": null, "iterations": 0 },
+    "reviewer": { "status": "idle", "current_ticket": null, "iterations": 0 }
+  },
+  "sprint": {
+    "status": "active",
+    "total_tickets": 50,
+    "completed_tickets": 5,
+    "blocked_tickets": 0,
+    "iteration": 1,
+    "wave": "1-quick-wins"
+  }
+}
