@@ -110,12 +110,16 @@ test.describe('Deal Pipeline', () => {
     await dealsPage.createDeal(deal1);
     await expect(dealsPage.getDeal(deal1)).toBeVisible({ timeout: 10_000 });
 
+    // Creating a deal navigates to its detail view; go back to the deals list before creating another.
+    await dealsPage.goto();
+
     await dealsPage.createDeal(deal2);
     await expect(dealsPage.getDeal(deal2)).toBeVisible({ timeout: 10_000 });
 
-    // Both deals should be visible
-    await expect(dealsPage.getDeal(deal1)).toBeVisible();
-    await expect(dealsPage.getDeal(deal2)).toBeVisible();
+    // Back on the list, both deals should be visible.
+    await dealsPage.goto();
+    await expect(dealsPage.getDeal(deal1)).toBeVisible({ timeout: 15_000 });
+    await expect(dealsPage.getDeal(deal2)).toBeVisible({ timeout: 15_000 });
   });
 
   test('should handle deal pipeline with all stages visible', async ({ page }) => {

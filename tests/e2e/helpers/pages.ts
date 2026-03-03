@@ -313,15 +313,11 @@ export class DealsPage {
     await this.getDealNameInput().fill(name);
     await this.getSubmitButton().click();
     await this.page.getByRole('dialog').waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});
-
-    // Some flows navigate to the new deal's detail page; return to the list so
-    // subsequent tests can keep creating/advancing deals.
-    const backToDeals = this.page.getByRole('button', { name: /back to deals/i });
-    const backVisible = await backToDeals.isVisible().catch(() => false);
-    if (backVisible) {
-      await backToDeals.click();
-      await this.page.waitForURL(/\/deals\/?$/i, { timeout: 10_000 }).catch(() => {});
-    }
+    // Creation navigates to the deal detail page; wait for the heading to render.
+    await this.page
+      .getByRole('heading', { name: new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') })
+      .waitFor({ state: 'visible', timeout: 15_000 })
+      .catch(() => {});
   }
 
   async advanceDealToStage(dealName: string, targetStage: string) {
