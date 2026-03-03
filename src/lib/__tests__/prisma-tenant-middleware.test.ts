@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@/generated/prisma/client';
 import { createTenantMiddleware, TENANT_SCOPED_MODELS } from '../prisma-tenant-middleware';
 import { requestContext, TenantContextError } from '../request-context';
 

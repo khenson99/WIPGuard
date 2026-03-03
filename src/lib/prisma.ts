@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@/generated/prisma/client';
 import { createTenantMiddleware } from './prisma-tenant-middleware';
 
 const globalForPrisma = globalThis as unknown as {
