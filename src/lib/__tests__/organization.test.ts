@@ -32,7 +32,7 @@ describe('Organization utilities', () => {
 
     it('should override existing organizationId in where clause', () => {
       const result = withOrgScope(
-        { organizationId: 'org_old', name: 'test' } as any,
+        { organizationId: 'org_old', name: 'test' } as Record<string, unknown>,
         'org_new'
       );
       expect(result.organizationId).toBe('org_new');

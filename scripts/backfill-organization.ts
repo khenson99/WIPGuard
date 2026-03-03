@@ -78,12 +78,13 @@ async function backfill() {
       );
 
       console.log(`✅ ${sqlTable}: ${result} records updated`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Table might not exist yet in some environments
-      if (error.code === 'P2010' || error.message?.includes('does not exist')) {
+      const err = error as { code?: string; message?: string };
+      if (err.code === 'P2010' || err.message?.includes('does not exist')) {
         console.log(`⏭️  ${table}: table does not exist, skipping`);
       } else {
-        console.error(`❌ ${table}: ${error.message}`);
+        console.error(`❌ ${table}: ${err.message}`);
         throw error;
       }
     }
