@@ -1,153 +1,207 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
-import { useSocket } from "@/hooks/use-socket";
-import { useBoardStore } from "@/store/board-store";
-import type { TaskWithRelations, BoardColumn } from "@/types";
-import { COLUMN_ORDER, COLUMN_LABELS } from "@/types";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useCallback,
+  type ReactNode,
+} from "react";
+import { io, type Socket } from "socket.io-client";
+import { useBoardStore } from "@/stores/board-store";
+import type { Task } from "@/types/board";
 
-interface EventEnvelope<T = unknown> {
-  eventId: string;
-  emittedAt: string;
-  payload: T;
+interface SocketContextValue {
+  emit: (event: string, data?: unknown) => void;
+  on: (event: string, handler: (...args: unknown[]) => void) => () => void;
 }
 
-function parseEventPayload<T>(raw: unknown): {
-  eventId: string | null;
-  payload: T;
-} {
-  if (
-    raw &&
-    typeof raw === "object" &&
-    "eventId" in raw &&
-    "payload" in raw &&
-    typeof (raw as { eventId?: unknown }).eventId === "string"
-  ) {
-    const envelope = raw as EventEnvelope<T>;
-    return { eventId: envelope.eventId, payload: envelope.payload };
+const SocketContext = createContext<SocketContextValue | null>(null);
+
+export function useSocket() {
+  const ctx = useContext(SocketContext);
+  if (!ctx) {
+    throw new Error("useSocket must be used within a SocketProvider");
   }
-  return { eventId: null, payload: raw as T };
+  return ctx;
+}
+
+interface SocketProviderProps {
+  children: ReactNode;
+  url?: string;
 }
 
 /**
- * SocketProvider — listens for real-time board events and updates the
- * Zustand store so every connected client sees changes instantly.
- *
- * Place this inside the DashboardLayout so it connects once per session.
+ * Validates that a payload contains a task-like object with at minimum an `id` field.
  */
-export function SocketProvider({ children }: { children: ReactNode }) {
-  const { on } = useSocket();
-  const { setColumns } = useBoardStore();
-  const seenEventIds = useRef<Set<string>>(new Set());
+function isValidTaskPayload(data: unknown): data is { task: Task } {
+  if (typeof data !== "object" || data === null) return false;
+  const record = data as Record<string, unknown>;
+  if (typeof record.task !== "object" || record.task === null) return false;
+  const task = record.task as Record<string, unknown>;
+  return typeof task.id === "string" && task.id.length > 0;
+}
 
-  const markSeen = (eventId: string | null): boolean => {
-    if (!eventId) return false;
-    if (seenEventIds.current.has(eventId)) return true;
-    seenEventIds.current.add(eventId);
-    if (seenEventIds.current.size > 500) {
-      const oldest = seenEventIds.current.values().next().value;
-      if (oldest) seenEventIds.current.delete(oldest);
-    }
+/**
+ * Validates that a payload contains a taskId string.
+ */
+function isValidDeletePayload(
+  data: unknown
+): data is { taskId: string } {
+  if (typeof data !== "object" || data === null) return false;
+  const record = data as Record<string, unknown>;
+  return typeof record.taskId === "string" && record.taskId.length > 0;
+}
+
+/**
+ * Validates that a payload contains a columns mapping of string -> string[].
+ */
+function isValidReorderPayload(
+  data: unknown
+): data is { columns: Record<string, string[]> } {
+  if (typeof data !== "object" || data === null) return false;
+  const record = data as Record<string, unknown>;
+  if (typeof record.columns !== "object" || record.columns === null)
     return false;
-  };
+  const columns = record.columns as Record<string, unknown>;
+  return Object.values(columns).every(
+    (val) =>
+      Array.isArray(val) && val.every((item) => typeof item === "string")
+  );
+}
+
+export function SocketProvider({ children, url }: SocketProviderProps) {
+  const socketRef = useRef<Socket | null>(null);
+
+  const emit = useCallback((event: string, data?: unknown) => {
+    socketRef.current?.emit(event, data);
+  }, []);
+
+  const on = useCallback(
+    (event: string, handler: (...args: unknown[]) => void) => {
+      socketRef.current?.on(event, handler);
+      return () => {
+        socketRef.current?.off(event, handler);
+      };
+    },
+    []
+  );
 
   useEffect(() => {
-    // ── task:created – add the new task into the right column ──
-    const offCreated = on("task:created", (raw: unknown) => {
-      const { eventId, payload: task } = parseEventPayload<TaskWithRelations>(raw);
-      if (markSeen(eventId)) return;
-      setColumns(
-        useBoardStore.getState().columns.map((col) => {
-          if (col.id === task.status) {
-            return { ...col, tasks: [...col.tasks, task] };
-          }
-          return col;
-        }),
-      );
+    const socketUrl = url || process.env.NEXT_PUBLIC_SOCKET_URL || "";
+    const socket = io(socketUrl, {
+      transports: ["websocket"],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
     });
 
-    // ── task:updated – replace the task in place (may change column) ──
-    const offUpdated = on("task:updated", (raw: unknown) => {
-      const { eventId, payload: task } = parseEventPayload<TaskWithRelations>(raw);
-      if (markSeen(eventId)) return;
-      const state = useBoardStore.getState();
+    socketRef.current = socket;
 
-      // Remove from old column, add to new one
-      const newCols = state.columns.map((col) => {
-        const without = col.tasks.filter((t) => t.id !== task.id);
-        if (col.id === task.status) {
-          // Insert at the right position
-          const idx =
-            task.columnOrder >= 0
-              ? Math.min(task.columnOrder, without.length)
-              : without.length;
-          const tasks = [...without];
-          tasks.splice(idx, 0, task);
-          return { ...col, tasks };
+    const store = useBoardStore.getState;
+
+    // --- Optimistic WebSocket event handlers ---
+
+    /**
+     * task:created — Add the new task in place.
+     * Falls back to full refresh if the payload doesn't include the full task.
+     */
+    socket.on("task:created", (data: unknown) => {
+      try {
+        if (isValidTaskPayload(data)) {
+          store().addTaskInPlace(data.task);
+        } else {
+          console.warn(
+            "[socket] task:created payload missing task data, falling back to refresh"
+          );
+          store().refreshBoard();
         }
-        return { ...col, tasks: without };
-      });
-      setColumns(newCols);
+      } catch (err) {
+        console.error("[socket] Error handling task:created, refreshing", err);
+        store().refreshBoard();
+      }
     });
 
-    // ── task:deleted – remove from whichever column it was in ──
-    const offDeleted = on("task:deleted", (raw: unknown) => {
-      const { eventId, payload } = parseEventPayload<{ taskId: string }>(raw);
-      if (markSeen(eventId)) return;
-      const { taskId } = payload as { taskId: string };
-      setColumns(
-        useBoardStore.getState().columns.map((col) => ({
-          ...col,
-          tasks: col.tasks.filter((t) => t.id !== taskId),
-        })),
-      );
+    /**
+     * task:updated — Replace the task in place with the updated version.
+     * Falls back to full refresh if the payload doesn't include the full task.
+     */
+    socket.on("task:updated", (data: unknown) => {
+      try {
+        if (isValidTaskPayload(data)) {
+          store().updateTaskInPlace(data.task);
+        } else {
+          console.warn(
+            "[socket] task:updated payload missing task data, falling back to refresh"
+          );
+          store().refreshBoard();
+        }
+      } catch (err) {
+        console.error("[socket] Error handling task:updated, refreshing", err);
+        store().refreshBoard();
+      }
     });
 
-    // ── task:reordered – full refresh (cheapest correct approach) ──
-    const offReordered = on("task:reordered", (raw: unknown) => {
-      const { eventId } = parseEventPayload(raw);
-      if (markSeen(eventId)) return;
-      // Trigger a lightweight board refresh by re-fetching tasks
-      refreshBoard();
+    /**
+     * task:deleted — Remove the task from the local state.
+     * Falls back to full refresh if the payload doesn't include a taskId.
+     */
+    socket.on("task:deleted", (data: unknown) => {
+      try {
+        if (isValidDeletePayload(data)) {
+          store().removeTaskInPlace(data.taskId);
+        } else {
+          console.warn(
+            "[socket] task:deleted payload missing taskId, falling back to refresh"
+          );
+          store().refreshBoard();
+        }
+      } catch (err) {
+        console.error("[socket] Error handling task:deleted, refreshing", err);
+        store().refreshBoard();
+      }
     });
 
-    // ── board:refresh – explicit full refresh signal ──
-    const offRefresh = on("board:refresh", (raw: unknown) => {
-      const { eventId } = parseEventPayload(raw);
-      if (markSeen(eventId)) return;
-      refreshBoard();
+    /**
+     * task:reordered — Apply column order changes in place.
+     * This is the key optimization: instead of 6 API calls, we just
+     * reorder the taskIds arrays in the affected columns.
+     * Falls back to full refresh if the payload doesn't include column data.
+     */
+    socket.on("task:reordered", (data: unknown) => {
+      try {
+        if (isValidReorderPayload(data)) {
+          store().reorderColumnInPlace(data.columns);
+        } else {
+          console.warn(
+            "[socket] task:reordered payload missing columns data, falling back to refresh"
+          );
+          store().refreshBoard();
+        }
+      } catch (err) {
+        console.error(
+          "[socket] Error handling task:reordered, refreshing",
+          err
+        );
+        store().refreshBoard();
+      }
+    });
+
+    socket.on("connect_error", (err) => {
+      console.error("[socket] Connection error:", err.message);
     });
 
     return () => {
-      offCreated();
-      offUpdated();
-      offDeleted();
-      offReordered();
-      offRefresh();
+      socket.removeAllListeners();
+      socket.disconnect();
+      socketRef.current = null;
     };
-  }, [on, setColumns]);
+  }, [url]);
 
-  return <>{children}</>;
-}
-
-/** Re-fetch tasks from the API and rebuild columns */
-async function refreshBoard() {
-  try {
-    const res = await fetch("/api/tasks");
-    const tasks: TaskWithRelations[] = await res.json();
-    const state = useBoardStore.getState();
-
-    const boardColumns: BoardColumn[] = COLUMN_ORDER.map((status) => ({
-      id: status,
-      label: COLUMN_LABELS[status],
-      wipLimit: state.wipLimits[status] ?? 0,
-      tasks: tasks
-        .filter((t) => t.status === status)
-        .sort((a, b) => a.columnOrder - b.columnOrder),
-    }));
-
-    state.setColumns(boardColumns);
-  } catch (err) {
-    console.error("[socket] refreshBoard failed:", err);
-  }
+  return (
+    <SocketContext.Provider value={{ emit, on }}>
+      {children}
+    </SocketContext.Provider>
+  );
 }

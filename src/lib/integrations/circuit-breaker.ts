@@ -207,7 +207,13 @@ export function recordSuccess(provider: string, userId: string): void {
   entry.currentCooldownMs = 0;
   entry.openCount = 0;
     await saveEntry(provider, userId, entry);
-  })();
+  })().catch((error) => {
+    console.error("integration.circuit_breaker.record_success_failed", {
+      provider,
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
 }
 
 /**
@@ -246,7 +252,13 @@ export function recordFailure(
     }
 
     await saveEntry(provider, userId, entry);
-  })();
+  })().catch((error) => {
+    console.error("integration.circuit_breaker.record_failure_failed", {
+      provider,
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
 }
 
 /**

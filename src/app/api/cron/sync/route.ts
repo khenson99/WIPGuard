@@ -47,7 +47,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       bestEffortMigrateRulesToOwner(ownerUserId),
     ]);
 
-    const [analytics, rules, health, pruning] = await Promise.all([
+    const [analyticsResult, rulesResult, healthResult, pruningResult] = await Promise.allSettled([
       runAnalyticsRefresh({ userIds: [ownerUserId], rangePresets: ["7d", "30d"] }),
       runRules({
         mode: "incremental",
@@ -59,8 +59,40 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       pruneAnalyticsSnapshots({ olderThanDays: parseRetentionDays() }),
     ]);
 
+    const failures: string[] = [];
+    const settled = { analytics: null as unknown, rules: null as unknown, health: null as unknown, pruning: null as unknown };
+
+    if (analyticsResult.status === "fulfilled") {
+      settled.analytics = analyticsResult.value;
+    } else {
+      const msg = analyticsResult.reason instanceof Error ? analyticsResult.reason.message : String(analyticsResult.reason);
+      failures.push(`analytics: ${msg}`);
+      console.error("POST /api/cron/sync analytics failed:", analyticsResult.reason);
+    }
+    if (rulesResult.status === "fulfilled") {
+      settled.rules = rulesResult.value;
+    } else {
+      const msg = rulesResult.reason instanceof Error ? rulesResult.reason.message : String(rulesResult.reason);
+      failures.push(`rules: ${msg}`);
+      console.error("POST /api/cron/sync rules failed:", rulesResult.reason);
+    }
+    if (healthResult.status === "fulfilled") {
+      settled.health = healthResult.value;
+    } else {
+      const msg = healthResult.reason instanceof Error ? healthResult.reason.message : String(healthResult.reason);
+      failures.push(`health: ${msg}`);
+      console.error("POST /api/cron/sync health failed:", healthResult.reason);
+    }
+    if (pruningResult.status === "fulfilled") {
+      settled.pruning = pruningResult.value;
+    } else {
+      const msg = pruningResult.reason instanceof Error ? pruningResult.reason.message : String(pruningResult.reason);
+      failures.push(`pruning: ${msg}`);
+      console.error("POST /api/cron/sync pruning failed:", pruningResult.reason);
+    }
+
     return NextResponse.json({
-      ok: true,
+      ok: failures.length === 0,
       startedAt,
       finishedAt: new Date().toISOString(),
       ownerUserId,
@@ -68,10 +100,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         connections: connectionsMigration,
         rules: rulesMigration,
       },
-      analytics,
-      rules,
-      health,
-      pruning,
+      ...settled,
+      ...(failures.length > 0 ? { failures } : {}),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Cron sync failed";
