@@ -8,6 +8,28 @@ datasource db {
 }
 
 // ============================================================
+// Organization - Multi-tenant root entity
+// ============================================================
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations to all tenant-scoped models
+  users                  User[]
+  projects               Project[]
+  tasks                  Task[]
+  sprints                Sprint[]
+  deals                  Deal[]
+  departments            Department[]
+  companyPriorities      CompanyPriority[]
+  integrationConnections IntegrationConnection[]
+  conferences            Conference[]
+}
+
+// ============================================================
 // AUTH / TEAM
 // ============================================================
 
@@ -71,8 +93,13 @@ model User {
   submissionEvents SubmissionEvent[]
   insightPreferences InsightPreference[]
 
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+
+  @@index([organizationId])
 }
 
 model Account {
@@ -129,8 +156,13 @@ model CompanyPriority {
 
   projects Project[]
 
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
 }
 
 // ============================================================
@@ -143,8 +175,13 @@ model Department {
   color     String?
   projects  Project[]
 
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
 }
 
 // ============================================================
@@ -181,10 +218,14 @@ model Project {
 
   tasks Task[]
 
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([conferenceId])
+  @@index([organizationId])
 }
 
 enum ProjectStatus {
@@ -260,10 +301,14 @@ model Task {
   policyOverrides PolicyOverride[]
   integrationReceipts IntegrationReceipt[]
 
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([conferenceId])
+  @@index([organizationId])
 }
 
 enum TaskStatus {
@@ -413,12 +458,16 @@ model Conference {
   teamMembers    ConferenceTeamMember[]
   inventoryItems ConferenceInventoryItem[]
 
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([startDate])
   @@index([status])
   @@index([ownerId])
+  @@index([organizationId])
 }
 
 model ConferenceDeadline {
@@ -615,8 +664,13 @@ model Sprint {
   commitments       SprintCommitment[]
   planningSessions  PlanningSession[]
 
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
 }
 
 // ============================================================
@@ -819,11 +873,15 @@ model IntegrationConnection {
   lastError         String?
   metadata          Json?
 
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([userId, provider])
   @@index([provider, status])
+  @@index([organizationId])
 }
 
 model AnalyticsSnapshot {
@@ -1450,6 +1508,9 @@ model Deal {
   meetings     DealMeeting[]
   stageHistory DealStageHistory[]
 
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1458,6 +1519,7 @@ model Deal {
   @@index([companyId])
   @@index([source])
   @@index([closedAt])
+  @@index([organizationId])
 }
 
 model DealStageHistory {
