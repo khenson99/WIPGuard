@@ -14,10 +14,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { collectMetrics, type MetricsCollectorOptions } from '@/lib/metrics/collector';
+import { timingSafeEqual } from 'crypto';
+import { collectMetrics, type MetricsCollectorOptions, type CircuitBreakerInfo } from '@/lib/metrics/collector';
 
 /**
  * Validate the bearer token from the Authorization header.
+ * Uses crypto.timingSafeEqual to prevent timing attacks.
  */
 function validateBearerToken(request: NextRequest): boolean {
   const expectedToken = process.env.METRICS_BEARER_TOKEN;
@@ -37,18 +39,22 @@ function validateBearerToken(request: NextRequest): boolean {
     return false;
   }
 
-  // Constant-time comparison to prevent timing attacks
   const token = parts[1];
-  if (token.length !== expectedToken.length) {
+
+  // Use a fixed-length comparison to avoid leaking token length.
+  // If lengths differ, compare the expected token against itself
+  // so we still do constant-time work.
+  const tokenBuf = Buffer.from(token);
+  const expectedBuf = Buffer.from(expectedToken);
+
+  if (tokenBuf.length !== expectedBuf.length) {
+    // Compare expectedBuf against itself so timing is constant,
+    // then return false regardless.
+    timingSafeEqual(expectedBuf, expectedBuf);
     return false;
   }
 
-  let mismatch = 0;
-  for (let i = 0; i < token.length; i++) {
-    mismatch |= token.charCodeAt(i) ^ expectedToken.charCodeAt(i);
-  }
-
-  return mismatch === 0;
+  return timingSafeEqual(tokenBuf, expectedBuf);
 }
 
 /**
@@ -60,20 +66,42 @@ async function buildCollectorOptions(): Promise<MetricsCollectorOptions> {
 
   // Try to import outbox operational metrics
   try {
-    const outboxModule = await import('@/lib/outbox/metrics');
+    const outboxModule = await import('@/lib/outbox-worker');
+    const prismaModule = await import('@/lib/prisma');
     if (typeof outboxModule.getOutboxOperationalMetrics === 'function') {
-      options.getOutboxMetrics = outboxModule.getOutboxOperationalMetrics;
+      options.getOutboxMetrics = async () => {
+        const metrics = await outboxModule.getOutboxOperationalMetrics(prismaModule.prisma);
+        // Map OutboxOperationalMetrics to the collector's OutboxMetrics shape
+        return {
+          pending: metrics.counts.pending,
+          failed: metrics.counts.failed,
+          deadLetter: metrics.counts.deadLetter,
+          processed: metrics.counts.dispatched,
+          total: metrics.counts.total,
+        };
+      };
     }
   } catch {
     // Module doesn't exist or failed to load — skip
   }
 
-  // Try to import circuit breaker registry
+  // Try to import circuit breaker states from DB
   try {
-    const cbModule = await import('@/lib/circuit-breaker/registry');
-    if (typeof cbModule.getAllCircuitBreakerStates === 'function') {
-      options.getCircuitBreakers = cbModule.getAllCircuitBreakerStates;
-    }
+    const prismaModule = await import('@/lib/prisma');
+    options.getCircuitBreakers = async (): Promise<CircuitBreakerInfo[]> => {
+      const rows = await prismaModule.prisma.integrationCircuitState.findMany({
+        select: {
+          key: true,
+          state: true,
+          consecutiveFailures: true,
+        },
+      });
+      return rows.map((row: { key: string; state: string; consecutiveFailures: number }) => ({
+        provider: row.key,
+        state: row.state,
+        failureCount: row.consecutiveFailures,
+      }));
+    };
   } catch {
     // Module doesn't exist or failed to load — skip
   }
@@ -81,17 +109,49 @@ async function buildCollectorOptions(): Promise<MetricsCollectorOptions> {
   // Try to import SLO evaluator
   try {
     const sloModule = await import('@/lib/observability/slo');
-    if (typeof sloModule.getSloReport === 'function') {
+    if (typeof sloModule.evaluateObservabilitySlos === 'function') {
       options.getSloMetrics = async () => {
-        const report = await sloModule.getSloReport();
-        // The SLO report might have various shapes — normalize
-        if (Array.isArray(report)) {
-          return report;
-        }
-        if (report && typeof report === 'object' && Array.isArray((report as Record<string, unknown>).slos)) {
-          return (report as Record<string, unknown>).slos as Array<{ name?: string; metric?: string; target?: number; current?: number; met?: boolean }>;
-        }
-        return [];
+        // evaluateObservabilitySlos requires complex input; import
+        // the data sources and assemble the input at call time.
+        const prismaModule = await import('@/lib/prisma');
+        const outboxModule = await import('@/lib/outbox-worker');
+
+        const [connections, rules, outboxMetrics] = await Promise.all([
+          prismaModule.prisma.integrationConnection.findMany({
+            select: { provider: true, status: true, lastSyncedAt: true, lastError: true },
+          }),
+          prismaModule.prisma.integrationRule.findMany({
+            select: { provider: true, key: true, enabled: true, lastRunAt: true, lastError: true },
+          }),
+          outboxModule.getOutboxOperationalMetrics(prismaModule.prisma),
+        ]);
+
+        const report = sloModule.evaluateObservabilitySlos({
+          connections: connections.map((c: { provider: string; status: string; lastSyncedAt: Date | null; lastError: string | null }) => ({
+            provider: c.provider,
+            status: c.status as 'CONNECTED' | 'DISCONNECTED' | 'ERROR',
+            lastSyncedAt: c.lastSyncedAt?.toISOString() ?? null,
+            lastError: c.lastError,
+          })),
+          rules: rules.map((r: { provider: string; key?: string; enabled: boolean; lastRunAt: Date | null; lastError: string | null }) => ({
+            provider: r.provider,
+            key: r.key,
+            enabled: r.enabled,
+            lastRunAt: r.lastRunAt?.toISOString() ?? null,
+            lastError: r.lastError,
+          })),
+          expectedRuleKeysByProvider: {},
+          outboxMetrics,
+        });
+
+        // Map ObservabilitySlo[] to SloMetric[]
+        return report.slos.map((slo: { key: string; label: string; breached: boolean }) => ({
+          name: slo.label,
+          metric: slo.key,
+          target: 1,
+          current: slo.breached ? 0 : 1,
+          met: !slo.breached,
+        }));
       };
     }
   } catch {
@@ -105,7 +165,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // Check if metrics endpoint is enabled
   if (!process.env.METRICS_BEARER_TOKEN) {
     return NextResponse.json(
-      { error: 'Metrics endpoint is not configured. Set METRICS_BEARER_TOKEN environment variable.' },
+      { error: 'Metrics endpoint is not configured.' },
       { status: 404 }
     );
   }
