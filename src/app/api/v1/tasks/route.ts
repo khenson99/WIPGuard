@@ -8,6 +8,8 @@
  * while keeping this v1 route stable.
  */
 
+export const dynamic = "force-dynamic";
+
 // Re-export from the main (unversioned) route
 // This allows /api/v1/tasks and /api/tasks to serve the same handlers
 export { GET, POST } from "../../tasks/route";
