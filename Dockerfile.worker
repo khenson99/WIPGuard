@@ -1,0 +1,51 @@
+# Dockerfile for the WIPGuard sync worker process.
+# Runs integration sync in a dedicated process, separate from the Next.js web server.
+#
+# Build: docker build -f Dockerfile.worker -t wipguard-worker .
+# Run:   docker run --env-file .env wipguard-worker
+
+# ── Base ──────────────────────────────────────────────────────────────────────
+FROM node:20-alpine AS base
+WORKDIR /app
+
+# Install dependencies only (cache layer)
+COPY package.json package-lock.json* yarn.lock* pnpm-lock.yaml* ./
+RUN \
+  if [ -f pnpm-lock.yaml ]; then \
+    corepack enable pnpm && pnpm install --frozen-lockfile; \
+  elif [ -f yarn.lock ]; then \
+    yarn install --frozen-lockfile; \
+  else \
+    npm ci; \
+  fi
+
+# ── Build ─────────────────────────────────────────────────────────────────────
+FROM base AS build
+WORKDIR /app
+
+# Copy source needed for Prisma generation and the worker
+COPY prisma ./prisma
+RUN npx prisma generate
+
+COPY worker ./worker
+COPY src ./src
+COPY tsconfig.json ./
+
+# ── Runtime ───────────────────────────────────────────────────────────────────
+FROM base AS runtime
+WORKDIR /app
+
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build /app/worker ./worker
+COPY --from=build /app/src ./src
+COPY --from=build /app/tsconfig.json ./
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:8081/health || exit 1
+
+# Default: continuous mode
+ENV WORKER_RUN_ONCE=false
+ENV WORKER_HEALTH_PORT=8081
+
+CMD ["npx", "tsx", "worker/sync-runner.ts"]

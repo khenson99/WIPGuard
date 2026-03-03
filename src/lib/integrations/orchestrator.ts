@@ -180,6 +180,13 @@ export async function runRules(input: RunRulesInput): Promise<RunRulesResult> {
         }
       } catch (error) {
         // Keep the orchestrator moving; individual rule runners record their own lastError.
+        console.error("integration.orchestrator.rule_failed", {
+          ruleId: rule.id,
+          ruleKey: rule.key,
+          provider: rule.provider,
+          userId,
+          error: error instanceof Error ? error.message : String(error),
+        });
         executedRules += 1;
         continue;
       }
