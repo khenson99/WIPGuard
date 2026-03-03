@@ -18,222 +18,1671 @@ model Organization {
   updatedAt DateTime @updatedAt
 
   // Relations to all tenant-scoped models
-  users                User[]
-  projects             Project[]
-  tasks                Task[]
-  sprints              Sprint[]
-  deals                Deal[]
-  departments          Department[]
-  companyPriorities    CompanyPriority[]
+  users                  User[]
+  projects               Project[]
+  tasks                  Task[]
+  sprints                Sprint[]
+  deals                  Deal[]
+  departments            Department[]
+  companyPriorities      CompanyPriority[]
   integrationConnections IntegrationConnection[]
-  conferences          Conference[]
+  conferences            Conference[]
 }
 
 // ============================================================
-// User
+// AUTH / TEAM
 // ============================================================
+
 model User {
-  id             String   @id @default(cuid())
-  email          String   @unique
-  name           String?
-  image          String?
-  role           String   @default("member")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          String    @default("member")
+
+  accounts Account[]
+  sessions Session[]
+  integrationConnections IntegrationConnection[]
+  integrationRules       IntegrationRule[]
+  analyticsSnapshots     AnalyticsSnapshot[]
+  integrationCircuitStates IntegrationCircuitState[]
+  stripeCustomerLinks    StripeCustomerLink[]
+  metricHistory          MetricHistory[]
+  insightFeedback        InsightFeedback[]
+  uiPreference           UserUiPreference?
+  savedViews             UserSavedView[]
+  ownedWorkflows         WorkflowDefinition[] @relation("WorkflowOwner")
+  workflowRunRequests    WorkflowRun[]        @relation("WorkflowRunRequestedBy")
+  workflowApprovalRequests WorkflowApproval[] @relation("WorkflowApprovalRequestedBy")
+  workflowApprovals      WorkflowApproval[]   @relation("WorkflowApprovalApprover")
+  securityAuditEvents SecurityAuditEvent[]
+
+  responsibleTasks  Task[]    @relation("TaskResponsible")
+  accountableTasks  Task[]    @relation("TaskAccountable")
+  consultedTasks    Task[]    @relation("TaskConsulted")
+  informedTasks     Task[]    @relation("TaskInformed")
+
+  responsibleProjects Project[] @relation("ProjectResponsible")
+  accountableProjects Project[] @relation("ProjectAccountable")
+  consultedProjects   Project[] @relation("ProjectConsulted")
+  informedProjects    Project[] @relation("ProjectInformed")
+  sponsoredProjects   Project[] @relation("ProjectSponsor")
+
+  responsiblePriorities CompanyPriority[] @relation("PriorityResponsible")
+  accountablePriorities CompanyPriority[] @relation("PriorityAccountable")
+  consultedPriorities   CompanyPriority[] @relation("PriorityConsulted")
+  informedPriorities    CompanyPriority[] @relation("PriorityInformed")
+
+  waitingOnTasks Task[] @relation("TaskWaitingOn")
+
+  budgets           Budget[]
+  financialGoals    FinancialGoal[]
+  forecastScenarios ForecastScenario[]
+
+  ownedDeals Deal[] @relation("DealOwner")
+
+  ownedConferences Conference[] @relation("ConferenceOwner")
+  ownedConferenceDeadlines ConferenceDeadline[] @relation("ConferenceDeadlineOwner")
+  paidConferenceExpenses ConferenceExpense[] @relation("ConferenceExpensePaidBy")
+  capturedConferenceLeads ConferenceLead[] @relation("ConferenceLeadCapturedBy")
+  assignedConferenceLeads ConferenceLead[] @relation("ConferenceLeadAssignedTo")
+  conferenceTeamMemberships ConferenceTeamMember[] @relation("ConferenceTeamMemberUser")
+  ownedConferenceInventoryItems ConferenceInventoryItem[] @relation("ConferenceInventoryItemOwner")
+
+  submissionEvents SubmissionEvent[]
+  insightPreferences InsightPreference[]
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
 
-  assignedTasks  Task[]   @relation("TaskAssignee")
-  createdTasks   Task[]   @relation("TaskCreator")
-  ownedProjects  Project[] @relation("ProjectOwner")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@index([organizationId])
 }
 
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
 // ============================================================
-// Project
+// COMPANY PRIORITIES
 // ============================================================
-model Project {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  status      String   @default("active")
-  priority    String   @default("medium")
-  startDate   DateTime?
-  endDate     DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+model CompanyPriority {
+  id       String  @id @default(cuid())
+  name     String
+  summary  String? @db.Text
+  priority Int     @default(1)
+  color    String?
+
+  responsible User[] @relation("PriorityResponsible")
+  accountable User[] @relation("PriorityAccountable")
+  consulted   User[] @relation("PriorityConsulted")
+  informed    User[] @relation("PriorityInformed")
+
+  projects Project[]
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
 
-  ownerId     String?
-  owner       User?    @relation("ProjectOwner", fields: [ownerId], references: [id])
-
-  tasks       Task[]
-  sprints     Sprint[]
-
-  @@index([organizationId])
-}
-
-// ============================================================
-// Task
-// ============================================================
-model Task {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  status      String   @default("todo")
-  priority    String   @default("medium")
-  storyPoints Int?
-  order       Int      @default(0)
-  dueDate     DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id])
-
-  projectId   String?
-  project     Project? @relation(fields: [projectId], references: [id])
-
-  sprintId    String?
-  sprint      Sprint?  @relation(fields: [sprintId], references: [id])
-
-  assigneeId  String?
-  assignee    User?    @relation("TaskAssignee", fields: [assigneeId], references: [id])
-
-  creatorId   String?
-  creator     User?    @relation("TaskCreator", fields: [creatorId], references: [id])
-
-  parentId    String?
-  parent      Task?    @relation("TaskHierarchy", fields: [parentId], references: [id])
-  subtasks    Task[]   @relation("TaskHierarchy")
-
-  @@index([organizationId])
-  @@index([projectId])
-  @@index([sprintId])
-  @@index([status])
-}
-
-// ============================================================
-// Sprint
-// ============================================================
-model Sprint {
-  id        String   @id @default(cuid())
-  name      String
-  goal      String?
-  startDate DateTime
-  endDate   DateTime
-  isActive  Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([organizationId])
+}
+
+// ============================================================
+// DEPARTMENTS (Swim Lanes)
+// ============================================================
+
+model Department {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  color     String?
+  projects  Project[]
+
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
+// ============================================================
+// PROJECTS
+// ============================================================
+
+model Project {
+  id          String        @id @default(cuid())
+  name        String
+  description String?       @db.Text
+  status      ProjectStatus @default(ACTIVE)
+  projectType ProjectType   @default(ONE_OFF)
+
+  conferenceId String?
+  conference   Conference? @relation("ConferenceProjects", fields: [conferenceId], references: [id], onDelete: SetNull)
+  primaryForConference Conference? @relation("ConferencePrimaryProject")
+
+  parentId String?
+  parent   Project?  @relation("ProjectHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children Project[] @relation("ProjectHierarchy")
+
+  companyPriorityId String?
+  companyPriority   CompanyPriority? @relation(fields: [companyPriorityId], references: [id])
+  businessFunction  String?
+
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  responsible User[] @relation("ProjectResponsible")
+  accountable User[] @relation("ProjectAccountable")
+  consulted   User[] @relation("ProjectConsulted")
+  informed    User[] @relation("ProjectInformed")
+  sponsor     User[] @relation("ProjectSponsor")
+
+  tasks Task[]
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([conferenceId])
+  @@index([organizationId])
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  ARCHIVED
+}
+
+enum ProjectType {
+  RECURRING
+  PERPETUAL
+  ONE_OFF
+}
+
+// ============================================================
+// TASKS
+// ============================================================
+
+model Task {
+  id     String     @id @default(cuid())
+  title  String
+  notes  String?    @db.Text
+  status TaskStatus @default(BACKLOG)
+
+  priority           Priority        @default(P2)
+  degreeOfDifficulty DifficultyLevel @default(MEDIUM)
+
+  startDate   DateTime?
+  dueDate     DateTime?
+  completedOn DateTime?
+  assignedOn  DateTime?
+
+  conferenceId String?
+  conference   Conference? @relation("ConferenceTasks", fields: [conferenceId], references: [id], onDelete: SetNull)
+
+  conferenceDeadline ConferenceDeadline? @relation("ConferenceDeadlineTask")
+  conferenceLeadFollowup ConferenceLead? @relation("ConferenceLeadFollowupTask")
+
+  parentId String?
+  parent   Task?   @relation("TaskHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children Task[]  @relation("TaskHierarchy")
 
   projectId String?
   project   Project? @relation(fields: [projectId], references: [id])
 
-  tasks     Task[]
+  sprintId String?
+  sprint   Sprint? @relation(fields: [sprintId], references: [id])
 
-  @@index([organizationId])
-  @@index([isActive])
-}
+  responsible User[] @relation("TaskResponsible")
+  accountable User[] @relation("TaskAccountable")
+  consulted   User[] @relation("TaskConsulted")
+  informed    User[] @relation("TaskInformed")
 
-// ============================================================
-// Deal
-// ============================================================
-model Deal {
-  id          String   @id @default(cuid())
-  name        String
-  value       Float?
-  stage       String   @default("lead")
-  company     String?
-  contact     String?
-  description String?
-  closedAt    DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  dependsOn  Task[] @relation("TaskDependency")
+  dependedBy Task[] @relation("TaskDependency")
+  waitingOn  User[] @relation("TaskWaitingOn")
 
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id])
+  unplanned       Boolean          @default(false)
+  unplannedReason UnplannedReason?
+  unplannedNote   String?          @db.Text
+  addedBy         String?
 
-  @@index([organizationId])
-  @@index([stage])
-}
+  planningSessionId String?
+  planningSession   PlanningSession? @relation(fields: [planningSessionId], references: [id])
 
-// ============================================================
-// Department
-// ============================================================
-model Department {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  slackThread String?
+  metadata    Json?
+  columnOrder Int     @default(0)
+
+  statusHistory   StatusHistory[]
+  logbookEntries  LogbookEntry[]
+  policyOverrides PolicyOverride[]
+  integrationReceipts IntegrationReceipt[]
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([conferenceId])
   @@index([organizationId])
 }
 
-// ============================================================
-// CompanyPriority
-// ============================================================
-model CompanyPriority {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  priority    Int      @default(0)
-  status      String   @default("active")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+enum TaskStatus {
+  BACKLOG
+  QUEUED
+  WORKING_ON_TODAY
+  ACTIVE
+  NOT_DONE
+  DONE
+}
 
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id])
+enum Priority {
+  P0
+  P1
+  P2
+  P3
+}
 
-  @@index([organizationId])
+enum DifficultyLevel {
+  LOW
+  MEDIUM
+  HIGH
+  EPIC
+}
+
+enum UnplannedReason {
+  ESCALATION
+  BUG_FIX
+  CUSTOMER_REQUEST
+  SCOPE_CHANGE
+  DEPENDENCY
+  OTHER
 }
 
 // ============================================================
-// IntegrationConnection
+// CONFERENCES
 // ============================================================
-model IntegrationConnection {
-  id           String   @id @default(cuid())
-  provider     String
-  accessToken  String?
-  refreshToken String?
-  expiresAt    DateTime?
-  metadata     Json?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
 
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id])
-
-  @@index([organizationId])
-  @@index([provider])
+enum ConferenceStatus {
+  DRAFT
+  PLANNING
+  COMMITTED
+  ONSITE
+  WRAP_UP
+  COMPLETE
+  CANCELED
 }
 
-// ============================================================
-// Conference
-// ============================================================
+enum ConferenceType {
+  EXHIBIT
+  SPONSOR
+  SPEAK
+  ATTEND
+  HYBRID
+}
+
+enum ConferenceDeadlineType {
+  SPONSORSHIP
+  REGISTRATION
+  CFP
+  BOOTH
+  SWAG
+  SHIPPING
+  TRAVEL
+  MARKETING
+  MEETINGS
+  LEAD_UPLOAD
+  POSTMORTEM
+  OTHER
+}
+
+enum ConferenceLeadStatus {
+  NEW
+  QUALIFIED
+  FOLLOW_UP_SCHEDULED
+  CONTACTED
+  CONVERTED
+  DISQUALIFIED
+}
+
+enum ConferenceExpenseCategory {
+  SPONSORSHIP
+  BOOTH
+  SWAG
+  SHIPPING
+  TRAVEL
+  LODGING
+  MEALS
+  EVENTS
+  SOFTWARE
+  OTHER
+}
+
+enum ConferenceTeamRole {
+  ORGANIZER
+  ATTENDEE
+  BOOTH_STAFF
+  SPEAKER
+  EXEC
+}
+
+enum ConferenceReimbursementStatus {
+  NONE
+  REQUESTED
+  APPROVED
+  PAID
+}
+
 model Conference {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  location    String?
-  startDate   DateTime?
-  endDate     DateTime?
-  url         String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String @id @default(cuid())
+  slug       String @unique
+  name       String
+  websiteUrl String?
+
+  startDate DateTime
+  endDate   DateTime
+  timezone  String  @default("UTC")
+
+  city    String?
+  region  String?
+  country String?
+  venue   String?
+
+  status ConferenceStatus @default(PLANNING)
+  type   ConferenceType   @default(EXHIBIT)
+  notes  String?          @db.Text
+
+  slackChannelId   String?
+  slackChannelName String?
+  slackChannelUrl  String?
+  driveFolderUrl   String?
+  codaDocUrl       String?
+
+  ownerId String?
+  owner   User? @relation("ConferenceOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  primaryProjectId String? @unique
+  primaryProject   Project? @relation("ConferencePrimaryProject", fields: [primaryProjectId], references: [id], onDelete: SetNull)
+
+  projects Project[] @relation("ConferenceProjects")
+  tasks    Task[]    @relation("ConferenceTasks")
+
+  deadlines      ConferenceDeadline[]
+  budget         ConferenceBudget?
+  expenses       ConferenceExpense[]
+  leads          ConferenceLead[]
+  teamMembers    ConferenceTeamMember[]
+  inventoryItems ConferenceInventoryItem[]
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([startDate])
+  @@index([status])
+  @@index([ownerId])
   @@index([organizationId])
+}
+
+model ConferenceDeadline {
+  id           String     @id @default(cuid())
+  conferenceId String
+  conference   Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+
+  type ConferenceDeadlineType
+  name String
+  dueAt DateTime
+
+  completedAt DateTime?
+  ownerId     String?
+  owner       User? @relation("ConferenceDeadlineOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  notes     String? @db.Text
+  sourceUrl String?
+
+  taskId String? @unique
+  task   Task? @relation("ConferenceDeadlineTask", fields: [taskId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([conferenceId, dueAt])
+  @@index([ownerId, dueAt])
+  @@index([taskId])
+}
+
+model ConferenceBudget {
+  id           String     @id @default(cuid())
+  conferenceId String     @unique
+  conference   Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+
+  currency String @default("USD")
+  notes    String? @db.Text
+
+  lineItems ConferenceBudgetLineItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ConferenceBudgetLineItem {
+  id       String           @id @default(cuid())
+  budgetId String
+  budget   ConferenceBudget @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+
+  category      ConferenceExpenseCategory
+  label         String
+  plannedAmount Float
+  notes         String?
+
+  expenses ConferenceExpense[] @relation("ConferenceExpenseBudgetLineItem")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([budgetId])
+}
+
+model ConferenceExpense {
+  id           String     @id @default(cuid())
+  conferenceId String
+  conference   Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+
+  category  ConferenceExpenseCategory
+  amount    Float
+  currency  String @default("USD")
+  incurredAt DateTime
+
+  vendor      String?
+  description String? @db.Text
+  receiptUrl  String?
+
+  reimbursable Boolean @default(false)
+  reimbursementStatus ConferenceReimbursementStatus @default(NONE)
+
+  paidByUserId String?
+  paidByUser   User? @relation("ConferenceExpensePaidBy", fields: [paidByUserId], references: [id], onDelete: SetNull)
+
+  budgetLineItemId String?
+  budgetLineItem   ConferenceBudgetLineItem? @relation("ConferenceExpenseBudgetLineItem", fields: [budgetLineItemId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([conferenceId, incurredAt])
+  @@index([category])
+  @@index([budgetLineItemId])
+}
+
+model ConferenceLead {
+  id           String     @id @default(cuid())
+  conferenceId String
+  conference   Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+
+  status ConferenceLeadStatus @default(NEW)
+
+  firstName String?
+  lastName  String?
+  email     String?
+  title     String?
+  phone     String?
+
+  companyName   String?
+  companyDomain String?
+  linkedinUrl   String?
+
+  notes String? @db.Text
+
+  capturedAt DateTime @default(now())
+
+  capturedByUserId String?
+  capturedByUser   User? @relation("ConferenceLeadCapturedBy", fields: [capturedByUserId], references: [id], onDelete: SetNull)
+
+  assignedToUserId String?
+  assignedToUser   User? @relation("ConferenceLeadAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  followupTaskId String? @unique
+  followupTask   Task? @relation("ConferenceLeadFollowupTask", fields: [followupTaskId], references: [id], onDelete: SetNull)
+
+  followedUpAt DateTime?
+
+  hubspotCompanyId String?
+  hubspotContactId String?
+  hubspotDealId    String?
+  pushedToHubspotAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([conferenceId, status])
+  @@index([assignedToUserId, status])
+  @@index([followupTaskId])
+}
+
+model ConferenceTeamMember {
+  id           String     @id @default(cuid())
+  conferenceId String
+  conference   Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User @relation("ConferenceTeamMemberUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  role ConferenceTeamRole
+  arrivalAt   DateTime?
+  departureAt DateTime?
+  notes       String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([conferenceId, userId])
+  @@index([conferenceId, role])
+}
+
+model ConferenceInventoryItem {
+  id           String     @id @default(cuid())
+  conferenceId String
+  conference   Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+
+  name     String
+  category String?
+
+  qtyPlanned   Int @default(0)
+  qtyPacked    Int @default(0)
+  qtyOnsite    Int @default(0)
+  qtyRemaining Int @default(0)
+
+  ownerId String?
+  owner   User? @relation("ConferenceInventoryItemOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([conferenceId, name])
+}
+
+// ============================================================
+// SPRINTS
+// ============================================================
+
+model Sprint {
+  id        String   @id @default(cuid())
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean  @default(false)
+
+  tasks             Task[]
+  commitments       SprintCommitment[]
+  planningSessions  PlanningSession[]
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
+// ============================================================
+// SPRINT COMMITMENT LEDGER
+// ============================================================
+
+// Immutable snapshot of tasks committed at sprint start.
+// Append-only: never UPDATE or DELETE — only INSERT.
+model SprintCommitment {
+  id            String   @id @default(cuid())
+  sprintId      String
+  sprint        Sprint   @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  snapshotAt    DateTime @default(now())
+  createdBy     String
+  taskSnapshots Json     // Array of {taskId, title, status, projectId, priority}
+
+  @@index([sprintId, snapshotAt])
+}
+
+model PlanningSession {
+  id          String    @id @default(cuid())
+  sprintId    String
+  sprint      Sprint    @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  createdBy   String
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  notes       String?   @db.Text
+
+  tasks Task[]
+
+  @@index([sprintId])
+}
+
+// ============================================================
+// STATUS HISTORY
+// ============================================================
+
+model StatusHistory {
+  id         String      @id @default(cuid())
+  taskId     String
+  task       Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  fromStatus TaskStatus?
+  toStatus   TaskStatus
+  changedAt  DateTime    @default(now())
+  changedBy  String?
+}
+
+// ============================================================
+// LOGBOOK
+// ============================================================
+
+model LogbookEntry {
+  id          String     @id @default(cuid())
+  taskId      String
+  task        Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskTitle   String
+  taskNotes   String?    @db.Text
+  projectName String?
+  sprintName  String?
+  priority    Priority
+  status      TaskStatus
+  responsible String?
+  accountable String?
+  completedOn DateTime
+  archivedAt  DateTime   @default(now())
+  metadata    Json?
+}
+
+// ============================================================
+// BOARD SETTINGS
+// ============================================================
+
+model BoardSettings {
+  id          String @id @default(cuid())
+  columnName  String @unique
+  wipLimit    Int    @default(0)
+  columnOrder Int    @default(0)
+  color       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+// WIP POLICY
+// ============================================================
+
+model WipPolicy {
+  id            String          @id @default(cuid())
+  columnName    String          @unique
+  wipLimit      Int             @default(0)
+  enforcement   EnforcementMode @default(WARN)
+  overrideRoles String[]        @default(["admin"])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum EnforcementMode {
+  WARN
+  BLOCK
+}
+
+// ============================================================
+// POLICY OVERRIDE AUDIT
+// ============================================================
+
+model PolicyOverride {
+  id        String     @id @default(cuid())
+  taskId    String
+  task      Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  action    String
+  reason    String     @db.Text
+  actorId   String
+  actorName String?
+  actorRole String?
+  column    String
+  wipCount  Int
+  wipLimit  Int
+
+  createdAt DateTime @default(now())
+}
+
+// ============================================================
+// SECURITY AUDIT
+// ============================================================
+
+model SecurityAuditEvent {
+  id        String  @id @default(cuid())
+  action    String
+  category  String
+  outcome   String
+
+  actorId   String?
+  actor     User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actorRole String?
+
+  targetType String?
+  targetId   String?
+
+  details   Json?
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([category, createdAt])
+  @@index([action, createdAt])
+  @@index([actorId, createdAt])
+}
+
+// ============================================================
+// EXTERNAL INTEGRATIONS
+// ============================================================
+
+enum IntegrationProvider {
+  GOOGLE_WORKSPACE
+  HUBSPOT
+  SLACK
+  CODA
+  REDDIT
+  STRIPE
+  MERCURY
+  WEBFLOW
+  GOOGLE_ADS
+  META_ADS
+  META_PAGE
+  SEMRUSH
+  PYLON
+  GOOGLE_ANALYTICS
+}
+
+enum IntegrationConnectionStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+}
+
+enum AnalyticsSnapshotStatus {
+  SUCCESS
+  ERROR
+}
+
+model IntegrationConnection {
+  id        String                      @id @default(cuid())
+  userId    String
+  user      User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider  IntegrationProvider
+  status    IntegrationConnectionStatus @default(CONNECTED)
+
+  providerAccountId String?
+  accountLabel      String?
+  scopes            String[]            @default([])
+  accessToken       String?             @db.Text
+  refreshToken      String?             @db.Text
+  tokenType         String?
+  expiresAt         DateTime?
+  connectedAt       DateTime            @default(now())
+  lastSyncedAt      DateTime?
+  lastError         String?
+  metadata          Json?
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, provider])
+  @@index([provider, status])
+  @@index([organizationId])
+}
+
+model AnalyticsSnapshot {
+  id       String @id @default(cuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  providerKey String
+  contextKey  String @default("default")
+  rangePreset String
+  fromDate    DateTime
+  toDate      DateTime
+
+  payload   Json?
+  status    AnalyticsSnapshotStatus @default(SUCCESS)
+  lastError String?                 @db.Text
+
+  capturedAt DateTime @default(now())
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, providerKey, contextKey, rangePreset, toDate, status])
+  @@index([userId, providerKey, contextKey, rangePreset, toDate])
+  @@index([expiresAt])
+  @@index([capturedAt])
+}
+
+model StripeCustomerLink {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  stripeCustomerId String
+  hubspotDealId    String
+  hubspotDealName  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, stripeCustomerId])
+  @@unique([userId, hubspotDealId])
+  @@index([userId])
+}
+
+// ============================================================
+// AI ANALYTICS: METRIC HISTORY & INSIGHT FEEDBACK
+// ============================================================
+
+model MetricHistory {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  metricKey   String
+  section     String
+  value       Float
+  periodStart DateTime
+  periodEnd   DateTime
+  rangePreset String
+
+  capturedAt DateTime @default(now())
+
+  @@index([userId, metricKey, periodEnd(sort: Desc)])
+  @@index([userId, section, periodEnd(sort: Desc)])
+  @@index([capturedAt])
+}
+
+enum InsightFeedbackAction {
+  USEFUL
+  NOT_USEFUL
+  ACTED_ON
+  DISMISSED
+}
+
+model InsightFeedback {
+  id        String                @id @default(cuid())
+  userId    String
+  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  insightId String
+  action    InsightFeedbackAction
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, insightId])
+  @@index([createdAt])
+}
+
+model IntegrationRule {
+  id             String              @id @default(cuid())
+  userId         String
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider       IntegrationProvider
+  key            String
+  enabled        Boolean             @default(true)
+  statusOverride TaskStatus?
+  config         Json
+  checkpoint     Json?
+  lastObservedAt DateTime?
+  lastRunAt      DateTime?
+  lastError      String?             @db.Text
+
+  receipts IntegrationReceipt[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, provider, key])
+  @@index([provider, key, enabled])
+}
+
+model IntegrationCircuitState {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  key String
+
+  state               String
+  consecutiveFailures Int    @default(0)
+  openedAt            DateTime?
+  currentCooldownMs   Int    @default(0)
+  openCount           Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, key])
+  @@index([updatedAt])
+}
+
+model IntegrationReceipt {
+  id                 String          @id @default(cuid())
+  ruleId             String
+  rule               IntegrationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  dedupeKey          String          @unique
+  externalObjectType String
+  externalObjectId   String
+  sourceUrl          String?
+  taskId             String?
+  task               Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  lastObservedAt     DateTime
+  metadata           Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ruleId, lastObservedAt])
+  @@index([taskId])
+}
+
+enum SavedViewScope {
+  TASKS
+  PROJECTS
+}
+
+model UserUiPreference {
+  id String @id @default(cuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  dashboardConfig Json?
+  tasksConfig     Json?
+  projectsConfig  Json?
+  analyticsConfig Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model UserSavedView {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  scope     SavedViewScope
+  slug      String
+  name      String
+  isDefault Boolean @default(false)
+  isSystem  Boolean @default(false)
+  config    Json
+  position  Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, scope, slug])
+  @@index([userId, scope, isDefault])
+}
+
+enum WorkflowScope {
+  PRIVATE
+  SHARED
+}
+
+enum WorkflowStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ERROR
+  ARCHIVED
+}
+
+enum WorkflowNodeType {
+  TRIGGER
+  CONDITION
+  ACTION
+  APPROVAL
+  DELAY
+}
+
+enum WorkflowRunStatus {
+  QUEUED
+  RUNNING
+  WAITING_APPROVAL
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum WorkflowStepStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+  WAITING_APPROVAL
+}
+
+enum WorkflowApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  TIMED_OUT
+  CANCELED
+}
+
+enum WorkflowEventStatus {
+  QUEUED
+  DISPATCHED
+  FAILED
+  DEAD_LETTER
+}
+
+model WorkflowDefinition {
+  id String @id @default(cuid())
+
+  ownerId String
+  owner   User   @relation("WorkflowOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String? @db.Text
+  scope       WorkflowScope @default(PRIVATE)
+  status      WorkflowStatus @default(DRAFT)
+  providers   IntegrationProvider[] @default([])
+  rolePolicy  Json?
+
+  isSystemManaged Boolean @default(false)
+  graphVersion    Int     @default(1)
+  graph           Json
+
+  lastPublishedAt DateTime?
+  lastRunAt       DateTime?
+  lastError       String? @db.Text
+
+  nodes        WorkflowNode[]
+  edges        WorkflowEdge[]
+  runs         WorkflowRun[]
+  triggerCursors WorkflowTriggerCursor[]
+  triggerEvents WorkflowTriggerEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId, status])
+  @@index([scope, status])
+}
+
+model WorkflowNode {
+  id String @id @default(cuid())
+
+  workflowId String
+  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  nodeKey String
+  type    WorkflowNodeType
+  label   String
+  config  Json
+
+  positionX Int @default(0)
+  positionY Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workflowId, nodeKey])
+  @@index([workflowId, type])
+}
+
+model WorkflowEdge {
+  id String @id @default(cuid())
+
+  workflowId String
+  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  sourceNodeKey  String
+  targetNodeKey  String
+  conditionLabel String?
+  conditionExpr  Json?
+  priority       Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workflowId, sourceNodeKey, priority])
+  @@index([workflowId, targetNodeKey])
+}
+
+model WorkflowRun {
+  id String @id @default(cuid())
+
+  workflowId String
+  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  requestedById String?
+  requestedBy   User?   @relation("WorkflowRunRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+
+  triggerProvider IntegrationProvider?
+  triggerType     String?
+  triggerId       String?
+  triggerPayload  Json?
+  dedupeKey       String? @unique
+
+  status WorkflowRunStatus @default(QUEUED)
+  correlationId String?
+  startedAt DateTime?
+  finishedAt DateTime?
+  error String? @db.Text
+
+  steps     WorkflowRunStep[]
+  approvals WorkflowApproval[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workflowId, status, createdAt])
+  @@index([triggerProvider, triggerType])
+}
+
+model WorkflowRunStep {
+  id String @id @default(cuid())
+
+  runId String
+  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  nodeKey String
+  nodeType WorkflowNodeType
+  status WorkflowStepStatus @default(PENDING)
+  attempt Int @default(0)
+
+  idempotencyKey String? @unique
+  input  Json?
+  output Json?
+  error  String? @db.Text
+
+  startedAt DateTime?
+  finishedAt DateTime?
+
+  approvals WorkflowApproval[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([runId, nodeKey, status])
+}
+
+model WorkflowApproval {
+  id String @id @default(cuid())
+
+  runId String
+  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  stepId String?
+  step   WorkflowRunStep? @relation(fields: [stepId], references: [id], onDelete: SetNull)
+
+  nodeKey String
+
+  requestedById String?
+  requestedBy   User?   @relation("WorkflowApprovalRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+
+  approverId String?
+  approver   User?   @relation("WorkflowApprovalApprover", fields: [approverId], references: [id], onDelete: SetNull)
+
+  status WorkflowApprovalStatus @default(PENDING)
+  decisionNote String? @db.Text
+
+  timeoutAt DateTime?
+  resolvedAt DateTime?
+  fallbackEdgeId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, approverId, timeoutAt])
+  @@index([runId, status])
+}
+
+model WorkflowTriggerCursor {
+  id String @id @default(cuid())
+
+  workflowId String
+  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  provider IntegrationProvider
+  cursorKey String
+  cursorValue Json?
+
+  lastEventAt DateTime?
+  lastRunAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workflowId, provider, cursorKey])
+}
+
+model WorkflowTriggerEvent {
+  id String @id @default(cuid())
+
+  workflowId String?
+  workflow   WorkflowDefinition? @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+
+  provider IntegrationProvider
+  eventType String
+  externalId String?
+  idempotencyKey String @unique
+  payload Json
+  observedAt DateTime @default(now())
+
+  status WorkflowEventStatus @default(QUEUED)
+  attemptCount Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  lastError String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([provider, eventType, observedAt])
+}
+
+// ============================================================
+// OUTBOX / EVENT BUS
+// ============================================================
+
+enum OutboxEventStatus {
+  PENDING
+  DISPATCHED
+  FAILED
+  DEAD_LETTER
+}
+
+model OutboxEvent {
+  id            String           @id @default(cuid())
+  eventType     String
+  aggregateType String
+  aggregateId   String
+  schemaVersion Int              @default(1)
+  payload       Json
+
+  idempotencyKey String          @unique
+  status         OutboxEventStatus @default(PENDING)
+  retryCount     Int             @default(0)
+  nextAttemptAt  DateTime        @default(now())
+  lastAttemptAt  DateTime?
+  dispatchedAt   DateTime?
+  failedAt       DateTime?
+  error          String?         @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([aggregateType, aggregateId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+// ============================================================
+// PROSPECTING
+// ============================================================
+
+enum ProspectStatus {
+  DISCOVERED
+  VERIFIED
+  PUSHED
+  REJECTED
+  ERROR
+}
+
+model ManufacturerProspect {
+  id               String         @id @default(cuid())
+  userId           String
+  companyName      String
+  domain           String?
+  industry         String?
+  location         String?
+  employeeCount    Int?
+  kanbanEvidence   Json           // [{ url, snippet, confidence }]
+  contactName      String?
+  contactEmail     String?
+  contactTitle     String?
+  sourceType       String         // "google_cse" | "website_scrape" | "directory"
+  sourceUrl        String
+  confidence       Float          @default(0.5)
+  status           ProspectStatus @default(DISCOVERED)
+  hubspotCompanyId String?
+  hubspotContactId String?
+  pushedToHubspotAt DateTime?
+  discoveredAt     DateTime       @default(now())
+  metadata         Json?
+
+  @@unique([userId, domain])
+  @@index([userId, status])
+  @@index([discoveredAt])
+}
+
+// ============================================================
+// DEALS CRM
+// ============================================================
+
+enum DealStage {
+  LEAD
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  CLOSED_WON
+  CLOSED_LOST
+}
+
+enum DealSource {
+  ADS
+  WEBSITE
+  ORGANIC
+  REFERRAL
+  CONFERENCE
+  OUTBOUND
+  PARTNER
+  OTHER
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELED
+  NO_SHOW
+}
+
+model DealCompany {
+  id       String  @id @default(cuid())
+  name     String
+  domain   String?
+  industry String?
+  notes    String? @db.Text
+
+  hubspotCompanyId String? @unique
+
+  contacts DealContact[]
+  deals    Deal[]
+  meetings DealMeeting[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name])
+}
+
+model DealContact {
+  id        String  @id @default(cuid())
+  firstName String
+  lastName  String
+  email     String?
+  phone     String?
+  title     String?
+  notes     String? @db.Text
+
+  companyId String?
+  company   DealCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  hubspotContactId String? @unique
+
+  deals    Deal[]        @relation("DealContacts")
+  meetings DealMeeting[] @relation("MeetingAttendees")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([email])
+}
+
+model Deal {
+  id     String    @id @default(cuid())
+  name   String
+  stage  DealStage @default(LEAD)
+  amount Float     @default(0)
+  source DealSource @default(OTHER)
+
+  expectedCloseDate DateTime?
+  closedAt          DateTime?
+  notes             String? @db.Text
+
+  companyId String?
+  company   DealCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  ownerId String?
+  owner   User? @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  hubspotDealId String? @unique
+
+  contacts     DealContact[]    @relation("DealContacts")
+  meetings     DealMeeting[]
+  stageHistory DealStageHistory[]
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([stage])
+  @@index([ownerId])
+  @@index([companyId])
+  @@index([source])
+  @@index([closedAt])
+  @@index([organizationId])
+}
+
+model DealStageHistory {
+  id        String     @id @default(cuid())
+  dealId    String
+  deal      Deal       @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  fromStage DealStage?
+  toStage   DealStage
+  changedAt DateTime   @default(now())
+  changedBy String?
+
+  @@index([dealId, changedAt])
+}
+
+model DealMeeting {
+  id     String        @id @default(cuid())
+  title  String
+  status MeetingStatus @default(SCHEDULED)
+
+  startAt  DateTime
+  endAt    DateTime?
+  location String?
+  notes    String? @db.Text
+
+  expectedAttendees Int @default(0)
+  actualAttendees   Int @default(0)
+
+  dealId String?
+  deal   Deal? @relation(fields: [dealId], references: [id], onDelete: SetNull)
+
+  companyId String?
+  company   DealCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  hubspotMeetingId String? @unique
+
+  attendees DealContact[] @relation("MeetingAttendees")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dealId])
+  @@index([companyId])
+  @@index([startAt])
+  @@index([status])
+}
+
+// ── Financial Planning ──
+
+enum BudgetPeriod {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+enum ExpenseCategory {
+  PAYROLL
+  MARKETING
+  INFRASTRUCTURE
+  OPS
+  COGS
+  OTHER
+}
+
+enum GoalMetric {
+  MRR
+  ARR
+  RUNWAY
+  BURN_RATE
+  NET_CASH_FLOW
+  REVENUE
+  CUSTOMER_COUNT
+}
+
+enum GoalStatus {
+  ACTIVE
+  ACHIEVED
+  MISSED
+}
+
+model Budget {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  period    BudgetPeriod
+  startDate DateTime
+  endDate   DateTime
+  lineItems BudgetLineItem[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([userId])
+}
+
+model BudgetLineItem {
+  id            String          @id @default(cuid())
+  budgetId      String
+  budget        Budget          @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  category      ExpenseCategory
+  plannedAmount Float
+  notes         String?
+
+  @@index([budgetId])
+}
+
+model FinancialGoal {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metric      GoalMetric
+  targetValue Float
+  deadline    DateTime
+  status      GoalStatus @default(ACTIVE)
+  createdAt   DateTime   @default(now())
+
+  @@index([userId, status])
+}
+
+model ForecastScenario {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  assumptions Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// ============================================================
+// FUNNEL ANALYTICS
+// ============================================================
+
+model SubmissionEvent {
+  id          String   @id @default(cuid())
+  type        String                        // e.g. "download_request", "form_submission"
+  referenceId String?                       // optional external reference
+  metadata    Json     @default("{}")
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([type, createdAt])
+}
+
+// ============================================================
+// INSIGHT PREFERENCES
+// ============================================================
+
+model InsightPreference {
+  id        String   @id @default(cuid())
+  userId    String
+  insightId String   @db.VarChar(256)
+  status    String   @db.VarChar(20)  // "pinned" | "dismissed"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, insightId], name: "userId_insightId")
+  @@index([userId])
+  @@map("insight_preferences")
 }
