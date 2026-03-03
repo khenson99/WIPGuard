@@ -44,12 +44,20 @@ export class AuthPage {
 
     // Wait for the login UI to hydrate/fetch providers in CI.
     // The page starts with minimal chrome and then renders provider buttons.
+    const noProviderMessage = this.page.getByText(/no sign-in provider is configured/i);
     await Promise.race([
       this.devUserSelect.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => null),
       this.emailInput.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => null),
       this.page.getByRole('button', { name: /sign in with google/i }).waitFor({ state: 'visible', timeout: 15_000 }).catch(() => null),
-      this.page.getByText(/no sign-in provider is configured/i).waitFor({ state: 'visible', timeout: 15_000 }).catch(() => null),
+      noProviderMessage.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => null),
     ]);
+
+    // In dev/e2e mode, the "no provider" message can render briefly while the dev user list loads.
+    // If we see it, give the dev login selector a moment to appear before failing.
+    const noProviderVisible = await noProviderMessage.isVisible().catch(() => false);
+    if (noProviderVisible) {
+      await this.devUserSelect.waitFor({ state: 'visible', timeout: 5_000 }).catch(() => null);
+    }
 
     const devLoginVisible = await this.devUserSelect.isVisible().catch(() => false);
     if (devLoginVisible) {
