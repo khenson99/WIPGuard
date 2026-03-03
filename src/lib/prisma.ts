@@ -1,38 +1,57 @@
 import { PrismaClient } from "@/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
+import { poolMonitor } from "./pool-monitor";
 
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error("DATABASE_URL environment variable is not set");
+}
+
+const maxPoolSize = parseInt(process.env.DB_POOL_MAX || "25", 10);
+const idleTimeoutMillis = parseInt(
+  process.env.DB_POOL_IDLE_TIMEOUT || "30000",
+  10
+);
+const connectionTimeoutMillis = parseInt(
+  process.env.DB_POOL_CONNECTION_TIMEOUT || "10000",
+  10
+);
+
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
+  pgPool: Pool | undefined;
+};
 
 function createPrismaClient(): PrismaClient {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error("DATABASE_URL environment variable is not set");
-  }
-
-  const useSSL = process.env.NODE_ENV === "production" || process.env.DATABASE_SSL === "true";
-
-  const adapter = new PrismaPg({
+  const pool = new Pool({
     connectionString,
-    max: 10,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-    ...(useSSL ? { ssl: { rejectUnauthorized: false } } : {}),
+    max: maxPoolSize,
+    idleTimeoutMillis,
+    connectionTimeoutMillis,
   });
 
-  return new PrismaClient({ adapter });
+  // Attach pool monitoring
+  poolMonitor.attach(pool, maxPoolSize);
+
+  // Store pool reference for cleanup/monitoring
+  globalForPrisma.pgPool = pool;
+
+  const adapter = new PrismaPg(pool);
+  const client = new PrismaClient({ adapter });
+
+  console.log(
+    `[Prisma] Initialized with pool size: ${maxPoolSize}, idle timeout: ${idleTimeoutMillis}ms, connection timeout: ${connectionTimeoutMillis}ms`
+  );
+
+  return client;
 }
 
-// Lazy singleton — only creates the client when first accessed at runtime,
-// not at module import time (avoids build-time errors when DATABASE_URL is unset)
-function getPrismaClient(): PrismaClient {
-  if (!globalForPrisma.prisma) {
-    globalForPrisma.prisma = createPrismaClient();
-  }
-  return globalForPrisma.prisma;
+export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = prisma;
 }
 
-export const prisma = new Proxy({} as PrismaClient, {
-  get(_target, prop) {
-    return getPrismaClient()[prop as keyof PrismaClient];
-  },
-});
+export default prisma;

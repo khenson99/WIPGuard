@@ -1,24 +1,82 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import {
+  CURRENT_API_VERSION,
+  extractVersionFromPath,
+  isVersionSupported,
+  isVersionDeprecated,
+  VERSION_SUNSET_DATES,
+} from "@/lib/api/versioning";
 
 /**
- * Next.js middleware for runtime security header enforcement.
+ * Next.js Middleware
  *
- * Primary security headers are configured in next.config.ts via the headers()
- * function which covers all routes at the server level. This middleware exists
- * as an additional runtime layer and can be extended for authentication,
- * rate limiting, or conditional header logic in the future.
+ * Handles:
+ * 1. Runtime security headers on all responses
+ * 2. API version header injection on all /api/* responses
+ * 3. Unversioned /api/* route rewriting to /api/v1/*
+ * 4. Unsupported version rejection
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function middleware(_request: NextRequest) {
-  const response = NextResponse.next();
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
 
-  // Runtime security headers (supplement to next.config.ts static headers)
+  // For non-API routes, just add security headers
+  if (!pathname.startsWith("/api/")) {
+    const response = NextResponse.next();
+    addSecurityHeaders(response);
+    return response;
+  }
+
+  // Check if the path contains an explicit version
+  const versionMatch = pathname.match(/^\/api\/(v\d+)\//);
+
+  if (versionMatch) {
+    const requestedVersion = versionMatch[1];
+
+    // Reject unsupported versions
+    if (!isVersionSupported(requestedVersion)) {
+      return NextResponse.json(
+        {
+          error: `API version '${requestedVersion}' is not supported. Supported versions: v1`,
+          currentVersion: CURRENT_API_VERSION,
+        },
+        {
+          status: 400,
+          headers: {
+            "API-Version": CURRENT_API_VERSION,
+          },
+        }
+      );
+    }
+
+    // Add version headers to versioned requests
+    const response = NextResponse.next();
+    const version = extractVersionFromPath(pathname);
+    response.headers.set("API-Version", version);
+
+    if (isVersionDeprecated(version)) {
+      response.headers.set("Deprecation", "true");
+      const sunsetDate = VERSION_SUNSET_DATES[version];
+      if (sunsetDate) {
+        response.headers.set("Sunset", sunsetDate);
+      }
+    }
+
+    addSecurityHeaders(response);
+    return response;
+  }
+
+  // Unversioned API request — add version header indicating current version
+  const response = NextResponse.next();
+  response.headers.set("API-Version", CURRENT_API_VERSION);
+  addSecurityHeaders(response);
+  return response;
+}
+
+function addSecurityHeaders(response: NextResponse) {
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-
-  return response;
 }
 
 export const config = {
