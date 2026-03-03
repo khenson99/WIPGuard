@@ -30,7 +30,7 @@ describe("socket-emit", () => {
   it("does not emit when projectId is empty", () => {
     jest
       .spyOn(socketServer, "getIO")
-      .mockReturnValue({ to: mockTo } as any);
+      .mockReturnValue({ to: mockTo } as unknown as ReturnType<typeof socketServer.getIO>);
     emitBoardEvent("", "task:created", { id: "t1" });
     expect(mockTo).not.toHaveBeenCalled();
   });
@@ -38,7 +38,7 @@ describe("socket-emit", () => {
   it("emits to the correct project room", () => {
     jest
       .spyOn(socketServer, "getIO")
-      .mockReturnValue({ to: mockTo } as any);
+      .mockReturnValue({ to: mockTo } as unknown as ReturnType<typeof socketServer.getIO>);
 
     emitBoardEvent("proj-42", "task:created", { id: "t1", title: "Test" });
 
@@ -53,7 +53,7 @@ describe("socket-emit", () => {
   it("emitTaskCreated emits task:created", () => {
     jest
       .spyOn(socketServer, "getIO")
-      .mockReturnValue({ to: mockTo } as any);
+      .mockReturnValue({ to: mockTo } as unknown as ReturnType<typeof socketServer.getIO>);
 
     emitTaskCreated("proj-1", { id: "t1" });
 
@@ -66,7 +66,7 @@ describe("socket-emit", () => {
   it("emitTaskUpdated emits task:updated", () => {
     jest
       .spyOn(socketServer, "getIO")
-      .mockReturnValue({ to: mockTo } as any);
+      .mockReturnValue({ to: mockTo } as unknown as ReturnType<typeof socketServer.getIO>);
 
     emitTaskUpdated("proj-1", { id: "t1", status: "done" });
 
@@ -79,7 +79,7 @@ describe("socket-emit", () => {
   it("emitTaskDeleted emits task:deleted with id", () => {
     jest
       .spyOn(socketServer, "getIO")
-      .mockReturnValue({ to: mockTo } as any);
+      .mockReturnValue({ to: mockTo } as unknown as ReturnType<typeof socketServer.getIO>);
 
     emitTaskDeleted("proj-1", "t1");
 
@@ -95,7 +95,7 @@ describe("socket-emit", () => {
   it("emitTaskReordered emits task:reordered", () => {
     jest
       .spyOn(socketServer, "getIO")
-      .mockReturnValue({ to: mockTo } as any);
+      .mockReturnValue({ to: mockTo } as unknown as ReturnType<typeof socketServer.getIO>);
 
     emitTaskReordered("proj-1", { order: ["t2", "t1"] });
 
