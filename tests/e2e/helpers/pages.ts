@@ -269,12 +269,13 @@ export class DealsPage {
     await this.page.waitForLoadState('domcontentloaded');
     await this.page
       .getByRole('button', { name: /new deal/i })
+      .first()
       .waitFor({ state: 'visible', timeout: 20_000 })
       .catch(() => {});
   }
 
   getCreateDealButton(): Locator {
-    return this.page.getByRole('button', { name: /create.*deal|new.*deal|add.*deal/i });
+    return this.page.getByRole('button', { name: /create.*deal|new.*deal|add.*deal/i }).first();
   }
 
   getDealNameInput(): Locator {
@@ -311,6 +312,7 @@ export class DealsPage {
     await this.page.getByRole('dialog').waitFor({ state: 'visible', timeout: 10_000 });
     await this.getDealNameInput().fill(name);
     await this.getSubmitButton().click();
+    await this.page.getByRole('dialog').waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});
   }
 
   async advanceDealToStage(dealName: string, targetStage: string) {

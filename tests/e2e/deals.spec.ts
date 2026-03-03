@@ -36,10 +36,13 @@ test.describe('Deal Pipeline', () => {
   });
 
   test('should display pipeline stages', async ({ page }) => {
-    // Wait for any stage label to render (pipeline view).
-    await expect(
-      page.getByText(/lead|qualified|proposal|negotiation|closed won|closed lost/i).first()
-    ).toBeVisible({ timeout: 15_000 });
+    // Stages are represented as filter options (the pipeline can be empty).
+    const stageFilter = page.getByRole('combobox', { name: /filter by stage/i });
+    await expect(stageFilter).toBeVisible({ timeout: 15_000 });
+
+    for (const stage of DEAL_STAGES) {
+      await expect(stageFilter.locator('option', { hasText: stage })).toHaveCount(1);
+    }
   });
 
   test('should create a new deal', async ({ page }) => {
