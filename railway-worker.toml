@@ -1,0 +1,20 @@
+# Railway configuration for the WIPGuard sync worker service.
+#
+# Deploy as a separate service in Railway:
+#   1. Create a new service in your Railway project
+#   2. Point it to the same repo
+#   3. Set the config path to this file
+#   4. Set environment variables (WORKER_DATABASE_URL, etc.)
+#
+# For cron-based single runs, set WORKER_RUN_ONCE=true and configure
+# a Railway cron schedule instead of using a persistent worker.
+
+[build]
+  builder = "dockerfile"
+  dockerfilePath = "Dockerfile.worker"
+
+[deploy]
+  healthcheckPath = "/health"
+  healthcheckTimeout = 10
+  restartPolicyType = "ON_FAILURE"
+  restartPolicyMaxRetries = 5
