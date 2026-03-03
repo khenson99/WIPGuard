@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
       data: {
         type,
         referenceId: referenceId ?? null,
-        metadata: metadata ?? {},
+        metadata: (metadata ?? {}) as Prisma.InputJsonValue,
         userId,
       },
     });
