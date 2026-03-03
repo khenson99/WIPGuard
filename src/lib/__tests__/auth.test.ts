@@ -127,7 +127,7 @@ describe('auth module', () => {
           email: 'test@example.com',
           emailVerified: new Date(),
           image: null,
-        } as any);
+        } as Record<string, unknown>);
         expect(result).toBeDefined();
       }
     });
@@ -172,7 +172,7 @@ describe('auth module', () => {
             email: 'test@example.com',
           };
 
-          const result = await (sessionCallback as Function)({
+          const result = await (sessionCallback as (...args: unknown[]) => unknown)({
             session: mockSession,
             token: mockToken,
             user: { id: 'user-123', name: 'Test', email: 'test@example.com' },
@@ -200,7 +200,7 @@ describe('auth module', () => {
             email: 'test@example.com',
           };
 
-          const result = await (sessionCallback as Function)({
+          const result = await (sessionCallback as (...args: unknown[]) => unknown)({
             session: mockSession,
             token: mockToken,
             user: undefined,
@@ -222,7 +222,7 @@ describe('auth module', () => {
           const mockToken = { name: 'Test', email: 'test@example.com' };
           const mockUser = { id: 'user-123', name: 'Test', email: 'test@example.com' };
 
-          const result = await (jwtCallback as Function)({
+          const result = await (jwtCallback as (...args: unknown[]) => unknown)({
             token: mockToken,
             user: mockUser,
             account: null,
@@ -244,7 +244,7 @@ describe('auth module', () => {
             email: 'test@example.com',
           };
 
-          const result = await (jwtCallback as Function)({
+          const result = await (jwtCallback as (...args: unknown[]) => unknown)({
             token: mockToken,
             user: undefined,
             account: null,
@@ -263,7 +263,7 @@ describe('auth module', () => {
         const signInCallback = authOptions.callbacks?.signIn;
 
         if (signInCallback) {
-          const result = await (signInCallback as Function)({
+          const result = await (signInCallback as (...args: unknown[]) => unknown)({
             user: { id: 'user-1', email: 'test@example.com' },
             account: { provider: 'github', providerAccountId: '123' },
             profile: { email: 'test@example.com' },
