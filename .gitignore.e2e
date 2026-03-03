@@ -1,0 +1,7 @@
+# Playwright E2E test artifacts
+# Add these entries to your .gitignore:
+# /test-results/
+# /playwright-report/
+# /blob-report/
+# /playwright/.cache/
+# /tests/e2e/.auth/user.json
