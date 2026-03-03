@@ -60,7 +60,7 @@ export default defineConfig({
     // On CI, run the production standalone server for stability/speed.
     // Dev-mode auth is enabled in CI via `E2E_MODE=true`.
     command: process.env.CI
-      ? 'PORT=3000 node .next/standalone/server.js'
+      ? 'rm -rf .next/standalone/.next/static && mkdir -p .next/standalone/.next && cp -r .next/static .next/standalone/.next/static && PORT=3000 node .next/standalone/server.js'
       : 'npm run dev -- -p 3000',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
