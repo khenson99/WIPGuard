@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import type { Pool } from "pg";
 import { EventEmitter } from "events";
 
 // We need to test a fresh instance each time, so we re-import
@@ -36,7 +37,7 @@ describe("PoolMonitor", () => {
   });
 
   it("should track connections created on connect events", () => {
-    PoolMonitorModule.poolMonitor.attach(mockPool as any, 25);
+    PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 25);
 
     mockPool.emit("connect");
     mockPool.emit("connect");
@@ -48,7 +49,7 @@ describe("PoolMonitor", () => {
   });
 
   it("should track pool errors", () => {
-    PoolMonitorModule.poolMonitor.attach(mockPool as any, 25);
+    PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 25);
 
     const testError = new Error("connection refused");
     mockPool.emit("error", testError);
@@ -62,8 +63,8 @@ describe("PoolMonitor", () => {
   it("should not attach twice", () => {
     const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    PoolMonitorModule.poolMonitor.attach(mockPool as any, 25);
-    PoolMonitorModule.poolMonitor.attach(mockPool as any, 25);
+    PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 25);
+    PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 25);
 
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining("Already attached")
@@ -72,7 +73,7 @@ describe("PoolMonitor", () => {
   });
 
   it("should record wait times and calculate average", () => {
-    PoolMonitorModule.poolMonitor.attach(mockPool as any, 25);
+    PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 25);
 
     PoolMonitorModule.poolMonitor.recordWaitTime(100);
     PoolMonitorModule.poolMonitor.recordWaitTime(200);
@@ -85,7 +86,7 @@ describe("PoolMonitor", () => {
   it("should detect pool exhaustion when wait time exceeds 5000ms", () => {
     const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    PoolMonitorModule.poolMonitor.attach(mockPool as any, 25);
+    PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 25);
     PoolMonitorModule.poolMonitor.recordWaitTime(6000);
 
     const metrics = PoolMonitorModule.poolMonitor.getMetrics();
@@ -97,7 +98,7 @@ describe("PoolMonitor", () => {
   });
 
   it("should return healthy status when pool is underutilized", () => {
-    PoolMonitorModule.poolMonitor.attach(mockPool as any, 25);
+    PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 25);
 
     mockPool.totalCount = 5;
     mockPool.idleCount = 3;
@@ -108,7 +109,7 @@ describe("PoolMonitor", () => {
   });
 
   it("should return warning status when pool utilization exceeds 70%", () => {
-    PoolMonitorModule.poolMonitor.attach(mockPool as any, 10);
+    PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 10);
 
     mockPool.totalCount = 10;
     mockPool.idleCount = 2; // 8 active out of 10 = 80%
@@ -119,7 +120,7 @@ describe("PoolMonitor", () => {
   });
 
   it("should return critical status when pool utilization exceeds 90%", () => {
-    PoolMonitorModule.poolMonitor.attach(mockPool as any, 10);
+    PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 10);
 
     mockPool.totalCount = 10;
     mockPool.idleCount = 0; // 10 active out of 10 = 100%
@@ -130,7 +131,7 @@ describe("PoolMonitor", () => {
   });
 
   it("should return critical status when there are waiting requests", () => {
-    PoolMonitorModule.poolMonitor.attach(mockPool as any, 10);
+    PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 10);
 
     mockPool.totalCount = 10;
     mockPool.idleCount = 5;
@@ -143,7 +144,7 @@ describe("PoolMonitor", () => {
   it("should return critical status when exhaustion events have occurred", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    PoolMonitorModule.poolMonitor.attach(mockPool as any, 25);
+    PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 25);
     PoolMonitorModule.poolMonitor.recordWaitTime(6000); // triggers exhaustion
 
     const health = PoolMonitorModule.poolMonitor.getHealthStatus();
@@ -151,7 +152,7 @@ describe("PoolMonitor", () => {
   });
 
   it("should track uptime", async () => {
-    PoolMonitorModule.poolMonitor.attach(mockPool as any, 25);
+    PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 25);
 
     // Wait a small amount
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -161,7 +162,7 @@ describe("PoolMonitor", () => {
   });
 
   it("should correctly identify pool under pressure", () => {
-    PoolMonitorModule.poolMonitor.attach(mockPool as any, 10);
+    PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 10);
 
     mockPool.totalCount = 10;
     mockPool.idleCount = 1; // 9 active / 10 = 90%
@@ -170,7 +171,7 @@ describe("PoolMonitor", () => {
   });
 
   it("should not identify pool under pressure when utilization is low", () => {
-    PoolMonitorModule.poolMonitor.attach(mockPool as any, 25);
+    PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 25);
 
     mockPool.totalCount = 5;
     mockPool.idleCount = 3; // 2 active / 25 = 8%
@@ -179,7 +180,7 @@ describe("PoolMonitor", () => {
   });
 
   it("should cap wait time samples at 1000 to prevent memory growth", () => {
-    PoolMonitorModule.poolMonitor.attach(mockPool as any, 25);
+    PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 25);
 
     // Add 1001 samples
     for (let i = 0; i < 1001; i++) {

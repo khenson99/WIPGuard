@@ -12,6 +12,15 @@
 
 import type { Pool } from "pg";
 
+/**
+ * pg Pool exposes these runtime properties that are not in the @types/pg typings.
+ */
+interface PoolInternals {
+  totalCount: number;
+  idleCount: number;
+  waitingCount: number;
+}
+
 export interface PoolMetrics {
   totalConnections: number;
   activeConnections: number;
@@ -174,21 +183,29 @@ class PoolMonitor {
     return { status, pool: metrics };
   }
 
+  private getPoolInternals(): PoolInternals | null {
+    return this.pool ? (this.pool as unknown as PoolInternals) : null;
+  }
+
   private getActiveCount(): number {
     // pg Pool exposes totalCount, idleCount, waitingCount
-    return (this.pool as any)?.totalCount - (this.pool as any)?.idleCount || 0;
+    const internals = this.getPoolInternals();
+    return internals ? internals.totalCount - internals.idleCount : 0;
   }
 
   private getIdleCount(): number {
-    return (this.pool as any)?.idleCount || 0;
+    const internals = this.getPoolInternals();
+    return internals?.idleCount ?? 0;
   }
 
   private getTotalCount(): number {
-    return (this.pool as any)?.totalCount || 0;
+    const internals = this.getPoolInternals();
+    return internals?.totalCount ?? 0;
   }
 
   private getWaitingCount(): number {
-    return (this.pool as any)?.waitingCount || 0;
+    const internals = this.getPoolInternals();
+    return internals?.waitingCount ?? 0;
   }
 
   private logDebug(message: string): void {
