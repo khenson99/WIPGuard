@@ -81,11 +81,21 @@ describe("hubspot search helper", () => {
     expect(result.checkpoint.lastDealId).toBe("300");
 
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body ?? "{}"));
-    const filters = body.filterGroups?.[0]?.filters ?? [];
-    const pipelineFilter = filters.find((f: any) => f.propertyName === "pipeline");
-    const stageFilter = filters.find((f: any) => f.propertyName === "dealstage");
+    const filterGroups = (body as Record<string, unknown>)["filterGroups"];
+    let filters: Array<Record<string, unknown>> = [];
+    if (Array.isArray(filterGroups) && filterGroups.length > 0) {
+      const first = filterGroups[0];
+      if (first && typeof first === "object" && !Array.isArray(first)) {
+        const filtersMaybe = (first as Record<string, unknown>)["filters"];
+        if (Array.isArray(filtersMaybe)) {
+          filters = filtersMaybe as Array<Record<string, unknown>>;
+        }
+      }
+    }
+
+    const pipelineFilter = filters.find((filter) => filter.propertyName === "pipeline");
+    const stageFilter = filters.find((filter) => filter.propertyName === "dealstage");
     expect(pipelineFilter?.operator).toBe("IN");
     expect(stageFilter?.operator).toBe("IN");
   });
 });
-
