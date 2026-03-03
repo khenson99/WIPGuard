@@ -57,10 +57,10 @@ export default defineConfig({
   ],
   /* Run your local dev server before starting the tests */
   webServer: {
-    // On CI, run the production standalone server for stability/speed.
+    // On CI, run a production server (`next start`) for fidelity/stability.
     // Dev-mode auth is enabled in CI via `E2E_MODE=true`.
     command: process.env.CI
-      ? 'rm -rf .next/standalone/.next/static && mkdir -p .next/standalone/.next && cp -r .next/static .next/standalone/.next/static && PORT=3000 node .next/standalone/server.js'
+      ? 'PORT=3000 npm run start'
       : 'npm run dev -- -p 3000',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
