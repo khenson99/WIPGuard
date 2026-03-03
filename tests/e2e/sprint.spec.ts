@@ -38,6 +38,6 @@ test.describe('Sprint Management', () => {
     const createdLabel = await sprintPage.createSprint('ignored');
 
     await expect(page.getByText(createdLabel)).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/^active$/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: /deactivate sprint/i })).toBeVisible();
   });
 });
