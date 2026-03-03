@@ -272,6 +272,8 @@ function metadataString(metadata: unknown, key: string): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+const SLACK_API_TIMEOUT_MS = 15_000;
+
 async function postSlackMessage(input: {
   token: string;
   channelId: string;
@@ -289,15 +291,28 @@ async function postSlackMessage(input: {
     body.thread_ts = input.threadTs;
   }
 
-  const response = await fetch("https://slack.com/api/chat.postMessage", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${input.token}`,
-      "Content-Type": "application/json; charset=utf-8",
-    },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SLACK_API_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch("https://slack.com/api/chat.postMessage", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.token}`,
+        "Content-Type": "application/json; charset=utf-8",
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    clearTimeout(timeout);
+    const isAbort = error instanceof Error && error.name === "AbortError";
+    throw new Error(isAbort ? "Slack chat.postMessage timed out" : `Slack chat.postMessage failed: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (response.status === 401) {
     throw new SlackAuthError("Slack access token is invalid");
@@ -326,15 +341,28 @@ async function openSlackDirectConversation(input: {
   token: string;
   slackUserId: string;
 }): Promise<string> {
-  const response = await fetch("https://slack.com/api/conversations.open", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${input.token}`,
-      "Content-Type": "application/json; charset=utf-8",
-    },
-    body: JSON.stringify({ users: input.slackUserId }),
-    cache: "no-store",
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SLACK_API_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch("https://slack.com/api/conversations.open", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.token}`,
+        "Content-Type": "application/json; charset=utf-8",
+      },
+      body: JSON.stringify({ users: input.slackUserId }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    clearTimeout(timeout);
+    const isAbort = error instanceof Error && error.name === "AbortError";
+    throw new Error(isAbort ? "Slack conversations.open timed out" : `Slack conversations.open failed: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    clearTimeout(timeout);
+  }
 
   const payload = (await response.json().catch(() => null)) as
     | { ok?: boolean; error?: string; channel?: { id?: string } }
