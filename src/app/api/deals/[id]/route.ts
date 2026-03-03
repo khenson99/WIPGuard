@@ -11,10 +11,16 @@ function getOptionalOrganizationId(session: unknown): string | null {
   return typeof orgId === "string" && orgId.trim() ? orgId : null;
 }
 
+const USER_SELECT = { id: true, name: true, email: true } as const;
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  if (!params?.id) {
+    return NextResponse.json({ error: "Deal id is required" }, { status: 400 });
+  }
+
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -27,11 +33,11 @@ export async function GET(
       ...(organizationId ? { organizationId } : {}),
     },
     include: {
-      contact: true,
       company: true,
-      owner: {
-        select: { id: true, name: true, email: true },
-      },
+      contacts: true,
+      meetings: true,
+      stageHistory: true,
+      owner: { select: USER_SELECT },
     },
   });
 
@@ -46,6 +52,10 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  if (!params?.id) {
+    return NextResponse.json({ error: "Deal id is required" }, { status: 400 });
+  }
+
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -68,12 +78,12 @@ export async function PATCH(
 
   const data: Record<string, unknown> = {};
 
-  if (typeof body.title === "string" && body.title.trim()) {
-    data.title = body.title.trim();
+  if (typeof body.name === "string" && body.name.trim()) {
+    data.name = body.name.trim();
   }
 
-  if (typeof body.value === "number" && body.value >= 0) {
-    data.value = body.value;
+  if (typeof body.amount === "number" && body.amount >= 0) {
+    data.amount = body.amount;
   }
 
   // Stage transition validation
@@ -82,7 +92,7 @@ export async function PATCH(
     Object.values(DealStage).includes(body.stage as DealStage)
   ) {
     const targetStage = body.stage as DealStage;
-    const adminOverride = body.adminOverride === true && session.user.role === "ADMIN";
+    const adminOverride = body.adminOverride === true && session.user.role === "admin";
 
     const transitionResult = validateStageTransition(
       existingDeal.stage,
@@ -111,10 +121,6 @@ export async function PATCH(
         `[AUDIT] Admin override stage transition: Deal ${params.id} from ${existingDeal.stage} to ${targetStage} by user ${session.user.id} (${session.user.email})`
       );
     }
-  }
-
-  if (typeof body.contactId === "string") {
-    data.contactId = body.contactId;
   }
 
   if (typeof body.companyId === "string") {
@@ -161,11 +167,11 @@ export async function PATCH(
       ...(organizationId ? { organizationId } : {}),
     },
     include: {
-      contact: true,
       company: true,
-      owner: {
-        select: { id: true, name: true, email: true },
-      },
+      contacts: true,
+      meetings: true,
+      stageHistory: true,
+      owner: { select: USER_SELECT },
     },
   });
 
@@ -180,6 +186,10 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  if (!params?.id) {
+    return NextResponse.json({ error: "Deal id is required" }, { status: 400 });
+  }
+
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

@@ -30,14 +30,14 @@ test.describe('Sprint Management', () => {
     const createdLabel = await sprintPage.createSprint('ignored');
 
     // Verify the sprint appears on the page
-    await expect(page.getByText(createdLabel)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(createdLabel).first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('should mark created sprint as active', async ({ page }) => {
     await sprintPage.goto();
     const createdLabel = await sprintPage.createSprint('ignored');
 
-    await expect(page.getByText(createdLabel)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(createdLabel).first()).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('button', { name: /deactivate sprint/i })).toBeVisible();
   });
 });
