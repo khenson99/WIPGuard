@@ -22,11 +22,13 @@ const globalForPrisma = globalThis as unknown as {
 type PrismaClientType = ReturnType<typeof createPrismaClient>;
 
 function createPrismaClient(connectionString: string) {
+  const useSSL = connectionString.includes("sslmode=require") || process.env.DB_SSL === "true";
   const pool = new Pool({
     connectionString,
     max: maxPoolSize,
     idleTimeoutMillis,
     connectionTimeoutMillis,
+    ...(useSSL ? { ssl: { rejectUnauthorized: true } } : {}),
   });
 
   // Attach pool monitoring
