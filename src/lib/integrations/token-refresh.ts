@@ -180,7 +180,7 @@ export async function getValidIntegrationAccessToken(input: {
       },
     });
 
-    if (!connection || connection.status !== IntegrationConnectionStatus.CONNECTED) {
+    if (!connection || connection.status === IntegrationConnectionStatus.DISCONNECTED) {
       throw new IntegrationAuthError(providerLabel(input.provider), "Integration is not connected");
     }
 
@@ -189,7 +189,12 @@ export async function getValidIntegrationAccessToken(input: {
       throw new IntegrationAuthError(providerLabel(input.provider), "Access token is missing");
     }
 
-    const shouldRefresh = input.forceRefresh === true || needsRefresh(connection.expiresAt);
+    // If a connection is in ERROR, force a refresh attempt to validate/heal
+    // credentials even if the current token is not yet expired.
+    const shouldRefresh =
+      input.forceRefresh === true ||
+      needsRefresh(connection.expiresAt) ||
+      connection.status === IntegrationConnectionStatus.ERROR;
     if (!shouldRefresh) {
       return token;
     }
@@ -279,4 +284,3 @@ export async function withAuthRefreshRetry<T>(input: {
     return await input.run(refreshed);
   }
 }
-

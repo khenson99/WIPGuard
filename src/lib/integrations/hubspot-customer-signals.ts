@@ -13,6 +13,12 @@ import { buildOutboxIdempotencyKey, publishDomainEvent } from "@/lib/event-bus";
 import { withRetries } from "@/lib/integrations/with-retries";
 import { isCircuitClosed, recordSuccess, recordFailure, CircuitOpenError, getCircuitState } from "@/lib/integrations/circuit-breaker";
 import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
+import {
+  compareHubSpotObjectId,
+  parseHubSpotDatetimeToMs,
+  searchDealsIncremental,
+  type HubSpotDealSearchResult,
+} from "@/lib/integrations/hubspot-search";
 
 export const HUBSPOT_CUSTOMER_SIGNAL_RULE_KEY = "hubspot_customer_signal_followup";
 const HUBSPOT_DEALS_ENDPOINT = "https://api.hubapi.com/crm/v3/objects/deals";
@@ -46,16 +52,7 @@ interface HubSpotCustomerSignalCheckpoint {
   lastContactId?: string;
 }
 
-interface HubSpotDeal {
-  id: string;
-  properties?: {
-    dealname?: string;
-    dealstage?: string;
-    pipeline?: string;
-    hs_lastmodifieddate?: string;
-    hubspot_owner_id?: string;
-  };
-}
+type HubSpotDeal = HubSpotDealSearchResult;
 
 interface HubSpotOwnerResponse {
   id?: string;
@@ -292,7 +289,7 @@ function normalizeConfig(raw: unknown): HubSpotCustomerSignalConfig {
       )
     : fallback.monitoredPipelines;
 
-  const maxResults = toIntegerInRange(input.maxResults, fallback.maxResults, 1, 300);
+  const maxResults = toIntegerInRange(input.maxResults, fallback.maxResults, 1, 500);
   const maxContactsPerDeal = toIntegerInRange(
     input.maxContactsPerDeal,
     fallback.maxContactsPerDeal,
@@ -353,16 +350,10 @@ function toOptionalSupportedStatus(
 }
 
 function parseDate(value: string | undefined): Date | null {
-  if (!value || value.trim().length === 0) {
-    return null;
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
-  }
-
-  return parsed;
+  const parsedMs = parseHubSpotDatetimeToMs(value);
+  if (parsedMs === null) return null;
+  const parsed = new Date(parsedMs);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function mapPriority(value: HubSpotSignalPriority): Priority {
@@ -458,7 +449,7 @@ async function getHubSpotConnection(userId: string): Promise<IntegrationConnecti
     },
   });
 
-  if (!connection || connection.status !== IntegrationConnectionStatus.CONNECTED) {
+  if (!connection || connection.status === IntegrationConnectionStatus.DISCONNECTED) {
     throw new HubSpotCustomerSignalAuthError("HubSpot is not connected");
   }
 
@@ -509,48 +500,36 @@ async function hubspotFetchJson<T>(accessToken: string, url: URL): Promise<T> {
 async function listDeals(input: {
   accessToken: string;
   config: HubSpotCustomerSignalConfig;
+  checkpoint: HubSpotCustomerSignalCheckpoint;
 }): Promise<HubSpotDeal[]> {
-  const properties = ["dealname", "dealstage", "pipeline", "hs_lastmodifieddate", "hubspot_owner_id"].join(
-    ","
-  );
+  const properties = ["dealname", "dealstage", "pipeline", "hs_lastmodifieddate", "hubspot_owner_id"];
 
-  let after: string | undefined;
-  const deals: HubSpotDeal[] = [];
-  const maxPages = 5;
+  const hasLifecycleSignals = Object.keys(input.config.contactLifecycleSignals).length > 0;
+  const sortDirection = hasLifecycleSignals ? "DESCENDING" : "ASCENDING";
+  const monitoredStages =
+    !hasLifecycleSignals && Object.keys(input.config.stageSignals).length > 0
+      ? Object.keys(input.config.stageSignals)
+      : undefined;
 
-  for (let page = 0; page < maxPages; page += 1) {
-    const url = new URL(HUBSPOT_DEALS_ENDPOINT);
-    url.searchParams.set("limit", "100");
-    url.searchParams.set("properties", properties);
-    if (after) {
-      url.searchParams.set("after", after);
-    }
+  const checkpoint = hasLifecycleSignals
+    ? {}
+    : {
+        lastModifiedAt: input.checkpoint.lastDealModifiedAt,
+        lastDealId: input.checkpoint.lastDealId,
+      };
 
-    const payload = await hubspotFetchJson<{
-      results?: HubSpotDeal[];
-      paging?: { next?: { after?: string } };
-    }>(input.accessToken, url);
-
-    deals.push(...(payload.results ?? []));
-
-    after = payload.paging?.next?.after;
-    if (!after) break;
-  }
-
-  const filtered = deals.filter((deal) => {
-    const pipelineId = deal.properties?.pipeline;
-
-    if (
-      input.config.monitoredPipelines.length > 0 &&
-      (!pipelineId || !input.config.monitoredPipelines.includes(pipelineId))
-    ) {
-      return false;
-    }
-
-    return true;
+  const { deals } = await searchDealsIncremental({
+    accessToken: input.accessToken,
+    properties,
+    monitoredPipelines: input.config.monitoredPipelines,
+    monitoredStages,
+    checkpoint,
+    maxResults: input.config.maxResults,
+    bufferMs: 60_000,
+    sortDirection,
   });
 
-  return filtered.slice(0, input.config.maxResults);
+  return deals;
 }
 
 async function listDealContactIds(input: {
@@ -867,11 +846,26 @@ export async function runHubSpotCustomerSignalAutomation(input: {
     throw error;
   }
 
-  const deals = await withRetries(() => listDeals({ accessToken, config }));
-  const checkpointDealMs = checkpoint.lastDealModifiedAt ? Date.parse(checkpoint.lastDealModifiedAt) : Number.NaN;
-  const checkpointContactMs = checkpoint.lastContactModifiedAt
-    ? Date.parse(checkpoint.lastContactModifiedAt)
-    : Number.NaN;
+  const deals = await withRetries(() => listDeals({ accessToken, config, checkpoint }));
+  const checkpointDealMs = parseHubSpotDatetimeToMs(checkpoint.lastDealModifiedAt) ?? Number.NaN;
+  const checkpointContactMs =
+    parseHubSpotDatetimeToMs(checkpoint.lastContactModifiedAt) ?? Number.NaN;
+  const checkpointDealId = checkpoint.lastDealId ?? null;
+  const checkpointContactId = checkpoint.lastContactId ?? null;
+
+  const isAfterCheckpoint = (
+    modifiedAtMs: number,
+    objectId: string,
+    checkpointMs: number,
+    checkpointId: string | null
+  ): boolean => {
+    if (!Number.isFinite(checkpointMs)) return true;
+    if (!Number.isFinite(modifiedAtMs)) return true;
+    if (modifiedAtMs > checkpointMs) return true;
+    if (modifiedAtMs < checkpointMs) return false;
+    if (!checkpointId) return true;
+    return compareHubSpotObjectId(objectId, checkpointId) > 0;
+  };
 
   const defaultStatus = toSupportedStatus(rule.statusOverride);
 
@@ -897,12 +891,18 @@ export async function runHubSpotCustomerSignalAutomation(input: {
   for (const deal of deals) {
     const stageId = deal.properties?.dealstage ?? null;
     const dealModifiedAt = parseDate(deal.properties?.hs_lastmodifieddate);
-    if (
-      dealModifiedAt &&
-      (!Number.isFinite(newestDealModifiedAtMs) || dealModifiedAt.getTime() > newestDealModifiedAtMs)
-    ) {
-      newestDealModifiedAtMs = dealModifiedAt.getTime();
-      newestDealId = deal.id;
+    const dealModifiedAtMs = dealModifiedAt?.getTime() ?? Number.NaN;
+    if (Number.isFinite(dealModifiedAtMs)) {
+      const isNewer =
+        !Number.isFinite(newestDealModifiedAtMs) ||
+        dealModifiedAtMs > newestDealModifiedAtMs ||
+        (dealModifiedAtMs === newestDealModifiedAtMs &&
+          (!newestDealId || compareHubSpotObjectId(deal.id, newestDealId) > 0));
+
+      if (isNewer) {
+        newestDealModifiedAtMs = dealModifiedAtMs;
+        newestDealId = deal.id;
+      }
     }
 
     const signals: HubSpotCustomerSignal[] = [];
@@ -912,7 +912,7 @@ export async function runHubSpotCustomerSignalAutomation(input: {
       if (
         template &&
         dealModifiedAt &&
-        (!Number.isFinite(checkpointDealMs) || dealModifiedAt.getTime() > checkpointDealMs)
+        isAfterCheckpoint(dealModifiedAt.getTime(), deal.id, checkpointDealMs, checkpointDealId)
       ) {
         signals.push(
           buildStageSignal({
@@ -958,13 +958,18 @@ export async function runHubSpotCustomerSignalAutomation(input: {
             : null;
         const contactModifiedAt = parseDate(contact.properties?.lastmodifieddate);
 
-        if (
-          contactModifiedAt &&
-          (!Number.isFinite(newestContactModifiedAtMs) ||
-            contactModifiedAt.getTime() > newestContactModifiedAtMs)
-        ) {
-          newestContactModifiedAtMs = contactModifiedAt.getTime();
-          newestContactId = contact.id;
+        const contactModifiedAtMs = contactModifiedAt?.getTime() ?? Number.NaN;
+        if (Number.isFinite(contactModifiedAtMs)) {
+          const isNewer =
+            !Number.isFinite(newestContactModifiedAtMs) ||
+            contactModifiedAtMs > newestContactModifiedAtMs ||
+            (contactModifiedAtMs === newestContactModifiedAtMs &&
+              (!newestContactId || compareHubSpotObjectId(contact.id, newestContactId) > 0));
+
+          if (isNewer) {
+            newestContactModifiedAtMs = contactModifiedAtMs;
+            newestContactId = contact.id;
+          }
         }
 
         if (!lifecycleStage || !contactModifiedAt) {
@@ -976,7 +981,14 @@ export async function runHubSpotCustomerSignalAutomation(input: {
           continue;
         }
 
-        if (Number.isFinite(checkpointContactMs) && contactModifiedAt.getTime() <= checkpointContactMs) {
+        if (
+          !isAfterCheckpoint(
+            contactModifiedAt.getTime(),
+            contact.id,
+            checkpointContactMs,
+            checkpointContactId
+          )
+        ) {
           continue;
         }
 
@@ -1332,8 +1344,8 @@ export async function runHubSpotCustomerSignalAutomation(input: {
   };
 
   const observedCandidates = [
-    checkpointOut.lastDealModifiedAt ? Date.parse(checkpointOut.lastDealModifiedAt) : Number.NaN,
-    checkpointOut.lastContactModifiedAt ? Date.parse(checkpointOut.lastContactModifiedAt) : Number.NaN,
+    parseHubSpotDatetimeToMs(checkpointOut.lastDealModifiedAt) ?? Number.NaN,
+    parseHubSpotDatetimeToMs(checkpointOut.lastContactModifiedAt) ?? Number.NaN,
   ].filter(Number.isFinite);
 
   const lastObservedAt =
@@ -1358,7 +1370,7 @@ export async function runHubSpotCustomerSignalAutomation(input: {
     },
     data: {
       status: IntegrationConnectionStatus.CONNECTED,
-      lastError: errors.length > 0 ? `${errors.length} customer signal task(s) failed` : null,
+      lastError: null,
       lastSyncedAt: new Date(),
     },
   });

@@ -5,26 +5,41 @@ import { prisma } from "@/lib/prisma";
 import { DealStage } from "@/generated/prisma/client";
 import { validateStageTransition } from "@/lib/deals/stage-transitions";
 
+function getOptionalOrganizationId(session: unknown): string | null {
+  const orgId = (session as { user?: { organizationId?: unknown } } | null | undefined)?.user
+    ?.organizationId;
+  return typeof orgId === "string" && orgId.trim() ? orgId : null;
+}
+
+const USER_SELECT = { id: true, name: true, email: true } as const;
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+
+  if (!id) {
+    return NextResponse.json({ error: "Deal id is required" }, { status: 400 });
+  }
+
   const session = await getServerSession(authOptions);
-  if (!session?.user?.organizationId) {
+  if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const organizationId = getOptionalOrganizationId(session);
   const deal = await prisma.deal.findFirst({
     where: {
-      id: params.id,
-      organizationId: session.user.organizationId,
+      id,
+      ...(organizationId ? { organizationId } : {}),
     },
     include: {
-      contact: true,
       company: true,
-      owner: {
-        select: { id: true, name: true, email: true },
-      },
+      contacts: true,
+      meetings: true,
+      stageHistory: true,
+      owner: { select: USER_SELECT },
     },
   });
 
@@ -37,20 +52,27 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+
+  if (!id) {
+    return NextResponse.json({ error: "Deal id is required" }, { status: 400 });
+  }
+
   const session = await getServerSession(authOptions);
-  if (!session?.user?.organizationId) {
+  if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const body = await request.json();
+  const organizationId = getOptionalOrganizationId(session);
 
   // Fetch the existing deal to validate stage transition
   const existingDeal = await prisma.deal.findFirst({
     where: {
-      id: params.id,
-      organizationId: session.user.organizationId,
+      id,
+      ...(organizationId ? { organizationId } : {}),
     },
   });
 
@@ -60,12 +82,12 @@ export async function PATCH(
 
   const data: Record<string, unknown> = {};
 
-  if (typeof body.title === "string" && body.title.trim()) {
-    data.title = body.title.trim();
+  if (typeof body.name === "string" && body.name.trim()) {
+    data.name = body.name.trim();
   }
 
-  if (typeof body.value === "number" && body.value >= 0) {
-    data.value = body.value;
+  if (typeof body.amount === "number" && body.amount >= 0) {
+    data.amount = body.amount;
   }
 
   // Stage transition validation
@@ -74,7 +96,7 @@ export async function PATCH(
     Object.values(DealStage).includes(body.stage as DealStage)
   ) {
     const targetStage = body.stage as DealStage;
-    const adminOverride = body.adminOverride === true && session.user.role === "ADMIN";
+    const adminOverride = body.adminOverride === true && session.user.role === "admin";
 
     const transitionResult = validateStageTransition(
       existingDeal.stage,
@@ -100,13 +122,9 @@ export async function PATCH(
     // Audit log for admin overrides
     if (adminOverride && existingDeal.stage !== targetStage) {
       console.warn(
-        `[AUDIT] Admin override stage transition: Deal ${params.id} from ${existingDeal.stage} to ${targetStage} by user ${session.user.id} (${session.user.email})`
+        `[AUDIT] Admin override stage transition: Deal ${id} from ${existingDeal.stage} to ${targetStage} by user ${session.user.id} (${session.user.email})`
       );
     }
-  }
-
-  if (typeof body.contactId === "string") {
-    data.contactId = body.contactId;
   }
 
   if (typeof body.companyId === "string") {
@@ -129,37 +147,65 @@ export async function PATCH(
     return NextResponse.json(
       { error: "No valid fields to update" },
       { status: 400 }
-    );
+      );
   }
 
-  const updatedDeal = await prisma.deal.update({
-    where: { id: params.id },
-    data,
+  if (organizationId) {
+    const result = await prisma.deal.updateMany({
+      where: { id, organizationId },
+      data,
+    });
+    if (result.count === 0) {
+      return NextResponse.json({ error: "Deal not found" }, { status: 404 });
+    }
+  } else {
+    await prisma.deal.update({
+      where: { id },
+      data,
+    });
+  }
+
+  const updatedDeal = await prisma.deal.findFirst({
+    where: {
+      id,
+      ...(organizationId ? { organizationId } : {}),
+    },
     include: {
-      contact: true,
       company: true,
-      owner: {
-        select: { id: true, name: true, email: true },
-      },
+      contacts: true,
+      meetings: true,
+      stageHistory: true,
+      owner: { select: USER_SELECT },
     },
   });
+
+  if (!updatedDeal) {
+    return NextResponse.json({ error: "Deal not found" }, { status: 404 });
+  }
 
   return NextResponse.json(updatedDeal);
 }
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+
+  if (!id) {
+    return NextResponse.json({ error: "Deal id is required" }, { status: 400 });
+  }
+
   const session = await getServerSession(authOptions);
-  if (!session?.user?.organizationId) {
+  if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const organizationId = getOptionalOrganizationId(session);
   const deal = await prisma.deal.findFirst({
     where: {
-      id: params.id,
-      organizationId: session.user.organizationId,
+      id,
+      ...(organizationId ? { organizationId } : {}),
     },
   });
 
@@ -167,9 +213,18 @@ export async function DELETE(
     return NextResponse.json({ error: "Deal not found" }, { status: 404 });
   }
 
-  await prisma.deal.delete({
-    where: { id: params.id },
-  });
+  if (organizationId) {
+    const result = await prisma.deal.deleteMany({
+      where: { id, organizationId },
+    });
+    if (result.count === 0) {
+      return NextResponse.json({ error: "Deal not found" }, { status: 404 });
+    }
+  } else {
+    await prisma.deal.delete({
+      where: { id },
+    });
+  }
 
   return NextResponse.json({ success: true });
 }

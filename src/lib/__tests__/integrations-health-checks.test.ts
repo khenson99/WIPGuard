@@ -14,9 +14,16 @@ const mockUpdatedConnections = new Map<string, { status: string; lastError: stri
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     integrationConnection: {
-      findMany: vi.fn(async (args: { where: { userId: string; status: string } }) => {
+      findMany: vi.fn(async (args: { where: { userId: string; status: unknown } }) => {
+        const statusClause = args.where.status as { in?: string[] } | string;
+        const allowed =
+          typeof statusClause === "string"
+            ? [statusClause]
+            : Array.isArray(statusClause?.in)
+              ? statusClause.in
+              : [];
         return Array.from(mockConnections.values())
-          .filter((c) => c.status === args.where.status)
+          .filter((c) => allowed.includes(c.status))
           .map((c) => ({
             ...c,
             userId: "user_1",

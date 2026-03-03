@@ -26,28 +26,21 @@ test.describe('Authentication', () => {
       await expect(page).not.toHaveURL(/\/login/i, { timeout: 15_000 });
 
       // Should show some indication of being logged in
-      await expect(
-        page.getByText(new RegExp(TEST_USER.name, 'i'))
-          .or(page.locator('[data-testid="user-menu"]'))
-          .or(page.locator('nav'))
-      ).toBeVisible();
+      await expect(page.locator('nav').first()).toBeVisible();
     });
 
     test('should show error with invalid credentials', async ({ page }) => {
-      const authPage = new AuthPage(page);
-
-      await authPage.login('invalid@test.com', 'wrongpassword');
-
-      // Should remain on login page or show error
-      const hasError = await authPage.errorMessage.isVisible().catch(() => false);
-      const stillOnLogin = page.url().includes('/login');
-
-      expect(hasError || stillOnLogin).toBe(true);
+      // In dev-mode, the login UI uses a user picker (no password input).
+      // Validate the error banner rendering via the querystring error code.
+      await page.goto('/login?error=CredentialsSignin');
+      await expect(
+        page.getByRole('alert').filter({ hasText: /unable to sign in/i })
+      ).toBeVisible();
     });
 
     test('should redirect unauthenticated users to login', async ({ page }) => {
       // Try to access a protected route
-      await page.goto('/board');
+      await page.goto('/tasks');
 
       // Should be redirected to login
       await expect(page).toHaveURL(/\/login/i, { timeout: 10_000 });
@@ -57,7 +50,7 @@ test.describe('Authentication', () => {
   test.describe('Session', () => {
     test('should persist session across page reload', async ({ page }) => {
       // Navigate to a protected page (uses stored auth from setup)
-      await page.goto('/board');
+      await page.goto('/tasks');
       await expect(page).not.toHaveURL(/\/login/i);
 
       // Reload the page
@@ -68,7 +61,7 @@ test.describe('Authentication', () => {
     });
 
     test('should persist session across navigation', async ({ page }) => {
-      await page.goto('/board');
+      await page.goto('/tasks');
       await expect(page).not.toHaveURL(/\/login/i);
 
       // Navigate to another protected page
@@ -82,7 +75,7 @@ test.describe('Authentication', () => {
       const authPage = new AuthPage(page);
 
       // Start on a protected page
-      await page.goto('/board');
+      await page.goto('/tasks');
       await expect(page).not.toHaveURL(/\/login/i);
 
       // Perform logout
@@ -96,13 +89,13 @@ test.describe('Authentication', () => {
       const authPage = new AuthPage(page);
 
       // Navigate and logout
-      await page.goto('/board');
+      await page.goto('/tasks');
       await expect(page).not.toHaveURL(/\/login/i);
       await authPage.logout();
       await expect(page).toHaveURL(/\/login/i, { timeout: 10_000 });
 
       // Try to access protected page
-      await page.goto('/board');
+      await page.goto('/tasks');
 
       // Should be redirected back to login
       await expect(page).toHaveURL(/\/login/i, { timeout: 10_000 });

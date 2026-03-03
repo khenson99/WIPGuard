@@ -311,7 +311,7 @@ async function extractHubSpotAuth(input: {
     },
   });
 
-  if (!connection || connection.status !== IntegrationConnectionStatus.CONNECTED) {
+  if (!connection || connection.status === IntegrationConnectionStatus.DISCONNECTED) {
     throw new HubSpotBidirectionalAuthError("HubSpot is not connected");
   }
 

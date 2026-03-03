@@ -12,9 +12,9 @@ import { buildOutboxIdempotencyKey, publishDomainEvent } from "@/lib/event-bus";
 import { withRetries } from "@/lib/integrations/with-retries";
 import { isCircuitClosed, recordSuccess, recordFailure, CircuitOpenError, getCircuitState } from "@/lib/integrations/circuit-breaker";
 import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
+import { parseHubSpotDatetimeToMs, searchDealsIncremental, type HubSpotDealSearchResult } from "@/lib/integrations/hubspot-search";
 
 export const HUBSPOT_RULE_KEY = "hubspot_stage_transition_checklist";
-const HUBSPOT_DEALS_ENDPOINT = "https://api.hubapi.com/crm/v3/objects/deals";
 
 type SupportedAutoTaskStatus = "QUEUED" | "ACTIVE" | "NOT_DONE";
 
@@ -35,16 +35,7 @@ interface HubSpotCheckpoint {
   lastDealId?: string;
 }
 
-interface HubSpotDeal {
-  id: string;
-  properties?: {
-    dealname?: string;
-    dealstage?: string;
-    pipeline?: string;
-    hs_lastmodifieddate?: string;
-    hubspot_owner_id?: string;
-  };
-}
+type HubSpotDeal = HubSpotDealSearchResult;
 
 export interface HubSpotRuleState {
   id: string;
@@ -175,7 +166,7 @@ function normalizeConfig(raw: unknown): HubSpotStageChecklistConfig {
   const maxResultsRaw = input.maxResults;
   const maxResults =
     typeof maxResultsRaw === "number" && Number.isInteger(maxResultsRaw)
-      ? Math.max(1, Math.min(200, maxResultsRaw))
+      ? Math.max(1, Math.min(500, maxResultsRaw))
       : fallback.maxResults;
 
   const stageChecklistsInput = asRecord(input.stageChecklists);
@@ -278,7 +269,7 @@ async function getHubSpotConnection(userId: string): Promise<IntegrationConnecti
     },
   });
 
-  if (!connection || connection.status !== IntegrationConnectionStatus.CONNECTED) {
+  if (!connection || connection.status === IntegrationConnectionStatus.DISCONNECTED) {
     throw new HubSpotIntegrationAuthError("HubSpot is not connected");
   }
 
@@ -303,98 +294,31 @@ async function getValidHubSpotAccessToken(userId: string): Promise<{ accessToken
   return { accessToken: token, portalId };
 }
 
-async function hubspotFetchJson<T>(accessToken: string, url: URL): Promise<T> {
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    cache: "no-store",
-  });
-
-  if (response.status === 401) {
-    throw new HubSpotIntegrationAuthError("HubSpot access token is invalid or expired");
-  }
-
-  const payload = (await response.json().catch(() => null)) as T | null;
-  if (!response.ok || payload === null) {
-    throw new Error(`HubSpot deals API failed (${response.status})`);
-  }
-
-  return payload;
-}
-
 async function listDeals(input: {
   accessToken: string;
   checkpoint: HubSpotCheckpoint;
   config: HubSpotStageChecklistConfig;
-}): Promise<HubSpotDeal[]> {
+}): Promise<{ deals: HubSpotDeal[]; checkpoint: HubSpotCheckpoint }> {
   const properties = [
     "dealname",
     "dealstage",
     "pipeline",
     "hs_lastmodifieddate",
     "hubspot_owner_id",
-  ].join(",");
+  ];
 
-  let after: string | undefined;
-  const deals: HubSpotDeal[] = [];
-  const maxPages = 3;
+  const { deals, checkpoint } = await searchDealsIncremental({
+    accessToken: input.accessToken,
+    properties,
+    monitoredPipelines: input.config.monitoredPipelines,
+    monitoredStages: Object.keys(input.config.stageChecklists),
+    checkpoint: input.checkpoint,
+    maxResults: input.config.maxResults,
+    bufferMs: 60_000,
+    sortDirection: "ASCENDING",
+  });
 
-  for (let page = 0; page < maxPages; page += 1) {
-    const url = new URL(HUBSPOT_DEALS_ENDPOINT);
-    url.searchParams.set("limit", "100");
-    url.searchParams.set("properties", properties);
-    if (after) {
-      url.searchParams.set("after", after);
-    }
-
-    const payload = await hubspotFetchJson<{
-      results?: HubSpotDeal[];
-      paging?: { next?: { after?: string } };
-    }>(input.accessToken, url);
-
-    deals.push(...(payload.results ?? []));
-
-    after = payload.paging?.next?.after;
-    if (!after) break;
-  }
-
-  const checkpointMs = input.checkpoint.lastModifiedAt
-    ? Date.parse(input.checkpoint.lastModifiedAt)
-    : Number.NaN;
-
-  const filtered = deals
-    .filter((deal) => {
-      const stageId = deal.properties?.dealstage;
-      const pipelineId = deal.properties?.pipeline;
-      if (!stageId || !input.config.stageChecklists[stageId]) {
-        return false;
-      }
-
-      if (
-        input.config.monitoredPipelines.length > 0 &&
-        (!pipelineId || !input.config.monitoredPipelines.includes(pipelineId))
-      ) {
-        return false;
-      }
-
-      if (!Number.isFinite(checkpointMs)) {
-        return true;
-      }
-
-      const modifiedAtRaw = deal.properties?.hs_lastmodifieddate;
-      const modifiedAtMs = modifiedAtRaw ? Date.parse(modifiedAtRaw) : Number.NaN;
-      return Number.isFinite(modifiedAtMs) ? modifiedAtMs >= checkpointMs - 60_000 : true;
-    })
-    .sort((a, b) => {
-      const left = Date.parse(a.properties?.hs_lastmodifieddate ?? "");
-      const right = Date.parse(b.properties?.hs_lastmodifieddate ?? "");
-      return (Number.isFinite(left) ? left : 0) - (Number.isFinite(right) ? right : 0);
-    })
-    .slice(0, input.config.maxResults);
-
-  return filtered;
+  return { deals, checkpoint };
 }
 
 function checklistTaskTitle(input: {
@@ -562,11 +486,13 @@ export async function runHubSpotStageChecklist(input: {
     throw error;
   }
 
-  const deals = await listDeals({
-    accessToken,
-    checkpoint,
-    config,
-  });
+  const { deals: dealList, checkpoint: checkpointOut } = await withRetries(() =>
+    listDeals({
+      accessToken,
+      checkpoint,
+      config,
+    })
+  );
 
   let createdTasks = 0;
   let dedupedTasks = 0;
@@ -574,14 +500,9 @@ export async function runHubSpotStageChecklist(input: {
   const tasks: HubSpotCreatedTask[] = [];
   const errors: Array<{ dealId: string; error: string }> = [];
 
-  let newestModifiedAtMs = checkpoint.lastModifiedAt
-    ? Date.parse(checkpoint.lastModifiedAt)
-    : Number.NaN;
-  let newestDealId = checkpoint.lastDealId;
-
   const status = toSupportedStatus(rule.statusOverride);
 
-  for (const deal of deals) {
+  for (const deal of dealList) {
     const stageId = deal.properties?.dealstage;
     if (!stageId) continue;
 
@@ -590,12 +511,7 @@ export async function runHubSpotStageChecklist(input: {
 
     const dealName = deal.properties?.dealname?.trim() || `Deal ${deal.id}`;
     const sourceUrl = stageChecklistSourceUrl(portalId, deal.id);
-    const modifiedAtMs = Date.parse(deal.properties?.hs_lastmodifieddate ?? "");
-
-    if (Number.isFinite(modifiedAtMs) && (!Number.isFinite(newestModifiedAtMs) || modifiedAtMs > newestModifiedAtMs)) {
-      newestModifiedAtMs = modifiedAtMs;
-      newestDealId = deal.id;
-    }
+    const modifiedAtMs = parseHubSpotDatetimeToMs(deal.properties?.hs_lastmodifieddate) ?? Number.NaN;
 
     for (let checklistIndex = 0; checklistIndex < template.checklistItems.length; checklistIndex += 1) {
       const checklistItem = template.checklistItems[checklistIndex];
@@ -785,13 +701,6 @@ export async function runHubSpotStageChecklist(input: {
     }
   }
 
-  const checkpointOut: HubSpotCheckpoint = {
-    lastModifiedAt: Number.isFinite(newestModifiedAtMs)
-      ? new Date(newestModifiedAtMs).toISOString()
-      : checkpoint.lastModifiedAt,
-    lastDealId: newestDealId,
-  };
-
   await prisma.integrationRule.update({
     where: { id: rule.id },
     data: {
@@ -811,7 +720,7 @@ export async function runHubSpotStageChecklist(input: {
     },
     data: {
       status: IntegrationConnectionStatus.CONNECTED,
-      lastError: errors.length > 0 ? `${errors.length} checklist task(s) failed` : null,
+      lastError: null,
       lastSyncedAt: new Date(),
     },
   });
@@ -820,7 +729,7 @@ export async function runHubSpotStageChecklist(input: {
   return {
     ruleId: rule.id,
     enabled: true,
-    scannedDeals: deals.length,
+    scannedDeals: dealList.length,
     createdTasks,
     dedupedTasks,
     failedTasks,

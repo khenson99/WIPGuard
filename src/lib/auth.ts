@@ -76,7 +76,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 }
 
 // Dev credentials provider — lets you sign in as any seeded user by email
-if (process.env.NODE_ENV !== "production") {
+if (process.env.NODE_ENV !== "production" || process.env.E2E_MODE === "true") {
   providers.push(
     CredentialsProvider({
       name: "Dev Login",

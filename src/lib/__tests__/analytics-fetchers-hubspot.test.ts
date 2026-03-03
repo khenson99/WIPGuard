@@ -9,6 +9,26 @@ function jsonResponse(payload: unknown, status = 200): Response {
 }
 
 describe("analytics hubspot fetcher", () => {
+  it("uses limit=50 when requesting propertiesWithHistory", async () => {
+    const fetchMock = vi.fn();
+
+    fetchMock
+      // Active deals
+      .mockResolvedValueOnce(jsonResponse({ results: [] }))
+      // Archived deals
+      .mockResolvedValueOnce(jsonResponse({ results: [] }))
+      // Contacts endpoint (best-effort)
+      .mockResolvedValueOnce(jsonResponse({ total: 0 }));
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    await fetchHubSpotData("hs-token");
+
+    const firstUrl = String(fetchMock.mock.calls[0]?.[0] ?? "");
+    expect(firstUrl).toContain("propertiesWithHistory=dealstage");
+    expect(firstUrl).toContain("limit=50");
+  });
+
   it("paginates active+archived, dedupes by id, and emits diagnostics", async () => {
     const fetchMock = vi.fn();
 
@@ -103,4 +123,3 @@ describe("analytics hubspot fetcher", () => {
     expect(data.repScoreboard?.[0]?.wonCount).toBe(1);
   });
 });
-

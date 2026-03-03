@@ -112,6 +112,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
         optional_scope: joinScopes(
           getScopesFromEnv("HUBSPOT_SCOPES", [
             "crm.objects.deals.read",
+            "crm.objects.deals.write",
             "crm.objects.contacts.read",
           ])
         ),

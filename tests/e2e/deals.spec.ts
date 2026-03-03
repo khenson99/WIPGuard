@@ -36,18 +36,13 @@ test.describe('Deal Pipeline', () => {
   });
 
   test('should display pipeline stages', async ({ page }) => {
-    const pageContent = await page.textContent('body') || '';
+    // Stages are represented as filter options (the pipeline can be empty).
+    const stageFilter = page.getByRole('combobox', { name: /filter by stage/i });
+    await expect(stageFilter).toBeVisible({ timeout: 15_000 });
 
-    // Check that at least some stages are visible
-    let stagesFound = 0;
     for (const stage of DEAL_STAGES) {
-      if (pageContent.toLowerCase().includes(stage.toLowerCase())) {
-        stagesFound++;
-      }
+      await expect(stageFilter.locator('option', { hasText: stage })).toHaveCount(1);
     }
-
-    // At least one stage should be found
-    expect(stagesFound).toBeGreaterThan(0);
   });
 
   test('should create a new deal', async ({ page }) => {
@@ -115,12 +110,16 @@ test.describe('Deal Pipeline', () => {
     await dealsPage.createDeal(deal1);
     await expect(dealsPage.getDeal(deal1)).toBeVisible({ timeout: 10_000 });
 
+    // Creating a deal navigates to its detail view; go back to the deals list before creating another.
+    await dealsPage.goto();
+
     await dealsPage.createDeal(deal2);
     await expect(dealsPage.getDeal(deal2)).toBeVisible({ timeout: 10_000 });
 
-    // Both deals should be visible
-    await expect(dealsPage.getDeal(deal1)).toBeVisible();
-    await expect(dealsPage.getDeal(deal2)).toBeVisible();
+    // Back on the list, both deals should be visible.
+    await dealsPage.goto();
+    await expect(dealsPage.getDeal(deal1)).toBeVisible({ timeout: 15_000 });
+    await expect(dealsPage.getDeal(deal2)).toBeVisible({ timeout: 15_000 });
   });
 
   test('should handle deal pipeline with all stages visible', async ({ page }) => {

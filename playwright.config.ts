@@ -57,7 +57,11 @@ export default defineConfig({
   ],
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: process.env.CI ? 'npm run start' : 'npm run dev',
+    // On CI, run a production server (`next start`) for fidelity/stability.
+    // Dev-mode auth is enabled in CI via `E2E_MODE=true`.
+    command: process.env.CI
+      ? 'PORT=3000 npm run start'
+      : 'npm run dev -- -p 3000',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

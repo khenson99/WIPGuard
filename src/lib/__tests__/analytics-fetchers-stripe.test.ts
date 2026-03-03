@@ -13,6 +13,43 @@ describe("analytics stripe fetcher", () => {
     vi.restoreAllMocks();
   });
 
+  it("does not throw when charges include succeeded payments", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+
+      if (url.pathname === "/v1/subscriptions") {
+        return jsonResponse({ data: [], has_more: false });
+      }
+
+      if (url.pathname === "/v1/charges") {
+        return jsonResponse({
+          data: [
+            {
+              id: "ch_1",
+              amount: 5000,
+              created: 1_700_000_000,
+              status: "succeeded",
+            },
+          ],
+          has_more: false,
+        });
+      }
+
+      return jsonResponse({ error: "unexpected request", url: String(url) }, 500);
+    });
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchStripeData("sk_test_123", {
+      fromDate: new Date("2026-02-01T00:00:00.000Z"),
+      toDate: new Date("2026-02-28T23:59:59.999Z"),
+    });
+
+    expect(data.revenue.totalRevenue30d).toBe(50);
+    expect(data.payments.succeeded).toBe(1);
+    expect(data.payments.failed).toBe(0);
+  });
+
   it("counts past_due and trialing subscriptions by paginating results", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
@@ -76,4 +113,3 @@ describe("analytics stripe fetcher", () => {
     expect(requestUrls.some((url) => url.includes("status=trialing") && url.includes("limit=100"))).toBe(true);
   });
 });
-

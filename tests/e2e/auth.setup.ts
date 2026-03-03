@@ -18,11 +18,11 @@ setup('authenticate as test user', async ({ page }) => {
   await expect(page).not.toHaveURL(/\/login/i, { timeout: 15_000 });
 
   // Verify we're on an authenticated page (dashboard, board, or home)
-  await expect(
-    page.getByText(/dashboard|board|home|welcome/i)
-      .or(page.locator('[data-testid="authenticated-layout"]'))
-      .or(page.locator('nav'))
-  ).toBeVisible({ timeout: 10_000 });
+  // Use a non-strict marker to avoid strict-mode violations when multiple nav
+  // regions are present (e.g. main + secondary navigation).
+  await expect(page.locator('[data-testid="authenticated-layout"], nav').first()).toBeVisible({
+    timeout: 10_000,
+  });
 
   // Save the authenticated state
   await page.context().storageState({ path: authFile });

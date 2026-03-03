@@ -13,9 +13,14 @@ import { buildOutboxIdempotencyKey, publishDomainEvent } from "@/lib/event-bus";
 import { withRetries } from "@/lib/integrations/with-retries";
 import { isCircuitClosed, recordSuccess, recordFailure, CircuitOpenError, getCircuitState } from "@/lib/integrations/circuit-breaker";
 import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
+import {
+  compareHubSpotObjectId,
+  parseHubSpotDatetimeToMs,
+  searchDealsIncremental,
+  type HubSpotDealSearchResult,
+} from "@/lib/integrations/hubspot-search";
 
 export const HUBSPOT_RISK_RULE_KEY = "hubspot_stale_risk_intervention";
-const HUBSPOT_DEALS_ENDPOINT = "https://api.hubapi.com/crm/v3/objects/deals";
 const HUBSPOT_OWNERS_ENDPOINT = "https://api.hubapi.com/crm/v3/owners";
 
 type SupportedAutoTaskStatus = "QUEUED" | "ACTIVE" | "NOT_DONE";
@@ -42,19 +47,7 @@ interface HubSpotRiskCheckpoint {
   lastDealId?: string;
 }
 
-interface HubSpotDeal {
-  id: string;
-  properties?: {
-    dealname?: string;
-    dealstage?: string;
-    pipeline?: string;
-    hs_lastmodifieddate?: string;
-    hubspot_owner_id?: string;
-    closedate?: string;
-    hs_deal_health_score?: string;
-    hs_deal_score?: string;
-  };
-}
+type HubSpotDeal = HubSpotDealSearchResult;
 
 interface HubSpotOwnerResponse {
   id?: string;
@@ -190,7 +183,7 @@ function normalizeConfig(raw: unknown): HubSpotRiskInterventionConfig {
       )
     : fallback.monitoredPipelines;
 
-  const maxResults = toIntegerInRange(input.maxResults, fallback.maxResults, 1, 300);
+  const maxResults = toIntegerInRange(input.maxResults, fallback.maxResults, 1, 500);
   const staleDaysThreshold = toIntegerInRange(
     input.staleDaysThreshold,
     fallback.staleDaysThreshold,
@@ -258,16 +251,10 @@ function toOptionalSupportedStatus(
 }
 
 function parseDate(value: string | undefined): Date | null {
-  if (!value || value.trim().length === 0) {
-    return null;
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
-  }
-
-  return parsed;
+  const parsedMs = parseHubSpotDatetimeToMs(value);
+  if (parsedMs === null) return null;
+  const parsed = new Date(parsedMs);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function parseNumeric(value: string | undefined): number | null {
@@ -441,7 +428,7 @@ async function getHubSpotConnection(userId: string): Promise<IntegrationConnecti
     },
   });
 
-  if (!connection || connection.status !== IntegrationConnectionStatus.CONNECTED) {
+  if (!connection || connection.status === IntegrationConnectionStatus.DISCONNECTED) {
     throw new HubSpotRiskIntegrationAuthError("HubSpot is not connected");
   }
 
@@ -502,45 +489,19 @@ async function listDeals(input: {
     "closedate",
     "hs_deal_health_score",
     "hs_deal_score",
-  ].join(",");
+  ];
 
-  let after: string | undefined;
-  const deals: HubSpotDeal[] = [];
-  const maxPages = 5;
-
-  for (let page = 0; page < maxPages; page += 1) {
-    const url = new URL(HUBSPOT_DEALS_ENDPOINT);
-    url.searchParams.set("limit", "100");
-    url.searchParams.set("properties", properties);
-    if (after) {
-      url.searchParams.set("after", after);
-    }
-
-    const payload = await hubspotFetchJson<{
-      results?: HubSpotDeal[];
-      paging?: { next?: { after?: string } };
-    }>(input.accessToken, url);
-
-    deals.push(...(payload.results ?? []));
-
-    after = payload.paging?.next?.after;
-    if (!after) break;
-  }
-
-  const filtered = deals.filter((deal) => {
-    const pipelineId = deal.properties?.pipeline;
-
-    if (
-      input.config.monitoredPipelines.length > 0 &&
-      (!pipelineId || !input.config.monitoredPipelines.includes(pipelineId))
-    ) {
-      return false;
-    }
-
-    return true;
+  const { deals } = await searchDealsIncremental({
+    accessToken: input.accessToken,
+    properties,
+    monitoredPipelines: input.config.monitoredPipelines,
+    checkpoint: {},
+    maxResults: input.config.maxResults,
+    bufferMs: 0,
+    sortDirection: "ASCENDING",
   });
 
-  return filtered.slice(0, input.config.maxResults);
+  return deals;
 }
 
 async function fetchOwnerEmail(
@@ -747,21 +708,24 @@ export async function runHubSpotRiskIntervention(input: {
   const tasks: HubSpotRiskCreatedTask[] = [];
   const errors: Array<{ dealId: string; variant: HubSpotRiskVariant; error: string }> = [];
 
-  let newestModifiedAtMs = checkpoint.lastModifiedAt
-    ? Date.parse(checkpoint.lastModifiedAt)
-    : Number.NaN;
+  let newestModifiedAtMs = parseHubSpotDatetimeToMs(checkpoint.lastModifiedAt) ?? Number.NaN;
   let newestDealId = checkpoint.lastDealId;
 
   const ownerCache = new Map<string, string | null>();
 
   for (const deal of deals) {
-    const modifiedAtMs = Date.parse(deal.properties?.hs_lastmodifieddate ?? "");
-    if (
-      Number.isFinite(modifiedAtMs) &&
-      (!Number.isFinite(newestModifiedAtMs) || modifiedAtMs > newestModifiedAtMs)
-    ) {
-      newestModifiedAtMs = modifiedAtMs;
-      newestDealId = deal.id;
+    const modifiedAtMs = parseHubSpotDatetimeToMs(deal.properties?.hs_lastmodifieddate) ?? Number.NaN;
+    if (Number.isFinite(modifiedAtMs)) {
+      const isNewer =
+        !Number.isFinite(newestModifiedAtMs) ||
+        modifiedAtMs > newestModifiedAtMs ||
+        (modifiedAtMs === newestModifiedAtMs &&
+          (!newestDealId || compareHubSpotObjectId(deal.id, newestDealId) > 0));
+
+      if (isNewer) {
+        newestModifiedAtMs = modifiedAtMs;
+        newestDealId = deal.id;
+      }
     }
 
     const riskSignals = detectDealRisks(deal, now, config);
@@ -1004,7 +968,7 @@ export async function runHubSpotRiskIntervention(input: {
     },
     data: {
       status: IntegrationConnectionStatus.CONNECTED,
-      lastError: errors.length > 0 ? `${errors.length} risk task(s) failed` : null,
+      lastError: null,
       lastSyncedAt: new Date(),
     },
   });

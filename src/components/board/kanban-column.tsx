@@ -50,6 +50,7 @@ export function KanbanColumn({
   queuedWipLimit = 0,
   onReplenishTask,
 }: KanbanColumnProps) {
+  const columnTestId = `column-${column.label.toLowerCase().replace(/\s+/g, "-")}`;
   const isOverLimit = wipLimit > 0 && column.tasks.length > wipLimit;
   const isAtLimit = wipLimit > 0 && column.tasks.length === wipLimit;
   const isCompact = displayPreset !== "standard";
@@ -147,6 +148,8 @@ export function KanbanColumn({
           <div
             ref={provided.innerRef}
             {...provided.droppableProps}
+            data-testid={columnTestId}
+            data-column={column.label}
             className={clsx(
               "flex-1 overflow-y-auto transition-colors",
               isCompact ? "space-y-1 p-1.5" : "space-y-2 p-2"

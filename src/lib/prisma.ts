@@ -4,12 +4,6 @@ import { Pool } from "pg";
 import { poolMonitor } from "./pool-monitor";
 import { createTenantExtension } from "./prisma-tenant-middleware";
 
-const connectionString = process.env.DATABASE_URL;
-
-if (!connectionString) {
-  throw new Error("DATABASE_URL environment variable is not set");
-}
-
 const maxPoolSize = parseInt(process.env.DB_POOL_MAX || "25", 10);
 const idleTimeoutMillis = parseInt(
   process.env.DB_POOL_IDLE_TIMEOUT || "30000",
@@ -21,11 +15,13 @@ const connectionTimeoutMillis = parseInt(
 );
 
 const globalForPrisma = globalThis as unknown as {
-  prisma: ReturnType<typeof createPrismaClient> | undefined;
+  prisma: PrismaClientType | undefined;
   pgPool: Pool | undefined;
 };
 
-function createPrismaClient() {
+type PrismaClientType = ReturnType<typeof createPrismaClient>;
+
+function createPrismaClient(connectionString: string) {
   const pool = new Pool({
     connectionString,
     max: maxPoolSize,
@@ -59,10 +55,33 @@ function createPrismaClient() {
   return extendedClient;
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+function getPrismaClient(): PrismaClientType {
+  const existing = globalForPrisma.prisma;
+  if (existing) {
+    return existing;
+  }
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error("DATABASE_URL environment variable is not set");
+  }
+
+  const client = createPrismaClient(connectionString);
+  // Cache the Prisma client in `globalThis` to avoid creating a new
+  // connection pool per request in long-lived Node.js runtimes (e.g. `next start`).
+  globalForPrisma.prisma = client;
+
+  return client;
 }
+
+export const prisma = new Proxy({} as PrismaClientType, {
+  get(_target, prop) {
+    const client = getPrismaClient();
+    const value = (client as unknown as Record<string | symbol, unknown>)[prop];
+    return typeof value === "function"
+      ? (value as (...args: unknown[]) => unknown).bind(client)
+      : value;
+  },
+});
 
 export default prisma;

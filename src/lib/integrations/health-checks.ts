@@ -62,7 +62,7 @@ export async function runIntegrationHealthChecks(input: { userId: string }): Pro
   const connections = await prisma.integrationConnection.findMany({
     where: {
       userId: input.userId,
-      status: IntegrationConnectionStatus.CONNECTED,
+      status: { in: [IntegrationConnectionStatus.CONNECTED, IntegrationConnectionStatus.ERROR] },
     },
   });
 
@@ -127,4 +127,3 @@ export async function runIntegrationHealthChecks(input: { userId: string }): Pro
   const ok = results.filter((r) => r.ok).length;
   return { checked: results.length, ok, failed: results.length - ok, results };
 }
-

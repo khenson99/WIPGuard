@@ -48,7 +48,9 @@ function LoginPageContent() {
   const [loading, setLoading] = useState(false);
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
   const [authErrorCode, setAuthErrorCode] = useState<string | null>(null);
-  const isDev = process.env.NODE_ENV !== "production";
+  const isDev =
+    process.env.NODE_ENV !== "production" ||
+    process.env.NEXT_PUBLIC_E2E_MODE === "true";
   const authError = authErrorCode
     ? (authErrors[authErrorCode] ?? authErrors.Default)
     : null;

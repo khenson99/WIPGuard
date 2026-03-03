@@ -116,8 +116,8 @@ Add the new version to the Active Versions table above.
 Webhook endpoints called by external services (HubSpot, Slack, etc.) should **always use versioned URLs**:
 
 ```
-✅ https://app.wipguard.com/api/v1/integrations/hubspot/webhook
-❌ https://app.wipguard.com/api/integrations/hubspot/webhook
+✅ https://wipguard-app-production.up.railway.app/api/v1/integrations/hubspot/webhook
+❌ https://wipguard-app-production.up.railway.app/api/integrations/hubspot/webhook
 ```
 
 When registering webhooks with external providers, always use the versioned endpoint to ensure the contract doesn't change unexpectedly.

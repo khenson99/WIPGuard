@@ -376,20 +376,10 @@ export async function runAnalyticsRefresh(input: {
       }
     }
 
-    const now = new Date();
-    for (const [provider, outcome] of providerOutcomes.entries()) {
-      await prisma.integrationConnection.updateMany({
-        where: { userId, provider },
-        data: {
-          ...(outcome.succeeded ? { lastSyncedAt: now } : {}),
-          ...(outcome.failed
-            ? { lastError: outcome.lastError ?? "refresh failed" }
-            : outcome.succeeded
-              ? { lastError: null }
-              : {}),
-        },
-      });
-    }
+    // Analytics refresh failures are surfaced via AnalyticsSnapshot status/error.
+    // Avoid overwriting connection-level state (status/lastError/lastSyncedAt),
+    // which is reserved for credential/auth health and rule execution.
+    void providerOutcomes;
   }
 
   return {

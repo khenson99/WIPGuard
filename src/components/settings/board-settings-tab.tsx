@@ -208,6 +208,9 @@ export function BoardSettingsTab() {
                       parseInt(e.target.value) || 0
                     )
                   }
+                  data-testid={`wip-limit-${(COLUMN_LABELS[setting.columnName as TaskStatus] || setting.columnName)
+                    .toLowerCase()
+                    .replace(/\s+/g, "-")}`}
                   className="w-16 rounded border border-border bg-secondary px-2 py-1.5 text-center text-sm text-foreground focus:border-ring focus:outline-none"
                 />
               </div>

@@ -53,10 +53,10 @@ test.describe('Settings & WIP Policy', () => {
     expect(hasWipContent).toBe(true);
   });
 
-  test('should update WIP limit for In Progress column', async ({ page }) => {
+  test('should update WIP limit for Active column', async ({ page }) => {
     await settingsPage.goto();
 
-    const columnName = 'In Progress';
+    const columnName = 'Active';
     const newLimit = 5;
 
     const wipInput = settingsPage.getWipLimitInput(columnName);
@@ -114,7 +114,7 @@ test.describe('Settings & WIP Policy', () => {
   test('should persist settings after page reload', async ({ page }) => {
     await settingsPage.goto();
 
-    const columnName = 'In Progress';
+    const columnName = 'Active';
     const newLimit = 7;
 
     const wipInput = settingsPage.getWipLimitInput(columnName);
@@ -148,7 +148,7 @@ test.describe('Settings & WIP Policy', () => {
     // First, set a low WIP limit
     await settingsPage.goto();
 
-    const columnName = 'In Progress';
+    const columnName = 'Active';
     const lowLimit = 2;
 
     const wipInput = settingsPage.getWipLimitInput(columnName);
@@ -164,7 +164,7 @@ test.describe('Settings & WIP Policy', () => {
     const boardPage = new BoardPage(page);
     await boardPage.goto();
 
-    // Create tasks and try to move them all to In Progress
+    // Create tasks and try to move them all to Active
     const tasks: string[] = [];
     for (let i = 0; i < lowLimit + 2; i++) {
       const title = uniqueTaskTitle(`WIPEnforce-${i}`);
@@ -173,10 +173,10 @@ test.describe('Settings & WIP Policy', () => {
       await expect(boardPage.getTask(title)).toBeVisible({ timeout: 10_000 });
     }
 
-    // Move tasks to In Progress one by one
+    // Move tasks to Active one by one
     for (const title of tasks) {
       try {
-        await boardPage.dragTaskToColumn(title, 'In Progress');
+        await boardPage.dragTaskToColumn(title, 'Active');
         await page.waitForLoadState('networkidle');
       } catch {
         // Expected to fail once WIP limit is reached

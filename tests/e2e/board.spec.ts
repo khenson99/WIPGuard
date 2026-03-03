@@ -24,20 +24,10 @@ test.describe('Kanban Board', () => {
     // Verify board page loaded (not redirected to login)
     await expect(page).not.toHaveURL(/\/login/i);
 
-    // Check that at least some board columns are visible
+    // Verify expected columns exist (may be horizontally scrollable).
     for (const columnName of BOARD_COLUMNS) {
       const column = boardPage.getColumn(columnName);
-      const columnHeader = page.getByText(new RegExp(columnName, 'i'));
-
-      const isVisible = await column.isVisible().catch(() => false) ||
-        await columnHeader.isVisible().catch(() => false);
-
-      // At least the column text should be visible on the page
-      if (!isVisible) {
-        // Fallback: check if the text exists anywhere on the page
-        const pageText = await page.textContent('body');
-        expect(pageText?.toLowerCase()).toContain(columnName.toLowerCase());
-      }
+      await expect(column).toHaveCount(1);
     }
   });
 
