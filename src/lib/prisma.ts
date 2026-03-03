@@ -2,7 +2,7 @@ import { PrismaClient } from "@/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { poolMonitor } from "./pool-monitor";
-import { createTenantMiddleware } from "./prisma-tenant-middleware";
+import { createTenantExtension } from "./prisma-tenant-middleware";
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -21,11 +21,11 @@ const connectionTimeoutMillis = parseInt(
 );
 
 const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
+  prisma: ReturnType<typeof createPrismaClient> | undefined;
   pgPool: Pool | undefined;
 };
 
-function createPrismaClient(): PrismaClient {
+function createPrismaClient() {
   const pool = new Pool({
     connectionString,
     max: maxPoolSize,
@@ -42,12 +42,12 @@ function createPrismaClient(): PrismaClient {
   const adapter = new PrismaPg(pool);
   const client = new PrismaClient({ adapter });
 
-  // Apply tenant isolation middleware.
+  // Apply tenant isolation extension.
   // allowBypass is false by default — all tenant-scoped queries MUST
   // have an organization context or they will throw.
   // For admin/system operations, use runWithContext() to set context.
-  client.$use(
-    createTenantMiddleware({
+  const extendedClient = client.$extends(
+    createTenantExtension({
       allowBypass: process.env.PRISMA_TENANT_BYPASS === "true",
     })
   );
@@ -56,7 +56,7 @@ function createPrismaClient(): PrismaClient {
     `[Prisma] Initialized with pool size: ${maxPoolSize}, idle timeout: ${idleTimeoutMillis}ms, connection timeout: ${connectionTimeoutMillis}ms`
   );
 
-  return client;
+  return extendedClient;
 }
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();

@@ -1,4 +1,3 @@
-import { Prisma } from '@/generated/prisma/client';
 import { getRequestContext, TenantContextError } from './request-context';
 
 /**
@@ -62,7 +61,7 @@ const CREATE_ACTIONS = [
 ];
 
 /**
- * Options for the tenant middleware.
+ * Options for the tenant extension.
  */
 export interface TenantMiddlewareOptions {
   /**
@@ -86,16 +85,19 @@ export interface TenantMiddlewareOptions {
 }
 
 /**
- * Creates a Prisma middleware that automatically injects organizationId
+ * Creates a Prisma extension that automatically injects organizationId
  * into all queries for tenant-scoped models.
  *
  * This provides defense-in-depth data isolation — even if a developer
- * forgets to add org filtering to a query, this middleware ensures
+ * forgets to add org filtering to a query, this extension ensures
  * the constraint is always applied.
+ *
+ * Usage:
+ *   const extended = client.$extends(createTenantExtension({ allowBypass: false }));
  */
-export function createTenantMiddleware(
+export function createTenantExtension(
   options: TenantMiddlewareOptions = {}
-): Prisma.Middleware {
+) {
   const {
     scopedModels = TENANT_SCOPED_MODELS,
     allowBypass = false,
@@ -104,99 +106,110 @@ export function createTenantMiddleware(
 
   const scopedModelSet = new Set(scopedModels);
 
-  return async function tenantMiddleware(
-    params: Prisma.MiddlewareParams,
-    next: (params: Prisma.MiddlewareParams) => Promise<unknown>
-  ): Promise<unknown> {
-    // Skip if model is not tenant-scoped
-    if (!params.model || !scopedModelSet.has(params.model)) {
-      return next(params);
-    }
-
-    const ctx = getRequestContext();
-    const orgId = ctx?.organizationId;
-
-    // If no context, either bypass or throw
-    if (!orgId) {
-      if (allowBypass) {
-        return next(params);
-      }
-      throw new TenantContextError(
-        `Tenant isolation enforced: no organizationId in context for ${params.model}.${params.action}. ` +
-        `Set up request context or use allowBypass for admin operations.`
-      );
-    }
-
-    // Initialize args if missing
-    if (!params.args) {
-      params.args = {};
-    }
-
-    // Inject tenant filter into READ actions
-    if (READ_ACTIONS.includes(params.action)) {
-      params.args.where = {
-        ...params.args.where,
-        [tenantField]: orgId,
-      };
-    }
-
-    // Inject tenant filter into UPDATE/DELETE actions
-    if (UPDATE_DELETE_ACTIONS.includes(params.action)) {
-      if (params.action === 'upsert') {
-        // Upsert has both where and create
-        params.args.where = {
-          ...params.args.where,
-          [tenantField]: orgId,
-        };
-        if (params.args.create) {
-          params.args.create = {
-            ...params.args.create,
-            [tenantField]: orgId,
-          };
-        }
-        if (params.args.update) {
-          // update clause doesn't need the filter, but we ensure
-          // it can't change the organizationId
-          delete params.args.update[tenantField];
-        }
-      } else {
-        params.args.where = {
-          ...params.args.where,
-          [tenantField]: orgId,
-        };
-
-        // Prevent changing organizationId via update
-        if (params.action === 'update' || params.action === 'updateMany') {
-          if (params.args.data) {
-            delete params.args.data[tenantField];
+  return {
+    query: {
+      $allModels: {
+        async $allOperations({ model, operation, args, query }: {
+          model: string;
+          operation: string;
+          args: Record<string, unknown>;
+          query: (args: Record<string, unknown>) => Promise<unknown>;
+        }) {
+          // Skip if model is not tenant-scoped
+          if (!model || !scopedModelSet.has(model)) {
+            return query(args);
           }
-        }
-      }
-    }
 
-    // Inject tenant field into CREATE actions
-    if (CREATE_ACTIONS.includes(params.action)) {
-      if (params.action === 'create') {
-        params.args.data = {
-          ...params.args.data,
-          [tenantField]: orgId,
-        };
-      } else if (params.action === 'createMany') {
-        // createMany can have an array of data
-        if (Array.isArray(params.args.data)) {
-          params.args.data = params.args.data.map((item: Record<string, unknown>) => ({
-            ...item,
-            [tenantField]: orgId,
-          }));
-        } else if (params.args.data) {
-          params.args.data = {
-            ...params.args.data,
-            [tenantField]: orgId,
-          };
-        }
-      }
-    }
+          const ctx = getRequestContext();
+          const orgId = ctx?.organizationId;
 
-    return next(params);
+          // If no context, either bypass or throw
+          if (!orgId) {
+            if (allowBypass) {
+              return query(args);
+            }
+            throw new TenantContextError(
+              `Tenant isolation enforced: no organizationId in context for ${model}.${operation}. ` +
+              `Set up request context or use allowBypass for admin operations.`
+            );
+          }
+
+          // Clone args to avoid mutating the original
+          const modifiedArgs = { ...args } as Record<string, unknown>;
+
+          // Inject tenant filter into READ actions
+          if (READ_ACTIONS.includes(operation)) {
+            modifiedArgs.where = {
+              ...(modifiedArgs.where as Record<string, unknown> | undefined),
+              [tenantField]: orgId,
+            };
+          }
+
+          // Inject tenant filter into UPDATE/DELETE actions
+          if (UPDATE_DELETE_ACTIONS.includes(operation)) {
+            if (operation === 'upsert') {
+              // Upsert has both where and create
+              modifiedArgs.where = {
+                ...(modifiedArgs.where as Record<string, unknown> | undefined),
+                [tenantField]: orgId,
+              };
+              if (modifiedArgs.create) {
+                modifiedArgs.create = {
+                  ...(modifiedArgs.create as Record<string, unknown>),
+                  [tenantField]: orgId,
+                };
+              }
+              if (modifiedArgs.update) {
+                const update = { ...(modifiedArgs.update as Record<string, unknown>) };
+                // update clause doesn't need the filter, but we ensure
+                // it can't change the organizationId
+                delete update[tenantField];
+                modifiedArgs.update = update;
+              }
+            } else {
+              modifiedArgs.where = {
+                ...(modifiedArgs.where as Record<string, unknown> | undefined),
+                [tenantField]: orgId,
+              };
+
+              // Prevent changing organizationId via update
+              if (operation === 'update' || operation === 'updateMany') {
+                if (modifiedArgs.data) {
+                  const data = { ...(modifiedArgs.data as Record<string, unknown>) };
+                  delete data[tenantField];
+                  modifiedArgs.data = data;
+                }
+              }
+            }
+          }
+
+          // Inject tenant field into CREATE actions
+          if (CREATE_ACTIONS.includes(operation)) {
+            if (operation === 'create') {
+              modifiedArgs.data = {
+                ...(modifiedArgs.data as Record<string, unknown>),
+                [tenantField]: orgId,
+              };
+            } else if (operation === 'createMany') {
+              // createMany can have an array of data
+              const data = modifiedArgs.data;
+              if (Array.isArray(data)) {
+                modifiedArgs.data = data.map((item: Record<string, unknown>) => ({
+                  ...item,
+                  [tenantField]: orgId,
+                }));
+              } else if (data) {
+                modifiedArgs.data = {
+                  ...(data as Record<string, unknown>),
+                  [tenantField]: orgId,
+                };
+              }
+            }
+          }
+
+          return query(modifiedArgs);
+        },
+      },
+    },
   };
 }
