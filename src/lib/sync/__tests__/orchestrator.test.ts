@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { runSync, type SyncModules } from '../orchestrator';
 
 // Minimal mock PrismaClient
-const mockPrisma = {} as any;
+const mockPrisma = {} as unknown;
 
 describe('sync orchestrator', () => {
   it('runs all enabled modules and returns results', async () => {
