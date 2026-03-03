@@ -26,11 +26,7 @@ test.describe('Authentication', () => {
       await expect(page).not.toHaveURL(/\/login/i, { timeout: 15_000 });
 
       // Should show some indication of being logged in
-      await expect(
-        page.getByText(new RegExp(TEST_USER.name, 'i'))
-          .or(page.locator('[data-testid="user-menu"]'))
-          .or(page.locator('nav'))
-      ).toBeVisible();
+      await expect(page.locator('nav').first()).toBeVisible();
     });
 
     test('should show error with invalid credentials', async ({ page }) => {
