@@ -40,7 +40,7 @@ describe('cache-middleware', () => {
 
     it('should call original function and cache result on miss', async () => {
       const freshData = { id: '2', name: 'Fresh' };
-      mockCacheGet.mockResolvedValue(null);
+      mockCacheGet.mockResolvedValue(undefined);
 
       const originalFn = vi.fn().mockResolvedValue(freshData);
       const cachedFn = withCache(
@@ -58,7 +58,7 @@ describe('cache-middleware', () => {
 
     it('should still return result even if cache write fails', async () => {
       const freshData = { id: '3' };
-      mockCacheGet.mockResolvedValue(null);
+      mockCacheGet.mockResolvedValue(undefined);
       mockCacheSet.mockRejectedValue(new Error('Write failed'));
 
       const originalFn = vi.fn().mockResolvedValue(freshData);

@@ -23,7 +23,7 @@ export function withCache<TArgs extends unknown[], TResult>(
 
     // Try cache first
     const cached = await cacheGet<TResult>(cacheKey);
-    if (cached !== null) {
+    if (cached !== undefined) {
       return cached;
     }
 

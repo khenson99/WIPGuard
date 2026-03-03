@@ -36,21 +36,21 @@ describe('cache', () => {
       expect(mockRedisClient.get).toHaveBeenCalledWith('wipguard:test-key');
     });
 
-    it('should return null when key does not exist', async () => {
+    it('should return undefined when key does not exist', async () => {
       mockRedisClient.get.mockResolvedValue(null);
 
       const result = await cacheGet('nonexistent');
 
-      expect(result).toBeNull();
+      expect(result).toBeUndefined();
     });
 
-    it('should return null and log error on Redis failure', async () => {
+    it('should return undefined and log error on Redis failure', async () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       mockRedisClient.get.mockRejectedValue(new Error('Connection lost'));
 
       const result = await cacheGet('failing-key');
 
-      expect(result).toBeNull();
+      expect(result).toBeUndefined();
       expect(consoleSpy).toHaveBeenCalled();
       consoleSpy.mockRestore();
     });

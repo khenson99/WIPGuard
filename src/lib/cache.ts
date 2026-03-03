@@ -4,20 +4,21 @@ const CACHE_PREFIX = 'wipguard:';
 
 /**
  * Get a cached value by key.
- * Returns null if key doesn't exist or Redis is unavailable.
+ * Returns undefined if key doesn't exist or Redis is unavailable.
+ * Returns the parsed value (which may be null) when the key exists.
  */
-export async function cacheGet<T>(key: string): Promise<T | null> {
+export async function cacheGet<T>(key: string): Promise<T | undefined> {
   try {
     const client = getRedisClient();
-    if (!client) return null;
+    if (!client) return undefined;
 
     const raw = await client.get(`${CACHE_PREFIX}${key}`);
-    if (raw === null) return null;
+    if (raw === null) return undefined;
 
     return JSON.parse(raw) as T;
   } catch (err) {
     console.error(`[Cache] Error getting key "${key}":`, err);
-    return null;
+    return undefined;
   }
 }
 
@@ -104,7 +105,7 @@ export async function cacheGetOrSet<T>(
   ttlSeconds: number
 ): Promise<T> {
   const cached = await cacheGet<T>(key);
-  if (cached !== null) {
+  if (cached !== undefined) {
     return cached;
   }
 
