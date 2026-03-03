@@ -260,7 +260,7 @@ async function run() {
     connectionTimeoutMillis: 30000,
   };
   if (useSSL) {
-    poolOptions.ssl = { rejectUnauthorized: false };
+    poolOptions.ssl = { rejectUnauthorized: true };
   }
 
   const pool = new Pool(poolOptions);
