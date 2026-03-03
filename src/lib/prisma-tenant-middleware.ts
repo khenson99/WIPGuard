@@ -106,8 +106,8 @@ export function createTenantMiddleware(
 
   return async function tenantMiddleware(
     params: Prisma.MiddlewareParams,
-    next: (params: Prisma.MiddlewareParams) => Promise<any>
-  ): Promise<any> {
+    next: (params: Prisma.MiddlewareParams) => Promise<unknown>
+  ): Promise<unknown> {
     // Skip if model is not tenant-scoped
     if (!params.model || !scopedModelSet.has(params.model)) {
       return next(params);
@@ -184,7 +184,7 @@ export function createTenantMiddleware(
       } else if (params.action === 'createMany') {
         // createMany can have an array of data
         if (Array.isArray(params.args.data)) {
-          params.args.data = params.args.data.map((item: any) => ({
+          params.args.data = params.args.data.map((item: Record<string, unknown>) => ({
             ...item,
             [tenantField]: orgId,
           }));

@@ -6,11 +6,11 @@ import { requestContext, TenantContextError } from '../request-context';
 function createParams(
   model: string,
   action: string,
-  args: any = {}
+  args: Record<string, unknown> = {}
 ): Prisma.MiddlewareParams {
   return {
-    model: model as any,
-    action: action as any,
+    model: model as Prisma.ModelName,
+    action: action as Prisma.PrismaAction,
     args,
     dataPath: [],
     runInTransaction: false,
@@ -438,9 +438,9 @@ describe('prisma-tenant-middleware', () => {
     it('handles undefined args gracefully', async () => {
       const next = createNext();
       const params: Prisma.MiddlewareParams = {
-        model: 'Project' as any,
-        action: 'findMany' as any,
-        args: undefined as any,
+        model: 'Project' as Prisma.ModelName,
+        action: 'findMany' as Prisma.PrismaAction,
+        args: undefined as unknown,
         dataPath: [],
         runInTransaction: false,
       };
@@ -461,8 +461,8 @@ describe('prisma-tenant-middleware', () => {
     it('handles null model gracefully', async () => {
       const next = createNext();
       const params: Prisma.MiddlewareParams = {
-        model: undefined as any,
-        action: 'findMany' as any,
+        model: undefined as unknown as Prisma.ModelName,
+        action: 'findMany' as Prisma.PrismaAction,
         args: {},
         dataPath: [],
         runInTransaction: false,

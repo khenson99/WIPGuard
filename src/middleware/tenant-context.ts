@@ -35,7 +35,7 @@ function shouldBypass(pathname: string): boolean {
  */
 async function extractOrganizationId(
   req: NextRequest,
-  session: any
+  session: Record<string, unknown> | null
 ): Promise<string | undefined> {
   // 1. Header override
   const headerOrgId = req.headers.get(ORG_HEADER);
@@ -44,8 +44,9 @@ async function extractOrganizationId(
   }
 
   // 2. Session
-  if (session?.user?.organizationId) {
-    return session.user.organizationId;
+  const user = session?.user as Record<string, unknown> | undefined;
+  if (user?.organizationId && typeof user.organizationId === 'string') {
+    return user.organizationId;
   }
 
   // 3. Query parameter fallback
@@ -74,9 +75,9 @@ async function extractOrganizationId(
  * ```
  */
 export function withTenantContext(
-  handler: (req: NextRequest, context?: any) => Promise<NextResponse>
+  handler: (req: NextRequest, context?: unknown) => Promise<NextResponse>
 ) {
-  return async (req: NextRequest, routeContext?: any): Promise<NextResponse> => {
+  return async (req: NextRequest, routeContext?: unknown): Promise<NextResponse> => {
     const pathname = new URL(req.url).pathname;
 
     // Skip tenant enforcement for bypass routes
@@ -86,9 +87,9 @@ export function withTenantContext(
 
     try {
       // Get session — this works with next-auth
-      let session: any = null;
+      let session: Record<string, unknown> | null = null;
       try {
-        session = await getServerSession();
+        session = await getServerSession() as Record<string, unknown> | null;
       } catch {
         // If getServerSession fails, we'll try other methods
       }
@@ -107,9 +108,10 @@ export function withTenantContext(
         );
       }
 
+      const sessionUser = session?.user as Record<string, unknown> | undefined;
       const ctx: RequestContext = {
         organizationId,
-        userId: session?.user?.id,
+        userId: typeof sessionUser?.id === 'string' ? sessionUser.id : undefined,
       };
 
       // Run the handler within the AsyncLocalStorage context

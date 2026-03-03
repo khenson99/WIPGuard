@@ -57,7 +57,7 @@ describe('withTenantContext', () => {
 
     mockedGetServerSession.mockResolvedValue({
       user: { id: 'user-1', organizationId: 'org-from-session' },
-    } as any);
+    } as unknown as Awaited<ReturnType<typeof getServerSession>>);
 
     const res = await handler(req);
     expect(res.status).toBe(200);
@@ -135,7 +135,7 @@ describe('withTenantContext', () => {
 
     mockedGetServerSession.mockResolvedValue({
       user: { id: 'user-1', organizationId: 'org-session' },
-    } as any);
+    } as unknown as Awaited<ReturnType<typeof getServerSession>>);
 
     await handler(req);
     expect(capturedOrgId).toBe('org-header-priority');
@@ -155,7 +155,7 @@ describe('withTenantContext', () => {
 
     mockedGetServerSession.mockResolvedValue({
       user: { id: 'user-captured', organizationId: 'org-123' },
-    } as any);
+    } as unknown as Awaited<ReturnType<typeof getServerSession>>);
 
     await handler(req);
     expect(capturedUserId).toBe('user-captured');
