@@ -9,7 +9,8 @@ import type { NextRequest } from "next/server";
  * as an additional runtime layer and can be extended for authentication,
  * rate limiting, or conditional header logic in the future.
  */
-export function middleware(request: NextRequest) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function middleware(_request: NextRequest) {
   const response = NextResponse.next();
 
   // Runtime security headers (supplement to next.config.ts static headers)

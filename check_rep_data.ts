@@ -11,7 +11,7 @@ async function check() {
   from.setDate(to.getDate() - 30);
   
   try {
-    const data = await fetchHubSpotData(token, from, to);
+    const data = await fetchHubSpotData(token, { fromDate: from, toDate: to });
     console.log("Deals by Rep:", JSON.stringify(data.funnel.dealsByRep, null, 2));
     console.log("Total Deals:", data.funnel.totalDeals);
   } catch (e) {
