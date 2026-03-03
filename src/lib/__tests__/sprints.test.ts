@@ -23,7 +23,7 @@ vi.mock('@/lib/prisma', () => ({
       updateMany: vi.fn(),
       count: vi.fn(),
     },
-    $transaction: vi.fn((fn: any) => {
+    $transaction: vi.fn((fn: ((tx: unknown) => unknown) | unknown[]) => {
       if (typeof fn === 'function') {
         return fn({
           sprint: {
@@ -37,7 +37,7 @@ vi.mock('@/lib/prisma', () => ({
           workItem: { findMany: vi.fn(), updateMany: vi.fn(), count: vi.fn() },
         });
       }
-      return Promise.all(fn);
+      return Promise.all(fn as unknown[]);
     }),
   },
 }));
@@ -141,7 +141,7 @@ describe('sprints module', () => {
           });
           // If it doesn't throw, check the DB wasn't called (validation caught it)
           // or it might still succeed (some implementations don't validate dates)
-        } catch (e: any) {
+        } catch (e: unknown) {
           expect(e).toBeDefined();
         }
       }

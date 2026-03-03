@@ -41,7 +41,7 @@ describe('outbox-dispatcher module', () => {
     mockFindMany.mockResolvedValue([]);
     mockUpdate.mockResolvedValue({});
     mockUpdateMany.mockResolvedValue({ count: 0 });
-    mockTransaction.mockImplementation(async (fn: any) => {
+    mockTransaction.mockImplementation(async (fn: unknown) => {
       if (typeof fn === 'function') {
         return fn({
           outboxEvent: {

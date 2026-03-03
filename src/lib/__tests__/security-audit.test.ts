@@ -14,7 +14,7 @@ vi.mock('@/lib/prisma', () => ({
       create: mockCreate,
       findMany: mockFindMany,
     },
-    $transaction: vi.fn((fn: any) => fn({
+    $transaction: vi.fn((fn: (tx: unknown) => unknown) => fn({
       auditLog: { create: mockCreate, findMany: mockFindMany },
       securityAuditLog: { create: mockCreate, findMany: mockFindMany },
     })),

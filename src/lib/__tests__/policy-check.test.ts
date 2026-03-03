@@ -57,7 +57,7 @@ describe('policy-check module', () => {
 
       if (checkFn) {
         // Mock: column has WIP limit of 3, currently has 3 items
-        vi.mocked(prisma.workItem.count || prisma.workItem.findMany).mockResolvedValue(3 as any);
+        vi.mocked(prisma.workItem.count || prisma.workItem.findMany).mockResolvedValue(3 as unknown);
 
         const result = await checkFn({
           columnId: 'col-1',
@@ -85,7 +85,7 @@ describe('policy-check module', () => {
 
       if (checkFn) {
         // Mock: column has WIP limit of 5, currently has 2 items
-        vi.mocked(prisma.workItem.count || prisma.workItem.findMany).mockResolvedValue(2 as any);
+        vi.mocked(prisma.workItem.count || prisma.workItem.findMany).mockResolvedValue(2 as unknown);
 
         const result = await checkFn({
           columnId: 'col-1',
@@ -146,7 +146,7 @@ describe('policy-check module', () => {
             enabled: true,
             createdAt: new Date(),
             updatedAt: new Date(),
-          } as any,
+          } as unknown,
         ]);
 
         const result = await evalFn({ boardId: 'board-1' });
@@ -194,7 +194,7 @@ describe('policy-check module', () => {
             enabled: false,
             createdAt: new Date(),
             updatedAt: new Date(),
-          } as any,
+          } as unknown,
         ]);
 
         const result = await evalFn({ boardId: 'board-1' });
