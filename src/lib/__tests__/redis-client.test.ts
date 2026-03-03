@@ -82,7 +82,9 @@ describe("redis-client", () => {
     it("returns null and cleans up when connection fails", async () => {
       process.env.REDIS_URL = "redis://localhost:6379";
       const redis = await import("redis");
-      const mockPub = (redis as any).__mockPubClient;
+      const mockPub = (redis as Record<string, unknown>).__mockPubClient as {
+        connect: ReturnType<typeof vi.fn>;
+      };
       mockPub.connect.mockRejectedValueOnce(new Error("Connection refused"));
 
       const { createRedisClients } = await import("../redis-client");

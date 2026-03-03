@@ -14,7 +14,7 @@ vi.mock("@socket.io/redis-adapter", () => ({
 import { configureSocketAdapter } from "../socket-adapter";
 
 describe("socket-adapter", () => {
-  let mockIo: any;
+  let mockIo: { adapter: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     vi.clearAllMocks();
