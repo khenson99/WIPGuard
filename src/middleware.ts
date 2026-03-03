@@ -20,6 +20,9 @@ import {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  const canonicalRedirect = maybeRedirectToCanonicalHost(request, pathname);
+  if (canonicalRedirect) return canonicalRedirect;
+
   // For non-API routes, just add security headers
   if (!pathname.startsWith("/api/")) {
     const response = NextResponse.next();
@@ -71,6 +74,33 @@ export function middleware(request: NextRequest) {
   response.headers.set("API-Version", CURRENT_API_VERSION);
   addSecurityHeaders(response);
   return response;
+}
+
+function maybeRedirectToCanonicalHost(
+  request: NextRequest,
+  pathname: string
+): NextResponse | null {
+  const canonical = process.env.NEXTAUTH_URL;
+  if (!canonical) return null;
+
+  let canonicalUrl: URL;
+  try {
+    canonicalUrl = new URL(canonical);
+  } catch {
+    return null;
+  }
+
+  const requestHost = request.headers.get("host");
+  if (!requestHost || requestHost === canonicalUrl.host) return null;
+
+  const isAuthPath = pathname === "/login" || pathname.startsWith("/api/auth/");
+  if (!isAuthPath) return null;
+
+  const redirectUrl = new URL(request.url);
+  redirectUrl.protocol = canonicalUrl.protocol;
+  redirectUrl.host = canonicalUrl.host;
+
+  return NextResponse.redirect(redirectUrl, 307);
 }
 
 function addSecurityHeaders(response: NextResponse) {
