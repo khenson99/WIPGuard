@@ -42,6 +42,15 @@ export class AuthPage {
   async login(email: string, password: string) {
     await this.goto();
 
+    // Wait for the login UI to hydrate/fetch providers in CI.
+    // The page starts with minimal chrome and then renders provider buttons.
+    await Promise.race([
+      this.devUserSelect.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => null),
+      this.emailInput.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => null),
+      this.page.getByRole('button', { name: /sign in with google/i }).waitFor({ state: 'visible', timeout: 15_000 }).catch(() => null),
+      this.page.getByText(/no sign-in provider is configured/i).waitFor({ state: 'visible', timeout: 15_000 }).catch(() => null),
+    ]);
+
     const devLoginVisible = await this.devUserSelect.isVisible().catch(() => false);
     if (devLoginVisible) {
       // Prefer dev-mode login (no password) when available.
