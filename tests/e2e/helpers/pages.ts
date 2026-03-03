@@ -113,12 +113,17 @@ export class BoardPage {
   async goto() {
     await this.page.goto('/tasks');
     await this.page.waitForLoadState('domcontentloaded');
+    // Wait for the board UI to finish initial fetch/hydration.
+    await this.page
+      .getByRole('button', { name: /new task/i })
+      .waitFor({ state: 'visible', timeout: 20_000 })
+      .catch(() => {});
   }
 
   getColumn(name: string): Locator {
-    return this.page.locator(`[data-testid="column-${name.toLowerCase().replace(/\s+/g, '-')}"]`).or(
-      this.page.getByRole('region', { name: new RegExp(name, 'i') })
-    ).or(
+    const slug = name.toLowerCase().replace(/\s+/g, '-');
+    // Prefer stable test ids provided by the kanban column droppable area.
+    return this.page.locator(`[data-testid="column-${slug}"]`).or(
       this.page.locator(`[data-column="${name}"]`)
     );
   }
@@ -140,7 +145,8 @@ export class BoardPage {
   }
 
   getSubmitButton(): Locator {
-    return this.page.getByRole('button', { name: /create|save|add|submit/i });
+    // Narrow to the task modal submit, to avoid matching unrelated page buttons.
+    return this.page.getByRole('button', { name: /^create task$|^save changes$/i });
   }
 
   getWipLimitWarning(): Locator {
@@ -253,6 +259,10 @@ export class DealsPage {
   async goto() {
     await this.page.goto('/deals');
     await this.page.waitForLoadState('domcontentloaded');
+    await this.page
+      .getByRole('button', { name: /new deal/i })
+      .waitFor({ state: 'visible', timeout: 20_000 })
+      .catch(() => {});
   }
 
   getCreateDealButton(): Locator {
@@ -260,15 +270,16 @@ export class DealsPage {
   }
 
   getDealNameInput(): Locator {
-    return this.page.getByLabel(/name|title/i).or(
-      this.page.getByPlaceholder(/deal.*name/i)
-    ).or(
-      this.page.locator('[data-testid="deal-name-input"]')
-    );
+    // The create modal uses an unlabeled input (no htmlFor); scope to the dialog.
+    return this.page
+      .getByRole('dialog')
+      .getByRole('textbox')
+      .first()
+      .or(this.page.locator('[data-testid="deal-name-input"]'));
   }
 
   getSubmitButton(): Locator {
-    return this.page.getByRole('button', { name: /create|save|submit/i });
+    return this.page.getByRole('button', { name: /^create deal$|^creating\.\.\.$/i });
   }
 
   getDeal(name: string): Locator {
@@ -289,6 +300,7 @@ export class DealsPage {
 
   async createDeal(name: string) {
     await this.getCreateDealButton().click();
+    await this.page.getByRole('dialog').waitFor({ state: 'visible', timeout: 10_000 });
     await this.getDealNameInput().fill(name);
     await this.getSubmitButton().click();
   }

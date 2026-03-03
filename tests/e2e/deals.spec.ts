@@ -36,18 +36,10 @@ test.describe('Deal Pipeline', () => {
   });
 
   test('should display pipeline stages', async ({ page }) => {
-    const pageContent = await page.textContent('body') || '';
-
-    // Check that at least some stages are visible
-    let stagesFound = 0;
-    for (const stage of DEAL_STAGES) {
-      if (pageContent.toLowerCase().includes(stage.toLowerCase())) {
-        stagesFound++;
-      }
-    }
-
-    // At least one stage should be found
-    expect(stagesFound).toBeGreaterThan(0);
+    // Wait for any stage label to render (pipeline view).
+    await expect(
+      page.getByText(/lead|qualified|proposal|negotiation|closed won|closed lost/i).first()
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test('should create a new deal', async ({ page }) => {
