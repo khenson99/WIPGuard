@@ -1,4 +1,4 @@
-import { DealStage } from "@prisma/client";
+import { DealStage } from "@/generated/prisma/client";
 import {
   validateStageTransition,
   VALID_DEAL_TRANSITIONS,

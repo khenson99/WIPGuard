@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { DealStage } from "@prisma/client";
+import { DealStage } from "@/generated/prisma/client";
 import { validateStageTransition } from "@/lib/deals/stage-transitions";
 
 // HubSpot deal stage to internal DealStage mapping
