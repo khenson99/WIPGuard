@@ -40,6 +40,12 @@ export function mapFreshnessToStatus(freshness: {
   return "connected";
 }
 
+function mergeStatuses(a: ConnectionStatus, b: ConnectionStatus): ConnectionStatus {
+  if (a === "disconnected" || b === "disconnected") return "disconnected";
+  if (a === "stale" || b === "stale") return "stale";
+  return "connected";
+}
+
 /**
  * Maps IntegrationProviderKey (snake_case) → dataDomain (camelCase) used in the
  * section registry and sidebar. A single provider can map to multiple dataDomains
@@ -134,6 +140,11 @@ export function populateConnectionStatus(
         entriesByDomain.set(domain, {
           dataDomain: domain,
           status: inferredStatus,
+        });
+      } else {
+        entriesByDomain.set(domain, {
+          ...existing,
+          status: mergeStatuses(existing.status, inferredStatus),
         });
       }
     }
