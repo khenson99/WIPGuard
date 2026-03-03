@@ -33,6 +33,8 @@ jobs:
       NEXTAUTH_SECRET: e2e-secret
       PRISMA_TENANT_BYPASS: "true"
       E2E_BASE_URL: http://localhost:3000
+      E2E_MODE: "true"
+      NEXT_PUBLIC_E2E_MODE: "true"
 
     steps:
       - name: Checkout

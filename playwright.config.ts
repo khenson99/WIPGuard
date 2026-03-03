@@ -57,9 +57,11 @@ export default defineConfig({
   ],
   /* Run your local dev server before starting the tests */
   webServer: {
-    // Use `next dev` in CI so the dev-only credentials login is available and
-    // NextAuth doesn't require production secrets.
-    command: 'npm run dev -- -p 3000',
+    // On CI, run the production standalone server for stability/speed.
+    // Dev-mode auth is enabled in CI via `E2E_MODE=true`.
+    command: process.env.CI
+      ? 'PORT=3000 node .next/standalone/server.js'
+      : 'npm run dev -- -p 3000',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
