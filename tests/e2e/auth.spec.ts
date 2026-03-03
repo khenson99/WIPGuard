@@ -33,7 +33,9 @@ test.describe('Authentication', () => {
       // In dev-mode, the login UI uses a user picker (no password input).
       // Validate the error banner rendering via the querystring error code.
       await page.goto('/login?error=CredentialsSignin');
-      await expect(page.getByRole('alert')).toBeVisible();
+      await expect(
+        page.getByRole('alert').filter({ hasText: /unable to sign in/i })
+      ).toBeVisible();
     });
 
     test('should redirect unauthenticated users to login', async ({ page }) => {

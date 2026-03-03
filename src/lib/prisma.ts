@@ -67,10 +67,9 @@ function getPrismaClient(): PrismaClientType {
   }
 
   const client = createPrismaClient(connectionString);
-
-  if (process.env.NODE_ENV !== "production") {
-    globalForPrisma.prisma = client;
-  }
+  // Cache the Prisma client in `globalThis` to avoid creating a new
+  // connection pool per request in long-lived Node.js runtimes (e.g. `next start`).
+  globalForPrisma.prisma = client;
 
   return client;
 }
