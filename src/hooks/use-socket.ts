@@ -1,113 +1,88 @@
-"use client";
+import { useCallback, useEffect, useRef } from "react";
+import type { SocketEventMap, SocketEventName } from "@/lib/socket-events";
+import { validateEventPayload } from "@/lib/socket-events";
+import { emitBoardEvent } from "@/lib/socket-emit";
 
-import { useEffect, useRef, useCallback, useState } from "react";
-import { io, Socket } from "socket.io-client";
+// ─── Socket instance type (compatible with socket.io-client) ─────────────────
 
-type EventHandler = (payload: unknown) => void;
-
-const BOOTSTRAP_URL = "/api/realtime/bootstrap";
-const BOOTSTRAP_MAX_RETRIES = 3;
-const BOOTSTRAP_BASE_DELAY_MS = 1000;
-
-async function bootstrapWithRetry(): Promise<boolean> {
-  for (let attempt = 1; attempt <= BOOTSTRAP_MAX_RETRIES; attempt++) {
-    try {
-      const res = await fetch(BOOTSTRAP_URL, { cache: "no-store" });
-      if (res.ok) return true;
-      console.warn(
-        `[socket.io] bootstrap returned ${res.status} (attempt ${attempt}/${BOOTSTRAP_MAX_RETRIES})`,
-      );
-    } catch (err) {
-      console.warn(
-        `[socket.io] bootstrap fetch failed (attempt ${attempt}/${BOOTSTRAP_MAX_RETRIES}):`,
-        err,
-      );
-    }
-    if (attempt < BOOTSTRAP_MAX_RETRIES) {
-      await new Promise((r) => setTimeout(r, BOOTSTRAP_BASE_DELAY_MS * attempt));
-    }
-  }
-  return false;
+interface SocketInstance {
+  on(event: string, handler: (...args: unknown[]) => void): void;
+  off(event: string, handler: (...args: unknown[]) => void): void;
+  emit(event: string, ...args: unknown[]): void;
+  connected: boolean;
 }
 
-/**
- * useSocket – connects to the Socket.IO server (once) and joins the "board" room.
- * Automatically reconnects on disconnection with exponential backoff.
- * Returns an `on` helper to subscribe to events and a `connected` flag.
- */
-export function useSocket() {
-  const socketRef = useRef<Socket | null>(null);
-  const [connected, setConnected] = useState(false);
+// ─── Typed handler ───────────────────────────────────────────────────────────
 
+export type TypedEventHandler<E extends SocketEventName> = (
+  payload: SocketEventMap[E],
+) => void;
+
+// ─── Hook ────────────────────────────────────────────────────────────────────
+
+interface UseSocketOptions {
+  socket: SocketInstance | null;
+}
+
+export interface UseSocketReturn {
+  /**
+   * Subscribe to a typed socket event. Returns an unsubscribe function.
+   * Payloads are validated at runtime with Zod — invalid payloads are
+   * logged and silently dropped so one bad message doesn't crash the UI.
+   */
+  on: <E extends SocketEventName>(
+    event: E,
+    handler: TypedEventHandler<E>,
+  ) => () => void;
+
+  /**
+   * Emit a typed socket event with runtime validation.
+   */
+  emit: typeof emitBoardEvent;
+}
+
+export function useSocket({ socket }: UseSocketOptions): UseSocketReturn {
+  // Keep a stable ref to avoid re-registering listeners on every render
+  const socketRef = useRef(socket);
   useEffect(() => {
-    let cancelled = false;
+    socketRef.current = socket;
+  }, [socket]);
 
-    async function connect() {
-      const bootstrapOk = await bootstrapWithRetry();
-      if (cancelled) return;
-
-      if (!bootstrapOk) {
-        console.error(
-          "[socket.io] bootstrap failed after retries — connecting anyway as fallback",
-        );
+  const on = useCallback(
+    <E extends SocketEventName>(
+      event: E,
+      handler: TypedEventHandler<E>,
+    ): (() => void) => {
+      const currentSocket = socketRef.current;
+      if (!currentSocket) {
+        return () => {
+          /* noop */
+        };
       }
 
-      const socket = io({
-        path: "/api/socketio",
-        transports: ["websocket", "polling"],
-        reconnection: true,
-        reconnectionAttempts: Infinity,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 30000,
-      });
+      const wrappedHandler = (...args: unknown[]) => {
+        const raw = args[0];
+        const result = validateEventPayload(event, raw);
 
-      socket.on("connect", () => {
-        console.log("[socket.io] connected:", socket.id);
-        setConnected(true);
-        socket.emit("join-board");
-      });
+        if (!result.success) {
+          console.error(
+            `[use-socket] Invalid payload for "${event}":`,
+            result.error.format(),
+          );
+          return;
+        }
 
-      socket.on("disconnect", (reason) => {
-        console.warn("[socket.io] disconnected:", reason);
-        setConnected(false);
-      });
+        handler(result.data);
+      };
 
-      socket.on("reconnect", (attemptNumber: number) => {
-        console.log(`[socket.io] reconnected after ${attemptNumber} attempt(s)`);
-        // Re-join the board room after reconnection
-        socket.emit("join-board");
-      });
+      currentSocket.on(event, wrappedHandler);
 
-      socket.on("reconnect_error", (err: Error) => {
-        console.warn("[socket.io] reconnect error:", err.message);
-      });
+      return () => {
+        currentSocket.off(event, wrappedHandler);
+      };
+    },
+    [],
+  );
 
-      socket.on("reconnect_failed", () => {
-        console.error("[socket.io] reconnection failed after all attempts");
-      });
-
-      socketRef.current = socket;
-    }
-
-    connect();
-
-    return () => {
-      cancelled = true;
-      socketRef.current?.disconnect();
-      socketRef.current = null;
-      setConnected(false);
-    };
-  }, []);
-
-  const on = useCallback((event: string, handler: EventHandler) => {
-    const socket = socketRef.current;
-    if (!socket) return () => {};
-
-    socket.on(event, handler);
-    return () => {
-      socket.off(event, handler);
-    };
-  }, []);
-
-  return { on, connected, socketRef };
+  return { on, emit: emitBoardEvent };
 }

@@ -1,38 +1,58 @@
-import { getIO } from "./socket-server";
-import { randomUUID } from "node:crypto";
+import type { SocketEventMap, SocketEventName } from "./socket-events";
+import { parseEventPayloadStrict } from "./socket-events";
 
-export type SocketEvent =
-  | "task:created"
-  | "task:updated"
-  | "task:deleted"
-  | "task:reordered"
-  | "board:refresh";
+// ─── Socket reference (set by the socket provider) ───────────────────────────
 
-export interface SocketEnvelope<T = unknown> {
-  eventId: string;
-  emittedAt: string;
-  payload: T;
+interface SocketLike {
+  emit(event: string, payload: unknown): void;
+  connected: boolean;
+}
+
+let _socket: SocketLike | null = null;
+
+/**
+ * Called by the socket provider to register the active socket instance.
+ */
+export function setSocket(socket: SocketLike | null): void {
+  _socket = socket;
 }
 
 /**
- * Emit a real-time event to all connected board clients.
- * Safe to call even if Socket.IO hasn't been initialised yet —
- * it silently no-ops so API routes still work for REST-only clients.
+ * Returns the current socket instance (mainly for testing).
  */
-export function emitBoardEvent(
-  event: SocketEvent,
-  payload?: unknown,
-  eventId?: string
+export function getSocket(): SocketLike | null {
+  return _socket;
+}
+
+// ─── Type-safe emit ──────────────────────────────────────────────────────────
+
+/**
+ * Emit a board event with compile-time AND runtime payload validation.
+ *
+ * @example
+ * emitBoardEvent("task:created", { task: myTask });
+ * // TypeScript error if payload doesn't match SocketEventMap["task:created"]
+ */
+export function emitBoardEvent<E extends SocketEventName>(
+  event: E,
+  payload: SocketEventMap[E],
 ): void {
-  const io = getIO();
-  if (!io) {
-    console.warn(`[socket.io] event dropped (server not initialised): ${event}`);
+  // Runtime validation — catches issues in dev/test even when TS is bypassed
+  const validated = parseEventPayloadStrict(event, payload);
+
+  if (!_socket) {
+    console.warn(
+      `[socket-emit] Cannot emit "${event}": no socket connected`,
+    );
     return;
   }
-  const envelope: SocketEnvelope = {
-    eventId: eventId ?? `${event}:${randomUUID()}`,
-    emittedAt: new Date().toISOString(),
-    payload,
-  };
-  io.to("board").emit(event, envelope);
+
+  if (!_socket.connected) {
+    console.warn(
+      `[socket-emit] Cannot emit "${event}": socket not connected`,
+    );
+    return;
+  }
+
+  _socket.emit(event, validated);
 }
