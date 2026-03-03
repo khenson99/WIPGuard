@@ -199,10 +199,10 @@ describe("graceful-shutdown", () => {
     it("handles server.close error gracefully and continues shutdown", async () => {
       const mockServer = {
         close: vi.fn((cb: (err?: Error) => void) => cb(new Error("Already closed"))),
-      } as any;
+      } as unknown;
       const mockIo = {
         disconnectSockets: vi.fn(),
-      } as any;
+      } as unknown;
 
       registerShutdownHandlers(mockServer, mockIo);
 
