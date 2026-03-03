@@ -5,7 +5,7 @@
  * It serves as the foundation for tenant-scoped queries (Phase 2).
  */
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@/generated/prisma/client';
 
 export const DEFAULT_ORG_ID = 'org_default_000000000';
 
