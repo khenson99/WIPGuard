@@ -109,3 +109,6 @@ export function initSocketServer(httpServer: HTTPServer): SocketIOServer {
 
   return io;
 }
+
+/** @deprecated Use initSocketServer instead */
+export const initIO = initSocketServer;
