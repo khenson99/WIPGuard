@@ -1,5 +1,5 @@
 import { useBoardStore } from "../board-store";
-import type { Task } from "@/types/board";
+import type { Task, Column } from "@/types/board";
 
 // Reset the store between tests
 beforeEach(() => {
@@ -65,8 +65,8 @@ describe("board-store optimistic updates", () => {
       const store = useBoardStore.getState();
       store.setTasks([mockTask()]);
       store.setColumns({
-        ACTIVE: { id: "ACTIVE", title: "Active", taskIds: ["task-1", "task-2"] } as any,
-        DONE: { id: "DONE", title: "Done", taskIds: ["task-3"] } as any,
+        ACTIVE: { id: "ACTIVE", title: "Active", taskIds: ["task-1", "task-2"] } as Column,
+        DONE: { id: "DONE", title: "Done", taskIds: ["task-3"] } as Column,
       });
 
       store.removeTaskInPlace("task-1");
@@ -111,8 +111,8 @@ describe("board-store optimistic updates", () => {
     it("should update the taskIds for specified columns", () => {
       const store = useBoardStore.getState();
       store.setColumns({
-        ACTIVE: { id: "ACTIVE", title: "Active", taskIds: ["task-1", "task-2", "task-3"] } as any,
-        QUEUED: { id: "QUEUED", title: "Queued", taskIds: ["task-4"] } as any,
+        ACTIVE: { id: "ACTIVE", title: "Active", taskIds: ["task-1", "task-2", "task-3"] } as Column,
+        QUEUED: { id: "QUEUED", title: "Queued", taskIds: ["task-4"] } as Column,
       });
 
       store.reorderColumnInPlace({
@@ -132,8 +132,8 @@ describe("board-store optimistic updates", () => {
     it("should handle reordering across multiple columns", () => {
       const store = useBoardStore.getState();
       store.setColumns({
-        ACTIVE: { id: "ACTIVE", title: "Active", taskIds: ["task-1", "task-2"] } as any,
-        DONE: { id: "DONE", title: "Done", taskIds: ["task-3"] } as any,
+        ACTIVE: { id: "ACTIVE", title: "Active", taskIds: ["task-1", "task-2"] } as Column,
+        DONE: { id: "DONE", title: "Done", taskIds: ["task-3"] } as Column,
       });
 
       // task-2 moved from ACTIVE to DONE
@@ -150,7 +150,7 @@ describe("board-store optimistic updates", () => {
     it("should ignore columns not present in the store", () => {
       const store = useBoardStore.getState();
       store.setColumns({
-        ACTIVE: { id: "ACTIVE", title: "Active", taskIds: ["task-1"] } as any,
+        ACTIVE: { id: "ACTIVE", title: "Active", taskIds: ["task-1"] } as Column,
       });
 
       // NONEXISTENT column in payload should not cause an error

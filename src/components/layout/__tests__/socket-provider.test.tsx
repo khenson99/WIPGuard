@@ -2,6 +2,7 @@ import React from "react";
 import { render, act } from "@testing-library/react";
 import { SocketProvider } from "../socket-provider";
 import { useBoardStore } from "@/stores/board-store";
+import type { Task, Column } from "@/types/board";
 
 // Mock socket.io-client
 const mockOn = jest.fn();
@@ -75,7 +76,7 @@ describe("SocketProvider optimistic updates", () => {
 
   it("handles task:updated with valid payload by updating task in place", () => {
     useBoardStore.getState().setTasks([
-      { id: "task-1", title: "Original", status: "ACTIVE", order: 0 } as any,
+      { id: "task-1", title: "Original", status: "ACTIVE", order: 0, projectId: "proj-1" } as Task,
     ]);
 
     render(
@@ -96,7 +97,7 @@ describe("SocketProvider optimistic updates", () => {
 
   it("handles task:deleted with valid payload by removing task", () => {
     useBoardStore.getState().setTasks([
-      { id: "task-1", title: "To Delete", status: "ACTIVE", order: 0 } as any,
+      { id: "task-1", title: "To Delete", status: "ACTIVE", order: 0, projectId: "proj-1" } as Task,
     ]);
 
     render(
@@ -115,7 +116,7 @@ describe("SocketProvider optimistic updates", () => {
 
   it("handles task:reordered with valid payload by reordering columns", () => {
     useBoardStore.getState().setColumns({
-      ACTIVE: { id: "ACTIVE", title: "Active", taskIds: ["a", "b", "c"] } as any,
+      ACTIVE: { id: "ACTIVE", title: "Active", taskIds: ["a", "b", "c"] } as Column,
     });
 
     render(
