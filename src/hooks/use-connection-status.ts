@@ -43,8 +43,7 @@ export function mapFreshnessToStatus(freshness: {
 /**
  * Maps IntegrationProviderKey (snake_case) → dataDomain (camelCase) used in the
  * section registry and sidebar. A single provider can map to multiple dataDomains
- * (e.g. google_workspace → googleWorkspace, but Google Analytics / Ads use env keys
- * not provider connections, so they are omitted).
+ * (e.g. google_workspace → googleWorkspace).
  */
 const PROVIDER_TO_DOMAINS: Partial<Record<IntegrationProviderKey, string[]>> = {
   google_workspace: ["googleWorkspace"],
@@ -52,8 +51,16 @@ const PROVIDER_TO_DOMAINS: Partial<Record<IntegrationProviderKey, string[]>> = {
   slack: ["slack"],
   coda: ["coda"],
   reddit: ["redditAds"],
+  redditAds: ["redditAds"],
   stripe: ["stripe", "financePlanning", "financeForecast", "financePnl", "financeUnitEconomics"],
   mercury: ["mercury", "financePlanning", "financeForecast", "financePnl"],
+  googleAnalytics: ["googleAnalytics"],
+  googleAds: ["googleAds"],
+  metaAds: ["metaAds"],
+  metaPage: ["metaPage"],
+  webflow: ["webflow"],
+  semrush: ["semrush"],
+  pylon: ["pylon"],
 };
 
 const DASHBOARD_DATA_DOMAINS = [

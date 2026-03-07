@@ -45,7 +45,9 @@ export function buildRemediationSteps(input: {
       id: "disconnected",
       title: "Provider is disconnected",
       detail:
-        item.authType === "oauth"
+        item.slug === "google-analytics"
+          ? "Set GA_PROPERTY_ID plus either GA service-account keys or GA refresh-token OAuth env vars on the server."
+          : item.authType === "oauth"
           ? "Use Connect to authorize this provider and re-establish credentials."
           : "Provide a valid API token and doc configuration, then save.",
     });

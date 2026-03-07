@@ -13,6 +13,7 @@ export type IntegrationSlug =
   | "webflow"
   | "coda"
   | "reddit"
+  | "google-analytics"
   | "google-ads"
   | "meta-ads"
   | "meta-page"
@@ -221,6 +222,14 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     },
   },
   {
+    slug: "google-analytics",
+    provider: IntegrationProvider.GOOGLE_ANALYTICS,
+    name: "Google Analytics",
+    description: "Connect GA4 traffic and engagement analytics into WIPGuard.",
+    capabilities: ["Sessions", "Channels", "Top pages"],
+    authType: "token",
+  },
+  {
     slug: "google-ads",
     provider: IntegrationProvider.GOOGLE_ADS,
     name: "Google Ads",
@@ -356,6 +365,16 @@ export function getIntegrationOAuthCredentials(
 }
 
 export function isIntegrationConfigured(definition: IntegrationDefinition): boolean {
+  if (definition.provider === IntegrationProvider.GOOGLE_ANALYTICS) {
+    return Boolean(
+      process.env.GA_PROPERTY_ID &&
+        ((process.env.GA_CLIENT_EMAIL && process.env.GA_PRIVATE_KEY) ||
+          (process.env.GA_REFRESH_TOKEN &&
+            process.env.GOOGLE_CLIENT_ID &&
+            process.env.GOOGLE_CLIENT_SECRET))
+    );
+  }
+
   if (!isOAuthIntegration(definition)) {
     return true;
   }
@@ -363,6 +382,24 @@ export function isIntegrationConfigured(definition: IntegrationDefinition): bool
 }
 
 export function getMissingIntegrationEnv(definition: IntegrationDefinition): string[] {
+  if (definition.provider === IntegrationProvider.GOOGLE_ANALYTICS) {
+    const missing = ["GA_PROPERTY_ID"].filter((key) => !process.env[key]);
+    const hasServiceAccount = Boolean(process.env.GA_CLIENT_EMAIL && process.env.GA_PRIVATE_KEY);
+    const hasOAuth = Boolean(
+      process.env.GA_REFRESH_TOKEN &&
+        process.env.GOOGLE_CLIENT_ID &&
+        process.env.GOOGLE_CLIENT_SECRET
+    );
+
+    if (!hasServiceAccount && !hasOAuth) {
+      missing.push(
+        "GA_CLIENT_EMAIL + GA_PRIVATE_KEY or GA_REFRESH_TOKEN + GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET"
+      );
+    }
+
+    return missing;
+  }
+
   if (!isOAuthIntegration(definition)) {
     return [];
   }
