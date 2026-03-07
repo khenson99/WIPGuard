@@ -130,7 +130,7 @@ function LoginPageContent() {
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-primary/30">
             <Shield className="h-7 w-7 text-primary" aria-hidden="true" />
           </div>
-          <h1 className="mt-4 text-2xl font-bold text-foreground">WIPGuard</h1>
+          <h1 className="mt-4 text-2xl font-bold text-foreground">The Mother Node</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Kanban task management with WIP limits
           </p>

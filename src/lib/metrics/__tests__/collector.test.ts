@@ -21,17 +21,17 @@ describe('metrics collector', () => {
       expect(families).toHaveLength(5);
 
       const pendingFamily = families.find(
-        (f) => f.definition.name === 'wipguard_outbox_events_pending'
+        (f) => f.definition.name === 'the_mother_node_outbox_events_pending'
       );
       expect(pendingFamily?.samples[0].value).toBe(10);
 
       const failedFamily = families.find(
-        (f) => f.definition.name === 'wipguard_outbox_events_failed'
+        (f) => f.definition.name === 'the_mother_node_outbox_events_failed'
       );
       expect(failedFamily?.samples[0].value).toBe(3);
 
       const deadLetterFamily = families.find(
-        (f) => f.definition.name === 'wipguard_outbox_events_dead_letter'
+        (f) => f.definition.name === 'the_mother_node_outbox_events_dead_letter'
       );
       expect(deadLetterFamily?.samples[0].value).toBe(1);
     });
@@ -46,7 +46,7 @@ describe('metrics collector', () => {
       });
 
       const pendingFamily = families.find(
-        (f) => f.definition.name === 'wipguard_outbox_events_pending'
+        (f) => f.definition.name === 'the_mother_node_outbox_events_pending'
       );
       expect(pendingFamily?.samples[0].value).toBe(5);
     });
@@ -68,7 +68,7 @@ describe('metrics collector', () => {
       ]);
 
       const stateFamily = families.find(
-        (f) => f.definition.name === 'wipguard_circuit_breaker_state'
+        (f) => f.definition.name === 'the_mother_node_circuit_breaker_state'
       );
       expect(stateFamily).toBeDefined();
       expect(stateFamily!.samples).toHaveLength(2);
@@ -84,7 +84,7 @@ describe('metrics collector', () => {
       ]);
 
       const failureFamily = families.find(
-        (f) => f.definition.name === 'wipguard_circuit_breaker_failure_count'
+        (f) => f.definition.name === 'the_mother_node_circuit_breaker_failure_count'
       );
       expect(failureFamily).toBeDefined();
       expect(failureFamily!.samples[0].value).toBe(3);
@@ -104,13 +104,13 @@ describe('metrics collector', () => {
       ]);
 
       const targetFamily = families.find(
-        (f) => f.definition.name === 'wipguard_slo_target'
+        (f) => f.definition.name === 'the_mother_node_slo_target'
       );
       expect(targetFamily).toBeDefined();
       expect(targetFamily!.samples).toHaveLength(2);
 
       const metFamily = families.find(
-        (f) => f.definition.name === 'wipguard_slo_met'
+        (f) => f.definition.name === 'the_mother_node_slo_met'
       );
       expect(metFamily).toBeDefined();
       expect(metFamily!.samples[0].value).toBe(0); // not met
@@ -129,7 +129,7 @@ describe('metrics collector', () => {
       expect(families).toHaveLength(2);
 
       const upFamily = families.find(
-        (f) => f.definition.name === 'wipguard_up'
+        (f) => f.definition.name === 'the_mother_node_up'
       );
       expect(upFamily?.samples[0].value).toBe(1);
     });
@@ -138,8 +138,8 @@ describe('metrics collector', () => {
   describe('collectMetrics', () => {
     it('returns app info even with no collectors', async () => {
       const result = await collectMetrics();
-      expect(result).toContain('wipguard_up 1');
-      expect(result).toContain('wipguard_app_info');
+      expect(result).toContain('the_mother_node_up 1');
+      expect(result).toContain('the_mother_node_app_info');
     });
 
     it('includes outbox metrics when collector is provided', async () => {
@@ -153,8 +153,8 @@ describe('metrics collector', () => {
         }),
       });
 
-      expect(result).toContain('wipguard_outbox_events_pending 5');
-      expect(result).toContain('wipguard_outbox_events_failed 1');
+      expect(result).toContain('the_mother_node_outbox_events_pending 5');
+      expect(result).toContain('the_mother_node_outbox_events_failed 1');
     });
 
     it('includes circuit breaker metrics when collector is provided', async () => {
@@ -164,7 +164,7 @@ describe('metrics collector', () => {
         ],
       });
 
-      expect(result).toContain('wipguard_circuit_breaker_state{provider="HUBSPOT"} 0');
+      expect(result).toContain('the_mother_node_circuit_breaker_state{provider="HUBSPOT"} 0');
     });
 
     it('handles collector errors gracefully', async () => {
@@ -177,7 +177,7 @@ describe('metrics collector', () => {
       });
 
       // Should still return app info
-      expect(result).toContain('wipguard_up 1');
+      expect(result).toContain('the_mother_node_up 1');
       // Should not crash
       expect(consoleSpy).toHaveBeenCalled();
 
@@ -195,7 +195,7 @@ describe('metrics collector', () => {
         }),
       });
 
-      expect(result).toContain('wipguard_outbox_events_pending 3');
+      expect(result).toContain('the_mother_node_outbox_events_pending 3');
     });
   });
 });

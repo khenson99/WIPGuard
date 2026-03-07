@@ -70,56 +70,56 @@ export function buildOutboxMetrics(metrics: OutboxMetrics): MetricFamily[] {
 
   families.push({
     definition: {
-      name: 'wipguard_outbox_events_pending',
+      name: 'the_mother_node_outbox_events_pending',
       help: 'Number of pending outbox events',
       type: 'gauge',
     },
     samples: [
-      { name: 'wipguard_outbox_events_pending', value: pending },
+      { name: 'the_mother_node_outbox_events_pending', value: pending },
     ],
   });
 
   families.push({
     definition: {
-      name: 'wipguard_outbox_events_failed',
+      name: 'the_mother_node_outbox_events_failed',
       help: 'Number of failed outbox events',
       type: 'gauge',
     },
     samples: [
-      { name: 'wipguard_outbox_events_failed', value: failed },
+      { name: 'the_mother_node_outbox_events_failed', value: failed },
     ],
   });
 
   families.push({
     definition: {
-      name: 'wipguard_outbox_events_dead_letter',
+      name: 'the_mother_node_outbox_events_dead_letter',
       help: 'Number of dead letter outbox events',
       type: 'gauge',
     },
     samples: [
-      { name: 'wipguard_outbox_events_dead_letter', value: deadLetter },
+      { name: 'the_mother_node_outbox_events_dead_letter', value: deadLetter },
     ],
   });
 
   families.push({
     definition: {
-      name: 'wipguard_outbox_events_processed_total',
+      name: 'the_mother_node_outbox_events_processed_total',
       help: 'Total number of processed outbox events',
       type: 'counter',
     },
     samples: [
-      { name: 'wipguard_outbox_events_processed_total', value: processed },
+      { name: 'the_mother_node_outbox_events_processed_total', value: processed },
     ],
   });
 
   families.push({
     definition: {
-      name: 'wipguard_outbox_events_total',
+      name: 'the_mother_node_outbox_events_total',
       help: 'Total number of outbox events',
       type: 'counter',
     },
     samples: [
-      { name: 'wipguard_outbox_events_total', value: total },
+      { name: 'the_mother_node_outbox_events_total', value: total },
     ],
   });
 
@@ -136,7 +136,7 @@ export function buildCircuitBreakerMetrics(
 
   // State gauge
   const stateSamples = breakers.map((cb) => ({
-    name: 'wipguard_circuit_breaker_state',
+    name: 'the_mother_node_circuit_breaker_state',
     value: circuitBreakerStateToNumber(cb.state),
     labels: { provider: cb.provider },
   }));
@@ -144,7 +144,7 @@ export function buildCircuitBreakerMetrics(
   if (stateSamples.length > 0) {
     families.push({
       definition: {
-        name: 'wipguard_circuit_breaker_state',
+        name: 'the_mother_node_circuit_breaker_state',
         help: 'Circuit breaker state per provider (0=closed, 0.5=half-open, 1=open)',
         type: 'gauge',
       },
@@ -156,7 +156,7 @@ export function buildCircuitBreakerMetrics(
   const failureSamples = breakers
     .filter((cb) => cb.failureCount !== undefined)
     .map((cb) => ({
-      name: 'wipguard_circuit_breaker_failure_count',
+      name: 'the_mother_node_circuit_breaker_failure_count',
       value: cb.failureCount!,
       labels: { provider: cb.provider },
     }));
@@ -164,7 +164,7 @@ export function buildCircuitBreakerMetrics(
   if (failureSamples.length > 0) {
     families.push({
       definition: {
-        name: 'wipguard_circuit_breaker_failure_count',
+        name: 'the_mother_node_circuit_breaker_failure_count',
         help: 'Circuit breaker failure count per provider',
         type: 'gauge',
       },
@@ -184,7 +184,7 @@ export function buildSloMetrics(slos: SloMetric[]): MetricFamily[] {
   const targetSamples = slos
     .filter((s) => s.target !== undefined)
     .map((s) => ({
-      name: 'wipguard_slo_target',
+      name: 'the_mother_node_slo_target',
       value: s.target!,
       labels: { slo: s.name ?? s.metric ?? 'unknown' },
     }));
@@ -192,7 +192,7 @@ export function buildSloMetrics(slos: SloMetric[]): MetricFamily[] {
   if (targetSamples.length > 0) {
     families.push({
       definition: {
-        name: 'wipguard_slo_target',
+        name: 'the_mother_node_slo_target',
         help: 'SLO target value',
         type: 'gauge',
       },
@@ -203,7 +203,7 @@ export function buildSloMetrics(slos: SloMetric[]): MetricFamily[] {
   const currentSamples = slos
     .filter((s) => s.current !== undefined)
     .map((s) => ({
-      name: 'wipguard_slo_current',
+      name: 'the_mother_node_slo_current',
       value: s.current!,
       labels: { slo: s.name ?? s.metric ?? 'unknown' },
     }));
@@ -211,7 +211,7 @@ export function buildSloMetrics(slos: SloMetric[]): MetricFamily[] {
   if (currentSamples.length > 0) {
     families.push({
       definition: {
-        name: 'wipguard_slo_current',
+        name: 'the_mother_node_slo_current',
         help: 'SLO current value',
         type: 'gauge',
       },
@@ -222,7 +222,7 @@ export function buildSloMetrics(slos: SloMetric[]): MetricFamily[] {
   const metSamples = slos
     .filter((s) => s.met !== undefined)
     .map((s) => ({
-      name: 'wipguard_slo_met',
+      name: 'the_mother_node_slo_met',
       value: s.met ? 1 : 0,
       labels: { slo: s.name ?? s.metric ?? 'unknown' },
     }));
@@ -230,7 +230,7 @@ export function buildSloMetrics(slos: SloMetric[]): MetricFamily[] {
   if (metSamples.length > 0) {
     families.push({
       definition: {
-        name: 'wipguard_slo_met',
+        name: 'the_mother_node_slo_met',
         help: 'Whether the SLO is currently met (1=yes, 0=no)',
         type: 'gauge',
       },
@@ -248,13 +248,13 @@ export function buildAppInfoMetrics(): MetricFamily[] {
   return [
     {
       definition: {
-        name: 'wipguard_app_info',
-        help: 'WIPGuard application info',
+        name: 'the_mother_node_app_info',
+        help: 'The Mother Node application info',
         type: 'gauge',
       },
       samples: [
         {
-          name: 'wipguard_app_info',
+          name: 'the_mother_node_app_info',
           value: 1,
           labels: {
             version: process.env.npm_package_version ?? 'unknown',
@@ -265,12 +265,12 @@ export function buildAppInfoMetrics(): MetricFamily[] {
     },
     {
       definition: {
-        name: 'wipguard_up',
-        help: 'Whether the WIPGuard application is up',
+        name: 'the_mother_node_up',
+        help: 'Whether The Mother Node application is up',
         type: 'gauge',
       },
       samples: [
-        { name: 'wipguard_up', value: 1 },
+        { name: 'the_mother_node_up', value: 1 },
       ],
     },
   ];

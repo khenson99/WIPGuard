@@ -58,7 +58,7 @@ describe("verifyWebhookSignature", () => {
     signatureHeader: "test-sig",
     timestampHeader: String(Date.now()),
     method: "POST",
-    url: "https://app.wipguard.com/api/integrations/hubspot/webhook",
+    url: "https://app.the-mother-node.com/api/integrations/hubspot/webhook",
     body: '[{"subscriptionType":"deal.propertyChange"}]',
     clientSecret: "test-secret-123",
   };
@@ -104,7 +104,7 @@ describe("verifyWebhookSignature", () => {
     const timestamp = String(Date.now());
     const secret = "my-client-secret";
     const method = "POST";
-    const url = "https://app.wipguard.com/api/integrations/hubspot/webhook";
+    const url = "https://app.the-mother-node.com/api/integrations/hubspot/webhook";
     const body = '[]';
 
     const signature = computeHmacSignature({

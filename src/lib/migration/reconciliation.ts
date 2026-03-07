@@ -1,7 +1,7 @@
 /**
  * Reconciliation Report
  *
- * Compares source (Coda export) against destination (WIPGuard DB)
+ * Compares source (Coda export) against destination (The Mother Node DB)
  * to produce a report of counts, hashes, and discrepancies.
  *
  * Output is structured for attachment to release artifacts.

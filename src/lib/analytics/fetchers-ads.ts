@@ -368,7 +368,7 @@ export async function fetchMetaAdsData(
   const token = normalizeBearerToken(accessToken);
   if (looksLikeMetaAppAccessToken(token)) {
     throw new Error(
-      "Meta Ads token error: META_ACCESS_TOKEN looks like an app access token (app_id|app_secret). WIPGuard requires a User/System User token with ads_read or ads_management and access to the configured ad account."
+      "Meta Ads token error: META_ACCESS_TOKEN looks like an app access token (app_id|app_secret). The Mother Node requires a User/System User token with ads_read or ads_management and access to the configured ad account."
     );
   }
 
@@ -527,7 +527,7 @@ export async function fetchMetaPageData(
   const token = normalizeBearerToken(accessToken);
   if (looksLikeMetaAppAccessToken(token)) {
     throw new Error(
-      "Meta Page token error: META_ACCESS_TOKEN looks like an app access token (app_id|app_secret). WIPGuard requires a User/System User token with ads_read or ads_management and access to the configured Page."
+      "Meta Page token error: META_ACCESS_TOKEN looks like an app access token (app_id|app_secret). The Mother Node requires a User/System User token with ads_read or ads_management and access to the configured Page."
     );
   }
 
@@ -699,7 +699,7 @@ export async function fetchMetaInstagramData(
   const token = normalizeBearerToken(accessToken);
   if (looksLikeMetaAppAccessToken(token)) {
     throw new Error(
-      "Meta Instagram token error: META_ACCESS_TOKEN looks like an app access token (app_id|app_secret). WIPGuard requires a User/System User token with ads_read or ads_management and access to the configured Instagram account."
+      "Meta Instagram token error: META_ACCESS_TOKEN looks like an app access token (app_id|app_secret). The Mother Node requires a User/System User token with ads_read or ads_management and access to the configured Instagram account."
     );
   }
 
@@ -830,7 +830,7 @@ export async function fetchMetaInstagramData(
 
   if (!resolvedProfile) {
     throw new Error(
-      "Meta Instagram configuration error: META_INSTAGRAM_ACCOUNT_ID is not an Instagram Business Account ID. Set META_PAGE_ID (or connect a Meta Page) so WIPGuard can resolve the linked instagram_business_account, or update the configured Instagram Account ID."
+      "Meta Instagram configuration error: META_INSTAGRAM_ACCOUNT_ID is not an Instagram Business Account ID. Set META_PAGE_ID (or connect a Meta Page) so The Mother Node can resolve the linked instagram_business_account, or update the configured Instagram Account ID."
     );
   }
 

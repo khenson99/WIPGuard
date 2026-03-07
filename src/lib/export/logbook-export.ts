@@ -67,7 +67,7 @@ export function serializeToJSON(entries: LogbookEntry[]): string {
 }
 
 function buildFilename(ext: string, dateRange?: { from: Date; to: Date } | null): string {
-  const base = "wipguard-logbook";
+  const base = "the-mother-node-logbook";
   if (dateRange) {
     const from = dateRange.from.toISOString().slice(0, 10);
     const to = dateRange.to.toISOString().slice(0, 10);

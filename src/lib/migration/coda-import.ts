@@ -1,7 +1,7 @@
 /**
  * Coda Migration Import Pipeline
  *
- * Deterministic import from Coda export snapshots into WIPGuard.
+ * Deterministic import from Coda export snapshots into The Mother Node.
  * Designed for initial migration of existing Coda data, not ongoing sync.
  *
  * Key properties:
@@ -44,7 +44,7 @@ export interface CodaImportColumnMap {
 export interface CodaMigrationConfig {
   /** Source identifier for provenance tracking. */
   sourceLabel: string;
-  /** Column mapping from Coda columns to WIPGuard fields. */
+  /** Column mapping from Coda columns to The Mother Node fields. */
   columnMap: CodaImportColumnMap;
   /** Default status for imported tasks. */
   defaultStatus: "BACKLOG" | "QUEUED" | "ACTIVE";
@@ -54,7 +54,7 @@ export interface CodaMigrationConfig {
   dryRun: boolean;
 }
 
-/** Status mapping from Coda text to WIPGuard TaskStatus. */
+/** Status mapping from Coda text to The Mother Node TaskStatus. */
 const STATUS_MAP: Record<string, string> = {
   backlog: "BACKLOG",
   queued: "QUEUED",
@@ -73,7 +73,7 @@ const STATUS_MAP: Record<string, string> = {
   canceled: "NOT_DONE",
 };
 
-/** Priority mapping from Coda text to WIPGuard Priority. */
+/** Priority mapping from Coda text to The Mother Node Priority. */
 const PRIORITY_MAP: Record<string, string> = {
   critical: "P0",
   urgent: "P0",
@@ -93,7 +93,7 @@ export interface NormalizedImportRecord {
   sourceRowId: string;
   /** Content hash for reconciliation. */
   contentHash: string;
-  /** Mapped WIPGuard fields. */
+  /** Mapped The Mother Node fields. */
   title: string;
   notes: string | null;
   status: string;

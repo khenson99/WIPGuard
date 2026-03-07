@@ -182,7 +182,7 @@ async function runStubSync(
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main() {
-  logger.info('WIPGuard sync worker starting', {
+  logger.info('The Mother Node sync worker starting', {
     runOnce: workerConfig.runOnce,
     syncIntervalMs: workerConfig.syncIntervalMs,
     poolSize: workerConfig.databasePoolSize,

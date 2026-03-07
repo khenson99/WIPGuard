@@ -68,52 +68,52 @@ describe('prometheus formatter', () => {
     it('formats a gauge without labels', () => {
       const family: MetricFamily = {
         definition: {
-          name: 'wipguard_up',
+          name: 'the_mother_node_up',
           help: 'Whether the app is up',
           type: 'gauge',
         },
-        samples: [{ name: 'wipguard_up', value: 1 }],
+        samples: [{ name: 'the_mother_node_up', value: 1 }],
       };
 
       const result = formatMetricFamily(family);
       expect(result).toBe(
-        '# HELP wipguard_up Whether the app is up\n' +
-        '# TYPE wipguard_up gauge\n' +
-        'wipguard_up 1'
+        '# HELP the_mother_node_up Whether the app is up\n' +
+        '# TYPE the_mother_node_up gauge\n' +
+        'the_mother_node_up 1'
       );
     });
 
     it('formats a gauge with labels', () => {
       const family: MetricFamily = {
         definition: {
-          name: 'wipguard_circuit_breaker_state',
+          name: 'the_mother_node_circuit_breaker_state',
           help: 'Circuit breaker state',
           type: 'gauge',
         },
         samples: [
-          { name: 'wipguard_circuit_breaker_state', value: 0, labels: { provider: 'HUBSPOT' } },
-          { name: 'wipguard_circuit_breaker_state', value: 1, labels: { provider: 'SLACK' } },
+          { name: 'the_mother_node_circuit_breaker_state', value: 0, labels: { provider: 'HUBSPOT' } },
+          { name: 'the_mother_node_circuit_breaker_state', value: 1, labels: { provider: 'SLACK' } },
         ],
       };
 
       const result = formatMetricFamily(family);
-      expect(result).toContain('wipguard_circuit_breaker_state{provider="HUBSPOT"} 0');
-      expect(result).toContain('wipguard_circuit_breaker_state{provider="SLACK"} 1');
+      expect(result).toContain('the_mother_node_circuit_breaker_state{provider="HUBSPOT"} 0');
+      expect(result).toContain('the_mother_node_circuit_breaker_state{provider="SLACK"} 1');
     });
 
     it('formats a counter', () => {
       const family: MetricFamily = {
         definition: {
-          name: 'wipguard_events_total',
+          name: 'the_mother_node_events_total',
           help: 'Total events',
           type: 'counter',
         },
-        samples: [{ name: 'wipguard_events_total', value: 100 }],
+        samples: [{ name: 'the_mother_node_events_total', value: 100 }],
       };
 
       const result = formatMetricFamily(family);
-      expect(result).toContain('# TYPE wipguard_events_total counter');
-      expect(result).toContain('wipguard_events_total 100');
+      expect(result).toContain('# TYPE the_mother_node_events_total counter');
+      expect(result).toContain('the_mother_node_events_total 100');
     });
   });
 

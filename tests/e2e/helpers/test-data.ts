@@ -4,13 +4,13 @@
  */
 
 export const TEST_USER = {
-  email: process.env.E2E_TEST_USER_EMAIL || 'e2e-test@wipguard.local',
+  email: process.env.E2E_TEST_USER_EMAIL || 'e2e-test@the-mother-node.local',
   password: process.env.E2E_TEST_USER_PASSWORD || 'TestPassword123!',
   name: 'E2E Test User',
 } as const;
 
 export const TEST_ADMIN = {
-  email: process.env.E2E_TEST_ADMIN_EMAIL || 'e2e-admin@wipguard.local',
+  email: process.env.E2E_TEST_ADMIN_EMAIL || 'e2e-admin@the-mother-node.local',
   password: process.env.E2E_TEST_ADMIN_PASSWORD || 'AdminPassword123!',
   name: 'E2E Admin User',
 } as const;

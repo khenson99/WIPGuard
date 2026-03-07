@@ -17,7 +17,7 @@ function parseOptionalBoolean(value: string | undefined): boolean | null {
 
 export function isEnvManagedProvidersModeEnabled(): boolean {
   const explicit =
-    parseOptionalBoolean(process.env.WIPGUARD_ENV_MANAGED_PROVIDERS_ONLY) ??
+    parseOptionalBoolean(process.env.THE_MOTHER_NODE_ENV_MANAGED_PROVIDERS_ONLY) ??
     parseOptionalBoolean(process.env.INTEGRATIONS_ENV_MANAGED_PROVIDERS_ONLY);
   if (explicit !== null) {
     return explicit;

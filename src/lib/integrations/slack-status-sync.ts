@@ -108,11 +108,11 @@ export function defaultSlackStatusSyncConfig(): SlackStatusSyncConfig {
     maxTransitionsPerRun: 200,
     statusMessages: {
       ACTIVE:
-        ":large_blue_circle: WIPGuard update: *{taskTitle}* is now *ACTIVE* ({changedAt}). Owner: {actor}.",
+        ":large_blue_circle: The Mother Node update: *{taskTitle}* is now *ACTIVE* ({changedAt}). Owner: {actor}.",
       NOT_DONE:
-        ":warning: WIPGuard update: *{taskTitle}* is marked *NOT_DONE* ({changedAt}). Owner: {actor}.",
+        ":warning: The Mother Node update: *{taskTitle}* is marked *NOT_DONE* ({changedAt}). Owner: {actor}.",
       DONE:
-        ":white_check_mark: WIPGuard update: *{taskTitle}* is now *DONE* ({changedAt}). Owner: {actor}.",
+        ":white_check_mark: The Mother Node update: *{taskTitle}* is now *DONE* ({changedAt}). Owner: {actor}.",
     },
   };
 }

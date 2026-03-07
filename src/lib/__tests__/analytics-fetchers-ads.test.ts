@@ -213,7 +213,7 @@ describe("analytics ads fetchers", () => {
       "reddit-secret",
       "reddit-refresh",
       "acc-1",
-      "WIPGuard-Test/1.0",
+      "The-Mother-Node-Test/1.0",
       { fromDate: new Date("2026-02-01T00:00:00.000Z"), toDate: new Date("2026-02-29T23:59:59.999Z") }
     );
 
@@ -236,7 +236,7 @@ describe("analytics ads fetchers", () => {
 
     for (const [, init] of fetchMock.mock.calls as Array<[unknown, RequestInit]>) {
       const headers = (init?.headers || {}) as Record<string, string>;
-      expect(headers["User-Agent"]).toBe("WIPGuard-Test/1.0");
+      expect(headers["User-Agent"]).toBe("The-Mother-Node-Test/1.0");
     }
   });
 
@@ -254,7 +254,7 @@ describe("analytics ads fetchers", () => {
         "reddit-secret",
         "reddit-refresh",
         "acc-1",
-        "WIPGuard-Test/1.0"
+        "The-Mother-Node-Test/1.0"
       )
     ).rejects.toThrow("Reddit campaigns error (403): insufficient_scope");
   });

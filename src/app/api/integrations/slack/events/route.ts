@@ -66,10 +66,10 @@ interface SlackEventPayload {
 }
 
 // ---------------------------------------------------------------------------
-// Resolve WIPGuard user from Slack team + user ID
+// Resolve The Mother Node user from Slack team + user ID
 // ---------------------------------------------------------------------------
 
-async function resolveWipguardUser(
+async function resolveMotherNodeUser(
   slackTeamId: string | undefined,
   slackUserId: string | undefined
 ): Promise<string | null> {
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // Handle reaction_added events -> task creation
     if (event.type === "reaction_added" && event.item?.type === "message") {
-      const userId = await resolveWipguardUser(payload.team_id, event.user);
+      const userId = await resolveMotherNodeUser(payload.team_id, event.user);
       if (!userId) {
         console.info("integration.slack.events.no_user_match", {
           slackUserId: event.user,
@@ -156,8 +156,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Handle message shortcut events -> task creation
-    if (event.type === "message" && event.text?.startsWith("/wipguard")) {
-      const userId = await resolveWipguardUser(payload.team_id, event.user);
+    if (event.type === "message" && event.text?.startsWith("/the-mother-node")) {
+      const userId = await resolveMotherNodeUser(payload.team_id, event.user);
       if (!userId) {
         return NextResponse.json({ ok: true });
       }

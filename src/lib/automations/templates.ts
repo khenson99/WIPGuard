@@ -120,7 +120,7 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
   {
     key: "coda-row-upsert",
     name: "Coda Row Upsert to Task",
-    description: "Upsert a WIPGuard task whenever a tracked Coda row is created or updated.",
+    description: "Upsert a The Mother Node task whenever a tracked Coda row is created or updated.",
     providers: ["CODA"],
     graph: {
       nodes: [
