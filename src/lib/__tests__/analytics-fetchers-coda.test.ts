@@ -320,6 +320,89 @@ describe("coda analytics fetcher", () => {
     expect(data.rangeSummary?.downloadersDeltaPct).toBe(100);
   });
 
+  it("builds funnel metrics and limits recent submitters", async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [{ id: "grid-tasks", name: "Tasks" }],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            { id: "col-1", name: "Name" },
+            { id: "col-2", name: "Status" },
+            { id: "col-3", name: "Created By" },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              id: "row-1",
+              createdAt: "2026-02-10T10:00:00.000Z",
+              updatedAt: "2026-02-10T10:00:00.000Z",
+              values: ["Card A", "Backlog", { name: "Alice", email: "alice@example.com" }],
+            },
+            {
+              id: "row-2",
+              createdAt: "2026-02-11T10:00:00.000Z",
+              updatedAt: "2026-02-11T10:00:00.000Z",
+              values: ["Card B", "Active", { name: "Bob", email: "bob@example.com" }],
+            },
+            {
+              id: "row-3",
+              createdAt: "2026-02-12T10:00:00.000Z",
+              updatedAt: "2026-02-12T10:00:00.000Z",
+              values: ["Card C", "Downloaded", { name: "Alice", email: "alice@example.com" }],
+            },
+            {
+              id: "row-4",
+              createdAt: "2026-02-13T10:00:00.000Z",
+              updatedAt: "2026-02-13T10:00:00.000Z",
+              values: ["Card D", "Done", { name: "Cara", email: "cara@example.com" }],
+            },
+            {
+              id: "row-5",
+              createdAt: "2026-02-14T10:00:00.000Z",
+              updatedAt: "2026-02-14T10:00:00.000Z",
+              values: ["Card E", "Needs Review", { name: "Dana", email: "dana@example.com" }],
+            },
+          ],
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchCodaData("token", "doc-id", {
+      fromDate: new Date("2026-02-01T00:00:00.000Z"),
+      toDate: new Date("2026-02-28T23:59:59.999Z"),
+      maxRecentSubmitters: 2,
+    });
+
+    expect(data.funnel?.stages).toEqual([
+      { key: "submissions", label: "Submissions", count: 4 },
+      { key: "cardsCreated", label: "Cards Created", count: 5 },
+      { key: "cardsCompleted", label: "Cards Completed", count: 2 },
+    ]);
+    expect(data.funnel?.conversions).toEqual([
+      { from: "submissions", to: "cardsCreated", ratePct: 125 },
+      { from: "cardsCreated", to: "cardsCompleted", ratePct: 40 },
+      { from: "submissions", to: "cardsCompleted", ratePct: 50 },
+    ]);
+    expect(data.funnel?.topDropOffStatuses).toEqual([
+      { status: "Backlog", count: 1, sharePct: 33.3 },
+      { status: "Active", count: 1, sharePct: 33.3 },
+      { status: "Needs Review", count: 1, sharePct: 33.3 },
+    ]);
+    expect(data.recentSubmitters?.map((entry) => entry.email)).toEqual([
+      "alice@example.com",
+      "dana@example.com",
+    ]);
+  });
+
   it("uses explicit creator column override and builds creator intelligence windows", async () => {
     const fetchMock = vi.fn();
     fetchMock

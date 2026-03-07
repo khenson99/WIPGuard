@@ -640,6 +640,30 @@ export interface CodaDiagnostics {
   hubspotMatchingErrors: number;
 }
 
+export interface CodaKanbanFunnelStage {
+  key: "submissions" | "cardsCreated" | "cardsCompleted";
+  label: string;
+  count: number;
+}
+
+export interface CodaKanbanFunnelConversion {
+  from: CodaKanbanFunnelStage["key"];
+  to: CodaKanbanFunnelStage["key"];
+  ratePct: number | null;
+}
+
+export interface CodaKanbanDropoffStatus {
+  status: string;
+  count: number;
+  sharePct: number;
+}
+
+export interface CodaKanbanFunnel {
+  stages: CodaKanbanFunnelStage[];
+  conversions: CodaKanbanFunnelConversion[];
+  topDropOffStatuses: CodaKanbanDropoffStatus[];
+}
+
 export interface CodaKanbanData {
   totalCards: number;
   cardsByStatus: { status: string; count: number }[];
@@ -647,6 +671,7 @@ export interface CodaKanbanData {
   creatorWindows?: CodaCreatorWindow[];
   newCreatorFeed?: CodaNewCreatorFeedEntry[];
   trends?: CodaCreatorTrends;
+  funnel?: CodaKanbanFunnel;
   engagedLeadCandidates?: CodaEngagedLeadCandidate[];
   rangeSummary?: {
     from: string;
