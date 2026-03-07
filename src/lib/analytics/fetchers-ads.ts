@@ -190,7 +190,11 @@ function extractRedditSpend(metric: UnknownRecord): number {
     metric.total_spend ??
     null;
   if (direct !== null) {
-    return readNumber(direct);
+    const parsed = readNumber(direct);
+    const isMicros =
+      (typeof direct === "number" && Number.isInteger(direct)) ||
+      (typeof direct === "string" && /^-?\d+$/.test(direct.trim()));
+    return isMicros ? parsed / 1_000_000 : parsed;
   }
 
   const micros =
@@ -1031,7 +1035,14 @@ export async function fetchRedditAdsData(
           ends_at: endsAtIso,
           time_zone_id: "UTC",
           breakdowns: ["CAMPAIGN_ID"],
-          fields: ["CAMPAIGN_ID", "SPEND", "IMPRESSIONS", "CLICKS", "CONVERSION_LEAD_COUNT", "CONVERSION_PURCHASE_COUNT", "CONVERSION_SIGN_UP_COUNT", "CONVERSION_CUSTOM_COUNT"],
+          fields: [
+            "CAMPAIGN_ID",
+            "SPEND",
+            "IMPRESSIONS",
+            "CLICKS",
+            "KEY_CONVERSION_TOTAL_COUNT",
+            "REDDIT_LEADS",
+          ],
         },
       }),
     }
@@ -1068,11 +1079,17 @@ export async function fetchRedditAdsData(
     const spend = extractRedditSpend(metric);
     const impressions = readNumber(metric.impressions ?? metric.IMPRESSIONS);
     const clicks = readNumber(metric.clicks ?? metric.CLICKS);
-    const conversions = 
-      readNumber(metric.conversion_lead_count ?? metric.CONVERSION_LEAD_COUNT) +
-      readNumber(metric.conversion_purchase_count ?? metric.CONVERSION_PURCHASE_COUNT) +
-      readNumber(metric.conversion_sign_up_count ?? metric.CONVERSION_SIGN_UP_COUNT) +
-      readNumber(metric.conversion_custom_count ?? metric.CONVERSION_CUSTOM_COUNT);
+    const conversions =
+      readNumber(
+        metric.key_conversion_total_count ??
+          metric.KEY_CONVERSION_TOTAL_COUNT ??
+          metric.reddit_leads ??
+          metric.REDDIT_LEADS
+      ) ||
+      (readNumber(metric.conversion_lead_count ?? metric.CONVERSION_LEAD_COUNT) +
+        readNumber(metric.conversion_purchase_count ?? metric.CONVERSION_PURCHASE_COUNT) +
+        readNumber(metric.conversion_sign_up_count ?? metric.CONVERSION_SIGN_UP_COUNT) +
+        readNumber(metric.conversion_custom_count ?? metric.CONVERSION_CUSTOM_COUNT));
 
     totalSpend += spend;
     totalImpressions += impressions;
