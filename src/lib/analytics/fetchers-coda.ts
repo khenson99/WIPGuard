@@ -78,8 +78,6 @@ export interface FetchCodaDataOptions {
   fromDate?: Date;
   toDate?: Date;
   now?: Date;
-  fromDate?: Date;
-  toDate?: Date;
 }
 
 interface EnrichedCard extends CodaCard {
@@ -140,6 +138,15 @@ function isWithinRange(iso: string | null, from: Date, to: Date): boolean {
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return false;
   return t >= from.getTime() && t <= to.getTime();
+}
+
+function isCompletedStatus(status: string | null | undefined): boolean {
+  const normalized = (status ?? "").trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized === "downloaded") return true;
+  return ["done", "complete", "completed", "closed", "resolved", "shipped"].some((token) =>
+    normalized.includes(token)
+  );
 }
 function readRowValue(
   row: CodaRow,
@@ -720,12 +727,16 @@ export async function fetchCodaData(
     submitterAgg.set(email, existing);
   }
 
-  const recentSubmitters = [...submitterAgg.values()]
+  const submitterEntries = [...submitterAgg.values()]
     .sort((a, b) => {
       if (b.cardsCreated !== a.cardsCreated) return b.cardsCreated - a.cardsCreated;
       return String(b.lastSubmittedAt ?? "").localeCompare(String(a.lastSubmittedAt ?? ""));
-    })
-    .slice(0, 25)
+    });
+
+  const submissions = submitterEntries.length;
+  const recentSubmitterLimit = Math.max(1, options.maxRecentSubmitters ?? 25);
+  const recentSubmitters = submitterEntries
+    .slice(0, recentSubmitterLimit)
     .map((entry) => ({
       creator: entry.creator,
       email: entry.email,
@@ -737,12 +748,49 @@ export async function fetchCodaData(
       hubspotSearchUrl: buildHubspotSearchUrl(entry.email),
     }));
 
+  const cardsCompleted = cardsInRange.filter((card) => isCompletedStatus(card.status)).length;
+  const incompleteCards = cardsInRange.length - cardsCompleted;
+  const topDropOffStatuses = cardsByStatus
+    .filter((entry) => !isCompletedStatus(entry.status))
+    .map((entry) => ({
+      status: entry.status,
+      count: entry.count,
+      sharePct: incompleteCards > 0 ? Math.round((entry.count / incompleteCards) * 1000) / 10 : 0,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  const funnel = {
+    stages: [
+      { key: "submissions" as const, label: "Submissions", count: submissions },
+      { key: "cardsCreated" as const, label: "Cards Created", count: cardsInRange.length },
+      { key: "cardsCompleted" as const, label: "Cards Completed", count: cardsCompleted },
+    ],
+    conversions: [
+      {
+        from: "submissions" as const,
+        to: "cardsCreated" as const,
+        ratePct: submissions > 0 ? Math.round((cardsInRange.length / submissions) * 1000) / 10 : null,
+      },
+      {
+        from: "cardsCreated" as const,
+        to: "cardsCompleted" as const,
+        ratePct: cardsInRange.length > 0 ? Math.round((cardsCompleted / cardsInRange.length) * 1000) / 10 : null,
+      },
+      {
+        from: "submissions" as const,
+        to: "cardsCompleted" as const,
+        ratePct: submissions > 0 ? Math.round((cardsCompleted / submissions) * 1000) / 10 : null,
+      },
+    ],
+    topDropOffStatuses,
+  };
+
   const rangeSummary = shouldFilterByRange
     ? (() => {
         const from = options.fromDate!.toISOString().slice(0, 10);
         const to = options.toDate!.toISOString().slice(0, 10);
         const cardsCreated = cardsInRange.length;
-        const submissions = recentSubmitters.length;
 
         const msPerDay = 24 * 60 * 60 * 1000;
         const days = Math.max(1, Math.round((options.toDate!.getTime() - options.fromDate!.getTime()) / msPerDay) + 1);
@@ -750,19 +798,14 @@ export async function fetchCodaData(
         const prevEnd = new Date(options.fromDate!.getTime() - msPerDay);
 
         let downloadsPrev = 0;
-        const prevEmails = new Set<string>();
+        const previousSubmitters = new Set<string>();
         for (const card of cards) {
           if (!isWithinRange(card.createdAtIso, prevStart, prevEnd)) continue;
           downloadsPrev += 1;
           const email = normalizeEmail(card.creatorEmail);
-          if (email) prevEmails.add(email);
+          if (email) previousSubmitters.add(email);
         }
-        const downloadersPrev = prevEmails.size;
-
-        const downloadsDeltaPct =
-          downloadsPrev > 0 ? Math.round(((cardsCreated - downloadsPrev) / downloadsPrev) * 100) : null;
-        const downloadersDeltaPct =
-          downloadersPrev > 0 ? Math.round(((submissions - downloadersPrev) / downloadersPrev) * 100) : null;
+        const downloadersPrev = previousSubmitters.size;
 
         return {
           from,
@@ -772,8 +815,8 @@ export async function fetchCodaData(
           unknownEmailCards,
           downloadsPrev,
           downloadersPrev,
-          downloadsDeltaPct,
-          downloadersDeltaPct,
+          downloadsDeltaPct: pctDelta(cardsCreated, downloadsPrev),
+          downloadersDeltaPct: pctDelta(submissions, downloadersPrev),
         };
       })()
     : undefined;
@@ -804,7 +847,10 @@ export async function fetchCodaData(
     trends: {
       newCreators30d: newCreatorsTrend,
       cardsCreated90d: cardsCreatedTrend,
+      downloadsDaily,
+      downloadersDaily,
     },
+    funnel,
     engagedLeadCandidates: leadEnrichment.candidates,
     rangeSummary,
     recentSubmitters: enrichedRecentSubmitters,
