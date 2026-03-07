@@ -57,6 +57,173 @@ async function acquireAdvisoryLock(client) {
   return false;
 }
 
+function splitSqlStatements(sql) {
+  const statements = [];
+  let start = 0;
+  let index = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+  let dollarTag = null;
+
+  while (index < sql.length) {
+    const current = sql[index];
+    const next = sql[index + 1];
+
+    if (dollarTag) {
+      if (sql.startsWith(dollarTag, index)) {
+        index += dollarTag.length;
+        dollarTag = null;
+        continue;
+      }
+      index++;
+      continue;
+    }
+
+    if (inLineComment) {
+      if (current === "\n") {
+        inLineComment = false;
+      }
+      index++;
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (current === "*" && next === "/") {
+        inBlockComment = false;
+        index += 2;
+        continue;
+      }
+      index++;
+      continue;
+    }
+
+    if (inSingleQuote) {
+      if (current === "'" && next === "'") {
+        index += 2;
+        continue;
+      }
+      if (current === "'") {
+        inSingleQuote = false;
+      }
+      index++;
+      continue;
+    }
+
+    if (inDoubleQuote) {
+      if (current === '"' && next === '"') {
+        index += 2;
+        continue;
+      }
+      if (current === '"') {
+        inDoubleQuote = false;
+      }
+      index++;
+      continue;
+    }
+
+    if (current === "-" && next === "-") {
+      inLineComment = true;
+      index += 2;
+      continue;
+    }
+
+    if (current === "/" && next === "*") {
+      inBlockComment = true;
+      index += 2;
+      continue;
+    }
+
+    if (current === "'") {
+      inSingleQuote = true;
+      index++;
+      continue;
+    }
+
+    if (current === '"') {
+      inDoubleQuote = true;
+      index++;
+      continue;
+    }
+
+    if (current === "$") {
+      const match = sql.slice(index).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/);
+      if (match) {
+        dollarTag = match[0];
+        index += dollarTag.length;
+        continue;
+      }
+    }
+
+    if (current === ";") {
+      const statement = sql.slice(start, index + 1);
+      if (statement.trim()) {
+        statements.push(statement);
+      }
+      start = index + 1;
+    }
+
+    index++;
+  }
+
+  const trailing = sql.slice(start);
+  if (trailing.trim()) {
+    statements.push(trailing);
+  }
+
+  return statements;
+}
+
+function stripLeadingSqlComments(statement) {
+  let remaining = statement.trimStart();
+
+  while (remaining) {
+    if (remaining.startsWith("--")) {
+      const nextLine = remaining.indexOf("\n");
+      remaining =
+        nextLine === -1 ? "" : remaining.slice(nextLine + 1).trimStart();
+      continue;
+    }
+
+    if (remaining.startsWith("/*")) {
+      const commentEnd = remaining.indexOf("*/");
+      remaining =
+        commentEnd === -1 ? "" : remaining.slice(commentEnd + 2).trimStart();
+      continue;
+    }
+
+    break;
+  }
+
+  return remaining;
+}
+
+function isEnumAddValueStatement(statement) {
+  return /^ALTER\s+TYPE\b[\s\S]*\bADD\s+VALUE\b/i.test(
+    stripLeadingSqlComments(statement),
+  );
+}
+
+function splitMigrationSql(sql) {
+  const statements = splitSqlStatements(sql);
+  const leadingEnumStatements = [];
+  let index = 0;
+
+  while (
+    index < statements.length &&
+    isEnumAddValueStatement(statements[index])
+  ) {
+    leadingEnumStatements.push(statements[index]);
+    index++;
+  }
+
+  return {
+    leadingEnumStatements,
+    remainingSql: statements.slice(index).join("\n"),
+  };
+}
+
 async function run() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
@@ -161,12 +328,21 @@ async function run() {
         .update(sql)
         .digest("hex")
         .slice(0, 64);
+      const { leadingEnumStatements, remainingSql } = splitMigrationSql(sql);
+      const hasRemainingSql = remainingSql.trim().length > 0;
+      let inTransaction = false;
 
       console.log("  apply: " + dir + "...");
-      await client.query("BEGIN");
       try {
-        await client.query(sql);
+        for (const statement of leadingEnumStatements) {
+          await client.query(statement);
+        }
 
+        await client.query("BEGIN");
+        inTransaction = true;
+        if (hasRemainingSql) {
+          await client.query(remainingSql);
+        }
         const migrationId = crypto.randomUUID();
         await client.query(
           'INSERT INTO "_prisma_migrations" (id, checksum, finished_at, migration_name, applied_steps_count) VALUES ($1, $2, now(), $3, 1)',
@@ -174,8 +350,11 @@ async function run() {
         );
 
         await client.query("COMMIT");
+        inTransaction = false;
       } catch (error) {
-        await client.query("ROLLBACK");
+        if (inTransaction) {
+          await client.query("ROLLBACK");
+        }
         const message = error instanceof Error ? error.message : String(error);
         console.error(`Migration failed (${dir}):`, message);
         process.exit(1);
