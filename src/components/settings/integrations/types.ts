@@ -11,6 +11,7 @@ export type IntegrationSlug =
   | "webflow"
   | "coda"
   | "reddit"
+  | "google-analytics"
   | "semrush"
   | "google-ads"
   | "meta-ads"

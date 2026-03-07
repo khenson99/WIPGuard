@@ -41,6 +41,7 @@ vi.mock("@/lib/analytics/provider-health", () => ({
     if (provider === IntegrationProvider.META_ADS) return ["metaAds"];
     if (provider === IntegrationProvider.META_PAGE) return ["metaPage"];
     if (provider === IntegrationProvider.GOOGLE_ADS) return ["googleAds"];
+    if (provider === IntegrationProvider.GOOGLE_ANALYTICS) return ["googleAnalytics"];
     if (provider === IntegrationProvider.PYLON) return ["pylon"];
     return ["slack"];
   }),
@@ -98,6 +99,14 @@ vi.mock("@/lib/integrations/catalog", () => ({
       description: "Reddit integration",
       capabilities: ["Threads"],
       authType: "oauth",
+    },
+    {
+      slug: "google-analytics",
+      provider: IntegrationProvider.GOOGLE_ANALYTICS,
+      name: "Google Analytics",
+      description: "Google Analytics integration",
+      capabilities: ["Traffic"],
+      authType: "token",
     },
     {
       slug: "stripe",
@@ -194,9 +203,9 @@ describe("GET /api/integrations", () => {
       hubspotToken: null,
       stripeKey: null,
       mercuryKey: null,
-      gaPropertyId: null,
-      gaClientEmail: null,
-      gaPrivateKey: null,
+      gaPropertyId: "ga-prop",
+      gaClientEmail: "ga@example.com",
+      gaPrivateKey: "ga-key",
       googleAdsDevToken: "dev",
       googleAdsCustomerId: "customer",
       googleAdsRefreshToken: "refresh",
@@ -227,6 +236,7 @@ describe("GET /api/integrations", () => {
         [IntegrationProvider.SLACK]: freshness(IntegrationProvider.SLACK, "env"),
         [IntegrationProvider.CODA]: freshness(IntegrationProvider.CODA, "none"),
         [IntegrationProvider.REDDIT]: freshness(IntegrationProvider.REDDIT, "none"),
+        [IntegrationProvider.GOOGLE_ANALYTICS]: freshness(IntegrationProvider.GOOGLE_ANALYTICS, "env"),
         [IntegrationProvider.STRIPE]: freshness(IntegrationProvider.STRIPE, "none"),
         [IntegrationProvider.MERCURY]: freshness(IntegrationProvider.MERCURY, "none"),
         [IntegrationProvider.WEBFLOW]: freshness(IntegrationProvider.WEBFLOW, "none"),
@@ -253,9 +263,15 @@ describe("GET /api/integrations", () => {
     expect(
       body.find((item) => item.provider === IntegrationProvider.GOOGLE_ADS)?.connected
     ).toBe(true);
+    expect(
+      body.find((item) => item.provider === IntegrationProvider.GOOGLE_ANALYTICS)?.connected
+    ).toBe(true);
     expect(body.find((item) => item.provider === IntegrationProvider.PYLON)?.connected).toBe(true);
     expect(
       body.find((item) => item.provider === IntegrationProvider.GOOGLE_ADS)?.credentialSource
+    ).toBe("env");
+    expect(
+      body.find((item) => item.provider === IntegrationProvider.GOOGLE_ANALYTICS)?.credentialSource
     ).toBe("env");
     expect(prisma.analyticsSnapshot.groupBy).toHaveBeenCalledTimes(2);
   });
@@ -277,6 +293,7 @@ describe("GET /api/integrations", () => {
       [IntegrationProvider.SLACK]: freshness(IntegrationProvider.SLACK, "none"),
       [IntegrationProvider.CODA]: freshness(IntegrationProvider.CODA, "none"),
       [IntegrationProvider.REDDIT]: freshness(IntegrationProvider.REDDIT, "none"),
+      [IntegrationProvider.GOOGLE_ANALYTICS]: freshness(IntegrationProvider.GOOGLE_ANALYTICS, "none"),
       [IntegrationProvider.STRIPE]: freshness(IntegrationProvider.STRIPE, "none"),
       [IntegrationProvider.MERCURY]: freshness(IntegrationProvider.MERCURY, "none"),
       [IntegrationProvider.WEBFLOW]: freshness(IntegrationProvider.WEBFLOW, "none"),

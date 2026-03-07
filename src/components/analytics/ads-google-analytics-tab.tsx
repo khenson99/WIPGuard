@@ -41,7 +41,7 @@ export function AdsGoogleAnalyticsTab({ data }: AdsGoogleAnalyticsTabProps) {
     ...(data?.errors ?? [])
       .filter((entry) => entry.source === "ga" || entry.source === "googleAnalytics")
       .map((entry) => entry.message),
-    ...(data?.freshness?.google_workspace?.lastError ? [data.freshness.google_workspace.lastError] : []),
+    ...(data?.freshness?.googleAnalytics?.lastError ? [data.freshness.googleAnalytics.lastError] : []),
   ];
 
   if (!data || !ga) {

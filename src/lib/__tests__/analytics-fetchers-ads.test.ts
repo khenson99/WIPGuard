@@ -240,6 +240,47 @@ describe("analytics ads fetchers", () => {
     }
   });
 
+  it("clamps Reddit report windows to the latest completed UTC day", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-07T23:10:00.000Z"));
+
+    try {
+      const fetchMock = vi.fn();
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ access_token: "reddit-token" }))
+        .mockResolvedValueOnce(jsonResponse({ data: [{ id: "cmp-1", name: "Launch" }] }))
+        .mockResolvedValueOnce(
+          jsonResponse({
+            data: {
+              metrics: [
+                { CAMPAIGN_ID: "cmp-1", SPEND: "12.5", IMPRESSIONS: "1000", CLICKS: "25" },
+              ],
+            },
+          })
+        );
+
+      vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+      await fetchRedditAdsData(
+        "reddit-client",
+        "reddit-secret",
+        "reddit-refresh",
+        "acc-1",
+        "The-Mother-Node-Test/1.0"
+      );
+
+      const reportsCall = fetchMock.mock.calls[2];
+      const payload = JSON.parse(String((reportsCall?.[1] as RequestInit).body)) as {
+        data?: { starts_at?: string; ends_at?: string };
+      };
+
+      expect(payload.data?.starts_at).toBe("2026-02-05T00:00:00Z");
+      expect(payload.data?.ends_at).toBe("2026-03-07T00:00:00Z");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("propagates Reddit auth and scope failures as explicit errors", async () => {
     const fetchMock = vi.fn();
     fetchMock

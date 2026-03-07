@@ -206,6 +206,18 @@ function extractRedditSpend(metric: UnknownRecord): number {
   return 0;
 }
 
+function startOfUtcDay(date: Date): Date {
+  const value = new Date(date);
+  value.setUTCHours(0, 0, 0, 0);
+  return value;
+}
+
+function addUtcDays(date: Date, days: number): Date {
+  const value = new Date(date);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value;
+}
+
 /**
  * Fetch Google Ads data for a date range (defaults to last 30d).
  */
@@ -985,25 +997,22 @@ export async function fetchRedditAdsData(
     !Number.isNaN(rangeTo?.getTime() ?? NaN) &&
     Boolean(rangeFrom && rangeTo && rangeFrom <= rangeTo);
 
-  const now = rangeTo ? new Date(rangeTo) : new Date();
+  const endExclusive = (() => {
+    const latestSafeBoundary = startOfUtcDay(new Date());
+    if (!useRange) {
+      return latestSafeBoundary;
+    }
 
-  const rawStartsAt = useRange ? new Date(rangeFrom!) : new Date(now);
-  if (!useRange) {
-    rawStartsAt.setUTCDate(rawStartsAt.getUTCDate() - 29);
-  }
-  rawStartsAt.setUTCHours(0, 0, 0, 0);
+    const requestedBoundary = addUtcDays(startOfUtcDay(rangeTo!), 1);
+    return requestedBoundary.getTime() > latestSafeBoundary.getTime()
+      ? latestSafeBoundary
+      : requestedBoundary;
+  })();
 
-  const rawEndsAt = new Date(now);
-  rawEndsAt.setUTCHours(23, 59, 59, 999);
-
-  // Reddit Ads API v3 requires day-boundary (midnight) timestamps.
-  const startsAtNorm = new Date(rawStartsAt);
-  startsAtNorm.setUTCHours(0, 0, 0, 0);
-  const endsAtNorm = new Date(rawEndsAt);
-  endsAtNorm.setUTCHours(0, 0, 0, 0);
-  if (endsAtNorm.getTime() < rawEndsAt.getTime()) {
-    endsAtNorm.setUTCDate(endsAtNorm.getUTCDate() + 1);
-  }
+  const startsAtNorm = useRange
+    ? startOfUtcDay(rangeFrom!)
+    : addUtcDays(endExclusive, -30);
+  const endsAtNorm = endExclusive;
 
   const startsAtIso = startsAtNorm.toISOString().replace(/\.\d{3}Z$/, "Z");
   const endsAtIso = endsAtNorm.toISOString().replace(/\.\d{3}Z$/, "Z");

@@ -315,12 +315,14 @@ describe("GET /api/analytics", () => {
         [IntegrationProvider.SLACK]: freshness(IntegrationProvider.SLACK),
         [IntegrationProvider.CODA]: freshness(IntegrationProvider.CODA),
         [IntegrationProvider.REDDIT]: freshness(IntegrationProvider.REDDIT),
+        [IntegrationProvider.GOOGLE_ANALYTICS]: freshness(IntegrationProvider.GOOGLE_ANALYTICS),
         [IntegrationProvider.STRIPE]: freshness(IntegrationProvider.STRIPE),
         [IntegrationProvider.MERCURY]: freshness(IntegrationProvider.MERCURY),
         [IntegrationProvider.WEBFLOW]: freshness(IntegrationProvider.WEBFLOW),
         [IntegrationProvider.GOOGLE_ADS]: freshness(IntegrationProvider.GOOGLE_ADS),
         [IntegrationProvider.META_ADS]: freshness(IntegrationProvider.META_ADS),
         [IntegrationProvider.META_PAGE]: freshness(IntegrationProvider.META_PAGE),
+        [IntegrationProvider.SEMRUSH]: freshness(IntegrationProvider.SEMRUSH),
         [IntegrationProvider.PYLON]: freshness(IntegrationProvider.PYLON),
       },
     } as never);
@@ -456,6 +458,104 @@ describe("GET /api/analytics", () => {
       ).toBe(false);
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it("fetches Google Analytics with OAuth credentials when no service account is configured", async () => {
+    const { getCredentials } = await import("@/lib/analytics/credentials");
+    const { fetchGAData } = await import("@/lib/analytics/fetchers-ga-webflow");
+
+    vi.mocked(getCredentials).mockResolvedValue({
+      hubspotToken: null,
+      stripeKey: null,
+      mercuryKey: null,
+      gaPropertyId: "ga-prop",
+      gaClientEmail: null,
+      gaPrivateKey: null,
+      googleAdsDevToken: null,
+      googleAdsCustomerId: null,
+      googleAdsRefreshToken: null,
+      googleAdsClientId: null,
+      googleAdsClientSecret: null,
+      googleAdsLoginCustomerId: null,
+      metaAccessToken: null,
+      metaAdAccountId: null,
+      metaPageId: null,
+      metaInstagramAccountId: null,
+      redditClientId: null,
+      redditClientSecret: null,
+      redditRefreshToken: null,
+      redditAdAccountId: null,
+      redditUserAgent: null,
+      webflowApiToken: null,
+      webflowSiteId: null,
+      semrushApiToken: null,
+      semrushDomain: null,
+      codaApiToken: null,
+      codaDocId: null,
+      pylonApiKey: null,
+      pylonBaseUrl: null,
+      googleWorkspaceAccessToken: null,
+      slackAccessToken: null,
+      freshness: {
+        [IntegrationProvider.GOOGLE_WORKSPACE]: freshness(IntegrationProvider.GOOGLE_WORKSPACE),
+        [IntegrationProvider.HUBSPOT]: freshness(IntegrationProvider.HUBSPOT),
+        [IntegrationProvider.SLACK]: freshness(IntegrationProvider.SLACK),
+        [IntegrationProvider.CODA]: freshness(IntegrationProvider.CODA),
+        [IntegrationProvider.REDDIT]: freshness(IntegrationProvider.REDDIT),
+        [IntegrationProvider.GOOGLE_ANALYTICS]: freshness(IntegrationProvider.GOOGLE_ANALYTICS),
+        [IntegrationProvider.STRIPE]: freshness(IntegrationProvider.STRIPE),
+        [IntegrationProvider.MERCURY]: freshness(IntegrationProvider.MERCURY),
+        [IntegrationProvider.WEBFLOW]: freshness(IntegrationProvider.WEBFLOW),
+        [IntegrationProvider.GOOGLE_ADS]: freshness(IntegrationProvider.GOOGLE_ADS),
+        [IntegrationProvider.META_ADS]: freshness(IntegrationProvider.META_ADS),
+        [IntegrationProvider.META_PAGE]: freshness(IntegrationProvider.META_PAGE),
+        [IntegrationProvider.SEMRUSH]: freshness(IntegrationProvider.SEMRUSH),
+        [IntegrationProvider.PYLON]: freshness(IntegrationProvider.PYLON),
+      },
+    } as never);
+
+    vi.mocked(fetchGAData).mockResolvedValue(GA_DATA as never);
+
+    const previousRefreshToken = process.env.GA_REFRESH_TOKEN;
+    const previousClientId = process.env.GOOGLE_CLIENT_ID;
+    const previousClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+    process.env.GA_REFRESH_TOKEN = "ga-refresh";
+    process.env.GOOGLE_CLIENT_ID = "google-client";
+    process.env.GOOGLE_CLIENT_SECRET = "google-secret";
+
+    try {
+      const { GET } = await import("@/app/api/analytics/route");
+      const response = await GET(
+        new Request("http://localhost/api/analytics?section=ads-google-analytics")
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.googleAnalytics).toEqual(GA_DATA);
+      expect(fetchGAData).toHaveBeenCalledWith(
+        "ga-prop",
+        "",
+        "",
+        expect.objectContaining({})
+      );
+    } finally {
+      if (previousRefreshToken === undefined) {
+        delete process.env.GA_REFRESH_TOKEN;
+      } else {
+        process.env.GA_REFRESH_TOKEN = previousRefreshToken;
+      }
+      if (previousClientId === undefined) {
+        delete process.env.GOOGLE_CLIENT_ID;
+      } else {
+        process.env.GOOGLE_CLIENT_ID = previousClientId;
+      }
+      if (previousClientSecret === undefined) {
+        delete process.env.GOOGLE_CLIENT_SECRET;
+      } else {
+        process.env.GOOGLE_CLIENT_SECRET = previousClientSecret;
+      }
     }
   });
 });

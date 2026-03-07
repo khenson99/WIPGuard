@@ -54,6 +54,14 @@ function hasCredentialForProvider(
       return Boolean(credentials.codaApiToken);
     case IntegrationProvider.REDDIT:
       return Boolean(credentials.redditRefreshToken);
+    case IntegrationProvider.GOOGLE_ANALYTICS:
+      return Boolean(
+        credentials.gaPropertyId &&
+          ((credentials.gaClientEmail && credentials.gaPrivateKey) ||
+            (process.env.GA_REFRESH_TOKEN &&
+              process.env.GOOGLE_CLIENT_ID &&
+              process.env.GOOGLE_CLIENT_SECRET))
+      );
     case IntegrationProvider.STRIPE:
       return Boolean(credentials.stripeKey);
     case IntegrationProvider.MERCURY:

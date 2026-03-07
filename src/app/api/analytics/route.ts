@@ -619,11 +619,35 @@ async function buildFinancialPlanningData(
   };
 }
 
-function providerForDomain(domain: DomainKey): "google_workspace" | "hubspot" | "slack" | "coda" | "reddit" | null {
+function providerForDomain(
+  domain: DomainKey
+):
+  | "google_workspace"
+  | "hubspot"
+  | "slack"
+  | "coda"
+  | "reddit"
+  | "redditAds"
+  | "googleAnalytics"
+  | "googleAds"
+  | "metaAds"
+  | "metaPage"
+  | "webflow"
+  | "semrush"
+  | "pylon"
+  | null {
   if (domain === "hubspot" || domain === "hubspotOps") return "hubspot";
   if (domain === "googleWorkspace") return "google_workspace";
   if (domain === "slack") return "slack";
   if (domain === "coda" || domain === "codaOps") return "coda";
+  if (domain === "googleAnalytics") return "googleAnalytics";
+  if (domain === "googleAds") return "googleAds";
+  if (domain === "metaAds") return "metaAds";
+  if (domain === "metaPage" || domain === "instagram") return "metaPage";
+  if (domain === "webflow") return "webflow";
+  if (domain === "semrush") return "semrush";
+  if (domain === "pylon") return "pylon";
+  if (domain === "redditAds") return "redditAds";
   if (domain === "redditOps") return "reddit";
   return null;
 }
@@ -745,6 +769,13 @@ export async function GET(request: Request) {
   }
 
   const creds = await getCredentials(userId);
+  const hasGAServiceAccount = Boolean(creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey);
+  const hasGAOAuth = Boolean(
+    creds.gaPropertyId &&
+      process.env.GA_REFRESH_TOKEN?.trim() &&
+      process.env.GOOGLE_CLIENT_ID?.trim() &&
+      process.env.GOOGLE_CLIENT_SECRET?.trim()
+  );
 
   const result: AnalyticsDashboardData = createEmptyAnalyticsDashboardData({
     freshness: {
@@ -818,6 +849,86 @@ export async function GET(request: Request) {
         stale: false,
         lastSnapshotAt: null,
       },
+      googleAnalytics: {
+        provider: "googleAnalytics",
+        source: creds.freshness.GOOGLE_ANALYTICS.source,
+        status: creds.freshness.GOOGLE_ANALYTICS.status,
+        connectedAt: creds.freshness.GOOGLE_ANALYTICS.connectedAt,
+        lastSyncedAt: creds.freshness.GOOGLE_ANALYTICS.lastSyncedAt,
+        lastError: creds.freshness.GOOGLE_ANALYTICS.lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
+      googleAds: {
+        provider: "googleAds",
+        source: creds.freshness.GOOGLE_ADS.source,
+        status: creds.freshness.GOOGLE_ADS.status,
+        connectedAt: creds.freshness.GOOGLE_ADS.connectedAt,
+        lastSyncedAt: creds.freshness.GOOGLE_ADS.lastSyncedAt,
+        lastError: creds.freshness.GOOGLE_ADS.lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
+      metaAds: {
+        provider: "metaAds",
+        source: creds.freshness.META_ADS.source,
+        status: creds.freshness.META_ADS.status,
+        connectedAt: creds.freshness.META_ADS.connectedAt,
+        lastSyncedAt: creds.freshness.META_ADS.lastSyncedAt,
+        lastError: creds.freshness.META_ADS.lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
+      metaPage: {
+        provider: "metaPage",
+        source: creds.freshness.META_PAGE.source,
+        status: creds.freshness.META_PAGE.status,
+        connectedAt: creds.freshness.META_PAGE.connectedAt,
+        lastSyncedAt: creds.freshness.META_PAGE.lastSyncedAt,
+        lastError: creds.freshness.META_PAGE.lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
+      redditAds: {
+        provider: "redditAds",
+        source: creds.freshness.REDDIT.source,
+        status: creds.freshness.REDDIT.status,
+        connectedAt: creds.freshness.REDDIT.connectedAt,
+        lastSyncedAt: creds.freshness.REDDIT.lastSyncedAt,
+        lastError: creds.freshness.REDDIT.lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
+      webflow: {
+        provider: "webflow",
+        source: creds.freshness.WEBFLOW.source,
+        status: creds.freshness.WEBFLOW.status,
+        connectedAt: creds.freshness.WEBFLOW.connectedAt,
+        lastSyncedAt: creds.freshness.WEBFLOW.lastSyncedAt,
+        lastError: creds.freshness.WEBFLOW.lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
+      semrush: {
+        provider: "semrush",
+        source: creds.freshness.SEMRUSH.source,
+        status: creds.freshness.SEMRUSH.status,
+        connectedAt: creds.freshness.SEMRUSH.connectedAt,
+        lastSyncedAt: creds.freshness.SEMRUSH.lastSyncedAt,
+        lastError: creds.freshness.SEMRUSH.lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
+      pylon: {
+        provider: "pylon",
+        source: creds.freshness.PYLON.source,
+        status: creds.freshness.PYLON.status,
+        connectedAt: creds.freshness.PYLON.connectedAt,
+        lastSyncedAt: creds.freshness.PYLON.lastSyncedAt,
+        lastError: creds.freshness.PYLON.lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
     },
     timeRange: range,
     lastFullRefresh: new Date().toISOString(),
@@ -833,8 +944,17 @@ export async function GET(request: Request) {
     ...(creds.mercuryKey
       ? [{ key: "mercury" as const, fn: () => fetchMercuryData(creds.mercuryKey!, { fromDate, toDate }) }]
       : []),
-    ...(creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey
-      ? [{ key: "googleAnalytics" as const, fn: () => fetchGAData(creds.gaPropertyId!, creds.gaClientEmail!, creds.gaPrivateKey!, { fromDate, toDate }) }]
+    ...((hasGAServiceAccount || hasGAOAuth)
+      ? [{
+          key: "googleAnalytics" as const,
+          fn: () =>
+            fetchGAData(
+              creds.gaPropertyId!,
+              creds.gaClientEmail ?? "",
+              creds.gaPrivateKey ?? "",
+              { fromDate, toDate }
+            ),
+        }]
       : []),
     ...(creds.googleAdsDevToken && creds.googleAdsCustomerId && creds.googleAdsRefreshToken && creds.googleAdsClientId && creds.googleAdsClientSecret
       ? [{

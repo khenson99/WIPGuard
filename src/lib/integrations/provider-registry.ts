@@ -59,6 +59,15 @@ const INTEGRATION_PROVIDER_REGISTRY: readonly IntegrationProviderRegistryEntry[]
     aliases: [],
   },
   {
+    provider: IntegrationProvider.GOOGLE_ANALYTICS,
+    slug: "google-analytics",
+    authType: "token",
+    snapshotKeys: ["googleAnalytics"],
+    settingsVisible: true,
+    envManaged: true,
+    aliases: ["google_analytics", "ga"],
+  },
+  {
     provider: IntegrationProvider.STRIPE,
     slug: "stripe",
     authType: "oauth",
@@ -170,4 +179,3 @@ export function resolveProviderRegistryEntryBySlug(
 export function providerForSnapshotKey(snapshotKey: string): IntegrationProvider | null {
   return SNAPSHOT_KEY_LOOKUP.get(snapshotKey) ?? null;
 }
-
