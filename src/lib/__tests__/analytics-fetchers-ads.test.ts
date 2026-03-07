@@ -240,6 +240,44 @@ describe("analytics ads fetchers", () => {
     }
   });
 
+  it("normalizes Reddit spend micros and key conversion counts", async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ access_token: "reddit-token" }))
+      .mockResolvedValueOnce(jsonResponse({ data: [{ id: "cmp-1", name: "Launch" }] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            metrics: [
+              {
+                campaign_id: "cmp-1",
+                spend: 12_500_000,
+                impressions: 1000,
+                clicks: 25,
+                key_conversion_total_count: 3,
+                reddit_leads: 1,
+              },
+            ],
+          },
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchRedditAdsData(
+      "reddit-client",
+      "reddit-secret",
+      "reddit-refresh",
+      "acc-1",
+      "The-Mother-Node-Test/1.0"
+    );
+
+    expect(data.totalSpend30d).toBeCloseTo(12.5);
+    expect(data.totalConversions).toBe(3);
+    expect(data.campaigns[0]?.spend).toBeCloseTo(12.5);
+    expect(data.campaigns[0]?.conversions).toBe(3);
+  });
+
   it("clamps Reddit report windows to the latest completed UTC day", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-07T23:10:00.000Z"));
