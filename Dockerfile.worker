@@ -1,8 +1,8 @@
-# Dockerfile for the WIPGuard sync worker process.
+# Dockerfile for The Mother Node sync worker process.
 # Runs integration sync in a dedicated process, separate from the Next.js web server.
 #
-# Build: docker build -f Dockerfile.worker -t wipguard-worker .
-# Run:   docker run --env-file .env wipguard-worker
+# Build: docker build -f Dockerfile.worker -t the-mother-node-worker .
+# Run:   docker run --env-file .env the-mother-node-worker
 
 # ── Base ──────────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS base

@@ -1,6 +1,6 @@
 import { getRedisClient } from './redis';
 
-const CACHE_PREFIX = 'wipguard:';
+const CACHE_PREFIX = 'the-mother-node:';
 
 /**
  * Get a cached value by key.

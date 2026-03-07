@@ -1,4 +1,4 @@
-# WIPGuard App
+# The Mother Node App
 
 ## Local development
 
@@ -69,7 +69,7 @@ Advertising and marketing analytics:
 - `REDDIT_CLIENT_SECRET`
 - `REDDIT_AD_ACCOUNT_ID`
 - Reddit Ads (recommended)
-- `REDDIT_USER_AGENT` (defaults to `WIPGuard/1.0` when omitted)
+- `REDDIT_USER_AGENT` (defaults to `The-Mother-Node/1.0` when omitted)
 - Webflow (required)
 - `WEBFLOW_API_TOKEN`
 - `WEBFLOW_SITE_ID`
@@ -84,7 +84,7 @@ Important:
 Ops:
 
 - Run `npm run ops:ads-preflight` to validate required ad analytics environment variables.
-- Follow `/Users/kylehenson/WIPGuard/docs/runbooks/ads-analytics-rollout.md` for staging/production rollout.
+- Follow `docs/runbooks/ads-analytics-rollout.md` for staging/production rollout.
 
 ## OAuth callback URLs
 

@@ -14,7 +14,7 @@ function formatMessage(level: LogLevel, message: string, meta?: Record<string, u
   return JSON.stringify({
     timestamp: new Date().toISOString(),
     level,
-    service: 'wipguard-worker',
+    service: 'the-mother-node-worker',
     message,
     ...meta,
   });

@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 import path from 'path';
 
 /**
- * Playwright configuration for WIPGuard E2E tests.
+ * Playwright configuration for The Mother Node E2E tests.
  * @see https://playwright.dev/docs/test-configuration
  */
 export default defineConfig({

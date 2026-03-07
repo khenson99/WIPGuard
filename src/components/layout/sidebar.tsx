@@ -25,7 +25,7 @@ export function Sidebar() {
     <aside className="flex h-screen w-56 flex-col border-r border-sidebar-border bg-sidebar-bg text-sm text-sidebar-foreground">
       <div className="flex items-center gap-2 border-b border-sidebar-border px-4 py-4">
         <LayoutDashboard className="h-6 w-6 text-primary" aria-hidden="true" />
-        <span className="text-lg font-bold text-foreground">WIPGuard</span>
+        <span className="text-lg font-bold text-foreground">The Mother Node</span>
       </div>
 
       <nav aria-label="Main navigation" className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">

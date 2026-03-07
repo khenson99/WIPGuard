@@ -195,7 +195,7 @@ export default function AutomationsPage() {
         <div>
           <h1 className="text-xl font-semibold text-foreground">Automations</h1>
           <p className="text-xs text-muted-foreground">
-            Build trigger-based workflows across Google, HubSpot, Slack, Coda, Reddit, and WIPGuard.
+            Build trigger-based workflows across Google, HubSpot, Slack, Coda, Reddit, and The Mother Node.
           </p>
         </div>
 

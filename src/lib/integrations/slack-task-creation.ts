@@ -1,7 +1,7 @@
 /**
  * Slack Task Creation Service
  *
- * Creates WIPGuard tasks from Slack messages via:
+ * Creates The Mother Node tasks from Slack messages via:
  *  - Reaction triggers (e.g., :pushpin: on a message)
  *  - Slack shortcuts / slash commands
  *  - Webhook event payloads from Slack Event API

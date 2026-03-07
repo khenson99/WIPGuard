@@ -19,7 +19,7 @@ export const throttledFetch = throttle(
         ...init,
         signal: controller.signal,
         headers: {
-          "User-Agent": "WIPGuard-Prospecting/1.0 (+https://wipguard.com)",
+          "User-Agent": "The-Mother-Node-Prospecting/1.0 (+https://the-mother-node.com)",
           ...init?.headers,
         },
       });

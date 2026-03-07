@@ -36,7 +36,7 @@ async function isScrapingAllowed(domain: string): Promise<boolean> {
       if (line.startsWith("user-agent:")) {
         // Reset on every new User-Agent block to avoid leaking state
         const agent = line.slice("user-agent:".length).trim();
-        isRelevantAgent = agent === "*" || agent.includes("wipguard");
+        isRelevantAgent = agent === "*" || agent.includes("the-mother-node");
       } else if (isRelevantAgent && line.startsWith("disallow:")) {
         const path = line.slice("disallow:".length).trim();
         // If root is disallowed, respect that

@@ -361,7 +361,7 @@ describe("PWA manifest", () => {
   it("manifest.json exists and is valid JSON", () => {
     const raw = readFileSync(join(process.cwd(), "public", "manifest.json"), "utf-8");
     const manifest = JSON.parse(raw);
-    expect(manifest.name).toBe("WIPGuard");
+    expect(manifest.name).toBe("The Mother Node");
     expect(manifest.display).toBe("standalone");
   });
 

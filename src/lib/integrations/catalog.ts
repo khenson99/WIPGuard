@@ -142,7 +142,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     slug: "stripe",
     provider: IntegrationProvider.STRIPE,
     name: "Stripe",
-    description: "Connect Stripe account data and payment signals into WIPGuard.",
+    description: "Connect Stripe account data and payment signals into The Mother Node.",
     capabilities: ["Revenue", "Payments", "Subscriptions"],
     authType: "oauth",
     oauth: {
@@ -176,7 +176,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     slug: "webflow",
     provider: IntegrationProvider.WEBFLOW,
     name: "Webflow",
-    description: "Connect Webflow sites and content signals into WIPGuard.",
+    description: "Connect Webflow sites and content signals into The Mother Node.",
     capabilities: ["Sites", "Pages", "CMS", "Forms"],
     authType: "oauth",
     oauth: {
@@ -205,7 +205,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     slug: "reddit",
     provider: IntegrationProvider.REDDIT,
     name: "Reddit",
-    description: "Capture Reddit threads and community signals in WIPGuard.",
+    description: "Capture Reddit threads and community signals in The Mother Node.",
     capabilities: ["Thread capture", "Community monitoring"],
     authType: "oauth",
     oauth: {
@@ -224,7 +224,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     slug: "google-ads",
     provider: IntegrationProvider.GOOGLE_ADS,
     name: "Google Ads",
-    description: "Connect Google Ads campaign and spend data into WIPGuard.",
+    description: "Connect Google Ads campaign and spend data into The Mother Node.",
     capabilities: ["Campaigns", "Ad spend", "Performance metrics"],
     authType: "oauth",
     oauth: {
@@ -247,7 +247,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     slug: "meta-ads",
     provider: IntegrationProvider.META_ADS,
     name: "Meta Ads",
-    description: "Connect Meta (Facebook/Instagram) ad account data into WIPGuard.",
+    description: "Connect Meta (Facebook/Instagram) ad account data into The Mother Node.",
     capabilities: ["Ad campaigns", "Ad spend", "Performance metrics"],
     authType: "oauth",
     oauth: {
@@ -270,7 +270,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     slug: "meta-page",
     provider: IntegrationProvider.META_PAGE,
     name: "Meta Page",
-    description: "Connect Meta Page insights and engagement data into WIPGuard.",
+    description: "Connect Meta Page insights and engagement data into The Mother Node.",
     capabilities: ["Page insights", "Post engagement"],
     authType: "oauth",
     oauth: {
@@ -300,7 +300,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     slug: "semrush",
     provider: IntegrationProvider.SEMRUSH,
     name: "SEMrush",
-    description: "Connect SEMrush SEO metrics and keyword ranks into WIPGuard.",
+    description: "Connect SEMrush SEO metrics and keyword ranks into The Mother Node.",
     capabilities: ["Organic Search", "Paid Traffic", "Authority"],
     authType: "token",
   },

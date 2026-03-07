@@ -58,7 +58,7 @@ describe('GET /api/metrics', () => {
     expect(response.headers.get('content-type')).toContain('version=0.0.4');
 
     const body = await response.text();
-    expect(body).toContain('wipguard_up 1');
+    expect(body).toContain('the_mother_node_up 1');
     expect(body).toContain('# HELP');
     expect(body).toContain('# TYPE');
   });

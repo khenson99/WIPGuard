@@ -37,7 +37,7 @@ describe('health server', () => {
 
     const data = JSON.parse(res.body);
     expect(data.status).toBe('ok');
-    expect(data.service).toBe('wipguard-worker');
+    expect(data.service).toBe('the-mother-node-worker');
     expect(typeof data.uptime).toBe('number');
   });
 

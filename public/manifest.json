@@ -1,6 +1,6 @@
 {
-  "name": "WIPGuard",
-  "short_name": "WIPGuard",
+  "name": "The Mother Node",
+  "short_name": "The Mother Node",
   "description": "Kanban workflow management with offline field support",
   "start_url": "/",
   "display": "standalone",

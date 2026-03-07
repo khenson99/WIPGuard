@@ -1,4 +1,4 @@
-# Railway configuration for the WIPGuard sync worker service.
+# Railway configuration for The Mother Node sync worker service.
 #
 # Deploy as a separate service in Railway:
 #   1. Create a new service in your Railway project

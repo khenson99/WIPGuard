@@ -89,7 +89,7 @@ const PRIORITY_PROJECT_MAP: Record<string, string[]> = {
     "Pricing Strategy / Packaging",
   ],
   "Arda Core": [
-    "Project WIPGuard",
+    "Project The Mother Node",
     "Feature: Webhooks & Integrations",
     "Feature: Automations & Alerts",
     "Feature: Smart Analytics Engine",
@@ -160,7 +160,7 @@ function parseDate(dateStr: string | null): Date | undefined {
 }
 
 async function main() {
-  console.log("Starting Coda → WIPGuard import...\n");
+  console.log("Starting Coda → The Mother Node import...\n");
 
   // Load extracted data
   const dataPath = path.join("/tmp", "coda_import_data.json");

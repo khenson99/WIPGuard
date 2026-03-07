@@ -33,7 +33,7 @@ describe('cache', () => {
       const result = await cacheGet<typeof data>('test-key');
 
       expect(result).toEqual(data);
-      expect(mockRedisClient.get).toHaveBeenCalledWith('wipguard:test-key');
+      expect(mockRedisClient.get).toHaveBeenCalledWith('the-mother-node:test-key');
     });
 
     it('should return undefined when key does not exist', async () => {
@@ -64,7 +64,7 @@ describe('cache', () => {
       await cacheSet('my-key', data, 60);
 
       expect(mockRedisClient.setex).toHaveBeenCalledWith(
-        'wipguard:my-key',
+        'the-mother-node:my-key',
         60,
         JSON.stringify(data)
       );
@@ -89,7 +89,7 @@ describe('cache', () => {
       const result = await cacheDelete('delete-me');
 
       expect(result).toBe(true);
-      expect(mockRedisClient.del).toHaveBeenCalledWith('wipguard:delete-me');
+      expect(mockRedisClient.del).toHaveBeenCalledWith('the-mother-node:delete-me');
     });
 
     it('should return false if key did not exist', async () => {
@@ -104,7 +104,7 @@ describe('cache', () => {
   describe('cacheInvalidate', () => {
     it('should scan and delete matching keys', async () => {
       mockRedisClient.scan
-        .mockResolvedValueOnce(['0', ['wipguard:company:1:projects', 'wipguard:company:1:projects:abc']]);
+        .mockResolvedValueOnce(['0', ['the-mother-node:company:1:projects', 'the-mother-node:company:1:projects:abc']]);
 
       const count = await cacheInvalidate('company:1:projects*');
 
@@ -112,7 +112,7 @@ describe('cache', () => {
       expect(mockRedisClient.scan).toHaveBeenCalledWith(
         '0',
         'MATCH',
-        'wipguard:company:1:projects*',
+        'the-mother-node:company:1:projects*',
         'COUNT',
         100
       );
@@ -122,8 +122,8 @@ describe('cache', () => {
 
     it('should handle multiple scan iterations', async () => {
       mockRedisClient.scan
-        .mockResolvedValueOnce(['42', ['wipguard:key1']])
-        .mockResolvedValueOnce(['0', ['wipguard:key2']]);
+        .mockResolvedValueOnce(['42', ['the-mother-node:key1']])
+        .mockResolvedValueOnce(['0', ['the-mother-node:key2']]);
 
       const count = await cacheInvalidate('key*');
 
@@ -163,7 +163,7 @@ describe('cache', () => {
       expect(result).toEqual(freshData);
       expect(fetcher).toHaveBeenCalledOnce();
       expect(mockRedisClient.setex).toHaveBeenCalledWith(
-        'wipguard:miss-key',
+        'the-mother-node:miss-key',
         120,
         JSON.stringify(freshData)
       );

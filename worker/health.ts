@@ -35,7 +35,7 @@ export function startHealthServer(): http.Server {
       res.end(
         JSON.stringify({
           status: 'ok',
-          service: 'wipguard-worker',
+          service: 'the-mother-node-worker',
           uptime: process.uptime(),
           lastSync: lastSyncTimestamp,
           lastSyncDurationMs,
