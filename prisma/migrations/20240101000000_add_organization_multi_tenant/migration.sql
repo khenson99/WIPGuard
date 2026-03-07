@@ -25,30 +25,70 @@ ALTER TABLE "Task" ADD COLUMN "organizationId" TEXT;
 ALTER TABLE "Sprint" ADD COLUMN "organizationId" TEXT;
 
 -- AlterTable: Add organizationId to Deal
-ALTER TABLE "Deal" ADD COLUMN "organizationId" TEXT;
+DO $$
+BEGIN
+  IF to_regclass('"Deal"') IS NOT NULL THEN
+    ALTER TABLE "Deal" ADD COLUMN IF NOT EXISTS "organizationId" TEXT;
+  END IF;
+END $$;
 
 -- AlterTable: Add organizationId to Department
-ALTER TABLE "Department" ADD COLUMN "organizationId" TEXT;
+DO $$
+BEGIN
+  IF to_regclass('"Department"') IS NOT NULL THEN
+    ALTER TABLE "Department" ADD COLUMN IF NOT EXISTS "organizationId" TEXT;
+  END IF;
+END $$;
 
 -- AlterTable: Add organizationId to CompanyPriority
 ALTER TABLE "CompanyPriority" ADD COLUMN "organizationId" TEXT;
 
 -- AlterTable: Add organizationId to IntegrationConnection
-ALTER TABLE "IntegrationConnection" ADD COLUMN "organizationId" TEXT;
+DO $$
+BEGIN
+  IF to_regclass('"IntegrationConnection"') IS NOT NULL THEN
+    ALTER TABLE "IntegrationConnection" ADD COLUMN IF NOT EXISTS "organizationId" TEXT;
+  END IF;
+END $$;
 
 -- AlterTable: Add organizationId to Conference
-ALTER TABLE "Conference" ADD COLUMN "organizationId" TEXT;
+DO $$
+BEGIN
+  IF to_regclass('"Conference"') IS NOT NULL THEN
+    ALTER TABLE "Conference" ADD COLUMN IF NOT EXISTS "organizationId" TEXT;
+  END IF;
+END $$;
 
 -- CreateIndex: organizationId indexes for query performance
 CREATE INDEX "User_organizationId_idx" ON "User"("organizationId");
 CREATE INDEX "Project_organizationId_idx" ON "Project"("organizationId");
 CREATE INDEX "Task_organizationId_idx" ON "Task"("organizationId");
 CREATE INDEX "Sprint_organizationId_idx" ON "Sprint"("organizationId");
-CREATE INDEX "Deal_organizationId_idx" ON "Deal"("organizationId");
-CREATE INDEX "Department_organizationId_idx" ON "Department"("organizationId");
+DO $$
+BEGIN
+  IF to_regclass('"Deal"') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS "Deal_organizationId_idx" ON "Deal"("organizationId")';
+  END IF;
+END $$;
+DO $$
+BEGIN
+  IF to_regclass('"Department"') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS "Department_organizationId_idx" ON "Department"("organizationId")';
+  END IF;
+END $$;
 CREATE INDEX "CompanyPriority_organizationId_idx" ON "CompanyPriority"("organizationId");
-CREATE INDEX "IntegrationConnection_organizationId_idx" ON "IntegrationConnection"("organizationId");
-CREATE INDEX "Conference_organizationId_idx" ON "Conference"("organizationId");
+DO $$
+BEGIN
+  IF to_regclass('"IntegrationConnection"') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS "IntegrationConnection_organizationId_idx" ON "IntegrationConnection"("organizationId")';
+  END IF;
+END $$;
+DO $$
+BEGIN
+  IF to_regclass('"Conference"') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS "Conference_organizationId_idx" ON "Conference"("organizationId")';
+  END IF;
+END $$;
 
 -- AddForeignKey: User -> Organization
 ALTER TABLE "User" ADD CONSTRAINT "User_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -63,16 +103,40 @@ ALTER TABLE "Task" ADD CONSTRAINT "Task_organizationId_fkey" FOREIGN KEY ("organ
 ALTER TABLE "Sprint" ADD CONSTRAINT "Sprint_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey: Deal -> Organization
-ALTER TABLE "Deal" ADD CONSTRAINT "Deal_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF to_regclass('"Deal"') IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Deal_organizationId_fkey') THEN
+    ALTER TABLE "Deal" ADD CONSTRAINT "Deal_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- AddForeignKey: Department -> Organization
-ALTER TABLE "Department" ADD CONSTRAINT "Department_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF to_regclass('"Department"') IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Department_organizationId_fkey') THEN
+    ALTER TABLE "Department" ADD CONSTRAINT "Department_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- AddForeignKey: CompanyPriority -> Organization
 ALTER TABLE "CompanyPriority" ADD CONSTRAINT "CompanyPriority_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey: IntegrationConnection -> Organization
-ALTER TABLE "IntegrationConnection" ADD CONSTRAINT "IntegrationConnection_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF to_regclass('"IntegrationConnection"') IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'IntegrationConnection_organizationId_fkey') THEN
+    ALTER TABLE "IntegrationConnection" ADD CONSTRAINT "IntegrationConnection_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- AddForeignKey: Conference -> Organization
-ALTER TABLE "Conference" ADD CONSTRAINT "Conference_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF to_regclass('"Conference"') IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Conference_organizationId_fkey') THEN
+    ALTER TABLE "Conference" ADD CONSTRAINT "Conference_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
