@@ -68,7 +68,7 @@ export async function GET(): Promise<NextResponse> {
     }));
 
     // Active rollout plan (in production this comes from DB)
-    const plan: RolloutPlan = createRolloutPlan("current", "The Mother Node Release");
+    const plan: RolloutPlan = createRolloutPlan("current", "WIPGuard Release");
 
     // Release checklist evaluation
     const checklist = createReleaseChecklist("current", "0.1.0");

@@ -212,7 +212,7 @@ async function createCompany(
         industry: prospect.industry ?? undefined,
         city: prospect.location ?? undefined,
         numberofemployees: prospect.employeeCount ?? undefined,
-        description: `Discovered via The Mother Node prospecting. Kanban confidence: ${Math.round(prospect.confidence * 100)}%`,
+        description: `Discovered via WIPGuard prospecting. Kanban confidence: ${Math.round(prospect.confidence * 100)}%`,
         // Custom properties (create these in HubSpot settings first)
         kanban_confidence_score: String(Math.round(prospect.confidence * 100)),
         kanban_evidence_urls: evidenceUrls,

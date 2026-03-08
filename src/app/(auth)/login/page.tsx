@@ -1,8 +1,9 @@
 "use client";
 
-import { getProviders, signIn } from "next-auth/react";
-import { useSearchParams } from "next/navigation";
-import { Shield } from "lucide-react";
+import Link from "next/link";
+import { getProviders, signIn, useSession } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, Shield } from "lucide-react";
 import { Suspense, useState, useEffect } from "react";
 
 interface DevUser {
@@ -39,7 +40,9 @@ export default function LoginPage() {
 }
 
 function LoginPageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const { status } = useSession();
   const [devUsers, setDevUsers] = useState<DevUser[]>([]);
   const [loadingProviders, setLoadingProviders] = useState(true);
   const [googleEnabled, setGoogleEnabled] = useState(false);
@@ -54,6 +57,12 @@ function LoginPageContent() {
   const authError = authErrorCode
     ? (authErrors[authErrorCode] ?? authErrors.Default)
     : null;
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      router.replace("/dashboard");
+    }
+  }, [router, status]);
 
   useEffect(() => {
     getProviders()
@@ -118,7 +127,7 @@ function LoginPageContent() {
   const handleDevLogin = async () => {
     if (!selectedEmail) return;
     setLoading(true);
-    await signIn("credentials", { email: selectedEmail, callbackUrl: "/board" });
+    await signIn("credentials", { email: selectedEmail, callbackUrl: "/dashboard" });
     setLoading(false);
   };
 
@@ -126,16 +135,33 @@ function LoginPageContent() {
     googleEnabled || (isDev && credentialsEnabled && devUsers.length > 0);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="w-full max-w-sm space-y-8 px-4">
-        <div className="text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-primary/30">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#efefef] px-4 py-10">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(252,90,41,0.18),_transparent_30%),radial-gradient(circle_at_right,_rgba(0,0,0,0.1),_transparent_35%)]" />
+      <div className="relative w-full max-w-md space-y-8 rounded-[28px] border border-black/8 bg-white/95 p-7 shadow-[0_24px_80px_rgba(0,0,0,0.12)] backdrop-blur">
+        <div className="space-y-4">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-sm font-medium text-black/55 transition hover:text-black"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            Back to product overview
+          </Link>
+
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/20">
             <Shield className="h-7 w-7 text-primary" aria-hidden="true" />
           </div>
-          <h1 className="mt-4 text-2xl font-bold text-foreground">The Mother Node</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Kanban task management with WIP limits
-          </p>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-black/45">
+              Invite-only access
+            </p>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+              WIPGuard
+            </h1>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Sign in to your workspace, orient on the dashboard, then move into
+              daily execution. Access is currently limited to Arda GTM and beta teams.
+            </p>
+          </div>
         </div>
 
         {inviteMessage && (
@@ -153,7 +179,7 @@ function LoginPageContent() {
         {/* Google OAuth */}
         {googleEnabled && (
           <button
-            onClick={() => signIn("google", { callbackUrl: "/board" })}
+            onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
             className="flex w-full items-center justify-center gap-3 rounded-lg border border-border bg-secondary px-4 py-3 text-sm font-medium text-foreground transition-colors hover:border-muted-foreground hover:bg-card"
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
@@ -218,9 +244,10 @@ function LoginPageContent() {
           </div>
         )}
 
-        <p className="text-center text-xs text-muted-foreground">
-          Your team&apos;s work-in-progress, protected.
-        </p>
+        <div className="rounded-2xl bg-[#f5f5f5] px-4 py-3 text-xs leading-5 text-muted-foreground">
+          Need access? Ask your workspace admin for an invite link or use the
+          configured Google account for your team.
+        </div>
       </div>
     </div>
   );
