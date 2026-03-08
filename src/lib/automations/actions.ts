@@ -89,9 +89,18 @@ function normalizeHubSpotTaskStatus(value: unknown): "COMPLETED" | "NOT_STARTED"
 
 function normalizeHubSpotTaskPriority(value: unknown): "LOW" | "MEDIUM" | "HIGH" {
   const normalized = asString(value)?.toUpperCase();
-  if (normalized === "LOW" || normalized === "HIGH") {
+  if (normalized === "LOW" || normalized === "MEDIUM" || normalized === "HIGH") {
     return normalized;
   }
+
+  if (normalized === "P0" || normalized === "P1") {
+    return "HIGH";
+  }
+
+  if (normalized === "P3") {
+    return "LOW";
+  }
+
   return "MEDIUM";
 }
 

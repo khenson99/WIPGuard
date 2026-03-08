@@ -207,4 +207,38 @@ describe("automation actions", () => {
       detail: "Follow up on demo next steps",
     });
   });
+
+  it("maps workflow priorities to HubSpot task priorities", async () => {
+    vi.mocked(getValidIntegrationAccessToken).mockResolvedValue("hubspot_token");
+    vi.mocked(fetchJsonWithResilience).mockResolvedValue({
+      id: "hubspot_task_2",
+    } as never);
+
+    await executeAutomationAction({
+      runId: "run_1",
+      actionType: "create_hubspot_task",
+      actionPayload: {
+        title: "Escalate risk follow-up",
+        dueAt: "2026-03-10T16:00:00.000Z",
+        priority: "P1",
+      },
+    });
+
+    expect(fetchJsonWithResilience).toHaveBeenCalledWith(
+      expect.objectContaining({
+        init: expect.objectContaining({
+          body: JSON.stringify({
+            properties: {
+              hs_task_subject: "Escalate risk follow-up",
+              hs_task_body: "",
+              hs_task_status: "NOT_STARTED",
+              hs_task_priority: "HIGH",
+              hs_task_type: "TODO",
+              hs_timestamp: "2026-03-10T16:00:00.000Z",
+            },
+          }),
+        }),
+      })
+    );
+  });
 });

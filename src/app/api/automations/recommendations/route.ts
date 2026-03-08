@@ -2,9 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { AutomationRecommendationStatus } from "@/lib/automations/prisma-enums";
-import {
-  WorkflowScope,
-} from "@/generated/prisma/client";
+import { WorkflowScope, type Prisma } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { getAppRole } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -23,14 +21,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const workflowId = request.nextUrl.searchParams.get("workflowId");
     const runId = request.nextUrl.searchParams.get("runId");
     const status = request.nextUrl.searchParams.get("status");
-    const ownerOrParticipantFilter = {
-      OR: [
-        { workflow: { ownerId: user.id } },
-        { requestedById: user.id },
-        { approverId: user.id },
-        { executedById: user.id },
-      ],
-    };
+    const ownerOrParticipantFilters: Prisma.AutomationRecommendationWhereInput[] = [
+      { workflow: { is: { ownerId: user.id } } },
+      { requestedById: user.id },
+      { approverId: user.id },
+      { executedById: user.id },
+    ];
+    const visibilityFilter: Prisma.AutomationRecommendationWhereInput = mineOnly
+      ? {
+          OR: ownerOrParticipantFilters,
+        }
+      : role === "admin"
+        ? {}
+        : {
+            OR: [
+              { workflow: { is: { scope: WorkflowScope.SHARED } } },
+              ...ownerOrParticipantFilters,
+            ],
+          };
 
     const recommendations = await prisma.automationRecommendation.findMany({
       where: {
@@ -42,14 +50,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         )
           ? { status: status as AutomationRecommendationStatus }
           : {}),
-        workflow: {
-          OR: [{ ownerId: user.id }, { scope: WorkflowScope.SHARED }],
-        },
-        ...(mineOnly
-          ? ownerOrParticipantFilter
-          : role === "admin"
-            ? {}
-            : ownerOrParticipantFilter),
+        ...visibilityFilter,
       },
       orderBy: [{ createdAt: "desc" }],
       include: {
