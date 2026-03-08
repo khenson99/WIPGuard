@@ -19,15 +19,19 @@ describe("analytics section registry", () => {
     expect(ids.has("process-analytics")).toBe(true);
   });
 
-  it("includes customer-success and ops child sections", () => {
+  it("keeps the remaining customer-success child sections", () => {
     const ids = new Set(ANALYTICS_SUB_SECTIONS.map((section) => section.id));
     expect(ids.has("cs-pylon")).toBe(true);
     expect(ids.has("cs-coda")).toBe(true);
     expect(ids.has("cs-product")).toBe(true);
-    expect(ids.has("cs-decision-dashboard")).toBe(true);
-    expect(ids.has("cs-flow-metrics")).toBe(true);
-    expect(ids.has("cs-flow-risk")).toBe(true);
-    expect(ids.has("cs-observability")).toBe(true);
+  });
+
+  it("omits removed task-management analytics sections", () => {
+    const ids = new Set(ANALYTICS_SUB_SECTIONS.map((section) => section.id));
+    expect(ids.has("cs-decision-dashboard")).toBe(false);
+    expect(ids.has("cs-flow-metrics")).toBe(false);
+    expect(ids.has("cs-flow-risk")).toBe(false);
+    expect(ids.has("cs-observability")).toBe(false);
   });
 
   it("maps legacy analytics tabs to new primary routes", () => {
