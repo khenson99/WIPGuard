@@ -159,6 +159,40 @@ export interface HubSpotData {
     };
     stageHistory?: Array<{ occurredAt: string; stageId: string; stageLabel: string }>;
   }>;
+  displayDeals?: Array<{
+    dealId: string;
+    dealName: string;
+    stageId: string;
+    stageLabel: string;
+    amount: number;
+    source: string;
+    ownerId: string | null;
+    repName?: string;
+    updatedAt: string | null;
+    createdAt: string | null;
+    closedAt?: string | null;
+    stripeCustomerId?: string | null;
+    pipelineId: string | null;
+    contactIds: string[];
+    primaryContactId: string | null;
+    primaryContactEmail: string | null;
+    primaryContactAnalytics?: {
+      createdAt?: string | null;
+      source: string | null;
+      sourceData1: string | null;
+      sourceData2: string | null;
+      firstSeenAt: string | null;
+      lastSeenAt: string | null;
+      firstUrl: string | null;
+      lastUrl: string | null;
+      numVisits: number | null;
+      numPageViews: number | null;
+      utmSource: string | null;
+      utmMedium: string | null;
+      utmCampaign: string | null;
+    };
+    stageHistory?: Array<{ occurredAt: string; stageId: string; stageLabel: string }>;
+  }>;
   _meta: AnalyticsTimestamp;
 }
 
@@ -1073,6 +1107,128 @@ export interface CustomerJourneyData {
 }
 
 // ══════════════════════════════════════════════════════════
+// VISITOR FUNNEL TYPES
+// ══════════════════════════════════════════════════════════
+
+export type EnrichmentProvider = "unify" | "clay" | "rb2b";
+
+export type VisitorFunnelStageId =
+  | "visitors"
+  | "identified"
+  | "demo_booked"
+  | "kanban_card_created"
+  | "trial_started"
+  | "paid_customer";
+
+export type VisitorLinkProvenance = "exact" | "inferred" | "backfilled";
+
+export interface VisitorMilestone {
+  stage: Exclude<VisitorFunnelStageId, "visitors">;
+  occurredAt: string | null;
+}
+
+export interface VisitorFunnelStageCount {
+  stage: VisitorFunnelStageId;
+  label: string;
+  count: number;
+  conversionFromVisitors: number | null;
+  conversionFromPrevious: number | null;
+}
+
+export interface VisitorFunnelTrendPoint {
+  week: string;
+  visitors: number;
+  identified: number;
+  demo_booked: number;
+  kanban_card_created: number;
+  trial_started: number;
+  paid_customer: number;
+}
+
+export interface VisitorFunnelBreakdownRow {
+  key: string;
+  visitors: number;
+  identified: number;
+  demoBooked: number;
+  kanbanCards: number;
+  trialsStarted: number;
+  paidCustomers: number;
+}
+
+export interface VisitorFunnelOverlap {
+  key: string;
+  count: number;
+}
+
+export interface VisitorFunnelIdentitySummary {
+  type: string;
+  value: string;
+  provider: string;
+  provenance: VisitorLinkProvenance;
+  confidence: number;
+}
+
+export interface VisitorFunnelProviderEvidence {
+  provider: string;
+  accepted: boolean;
+  signalCount: number;
+}
+
+export interface VisitorFunnelRecord {
+  visitorId: string;
+  anonymousId: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  firstTouchSource: string | null;
+  firstTouchChannel: string | null;
+  firstTouchCampaign: string | null;
+  firstTouchReferrer: string | null;
+  landingPath: string | null;
+  identified: boolean;
+  deepestStage: VisitorFunnelStageId;
+  milestones: VisitorMilestone[];
+  identities?: VisitorFunnelIdentitySummary[];
+  providers?: VisitorFunnelProviderEvidence[];
+}
+
+export interface VisitorFunnelFilters {
+  channel: string;
+  source: string | null;
+  campaign: string | null;
+  stage: VisitorFunnelStageId | "all";
+  knownOnly: boolean;
+  quickFilter: "all" | "reddit";
+}
+
+export interface VisitorFunnelData {
+  filters: VisitorFunnelFilters;
+  stages: VisitorFunnelStageCount[];
+  trends: VisitorFunnelTrendPoint[];
+  channelBreakdown: VisitorFunnelBreakdownRow[];
+  sourceBreakdown: VisitorFunnelBreakdownRow[];
+  campaignBreakdown: VisitorFunnelBreakdownRow[];
+  overlaps: VisitorFunnelOverlap[];
+  availableChannels: string[];
+  availableSources: string[];
+  availableCampaigns: string[];
+  totals: {
+    visitors: number;
+    identified: number;
+    demoBooked: number;
+    kanbanCards: number;
+    trialsStarted: number;
+    paidCustomers: number;
+  };
+  recordsApi: {
+    href: string;
+    adminOnly: boolean;
+  };
+  secondaryMetrics: {
+    closedWonCount: number;
+  };
+}
+
+// ══════════════════════════════════════════════════════════
 // DEMO ANALYTICS TYPES
 // ══════════════════════════════════════════════════════════
 
@@ -1374,6 +1530,7 @@ export interface AnalyticsDashboardData {
   funnelJourney: CrossFunnelData | null;
   lifecycleFunnel: LifecycleFunnelData | null;
   customerJourney: CustomerJourneyData | null;
+  visitorFunnel: VisitorFunnelData | null;
   demoAnalytics: DemoAnalyticsData | null;
   processAnalytics: ProcessAnalyticsData | null;
   recommendations: AnalyticsRecommendation[];

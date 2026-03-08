@@ -50,6 +50,11 @@ import {
 import { buildAnalyticsRouteMeta } from "@/lib/analytics/route-meta";
 import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { computeKpiDelta } from "@/lib/analytics/kpi-deltas";
+import {
+  buildVisitorFunnelData,
+  parseVisitorFunnelFilters,
+  syncVisitorFunnelArtifacts,
+} from "@/lib/analytics/visitor-funnel";
 import type {
   AnalyticsDashboardData,
   AnalyticsRecommendation,
@@ -96,6 +101,7 @@ type DomainKey =
   | "recommendations"
   | "distilledInsights"
   | "customerJourney"
+  | "visitorFunnel"
   | "demoAnalytics"
   | "processAnalytics";
 
@@ -229,6 +235,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "cj-overview": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
   "cj-touchpoints": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
   "cj-conversion": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
+  "cj-acquisition-funnel": ["hubspot", "stripe", "coda", "visitorFunnel"],
 
   "demo-analytics": [
     "hubspot", "googleWorkspace", "demoAnalytics",
@@ -661,6 +668,7 @@ type FetchEntry = {
     | "recommendations"
     | "distilledInsights"
     | "customerJourney"
+    | "visitorFunnel"
     | "demoAnalytics"
     | "processAnalytics"
   >;
@@ -1188,6 +1196,23 @@ export async function GET(request: Request) {
   
   if (domains.has("customerJourney")) {
     result.customerJourney = buildCustomerJourneyData(result);
+  }
+  if (domains.has("visitorFunnel")) {
+    await syncVisitorFunnelArtifacts({
+      prisma,
+      analyticsData: result,
+      stripeKey: creds.stripeKey ?? null,
+      from: fromDate,
+      to: toDate,
+    });
+    result.visitorFunnel = await buildVisitorFunnelData(prisma, {
+      from: fromDate,
+      to: toDate,
+      filters: parseVisitorFunnelFilters(url.searchParams),
+      closedWonCount: (result.hubspot?.deals ?? []).filter(
+        (deal) => deal.stageLabel.trim().toLowerCase() === "closed won",
+      ).length,
+    });
   }
   if (domains.has("recommendations")) {
     result.recommendations = buildRecommendations(result);

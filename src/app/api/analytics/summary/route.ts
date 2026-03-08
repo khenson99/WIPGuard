@@ -154,6 +154,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       flowRisk: true,
       observability: true,
       customerJourney: true,
+      visitorFunnel: true,
       demoAnalytics: true,
       processAnalytics: true,
     };

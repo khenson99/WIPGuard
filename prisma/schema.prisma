@@ -95,6 +95,7 @@ model User {
 
   submissionEvents SubmissionEvent[]
   insightPreferences InsightPreference[]
+  funnelIdentityLinks FunnelIdentityLink[] @relation("FunnelIdentityUser")
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
@@ -1880,6 +1881,149 @@ model ForecastScenario {
 // ============================================================
 // FUNNEL ANALYTICS
 // ============================================================
+
+enum FunnelEventType {
+  PAGE_VIEW
+  SESSION_STARTED
+  AUTH_COMPLETED
+  DEMO_BOOKED
+  KANBAN_CARD_CREATED
+  TRIAL_STARTED
+  PAID_CUSTOMER
+}
+
+enum FunnelIdentityType {
+  EMAIL
+  USER_ID
+  HUBSPOT_CONTACT_ID
+  HUBSPOT_DEAL_ID
+  STRIPE_CUSTOMER_ID
+  CODA_EMAIL
+}
+
+enum FunnelLinkProvenance {
+  EXACT
+  INFERRED
+  BACKFILLED
+}
+
+enum EnrichmentProvider {
+  UNIFY
+  CLAY
+  RB2B
+}
+
+model FunnelVisitor {
+  id          String @id @default(cuid())
+  anonymousId String @unique
+  siteHost    String?
+
+  firstTouchSource     String?
+  firstTouchChannel    String?
+  firstTouchCampaign   String?
+  firstTouchReferrer   String? @db.Text
+  firstTouchLandingPath String?
+  firstTouchLandingUrl  String? @db.Text
+
+  lastTouchSource   String?
+  lastTouchChannel  String?
+  lastTouchCampaign String?
+  lastTouchReferrer String? @db.Text
+  lastTouchPath     String?
+  lastTouchUrl      String? @db.Text
+
+  firstSeenAt DateTime
+  lastSeenAt  DateTime
+
+  events            FunnelEvent[]
+  identityLinks     FunnelIdentityLink[]
+  enrichmentSignals FunnelEnrichmentSignal[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([firstSeenAt])
+  @@index([lastSeenAt])
+  @@index([firstTouchChannel, firstSeenAt])
+  @@index([firstTouchSource, firstSeenAt])
+  @@index([firstTouchCampaign, firstSeenAt])
+  @@index([siteHost, firstSeenAt])
+}
+
+model FunnelEvent {
+  id        String          @id @default(cuid())
+  visitorId String
+  visitor   FunnelVisitor   @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  eventType FunnelEventType
+
+  occurredAt DateTime
+  path       String?
+  url        String? @db.Text
+  referrer   String? @db.Text
+  source     String?
+  channel    String?
+  campaign   String?
+  dedupeKey  String? @unique
+  metadata   Json    @default("{}")
+
+  createdAt DateTime @default(now())
+
+  @@index([visitorId, occurredAt])
+  @@index([eventType, occurredAt])
+  @@index([channel, occurredAt])
+}
+
+model FunnelIdentityLink {
+  id           String              @id @default(cuid())
+  visitorId     String
+  visitor       FunnelVisitor      @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  identityType  FunnelIdentityType
+  identityValue String
+  provider      String
+  provenance    FunnelLinkProvenance @default(EXACT)
+  confidence    Float               @default(1)
+  metadata      Json?
+
+  userId String?
+  user   User? @relation("FunnelIdentityUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([visitorId, identityType, identityValue])
+  @@index([identityType, identityValue])
+  @@index([userId])
+  @@index([provider, provenance])
+}
+
+model FunnelEnrichmentSignal {
+  id        String             @id @default(cuid())
+  provider  EnrichmentProvider
+  signalKey String
+
+  visitorId String?
+  visitor   FunnelVisitor? @relation(fields: [visitorId], references: [id], onDelete: SetNull)
+
+  anonymousId String?
+  email       String?
+  domain      String?
+  fullName    String?
+  companyName String?
+  confidence  Float    @default(0)
+  occurredAt  DateTime?
+  accepted    Boolean  @default(false)
+  metadata    Json     @default("{}")
+  payload     Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, signalKey])
+  @@index([visitorId])
+  @@index([email])
+  @@index([domain])
+  @@index([accepted, createdAt])
+}
 
 model SubmissionEvent {
   id          String   @id @default(cuid())
