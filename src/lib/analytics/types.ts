@@ -1174,6 +1174,23 @@ export interface VisitorFunnelProviderEvidence {
   signalCount: number;
 }
 
+export interface VisitorFunnelEnrichmentProviderStatus {
+  provider: EnrichmentProvider;
+  label: string;
+  deliveryMode: "cron_pull" | "webhook_push";
+  endpointPath: string;
+  authConfigured: boolean;
+  syncConfigured: boolean;
+  syncEnabled: boolean;
+  totalSignals: number;
+  acceptedSignals: number;
+  acceptedRate: number | null;
+  lastSignalAt: string | null;
+  lastAcceptedAt: string | null;
+  stale: boolean;
+  note: string;
+}
+
 export interface VisitorFunnelRecord {
   visitorId: string;
   anonymousId: string;
@@ -1225,6 +1242,10 @@ export interface VisitorFunnelData {
   };
   secondaryMetrics: {
     closedWonCount: number;
+  };
+  enrichmentStatus: {
+    adminOnly: boolean;
+    providers: VisitorFunnelEnrichmentProviderStatus[];
   };
 }
 
