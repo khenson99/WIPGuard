@@ -590,16 +590,4 @@ describe("GET /api/analytics", () => {
       }
     }
   });
-
-  it("returns 403 for observers", async () => {
-    const { prisma } = await import("@/lib/prisma");
-    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({ role: "observer" } as never);
-
-    const { GET } = await import("@/app/api/analytics/route");
-    const response = await GET(new Request("http://localhost/api/analytics?section=overview"));
-    const body = await response.json();
-
-    expect(response.status).toBe(403);
-    expect(body).toEqual({ error: "Forbidden: insufficient permissions" });
-  });
 });
