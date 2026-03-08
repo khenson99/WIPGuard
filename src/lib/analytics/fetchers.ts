@@ -30,23 +30,82 @@ function makeMeta(source: "live" | "cached" = "live"): AnalyticsTimestamp {
 // HUBSPOT FETCHER
 // ═══════════════════════════════════════════════════════════
 
-const HUBSPOT_STAGE_MAP: Record<string, string> = {
-  appointmentscheduled: "Prospect",
-  qualifiedtobuy: "Lead",
-  presentationscheduled: "Demo Scheduled",
-  "1955958510": "No-Show/Reschedule",
-  decisionmakerboughtin: "Demo Follow-Up",
-  "176498593": "Budgetary Quote Sent",
-  "176498594": "Payment Link Sent",
-  "1524801846": "Free Trial",
-  "1499784891": "Closed Lost",
-  "1722537990": "Freemium",
-  contractsent: "Subscription",
-  closedwon: "Closed Won",
-  closedlost: "Closed Lost",
-  "1499784892": "Ping Later",
-  "1574807548": "Churn",
-  "1916862197": "On Hold",
+const HUBSPOT_MAIN_PIPELINE_ID = "default";
+const HUBSPOT_SUBSCRIPTION_PIPELINE_ID = "1390107368";
+
+const HUBSPOT_MAIN_PIPELINE_FALLBACK_STAGES = [
+  { id: "appointmentscheduled", label: "Prospect", displayOrder: 0 },
+  { id: "1499838171", label: "Approached", displayOrder: 1 },
+  { id: "qualifiedtobuy", label: "Lead", displayOrder: 2 },
+  { id: "presentationscheduled", label: "Demo Scheduled", displayOrder: 3 },
+  { id: "1955958510", label: "No-Show/Reschedule", displayOrder: 4 },
+  { id: "decisionmakerboughtin", label: "Demo Follow-Up", displayOrder: 5 },
+  { id: "1955580622", label: "Budgetary Quote Sent", displayOrder: 6 },
+  { id: "1559099077", label: "Payment Link Sent", displayOrder: 7 },
+  { id: "1499827945", label: "Free Trial", displayOrder: 8 },
+  { id: "1731122907", label: "Freemium", displayOrder: 9 },
+  { id: "closedwon", label: "Closed Won", displayOrder: 10 },
+  { id: "contractsent", label: "Ping Later", displayOrder: 11 },
+  { id: "closedlost", label: "Closed Lost", displayOrder: 12 },
+  { id: "1499784890", label: "Churn", displayOrder: 13 },
+  { id: "1499784891", label: "Unlikely", displayOrder: 14 },
+  { id: "1499827944", label: "On Hold", displayOrder: 15 },
+  { id: "1718686448", label: "Internal+Friends and Family", displayOrder: 16 },
+  { id: "2025131723", label: "Interested in a pilot", displayOrder: 17 },
+] as const;
+
+const HUBSPOT_STAGE_LABEL_CANONICALIZATION: Record<string, string> = {
+  "prospect": "Prospect",
+  "approached": "Approached",
+  "lead": "Lead",
+  "demo scheduled": "Demo Scheduled",
+  "no-show/reschedule demo": "No-Show/Reschedule",
+  "no-show/reschedule": "No-Show/Reschedule",
+  "demo follow-up": "Demo Follow-Up",
+  "budgetary quote sent": "Budgetary Quote Sent",
+  "payment link sent": "Payment Link Sent",
+  "free trial": "Free Trial",
+  "freemium": "Freemium",
+  "closed won": "Closed Won",
+  "ping later": "Ping Later",
+  "closed lost": "Closed Lost",
+  "churn": "Churn",
+  "unlikely": "Unlikely",
+  "on hold": "On Hold",
+  "internal+friends and family": "Internal+Friends and Family",
+  "interested in a pilot": "Interested in a pilot",
+};
+
+const HUBSPOT_STAGE_FALLBACK_LABEL_BY_ID = Object.fromEntries(
+  HUBSPOT_MAIN_PIPELINE_FALLBACK_STAGES.map((stage) => [stage.id, stage.label]),
+) as Record<string, string>;
+
+type HubSpotPipelineStage = {
+  id: string;
+  label: string;
+  archived: boolean;
+  displayOrder: number;
+};
+
+type HubSpotPipeline = {
+  id: string;
+  label: string;
+  archived: boolean;
+  stages: HubSpotPipelineStage[];
+};
+
+type HubSpotPipelinesResponse = {
+  results?: Array<{
+    id?: string;
+    label?: string;
+    archived?: boolean;
+    stages?: Array<{
+      id?: string;
+      label?: string;
+      archived?: boolean;
+      displayOrder?: number;
+    }>;
+  }>;
 };
 
 type HubSpotDealObject = {
@@ -72,6 +131,81 @@ type HubSpotStageEvent = {
   source: string;
   dealName: string;
 };
+
+function normalizeHubSpotStageLabel(label: string): string {
+  const trimmed = label.trim();
+  if (!trimmed) return trimmed;
+  const canonical = HUBSPOT_STAGE_LABEL_CANONICALIZATION[trimmed.toLowerCase()];
+  return canonical ?? trimmed;
+}
+
+function buildFallbackPipelines(): HubSpotPipeline[] {
+  return [
+    {
+      id: HUBSPOT_MAIN_PIPELINE_ID,
+      label: "Deals pipeline",
+      archived: false,
+      stages: HUBSPOT_MAIN_PIPELINE_FALLBACK_STAGES.map((stage) => ({
+        id: stage.id,
+        label: stage.label,
+        archived: false,
+        displayOrder: stage.displayOrder,
+      })),
+    },
+  ];
+}
+
+function isMainHubSpotPipeline(pipelineId: string | null | undefined): boolean {
+  const normalized = pipelineId?.trim();
+  return !normalized || normalized === HUBSPOT_MAIN_PIPELINE_ID;
+}
+
+function compareHubSpotDealsByRecency(
+  a: { dealId: string; updatedAt: string | null; createdAt: string | null },
+  b: { dealId: string; updatedAt: string | null; createdAt: string | null },
+): number {
+  const updatedDiff = (Date.parse(b.updatedAt || "") || 0) - (Date.parse(a.updatedAt || "") || 0);
+  if (updatedDiff !== 0) return updatedDiff;
+  const createdDiff = (Date.parse(b.createdAt || "") || 0) - (Date.parse(a.createdAt || "") || 0);
+  if (createdDiff !== 0) return createdDiff;
+  return a.dealId.localeCompare(b.dealId);
+}
+
+function resolveHubSpotStageLabel(stageId: string, stageLabelById: Map<string, string>): string {
+  return stageLabelById.get(stageId) ?? HUBSPOT_STAGE_FALLBACK_LABEL_BY_ID[stageId] ?? normalizeHubSpotStageLabel(stageId);
+}
+
+function buildOrderedHubSpotStages(
+  stageAgg: Record<string, { count: number; value: number }>,
+  pipeline: HubSpotPipeline | null,
+): DealStage[] {
+  const ordered: DealStage[] = [];
+  const seen = new Set<string>();
+
+  for (const stage of pipeline?.stages ?? []) {
+    const entry = stageAgg[stage.id];
+    if (!entry) continue;
+    ordered.push({
+      stageId: stage.id,
+      label: stage.label,
+      count: entry.count,
+      value: entry.value,
+    });
+    seen.add(stage.id);
+  }
+
+  for (const [stageId, entry] of Object.entries(stageAgg)) {
+    if (seen.has(stageId)) continue;
+    ordered.push({
+      stageId,
+      label: HUBSPOT_STAGE_FALLBACK_LABEL_BY_ID[stageId] ?? normalizeHubSpotStageLabel(stageId),
+      count: entry.count,
+      value: entry.value,
+    });
+  }
+
+  return ordered;
+}
 
 async function fetchAllHubSpotDeals(input: {
   baseUrl: string;
@@ -119,6 +253,62 @@ async function fetchAllHubSpotDeals(input: {
   }
 
   return { deals, pagesFetched, lastAfter: after ?? null };
+}
+
+async function fetchHubSpotDealPipelines(input: {
+  baseUrl: string;
+  headers: Record<string, string>;
+}): Promise<{ pipelines: HubSpotPipeline[]; source: "api" | "fallback" }> {
+  const fallback = buildFallbackPipelines();
+
+  try {
+    const res = await fetch(`${input.baseUrl}/crm/v3/pipelines/deals`, {
+      headers: input.headers,
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      return { pipelines: fallback, source: "fallback" };
+    }
+
+    const data = (await res.json().catch(() => null)) as HubSpotPipelinesResponse | null;
+    const pipelines = (data?.results ?? [])
+      .map((pipeline) => {
+        const id = String(pipeline.id ?? "").trim();
+        if (!id) return null;
+
+        const stages = (pipeline.stages ?? [])
+          .map((stage, index) => {
+            const stageId = String(stage.id ?? "").trim();
+            if (!stageId) return null;
+            return {
+              id: stageId,
+              label: normalizeHubSpotStageLabel(String(stage.label ?? stageId)),
+              archived: Boolean(stage.archived),
+              displayOrder: typeof stage.displayOrder === "number" ? stage.displayOrder : index,
+            } satisfies HubSpotPipelineStage;
+          })
+          .filter(Boolean) as HubSpotPipelineStage[];
+
+        stages.sort((a, b) => a.displayOrder - b.displayOrder);
+
+        return {
+          id,
+          label: String(pipeline.label ?? id).trim() || id,
+          archived: Boolean(pipeline.archived),
+          stages,
+        } satisfies HubSpotPipeline;
+      })
+      .filter(Boolean) as HubSpotPipeline[];
+
+    const hasMainPipeline = pipelines.some((pipeline) => pipeline.id === HUBSPOT_MAIN_PIPELINE_ID);
+    if (!hasMainPipeline) {
+      return { pipelines: fallback, source: "fallback" };
+    }
+
+    return { pipelines, source: "api" };
+  } catch {
+    return { pipelines: fallback, source: "fallback" };
+  }
 }
 
 function parseHubSpotTimestamp(value: string | number | undefined): number | null {
@@ -264,7 +454,8 @@ export async function fetchHubSpotData(
     "dealstage,amount,dealname,closedate,createdate,hs_analytics_source,num_associated_contacts,hubspot_owner_id,hs_lastmodifieddate,stripe_customer_id,stripe_customer,pipeline";
   const historyKey = "dealstage";
 
-  const [activeDealsResult, archivedDealsResult] = await Promise.all([
+  const [pipelineResult, activeDealsResult, archivedDealsResult] = await Promise.all([
+    fetchHubSpotDealPipelines({ baseUrl, headers }),
     fetchAllHubSpotDeals({
       baseUrl,
       headers,
@@ -283,6 +474,11 @@ export async function fetchHubSpotData(
     }),
   ]);
 
+  const mainPipeline = pipelineResult.pipelines.find((pipeline) => pipeline.id === HUBSPOT_MAIN_PIPELINE_ID) ?? null;
+  const stageLabelById = new Map(
+    (mainPipeline?.stages ?? []).map((stage) => [stage.id, stage.label]),
+  );
+
   const allDealsById = new Map<string, HubSpotDealObject>();
   for (const deal of [...activeDealsResult.deals, ...archivedDealsResult.deals]) {
     const id = String(deal.id ?? "").trim();
@@ -290,19 +486,23 @@ export async function fetchHubSpotData(
     allDealsById.set(id, deal);
   }
   const allDeals = [...allDealsById.values()];
-  const dealsFetched = allDeals.length;
+  const allMainPipelineDeals = allDeals.filter((deal) =>
+    isMainHubSpotPipeline(deal.properties?.pipeline ?? null),
+  );
+  const activeDeals = activeDealsResult.deals.filter((deal) =>
+    isMainHubSpotPipeline(deal.properties?.pipeline ?? null),
+  );
+  const dealsFetched = allMainPipelineDeals.length;
 
   // Aggregate by stage
   const stageAgg: Record<string, { count: number; value: number }> = {};
   const sourceAgg: Record<string, { count: number; value: number; closedWon: number; followUpNeeded: number; churned: number }> = {};
-  const repAgg: Record<string, { count: number; value: number; closedWon: number; closedWonValue: number }> = {};
 
   let notActivatedCount = 0;
 
-  const activeDeals = activeDealsResult.deals;
   const shouldLoadOwners =
     useActivityInRange ||
-    allDeals.some((deal) => Boolean(deal.properties?.hubspot_owner_id));
+    allMainPipelineDeals.some((deal) => Boolean(deal.properties?.hubspot_owner_id));
 
   const ownerNameById = new Map<string, string>();
   let ownerLookupDiagnostics: { ownersFetched: number; source: string } | null = null;
@@ -325,11 +525,9 @@ export async function fetchHubSpotData(
     const props = deal.properties || {};
 
     const stage = props.dealstage || "unknown";
-    const mappedLabel = HUBSPOT_STAGE_MAP[stage] || stage;
+    const mappedLabel = resolveHubSpotStageLabel(stage, stageLabelById);
     const amount = parseFloat(props.amount) || 0;
     const source = props.hs_analytics_source || "Unknown";
-    const ownerId = props.hubspot_owner_id;
-    const repName = resolveOwnerName(ownerId);
 
     if (!stageAgg[stage]) stageAgg[stage] = { count: 0, value: 0 };
     stageAgg[stage].count++;
@@ -355,24 +553,9 @@ export async function fetchHubSpotData(
         notActivatedCount++;
       }
     }
-
-    if (!repAgg[repName]) repAgg[repName] = { count: 0, value: 0, closedWon: 0, closedWonValue: 0 };
-    repAgg[repName].count++;
-    repAgg[repName].value += amount;
-    if (stage === "closedwon") {
-      repAgg[repName].closedWon++;
-      repAgg[repName].closedWonValue += amount;
-    }
   }
 
-  const stages: DealStage[] = Object.entries(stageAgg).map(([id, data]) => ({
-    stageId: id,
-    label: HUBSPOT_STAGE_MAP[id] || id,
-    count: data.count,
-    value: data.value,
-  }));
-
-  const deals = activeDeals.map((deal) => {
+  const deals = allMainPipelineDeals.map((deal) => {
     const props = deal.properties || {};
     const stageId = props.dealstage || "unknown";
     const ownerId = props.hubspot_owner_id || null;
@@ -380,7 +563,7 @@ export async function fetchHubSpotData(
       dealId: String((deal as { id?: string }).id ?? ""),
       dealName: props.dealname || "Untitled deal",
       stageId,
-      stageLabel: HUBSPOT_STAGE_MAP[stageId] || stageId,
+      stageLabel: resolveHubSpotStageLabel(stageId, stageLabelById),
       amount: parseFloat(props.amount) || 0,
       source: props.hs_analytics_source || "Unknown",
       ownerId,
@@ -399,13 +582,12 @@ export async function fetchHubSpotData(
   const STAGE_CLOSED_WON = "closedwon";
   const STAGE_CLOSED_LOST = "closedlost";
   const STAGE_UNLIKELY = "1499784891";
-  const STAGE_CHURN = "1574807548";
-  const STAGE_SUBSCRIPTION = "contractsent";
+  const STAGE_CHURN = "1499784890";
   const STAGE_NO_SHOW = "1955958510";
   const STAGE_DEMO_SCHEDULED = "presentationscheduled";
   const STAGE_DEMO_FOLLOW_UP = "decisionmakerboughtin";
 
-  let funnelStages = stages;
+  let funnelStages = buildOrderedHubSpotStages(stageAgg, mainPipeline);
   let dealsBySource = Object.entries(sourceAgg).map(([source, data]) => ({
     source,
     count: data.count,
@@ -416,7 +598,7 @@ export async function fetchHubSpotData(
   let closedLost = stageAgg[STAGE_CLOSED_LOST]?.count || 0;
   let unlikely = stageAgg[STAGE_UNLIKELY]?.count || 0;
   let churn = stageAgg[STAGE_CHURN]?.count || 0;
-  let subscriptions = stageAgg[STAGE_SUBSCRIPTION]?.count || 0;
+  let subscriptions = 0;
   let noShows = stageAgg[STAGE_NO_SHOW]?.count || 0;
   let demoScheduled = stageAgg[STAGE_DEMO_SCHEDULED]?.count || 0;
   let demoFollowUp = stageAgg[STAGE_DEMO_FOLLOW_UP]?.count || 0;
@@ -432,7 +614,7 @@ export async function fetchHubSpotData(
     const eventsInRange: HubSpotStageEvent[] = [];
     const hadWonBeforeChurnInRange = new Set<string>();
 
-    for (const deal of allDeals) {
+    for (const deal of allMainPipelineDeals) {
       const events = extractHubSpotStageEvents(deal);
       if (events.length === 0) continue;
 
@@ -467,18 +649,13 @@ export async function fetchHubSpotData(
     closedLost = stageEntryAgg[STAGE_CLOSED_LOST]?.count || 0;
     unlikely = stageEntryAgg[STAGE_UNLIKELY]?.count || 0;
     churn = stageEntryAgg[STAGE_CHURN]?.count || 0;
-    subscriptions = stageEntryAgg[STAGE_SUBSCRIPTION]?.count || 0;
+    subscriptions = 0;
     noShows = stageEntryAgg[STAGE_NO_SHOW]?.count || 0;
     demoScheduled = stageEntryAgg[STAGE_DEMO_SCHEDULED]?.count || 0;
     demoFollowUp = stageEntryAgg[STAGE_DEMO_FOLLOW_UP]?.count || 0;
     wonValue = stageEntryAgg[STAGE_CLOSED_WON]?.value || 0;
 
-    funnelStages = Object.entries(stageEntryAgg).map(([id, data]) => ({
-      stageId: id,
-      label: HUBSPOT_STAGE_MAP[id] || id,
-      count: data.count,
-      value: data.value,
-    }));
+    funnelStages = buildOrderedHubSpotStages(stageEntryAgg, mainPipeline);
 
     const sourceAggTouched: Record<string, { count: number; value: number }> = {};
     for (const touched of touchedDeals.values()) {
@@ -590,12 +767,20 @@ export async function fetchHubSpotData(
       })
       .sort((a, b) => b.totalPipeline - a.totalPipeline);
 
-    // Reduce deal list to touched deals (keeps UI payload aligned to selected range).
-    const touchedIds = new Set(touchedDeals.keys());
-    const filteredDeals = deals.filter((d) => touchedIds.has(d.dealId));
-    deals.length = 0;
-    deals.push(...filteredDeals);
+  }
 
+  deals.sort(compareHubSpotDealsByRecency);
+
+  let displayDeals = [...deals];
+  if (useActivityInRange && rangeFrom && rangeTo) {
+    const fromMs = rangeFrom.getTime();
+    const toMs = rangeTo.getTime();
+    displayDeals = deals
+      .filter((deal) => {
+        const updatedAtMs = Date.parse(deal.updatedAt || "");
+        return Number.isFinite(updatedAtMs) && updatedAtMs >= fromMs && updatedAtMs <= toMs;
+      })
+      .sort(compareHubSpotDealsByRecency);
   }
 
   const winRate = closedWon + closedLost > 0 ? (closedWon / (closedWon + closedLost)) * 100 : 0;
@@ -646,6 +831,9 @@ export async function fetchHubSpotData(
     },
     activeDealsRaw: activeDealsResult.deals.length,
     archivedDealsRaw: archivedDealsResult.deals.length,
+    includedPipelineId: HUBSPOT_MAIN_PIPELINE_ID,
+    excludedPipelineIds: [HUBSPOT_SUBSCRIPTION_PIPELINE_ID],
+    excludedDeals: allDeals.length - allMainPipelineDeals.length,
     lastAfter: {
       active: activeDealsResult.lastAfter,
       archived: archivedDealsResult.lastAfter,
@@ -683,8 +871,18 @@ export async function fetchHubSpotData(
       recentContacts,
       bySource: [],
     },
+    pipelineDetected: {
+      pipelineId: HUBSPOT_MAIN_PIPELINE_ID,
+      dealCount: deals.length,
+    },
+    pipelineStageLabelsSource: pipelineResult.source,
+    pipelineStages: (mainPipeline?.stages ?? []).map((stage) => ({
+      stageId: stage.id,
+      label: stage.label,
+    })),
     repScoreboard,
     deals,
+    displayDeals,
     _meta: meta,
   };
 }

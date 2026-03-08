@@ -59,7 +59,7 @@ export function HubspotSalesDashboard({ data }: HubspotSalesDashboardProps) {
     );
   }
 
-  const { funnel, deals } = hubspot;
+  const { funnel } = hubspot;
 
   /* ── Funnel stages for HorizontalFunnel ─── */
   const funnelStages = funnel.stages.map((stage) => ({
@@ -77,7 +77,7 @@ export function HubspotSalesDashboard({ data }: HubspotSalesDashboardProps) {
   const totalSourceDeals = funnel.dealsBySource.reduce((sum, s) => sum + s.count, 0);
 
   /* ── Top deals ─── */
-  const topDeals = (deals ?? []).slice(0, 10);
+  const topDeals = (hubspot.displayDeals ?? hubspot.deals ?? []).slice(0, 10);
   const repRows = hubspot.repScoreboard ?? [];
 
   return (
@@ -159,7 +159,7 @@ export function HubspotSalesDashboard({ data }: HubspotSalesDashboardProps) {
             )}
           </DashboardSectionCard>
 
-          <DashboardSectionCard title="Top Deals">
+          <DashboardSectionCard title="Recent Deals">
             {topDeals.length === 0 ? (
               <p className="py-4 text-center text-xs text-muted-foreground">No deal data available</p>
             ) : (
