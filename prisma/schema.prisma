@@ -748,6 +748,7 @@ model BoardSettings {
   columnName  String @unique
   wipLimit    Int    @default(0)
   columnOrder Int    @default(0)
+  columnVersion Int  @default(0)
   color       String?
 
   createdAt DateTime @default(now())
