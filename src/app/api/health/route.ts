@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
+import packageJson from "../../../../package.json";
 import { prisma } from "@/lib/prisma";
 import { poolMonitor } from "@/lib/pool-monitor";
+
+const APP_VERSION = process.env.APP_VERSION?.trim() || packageJson.version;
 
 /**
  * GET /api/health
@@ -33,6 +36,7 @@ export async function GET() {
     return NextResponse.json(
       {
         status: isHealthy ? "ok" : "degraded",
+        version: APP_VERSION,
         timestamp: new Date().toISOString(),
         checks: {
           database: {
@@ -69,6 +73,7 @@ export async function GET() {
     return NextResponse.json(
       {
         status: "error",
+        version: APP_VERSION,
         timestamp: new Date().toISOString(),
         checks: {
           database: {
