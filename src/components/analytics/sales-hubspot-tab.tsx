@@ -33,7 +33,7 @@ export function SalesHubspotTab({ data }: SalesHubspotTabProps) {
   }
 
   const funnel = hs.funnel;
-  const deals = hs.deals ?? [];
+  const deals = hs.displayDeals ?? hs.deals ?? [];
 
   /* ── Alerts ──────────────────────────────────────── */
 
@@ -69,11 +69,17 @@ export function SalesHubspotTab({ data }: SalesHubspotTabProps) {
     .filter((s) => !["Closed Lost", "Unlikely", "Churn"].includes(s.label))
     .sort((a, b) => {
       const order = [
-        "Prospect", "Lead", "Demo Scheduled", "No-Show/Reschedule",
+        "Prospect", "Approached", "Lead", "Demo Scheduled", "No-Show/Reschedule",
         "Demo Follow-Up", "Budgetary Quote Sent", "Payment Link Sent",
-        "Free Trial", "Freemium", "Subscription", "Closed Won",
+        "Free Trial", "Freemium", "Interested in a pilot", "Ping Later",
+        "On Hold", "Internal+Friends and Family", "Closed Won",
       ];
-      return order.indexOf(a.label) - order.indexOf(b.label);
+      const aIndex = order.indexOf(a.label);
+      const bIndex = order.indexOf(b.label);
+      if (aIndex === -1 && bIndex === -1) return a.label.localeCompare(b.label);
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
     });
   const maxStageCount = Math.max(...salesStages.map((s) => s.count), 1);
 
@@ -96,7 +102,6 @@ export function SalesHubspotTab({ data }: SalesHubspotTabProps) {
     { key: "updatedAt", label: "Last Updated", render: (row) => row.updatedAt ? new Date(row.updatedAt).toLocaleDateString() : "—" },
   ];
   const dealRows: DealRow[] = deals
-    .sort((a, b) => b.amount - a.amount)
     .slice(0, 25)
     .map((d) => ({
       dealName: d.dealName,
@@ -269,7 +274,7 @@ export function SalesHubspotTab({ data }: SalesHubspotTabProps) {
 
       {/* ── Deal Details ──────────────────────────── */}
       {dealRows.length > 0 && (
-        <SectionCard title="Deal Details" subtitle={`Deals touched in range (showing top ${dealRows.length} by value)`}>
+        <SectionCard title="Deal Details" subtitle={`Main-pipeline deals last updated in range (showing ${dealRows.length})`}>
           <DataTable columns={dealColumns} rows={dealRows} emptyMessage="No deals found" />
         </SectionCard>
       )}

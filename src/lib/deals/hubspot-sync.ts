@@ -13,21 +13,29 @@ import {
 
 const HUBSPOT_BASE = "https://api.hubapi.com";
 const HUBSPOT_TOKEN_ENDPOINT = "https://api.hubapi.com/oauth/v1/token";
+const HUBSPOT_MAIN_PIPELINE_ID = "default";
 
 // ── Stage & source mapping ──────────────────────────────────
 
 const HUBSPOT_STAGE_TO_DEAL: Record<string, DealStage> = {
   appointmentscheduled: DealStage.LEAD,
+  "1499838171": DealStage.LEAD, // Approached
   qualifiedtobuy: DealStage.LEAD,
   presentationscheduled: DealStage.QUALIFIED,
+  "1955958510": DealStage.QUALIFIED, // No-Show/Reschedule Demo
   decisionmakerboughtin: DealStage.QUALIFIED,
-  "176498593": DealStage.PROPOSAL, // Budgetary Quote Sent
-  "176498594": DealStage.PROPOSAL, // Payment Link Sent
-  "1524801846": DealStage.NEGOTIATION, // Free Trial
-  contractsent: DealStage.NEGOTIATION,
+  "1955580622": DealStage.PROPOSAL, // Budgetary quote sent
+  "1559099077": DealStage.PROPOSAL, // Payment Link Sent
+  "1499827945": DealStage.NEGOTIATION, // Free Trial
+  "1731122907": DealStage.NEGOTIATION, // Freemium
+  contractsent: DealStage.NEGOTIATION, // Ping Later
   closedwon: DealStage.CLOSED_WON,
   closedlost: DealStage.CLOSED_LOST,
-  "1499784891": DealStage.CLOSED_LOST,
+  "1499784890": DealStage.CLOSED_LOST, // Churn
+  "1499784891": DealStage.CLOSED_LOST, // Unlikely
+  "1499827944": DealStage.NEGOTIATION, // On Hold
+  "1718686448": DealStage.NEGOTIATION, // Internal+Friends and Family
+  "2025131723": DealStage.NEGOTIATION, // Interested in a pilot
 };
 
 const HUBSPOT_SOURCE_TO_DEAL: Record<string, DealSource> = {
@@ -42,7 +50,7 @@ const HUBSPOT_SOURCE_TO_DEAL: Record<string, DealSource> = {
   EMAIL_MARKETING: DealSource.OUTBOUND,
 };
 
-function mapStage(hubspotStage: string): DealStage {
+export function mapHubSpotStageToDealStage(hubspotStage: string): DealStage {
   return HUBSPOT_STAGE_TO_DEAL[hubspotStage] ?? DealStage.LEAD;
 }
 
@@ -216,7 +224,7 @@ export async function syncDealsFromHubSpot(userId: string): Promise<SyncResult> 
 
   // 1. Fetch all entities from HubSpot
   const [hsDeals, hsContacts, hsCompanies, hsMeetings, ownerMap] = await Promise.all([
-    fetchAllPaginated(accessToken, "deals", "dealname,dealstage,amount,closedate,createdate,hs_analytics_source,hubspot_owner_id,hs_lastmodifieddate"),
+    fetchAllPaginated(accessToken, "deals", "dealname,dealstage,amount,closedate,createdate,hs_analytics_source,hubspot_owner_id,hs_lastmodifieddate,pipeline"),
     fetchAllPaginated(accessToken, "contacts", "firstname,lastname,email,phone,jobtitle"),
     fetchAllPaginated(accessToken, "companies", "name,domain,industry"),
     fetchAllPaginated(accessToken, "meetings", "hs_meeting_title,hs_meeting_start_time,hs_meeting_end_time,hs_meeting_location,hs_meeting_outcome,hs_meeting_external_url"),
@@ -296,10 +304,13 @@ export async function syncDealsFromHubSpot(userId: string): Promise<SyncResult> 
 
   // 5. Upsert deals (with company + contact associations)
   for (const hd of hsDeals) {
+    const pipelineId = hd.properties.pipeline?.trim() || null;
+    if (pipelineId && pipelineId !== HUBSPOT_MAIN_PIPELINE_ID) continue;
+
     const name = hd.properties.dealname?.trim();
     if (!name) continue;
 
-    const stage = mapStage(hd.properties.dealstage || "");
+    const stage = mapHubSpotStageToDealStage(hd.properties.dealstage || "");
     const source = mapSource(hd.properties.hs_analytics_source);
     const amount = parseFloat(hd.properties.amount) || 0;
     const closeDate = hd.properties.closedate ? new Date(hd.properties.closedate) : null;
