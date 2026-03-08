@@ -22,6 +22,92 @@ import {
   __private__ as bidirectionalPrivate,
 } from "@/lib/integrations/hubspot-bidirectional-sync";
 
+const WEBHOOK_PROCESSING_TIMEOUT_MS = 30_000;
+const WEBHOOK_TIMEOUT_MESSAGE = `HubSpot webhook processing timed out after ${WEBHOOK_PROCESSING_TIMEOUT_MS}ms`;
+
+interface WebhookProcessingError {
+  dealId: string;
+  error: string;
+}
+
+interface WebhookProcessingResult {
+  applied: number;
+  skipped: number;
+  errors: WebhookProcessingError[];
+}
+
+function assertWithinDeadline(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw new Error(WEBHOOK_TIMEOUT_MESSAGE);
+  }
+}
+
+function isWebhookTimeoutError(error: unknown): boolean {
+  return error instanceof Error && error.message === WEBHOOK_TIMEOUT_MESSAGE;
+}
+
+async function withWebhookProcessingTimeout<T>(
+  operation: (signal: AbortSignal) => Promise<T>
+): Promise<T> {
+  const controller = new AbortController();
+
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      controller.abort();
+      reject(new Error(WEBHOOK_TIMEOUT_MESSAGE));
+    }, WEBHOOK_PROCESSING_TIMEOUT_MS);
+
+    operation(controller.signal)
+      .then((value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+  });
+}
+
+async function recordDeadLetterFailure(input: {
+  ruleId: string;
+  userId: string;
+  change: ParsedDealStageChange;
+  error: string;
+}): Promise<void> {
+  await prisma.outboxEvent.create({
+    data: {
+      eventType: "integration.hubspot.webhook.failed",
+      aggregateType: "integration_rule",
+      aggregateId: input.ruleId,
+      schemaVersion: 1,
+      payload: {
+        dealId: input.change.dealId,
+        eventId: input.change.eventId,
+        portalId: input.change.portalId,
+        newStage: input.change.newStage,
+        occurredAt: input.change.occurredAt.toISOString(),
+        changeSource: input.change.changeSource,
+        userId: input.userId,
+        error: input.error,
+      } as unknown as Prisma.InputJsonValue,
+      idempotencyKey: [
+        "dead-letter:hubspot-webhook",
+        input.ruleId,
+        input.change.dealId,
+        input.change.eventId || input.change.occurredAt.getTime().toString(),
+        Date.now().toString(),
+      ].join(":"),
+      status: "DEAD_LETTER",
+      retryCount: 0,
+      nextAttemptAt: new Date(),
+      failedAt: new Date(),
+      error: input.error,
+      lastAttemptAt: new Date(),
+    },
+  });
+}
+
 /**
  * POST /api/integrations/hubspot/webhook
  *
@@ -33,64 +119,115 @@ import {
  * by HubSpot servers. Authentication is via HMAC signature.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const clientSecret = process.env.HUBSPOT_CLIENT_SECRET;
-  if (!clientSecret) {
-    console.error("hubspot.webhook: HUBSPOT_CLIENT_SECRET not configured");
+  try {
+    const clientSecret = process.env.HUBSPOT_CLIENT_SECRET;
+    if (!clientSecret) {
+      console.error("hubspot.webhook: HUBSPOT_CLIENT_SECRET not configured");
+      return NextResponse.json(
+        { error: "Webhook handler not configured" },
+        { status: 500 }
+      );
+    }
+
+    // Read raw body for signature verification
+    const body = await request.text();
+    const url = request.url;
+    const method = request.method;
+
+    const signatureResult = verifyWebhookSignature({
+      signatureHeader: request.headers.get("x-hubspot-signature-v3"),
+      timestampHeader: request.headers.get("x-hubspot-request-timestamp"),
+      method,
+      url,
+      body,
+      clientSecret,
+    });
+
+    if (!signatureResult.valid) {
+      console.warn("hubspot.webhook: signature verification failed", {
+        reason: signatureResult.reason,
+      });
+      return NextResponse.json(
+        { error: "Invalid webhook signature", reason: signatureResult.reason },
+        { status: 401 }
+      );
+    }
+
+    let events: unknown;
+    try {
+      events = JSON.parse(body);
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid JSON body" },
+        { status: 400 }
+      );
+    }
+
+    const dealChanges = parseDealStageChanges(events);
+    if (dealChanges.length === 0) {
+      return NextResponse.json({ ok: true, processed: 0 });
+    }
+
+    const result = await withWebhookProcessingTimeout((signal) =>
+      processWebhookChanges({ dealChanges, signal })
+    );
+
+    console.info("hubspot.webhook: processed", {
+      total: dealChanges.length,
+      applied: result.applied,
+      skipped: result.skipped,
+      errors: result.errors.length,
+    });
+
+    const hasErrors = result.errors.length > 0;
     return NextResponse.json(
-      { error: "Webhook handler not configured" },
+      {
+        ok: !hasErrors,
+        processed: dealChanges.length,
+        applied: result.applied,
+        skipped: result.skipped,
+        errors: result.errors.length,
+        failures: result.errors,
+      },
+      { status: hasErrors ? 207 : 200 }
+    );
+  } catch (error) {
+    if (isWebhookTimeoutError(error)) {
+      console.error("hubspot.webhook: processing timed out", {
+        timeoutMs: WEBHOOK_PROCESSING_TIMEOUT_MS,
+      });
+      return NextResponse.json(
+        {
+          error: "HubSpot webhook processing timed out",
+          timeoutMs: WEBHOOK_PROCESSING_TIMEOUT_MS,
+        },
+        { status: 500 }
+      );
+    }
+
+    console.error("hubspot.webhook: fatal error", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return NextResponse.json(
+      { error: "Failed to process HubSpot webhook" },
       { status: 500 }
     );
   }
+}
 
-  // Read raw body for signature verification
-  const body = await request.text();
-  const url = request.url;
-  const method = request.method;
-
-  // Verify webhook signature
-  const signatureResult = verifyWebhookSignature({
-    signatureHeader: request.headers.get("x-hubspot-signature-v3"),
-    timestampHeader: request.headers.get("x-hubspot-request-timestamp"),
-    method,
-    url,
-    body,
-    clientSecret,
-  });
-
-  if (!signatureResult.valid) {
-    console.warn("hubspot.webhook: signature verification failed", {
-      reason: signatureResult.reason,
-    });
-    return NextResponse.json(
-      { error: "Invalid webhook signature", reason: signatureResult.reason },
-      { status: 401 }
-    );
-  }
-
-  // Parse events
-  let events: unknown;
-  try {
-    events = JSON.parse(body);
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid JSON body" },
-      { status: 400 }
-    );
-  }
-
-  const dealChanges = parseDealStageChanges(events);
-  if (dealChanges.length === 0) {
-    // Acknowledge receipt even if no relevant changes
-    return NextResponse.json({ ok: true, processed: 0 });
-  }
+async function processWebhookChanges(input: {
+  dealChanges: ParsedDealStageChange[];
+  signal: AbortSignal;
+}): Promise<WebhookProcessingResult> {
+  const { dealChanges, signal } = input;
 
   const auditLog: SyncAuditEntry[] = [];
   let applied = 0;
   let skipped = 0;
-  const errors: Array<{ dealId: string; error: string }> = [];
+  const errors: WebhookProcessingError[] = [];
 
-  // Look up portal-based user connections
-  // HubSpot portal ID identifies which user account this webhook is for
+  assertWithinDeadline(signal);
+
   const portalId = dealChanges[0]?.portalId;
   const connections = portalId
     ? await prisma.integrationConnection.findMany({
@@ -104,7 +241,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       })
     : [];
 
-  // If no portal-matched connections, look for all HubSpot connections
+  assertWithinDeadline(signal);
+
   const targetConnections =
     connections.length > 0
       ? connections
@@ -114,7 +252,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         });
 
   for (const connection of targetConnections) {
-    // Load the user's bidirectional sync rule
+    assertWithinDeadline(signal);
+
     const rule = await prisma.integrationRule.findUnique({
       where: {
         userId_provider_key: {
@@ -130,6 +269,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const config = bidirectionalPrivate.normalizeConfig(rule.config);
 
     for (const change of dealChanges) {
+      assertWithinDeadline(signal);
+
       try {
         await processInboundChange({
           change,
@@ -137,20 +278,42 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           ruleId: rule.id,
           config,
           auditLog,
-          onApplied: () => { applied += 1; },
-          onSkipped: () => { skipped += 1; },
+          onApplied: () => {
+            applied += 1;
+          },
+          onSkipped: () => {
+            skipped += 1;
+          },
         });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         errors.push({ dealId: change.dealId, error: message });
         console.error("hubspot.webhook: processing error", {
           dealId: change.dealId,
           error: message,
         });
+
+        try {
+          await recordDeadLetterFailure({
+            ruleId: rule.id,
+            userId: connection.userId,
+            change,
+            error: message,
+          });
+        } catch (deadLetterError) {
+          console.error("hubspot.webhook: failed to record dead-letter event", {
+            dealId: change.dealId,
+            error:
+              deadLetterError instanceof Error
+                ? deadLetterError.message
+                : String(deadLetterError),
+          });
+        }
       }
     }
 
-    // Update rule checkpoint
+    assertWithinDeadline(signal);
+
     const newestChange = dealChanges[dealChanges.length - 1];
     if (newestChange) {
       await prisma.integrationRule.update({
@@ -158,26 +321,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         data: {
           lastRunAt: new Date(),
           lastObservedAt: newestChange.occurredAt,
-          lastError: errors.length > 0 ? `${errors.length} webhook processing error(s)` : null,
+          lastError:
+            errors.length > 0
+              ? `${errors.length} webhook processing error(s)`
+              : null,
         },
       });
     }
   }
 
-  console.info("hubspot.webhook: processed", {
-    total: dealChanges.length,
-    applied,
-    skipped,
-    errors: errors.length,
-  });
-
-  return NextResponse.json({
-    ok: true,
-    processed: dealChanges.length,
-    applied,
-    skipped,
-    errors: errors.length,
-  });
+  return { applied, skipped, errors };
 }
 
 async function processInboundChange(input: {
@@ -346,7 +499,7 @@ async function processInboundChange(input: {
           eventType: `hubspot_webhook_${change.dealId}_${action.taskId}_${action.toStatus}`,
         }),
       },
-      tx
+      tx as unknown as Parameters<typeof publishDomainEvent>[1]
     );
   });
 

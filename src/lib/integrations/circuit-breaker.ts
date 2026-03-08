@@ -56,7 +56,16 @@ const DEFAULT_OPTIONS: Required<CircuitBreakerOptions> = {
 // ---------------------------------------------------------------------------
 
 const cache = new Map<string, { entry: CircuitEntry; loadedAt: number }>();
-const CACHE_TTL_MS = 10_000;
+const updateQueue = new Map<string, Promise<void>>();
+const CACHE_TTL_MS = 2_000;
+
+const CIRCUIT_ENTRY_SELECT = {
+  state: true,
+  consecutiveFailures: true,
+  openedAt: true,
+  currentCooldownMs: true,
+  openCount: true,
+} as const;
 
 function cacheKey(provider: string, userId: string): string {
   return `${provider}:${userId}`;
@@ -72,29 +81,24 @@ function defaultEntry(): CircuitEntry {
   };
 }
 
+function cloneEntry(entry: CircuitEntry): CircuitEntry {
+  return { ...entry };
+}
+
 function normalizeState(value: unknown): CircuitState {
   return value === "OPEN" || value === "HALF_OPEN" || value === "CLOSED" ? value : "CLOSED";
 }
 
-async function loadEntry(provider: string, userId: string): Promise<CircuitEntry> {
-  const key = cacheKey(provider, userId);
-  const cached = cache.get(key);
-  if (cached && Date.now() - cached.loadedAt <= CACHE_TTL_MS) {
-    return cached.entry;
-  }
-
-  const row = await prisma.integrationCircuitState.findUnique({
-    where: { userId_key: { userId, key: provider } },
-    select: {
-      state: true,
-      consecutiveFailures: true,
-      openedAt: true,
-      currentCooldownMs: true,
-      openCount: true,
-    },
-  });
-
-  const entry: CircuitEntry = row
+function toCircuitEntry(
+  row: {
+    state: string;
+    consecutiveFailures: number;
+    openedAt: Date | null;
+    currentCooldownMs: number;
+    openCount: number;
+  } | null
+): CircuitEntry {
+  return row
     ? {
         consecutiveFailures: row.consecutiveFailures,
         state: normalizeState(row.state),
@@ -103,8 +107,30 @@ async function loadEntry(provider: string, userId: string): Promise<CircuitEntry
         openCount: row.openCount,
       }
     : defaultEntry();
+}
 
-  cache.set(key, { entry, loadedAt: Date.now() });
+function setCachedEntry(provider: string, userId: string, entry: CircuitEntry): void {
+  cache.set(cacheKey(provider, userId), {
+    entry: cloneEntry(entry),
+    loadedAt: Date.now(),
+  });
+}
+
+async function loadEntry(provider: string, userId: string): Promise<CircuitEntry> {
+  const key = cacheKey(provider, userId);
+  const cached = cache.get(key);
+  if (cached && Date.now() - cached.loadedAt <= CACHE_TTL_MS) {
+    return cloneEntry(cached.entry);
+  }
+
+  const row = await prisma.integrationCircuitState.findUnique({
+    where: { userId_key: { userId, key: provider } },
+    select: CIRCUIT_ENTRY_SELECT,
+  });
+
+  const entry = toCircuitEntry(row);
+
+  setCachedEntry(provider, userId, entry);
   return entry;
 }
 
@@ -128,7 +154,48 @@ async function saveEntry(provider: string, userId: string, entry: CircuitEntry):
       openCount: entry.openCount,
     },
   });
-  cache.set(cacheKey(provider, userId), { entry, loadedAt: Date.now() });
+  setCachedEntry(provider, userId, entry);
+}
+
+function queueCircuitUpdate<T>(
+  provider: string,
+  userId: string,
+  operation: () => Promise<T>
+): Promise<T> {
+  const key = cacheKey(provider, userId);
+  const previous = updateQueue.get(key) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(operation);
+  const queueEntry = next.then(() => undefined, () => undefined);
+  updateQueue.set(key, queueEntry);
+
+  return next.finally(() => {
+    if (updateQueue.get(key) === queueEntry) {
+      updateQueue.delete(key);
+    }
+  });
+}
+
+async function ensureCircuitRow(provider: string, userId: string): Promise<void> {
+  const existing = await prisma.integrationCircuitState.findUnique({
+    where: { userId_key: { userId, key: provider } },
+    select: { id: true },
+  });
+
+  if (existing) {
+    return;
+  }
+
+  await prisma.integrationCircuitState.create({
+    data: {
+      userId,
+      key: provider,
+      state: "CLOSED",
+      consecutiveFailures: 0,
+      openedAt: null,
+      currentCooldownMs: 0,
+      openCount: 0,
+    },
+  });
 }
 
 function resolvedOptions(opts?: CircuitBreakerOptions): Required<CircuitBreakerOptions> {
@@ -188,77 +255,99 @@ export function isCircuitClosed(
 /**
  * Record a successful request. Resets the circuit to CLOSED.
  */
-export function recordSuccess(provider: string, userId: string): void {
-  void (async () => {
-    const entry = await loadEntry(provider, userId);
+export async function recordSuccess(provider: string, userId: string): Promise<void> {
+  try {
+    await queueCircuitUpdate(provider, userId, async () => {
+      const entry = await loadEntry(provider, userId);
 
-  if (entry.state !== "CLOSED" || entry.consecutiveFailures > 0) {
-    console.info("integration.circuit_breaker.closed", {
-      provider,
-      userId,
-      previousState: entry.state,
-      previousFailures: entry.consecutiveFailures,
+      if (entry.state !== "CLOSED" || entry.consecutiveFailures > 0) {
+        console.info("integration.circuit_breaker.closed", {
+          provider,
+          userId,
+          previousState: entry.state,
+          previousFailures: entry.consecutiveFailures,
+        });
+      }
+
+      entry.consecutiveFailures = 0;
+      entry.state = "CLOSED";
+      entry.openedAt = null;
+      entry.currentCooldownMs = 0;
+      entry.openCount = 0;
+      await saveEntry(provider, userId, entry);
     });
-  }
-
-  entry.consecutiveFailures = 0;
-  entry.state = "CLOSED";
-  entry.openedAt = null;
-  entry.currentCooldownMs = 0;
-  entry.openCount = 0;
-    await saveEntry(provider, userId, entry);
-  })().catch((error) => {
+  } catch (error) {
     console.error("integration.circuit_breaker.record_success_failed", {
       provider,
       userId,
       error: error instanceof Error ? error.message : String(error),
     });
-  });
+  }
 }
 
 /**
  * Record a failed request. If the failure threshold is reached, the circuit
  * opens with an exponential cooldown.
  */
-export function recordFailure(
+export async function recordFailure(
   provider: string,
   userId: string,
   opts?: CircuitBreakerOptions
-): void {
-  void (async () => {
-    const entry = await loadEntry(provider, userId);
-    const _opts = resolvedOptions(opts);
+): Promise<void> {
+  try {
+    await queueCircuitUpdate(provider, userId, async () => {
+      const _opts = resolvedOptions(opts);
+      await ensureCircuitRow(provider, userId);
 
-    entry.consecutiveFailures += 1;
-
-    if (entry.consecutiveFailures >= _opts.failureThreshold && entry.state !== "OPEN") {
-      entry.state = "OPEN";
-      entry.openedAt = Date.now();
-      entry.openCount += 1;
-
-      // Exponential cooldown: base * multiplier^(openCount - 1), capped at max
-      entry.currentCooldownMs = Math.min(
-        _opts.baseCooldownMs * Math.pow(_opts.cooldownMultiplier, entry.openCount - 1),
-        _opts.maxCooldownMs
-      );
-
-      console.warn("integration.circuit_breaker.opened", {
-        provider,
-        userId,
-        consecutiveFailures: entry.consecutiveFailures,
-        cooldownMs: entry.currentCooldownMs,
-        openCount: entry.openCount,
+      const incrementedRow = await prisma.integrationCircuitState.update({
+        where: { userId_key: { userId, key: provider } },
+        data: {
+          consecutiveFailures: { increment: 1 },
+        },
+        select: CIRCUIT_ENTRY_SELECT,
       });
-    }
 
-    await saveEntry(provider, userId, entry);
-  })().catch((error) => {
+      let entry = toCircuitEntry(incrementedRow);
+
+      if (entry.consecutiveFailures >= _opts.failureThreshold && entry.state !== "OPEN") {
+        const nextOpenCount = entry.openCount + 1;
+        const openedAtMs = Date.now();
+        const currentCooldownMs = Math.min(
+          _opts.baseCooldownMs * Math.pow(_opts.cooldownMultiplier, nextOpenCount - 1),
+          _opts.maxCooldownMs
+        );
+
+        const openedRow = await prisma.integrationCircuitState.update({
+          where: { userId_key: { userId, key: provider } },
+          data: {
+            state: "OPEN",
+            openedAt: new Date(openedAtMs),
+            openCount: { increment: 1 },
+            currentCooldownMs,
+          },
+          select: CIRCUIT_ENTRY_SELECT,
+        });
+
+        entry = toCircuitEntry(openedRow);
+
+        console.warn("integration.circuit_breaker.opened", {
+          provider,
+          userId,
+          consecutiveFailures: entry.consecutiveFailures,
+          cooldownMs: entry.currentCooldownMs,
+          openCount: entry.openCount,
+        });
+      }
+
+      setCachedEntry(provider, userId, entry);
+    });
+  } catch (error) {
     console.error("integration.circuit_breaker.record_failure_failed", {
       provider,
       userId,
       error: error instanceof Error ? error.message : String(error),
     });
-  });
+  }
 }
 
 /**
@@ -344,10 +433,10 @@ export async function withCircuitBreaker<T>(
 
   try {
     const result = await fn();
-    recordSuccess(provider, userId);
+    await recordSuccess(provider, userId);
     return result;
   } catch (error) {
-    recordFailure(provider, userId, opts);
+    await recordFailure(provider, userId, opts);
     throw error;
   }
 }
@@ -357,6 +446,7 @@ export async function withCircuitBreaker<T>(
  */
 export function resetCircuit(provider: string, userId: string): void {
   cache.delete(cacheKey(provider, userId));
+  updateQueue.delete(cacheKey(provider, userId));
   void prisma.integrationCircuitState.deleteMany({
     where: { userId, key: provider },
   });
@@ -367,5 +457,6 @@ export function resetCircuit(provider: string, userId: string): void {
  */
 export function resetAllCircuits(): void {
   cache.clear();
+  updateQueue.clear();
   void prisma.integrationCircuitState.deleteMany({});
 }

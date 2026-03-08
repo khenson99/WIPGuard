@@ -3,37 +3,9 @@ import { getServerSession } from "next-auth";
 import { IntegrationProvider } from "@/generated/prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { enforcePermission } from "@/lib/permissions";
 import { getCredentials } from "@/lib/analytics/credentials";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
-import {
-  buildSalesPerformancePack,
-  fetchHubSpotContacts,
-  fetchHubSpotData,
-  fetchMercuryData,
-  fetchStripeChargesByCustomer,
-  fetchStripeData,
-} from "@/lib/analytics/fetchers";
-import { fetchGAData, fetchWebflowData } from "@/lib/analytics/fetchers-ga-webflow";
-import {
-  fetchGoogleAdsData,
-  fetchMetaAdsData,
-  fetchMetaPageData,
-  fetchRedditAdsData,
-  fetchMetaInstagramData,
-} from "@/lib/analytics/fetchers-ads";
-import { fetchCodaData } from "@/lib/analytics/fetchers-coda";
-import { fetchSemrushData } from "@/lib/analytics/fetchers-semrush";
-import { fetchPylonData } from "@/lib/analytics/fetchers-pylon";
-import { fetchIntegrationTelemetryData } from "@/lib/analytics/fetchers-integrations";
-import { buildCrossFunnelData, buildLifecycleFunnelData } from "@/lib/analytics/funnel";
-import { buildCustomerJourneyData } from "@/lib/analytics/customer-journey";
-import { buildDemoAnalyticsData } from "@/lib/analytics/demo-analytics";
-import { buildProcessAnalyticsData } from "@/lib/analytics/process-analytics";
-import { buildAiInsightsBundle, buildDistilledInsights } from "@/lib/analytics/insight-engine";
-import { buildProfitAndLossCore as buildProfitAndLoss } from "@/lib/analytics/pnl-builder";
-import { computeUnitEconomics } from "@/lib/analytics/unit-economics";
-import { buildDefaultScenarios, buildForecastScenario } from "@/lib/analytics/forecast-engine";
-import { computeBudgetActuals, computeBudgetSummary } from "@/lib/analytics/budget-variance";
 import { computeProgressPct } from "@/lib/analytics/finance-utils";
 import { createEmptyAnalyticsDashboardData, patchFreshnessWithStale } from "@/lib/analytics/response-shape";
 import {
@@ -249,6 +221,65 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "sales-performance": ["salesPerformance"],
 };
 
+function loadOnce<T>(loader: () => Promise<T>): () => Promise<T> {
+  let promise: Promise<T> | null = null;
+  return () => {
+    if (!promise) {
+      promise = loader();
+    }
+    return promise;
+  };
+}
+
+const loadCoreAnalyticsFetchers = loadOnce(
+  () => import("@/lib/analytics/fetchers")
+);
+const loadGaWebflowFetchers = loadOnce(
+  () => import("@/lib/analytics/fetchers-ga-webflow")
+);
+const loadAdsFetchers = loadOnce(
+  () => import("@/lib/analytics/fetchers-ads")
+);
+const loadCodaFetchers = loadOnce(
+  () => import("@/lib/analytics/fetchers-coda")
+);
+const loadSemrushFetchers = loadOnce(
+  () => import("@/lib/analytics/fetchers-semrush")
+);
+const loadPylonFetchers = loadOnce(
+  () => import("@/lib/analytics/fetchers-pylon")
+);
+const loadIntegrationTelemetryFetchers = loadOnce(
+  () => import("@/lib/analytics/fetchers-integrations")
+);
+const loadFunnelBuilders = loadOnce(
+  () => import("@/lib/analytics/funnel")
+);
+const loadCustomerJourneyBuilder = loadOnce(
+  () => import("@/lib/analytics/customer-journey")
+);
+const loadDemoAnalyticsBuilder = loadOnce(
+  () => import("@/lib/analytics/demo-analytics")
+);
+const loadProcessAnalyticsBuilder = loadOnce(
+  () => import("@/lib/analytics/process-analytics")
+);
+const loadInsightBuilders = loadOnce(
+  () => import("@/lib/analytics/insight-engine")
+);
+const loadPnlBuilder = loadOnce(
+  () => import("@/lib/analytics/pnl-builder")
+);
+const loadUnitEconomicsBuilder = loadOnce(
+  () => import("@/lib/analytics/unit-economics")
+);
+const loadForecastBuilder = loadOnce(
+  () => import("@/lib/analytics/forecast-engine")
+);
+const loadBudgetVarianceBuilder = loadOnce(
+  () => import("@/lib/analytics/budget-variance")
+);
+
 function requiredDomainsForSection(section: string | null): Set<DomainKey> {
   if (!section) return new Set(ALL_DOMAINS);
   return new Set(SECTION_DOMAINS[section] ?? ALL_DOMAINS);
@@ -315,20 +346,6 @@ async function withRetry<T>(
 function normalizeLookupKey(value: string | null | undefined): string {
   return value?.trim().toLowerCase() ?? "";
 }
-
-type StripeCustomerLinkDelegateLike = {
-  findMany(args: {
-    where: {
-      userId: string;
-    };
-  }): Promise<
-    Array<{
-      hubspotDealId: string;
-      hubspotDealName: string | null;
-      stripeCustomerId: string;
-    }>
-  >;
-};
 
 async function hydrateStripeCustomerLinks(
   userId: string,
@@ -501,6 +518,18 @@ async function buildFinancialPlanningData(
   userId: string,
   data: AnalyticsDashboardData,
 ): Promise<FinancialPlanningData> {
+  const [
+    { buildProfitAndLossCore: buildProfitAndLoss },
+    { computeUnitEconomics },
+    { buildDefaultScenarios, buildForecastScenario },
+    { computeBudgetActuals, computeBudgetSummary },
+  ] = await Promise.all([
+    loadPnlBuilder(),
+    loadUnitEconomicsBuilder(),
+    loadForecastBuilder(),
+    loadBudgetVarianceBuilder(),
+  ]);
+
   const stripe = data.stripe as StripeData | null;
   const mercury = data.mercury as MercuryData | null;
   const hubspot = data.hubspot as HubSpotData | null;
@@ -768,6 +797,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const permission = await enforcePermission({
+    userId,
+    action: "analytics.read",
+    request,
+    targetType: "analytics",
+  });
+  if (permission.deniedResponse) {
+    return permission.deniedResponse;
+  }
+
   const creds = await getCredentials(userId);
   const hasGAServiceAccount = Boolean(creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey);
   const hasGAOAuth = Boolean(
@@ -936,97 +975,238 @@ export async function GET(request: Request) {
 
   const fetchers = ([
     ...(creds.hubspotToken
-      ? [{ key: "hubspot" as const, fn: () => fetchHubSpotData(creds.hubspotToken!, { fromDate, toDate }) }]
+      ? [{
+          key: "hubspot" as const,
+          fn: async () => {
+            const { fetchHubSpotData } = await loadCoreAnalyticsFetchers();
+            return fetchHubSpotData(creds.hubspotToken!, { fromDate, toDate });
+          },
+        }]
       : []),
     ...(creds.stripeKey
-      ? [{ key: "stripe" as const, fn: () => fetchStripeData(creds.stripeKey!, { fromDate, toDate }) }]
+      ? [{
+          key: "stripe" as const,
+          fn: async () => {
+            const { fetchStripeData } = await loadCoreAnalyticsFetchers();
+            return fetchStripeData(creds.stripeKey!, { fromDate, toDate });
+          },
+        }]
       : []),
     ...(creds.mercuryKey
-      ? [{ key: "mercury" as const, fn: () => fetchMercuryData(creds.mercuryKey!, { fromDate, toDate }) }]
+      ? [{
+          key: "mercury" as const,
+          fn: async () => {
+            const { fetchMercuryData } = await loadCoreAnalyticsFetchers();
+            return fetchMercuryData(creds.mercuryKey!, { fromDate, toDate });
+          },
+        }]
       : []),
     ...((hasGAServiceAccount || hasGAOAuth)
       ? [{
           key: "googleAnalytics" as const,
-          fn: () =>
-            fetchGAData(
+          fn: async () => {
+            const { fetchGAData } = await loadGaWebflowFetchers();
+            return fetchGAData(
               creds.gaPropertyId!,
               creds.gaClientEmail ?? "",
               creds.gaPrivateKey ?? "",
               { fromDate, toDate }
-            ),
+            );
+          },
         }]
       : []),
     ...(creds.googleAdsDevToken && creds.googleAdsCustomerId && creds.googleAdsRefreshToken && creds.googleAdsClientId && creds.googleAdsClientSecret
       ? [{
           key: "googleAds" as const,
-          fn: () => fetchGoogleAdsData(
-            creds.googleAdsDevToken!,
-            creds.googleAdsCustomerId!,
-            creds.googleAdsRefreshToken!,
-            creds.googleAdsClientId!,
-            creds.googleAdsClientSecret!,
-            creds.googleAdsLoginCustomerId,
-            { fromDate, toDate },
-          ),
+          fn: async () => {
+            const { fetchGoogleAdsData } = await loadAdsFetchers();
+            return fetchGoogleAdsData(
+              creds.googleAdsDevToken!,
+              creds.googleAdsCustomerId!,
+              creds.googleAdsRefreshToken!,
+              creds.googleAdsClientId!,
+              creds.googleAdsClientSecret!,
+              creds.googleAdsLoginCustomerId,
+              { fromDate, toDate },
+            );
+          },
         }]
       : []),
     ...(creds.metaAccessToken && creds.metaAdAccountId
-      ? [{ key: "metaAds" as const, fn: () => fetchMetaAdsData(creds.metaAccessToken!, creds.metaAdAccountId!, { fromDate, toDate }) }]
+      ? [{
+          key: "metaAds" as const,
+          fn: async () => {
+            const { fetchMetaAdsData } = await loadAdsFetchers();
+            return fetchMetaAdsData(
+              creds.metaAccessToken!,
+              creds.metaAdAccountId!,
+              { fromDate, toDate }
+            );
+          },
+        }]
       : []),
     ...(creds.metaAccessToken && creds.metaPageId
-      ? [{ key: "metaPage" as const, fn: () => fetchMetaPageData(creds.metaAccessToken!, creds.metaPageId!, { fromDate, toDate }) }]
+      ? [{
+          key: "metaPage" as const,
+          fn: async () => {
+            const { fetchMetaPageData } = await loadAdsFetchers();
+            return fetchMetaPageData(
+              creds.metaAccessToken!,
+              creds.metaPageId!,
+              { fromDate, toDate }
+            );
+          },
+        }]
       : []),
     ...(creds.metaAccessToken && creds.metaInstagramAccountId
       ? [{
           key: "instagram" as const,
-          fn: () => fetchMetaInstagramData(
-            creds.metaAccessToken!,
-            creds.metaInstagramAccountId!,
-            { pageId: creds.metaPageId ?? undefined },
-            fromDate,
-            toDate,
-          ),
+          fn: async () => {
+            const { fetchMetaInstagramData } = await loadAdsFetchers();
+            return fetchMetaInstagramData(
+              creds.metaAccessToken!,
+              creds.metaInstagramAccountId!,
+              { pageId: creds.metaPageId ?? undefined },
+              fromDate,
+              toDate,
+            );
+          },
         }]
       : []),
     ...(creds.redditClientId && creds.redditClientSecret && creds.redditRefreshToken && creds.redditAdAccountId
       ? [{
           key: "redditAds" as const,
-          fn: () => fetchRedditAdsData(
-            creds.redditClientId!,
-            creds.redditClientSecret!,
-            creds.redditRefreshToken!,
-            creds.redditAdAccountId!,
-            creds.redditUserAgent,
-            { fromDate, toDate },
-          ),
+          fn: async () => {
+            const { fetchRedditAdsData } = await loadAdsFetchers();
+            return fetchRedditAdsData(
+              creds.redditClientId!,
+              creds.redditClientSecret!,
+              creds.redditRefreshToken!,
+              creds.redditAdAccountId!,
+              creds.redditUserAgent,
+              { fromDate, toDate },
+            );
+          },
         }]
       : []),
     ...(creds.webflowApiToken && creds.webflowSiteId
-      ? [{ key: "webflow" as const, fn: () => fetchWebflowData(creds.webflowApiToken!, creds.webflowSiteId!, fromDate, toDate) }]
+      ? [{
+          key: "webflow" as const,
+          fn: async () => {
+            const { fetchWebflowData } = await loadGaWebflowFetchers();
+            return fetchWebflowData(
+              creds.webflowApiToken!,
+              creds.webflowSiteId!,
+              fromDate,
+              toDate
+            );
+          },
+        }]
       : []),
     ...(creds.codaApiToken && creds.codaDocId
-      ? [{ key: "coda" as const, fn: () => fetchCodaData(creds.codaApiToken!, creds.codaDocId!, { fromDate, toDate }) }]
+      ? [{
+          key: "coda" as const,
+          fn: async () => {
+            const { fetchCodaData } = await loadCodaFetchers();
+            return fetchCodaData(creds.codaApiToken!, creds.codaDocId!, {
+              fromDate,
+              toDate,
+            });
+          },
+        }]
       : []),
     ...(creds.semrushApiToken && creds.semrushDomain
-      ? [{ key: "semrush" as const, fn: () => fetchSemrushData(creds.semrushApiToken!, creds.semrushDomain!) }]
+      ? [{
+          key: "semrush" as const,
+          fn: async () => {
+            const { fetchSemrushData } = await loadSemrushFetchers();
+            return fetchSemrushData(
+              creds.semrushApiToken!,
+              creds.semrushDomain!
+            );
+          },
+        }]
       : []),
     ...(creds.pylonApiKey
       ? [{
           key: "pylon" as const,
-          fn: () => fetchPylonData({
-            apiKey: creds.pylonApiKey!,
-            from: range.from,
-            to: range.to,
-            baseUrl: creds.pylonBaseUrl ?? undefined,
-          }),
+          fn: async () => {
+            const { fetchPylonData } = await loadPylonFetchers();
+            return fetchPylonData({
+              apiKey: creds.pylonApiKey!,
+              from: range.from,
+              to: range.to,
+              baseUrl: creds.pylonBaseUrl ?? undefined,
+            });
+          },
         }]
       : []),
     { key: "product" as const, fn: () => computeProductSuccessData(fromDate, toDate) },
-    { key: "googleWorkspace" as const, fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.GOOGLE_WORKSPACE, from: fromDate, to: toDate }) },
-    { key: "hubspotOps" as const, fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.HUBSPOT, from: fromDate, to: toDate }) },
-    { key: "slack" as const, fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.SLACK, from: fromDate, to: toDate }) },
-    { key: "codaOps" as const, fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.CODA, from: fromDate, to: toDate }) },
-    { key: "redditOps" as const, fn: () => fetchIntegrationTelemetryData({ userId, provider: IntegrationProvider.REDDIT, from: fromDate, to: toDate }) },
+    {
+      key: "googleWorkspace" as const,
+      fn: async () => {
+        const { fetchIntegrationTelemetryData } =
+          await loadIntegrationTelemetryFetchers();
+        return fetchIntegrationTelemetryData({
+          userId,
+          provider: IntegrationProvider.GOOGLE_WORKSPACE,
+          from: fromDate,
+          to: toDate,
+        });
+      },
+    },
+    {
+      key: "hubspotOps" as const,
+      fn: async () => {
+        const { fetchIntegrationTelemetryData } =
+          await loadIntegrationTelemetryFetchers();
+        return fetchIntegrationTelemetryData({
+          userId,
+          provider: IntegrationProvider.HUBSPOT,
+          from: fromDate,
+          to: toDate,
+        });
+      },
+    },
+    {
+      key: "slack" as const,
+      fn: async () => {
+        const { fetchIntegrationTelemetryData } =
+          await loadIntegrationTelemetryFetchers();
+        return fetchIntegrationTelemetryData({
+          userId,
+          provider: IntegrationProvider.SLACK,
+          from: fromDate,
+          to: toDate,
+        });
+      },
+    },
+    {
+      key: "codaOps" as const,
+      fn: async () => {
+        const { fetchIntegrationTelemetryData } =
+          await loadIntegrationTelemetryFetchers();
+        return fetchIntegrationTelemetryData({
+          userId,
+          provider: IntegrationProvider.CODA,
+          from: fromDate,
+          to: toDate,
+        });
+      },
+    },
+    {
+      key: "redditOps" as const,
+      fn: async () => {
+        const { fetchIntegrationTelemetryData } =
+          await loadIntegrationTelemetryFetchers();
+        return fetchIntegrationTelemetryData({
+          userId,
+          provider: IntegrationProvider.REDDIT,
+          from: fromDate,
+          to: toDate,
+        });
+      },
+    },
   ] as FetchEntry[]).filter((entry) => domains.has(entry.key));
 
   const TIMEOUT_OVERRIDES: Partial<Record<DomainKey, number>> = {
@@ -1177,28 +1357,35 @@ export async function GET(request: Request) {
   await hydrateStripeCustomerLinks(userId, result);
 
   if (domains.has("funnelJourney")) {
+    const { buildCrossFunnelData } = await loadFunnelBuilders();
     result.funnelJourney = buildCrossFunnelData(result);
   }
   if (domains.has("lifecycleFunnel")) {
+    const { buildLifecycleFunnelData } = await loadFunnelBuilders();
     result.lifecycleFunnel = buildLifecycleFunnelData(result);
   }
   if (domains.has("aiInsights")) {
+    const { buildAiInsightsBundle } = await loadInsightBuilders();
     result.aiInsights = buildAiInsightsBundle(result);
   }
   
   if (domains.has("customerJourney")) {
+    const { buildCustomerJourneyData } = await loadCustomerJourneyBuilder();
     result.customerJourney = buildCustomerJourneyData(result);
   }
   if (domains.has("recommendations")) {
     result.recommendations = buildRecommendations(result);
   }
   if (domains.has("distilledInsights")) {
+    const { buildDistilledInsights } = await loadInsightBuilders();
     result.distilledInsights = buildDistilledInsights(result);
   }
   if (domains.has("demoAnalytics")) {
+    const { buildDemoAnalyticsData } = await loadDemoAnalyticsBuilder();
     result.demoAnalytics = buildDemoAnalyticsData(result);
   }
   if (domains.has("processAnalytics")) {
+    const { buildProcessAnalyticsData } = await loadProcessAnalyticsBuilder();
     result.processAnalytics = buildProcessAnalyticsData(result);
   }
 
