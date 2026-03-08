@@ -1,10 +1,6 @@
 import {
   LayoutDashboard,
-  FolderKanban,
-  CalendarDays,
   Handshake,
-  CheckSquare,
-  Gauge,
   Megaphone,
   Landmark,
   Target,
@@ -14,7 +10,6 @@ import {
   Activity,
   Bot,
   Sparkles,
-  Users,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -51,11 +46,7 @@ const ANALYTICS_ICONS: Record<AnalyticsPrimarySectionId, LucideIcon> = {
 export function buildNavItems(): NavItem[] {
   const topStatic: NavItem[] = [
     { id: "dashboard", href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "projects", href: "/projects", label: "Projects", icon: FolderKanban },
-    { id: "conferences", href: "/conferences", label: "Conferences", icon: CalendarDays },
     { id: "deals", href: "/deals", label: "Deals", icon: Handshake },
-    { id: "tasks", href: "/tasks", label: "Tasks", icon: CheckSquare },
-    { id: "whip", href: "/whip", label: "Whip View", icon: Gauge },
   ];
 
   const analyticsGroups: NavItem[] = ANALYTICS_PRIMARY_SECTIONS.map((section) => {
@@ -79,7 +70,6 @@ export function buildNavItems(): NavItem[] {
   ];
 
   const bottomStatic: NavItem[] = [
-    { id: "standup", href: "/today", label: "Standup Hub", icon: Users },
     { id: "automations", href: "/automations", label: "Automations", icon: Bot },
   ];
 

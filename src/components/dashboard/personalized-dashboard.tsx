@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { AlertTriangle, CalendarClock, Clock3, Flame } from "lucide-react";
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-state";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
@@ -110,18 +109,12 @@ function TaskList({
   title,
   items,
   empty,
-  onTaskClick,
   maxItems = 8,
-  footerActionLabel,
-  onFooterAction,
 }: {
   title: string;
   items: DashboardTask[];
   empty: string;
-  onTaskClick?: (taskId: string) => void;
   maxItems?: number;
-  footerActionLabel?: string;
-  onFooterAction?: () => void;
 }) {
   const visible = items.slice(0, maxItems);
   const hasMore = items.length > visible.length;
@@ -135,24 +128,7 @@ function TaskList({
           {visible.map((task) => (
             <div
               key={task.id}
-              role={onTaskClick ? "button" : undefined}
-              tabIndex={onTaskClick ? 0 : undefined}
-              onClick={onTaskClick ? () => onTaskClick(task.id) : undefined}
-              onKeyDown={
-                onTaskClick
-                  ? (e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onTaskClick(task.id);
-                      }
-                    }
-                  : undefined
-              }
-              className={`rounded-lg border border-border/60 px-3 py-2${
-                onTaskClick
-                  ? " cursor-pointer hover:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
-                  : ""
-              }`}
+              className="rounded-lg border border-border/60 px-3 py-2"
             >
               <p className="truncate text-sm font-medium text-foreground">{task.title}</p>
               <p className="mt-1 text-[11px] text-muted-foreground">
@@ -162,24 +138,11 @@ function TaskList({
           ))}
         </div>
       )}
-      {hasMore || (footerActionLabel && onFooterAction) ? (
+      {hasMore ? (
         <div className="mt-3 flex items-center justify-between">
-          {hasMore ? (
-            <span className="text-[11px] text-muted-foreground">
-              Showing {visible.length} of {items.length}
-            </span>
-          ) : (
-            <span />
-          )}
-          {footerActionLabel && onFooterAction ? (
-            <button
-              type="button"
-              onClick={onFooterAction}
-              className="text-xs text-muted-foreground underline-offset-4 hover:underline hover:text-foreground"
-            >
-              {footerActionLabel}
-            </button>
-          ) : null}
+          <span className="text-[11px] text-muted-foreground">
+            Showing {visible.length} of {items.length}
+          </span>
         </div>
       ) : null}
     </section>
@@ -187,7 +150,6 @@ function TaskList({
 }
 
 export function PersonalizedDashboard() {
-  const router = useRouter();
   const focusRef = useRef<HTMLDivElement | null>(null);
   const [focusKey, setFocusKey] = useState<"blocked" | "overdue" | "dueSoon" | "active">("blocked");
 
@@ -366,13 +328,7 @@ export function PersonalizedDashboard() {
         <div className="rounded-xl border border-border bg-card p-4" aria-label="My workload chart">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-foreground">My Workload</h2>
-            <button
-              type="button"
-              onClick={() => router.push("/tasks?view=my-work")}
-              className="text-xs text-muted-foreground underline-offset-4 hover:underline hover:text-foreground"
-            >
-              Open tasks
-            </button>
+            <span className="text-xs text-muted-foreground">Read-only summary</span>
           </div>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
             <DonutChart
@@ -470,17 +426,8 @@ export function PersonalizedDashboard() {
             {data.personal.recommendations.map((task) => (
               <div
                 key={task.id}
-                role="button"
-                tabIndex={0}
                 aria-label={task.title}
-                onClick={() => router.push(`/tasks?task=${task.id}`)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    router.push(`/tasks?task=${task.id}`);
-                  }
-                }}
-                className="cursor-pointer rounded-lg border border-border/60 px-3 py-2 hover:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                className="rounded-lg border border-border/60 px-3 py-2"
               >
                 <p className="truncate text-sm font-medium text-foreground">{task.title}</p>
                 <p className="mt-1 text-[11px] text-muted-foreground">
@@ -499,9 +446,6 @@ export function PersonalizedDashboard() {
             items={focusConfig.items}
             empty={focusConfig.empty}
             maxItems={10}
-            onTaskClick={(id) => router.push(`/tasks?task=${id}`)}
-            footerActionLabel="Open tasks"
-            onFooterAction={() => router.push("/tasks?view=my-work")}
           />
         ) : null}
         {focusKey !== "dueSoon" && (
@@ -510,9 +454,6 @@ export function PersonalizedDashboard() {
             items={data.personal.myDueSoon}
             empty="No due-soon tasks."
             maxItems={6}
-            onTaskClick={(id) => router.push(`/tasks?task=${id}`)}
-            footerActionLabel="Open tasks"
-            onFooterAction={() => router.push("/tasks?view=my-work")}
           />
         )}
       </div>
@@ -539,16 +480,7 @@ export function PersonalizedDashboard() {
             {data.projects.active.map((project) => (
               <div
                 key={project.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => router.push(`/projects/${project.id}`)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    router.push(`/projects/${project.id}`);
-                  }
-                }}
-                className="cursor-pointer rounded-lg border border-border/60 px-3 py-2 hover:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                className="rounded-lg border border-border/60 px-3 py-2"
               >
                 <p className="truncate text-sm font-medium text-foreground">{project.name}</p>
                 <p className="mt-1 text-xs text-muted-foreground">

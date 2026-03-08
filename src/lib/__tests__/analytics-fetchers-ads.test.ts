@@ -427,6 +427,40 @@ describe("analytics ads fetchers", () => {
     ).rejects.toThrow("Reddit campaigns error (403): insufficient_scope");
   });
 
+  it("clamps Reddit report end dates to the last complete UTC day by default", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-03T12:34:56.000Z"));
+
+    try {
+      const fetchMock = vi.fn();
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ access_token: "reddit-token" }))
+        .mockResolvedValueOnce(jsonResponse({ data: [] }))
+        .mockResolvedValueOnce(jsonResponse({ data: { metrics: [] } }));
+
+      vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+      await fetchRedditAdsData(
+        "reddit-client",
+        "reddit-secret",
+        "reddit-refresh",
+        "acc-1",
+        "WIPGuard-Test/1.0"
+      );
+
+      const reportsCall = fetchMock.mock.calls[2];
+      const reportInit = reportsCall?.[1] as RequestInit;
+      const payload = JSON.parse(String(reportInit.body ?? "{}")) as {
+        data?: { starts_at?: string; ends_at?: string };
+      };
+
+      expect(payload.data?.starts_at).toBe("2026-02-01T00:00:00Z");
+      expect(payload.data?.ends_at).toBe("2026-03-03T00:00:00Z");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("resolves Instagram account via Page when direct profile fetch fails", async () => {
     const fetchMock = vi.fn();
     fetchMock
