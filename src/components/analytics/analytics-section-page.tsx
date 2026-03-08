@@ -28,6 +28,10 @@ const GenericSlackTab = dynamic(() => import("@/components/analytics/generic-sla
 const CsPylonTab = dynamic(() => import("@/components/analytics/cs-pylon-tab").then((m) => m.CsPylonTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const CsCodaTab = dynamic(() => import("@/components/analytics/cs-coda-tab").then((m) => m.CsCodaTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const CsProductTab = dynamic(() => import("@/components/analytics/cs-product-tab").then((m) => m.CsProductTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const DecisionDashboardView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.DecisionDashboardView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const FlowMetricsView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.FlowMetricsView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const FlowRiskView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.FlowRiskView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const ObservabilityView = dynamic(() => import("@/components/analytics/ops-insights").then((m) => m.ObservabilityView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const LifecycleFunnelPanel = dynamic(() => import("@/components/analytics/lifecycle-funnel-panel").then((m) => m.LifecycleFunnelPanel), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const AiInsightsPanel = dynamic(() => import("@/components/analytics/ai-insights-panel").then((m) => m.AiInsightsPanel), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const GoogleAnalyticsDashboard = dynamic(() => import("./sub-dashboards/google-analytics-dashboard").then((m) => m.GoogleAnalyticsDashboard), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
@@ -38,6 +42,7 @@ const DemoAnalyticsTab = dynamic(() => import("@/components/analytics/demo-analy
 const ProcessAnalyticsTab = dynamic(() => import("@/components/analytics/process-analytics-tab").then((m) => m.ProcessAnalyticsTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const CustomerJourneyDrillDown = dynamic(() => import("@/components/analytics/customer-journey-drill-down").then((m) => m.CustomerJourneyDrillDown), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const CustomerJourneyConversionTab = dynamic(() => import("@/components/analytics/customer-journey-conversion-tab").then((m) => m.CustomerJourneyConversionTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const VisitorFunnelTab = dynamic(() => import("@/components/analytics/visitor-funnel-tab").then((m) => m.VisitorFunnelTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const DemoSchedulingView = dynamic(() => import("@/components/analytics/demo-scheduling-view").then((m) => m.DemoSchedulingView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const DemoAttributionView = dynamic(() => import("@/components/analytics/demo-attribution-view").then((m) => m.DemoAttributionView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const ProcessBottlenecksView = dynamic(() => import("@/components/analytics/process-bottlenecks-view").then((m) => m.ProcessBottlenecksView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
@@ -66,9 +71,12 @@ interface AnalyticsSectionPageProps {
 
 interface SectionViewModel {
   analyticsData: AnalyticsDashboardData | null;
+  auxPayload: Record<string, unknown> | null;
 }
 
 const SECTION_CACHE_PREFIX = "analytics:section:v2:";
+const OPS_DOMAINS = ["decisionDashboard", "flowMetrics", "flowRisk", "observability"] as const;
+type ChildDataDomain = "decisionDashboard" | "flowMetrics" | "flowRisk" | "observability" | string;
 
 const SUB_DASHBOARD_MAP: Record<string, React.ComponentType<{ data: AnalyticsDashboardData | null }>> = {
   "ads-google-analytics": GoogleAnalyticsDashboard,
@@ -99,8 +107,13 @@ export type AnalyticsChildRenderKind =
   | "cs-product"
   | "cs-google-workspace"
   | "cs-slack"
+  | "decisionDashboard"
+  | "flowMetrics"
+  | "flowRisk"
+  | "observability"
   | "customerJourneyDrillDown"
   | "customerJourneyConversion"
+  | "visitorFunnel"
   | "demoScheduling"
   | "demoAttribution"
   | "processBottlenecks"
@@ -143,6 +156,7 @@ const CHILD_ID_TO_RENDER_KIND = {
   // Customer Journey
   "cj-touchpoints": "customerJourneyDrillDown",
   "cj-conversion": "customerJourneyConversion",
+  "cj-acquisition-funnel": "visitorFunnel",
   // Demo Analytics
   "demo-scheduling": "demoScheduling",
   "demo-attribution": "demoAttribution",
@@ -154,7 +168,12 @@ const CHILD_ID_TO_RENDER_KIND = {
 } as const satisfies Record<string, AnalyticsChildRenderKind>;
 
 const DATA_DOMAIN_TO_RENDER_KIND = {
+  decisionDashboard: "decisionDashboard",
+  flowMetrics: "flowMetrics",
+  flowRisk: "flowRisk",
+  observability: "observability",
   customerJourney: "customerJourneyDrillDown",
+  visitorFunnel: "visitorFunnel",
   demoAnalytics: "demoScheduling",
   processAnalytics: "processBottlenecks",
 } as const satisfies Record<string, AnalyticsChildRenderKind>;
@@ -171,7 +190,7 @@ const DATA_DOMAIN_TO_RENDER_KIND = {
  */
 export function resolveAnalyticsChildRenderKind(input: {
   childId: string;
-  childDataDomain: string;
+  childDataDomain: ChildDataDomain;
 }): AnalyticsChildRenderKind {
   return (
     (CHILD_ID_TO_RENDER_KIND as Record<string, AnalyticsChildRenderKind>)[input.childId] ??
@@ -180,8 +199,17 @@ export function resolveAnalyticsChildRenderKind(input: {
   );
 }
 
-function sectionCacheKey(sectionId: string, rangeQuery: string): string {
-  return `${SECTION_CACHE_PREFIX}${sectionId}:${rangeQuery || "default"}`;
+function sectionCacheKey(sectionId: string, querySignature: string): string {
+  return `${SECTION_CACHE_PREFIX}${sectionId}:${querySignature || "default"}`;
+}
+
+async function fetchWithRetry(url: string, init: RequestInit, retries = 1): Promise<Response> {
+  for (let i = 0; i <= retries; i++) {
+    const res = await fetch(url, init);
+    if (res.ok || i === retries || res.status < 500) return res;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  throw new Error("unreachable");
 }
 
 function summarizePayload(payload: Record<string, unknown>) {
@@ -269,10 +297,93 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
   const fullRangeSuffix = rangeQuery ? `&${rangeQuery}` : "";
 
   const resource = useDashboardResource<SectionViewModel>({
-    cacheKey: sectionCacheKey(sectionId, rangeQuery),
+    cacheKey: sectionCacheKey(sectionId, searchParamsString),
     deps: [sectionId, rangeQuery, searchParamsString, child?.id],
     load: async ({ signal, refresh }) => {
-      const analyticsParams = new URLSearchParams(rangeQuery);
+      const params = new URLSearchParams(searchParamsString);
+      const isOpsSection = Boolean(child && OPS_DOMAINS.includes(child.dataDomain as (typeof OPS_DOMAINS)[number]));
+
+      if (isOpsSection) {
+        if (child?.dataDomain === "decisionDashboard") {
+          const from = params.get("from");
+          const to = params.get("to");
+          let lookback = 30;
+          if (from && to) {
+            const fromDate = new Date(`${from}T00:00:00.000Z`);
+            const toDate = new Date(`${to}T23:59:59.999Z`);
+            if (!Number.isNaN(fromDate.getTime()) && !Number.isNaN(toDate.getTime()) && fromDate <= toDate) {
+              lookback = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
+            }
+          } else {
+            lookback = Number((params.get("range") || "30d").replace("d", "")) || 30;
+          }
+
+          const response = await fetchWithRetry(
+            `/api/analytics/decision-dashboard?lookbackDays=${Math.max(7, Math.min(120, lookback))}`,
+            { signal, cache: refresh ? "no-store" : "default" }
+          );
+          if (!response.ok) {
+            throw new Error(`Decision dashboard request failed (${response.status})`);
+          }
+
+          return {
+            analyticsData: null,
+            auxPayload: (await response.json()) as Record<string, unknown>,
+          };
+        }
+
+        if (child?.dataDomain === "flowMetrics") {
+          if (!params.get("from") || !params.get("to")) {
+            const now = new Date();
+            params.set("from", new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
+            params.set("to", now.toISOString().slice(0, 10));
+          }
+          const response = await fetchWithRetry(`/api/flow/metrics?${params.toString()}&interval=week`, {
+            signal,
+            cache: refresh ? "no-store" : "default",
+          });
+          if (!response.ok) {
+            throw new Error(`Flow metrics request failed (${response.status})`);
+          }
+
+          return {
+            analyticsData: null,
+            auxPayload: (await response.json()) as Record<string, unknown>,
+          };
+        }
+
+        if (child?.dataDomain === "flowRisk") {
+          const response = await fetchWithRetry("/api/flow/risk?blockerLookbackDays=30&fixedDateLookaheadDays=14", {
+            signal,
+            cache: refresh ? "no-store" : "default",
+          });
+          if (!response.ok) {
+            throw new Error(`Flow risk request failed (${response.status})`);
+          }
+
+          return {
+            analyticsData: null,
+            auxPayload: (await response.json()) as Record<string, unknown>,
+          };
+        }
+
+        if (child?.dataDomain === "observability") {
+          const response = await fetchWithRetry("/api/ops/observability", {
+            signal,
+            cache: refresh ? "no-store" : "default",
+          });
+          if (!response.ok) {
+            throw new Error(`Observability request failed (${response.status})`);
+          }
+
+          return {
+            analyticsData: null,
+            auxPayload: (await response.json()) as Record<string, unknown>,
+          };
+        }
+      }
+
+      const analyticsParams = new URLSearchParams(searchParamsString);
       analyticsParams.set("section", sectionId);
       if (refresh) {
         analyticsParams.set("refresh", "true");
@@ -293,6 +404,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
 
       return {
         analyticsData,
+        auxPayload: null,
       };
     },
     getLastUpdatedAt: (payload) => {
@@ -305,6 +417,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
   });
 
   const analyticsData = resource.data?.analyticsData ?? null;
+  const auxPayload = resource.data?.auxPayload ?? null;
   const title = child?.label ?? primary?.label ?? "Analytics";
 
   const primaryContent = useMemo(() => {
@@ -353,8 +466,14 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     if (renderKind === "cs-product") return <CsProductTab data={analyticsData} />;
     if (renderKind === "cs-google-workspace") return <GenericWorkspaceTab data={analyticsData} />;
     if (renderKind === "cs-slack") return <GenericSlackTab data={analyticsData} />;
+    // Ops
+    if (renderKind === "decisionDashboard") return <DecisionDashboardView payload={auxPayload} />;
+    if (renderKind === "flowMetrics") return <FlowMetricsView payload={auxPayload} />;
+    if (renderKind === "flowRisk") return <FlowRiskView payload={auxPayload} />;
+    if (renderKind === "observability") return <ObservabilityView payload={auxPayload} />;
     if (renderKind === "customerJourneyDrillDown") return <CustomerJourneyDrillDown data={analyticsData} />;
     if (renderKind === "customerJourneyConversion") return <CustomerJourneyConversionTab data={analyticsData} />;
+    if (renderKind === "visitorFunnel") return <VisitorFunnelTab data={analyticsData} />;
     if (renderKind === "demoScheduling") return <DemoSchedulingView data={analyticsData} />;
     if (renderKind === "demoAttribution") return <DemoAttributionView data={analyticsData} />;
     if (renderKind === "processBottlenecks") return <ProcessBottlenecksView data={analyticsData} />;
@@ -381,7 +500,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         errors={domainErrors}
       />
     );
-  }, [child, analyticsData, sectionId]);
+  }, [child, analyticsData, auxPayload, sectionId]);
 
   if (!primary) {
     return (

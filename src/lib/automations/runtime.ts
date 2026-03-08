@@ -1,12 +1,14 @@
 import {
+  AutomationAiJobStatus,
   IntegrationProvider,
+  Prisma,
   TaskStatus,
   WorkflowApprovalStatus,
   WorkflowEventStatus,
   WorkflowRunStatus,
   WorkflowStepStatus,
-  type Prisma,
 } from "@/generated/prisma/client";
+import { executeAutomationAction } from "@/lib/automations/actions";
 import { prisma } from "@/lib/prisma";
 import {
   evaluateConditionExpression,
@@ -15,7 +17,22 @@ import {
   type WorkflowGraph,
   type WorkflowGraphNode,
 } from "@/lib/automations/graph";
+import {
+  buildAutomationAiResponseRequest,
+  createAutomationOpenAiResponse,
+  extractAutomationAiOutputText,
+  isTerminalAutomationAiStatus,
+  parseAutomationAiResponseEnvelope,
+  retrieveAutomationOpenAiResponse,
+  unwrapAutomationOpenAiWebhookEvent,
+} from "@/lib/automations/openai";
+import { executeApprovedRecommendationsForRun } from "@/lib/automations/recommendations";
 import { normalizeWorkflowRolePolicy } from "@/lib/automations/service";
+import {
+  buildRunExecutionContext,
+  materializeSourceDocumentsFromTrigger,
+  persistAutomationEnvelope,
+} from "@/lib/automations/store";
 import { getAppRole } from "@/lib/permissions";
 
 interface TriggerEnvelope {
@@ -31,6 +48,19 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     return null;
   }
   return value as Record<string, unknown>;
+}
+
+function toInputJsonValue(value: unknown): Prisma.InputJsonValue {
+  return value as unknown as Prisma.InputJsonValue;
+}
+
+function toNullableJsonValue(
+  value: unknown
+): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
+  if (value == null) {
+    return Prisma.DbNull;
+  }
+  return value as unknown as Prisma.InputJsonValue;
 }
 
 function resolveTaskStatus(input: unknown, fallback: TaskStatus = TaskStatus.QUEUED): TaskStatus {
@@ -71,11 +101,167 @@ function renderMaybeTemplate(value: unknown, context: Record<string, unknown>): 
   return rendered.length > 0 ? rendered : null;
 }
 
-async function executeActionNode(input: {
+interface ActionNodeExecutionResult {
+  output: Record<string, unknown>;
+  stepStatus?: WorkflowStepStatus;
+  runStatus?: WorkflowRunStatus;
+}
+
+function asStringArray(value: unknown, context: Record<string, unknown>): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) =>
+        typeof item === "string" ? renderTemplatedString(item, context).trim() : ""
+      )
+      .filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((item) => renderTemplatedString(item, context).trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function normalizeNumericInput(value: unknown, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.trunc(value);
+}
+
+function renderConfigValue(
+  value: unknown,
+  context: Record<string, unknown>
+): unknown {
+  if (typeof value === "string") {
+    return renderTemplatedString(value, context);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => renderConfigValue(item, context));
+  }
+
+  const record = asRecord(value);
+  if (!record) {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(record).map(([key, entryValue]) => [
+      key,
+      renderConfigValue(entryValue, context),
+    ])
+  );
+}
+
+async function queueAutomationAiJobForNode(input: {
+  workflowId: string;
   runId: string;
+  stepId: string;
   node: WorkflowGraphNode;
   context: Record<string, unknown>;
-}): Promise<Record<string, unknown>> {
+}) {
+  const config = asRecord(input.node.config) ?? {};
+  const actionType =
+    typeof config.actionType === "string" ? config.actionType : "ai_generate";
+
+  const run = await prisma.workflowRun.findUnique({
+    where: { id: input.runId },
+    include: {
+      workflow: {
+        select: {
+          operatorKey: true,
+        },
+      },
+    },
+  });
+
+  if (!run) {
+    throw new Error("Workflow run not found");
+  }
+
+  const { request, parsedToolDefinitions } = buildAutomationAiResponseRequest({
+    nodeKey: input.node.key,
+    nodeLabel: input.node.label,
+    actionType,
+    config,
+    context: input.context,
+    metadata: {
+      workflowId: input.workflowId,
+      runId: input.runId,
+      stepId: input.stepId,
+      nodeKey: input.node.key,
+      operatorKey: run.workflow.operatorKey ?? "",
+    },
+  });
+
+  const dedupeKey = `${input.runId}:${input.node.key}:ai`;
+  const job = await prisma.automationAiJob.upsert({
+    where: { dedupeKey },
+    create: {
+      workflowId: input.workflowId,
+      runId: input.runId,
+      stepId: input.stepId,
+      operatorKey: run.workflow.operatorKey ?? null,
+      nodeKey: input.node.key,
+      jobType: actionType,
+      status: AutomationAiJobStatus.QUEUED,
+      provider: "openai",
+      model: typeof request.model === "string" ? request.model : "gpt-4.1-mini",
+      promptVersion:
+        typeof config.promptVersion === "string" ? config.promptVersion : "v1",
+      requestPayload: toInputJsonValue(request),
+      dedupeKey,
+      metadata: toInputJsonValue({
+        nodeLabel: input.node.label,
+        parsedToolDefinitions,
+      }),
+    },
+    update: {
+      stepId: input.stepId,
+      status: AutomationAiJobStatus.QUEUED,
+      model: typeof request.model === "string" ? request.model : "gpt-4.1-mini",
+      promptVersion:
+        typeof config.promptVersion === "string" ? config.promptVersion : "v1",
+      requestPayload: toInputJsonValue(request),
+      responseId: null,
+      responseStatus: null,
+      responsePayload: Prisma.DbNull,
+      outputText: null,
+      parsedOutput: Prisma.DbNull,
+      lastError: null,
+      nextAttemptAt: new Date(),
+      metadata: toInputJsonValue({
+        nodeLabel: input.node.label,
+        parsedToolDefinitions,
+      }),
+    },
+    select: { id: true, model: true },
+  });
+
+  return {
+    output: {
+      actionType,
+      aiJobId: job.id,
+      model: job.model,
+      waitingExternal: true,
+    },
+    stepStatus: WorkflowStepStatus.WAITING_EXTERNAL,
+    runStatus: WorkflowRunStatus.WAITING_EXTERNAL,
+  } satisfies ActionNodeExecutionResult;
+}
+
+async function executeActionNode(input: {
+  workflowId: string;
+  runId: string;
+  stepId: string;
+  node: WorkflowGraphNode;
+  context: Record<string, unknown>;
+}): Promise<ActionNodeExecutionResult> {
   const config = asRecord(input.node.config) ?? {};
   const actionType = typeof config.actionType === "string" ? config.actionType : "noop";
 
@@ -131,11 +317,13 @@ async function executeActionNode(input: {
     });
 
     return {
-      actionType,
-      taskId: task.id,
-      title: task.title,
-      status: task.status,
-      priority: task.priority,
+      output: {
+        actionType,
+        taskId: task.id,
+        title: task.title,
+        status: task.status,
+        priority: task.priority,
+      },
     };
   }
 
@@ -165,9 +353,11 @@ async function executeActionNode(input: {
     });
 
     return {
-      actionType,
-      taskId: task.id,
-      status,
+      output: {
+        actionType,
+        taskId: task.id,
+        status,
+      },
     };
   }
 
@@ -179,7 +369,7 @@ async function executeActionNode(input: {
       : [];
 
     if (checklist.length === 0) {
-      return { actionType, created: 0 };
+      return { output: { actionType, created: 0 } };
     }
 
     const parentTitle =
@@ -213,7 +403,13 @@ async function executeActionNode(input: {
       })),
     });
 
-    return { actionType, parentTaskId: parent.id, created: checklist.length };
+    return {
+      output: {
+        actionType,
+        parentTaskId: parent.id,
+        created: checklist.length,
+      },
+    };
   }
 
   if (actionType === "slack_notify") {
@@ -234,7 +430,7 @@ async function executeActionNode(input: {
       },
     });
 
-    return { actionType, queued: true };
+    return { output: { actionType, queued: true } };
   }
 
   if (actionType === "logbook_entry") {
@@ -245,7 +441,13 @@ async function executeActionNode(input: {
         : "");
 
     if (!taskId) {
-      return { actionType, skipped: true, reason: "missing_task_id" };
+      return {
+        output: {
+          actionType,
+          skipped: true,
+          reason: "missing_task_id",
+        },
+      };
     }
 
     const task = await prisma.task.findUnique({
@@ -263,7 +465,13 @@ async function executeActionNode(input: {
     });
 
     if (!task) {
-      return { actionType, skipped: true, reason: "task_not_found" };
+      return {
+        output: {
+          actionType,
+          skipped: true,
+          reason: "task_not_found",
+        },
+      };
     }
 
     await prisma.logbookEntry.create({
@@ -285,10 +493,78 @@ async function executeActionNode(input: {
       },
     });
 
-    return { actionType, logged: true, taskId: task.id };
+    return {
+      output: {
+        actionType,
+        logged: true,
+        taskId: task.id,
+      },
+    };
   }
 
-  return { actionType: "noop", skipped: true };
+  if (
+    actionType === "ai_extract" ||
+    actionType === "ai_analyze" ||
+    actionType === "ai_generate"
+  ) {
+    return queueAutomationAiJobForNode(input);
+  }
+
+  if (actionType === "execute_recommendation") {
+    const recommendationId =
+      renderMaybeTemplate(config.recommendationId, input.context) ||
+      (typeof config.recommendationIdPath === "string"
+        ? String(resolvePath(config.recommendationIdPath, input.context) ?? "")
+        : "");
+    const recommendationIds = [
+      ...asStringArray(config.recommendationIds, input.context),
+      ...(recommendationId ? [recommendationId] : []),
+    ];
+    const actionTypes = asStringArray(config.actionTypes, input.context);
+    const limit = normalizeNumericInput(config.limit, 50);
+
+    const result = await executeApprovedRecommendationsForRun({
+      runId: input.runId,
+      recommendationIds,
+      actionTypes,
+      limit,
+    });
+
+    return {
+      output: {
+        actionType,
+        ...result,
+      },
+    };
+  }
+
+  if (
+    actionType === "create_gmail_draft" ||
+    actionType === "send_gmail_message" ||
+    actionType === "create_calendar_draft" ||
+    actionType === "update_hubspot" ||
+    actionType === "create_github_issue" ||
+    actionType === "post_slack_digest"
+  ) {
+    const payloadSource = asRecord(config.payload) ?? config;
+    const payload = asRecord(renderConfigValue(payloadSource, input.context));
+    const result = await executeAutomationAction({
+      runId: input.runId,
+      actionType,
+      actionPayload: payload,
+    });
+
+    return {
+      output: {
+        actionType,
+        status: result.status,
+        targetId: result.targetId,
+        detail: result.detail,
+      },
+    };
+  }
+
+  return { output: { actionType: "noop", skipped: true } };
 }
 
 function sortOutgoingEdges(graph: WorkflowGraph, sourceNodeKey: string) {
@@ -338,23 +614,6 @@ function selectOutgoingTargets(input: {
   }
 
   return outgoing.map((edge) => edge.target);
-}
-
-function buildBaseContext(run: {
-  triggerProvider: IntegrationProvider | null;
-  triggerType: string | null;
-  triggerId: string | null;
-  triggerPayload: unknown;
-}): Record<string, unknown> {
-  return {
-    trigger: {
-      provider: run.triggerProvider,
-      eventType: run.triggerType,
-      externalId: run.triggerId,
-      payload: asRecord(run.triggerPayload) ?? {},
-    },
-    state: {},
-  };
 }
 
 async function executeRunGraph(input: {
@@ -408,11 +667,36 @@ async function executeRunGraph(input: {
         const passed = evaluateConditionExpression(expr, input.context);
         output = { passed };
       } else if (node.type === "ACTION") {
-        output = await executeActionNode({
+        const result = await executeActionNode({
+          workflowId: input.workflowId,
           runId: input.runId,
+          stepId: step.id,
           node,
           context: input.context,
         });
+        output = result.output;
+        status = result.stepStatus ?? status;
+
+        if (result.runStatus === WorkflowRunStatus.WAITING_EXTERNAL) {
+          await prisma.workflowRunStep.update({
+            where: { id: step.id },
+            data: {
+              status,
+              output: output as Prisma.JsonObject,
+              finishedAt: new Date(),
+            },
+          });
+
+          await prisma.workflowRun.update({
+            where: { id: input.runId },
+            data: {
+              status: WorkflowRunStatus.WAITING_EXTERNAL,
+              error: null,
+            },
+          });
+
+          return { status: WorkflowRunStatus.WAITING_EXTERNAL };
+        }
       } else if (node.type === "DELAY") {
         const config = asRecord(node.config) ?? {};
         const waitSeconds =
@@ -518,6 +802,98 @@ async function getWorkflowGraph(workflowId: string): Promise<WorkflowGraph> {
   return normalizeWorkflowGraph(workflow.graph);
 }
 
+async function finalizeWorkflowRun(input: {
+  runId: string;
+  workflowId: string;
+  status: WorkflowRunStatus;
+  error?: string | null;
+}) {
+  await prisma.workflowRun.update({
+    where: { id: input.runId },
+    data: {
+      status: input.status,
+      error: input.error ?? null,
+      finishedAt:
+        input.status === WorkflowRunStatus.WAITING_APPROVAL ||
+        input.status === WorkflowRunStatus.WAITING_EXTERNAL
+          ? null
+          : new Date(),
+    },
+  });
+
+  await prisma.workflowDefinition.update({
+    where: { id: input.workflowId },
+    data: {
+      lastRunAt: new Date(),
+      lastError: input.error ?? null,
+    },
+  });
+}
+
+async function resumeWorkflowRunAfterNode(input: {
+  runId: string;
+  workflowId: string;
+  nodeKey: string;
+}): Promise<void> {
+  const graph = await getWorkflowGraph(input.workflowId);
+  const node = graph.nodes.find((candidate) => candidate.key === input.nodeKey);
+  if (!node) {
+    throw new Error(`Workflow node not found: ${input.nodeKey}`);
+  }
+
+  const step = await prisma.workflowRunStep.findFirst({
+    where: {
+      runId: input.runId,
+      nodeKey: input.nodeKey,
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      output: true,
+    },
+  });
+
+  const context = await buildRunExecutionContext(input.runId);
+  const nodeOutput = asRecord(step?.output) ?? {};
+  const nextNodes = selectOutgoingTargets({
+    graph,
+    node,
+    nodeOutput,
+    context,
+  });
+
+  if (nextNodes.length === 0) {
+    await finalizeWorkflowRun({
+      runId: input.runId,
+      workflowId: input.workflowId,
+      status: WorkflowRunStatus.SUCCEEDED,
+    });
+    return;
+  }
+
+  await prisma.workflowRun.update({
+    where: { id: input.runId },
+    data: {
+      status: WorkflowRunStatus.RUNNING,
+      error: null,
+    },
+  });
+
+  const result = await executeRunGraph({
+    runId: input.runId,
+    workflowId: input.workflowId,
+    graph,
+    initialNodeKeys: nextNodes,
+    context,
+  });
+
+  await finalizeWorkflowRun({
+    runId: input.runId,
+    workflowId: input.workflowId,
+    status: result.status,
+    error: result.error ?? null,
+  });
+}
+
 export async function executeWorkflowRun(runId: string): Promise<void> {
   const run = await prisma.workflowRun.findUnique({
     where: { id: runId },
@@ -540,7 +916,7 @@ export async function executeWorkflowRun(runId: string): Promise<void> {
     },
   });
 
-  const context = buildBaseContext(run);
+  const context = await buildRunExecutionContext(run.id);
 
   const result = await executeRunGraph({
     runId: run.id,
@@ -550,22 +926,11 @@ export async function executeWorkflowRun(runId: string): Promise<void> {
     context,
   });
 
-  await prisma.workflowRun.update({
-    where: { id: run.id },
-    data: {
-      status: result.status,
-      error: result.error ?? null,
-      finishedAt:
-        result.status === WorkflowRunStatus.WAITING_APPROVAL ? null : new Date(),
-    },
-  });
-
-  await prisma.workflowDefinition.update({
-    where: { id: run.workflowId },
-    data: {
-      lastRunAt: new Date(),
-      lastError: result.error ?? null,
-    },
+  await finalizeWorkflowRun({
+    runId: run.id,
+    workflowId: run.workflowId,
+    status: result.status,
+    error: result.error ?? null,
   });
 }
 
@@ -627,6 +992,16 @@ async function triggerMatchingWorkflows(event: TriggerEnvelope): Promise<number>
       select: { id: true },
     });
 
+    await materializeSourceDocumentsFromTrigger({
+      workflowId: workflow.id,
+      runId: run.id,
+      operatorKey: workflow.operatorKey,
+      provider: event.provider,
+      eventType: event.eventType,
+      payload: event.payload,
+      eventDedupeKey: event.idempotencyKey,
+    });
+
     startedRuns += 1;
     await executeWorkflowRun(run.id);
   }
@@ -637,6 +1012,327 @@ async function triggerMatchingWorkflows(event: TriggerEnvelope): Promise<number>
 function nextRetryDate(attempt: number): Date {
   const seconds = Math.min(300, 15 * attempt * attempt);
   return new Date(Date.now() + seconds * 1000);
+}
+
+async function failAutomationAiJob(input: {
+  jobId: string;
+  workflowId: string;
+  runId: string;
+  stepId: string | null;
+  message: string;
+  canceled?: boolean;
+}) {
+  await prisma.automationAiJob.update({
+    where: { id: input.jobId },
+    data: {
+      status: input.canceled ? AutomationAiJobStatus.CANCELED : AutomationAiJobStatus.FAILED,
+      lastError: input.message,
+      completedAt: new Date(),
+      nextAttemptAt: nextRetryDate(99),
+    },
+  });
+
+  if (input.stepId) {
+    await prisma.workflowRunStep.update({
+      where: { id: input.stepId },
+      data: {
+        status: WorkflowStepStatus.FAILED,
+        error: input.message,
+        finishedAt: new Date(),
+      },
+    });
+  }
+
+  await finalizeWorkflowRun({
+    runId: input.runId,
+    workflowId: input.workflowId,
+    status: input.canceled ? WorkflowRunStatus.CANCELED : WorkflowRunStatus.FAILED,
+    error: input.message,
+  });
+}
+
+async function settleAutomationAiJobWithResponse(input: {
+  jobId: string;
+  response: Awaited<ReturnType<typeof retrieveAutomationOpenAiResponse>>;
+}) {
+  const job = await prisma.automationAiJob.findUnique({
+    where: { id: input.jobId },
+    include: {
+      run: {
+        select: {
+          requestedById: true,
+        },
+      },
+    },
+  });
+
+  if (!job) {
+    return;
+  }
+
+  const responseStatus = input.response.status ?? null;
+  const outputText = extractAutomationAiOutputText(input.response);
+
+  if (!isTerminalAutomationAiStatus(responseStatus)) {
+    await prisma.automationAiJob.update({
+      where: { id: job.id },
+      data: {
+        status: AutomationAiJobStatus.RUNNING,
+        responseStatus,
+        responsePayload: toInputJsonValue(input.response),
+        outputText,
+        lastError: null,
+        nextAttemptAt: nextRetryDate(Math.max(job.attemptCount, 1)),
+      },
+    });
+    return;
+  }
+
+  if (responseStatus === "completed") {
+    try {
+      const metadata = asRecord(job.metadata) ?? {};
+      const parsedToolDefinitions = Array.isArray(metadata.parsedToolDefinitions)
+        ? metadata.parsedToolDefinitions.filter((item) => asRecord(item))
+        : [];
+      const envelope = parseAutomationAiResponseEnvelope({
+        response: input.response,
+        parsedToolDefinitions,
+      });
+
+      const persisted = await persistAutomationEnvelope({
+        workflowId: job.workflowId,
+        runId: job.runId,
+        aiJobId: job.id,
+        operatorKey: job.operatorKey,
+        createdByNodeKey: job.nodeKey,
+        requestedById: job.run.requestedById ?? null,
+        envelope,
+      });
+
+      await prisma.automationAiJob.update({
+        where: { id: job.id },
+        data: {
+          status: AutomationAiJobStatus.SUCCEEDED,
+          responseStatus,
+          responsePayload: toInputJsonValue(input.response),
+          outputText,
+          parsedOutput: toNullableJsonValue(envelope.raw),
+          lastError: null,
+          completedAt: new Date(),
+        },
+      });
+
+      if (job.stepId) {
+        await prisma.workflowRunStep.update({
+          where: { id: job.stepId },
+          data: {
+            status: WorkflowStepStatus.SUCCEEDED,
+            output: {
+              actionType: job.jobType,
+              aiJobId: job.id,
+              responseId: input.response.id,
+              summary: envelope.summary ?? null,
+              artifactIds: persisted.artifactIds,
+              recommendationIds: persisted.recommendationIds,
+            } as Prisma.JsonObject,
+            error: null,
+            finishedAt: new Date(),
+          },
+        });
+      }
+
+      await resumeWorkflowRunAfterNode({
+        runId: job.runId,
+        workflowId: job.workflowId,
+        nodeKey: job.nodeKey,
+      });
+      return;
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to persist automation AI output";
+      await failAutomationAiJob({
+        jobId: job.id,
+        workflowId: job.workflowId,
+        runId: job.runId,
+        stepId: job.stepId,
+        message,
+      });
+      return;
+    }
+  }
+
+  const errorRecord = asRecord((input.response as unknown as Record<string, unknown>).error);
+  const message =
+    (typeof errorRecord?.message === "string" && errorRecord.message) ||
+    (responseStatus === "cancelled"
+      ? "Background response cancelled"
+      : responseStatus === "incomplete"
+        ? "Background response incomplete"
+        : "Background response failed");
+
+  await failAutomationAiJob({
+    jobId: job.id,
+    workflowId: job.workflowId,
+    runId: job.runId,
+    stepId: job.stepId,
+    message,
+    canceled: responseStatus === "cancelled",
+  });
+}
+
+export async function dispatchAutomationAiJobs(limit = 10): Promise<number> {
+  const jobs = await prisma.automationAiJob.findMany({
+    where: {
+      status: {
+        in: [AutomationAiJobStatus.QUEUED, AutomationAiJobStatus.FAILED],
+      },
+      nextAttemptAt: { lte: new Date() },
+    },
+    orderBy: [{ createdAt: "asc" }],
+    take: limit,
+  });
+
+  let processed = 0;
+
+  for (const job of jobs) {
+    try {
+      const requestPayload = asRecord(job.requestPayload);
+      if (!requestPayload) {
+        throw new Error("AI job request payload is missing");
+      }
+
+      await prisma.automationAiJob.update({
+        where: { id: job.id },
+        data: {
+          status: AutomationAiJobStatus.REQUESTED,
+          attemptCount: { increment: 1 },
+          lastError: null,
+        },
+      });
+
+      const response = await createAutomationOpenAiResponse(
+        requestPayload as unknown as Parameters<typeof createAutomationOpenAiResponse>[0]
+      );
+
+      await prisma.automationAiJob.update({
+        where: { id: job.id },
+        data: {
+          status: isTerminalAutomationAiStatus(response.status)
+            ? AutomationAiJobStatus.REQUESTED
+            : AutomationAiJobStatus.RUNNING,
+          responseId: response.id,
+          responseStatus: response.status ?? null,
+          responsePayload: toInputJsonValue(response),
+          outputText: extractAutomationAiOutputText(response),
+          nextAttemptAt: nextRetryDate(job.attemptCount + 1),
+        },
+      });
+
+      await settleAutomationAiJobWithResponse({
+        jobId: job.id,
+        response,
+      });
+      processed += 1;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to dispatch AI job";
+      await prisma.automationAiJob.update({
+        where: { id: job.id },
+        data: {
+          status: AutomationAiJobStatus.FAILED,
+          attemptCount: { increment: 1 },
+          lastError: message,
+          nextAttemptAt: nextRetryDate(job.attemptCount + 1),
+        },
+      });
+      processed += 1;
+    }
+  }
+
+  return processed;
+}
+
+export async function pollAutomationAiJobs(limit = 20): Promise<number> {
+  const jobs = await prisma.automationAiJob.findMany({
+    where: {
+      status: {
+        in: [AutomationAiJobStatus.REQUESTED, AutomationAiJobStatus.RUNNING],
+      },
+      responseId: { not: null },
+      nextAttemptAt: { lte: new Date() },
+    },
+    orderBy: [{ updatedAt: "asc" }],
+    take: limit,
+  });
+
+  let processed = 0;
+
+  for (const job of jobs) {
+    try {
+      if (!job.responseId) {
+        continue;
+      }
+
+      const response = await retrieveAutomationOpenAiResponse(job.responseId);
+      await settleAutomationAiJobWithResponse({
+        jobId: job.id,
+        response,
+      });
+      processed += 1;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to poll AI job";
+      await prisma.automationAiJob.update({
+        where: { id: job.id },
+        data: {
+          status: AutomationAiJobStatus.FAILED,
+          lastError: message,
+          nextAttemptAt: nextRetryDate(job.attemptCount + 1),
+        },
+      });
+      processed += 1;
+    }
+  }
+
+  return processed;
+}
+
+export async function processAutomationAiWebhook(
+  body: string,
+  headers: Headers
+): Promise<{ handled: boolean; responseId?: string | null; eventType?: string | null }> {
+  const event = await unwrapAutomationOpenAiWebhookEvent(body, headers);
+  const eventType =
+    typeof event.type === "string" ? event.type.trim().toLowerCase() : null;
+  const data = asRecord(event.data);
+  const responseId = typeof data?.id === "string" ? data.id : null;
+
+  if (!eventType || !responseId || !eventType.startsWith("response.")) {
+    return { handled: false, responseId, eventType };
+  }
+
+  const job = await prisma.automationAiJob.findUnique({
+    where: { responseId },
+    select: { id: true },
+  });
+
+  if (!job) {
+    return { handled: false, responseId, eventType };
+  }
+
+  const response = await retrieveAutomationOpenAiResponse(responseId);
+  await settleAutomationAiJobWithResponse({
+    jobId: job.id,
+    response,
+  });
+
+  return {
+    handled: true,
+    responseId,
+    eventType,
+  };
 }
 
 export async function enqueueWorkflowTriggerEvent(input: {
@@ -712,7 +1408,7 @@ export async function processTimedOutApprovals(limit = 20): Promise<number> {
       continue;
     }
 
-    const context = buildBaseContext(approval.run);
+    const context = await buildRunExecutionContext(approval.runId);
     const nextNodes = selectOutgoingTargets({
       graph,
       node,
@@ -750,14 +1446,11 @@ export async function processTimedOutApprovals(limit = 20): Promise<number> {
       decisionLabel: "timeout",
     });
 
-    await prisma.workflowRun.update({
-      where: { id: approval.runId },
-      data: {
-        status: result.status,
-        error: result.error ?? null,
-        finishedAt:
-          result.status === WorkflowRunStatus.WAITING_APPROVAL ? null : new Date(),
-      },
+    await finalizeWorkflowRun({
+      runId: approval.runId,
+      workflowId: approval.run.workflowId,
+      status: result.status,
+      error: result.error ?? null,
     });
   }
 
@@ -898,7 +1591,7 @@ export async function resolveWorkflowApproval(input: {
     throw new Error("Approval node not found in graph");
   }
 
-  const context = buildBaseContext(approval.run);
+  const context = await buildRunExecutionContext(approval.runId);
   const decisionLabel = input.decision === "approve" ? "approved" : "rejected";
   const nextNodes = selectOutgoingTargets({
     graph,
@@ -940,13 +1633,10 @@ export async function resolveWorkflowApproval(input: {
     decisionLabel,
   });
 
-  await prisma.workflowRun.update({
-    where: { id: approval.runId },
-    data: {
-      status: result.status,
-      error: result.error ?? null,
-      finishedAt:
-        result.status === WorkflowRunStatus.WAITING_APPROVAL ? null : new Date(),
-    },
+  await finalizeWorkflowRun({
+    runId: approval.runId,
+    workflowId: approval.run.workflowId,
+    status: result.status,
+    error: result.error ?? null,
   });
 }

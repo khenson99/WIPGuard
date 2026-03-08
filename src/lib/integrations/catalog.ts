@@ -18,7 +18,9 @@ export type IntegrationSlug =
   | "meta-ads"
   | "meta-page"
   | "pylon"
-  | "semrush";
+  | "semrush"
+  | "google-search-console"
+  | "wipguard";
 export type IntegrationAuthType = "oauth" | "token";
 
 interface OAuthSettings {
@@ -230,6 +232,14 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     authType: "token",
   },
   {
+    slug: "google-search-console",
+    provider: IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
+    name: "Google Search Console",
+    description: "Connect search performance, indexing, and query telemetry into WIPGuard.",
+    capabilities: ["Queries", "Pages", "CTR", "Coverage"],
+    authType: "token",
+  },
+  {
     slug: "google-ads",
     provider: IntegrationProvider.GOOGLE_ADS,
     name: "Google Ads",
@@ -311,6 +321,14 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     name: "SEMrush",
     description: "Connect SEMrush SEO metrics and keyword ranks into WIPGuard.",
     capabilities: ["Organic Search", "Paid Traffic", "Authority"],
+    authType: "token",
+  },
+  {
+    slug: "wipguard",
+    provider: IntegrationProvider.WIPGUARD,
+    name: "WIPGuard",
+    description: "Use internal WIPGuard workflow and backlog data as an automation source.",
+    capabilities: ["Tasks", "Projects", "Workflow telemetry"],
     authType: "token",
   },
 ] as const;
