@@ -5,6 +5,7 @@ import {
   DollarSign, Activity, CheckCircle2, XCircle,
 } from "lucide-react";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
 import { RingStat } from "@/components/analytics/bar-display";
 import { StatCard } from "@/components/analytics/stat-card";
@@ -35,16 +36,18 @@ export function SalesStripeTab({ data }: SalesStripeTabProps) {
   const rev = stripe.revenue;
   const subs = stripe.subscriptions;
   const pay = stripe.payments;
+  const churnRate = normalizePercentValue(subs.churnRate);
+  const paymentSuccessRate = normalizePercentValue(pay.successRate);
 
   /* ── Alerts ──────────────────────────────────────── */
 
   const alerts: { severity: "critical" | "warning" | "info"; title: string; description: string }[] = [];
 
-  if (subs.churnRate > 5) {
+  if (churnRate > 5) {
     alerts.push({
       severity: "critical",
       title: "Churn rate above threshold",
-      description: `${subs.churnRate.toFixed(1)}% churn rate — retention efforts need immediate attention.`,
+      description: `${churnRate.toFixed(1)}% churn rate — retention efforts need immediate attention.`,
     });
   }
 
@@ -110,21 +113,21 @@ export function SalesStripeTab({ data }: SalesStripeTabProps) {
     });
   }
 
-  if (subs.churnRate > 3) {
+  if (churnRate > 3) {
     insights.push({
       title: "Retention Risk",
-      insight: `Churn at ${subs.churnRate.toFixed(1)}% with ${subs.canceled} recent cancellations.`,
+      insight: `Churn at ${churnRate.toFixed(1)}% with ${subs.canceled} recent cancellations.`,
       action: "Implement win-back campaigns and analyze cancellation reasons.",
-      severity: subs.churnRate > 5 ? "critical" : "warning",
+      severity: churnRate > 5 ? "critical" : "warning",
     });
   }
 
   if (pay.failed > 0) {
     insights.push({
       title: "Payment Failures",
-      insight: `${pay.failed} payment failures (${fmtPct(100 - pay.successRate)} failure rate).`,
+      insight: `${pay.failed} payment failures (${fmtPct(100 - paymentSuccessRate)} failure rate).`,
       action: "Review dunning configuration and ensure retry logic is optimized.",
-      severity: pay.successRate < 95 ? "warning" : "info",
+      severity: paymentSuccessRate < 95 ? "warning" : "info",
     });
   }
 
@@ -164,9 +167,9 @@ export function SalesStripeTab({ data }: SalesStripeTabProps) {
         />
         <StatCard
           title="Churn Rate"
-          value={fmtPct(subs.churnRate)}
+          value={fmtPct(churnRate)}
           icon={<TrendingUp className="h-4 w-4" />}
-          className={subs.churnRate > 5 ? "border-red-500/30 bg-red-500/5" : undefined}
+          className={churnRate > 5 ? "border-red-500/30 bg-red-500/5" : undefined}
         />
         <StatCard
           title="Past Due"
@@ -182,7 +185,7 @@ export function SalesStripeTab({ data }: SalesStripeTabProps) {
         />
         <StatCard
           title="Payment Success"
-          value={fmtPct(pay.successRate)}
+          value={fmtPct(paymentSuccessRate)}
           icon={<CheckCircle2 className="h-4 w-4" />}
         />
         <StatCard

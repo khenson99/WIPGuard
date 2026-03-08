@@ -1,4 +1,5 @@
 import type { AnalyticsDashboardData } from "./types";
+import { normalizePercentValue } from "./percentage-utils";
 
 /**
  * Compute fallback KPIs from raw provider data when `data.kpis` is not
@@ -25,9 +26,7 @@ export function computeAnalyticsKpis(data: AnalyticsDashboardData) {
   // ── Finance KPIs ──
   const stripe = data.stripe;
   const mrr = stripe?.revenue.mrr ?? 0;
-  // successRate is a 0–1 fraction; normalise to 0–100 like bounceRatePct.
-  const rawSuccess = stripe?.payments.successRate ?? 0;
-  const paymentSuccessPct = rawSuccess >= 0 && rawSuccess <= 1 ? rawSuccess * 100 : rawSuccess;
+  const paymentSuccessPct = normalizePercentValue(stripe?.payments.successRate ?? 0);
 
   return {
     traffic: { bounceRatePct, pagesPerSession, engagementScore, pageDepthScore },

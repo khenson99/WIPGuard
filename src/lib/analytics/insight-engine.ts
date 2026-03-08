@@ -7,6 +7,7 @@ import type {
 } from "@/lib/analytics/types";
 import { computeBudgetActuals, computeBudgetSummary } from "./budget-variance";
 import { buildDefaultScenarios } from "./forecast-engine";
+import { normalizePercentValue } from "./percentage-utils";
 import { buildProfitAndLoss } from "./pnl-builder";
 import { computeUnitEconomics } from "./unit-economics";
 
@@ -320,8 +321,8 @@ function buildFinanceInsights(data: AnalyticsDashboardData): AiInsight[] {
   const runway = data.mercury?.cashFlow?.runway ?? 0;
   const revenueGrowth = data.stripe?.revenue?.revenueGrowth ?? 0;
   const burnRate = data.mercury?.cashFlow?.burnRate ?? 0;
-  const churnRate = data.stripe?.subscriptions?.churnRate ?? 0;
-  const paymentSuccessRate = data.stripe?.payments?.successRate ?? 1;
+  const churnRate = normalizePercentValue(data.stripe?.subscriptions?.churnRate ?? 0);
+  const paymentSuccessRate = normalizePercentValue(data.stripe?.payments?.successRate ?? 1);
   const mrrChange = data.stripe?.revenue?.mrrChange ?? 0;
   const revenueTrend = data.stripe?.revenueTrend ?? [];
   const revenueTrendValues = revenueTrend.map((t) => t.revenue);
@@ -372,14 +373,14 @@ function buildFinanceInsights(data: AnalyticsDashboardData): AiInsight[] {
   }
 
   // 2. Churn rate alarm
-  if (churnRate > 0.08) {
+  if (churnRate > 8) {
     insights.push({
       id: "ai-finance-churn",
       section: "finance",
       subsectionId: "finance-stripe",
-      severity: churnRate > 0.12 ? "critical" : "warning",
+      severity: churnRate > 12 ? "critical" : "warning",
       title: "Subscription churn rate exceeds healthy threshold",
-      why: `Churn rate is ${(churnRate * 100).toFixed(1)}% — above the 8% warning threshold. ${data.stripe?.subscriptions?.canceled ?? 0} cancellations in period.`,
+      why: `Churn rate is ${churnRate.toFixed(1)}% — above the 8% warning threshold. ${data.stripe?.subscriptions?.canceled ?? 0} cancellations in period.`,
       confidence: clampConfidence(0.88),
       expectedImpact: "Reducing churn by 2-3pp directly improves MRR retention and LTV.",
       stale: data.staleDomains.includes("stripe"),
@@ -388,7 +389,7 @@ function buildFinanceInsights(data: AnalyticsDashboardData): AiInsight[] {
           source: "Stripe",
           domain: "stripe",
           metric: "Churn Rate",
-          value: `${(churnRate * 100).toFixed(1)}%`,
+          value: `${churnRate.toFixed(1)}%`,
           delta: `${data.stripe?.subscriptions?.canceled ?? 0} canceled`,
         },
       ],
@@ -403,14 +404,14 @@ function buildFinanceInsights(data: AnalyticsDashboardData): AiInsight[] {
   }
 
   // 3. Payment failure warning
-  if (paymentSuccessRate < 0.90) {
+  if (paymentSuccessRate < 90) {
     insights.push({
       id: "ai-finance-payment-failures",
       section: "finance",
       subsectionId: "finance-stripe",
-      severity: paymentSuccessRate < 0.80 ? "critical" : "warning",
+      severity: paymentSuccessRate < 80 ? "critical" : "warning",
       title: "Payment failure rate is eroding collected revenue",
-      why: `Payment success rate is ${(paymentSuccessRate * 100).toFixed(1)}% — ${data.stripe?.payments?.failed ?? 0} failed of ${(data.stripe?.payments?.succeeded ?? 0) + (data.stripe?.payments?.failed ?? 0)} attempts.`,
+      why: `Payment success rate is ${paymentSuccessRate.toFixed(1)}% — ${data.stripe?.payments?.failed ?? 0} failed of ${(data.stripe?.payments?.succeeded ?? 0) + (data.stripe?.payments?.failed ?? 0)} attempts.`,
       confidence: clampConfidence(0.90),
       expectedImpact: "Smart retries and card updater can recover 30-50% of failed payments.",
       stale: data.staleDomains.includes("stripe"),
@@ -419,7 +420,7 @@ function buildFinanceInsights(data: AnalyticsDashboardData): AiInsight[] {
           source: "Stripe",
           domain: "stripe",
           metric: "Payment Success Rate",
-          value: `${(paymentSuccessRate * 100).toFixed(1)}%`,
+          value: `${paymentSuccessRate.toFixed(1)}%`,
           delta: `${data.stripe?.payments?.failed ?? 0} failed`,
         },
       ],
