@@ -28,7 +28,7 @@ export async function requireCustomerSuccessActor(
 
   const permission = await enforcePermission({
     userId: user.id,
-    action: "integration.read",
+    action: "analytics.read",
     request,
     targetType: "customer-success",
   });

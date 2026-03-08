@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ANALYTICS_PRIMARY_SECTIONS,
+  LEGACY_ANALYTICS_ROUTE_REDIRECTS,
   ANALYTICS_SUB_SECTIONS,
   LEGACY_ANALYTICS_TAB_REDIRECTS,
   getAnalyticsPrimaryForSection,
@@ -24,14 +25,10 @@ describe("analytics section registry", () => {
     expect(ids.has("cs-pylon")).toBe(true);
     expect(ids.has("cs-coda")).toBe(true);
     expect(ids.has("cs-product")).toBe(true);
-  });
-
-  it("omits removed task-management analytics sections", () => {
-    const ids = new Set(ANALYTICS_SUB_SECTIONS.map((section) => section.id));
-    expect(ids.has("cs-decision-dashboard")).toBe(false);
-    expect(ids.has("cs-flow-metrics")).toBe(false);
-    expect(ids.has("cs-flow-risk")).toBe(false);
-    expect(ids.has("cs-observability")).toBe(false);
+    expect(ids.has("cs-decision-dashboard")).toBe(true);
+    expect(ids.has("cs-flow-metrics")).toBe(true);
+    expect(ids.has("cs-flow-risk")).toBe(true);
+    expect(ids.has("cs-observability")).toBe(true);
   });
 
   it("maps legacy analytics tabs to new primary routes", () => {
@@ -43,6 +40,17 @@ describe("analytics section registry", () => {
     expect(LEGACY_ANALYTICS_TAB_REDIRECTS.journey).toBe("/analytics/customer-journey");
     expect(LEGACY_ANALYTICS_TAB_REDIRECTS.demos).toBe("/analytics/demo-analytics");
     expect(LEGACY_ANALYTICS_TAB_REDIRECTS.process).toBe("/analytics/process-analytics");
+  });
+
+  it("preserves redirects for legacy customer-success ops routes", () => {
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["decision-dashboard"]).toBe("/analytics/cs-decision-dashboard");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["flow-metrics"]).toBe("/analytics/cs-flow-metrics");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["flow-risk"]).toBe("/analytics/cs-flow-risk");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS.observability).toBe("/analytics/cs-observability");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-decision-dashboard"]).toBe("/analytics/cs-decision-dashboard");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-flow-metrics"]).toBe("/analytics/cs-flow-metrics");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-flow-risk"]).toBe("/analytics/cs-flow-risk");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-observability"]).toBe("/analytics/cs-observability");
   });
 
   it("returns the owning primary section for child routes", () => {

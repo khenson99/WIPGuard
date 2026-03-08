@@ -682,11 +682,13 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
 
 
   const metaAdsMetadata =
-    metaAdsConnection && metaAdsConnection.status !== IntegrationConnectionStatus.DISCONNECTED
+    metaAdsConnection &&
+    metaAdsConnection.status !== IntegrationConnectionStatus.DISCONNECTED
       ? metaAdsConnection.metadata
       : null;
   const metaPageMetadata =
-    metaPageConnection && metaPageConnection.status !== IntegrationConnectionStatus.DISCONNECTED
+    metaPageConnection &&
+    metaPageConnection.status !== IntegrationConnectionStatus.DISCONNECTED
       ? metaPageConnection.metadata
       : null;
 

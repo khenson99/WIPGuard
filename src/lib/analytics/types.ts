@@ -159,6 +159,40 @@ export interface HubSpotData {
     };
     stageHistory?: Array<{ occurredAt: string; stageId: string; stageLabel: string }>;
   }>;
+  displayDeals?: Array<{
+    dealId: string;
+    dealName: string;
+    stageId: string;
+    stageLabel: string;
+    amount: number;
+    source: string;
+    ownerId: string | null;
+    repName?: string;
+    updatedAt: string | null;
+    createdAt: string | null;
+    closedAt?: string | null;
+    stripeCustomerId?: string | null;
+    pipelineId: string | null;
+    contactIds: string[];
+    primaryContactId: string | null;
+    primaryContactEmail: string | null;
+    primaryContactAnalytics?: {
+      createdAt?: string | null;
+      source: string | null;
+      sourceData1: string | null;
+      sourceData2: string | null;
+      firstSeenAt: string | null;
+      lastSeenAt: string | null;
+      firstUrl: string | null;
+      lastUrl: string | null;
+      numVisits: number | null;
+      numPageViews: number | null;
+      utmSource: string | null;
+      utmMedium: string | null;
+      utmCampaign: string | null;
+    };
+    stageHistory?: Array<{ occurredAt: string; stageId: string; stageLabel: string }>;
+  }>;
   _meta: AnalyticsTimestamp;
 }
 
@@ -1140,6 +1174,23 @@ export interface VisitorFunnelProviderEvidence {
   signalCount: number;
 }
 
+export interface VisitorFunnelEnrichmentProviderStatus {
+  provider: EnrichmentProvider;
+  label: string;
+  deliveryMode: "cron_pull" | "webhook_push";
+  endpointPath: string;
+  authConfigured: boolean;
+  syncConfigured: boolean;
+  syncEnabled: boolean;
+  totalSignals: number;
+  acceptedSignals: number;
+  acceptedRate: number | null;
+  lastSignalAt: string | null;
+  lastAcceptedAt: string | null;
+  stale: boolean;
+  note: string;
+}
+
 export interface VisitorFunnelRecord {
   visitorId: string;
   anonymousId: string;
@@ -1191,6 +1242,10 @@ export interface VisitorFunnelData {
   };
   secondaryMetrics: {
     closedWonCount: number;
+  };
+  enrichmentStatus: {
+    adminOnly: boolean;
+    providers: VisitorFunnelEnrichmentProviderStatus[];
   };
 }
 

@@ -6,13 +6,17 @@ import { recordSecurityAuditEvent } from "@/lib/security-audit";
 export type AppRole = "admin" | "member" | "observer";
 
 export type PermissionAction =
-  | "analytics.read"
   | "board.write"
-  | "deals.write"
+  | "task.read"
   | "task.write"
   | "task.transition"
+  | "project.read"
   | "project.write"
   | "conference.write"
+  | "deals.read"
+  | "deals.write"
+  | "analytics.read"
+  | "hierarchy.read"
   | "sprint.write"
   | "priority.write"
   | "policy.write"
@@ -20,7 +24,6 @@ export type PermissionAction =
   | "team.invite"
   | "team.role.write"
   | "profile.write"
-
   | "integration.read"
   | "integration.manage"
   | "automation.write"
@@ -30,12 +33,16 @@ const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> 
   {
     admin: [
       "board.write",
-      "analytics.read",
+      "task.read",
       "task.write",
       "task.transition",
+      "project.read",
       "project.write",
       "conference.write",
+      "deals.read",
       "deals.write",
+      "analytics.read",
+      "hierarchy.read",
       "sprint.write",
       "priority.write",
       "policy.write",
@@ -50,12 +57,16 @@ const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> 
     ],
     member: [
       "board.write",
-      "analytics.read",
+      "task.read",
       "task.write",
       "task.transition",
+      "project.read",
       "project.write",
       "conference.write",
+      "deals.read",
       "deals.write",
+      "analytics.read",
+      "hierarchy.read",
       "sprint.write",
       "priority.write",
       "policy.override",
@@ -64,7 +75,7 @@ const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> 
       "automation.write",
       "automation.approve",
     ],
-    observer: ["analytics.read", "profile.write", "integration.read", "automation.approve"],
+    observer: ["profile.write", "integration.read", "automation.approve"],
   };
 
 export function normalizeRole(role: string | null | undefined): AppRole {
@@ -89,7 +100,7 @@ export function can(role: AppRole, action: PermissionAction): boolean {
 interface EnforcePermissionInput {
   userId: string;
   action: PermissionAction;
-  request: NextRequest;
+  request: Request | NextRequest;
   targetType?: string;
   targetId?: string;
 }

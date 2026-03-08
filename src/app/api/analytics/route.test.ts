@@ -53,10 +53,16 @@ vi.mock("@/lib/analytics/snapshots", () => ({
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    user: { findUnique: vi.fn() },
+    securityAuditEvent: { create: vi.fn() },
     task: { count: vi.fn() },
     statusHistory: { findMany: vi.fn() },
     stripeCustomerLink: { findMany: vi.fn() },
   },
+}));
+
+vi.mock("@/lib/permissions", () => ({
+  enforcePermission: vi.fn(async () => ({ role: "member" })),
 }));
 
 const META = { fetchedAt: "2026-02-10T00:00:00.000Z", nextRefresh: "2026-02-10T01:00:00.000Z", source: "live" as const };
@@ -327,6 +333,11 @@ describe("GET /api/analytics", () => {
       },
     } as never);
 
+    const { enforcePermission } = await import("@/lib/permissions");
+    vi.mocked(enforcePermission).mockResolvedValue({
+      role: "member",
+    } as never);
+
     const { fetchHubSpotData, fetchMercuryData, fetchStripeData } = await import("@/lib/analytics/fetchers");
     vi.mocked(fetchHubSpotData).mockResolvedValue(HUBSPOT_DATA as never);
     vi.mocked(fetchMercuryData).mockResolvedValue(MERCURY_DATA as never);
@@ -377,6 +388,8 @@ describe("GET /api/analytics", () => {
     } as never);
 
     const { prisma } = await import("@/lib/prisma");
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({ role: "member" } as never);
+    vi.mocked(prisma.securityAuditEvent.create).mockResolvedValue({} as never);
     vi.mocked(prisma.task.count).mockResolvedValue(0 as never);
     vi.mocked(prisma.statusHistory.findMany).mockResolvedValue([] as never);
     vi.mocked(prisma.stripeCustomerLink.findMany).mockResolvedValue([
@@ -388,6 +401,25 @@ describe("GET /api/analytics", () => {
         hubspotDealName: "Acme Corp",
       },
     ] as never);
+  });
+
+  it("returns 403 when analytics read permission is denied", async () => {
+    const { enforcePermission } = await import("@/lib/permissions");
+    const { getCredentials } = await import("@/lib/analytics/credentials");
+
+    vi.mocked(enforcePermission).mockResolvedValue({
+      role: "observer",
+      deniedResponse: Response.json(
+        { error: "Forbidden: insufficient permissions" },
+        { status: 403 }
+      ),
+    } as never);
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics"));
+
+    expect(response.status).toBe(403);
+    expect(getCredentials).not.toHaveBeenCalled();
   });
 
   it("returns customer journey domain data", async () => {

@@ -39,5 +39,15 @@ describe("automations graph", () => {
     expect(providers.has("SLACK")).toBe(true);
     expect(providers.has("CODA")).toBe(true);
     expect(providers.has("REDDIT")).toBe(true);
+    expect(providers.has("WIPGUARD")).toBe(true);
+    expect(providers.has("GOOGLE_SEARCH_CONSOLE")).toBe(true);
+  });
+
+  it("includes the hubspot demo follow-up template referenced by analytics insights", () => {
+    expect(
+      AUTOMATION_TEMPLATES.some(
+        (template) => template.key === "hubspot-demo-followup"
+      )
+    ).toBe(true);
   });
 });

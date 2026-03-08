@@ -2,6 +2,8 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { invalidateHierarchy } from "@/lib/hierarchy-cache";
+import { getAuthenticatedUser } from "@/lib/session-user";
 import { prisma } from "@/lib/prisma";
 import { enforcePermission } from "@/lib/permissions";
 
@@ -18,7 +20,7 @@ export async function GET(
 ): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    if (!getAuthenticatedUser(session)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { id } = await params;
@@ -71,13 +73,14 @@ export async function PATCH(
 ): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { id } = await params;
 
     const permission = await enforcePermission({
-      userId: session.user.id,
+      userId: user.id,
       action: "project.write",
       request,
       targetType: "project",
@@ -142,6 +145,8 @@ export async function PATCH(
         _count: { select: { tasks: true } },
       },
     });
+
+    invalidateHierarchy(user.id);
 
     return NextResponse.json(project);
   } catch (error) {

@@ -3,6 +3,10 @@ import {
   type Prisma,
 } from "@/generated/prisma/client";
 import { executeAutomationAction } from "@/lib/automations/actions";
+import {
+  canExecuteRecommendationAction,
+  MANUAL_EXECUTION_REQUIRED_MESSAGE,
+} from "@/lib/automations/execution-policy";
 import { normalizeWorkflowRolePolicy } from "@/lib/automations/service";
 import { getAppRole } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -204,6 +208,10 @@ export async function executeAutomationRecommendation(input: {
     throw new Error("Recommendation requires approval before execution");
   }
 
+  if (!canExecuteRecommendationAction(recommendation.actionType)) {
+    throw new Error(MANUAL_EXECUTION_REQUIRED_MESSAGE);
+  }
+
   try {
     const result = await executeAutomationAction({
       runId: recommendation.runId,
@@ -282,11 +290,15 @@ export async function executeApprovedRecommendationsForRun(input: {
       typeof input.limit === "number" && Number.isFinite(input.limit)
         ? Math.max(1, Math.trunc(input.limit))
         : 50,
-    select: { id: true },
+    select: { id: true, actionType: true },
   });
 
+  const executableRecommendations = recommendations.filter((recommendation) =>
+    canExecuteRecommendationAction(recommendation.actionType)
+  );
+
   const results = [];
-  for (const recommendation of recommendations) {
+  for (const recommendation of executableRecommendations) {
     results.push(
       await executeAutomationRecommendation({
         recommendationId: recommendation.id,
@@ -296,7 +308,7 @@ export async function executeApprovedRecommendationsForRun(input: {
   }
 
   return {
-    attempted: recommendations.length,
+    attempted: executableRecommendations.length,
     executed: results.filter(
       (recommendation) =>
         recommendation.status === AutomationRecommendationStatus.EXECUTED
@@ -305,6 +317,8 @@ export async function executeApprovedRecommendationsForRun(input: {
       (recommendation) =>
         recommendation.status === AutomationRecommendationStatus.FAILED
     ).length,
-    recommendationIds: recommendations.map((recommendation) => recommendation.id),
+    recommendationIds: executableRecommendations.map(
+      (recommendation) => recommendation.id
+    ),
   };
 }

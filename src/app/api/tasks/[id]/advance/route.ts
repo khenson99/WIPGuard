@@ -4,9 +4,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { TaskStatus } from "@/generated/prisma/client";
+import { invalidateHierarchy } from "@/lib/hierarchy-cache";
+import { emitTaskUpdated } from "@/lib/socket-emit";
 import { enforcePolicy, getUserRole, recordPolicyOverride } from "@/lib/policy-check";
 import { compactColumns, getNextColumnOrder } from "@/lib/task-order";
 import { enforcePermission } from "@/lib/permissions";
+import { getAuthenticatedUser } from "@/lib/session-user";
 
 const STATUS_FLOW: Partial<Record<TaskStatus, TaskStatus>> = {
   BACKLOG: "QUEUED",
@@ -23,14 +26,15 @@ export async function POST(
 ): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id } = await params;
 
     const permission = await enforcePermission({
-      userId: session.user.id,
+      userId: user.id,
       action: "task.transition",
       request,
       targetType: "task",
@@ -99,7 +103,7 @@ export async function POST(
     }
 
     // ── WIP policy enforcement ──
-    const userRole = await getUserRole(session.user.id);
+    const userRole = await getUserRole(user.id);
     const policyResult = await enforcePolicy(nextStatus, userRole, id);
 
     if (!policyResult.allowed) {
@@ -129,8 +133,8 @@ export async function POST(
         taskId: id,
         action: "advance",
         reason: overrideReason,
-        actorId: session.user.id,
-        actorName: session.user.name ?? undefined,
+        actorId: user.id,
+        actorName: user.name ?? undefined,
         actorRole: userRole,
         column: nextStatus,
         wipCount: policyResult.currentCount,
@@ -172,7 +176,7 @@ export async function POST(
         taskId: id,
         fromStatus: existing.status,
         toStatus: nextStatus,
-        changedBy: session.user.id,
+        changedBy: user.id,
       },
     });
 
@@ -207,6 +211,10 @@ export async function POST(
     }
 
     await compactColumns(prisma, [existing.status, nextStatus]);
+    invalidateHierarchy(user.id);
+    if (task.projectId) {
+      emitTaskUpdated(task.projectId, task);
+    }
 
     return NextResponse.json({
       task,

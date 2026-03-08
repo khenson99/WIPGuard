@@ -3,26 +3,31 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { WorkflowScope } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
+import { normalizeAutomationOperatorKey } from "@/lib/automations/operators";
 import { prisma } from "@/lib/prisma";
+import { getAuthenticatedUser } from "@/lib/session-user";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const workflowId = request.nextUrl.searchParams.get("workflowId");
     const runId = request.nextUrl.searchParams.get("runId");
-    const operatorKey = request.nextUrl.searchParams.get("operatorKey");
+    const operatorKey = normalizeAutomationOperatorKey(
+      request.nextUrl.searchParams.get("operatorKey")
+    );
 
     const artifacts = await prisma.automationArtifact.findMany({
       where: {
         ...(workflowId ? { workflowId } : {}),
         ...(runId ? { runId } : {}),
-        ...(operatorKey ? { operatorKey: operatorKey as never } : {}),
+        ...(operatorKey ? { operatorKey } : {}),
         workflow: {
-          OR: [{ ownerId: session.user.id }, { scope: WorkflowScope.SHARED }],
+          OR: [{ ownerId: user.id }, { scope: WorkflowScope.SHARED }],
         },
       },
       orderBy: [{ createdAt: "desc" }],

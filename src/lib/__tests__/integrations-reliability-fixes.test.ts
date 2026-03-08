@@ -16,22 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // ---------------------------------------------------------------------------
 
 describe("circuit-breaker fire-and-forget error logging", () => {
-  type CircuitRow = {
-    state: string;
-    consecutiveFailures: number;
-    openedAt: Date | null;
-    currentCooldownMs: number;
-    openCount: number;
-  };
-
-  const db = new Map<string, CircuitRow>();
-
-  function dbKey(userId: string, provider: string): string {
-    return `${userId}:${provider}`;
-  }
-
   beforeEach(() => {
-    db.clear();
     vi.resetModules();
     vi.restoreAllMocks();
   });
@@ -47,6 +32,20 @@ describe("circuit-breaker fire-and-forget error logging", () => {
       prisma: {
         integrationCircuitState: {
           findUnique: vi.fn(async () => ({
+            state: "OPEN",
+            consecutiveFailures: 5,
+            openedAt: new Date(),
+            currentCooldownMs: 30000,
+            openCount: 1,
+          })),
+          create: vi.fn(async () => ({
+            state: "CLOSED",
+            consecutiveFailures: 0,
+            openedAt: null,
+            currentCooldownMs: 0,
+            openCount: 0,
+          })),
+          update: vi.fn(async () => ({
             state: "OPEN",
             consecutiveFailures: 5,
             openedAt: new Date(),
@@ -87,9 +86,23 @@ describe("circuit-breaker fire-and-forget error logging", () => {
       prisma: {
         integrationCircuitState: {
           findUnique: vi.fn(async () => null),
-          upsert: vi.fn(async () => {
+          create: vi.fn(async () => ({
+            state: "CLOSED",
+            consecutiveFailures: 0,
+            openedAt: null,
+            currentCooldownMs: 0,
+            openCount: 0,
+          })),
+          update: vi.fn(async () => {
             throw new Error("DB timeout");
           }),
+          upsert: vi.fn(async () => ({
+            state: "CLOSED",
+            consecutiveFailures: 0,
+            openedAt: null,
+            currentCooldownMs: 0,
+            openCount: 0,
+          })),
           deleteMany: vi.fn(async () => ({ count: 0 })),
         },
       },
@@ -232,6 +245,5 @@ describe("slack-notifications SLACK_API_TIMEOUT_MS constant", () => {
     // The actual timeout behavior is integration-level (requires network mocking).
     const mod = await import("@/lib/integrations/slack-notifications");
     expect(typeof mod.sendSlackNotification).toBe("function");
-    expect(typeof mod.postSlackMessage === "function" || true).toBe(true); // private, just verify module loads
   });
 });

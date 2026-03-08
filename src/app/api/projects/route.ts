@@ -2,8 +2,10 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { invalidateHierarchy } from "@/lib/hierarchy-cache";
 import { prisma } from "@/lib/prisma";
 import { enforcePermission } from "@/lib/permissions";
+import { getAuthenticatedUser } from "@/lib/session-user";
 
 const USER_SELECT = {
   id: true,
@@ -15,8 +17,19 @@ const USER_SELECT = {
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const permission = await enforcePermission({
+      userId: user.id,
+      action: "project.read",
+      request,
+      targetType: "project",
+    });
+    if (permission.deniedResponse) {
+      return permission.deniedResponse;
     }
 
     const projects = await prisma.project.findMany({
@@ -68,12 +81,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const permission = await enforcePermission({
-      userId: session.user.id,
+      userId: user.id,
       action: "project.write",
       request,
       targetType: "project",
@@ -132,6 +146,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         sponsor: { select: USER_SELECT },
       },
     });
+
+    invalidateHierarchy(user.id);
 
     return NextResponse.json(project, { status: 201 });
   } catch (error) {

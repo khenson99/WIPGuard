@@ -301,7 +301,9 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     deps: [sectionId, rangeQuery, searchParamsString, child?.id],
     load: async ({ signal, refresh }) => {
       const params = new URLSearchParams(searchParamsString);
-      const isOpsSection = Boolean(child && OPS_DOMAINS.includes(child.dataDomain as (typeof OPS_DOMAINS)[number]));
+      const isOpsSection = Boolean(
+        child && OPS_DOMAINS.includes(child.dataDomain as (typeof OPS_DOMAINS)[number])
+      );
 
       if (isOpsSection) {
         if (child?.dataDomain === "decisionDashboard") {
@@ -311,15 +313,24 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
           if (from && to) {
             const fromDate = new Date(`${from}T00:00:00.000Z`);
             const toDate = new Date(`${to}T23:59:59.999Z`);
-            if (!Number.isNaN(fromDate.getTime()) && !Number.isNaN(toDate.getTime()) && fromDate <= toDate) {
-              lookback = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
+            if (
+              !Number.isNaN(fromDate.getTime()) &&
+              !Number.isNaN(toDate.getTime()) &&
+              fromDate <= toDate
+            ) {
+              lookback = Math.ceil(
+                (toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)
+              );
             }
           } else {
             lookback = Number((params.get("range") || "30d").replace("d", "")) || 30;
           }
 
           const response = await fetchWithRetry(
-            `/api/analytics/decision-dashboard?lookbackDays=${Math.max(7, Math.min(120, lookback))}`,
+            `/api/analytics/decision-dashboard?lookbackDays=${Math.max(
+              7,
+              Math.min(120, lookback)
+            )}`,
             { signal, cache: refresh ? "no-store" : "default" }
           );
           if (!response.ok) {
@@ -335,13 +346,21 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         if (child?.dataDomain === "flowMetrics") {
           if (!params.get("from") || !params.get("to")) {
             const now = new Date();
-            params.set("from", new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
+            params.set(
+              "from",
+              new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000)
+                .toISOString()
+                .slice(0, 10)
+            );
             params.set("to", now.toISOString().slice(0, 10));
           }
-          const response = await fetchWithRetry(`/api/flow/metrics?${params.toString()}&interval=week`, {
-            signal,
-            cache: refresh ? "no-store" : "default",
-          });
+          const response = await fetchWithRetry(
+            `/api/flow/metrics?${params.toString()}&interval=week`,
+            {
+              signal,
+              cache: refresh ? "no-store" : "default",
+            }
+          );
           if (!response.ok) {
             throw new Error(`Flow metrics request failed (${response.status})`);
           }
@@ -353,10 +372,13 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         }
 
         if (child?.dataDomain === "flowRisk") {
-          const response = await fetchWithRetry("/api/flow/risk?blockerLookbackDays=30&fixedDateLookaheadDays=14", {
-            signal,
-            cache: refresh ? "no-store" : "default",
-          });
+          const response = await fetchWithRetry(
+            "/api/flow/risk?blockerLookbackDays=30&fixedDateLookaheadDays=14",
+            {
+              signal,
+              cache: refresh ? "no-store" : "default",
+            }
+          );
           if (!response.ok) {
             throw new Error(`Flow risk request failed (${response.status})`);
           }
