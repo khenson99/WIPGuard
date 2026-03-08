@@ -11,6 +11,17 @@ function getSecret(): string {
   );
 }
 
+function requireSecret(): string {
+  const secret = getSecret();
+  if (!secret) {
+    throw new Error(
+      "INTEGRATION_TOKEN_SECRET or NEXTAUTH_SECRET must be set. " +
+        "Refusing to store integration tokens as plaintext."
+    );
+  }
+  return secret;
+}
+
 function getKey(secret: string): Buffer {
   return createHash("sha256").update(secret).digest();
 }
@@ -20,10 +31,7 @@ export function protectIntegrationSecret(
 ): string | null {
   if (!value) return null;
 
-  const secret = getSecret();
-  if (!secret) {
-    return `${PLAINTEXT_PREFIX}.${value}`;
-  }
+  const secret = requireSecret();
 
   const key = getKey(secret);
   const iv = randomBytes(12);
@@ -44,7 +52,12 @@ export function unprotectIntegrationSecret(
 ): string | null {
   if (!value) return null;
 
+  // Support reading legacy plaintext tokens for migration
   if (value.startsWith(`${PLAINTEXT_PREFIX}.`)) {
+    console.warn(
+      "token-crypto: Reading legacy plaintext token. " +
+        "Re-encrypt by updating the integration connection."
+    );
     return value.slice(PLAINTEXT_PREFIX.length + 1);
   }
   if (!value.startsWith(`${ENCRYPTED_PREFIX}.`)) {
@@ -58,7 +71,9 @@ export function unprotectIntegrationSecret(
 
   const secret = getSecret();
   if (!secret) {
-    return null;
+    throw new Error(
+      "INTEGRATION_TOKEN_SECRET or NEXTAUTH_SECRET must be set to decrypt tokens."
+    );
   }
 
   try {
