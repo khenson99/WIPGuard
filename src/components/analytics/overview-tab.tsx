@@ -7,6 +7,7 @@ import {
   Globe, Megaphone,
 } from "lucide-react";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
 import { StatCard } from "./stat-card";
 import { BarDisplay, RingStat } from "./bar-display";
 
@@ -180,7 +181,7 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Payment Success</span>
                   <span className="font-medium tabular-nums text-emerald-500">
-                    {stripe ? fmtPct(stripe.payments.successRate) : "—"}
+                    {stripe ? fmtPct(normalizePercentValue(stripe.payments.successRate)) : "—"}
                   </span>
                 </div>
               </div>

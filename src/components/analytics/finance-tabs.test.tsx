@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 import { createEmptyAnalyticsDashboardData } from "@/lib/analytics/response-shape";
 import { FinanceTab } from "@/components/analytics/finance-tab";
 import { FinanceStripeTab } from "@/components/analytics/finance-stripe-tab";
@@ -107,6 +108,47 @@ describe("finance tabs", () => {
 
     expect(screen.getByText("Stripe finance data is unavailable")).toBeTruthy();
     expect(screen.getByText(/subscription and payment analytics/)).toBeTruthy();
+  });
+
+  it("normalizes ratio-style Stripe percentages in the stripe finance tab", () => {
+    const data = makeEmptyData();
+    if (data.freshness.stripe) {
+      data.freshness.stripe.lastError = null;
+    }
+    data.stripe = {
+      revenue: {
+        mrr: 12000,
+        mrrChange: 500,
+        totalRevenue30d: 15000,
+        totalRevenuePrev30d: 14000,
+        revenueGrowth: 7.1,
+        avgRevenuePerCustomer: 300,
+      },
+      subscriptions: {
+        active: 40,
+        pastDue: 2,
+        canceled: 1,
+        trialing: 3,
+        churnRate: 0.04,
+        recentChurnEvents: [],
+      },
+      payments: {
+        succeeded: 79,
+        failed: 1,
+        successRate: 0.987,
+      },
+      revenueTrend: [],
+      _meta: {
+        fetchedAt: "2026-02-16T00:00:00.000Z",
+        nextRefresh: "2026-02-16T01:00:00.000Z",
+        source: "live",
+      },
+    };
+
+    render(<FinanceStripeTab data={data} />);
+
+    expect(screen.getAllByText("4.0%").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("98.7%").length).toBeGreaterThan(0);
   });
 
   it("shows finance-stage hubspot empty state when lifecycle stages are missing", () => {
