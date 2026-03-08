@@ -19,12 +19,40 @@ import {
 const SUPPORTED_PROVIDERS = new Set<EnrichmentProvider>(["unify", "clay", "rb2b"]);
 
 interface EnrichRequestBody {
+  dryRun?: boolean;
   signals?: VisitorEnrichmentSignalInput[];
+}
+
+interface DryRunPreviewRow {
+  signalKey: string | null;
+  anonymousId: string | null;
+  email: string | null;
+  domain: string | null;
+  fullName: string | null;
+  companyName: string | null;
+  confidence: number | null;
+  occurredAt: string | null;
+  provenance: string | null;
+  capturedUrl: string | null;
+  referrer: string | null;
 }
 
 function trimOrNull(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : null;
+}
+
+function coerceBoolean(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    return ["1", "true", "yes", "y", "on"].includes(value.trim().toLowerCase());
+  }
+  return false;
+}
+
+function asObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
 }
 
 function safeEqual(left: string, right: string): boolean {
@@ -66,6 +94,36 @@ function authorizeRequest(request: NextRequest, provider: EnrichmentProvider, ro
   return providerSecrets(provider).some((expected) => safeEqual(expected, suppliedSecret));
 }
 
+function metadataString(
+  metadata: VisitorEnrichmentSignalInput["metadata"] | null | undefined,
+  key: string,
+): string | null {
+  const record = asObject(metadata);
+  const value = record?.[key];
+  return typeof value === "string" ? trimOrNull(value) : null;
+}
+
+function buildDryRunPreview(
+  signals: VisitorEnrichmentSignalInput[],
+): DryRunPreviewRow[] {
+  return signals.slice(0, 5).map((signal) => ({
+    signalKey: trimOrNull(signal.signalKey),
+    anonymousId: trimOrNull(signal.anonymousId),
+    email: trimOrNull(signal.email),
+    domain: trimOrNull(signal.domain),
+    fullName: trimOrNull(signal.fullName),
+    companyName: trimOrNull(signal.companyName),
+    confidence:
+      typeof signal.confidence === "number" && Number.isFinite(signal.confidence)
+        ? signal.confidence
+        : null,
+    occurredAt: trimOrNull(signal.occurredAt),
+    provenance: trimOrNull(signal.provenance),
+    capturedUrl: metadataString(signal.metadata, "capturedUrl"),
+    referrer: metadataString(signal.metadata, "referrer"),
+  }));
+}
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ provider: string }> },
@@ -91,6 +149,15 @@ export async function POST(
       } catch {
         return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
       }
+    }
+    const dryRun =
+      coerceBoolean(body.dryRun) ||
+      coerceBoolean(request.nextUrl.searchParams.get("dryRun"));
+    if (dryRun && user?.role !== "admin") {
+      return NextResponse.json(
+        { error: "Dry-run validation requires admin access" },
+        { status: 403 },
+      );
     }
 
     let signals: VisitorEnrichmentSignalInput[] = [];
@@ -125,15 +192,20 @@ export async function POST(
       signals = normalizeNativeProviderSignals(provider, body);
     }
 
-    if (signals.length === 0 && mode === "pull") {
+    if (signals.length === 0 && (mode === "pull" || dryRun)) {
       return NextResponse.json(
         {
           accepted: 0,
+          dryRun,
+          preview: [] as DryRunPreviewRow[],
           stored: 0,
           mode,
           provider,
           received: 0,
-          message: "No enrichment signals found in the requested pull window.",
+          message:
+            mode === "pull"
+              ? "No enrichment signals found in the requested pull window."
+              : "No enrichment signals were found after normalizing the sample payload.",
         },
         { status: 202 },
       );
@@ -146,10 +218,27 @@ export async function POST(
       );
     }
 
+    if (dryRun) {
+      return NextResponse.json(
+        {
+          accepted: signals.length,
+          dryRun: true,
+          mode,
+          preview: buildDryRunPreview(signals),
+          provider,
+          received: signals.length,
+          stored: 0,
+          message: `Validated ${signals.length} normalized signal${signals.length === 1 ? "" : "s"}. No records were stored.`,
+        },
+        { status: 202 },
+      );
+    }
+
     const result = await ingestVisitorEnrichmentSignals(prisma, provider, signals);
     return NextResponse.json(
       {
         ...result,
+        dryRun: false,
         mode,
         provider,
         received: signals.length,

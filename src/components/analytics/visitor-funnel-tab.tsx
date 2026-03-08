@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type {
   AnalyticsDashboardData,
+  EnrichmentProvider,
   VisitorFunnelBreakdownRow,
   VisitorFunnelRecord,
 } from "@/lib/analytics/types";
@@ -37,12 +38,20 @@ interface RecordsResponse {
 
 interface EnrichmentActionResponse {
   accepted: number;
+  dryRun?: boolean;
+  preview?: Array<Record<string, unknown>>;
   stored: number;
   received: number;
   mode: "pull" | "native" | "normalized";
   provider: string;
   message?: string;
   error?: string;
+}
+
+interface ProviderActionState {
+  pending: boolean;
+  tone: "neutral" | "success" | "warning" | "error";
+  message: string | null;
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -62,6 +71,60 @@ const STAGE_ICONS = [
   FlaskConical,
   DollarSign,
 ] as const;
+
+const DEFAULT_PROVIDER_ACTION_STATE: ProviderActionState = {
+  pending: false,
+  tone: "neutral",
+  message: null,
+};
+
+const PROVIDER_SAMPLE_PAYLOADS: Record<
+  Exclude<EnrichmentProvider, "unify">,
+  Record<string, unknown>
+> = {
+  clay: {
+    dryRun: true,
+    rows: [
+      {
+        rowId: "sample-row-1",
+        workEmail: "sample@example.com",
+        companyDomain: "example.com",
+        fullName: "Sample Buyer",
+        companyName: "Example Co",
+        confidence: 87,
+        capturedUrl: "https://wipguard.ai/demo",
+        referrerUrl: "https://www.reddit.com/r/revops",
+        occurredAt: "2026-03-08T12:00:00.000Z",
+      },
+    ],
+  },
+  rb2b: {
+    dryRun: true,
+    "Business Email": "sample@example.com",
+    "First Name": "Sample",
+    "Last Name": "Buyer",
+    "Company Name": "Example Co",
+    Website: "https://example.com",
+    "Captured URL": "https://wipguard.ai/pricing",
+    Referrer: "https://www.reddit.com/r/startups",
+    "Seen At": "2026-03-08T12:00:00.000Z",
+  },
+};
+
+function providerActionToneClass(tone: ProviderActionState["tone"]): string {
+  if (tone === "success") return "text-emerald-600";
+  if (tone === "warning") return "text-amber-600";
+  if (tone === "error") return "text-rose-600";
+  return "text-muted-foreground";
+}
+
+function initialProviderActionState(): Record<EnrichmentProvider, ProviderActionState> {
+  return {
+    unify: { ...DEFAULT_PROVIDER_ACTION_STATE },
+    clay: { ...DEFAULT_PROVIDER_ACTION_STATE },
+    rb2b: { ...DEFAULT_PROVIDER_ACTION_STATE },
+  };
+}
 
 function pct(value: number | null): string {
   return value == null ? "—" : `${value.toFixed(1)}%`;
@@ -115,15 +178,9 @@ export function VisitorFunnelTab({ data }: { data: AnalyticsDashboardData | null
     payload: null,
     error: null,
   });
-  const [unifyActionState, setUnifyActionState] = useState<{
-    pending: boolean;
-    tone: "neutral" | "success" | "warning" | "error";
-    message: string | null;
-  }>({
-    pending: false,
-    tone: "neutral",
-    message: null,
-  });
+  const [providerActionState, setProviderActionState] = useState<
+    Record<EnrichmentProvider, ProviderActionState>
+  >(() => initialProviderActionState());
 
   const recordsHref = (() => {
     const hrefValue = funnel?.recordsApi.href;
@@ -198,8 +255,18 @@ export function VisitorFunnelTab({ data }: { data: AnalyticsDashboardData | null
     router.replace(`${pathname}${next.toString() ? `?${next.toString()}` : ""}`, { scroll: false });
   };
 
+  const updateProviderAction = (
+    provider: EnrichmentProvider,
+    nextState: ProviderActionState,
+  ) => {
+    setProviderActionState((current) => ({
+      ...current,
+      [provider]: nextState,
+    }));
+  };
+
   const runUnifyPull = async (windowHours: number | null) => {
-    setUnifyActionState({
+    updateProviderAction("unify", {
       pending: true,
       tone: "neutral",
       message: windowHours ? `Replaying the last ${windowHours} hours…` : "Pulling latest Unify records…",
@@ -232,17 +299,58 @@ export function VisitorFunnelTab({ data }: { data: AnalyticsDashboardData | null
           ? `Pulled ${payload.received} signals. Stored ${payload.stored}, accepted ${payload.accepted}.`
           : payload.message ?? "No new enrichment signals were found.";
 
-      setUnifyActionState({
+      updateProviderAction("unify", {
         pending: false,
         tone,
         message,
       });
       refreshSection();
     } catch (error) {
-      setUnifyActionState({
+      updateProviderAction("unify", {
         pending: false,
         tone: "error",
         message: error instanceof Error ? error.message : "Failed to pull Unify records.",
+      });
+    }
+  };
+
+  const runProviderValidation = async (
+    provider: Exclude<EnrichmentProvider, "unify">,
+  ) => {
+    updateProviderAction(provider, {
+      pending: true,
+      tone: "neutral",
+      message: `Validating ${provider === "clay" ? "Clay" : "RB2B"} sample payload…`,
+    });
+
+    try {
+      const response = await fetch(`/api/v1/analytics/funnel/enrich/${provider}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(PROVIDER_SAMPLE_PAYLOADS[provider]),
+      });
+      const payload = (await response.json().catch(() => ({}))) as EnrichmentActionResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? `Sample validation failed (${response.status})`);
+      }
+
+      updateProviderAction(provider, {
+        pending: false,
+        tone: payload.received > 0 ? "success" : "warning",
+        message:
+          payload.message ??
+          (payload.received > 0
+            ? `Validated ${payload.received} sample signal${payload.received === 1 ? "" : "s"}.`
+            : "No enrichment signals were found in the sample payload."),
+      });
+    } catch (error) {
+      updateProviderAction(provider, {
+        pending: false,
+        tone: "error",
+        message: error instanceof Error ? error.message : "Failed to validate sample payload.",
       });
     }
   };
@@ -454,23 +562,24 @@ export function VisitorFunnelTab({ data }: { data: AnalyticsDashboardData | null
           </div>
 
           <div className="mt-4 grid gap-4 xl:grid-cols-3">
-            {funnel.enrichmentStatus.providers.map((provider) => {
-              const state = !provider.syncConfigured
+            {funnel.enrichmentStatus.providers.map((providerStatus) => {
+              const state = !providerStatus.syncConfigured
                 ? { label: "Not Configured", cls: "bg-rose-500/10 text-rose-600", icon: CircleAlert }
-                : provider.stale
+                : providerStatus.stale
                   ? { label: "Stale", cls: "bg-amber-500/10 text-amber-600", icon: Clock3 }
-                  : provider.totalSignals === 0
+                  : providerStatus.totalSignals === 0
                     ? { label: "Waiting", cls: "bg-amber-500/10 text-amber-600", icon: Clock3 }
                     : { label: "Healthy", cls: "bg-emerald-500/10 text-emerald-600", icon: CheckCircle2 };
               const StatusIcon = state.icon;
+              const actionState = providerActionState[providerStatus.provider];
 
               return (
-                <div key={provider.provider} className="rounded-xl border border-border bg-background px-4 py-4">
+                <div key={providerStatus.provider} className="rounded-xl border border-border bg-background px-4 py-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-foreground">{provider.label}</p>
+                      <p className="text-sm font-semibold text-foreground">{providerStatus.label}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {provider.deliveryMode === "cron_pull" ? "Cron pull" : "Webhook push"}
+                        {providerStatus.deliveryMode === "cron_pull" ? "Cron pull" : "Webhook push"}
                       </p>
                     </div>
                     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium ${state.cls}`}>
@@ -483,17 +592,17 @@ export function VisitorFunnelTab({ data }: { data: AnalyticsDashboardData | null
                     <div className="rounded-lg border border-border px-3 py-2">
                       <p className="text-muted-foreground">Signals</p>
                       <p className="mt-1 text-sm font-semibold text-foreground">
-                        {provider.acceptedSignals.toLocaleString()} / {provider.totalSignals.toLocaleString()}
+                        {providerStatus.acceptedSignals.toLocaleString()} / {providerStatus.totalSignals.toLocaleString()}
                       </p>
-                      <p className="mt-1 text-muted-foreground">Accepted {pct(provider.acceptedRate)}</p>
+                      <p className="mt-1 text-muted-foreground">Accepted {pct(providerStatus.acceptedRate)}</p>
                     </div>
                     <div className="rounded-lg border border-border px-3 py-2">
                       <p className="text-muted-foreground">Config</p>
                       <p className="mt-1 text-sm font-semibold text-foreground">
-                        {provider.syncConfigured ? "Ready" : "Missing"}
+                        {providerStatus.syncConfigured ? "Ready" : "Missing"}
                       </p>
                       <p className="mt-1 text-muted-foreground">
-                        Auth {provider.authConfigured ? "set" : "missing"}
+                        Auth {providerStatus.authConfigured ? "set" : "missing"}
                       </p>
                     </div>
                   </div>
@@ -501,63 +610,76 @@ export function VisitorFunnelTab({ data }: { data: AnalyticsDashboardData | null
                   <div className="mt-4 space-y-2 rounded-lg border border-border px-3 py-3 text-xs text-muted-foreground">
                     <div className="flex items-center justify-between gap-3">
                       <span>Last signal</span>
-                      <span className="text-right text-foreground">{formatTimestamp(provider.lastSignalAt)}</span>
+                      <span className="text-right text-foreground">{formatTimestamp(providerStatus.lastSignalAt)}</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <span>Last accepted</span>
-                      <span className="text-right text-foreground">{formatTimestamp(provider.lastAcceptedAt)}</span>
+                      <span className="text-right text-foreground">{formatTimestamp(providerStatus.lastAcceptedAt)}</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <span>Endpoint</span>
-                      <code className="text-right text-[11px] text-foreground">{provider.endpointPath}</code>
+                      <code className="text-right text-[11px] text-foreground">{providerStatus.endpointPath}</code>
                     </div>
                   </div>
 
-                  <p className="mt-3 text-xs text-muted-foreground">{provider.note}</p>
+                  <p className="mt-3 text-xs text-muted-foreground">{providerStatus.note}</p>
 
                   <div className="mt-3 flex items-center gap-2 text-[11px] text-muted-foreground">
                     <Link2 className="h-3.5 w-3.5" />
-                    {provider.syncEnabled ? "Enabled" : "Disabled"}
+                    {providerStatus.syncEnabled ? "Enabled" : "Disabled"}
                   </div>
 
-                  {provider.provider === "unify" ? (
+                  {providerStatus.provider === "unify" ? (
                     <div className="mt-4 space-y-3">
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
                           onClick={() => void runUnifyPull(null)}
-                          disabled={unifyActionState.pending || !provider.syncConfigured}
+                          disabled={actionState.pending || !providerStatus.syncConfigured}
                           className="rounded-md border border-border bg-card px-3 py-1.5 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          {unifyActionState.pending ? "Pulling..." : "Pull now"}
+                          {actionState.pending ? "Pulling..." : "Pull now"}
                         </button>
                         <button
                           type="button"
                           onClick={() => void runUnifyPull(24)}
-                          disabled={unifyActionState.pending || !provider.syncConfigured}
+                          disabled={actionState.pending || !providerStatus.syncConfigured}
                           className="rounded-md border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          {unifyActionState.pending ? "Working..." : "Replay 24h"}
+                          {actionState.pending ? "Working..." : "Replay 24h"}
                         </button>
                       </div>
 
-                      {unifyActionState.message ? (
-                        <p
-                          className={`text-xs ${
-                            unifyActionState.tone === "success"
-                              ? "text-emerald-600"
-                              : unifyActionState.tone === "warning"
-                                ? "text-amber-600"
-                                : unifyActionState.tone === "error"
-                                  ? "text-rose-600"
-                                  : "text-muted-foreground"
-                          }`}
-                        >
-                          {unifyActionState.message}
+                      {actionState.message ? (
+                        <p className={`text-xs ${providerActionToneClass(actionState.tone)}`}>
+                          {actionState.message}
                         </p>
                       ) : null}
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="mt-4 space-y-3">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void runProviderValidation(
+                              providerStatus.provider === "clay" ? "clay" : "rb2b",
+                            )
+                          }
+                          disabled={actionState.pending}
+                          className="rounded-md border border-border bg-card px-3 py-1.5 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {actionState.pending ? "Validating..." : "Validate sample"}
+                        </button>
+                      </div>
+
+                      {actionState.message ? (
+                        <p className={`text-xs ${providerActionToneClass(actionState.tone)}`}>
+                          {actionState.message}
+                        </p>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
               );
             })}
