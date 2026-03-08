@@ -11,6 +11,7 @@ export type PermissionAction =
   | "task.transition"
   | "project.write"
   | "conference.write"
+  | "deals.write"
   | "sprint.write"
   | "priority.write"
   | "policy.write"
