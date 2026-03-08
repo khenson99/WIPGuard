@@ -7,10 +7,16 @@ export type AppRole = "admin" | "member" | "observer";
 
 export type PermissionAction =
   | "board.write"
+  | "task.read"
   | "task.write"
   | "task.transition"
+  | "project.read"
   | "project.write"
   | "conference.write"
+  | "deals.read"
+  | "deals.write"
+  | "analytics.read"
+  | "hierarchy.read"
   | "sprint.write"
   | "priority.write"
   | "policy.write"
@@ -28,11 +34,16 @@ const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> 
   {
     admin: [
       "board.write",
+      "task.read",
       "task.write",
       "task.transition",
+      "project.read",
       "project.write",
       "conference.write",
+      "deals.read",
       "deals.write",
+      "analytics.read",
+      "hierarchy.read",
       "sprint.write",
       "priority.write",
       "policy.write",
@@ -47,11 +58,16 @@ const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> 
     ],
     member: [
       "board.write",
+      "task.read",
       "task.write",
       "task.transition",
+      "project.read",
       "project.write",
       "conference.write",
+      "deals.read",
       "deals.write",
+      "analytics.read",
+      "hierarchy.read",
       "sprint.write",
       "priority.write",
       "policy.override",
@@ -85,7 +101,7 @@ export function can(role: AppRole, action: PermissionAction): boolean {
 interface EnforcePermissionInput {
   userId: string;
   action: PermissionAction;
-  request: NextRequest;
+  request: Request | NextRequest;
   targetType?: string;
   targetId?: string;
 }

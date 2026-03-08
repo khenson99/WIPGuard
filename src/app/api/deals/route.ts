@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { enforcePermission } from "@/lib/permissions";
+import { getAuthenticatedUser } from "@/lib/session-user";
 import { DealStage, DealSource } from "@/generated/prisma/client";
 
 const USER_SELECT = { id: true, name: true, email: true, image: true } as const;
@@ -11,9 +12,18 @@ const USER_SELECT = { id: true, name: true, email: true, image: true } as const;
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const { deniedResponse } = await enforcePermission({
+      userId: user.id,
+      action: "deals.read",
+      request,
+      targetType: "deal",
+    });
+    if (deniedResponse) return deniedResponse;
 
     const url = new URL(request.url);
     const stage = url.searchParams.get("stage");
@@ -77,12 +87,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { deniedResponse } = await enforcePermission({
-      userId: session.user.id,
+      userId: user.id,
       action: "deals.write",
       request,
     });
@@ -112,7 +123,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         expectedCloseDate: body.expectedCloseDate ? new Date(body.expectedCloseDate) : null,
         notes: typeof body.notes === "string" ? body.notes : null,
         companyId: typeof body.companyId === "string" ? body.companyId : null,
-        ownerId: typeof body.ownerId === "string" ? body.ownerId : session.user.id,
+        ownerId: typeof body.ownerId === "string" ? body.ownerId : user.id,
         contacts:
           Array.isArray(body.contactIds) && body.contactIds.length > 0
             ? { connect: body.contactIds.map((id: string) => ({ id })) }
@@ -127,7 +138,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // Record initial stage history
     await prisma.dealStageHistory.create({
-      data: { dealId: deal.id, fromStage: null, toStage: stage, changedBy: session.user.id },
+      data: { dealId: deal.id, fromStage: null, toStage: stage, changedBy: user.id },
     });
 
     return NextResponse.json(deal, { status: 201 });

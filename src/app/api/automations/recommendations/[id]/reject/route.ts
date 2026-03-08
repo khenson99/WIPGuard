@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { resolveAutomationRecommendation } from "@/lib/automations/recommendations";
+import { getAuthenticatedUser } from "@/lib/session-user";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -14,7 +15,8 @@ export async function POST(
 ): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -23,7 +25,7 @@ export async function POST(
 
     const recommendation = await resolveAutomationRecommendation({
       recommendationId: id,
-      actorUserId: session.user.id,
+      actorUserId: user.id,
       decision: "reject",
       note: typeof body.note === "string" ? body.note : undefined,
     });

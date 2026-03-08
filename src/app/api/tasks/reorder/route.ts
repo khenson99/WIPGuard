@@ -3,10 +3,13 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { emitBoardEvent } from "@/lib/socket-emit";
+import { invalidateHierarchy } from "@/lib/hierarchy-cache";
+import { emitTaskReordered } from "@/lib/socket-emit";
 import { loadPolicies, getUserRole, recordPolicyOverride } from "@/lib/policy-check";
 import { checkWipPolicy } from "@/lib/policy-engine";
 import { enforcePermission } from "@/lib/permissions";
+import { getAuthenticatedUser } from "@/lib/session-user";
+import { COLUMN_ORDER } from "@/types";
 import type { TaskStatus } from "@/generated/prisma/client";
 
 interface ReorderItem {
@@ -33,24 +36,138 @@ interface ConflictEntry {
   currentColumnOrder: number;
 }
 
+type ColumnVersionMap = Partial<Record<TaskStatus, number>>;
+
+const DEFAULT_COLUMN_ORDER = COLUMN_ORDER.reduce(
+  (acc, status, index) => {
+    acc[status] = index;
+    return acc;
+  },
+  {} as Record<TaskStatus, number>
+);
+
+class ColumnVersionConflictError extends Error {
+  readonly columns: TaskStatus[];
+
+  constructor(columns: Iterable<TaskStatus>) {
+    super("STALE_COLUMN_VERSION");
+    this.columns = [...columns];
+  }
+}
+
 function parseIsoTimestamp(value: string): number | null {
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? null : parsed;
+}
+
+function isTaskStatus(value: string): value is TaskStatus {
+  return VALID_STATUSES.has(value as TaskStatus);
 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function createEmptyColumnVersions(): Record<TaskStatus, number> {
+  return {
+    BACKLOG: 0,
+    QUEUED: 0,
+    WORKING_ON_TODAY: 0,
+    ACTIVE: 0,
+    NOT_DONE: 0,
+    DONE: 0,
+  };
+}
+
+function parseExpectedColumnVersions(input: unknown): {
+  versions: ColumnVersionMap;
+  error?: string;
+} {
+  if (input === undefined || input === null) {
+    return { versions: {} };
+  }
+
+  if (typeof input !== "object" || Array.isArray(input)) {
+    return {
+      versions: {},
+      error: "expectedColumnVersions must be an object keyed by task status",
+    };
+  }
+
+  const versions: ColumnVersionMap = {};
+  for (const [status, value] of Object.entries(input as Record<string, unknown>)) {
+    if (!isTaskStatus(status)) {
+      return {
+        versions: {},
+        error: `Invalid expectedColumnVersions key: ${status}`,
+      };
+    }
+
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+      return {
+        versions: {},
+        error: `Invalid expectedColumnVersions value for ${status}`,
+      };
+    }
+
+    versions[status] = value;
+  }
+
+  return { versions };
+}
+
+async function ensureBoardSettingsColumns(
+  boardSettings: typeof prisma.boardSettings,
+  statuses: Iterable<TaskStatus>
+): Promise<void> {
+  await Promise.all(
+    [...new Set(statuses)].map((status) =>
+      boardSettings.upsert({
+        where: { columnName: status },
+        update: {},
+        create: {
+          columnName: status,
+          columnOrder: DEFAULT_COLUMN_ORDER[status],
+        },
+      })
+    )
+  );
+}
+
+async function readColumnVersions(
+  statuses: Iterable<TaskStatus>
+): Promise<Record<TaskStatus, number>> {
+  const uniqueStatuses = [...new Set(statuses)];
+  const versions = createEmptyColumnVersions();
+
+  if (uniqueStatuses.length === 0) {
+    return versions;
+  }
+
+  const rows = await prisma.boardSettings.findMany({
+    where: { columnName: { in: uniqueStatuses } },
+    select: { columnName: true, columnVersion: true },
+  });
+
+  for (const row of rows) {
+    if (isTaskStatus(row.columnName)) {
+      versions[row.columnName] = row.columnVersion;
+    }
+  }
+
+  return versions;
+}
+
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const permission = await enforcePermission({
-      userId: session.user.id,
+      userId: user.id,
       action: "task.transition",
       request,
       targetType: "task_reorder",
@@ -62,6 +179,16 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     const body = await request.json();
     const itemsRaw = body.items ?? body;
     const overrideReason = body.overrideReason as string | undefined;
+    const expectedColumnVersionParse = parseExpectedColumnVersions(
+      body.expectedColumnVersions
+    );
+    if (expectedColumnVersionParse.error) {
+      return NextResponse.json(
+        { error: expectedColumnVersionParse.error },
+        { status: 400 }
+      );
+    }
+    const expectedColumnVersions = expectedColumnVersionParse.versions;
     const requestId =
       typeof body.requestId === "string" && body.requestId.trim().length > 0
         ? body.requestId.trim()
@@ -132,6 +259,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
       select: {
         id: true,
         title: true,
+        projectId: true,
         status: true,
         columnOrder: true,
         updatedAt: true,
@@ -150,6 +278,32 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     const existingById = new Map(
       existingTasks.map((task) => [task.id, task])
     );
+
+    const affectedColumns = new Set<TaskStatus>();
+    for (const item of items) {
+      affectedColumns.add(item.status);
+      const existing = existingById.get(item.taskId);
+      if (existing) {
+        affectedColumns.add(existing.status);
+      }
+    }
+
+    if (Object.keys(expectedColumnVersions).length > 0) {
+      const missingColumnVersions = [...affectedColumns].filter(
+        (status) => expectedColumnVersions[status] === undefined
+      );
+
+      if (missingColumnVersions.length > 0) {
+        return NextResponse.json(
+          {
+            error:
+              "expectedColumnVersions must include every affected column for reorder operations",
+            missingColumns: missingColumnVersions,
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     // Optimistic locking checks.
     const conflicts: ConflictEntry[] = [];
@@ -202,7 +356,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     if (statusChanges.length > 0) {
       const [policies, userRole] = await Promise.all([
         loadPolicies(),
-        getUserRole(session.user.id),
+        getUserRole(user.id),
       ]);
 
       const columnDeltas = new Map<TaskStatus, string[]>();
@@ -284,8 +438,8 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
               taskId,
               action: "reorder",
               reason: overrideReason,
-              actorId: session.user.id,
-              actorName: session.user.name ?? undefined,
+              actorId: user.id,
+              actorName: user.name ?? undefined,
               actorRole: userRole,
               column: violation.column,
               wipCount: violation.policy.currentCount,
@@ -293,16 +447,6 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
             });
           }
         }
-      }
-    }
-
-    // Build deterministic final ordering per affected column.
-    const affectedColumns = new Set<TaskStatus>();
-    for (const item of items) {
-      affectedColumns.add(item.status);
-      const existing = existingById.get(item.taskId);
-      if (existing) {
-        affectedColumns.add(existing.status);
       }
     }
 
@@ -357,7 +501,12 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     }
 
     const now = new Date();
-    const updates: Array<ReturnType<typeof prisma.task.update>> = [];
+    const taskUpdates: Array<{
+      taskId: string;
+      status: TaskStatus;
+      columnOrder: number;
+      completedOn: Date | null | undefined;
+    }> = [];
 
     for (const [status, orderedIds] of finalByColumn) {
       for (let index = 0; index < orderedIds.length; index += 1) {
@@ -370,37 +519,67 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
           continue;
         }
 
-        updates.push(
-          prisma.task.update({
-            where: { id: taskId },
-            data: {
-              status,
-              columnOrder: index,
-              completedOn: statusChanged
-                ? status === "DONE"
-                  ? now
-                  : existing?.status === "DONE"
-                    ? null
-                    : undefined
-                : undefined,
-            },
-          })
-        );
+        taskUpdates.push({
+          taskId,
+          status,
+          columnOrder: index,
+          completedOn: statusChanged
+            ? status === "DONE"
+              ? now
+              : existing?.status === "DONE"
+                ? null
+                : undefined
+            : undefined,
+        });
       }
     }
 
-    await prisma.$transaction(updates);
+    await prisma.$transaction(async (tx) => {
+      await ensureBoardSettingsColumns(tx.boardSettings, affectedColumns);
 
-    if (statusChanges.length > 0) {
-      await prisma.statusHistory.createMany({
-        data: statusChanges.map((change) => ({
-          taskId: change.taskId,
-          fromStatus: change.from,
-          toStatus: change.to,
-          changedBy: session.user.id,
-        })),
-      });
-    }
+      for (const status of affectedColumns) {
+        const expectedVersion = expectedColumnVersions[status];
+        const result = await tx.boardSettings.updateMany({
+          where:
+            expectedVersion === undefined
+              ? { columnName: status }
+              : { columnName: status, columnVersion: expectedVersion },
+          data: {
+            columnVersion: { increment: 1 },
+          },
+        });
+
+        if (result.count !== 1) {
+          throw new ColumnVersionConflictError(affectedColumns);
+        }
+      }
+
+      await Promise.all(
+        taskUpdates.map((update) =>
+          tx.task.update({
+            where: { id: update.taskId },
+            data: {
+              status: update.status,
+              columnOrder: update.columnOrder,
+              completedOn: update.completedOn,
+            },
+          })
+        )
+      );
+
+      if (statusChanges.length > 0) {
+        await tx.statusHistory.createMany({
+          data: statusChanges.map((change) => ({
+            taskId: change.taskId,
+            fromStatus: change.from,
+            toStatus: change.to,
+            changedBy: user.id,
+          })),
+        });
+      }
+    });
+
+    const currentColumnVersions = await readColumnVersions(affectedColumns);
 
     const doneChanges = statusChanges.filter((change) => change.to === "DONE");
     if (doneChanges.length > 0) {
@@ -452,26 +631,68 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     }
 
     const eventId = requestId ? `task:reordered:${requestId}` : undefined;
-    emitBoardEvent(
-      "task:reordered",
-      {
-        items: items.map((item) => ({
-          taskId: item.taskId,
-          status: item.status,
-          columnOrder: item.columnOrder,
-        })),
-        statusChanges,
-      },
-      eventId
+    const itemsWithProjectId = items.map((item) => ({
+      ...item,
+      projectId: existingById.get(item.taskId)?.projectId ?? null,
+    }));
+    const statusChangesWithProjectId = statusChanges.map((change) => ({
+      ...change,
+      projectId: existingById.get(change.taskId)?.projectId ?? null,
+    }));
+
+    const projectIds = new Set(
+      itemsWithProjectId
+        .map((item) => item.projectId)
+        .filter((projectId): projectId is string => typeof projectId === "string")
     );
+
+    for (const projectId of projectIds) {
+      emitTaskReordered(projectId, {
+        items: itemsWithProjectId
+          .filter((item) => item.projectId === projectId)
+          .map(({ taskId, status, columnOrder }) => ({
+            taskId,
+            status,
+            columnOrder,
+          })),
+        statusChanges: statusChangesWithProjectId
+          .filter((change) => change.projectId === projectId)
+          .map(({ taskId, from, to }) => ({
+            taskId,
+            from,
+            to,
+          })),
+        eventId: eventId ?? null,
+      });
+    }
+
+    invalidateHierarchy(user.id);
 
     return NextResponse.json({
       success: true,
-      updated: updates.length,
+      updated: taskUpdates.length,
       statusChanges: statusChanges.length,
       eventId: eventId ?? null,
+      columnVersions: currentColumnVersions,
     });
   } catch (error) {
+    if (error instanceof ColumnVersionConflictError) {
+      const currentColumnVersions = await readColumnVersions(error.columns);
+      return NextResponse.json(
+        {
+          error: "Conflict",
+          conflict: {
+            reason: "STALE_COLUMN_VERSION",
+            message:
+              "This column changed before your reorder was applied. Refresh and retry.",
+            columns: error.columns,
+            columnVersions: currentColumnVersions,
+          },
+        },
+        { status: 409 }
+      );
+    }
+
     console.error("PATCH /api/tasks/reorder error:", error);
     return NextResponse.json(
       { error: "Failed to reorder tasks" },

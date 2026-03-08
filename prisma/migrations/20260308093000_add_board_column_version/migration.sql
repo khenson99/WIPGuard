@@ -1,0 +1,2 @@
+ALTER TABLE "BoardSettings"
+ADD COLUMN "columnVersion" INTEGER NOT NULL DEFAULT 0;

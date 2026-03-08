@@ -52,7 +52,17 @@ interface GenericColumn {
 interface BoardSettingsEntry {
   columnName: string;
   wipLimit: number;
+  columnVersion: number;
 }
+
+const DEFAULT_COLUMN_VERSIONS: Record<TaskStatus, number> = {
+  BACKLOG: 0,
+  QUEUED: 0,
+  WORKING_ON_TODAY: 0,
+  ACTIVE: 0,
+  NOT_DONE: 0,
+  DONE: 0,
+};
 
 type BoardProjectLite = ProjectSummary & {
   departmentId?: string | null;
@@ -221,6 +231,10 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
     setProjects,
     setSprints,
   } = useBoardStore();
+  const currentUserId =
+    typeof (session?.user as { id?: unknown } | undefined)?.id === "string"
+      ? ((session?.user as { id: string }).id ?? null)
+      : null;
 
   const [loading, setLoading] = useState(true);
   const [displayPreset, setDisplayPreset] = useState<DisplayPreset>("standard");
@@ -236,6 +250,8 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
   const [activeSprintId, setActiveSprintId] = useState<string | null>(null);
   const [committedTaskIds, setCommittedTaskIds] = useState<Set<string>>(new Set());
   const [replenishmentNotice, setReplenishmentNotice] = useState<ReplenishmentNotice | null>(null);
+  const [columnVersions, setColumnVersions] =
+    useState<Record<TaskStatus, number>>(DEFAULT_COLUMN_VERSIONS);
 
   /* ----- Confirm Dialog state ----- */
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
@@ -352,12 +368,15 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
         NOT_DONE: 0,
         DONE: 0,
       };
+      const versions = { ...DEFAULT_COLUMN_VERSIONS };
       for (const s of settings) {
         if (s.columnName in limits) {
           limits[s.columnName as TaskStatus] = s.wipLimit;
+          versions[s.columnName as TaskStatus] = s.columnVersion ?? 0;
         }
       }
       setWipLimits(limits);
+      setColumnVersions(versions);
 
       const statusesToShow = filterByStatus || COLUMN_ORDER;
       const boardColumns: BoardColumn[] = statusesToShow.map((status) => ({
@@ -371,7 +390,15 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
 
       setColumns(boardColumns);
     },
-    [filterByStatus, setColumns, setProjects, setSprints, setTeamMembers, setWipLimits]
+    [
+      filterByStatus,
+      setColumns,
+      setColumnVersions,
+      setProjects,
+      setSprints,
+      setTeamMembers,
+      setWipLimits,
+    ]
   );
 
   const fetchBoard = useCallback(async (signal?: AbortSignal) => {
@@ -546,8 +573,8 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
   );
 
   /* ----- Preference persistence ----- */
-  const userPresetKey = session?.user?.id
-    ? `board-display-preset:${session.user.id}`
+  const userPresetKey = currentUserId
+    ? `board-display-preset:${currentUserId}`
     : null;
 
   useEffect(() => {
@@ -686,6 +713,12 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
         const movedTask = columns
           .find((column) => column.id === fromColumn)
           ?.tasks.find((task) => task.id === draggableId);
+        const expectedColumnVersions = Array.from(
+          new Set<TaskStatus>([fromColumn, toColumn])
+        ).reduce<Partial<Record<TaskStatus, number>>>((acc, status) => {
+          acc[status] = columnVersions[status] ?? 0;
+          return acc;
+        }, {});
 
         const requestId = `${draggableId}:${Date.now()}`;
         const response = await fetch("/api/tasks/reorder", {
@@ -693,6 +726,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             requestId,
+            expectedColumnVersions,
             items: [
               {
                 taskId: draggableId,
@@ -715,12 +749,23 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
           }
           throw new Error("Failed to reorder task");
         }
+
+        await fetchBoard();
       } catch {
         // Revert on failure
         fetchBoard();
       }
     },
-    [columns, wipLimits, moveTask, fetchBoard, groupBy, showConfirm, addToast]
+    [
+      addToast,
+      columnVersions,
+      columns,
+      fetchBoard,
+      groupBy,
+      moveTask,
+      showConfirm,
+      wipLimits,
+    ]
   );
 
   const handleCreateTask = () => {
@@ -924,7 +969,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
                   onSelectTask={setSelectedTaskId}
                   groupBy="status"
                   getDeptForTask={getDeptForTask}
-                  currentUserId={session?.user?.id ?? null}
+                  currentUserId={currentUserId}
                   activeSprintId={activeSprintId}
                   committedTaskIds={committedTaskIds}
                   queuedCount={queuedTaskCount}
@@ -992,7 +1037,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
                       droppableIdPrefix={`proj-${col.id}:`}
                       getDeptForTask={getDeptForTask}
                       hideHeader
-                      currentUserId={session?.user?.id ?? null}
+                      currentUserId={currentUserId}
                       activeSprintId={activeSprintId}
                       committedTaskIds={committedTaskIds}
                       queuedCount={queuedTaskCount}
@@ -1049,7 +1094,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
                     droppableIdPrefix={`dept-${col.id}:`}
                     getDeptForTask={getDeptForTask}
                     hideHeader
-                    currentUserId={session?.user?.id ?? null}
+                    currentUserId={currentUserId}
                     activeSprintId={activeSprintId}
                     committedTaskIds={committedTaskIds}
                     queuedCount={queuedTaskCount}

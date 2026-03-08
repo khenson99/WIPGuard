@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { DealStage } from "@/generated/prisma/client";
+import { enforcePermission } from "@/lib/permissions";
+import { getAuthenticatedUser } from "@/lib/session-user";
 import { validateStageTransition } from "@/lib/deals/stage-transitions";
 
 function getOptionalOrganizationId(session: unknown): string | null {
@@ -24,8 +26,20 @@ export async function GET(
   }
 
   const session = await getServerSession(authOptions);
-  if (!session?.user) {
+  const user = getAuthenticatedUser(session);
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { deniedResponse } = await enforcePermission({
+    userId: user.id,
+    action: "deals.read",
+    request,
+    targetType: "deal",
+    targetId: id,
+  });
+  if (deniedResponse) {
+    return deniedResponse;
   }
 
   const organizationId = getOptionalOrganizationId(session);
@@ -61,8 +75,20 @@ export async function PATCH(
   }
 
   const session = await getServerSession(authOptions);
-  if (!session?.user) {
+  const user = getAuthenticatedUser(session);
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { deniedResponse } = await enforcePermission({
+    userId: user.id,
+    action: "deals.write",
+    request,
+    targetType: "deal",
+    targetId: id,
+  });
+  if (deniedResponse) {
+    return deniedResponse;
   }
 
   const body = await request.json();
@@ -96,7 +122,7 @@ export async function PATCH(
     Object.values(DealStage).includes(body.stage as DealStage)
   ) {
     const targetStage = body.stage as DealStage;
-    const adminOverride = body.adminOverride === true && session.user.role === "admin";
+    const adminOverride = body.adminOverride === true && user.role === "admin";
 
     const transitionResult = validateStageTransition(
       existingDeal.stage,
@@ -122,7 +148,7 @@ export async function PATCH(
     // Audit log for admin overrides
     if (adminOverride && existingDeal.stage !== targetStage) {
       console.warn(
-        `[AUDIT] Admin override stage transition: Deal ${id} from ${existingDeal.stage} to ${targetStage} by user ${session.user.id} (${session.user.email})`
+        `[AUDIT] Admin override stage transition: Deal ${id} from ${existingDeal.stage} to ${targetStage} by user ${user.id} (${user.email})`
       );
     }
   }
@@ -150,19 +176,41 @@ export async function PATCH(
       );
   }
 
-  if (organizationId) {
-    const result = await prisma.deal.updateMany({
-      where: { id, organizationId },
-      data,
-    });
-    if (result.count === 0) {
-      return NextResponse.json({ error: "Deal not found" }, { status: 404 });
+  const nextStage = data.stage as DealStage | undefined;
+  const stageChanged = nextStage !== undefined && nextStage !== existingDeal.stage;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    if (organizationId) {
+      const result = await tx.deal.updateMany({
+        where: { id, organizationId },
+        data,
+      });
+      if (result.count === 0) {
+        return false;
+      }
+    } else {
+      await tx.deal.update({
+        where: { id },
+        data,
+      });
     }
-  } else {
-    await prisma.deal.update({
-      where: { id },
-      data,
-    });
+
+    if (stageChanged) {
+      await tx.dealStageHistory.create({
+        data: {
+          dealId: id,
+          fromStage: existingDeal.stage,
+          toStage: nextStage,
+          changedBy: user.id,
+        },
+      });
+    }
+
+    return true;
+  });
+
+  if (!updated) {
+    return NextResponse.json({ error: "Deal not found" }, { status: 404 });
   }
 
   const updatedDeal = await prisma.deal.findFirst({
@@ -197,8 +245,20 @@ export async function DELETE(
   }
 
   const session = await getServerSession(authOptions);
-  if (!session?.user) {
+  const user = getAuthenticatedUser(session);
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { deniedResponse } = await enforcePermission({
+    userId: user.id,
+    action: "deals.write",
+    request,
+    targetType: "deal",
+    targetId: id,
+  });
+  if (deniedResponse) {
+    return deniedResponse;
   }
 
   const organizationId = getOptionalOrganizationId(session);

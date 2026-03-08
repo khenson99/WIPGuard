@@ -81,8 +81,12 @@ export function VisitorFunnelTab({ data }: { data: AnalyticsDashboardData | null
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { data: session } = useSession();
+  const sessionRole =
+    typeof (session?.user as { role?: unknown } | undefined)?.role === "string"
+      ? ((session?.user as { role: string }).role ?? null)
+      : null;
   const funnel = data?.visitorFunnel;
-  const isAdmin = session?.user?.role === "admin";
+  const isAdmin = sessionRole === "admin";
   const [recordsState, setRecordsState] = useState<{
     href: string | null;
     payload: RecordsResponse | null;

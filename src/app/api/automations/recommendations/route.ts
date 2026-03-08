@@ -8,15 +8,17 @@ import {
 import { auth } from "@/lib/auth";
 import { getAppRole } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { getAuthenticatedUser } from "@/lib/session-user";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const role = await getAppRole(session.user.id);
+    const role = await getAppRole(user.id);
     const mineOnly = request.nextUrl.searchParams.get("mine") === "true";
     const workflowId = request.nextUrl.searchParams.get("workflowId");
     const runId = request.nextUrl.searchParams.get("runId");
@@ -33,23 +35,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           ? { status: status as AutomationRecommendationStatus }
           : {}),
         workflow: {
-          OR: [{ ownerId: session.user.id }, { scope: WorkflowScope.SHARED }],
+          OR: [{ ownerId: user.id }, { scope: WorkflowScope.SHARED }],
         },
         ...(mineOnly
           ? {
               OR: [
-                { requestedById: session.user.id },
-                { approverId: session.user.id },
-                { executedById: session.user.id },
+                { requestedById: user.id },
+                { approverId: user.id },
+                { executedById: user.id },
               ],
             }
           : role === "admin"
             ? {}
             : {
                 OR: [
-                  { requestedById: session.user.id },
-                  { approverId: session.user.id },
-                  { executedById: session.user.id },
+                  { requestedById: user.id },
+                  { approverId: user.id },
+                  { executedById: user.id },
                 ],
               }),
       },

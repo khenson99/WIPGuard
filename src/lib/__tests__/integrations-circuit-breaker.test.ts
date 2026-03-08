@@ -29,6 +29,65 @@ vi.mock("@/lib/prisma", () => ({
           openCount: row.openCount,
         };
       }),
+      create: vi.fn(
+        async (args: {
+          data: {
+            userId: string;
+            key: string;
+            state: string;
+            consecutiveFailures: number;
+            openedAt: Date | null;
+            currentCooldownMs: number;
+            openCount: number;
+          };
+        }) => {
+          const { userId, key, ...row } = args.data;
+          db.set(dbKey(userId, key), row);
+          return row;
+        }
+      ),
+      update: vi.fn(
+        async (args: {
+          where: { userId_key: { userId: string; key: string } };
+          data: {
+            state?: string;
+            consecutiveFailures?: { increment: number } | number;
+            openedAt?: Date | null;
+            currentCooldownMs?: number;
+            openCount?: { increment: number } | number;
+          };
+        }) => {
+          const { userId, key } = args.where.userId_key;
+          const existing = db.get(dbKey(userId, key));
+          if (!existing) {
+            throw new Error("Missing circuit state");
+          }
+
+          const next: CircuitRow = { ...existing };
+          if (args.data.state !== undefined) {
+            next.state = args.data.state;
+          }
+          if (typeof args.data.consecutiveFailures === "number") {
+            next.consecutiveFailures = args.data.consecutiveFailures;
+          } else if (args.data.consecutiveFailures?.increment) {
+            next.consecutiveFailures += args.data.consecutiveFailures.increment;
+          }
+          if (args.data.openedAt !== undefined) {
+            next.openedAt = args.data.openedAt;
+          }
+          if (args.data.currentCooldownMs !== undefined) {
+            next.currentCooldownMs = args.data.currentCooldownMs;
+          }
+          if (typeof args.data.openCount === "number") {
+            next.openCount = args.data.openCount;
+          } else if (args.data.openCount?.increment) {
+            next.openCount += args.data.openCount.increment;
+          }
+
+          db.set(dbKey(userId, key), next);
+          return next;
+        }
+      ),
       upsert: vi.fn(
         async (args: {
           where: { userId_key: { userId: string; key: string } };
@@ -120,5 +179,47 @@ describe("integrations circuit-breaker persistence", () => {
     expect(await cb.isCircuitClosed(provider, userId)).toBe(true);
     expect(db.get(dbKey(userId, provider))?.state).toBe("HALF_OPEN");
   });
-});
 
+  it("increments consecutive failures correctly under concurrent failures", async () => {
+    const provider = "CODA";
+    const userId = "user_3";
+
+    const cb = await import("@/lib/integrations/circuit-breaker");
+
+    await Promise.all([
+      cb.recordFailure(provider, userId, { failureThreshold: 5 }),
+      cb.recordFailure(provider, userId, { failureThreshold: 5 }),
+    ]);
+
+    expect(db.get(dbKey(userId, provider))).toMatchObject({
+      state: "CLOSED",
+      consecutiveFailures: 2,
+      openCount: 0,
+    });
+  });
+
+  it("awaits circuit state persistence before rethrowing provider errors", async () => {
+    const provider = "REDDIT";
+    const userId = "user_4";
+
+    const cb = await import("@/lib/integrations/circuit-breaker");
+
+    await expect(
+      cb.withCircuitBreaker(
+        provider,
+        userId,
+        async () => {
+          throw new Error("provider failed");
+        },
+        { failureThreshold: 1, baseCooldownMs: 30_000 }
+      )
+    ).rejects.toThrow("provider failed");
+
+    expect(db.get(dbKey(userId, provider))).toMatchObject({
+      state: "OPEN",
+      consecutiveFailures: 1,
+      openCount: 1,
+    });
+    expect(await cb.isCircuitClosed(provider, userId)).toBe(false);
+  });
+});
