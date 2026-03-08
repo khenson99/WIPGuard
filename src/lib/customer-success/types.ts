@@ -292,6 +292,23 @@ export interface CustomerSuccessPortfolio {
   accounts: CustomerSuccessPortfolioAccount[];
 }
 
+export interface CustomerSuccessAlertFeed {
+  generatedAt: string;
+  summary: {
+    total: number;
+    open: number;
+    inProgress: number;
+    breached: number;
+    critical: number;
+  };
+  alerts: CustomerSuccessAlert[];
+}
+
+export interface CustomerSuccessActivityFeed {
+  generatedAt: string;
+  events: CustomerSuccessEvent[];
+}
+
 export interface CustomerSuccessAccountDetail {
   accountId: string;
   name: string;

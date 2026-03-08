@@ -1,0 +1,1071 @@
+import {
+  CustomerExternalProvider,
+  CustomerRecordStatus,
+  CustomerSuccessAlertSeverity,
+  CustomerSuccessAlertSource,
+  CustomerSuccessAlertStatus,
+  CustomerSuccessOutreachStatus,
+  CustomerSuccessPlanStatus,
+  MeetingStatus,
+  Prisma,
+  TaskStatus,
+} from "@/generated/prisma/client";
+import { prisma } from "@/lib/prisma";
+import { runWithContextAsync } from "@/lib/request-context";
+import type { CustomerSuccessActor } from "@/lib/customer-success/access";
+import type {
+  CustomerSuccessAccountDetail,
+  CustomerSuccessActivityFeed,
+  CustomerSuccessAlert,
+  CustomerSuccessAlertFeed,
+  CustomerSuccessEvent,
+  CustomerSuccessHealth,
+  CustomerSuccessHealthComponent,
+  CustomerSuccessPortfolio,
+  CustomerSuccessTaskSummary,
+  CustomerSuccessStakeholder,
+} from "@/lib/customer-success/types";
+
+const USER_SUMMARY_SELECT = {
+  id: true,
+  name: true,
+  email: true,
+} satisfies Prisma.UserSelect;
+
+const CONTACT_SUMMARY_SELECT = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  email: true,
+  title: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.DealContactSelect;
+
+const CUSTOMER_RECORD_INCLUDE = {
+  owner: { select: USER_SUMMARY_SELECT },
+  dealCompany: {
+    include: {
+      contacts: {
+        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+        select: CONTACT_SUMMARY_SELECT,
+      },
+    },
+  },
+  primaryDeal: {
+    include: {
+      contacts: {
+        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+        select: CONTACT_SUMMARY_SELECT,
+      },
+    },
+  },
+  externalRefs: {
+    orderBy: [{ provider: "asc" }, { updatedAt: "desc" }],
+  },
+  notes: {
+    orderBy: [{ createdAt: "desc" }],
+    take: 12,
+    include: {
+      authorUser: { select: USER_SUMMARY_SELECT },
+    },
+  },
+  plans: {
+    orderBy: [{ updatedAt: "desc" }],
+    include: {
+      ownerUser: { select: USER_SUMMARY_SELECT },
+      milestones: {
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      },
+    },
+  },
+  alerts: {
+    orderBy: [{ updatedAt: "desc" }, { openedAt: "desc" }],
+    include: {
+      ownerUser: { select: USER_SUMMARY_SELECT },
+    },
+  },
+  outreachMessages: {
+    orderBy: [{ createdAt: "desc" }],
+    take: 12,
+    include: {
+      authorUser: { select: USER_SUMMARY_SELECT },
+    },
+  },
+  tasks: {
+    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+    take: 16,
+  },
+  meetings: {
+    orderBy: [{ startAt: "desc" }],
+    take: 12,
+    include: {
+      attendees: {
+        select: CONTACT_SUMMARY_SELECT,
+      },
+    },
+  },
+} satisfies Prisma.CustomerRecordInclude;
+
+type CustomerRecordWithRelations = Prisma.CustomerRecordGetPayload<{
+  include: typeof CUSTOMER_RECORD_INCLUDE;
+}>;
+type ContactSummary = Prisma.DealContactGetPayload<{
+  select: typeof CONTACT_SUMMARY_SELECT;
+}>;
+
+export interface CustomerSuccessAccountSnapshot {
+  id: string;
+  name: string;
+  segment: string | null;
+  tier: string | null;
+  lifecycleStage: string;
+  ownerName: string | null;
+  ownerEmail: string | null;
+  status: string;
+  primaryDealAmount: number | null;
+  renewalDate: Date | null;
+  paymentStatus: string | null;
+  expansionPotential: string | null;
+  externalProviders: CustomerExternalProvider[];
+  contacts: Array<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string | null;
+    title: string | null;
+    updatedAt: Date;
+    createdAt: Date;
+  }>;
+  notes: Array<{
+    id: string;
+    title: string | null;
+    body: string;
+    createdAt: Date;
+    source: string;
+    authorName: string | null;
+  }>;
+  alerts: Array<{
+    id: string;
+    title: string;
+    category: string;
+    severity: string;
+    status: string;
+    slaStatus: string;
+    source: string;
+    openedAt: Date;
+    updatedAt: Date;
+    resolvedAt: Date | null;
+    suggestedAction: string | null;
+    evidence: string[];
+  }>;
+  plans: Array<{
+    id: string;
+    name: string;
+    templateKey: string | null;
+    status: string;
+    startedAt: Date | null;
+    targetDate: Date | null;
+    completedAt: Date | null;
+    milestones: Array<{
+      id: string;
+      title: string;
+      status: string;
+      dueDate: Date | null;
+    }>;
+  }>;
+  outreach: Array<{
+    id: string;
+    templateKey: string | null;
+    status: string;
+    subject: string | null;
+    recipientName: string | null;
+    recipientAddress: string;
+    sentAt: Date | null;
+    createdAt: Date;
+    channel: string;
+  }>;
+  tasks: Array<{
+    id: string;
+    title: string;
+    status: string;
+    priority: string;
+    dueDate: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+    completedOn: Date | null;
+  }>;
+  meetings: Array<{
+    id: string;
+    title: string;
+    status: string;
+    startAt: Date;
+    attendees: Array<{
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string | null;
+      title: string | null;
+    }>;
+  }>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const HEALTH_WEIGHTS = {
+  adoption: 0.24,
+  engagement: 0.22,
+  relationship: 0.2,
+  support: 0.2,
+  commercial: 0.14,
+} as const;
+
+function clamp(value: number, min = 0, max = 100): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function round(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function daysBetween(from: Date, to: Date): number {
+  return Math.max(0, Math.floor((to.getTime() - from.getTime()) / 86_400_000));
+}
+
+function daysUntil(from: Date, to: Date): number {
+  return Math.floor((to.getTime() - from.getTime()) / 86_400_000);
+}
+
+function mapScoreToGrade(score: number): CustomerSuccessHealth["grade"] {
+  if (score >= 90) return "A";
+  if (score >= 80) return "B";
+  if (score >= 70) return "C";
+  if (score >= 60) return "D";
+  return "F";
+}
+
+function mapScoreToStatus(score: number): CustomerSuccessHealthComponent["status"] {
+  if (score >= 80) return "healthy";
+  if (score >= 65) return "watch";
+  return "risk";
+}
+
+function mapTrendScore(value: number): CustomerSuccessHealth["trend"] {
+  if (value >= 0.35) return "improving";
+  if (value <= -0.35) return "declining";
+  return "stable";
+}
+
+function trendWeight(trend: CustomerSuccessHealth["trend"]): number {
+  if (trend === "improving") return 1;
+  if (trend === "declining") return -1;
+  return 0;
+}
+
+function toEvidenceList(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((item) => {
+      if (typeof item === "string") return item.trim();
+      if (item === null || item === undefined) return "";
+      return String(item).trim();
+    })
+    .filter((item) => item.length > 0);
+}
+
+function isAlertOpen(status: string): boolean {
+  return status === CustomerSuccessAlertStatus.OPEN || status === CustomerSuccessAlertStatus.IN_PROGRESS;
+}
+
+function isHighSeverity(severity: string): boolean {
+  return severity === CustomerSuccessAlertSeverity.HIGH || severity === CustomerSuccessAlertSeverity.CRITICAL;
+}
+
+function isTaskDone(status: string): boolean {
+  return status === TaskStatus.DONE;
+}
+
+function stakeholderRole(contact: { title: string | null }): string {
+  return contact.title?.trim() || "Stakeholder";
+}
+
+function stakeholderCoverageStatus(lastTouchAt: Date | null, now: Date): CustomerSuccessStakeholder["coverageStatus"] {
+  if (!lastTouchAt) return "missing";
+  const age = daysBetween(lastTouchAt, now);
+  if (age <= 30) return "covered";
+  if (age <= 60) return "stale";
+  return "missing";
+}
+
+function providerSet(snapshot: CustomerSuccessAccountSnapshot): Set<CustomerExternalProvider> {
+  return new Set(snapshot.externalProviders);
+}
+
+function getLatestTouch(snapshot: CustomerSuccessAccountSnapshot): Date | null {
+  const candidates = [
+    snapshot.updatedAt,
+    ...snapshot.notes.map((note) => note.createdAt),
+    ...snapshot.meetings.map((meeting) => meeting.startAt),
+    ...snapshot.outreach
+      .map((message) => message.sentAt ?? message.createdAt),
+    ...snapshot.tasks.map((task) => task.completedOn ?? task.updatedAt),
+    ...snapshot.alerts.map((alert) => alert.updatedAt),
+  ];
+
+  if (candidates.length === 0) return null;
+
+  return candidates.reduce((latest, current) =>
+    current.getTime() > latest.getTime() ? current : latest
+  );
+}
+
+function buildStakeholders(
+  snapshot: CustomerSuccessAccountSnapshot,
+  now: Date
+): CustomerSuccessStakeholder[] {
+  const lastTouchByEmail = new Map<string, Date>();
+
+  snapshot.meetings.forEach((meeting) => {
+    meeting.attendees.forEach((attendee) => {
+      if (!attendee.email) return;
+      const current = lastTouchByEmail.get(attendee.email);
+      if (!current || meeting.startAt.getTime() > current.getTime()) {
+        lastTouchByEmail.set(attendee.email, meeting.startAt);
+      }
+    });
+  });
+
+  snapshot.outreach.forEach((message) => {
+    const touchedAt = message.sentAt ?? message.createdAt;
+    const current = lastTouchByEmail.get(message.recipientAddress);
+    if (!current || touchedAt.getTime() > current.getTime()) {
+      lastTouchByEmail.set(message.recipientAddress, touchedAt);
+    }
+  });
+
+  const seen = new Set<string>();
+  const stakeholders: CustomerSuccessStakeholder[] = [];
+
+  snapshot.contacts.forEach((contact) => {
+    const dedupeKey = contact.email || contact.id;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+
+    const fullName = `${contact.firstName} ${contact.lastName}`.trim() || contact.email || "Unknown contact";
+    const lastTouchAt = contact.email ? lastTouchByEmail.get(contact.email) ?? null : null;
+
+    stakeholders.push({
+      id: contact.id,
+      name: fullName,
+      email: contact.email ?? undefined,
+      role: stakeholderRole(contact),
+      coverageStatus: stakeholderCoverageStatus(lastTouchAt, now),
+      lastTouchAt: lastTouchAt?.toISOString(),
+    });
+  });
+
+  return stakeholders;
+}
+
+function buildComponent(input: {
+  score: number;
+  weight: number;
+  trend: CustomerSuccessHealth["trend"];
+  evidence: string[];
+  updatedAt: Date;
+}): CustomerSuccessHealthComponent {
+  const score = clamp(round(input.score));
+  return {
+    score,
+    weight: input.weight,
+    weightedScore: round(score * input.weight),
+    trend: input.trend,
+    status: mapScoreToStatus(score),
+    evidence: input.evidence,
+    lastUpdatedAt: input.updatedAt.toISOString(),
+  };
+}
+
+export function buildCustomerSuccessHealth(
+  snapshot: CustomerSuccessAccountSnapshot,
+  now: Date = new Date()
+): CustomerSuccessHealth {
+  const providers = providerSet(snapshot);
+  const latestTouch = getLatestTouch(snapshot);
+  const daysSinceTouch = latestTouch ? daysBetween(latestTouch, now) : 90;
+  const activePlan =
+    snapshot.plans.find((plan) => plan.status === CustomerSuccessPlanStatus.ACTIVE) ??
+    snapshot.plans[0] ??
+    null;
+  const totalMilestones = activePlan?.milestones.length ?? 0;
+  const completedMilestones =
+    activePlan?.milestones.filter((milestone) => milestone.status === "COMPLETED").length ?? 0;
+  const milestoneRatio = totalMilestones > 0 ? completedMilestones / totalMilestones : 0;
+  const completedTasks30d = snapshot.tasks.filter(
+    (task) => task.completedOn && daysBetween(task.completedOn, now) <= 30
+  ).length;
+  const openTasks = snapshot.tasks.filter((task) => !isTaskDone(task.status)).length;
+  const overdueTasks = snapshot.tasks.filter(
+    (task) => !isTaskDone(task.status) && task.dueDate && task.dueDate.getTime() < now.getTime()
+  ).length;
+  const recentMeetings = snapshot.meetings.filter((meeting) => daysBetween(meeting.startAt, now) <= 30).length;
+  const recentNotes = snapshot.notes.filter((note) => daysBetween(note.createdAt, now) <= 30).length;
+  const recentOutreach = snapshot.outreach.filter((message) => {
+    const touchedAt = message.sentAt ?? message.createdAt;
+    return daysBetween(touchedAt, now) <= 30;
+  }).length;
+  const stakeholders = buildStakeholders(snapshot, now);
+  const coveredStakeholders = stakeholders.filter((stakeholder) => stakeholder.coverageStatus === "covered").length;
+  const hasChampion = stakeholders.some((stakeholder) =>
+    /champion|manager|director|head|vp|chief|lead/i.test(stakeholder.role)
+  );
+  const openAlerts = snapshot.alerts.filter((alert) => isAlertOpen(alert.status));
+  const criticalAlerts = openAlerts.filter((alert) => alert.severity === CustomerSuccessAlertSeverity.CRITICAL).length;
+  const highAlerts = openAlerts.filter((alert) => alert.severity === CustomerSuccessAlertSeverity.HIGH).length;
+  const supportAlerts = openAlerts.filter((alert) =>
+    alert.source === CustomerSuccessAlertSource.SUPPORT || alert.source === CustomerSuccessAlertSource.HEALTH
+  ).length;
+  const commercialAlerts = openAlerts.filter((alert) => alert.source === CustomerSuccessAlertSource.COMMERCIAL).length;
+  const renewalDays = snapshot.renewalDate ? daysUntil(now, snapshot.renewalDate) : null;
+
+  const adoption = buildComponent({
+    score:
+      36 +
+      Math.min(completedTasks30d * 8, 24) +
+      milestoneRatio * 26 +
+      (providers.has(CustomerExternalProvider.CODA) ? 10 : 0) -
+      Math.min(openTasks * 5, 18),
+    weight: HEALTH_WEIGHTS.adoption,
+    trend:
+      completedTasks30d > openTasks ? "improving" : openTasks > completedTasks30d + 2 ? "declining" : "stable",
+    evidence: [
+      `${completedTasks30d} customer-success tasks completed in the last 30 days`,
+      totalMilestones > 0
+        ? `${completedMilestones}/${totalMilestones} plan milestones completed`
+        : "No success-plan milestones linked yet",
+      providers.has(CustomerExternalProvider.CODA) ? "Coda signal available" : "No Coda reference connected",
+    ],
+    updatedAt: latestTouch ?? snapshot.updatedAt,
+  });
+
+  const engagement = buildComponent({
+    score:
+      98 -
+      Math.min(daysSinceTouch * 2.8, 60) +
+      Math.min((recentMeetings + recentNotes + recentOutreach) * 4, 18) +
+      (providers.has(CustomerExternalProvider.SLACK) ? 7 : 0) +
+      (providers.has(CustomerExternalProvider.GOOGLE_WORKSPACE) ? 7 : 0),
+    weight: HEALTH_WEIGHTS.engagement,
+    trend:
+      recentMeetings + recentNotes + recentOutreach >= 4
+        ? "improving"
+        : daysSinceTouch > 30
+          ? "declining"
+          : "stable",
+    evidence: [
+      latestTouch ? `Last customer touch ${daysSinceTouch} days ago` : "No recent customer touch found",
+      `${recentMeetings} meetings, ${recentNotes} notes, ${recentOutreach} outreach messages in the last 30 days`,
+      providers.has(CustomerExternalProvider.SLACK) || providers.has(CustomerExternalProvider.GOOGLE_WORKSPACE)
+        ? "Workspace collaboration signals available"
+        : "Workspace collaboration signals missing",
+    ],
+    updatedAt: latestTouch ?? snapshot.updatedAt,
+  });
+
+  const relationship = buildComponent({
+    score:
+      30 +
+      Math.min(stakeholders.length * 10, 30) +
+      Math.min(coveredStakeholders * 8, 18) +
+      (hasChampion ? 12 : 0) +
+      (snapshot.ownerName ? 14 : 0) +
+      (recentNotes + recentOutreach > 0 ? 10 : -8),
+    weight: HEALTH_WEIGHTS.relationship,
+    trend:
+      coveredStakeholders >= 2 && recentNotes + recentOutreach >= 2
+        ? "improving"
+        : stakeholders.length === 0
+          ? "declining"
+          : "stable",
+    evidence: [
+      `${stakeholders.length} mapped stakeholders`,
+      snapshot.ownerName ? `Customer owner: ${snapshot.ownerName}` : "No owner assigned",
+      hasChampion ? "Champion-level stakeholder present" : "Champion coverage missing",
+    ],
+    updatedAt: latestTouch ?? snapshot.updatedAt,
+  });
+
+  const support = buildComponent({
+    score:
+      95 -
+      criticalAlerts * 24 -
+      highAlerts * 12 -
+      supportAlerts * 5 -
+      overdueTasks * 4,
+    weight: HEALTH_WEIGHTS.support,
+    trend:
+      criticalAlerts > 0 || overdueTasks > 2
+        ? "declining"
+        : supportAlerts === 0 && overdueTasks === 0
+          ? "improving"
+          : "stable",
+    evidence: [
+      `${openAlerts.length} open alerts, ${criticalAlerts} critical`,
+      `${overdueTasks} overdue customer-success tasks`,
+      supportAlerts > 0 ? "Support or health alerts need attention" : "Support load is within threshold",
+    ],
+    updatedAt: latestTouch ?? snapshot.updatedAt,
+  });
+
+  const commercial = buildComponent({
+    score:
+      50 +
+      (providers.has(CustomerExternalProvider.STRIPE) ? 10 : 0) +
+      (providers.has(CustomerExternalProvider.HUBSPOT) ? 10 : 0) +
+      (snapshot.primaryDealAmount ? 10 : 0) +
+      (snapshot.expansionPotential === "high" || snapshot.lifecycleStage === "EXPANSION" ? 12 : 0) -
+      (commercialAlerts > 0 ? 18 : 0) +
+      (renewalDays === null ? 0 : renewalDays >= 30 ? 10 : renewalDays >= 0 ? 4 : -14),
+    weight: HEALTH_WEIGHTS.commercial,
+    trend:
+      snapshot.lifecycleStage === "EXPANSION"
+        ? "improving"
+        : commercialAlerts > 0 || (renewalDays !== null && renewalDays < 0)
+          ? "declining"
+          : "stable",
+    evidence: [
+      snapshot.primaryDealAmount ? `Primary deal value ${snapshot.primaryDealAmount.toLocaleString()}` : "No commercial amount linked yet",
+      renewalDays === null ? "Renewal date unavailable" : `Renewal in ${renewalDays} days`,
+      snapshot.expansionPotential ? `Expansion potential ${snapshot.expansionPotential}` : "Expansion potential not scored",
+    ],
+    updatedAt: latestTouch ?? snapshot.updatedAt,
+  });
+
+  const score =
+    adoption.weightedScore +
+    engagement.weightedScore +
+    relationship.weightedScore +
+    support.weightedScore +
+    commercial.weightedScore;
+
+  const confidenceSignals = [
+    snapshot.externalProviders.length > 0,
+    snapshot.contacts.length > 0,
+    snapshot.tasks.length > 0,
+    snapshot.outreach.length > 0 || snapshot.notes.length > 0,
+    snapshot.alerts.length > 0 || snapshot.primaryDealAmount !== null,
+  ];
+
+  const confidence = round((confidenceSignals.filter(Boolean).length / confidenceSignals.length) * 100);
+  const trendValue =
+    trendWeight(adoption.trend) * HEALTH_WEIGHTS.adoption +
+    trendWeight(engagement.trend) * HEALTH_WEIGHTS.engagement +
+    trendWeight(relationship.trend) * HEALTH_WEIGHTS.relationship +
+    trendWeight(support.trend) * HEALTH_WEIGHTS.support +
+    trendWeight(commercial.trend) * HEALTH_WEIGHTS.commercial;
+
+  const roundedScore = round(score);
+
+  return {
+    score: roundedScore,
+    grade: mapScoreToGrade(roundedScore),
+    trend: mapTrendScore(trendValue),
+    confidence,
+    updatedAt: (latestTouch ?? snapshot.updatedAt).toISOString(),
+    components: {
+      adoption,
+      engagement,
+      relationship,
+      support,
+      commercial,
+    },
+  };
+}
+
+function alertPriority(alert: CustomerSuccessAlert): number {
+  const severityRank = {
+    critical: 4,
+    high: 3,
+    medium: 2,
+    low: 1,
+  }[alert.severity];
+  const slaRank = {
+    breached: 3,
+    at_risk: 2,
+    on_track: 1,
+    none: 0,
+  }[alert.slaStatus];
+
+  return severityRank * 10 + slaRank;
+}
+
+function buildAlert(snapshot: CustomerSuccessAccountSnapshot, alert: CustomerSuccessAccountSnapshot["alerts"][number]): CustomerSuccessAlert {
+  return {
+    id: alert.id,
+    accountId: snapshot.id,
+    title: alert.title,
+    category: alert.category.toLowerCase() as CustomerSuccessAlert["category"],
+    severity: alert.severity.toLowerCase() as CustomerSuccessAlert["severity"],
+    status: alert.status.toLowerCase() as CustomerSuccessAlert["status"],
+    slaStatus: alert.slaStatus.toLowerCase() as CustomerSuccessAlert["slaStatus"],
+    source: alert.source.toLowerCase() as CustomerSuccessAlert["source"],
+    evidence: alert.evidence,
+    suggestedAction: alert.suggestedAction ?? undefined,
+    createdAt: alert.openedAt.toISOString(),
+    updatedAt: alert.updatedAt.toISOString(),
+  };
+}
+
+function pushEvent(target: CustomerSuccessEvent[], event: CustomerSuccessEvent) {
+  target.push(event);
+}
+
+function buildEvents(snapshot: CustomerSuccessAccountSnapshot): CustomerSuccessEvent[] {
+  const events: CustomerSuccessEvent[] = [];
+
+  snapshot.alerts.forEach((alert) => {
+    pushEvent(events, {
+      id: `alert:${alert.id}`,
+      accountId: snapshot.id,
+      type:
+        alert.source === CustomerSuccessAlertSource.COMMERCIAL
+          ? "commercial"
+          : alert.source === CustomerSuccessAlertSource.RELATIONSHIP
+            ? "relationship"
+            : alert.source === CustomerSuccessAlertSource.WORKFLOW
+              ? "workflow"
+              : "support",
+      title: alert.title,
+      description: alert.suggestedAction ?? alert.evidence[0],
+      occurredAt: alert.updatedAt.toISOString(),
+      metadata: {
+        severity: alert.severity,
+        status: alert.status,
+      },
+    });
+  });
+
+  snapshot.notes.forEach((note) => {
+    pushEvent(events, {
+      id: `note:${note.id}`,
+      accountId: snapshot.id,
+      type: "relationship",
+      title: note.title || "Customer success note",
+      description: note.body.slice(0, 180),
+      actorName: note.authorName ?? undefined,
+      occurredAt: note.createdAt.toISOString(),
+      metadata: {
+        source: note.source,
+      },
+    });
+  });
+
+  snapshot.meetings.forEach((meeting) => {
+    pushEvent(events, {
+      id: `meeting:${meeting.id}`,
+      accountId: snapshot.id,
+      type: "relationship",
+      title:
+        meeting.status === MeetingStatus.COMPLETED ? `Meeting completed: ${meeting.title}` : `Meeting scheduled: ${meeting.title}`,
+      description:
+        meeting.attendees.length > 0
+          ? `${meeting.attendees.length} attendee${meeting.attendees.length === 1 ? "" : "s"} linked`
+          : undefined,
+      occurredAt: meeting.startAt.toISOString(),
+      metadata: {
+        status: meeting.status,
+      },
+    });
+  });
+
+  snapshot.outreach.forEach((message) => {
+    pushEvent(events, {
+      id: `outreach:${message.id}`,
+      accountId: snapshot.id,
+      type: "relationship",
+      title:
+        message.status === CustomerSuccessOutreachStatus.SENT
+          ? `${message.channel} sent to ${message.recipientName || message.recipientAddress}`
+          : `${message.channel} ${message.status.toLowerCase()} for ${message.recipientName || message.recipientAddress}`,
+      description: message.subject ?? undefined,
+      occurredAt: (message.sentAt ?? message.createdAt).toISOString(),
+      metadata: {
+        status: message.status,
+        channel: message.channel,
+      },
+    });
+  });
+
+  snapshot.tasks.forEach((task) => {
+    const occurredAt = task.completedOn ?? task.updatedAt;
+    pushEvent(events, {
+      id: `task:${task.id}`,
+      accountId: snapshot.id,
+      type: "workflow",
+      title: isTaskDone(task.status) ? `Task completed: ${task.title}` : `Task updated: ${task.title}`,
+      description:
+        task.dueDate && !isTaskDone(task.status)
+          ? `Due ${task.dueDate.toISOString().slice(0, 10)}`
+          : undefined,
+      occurredAt: occurredAt.toISOString(),
+      metadata: {
+        status: task.status,
+        priority: task.priority,
+      },
+    });
+  });
+
+  return events.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+}
+
+function pickRecommendedTemplates(snapshot: CustomerSuccessAccountSnapshot): string[] {
+  const templates = new Set<string>();
+
+  if (snapshot.lifecycleStage === "ONBOARDING") templates.add("onboarding");
+  if (snapshot.lifecycleStage === "ADOPTION") templates.add("adoption-check-in");
+  if (snapshot.lifecycleStage === "EXPANSION") templates.add("expansion");
+  if (snapshot.lifecycleStage === "RENEWAL") templates.add("renewal");
+  if (snapshot.lifecycleStage === "AT_RISK") templates.add("at-risk-recovery");
+  if (snapshot.lifecycleStage === "CHURNED") templates.add("reactivation");
+  if (snapshot.alerts.some((alert) => isHighSeverity(alert.severity) && isAlertOpen(alert.status))) {
+    templates.add("risk-escalation");
+  }
+
+  if (templates.size === 0) {
+    templates.add("check-in");
+  }
+
+  return Array.from(templates);
+}
+
+function buildTaskSummaries(snapshot: CustomerSuccessAccountSnapshot): CustomerSuccessTaskSummary[] {
+  return snapshot.tasks.slice(0, 8).map((task) => ({
+    id: task.id,
+    title: task.title,
+    status: task.status,
+    dueDate: task.dueDate?.toISOString(),
+    priority: task.priority,
+  }));
+}
+
+export function buildCustomerSuccessAccountDetailFromSnapshot(
+  snapshot: CustomerSuccessAccountSnapshot,
+  now: Date = new Date()
+): CustomerSuccessAccountDetail {
+  const health = buildCustomerSuccessHealth(snapshot, now);
+  const timeline = buildEvents(snapshot);
+  const stakeholders = buildStakeholders(snapshot, now);
+  const currentPlan =
+    snapshot.plans.find((plan) => plan.status === CustomerSuccessPlanStatus.ACTIVE) ??
+    snapshot.plans[0] ??
+    null;
+
+  return {
+    accountId: snapshot.id,
+    name: snapshot.name,
+    segment: snapshot.segment ?? undefined,
+    tier: snapshot.tier ?? undefined,
+    lifecycleStage: snapshot.lifecycleStage,
+    ownerName: snapshot.ownerName ?? undefined,
+    health,
+    alerts: snapshot.alerts.map((alert) => buildAlert(snapshot, alert)),
+    timeline,
+    stakeholders,
+    tasks: buildTaskSummaries(snapshot),
+    successPlan: {
+      templateKey: currentPlan?.templateKey ?? undefined,
+      milestones:
+        currentPlan?.milestones.map((milestone) => ({
+          id: milestone.id,
+          title: milestone.title,
+          status: milestone.status,
+          dueDate: milestone.dueDate?.toISOString(),
+        })) ?? [],
+    },
+    outreach: {
+      recommendedTemplates: pickRecommendedTemplates(snapshot),
+      recentMessages: snapshot.outreach.slice(0, 8).map((message) => ({
+        id: message.id,
+        subject: message.subject || `${message.channel} outreach`,
+        sentAt: message.sentAt?.toISOString(),
+        status: message.status,
+      })),
+    },
+    commercial: {
+      arr: snapshot.primaryDealAmount ?? undefined,
+      renewalDate: snapshot.renewalDate?.toISOString(),
+      paymentStatus: snapshot.paymentStatus ?? undefined,
+      expansionPotential: snapshot.expansionPotential ?? undefined,
+    },
+  };
+}
+
+export function buildCustomerSuccessPortfolioFromSnapshots(
+  snapshots: CustomerSuccessAccountSnapshot[],
+  now: Date = new Date()
+): CustomerSuccessPortfolio {
+  const generatedAt = now.toISOString();
+  const accounts = snapshots.map((snapshot) => {
+    const health = buildCustomerSuccessHealth(snapshot, now);
+    const lastActivityAt = getLatestTouch(snapshot)?.toISOString();
+    const openAlertCount = snapshot.alerts.filter((alert) => isAlertOpen(alert.status)).length;
+    const activeUsers30d = buildStakeholders(snapshot, now).filter(
+      (stakeholder) => stakeholder.coverageStatus === "covered"
+    ).length;
+
+    return {
+      accountId: snapshot.id,
+      name: snapshot.name,
+      segment: snapshot.segment ?? undefined,
+      tier: snapshot.tier ?? undefined,
+      ownerName: snapshot.ownerName ?? undefined,
+      health,
+      lastActivityAt,
+      activeUsers30d,
+      renewalDate: snapshot.renewalDate?.toISOString(),
+      openAlertCount,
+    };
+  });
+
+  const alerts = snapshots
+    .flatMap((snapshot) => snapshot.alerts.map((alert) => buildAlert(snapshot, alert)))
+    .sort((a, b) => {
+      const priorityDiff = alertPriority(b) - alertPriority(a);
+      if (priorityDiff !== 0) return priorityDiff;
+      return b.updatedAt.localeCompare(a.updatedAt);
+    });
+
+  const recentActivity = snapshots
+    .flatMap((snapshot) => buildEvents(snapshot))
+    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+    .slice(0, 20);
+
+  const healthDistribution = ["A", "B", "C", "D", "F"].map((grade) => ({
+    label: grade as CustomerSuccessHealth["grade"],
+    count: accounts.filter((account) => account.health.grade === grade).length,
+  }));
+
+  const attentionAccounts = accounts
+    .slice()
+    .sort((a, b) => {
+      if (a.health.score !== b.health.score) return a.health.score - b.health.score;
+      return b.openAlertCount - a.openAlertCount;
+    })
+    .slice(0, 8)
+    .map((account) => ({
+      accountId: account.accountId,
+      name: account.name,
+      ownerName: account.ownerName,
+      health: account.health,
+      openAlertCount: account.openAlertCount,
+      lifecycleStage: snapshots.find((snapshot) => snapshot.id === account.accountId)?.lifecycleStage ?? "ACTIVE",
+      nextAction:
+        alerts.find((alert) => alert.accountId === account.accountId && alert.status !== "resolved")?.suggestedAction ??
+        pickRecommendedTemplates(
+          snapshots.find((snapshot) => snapshot.id === account.accountId) ?? snapshots[0]
+        )[0],
+    }));
+
+  const avgHealthScore =
+    accounts.length > 0 ? round(accounts.reduce((sum, account) => sum + account.health.score, 0) / accounts.length) : 0;
+  const atRiskAccounts = accounts.filter((account) => account.health.score < 80).length;
+  const openAlerts = alerts.filter((alert) => alert.status === "open" || alert.status === "in_progress").length;
+
+  return {
+    generatedAt,
+    summary: {
+      totalAccounts: accounts.length,
+      avgHealthScore,
+      atRiskAccounts,
+      openAlerts,
+    },
+    healthDistribution,
+    attentionAccounts,
+    alerts: alerts.slice(0, 16),
+    recentActivity,
+    accounts,
+  };
+}
+
+function mapCustomerRecordToSnapshot(record: CustomerRecordWithRelations): CustomerSuccessAccountSnapshot {
+  const contactsById = new Map<string, CustomerSuccessAccountSnapshot["contacts"][number]>();
+  const pushContact = (contact: ContactSummary) => {
+    contactsById.set(contact.id, {
+      id: contact.id,
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      email: contact.email,
+      title: contact.title,
+      updatedAt: contact.updatedAt,
+      createdAt: contact.createdAt,
+    });
+  };
+
+  record.dealCompany?.contacts.forEach(pushContact);
+  record.primaryDeal?.contacts.forEach(pushContact);
+
+  const metadata = record.metadata && typeof record.metadata === "object" ? (record.metadata as Record<string, unknown>) : null;
+
+  return {
+    id: record.id,
+    name: record.name,
+    segment: record.segment,
+    tier: record.tier,
+    lifecycleStage: record.lifecycleStage,
+    ownerName: record.owner?.name ?? null,
+    ownerEmail: record.owner?.email ?? null,
+    status: record.status,
+    primaryDealAmount: record.primaryDeal?.amount ?? null,
+    renewalDate: record.primaryDeal?.expectedCloseDate ?? null,
+    paymentStatus:
+      typeof metadata?.paymentStatus === "string"
+        ? metadata.paymentStatus
+        : record.primaryDeal?.stage === "CLOSED_WON"
+          ? "current"
+          : null,
+    expansionPotential:
+      typeof metadata?.expansionPotential === "string"
+        ? metadata.expansionPotential
+        : record.lifecycleStage === "EXPANSION"
+          ? "high"
+          : null,
+    externalProviders: record.externalRefs.map((ref) => ref.provider),
+    contacts: Array.from(contactsById.values()),
+    notes: record.notes.map((note) => ({
+      id: note.id,
+      title: note.title,
+      body: note.body,
+      createdAt: note.createdAt,
+      source: note.source,
+      authorName: note.authorUser?.name ?? null,
+    })),
+    alerts: record.alerts.map((alert) => ({
+      id: alert.id,
+      title: alert.title,
+      category: alert.category,
+      severity: alert.severity,
+      status: alert.status,
+      slaStatus: alert.slaStatus,
+      source: alert.source,
+      openedAt: alert.openedAt,
+      updatedAt: alert.updatedAt,
+      resolvedAt: alert.resolvedAt,
+      suggestedAction: alert.suggestedAction,
+      evidence: toEvidenceList(alert.evidence),
+    })),
+    plans: record.plans.map((plan) => ({
+      id: plan.id,
+      name: plan.name,
+      templateKey: plan.templateKey,
+      status: plan.status,
+      startedAt: plan.startedAt,
+      targetDate: plan.targetDate,
+      completedAt: plan.completedAt,
+      milestones: plan.milestones.map((milestone) => ({
+        id: milestone.id,
+        title: milestone.title,
+        status: milestone.status,
+        dueDate: milestone.dueDate,
+      })),
+    })),
+    outreach: record.outreachMessages.map((message) => ({
+      id: message.id,
+      templateKey: message.templateKey,
+      status: message.status,
+      subject: message.subject,
+      recipientName: message.recipientName,
+      recipientAddress: message.recipientAddress,
+      sentAt: message.sentAt,
+      createdAt: message.createdAt,
+      channel: message.channel,
+    })),
+    tasks: record.tasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      priority: task.priority,
+      dueDate: task.dueDate,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+      completedOn: task.completedOn,
+    })),
+    meetings: record.meetings.map((meeting) => ({
+      id: meeting.id,
+      title: meeting.title,
+      status: meeting.status,
+      startAt: meeting.startAt,
+      attendees: meeting.attendees.map((attendee) => ({
+        id: attendee.id,
+        firstName: attendee.firstName,
+        lastName: attendee.lastName,
+        email: attendee.email,
+        title: attendee.title,
+      })),
+    })),
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+async function listCustomerSuccessSnapshots(actor: CustomerSuccessActor): Promise<CustomerSuccessAccountSnapshot[]> {
+  return runWithContextAsync(
+    { organizationId: actor.organizationId, userId: actor.id },
+    async () => {
+      const records = await prisma.customerRecord.findMany({
+        where: {
+          organizationId: actor.organizationId,
+          status: { not: CustomerRecordStatus.MERGED },
+        },
+        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+        include: CUSTOMER_RECORD_INCLUDE,
+      });
+
+      return records.map(mapCustomerRecordToSnapshot);
+    }
+  );
+}
+
+export async function getCustomerSuccessPortfolio(
+  actor: CustomerSuccessActor
+): Promise<CustomerSuccessPortfolio> {
+  const snapshots = await listCustomerSuccessSnapshots(actor);
+  return buildCustomerSuccessPortfolioFromSnapshots(snapshots);
+}
+
+export async function getCustomerSuccessAlertFeed(
+  actor: CustomerSuccessActor
+): Promise<CustomerSuccessAlertFeed> {
+  const portfolio = await getCustomerSuccessPortfolio(actor);
+  const alerts = portfolio.alerts;
+  return {
+    generatedAt: portfolio.generatedAt,
+    summary: {
+      total: alerts.length,
+      open: alerts.filter((alert) => alert.status === "open").length,
+      inProgress: alerts.filter((alert) => alert.status === "in_progress").length,
+      breached: alerts.filter((alert) => alert.slaStatus === "breached").length,
+      critical: alerts.filter((alert) => alert.severity === "critical").length,
+    },
+    alerts,
+  };
+}
+
+export async function getCustomerSuccessActivityFeed(
+  actor: CustomerSuccessActor
+): Promise<CustomerSuccessActivityFeed> {
+  const portfolio = await getCustomerSuccessPortfolio(actor);
+  return {
+    generatedAt: portfolio.generatedAt,
+    events: portfolio.recentActivity,
+  };
+}
+
+export async function getCustomerSuccessAccountDetail(
+  actor: CustomerSuccessActor,
+  accountId: string
+): Promise<CustomerSuccessAccountDetail | null> {
+  const snapshots = await listCustomerSuccessSnapshots(actor);
+  const snapshot = snapshots.find((item) => item.id === accountId);
+  if (!snapshot) return null;
+  return buildCustomerSuccessAccountDetailFromSnapshot(snapshot);
+}

@@ -15,9 +15,9 @@ interface DashboardCacheState {
 
 export const useDashboardCacheStore = create<DashboardCacheState>((set, get) => ({
   entries: {},
-  read: (key) => {
+  read: <T,>(key: string) => {
     const entry = get().entries[key];
-    return (entry ?? null) as DashboardCacheEnvelope<unknown> | null;
+    return (entry ?? null) as DashboardCacheEnvelope<T> | null;
   },
   write: (key, value) => {
     set((state) => ({
