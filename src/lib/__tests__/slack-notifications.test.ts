@@ -25,7 +25,7 @@ describe("slack-notifications helpers", () => {
       expect(defaultThrottleConfig()).toEqual({
         windowMs: 60_000,
         maxBurst: 5,
-        bypassTypes: ["blocked"],
+        bypassTypes: ["blocked", "ops_alert"],
         minIntervalMs: 2_000,
       });
     });
@@ -39,7 +39,7 @@ describe("slack-notifications helpers", () => {
     const config: ThrottleConfig = {
       windowMs: 60_000,
       maxBurst: 3,
-      bypassTypes: ["blocked"],
+      bypassTypes: ["blocked", "ops_alert"],
       minIntervalMs: 1_000,
     };
 
@@ -56,6 +56,16 @@ describe("slack-notifications helpers", () => {
       }
 
       const result = shouldThrottle("C123", "blocked", config, now + 600);
+      expect(result.throttled).toBe(false);
+    });
+
+    it("bypasses throttle for ops alerts", () => {
+      const now = 1_000_000;
+      for (let i = 0; i < 5; i++) {
+        recordSend("C123", now + i * 100, config.windowMs);
+      }
+
+      const result = shouldThrottle("C123", "ops_alert", config, now + 600);
       expect(result.throttled).toBe(false);
     });
 
@@ -234,6 +244,28 @@ describe("slack-notifications helpers", () => {
     it("renders mention with default role", () => {
       const msg = renderNotificationMessage({ ...base, type: "mention" });
       expect(msg).toContain("mentioned");
+    });
+
+    it("renders ops alert with severity, kind, and reason", () => {
+      const msg = renderNotificationMessage({
+        ...base,
+        type: "ops_alert",
+        taskTitle: "UNIFY enrichment is stale",
+        context: {
+          severity: "critical",
+          kind: "stale",
+          provider: "UNIFY",
+          reason: "No enrichment signal received in 14 days.",
+          bucketStart: "2026-03-08T00:00:00.000Z",
+        },
+      });
+
+      expect(msg).toContain(":rotating_light:");
+      expect(msg).toContain("CRITICAL");
+      expect(msg).toContain("visitor funnel alert");
+      expect(msg).toContain("Provider: UNIFY");
+      expect(msg).toContain("Type: stale");
+      expect(msg).toContain("No enrichment signal received in 14 days.");
     });
   });
 
