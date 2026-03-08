@@ -28,7 +28,8 @@ export type SlackNotificationType =
   | "status_change"
   | "blocked"
   | "unblocked"
-  | "mention";
+  | "mention"
+  | "ops_alert";
 
 export interface SlackNotificationPayload {
   type: SlackNotificationType;
@@ -80,6 +81,7 @@ const NOTIFICATION_EMOJIS: Record<SlackNotificationType, string> = {
   blocked: ":octagonal_sign:",
   unblocked: ":white_check_mark:",
   mention: ":speech_balloon:",
+  ops_alert: ":rotating_light:",
 };
 
 // ---------------------------------------------------------------------------
@@ -92,7 +94,7 @@ export function defaultThrottleConfig(): ThrottleConfig {
   return {
     windowMs: 60_000,
     maxBurst: 5,
-    bypassTypes: ["blocked"],
+    bypassTypes: ["blocked", "ops_alert"],
     minIntervalMs: 2_000,
   };
 }
@@ -202,6 +204,23 @@ export function renderNotificationMessage(payload: SlackNotificationPayload): st
     case "mention": {
       const role = payload.context?.role ?? "mentioned";
       return `${emoji} You were ${role} on *${payload.taskTitle}*${projectLabel}${actorLabel}`;
+    }
+
+    case "ops_alert": {
+      const severity = payload.context?.severity?.trim().toUpperCase() || "ALERT";
+      const kind = payload.context?.kind?.trim();
+      const provider = payload.context?.provider?.trim();
+      const reason = payload.context?.reason?.trim();
+      const bucket = payload.context?.bucketStart?.trim();
+      const suffixes = [
+        provider ? `Provider: ${provider}` : null,
+        kind ? `Type: ${kind}` : null,
+        bucket ? `Window: ${bucket}` : null,
+      ]
+        .filter(Boolean)
+        .join(" • ");
+      const reasonSuffix = reason ? `\n> ${reason}` : "";
+      return `${emoji} *${severity}* visitor funnel alert: *${payload.taskTitle}*${suffixes ? `\n>${suffixes}` : ""}${reasonSuffix}`;
     }
 
     default:
