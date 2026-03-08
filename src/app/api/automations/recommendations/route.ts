@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { AutomationRecommendationStatus } from "@/generated/prisma/enums";
+import { AutomationRecommendationStatus } from "@/lib/automations/prisma-enums";
 import {
   WorkflowScope,
 } from "@/generated/prisma/client";

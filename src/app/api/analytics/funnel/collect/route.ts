@@ -1,8 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { FunnelEventType } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
+import { FunnelEventType } from "@/lib/analytics/prisma-funnel-enums";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { collectVisitorEvent } from "@/lib/analytics/visitor-funnel";

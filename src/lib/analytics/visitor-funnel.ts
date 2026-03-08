@@ -1,10 +1,10 @@
 import { createHash } from "crypto";
 import {
-  EnrichmentProvider as PrismaEnrichmentProvider,
+  PrismaEnrichmentProvider,
   FunnelEventType,
   FunnelIdentityType,
   FunnelLinkProvenance,
-} from "@/generated/prisma/enums";
+} from "@/lib/analytics/prisma-funnel-enums";
 import {
   type Prisma,
   type PrismaClient,
