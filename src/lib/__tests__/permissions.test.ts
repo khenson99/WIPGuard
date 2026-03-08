@@ -23,7 +23,6 @@ describe("permissions", () => {
     expect(can("observer", "deals.read")).toBe(false);
     expect(can("observer", "analytics.read")).toBe(false);
     expect(can("observer", "policy.write")).toBe(false);
-    expect(can("observer", "analytics.read")).toBe(false);
   });
 
   it("allows members to mutate delivery flow but not privileged controls", () => {

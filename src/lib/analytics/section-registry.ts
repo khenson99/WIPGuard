@@ -36,10 +36,6 @@ export interface AnalyticsSubSection {
     | "semrush"
     | "pylon"
     | "product"
-    | "decisionDashboard"
-    | "flowMetrics"
-    | "flowRisk"
-    | "observability"
     | "customerJourney"
     | "visitorFunnel"
     | "demoAnalytics"
@@ -123,10 +119,6 @@ export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
   { id: "cs-product", label: "Product", path: "/analytics/cs-product", parentId: "customer-success", dataDomain: "product" },
   { id: "cs-google-workspace", label: "Google Workspace", path: "/analytics/cs-google-workspace", parentId: "customer-success", dataDomain: "googleWorkspace" },
   { id: "cs-slack", label: "Slack", path: "/analytics/cs-slack", parentId: "customer-success", dataDomain: "slack" },
-  { id: "cs-decision-dashboard", label: "Decision Dashboard", path: "/analytics/cs-decision-dashboard", parentId: "customer-success", dataDomain: "decisionDashboard" },
-  { id: "cs-flow-metrics", label: "Flow Metrics", path: "/analytics/cs-flow-metrics", parentId: "customer-success", dataDomain: "flowMetrics" },
-  { id: "cs-flow-risk", label: "Flow Risk", path: "/analytics/cs-flow-risk", parentId: "customer-success", dataDomain: "flowRisk" },
-  { id: "cs-observability", label: "Observability", path: "/analytics/cs-observability", parentId: "customer-success", dataDomain: "observability" },
 
   { id: "cj-overview", label: "Journey Overview", path: "/analytics/cj-overview", parentId: "customer-journey", dataDomain: "customerJourney" },
   { id: "cj-touchpoints", label: "Touchpoints", path: "/analytics/cj-touchpoints", parentId: "customer-journey", dataDomain: "customerJourney" },
@@ -194,14 +186,14 @@ export const LEGACY_ANALYTICS_ROUTE_REDIRECTS: Record<string, string> = {
   "google-workspace": "/analytics/sales-google-workspace",
   slack: "/analytics/sales-slack",
   semrush: "/analytics/ads-semrush",
-  "decision-dashboard": "/analytics/cs-decision-dashboard",
-  "flow-metrics": "/analytics/cs-flow-metrics",
-  "flow-risk": "/analytics/cs-flow-risk",
-  observability: "/analytics/cs-observability",
-  "cs-decision-dashboard": "/analytics/cs-decision-dashboard",
-  "cs-flow-metrics": "/analytics/cs-flow-metrics",
-  "cs-flow-risk": "/analytics/cs-flow-risk",
-  "cs-observability": "/analytics/cs-observability",
+  "decision-dashboard": "/analytics/customer-success",
+  "flow-metrics": "/analytics/customer-success",
+  "flow-risk": "/analytics/customer-success",
+  observability: "/analytics/customer-success",
+  "cs-decision-dashboard": "/analytics/customer-success",
+  "cs-flow-metrics": "/analytics/customer-success",
+  "cs-flow-risk": "/analytics/customer-success",
+  "cs-observability": "/analytics/customer-success",
   "customer-journey": "/analytics/customer-journey",
   "demo-analytics": "/analytics/demo-analytics",
   "process-analytics": "/analytics/process-analytics",

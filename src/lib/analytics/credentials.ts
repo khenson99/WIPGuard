@@ -681,16 +681,8 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     (usingMetaEnvFallback ? envMetaAccessToken : null);
 
 
-  const metaAdsMetadata =
-    metaAdsConnection &&
-    metaAdsConnection.status !== IntegrationConnectionStatus.DISCONNECTED
-      ? metaAdsConnection.metadata
-      : null;
-  const metaPageMetadata =
-    metaPageConnection &&
-    metaPageConnection.status !== IntegrationConnectionStatus.DISCONNECTED
-      ? metaPageConnection.metadata
-      : null;
+  const metaAdsMetadata = metaAdsConnection?.metadata ?? null;
+  const metaPageMetadata = metaPageConnection?.metadata ?? null;
 
   let metaAdAccountId = metadataString(metaAdsMetadata, "adAccountId") ?? envMetaAdAccountId;
   let metaPageId =

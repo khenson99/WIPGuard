@@ -61,10 +61,6 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-vi.mock("@/lib/permissions", () => ({
-  enforcePermission: vi.fn(async () => ({ role: "member" })),
-}));
-
 const META = { fetchedAt: "2026-02-10T00:00:00.000Z", nextRefresh: "2026-02-10T01:00:00.000Z", source: "live" as const };
 
 const HUBSPOT_DATA = {
@@ -333,11 +329,6 @@ describe("GET /api/analytics", () => {
       },
     } as never);
 
-    const { enforcePermission } = await import("@/lib/permissions");
-    vi.mocked(enforcePermission).mockResolvedValue({
-      role: "member",
-    } as never);
-
     const { fetchHubSpotData, fetchMercuryData, fetchStripeData } = await import("@/lib/analytics/fetchers");
     vi.mocked(fetchHubSpotData).mockResolvedValue(HUBSPOT_DATA as never);
     vi.mocked(fetchMercuryData).mockResolvedValue(MERCURY_DATA as never);
@@ -404,16 +395,10 @@ describe("GET /api/analytics", () => {
   });
 
   it("returns 403 when analytics read permission is denied", async () => {
-    const { enforcePermission } = await import("@/lib/permissions");
     const { getCredentials } = await import("@/lib/analytics/credentials");
+    const { prisma } = await import("@/lib/prisma");
 
-    vi.mocked(enforcePermission).mockResolvedValue({
-      role: "observer",
-      deniedResponse: Response.json(
-        { error: "Forbidden: insufficient permissions" },
-        { status: 403 }
-      ),
-    } as never);
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({ role: "observer" } as never);
 
     const { GET } = await import("@/app/api/analytics/route");
     const response = await GET(new Request("http://localhost/api/analytics"));
