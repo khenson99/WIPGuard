@@ -654,34 +654,29 @@ async function createOrUpdateVisitor(
     attribution: AttributionInfo;
   },
 ): Promise<PersistedVisitor> {
-  const existing = await prisma.funnelVisitor.findUnique({
-    where: { anonymousId: input.anonymousId },
-  });
-
   const attribution = input.attribution;
-
-  if (!existing) {
-    return prisma.funnelVisitor.create({
-      data: {
-        anonymousId: input.anonymousId,
-        siteHost: attribution.siteHost,
-        firstTouchSource: attribution.source,
-        firstTouchChannel: attribution.channel,
-        firstTouchCampaign: attribution.campaign,
-        firstTouchReferrer: attribution.referrer,
-        firstTouchLandingPath: attribution.path,
-        firstTouchLandingUrl: attribution.url,
-        lastTouchSource: attribution.source,
-        lastTouchChannel: attribution.channel,
-        lastTouchCampaign: attribution.campaign,
-        lastTouchReferrer: attribution.referrer,
-        lastTouchPath: attribution.path,
-        lastTouchUrl: attribution.url,
-        firstSeenAt: input.occurredAt,
-        lastSeenAt: input.occurredAt,
-      },
-    });
-  }
+  const existing = await prisma.funnelVisitor.upsert({
+    where: { anonymousId: input.anonymousId },
+    update: {},
+    create: {
+      anonymousId: input.anonymousId,
+      siteHost: attribution.siteHost,
+      firstTouchSource: attribution.source,
+      firstTouchChannel: attribution.channel,
+      firstTouchCampaign: attribution.campaign,
+      firstTouchReferrer: attribution.referrer,
+      firstTouchLandingPath: attribution.path,
+      firstTouchLandingUrl: attribution.url,
+      lastTouchSource: attribution.source,
+      lastTouchChannel: attribution.channel,
+      lastTouchCampaign: attribution.campaign,
+      lastTouchReferrer: attribution.referrer,
+      lastTouchPath: attribution.path,
+      lastTouchUrl: attribution.url,
+      firstSeenAt: input.occurredAt,
+      lastSeenAt: input.occurredAt,
+    },
+  });
 
   const update: Prisma.FunnelVisitorUpdateInput = {};
   if (input.occurredAt <= existing.firstSeenAt) {
