@@ -19,7 +19,7 @@ const globalForPrisma = globalThis as unknown as {
   pgPool: Pool | undefined;
 };
 
-type PrismaClientType = ReturnType<typeof createPrismaClient>;
+export type PrismaClientType = ReturnType<typeof createPrismaClient>;
 
 function createPrismaClient(connectionString: string) {
   const pool = new Pool({

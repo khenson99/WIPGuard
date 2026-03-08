@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCredentials } from "@/lib/analytics/credentials";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
+import { getAuthenticatedUser } from "@/lib/session-user";
 import {
   ANALYTICS_PRIMARY_SECTIONS,
   ANALYTICS_SUB_SECTIONS,
@@ -28,7 +29,8 @@ function aggregateStatus(statuses: SectionStatus[]): SectionStatus {
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -37,7 +39,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const to = new Date(`${range.to}T23:59:59.999Z`);
 
     const [creds, tasksByStatus, overdueTasks, activeProjects, contributors, latestSnapshots] = await Promise.all([
-      getCredentials(session.user.id),
+      getCredentials(user.id),
       prisma.task.groupBy({ by: ["status"], _count: { status: true } }),
       prisma.task.count({
         where: {
@@ -56,7 +58,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       }),
       prisma.analyticsSnapshot.findMany({
         where: {
-          userId: session.user.id,
+          userId: user.id,
           rangePreset: range.preset,
           toDate: to,
           providerKey: {
@@ -154,6 +156,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       flowRisk: true,
       observability: true,
       customerJourney: true,
+      visitorFunnel: true,
       demoAnalytics: true,
       processAnalytics: true,
     };

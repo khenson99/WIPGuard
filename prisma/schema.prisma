@@ -56,6 +56,9 @@ model User {
   workflowRunRequests    WorkflowRun[]        @relation("WorkflowRunRequestedBy")
   workflowApprovalRequests WorkflowApproval[] @relation("WorkflowApprovalRequestedBy")
   workflowApprovals      WorkflowApproval[]   @relation("WorkflowApprovalApprover")
+  automationRecommendationRequests AutomationRecommendation[] @relation("AutomationRecommendationRequestedBy")
+  automationRecommendationApprovals AutomationRecommendation[] @relation("AutomationRecommendationApprovedBy")
+  automationRecommendationExecutions AutomationRecommendation[] @relation("AutomationRecommendationExecutedBy")
   securityAuditEvents SecurityAuditEvent[]
 
   responsibleTasks  Task[]    @relation("TaskResponsible")
@@ -92,6 +95,7 @@ model User {
 
   submissionEvents SubmissionEvent[]
   insightPreferences InsightPreference[]
+  funnelIdentityLinks FunnelIdentityLink[] @relation("FunnelIdentityUser")
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
@@ -842,6 +846,8 @@ enum IntegrationProvider {
   SEMRUSH
   PYLON
   GOOGLE_ANALYTICS
+  GOOGLE_SEARCH_CONSOLE
+  WIPGUARD
 }
 
 enum IntegrationConnectionStatus {
@@ -1101,6 +1107,7 @@ enum WorkflowRunStatus {
   QUEUED
   RUNNING
   WAITING_APPROVAL
+  WAITING_EXTERNAL
   SUCCEEDED
   FAILED
   CANCELED
@@ -1113,6 +1120,7 @@ enum WorkflowStepStatus {
   FAILED
   SKIPPED
   WAITING_APPROVAL
+  WAITING_EXTERNAL
 }
 
 enum WorkflowApprovalStatus {
@@ -1130,6 +1138,45 @@ enum WorkflowEventStatus {
   DEAD_LETTER
 }
 
+enum AutomationOperatorKey {
+  SALES_FOLLOWUP
+  CUSTOMER_HEALTH
+  GTM_SCRUM
+  SEO_GROWTH
+  ADS_OPTIMIZER
+  ROADMAP_INTELLIGENCE
+}
+
+enum AutomationSourceDocumentStatus {
+  READY
+  ERROR
+  ARCHIVED
+}
+
+enum AutomationArtifactStatus {
+  DRAFT
+  READY
+  ERROR
+  ARCHIVED
+}
+
+enum AutomationRecommendationStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  EXECUTED
+  FAILED
+}
+
+enum AutomationAiJobStatus {
+  QUEUED
+  REQUESTED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
 model WorkflowDefinition {
   id String @id @default(cuid())
 
@@ -1138,6 +1185,7 @@ model WorkflowDefinition {
 
   name        String
   description String? @db.Text
+  operatorKey AutomationOperatorKey?
   scope       WorkflowScope @default(PRIVATE)
   status      WorkflowStatus @default(DRAFT)
   providers   IntegrationProvider[] @default([])
@@ -1156,12 +1204,17 @@ model WorkflowDefinition {
   runs         WorkflowRun[]
   triggerCursors WorkflowTriggerCursor[]
   triggerEvents WorkflowTriggerEvent[]
+  sourceDocuments AutomationSourceDocument[]
+  artifacts AutomationArtifact[]
+  recommendations AutomationRecommendation[]
+  aiJobs AutomationAiJob[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([ownerId, status])
   @@index([scope, status])
+  @@index([operatorKey, status])
 }
 
 model WorkflowNode {
@@ -1227,6 +1280,10 @@ model WorkflowRun {
 
   steps     WorkflowRunStep[]
   approvals WorkflowApproval[]
+  sourceDocuments AutomationSourceDocument[]
+  artifacts AutomationArtifact[]
+  recommendations AutomationRecommendation[]
+  aiJobs AutomationAiJob[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1255,6 +1312,7 @@ model WorkflowRunStep {
   finishedAt DateTime?
 
   approvals WorkflowApproval[]
+  aiJobs AutomationAiJob[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1335,6 +1393,175 @@ model WorkflowTriggerEvent {
 
   @@index([status, nextAttemptAt])
   @@index([provider, eventType, observedAt])
+}
+
+model AutomationSourceDocument {
+  id String @id @default(cuid())
+
+  workflowId String
+  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  runId String
+  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  operatorKey AutomationOperatorKey?
+  provider    IntegrationProvider?
+  eventType   String?
+  externalId  String?
+  documentType String
+  status      AutomationSourceDocumentStatus @default(READY)
+
+  title      String?
+  mimeType   String?
+  sourceUrl  String?
+  dedupeKey  String? @unique
+  textContent String? @db.Text
+  structuredData Json?
+  metadata   Json?
+
+  artifacts  AutomationArtifact[]
+
+  observedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([workflowId, documentType, observedAt])
+  @@index([runId, documentType, observedAt])
+  @@index([provider, eventType, observedAt])
+}
+
+model AutomationAiJob {
+  id String @id @default(cuid())
+
+  workflowId String
+  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  runId String
+  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  stepId String?
+  step   WorkflowRunStep? @relation(fields: [stepId], references: [id], onDelete: SetNull)
+
+  operatorKey AutomationOperatorKey?
+  nodeKey     String
+  jobType     String
+  status      AutomationAiJobStatus @default(QUEUED)
+
+  provider       String @default("openai")
+  model          String
+  promptVersion  String?
+  requestPayload Json
+  responseId     String? @unique
+  responseStatus String?
+  responsePayload Json?
+  outputText     String? @db.Text
+  parsedOutput   Json?
+  lastError      String? @db.Text
+
+  attemptCount Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  completedAt DateTime?
+  dedupeKey String? @unique
+  metadata Json?
+
+  artifacts AutomationArtifact[]
+  recommendations AutomationRecommendation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([runId, status, createdAt])
+  @@index([workflowId, operatorKey, status])
+}
+
+model AutomationArtifact {
+  id String @id @default(cuid())
+
+  workflowId String
+  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  runId String
+  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  sourceDocumentId String?
+  sourceDocument   AutomationSourceDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+
+  aiJobId String?
+  aiJob   AutomationAiJob? @relation(fields: [aiJobId], references: [id], onDelete: SetNull)
+
+  operatorKey AutomationOperatorKey?
+  artifactType String
+  status       AutomationArtifactStatus @default(DRAFT)
+  title        String
+  summary      String?
+  content      String? @db.Text
+  contentJson  Json?
+  dedupeKey    String? @unique
+  metadata     Json?
+  createdByNodeKey String?
+
+  recommendations AutomationRecommendation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workflowId, artifactType, createdAt])
+  @@index([runId, artifactType, createdAt])
+  @@index([operatorKey, artifactType, status])
+}
+
+model AutomationRecommendation {
+  id String @id @default(cuid())
+
+  workflowId String
+  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  runId String
+  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  artifactId String?
+  artifact   AutomationArtifact? @relation(fields: [artifactId], references: [id], onDelete: SetNull)
+
+  aiJobId String?
+  aiJob   AutomationAiJob? @relation(fields: [aiJobId], references: [id], onDelete: SetNull)
+
+  operatorKey AutomationOperatorKey?
+  recommendationType String
+  title    String
+  summary  String
+  detail   String? @db.Text
+  actionType String
+  actionPayload Json?
+  requiresApproval Boolean @default(false)
+  status AutomationRecommendationStatus @default(PENDING_APPROVAL)
+  priority String?
+
+  requestedById String?
+  requestedBy   User? @relation("AutomationRecommendationRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+
+  approverId String?
+  approver   User? @relation("AutomationRecommendationApprovedBy", fields: [approverId], references: [id], onDelete: SetNull)
+
+  executedById String?
+  executedBy   User? @relation("AutomationRecommendationExecutedBy", fields: [executedById], references: [id], onDelete: SetNull)
+
+  decisionNote  String? @db.Text
+  executionResult Json?
+  executionError String? @db.Text
+  dueAt       DateTime?
+  approvedAt  DateTime?
+  executedAt  DateTime?
+  resolvedAt  DateTime?
+  dedupeKey   String? @unique
+  metadata    Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, approverId, createdAt])
+  @@index([runId, status, createdAt])
+  @@index([workflowId, operatorKey, status])
 }
 
 // ============================================================
@@ -1654,6 +1881,149 @@ model ForecastScenario {
 // ============================================================
 // FUNNEL ANALYTICS
 // ============================================================
+
+enum FunnelEventType {
+  PAGE_VIEW
+  SESSION_STARTED
+  AUTH_COMPLETED
+  DEMO_BOOKED
+  KANBAN_CARD_CREATED
+  TRIAL_STARTED
+  PAID_CUSTOMER
+}
+
+enum FunnelIdentityType {
+  EMAIL
+  USER_ID
+  HUBSPOT_CONTACT_ID
+  HUBSPOT_DEAL_ID
+  STRIPE_CUSTOMER_ID
+  CODA_EMAIL
+}
+
+enum FunnelLinkProvenance {
+  EXACT
+  INFERRED
+  BACKFILLED
+}
+
+enum EnrichmentProvider {
+  UNIFY
+  CLAY
+  RB2B
+}
+
+model FunnelVisitor {
+  id          String @id @default(cuid())
+  anonymousId String @unique
+  siteHost    String?
+
+  firstTouchSource     String?
+  firstTouchChannel    String?
+  firstTouchCampaign   String?
+  firstTouchReferrer   String? @db.Text
+  firstTouchLandingPath String?
+  firstTouchLandingUrl  String? @db.Text
+
+  lastTouchSource   String?
+  lastTouchChannel  String?
+  lastTouchCampaign String?
+  lastTouchReferrer String? @db.Text
+  lastTouchPath     String?
+  lastTouchUrl      String? @db.Text
+
+  firstSeenAt DateTime
+  lastSeenAt  DateTime
+
+  events            FunnelEvent[]
+  identityLinks     FunnelIdentityLink[]
+  enrichmentSignals FunnelEnrichmentSignal[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([firstSeenAt])
+  @@index([lastSeenAt])
+  @@index([firstTouchChannel, firstSeenAt])
+  @@index([firstTouchSource, firstSeenAt])
+  @@index([firstTouchCampaign, firstSeenAt])
+  @@index([siteHost, firstSeenAt])
+}
+
+model FunnelEvent {
+  id        String          @id @default(cuid())
+  visitorId String
+  visitor   FunnelVisitor   @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  eventType FunnelEventType
+
+  occurredAt DateTime
+  path       String?
+  url        String? @db.Text
+  referrer   String? @db.Text
+  source     String?
+  channel    String?
+  campaign   String?
+  dedupeKey  String? @unique
+  metadata   Json    @default("{}")
+
+  createdAt DateTime @default(now())
+
+  @@index([visitorId, occurredAt])
+  @@index([eventType, occurredAt])
+  @@index([channel, occurredAt])
+}
+
+model FunnelIdentityLink {
+  id           String              @id @default(cuid())
+  visitorId     String
+  visitor       FunnelVisitor      @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  identityType  FunnelIdentityType
+  identityValue String
+  provider      String
+  provenance    FunnelLinkProvenance @default(EXACT)
+  confidence    Float               @default(1)
+  metadata      Json?
+
+  userId String?
+  user   User? @relation("FunnelIdentityUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([visitorId, identityType, identityValue])
+  @@index([identityType, identityValue])
+  @@index([userId])
+  @@index([provider, provenance])
+}
+
+model FunnelEnrichmentSignal {
+  id        String             @id @default(cuid())
+  provider  EnrichmentProvider
+  signalKey String
+
+  visitorId String?
+  visitor   FunnelVisitor? @relation(fields: [visitorId], references: [id], onDelete: SetNull)
+
+  anonymousId String?
+  email       String?
+  domain      String?
+  fullName    String?
+  companyName String?
+  confidence  Float    @default(0)
+  occurredAt  DateTime?
+  accepted    Boolean  @default(false)
+  metadata    Json     @default("{}")
+  payload     Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, signalKey])
+  @@index([visitorId])
+  @@index([email])
+  @@index([domain])
+  @@index([accepted, createdAt])
+}
 
 model SubmissionEvent {
   id          String   @id @default(cuid())

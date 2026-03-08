@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { IntegrationProvider } from "@/generated/prisma/client";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { prisma, type PrismaClientType } from "@/lib/prisma";
 import { enforcePermission } from "@/lib/permissions";
 import { getCredentials } from "@/lib/analytics/credentials";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
@@ -22,6 +22,11 @@ import {
 import { buildAnalyticsRouteMeta } from "@/lib/analytics/route-meta";
 import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { computeKpiDelta } from "@/lib/analytics/kpi-deltas";
+import {
+  buildVisitorFunnelData,
+  parseVisitorFunnelFilters,
+  syncVisitorFunnelArtifacts,
+} from "@/lib/analytics/visitor-funnel";
 import type {
   AnalyticsDashboardData,
   AnalyticsRecommendation,
@@ -68,6 +73,7 @@ type DomainKey =
   | "recommendations"
   | "distilledInsights"
   | "customerJourney"
+  | "visitorFunnel"
   | "demoAnalytics"
   | "processAnalytics";
 
@@ -201,6 +207,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "cj-overview": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
   "cj-touchpoints": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
   "cj-conversion": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
+  "cj-acquisition-funnel": ["hubspot", "stripe", "coda", "visitorFunnel"],
 
   "demo-analytics": [
     "hubspot", "googleWorkspace", "demoAnalytics",
@@ -688,10 +695,11 @@ type FetchEntry = {
     | "funnelJourney"
     | "aiInsights"
     | "recommendations"
-    | "distilledInsights"
-    | "customerJourney"
-    | "demoAnalytics"
-    | "processAnalytics"
+  | "distilledInsights"
+  | "customerJourney"
+  | "visitorFunnel"
+  | "demoAnalytics"
+  | "processAnalytics"
   >;
   fn: () => Promise<unknown>;
 };
@@ -1372,6 +1380,24 @@ export async function GET(request: Request) {
   if (domains.has("customerJourney")) {
     const { buildCustomerJourneyData } = await loadCustomerJourneyBuilder();
     result.customerJourney = buildCustomerJourneyData(result);
+  }
+  if (domains.has("visitorFunnel")) {
+    const funnelPrisma = prisma as PrismaClientType;
+    await syncVisitorFunnelArtifacts({
+      prisma: funnelPrisma,
+      analyticsData: result,
+      stripeKey: creds.stripeKey ?? null,
+      from: fromDate,
+      to: toDate,
+    });
+    result.visitorFunnel = await buildVisitorFunnelData(funnelPrisma, {
+      from: fromDate,
+      to: toDate,
+      filters: parseVisitorFunnelFilters(url.searchParams),
+      closedWonCount: (result.hubspot?.deals ?? []).filter(
+        (deal) => deal.stageLabel.trim().toLowerCase() === "closed won",
+      ).length,
+    });
   }
   if (domains.has("recommendations")) {
     result.recommendations = buildRecommendations(result);

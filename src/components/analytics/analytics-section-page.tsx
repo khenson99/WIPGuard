@@ -42,6 +42,7 @@ const DemoAnalyticsTab = dynamic(() => import("@/components/analytics/demo-analy
 const ProcessAnalyticsTab = dynamic(() => import("@/components/analytics/process-analytics-tab").then((m) => m.ProcessAnalyticsTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const CustomerJourneyDrillDown = dynamic(() => import("@/components/analytics/customer-journey-drill-down").then((m) => m.CustomerJourneyDrillDown), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const CustomerJourneyConversionTab = dynamic(() => import("@/components/analytics/customer-journey-conversion-tab").then((m) => m.CustomerJourneyConversionTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const VisitorFunnelTab = dynamic(() => import("@/components/analytics/visitor-funnel-tab").then((m) => m.VisitorFunnelTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const DemoSchedulingView = dynamic(() => import("@/components/analytics/demo-scheduling-view").then((m) => m.DemoSchedulingView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const DemoAttributionView = dynamic(() => import("@/components/analytics/demo-attribution-view").then((m) => m.DemoAttributionView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const ProcessBottlenecksView = dynamic(() => import("@/components/analytics/process-bottlenecks-view").then((m) => m.ProcessBottlenecksView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
@@ -112,6 +113,7 @@ export type AnalyticsChildRenderKind =
   | "observability"
   | "customerJourneyDrillDown"
   | "customerJourneyConversion"
+  | "visitorFunnel"
   | "demoScheduling"
   | "demoAttribution"
   | "processBottlenecks"
@@ -154,6 +156,7 @@ const CHILD_ID_TO_RENDER_KIND = {
   // Customer Journey
   "cj-touchpoints": "customerJourneyDrillDown",
   "cj-conversion": "customerJourneyConversion",
+  "cj-acquisition-funnel": "visitorFunnel",
   // Demo Analytics
   "demo-scheduling": "demoScheduling",
   "demo-attribution": "demoAttribution",
@@ -170,6 +173,7 @@ const DATA_DOMAIN_TO_RENDER_KIND = {
   flowRisk: "flowRisk",
   observability: "observability",
   customerJourney: "customerJourneyDrillDown",
+  visitorFunnel: "visitorFunnel",
   demoAnalytics: "demoScheduling",
   processAnalytics: "processBottlenecks",
 } as const satisfies Record<string, AnalyticsChildRenderKind>;
@@ -195,8 +199,8 @@ export function resolveAnalyticsChildRenderKind(input: {
   );
 }
 
-function sectionCacheKey(sectionId: string, rangeQuery: string): string {
-  return `${SECTION_CACHE_PREFIX}${sectionId}:${rangeQuery || "default"}`;
+function sectionCacheKey(sectionId: string, querySignature: string): string {
+  return `${SECTION_CACHE_PREFIX}${sectionId}:${querySignature || "default"}`;
 }
 
 async function fetchWithRetry(url: string, init: RequestInit, retries = 1): Promise<Response> {
@@ -293,7 +297,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
   const fullRangeSuffix = rangeQuery ? `&${rangeQuery}` : "";
 
   const resource = useDashboardResource<SectionViewModel>({
-    cacheKey: sectionCacheKey(sectionId, rangeQuery),
+    cacheKey: sectionCacheKey(sectionId, searchParamsString),
     deps: [sectionId, rangeQuery, searchParamsString, child?.id],
     load: async ({ signal, refresh }) => {
       const params = new URLSearchParams(searchParamsString);
@@ -379,7 +383,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         }
       }
 
-      const analyticsParams = new URLSearchParams(rangeQuery);
+      const analyticsParams = new URLSearchParams(searchParamsString);
       analyticsParams.set("section", sectionId);
       if (refresh) {
         analyticsParams.set("refresh", "true");
@@ -469,6 +473,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     if (renderKind === "observability") return <ObservabilityView payload={auxPayload} />;
     if (renderKind === "customerJourneyDrillDown") return <CustomerJourneyDrillDown data={analyticsData} />;
     if (renderKind === "customerJourneyConversion") return <CustomerJourneyConversionTab data={analyticsData} />;
+    if (renderKind === "visitorFunnel") return <VisitorFunnelTab data={analyticsData} />;
     if (renderKind === "demoScheduling") return <DemoSchedulingView data={analyticsData} />;
     if (renderKind === "demoAttribution") return <DemoAttributionView data={analyticsData} />;
     if (renderKind === "processBottlenecks") return <ProcessBottlenecksView data={analyticsData} />;
