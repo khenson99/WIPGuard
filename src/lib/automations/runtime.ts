@@ -1,5 +1,7 @@
 import {
   AutomationAiJobStatus,
+} from "@/generated/prisma/enums";
+import {
   IntegrationProvider,
   Prisma,
   TaskStatus,

@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AutomationRecommendationStatus,
   AutomationSourceDocumentStatus,
+} from "@/generated/prisma/enums";
+import {
   IntegrationProvider,
   Prisma,
 } from "@/generated/prisma/client";

@@ -4,6 +4,8 @@ import {
   FunnelEventType,
   FunnelIdentityType,
   FunnelLinkProvenance,
+} from "@/generated/prisma/enums";
+import {
   type Prisma,
   type PrismaClient,
 } from "@/generated/prisma/client";

@@ -1,7 +1,5 @@
-import {
-  AutomationRecommendationStatus,
-  type Prisma,
-} from "@/generated/prisma/client";
+import { AutomationRecommendationStatus } from "@/generated/prisma/enums";
+import type { Prisma } from "@/generated/prisma/client";
 import { executeAutomationAction } from "@/lib/automations/actions";
 import {
   canExecuteRecommendationAction,
