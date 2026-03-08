@@ -157,7 +157,10 @@ export default function AutomationsPage() {
           },
         }),
       });
-      if (!response.ok) throw new Error("Failed to create workflow");
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(typeof body?.error === "string" ? body.error : "Failed to create workflow");
+      }
       const created = (await response.json()) as { id: string };
       router.push(`/automations/${created.id}`);
     } catch (err) {
@@ -180,7 +183,10 @@ export default function AutomationsPage() {
           graph: template.graph,
         }),
       });
-      if (!response.ok) throw new Error("Failed to create workflow");
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(typeof body?.error === "string" ? body.error : "Failed to create workflow");
+      }
       const created = (await response.json()) as { id: string };
       router.push(`/automations/${created.id}`);
     } catch (err) {

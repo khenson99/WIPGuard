@@ -63,6 +63,9 @@ model User {
   workflowRunRequests      WorkflowRun[]             @relation("WorkflowRunRequestedBy")
   workflowApprovalRequests WorkflowApproval[]        @relation("WorkflowApprovalRequestedBy")
   workflowApprovals        WorkflowApproval[]        @relation("WorkflowApprovalApprover")
+  recommendationRequests   AutomationRecommendation[] @relation("RecommendationRequestedBy")
+  recommendationApprovals  AutomationRecommendation[] @relation("RecommendationApprover")
+  recommendationExecutions AutomationRecommendation[] @relation("RecommendationExecutedBy")
   securityAuditEvents      SecurityAuditEvent[]
 
   responsibleTasks Task[] @relation("TaskResponsible")
@@ -858,6 +861,8 @@ enum IntegrationProvider {
   SEMRUSH
   PYLON
   GOOGLE_ANALYTICS
+  GOOGLE_SEARCH_CONSOLE
+  WIPGUARD
 }
 
 enum IntegrationConnectionStatus {
@@ -1120,6 +1125,7 @@ enum WorkflowRunStatus {
   SUCCEEDED
   FAILED
   CANCELED
+  WAITING_EXTERNAL
 }
 
 enum WorkflowStepStatus {
@@ -1129,6 +1135,7 @@ enum WorkflowStepStatus {
   FAILED
   SKIPPED
   WAITING_APPROVAL
+  WAITING_EXTERNAL
 }
 
 enum WorkflowApprovalStatus {
@@ -1146,6 +1153,45 @@ enum WorkflowEventStatus {
   DEAD_LETTER
 }
 
+enum AutomationOperatorKey {
+  SALES_FOLLOWUP
+  CUSTOMER_HEALTH
+  GTM_SCRUM
+  SEO_GROWTH
+  ADS_OPTIMIZER
+  ROADMAP_INTELLIGENCE
+}
+
+enum AutomationSourceDocumentStatus {
+  READY
+  ERROR
+  ARCHIVED
+}
+
+enum AutomationArtifactStatus {
+  DRAFT
+  READY
+  ERROR
+  ARCHIVED
+}
+
+enum AutomationRecommendationStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  EXECUTED
+  FAILED
+}
+
+enum AutomationAiJobStatus {
+  QUEUED
+  REQUESTED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
 model WorkflowDefinition {
   id String @id @default(cuid())
 
@@ -1159,6 +1205,8 @@ model WorkflowDefinition {
   providers   IntegrationProvider[] @default([])
   rolePolicy  Json?
 
+  operatorKey AutomationOperatorKey?
+
   isSystemManaged Boolean @default(false)
   graphVersion    Int     @default(1)
   graph           Json
@@ -1170,14 +1218,19 @@ model WorkflowDefinition {
   nodes          WorkflowNode[]
   edges          WorkflowEdge[]
   runs           WorkflowRun[]
-  triggerCursors WorkflowTriggerCursor[]
-  triggerEvents  WorkflowTriggerEvent[]
+  triggerCursors  WorkflowTriggerCursor[]
+  triggerEvents   WorkflowTriggerEvent[]
+  sourceDocuments AutomationSourceDocument[]
+  aiJobs          AutomationAiJob[]
+  artifacts       AutomationArtifact[]
+  recommendations AutomationRecommendation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([ownerId, status])
   @@index([scope, status])
+  @@index([operatorKey, status])
 }
 
 model WorkflowNode {
@@ -1241,8 +1294,12 @@ model WorkflowRun {
   finishedAt    DateTime?
   error         String?           @db.Text
 
-  steps     WorkflowRunStep[]
-  approvals WorkflowApproval[]
+  steps           WorkflowRunStep[]
+  approvals       WorkflowApproval[]
+  sourceDocuments AutomationSourceDocument[]
+  aiJobs          AutomationAiJob[]
+  artifacts       AutomationArtifact[]
+  recommendations AutomationRecommendation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1271,6 +1328,7 @@ model WorkflowRunStep {
   finishedAt DateTime?
 
   approvals WorkflowApproval[]
+  aiJobs    AutomationAiJob[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2015,4 +2073,174 @@ model InsightPreference {
   @@unique([userId, insightId], name: "userId_insightId")
   @@index([userId])
   @@map("insight_preferences")
+}
+
+// ============================================================
+// AUTOMATION OPERATOR MODELS
+// ============================================================
+
+model AutomationSourceDocument {
+  id String @id @default(cuid())
+
+  workflowId String
+  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  runId String
+  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  operatorKey    AutomationOperatorKey?
+  provider       IntegrationProvider?
+  eventType      String?
+  externalId     String?
+  documentType   String
+  status         AutomationSourceDocumentStatus @default(READY)
+  title          String?
+  mimeType       String?
+  sourceUrl      String?
+  dedupeKey      String?                        @unique
+  textContent    String?                        @db.Text
+  structuredData Json?
+  metadata       Json?
+  observedAt     DateTime                       @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  artifacts AutomationArtifact[]
+
+  @@index([workflowId, documentType, observedAt])
+  @@index([runId, documentType, observedAt])
+  @@index([provider, eventType, observedAt])
+}
+
+model AutomationAiJob {
+  id String @id @default(cuid())
+
+  workflowId String
+  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  runId String
+  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  stepId String?
+  step   WorkflowRunStep? @relation(fields: [stepId], references: [id], onDelete: SetNull)
+
+  operatorKey    AutomationOperatorKey?
+  nodeKey        String
+  jobType        String
+  status         AutomationAiJobStatus @default(QUEUED)
+  provider       String                @default("openai")
+  model          String
+  promptVersion  String?
+  requestPayload Json
+  responseId     String?               @unique
+  responseStatus String?
+  responsePayload Json?
+  outputText     String?               @db.Text
+  parsedOutput   Json?
+  lastError      String?               @db.Text
+  attemptCount   Int                   @default(0)
+  nextAttemptAt  DateTime              @default(now())
+  completedAt    DateTime?
+  dedupeKey      String?               @unique
+  metadata       Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  artifacts       AutomationArtifact[]
+  recommendations AutomationRecommendation[]
+
+  @@index([status, nextAttemptAt])
+  @@index([runId, status, createdAt])
+  @@index([workflowId, operatorKey, status])
+}
+
+model AutomationArtifact {
+  id String @id @default(cuid())
+
+  workflowId String
+  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  runId String
+  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  sourceDocumentId String?
+  sourceDocument   AutomationSourceDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+
+  aiJobId String?
+  aiJob   AutomationAiJob? @relation(fields: [aiJobId], references: [id], onDelete: SetNull)
+
+  operatorKey      AutomationOperatorKey?
+  artifactType     String
+  status           AutomationArtifactStatus @default(DRAFT)
+  title            String
+  summary          String?                  @db.Text
+  content          String?                  @db.Text
+  contentJson      Json?
+  dedupeKey        String?                  @unique
+  metadata         Json?
+  createdByNodeKey String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  recommendations AutomationRecommendation[]
+
+  @@index([workflowId, artifactType, createdAt])
+  @@index([runId, artifactType, createdAt])
+  @@index([operatorKey, artifactType, status])
+}
+
+model AutomationRecommendation {
+  id String @id @default(cuid())
+
+  workflowId String
+  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  runId String
+  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  artifactId String?
+  artifact   AutomationArtifact? @relation(fields: [artifactId], references: [id], onDelete: SetNull)
+
+  aiJobId String?
+  aiJob   AutomationAiJob? @relation(fields: [aiJobId], references: [id], onDelete: SetNull)
+
+  operatorKey        AutomationOperatorKey?
+  recommendationType String
+  title              String
+  summary            String                         @db.Text
+  detail             String?                        @db.Text
+  actionType         String
+  actionPayload      Json?
+  requiresApproval   Boolean                        @default(false)
+  status             AutomationRecommendationStatus @default(PENDING_APPROVAL)
+  priority           String?
+
+  requestedById String?
+  requestedBy   User?   @relation("RecommendationRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+
+  approverId String?
+  approver   User?   @relation("RecommendationApprover", fields: [approverId], references: [id], onDelete: SetNull)
+
+  executedById String?
+  executedBy   User?   @relation("RecommendationExecutedBy", fields: [executedById], references: [id], onDelete: SetNull)
+
+  decisionNote    String?   @db.Text
+  executionResult Json?
+  executionError  String?   @db.Text
+  dueAt           DateTime?
+  approvedAt      DateTime?
+  executedAt      DateTime?
+  resolvedAt      DateTime?
+  dedupeKey       String?   @unique
+  metadata        Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, approverId, createdAt])
+  @@index([runId, status, createdAt])
+  @@index([workflowId, operatorKey, status])
 }

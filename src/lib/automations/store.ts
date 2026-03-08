@@ -2,8 +2,6 @@ import {
   AutomationArtifactStatus,
   AutomationRecommendationStatus,
   AutomationSourceDocumentStatus,
-} from "@/lib/automations/prisma-enums";
-import {
   type AutomationOperatorKey,
   type IntegrationProvider,
   Prisma,
