@@ -278,6 +278,95 @@ describe("analytics ads fetchers", () => {
     expect(data.campaigns[0]?.conversions).toBe(3);
   });
 
+  it("retries Reddit reports with smaller payloads when the rich request is rejected", async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ access_token: "reddit-token" }))
+      .mockResolvedValueOnce(jsonResponse({ data: [{ id: "cmp-1", name: "Launch" }] }))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            error: {
+              message: "Bad request.",
+              fields: [{ field: "fields[4]", message: "Unsupported field." }],
+            },
+          },
+          400
+        )
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            error: {
+              message: "Bad request.",
+              fields: [{ field: "time_zone_id", message: "Invalid for this breakdown." }],
+            },
+          },
+          400
+        )
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            metrics: [
+              { CAMPAIGN_ID: "cmp-1", SPEND: "12.5", IMPRESSIONS: "1000", CLICKS: "25" },
+            ],
+          },
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchRedditAdsData(
+      "reddit-client",
+      "reddit-secret",
+      "reddit-refresh",
+      "acc-1",
+      "The-Mother-Node-Test/1.0"
+    );
+
+    expect(data.totalSpend30d).toBeCloseTo(12.5);
+    expect(data.totalConversions).toBe(0);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+
+    const firstReport = JSON.parse(String((fetchMock.mock.calls[2]?.[1] as RequestInit).body)) as {
+      data?: { fields?: string[]; time_zone_id?: string };
+    };
+    expect(firstReport.data?.time_zone_id).toBe("UTC");
+    expect(firstReport.data?.fields).toEqual([
+      "CAMPAIGN_ID",
+      "SPEND",
+      "IMPRESSIONS",
+      "CLICKS",
+      "KEY_CONVERSION_TOTAL_COUNT",
+      "REDDIT_LEADS",
+    ]);
+
+    const secondReport = JSON.parse(String((fetchMock.mock.calls[3]?.[1] as RequestInit).body)) as {
+      data?: { fields?: string[]; time_zone_id?: string };
+    };
+    expect(secondReport.data?.time_zone_id).toBeUndefined();
+    expect(secondReport.data?.fields).toEqual([
+      "CAMPAIGN_ID",
+      "SPEND",
+      "IMPRESSIONS",
+      "CLICKS",
+      "KEY_CONVERSION_TOTAL_COUNT",
+      "REDDIT_LEADS",
+    ]);
+
+    const thirdReport = JSON.parse(String((fetchMock.mock.calls[4]?.[1] as RequestInit).body)) as {
+      data?: { fields?: string[]; time_zone_id?: string };
+    };
+    expect(thirdReport.data?.time_zone_id).toBeUndefined();
+    expect(thirdReport.data?.fields).toEqual([
+      "CAMPAIGN_ID",
+      "SPEND",
+      "IMPRESSIONS",
+      "CLICKS",
+    ]);
+  });
+
   it("clamps Reddit report windows to the latest completed UTC day", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-07T23:10:00.000Z"));

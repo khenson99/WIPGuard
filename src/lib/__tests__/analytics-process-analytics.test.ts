@@ -5,6 +5,7 @@ import { buildSalesPerformancePack } from "@/lib/analytics/fetchers";
 import type { AnalyticsDashboardData, HubSpotContactRecord, HubSpotData } from "@/lib/analytics/types";
 
 const META = { fetchedAt: "2026-02-10T00:00:00.000Z", nextRefresh: "2026-02-10T01:00:00.000Z", source: "live" as const };
+const DEAL_CONTACT_DEFAULTS = { pipelineId: null as string | null, contactIds: [] as string[], primaryContactId: null as string | null, primaryContactEmail: null as string | null };
 
 function baseData(): AnalyticsDashboardData {
   return createEmptyAnalyticsDashboardData({
@@ -62,6 +63,10 @@ describe("buildProcessAnalyticsData", () => {
           ownerId: "owner-1",
           createdAt: oldDate,
           updatedAt: oldDate,
+          pipelineId: null,
+          contactIds: [],
+          primaryContactId: null,
+          primaryContactEmail: null,
         },
         {
           dealId: "deal-2",
@@ -73,6 +78,10 @@ describe("buildProcessAnalyticsData", () => {
           ownerId: "owner-2",
           createdAt: recentDate,
           updatedAt: recentDate,
+          pipelineId: null,
+          contactIds: [],
+          primaryContactId: null,
+          primaryContactEmail: null,
         },
       ],
       _meta: META,
@@ -104,6 +113,7 @@ describe("buildSalesPerformancePack", () => {
         createdAt: "2026-01-31T23:00:00.000Z",
         closedAt: "2026-02-01T00:00:00.000Z",
         stripeCustomerId: null,
+        ...DEAL_CONTACT_DEFAULTS,
       },
     ];
 
@@ -137,6 +147,7 @@ describe("buildSalesPerformancePack", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
         closedAt: "2026-02-10T00:00:00.000Z",
         stripeCustomerId: null,
+        ...DEAL_CONTACT_DEFAULTS,
       },
     ];
 
@@ -167,6 +178,7 @@ describe("buildSalesPerformancePack", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
         closedAt: "2026-03-15T00:00:00.000Z",
         stripeCustomerId: null,
+        ...DEAL_CONTACT_DEFAULTS,
       },
       {
         dealId: "d2",
@@ -181,6 +193,7 @@ describe("buildSalesPerformancePack", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
         closedAt: "2026-05-05T00:00:00.000Z",
         stripeCustomerId: null,
+        ...DEAL_CONTACT_DEFAULTS,
       },
     ];
 
@@ -213,6 +226,7 @@ describe("buildSalesPerformancePack", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
         closedAt: "2026-02-01T00:00:00.000Z",
         stripeCustomerId: "cus_1",
+        ...DEAL_CONTACT_DEFAULTS,
       },
       {
         dealId: "d2",
@@ -227,6 +241,7 @@ describe("buildSalesPerformancePack", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
         closedAt: "2026-02-20T00:00:00.000Z",
         stripeCustomerId: "cus_1",
+        ...DEAL_CONTACT_DEFAULTS,
       },
     ];
 
@@ -268,6 +283,7 @@ describe("buildSalesPerformancePack", () => {
         createdAt: "2026-02-10T00:00:00.000Z",
         closedAt: null,
         stripeCustomerId: null,
+        ...DEAL_CONTACT_DEFAULTS,
       },
     ];
 
