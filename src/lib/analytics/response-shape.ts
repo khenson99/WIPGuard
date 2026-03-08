@@ -45,6 +45,7 @@ export function createEmptyAnalyticsDashboardData(input: {
     funnelJourney: null,
     lifecycleFunnel: null,
     customerJourney: null,
+    visitorFunnel: null,
     demoAnalytics: null,
     processAnalytics: null,
     recommendations: [],

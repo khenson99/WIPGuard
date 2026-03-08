@@ -68,6 +68,15 @@ const INTEGRATION_PROVIDER_REGISTRY: readonly IntegrationProviderRegistryEntry[]
     aliases: ["google_analytics", "ga"],
   },
   {
+    provider: IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
+    slug: "google-search-console",
+    authType: "token",
+    snapshotKeys: ["googleSearchConsole", "searchConsole"],
+    settingsVisible: true,
+    envManaged: true,
+    aliases: ["google_search_console", "gsc"],
+  },
+  {
     provider: IntegrationProvider.STRIPE,
     slug: "stripe",
     authType: "oauth",
@@ -138,6 +147,15 @@ const INTEGRATION_PROVIDER_REGISTRY: readonly IntegrationProviderRegistryEntry[]
     settingsVisible: true,
     envManaged: true,
     aliases: [],
+  },
+  {
+    provider: IntegrationProvider.WIPGUARD,
+    slug: "wipguard",
+    authType: "token",
+    snapshotKeys: ["wipguard", "internalAutomation"],
+    settingsVisible: false,
+    envManaged: true,
+    aliases: ["wip_guard"],
   },
 ] as const;
 

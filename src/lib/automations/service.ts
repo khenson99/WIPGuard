@@ -66,6 +66,22 @@ export function integrationProviderFromString(
       return IntegrationProvider.MERCURY;
     case "WEBFLOW":
       return IntegrationProvider.WEBFLOW;
+    case "GOOGLE_ANALYTICS":
+      return IntegrationProvider.GOOGLE_ANALYTICS;
+    case "GOOGLE_SEARCH_CONSOLE":
+      return IntegrationProvider.GOOGLE_SEARCH_CONSOLE;
+    case "GOOGLE_ADS":
+      return IntegrationProvider.GOOGLE_ADS;
+    case "META_ADS":
+      return IntegrationProvider.META_ADS;
+    case "META_PAGE":
+      return IntegrationProvider.META_PAGE;
+    case "PYLON":
+      return IntegrationProvider.PYLON;
+    case "SEMRUSH":
+      return IntegrationProvider.SEMRUSH;
+    case "WIPGUARD":
+      return IntegrationProvider.WIPGUARD;
     default:
       return null;
   }

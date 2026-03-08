@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { WorkflowScope, WorkflowStatus, type Prisma } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
+import { normalizeAutomationOperatorKey } from "@/lib/automations/operators";
 import { AUTOMATION_TEMPLATES } from "@/lib/automations/templates";
 import {
   integrationProvidersFromInput,
@@ -13,6 +14,7 @@ import {
 } from "@/lib/automations/service";
 import { getAppRole } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { getAuthenticatedUser } from "@/lib/session-user";
 
 function parseBody(input: unknown): Record<string, unknown> {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
@@ -24,13 +26,14 @@ function parseBody(input: unknown): Record<string, unknown> {
 export async function GET(): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const workflows = await prisma.workflowDefinition.findMany({
       where: {
-        OR: [{ ownerId: session.user.id }, { scope: WorkflowScope.SHARED }],
+        OR: [{ ownerId: user.id }, { scope: WorkflowScope.SHARED }],
       },
       orderBy: [{ updatedAt: "desc" }],
       include: {
@@ -64,7 +67,7 @@ export async function GET(): Promise<NextResponse> {
     });
 
     const integrationRules = await prisma.integrationRule.findMany({
-      where: { userId: session.user.id },
+      where: { userId: user.id },
       orderBy: { updatedAt: "desc" },
       select: {
         id: true,
@@ -105,11 +108,12 @@ export async function GET(): Promise<NextResponse> {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const role = await getAppRole(session.user.id);
+    const role = await getAppRole(user.id);
     const body = parseBody(await request.json().catch(() => ({})));
 
     const name = typeof body.name === "string" ? body.name.trim() : "";
@@ -126,6 +130,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const providers = integrationProvidersFromInput(body.providers);
+    const operatorKey = normalizeAutomationOperatorKey(body.operatorKey);
     const rolePolicy = normalizeWorkflowRolePolicy(body.rolePolicy);
 
     const graphInput = body.graph ?? {
@@ -146,10 +151,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const created = await prisma.workflowDefinition.create({
       data: {
-        ownerId: session.user.id,
+        ownerId: user.id,
         name,
         description:
           typeof body.description === "string" ? body.description.trim() || null : null,
+        operatorKey,
         scope,
         status: WorkflowStatus.DRAFT,
         providers,

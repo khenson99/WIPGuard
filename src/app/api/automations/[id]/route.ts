@@ -8,6 +8,9 @@ import {
 } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import {
+  normalizeAutomationOperatorKey,
+} from "@/lib/automations/operators";
+import {
   assertCanEditWorkflow,
   assertCanViewWorkflow,
   integrationProvidersFromInput,
@@ -19,6 +22,7 @@ import {
 } from "@/lib/automations/service";
 import { getAppRole } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { getAuthenticatedUser } from "@/lib/session-user";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -37,12 +41,13 @@ export async function GET(
 ): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id } = await context.params;
-    await assertCanViewWorkflow(session.user.id, id);
+    await assertCanViewWorkflow(user.id, id);
 
     const workflow = await prisma.workflowDefinition.findUnique({
       where: { id },
@@ -82,14 +87,15 @@ export async function PATCH(
 ): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id } = await context.params;
-    const existing = await assertCanEditWorkflow(session.user.id, id);
+    const existing = await assertCanEditWorkflow(user.id, id);
 
-    const role = await getAppRole(session.user.id);
+    const role = await getAppRole(user.id);
     const body = parseBody(await request.json().catch(() => ({})));
 
     const data: Prisma.WorkflowDefinitionUpdateInput = {};
@@ -104,6 +110,10 @@ export async function PATCH(
 
     if (typeof body.description === "string") {
       data.description = body.description.trim() || null;
+    }
+
+    if (body.operatorKey !== undefined) {
+      data.operatorKey = normalizeAutomationOperatorKey(body.operatorKey);
     }
 
     if (body.scope !== undefined) {
@@ -193,12 +203,13 @@ export async function DELETE(
 ): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id } = await context.params;
-    await assertCanEditWorkflow(session.user.id, id);
+    await assertCanEditWorkflow(user.id, id);
 
     await prisma.workflowDefinition.delete({ where: { id } });
 
