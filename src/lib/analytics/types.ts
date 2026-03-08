@@ -1191,6 +1191,17 @@ export interface VisitorFunnelEnrichmentProviderStatus {
   note: string;
 }
 
+export interface VisitorFunnelEnrichmentAlert {
+  id: string;
+  provider: EnrichmentProvider;
+  providerLabel: string;
+  severity: "warning" | "critical";
+  kind: "stale" | "misconfigured";
+  title: string;
+  message: string;
+  lastSignalAt: string | null;
+}
+
 export interface VisitorFunnelRecord {
   visitorId: string;
   anonymousId: string;
@@ -1246,6 +1257,7 @@ export interface VisitorFunnelData {
   enrichmentStatus: {
     adminOnly: boolean;
     providers: VisitorFunnelEnrichmentProviderStatus[];
+    alerts: VisitorFunnelEnrichmentAlert[];
   };
 }
 
