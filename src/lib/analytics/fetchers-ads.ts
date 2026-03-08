@@ -68,6 +68,31 @@ function extractApiErrorMessage(payload: unknown): string | null {
   return null;
 }
 
+function extractApiErrorFields(payload: unknown): string[] {
+  const record = asRecord(payload);
+  if (!record) return [];
+
+  const candidates = [asArray(asRecord(record.error)?.fields), asArray(record.fields)];
+  const messages: string[] = [];
+
+  for (const candidateList of candidates) {
+    for (const item of candidateList) {
+      const fieldRecord = asRecord(item);
+      if (!fieldRecord) continue;
+      const field = typeof fieldRecord.field === "string" ? fieldRecord.field.trim() : "";
+      const message =
+        typeof fieldRecord.message === "string" ? fieldRecord.message.trim() : "";
+      if (!field && !message) continue;
+      messages.push(field && message ? `${field}: ${message}` : field || message);
+      if (messages.length >= 5) {
+        return messages;
+      }
+    }
+  }
+
+  return messages;
+}
+
 async function parseErrorBody(response: Response): Promise<string> {
   const text = await response.text().catch(() => "");
   const trimmed = text.trim();
@@ -79,7 +104,13 @@ async function parseErrorBody(response: Response): Promise<string> {
     try {
       const parsed = JSON.parse(trimmed) as unknown;
       const message = extractApiErrorMessage(parsed);
-      if (message) return message.slice(0, 500);
+      const fields = extractApiErrorFields(parsed);
+      if (message || fields.length > 0) {
+        const details = [message, fields.length > 0 ? `fields: ${fields.join("; ")}` : null]
+          .filter(Boolean)
+          .join(" ");
+        if (details) return details.slice(0, 500);
+      }
     } catch {
       // Fall back to raw text.
     }
@@ -220,6 +251,112 @@ function addUtcDays(date: Date, days: number): Date {
   const value = new Date(date);
   value.setUTCDate(value.getUTCDate() + days);
   return value;
+}
+
+const REDDIT_REPORT_CORE_FIELDS = [
+  "CAMPAIGN_ID",
+  "SPEND",
+  "IMPRESSIONS",
+  "CLICKS",
+] as const;
+
+const REDDIT_REPORT_CONVERSION_FIELDS = [
+  "KEY_CONVERSION_TOTAL_COUNT",
+  "REDDIT_LEADS",
+] as const;
+
+interface RedditReportVariant {
+  label: string;
+  includeTimeZone: boolean;
+  fields: readonly string[];
+}
+
+async function fetchRedditReportMetrics(input: {
+  accessToken: string;
+  adAccountId: string;
+  baseHeaders: Record<string, string>;
+  startsAtIso: string;
+  endsAtIso: string;
+}): Promise<UnknownRecord[]> {
+  const variants: RedditReportVariant[] = [
+    {
+      label: "full",
+      includeTimeZone: true,
+      fields: [...REDDIT_REPORT_CORE_FIELDS, ...REDDIT_REPORT_CONVERSION_FIELDS],
+    },
+    {
+      label: "full-no-timezone",
+      includeTimeZone: false,
+      fields: [...REDDIT_REPORT_CORE_FIELDS, ...REDDIT_REPORT_CONVERSION_FIELDS],
+    },
+    {
+      label: "core",
+      includeTimeZone: false,
+      fields: REDDIT_REPORT_CORE_FIELDS,
+    },
+  ];
+
+  const attemptedLabels: string[] = [];
+  let lastErrorMessage = "";
+  let lastStatus = 0;
+  let lastVariantLabel = variants[0]?.label ?? "full";
+
+  for (const variant of variants) {
+    const payload = {
+      data: {
+        starts_at: input.startsAtIso,
+        ends_at: input.endsAtIso,
+        ...(variant.includeTimeZone ? { time_zone_id: "UTC" } : {}),
+        breakdowns: ["CAMPAIGN_ID"],
+        fields: [...variant.fields],
+      },
+    };
+
+    const reportsResponse = await fetch(
+      `https://ads-api.reddit.com/api/v3/ad_accounts/${input.adAccountId}/reports`,
+      {
+        method: "POST",
+        headers: {
+          ...input.baseHeaders,
+          Authorization: `Bearer ${input.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+
+    if (reportsResponse.ok) {
+      const reportsPayload = (await safeJson<{
+        data?: {
+          metrics?: UnknownRecord[];
+        };
+      }>(reportsResponse, "Reddit reports")) as {
+        data?: {
+          metrics?: UnknownRecord[];
+        };
+      };
+
+      return reportsPayload.data?.metrics ?? [];
+    }
+
+    const errorMessage = await parseErrorBody(reportsResponse);
+    attemptedLabels.push(variant.label);
+    lastErrorMessage = errorMessage;
+    lastStatus = reportsResponse.status;
+    lastVariantLabel = variant.label;
+
+    if (reportsResponse.status !== 400 || variant.label === "core") {
+      break;
+    }
+  }
+
+  const retrySuffix =
+    attemptedLabels.length > 1
+      ? ` after retrying ${attemptedLabels.slice(0, -1).join(", ")}`
+      : "";
+  throw new Error(
+    `Reddit reports error (${lastStatus}): ${lastErrorMessage}. starts_at=${input.startsAtIso} ends_at=${input.endsAtIso} request=${lastVariantLabel}${retrySuffix}`
+  );
 }
 
 /**
@@ -1020,51 +1157,13 @@ export async function fetchRedditAdsData(
 
   const startsAtIso = startsAtNorm.toISOString().replace(/\.\d{3}Z$/, "Z");
   const endsAtIso = endsAtNorm.toISOString().replace(/\.\d{3}Z$/, "Z");
-  const reportsResponse = await fetch(
-    `https://ads-api.reddit.com/api/v3/ad_accounts/${cleanAccountId}/reports`,
-    {
-      method: "POST",
-      headers: {
-        ...baseHeaders,
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        data: {
-          starts_at: startsAtIso,
-          ends_at: endsAtIso,
-          time_zone_id: "UTC",
-          breakdowns: ["CAMPAIGN_ID"],
-          fields: [
-            "CAMPAIGN_ID",
-            "SPEND",
-            "IMPRESSIONS",
-            "CLICKS",
-            "KEY_CONVERSION_TOTAL_COUNT",
-            "REDDIT_LEADS",
-          ],
-        },
-      }),
-    }
-  );
-
-  if (!reportsResponse.ok) {
-    throw new Error(
-      `Reddit reports error (${reportsResponse.status}): ${await parseErrorBody(
-        reportsResponse
-      )}. starts_at=${startsAtIso} ends_at=${endsAtIso}`
-    );
-  }
-
-  const reportsPayload = (await safeJson<{
-    data?: {
-      metrics?: UnknownRecord[];
-    };
-  }>(reportsResponse, "Reddit reports")) as {
-    data?: {
-      metrics?: UnknownRecord[];
-    };
-  };
+  const reportMetrics = await fetchRedditReportMetrics({
+    accessToken,
+    adAccountId: cleanAccountId,
+    baseHeaders,
+    startsAtIso,
+    endsAtIso,
+  });
 
   let totalSpend = 0;
   let totalImpressions = 0;
@@ -1072,7 +1171,7 @@ export async function fetchRedditAdsData(
   let totalConversions = 0;
   const campaignRollup = new Map<string, { spend: number; impressions: number; clicks: number; conversions: number }>();
 
-  for (const metricRaw of reportsPayload.data?.metrics ?? []) {
+  for (const metricRaw of reportMetrics) {
     const metric = asRecord(metricRaw);
     if (!metric) continue;
     const campaignId = extractRedditCampaignId(metric) || "unknown";
