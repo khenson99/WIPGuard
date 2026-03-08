@@ -53,6 +53,8 @@ vi.mock("@/lib/analytics/snapshots", () => ({
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    user: { findUnique: vi.fn() },
+    securityAuditEvent: { create: vi.fn() },
     task: { count: vi.fn() },
     statusHistory: { findMany: vi.fn() },
     stripeCustomerLink: { findMany: vi.fn() },
@@ -386,6 +388,8 @@ describe("GET /api/analytics", () => {
     } as never);
 
     const { prisma } = await import("@/lib/prisma");
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({ role: "member" } as never);
+    vi.mocked(prisma.securityAuditEvent.create).mockResolvedValue({} as never);
     vi.mocked(prisma.task.count).mockResolvedValue(0 as never);
     vi.mocked(prisma.statusHistory.findMany).mockResolvedValue([] as never);
     vi.mocked(prisma.stripeCustomerLink.findMany).mockResolvedValue([
@@ -585,5 +589,17 @@ describe("GET /api/analytics", () => {
         process.env.GOOGLE_CLIENT_SECRET = previousClientSecret;
       }
     }
+  });
+
+  it("returns 403 for observers", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({ role: "observer" } as never);
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=overview"));
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body).toEqual({ error: "Forbidden: insufficient permissions" });
   });
 });

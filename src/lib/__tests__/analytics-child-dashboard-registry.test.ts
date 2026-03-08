@@ -4,6 +4,7 @@ import { INTEGRATION_CHILD_DASHBOARD_REGISTRY } from "@/components/analytics/int
 
 const NON_INTEGRATION_DOMAINS = new Set([
   "customerJourney",
+  "visitorFunnel",
   "demoAnalytics",
   "processAnalytics",
   "financePlanning",
@@ -13,7 +14,7 @@ const NON_INTEGRATION_DOMAINS = new Set([
 ]);
 
 describe("integration child dashboard registry", () => {
-  it("registers a detailed dashboard component for every non-ops child route", () => {
+  it("registers a detailed dashboard component for every integration-backed child route", () => {
     const nonOpsChildren = ANALYTICS_SUB_SECTIONS.filter(
       (section) => !NON_INTEGRATION_DOMAINS.has(section.dataDomain)
     );

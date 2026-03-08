@@ -13,6 +13,7 @@ describe("permissions", () => {
     expect(can("admin", "policy.write")).toBe(true);
     expect(can("admin", "team.role.write")).toBe(true);
     expect(can("admin", "team.invite")).toBe(true);
+    expect(can("admin", "analytics.read")).toBe(true);
   });
 
   it("blocks observer task transitions and policy mutations", () => {
@@ -22,6 +23,7 @@ describe("permissions", () => {
     expect(can("observer", "deals.read")).toBe(false);
     expect(can("observer", "analytics.read")).toBe(false);
     expect(can("observer", "policy.write")).toBe(false);
+    expect(can("observer", "analytics.read")).toBe(false);
   });
 
   it("allows members to mutate delivery flow but not privileged controls", () => {
@@ -31,6 +33,7 @@ describe("permissions", () => {
     expect(can("member", "deals.read")).toBe(true);
     expect(can("member", "hierarchy.read")).toBe(true);
     expect(can("member", "project.write")).toBe(true);
+    expect(can("member", "analytics.read")).toBe(true);
     expect(can("member", "policy.write")).toBe(false);
     expect(can("member", "team.role.write")).toBe(false);
     expect(can("member", "team.invite")).toBe(false);
