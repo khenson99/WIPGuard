@@ -3,12 +3,14 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { runAnalyticsRefresh } from "@/lib/analytics/refresh-runner";
 import { pruneAnalyticsSnapshots } from "@/lib/analytics/snapshots";
+import { runVisitorFunnelEnrichmentSyncs } from "@/lib/analytics/provider-enrichment-sync";
 import { runRules } from "@/lib/integrations/orchestrator";
 import {
   bestEffortMigrateConnectionsToOwner,
   bestEffortMigrateRulesToOwner,
 } from "@/lib/integrations/ownership";
 import { runIntegrationHealthChecks } from "@/lib/integrations/health-checks";
+import { prisma } from "@/lib/prisma";
 
 function isAuthorized(request: NextRequest): boolean {
   const expected = process.env.CRON_SYNC_SECRET?.trim() || process.env.INTEGRATION_SYNC_SECRET?.trim();
@@ -47,6 +49,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       bestEffortMigrateRulesToOwner(ownerUserId),
     ]);
 
+    const visitorFunnelEnrichment = await runVisitorFunnelEnrichmentSyncs({
+      prisma,
+    });
+    const visitorFunnelFailures = visitorFunnelEnrichment
+      .filter((result) => !result.ok)
+      .map((result) => `${result.provider}: ${result.reason ?? "unknown error"}`);
+
     const [analyticsResult, rulesResult, healthResult, pruningResult] = await Promise.allSettled([
       runAnalyticsRefresh({ userIds: [ownerUserId], rangePresets: ["7d", "30d"] }),
       runRules({
@@ -61,6 +70,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const failures: string[] = [];
     const settled = { analytics: null as unknown, rules: null as unknown, health: null as unknown, pruning: null as unknown };
+
+    failures.push(...visitorFunnelFailures);
 
     if (analyticsResult.status === "fulfilled") {
       settled.analytics = analyticsResult.value;
@@ -100,6 +111,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         connections: connectionsMigration,
         rules: rulesMigration,
       },
+      visitorFunnelEnrichment,
       ...settled,
       ...(failures.length > 0 ? { failures } : {}),
     });
@@ -109,4 +121,3 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-
