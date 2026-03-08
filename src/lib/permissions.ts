@@ -11,6 +11,7 @@ export type PermissionAction =
   | "task.transition"
   | "project.write"
   | "conference.write"
+  | "deals.write"
   | "sprint.write"
   | "priority.write"
   | "policy.write"
@@ -18,7 +19,7 @@ export type PermissionAction =
   | "team.invite"
   | "team.role.write"
   | "profile.write"
-
+  | "analytics.read"
   | "integration.read"
   | "integration.manage"
   | "automation.write"
@@ -40,6 +41,7 @@ const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> 
       "team.invite",
       "team.role.write",
       "profile.write",
+      "analytics.read",
       "integration.read",
       "integration.manage",
       "automation.write",
@@ -56,6 +58,7 @@ const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> 
       "priority.write",
       "policy.override",
       "profile.write",
+      "analytics.read",
       "integration.read",
       "automation.write",
       "automation.approve",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ANALYTICS_PRIMARY_SECTIONS,
+  LEGACY_ANALYTICS_ROUTE_REDIRECTS,
   ANALYTICS_SUB_SECTIONS,
   LEGACY_ANALYTICS_TAB_REDIRECTS,
   getAnalyticsPrimaryForSection,
@@ -43,6 +44,17 @@ describe("analytics section registry", () => {
     expect(LEGACY_ANALYTICS_TAB_REDIRECTS.journey).toBe("/analytics/customer-journey");
     expect(LEGACY_ANALYTICS_TAB_REDIRECTS.demos).toBe("/analytics/demo-analytics");
     expect(LEGACY_ANALYTICS_TAB_REDIRECTS.process).toBe("/analytics/process-analytics");
+  });
+
+  it("redirects removed customer-success ops routes to the parent dashboard", () => {
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["decision-dashboard"]).toBe("/analytics/customer-success");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["flow-metrics"]).toBe("/analytics/customer-success");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["flow-risk"]).toBe("/analytics/customer-success");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS.observability).toBe("/analytics/customer-success");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-decision-dashboard"]).toBe("/analytics/customer-success");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-flow-metrics"]).toBe("/analytics/customer-success");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-flow-risk"]).toBe("/analytics/customer-success");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-observability"]).toBe("/analytics/customer-success");
   });
 
   it("returns the owning primary section for child routes", () => {
