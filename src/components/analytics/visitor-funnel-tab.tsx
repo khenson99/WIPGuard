@@ -5,6 +5,10 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   CalendarRange,
+  CheckCircle2,
+  CircleAlert,
+  Clock3,
+  Link2,
   DollarSign,
   ExternalLink,
   Filter,
@@ -51,6 +55,11 @@ const STAGE_ICONS = [
 
 function pct(value: number | null): string {
   return value == null ? "—" : `${value.toFixed(1)}%`;
+}
+
+function formatTimestamp(value: string | null): string {
+  if (!value) return "—";
+  return new Date(value).toLocaleString();
 }
 
 function formatStage(stage: string): string {
@@ -355,6 +364,93 @@ export function VisitorFunnelTab({ data }: { data: AnalyticsDashboardData | null
         <BreakdownCard title="Sources" rows={funnel.sourceBreakdown} />
         <BreakdownCard title="Campaigns" rows={funnel.campaignBreakdown} />
       </div>
+
+      {isAdmin ? (
+        <div className="rounded-xl border border-border bg-card p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Provider Health</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Operational status for UNIFY scheduled pulls and Clay / RB2B push ingestion.
+              </p>
+            </div>
+            <div className="text-right text-xs text-muted-foreground">
+              Admin-only operational metadata
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 xl:grid-cols-3">
+            {funnel.enrichmentStatus.providers.map((provider) => {
+              const state = !provider.syncConfigured
+                ? { label: "Not Configured", cls: "bg-rose-500/10 text-rose-600", icon: CircleAlert }
+                : provider.stale
+                  ? { label: "Stale", cls: "bg-amber-500/10 text-amber-600", icon: Clock3 }
+                  : provider.totalSignals === 0
+                    ? { label: "Waiting", cls: "bg-amber-500/10 text-amber-600", icon: Clock3 }
+                    : { label: "Healthy", cls: "bg-emerald-500/10 text-emerald-600", icon: CheckCircle2 };
+              const StatusIcon = state.icon;
+
+              return (
+                <div key={provider.provider} className="rounded-xl border border-border bg-background px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{provider.label}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {provider.deliveryMode === "cron_pull" ? "Cron pull" : "Webhook push"}
+                      </p>
+                    </div>
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium ${state.cls}`}>
+                      <StatusIcon className="h-3.5 w-3.5" />
+                      {state.label}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                    <div className="rounded-lg border border-border px-3 py-2">
+                      <p className="text-muted-foreground">Signals</p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">
+                        {provider.acceptedSignals.toLocaleString()} / {provider.totalSignals.toLocaleString()}
+                      </p>
+                      <p className="mt-1 text-muted-foreground">Accepted {pct(provider.acceptedRate)}</p>
+                    </div>
+                    <div className="rounded-lg border border-border px-3 py-2">
+                      <p className="text-muted-foreground">Config</p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">
+                        {provider.syncConfigured ? "Ready" : "Missing"}
+                      </p>
+                      <p className="mt-1 text-muted-foreground">
+                        Auth {provider.authConfigured ? "set" : "missing"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-2 rounded-lg border border-border px-3 py-3 text-xs text-muted-foreground">
+                    <div className="flex items-center justify-between gap-3">
+                      <span>Last signal</span>
+                      <span className="text-right text-foreground">{formatTimestamp(provider.lastSignalAt)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span>Last accepted</span>
+                      <span className="text-right text-foreground">{formatTimestamp(provider.lastAcceptedAt)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span>Endpoint</span>
+                      <code className="text-right text-[11px] text-foreground">{provider.endpointPath}</code>
+                    </div>
+                  </div>
+
+                  <p className="mt-3 text-xs text-muted-foreground">{provider.note}</p>
+
+                  <div className="mt-3 flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <Link2 className="h-3.5 w-3.5" />
+                    {provider.syncEnabled ? "Enabled" : "Disabled"}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       <DrilldownPanel
         title="Admin Record Preview"

@@ -14,6 +14,7 @@ import type {
   EnrichmentProvider,
   VisitorFunnelBreakdownRow,
   VisitorFunnelData,
+  VisitorFunnelEnrichmentProviderStatus,
   VisitorFunnelFilters,
   VisitorFunnelOverlap,
   VisitorFunnelProviderEvidence,
@@ -68,6 +69,13 @@ const EMAIL_IDENTITY_TYPES = new Set<FunnelIdentityType>([
   FunnelIdentityType.EMAIL,
   FunnelIdentityType.CODA_EMAIL,
 ]);
+
+const ENRICHMENT_PROVIDERS: EnrichmentProvider[] = ["unify", "clay", "rb2b"];
+const ENRICHMENT_PROVIDER_LABELS: Record<EnrichmentProvider, string> = {
+  unify: "UNIFY",
+  clay: "Clay",
+  rb2b: "RB2B",
+};
 
 type AttributionInfo = {
   source: string | null;
@@ -191,6 +199,14 @@ function safeOptionalDate(value: Date | string | null | undefined): Date | null 
   return Number.isNaN(resolved.getTime()) ? null : resolved;
 }
 
+function parseEnabledFlag(value: string | null | undefined, fallback: boolean): boolean {
+  const trimmed = trimOrNull(value)?.toLowerCase();
+  if (!trimmed) return fallback;
+  if (["1", "true", "yes", "on"].includes(trimmed)) return true;
+  if (["0", "false", "no", "off"].includes(trimmed)) return false;
+  return fallback;
+}
+
 function hostFromUrl(rawUrl: string | null | undefined): string | null {
   const value = trimOrNull(rawUrl);
   if (!value) return null;
@@ -307,6 +323,130 @@ function toPrismaEnrichmentProvider(
   if (normalized === "clay") return PrismaEnrichmentProvider.CLAY;
   if (normalized === "rb2b") return PrismaEnrichmentProvider.RB2B;
   return null;
+}
+
+function hasProviderAuthSecret(provider: EnrichmentProvider): boolean {
+  const globalSecret = trimOrNull(process.env.VISITOR_FUNNEL_ENRICH_SECRET);
+  const providerSecret = trimOrNull(
+    process.env[`${provider.toUpperCase()}_FUNNEL_ENRICH_SECRET`],
+  );
+  return Boolean(globalSecret || providerSecret);
+}
+
+function resolveUnifySyncConfig(): {
+  apiConfigured: boolean;
+  syncEnabled: boolean;
+  objectName: string | null;
+} {
+  const apiConfigured = Boolean(
+    trimOrNull(process.env.UNIFY_DATA_API_KEY) ??
+      trimOrNull(process.env.UNIFY_API_KEY),
+  ) && Boolean(trimOrNull(process.env.UNIFY_FUNNEL_OBJECT_NAME));
+  const syncEnabled = parseEnabledFlag(process.env.UNIFY_FUNNEL_SYNC_ENABLED, apiConfigured);
+
+  return {
+    apiConfigured,
+    syncEnabled,
+    objectName: trimOrNull(process.env.UNIFY_FUNNEL_OBJECT_NAME),
+  };
+}
+
+function enrichmentStatusNote(input: {
+  provider: EnrichmentProvider;
+  authConfigured: boolean;
+  syncConfigured: boolean;
+  syncEnabled: boolean;
+  objectName?: string | null;
+}): string {
+  if (input.provider === "unify") {
+    if (!input.syncEnabled) {
+      return input.authConfigured
+        ? "Push payloads to the v1 enrichment endpoint or enable scheduled Unify pulls."
+        : "Configure Unify pull env vars or an enrichment secret for push delivery.";
+    }
+
+    if (!input.syncConfigured) {
+      return "Missing UNIFY_DATA_API_KEY/UNIFY_API_KEY or UNIFY_FUNNEL_OBJECT_NAME.";
+    }
+
+    return `Scheduled pull enabled via /api/cron/sync${input.objectName ? ` for ${input.objectName}` : ""}.`;
+  }
+
+  return input.authConfigured
+    ? "Provider can post payloads to the versioned enrichment endpoint."
+    : "Set VISITOR_FUNNEL_ENRICH_SECRET or a provider-specific enrichment secret.";
+}
+
+export async function buildVisitorFunnelEnrichmentStatus(
+  prisma: FunnelPrismaClient,
+  now = new Date(),
+): Promise<VisitorFunnelEnrichmentProviderStatus[]> {
+  const unifyConfig = resolveUnifySyncConfig();
+
+  return Promise.all(
+    ENRICHMENT_PROVIDERS.map(async (provider) => {
+      const prismaProvider = toPrismaEnrichmentProvider(provider);
+      if (!prismaProvider) {
+        throw new Error(`Unsupported enrichment provider "${provider}"`);
+      }
+
+      const [totalSignals, acceptedSignals, lastSignal, lastAcceptedSignal] = await Promise.all([
+        prisma.funnelEnrichmentSignal.count({
+          where: { provider: prismaProvider },
+        }),
+        prisma.funnelEnrichmentSignal.count({
+          where: { provider: prismaProvider, accepted: true },
+        }),
+        prisma.funnelEnrichmentSignal.findFirst({
+          where: { provider: prismaProvider },
+          orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }],
+          select: { occurredAt: true, createdAt: true },
+        }),
+        prisma.funnelEnrichmentSignal.findFirst({
+          where: { provider: prismaProvider, accepted: true },
+          orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }],
+          select: { occurredAt: true, createdAt: true },
+        }),
+      ]);
+
+      const authConfigured = hasProviderAuthSecret(provider);
+      const syncConfigured =
+        provider === "unify" ? unifyConfig.apiConfigured : authConfigured;
+      const syncEnabled =
+        provider === "unify" ? unifyConfig.syncEnabled : authConfigured;
+      const lastSignalDate = lastSignal?.occurredAt ?? lastSignal?.createdAt ?? null;
+      const lastAcceptedDate =
+        lastAcceptedSignal?.occurredAt ?? lastAcceptedSignal?.createdAt ?? null;
+      const stale = Boolean(
+        syncConfigured &&
+          lastSignalDate &&
+          now.getTime() - lastSignalDate.getTime() > 7 * 24 * 60 * 60 * 1000,
+      );
+
+      return {
+        provider,
+        label: ENRICHMENT_PROVIDER_LABELS[provider],
+        deliveryMode: provider === "unify" ? "cron_pull" : "webhook_push",
+        endpointPath: `/api/v1/analytics/funnel/enrich/${provider}`,
+        authConfigured,
+        syncConfigured,
+        syncEnabled,
+        totalSignals,
+        acceptedSignals,
+        acceptedRate: pct(acceptedSignals, totalSignals),
+        lastSignalAt: toIso(lastSignalDate),
+        lastAcceptedAt: toIso(lastAcceptedDate),
+        stale,
+        note: enrichmentStatusNote({
+          provider,
+          authConfigured,
+          syncConfigured,
+          syncEnabled,
+          objectName: provider === "unify" ? unifyConfig.objectName : null,
+        }),
+      };
+    }),
+  );
 }
 
 function toPrismaProvenance(value: VisitorLinkProvenance | null | undefined): FunnelLinkProvenance {
@@ -1524,13 +1664,19 @@ export async function buildVisitorFunnelData(
     to: Date;
     filters: VisitorFunnelFilters;
     closedWonCount?: number;
+    includeOperationalMetadata?: boolean;
   },
 ): Promise<VisitorFunnelData> {
-  const records = await loadVisitorRecords(prisma, {
-    from: input.from,
-    to: input.to,
-    filters: input.filters,
-  });
+  const [records, enrichmentStatus] = await Promise.all([
+    loadVisitorRecords(prisma, {
+      from: input.from,
+      to: input.to,
+      filters: input.filters,
+    }),
+    input.includeOperationalMetadata === false
+      ? Promise.resolve([])
+      : buildVisitorFunnelEnrichmentStatus(prisma),
+  ]);
 
   const stages: VisitorFunnelStageCount[] = [];
   let previousCount = 0;
@@ -1608,6 +1754,10 @@ export async function buildVisitorFunnelData(
     },
     secondaryMetrics: {
       closedWonCount: input.closedWonCount ?? 0,
+    },
+    enrichmentStatus: {
+      adminOnly: true,
+      providers: enrichmentStatus,
     },
   };
 }

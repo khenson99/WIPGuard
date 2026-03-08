@@ -1397,6 +1397,8 @@ export async function GET(request: Request) {
       closedWonCount: (result.hubspot?.deals ?? []).filter(
         (deal) => deal.stageLabel.trim().toLowerCase() === "closed won",
       ).length,
+      includeOperationalMetadata:
+        ((session.user as { role?: string } | undefined)?.role ?? null) === "admin",
     });
   }
   if (domains.has("recommendations")) {
