@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { MANUAL_EXECUTION_REQUIRED_MESSAGE } from "@/lib/automations/execution-policy";
 import { executeAutomationRecommendation } from "@/lib/automations/recommendations";
 import { getAuthenticatedUser } from "@/lib/session-user";
 
@@ -30,7 +31,12 @@ export async function POST(
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to execute recommendation";
-    const status = message === "Forbidden" ? 403 : 500;
+    const status =
+      message === "Forbidden"
+        ? 403
+        : message === MANUAL_EXECUTION_REQUIRED_MESSAGE
+          ? 400
+          : 500;
     return NextResponse.json({ error: message }, { status });
   }
 }

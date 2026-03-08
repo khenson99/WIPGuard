@@ -12,6 +12,20 @@ export type Priority = "P0" | "P1" | "P2" | "P3";
 export type DifficultyLevel = "LOW" | "MEDIUM" | "HIGH" | "EPIC";
 export type ProjectStatus = "ACTIVE" | "ON_HOLD" | "COMPLETED" | "ARCHIVED";
 export type ProjectType = "RECURRING" | "PERPETUAL" | "ONE_OFF";
+export type AutomationOperatorKey =
+  | "SALES_FOLLOWUP"
+  | "CUSTOMER_HEALTH"
+  | "GTM_SCRUM"
+  | "SEO_GROWTH"
+  | "ADS_OPTIMIZER"
+  | "ROADMAP_INTELLIGENCE";
+export type AutomationArtifactStatus = "DRAFT" | "READY" | "ERROR" | "ARCHIVED";
+export type AutomationRecommendationStatus =
+  | "PENDING_APPROVAL"
+  | "APPROVED"
+  | "REJECTED"
+  | "EXECUTED"
+  | "FAILED";
 
 export type ConferenceStatus =
   | "DRAFT"

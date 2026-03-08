@@ -33,6 +33,18 @@ export async function GET(
         steps: {
           orderBy: { createdAt: "asc" },
         },
+        sourceDocuments: {
+          orderBy: { createdAt: "asc" },
+        },
+        artifacts: {
+          orderBy: { createdAt: "asc" },
+        },
+        recommendations: {
+          orderBy: { createdAt: "asc" },
+        },
+        aiJobs: {
+          orderBy: { createdAt: "asc" },
+        },
         approvals: {
           orderBy: { createdAt: "asc" },
           include: {

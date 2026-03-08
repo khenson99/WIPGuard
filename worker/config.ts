@@ -50,6 +50,7 @@ export const workerConfig = {
     coda: process.env.WORKER_SYNC_CODA !== 'false',
     google: process.env.WORKER_SYNC_GOOGLE !== 'false',
     analytics: process.env.WORKER_SYNC_ANALYTICS !== 'false',
+    automations: process.env.WORKER_SYNC_AUTOMATIONS !== 'false',
     healthChecks: process.env.WORKER_SYNC_HEALTH_CHECKS !== 'false',
   },
 } as const;

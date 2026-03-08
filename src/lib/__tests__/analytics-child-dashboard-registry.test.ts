@@ -3,6 +3,10 @@ import { ANALYTICS_SUB_SECTIONS } from "@/lib/analytics/section-registry";
 import { INTEGRATION_CHILD_DASHBOARD_REGISTRY } from "@/components/analytics/integration-child-dashboards";
 
 const NON_INTEGRATION_DOMAINS = new Set([
+  "decisionDashboard",
+  "flowMetrics",
+  "flowRisk",
+  "observability",
   "customerJourney",
   "visitorFunnel",
   "demoAnalytics",

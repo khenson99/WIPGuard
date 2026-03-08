@@ -13,6 +13,11 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import {
+  dispatchAutomationAiJobs,
+  dispatchWorkflowTriggerEvents,
+  pollAutomationAiJobs,
+} from '@/lib/automations/runtime';
 
 export interface SyncModules {
   hubspot: boolean;
@@ -20,6 +25,7 @@ export interface SyncModules {
   coda: boolean;
   google: boolean;
   analytics: boolean;
+  automations: boolean;
   healthChecks: boolean;
 }
 
@@ -82,6 +88,15 @@ export async function runSync(
       fn: async () => {
         // TODO: Move analytics snapshot logic here
         // e.g., await runAnalyticsSnapshot(prisma);
+      },
+    },
+    {
+      name: 'automations',
+      enabled: modules.automations,
+      fn: async () => {
+        await dispatchWorkflowTriggerEvents(25);
+        await dispatchAutomationAiJobs(10);
+        await pollAutomationAiJobs(20);
       },
     },
     {

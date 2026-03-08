@@ -42,4 +42,14 @@ describe("integrations catalog", () => {
     expect(webflow ? isOAuthIntegration(webflow) : false).toBe(true);
     expect(webflow?.oauth?.scopes).toContain("sites:read");
   });
+
+  it("includes google search console and wipguard in definitions", () => {
+    const gsc = getIntegrationBySlug("google-search-console");
+    const wipguard = getIntegrationBySlug("wipguard");
+
+    expect(gsc).not.toBeNull();
+    expect(gsc?.provider).toBe("GOOGLE_SEARCH_CONSOLE");
+    expect(wipguard).not.toBeNull();
+    expect(wipguard?.provider).toBe("WIPGUARD");
+  });
 });

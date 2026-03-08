@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { canExecuteRecommendationAction } from "@/lib/automations/execution-policy";
 import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 
 interface RecommendationItem {
@@ -310,20 +311,25 @@ export default function AutomationRecommendationsPage() {
                       </button>
                     </>
                   )}
-                  {recommendation.status === "APPROVED" && (
-                    <button
-                      onClick={() =>
-                        actOnRecommendation(recommendation.id, "execute")
-                      }
-                      disabled={processingId === recommendation.id}
-                      className="rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-xs text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {processingId === recommendation.id &&
-                      processingAction === "execute"
-                        ? "Executing..."
-                        : "Execute"}
-                    </button>
-                  )}
+                  {recommendation.status === "APPROVED" &&
+                    (canExecuteRecommendationAction(recommendation.actionType) ? (
+                      <button
+                        onClick={() =>
+                          actOnRecommendation(recommendation.id, "execute")
+                        }
+                        disabled={processingId === recommendation.id}
+                        className="rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-xs text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {processingId === recommendation.id &&
+                        processingAction === "execute"
+                          ? "Executing..."
+                          : "Execute"}
+                      </button>
+                    ) : (
+                      <span className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-600">
+                        Manual execution required
+                      </span>
+                    ))}
                 </div>
               </div>
             </div>
