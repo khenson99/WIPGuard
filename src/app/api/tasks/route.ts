@@ -3,9 +3,11 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { emitBoardEvent } from "@/lib/socket-emit";
+import { invalidateHierarchy } from "@/lib/hierarchy-cache";
+import { emitTaskCreated } from "@/lib/socket-emit";
 import { getNextColumnOrder } from "@/lib/task-order";
 import { enforcePermission } from "@/lib/permissions";
+import { getAuthenticatedUser } from "@/lib/session-user";
 
 const TASK_INCLUDE = {
   project: true,
@@ -20,8 +22,19 @@ const TASK_INCLUDE = {
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const permission = await enforcePermission({
+      userId: user.id,
+      action: "task.read",
+      request,
+      targetType: "task",
+    });
+    if (permission.deniedResponse) {
+      return permission.deniedResponse;
     }
 
     const { searchParams } = request.nextUrl;
@@ -68,12 +81,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const permission = await enforcePermission({
-      userId: session.user.id,
+      userId: user.id,
       action: "task.write",
       request,
       targetType: "task",
@@ -131,7 +145,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         unplanned: unplanned ?? false,
         unplannedReason: unplanned ? unplannedReason : undefined,
         unplannedNote: unplanned ? unplannedNote : undefined,
-        addedBy: session.user.id,
+        addedBy: user.id,
         planningSessionId,
         slackThread,
         columnOrder: nextColumnOrder,
@@ -154,14 +168,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           create: {
             fromStatus: null,
             toStatus: status,
-            changedBy: session.user.id,
+            changedBy: user.id,
           },
         },
       },
       include: TASK_INCLUDE,
     });
 
-    emitBoardEvent("task:created", task);
+    if (task.projectId) {
+      emitTaskCreated(task.projectId, task);
+    }
+
+    invalidateHierarchy(user.id);
 
     return NextResponse.json(task, { status: 201 });
   } catch (error) {

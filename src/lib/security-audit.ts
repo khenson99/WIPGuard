@@ -13,10 +13,10 @@ interface SecurityAuditEventInput {
   targetType?: string | null;
   targetId?: string | null;
   details?: unknown;
-  request?: NextRequest | null;
+  request?: Request | NextRequest | null;
 }
 
-function extractIpAddress(request?: NextRequest | null): string | null {
+function extractIpAddress(request?: Request | NextRequest | null): string | null {
   if (!request) return null;
   const forwarded = request.headers.get("x-forwarded-for");
   if (forwarded) {

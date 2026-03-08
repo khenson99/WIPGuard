@@ -3,10 +3,12 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { emitBoardEvent } from "@/lib/socket-emit";
+import { invalidateHierarchy } from "@/lib/hierarchy-cache";
+import { emitTaskDeleted, emitTaskUpdated } from "@/lib/socket-emit";
 import { enforcePolicy, getUserRole, recordPolicyOverride } from "@/lib/policy-check";
 import { compactColumns, getNextColumnOrder } from "@/lib/task-order";
 import { enforcePermission } from "@/lib/permissions";
+import { getAuthenticatedUser } from "@/lib/session-user";
 import type { TaskStatus } from "@/generated/prisma/client";
 
 const TASK_INCLUDE = {
@@ -35,7 +37,7 @@ export async function GET(
 ): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    if (!getAuthenticatedUser(session)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -66,14 +68,15 @@ export async function PATCH(
 ): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id } = await params;
 
     const writePermission = await enforcePermission({
-      userId: session.user.id,
+      userId: user.id,
       action: "task.write",
       request,
       targetType: "task",
@@ -147,7 +150,7 @@ export async function PATCH(
 
     if (statusChanged) {
       const transitionPermission = await enforcePermission({
-        userId: session.user.id,
+        userId: user.id,
         action: "task.transition",
         request,
         targetType: "task",
@@ -160,7 +163,7 @@ export async function PATCH(
 
     // ── WIP policy enforcement on status change ──
     if (statusChanged) {
-      const userRole = await getUserRole(session.user.id);
+      const userRole = await getUserRole(user.id);
       const policyResult = await enforcePolicy(
         directFields.status as TaskStatus,
         userRole,
@@ -187,8 +190,8 @@ export async function PATCH(
           taskId: id,
           action: "status_change",
           reason: overrideReason,
-          actorId: session.user.id,
-          actorName: session.user.name ?? undefined,
+          actorId: user.id,
+          actorName: user.name ?? undefined,
           actorRole: userRole,
           column: directFields.status,
           wipCount: policyResult.currentCount,
@@ -260,7 +263,7 @@ export async function PATCH(
           taskId: id,
           fromStatus: existing.status,
           toStatus: directFields.status,
-          changedBy: session.user.id,
+          changedBy: user.id,
         },
       });
     }
@@ -299,7 +302,10 @@ export async function PATCH(
       await compactColumns(prisma, [existing.status, task.status]);
     }
 
-    emitBoardEvent("task:updated", task);
+    invalidateHierarchy(user.id);
+    if (task.projectId) {
+      emitTaskUpdated(task.projectId, task);
+    }
 
     return NextResponse.json(task);
   } catch (error) {
@@ -317,14 +323,15 @@ export async function DELETE(
 ): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id } = await params;
 
     const permission = await enforcePermission({
-      userId: session.user.id,
+      userId: user.id,
       action: "task.write",
       request,
       targetType: "task",
@@ -341,7 +348,10 @@ export async function DELETE(
 
     await prisma.task.delete({ where: { id } });
 
-    emitBoardEvent("task:deleted", { taskId: id });
+    invalidateHierarchy(user.id);
+    if (existing.projectId) {
+      emitTaskDeleted(existing.projectId, id);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

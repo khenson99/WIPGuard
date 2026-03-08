@@ -3,6 +3,13 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { enforcePermission } from "@/lib/permissions";
+import {
+  createHierarchyCacheKey,
+  getCachedHierarchy,
+  setCachedHierarchy,
+} from "@/lib/hierarchy-cache";
+import { getAuthenticatedUser } from "@/lib/session-user";
 import { resolveRaci, type RaciNode, type ResolvedRaci } from "@/lib/raci-inheritance";
 
 const USER_SELECT = {
@@ -224,8 +231,19 @@ const RACI_INCLUDE = {
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const permission = await enforcePermission({
+      userId: user.id,
+      action: "hierarchy.read",
+      request,
+      targetType: "hierarchy",
+    });
+    if (permission.deniedResponse) {
+      return permission.deniedResponse;
     }
 
     const { searchParams } = request.nextUrl;
@@ -234,6 +252,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const priorityId = searchParams.get("priorityId");
     const projectId = searchParams.get("projectId");
     const flat = searchParams.get("flat") === "true";
+    const cacheKey = createHierarchyCacheKey({
+      userId: user.id,
+      depth,
+      priorityId,
+      projectId,
+      flat,
+    });
+    const cached = getCachedHierarchy(cacheKey);
+
+    if (cached) {
+      return NextResponse.json(cached);
+    }
 
     // Single project mode: return just one project subtree
     if (projectId) {
@@ -298,53 +328,52 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         tasks: taskTree,
       };
 
+      setCachedHierarchy(cacheKey, result as Record<string, unknown>);
       return NextResponse.json(result);
     }
 
     // Full hierarchy mode: Priority -> Project -> Task tree
     const priorityWhere = priorityId ? { id: priorityId } : {};
 
-    const priorities = await prisma.companyPriority.findMany({
-      where: priorityWhere,
-      include: {
-        ...RACI_INCLUDE,
-        projects: {
-          include: {
-            ...RACI_INCLUDE,
-            tasks: {
-              include: RACI_INCLUDE,
-              orderBy: { columnOrder: "asc" },
+    const [priorities, orphanProjects, unassignedTasks] = await Promise.all([
+      prisma.companyPriority.findMany({
+        where: priorityWhere,
+        include: {
+          ...RACI_INCLUDE,
+          projects: {
+            include: {
+              ...RACI_INCLUDE,
+              tasks: {
+                include: RACI_INCLUDE,
+                orderBy: { columnOrder: "asc" },
+              },
             },
+            orderBy: { createdAt: "desc" },
           },
-          orderBy: { createdAt: "desc" },
         },
-      },
-      orderBy: { priority: "asc" },
-    });
-
-    // Also fetch projects with no priority (orphan projects)
-    const orphanProjects = priorityId
-      ? []
-      : await prisma.project.findMany({
-          where: { companyPriorityId: null },
-          include: {
-            ...RACI_INCLUDE,
-            tasks: {
-              include: RACI_INCLUDE,
-              orderBy: { columnOrder: "asc" },
+        orderBy: { priority: "asc" },
+      }),
+      priorityId
+        ? Promise.resolve([])
+        : prisma.project.findMany({
+            where: { companyPriorityId: null },
+            include: {
+              ...RACI_INCLUDE,
+              tasks: {
+                include: RACI_INCLUDE,
+                orderBy: { columnOrder: "asc" },
+              },
             },
-          },
-          orderBy: { createdAt: "desc" },
-        });
-
-    // Also fetch tasks with no project (unassigned tasks)
-    const unassignedTasks = priorityId
-      ? []
-      : await prisma.task.findMany({
-          where: { projectId: null },
-          include: RACI_INCLUDE,
-          orderBy: { columnOrder: "asc" },
-        });
+            orderBy: { createdAt: "desc" },
+          }),
+      priorityId
+        ? Promise.resolve([])
+        : prisma.task.findMany({
+            where: { projectId: null },
+            include: RACI_INCLUDE,
+            orderBy: { columnOrder: "asc" },
+          }),
+    ]);
 
     const result: HierarchyPriority[] = priorities.map((cp) => {
       const priorityNode = toRaciNode(cp, "priority");
@@ -366,15 +395,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (flat) {
       // Flat mode: flatten the tree for table consumers
       const flatItems = flattenHierarchy(result, orphanProjectTree, unassignedTaskTree);
-      return NextResponse.json({ items: flatItems, mode: "flat" });
+      const responseBody = { items: flatItems, mode: "flat" as const };
+      setCachedHierarchy(cacheKey, responseBody as Record<string, unknown>);
+      return NextResponse.json(responseBody);
     }
 
-    return NextResponse.json({
+    const responseBody = {
       priorities: result,
       orphanProjects: orphanProjectTree,
       unassignedTasks: unassignedTaskTree,
       mode: "tree",
-    });
+    };
+
+    setCachedHierarchy(cacheKey, responseBody as Record<string, unknown>);
+    return NextResponse.json(responseBody);
   } catch (error) {
     console.error("GET /api/hierarchy error:", error);
     return NextResponse.json(
