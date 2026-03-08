@@ -1,5 +1,20 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import {
+  dispatchAutomationAiJobs,
+  dispatchWorkflowTriggerEvents,
+  pollAutomationAiJobs,
+} from '@/lib/automations/runtime';
 import { runSync, type SyncModules } from '../orchestrator';
+
+vi.mock('@/lib/automations/runtime', () => ({
+  dispatchWorkflowTriggerEvents: vi.fn(async () => ({
+    processed: 0,
+    startedRuns: 0,
+    timedOutApprovals: 0,
+  })),
+  dispatchAutomationAiJobs: vi.fn(async () => 0),
+  pollAutomationAiJobs: vi.fn(async () => 0),
+}));
 
 // Minimal mock PrismaClient
 const mockPrisma = {} as unknown;
@@ -12,12 +27,13 @@ describe('sync orchestrator', () => {
       coda: true,
       google: true,
       analytics: true,
+      automations: true,
       healthChecks: true,
     };
 
     const results = await runSync(mockPrisma, modules);
 
-    expect(results).toHaveLength(6);
+    expect(results).toHaveLength(7);
     expect(results.every((r) => r.success)).toBe(true);
     expect(results.map((r) => r.module)).toEqual([
       'hubspot',
@@ -25,8 +41,12 @@ describe('sync orchestrator', () => {
       'coda',
       'google',
       'analytics',
+      'automations',
       'healthChecks',
     ]);
+    expect(dispatchWorkflowTriggerEvents).toHaveBeenCalledTimes(1);
+    expect(dispatchAutomationAiJobs).toHaveBeenCalledTimes(1);
+    expect(pollAutomationAiJobs).toHaveBeenCalledTimes(1);
   });
 
   it('skips disabled modules', async () => {
@@ -36,6 +56,7 @@ describe('sync orchestrator', () => {
       coda: false,
       google: false,
       analytics: true,
+      automations: false,
       healthChecks: false,
     };
 
@@ -54,6 +75,7 @@ describe('sync orchestrator', () => {
       coda: true,
       google: true,
       analytics: true,
+      automations: true,
       healthChecks: true,
     };
 
@@ -70,6 +92,7 @@ describe('sync orchestrator', () => {
       coda: false,
       google: false,
       analytics: false,
+      automations: false,
       healthChecks: false,
     };
 
@@ -84,6 +107,7 @@ describe('sync orchestrator', () => {
       coda: false,
       google: false,
       analytics: false,
+      automations: false,
       healthChecks: false,
     };
 
