@@ -10,12 +10,14 @@ import {
   type PrismaClient,
 } from "@/generated/prisma/client";
 import { enrichStripeEmails } from "@/lib/analytics/stripe-email-enrichment";
+import { buildVisitorFunnelEnrichmentAlerts } from "@/lib/analytics/visitor-funnel-enrichment-alerts";
 import type { PrismaClientType } from "@/lib/prisma";
 import type {
   AnalyticsDashboardData,
   EnrichmentProvider,
   VisitorFunnelBreakdownRow,
   VisitorFunnelData,
+  VisitorFunnelEnrichmentAlert,
   VisitorFunnelEnrichmentProviderStatus,
   VisitorFunnelFilters,
   VisitorFunnelOverlap,
@@ -1679,6 +1681,10 @@ export async function buildVisitorFunnelData(
       ? Promise.resolve([])
       : buildVisitorFunnelEnrichmentStatus(prisma),
   ]);
+  const enrichmentAlerts: VisitorFunnelEnrichmentAlert[] =
+    input.includeOperationalMetadata === false
+      ? []
+      : buildVisitorFunnelEnrichmentAlerts(enrichmentStatus, input.to);
 
   const stages: VisitorFunnelStageCount[] = [];
   let previousCount = 0;
@@ -1759,6 +1765,7 @@ export async function buildVisitorFunnelData(
     },
     enrichmentStatus: {
       adminOnly: true,
+      alerts: enrichmentAlerts,
       providers: enrichmentStatus,
     },
   };

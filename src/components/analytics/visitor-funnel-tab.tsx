@@ -562,6 +562,38 @@ export function VisitorFunnelTab({ data }: { data: AnalyticsDashboardData | null
           </div>
 
           <div className="mt-4 grid gap-4 xl:grid-cols-3">
+            {funnel.enrichmentStatus.alerts.length > 0 ? (
+              <div className="xl:col-span-3">
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {funnel.enrichmentStatus.alerts.map((alert) => (
+                    <div
+                      key={alert.id}
+                      className={`rounded-xl border px-4 py-3 ${
+                        alert.severity === "critical"
+                          ? "border-rose-500/30 bg-rose-500/10"
+                          : "border-amber-500/30 bg-amber-500/10"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <CircleAlert
+                          className={`mt-0.5 h-4 w-4 ${
+                            alert.severity === "critical" ? "text-rose-600" : "text-amber-600"
+                          }`}
+                        />
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{alert.title}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{alert.message}</p>
+                          <p className="mt-2 text-[11px] text-muted-foreground">
+                            Last signal: {formatTimestamp(alert.lastSignalAt)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             {funnel.enrichmentStatus.providers.map((providerStatus) => {
               const state = !providerStatus.syncConfigured
                 ? { label: "Not Configured", cls: "bg-rose-500/10 text-rose-600", icon: CircleAlert }

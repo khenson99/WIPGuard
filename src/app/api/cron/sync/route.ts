@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { runAnalyticsRefresh } from "@/lib/analytics/refresh-runner";
 import { pruneAnalyticsSnapshots } from "@/lib/analytics/snapshots";
 import { runVisitorFunnelEnrichmentSyncs } from "@/lib/analytics/provider-enrichment-sync";
+import { buildVisitorFunnelEnrichmentStatus } from "@/lib/analytics/visitor-funnel";
+import { instrumentVisitorFunnelEnrichmentAlerts } from "@/lib/analytics/visitor-funnel-enrichment-alerts";
 import { runRules } from "@/lib/integrations/orchestrator";
 import {
   bestEffortMigrateConnectionsToOwner,
@@ -52,9 +54,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const visitorFunnelEnrichment = await runVisitorFunnelEnrichmentSyncs({
       prisma,
     });
+    const visitorFunnelEnrichmentStatus = await buildVisitorFunnelEnrichmentStatus(prisma);
+    const visitorFunnelEnrichmentTelemetry = instrumentVisitorFunnelEnrichmentAlerts(
+      visitorFunnelEnrichmentStatus,
+    );
     const visitorFunnelFailures = visitorFunnelEnrichment
       .filter((result) => !result.ok)
       .map((result) => `${result.provider}: ${result.reason ?? "unknown error"}`);
+
+    for (const log of visitorFunnelEnrichmentTelemetry.logs) {
+      const message = JSON.stringify(log);
+      if (log.level === "error") {
+        console.error("[visitor-funnel.enrichment.alert]", message);
+      } else {
+        console.warn("[visitor-funnel.enrichment.alert]", message);
+      }
+    }
+    for (const metric of visitorFunnelEnrichmentTelemetry.metrics) {
+      console.info("[visitor-funnel.enrichment.metric]", JSON.stringify(metric));
+    }
 
     const [analyticsResult, rulesResult, healthResult, pruningResult] = await Promise.allSettled([
       runAnalyticsRefresh({ userIds: [ownerUserId], rangePresets: ["7d", "30d"] }),
@@ -112,6 +130,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         rules: rulesMigration,
       },
       visitorFunnelEnrichment,
+      visitorFunnelEnrichmentHealth: {
+        alerts: visitorFunnelEnrichmentTelemetry.alerts,
+        providers: visitorFunnelEnrichmentStatus,
+      },
       ...settled,
       ...(failures.length > 0 ? { failures } : {}),
     });
