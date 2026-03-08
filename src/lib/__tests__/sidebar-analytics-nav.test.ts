@@ -23,13 +23,6 @@ describe("sidebar analytics navigation", () => {
     expect(hrefs.size).toBeGreaterThan(0);
   });
 
-  it("keeps standup command center in nav and points it to /today", () => {
-    const standup = navItems.find((item) => item.id === "standup");
-
-    expect(standup).toBeTruthy();
-    expect(standup?.href).toBe("/today");
-  });
-
   it("includes customer journey and AI insights pages", () => {
     const customerJourney = navItems.find((item) => item.id === "customer-journey");
     const aiInsights = navItems.find((item) => item.id === "ai-insights");
@@ -40,10 +33,11 @@ describe("sidebar analytics navigation", () => {
     expect(aiInsights?.href).toBe("/analytics/ai-insights");
   });
 
-  it("includes conferences navigation entry", () => {
-    const conferences = navItems.find((item) => item.id === "conferences");
-
-    expect(conferences).toBeTruthy();
-    expect(conferences?.href).toBe("/conferences");
+  it("omits removed task-management navigation entries", () => {
+    expect(navItems.find((item) => item.id === "projects")).toBeFalsy();
+    expect(navItems.find((item) => item.id === "conferences")).toBeFalsy();
+    expect(navItems.find((item) => item.id === "tasks")).toBeFalsy();
+    expect(navItems.find((item) => item.id === "whip")).toBeFalsy();
+    expect(navItems.find((item) => item.id === "standup")).toBeFalsy();
   });
 });
