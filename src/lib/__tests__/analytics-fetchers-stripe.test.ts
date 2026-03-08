@@ -99,11 +99,10 @@ describe("analytics stripe fetcher", () => {
 
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
-    const data = await fetchStripeData(
-      "sk_test_123",
-      new Date("2026-01-01T00:00:00.000Z"),
-      new Date("2026-02-01T00:00:00.000Z")
-    );
+    const data = await fetchStripeData("sk_test_123", {
+      fromDate: new Date("2026-01-01T00:00:00.000Z"),
+      toDate: new Date("2026-02-01T00:00:00.000Z"),
+    });
 
     expect(data.subscriptions.pastDue).toBe(3);
     expect(data.subscriptions.trialing).toBe(4);

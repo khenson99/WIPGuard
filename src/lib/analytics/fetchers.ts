@@ -261,7 +261,7 @@ export async function fetchHubSpotData(
     Boolean(rangeFrom && rangeTo && rangeFrom <= rangeTo);
 
   const properties =
-    "dealstage,amount,dealname,closedate,createdate,hs_analytics_source,num_associated_contacts,hubspot_owner_id,hs_lastmodifieddate,stripe_customer_id,stripe_customer";
+    "dealstage,amount,dealname,closedate,createdate,hs_analytics_source,num_associated_contacts,hubspot_owner_id,hs_lastmodifieddate,stripe_customer_id,stripe_customer,pipeline";
   const historyKey = "dealstage";
 
   const [activeDealsResult, archivedDealsResult] = await Promise.all([
@@ -392,6 +392,10 @@ export async function fetchHubSpotData(
       createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
       closedAt: props.closedate ? new Date(props.closedate).toISOString() : null,
       stripeCustomerId: props.stripe_customer_id || props.stripe_customer || null,
+      pipelineId: props.pipeline || null,
+      contactIds: [] as string[],
+      primaryContactId: null as string | null,
+      primaryContactEmail: null as string | null,
     };
   });
 
@@ -624,9 +628,9 @@ export async function fetchHubSpotData(
     for (const deal of deals) {
       const analytics = contactAnalytics.get(deal.dealId);
       if (analytics) {
-        (deal as Record<string, unknown>).contactIds = analytics.contactIds;
-        (deal as Record<string, unknown>).primaryContactId = analytics.primaryContactId;
-        (deal as Record<string, unknown>).primaryContactEmail = analytics.primaryContactEmail;
+        deal.contactIds = analytics.contactIds;
+        deal.primaryContactId = analytics.primaryContactId;
+        deal.primaryContactEmail = analytics.primaryContactEmail;
         (deal as Record<string, unknown>).primaryContactAnalytics = analytics.primaryContactAnalytics;
       }
     }
