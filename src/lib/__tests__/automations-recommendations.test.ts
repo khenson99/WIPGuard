@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AutomationRecommendationStatus } from "@/generated/prisma/client";
+import { AutomationRecommendationStatus } from "@/lib/automations/prisma-enums";
 import { executeAutomationAction } from "@/lib/automations/actions";
 import { MANUAL_EXECUTION_REQUIRED_MESSAGE } from "@/lib/automations/execution-policy";
 import {

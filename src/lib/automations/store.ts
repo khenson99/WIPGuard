@@ -1,11 +1,13 @@
 import {
-  AutomationArtifactStatus,
-  AutomationRecommendationStatus,
-  AutomationSourceDocumentStatus,
   type AutomationOperatorKey,
   type IntegrationProvider,
   Prisma,
 } from "@/generated/prisma/client";
+import {
+  AutomationArtifactStatus,
+  AutomationRecommendationStatus,
+  AutomationSourceDocumentStatus,
+} from "@/lib/automations/prisma-enums";
 import { prisma } from "@/lib/prisma";
 
 export interface AutomationSourceDocumentInput {

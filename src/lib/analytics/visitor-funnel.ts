@@ -1,12 +1,14 @@
 import { createHash } from "crypto";
 import {
+  type Prisma,
+  type PrismaClient,
+} from "@/generated/prisma/client";
+import {
   EnrichmentProvider as PrismaEnrichmentProvider,
   FunnelEventType,
   FunnelIdentityType,
   FunnelLinkProvenance,
-  type Prisma,
-  type PrismaClient,
-} from "@/generated/prisma/client";
+} from "@/lib/analytics/prisma-funnel-enums";
 import { enrichStripeEmails } from "@/lib/analytics/stripe-email-enrichment";
 import type { PrismaClientType } from "@/lib/prisma";
 import type {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { FunnelEventType } from "@/generated/prisma/client";
+import { FunnelEventType } from "@/lib/analytics/prisma-funnel-enums";
 import { collectVisitorEvent } from "@/lib/analytics/visitor-funnel";
 
 describe("collectVisitorEvent", () => {

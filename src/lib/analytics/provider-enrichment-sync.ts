@@ -1,4 +1,4 @@
-import { EnrichmentProvider as PrismaEnrichmentProvider } from "@/generated/prisma/client";
+import { EnrichmentProvider as PrismaEnrichmentProvider } from "@/lib/analytics/prisma-funnel-enums";
 import {
   pullUnifySignalsFromApi,
   type UnifyPullRequest,

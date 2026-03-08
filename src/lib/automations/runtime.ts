@@ -1,13 +1,15 @@
 import {
-  AutomationAiJobStatus,
   IntegrationProvider,
-  Prisma,
+  type Prisma,
   TaskStatus,
   WorkflowApprovalStatus,
   WorkflowEventStatus,
   WorkflowRunStatus,
   WorkflowStepStatus,
 } from "@/generated/prisma/client";
+import {
+  AutomationAiJobStatus,
+} from "@/lib/automations/prisma-enums";
 import { executeAutomationAction } from "@/lib/automations/actions";
 import { prisma } from "@/lib/prisma";
 import {
