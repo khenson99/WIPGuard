@@ -3,8 +3,8 @@ import "./globals.css";
 import { Providers } from "@/components/layout/providers";
 
 export const metadata: Metadata = {
-  title: "The Mother Node",
-  description: "Kanban task management with WIP limits for GTM teams",
+  title: "WIPGuard",
+  description: "WIP-limited GTM operating system for revenue teams",
 };
 
 export default function RootLayout({

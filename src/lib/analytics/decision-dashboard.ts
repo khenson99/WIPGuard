@@ -259,7 +259,7 @@ function buildMonthlyNarrative(rows: MonthlyDecisionExportRow[]): string[] {
 
 function buildMonthlyMarkdown(rows: MonthlyDecisionExportRow[], narrative: string[]): string {
   const lines = [
-    "# The Mother Node Monthly Flow Export",
+    "# WIPGuard Monthly Flow Export",
     "",
     "| Month | Created | Completed | Net Flow | Overdue Carryover | Unplanned Completed |",
     "| --- | ---: | ---: | ---: | ---: | ---: |",
