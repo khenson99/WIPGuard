@@ -125,6 +125,20 @@ export async function POST(
       signals = normalizeNativeProviderSignals(provider, body);
     }
 
+    if (signals.length === 0 && mode === "pull") {
+      return NextResponse.json(
+        {
+          accepted: 0,
+          stored: 0,
+          mode,
+          provider,
+          received: 0,
+          message: "No enrichment signals found in the requested pull window.",
+        },
+        { status: 202 },
+      );
+    }
+
     if (signals.length === 0) {
       return NextResponse.json(
         { error: "No enrichment signals found in request payload" },
