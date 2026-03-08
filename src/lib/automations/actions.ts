@@ -57,6 +57,114 @@ function base64UrlEncode(input: string): string {
     .replace(/=+$/g, "");
 }
 
+function normalizeIsoTimestamp(value: unknown): string | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function normalizeHubSpotTaskStatus(value: unknown): "COMPLETED" | "NOT_STARTED" | "WAITING" {
+  const normalized = asString(value)?.toUpperCase();
+  if (normalized === "COMPLETED") return "COMPLETED";
+  if (normalized === "WAITING") return "WAITING";
+  return "NOT_STARTED";
+}
+
+function normalizeHubSpotTaskPriority(value: unknown): "LOW" | "MEDIUM" | "HIGH" {
+  const normalized = asString(value)?.toUpperCase();
+  if (normalized === "LOW" || normalized === "HIGH") {
+    return normalized;
+  }
+  return "MEDIUM";
+}
+
+function normalizeHubSpotTaskType(value: unknown): "TODO" | "CALL" | "EMAIL" {
+  const normalized = asString(value)?.toUpperCase();
+  if (normalized === "CALL" || normalized === "EMAIL") {
+    return normalized;
+  }
+  return "TODO";
+}
+
+const HUBSPOT_ASSOCIATION_TYPES = {
+  note: {
+    company: 190,
+    contact: 202,
+    deal: 214,
+  },
+  task: {
+    company: 192,
+    contact: 204,
+    deal: 216,
+  },
+} as const;
+
+function buildHubSpotAssociations(
+  payload: Record<string, unknown>,
+  kind: keyof typeof HUBSPOT_ASSOCIATION_TYPES
+) {
+  const associationTypeIds = HUBSPOT_ASSOCIATION_TYPES[kind];
+  const companyIds = new Set([
+    ...asStringArray(payload.companyIds),
+    ...asStringArray(payload.companyId ? [payload.companyId] : []),
+  ]);
+  const contactIds = new Set([
+    ...asStringArray(payload.contactIds),
+    ...asStringArray(payload.contactId ? [payload.contactId] : []),
+  ]);
+  const dealIds = new Set([
+    ...asStringArray(payload.dealIds),
+    ...asStringArray(payload.dealId ? [payload.dealId] : []),
+  ]);
+
+  return [
+    ...Array.from(companyIds).map((id) => ({
+      to: { id },
+      types: [
+        {
+          associationCategory: "HUBSPOT_DEFINED" as const,
+          associationTypeId: associationTypeIds.company,
+        },
+      ],
+    })),
+    ...Array.from(contactIds).map((id) => ({
+      to: { id },
+      types: [
+        {
+          associationCategory: "HUBSPOT_DEFINED" as const,
+          associationTypeId: associationTypeIds.contact,
+        },
+      ],
+    })),
+    ...Array.from(dealIds).map((id) => ({
+      to: { id },
+      types: [
+        {
+          associationCategory: "HUBSPOT_DEFINED" as const,
+          associationTypeId: associationTypeIds.deal,
+        },
+      ],
+    })),
+  ];
+}
+
 async function resolveAutomationActor(runId: string): Promise<string> {
   const run = await prisma.workflowRun.findUnique({
     where: { id: runId },
@@ -329,16 +437,17 @@ async function updateHubSpotAction(runId: string, payload: Record<string, unknow
   const dealId = asString(payload.dealId);
   const noteBody = asString(payload.noteBody) ?? asString(payload.body);
   const properties = asRecord(payload.properties) ?? null;
+  const noteAssociations = buildHubSpotAssociations(payload, "note");
 
-  if (!dealId) {
+  if (!dealId && (!noteBody || noteAssociations.length === 0)) {
     return {
       actionType: "update_hubspot",
       status: "skipped" as const,
-      detail: "dealId missing",
+      detail: "dealId or note associations missing",
     };
   }
 
-  if (properties) {
+  if (properties && dealId) {
     await fetchWithResilience({
       url: `https://api.hubapi.com/crm/v3/objects/deals/${dealId}`,
       init: {
@@ -368,17 +477,7 @@ async function updateHubSpotAction(runId: string, payload: Record<string, unknow
             hs_note_body: noteBody,
             hs_timestamp: new Date().toISOString(),
           },
-          associations: [
-            {
-              to: { id: dealId },
-              types: [
-                {
-                  associationCategory: "HUBSPOT_DEFINED",
-                  associationTypeId: 214,
-                },
-              ],
-            },
-          ],
+          associations: noteAssociations,
         }),
       },
       timeoutMs: 12_000,
@@ -398,6 +497,69 @@ async function updateHubSpotAction(runId: string, payload: Record<string, unknow
     status: "executed" as const,
     targetId: dealId,
     detail: "HubSpot deal updated",
+  };
+}
+
+async function createHubSpotTaskAction(
+  runId: string,
+  payload: Record<string, unknown>
+) {
+  const userId = await resolveAutomationActor(runId);
+  const token = await getValidIntegrationAccessToken({
+    userId,
+    provider: IntegrationProvider.HUBSPOT,
+  });
+  const title = asString(payload.title) ?? "Follow up";
+  const body = asString(payload.body) ?? asString(payload.noteBody);
+  const dueAt =
+    normalizeIsoTimestamp(payload.dueAt) ??
+    normalizeIsoTimestamp(payload.timestamp) ??
+    normalizeIsoTimestamp(payload.dueDate);
+  const reminderAt =
+    normalizeIsoTimestamp(payload.reminderAt) ??
+    normalizeIsoTimestamp(payload.reminderTimestamp);
+  const ownerId = asString(payload.ownerId) ?? asString(payload.hubspotOwnerId);
+  const associations = buildHubSpotAssociations(payload, "task");
+
+  if (!dueAt) {
+    return {
+      actionType: "create_hubspot_task",
+      status: "skipped" as const,
+      detail: "dueAt missing",
+    };
+  }
+
+  const response = await fetchJsonWithResilience<{ id?: string }>({
+    url: "https://api.hubapi.com/crm/v3/objects/tasks",
+    init: {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        properties: {
+          hs_task_subject: title,
+          hs_task_body: body ?? "",
+          hs_task_status: normalizeHubSpotTaskStatus(payload.status),
+          hs_task_priority: normalizeHubSpotTaskPriority(payload.priority),
+          hs_task_type: normalizeHubSpotTaskType(payload.taskType),
+          hs_timestamp: dueAt,
+          ...(ownerId ? { hubspot_owner_id: ownerId } : {}),
+          ...(reminderAt ? { hs_task_reminders: [new Date(reminderAt).getTime()] } : {}),
+        },
+        ...(associations.length > 0 ? { associations } : {}),
+      }),
+    },
+    timeoutMs: 12_000,
+    maxAttempts: 3,
+  });
+
+  return {
+    actionType: "create_hubspot_task",
+    status: "executed" as const,
+    targetId: response.id ?? null,
+    detail: title,
   };
 }
 
@@ -513,6 +675,8 @@ export async function executeAutomationAction(input: {
       return createCalendarDraftAction(input.runId, payload);
     case "update_hubspot":
       return updateHubSpotAction(input.runId, payload);
+    case "create_hubspot_task":
+      return createHubSpotTaskAction(input.runId, payload);
     case "create_github_issue":
       return createGitHubIssueAction(payload);
     case "post_slack_digest":

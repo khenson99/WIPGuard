@@ -16,6 +16,32 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
+function buildRecommendationActionPayload(recommendation: {
+  actionPayload: Prisma.JsonValue | null;
+  title: string;
+  priority: string | null;
+  dueAt: Date | null;
+}) {
+  const payload = asRecord(recommendation.actionPayload) ?? {};
+
+  return {
+    ...payload,
+    ...(typeof payload.title === "string" && payload.title.trim()
+      ? {}
+      : { title: recommendation.title }),
+    ...(typeof payload.priority === "string" && payload.priority.trim()
+      ? {}
+      : recommendation.priority
+        ? { priority: recommendation.priority }
+        : {}),
+    ...(typeof payload.dueAt === "string" && payload.dueAt.trim()
+      ? {}
+      : recommendation.dueAt
+        ? { dueAt: recommendation.dueAt.toISOString() }
+        : {}),
+  };
+}
+
 async function resolveRecommendationActor(runId: string): Promise<string> {
   const run = await prisma.workflowRun.findUnique({
     where: { id: runId },
@@ -214,7 +240,7 @@ export async function executeAutomationRecommendation(input: {
     const result = await executeAutomationAction({
       runId: recommendation.runId,
       actionType: recommendation.actionType,
-      actionPayload: asRecord(recommendation.actionPayload),
+      actionPayload: buildRecommendationActionPayload(recommendation),
     });
 
     return prisma.automationRecommendation.update({

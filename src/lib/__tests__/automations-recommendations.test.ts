@@ -120,4 +120,53 @@ describe("automation recommendations", () => {
     });
     expect(executeAutomationAction).toHaveBeenCalledTimes(1);
   });
+
+  it("passes recommendation defaults through to HubSpot task execution", async () => {
+    vi.mocked(prisma.automationRecommendation.findUnique).mockResolvedValue({
+      id: "rec_hubspot_task",
+      runId: "run_1",
+      title: "Create CRM follow-up task",
+      priority: "P1",
+      dueAt: new Date("2026-03-10T16:00:00.000Z"),
+      actionType: "create_hubspot_task",
+      actionPayload: { dealId: "deal_123" },
+      requiresApproval: false,
+      status: AutomationRecommendationStatus.APPROVED,
+      requestedById: "user_1",
+      approverId: null,
+      executedById: null,
+      approvedAt: null,
+      run: {
+        workflow: {
+          ownerId: "owner_1",
+        },
+      },
+    } as never);
+    vi.mocked(executeAutomationAction).mockResolvedValue({
+      actionType: "create_hubspot_task",
+      status: "executed",
+      targetId: "hubspot_task_1",
+      detail: "Create CRM follow-up task",
+    } as never);
+    vi.mocked(prisma.automationRecommendation.update).mockResolvedValue({
+      id: "rec_hubspot_task",
+      status: AutomationRecommendationStatus.EXECUTED,
+    } as never);
+
+    await executeAutomationRecommendation({
+      recommendationId: "rec_hubspot_task",
+      actorUserId: "user_1",
+    });
+
+    expect(executeAutomationAction).toHaveBeenCalledWith({
+      runId: "run_1",
+      actionType: "create_hubspot_task",
+      actionPayload: {
+        dealId: "deal_123",
+        title: "Create CRM follow-up task",
+        priority: "P1",
+        dueAt: "2026-03-10T16:00:00.000Z",
+      },
+    });
+  });
 });

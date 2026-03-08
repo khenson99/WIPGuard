@@ -545,6 +545,7 @@ async function executeActionNode(input: {
     actionType === "send_gmail_message" ||
     actionType === "create_calendar_draft" ||
     actionType === "update_hubspot" ||
+    actionType === "create_hubspot_task" ||
     actionType === "create_github_issue" ||
     actionType === "post_slack_digest"
   ) {

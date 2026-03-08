@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TaskStatus } from "@/generated/prisma/client";
 import { executeAutomationAction } from "@/lib/automations/actions";
+import { fetchJsonWithResilience } from "@/lib/integrations/http-client";
+import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
 import { prisma } from "@/lib/prisma";
 import { getNextColumnOrder } from "@/lib/task-order";
 
@@ -114,6 +116,95 @@ describe("automation actions", () => {
       status: "executed",
       targetId: "task_2",
       detail: "Renamed",
+    });
+  });
+
+  it("creates HubSpot reminder tasks with CRM associations", async () => {
+    vi.mocked(getValidIntegrationAccessToken).mockResolvedValue("hubspot_token");
+    vi.mocked(fetchJsonWithResilience).mockResolvedValue({
+      id: "hubspot_task_1",
+    } as never);
+
+    const result = await executeAutomationAction({
+      runId: "run_1",
+      actionType: "create_hubspot_task",
+      actionPayload: {
+        title: "Follow up on demo next steps",
+        body: "Send the pricing recap and confirm procurement timing.",
+        dueAt: "2026-03-10T16:00:00.000Z",
+        reminderAt: "2026-03-10T15:30:00.000Z",
+        status: "waiting",
+        priority: "high",
+        taskType: "email",
+        ownerId: "12345",
+        dealId: "deal_123",
+        contactIds: ["contact_456"],
+        companyId: "company_789",
+      },
+    });
+
+    expect(getValidIntegrationAccessToken).toHaveBeenCalledWith({
+      userId: "user_1",
+      provider: "HUBSPOT",
+    });
+    expect(fetchJsonWithResilience).toHaveBeenCalledWith({
+      url: "https://api.hubapi.com/crm/v3/objects/tasks",
+      init: {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer hubspot_token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          properties: {
+            hs_task_subject: "Follow up on demo next steps",
+            hs_task_body: "Send the pricing recap and confirm procurement timing.",
+            hs_task_status: "WAITING",
+            hs_task_priority: "HIGH",
+            hs_task_type: "EMAIL",
+            hs_timestamp: "2026-03-10T16:00:00.000Z",
+            hubspot_owner_id: "12345",
+            hs_task_reminders: [new Date("2026-03-10T15:30:00.000Z").getTime()],
+          },
+          associations: [
+            {
+              to: { id: "company_789" },
+              types: [
+                {
+                  associationCategory: "HUBSPOT_DEFINED",
+                  associationTypeId: 192,
+                },
+              ],
+            },
+            {
+              to: { id: "contact_456" },
+              types: [
+                {
+                  associationCategory: "HUBSPOT_DEFINED",
+                  associationTypeId: 204,
+                },
+              ],
+            },
+            {
+              to: { id: "deal_123" },
+              types: [
+                {
+                  associationCategory: "HUBSPOT_DEFINED",
+                  associationTypeId: 216,
+                },
+              ],
+            },
+          ],
+        }),
+      },
+      timeoutMs: 12_000,
+      maxAttempts: 3,
+    });
+    expect(result).toEqual({
+      actionType: "create_hubspot_task",
+      status: "executed",
+      targetId: "hubspot_task_1",
+      detail: "Follow up on demo next steps",
     });
   });
 });
