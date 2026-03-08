@@ -23,6 +23,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const workflowId = request.nextUrl.searchParams.get("workflowId");
     const runId = request.nextUrl.searchParams.get("runId");
     const status = request.nextUrl.searchParams.get("status");
+    const ownerOrParticipantFilter = {
+      OR: [
+        { workflow: { ownerId: user.id } },
+        { requestedById: user.id },
+        { approverId: user.id },
+        { executedById: user.id },
+      ],
+    };
 
     const recommendations = await prisma.automationRecommendation.findMany({
       where: {
@@ -38,22 +46,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           OR: [{ ownerId: user.id }, { scope: WorkflowScope.SHARED }],
         },
         ...(mineOnly
-          ? {
-              OR: [
-                { requestedById: user.id },
-                { approverId: user.id },
-                { executedById: user.id },
-              ],
-            }
+          ? ownerOrParticipantFilter
           : role === "admin"
             ? {}
-            : {
-                OR: [
-                  { requestedById: user.id },
-                  { approverId: user.id },
-                  { executedById: user.id },
-                ],
-              }),
+            : ownerOrParticipantFilter),
       },
       orderBy: [{ createdAt: "desc" }],
       include: {

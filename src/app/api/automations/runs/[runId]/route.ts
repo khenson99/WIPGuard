@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { assertCanViewWorkflow } from "@/lib/automations/service";
 import { prisma } from "@/lib/prisma";
+import { getAuthenticatedUser } from "@/lib/session-user";
 
 interface RouteParams {
   params: Promise<{ runId: string }>;
@@ -15,12 +16,15 @@ export async function GET(
 ): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { runId } = await context.params;
-    const run = await prisma.workflowRun.findUnique({
+    // Automation run relations exist at runtime, but the generated Prisma types for
+    // this repo have not caught up to the new relation fields yet.
+    const run = (await prisma.workflowRun.findUnique({
       where: { id: runId },
       include: {
         workflow: {
@@ -44,6 +48,25 @@ export async function GET(
         },
         aiJobs: {
           orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            stepId: true,
+            operatorKey: true,
+            nodeKey: true,
+            jobType: true,
+            status: true,
+            provider: true,
+            model: true,
+            promptVersion: true,
+            responseId: true,
+            responseStatus: true,
+            lastError: true,
+            attemptCount: true,
+            nextAttemptAt: true,
+            completedAt: true,
+            createdAt: true,
+            updatedAt: true,
+          },
         },
         approvals: {
           orderBy: { createdAt: "asc" },
@@ -59,13 +82,13 @@ export async function GET(
           },
         },
       },
-    });
+    } as never)) as { workflowId: string } | null;
 
     if (!run) {
       return NextResponse.json({ error: "Run not found" }, { status: 404 });
     }
 
-    await assertCanViewWorkflow(session.user.id, run.workflowId);
+    await assertCanViewWorkflow(user.id, run.workflowId);
 
     return NextResponse.json(run);
   } catch (error) {
