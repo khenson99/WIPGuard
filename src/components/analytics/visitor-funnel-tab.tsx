@@ -35,6 +35,16 @@ interface RecordsResponse {
   };
 }
 
+interface EnrichmentActionResponse {
+  accepted: number;
+  stored: number;
+  received: number;
+  mode: "pull" | "native" | "normalized";
+  provider: string;
+  message?: string;
+  error?: string;
+}
+
 const STAGE_LABELS: Record<string, string> = {
   visitors: "Visitors",
   identified: "Identified",
@@ -105,6 +115,15 @@ export function VisitorFunnelTab({ data }: { data: AnalyticsDashboardData | null
     payload: null,
     error: null,
   });
+  const [unifyActionState, setUnifyActionState] = useState<{
+    pending: boolean;
+    tone: "neutral" | "success" | "warning" | "error";
+    message: string | null;
+  }>({
+    pending: false,
+    tone: "neutral",
+    message: null,
+  });
 
   const recordsHref = (() => {
     const hrefValue = funnel?.recordsApi.href;
@@ -171,6 +190,61 @@ export function VisitorFunnelTab({ data }: { data: AnalyticsDashboardData | null
       next.set(key, value);
     }
     router.replace(`${pathname}${next.toString() ? `?${next.toString()}` : ""}`, { scroll: false });
+  };
+
+  const refreshSection = () => {
+    const next = new URLSearchParams(searchParams?.toString() ?? "");
+    next.set("vfSyncAt", Date.now().toString());
+    router.replace(`${pathname}${next.toString() ? `?${next.toString()}` : ""}`, { scroll: false });
+  };
+
+  const runUnifyPull = async (windowHours: number | null) => {
+    setUnifyActionState({
+      pending: true,
+      tone: "neutral",
+      message: windowHours ? `Replaying the last ${windowHours} hours…` : "Pulling latest Unify records…",
+    });
+
+    try {
+      const body: Record<string, unknown> = {
+        mode: "pull",
+      };
+      if (windowHours) {
+        body.updatedAfter = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString();
+      }
+
+      const response = await fetch("/api/v1/analytics/funnel/enrich/unify", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+      const payload = (await response.json().catch(() => ({}))) as EnrichmentActionResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? `Unify pull failed (${response.status})`);
+      }
+
+      const tone = payload.received > 0 ? "success" : "warning";
+      const message =
+        payload.received > 0
+          ? `Pulled ${payload.received} signals. Stored ${payload.stored}, accepted ${payload.accepted}.`
+          : payload.message ?? "No new enrichment signals were found.";
+
+      setUnifyActionState({
+        pending: false,
+        tone,
+        message,
+      });
+      refreshSection();
+    } catch (error) {
+      setUnifyActionState({
+        pending: false,
+        tone: "error",
+        message: error instanceof Error ? error.message : "Failed to pull Unify records.",
+      });
+    }
   };
 
   const previewIsCurrent = Boolean(
@@ -445,6 +519,45 @@ export function VisitorFunnelTab({ data }: { data: AnalyticsDashboardData | null
                     <Link2 className="h-3.5 w-3.5" />
                     {provider.syncEnabled ? "Enabled" : "Disabled"}
                   </div>
+
+                  {provider.provider === "unify" ? (
+                    <div className="mt-4 space-y-3">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void runUnifyPull(null)}
+                          disabled={unifyActionState.pending || !provider.syncConfigured}
+                          className="rounded-md border border-border bg-card px-3 py-1.5 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {unifyActionState.pending ? "Pulling..." : "Pull now"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void runUnifyPull(24)}
+                          disabled={unifyActionState.pending || !provider.syncConfigured}
+                          className="rounded-md border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {unifyActionState.pending ? "Working..." : "Replay 24h"}
+                        </button>
+                      </div>
+
+                      {unifyActionState.message ? (
+                        <p
+                          className={`text-xs ${
+                            unifyActionState.tone === "success"
+                              ? "text-emerald-600"
+                              : unifyActionState.tone === "warning"
+                                ? "text-amber-600"
+                                : unifyActionState.tone === "error"
+                                  ? "text-rose-600"
+                                  : "text-muted-foreground"
+                          }`}
+                        >
+                          {unifyActionState.message}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
