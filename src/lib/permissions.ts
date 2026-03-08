@@ -6,7 +6,9 @@ import { recordSecurityAuditEvent } from "@/lib/security-audit";
 export type AppRole = "admin" | "member" | "observer";
 
 export type PermissionAction =
+  | "analytics.read"
   | "board.write"
+  | "deals.write"
   | "task.write"
   | "task.transition"
   | "project.write"
@@ -28,6 +30,7 @@ const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> 
   {
     admin: [
       "board.write",
+      "analytics.read",
       "task.write",
       "task.transition",
       "project.write",
@@ -47,6 +50,7 @@ const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> 
     ],
     member: [
       "board.write",
+      "analytics.read",
       "task.write",
       "task.transition",
       "project.write",
@@ -60,7 +64,7 @@ const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> 
       "automation.write",
       "automation.approve",
     ],
-    observer: ["profile.write", "integration.read", "automation.approve"],
+    observer: ["analytics.read", "profile.write", "integration.read", "automation.approve"],
   };
 
 export function normalizeRole(role: string | null | undefined): AppRole {

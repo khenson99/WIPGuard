@@ -18,15 +18,22 @@ model Organization {
   updatedAt DateTime @updatedAt
 
   // Relations to all tenant-scoped models
-  users                  User[]
-  projects               Project[]
-  tasks                  Task[]
-  sprints                Sprint[]
-  deals                  Deal[]
-  departments            Department[]
-  companyPriorities      CompanyPriority[]
-  integrationConnections IntegrationConnection[]
-  conferences            Conference[]
+  users                           User[]
+  projects                        Project[]
+  tasks                           Task[]
+  sprints                         Sprint[]
+  deals                           Deal[]
+  departments                     Department[]
+  companyPriorities               CompanyPriority[]
+  integrationConnections          IntegrationConnection[]
+  conferences                     Conference[]
+  customerRecords                 CustomerRecord[]
+  customerRecordExternalRefs      CustomerRecordExternalRef[]
+  customerSuccessNotes            CustomerSuccessNote[]
+  customerSuccessPlans            CustomerSuccessPlan[]
+  customerSuccessPlanMilestones   CustomerSuccessPlanMilestone[]
+  customerSuccessAlertRecords     CustomerSuccessAlertRecord[]
+  customerSuccessOutreachMessages CustomerSuccessOutreachMessage[]
 }
 
 // ============================================================
@@ -41,30 +48,27 @@ model User {
   image         String?
   role          String    @default("member")
 
-  accounts Account[]
-  sessions Session[]
-  integrationConnections IntegrationConnection[]
-  integrationRules       IntegrationRule[]
-  analyticsSnapshots     AnalyticsSnapshot[]
+  accounts                 Account[]
+  sessions                 Session[]
+  integrationConnections   IntegrationConnection[]
+  integrationRules         IntegrationRule[]
+  analyticsSnapshots       AnalyticsSnapshot[]
   integrationCircuitStates IntegrationCircuitState[]
-  stripeCustomerLinks    StripeCustomerLink[]
-  metricHistory          MetricHistory[]
-  insightFeedback        InsightFeedback[]
-  uiPreference           UserUiPreference?
-  savedViews             UserSavedView[]
-  ownedWorkflows         WorkflowDefinition[] @relation("WorkflowOwner")
-  workflowRunRequests    WorkflowRun[]        @relation("WorkflowRunRequestedBy")
-  workflowApprovalRequests WorkflowApproval[] @relation("WorkflowApprovalRequestedBy")
-  workflowApprovals      WorkflowApproval[]   @relation("WorkflowApprovalApprover")
-  automationRecommendationRequests AutomationRecommendation[] @relation("AutomationRecommendationRequestedBy")
-  automationRecommendationApprovals AutomationRecommendation[] @relation("AutomationRecommendationApprovedBy")
-  automationRecommendationExecutions AutomationRecommendation[] @relation("AutomationRecommendationExecutedBy")
-  securityAuditEvents SecurityAuditEvent[]
+  stripeCustomerLinks      StripeCustomerLink[]
+  metricHistory            MetricHistory[]
+  insightFeedback          InsightFeedback[]
+  uiPreference             UserUiPreference?
+  savedViews               UserSavedView[]
+  ownedWorkflows           WorkflowDefinition[]      @relation("WorkflowOwner")
+  workflowRunRequests      WorkflowRun[]             @relation("WorkflowRunRequestedBy")
+  workflowApprovalRequests WorkflowApproval[]        @relation("WorkflowApprovalRequestedBy")
+  workflowApprovals        WorkflowApproval[]        @relation("WorkflowApprovalApprover")
+  securityAuditEvents      SecurityAuditEvent[]
 
-  responsibleTasks  Task[]    @relation("TaskResponsible")
-  accountableTasks  Task[]    @relation("TaskAccountable")
-  consultedTasks    Task[]    @relation("TaskConsulted")
-  informedTasks     Task[]    @relation("TaskInformed")
+  responsibleTasks Task[] @relation("TaskResponsible")
+  accountableTasks Task[] @relation("TaskAccountable")
+  consultedTasks   Task[] @relation("TaskConsulted")
+  informedTasks    Task[] @relation("TaskInformed")
 
   responsibleProjects Project[] @relation("ProjectResponsible")
   accountableProjects Project[] @relation("ProjectAccountable")
@@ -83,25 +87,29 @@ model User {
   financialGoals    FinancialGoal[]
   forecastScenarios ForecastScenario[]
 
-  ownedDeals Deal[] @relation("DealOwner")
+  ownedDeals                              Deal[]                           @relation("DealOwner")
+  ownedCustomerRecords                    CustomerRecord[]                 @relation("CustomerRecordOwner")
+  authoredCustomerSuccessNotes            CustomerSuccessNote[]            @relation("CustomerSuccessNoteAuthor")
+  ownedCustomerSuccessPlans               CustomerSuccessPlan[]            @relation("CustomerSuccessPlanOwner")
+  ownedCustomerSuccessAlertRecords        CustomerSuccessAlertRecord[]     @relation("CustomerSuccessAlertOwner")
+  authoredCustomerSuccessOutreachMessages CustomerSuccessOutreachMessage[] @relation("CustomerSuccessOutreachAuthor")
 
-  ownedConferences Conference[] @relation("ConferenceOwner")
-  ownedConferenceDeadlines ConferenceDeadline[] @relation("ConferenceDeadlineOwner")
-  paidConferenceExpenses ConferenceExpense[] @relation("ConferenceExpensePaidBy")
-  capturedConferenceLeads ConferenceLead[] @relation("ConferenceLeadCapturedBy")
-  assignedConferenceLeads ConferenceLead[] @relation("ConferenceLeadAssignedTo")
-  conferenceTeamMemberships ConferenceTeamMember[] @relation("ConferenceTeamMemberUser")
+  ownedConferences              Conference[]              @relation("ConferenceOwner")
+  ownedConferenceDeadlines      ConferenceDeadline[]      @relation("ConferenceDeadlineOwner")
+  paidConferenceExpenses        ConferenceExpense[]       @relation("ConferenceExpensePaidBy")
+  capturedConferenceLeads       ConferenceLead[]          @relation("ConferenceLeadCapturedBy")
+  assignedConferenceLeads       ConferenceLead[]          @relation("ConferenceLeadAssignedTo")
+  conferenceTeamMemberships     ConferenceTeamMember[]    @relation("ConferenceTeamMemberUser")
   ownedConferenceInventoryItems ConferenceInventoryItem[] @relation("ConferenceInventoryItemOwner")
 
-  submissionEvents SubmissionEvent[]
+  submissionEvents   SubmissionEvent[]
   insightPreferences InsightPreference[]
-  funnelIdentityLinks FunnelIdentityLink[] @relation("FunnelIdentityUser")
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([organizationId])
 }
@@ -174,10 +182,10 @@ model CompanyPriority {
 // ============================================================
 
 model Department {
-  id        String    @id @default(cuid())
-  name      String    @unique
-  color     String?
-  projects  Project[]
+  id       String    @id @default(cuid())
+  name     String    @unique
+  color    String?
+  projects Project[]
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
@@ -199,8 +207,8 @@ model Project {
   status      ProjectStatus @default(ACTIVE)
   projectType ProjectType   @default(ONE_OFF)
 
-  conferenceId String?
-  conference   Conference? @relation("ConferenceProjects", fields: [conferenceId], references: [id], onDelete: SetNull)
+  conferenceId         String?
+  conference           Conference? @relation("ConferenceProjects", fields: [conferenceId], references: [id], onDelete: SetNull)
   primaryForConference Conference? @relation("ConferencePrimaryProject")
 
   parentId String?
@@ -266,8 +274,8 @@ model Task {
   conferenceId String?
   conference   Conference? @relation("ConferenceTasks", fields: [conferenceId], references: [id], onDelete: SetNull)
 
-  conferenceDeadline ConferenceDeadline? @relation("ConferenceDeadlineTask")
-  conferenceLeadFollowup ConferenceLead? @relation("ConferenceLeadFollowupTask")
+  conferenceDeadline     ConferenceDeadline? @relation("ConferenceDeadlineTask")
+  conferenceLeadFollowup ConferenceLead?     @relation("ConferenceLeadFollowupTask")
 
   parentId String?
   parent   Task?   @relation("TaskHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
@@ -296,14 +304,18 @@ model Task {
   planningSessionId String?
   planningSession   PlanningSession? @relation(fields: [planningSessionId], references: [id])
 
-  slackThread String?
-  metadata    Json?
-  columnOrder Int     @default(0)
+  slackThread      String?
+  metadata         Json?
+  columnOrder      Int             @default(0)
+  customerRecordId String?
+  customerRecord   CustomerRecord? @relation(fields: [customerRecordId], references: [id], onDelete: SetNull)
 
-  statusHistory   StatusHistory[]
-  logbookEntries  LogbookEntry[]
-  policyOverrides PolicyOverride[]
-  integrationReceipts IntegrationReceipt[]
+  statusHistory                 StatusHistory[]
+  logbookEntries                LogbookEntry[]
+  policyOverrides               PolicyOverride[]
+  integrationReceipts           IntegrationReceipt[]
+  customerSuccessPlanMilestones CustomerSuccessPlanMilestone[]
+  customerSuccessAlertRecords   CustomerSuccessAlertRecord[]
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
@@ -312,6 +324,7 @@ model Task {
   updatedAt DateTime @updatedAt
 
   @@index([conferenceId])
+  @@index([customerRecordId])
   @@index([organizationId])
 }
 
@@ -422,14 +435,14 @@ enum ConferenceReimbursementStatus {
 }
 
 model Conference {
-  id         String @id @default(cuid())
-  slug       String @unique
+  id         String  @id @default(cuid())
+  slug       String  @unique
   name       String
   websiteUrl String?
 
   startDate DateTime
   endDate   DateTime
-  timezone  String  @default("UTC")
+  timezone  String   @default("UTC")
 
   city    String?
   region  String?
@@ -447,9 +460,9 @@ model Conference {
   codaDocUrl       String?
 
   ownerId String?
-  owner   User? @relation("ConferenceOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  owner   User?   @relation("ConferenceOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
-  primaryProjectId String? @unique
+  primaryProjectId String?  @unique
   primaryProject   Project? @relation("ConferencePrimaryProject", fields: [primaryProjectId], references: [id], onDelete: SetNull)
 
   projects Project[] @relation("ConferenceProjects")
@@ -479,19 +492,19 @@ model ConferenceDeadline {
   conferenceId String
   conference   Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
 
-  type ConferenceDeadlineType
-  name String
+  type  ConferenceDeadlineType
+  name  String
   dueAt DateTime
 
   completedAt DateTime?
   ownerId     String?
-  owner       User? @relation("ConferenceDeadlineOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  owner       User?     @relation("ConferenceDeadlineOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
   notes     String? @db.Text
   sourceUrl String?
 
   taskId String? @unique
-  task   Task? @relation("ConferenceDeadlineTask", fields: [taskId], references: [id], onDelete: SetNull)
+  task   Task?   @relation("ConferenceDeadlineTask", fields: [taskId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -506,7 +519,7 @@ model ConferenceBudget {
   conferenceId String     @unique
   conference   Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
 
-  currency String @default("USD")
+  currency String  @default("USD")
   notes    String? @db.Text
 
   lineItems ConferenceBudgetLineItem[]
@@ -538,20 +551,20 @@ model ConferenceExpense {
   conferenceId String
   conference   Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
 
-  category  ConferenceExpenseCategory
-  amount    Float
-  currency  String @default("USD")
+  category   ConferenceExpenseCategory
+  amount     Float
+  currency   String                    @default("USD")
   incurredAt DateTime
 
   vendor      String?
   description String? @db.Text
   receiptUrl  String?
 
-  reimbursable Boolean @default(false)
+  reimbursable        Boolean                       @default(false)
   reimbursementStatus ConferenceReimbursementStatus @default(NONE)
 
   paidByUserId String?
-  paidByUser   User? @relation("ConferenceExpensePaidBy", fields: [paidByUserId], references: [id], onDelete: SetNull)
+  paidByUser   User?   @relation("ConferenceExpensePaidBy", fields: [paidByUserId], references: [id], onDelete: SetNull)
 
   budgetLineItemId String?
   budgetLineItem   ConferenceBudgetLineItem? @relation("ConferenceExpenseBudgetLineItem", fields: [budgetLineItemId], references: [id], onDelete: SetNull)
@@ -586,19 +599,19 @@ model ConferenceLead {
   capturedAt DateTime @default(now())
 
   capturedByUserId String?
-  capturedByUser   User? @relation("ConferenceLeadCapturedBy", fields: [capturedByUserId], references: [id], onDelete: SetNull)
+  capturedByUser   User?   @relation("ConferenceLeadCapturedBy", fields: [capturedByUserId], references: [id], onDelete: SetNull)
 
   assignedToUserId String?
-  assignedToUser   User? @relation("ConferenceLeadAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  assignedToUser   User?   @relation("ConferenceLeadAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
 
   followupTaskId String? @unique
-  followupTask   Task? @relation("ConferenceLeadFollowupTask", fields: [followupTaskId], references: [id], onDelete: SetNull)
+  followupTask   Task?   @relation("ConferenceLeadFollowupTask", fields: [followupTaskId], references: [id], onDelete: SetNull)
 
   followedUpAt DateTime?
 
-  hubspotCompanyId String?
-  hubspotContactId String?
-  hubspotDealId    String?
+  hubspotCompanyId  String?
+  hubspotContactId  String?
+  hubspotDealId     String?
   pushedToHubspotAt DateTime?
 
   createdAt DateTime @default(now())
@@ -615,12 +628,12 @@ model ConferenceTeamMember {
   conference   Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
 
   userId String
-  user   User @relation("ConferenceTeamMemberUser", fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation("ConferenceTeamMemberUser", fields: [userId], references: [id], onDelete: Cascade)
 
-  role ConferenceTeamRole
+  role        ConferenceTeamRole
   arrivalAt   DateTime?
   departureAt DateTime?
-  notes       String? @db.Text
+  notes       String?            @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -643,7 +656,7 @@ model ConferenceInventoryItem {
   qtyRemaining Int @default(0)
 
   ownerId String?
-  owner   User? @relation("ConferenceInventoryItemOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  owner   User?   @relation("ConferenceInventoryItemOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
   notes String? @db.Text
 
@@ -664,9 +677,9 @@ model Sprint {
   endDate   DateTime
   isActive  Boolean  @default(false)
 
-  tasks             Task[]
-  commitments       SprintCommitment[]
-  planningSessions  PlanningSession[]
+  tasks            Task[]
+  commitments      SprintCommitment[]
+  planningSessions PlanningSession[]
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
@@ -689,7 +702,7 @@ model SprintCommitment {
   sprint        Sprint   @relation(fields: [sprintId], references: [id], onDelete: Cascade)
   snapshotAt    DateTime @default(now())
   createdBy     String
-  taskSnapshots Json     // Array of {taskId, title, status, projectId, priority}
+  taskSnapshots Json // Array of {taskId, title, status, projectId, priority}
 
   @@index([sprintId, snapshotAt])
 }
@@ -748,11 +761,10 @@ model LogbookEntry {
 // ============================================================
 
 model BoardSettings {
-  id          String @id @default(cuid())
-  columnName  String @unique
-  wipLimit    Int    @default(0)
-  columnOrder Int    @default(0)
-  columnVersion Int  @default(0)
+  id          String  @id @default(cuid())
+  columnName  String  @unique
+  wipLimit    Int     @default(0)
+  columnOrder Int     @default(0)
   color       String?
 
   createdAt DateTime @default(now())
@@ -784,11 +796,11 @@ enum EnforcementMode {
 // ============================================================
 
 model PolicyOverride {
-  id        String     @id @default(cuid())
+  id        String  @id @default(cuid())
   taskId    String
-  task      Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task      Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
   action    String
-  reason    String     @db.Text
+  reason    String  @db.Text
   actorId   String
   actorName String?
   actorRole String?
@@ -804,10 +816,10 @@ model PolicyOverride {
 // ============================================================
 
 model SecurityAuditEvent {
-  id        String  @id @default(cuid())
-  action    String
-  category  String
-  outcome   String
+  id       String @id @default(cuid())
+  action   String
+  category String
+  outcome  String
 
   actorId   String?
   actor     User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
@@ -846,8 +858,6 @@ enum IntegrationProvider {
   SEMRUSH
   PYLON
   GOOGLE_ANALYTICS
-  GOOGLE_SEARCH_CONSOLE
-  WIPGUARD
 }
 
 enum IntegrationConnectionStatus {
@@ -862,20 +872,20 @@ enum AnalyticsSnapshotStatus {
 }
 
 model IntegrationConnection {
-  id        String                      @id @default(cuid())
-  userId    String
-  user      User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  provider  IntegrationProvider
-  status    IntegrationConnectionStatus @default(CONNECTED)
+  id       String                      @id @default(cuid())
+  userId   String
+  user     User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider IntegrationProvider
+  status   IntegrationConnectionStatus @default(CONNECTED)
 
   providerAccountId String?
   accountLabel      String?
-  scopes            String[]            @default([])
-  accessToken       String?             @db.Text
-  refreshToken      String?             @db.Text
+  scopes            String[]  @default([])
+  accessToken       String?   @db.Text
+  refreshToken      String?   @db.Text
   tokenType         String?
   expiresAt         DateTime?
-  connectedAt       DateTime            @default(now())
+  connectedAt       DateTime  @default(now())
   lastSyncedAt      DateTime?
   lastError         String?
   metadata          Json?
@@ -892,12 +902,12 @@ model IntegrationConnection {
 }
 
 model AnalyticsSnapshot {
-  id       String @id @default(cuid())
-  userId   String
-  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   providerKey String
-  contextKey  String @default("default")
+  contextKey  String   @default("default")
   rangePreset String
   fromDate    DateTime
   toDate      DateTime
@@ -918,9 +928,9 @@ model AnalyticsSnapshot {
 }
 
 model StripeCustomerLink {
-  id               String   @id @default(cuid())
-  userId           String
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   stripeCustomerId String
   hubspotDealId    String
@@ -939,9 +949,9 @@ model StripeCustomerLink {
 // ============================================================
 
 model MetricHistory {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   metricKey   String
   section     String
@@ -965,9 +975,9 @@ enum InsightFeedbackAction {
 }
 
 model InsightFeedback {
-  id        String                @id @default(cuid())
-  userId    String
-  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   insightId String
   action    InsightFeedbackAction
@@ -1009,10 +1019,10 @@ model IntegrationCircuitState {
   key String
 
   state               String
-  consecutiveFailures Int    @default(0)
+  consecutiveFailures Int       @default(0)
   openedAt            DateTime?
-  currentCooldownMs   Int    @default(0)
-  openCount           Int    @default(0)
+  currentCooldownMs   Int       @default(0)
+  openCount           Int       @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1070,10 +1080,10 @@ model UserSavedView {
   scope     SavedViewScope
   slug      String
   name      String
-  isDefault Boolean @default(false)
-  isSystem  Boolean @default(false)
+  isDefault Boolean        @default(false)
+  isSystem  Boolean        @default(false)
   config    Json
-  position  Int     @default(0)
+  position  Int            @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1107,7 +1117,6 @@ enum WorkflowRunStatus {
   QUEUED
   RUNNING
   WAITING_APPROVAL
-  WAITING_EXTERNAL
   SUCCEEDED
   FAILED
   CANCELED
@@ -1120,7 +1129,6 @@ enum WorkflowStepStatus {
   FAILED
   SKIPPED
   WAITING_APPROVAL
-  WAITING_EXTERNAL
 }
 
 enum WorkflowApprovalStatus {
@@ -1138,45 +1146,6 @@ enum WorkflowEventStatus {
   DEAD_LETTER
 }
 
-enum AutomationOperatorKey {
-  SALES_FOLLOWUP
-  CUSTOMER_HEALTH
-  GTM_SCRUM
-  SEO_GROWTH
-  ADS_OPTIMIZER
-  ROADMAP_INTELLIGENCE
-}
-
-enum AutomationSourceDocumentStatus {
-  READY
-  ERROR
-  ARCHIVED
-}
-
-enum AutomationArtifactStatus {
-  DRAFT
-  READY
-  ERROR
-  ARCHIVED
-}
-
-enum AutomationRecommendationStatus {
-  PENDING_APPROVAL
-  APPROVED
-  REJECTED
-  EXECUTED
-  FAILED
-}
-
-enum AutomationAiJobStatus {
-  QUEUED
-  REQUESTED
-  RUNNING
-  SUCCEEDED
-  FAILED
-  CANCELED
-}
-
 model WorkflowDefinition {
   id String @id @default(cuid())
 
@@ -1184,10 +1153,9 @@ model WorkflowDefinition {
   owner   User   @relation("WorkflowOwner", fields: [ownerId], references: [id], onDelete: Cascade)
 
   name        String
-  description String? @db.Text
-  operatorKey AutomationOperatorKey?
-  scope       WorkflowScope @default(PRIVATE)
-  status      WorkflowStatus @default(DRAFT)
+  description String?               @db.Text
+  scope       WorkflowScope         @default(PRIVATE)
+  status      WorkflowStatus        @default(DRAFT)
   providers   IntegrationProvider[] @default([])
   rolePolicy  Json?
 
@@ -1197,24 +1165,19 @@ model WorkflowDefinition {
 
   lastPublishedAt DateTime?
   lastRunAt       DateTime?
-  lastError       String? @db.Text
+  lastError       String?   @db.Text
 
-  nodes        WorkflowNode[]
-  edges        WorkflowEdge[]
-  runs         WorkflowRun[]
+  nodes          WorkflowNode[]
+  edges          WorkflowEdge[]
+  runs           WorkflowRun[]
   triggerCursors WorkflowTriggerCursor[]
-  triggerEvents WorkflowTriggerEvent[]
-  sourceDocuments AutomationSourceDocument[]
-  artifacts AutomationArtifact[]
-  recommendations AutomationRecommendation[]
-  aiJobs AutomationAiJob[]
+  triggerEvents  WorkflowTriggerEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([ownerId, status])
   @@index([scope, status])
-  @@index([operatorKey, status])
 }
 
 model WorkflowNode {
@@ -1248,7 +1211,7 @@ model WorkflowEdge {
   targetNodeKey  String
   conditionLabel String?
   conditionExpr  Json?
-  priority       Int @default(0)
+  priority       Int     @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1270,20 +1233,16 @@ model WorkflowRun {
   triggerType     String?
   triggerId       String?
   triggerPayload  Json?
-  dedupeKey       String? @unique
+  dedupeKey       String?              @unique
 
-  status WorkflowRunStatus @default(QUEUED)
+  status        WorkflowRunStatus @default(QUEUED)
   correlationId String?
-  startedAt DateTime?
-  finishedAt DateTime?
-  error String? @db.Text
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  error         String?           @db.Text
 
   steps     WorkflowRunStep[]
   approvals WorkflowApproval[]
-  sourceDocuments AutomationSourceDocument[]
-  artifacts AutomationArtifact[]
-  recommendations AutomationRecommendation[]
-  aiJobs AutomationAiJob[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1298,21 +1257,20 @@ model WorkflowRunStep {
   runId String
   run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
-  nodeKey String
+  nodeKey  String
   nodeType WorkflowNodeType
-  status WorkflowStepStatus @default(PENDING)
-  attempt Int @default(0)
+  status   WorkflowStepStatus @default(PENDING)
+  attempt  Int                @default(0)
 
   idempotencyKey String? @unique
-  input  Json?
-  output Json?
-  error  String? @db.Text
+  input          Json?
+  output         Json?
+  error          String? @db.Text
 
-  startedAt DateTime?
+  startedAt  DateTime?
   finishedAt DateTime?
 
   approvals WorkflowApproval[]
-  aiJobs AutomationAiJob[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1337,11 +1295,11 @@ model WorkflowApproval {
   approverId String?
   approver   User?   @relation("WorkflowApprovalApprover", fields: [approverId], references: [id], onDelete: SetNull)
 
-  status WorkflowApprovalStatus @default(PENDING)
-  decisionNote String? @db.Text
+  status       WorkflowApprovalStatus @default(PENDING)
+  decisionNote String?                @db.Text
 
-  timeoutAt DateTime?
-  resolvedAt DateTime?
+  timeoutAt      DateTime?
+  resolvedAt     DateTime?
   fallbackEdgeId String?
 
   createdAt DateTime @default(now())
@@ -1357,12 +1315,12 @@ model WorkflowTriggerCursor {
   workflowId String
   workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
 
-  provider IntegrationProvider
-  cursorKey String
+  provider    IntegrationProvider
+  cursorKey   String
   cursorValue Json?
 
   lastEventAt DateTime?
-  lastRunAt DateTime?
+  lastRunAt   DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1376,192 +1334,23 @@ model WorkflowTriggerEvent {
   workflowId String?
   workflow   WorkflowDefinition? @relation(fields: [workflowId], references: [id], onDelete: SetNull)
 
-  provider IntegrationProvider
-  eventType String
-  externalId String?
-  idempotencyKey String @unique
-  payload Json
-  observedAt DateTime @default(now())
+  provider       IntegrationProvider
+  eventType      String
+  externalId     String?
+  idempotencyKey String              @unique
+  payload        Json
+  observedAt     DateTime            @default(now())
 
-  status WorkflowEventStatus @default(QUEUED)
-  attemptCount Int @default(0)
-  nextAttemptAt DateTime @default(now())
-  lastError String? @db.Text
+  status        WorkflowEventStatus @default(QUEUED)
+  attemptCount  Int                 @default(0)
+  nextAttemptAt DateTime            @default(now())
+  lastError     String?             @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([status, nextAttemptAt])
   @@index([provider, eventType, observedAt])
-}
-
-model AutomationSourceDocument {
-  id String @id @default(cuid())
-
-  workflowId String
-  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-
-  runId String
-  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-
-  operatorKey AutomationOperatorKey?
-  provider    IntegrationProvider?
-  eventType   String?
-  externalId  String?
-  documentType String
-  status      AutomationSourceDocumentStatus @default(READY)
-
-  title      String?
-  mimeType   String?
-  sourceUrl  String?
-  dedupeKey  String? @unique
-  textContent String? @db.Text
-  structuredData Json?
-  metadata   Json?
-
-  artifacts  AutomationArtifact[]
-
-  observedAt DateTime @default(now())
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  @@index([workflowId, documentType, observedAt])
-  @@index([runId, documentType, observedAt])
-  @@index([provider, eventType, observedAt])
-}
-
-model AutomationAiJob {
-  id String @id @default(cuid())
-
-  workflowId String
-  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-
-  runId String
-  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-
-  stepId String?
-  step   WorkflowRunStep? @relation(fields: [stepId], references: [id], onDelete: SetNull)
-
-  operatorKey AutomationOperatorKey?
-  nodeKey     String
-  jobType     String
-  status      AutomationAiJobStatus @default(QUEUED)
-
-  provider       String @default("openai")
-  model          String
-  promptVersion  String?
-  requestPayload Json
-  responseId     String? @unique
-  responseStatus String?
-  responsePayload Json?
-  outputText     String? @db.Text
-  parsedOutput   Json?
-  lastError      String? @db.Text
-
-  attemptCount Int @default(0)
-  nextAttemptAt DateTime @default(now())
-  completedAt DateTime?
-  dedupeKey String? @unique
-  metadata Json?
-
-  artifacts AutomationArtifact[]
-  recommendations AutomationRecommendation[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([status, nextAttemptAt])
-  @@index([runId, status, createdAt])
-  @@index([workflowId, operatorKey, status])
-}
-
-model AutomationArtifact {
-  id String @id @default(cuid())
-
-  workflowId String
-  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-
-  runId String
-  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-
-  sourceDocumentId String?
-  sourceDocument   AutomationSourceDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
-
-  aiJobId String?
-  aiJob   AutomationAiJob? @relation(fields: [aiJobId], references: [id], onDelete: SetNull)
-
-  operatorKey AutomationOperatorKey?
-  artifactType String
-  status       AutomationArtifactStatus @default(DRAFT)
-  title        String
-  summary      String?
-  content      String? @db.Text
-  contentJson  Json?
-  dedupeKey    String? @unique
-  metadata     Json?
-  createdByNodeKey String?
-
-  recommendations AutomationRecommendation[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([workflowId, artifactType, createdAt])
-  @@index([runId, artifactType, createdAt])
-  @@index([operatorKey, artifactType, status])
-}
-
-model AutomationRecommendation {
-  id String @id @default(cuid())
-
-  workflowId String
-  workflow   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-
-  runId String
-  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-
-  artifactId String?
-  artifact   AutomationArtifact? @relation(fields: [artifactId], references: [id], onDelete: SetNull)
-
-  aiJobId String?
-  aiJob   AutomationAiJob? @relation(fields: [aiJobId], references: [id], onDelete: SetNull)
-
-  operatorKey AutomationOperatorKey?
-  recommendationType String
-  title    String
-  summary  String
-  detail   String? @db.Text
-  actionType String
-  actionPayload Json?
-  requiresApproval Boolean @default(false)
-  status AutomationRecommendationStatus @default(PENDING_APPROVAL)
-  priority String?
-
-  requestedById String?
-  requestedBy   User? @relation("AutomationRecommendationRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
-
-  approverId String?
-  approver   User? @relation("AutomationRecommendationApprovedBy", fields: [approverId], references: [id], onDelete: SetNull)
-
-  executedById String?
-  executedBy   User? @relation("AutomationRecommendationExecutedBy", fields: [executedById], references: [id], onDelete: SetNull)
-
-  decisionNote  String? @db.Text
-  executionResult Json?
-  executionError String? @db.Text
-  dueAt       DateTime?
-  approvedAt  DateTime?
-  executedAt  DateTime?
-  resolvedAt  DateTime?
-  dedupeKey   String? @unique
-  metadata    Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([status, approverId, createdAt])
-  @@index([runId, status, createdAt])
-  @@index([workflowId, operatorKey, status])
 }
 
 // ============================================================
@@ -1576,21 +1365,21 @@ enum OutboxEventStatus {
 }
 
 model OutboxEvent {
-  id            String           @id @default(cuid())
+  id            String @id @default(cuid())
   eventType     String
   aggregateType String
   aggregateId   String
-  schemaVersion Int              @default(1)
+  schemaVersion Int    @default(1)
   payload       Json
 
-  idempotencyKey String          @unique
+  idempotencyKey String            @unique
   status         OutboxEventStatus @default(PENDING)
-  retryCount     Int             @default(0)
-  nextAttemptAt  DateTime        @default(now())
+  retryCount     Int               @default(0)
+  nextAttemptAt  DateTime          @default(now())
   lastAttemptAt  DateTime?
   dispatchedAt   DateTime?
   failedAt       DateTime?
-  error          String?         @db.Text
+  error          String?           @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1613,26 +1402,26 @@ enum ProspectStatus {
 }
 
 model ManufacturerProspect {
-  id               String         @id @default(cuid())
-  userId           String
-  companyName      String
-  domain           String?
-  industry         String?
-  location         String?
-  employeeCount    Int?
-  kanbanEvidence   Json           // [{ url, snippet, confidence }]
-  contactName      String?
-  contactEmail     String?
-  contactTitle     String?
-  sourceType       String         // "google_cse" | "website_scrape" | "directory"
-  sourceUrl        String
-  confidence       Float          @default(0.5)
-  status           ProspectStatus @default(DISCOVERED)
-  hubspotCompanyId String?
-  hubspotContactId String?
+  id                String         @id @default(cuid())
+  userId            String
+  companyName       String
+  domain            String?
+  industry          String?
+  location          String?
+  employeeCount     Int?
+  kanbanEvidence    Json // [{ url, snippet, confidence }]
+  contactName       String?
+  contactEmail      String?
+  contactTitle      String?
+  sourceType        String // "google_cse" | "website_scrape" | "directory"
+  sourceUrl         String
+  confidence        Float          @default(0.5)
+  status            ProspectStatus @default(DISCOVERED)
+  hubspotCompanyId  String?
+  hubspotContactId  String?
   pushedToHubspotAt DateTime?
-  discoveredAt     DateTime       @default(now())
-  metadata         Json?
+  discoveredAt      DateTime       @default(now())
+  metadata          Json?
 
   @@unique([userId, domain])
   @@index([userId, status])
@@ -1670,6 +1459,108 @@ enum MeetingStatus {
   NO_SHOW
 }
 
+enum CustomerLifecycleStage {
+  ONBOARDING
+  ADOPTION
+  ACTIVE
+  EXPANSION
+  RENEWAL
+  AT_RISK
+  CHURNED
+}
+
+enum CustomerRecordStatus {
+  ACTIVE
+  ARCHIVED
+  MERGED
+}
+
+enum CustomerExternalProvider {
+  INTERNAL
+  HUBSPOT
+  STRIPE
+  PYLON
+  CODA
+  SLACK
+  GOOGLE_WORKSPACE
+}
+
+enum CustomerSuccessNoteSource {
+  MANUAL
+  MEETING
+  SUPPORT
+  CRM
+  AI
+  SYSTEM
+}
+
+enum CustomerSuccessNoteVisibility {
+  INTERNAL
+  RESTRICTED
+}
+
+enum CustomerSuccessPlanStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum CustomerSuccessMilestoneStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  BLOCKED
+  COMPLETED
+}
+
+enum CustomerSuccessAlertCategory {
+  RISK
+  OPPORTUNITY
+  ACTION_REQUIRED
+}
+
+enum CustomerSuccessAlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum CustomerSuccessAlertStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  DISMISSED
+}
+
+enum CustomerSuccessSlaStatus {
+  NONE
+  ON_TRACK
+  AT_RISK
+  BREACHED
+}
+
+enum CustomerSuccessAlertSource {
+  HEALTH
+  SUPPORT
+  COMMERCIAL
+  RELATIONSHIP
+  WORKFLOW
+}
+
+enum CustomerSuccessOutreachChannel {
+  EMAIL
+  SLACK
+}
+
+enum CustomerSuccessOutreachStatus {
+  DRAFT
+  QUEUED
+  SENT
+  FAILED
+  CANCELED
+}
+
 model DealCompany {
   id       String  @id @default(cuid())
   name     String
@@ -1679,9 +1570,10 @@ model DealCompany {
 
   hubspotCompanyId String? @unique
 
-  contacts DealContact[]
-  deals    Deal[]
-  meetings DealMeeting[]
+  contacts       DealContact[]
+  deals          Deal[]
+  meetings       DealMeeting[]
+  customerRecord CustomerRecord?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1714,27 +1606,28 @@ model DealContact {
 }
 
 model Deal {
-  id     String    @id @default(cuid())
+  id     String     @id @default(cuid())
   name   String
-  stage  DealStage @default(LEAD)
-  amount Float     @default(0)
+  stage  DealStage  @default(LEAD)
+  amount Float      @default(0)
   source DealSource @default(OTHER)
 
   expectedCloseDate DateTime?
   closedAt          DateTime?
-  notes             String? @db.Text
+  notes             String?   @db.Text
 
   companyId String?
   company   DealCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
 
   ownerId String?
-  owner   User? @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  owner   User?   @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
   hubspotDealId String? @unique
 
-  contacts     DealContact[]    @relation("DealContacts")
-  meetings     DealMeeting[]
-  stageHistory DealStageHistory[]
+  contacts                  DealContact[]      @relation("DealContacts")
+  meetings                  DealMeeting[]
+  stageHistory              DealStageHistory[]
+  primaryForCustomerRecords CustomerRecord[]
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
@@ -1770,16 +1663,19 @@ model DealMeeting {
   startAt  DateTime
   endAt    DateTime?
   location String?
-  notes    String? @db.Text
+  notes    String?   @db.Text
 
   expectedAttendees Int @default(0)
   actualAttendees   Int @default(0)
 
   dealId String?
-  deal   Deal? @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  deal   Deal?   @relation(fields: [dealId], references: [id], onDelete: SetNull)
 
   companyId String?
   company   DealCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  customerRecordId String?
+  customerRecord   CustomerRecord? @relation(fields: [customerRecordId], references: [id], onDelete: SetNull)
 
   hubspotMeetingId String? @unique
 
@@ -1790,8 +1686,214 @@ model DealMeeting {
 
   @@index([dealId])
   @@index([companyId])
+  @@index([customerRecordId])
   @@index([startAt])
   @@index([status])
+}
+
+model CustomerRecord {
+  id             String                 @id @default(cuid())
+  name           String
+  segment        String?
+  tier           String?
+  lifecycleStage CustomerLifecycleStage @default(ONBOARDING)
+  status         CustomerRecordStatus   @default(ACTIVE)
+  metadata       Json?
+
+  ownerId String?
+  owner   User?   @relation("CustomerRecordOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  dealCompanyId String?      @unique
+  dealCompany   DealCompany? @relation(fields: [dealCompanyId], references: [id], onDelete: SetNull)
+
+  primaryDealId String?
+  primaryDeal   Deal?   @relation(fields: [primaryDealId], references: [id], onDelete: SetNull)
+
+  mergedIntoId String?
+  mergedInto   CustomerRecord?  @relation("CustomerRecordMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom   CustomerRecord[] @relation("CustomerRecordMerge")
+
+  externalRefs     CustomerRecordExternalRef[]
+  notes            CustomerSuccessNote[]
+  plans            CustomerSuccessPlan[]
+  alerts           CustomerSuccessAlertRecord[]
+  outreachMessages CustomerSuccessOutreachMessage[]
+  tasks            Task[]
+  meetings         DealMeeting[]
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([ownerId])
+  @@index([mergedIntoId])
+  @@index([status, lifecycleStage])
+}
+
+model CustomerRecordExternalRef {
+  id                 String                   @id @default(cuid())
+  customerRecordId   String
+  customerRecord     CustomerRecord           @relation(fields: [customerRecordId], references: [id], onDelete: Cascade)
+  provider           CustomerExternalProvider
+  externalObjectType String                   @default("account")
+  externalId         String
+  label              String?
+  isPrimary          Boolean                  @default(false)
+  metadata           Json?
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([customerRecordId, provider, externalObjectType, externalId])
+  @@index([organizationId])
+  @@index([provider, externalId])
+}
+
+model CustomerSuccessNote {
+  id               String                        @id @default(cuid())
+  customerRecordId String
+  customerRecord   CustomerRecord                @relation(fields: [customerRecordId], references: [id], onDelete: Cascade)
+  authorUserId     String?
+  authorUser       User?                         @relation("CustomerSuccessNoteAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+  title            String?
+  body             String
+  source           CustomerSuccessNoteSource     @default(MANUAL)
+  visibility       CustomerSuccessNoteVisibility @default(INTERNAL)
+  metadata         Json?
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerRecordId, createdAt])
+  @@index([organizationId])
+  @@index([authorUserId])
+}
+
+model CustomerSuccessPlan {
+  id               String                         @id @default(cuid())
+  customerRecordId String
+  customerRecord   CustomerRecord                 @relation(fields: [customerRecordId], references: [id], onDelete: Cascade)
+  name             String
+  templateKey      String?
+  status           CustomerSuccessPlanStatus      @default(DRAFT)
+  ownerUserId      String?
+  ownerUser        User?                          @relation("CustomerSuccessPlanOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  startedAt        DateTime?
+  targetDate       DateTime?
+  completedAt      DateTime?
+  metadata         Json?
+  milestones       CustomerSuccessPlanMilestone[]
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerRecordId, status])
+  @@index([organizationId])
+  @@index([ownerUserId])
+}
+
+model CustomerSuccessPlanMilestone {
+  id           String                         @id @default(cuid())
+  planId       String
+  plan         CustomerSuccessPlan            @relation(fields: [planId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  status       CustomerSuccessMilestoneStatus @default(NOT_STARTED)
+  dueDate      DateTime?
+  completedAt  DateTime?
+  linkedTaskId String?
+  linkedTask   Task?                          @relation(fields: [linkedTaskId], references: [id], onDelete: SetNull)
+  sortOrder    Int                            @default(0)
+  metadata     Json?
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([planId, sortOrder])
+  @@index([organizationId])
+  @@index([linkedTaskId])
+}
+
+model CustomerSuccessAlertRecord {
+  id               String                       @id @default(cuid())
+  customerRecordId String
+  customerRecord   CustomerRecord               @relation(fields: [customerRecordId], references: [id], onDelete: Cascade)
+  alertKey         String
+  title            String
+  category         CustomerSuccessAlertCategory
+  severity         CustomerSuccessAlertSeverity @default(MEDIUM)
+  status           CustomerSuccessAlertStatus   @default(OPEN)
+  slaStatus        CustomerSuccessSlaStatus     @default(NONE)
+  source           CustomerSuccessAlertSource
+  evidence         Json?
+  suggestedAction  String?
+  ownerUserId      String?
+  ownerUser        User?                        @relation("CustomerSuccessAlertOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  linkedTaskId     String?
+  linkedTask       Task?                        @relation(fields: [linkedTaskId], references: [id], onDelete: SetNull)
+  openedAt         DateTime                     @default(now())
+  resolvedAt       DateTime?
+  lastEvaluatedAt  DateTime?
+  metadata         Json?
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([customerRecordId, alertKey])
+  @@index([organizationId, status, severity])
+  @@index([ownerUserId])
+  @@index([linkedTaskId])
+}
+
+model CustomerSuccessOutreachMessage {
+  id                String                         @id @default(cuid())
+  customerRecordId  String
+  customerRecord    CustomerRecord                 @relation(fields: [customerRecordId], references: [id], onDelete: Cascade)
+  authorUserId      String?
+  authorUser        User?                          @relation("CustomerSuccessOutreachAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+  channel           CustomerSuccessOutreachChannel
+  status            CustomerSuccessOutreachStatus  @default(DRAFT)
+  templateKey       String?
+  recipientName     String?
+  recipientAddress  String
+  subject           String?
+  body              String
+  providerMessageId String?
+  providerThreadId  String?
+  queuedAt          DateTime?
+  sentAt            DateTime?
+  failedAt          DateTime?
+  error             String?
+  metadata          Json?
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerRecordId, status, createdAt])
+  @@index([organizationId])
+  @@index([authorUserId])
+  @@index([providerMessageId])
 }
 
 // ── Financial Planning ──
@@ -1828,16 +1930,16 @@ enum GoalStatus {
 }
 
 model Budget {
-  id        String       @id @default(cuid())
+  id        String           @id @default(cuid())
   userId    String
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   name      String
   period    BudgetPeriod
   startDate DateTime
   endDate   DateTime
   lineItems BudgetLineItem[]
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
 
   @@index([userId])
 }
@@ -1882,153 +1984,10 @@ model ForecastScenario {
 // FUNNEL ANALYTICS
 // ============================================================
 
-enum FunnelEventType {
-  PAGE_VIEW
-  SESSION_STARTED
-  AUTH_COMPLETED
-  DEMO_BOOKED
-  KANBAN_CARD_CREATED
-  TRIAL_STARTED
-  PAID_CUSTOMER
-}
-
-enum FunnelIdentityType {
-  EMAIL
-  USER_ID
-  HUBSPOT_CONTACT_ID
-  HUBSPOT_DEAL_ID
-  STRIPE_CUSTOMER_ID
-  CODA_EMAIL
-}
-
-enum FunnelLinkProvenance {
-  EXACT
-  INFERRED
-  BACKFILLED
-}
-
-enum EnrichmentProvider {
-  UNIFY
-  CLAY
-  RB2B
-}
-
-model FunnelVisitor {
-  id          String @id @default(cuid())
-  anonymousId String @unique
-  siteHost    String?
-
-  firstTouchSource     String?
-  firstTouchChannel    String?
-  firstTouchCampaign   String?
-  firstTouchReferrer   String? @db.Text
-  firstTouchLandingPath String?
-  firstTouchLandingUrl  String? @db.Text
-
-  lastTouchSource   String?
-  lastTouchChannel  String?
-  lastTouchCampaign String?
-  lastTouchReferrer String? @db.Text
-  lastTouchPath     String?
-  lastTouchUrl      String? @db.Text
-
-  firstSeenAt DateTime
-  lastSeenAt  DateTime
-
-  events            FunnelEvent[]
-  identityLinks     FunnelIdentityLink[]
-  enrichmentSignals FunnelEnrichmentSignal[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([firstSeenAt])
-  @@index([lastSeenAt])
-  @@index([firstTouchChannel, firstSeenAt])
-  @@index([firstTouchSource, firstSeenAt])
-  @@index([firstTouchCampaign, firstSeenAt])
-  @@index([siteHost, firstSeenAt])
-}
-
-model FunnelEvent {
-  id        String          @id @default(cuid())
-  visitorId String
-  visitor   FunnelVisitor   @relation(fields: [visitorId], references: [id], onDelete: Cascade)
-  eventType FunnelEventType
-
-  occurredAt DateTime
-  path       String?
-  url        String? @db.Text
-  referrer   String? @db.Text
-  source     String?
-  channel    String?
-  campaign   String?
-  dedupeKey  String? @unique
-  metadata   Json    @default("{}")
-
-  createdAt DateTime @default(now())
-
-  @@index([visitorId, occurredAt])
-  @@index([eventType, occurredAt])
-  @@index([channel, occurredAt])
-}
-
-model FunnelIdentityLink {
-  id           String              @id @default(cuid())
-  visitorId     String
-  visitor       FunnelVisitor      @relation(fields: [visitorId], references: [id], onDelete: Cascade)
-  identityType  FunnelIdentityType
-  identityValue String
-  provider      String
-  provenance    FunnelLinkProvenance @default(EXACT)
-  confidence    Float               @default(1)
-  metadata      Json?
-
-  userId String?
-  user   User? @relation("FunnelIdentityUser", fields: [userId], references: [id], onDelete: SetNull)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([visitorId, identityType, identityValue])
-  @@index([identityType, identityValue])
-  @@index([userId])
-  @@index([provider, provenance])
-}
-
-model FunnelEnrichmentSignal {
-  id        String             @id @default(cuid())
-  provider  EnrichmentProvider
-  signalKey String
-
-  visitorId String?
-  visitor   FunnelVisitor? @relation(fields: [visitorId], references: [id], onDelete: SetNull)
-
-  anonymousId String?
-  email       String?
-  domain      String?
-  fullName    String?
-  companyName String?
-  confidence  Float    @default(0)
-  occurredAt  DateTime?
-  accepted    Boolean  @default(false)
-  metadata    Json     @default("{}")
-  payload     Json
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([provider, signalKey])
-  @@index([visitorId])
-  @@index([email])
-  @@index([domain])
-  @@index([accepted, createdAt])
-}
-
 model SubmissionEvent {
   id          String   @id @default(cuid())
-  type        String                        // e.g. "download_request", "form_submission"
-  referenceId String?                       // optional external reference
+  type        String // e.g. "download_request", "form_submission"
+  referenceId String? // optional external reference
   metadata    Json     @default("{}")
   userId      String
   user        User     @relation(fields: [userId], references: [id])
@@ -2047,7 +2006,7 @@ model InsightPreference {
   id        String   @id @default(cuid())
   userId    String
   insightId String   @db.VarChar(256)
-  status    String   @db.VarChar(20)  // "pinned" | "dismissed"
+  status    String   @db.VarChar(20) // "pinned" | "dismissed"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
