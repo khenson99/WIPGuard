@@ -201,6 +201,18 @@ export default function AutomationsPage() {
 
         <div className="flex items-center gap-2">
           <Link
+            href="/automations/artifacts"
+            className="rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+          >
+            Artifact Inbox
+          </Link>
+          <Link
+            href="/automations/recommendations"
+            className="rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+          >
+            Recommendation Inbox
+          </Link>
+          <Link
             href="/automations/approvals"
             className="rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
           >

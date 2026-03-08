@@ -171,12 +171,26 @@ export default function AutomationApprovalsPage() {
           <h1 className="text-lg font-semibold text-foreground">Approval Inbox</h1>
           <p className="text-xs text-muted-foreground">Pending workflow approval steps.</p>
         </div>
-        <Link
-          href="/automations"
-          className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
-        >
-          Back to Automations
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/automations/artifacts"
+            className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
+          >
+            Artifact Inbox
+          </Link>
+          <Link
+            href="/automations/recommendations"
+            className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
+          >
+            Recommendation Inbox
+          </Link>
+          <Link
+            href="/automations"
+            className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
+          >
+            Back to Automations
+          </Link>
+        </div>
       </div>
 
       {error && <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-500">{error}</div>}
