@@ -16,6 +16,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import type { AnalyticsDashboardData, PnLRow, ForecastScenarioData } from "@/lib/analytics/types";
+import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
 import { fmtDelta, fmtMonths, fmtRatio, runwayColor, ltvCacSeverity } from "@/lib/analytics/finance-utils";
 import { StatCard } from "./stat-card";
 import { RingStat } from "./bar-display";
@@ -185,8 +186,8 @@ export function FinanceTab({ data }: FinanceTabProps) {
   const cashBalance = mercury?.cashFlow?.totalBalance ?? 0;
   const runway = mercury?.cashFlow?.runway ?? 0;
   const netCashFlow = mercury?.cashFlow?.netCashFlow ?? 0;
-  const successRate = stripe?.payments?.successRate ?? 0;
-  const churnRate = stripe?.subscriptions?.churnRate ?? 0;
+  const successRate = normalizePercentValue(stripe?.payments?.successRate ?? 0);
+  const churnRate = normalizePercentValue(stripe?.subscriptions?.churnRate ?? 0);
   const recentChurns = stripe?.subscriptions?.recentChurnEvents ?? [];
 
   return (

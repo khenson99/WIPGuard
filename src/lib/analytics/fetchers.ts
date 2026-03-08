@@ -298,7 +298,6 @@ export async function fetchHubSpotData(
   const repAgg: Record<string, { count: number; value: number; closedWon: number; closedWonValue: number }> = {};
 
   let notActivatedCount = 0;
-  let actualChurnCount = 0;
 
   const activeDeals = activeDealsResult.deals;
   const shouldLoadOwners =
@@ -354,8 +353,6 @@ export async function fetchHubSpotData(
       
       if (createdMs > 0 && daysSinceCreation <= 60) {
         notActivatedCount++;
-      } else {
-        actualChurnCount++;
       }
     }
 
@@ -873,7 +870,8 @@ export async function fetchHubSpotContacts(
   const envMaxPages = Number(process.env.HUBSPOT_CONTACTS_MAX_PAGES || "");
   const maxPages = Math.max(1, Math.min(opts?.maxPages ?? (Number.isFinite(envMaxPages) ? envMaxPages : 1000), 1000));
 
-  const ownerMap = await fetchHubSpotOwnerMap(baseUrl, headers);
+  const { owners } = await fetchHubSpotOwners({ baseUrl, headers });
+  const ownerMap = Object.fromEntries(owners.map((owner) => [owner.id, owner.name]));
 
   const fromMs = from.getTime();
   const toMs = to.getTime();
@@ -948,8 +946,8 @@ interface StripeSubItem {
 interface StripeSub {
   id: string;
   items: { data: StripeSubItem[] };
-  customer: string;
-  canceled_at: number;
+  customer: string | { id?: string | null } | null;
+  canceled_at: number | null;
 }
 
 interface StripeCharge {
@@ -957,6 +955,23 @@ interface StripeCharge {
   amount: number;
   created: number;
   status: string;
+}
+
+function stripeSubscriptionCustomerId(customer: StripeSub["customer"]): string {
+  if (typeof customer === "string" && customer.trim().length > 0) {
+    return customer.trim();
+  }
+
+  if (
+    customer &&
+    typeof customer === "object" &&
+    typeof customer.id === "string" &&
+    customer.id.trim().length > 0
+  ) {
+    return customer.id.trim();
+  }
+
+  return "Unknown customer";
 }
 
 export async function fetchStripeData(
@@ -983,19 +998,32 @@ export async function fetchStripeData(
   const fetchStripe = async (url: string): Promise<Response> =>
     fetch(url, { headers, cache: "no-store" });
 
-  const fetchActiveSubscriptions = async (): Promise<StripeSub[]> => {
-    const subsRes = await fetchStripe(`${baseUrl}/subscriptions?limit=100&status=active`);
-    if (!subsRes.ok) {
-      throw new Error(`Stripe subscriptions error ${subsRes.status}`);
-    }
-    const subsData = await safeJson<{ data?: StripeSub[] }>(subsRes, "stripe subscriptions");
-    return subsData.data || [];
-  };
+  const fetchSubscriptionsByStatus = async (status: string): Promise<StripeSub[]> => {
+    const subscriptions: StripeSub[] = [];
+    let startingAfter: string | undefined;
 
-  const fetchCanceledSubscriptions = async (): Promise<StripeSub[]> => {
-    const canceledRes = await fetchStripe(`${baseUrl}/subscriptions?limit=50&status=canceled`);
-    const canceledData = await safeJson<{ data?: StripeSub[] }>(canceledRes, "stripe canceled subscriptions");
-    return canceledData.data || [];
+    for (let page = 0; page < 1000; page++) {
+      let url = `${baseUrl}/subscriptions?limit=100&status=${encodeURIComponent(status)}`;
+      if (startingAfter) url += `&starting_after=${startingAfter}`;
+
+      const res = await fetchStripe(url);
+      if (!res.ok) {
+        throw new Error(`Stripe subscriptions(${status}) error ${res.status}`);
+      }
+
+      const data = await safeJson<{ data?: StripeSub[]; has_more?: boolean }>(
+        res,
+        `stripe subscriptions (${status})`
+      );
+      const batch = data.data ?? [];
+      subscriptions.push(...batch);
+
+      if (!data.has_more || batch.length === 0) break;
+      startingAfter = batch[batch.length - 1]?.id;
+      if (!startingAfter) break;
+    }
+
+    return subscriptions;
   };
 
   const fetchPastDueAndTrialingCounts = async (): Promise<{
@@ -1003,34 +1031,9 @@ export async function fetchStripeData(
     trialingCount: number;
   }> => {
     try {
-      const countSubscriptionsByStatus = async (status: string): Promise<number> => {
-        let count = 0;
-        let startingAfter: string | undefined;
-
-        for (let page = 0; page < 1000; page++) {
-          let url = `${baseUrl}/subscriptions?limit=100&status=${encodeURIComponent(status)}`;
-          if (startingAfter) url += `&starting_after=${startingAfter}`;
-
-          const res = await fetchStripe(url);
-          if (!res.ok) {
-            throw new Error(`Stripe subscriptions(${status}) error ${res.status}`);
-          }
-
-          const data = await safeJson<{ data?: StripeSub[]; has_more?: boolean }>(res, `stripe subscriptions (${status})`);
-          const batch = data.data ?? [];
-          count += batch.length;
-
-          if (!data.has_more || batch.length === 0) break;
-          startingAfter = batch[batch.length - 1]?.id;
-          if (!startingAfter) break;
-        }
-
-        return count;
-      };
-
       const [pastDueCount, trialingCount] = await Promise.all([
-        countSubscriptionsByStatus("past_due"),
-        countSubscriptionsByStatus("trialing"),
+        fetchSubscriptionsByStatus("past_due").then((subscriptions) => subscriptions.length),
+        fetchSubscriptionsByStatus("trialing").then((subscriptions) => subscriptions.length),
       ]);
       return { pastDueCount, trialingCount };
     } catch {
@@ -1059,8 +1062,8 @@ export async function fetchStripeData(
   };
 
   const [activeSubs, canceledSubs, counts, chargesInRange, chargesPrevRange] = await Promise.all([
-    fetchActiveSubscriptions(),
-    fetchCanceledSubscriptions(),
+    fetchSubscriptionsByStatus("active"),
+    fetchSubscriptionsByStatus("canceled"),
     fetchPastDueAndTrialingCounts(),
     fetchCharges(rangeStart, rangeEnd),
     fetchCharges(previousStart, previousEnd),
@@ -1145,11 +1148,15 @@ export async function fetchStripeData(
     }
   }
 
-  const recentChurn = canceledSubs.slice(0, 5).map((s: StripeSub) => ({
-    customer: s.customer,
-    canceledAt: new Date((s.canceled_at || 0) * 1000).toISOString(),
-    amount: (s.items?.data?.[0]?.price?.unit_amount || 0) / 100,
-  }));
+  const recentChurn = [...canceledSubs]
+    .filter((subscription) => typeof subscription.canceled_at === "number" && subscription.canceled_at > 0)
+    .sort((a, b) => (b.canceled_at ?? 0) - (a.canceled_at ?? 0))
+    .slice(0, 5)
+    .map((subscription: StripeSub) => ({
+      customer: stripeSubscriptionCustomerId(subscription.customer),
+      canceledAt: new Date((subscription.canceled_at || 0) * 1000).toISOString(),
+      amount: (subscription.items?.data?.[0]?.price?.unit_amount || 0) / 100,
+    }));
 
   return {
     revenue: {
@@ -1328,6 +1335,21 @@ export async function fetchMercuryData(
   apiKey: string,
   options?: { fromDate?: Date; toDate?: Date }
 ): Promise<MercuryData> {
+  type MercuryAccount = {
+    id?: string;
+    name?: string;
+    currentBalance?: number;
+    type?: string;
+  };
+
+  type MercuryTransaction = {
+    postedAt?: string;
+    createdAt?: string;
+    timestamp?: string;
+    status?: string;
+    amount?: number;
+  };
+
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
@@ -1339,14 +1361,12 @@ export async function fetchMercuryData(
   if (!accountsRes.ok) {
     throw new Error(`Mercury accounts error ${accountsRes.status}`);
   }
-  const accountsData = await safeJson<{ accounts?: unknown[] }>(accountsRes, "mercury accounts");
-  const accounts = (accountsData.accounts || []).map((a: {
-    id: string; name: string; currentBalance: number; type: string;
-  }) => ({
-    accountId: a.id,
-    accountName: a.name,
-    balance: a.currentBalance || 0,
-    type: a.type || "checking",
+  const accountsData = await safeJson<{ accounts?: MercuryAccount[] }>(accountsRes, "mercury accounts");
+  const accounts = (accountsData.accounts ?? []).map((account) => ({
+    accountId: account.id ?? "",
+    accountName: account.name ?? "Unknown account",
+    balance: account.currentBalance ?? 0,
+    type: account.type ?? "checking",
   }));
 
   const totalBalance = accounts.reduce((s: number, a: { balance: number }) => s + a.balance, 0);
@@ -1372,18 +1392,19 @@ export async function fetchMercuryData(
         { headers }
       );
       if (!txRes.ok) continue;
-      const txData = await safeJson<{ transactions?: unknown[] }>(txRes, "mercury transactions");
-      for (const tx of txData.transactions || []) {
+      const txData = await safeJson<{ transactions?: MercuryTransaction[] }>(txRes, "mercury transactions");
+      for (const tx of txData.transactions ?? []) {
         if (useRange && rangeTo) {
-          const postedAt = (tx.postedAt || tx.createdAt || tx.timestamp || "") as string;
+          const postedAt = tx.postedAt || tx.createdAt || tx.timestamp || "";
           if (postedAt) {
             const postedMs = Date.parse(postedAt);
             if (Number.isFinite(postedMs) && postedMs > rangeTo.getTime()) continue;
           }
         }
         if (tx.status === "sent") {
-          const amt = Math.abs(tx.amount || 0);
-          if (tx.amount > 0) inflows += amt;
+          const amount = tx.amount ?? 0;
+          const amt = Math.abs(amount);
+          if (amount > 0) inflows += amt;
           else outflows += amt;
         }
       }

@@ -430,6 +430,33 @@ describe("finance insights", () => {
     expect(pf!.subsectionId).toBe("finance-stripe");
   });
 
+  it("normalizes percent-style Stripe churn and payment success values", () => {
+    const data = baseData();
+    data.stripe = {
+      revenue: {
+        mrr: 20000, mrrChange: 2,
+        totalRevenue30d: 22000, totalRevenuePrev30d: 21000,
+        revenueGrowth: 4.8, avgRevenuePerCustomer: 500,
+      },
+      subscriptions: {
+        active: 40, pastDue: 2, canceled: 4, trialing: 1,
+        churnRate: 10, recentChurnEvents: [],
+      },
+      payments: { succeeded: 85, failed: 15, successRate: 85 },
+      revenueTrend: [],
+      _meta: META,
+    };
+
+    const bundle = buildAiInsightsBundle(data);
+    const churn = bundle.global.find((i) => i.id === "ai-finance-churn");
+    const paymentFailures = bundle.global.find((i) => i.id === "ai-finance-payment-failures");
+
+    expect(churn).toBeDefined();
+    expect(churn!.evidence[0].value).toBe("10.0%");
+    expect(paymentFailures).toBeDefined();
+    expect(paymentFailures!.evidence[0].value).toBe("85.0%");
+  });
+
   it("fires MRR decline alert when mrrChange < -5", () => {
     const data = baseData();
     data.stripe = {
