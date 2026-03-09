@@ -1,9 +1,9 @@
-const VISITOR_FUNNEL_MODEL_KEYS = [
-  "funnelVisitor",
-  "funnelEvent",
-  "funnelIdentityLink",
-  "funnelEnrichmentSignal",
-] as const;
+const VISITOR_FUNNEL_MODEL_METHODS = {
+  funnelVisitor: ["findUnique", "upsert"],
+  funnelEvent: ["upsert"],
+  funnelIdentityLink: ["upsert"],
+  funnelEnrichmentSignal: ["count", "findFirst", "upsert", "update"],
+} as const;
 
 export const VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON =
   "Visitor funnel Prisma models are unavailable in this deployment.";
@@ -14,8 +14,13 @@ export function hasVisitorFunnelPrismaModels(prisma: unknown): boolean {
   }
 
   const client = prisma as Record<string, unknown>;
-  return VISITOR_FUNNEL_MODEL_KEYS.every((key) => {
+  return Object.entries(VISITOR_FUNNEL_MODEL_METHODS).every(([key, methods]) => {
     const model = client[key];
-    return Boolean(model && typeof model === "object");
+    if (!model || typeof model !== "object") {
+      return false;
+    }
+
+    const delegate = model as Record<string, unknown>;
+    return methods.every((method) => typeof delegate[method] === "function");
   });
 }
