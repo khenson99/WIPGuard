@@ -379,7 +379,10 @@ describe("GET /api/analytics", () => {
     } as never);
 
     const { prisma } = await import("@/lib/prisma");
-    vi.mocked(prisma.user.findUnique).mockResolvedValue({ role: "member" } as never);
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      role: "member",
+      organizationId: "org-1",
+    } as never);
     vi.mocked(prisma.securityAuditEvent.create).mockResolvedValue({} as never);
     vi.mocked(prisma.task.count).mockResolvedValue(0 as never);
     vi.mocked(prisma.statusHistory.findMany).mockResolvedValue([] as never);
@@ -415,6 +418,31 @@ describe("GET /api/analytics", () => {
     expect(response.status).toBe(200);
     expect(body.customerJourney).toBeTruthy();
     expect(body.customerJourney.journeys.length).toBeGreaterThan(0);
+  });
+
+  it("runs customer-success product analytics inside tenant context", async () => {
+    const { getServerSession } = await import("next-auth");
+    const { prisma } = await import("@/lib/prisma");
+    const { getRequestContext } = await import("@/lib/request-context");
+
+    vi.mocked(getServerSession).mockResolvedValue({
+      user: { id: "user-1", email: "user@example.com" },
+    } as never);
+
+    vi.mocked(prisma.task.count).mockImplementation(async () => {
+      if (getRequestContext()?.organizationId !== "org-1") {
+        throw new Error("Missing tenant context");
+      }
+      return 0 as never;
+    });
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=customer-success"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.product).toBeTruthy();
+    expect(body.errors.some((entry: { source: string; message: string }) => entry.message === "Missing tenant context")).toBe(false);
   });
 
   it("returns demo analytics domain data", async () => {

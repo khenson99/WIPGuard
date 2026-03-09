@@ -4,6 +4,8 @@ import { IntegrationProvider } from "@/generated/prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma, type PrismaClientType } from "@/lib/prisma";
 import { enforcePermission } from "@/lib/permissions";
+import { runWithContextAsync } from "@/lib/request-context";
+import { getAuthenticatedUser } from "@/lib/session-user";
 import { getCredentials } from "@/lib/analytics/credentials";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
 import { computeProgressPct } from "@/lib/analytics/finance-utils";
@@ -290,6 +292,25 @@ const loadBudgetVarianceBuilder = loadOnce(
 function requiredDomainsForSection(section: string | null): Set<DomainKey> {
   if (!section) return new Set(ALL_DOMAINS);
   return new Set(SECTION_DOMAINS[section] ?? ALL_DOMAINS);
+}
+
+async function resolveAnalyticsOrganizationId(
+  session: unknown,
+  userId: string
+): Promise<string | null> {
+  const sessionUser = getAuthenticatedUser(session as { user?: unknown } | null | undefined);
+  if (sessionUser?.organizationId) {
+    return sessionUser.organizationId;
+  }
+
+  return (
+    (
+      await prisma.user.findUnique({
+        where: { id: userId },
+        select: { organizationId: true },
+      })
+    )?.organizationId ?? null
+  );
 }
 
 const DEFAULT_DOMAIN_TIMEOUT_MS = 8_500;
@@ -815,17 +836,26 @@ export async function GET(request: Request) {
     return permission.deniedResponse;
   }
 
-  const creds = await getCredentials(userId);
-  const hasGAServiceAccount = Boolean(creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey);
-  const hasGAOAuth = Boolean(
-    creds.gaPropertyId &&
-      process.env.GA_REFRESH_TOKEN?.trim() &&
-      process.env.GOOGLE_CLIENT_ID?.trim() &&
-      process.env.GOOGLE_CLIENT_SECRET?.trim()
-  );
+  const organizationId = await resolveAnalyticsOrganizationId(session, userId);
+  if (!organizationId) {
+    return NextResponse.json(
+      { error: "Organization context required for analytics" },
+      { status: 403 }
+    );
+  }
 
-  const result: AnalyticsDashboardData = createEmptyAnalyticsDashboardData({
-    freshness: {
+  return runWithContextAsync({ organizationId, userId }, async () => {
+    const creds = await getCredentials(userId);
+    const hasGAServiceAccount = Boolean(creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey);
+    const hasGAOAuth = Boolean(
+      creds.gaPropertyId &&
+        process.env.GA_REFRESH_TOKEN?.trim() &&
+        process.env.GOOGLE_CLIENT_ID?.trim() &&
+        process.env.GOOGLE_CLIENT_SECRET?.trim()
+    );
+
+    const result: AnalyticsDashboardData = createEmptyAnalyticsDashboardData({
+      freshness: {
       google_workspace: {
         provider: "google_workspace",
         source: creds.freshness.GOOGLE_WORKSPACE.source,
@@ -1517,7 +1547,8 @@ export async function GET(request: Request) {
 
   return NextResponse.json(result, {
     headers: {
-      "Cache-Control": forceRefresh ? "no-cache, no-store" : "private, max-age=30, stale-while-revalidate=120",
-    },
+        "Cache-Control": forceRefresh ? "no-cache, no-store" : "private, max-age=30, stale-while-revalidate=120",
+      },
+    });
   });
 }
