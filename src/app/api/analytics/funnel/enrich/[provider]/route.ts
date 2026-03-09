@@ -15,6 +15,10 @@ import {
   ingestVisitorEnrichmentSignals,
   type VisitorEnrichmentSignalInput,
 } from "@/lib/analytics/visitor-funnel";
+import {
+  hasVisitorFunnelPrismaModels,
+  VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON,
+} from "@/lib/analytics/visitor-funnel-availability";
 
 const SUPPORTED_PROVIDERS = new Set<EnrichmentProvider>(["unify", "clay", "rb2b"]);
 
@@ -229,6 +233,22 @@ export async function POST(
           received: signals.length,
           stored: 0,
           message: `Validated ${signals.length} normalized signal${signals.length === 1 ? "" : "s"}. No records were stored.`,
+        },
+        { status: 202 },
+      );
+    }
+
+    if (!hasVisitorFunnelPrismaModels(prisma)) {
+      return NextResponse.json(
+        {
+          accepted: 0,
+          dryRun: false,
+          disabled: true,
+          mode,
+          provider,
+          received: signals.length,
+          stored: 0,
+          reason: VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON,
         },
         { status: 202 },
       );

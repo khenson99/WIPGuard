@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runAnalyticsRefresh } from "@/lib/analytics/refresh-runner";
 import { pruneAnalyticsSnapshots } from "@/lib/analytics/snapshots";
 import { runVisitorFunnelEnrichmentSyncs } from "@/lib/analytics/provider-enrichment-sync";
+import { VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON, hasVisitorFunnelPrismaModels } from "@/lib/analytics/visitor-funnel-availability";
 import { buildVisitorFunnelEnrichmentStatus } from "@/lib/analytics/visitor-funnel";
 import { enqueueVisitorFunnelEnrichmentAlertNotifications } from "@/lib/analytics/visitor-funnel-enrichment-alert-delivery";
 import { instrumentVisitorFunnelEnrichmentAlerts } from "@/lib/analytics/visitor-funnel-enrichment-alerts";
@@ -52,50 +53,118 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       bestEffortMigrateRulesToOwner(ownerUserId),
     ]);
 
-    const visitorFunnelEnrichment = await runVisitorFunnelEnrichmentSyncs({
-      prisma,
-    });
-    const visitorFunnelEnrichmentStatus = await buildVisitorFunnelEnrichmentStatus(prisma);
-    const visitorFunnelEnrichmentTelemetry = instrumentVisitorFunnelEnrichmentAlerts(
-      visitorFunnelEnrichmentStatus,
-    );
-    const visitorFunnelFailures = visitorFunnelEnrichment
-      .filter((result) => !result.ok)
-      .map((result) => `${result.provider}: ${result.reason ?? "unknown error"}`);
-    const failures: string[] = [...visitorFunnelFailures];
+    const visitorFunnelModelsAvailable = hasVisitorFunnelPrismaModels(prisma);
+    let visitorFunnelEnrichment: Awaited<
+      ReturnType<typeof runVisitorFunnelEnrichmentSyncs>
+    >;
+    let visitorFunnelEnrichmentStatus: Awaited<
+      ReturnType<typeof buildVisitorFunnelEnrichmentStatus>
+    > = [];
+    let visitorFunnelEnrichmentAlerts = [] as ReturnType<
+      typeof instrumentVisitorFunnelEnrichmentAlerts
+    >["alerts"];
+    let visitorFunnelEnrichmentNotifications: Awaited<
+      ReturnType<typeof enqueueVisitorFunnelEnrichmentAlertNotifications>
+    > = {
+      enabled: false,
+      ownerUserId,
+      slackChannelId: null,
+      minIntervalHours: 24,
+      bucketStart: null,
+      enqueued: 0,
+      skippedReason: VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON,
+    };
+    const failures: string[] = [];
 
-    for (const log of visitorFunnelEnrichmentTelemetry.logs) {
-      const message = JSON.stringify(log);
-      if (log.level === "error") {
-        console.error("[visitor-funnel.enrichment.alert]", message);
-      } else {
-        console.warn("[visitor-funnel.enrichment.alert]", message);
-      }
-    }
-    for (const metric of visitorFunnelEnrichmentTelemetry.metrics) {
-      console.info("[visitor-funnel.enrichment.metric]", JSON.stringify(metric));
-    }
-
-    const visitorFunnelEnrichmentNotifications =
-      await enqueueVisitorFunnelEnrichmentAlertNotifications({
-        alerts: visitorFunnelEnrichmentTelemetry.alerts,
-      }).catch((error) => {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Failed to enqueue visitor funnel enrichment alert notifications.";
-        failures.push(`visitor-funnel-alerts: ${message}`);
-        console.error("POST /api/cron/sync visitor funnel alert enqueue failed:", error);
-        return {
-          enabled: false,
-          ownerUserId,
-          slackChannelId: null,
-          minIntervalHours: 24,
-          bucketStart: null,
-          enqueued: 0,
-          skippedReason: message,
-        };
+    if (visitorFunnelModelsAvailable) {
+      visitorFunnelEnrichment = await runVisitorFunnelEnrichmentSyncs({
+        prisma,
       });
+      visitorFunnelEnrichmentStatus = await buildVisitorFunnelEnrichmentStatus(prisma);
+      const visitorFunnelEnrichmentTelemetry = instrumentVisitorFunnelEnrichmentAlerts(
+        visitorFunnelEnrichmentStatus,
+      );
+      visitorFunnelEnrichmentAlerts = visitorFunnelEnrichmentTelemetry.alerts;
+
+      const visitorFunnelFailures = visitorFunnelEnrichment
+        .filter((result) => !result.ok)
+        .map((result) => `${result.provider}: ${result.reason ?? "unknown error"}`);
+      failures.push(...visitorFunnelFailures);
+
+      for (const log of visitorFunnelEnrichmentTelemetry.logs) {
+        const message = JSON.stringify(log);
+        if (log.level === "error") {
+          console.error("[visitor-funnel.enrichment.alert]", message);
+        } else {
+          console.warn("[visitor-funnel.enrichment.alert]", message);
+        }
+      }
+      for (const metric of visitorFunnelEnrichmentTelemetry.metrics) {
+        console.info("[visitor-funnel.enrichment.metric]", JSON.stringify(metric));
+      }
+
+      visitorFunnelEnrichmentNotifications =
+        await enqueueVisitorFunnelEnrichmentAlertNotifications({
+          alerts: visitorFunnelEnrichmentAlerts,
+        }).catch((error) => {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Failed to enqueue visitor funnel enrichment alert notifications.";
+          failures.push(`visitor-funnel-alerts: ${message}`);
+          console.error("POST /api/cron/sync visitor funnel alert enqueue failed:", error);
+          return {
+            enabled: false,
+            ownerUserId,
+            slackChannelId: null,
+            minIntervalHours: 24,
+            bucketStart: null,
+            enqueued: 0,
+            skippedReason: message,
+          };
+        });
+    } else {
+      console.warn(
+        "POST /api/cron/sync visitor funnel integration skipped:",
+        VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON,
+      );
+      visitorFunnelEnrichment = [
+        {
+          provider: "unify" as const,
+          mode: "pull" as const,
+          ok: true,
+          skipped: true,
+          reason: VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON,
+          pulled: 0,
+          stored: 0,
+          accepted: 0,
+          updatedAfter: null,
+        },
+        {
+          provider: "clay" as const,
+          mode: "push_only" as const,
+          ok: true,
+          skipped: true,
+          reason: VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON,
+          pulled: 0,
+          stored: 0,
+          accepted: 0,
+          updatedAfter: null,
+        },
+        {
+          provider: "rb2b" as const,
+          mode: "push_only" as const,
+          ok: true,
+          skipped: true,
+          reason: VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON,
+          pulled: 0,
+          stored: 0,
+          accepted: 0,
+          updatedAfter: null,
+        },
+      ];
+      visitorFunnelEnrichmentStatus = [];
+    }
 
     const [analyticsResult, rulesResult, healthResult, pruningResult] = await Promise.allSettled([
       runAnalyticsRefresh({ userIds: [ownerUserId], rangePresets: ["7d", "30d"] }),
@@ -151,7 +220,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       },
       visitorFunnelEnrichment,
       visitorFunnelEnrichmentHealth: {
-        alerts: visitorFunnelEnrichmentTelemetry.alerts,
+        alerts: visitorFunnelEnrichmentAlerts,
         providers: visitorFunnelEnrichmentStatus,
       },
       visitorFunnelEnrichmentNotifications,

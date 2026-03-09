@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { NextRequest } from "next/server";
+import { NextRequest } from "next/server";
 
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(),
@@ -17,6 +17,12 @@ vi.mock("@/lib/analytics/provider-enrichment-adapters", () => ({
 
 vi.mock("@/lib/analytics/visitor-funnel", () => ({
   ingestVisitorEnrichmentSignals: vi.fn(),
+}));
+
+vi.mock("@/lib/analytics/visitor-funnel-availability", () => ({
+  hasVisitorFunnelPrismaModels: vi.fn(() => true),
+  VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON:
+    "Visitor funnel Prisma models are unavailable in this deployment.",
 }));
 
 describe("POST /api/analytics/funnel/enrich/[provider]", () => {
@@ -165,6 +171,64 @@ describe("POST /api/analytics/funnel/enrich/[provider]", () => {
       stored: 0,
     });
     expect(body.message).toContain("sample payload");
+    expect(ingestVisitorEnrichmentSignals).not.toHaveBeenCalled();
+  });
+
+  it("returns a disabled response when funnel Prisma models are unavailable", async () => {
+    const { auth } = await import("@/lib/auth");
+    const { normalizeNativeProviderSignals } = await import(
+      "@/lib/analytics/provider-enrichment-adapters"
+    );
+    const { ingestVisitorEnrichmentSignals } = await import(
+      "@/lib/analytics/visitor-funnel"
+    );
+    const { hasVisitorFunnelPrismaModels } = await import(
+      "@/lib/analytics/visitor-funnel-availability"
+    );
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: "admin-3", role: "admin" },
+    } as never);
+    vi.mocked(hasVisitorFunnelPrismaModels).mockReturnValue(false);
+    vi.mocked(normalizeNativeProviderSignals).mockReturnValue([
+      {
+        signalKey: "row-1",
+        email: "sample@example.com",
+        domain: "example.com",
+        companyName: "Example Co",
+        confidence: 0.9,
+        occurredAt: "2026-03-08T12:00:00.000Z",
+        provenance: "exact",
+        metadata: {},
+      },
+    ]);
+
+    const { POST } = await import("@/app/api/analytics/funnel/enrich/[provider]/route");
+    const request = new NextRequest("http://localhost/api/analytics/funnel/enrich/clay", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        rows: [{ rowId: "row-1" }],
+      }),
+    });
+
+    const response = await POST(request, {
+      params: Promise.resolve({ provider: "clay" }),
+    });
+    const body = (await response.json()) as {
+      accepted: number;
+      disabled: boolean;
+      reason: string;
+      stored: number;
+    };
+
+    expect(response.status).toBe(202);
+    expect(body).toMatchObject({
+      accepted: 0,
+      disabled: true,
+      reason: "Visitor funnel Prisma models are unavailable in this deployment.",
+      stored: 0,
+    });
     expect(ingestVisitorEnrichmentSignals).not.toHaveBeenCalled();
   });
 

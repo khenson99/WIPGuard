@@ -3,6 +3,10 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@/generated/prisma/client";
 import { FunnelEventType } from "@/lib/analytics/prisma-funnel-enums";
+import {
+  hasVisitorFunnelPrismaModels,
+  VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON,
+} from "@/lib/analytics/visitor-funnel-availability";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { collectVisitorEvent } from "@/lib/analytics/visitor-funnel";
@@ -54,6 +58,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json(
         { error: "Unsupported public funnel event type" },
         { status: 400 },
+      );
+    }
+
+    if (!hasVisitorFunnelPrismaModels(prisma)) {
+      return NextResponse.json(
+        {
+          accepted: 0,
+          disabled: true,
+          reason: VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON,
+        },
+        { status: 202 },
       );
     }
 
