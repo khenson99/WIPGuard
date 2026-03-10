@@ -407,6 +407,51 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     },
   },
   {
+    key: "funnel-dropoff-operator",
+    name: "Funnel Dropoff Operator",
+    description:
+      "Triage funnel dropoff alerts into explainable diagnostics, landing-page experiments, and GTM follow-up work.",
+    operatorKey: "ADS_OPTIMIZER",
+    providers: ["WIPGUARD", "GOOGLE_ANALYTICS", "WEBFLOW", "GOOGLE_ADS", "META_ADS", "REDDIT"],
+    graph: {
+      nodes: [
+        {
+          key: "trigger_funnel_dropoff",
+          type: "TRIGGER",
+          label: "Funnel Dropoff Detected",
+          config: {
+            provider: "wipguard",
+            eventType: "analytics.funnel.dropoff_detected",
+          },
+          positionX: 80,
+          positionY: 120,
+        },
+        {
+          key: "triage_dropoff",
+          type: "ACTION",
+          label: "Triage Funnel Dropoff",
+          config: {
+            actionType: "ai_analyze",
+            promptVersion: "2026-03-10",
+            instructionsTemplate: [
+              "Analyze the funnel dropoff event and explain the most likely source of the conversion loss.",
+              "Artifacts should include a diagnostic memo, root-cause summary, and experiment brief when there is a plausible recovery path.",
+              "Recommendations should favor create_task, create_github_issue, and post_slack_digest for internal follow-up.",
+              "If paid-media budget reallocation is warranted, express it as actionType adjust_ad_spend so it remains recommendation-only and approval-gated.",
+            ].join("\n"),
+          },
+          positionX: 360,
+          positionY: 120,
+        },
+        operatorExecutionNode(650, 120),
+      ],
+      edges: [
+        { source: "trigger_funnel_dropoff", target: "triage_dropoff", priority: 0 },
+        { source: "triage_dropoff", target: "execute_recommendations", priority: 0 },
+      ],
+    },
+  },
+  {
     key: "roadmap-intelligence-operator",
     name: "Roadmap Intelligence",
     description:

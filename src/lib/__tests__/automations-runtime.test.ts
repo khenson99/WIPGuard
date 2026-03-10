@@ -1,0 +1,679 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AutomationAiJobStatus } from "@/lib/automations/prisma-enums";
+
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    automationAiJob: {
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      upsert: vi.fn(),
+      update: vi.fn(),
+    },
+    workflowApproval: {
+      findMany: vi.fn(),
+      update: vi.fn(),
+    },
+    workflowTriggerEvent: {
+      findMany: vi.fn(),
+      update: vi.fn(),
+    },
+    workflowRunStep: {
+      create: vi.fn(),
+      findFirst: vi.fn(),
+      update: vi.fn(),
+    },
+    workflowRun: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    workflowDefinition: {
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },
+  },
+}));
+
+vi.mock("@/lib/automations/openai", () => ({
+  buildAutomationAiResponseRequest: vi.fn(),
+  createAutomationOpenAiResponse: vi.fn(),
+  extractAutomationAiOutputText: vi.fn(),
+  isTerminalAutomationAiStatus: vi.fn(),
+  parseAutomationAiResponseEnvelope: vi.fn(),
+  retrieveAutomationOpenAiResponse: vi.fn(),
+  unwrapAutomationOpenAiWebhookEvent: vi.fn(),
+}));
+
+vi.mock("@/lib/automations/store", () => ({
+  buildRunExecutionContext: vi.fn(),
+  materializeSourceDocumentsFromTrigger: vi.fn(),
+  persistAutomationEnvelope: vi.fn(),
+}));
+
+vi.mock("@/lib/automations/actions", () => ({
+  executeAutomationAction: vi.fn(),
+}));
+
+vi.mock("@/lib/automations/recommendations", () => ({
+  executeApprovedRecommendationsForRun: vi.fn(),
+}));
+
+vi.mock("@/lib/automations/service", () => ({
+  normalizeWorkflowRolePolicy: vi.fn(() => ({
+    approveRoles: ["admin", "member"],
+  })),
+}));
+
+vi.mock("@/lib/permissions", () => ({
+  getAppRole: vi.fn(),
+}));
+
+describe("automation runtime AI lifecycle", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.resetModules();
+  });
+
+  it("dispatches queued AI jobs and keeps non-terminal responses running", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const {
+      createAutomationOpenAiResponse,
+      extractAutomationAiOutputText,
+      isTerminalAutomationAiStatus,
+    } = await import("@/lib/automations/openai");
+
+    vi.mocked(prisma.automationAiJob.findMany).mockResolvedValue([
+      {
+        id: "job_queue_1",
+        requestPayload: {
+          model: "gpt-4.1-mini",
+          input: [{ role: "user", content: "hello" }],
+        },
+        attemptCount: 0,
+      },
+    ] as never);
+    vi.mocked(prisma.automationAiJob.findUnique).mockResolvedValue({
+      id: "job_queue_1",
+      run: { requestedById: "user_1" },
+    } as never);
+    vi.mocked(createAutomationOpenAiResponse).mockResolvedValue({
+      id: "resp_queue_1",
+      status: "in_progress",
+    } as never);
+    vi.mocked(extractAutomationAiOutputText).mockReturnValue("still running");
+    vi.mocked(isTerminalAutomationAiStatus).mockReturnValue(false);
+
+    const { dispatchAutomationAiJobs } = await import("@/lib/automations/runtime");
+    const processed = await dispatchAutomationAiJobs(1);
+
+    expect(processed).toBe(1);
+    expect(createAutomationOpenAiResponse).toHaveBeenCalledWith({
+      model: "gpt-4.1-mini",
+      input: [{ role: "user", content: "hello" }],
+    });
+    expect(prisma.automationAiJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "job_queue_1" },
+        data: expect.objectContaining({
+          status: AutomationAiJobStatus.REQUESTED,
+          lastError: null,
+        }),
+      })
+    );
+    expect(prisma.automationAiJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "job_queue_1" },
+        data: expect.objectContaining({
+          status: AutomationAiJobStatus.RUNNING,
+          responseId: "resp_queue_1",
+          outputText: "still running",
+        }),
+      })
+    );
+  });
+
+  it("skips creating duplicate workflow runs when a trigger event replays", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { materializeSourceDocumentsFromTrigger } = await import(
+      "@/lib/automations/store"
+    );
+
+    vi.mocked(prisma.workflowApproval.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.workflowTriggerEvent.findMany).mockResolvedValue([
+      {
+        id: "event_dup_1",
+        provider: "WIPGUARD",
+        eventType: "analytics.funnel.dropoff_detected",
+        externalId: "alert_1",
+        payload: { stage: "landing_page" },
+        idempotencyKey: "dropoff:alert_1",
+        attemptCount: 0,
+      },
+    ] as never);
+    vi.mocked(prisma.workflowDefinition.findMany).mockResolvedValue([
+      {
+        id: "wf_dropoff_1",
+        operatorKey: "ADS_OPTIMIZER",
+        graph: {
+          nodes: [
+            {
+              key: "trigger_funnel_dropoff",
+              type: "TRIGGER",
+              label: "Funnel Dropoff Detected",
+              config: {
+                provider: "wipguard",
+                eventType: "analytics.funnel.dropoff_detected",
+              },
+            },
+          ],
+          edges: [],
+        },
+      },
+    ] as never);
+    vi.mocked(prisma.workflowRun.findUnique).mockResolvedValue({
+      id: "run_existing_1",
+    } as never);
+
+    const { dispatchWorkflowTriggerEvents } = await import("@/lib/automations/runtime");
+    const result = await dispatchWorkflowTriggerEvents(10);
+
+    expect(result).toEqual({
+      processed: 1,
+      startedRuns: 0,
+      timedOutApprovals: 0,
+    });
+    expect(prisma.workflowRun.create).not.toHaveBeenCalled();
+    expect(materializeSourceDocumentsFromTrigger).not.toHaveBeenCalled();
+    expect(prisma.workflowTriggerEvent.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "event_dup_1" },
+        data: expect.objectContaining({
+          status: "DISPATCHED",
+          lastError: null,
+        }),
+      })
+    );
+  });
+
+  it("dead-letters trigger events after repeated dispatch failures", async () => {
+    const { prisma } = await import("@/lib/prisma");
+
+    vi.mocked(prisma.workflowApproval.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.workflowTriggerEvent.findMany).mockResolvedValue([
+      {
+        id: "event_dead_1",
+        provider: "WIPGUARD",
+        eventType: "analytics.funnel.dropoff_detected",
+        externalId: "alert_2",
+        payload: {},
+        idempotencyKey: "dropoff:alert_2",
+        attemptCount: 5,
+      },
+    ] as never);
+    vi.mocked(prisma.workflowDefinition.findMany).mockRejectedValue(
+      new Error("workflow registry unavailable")
+    );
+
+    const { dispatchWorkflowTriggerEvents } = await import("@/lib/automations/runtime");
+    const result = await dispatchWorkflowTriggerEvents(10);
+
+    expect(result).toEqual({
+      processed: 1,
+      startedRuns: 0,
+      timedOutApprovals: 0,
+    });
+    expect(prisma.workflowTriggerEvent.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "event_dead_1" },
+        data: expect.objectContaining({
+          status: "DEAD_LETTER",
+          attemptCount: 6,
+          lastError: "workflow registry unavailable",
+        }),
+      })
+    );
+  });
+
+  it("dispatches trigger events into a workflow run that waits on AI output", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { buildAutomationAiResponseRequest } = await import("@/lib/automations/openai");
+    const { buildRunExecutionContext, materializeSourceDocumentsFromTrigger } =
+      await import("@/lib/automations/store");
+
+    vi.mocked(prisma.workflowApproval.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.workflowTriggerEvent.findMany).mockResolvedValue([
+      {
+        id: "event_wait_1",
+        provider: "WIPGUARD",
+        eventType: "analytics.funnel.dropoff_detected",
+        externalId: "alert_wait_1",
+        payload: { stage: "pricing_page", dropoffPct: 37 },
+        idempotencyKey: "dropoff:alert_wait_1",
+        attemptCount: 0,
+      },
+    ] as never);
+    vi.mocked(prisma.workflowDefinition.findMany).mockResolvedValue([
+      {
+        id: "wf_wait_1",
+        operatorKey: "ADS_OPTIMIZER",
+        graph: {
+          nodes: [
+            {
+              key: "trigger_funnel_dropoff",
+              type: "TRIGGER",
+              label: "Funnel Dropoff Detected",
+              config: {
+                provider: "wipguard",
+                eventType: "analytics.funnel.dropoff_detected",
+              },
+            },
+            {
+              key: "triage_dropoff",
+              type: "ACTION",
+              label: "Triage Funnel Dropoff",
+              config: {
+                actionType: "ai_analyze",
+                promptVersion: "2026-03-08",
+              },
+            },
+          ],
+          edges: [
+            {
+              source: "trigger_funnel_dropoff",
+              target: "triage_dropoff",
+              priority: 0,
+            },
+          ],
+        },
+      },
+    ] as never);
+    vi.mocked(prisma.workflowRun.findUnique)
+      .mockResolvedValueOnce(null as never)
+      .mockResolvedValue({
+        id: "run_wait_1",
+        workflowId: "wf_wait_1",
+        startedAt: null,
+        workflow: {
+          operatorKey: "ADS_OPTIMIZER",
+          graph: {
+            nodes: [
+              {
+                key: "trigger_funnel_dropoff",
+                type: "TRIGGER",
+                label: "Funnel Dropoff Detected",
+                config: {
+                  provider: "wipguard",
+                  eventType: "analytics.funnel.dropoff_detected",
+                },
+              },
+              {
+                key: "triage_dropoff",
+                type: "ACTION",
+                label: "Triage Funnel Dropoff",
+                config: {
+                  actionType: "ai_analyze",
+                  promptVersion: "2026-03-08",
+                },
+              },
+            ],
+            edges: [
+              {
+                source: "trigger_funnel_dropoff",
+                target: "triage_dropoff",
+                priority: 0,
+              },
+            ],
+          },
+        },
+      } as never);
+    vi.mocked(prisma.workflowRun.create).mockResolvedValue({
+      id: "run_wait_1",
+    } as never);
+    vi.mocked(prisma.workflowRunStep.create)
+      .mockResolvedValueOnce({ id: "step_trigger_1" } as never)
+      .mockResolvedValueOnce({ id: "step_action_1" } as never);
+    vi.mocked(prisma.automationAiJob.upsert).mockResolvedValue({
+      id: "job_wait_1",
+      model: "gpt-4.1-mini",
+    } as never);
+    vi.mocked(buildRunExecutionContext).mockResolvedValue({
+      trigger: {
+        provider: "WIPGUARD",
+        eventType: "analytics.funnel.dropoff_detected",
+        externalId: "alert_wait_1",
+      },
+      state: {},
+    } as never);
+    vi.mocked(materializeSourceDocumentsFromTrigger).mockResolvedValue(undefined as never);
+    vi.mocked(buildAutomationAiResponseRequest).mockReturnValue({
+      request: {
+        model: "gpt-4.1-mini",
+        input: [{ role: "user", content: "Investigate the funnel dropoff." }],
+      },
+      parsedToolDefinitions: [],
+    } as never);
+
+    const { dispatchWorkflowTriggerEvents } = await import("@/lib/automations/runtime");
+    const result = await dispatchWorkflowTriggerEvents(10);
+
+    expect(result).toEqual({
+      processed: 1,
+      startedRuns: 1,
+      timedOutApprovals: 0,
+    });
+    expect(materializeSourceDocumentsFromTrigger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflowId: "wf_wait_1",
+        runId: "run_wait_1",
+        operatorKey: "ADS_OPTIMIZER",
+        provider: "WIPGUARD",
+        eventType: "analytics.funnel.dropoff_detected",
+        eventDedupeKey: "dropoff:alert_wait_1",
+      })
+    );
+    expect(buildAutomationAiResponseRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nodeKey: "triage_dropoff",
+        actionType: "ai_analyze",
+        metadata: expect.objectContaining({
+          workflowId: "wf_wait_1",
+          runId: "run_wait_1",
+          stepId: "step_action_1",
+        }),
+      })
+    );
+    expect(prisma.automationAiJob.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { dedupeKey: "run_wait_1:triage_dropoff:ai" },
+        create: expect.objectContaining({
+          workflowId: "wf_wait_1",
+          runId: "run_wait_1",
+          stepId: "step_action_1",
+          status: AutomationAiJobStatus.QUEUED,
+        }),
+      })
+    );
+    expect(prisma.workflowRunStep.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "step_action_1" },
+        data: expect.objectContaining({
+          status: "WAITING_EXTERNAL",
+          output: expect.objectContaining({
+            actionType: "ai_analyze",
+            aiJobId: "job_wait_1",
+            waitingExternal: true,
+          }),
+        }),
+      })
+    );
+    expect(prisma.workflowRun.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "run_wait_1" },
+        data: expect.objectContaining({
+          status: "WAITING_EXTERNAL",
+          error: null,
+          finishedAt: null,
+        }),
+      })
+    );
+    expect(prisma.workflowTriggerEvent.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "event_wait_1" },
+        data: expect.objectContaining({
+          status: "DISPATCHED",
+          lastError: null,
+        }),
+      })
+    );
+  });
+
+  it("settles completed AI webhooks into artifacts and resumes the workflow", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const {
+      extractAutomationAiOutputText,
+      isTerminalAutomationAiStatus,
+      parseAutomationAiResponseEnvelope,
+      retrieveAutomationOpenAiResponse,
+      unwrapAutomationOpenAiWebhookEvent,
+    } = await import("@/lib/automations/openai");
+    const { buildRunExecutionContext, persistAutomationEnvelope } = await import(
+      "@/lib/automations/store"
+    );
+
+    vi.mocked(unwrapAutomationOpenAiWebhookEvent).mockResolvedValue({
+      type: "response.completed",
+      data: { id: "resp_complete_1" },
+    } as never);
+    vi.mocked(retrieveAutomationOpenAiResponse).mockResolvedValue({
+      id: "resp_complete_1",
+      status: "completed",
+    } as never);
+    vi.mocked(extractAutomationAiOutputText).mockReturnValue("final analysis");
+    vi.mocked(isTerminalAutomationAiStatus).mockReturnValue(true);
+    vi.mocked(parseAutomationAiResponseEnvelope).mockReturnValue({
+      summary: "Recovered funnel diagnosis",
+      raw: { summary: "Recovered funnel diagnosis" },
+    } as never);
+    vi.mocked(persistAutomationEnvelope).mockResolvedValue({
+      artifactIds: ["artifact_1"],
+      recommendationIds: ["recommendation_1"],
+    } as never);
+    vi.mocked(buildRunExecutionContext).mockResolvedValue({} as never);
+
+    vi.mocked(prisma.automationAiJob.findUnique)
+      .mockResolvedValueOnce({ id: "job_complete_1" } as never)
+      .mockResolvedValueOnce({
+        id: "job_complete_1",
+        workflowId: "wf_1",
+        runId: "run_1",
+        stepId: "step_1",
+        operatorKey: "ADS_OPTIMIZER",
+        nodeKey: "triage_dropoff",
+        jobType: "ai_analyze",
+        metadata: { parsedToolDefinitions: [] },
+        run: { requestedById: "user_1" },
+      } as never);
+
+    vi.mocked(prisma.workflowDefinition.findUnique).mockResolvedValue({
+      graph: {
+        nodes: [
+          {
+            key: "triage_dropoff",
+            type: "ACTION",
+            label: "Triage Funnel Dropoff",
+            config: {},
+          },
+        ],
+        edges: [],
+      },
+    } as never);
+    vi.mocked(prisma.workflowRunStep.findFirst).mockResolvedValue({ output: {} } as never);
+
+    const { processAutomationAiWebhook } = await import("@/lib/automations/runtime");
+    const result = await processAutomationAiWebhook("{}", new Headers());
+
+    expect(result).toEqual({
+      handled: true,
+      responseId: "resp_complete_1",
+      eventType: "response.completed",
+    });
+    expect(persistAutomationEnvelope).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflowId: "wf_1",
+        runId: "run_1",
+        aiJobId: "job_complete_1",
+        operatorKey: "ADS_OPTIMIZER",
+        createdByNodeKey: "triage_dropoff",
+        requestedById: "user_1",
+      })
+    );
+    expect(prisma.automationAiJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "job_complete_1" },
+        data: expect.objectContaining({
+          status: AutomationAiJobStatus.SUCCEEDED,
+          responseStatus: "completed",
+          outputText: "final analysis",
+        }),
+      })
+    );
+    expect(prisma.workflowRunStep.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "step_1" },
+        data: expect.objectContaining({
+          output: expect.objectContaining({
+            artifactIds: ["artifact_1"],
+            recommendationIds: ["recommendation_1"],
+          }),
+        }),
+      })
+    );
+    expect(prisma.workflowRun.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "run_1" },
+        data: expect.objectContaining({
+          status: "SUCCEEDED",
+          error: null,
+        }),
+      })
+    );
+  });
+
+  it("fails completed AI jobs when envelope parsing breaks", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const {
+      extractAutomationAiOutputText,
+      isTerminalAutomationAiStatus,
+      parseAutomationAiResponseEnvelope,
+      retrieveAutomationOpenAiResponse,
+      unwrapAutomationOpenAiWebhookEvent,
+    } = await import("@/lib/automations/openai");
+
+    vi.mocked(unwrapAutomationOpenAiWebhookEvent).mockResolvedValue({
+      type: "response.completed",
+      data: { id: "resp_parse_fail_1" },
+    } as never);
+    vi.mocked(retrieveAutomationOpenAiResponse).mockResolvedValue({
+      id: "resp_parse_fail_1",
+      status: "completed",
+    } as never);
+    vi.mocked(extractAutomationAiOutputText).mockReturnValue("broken output");
+    vi.mocked(isTerminalAutomationAiStatus).mockReturnValue(true);
+    vi.mocked(parseAutomationAiResponseEnvelope).mockImplementation(() => {
+      throw new Error("Envelope parse failed");
+    });
+
+    vi.mocked(prisma.automationAiJob.findUnique)
+      .mockResolvedValueOnce({ id: "job_parse_fail_1" } as never)
+      .mockResolvedValueOnce({
+        id: "job_parse_fail_1",
+        workflowId: "wf_parse_1",
+        runId: "run_parse_1",
+        stepId: "step_parse_1",
+        operatorKey: "ADS_OPTIMIZER",
+        nodeKey: "triage_dropoff",
+        jobType: "ai_analyze",
+        metadata: { parsedToolDefinitions: [] },
+        run: { requestedById: "user_1" },
+      } as never);
+
+    const { processAutomationAiWebhook } = await import("@/lib/automations/runtime");
+    const result = await processAutomationAiWebhook("{}", new Headers());
+
+    expect(result).toEqual({
+      handled: true,
+      responseId: "resp_parse_fail_1",
+      eventType: "response.completed",
+    });
+    expect(prisma.automationAiJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "job_parse_fail_1" },
+        data: expect.objectContaining({
+          status: AutomationAiJobStatus.FAILED,
+          lastError: "Envelope parse failed",
+        }),
+      })
+    );
+    expect(prisma.workflowRunStep.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "step_parse_1" },
+        data: expect.objectContaining({
+          status: "FAILED",
+          error: "Envelope parse failed",
+        }),
+      })
+    );
+    expect(prisma.workflowRun.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "run_parse_1" },
+        data: expect.objectContaining({
+          status: "FAILED",
+          error: "Envelope parse failed",
+        }),
+      })
+    );
+  });
+
+  it("cancels workflow runs when the background response is cancelled", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const {
+      extractAutomationAiOutputText,
+      isTerminalAutomationAiStatus,
+      retrieveAutomationOpenAiResponse,
+      unwrapAutomationOpenAiWebhookEvent,
+    } = await import("@/lib/automations/openai");
+
+    vi.mocked(unwrapAutomationOpenAiWebhookEvent).mockResolvedValue({
+      type: "response.completed",
+      data: { id: "resp_cancel_1" },
+    } as never);
+    vi.mocked(retrieveAutomationOpenAiResponse).mockResolvedValue({
+      id: "resp_cancel_1",
+      status: "cancelled",
+    } as never);
+    vi.mocked(extractAutomationAiOutputText).mockReturnValue(null as never);
+    vi.mocked(isTerminalAutomationAiStatus).mockReturnValue(true);
+
+    vi.mocked(prisma.automationAiJob.findUnique)
+      .mockResolvedValueOnce({ id: "job_cancel_1" } as never)
+      .mockResolvedValueOnce({
+        id: "job_cancel_1",
+        workflowId: "wf_cancel_1",
+        runId: "run_cancel_1",
+        stepId: "step_cancel_1",
+        operatorKey: "ADS_OPTIMIZER",
+        nodeKey: "triage_dropoff",
+        jobType: "ai_analyze",
+        metadata: { parsedToolDefinitions: [] },
+        run: { requestedById: "user_1" },
+      } as never);
+
+    const { processAutomationAiWebhook } = await import("@/lib/automations/runtime");
+    const result = await processAutomationAiWebhook("{}", new Headers());
+
+    expect(result).toEqual({
+      handled: true,
+      responseId: "resp_cancel_1",
+      eventType: "response.completed",
+    });
+    expect(prisma.automationAiJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "job_cancel_1" },
+        data: expect.objectContaining({
+          status: AutomationAiJobStatus.CANCELED,
+          lastError: "Background response cancelled",
+        }),
+      })
+    );
+    expect(prisma.workflowRun.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "run_cancel_1" },
+        data: expect.objectContaining({
+          status: "CANCELED",
+          error: "Background response cancelled",
+        }),
+      })
+    );
+  });
+});

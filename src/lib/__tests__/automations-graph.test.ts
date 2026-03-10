@@ -50,4 +50,24 @@ describe("automations graph", () => {
       )
     ).toBe(true);
   });
+
+  it("includes a funnel-dropoff operator for analytics risk ingest", () => {
+    expect(
+      AUTOMATION_TEMPLATES.some((template) => {
+        if (template.key !== "funnel-dropoff-operator") {
+          return false;
+        }
+
+        const graph = template.graph as {
+          nodes?: Array<{ type?: string; config?: { eventType?: string } }>;
+        };
+
+        return graph.nodes?.some(
+          (node) =>
+            node.type === "TRIGGER" &&
+            node.config?.eventType === "analytics.funnel.dropoff_detected"
+        );
+      })
+    ).toBe(true);
+  });
 });
