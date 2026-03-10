@@ -15,6 +15,7 @@ vi.mock("@/lib/prisma", () => ({
 describe("token refresh", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    process.env.INTEGRATION_TOKEN_SECRET = "test-integration-secret";
     process.env.HUBSPOT_CLIENT_ID = "hubspot-client";
     process.env.HUBSPOT_CLIENT_SECRET = "hubspot-secret";
     process.env.META_APP_ID = "meta-app";
@@ -40,7 +41,7 @@ describe("token refresh", () => {
       metadata: null,
       createdAt: new Date(),
       updatedAt: new Date(),
-    });
+    } as never);
 
     vi.stubGlobal(
       "fetch",
@@ -88,7 +89,7 @@ describe("token refresh", () => {
       metadata: null,
       createdAt: new Date(),
       updatedAt: new Date(),
-    });
+    } as never);
 
     vi.stubGlobal(
       "fetch",
@@ -115,4 +116,3 @@ describe("token refresh", () => {
     expect(prisma.integrationConnection.update).toHaveBeenCalled();
   });
 });
-

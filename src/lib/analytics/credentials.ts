@@ -16,11 +16,15 @@ import {
   discoverMetaPageAndInstagram,
   exchangeMetaForLongLivedToken,
 } from "@/lib/integrations/meta-auth";
+import { getIntegrationEnvValue } from "@/lib/integrations/env";
 import { compactErrorMessage, refreshOAuthToken } from "@/lib/integrations/oauth";
 import { listProviderRegistryEntries } from "@/lib/integrations/provider-registry";
 import { validateIntegrationScopes } from "@/lib/integrations/scope-validation";
 import { prisma } from "@/lib/prisma";
-import { unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
+import {
+  protectIntegrationSecret,
+  unprotectIntegrationSecret,
+} from "@/lib/integrations/token-crypto";
 import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
 
 export interface ProviderFreshnessSnapshot {
@@ -84,6 +88,59 @@ export interface AnalyticsCredentials {
   slackAccessToken: string | null;
 
   freshness: Record<IntegrationProvider, ProviderFreshnessSnapshot>;
+}
+
+export function hasIntegrationCredential(
+  provider: IntegrationProvider,
+  credentials: AnalyticsCredentials
+): boolean {
+  switch (provider) {
+    case IntegrationProvider.GOOGLE_WORKSPACE:
+      return hasValue(credentials.googleWorkspaceAccessToken);
+    case IntegrationProvider.HUBSPOT:
+      return hasValue(credentials.hubspotToken);
+    case IntegrationProvider.SLACK:
+      return hasValue(credentials.slackAccessToken);
+    case IntegrationProvider.CODA:
+      return hasValue(credentials.codaApiToken);
+    case IntegrationProvider.REDDIT:
+      return hasValue(credentials.redditRefreshToken);
+    case IntegrationProvider.GOOGLE_ANALYTICS:
+      return Boolean(
+        credentials.gaPropertyId &&
+          ((credentials.gaClientEmail && credentials.gaPrivateKey) ||
+            (process.env.GA_REFRESH_TOKEN &&
+              process.env.GOOGLE_CLIENT_ID &&
+              process.env.GOOGLE_CLIENT_SECRET))
+      );
+    case IntegrationProvider.STRIPE:
+      return hasValue(credentials.stripeKey);
+    case IntegrationProvider.MERCURY:
+      return hasValue(credentials.mercuryKey);
+    case IntegrationProvider.WEBFLOW:
+      return hasValue(credentials.webflowApiToken);
+    case IntegrationProvider.GOOGLE_ADS:
+      return Boolean(
+        credentials.googleAdsDevToken &&
+          credentials.googleAdsCustomerId &&
+          credentials.googleAdsRefreshToken &&
+          credentials.googleAdsClientId &&
+          credentials.googleAdsClientSecret
+      );
+    case IntegrationProvider.META_ADS:
+      return Boolean(credentials.metaAccessToken && credentials.metaAdAccountId);
+    case IntegrationProvider.META_PAGE:
+      return Boolean(
+        credentials.metaAccessToken &&
+          (credentials.metaPageId || credentials.metaInstagramAccountId)
+      );
+    case IntegrationProvider.PYLON:
+      return hasValue(credentials.pylonApiKey);
+    case IntegrationProvider.SEMRUSH:
+      return hasValue(credentials.semrushApiToken);
+    default:
+      return false;
+  }
 }
 
 type ConnectionRecord = {
@@ -869,7 +926,13 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     [IntegrationProvider.SEMRUSH]: buildFreshness(
       IntegrationProvider.SEMRUSH,
       null,
-      Boolean(process.env.SEMRUSH_API_TOKEN)
+      Boolean(getIntegrationEnvValue("SEMRUSH_API_TOKEN"))
+    ),
+    [IntegrationProvider.GOOGLE_SEARCH_CONSOLE]: defaultFreshnessSnapshot(
+      IntegrationProvider.GOOGLE_SEARCH_CONSOLE
+    ),
+    [IntegrationProvider.WIPGUARD]: defaultFreshnessSnapshot(
+      IntegrationProvider.WIPGUARD
     ),
     [IntegrationProvider.PYLON]: buildFreshness(
       IntegrationProvider.PYLON,
@@ -911,7 +974,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     redditAdAccountId: envOrNull(process.env.REDDIT_AD_ACCOUNT_ID),
     redditUserAgent: envOrNull(process.env.REDDIT_USER_AGENT),
 
-    semrushApiToken: envOrNull(process.env.SEMRUSH_API_TOKEN),
+    semrushApiToken: envOrNull(getIntegrationEnvValue("SEMRUSH_API_TOKEN")),
     semrushDomain: envOrNull(process.env.SEMRUSH_DOMAIN),
 
     webflowApiToken,

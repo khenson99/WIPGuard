@@ -1,6 +1,12 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
+import { IntegrationConnectionStatus } from "@/generated/prisma/client";
+import {
+  defaultFreshnessSnapshot,
+  getCredentials,
+  hasIntegrationCredential,
+} from "@/lib/analytics/credentials";
 import { auth } from "@/lib/auth";
 import { enforcePermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -45,6 +51,11 @@ export async function GET(
     }
 
     const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
+    const credentials = await getCredentials(ownerUserId);
+    const freshness =
+      credentials.freshness[definition.provider] ??
+      defaultFreshnessSnapshot(definition.provider);
+    const hasCredential = hasIntegrationCredential(definition.provider, credentials);
 
     const [connectionRow, ruleRows, circuit] = await Promise.all([
       prisma.integrationConnection.findUnique({
@@ -81,9 +92,17 @@ export async function GET(
           lastError: connectionRow.lastError,
           connectedAt: connectionRow.connectedAt,
         }
+      : hasCredential
+        ? {
+            provider: definition.provider,
+            status: IntegrationConnectionStatus.CONNECTED,
+            lastSyncedAt: freshness.lastSyncedAt ? new Date(freshness.lastSyncedAt) : null,
+            lastError: freshness.lastError,
+            connectedAt: freshness.connectedAt ? new Date(freshness.connectedAt) : null,
+          }
       : {
           provider: definition.provider,
-          status: "DISCONNECTED",
+          status: IntegrationConnectionStatus.DISCONNECTED,
           lastSyncedAt: null,
           lastError: null,
           connectedAt: null,

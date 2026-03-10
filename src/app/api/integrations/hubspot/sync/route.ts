@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { IntegrationProvider } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
+import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import { enforcePermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import {
@@ -61,14 +62,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return permission.deniedResponse;
     }
 
-    const rule = await getOrCreateHubSpotBidirectionalRule(session.user.id);
+    const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
+    const rule = await getOrCreateHubSpotBidirectionalRule(ownerUserId);
     const config = bidirectionalPrivate.normalizeConfig(rule.config);
     const mappingValidation = validateMappingConfig(config);
 
     const connection = await prisma.integrationConnection.findUnique({
       where: {
         userId_provider: {
-          userId: session.user.id,
+          userId: ownerUserId,
           provider: IntegrationProvider.HUBSPOT,
         },
       },
@@ -83,7 +85,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const recentReceipts = await prisma.integrationReceipt.findMany({
       where: {
         rule: {
-          userId: session.user.id,
+          userId: ownerUserId,
           provider: IntegrationProvider.HUBSPOT,
           key: HUBSPOT_BIDIRECTIONAL_RULE_KEY,
         },
@@ -180,8 +182,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return permission.deniedResponse;
     }
 
+    const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
     // Load rule config
-    const rule = await getOrCreateHubSpotBidirectionalRule(session.user.id);
+    const rule = await getOrCreateHubSpotBidirectionalRule(ownerUserId);
     if (!rule.enabled) {
       return NextResponse.json(
         { error: "Bidirectional sync is disabled" },
@@ -195,7 +198,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const receipts = await prisma.integrationReceipt.findMany({
       where: {
         rule: {
-          userId: session.user.id,
+          userId: ownerUserId,
           provider: IntegrationProvider.HUBSPOT,
         },
         taskId: { not: null },

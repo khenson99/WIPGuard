@@ -48,8 +48,9 @@ describe('.env.example', () => {
         'SLACK_CLIENT_ID',
         'SLACK_CLIENT_SECRET',
         'SLACK_SIGNING_SECRET',
-        'META_CLIENT_ID',
-        'META_CLIENT_SECRET',
+        'META_APP_ID',
+        'META_APP_SECRET',
+        'SEMRUSH_API_TOKEN',
       ];
 
       for (const varName of optionalVars) {

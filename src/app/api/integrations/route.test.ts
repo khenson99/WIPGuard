@@ -26,6 +26,26 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("@/lib/analytics/credentials", () => ({
   getCredentials: vi.fn(),
+  hasIntegrationCredential: vi.fn(
+    (provider: IntegrationProvider, credentials: Record<string, unknown>) => {
+      if (provider === IntegrationProvider.GOOGLE_ANALYTICS) {
+        return Boolean(credentials.gaPropertyId && credentials.gaClientEmail && credentials.gaPrivateKey);
+      }
+      if (provider === IntegrationProvider.GOOGLE_ADS) {
+        return Boolean(
+          credentials.googleAdsDevToken &&
+            credentials.googleAdsCustomerId &&
+            credentials.googleAdsRefreshToken &&
+            credentials.googleAdsClientId &&
+            credentials.googleAdsClientSecret
+        );
+      }
+      if (provider === IntegrationProvider.PYLON) {
+        return Boolean(credentials.pylonApiKey);
+      }
+      return false;
+    }
+  ),
   defaultFreshnessSnapshot: vi.fn((provider: IntegrationProvider) => ({
     provider,
     source: "none",

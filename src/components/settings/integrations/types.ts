@@ -12,11 +12,13 @@ export type IntegrationSlug =
   | "coda"
   | "reddit"
   | "google-analytics"
+  | "google-search-console"
   | "semrush"
   | "google-ads"
   | "meta-ads"
   | "meta-page"
-  | "pylon";
+  | "pylon"
+  | "wipguard";
 
 export interface IntegrationItem {
   slug: IntegrationSlug;

@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { IntegrationProvider } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
+import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import { enforcePermission } from "@/lib/permissions";
 import {
   sendSlackNotification,
@@ -28,6 +29,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const body = (await request.json().catch(() => ({}))) as NotificationRequestBody;
     const action = body.action ?? "send";
+    const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
 
     const permission = await enforcePermission({
       userId: session.user.id,
@@ -56,7 +58,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
 
       const results = await sendBatchSlackNotifications({
-        userId: session.user.id,
+        userId: ownerUserId,
         payloads: body.payloads,
         dryRun: body.dryRun,
       });
@@ -90,7 +92,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const result = await sendSlackNotification({
-      userId: session.user.id,
+      userId: ownerUserId,
       payload: body.payload,
       dryRun: body.dryRun,
     });

@@ -1,4 +1,5 @@
 import { IntegrationProvider } from "@/generated/prisma/client";
+import { getIntegrationEnvValue } from "@/lib/integrations/env";
 import {
   getProviderRegistryEntry,
   resolveProviderRegistryEntryBySlug,
@@ -370,8 +371,8 @@ export function isOAuthIntegration(
 export function getIntegrationOAuthCredentials(
   definition: OAuthIntegrationDefinition
 ): { clientId: string; clientSecret: string } | null {
-  const clientId = process.env[definition.oauth.clientIdEnv];
-  const clientSecret = process.env[definition.oauth.clientSecretEnv];
+  const clientId = getIntegrationEnvValue(definition.oauth.clientIdEnv);
+  const clientSecret = getIntegrationEnvValue(definition.oauth.clientSecretEnv);
   if (!clientId || !clientSecret) {
     return null;
   }
@@ -422,5 +423,5 @@ export function getMissingIntegrationEnv(definition: IntegrationDefinition): str
     definition.oauth.clientIdEnv,
     definition.oauth.clientSecretEnv,
   ];
-  return required.filter((key) => !process.env[key]);
+  return required.filter((key) => !getIntegrationEnvValue(key));
 }

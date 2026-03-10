@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { IntegrationProvider } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
+import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import { enforcePermission } from "@/lib/permissions";
 import {
   getOrCreateCodaDependencyGateRule,
@@ -39,7 +40,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return permission.deniedResponse;
     }
 
-    const rule = await getOrCreateCodaDependencyGateRule(session.user.id);
+    const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
+    const rule = await getOrCreateCodaDependencyGateRule(ownerUserId);
     return NextResponse.json({
       rule: serializeCodaDependencyGateRule(rule),
     });
@@ -61,6 +63,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const body = (await request.json().catch(() => ({}))) as CodaDependencyGateRequestBody;
     const action = body.action ?? "sync";
+    const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
 
     const permission = await enforcePermission({
       userId: session.user.id,
@@ -74,7 +77,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     if (action === "configure") {
-      const rule = await patchCodaDependencyGateRule(session.user.id, {
+      const rule = await patchCodaDependencyGateRule(ownerUserId, {
         enabled: body.enabled,
         statusOverride: body.statusOverride,
         config: body.config,
@@ -88,8 +91,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const result = await withSyncObservability(
-      "coda", "dependency-gates", session.user.id,
-      () => runCodaDependencyGateAutomation({ userId: session.user.id, dryRun: body.dryRun }),
+      "coda", "dependency-gates", ownerUserId,
+      () => runCodaDependencyGateAutomation({ userId: ownerUserId, dryRun: body.dryRun }),
       { dryRun: body.dryRun },
     );
 

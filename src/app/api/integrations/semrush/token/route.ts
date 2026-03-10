@@ -7,6 +7,8 @@ import {
   type Prisma,
 } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
+import { getIntegrationEnvValue } from "@/lib/integrations/env";
+import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import { compactErrorMessage } from "@/lib/integrations/oauth";
 import { protectIntegrationSecret } from "@/lib/integrations/token-crypto";
 import { enforcePermission } from "@/lib/permissions";
@@ -35,13 +37,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return permission.deniedResponse;
     }
 
+    const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
     const body = (await request.json().catch(() => ({}))) as ConnectSemrushBody;
-    const token = body.token?.trim() || process.env.SEMRUSH_API_KEY?.trim();
+    const token = body.token?.trim() || getIntegrationEnvValue("SEMRUSH_API_TOKEN");
     const domain = body.domain?.trim() || process.env.SEMRUSH_DOMAIN?.trim();
 
     if (!token) {
       return NextResponse.json(
-        { error: "SEMrush API Token is required (or set SEMRUSH_API_KEY on the server)" },
+        {
+          error:
+            "SEMrush API Token is required (or set SEMRUSH_API_TOKEN on the server)",
+        },
         { status: 400 }
       );
     }
@@ -62,12 +68,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     await prisma.integrationConnection.upsert({
       where: {
         userId_provider: {
-          userId: session.user.id,
+          userId: ownerUserId,
           provider: IntegrationProvider.SEMRUSH,
         },
       },
       create: {
-        userId: session.user.id,
+        userId: ownerUserId,
         provider: IntegrationProvider.SEMRUSH,
         status: IntegrationConnectionStatus.CONNECTED,
         providerAccountId: domain,

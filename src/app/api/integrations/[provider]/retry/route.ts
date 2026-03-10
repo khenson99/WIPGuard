@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
+import { getCredentials, hasIntegrationCredential } from "@/lib/analytics/credentials";
 import { auth } from "@/lib/auth";
 import { enforcePermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -41,6 +42,8 @@ export async function POST(
     }
 
     const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
+    const credentials = await getCredentials(ownerUserId);
+    const hasCredential = hasIntegrationCredential(definition.provider, credentials);
 
     // Verify the provider is connected
     const connection = await prisma.integrationConnection.findUnique({
@@ -50,7 +53,7 @@ export async function POST(
       select: { status: true },
     });
 
-    if (!connection || connection.status === "DISCONNECTED") {
+    if ((!connection || connection.status === "DISCONNECTED") && !hasCredential) {
       return NextResponse.json(
         { error: "Integration is not connected" },
         { status: 409 },

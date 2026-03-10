@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { IntegrationProvider } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { enforcePermission } from "@/lib/permissions";
+import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import {
   getOrCreateChannelRoutingRule,
   serializeChannelRoutingRule,
@@ -39,7 +40,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return permission.deniedResponse;
     }
 
-    const rule = await getOrCreateChannelRoutingRule(session.user.id);
+    const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
+    const rule = await getOrCreateChannelRoutingRule(ownerUserId);
     return NextResponse.json({
       rule: serializeChannelRoutingRule(rule),
     });
@@ -61,6 +63,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const body = (await request.json().catch(() => ({}))) as ChannelRoutingRequestBody;
     const action = body.action ?? "configure";
+    const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
 
     const permission = await enforcePermission({
       userId: session.user.id,
@@ -81,7 +84,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         );
       }
 
-      const rule = await addChannelRoutingPolicy(session.user.id, body.policy);
+      const rule = await addChannelRoutingPolicy(ownerUserId, body.policy);
       return NextResponse.json({
         ok: true,
         action: "add_policy",
@@ -98,7 +101,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
 
       try {
-        const rule = await removeChannelRoutingPolicy(session.user.id, body.policyIndex);
+        const rule = await removeChannelRoutingPolicy(ownerUserId, body.policyIndex);
         return NextResponse.json({
           ok: true,
           action: "remove_policy",
@@ -120,7 +123,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const rule = await updateChannelRoutingConfig(session.user.id, body.config);
+    const rule = await updateChannelRoutingConfig(ownerUserId, body.config);
     return NextResponse.json({
       ok: true,
       action: "configure",

@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { IntegrationProvider } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
+import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import { enforcePermission } from "@/lib/permissions";
 import {
   captureSlackThreadToTask,
@@ -51,7 +52,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return permission.deniedResponse;
     }
 
-    const rule = await getOrCreateSlackThreadCaptureRule(session.user.id);
+    const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
+    const rule = await getOrCreateSlackThreadCaptureRule(ownerUserId);
     return NextResponse.json({
       rule: serializeSlackRuleState(rule),
     });
@@ -73,6 +75,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const body = (await request.json().catch(() => ({}))) as SlackCaptureRequestBody;
     const action = body.action ?? "capture";
+    const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
 
     const permission = await enforcePermission({
       userId: session.user.id,
@@ -86,7 +89,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     if (action === "configure") {
-      const rule = await patchSlackRule(session.user.id, {
+      const rule = await patchSlackRule(ownerUserId, {
         enabled: body.enabled,
         statusOverride: body.statusOverride,
         config: body.config,
@@ -107,7 +110,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const result = await captureSlackThreadToTask({
-      userId: session.user.id,
+      userId: ownerUserId,
       payload: body.payload,
     });
 

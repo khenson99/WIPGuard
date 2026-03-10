@@ -9,6 +9,25 @@ const files = process.argv
   .filter((file) => /\.(ts|tsx)$/.test(file) && !file.endsWith(".d.ts"))
   .map((file) => path.relative(process.cwd(), path.resolve(process.cwd(), file)));
 
+const gitCommand = process.platform === "win32" ? "git.exe" : "git";
+const declarationFilesResult = spawnSync(gitCommand, ["ls-files", "*.d.ts"], {
+  cwd: process.cwd(),
+  encoding: "utf8",
+  stdio: "pipe",
+});
+
+if (declarationFilesResult.error) {
+  throw declarationFilesResult.error;
+}
+
+const declarationFiles =
+  declarationFilesResult.status === 0
+    ? declarationFilesResult.stdout
+        .split(/\r?\n/)
+        .map((file) => file.trim())
+        .filter(Boolean)
+    : [];
+
 if (files.length === 0) {
   process.exit(0);
 }
@@ -20,7 +39,7 @@ let hasFailures = false;
 for (const file of files) {
   const result = spawnSync(
     npxCommand,
-    ["tsc-files", "--noEmit", "--pretty", "false", file],
+    ["tsc-files", "--noEmit", "--pretty", "false", ...declarationFiles, file],
     {
       cwd: process.cwd(),
       encoding: "utf8",
