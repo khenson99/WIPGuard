@@ -370,6 +370,19 @@ export interface UpdateCustomerSuccessAlertStatusInput {
   status: CustomerSuccessAlertStatus;
 }
 
+export interface CreateCustomerSuccessTaskInput {
+  accountId: string;
+  title: string;
+  notes?: string;
+  status?: string;
+  priority?: string;
+  dueDate?: string;
+  responsibleIds?: string[];
+  accountableIds?: string[];
+  consultedIds?: string[];
+  informedIds?: string[];
+}
+
 export interface SendCustomerSuccessOutreachInput {
   accountId: string;
   channel: CustomerSuccessOutreachChannel;

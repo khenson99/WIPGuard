@@ -1,6 +1,6 @@
 # WIPGuard Dashboard Screens — Full Data/Visualization Walkthrough
 
-Generated: 2026-02-28 (America/Los_Angeles)
+Generated: 2026-03-09 (America/Los_Angeles)
 
 This document is a repo-grounded, screen-by-screen walkthrough of every “dashboard screen” under `src/app/(dashboard)` plus every Analytics “virtual screen” defined in `src/lib/analytics/section-registry.ts`.
 
@@ -49,6 +49,7 @@ Authoritative route inventory (from `find src/app/(dashboard) -name page.tsx`):
   - `/analytics/[section]` → `src/app/(dashboard)/analytics/[section]/page.tsx` → `src/components/analytics/analytics-section-page.tsx`
   - `/analytics/ai-insights` → `src/app/(dashboard)/analytics/ai-insights/page.tsx` → `src/components/analytics/ai-insights-page.tsx`
   - `/analytics/customer-journey` → `src/app/(dashboard)/analytics/customer-journey/page.tsx` → `src/components/analytics/customer-journey-page.tsx`
+  - `/analytics/customer-success/accounts/[accountId]` → `src/app/(dashboard)/analytics/customer-success/accounts/[accountId]/page.tsx` → `src/components/customer-success/account-workspace.tsx`
 
 ### Global patterns (cross-cutting)
 
@@ -125,6 +126,16 @@ All “internal” screens ultimately read/write Prisma models in `prisma/schema
 
 - `Deal`, `DealStageHistory`, `DealMeeting`, `DealCompany`, `DealContact` — used by Deals dashboards + analytics.
 - `Conference` and children (`ConferenceDeadline`, `ConferenceBudget`, `ConferenceExpense`, `ConferenceLead`, etc.) — used by Conferences dashboards.
+
+#### Customer success
+
+- `CustomerRecord` — canonical merged customer account used by portfolio and account workspace routes.
+- `CustomerRecordExternalRef` — provider-level IDs and labels linked back to a customer record.
+- `CustomerSuccessNote` — structured CS notes instead of ad hoc task/deal note reuse.
+- `CustomerSuccessPlan` and `CustomerSuccessPlanMilestone` — success plan state and milestone tracking.
+- `CustomerSuccessAlert` — risk/opportunity/action-required alerts surfaced in the portfolio and account views.
+- `CustomerSuccessOutreachMessage` — outbound CS messaging history and template usage.
+- Existing `Task`, `Deal`, `DealMeeting`, `DealContact`, and `OutboxEvent` records are reused as linked context, not replaced.
 
 #### Integrations and observability
 
@@ -2763,40 +2774,158 @@ Rendered by `GenericSlackTab` (`src/components/analytics/generic-slack-tab.tsx`)
 
 **Purpose**
 
-- Provide CS cockpit across Pylon support, Coda/product signals, and ops telemetry.
+- Provide the main customer-success cockpit by combining:
+  - WIPGuard-owned customer portfolio data,
+  - account attention queues and alerting,
+  - recent customer activity,
+  - integration delivery telemetry,
+  - legacy support/product analytics.
 
 **Visualizations (exhaustive list)**
 
 Rendered by `CustomerSuccessTab` (`src/components/analytics/customer-success-tab.tsx`):
 
-- Support KPI cards (open/urgent/waiting/resolved, CSAT, first response)
-- Product adoption / throughput panels (from `product` domain)
-- Integration telemetry panels (Google Workspace/Slack/Coda)
-- AI insights panel filtered to CS
+- Portfolio KPI cards:
+  - `Customer Records`
+  - `Average Health`
+  - `At-Risk Accounts`
+  - `Open Alerts`
+- Portfolio panels:
+  - `Health Distribution`
+  - `Attention Queue`
+  - `Open Alerts`
+  - `Recent Activity`
+  - `Portfolio Accounts` table with drill-through links into the account workspace
+- `Integration Delivery Status` panels for Google Workspace, Slack, and Coda
+- When analytics providers are configured:
+  - support KPI cards (open/urgent/Pylon, throughput, Coda cards)
+  - `Customer Ops Trend (7 buckets)` bar strip
+  - `Top Risks`
+  - `Recommended Actions`
+- When analytics providers are absent:
+  - fallback message explaining portfolio data is available but integration analytics are not configured
 
 **Data inputs (API calls / hooks)**
 
+- `GET /api/customer-success/portfolio`
 - `GET /api/analytics?section=customer-success`
 
 **Series/statistics capture & computation**
 
-- Pylon:
-  - issues fetched and classified into urgent/waiting/resolved; averages computed from fields if present.
-- Product domain:
-  - derived from internal task/project/sprint signals in analytics pipeline (see Appendix: derived domains).
-- Coda/product/workspace/slack telemetry:
-  - internal telemetry computations as described above.
+- Portfolio view:
+  - fetched separately through `useDashboardResource()` with cache key `customer-success:portfolio`
+  - summary counts, health distribution, attention ranking, alert list, recent activity, and account table are assembled server-side in `getCustomerSuccessPortfolio(...)`
+  - account health is computed from weighted adoption, engagement, relationship, support, and commercial components
+- Legacy analytics strip:
+  - Pylon issues are still fetched and classified into urgent/waiting/resolved buckets; averages computed from fields if present
+  - product metrics are derived from internal task/project/sprint signals in the analytics pipeline
+  - the 7-bucket trend chart is computed client-side by summing `createdTasks + receipts` across `slack.trend`, `googleWorkspace.trend`, and `codaOps.trend`
+  - integration status pills derive from analytics freshness plus enabled-rule counts for Google Workspace, Slack, and Coda
 
 **Data sources → surfaced fields mapping**
 
 | UI element | Payload field(s) | Origin |
 |---|---|---|
+| Portfolio KPI strip | `summary.totalAccounts/avgHealthScore/atRiskAccounts/openAlerts` | `GET /api/customer-success/portfolio` |
+| Health Distribution | `healthDistribution[]` | `getCustomerSuccessPortfolio(...)` |
+| Attention Queue | `attentionAccounts[]` | `getCustomerSuccessPortfolio(...)` |
+| Open Alerts | `alerts[]` | `getCustomerSuccessPortfolio(...)` |
+| Recent Activity | `recentActivity[]` | `getCustomerSuccessPortfolio(...)` |
+| Portfolio Accounts table | `accounts[]` | `getCustomerSuccessPortfolio(...)` |
+| Integration Delivery Status | `freshness.*`, `googleWorkspace.*`, `slack.*`, `codaOps.*` | analytics route + telemetry fetchers |
 | Support KPIs | `pylon.*` | `fetchPylonData` |
-| Ops telemetry | `codaOps/googleWorkspace/slack` | `fetchIntegrationTelemetryData` |
+| Legacy CS trend / risks / actions | `product.*`, `coda.*`, `slack.trend`, `googleWorkspace.trend`, `codaOps.trend` | analytics fetchers + client-side combination logic |
 
 **Freshness / caching / failure modes**
 
-- Snapshot-backed; CS tab can render with partial provider coverage.
+- Hybrid:
+  - portfolio data is fetched directly from `/api/customer-success/portfolio` with `cache: "no-store"` and client-side session caching via `useDashboardResource()`
+  - analytics data remains snapshot-backed via `/api/analytics?section=customer-success`
+- The route can render with portfolio data even when analytics providers are absent.
+- If portfolio refresh fails after cached data exists, `DashboardStaleBanner` is shown and the last good payload remains visible.
+- Analytics coverage is still partial by provider; missing integrations degrade only the affected cards/panels.
+
+---
+
+### `/analytics/customer-success/accounts/[accountId]` (Account Workspace)
+
+**Purpose**
+
+- Provide an account-level customer-success workspace for a single merged customer record.
+- Replace the legacy app's fragile client-side account screens with a server-built WIPGuard view model.
+
+**Visualizations (exhaustive list)**
+
+Rendered by `CustomerSuccessAccountWorkspace` (`src/components/customer-success/account-workspace.tsx`):
+
+- Header card with:
+  - back link to `/analytics/customer-success`
+  - account name, lifecycle stage, tier, segment
+  - KPI tiles for `Health`, `Owner`, `Open Alerts`, and `Renewal`
+- Tab strip with 8 views:
+  - `Overview`
+  - `Health Details`
+  - `Commercial`
+  - `Timeline`
+  - `Stakeholders`
+  - `Tasks`
+  - `Success Plan`
+  - `Outreach`
+- `Overview`:
+  - `Account Summary`
+  - `Attention Queue`
+- `Health Details`:
+  - one card per health component (`adoption`, `engagement`, `relationship`, `support`, `commercial`)
+- `Commercial`:
+  - ARR, renewal date, payment status, expansion potential
+- `Timeline`:
+  - account event feed
+- `Stakeholders`:
+  - stakeholder table with role, coverage, and last touch
+- `Tasks`:
+  - linked task list
+- `Success Plan`:
+  - template label plus milestone list
+- `Outreach`:
+  - recommended templates and recent messages
+
+**Data inputs (API calls / hooks)**
+
+- `GET /api/customer-success/accounts/[accountId]`
+
+**Series/statistics capture & computation**
+
+- The page fetches its payload through `useDashboardResource()` with cache key `customer-success:account:${accountId}`.
+- `getCustomerSuccessAccountDetail(...)` assembles:
+  - merged customer record metadata,
+  - computed health rollup and weighted component scores,
+  - alert queue,
+  - timeline events derived from notes, meetings, alerts, outreach, and tasks,
+  - stakeholder coverage inferred from linked contacts and last-touch recency,
+  - commercial context from linked deal/customer records,
+  - success plan and outreach summaries from dedicated customer-success tables.
+
+**Data sources → surfaced fields mapping**
+
+| UI element | Payload field(s) | Origin |
+|---|---|---|
+| Header tiles | `name`, `lifecycleStage`, `tier`, `segment`, `health.*`, `ownerName`, `alerts[]`, `commercial.renewalDate` | `GET /api/customer-success/accounts/[accountId]` |
+| Overview cards | `health.trend`, `health.confidence`, `outreach.recommendedTemplates[]`, `stakeholders[]`, `successPlan.milestones[]` | `getCustomerSuccessAccountDetail(...)` |
+| Health Details | `health.components.*` | computed health service |
+| Commercial tab | `commercial.arr/renewalDate/paymentStatus/expansionPotential` | linked deal/customer data |
+| Timeline | `timeline[]` | account detail service |
+| Stakeholders | `stakeholders[]` | linked `DealContact` records + customer-success heuristics |
+| Tasks | `tasks[]` | linked `Task` records |
+| Success Plan | `successPlan.templateKey`, `successPlan.milestones[]` | `CustomerSuccessPlan` + milestones |
+| Outreach | `outreach.recommendedTemplates[]`, `outreach.recentMessages[]` | outreach recommendation logic + `CustomerSuccessOutreachMessage` |
+
+**Freshness / caching / failure modes**
+
+- Direct API route, not analytics-snapshot-backed.
+- Uses `cache: "no-store"` with client-side session caching through `useDashboardResource()`.
+- While the first fetch is pending, the page shows `DashboardLoadingState`.
+- On a hard failure without cached data, the page shows `DashboardErrorBanner`.
+- On refresh failure with cached data present, the stale banner is shown and the cached account workspace remains usable.
 
 ---
 

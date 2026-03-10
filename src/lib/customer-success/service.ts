@@ -1,19 +1,28 @@
 import {
   CustomerExternalProvider,
   CustomerRecordStatus,
+  CustomerSuccessNoteSource,
+  CustomerSuccessNoteVisibility,
   CustomerSuccessAlertSeverity,
   CustomerSuccessAlertSource,
   CustomerSuccessAlertStatus,
+  CustomerSuccessOutreachChannel,
   CustomerSuccessOutreachStatus,
   CustomerSuccessPlanStatus,
   MeetingStatus,
+  Priority,
   Prisma,
   TaskStatus,
 } from "@/generated/prisma/client";
+import { buildOutboxIdempotencyKey, publishDomainEvent } from "@/lib/event-bus";
 import { prisma } from "@/lib/prisma";
 import { runWithContextAsync } from "@/lib/request-context";
+import { getNextColumnOrder } from "@/lib/task-order";
 import type { CustomerSuccessActor } from "@/lib/customer-success/access";
 import type {
+  CreateCustomerSuccessNoteInput,
+  CreateCustomerSuccessPlanInput,
+  CreateCustomerSuccessTaskInput,
   CustomerSuccessAccountDetail,
   CustomerSuccessActivityFeed,
   CustomerSuccessAlert,
@@ -24,6 +33,8 @@ import type {
   CustomerSuccessPortfolio,
   CustomerSuccessTaskSummary,
   CustomerSuccessStakeholder,
+  SendCustomerSuccessOutreachInput,
+  UpdateCustomerSuccessAlertStatusInput,
 } from "@/lib/customer-success/types";
 
 const USER_SUMMARY_SELECT = {
@@ -212,6 +223,16 @@ export interface CustomerSuccessAccountSnapshot {
   updatedAt: Date;
 }
 
+export class CustomerSuccessServiceError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number
+  ) {
+    super(message);
+    this.name = "CustomerSuccessServiceError";
+  }
+}
+
 const HEALTH_WEIGHTS = {
   adoption: 0.24,
   engagement: 0.22,
@@ -226,6 +247,79 @@ function clamp(value: number, min = 0, max = 100): number {
 
 function round(value: number): number {
   return Math.round(value * 10) / 10;
+}
+
+function withCustomerSuccessContext<T>(
+  actor: CustomerSuccessActor,
+  fn: () => Promise<T>
+): Promise<T> {
+  return runWithContextAsync({ organizationId: actor.organizationId, userId: actor.id }, fn);
+}
+
+function normalizeOptionalString(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function toJsonMetadata(value: Record<string, unknown> | undefined): Prisma.InputJsonValue | undefined {
+  if (!value || Object.keys(value).length === 0) return undefined;
+  return value as Prisma.InputJsonValue;
+}
+
+function parseDateInput(value: string | undefined, fieldName: string): Date | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new CustomerSuccessServiceError(`${fieldName} must be a valid ISO date`, 400);
+  }
+  return parsed;
+}
+
+function parseTaskStatusInput(value: string | undefined): TaskStatus {
+  if (!value) return TaskStatus.BACKLOG;
+  if (Object.values(TaskStatus).includes(value as TaskStatus)) {
+    return value as TaskStatus;
+  }
+  throw new CustomerSuccessServiceError("Invalid task status", 400);
+}
+
+function parsePriorityInput(value: string | undefined): Priority {
+  if (!value) return Priority.P2;
+  if (Object.values(Priority).includes(value as Priority)) {
+    return value as Priority;
+  }
+  throw new CustomerSuccessServiceError("Invalid task priority", 400);
+}
+
+function parseNoteSourceInput(value: string | undefined): CustomerSuccessNoteSource {
+  if (!value) return CustomerSuccessNoteSource.MANUAL;
+  if (Object.values(CustomerSuccessNoteSource).includes(value as CustomerSuccessNoteSource)) {
+    return value as CustomerSuccessNoteSource;
+  }
+  throw new CustomerSuccessServiceError("Invalid customer-success note source", 400);
+}
+
+function parseNoteVisibilityInput(value: string | undefined): CustomerSuccessNoteVisibility {
+  if (!value) return CustomerSuccessNoteVisibility.INTERNAL;
+  if (Object.values(CustomerSuccessNoteVisibility).includes(value as CustomerSuccessNoteVisibility)) {
+    return value as CustomerSuccessNoteVisibility;
+  }
+  throw new CustomerSuccessServiceError("Invalid customer-success note visibility", 400);
+}
+
+function parseAlertStatusInput(value: string): CustomerSuccessAlertStatus {
+  if (Object.values(CustomerSuccessAlertStatus).includes(value as CustomerSuccessAlertStatus)) {
+    return value as CustomerSuccessAlertStatus;
+  }
+  throw new CustomerSuccessServiceError("Invalid customer-success alert status", 400);
+}
+
+function parseOutreachChannelInput(value: string): CustomerSuccessOutreachChannel {
+  if (Object.values(CustomerSuccessOutreachChannel).includes(value as CustomerSuccessOutreachChannel)) {
+    return value as CustomerSuccessOutreachChannel;
+  }
+  throw new CustomerSuccessServiceError("Invalid outreach channel", 400);
 }
 
 function daysBetween(from: Date, to: Date): number {
@@ -1007,22 +1101,43 @@ function mapCustomerRecordToSnapshot(record: CustomerRecordWithRelations): Custo
   };
 }
 
-async function listCustomerSuccessSnapshots(actor: CustomerSuccessActor): Promise<CustomerSuccessAccountSnapshot[]> {
-  return runWithContextAsync(
-    { organizationId: actor.organizationId, userId: actor.id },
-    async () => {
-      const records = await prisma.customerRecord.findMany({
-        where: {
-          organizationId: actor.organizationId,
-          status: { not: CustomerRecordStatus.MERGED },
-        },
-        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
-        include: CUSTOMER_RECORD_INCLUDE,
-      });
+async function requireCustomerSuccessRecord(
+  actor: CustomerSuccessActor,
+  accountId: string
+): Promise<{ id: string; name: string }> {
+  return withCustomerSuccessContext(actor, async () => {
+    const record = await prisma.customerRecord.findFirst({
+      where: {
+        id: accountId,
+        status: { not: CustomerRecordStatus.MERGED },
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+    });
 
-      return records.map(mapCustomerRecordToSnapshot);
+    if (!record) {
+      throw new CustomerSuccessServiceError("Customer success account not found", 404);
     }
-  );
+
+    return record;
+  });
+}
+
+async function listCustomerSuccessSnapshots(actor: CustomerSuccessActor): Promise<CustomerSuccessAccountSnapshot[]> {
+  return withCustomerSuccessContext(actor, async () => {
+    const records = await prisma.customerRecord.findMany({
+      where: {
+        organizationId: actor.organizationId,
+        status: { not: CustomerRecordStatus.MERGED },
+      },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      include: CUSTOMER_RECORD_INCLUDE,
+    });
+
+    return records.map(mapCustomerRecordToSnapshot);
+  });
 }
 
 export async function getCustomerSuccessPortfolio(
@@ -1068,4 +1183,292 @@ export async function getCustomerSuccessAccountDetail(
   const snapshot = snapshots.find((item) => item.id === accountId);
   if (!snapshot) return null;
   return buildCustomerSuccessAccountDetailFromSnapshot(snapshot);
+}
+
+export async function createCustomerSuccessNote(
+  actor: CustomerSuccessActor,
+  input: CreateCustomerSuccessNoteInput
+) {
+  const body = normalizeOptionalString(input.body);
+  if (!body) {
+    throw new CustomerSuccessServiceError("Note body is required", 400);
+  }
+
+  await requireCustomerSuccessRecord(actor, input.accountId);
+
+  return withCustomerSuccessContext(actor, async () =>
+    prisma.customerSuccessNote.create({
+      data: {
+        customerRecordId: input.accountId,
+        authorUserId: actor.id,
+        title: normalizeOptionalString(input.title),
+        body,
+        source: parseNoteSourceInput(input.source),
+        visibility: parseNoteVisibilityInput(input.visibility),
+        metadata: toJsonMetadata(input.metadata),
+      },
+    })
+  );
+}
+
+export async function updateCustomerSuccessAlertStatus(
+  actor: CustomerSuccessActor,
+  input: UpdateCustomerSuccessAlertStatusInput
+) {
+  const status = parseAlertStatusInput(input.status);
+  const now = new Date();
+
+  await requireCustomerSuccessRecord(actor, input.accountId);
+
+  return withCustomerSuccessContext(actor, async () => {
+    const alert = await prisma.customerSuccessAlertRecord.findFirst({
+      where: {
+        id: input.alertId,
+        customerRecordId: input.accountId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!alert) {
+      throw new CustomerSuccessServiceError("Customer success alert not found", 404);
+    }
+
+    return prisma.customerSuccessAlertRecord.update({
+      where: { id: input.alertId },
+      data: {
+        status,
+        resolvedAt:
+          status === CustomerSuccessAlertStatus.RESOLVED || status === CustomerSuccessAlertStatus.DISMISSED
+            ? now
+            : null,
+        lastEvaluatedAt: now,
+      },
+    });
+  });
+}
+
+export async function createCustomerSuccessTask(
+  actor: CustomerSuccessActor,
+  input: CreateCustomerSuccessTaskInput
+) {
+  const title = normalizeOptionalString(input.title);
+  if (!title) {
+    throw new CustomerSuccessServiceError("Task title is required", 400);
+  }
+
+  await requireCustomerSuccessRecord(actor, input.accountId);
+
+  return withCustomerSuccessContext(actor, async () => {
+    const status = parseTaskStatusInput(input.status);
+    const priority = parsePriorityInput(input.priority);
+    const dueDate = parseDateInput(input.dueDate, "dueDate");
+    const nextColumnOrder = await getNextColumnOrder(prisma, status);
+
+    return prisma.task.create({
+      data: {
+        title,
+        notes: normalizeOptionalString(input.notes),
+        status,
+        priority,
+        dueDate: dueDate ?? undefined,
+        assignedOn: input.responsibleIds && input.responsibleIds.length > 0 ? new Date() : undefined,
+        addedBy: actor.id,
+        columnOrder: nextColumnOrder,
+        customerRecordId: input.accountId,
+        responsible: {
+          connect: (input.responsibleIds ?? []).map((id) => ({ id })),
+        },
+        accountable: {
+          connect: (input.accountableIds ?? []).map((id) => ({ id })),
+        },
+        consulted: {
+          connect: (input.consultedIds ?? []).map((id) => ({ id })),
+        },
+        informed: {
+          connect: (input.informedIds ?? []).map((id) => ({ id })),
+        },
+        statusHistory: {
+          create: {
+            fromStatus: null,
+            toStatus: status,
+            changedBy: actor.id,
+          },
+        },
+      },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        priority: true,
+        dueDate: true,
+        customerRecordId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  });
+}
+
+export async function createCustomerSuccessPlan(
+  actor: CustomerSuccessActor,
+  input: CreateCustomerSuccessPlanInput
+) {
+  const name = normalizeOptionalString(input.name);
+  if (!name) {
+    throw new CustomerSuccessServiceError("Success plan name is required", 400);
+  }
+
+  const targetDate = parseDateInput(input.targetDate, "targetDate");
+  const milestoneTitles = (input.milestoneTitles ?? [])
+    .map((title) => title.trim())
+    .filter((title) => title.length > 0);
+  const now = new Date();
+
+  await requireCustomerSuccessRecord(actor, input.accountId);
+
+  return withCustomerSuccessContext(actor, async () =>
+    prisma.$transaction(async (tx) => {
+      await tx.customerSuccessPlan.updateMany({
+        where: {
+          customerRecordId: input.accountId,
+          status: CustomerSuccessPlanStatus.ACTIVE,
+        },
+        data: {
+          status: CustomerSuccessPlanStatus.ARCHIVED,
+        },
+      });
+
+      return tx.customerSuccessPlan.create({
+        data: {
+          customerRecordId: input.accountId,
+          name,
+          templateKey: normalizeOptionalString(input.templateKey),
+          status: CustomerSuccessPlanStatus.ACTIVE,
+          ownerUserId: actor.id,
+          startedAt: now,
+          targetDate: targetDate ?? undefined,
+          milestones:
+            milestoneTitles.length > 0
+              ? {
+                  create: milestoneTitles.map((title, index) => ({
+                    title,
+                    sortOrder: index,
+                  })),
+                }
+              : undefined,
+        },
+        include: {
+          milestones: {
+            orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+          },
+        },
+      });
+    })
+  );
+}
+
+export async function createCustomerSuccessOutreachDraft(
+  actor: CustomerSuccessActor,
+  input: SendCustomerSuccessOutreachInput
+) {
+  const recipientAddress = normalizeOptionalString(input.recipientAddress);
+  const body = normalizeOptionalString(input.body);
+
+  if (!recipientAddress) {
+    throw new CustomerSuccessServiceError("Recipient address is required", 400);
+  }
+  if (!body) {
+    throw new CustomerSuccessServiceError("Outreach body is required", 400);
+  }
+
+  await requireCustomerSuccessRecord(actor, input.accountId);
+
+  return withCustomerSuccessContext(actor, async () =>
+    prisma.customerSuccessOutreachMessage.create({
+      data: {
+        customerRecordId: input.accountId,
+        authorUserId: actor.id,
+        channel: parseOutreachChannelInput(input.channel),
+        status: CustomerSuccessOutreachStatus.DRAFT,
+        templateKey: normalizeOptionalString(input.templateKey),
+        recipientName: normalizeOptionalString(input.recipientName),
+        recipientAddress,
+        subject: normalizeOptionalString(input.subject),
+        body,
+        metadata: toJsonMetadata(input.metadata),
+      },
+    })
+  );
+}
+
+export async function sendCustomerSuccessOutreach(
+  actor: CustomerSuccessActor,
+  input: SendCustomerSuccessOutreachInput
+) {
+  const recipientAddress = normalizeOptionalString(input.recipientAddress);
+  const body = normalizeOptionalString(input.body);
+
+  if (!recipientAddress) {
+    throw new CustomerSuccessServiceError("Recipient address is required", 400);
+  }
+  if (!body) {
+    throw new CustomerSuccessServiceError("Outreach body is required", 400);
+  }
+
+  const account = await requireCustomerSuccessRecord(actor, input.accountId);
+  const now = new Date();
+  const channel = parseOutreachChannelInput(input.channel);
+
+  return withCustomerSuccessContext(actor, async () =>
+    prisma.$transaction(async (tx) => {
+      const message = await tx.customerSuccessOutreachMessage.create({
+        data: {
+          customerRecordId: input.accountId,
+          authorUserId: actor.id,
+          channel,
+          status: CustomerSuccessOutreachStatus.QUEUED,
+          templateKey: normalizeOptionalString(input.templateKey),
+          recipientName: normalizeOptionalString(input.recipientName),
+          recipientAddress,
+          subject: normalizeOptionalString(input.subject),
+          body,
+          metadata: toJsonMetadata(input.metadata),
+          queuedAt: now,
+        },
+      });
+
+      await publishDomainEvent(
+        {
+          eventType: "customer_success.outreach.send",
+          aggregateType: "customer_success_outreach_message",
+          aggregateId: message.id,
+          payload: {
+            accountId: input.accountId,
+            accountName: account.name,
+            messageId: message.id,
+            organizationId: actor.organizationId,
+            authorUserId: actor.id,
+            channel,
+            templateKey: message.templateKey,
+            recipientName: message.recipientName,
+            recipientAddress: message.recipientAddress,
+            subject: message.subject,
+            body: message.body,
+            queuedAt: message.queuedAt?.toISOString() ?? now.toISOString(),
+            metadata: input.metadata ?? null,
+          } as Prisma.InputJsonValue,
+          idempotencyKey: buildOutboxIdempotencyKey({
+            aggregateType: "customer_success_outreach_message",
+            aggregateId: message.id,
+            eventType: "customer_success.outreach.send",
+          }),
+        },
+        { outboxEvent: tx.outboxEvent }
+      );
+
+      return message;
+    })
+  );
 }

@@ -16,6 +16,7 @@ export type PermissionAction =
   | "deals.read"
   | "deals.write"
   | "analytics.read"
+  | "analytics.write"
   | "hierarchy.read"
   | "sprint.write"
   | "priority.write"
@@ -42,6 +43,7 @@ const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> 
       "deals.read",
       "deals.write",
       "analytics.read",
+      "analytics.write",
       "hierarchy.read",
       "sprint.write",
       "priority.write",
@@ -66,6 +68,7 @@ const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> 
       "deals.read",
       "deals.write",
       "analytics.read",
+      "analytics.write",
       "hierarchy.read",
       "sprint.write",
       "priority.write",

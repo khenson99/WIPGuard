@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
+import type { PermissionAction } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { enforcePermission } from "@/lib/permissions";
 import { getAuthenticatedUser } from "@/lib/session-user";
@@ -15,7 +16,8 @@ export interface CustomerSuccessActor {
 }
 
 export async function requireCustomerSuccessActor(
-  request: NextRequest
+  request: NextRequest,
+  action: PermissionAction = "analytics.read"
 ): Promise<{ actor: CustomerSuccessActor } | { response: NextResponse }> {
   const session = await auth();
   const user = getAuthenticatedUser(session);
@@ -28,7 +30,7 @@ export async function requireCustomerSuccessActor(
 
   const permission = await enforcePermission({
     userId: user.id,
-    action: "analytics.read",
+    action,
     request,
     targetType: "customer-success",
   });
