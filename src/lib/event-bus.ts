@@ -10,7 +10,25 @@ export interface DomainEventInput {
   schemaVersion?: number;
 }
 
-type OutboxEventWriteClient = Pick<Prisma.TransactionClient, "outboxEvent">;
+type OutboxEventWriteClient = {
+  outboxEvent: {
+    upsert: (args: {
+      where: { idempotencyKey: string };
+      update: Record<string, never>;
+      create: {
+        eventType: string;
+        aggregateType: string;
+        aggregateId: string;
+        schemaVersion: number;
+        payload: Prisma.InputJsonValue;
+        idempotencyKey: string;
+        status: "PENDING";
+        retryCount: number;
+        nextAttemptAt: Date;
+      };
+    }) => Promise<OutboxEvent>;
+  };
+};
 
 function normalizeIdempotencyPart(value: string): string {
   return value.trim().toLowerCase();
