@@ -16,6 +16,7 @@ import {
 } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
+import { isConfiguredIntegrationOwner } from "@/lib/integrations/ownership";
 import { withRetries } from "@/lib/integrations/with-retries";
 import { buildOutboxIdempotencyKey, publishDomainEvent } from "@/lib/event-bus";
 
@@ -257,7 +258,7 @@ class SlackAuthError extends Error {
 }
 
 async function getSlackToken(userId: string): Promise<string> {
-  const connection = await prisma.integrationConnection.findUnique({
+  let connection = await prisma.integrationConnection.findUnique({
     where: {
       userId_provider: {
         userId,
@@ -265,6 +266,18 @@ async function getSlackToken(userId: string): Promise<string> {
       },
     },
   });
+
+  // Owner fallback: when the configured owner has no Slack connection yet
+  // (migration hasn't run), look for any connected user's Slack connection.
+  if (!connection && isConfiguredIntegrationOwner(userId)) {
+    connection = await prisma.integrationConnection.findFirst({
+      where: {
+        provider: IntegrationProvider.SLACK,
+        status: IntegrationConnectionStatus.CONNECTED,
+      },
+      orderBy: { connectedAt: "desc" },
+    });
+  }
 
   if (!connection || connection.status !== IntegrationConnectionStatus.CONNECTED) {
     throw new SlackAuthError("Slack is not connected");

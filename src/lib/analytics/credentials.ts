@@ -26,6 +26,7 @@ import {
   unprotectIntegrationSecret,
 } from "@/lib/integrations/token-crypto";
 import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
+import { isConfiguredIntegrationOwner } from "@/lib/integrations/ownership";
 
 export interface ProviderFreshnessSnapshot {
   provider: IntegrationProvider;
@@ -506,7 +507,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
   let byProvider = new Map<IntegrationProvider, ConnectionRecord>();
 
   if (userId) {
-    const connections = await prisma.integrationConnection.findMany({
+    let connections = await prisma.integrationConnection.findMany({
       where: { userId },
       select: {
         userId: true,
@@ -523,6 +524,30 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
         lastError: true,
       },
     });
+
+    // Owner fallback: when the configured owner has no connections yet
+    // (migration hasn't run), fetch from any connected user.
+    if (connections.length === 0 && isConfiguredIntegrationOwner(userId)) {
+      connections = await prisma.integrationConnection.findMany({
+        where: { status: IntegrationConnectionStatus.CONNECTED },
+        distinct: ["provider"],
+        orderBy: { connectedAt: "desc" },
+        select: {
+          userId: true,
+          provider: true,
+          status: true,
+          accessToken: true,
+          refreshToken: true,
+          tokenType: true,
+          expiresAt: true,
+          scopes: true,
+          metadata: true,
+          connectedAt: true,
+          lastSyncedAt: true,
+          lastError: true,
+        },
+      });
+    }
 
     byProvider = new Map(
       connections.map((connection) => [

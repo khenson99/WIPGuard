@@ -12,6 +12,7 @@ import {
   protectIntegrationSecret,
   unprotectIntegrationSecret,
 } from "@/lib/integrations/token-crypto";
+import { isConfiguredIntegrationOwner } from "@/lib/integrations/ownership";
 
 const EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 const META_GRAPH_VERSION = "v21.0";
@@ -172,7 +173,7 @@ export async function getValidIntegrationAccessToken(input: {
   }
 
   const promise = (async () => {
-    const connection = await prisma.integrationConnection.findUnique({
+    let connection = await prisma.integrationConnection.findUnique({
       where: {
         userId_provider: {
           userId: input.userId,
@@ -180,6 +181,18 @@ export async function getValidIntegrationAccessToken(input: {
         },
       },
     });
+
+    // Owner fallback: when the configured owner has no connection yet
+    // (migration hasn't run), look for any connected user's connection.
+    if (!connection && isConfiguredIntegrationOwner(input.userId)) {
+      connection = await prisma.integrationConnection.findFirst({
+        where: {
+          provider: input.provider,
+          status: IntegrationConnectionStatus.CONNECTED,
+        },
+        orderBy: { connectedAt: "desc" },
+      });
+    }
 
     if (!connection || connection.status === IntegrationConnectionStatus.DISCONNECTED) {
       throw new IntegrationAuthError(providerLabel(input.provider), "Integration is not connected");
