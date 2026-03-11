@@ -314,6 +314,8 @@ export function DealDetail({ dealId }: { dealId: string }) {
                 value={form.stage}
                 onChange={(e) => setForm((p) => ({ ...p, stage: e.target.value as DealStage }))}
                 className="modal-input w-full rounded-md border px-3 py-2 text-sm"
+                aria-label="Deal stage"
+                data-testid="deal-stage-select"
               >
                 {Object.entries(DEAL_STAGE_LABELS).map(([val, label]) => (
                   <option key={val} value={val}>{label}</option>
@@ -403,6 +405,8 @@ export function DealDetail({ dealId }: { dealId: string }) {
               onClick={saveDeal}
               disabled={saving}
               className="btn-primary-theme flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+              aria-label="Save deal changes"
+              data-testid="save-deal-changes"
             >
               <Save className="h-4 w-4" />
               {saving ? "Saving..." : "Save Changes"}

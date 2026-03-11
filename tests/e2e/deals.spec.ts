@@ -50,14 +50,18 @@ test.describe('Deal Pipeline', () => {
 
     await dealsPage.createDeal(dealName);
 
-    // Verify the deal appears on the page
-    await expect(dealsPage.getDeal(dealName)).toBeVisible({ timeout: 10_000 });
+    await expect(page).toHaveURL(/\/deals\/[^/]+$/i);
+    await expect(dealsPage.getDealDetailHeading(dealName)).toBeVisible({ timeout: 10_000 });
   });
 
   test('should show new deal in the first pipeline stage', async ({ page }) => {
     const dealName = uniqueDealName();
 
     await dealsPage.createDeal(dealName);
+    await expect(page).toHaveURL(/\/deals\/[^/]+$/i);
+    await expect(dealsPage.getDealDetailHeading(dealName)).toBeVisible({ timeout: 10_000 });
+
+    await dealsPage.goto();
     await expect(dealsPage.getDeal(dealName)).toBeVisible({ timeout: 10_000 });
 
     // Check deal is in the first stage column
@@ -77,30 +81,23 @@ test.describe('Deal Pipeline', () => {
 
     // Create the deal
     await dealsPage.createDeal(dealName);
-    await expect(dealsPage.getDeal(dealName)).toBeVisible({ timeout: 10_000 });
+    await expect(page).toHaveURL(/\/deals\/[^/]+$/i);
+    await expect(dealsPage.getDealDetailHeading(dealName)).toBeVisible({ timeout: 10_000 });
 
-    // Try to advance the deal to the next stage
     const targetStage = DEAL_STAGES[1]; // "Qualified"
+    const saveResponse = page.waitForResponse((response) =>
+      response.request().method() === 'PATCH' &&
+      /\/api\/deals\/[^/]+$/i.test(response.url()) &&
+      response.ok()
+    );
 
-    try {
-      await dealsPage.advanceDealToStage(dealName, targetStage);
-      await page.waitForLoadState('networkidle');
-    } catch {
-      // If drag-and-drop doesn't work, try clicking on the deal and using a button
-      try {
-        await dealsPage.getDeal(dealName).click();
-        const advanceButton = dealsPage.getAdvanceButton();
-        const advVisible = await advanceButton.isVisible().catch(() => false);
-        if (advVisible) {
-          await advanceButton.click();
-        }
-      } catch {
-        // Pipeline advancement UI may vary - test that deal is still visible
-      }
-    }
+    await page.getByLabel(/deal stage/i).selectOption({ label: targetStage });
+    await page.getByRole('button', { name: /save changes/i }).click();
+    await saveResponse;
 
-    // Verify deal is still visible after attempted advancement
-    await expect(dealsPage.getDeal(dealName)).toBeVisible({ timeout: 10_000 });
+    await dealsPage.goto();
+    const qualifiedStage = dealsPage.getStageColumn(targetStage);
+    await expect(qualifiedStage.getByText(dealName)).toBeVisible({ timeout: 10_000 });
   });
 
   test('should allow creating multiple deals', async ({ page }) => {
@@ -108,13 +105,16 @@ test.describe('Deal Pipeline', () => {
     const deal2 = uniqueDealName();
 
     await dealsPage.createDeal(deal1);
-    await expect(dealsPage.getDeal(deal1)).toBeVisible({ timeout: 10_000 });
+    await expect(page).toHaveURL(/\/deals\/[^/]+$/i);
+    await expect(dealsPage.getDealDetailHeading(deal1)).toBeVisible({ timeout: 10_000 });
 
     // Creating a deal navigates to its detail view; go back to the deals list before creating another.
     await dealsPage.goto();
+    await expect(dealsPage.getDeal(deal1)).toBeVisible({ timeout: 10_000 });
 
     await dealsPage.createDeal(deal2);
-    await expect(dealsPage.getDeal(deal2)).toBeVisible({ timeout: 10_000 });
+    await expect(page).toHaveURL(/\/deals\/[^/]+$/i);
+    await expect(dealsPage.getDealDetailHeading(deal2)).toBeVisible({ timeout: 10_000 });
 
     // Back on the list, both deals should be visible.
     await dealsPage.goto();
