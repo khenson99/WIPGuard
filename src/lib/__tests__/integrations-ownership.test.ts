@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    organization: {
+      findMany: vi.fn(),
+    },
     user: {
       findUnique: vi.fn(),
       findMany: vi.fn(),
@@ -50,6 +53,7 @@ describe("integration ownership", () => {
     vi.mocked(prisma.user.findMany).mockResolvedValue([
       { organizationId: "org_2" },
     ] as never);
+    vi.mocked(prisma.organization.findMany).mockResolvedValue([] as never);
     vi.mocked(prisma.user.updateMany).mockResolvedValue({ count: 1 } as never);
 
     await expect(resolveIntegrationOrganizationId("owner_1")).resolves.toBe("org_2");
@@ -72,6 +76,7 @@ describe("integration ownership", () => {
     );
 
     vi.mocked(prisma.user.findUnique).mockResolvedValue({ organizationId: null } as never);
+    vi.mocked(prisma.organization.findMany).mockResolvedValue([] as never);
     vi.mocked(prisma.user.updateMany).mockResolvedValue({ count: 1 } as never);
     vi.mocked(prisma.integrationConnection.findMany)
       .mockResolvedValueOnce([] as never)
@@ -118,5 +123,28 @@ describe("integration ownership", () => {
         }),
       })
     );
+  });
+
+  it("falls back to the sole organization for legacy single-tenant data", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { ensureIntegrationOwnerOrganizationId } = await import(
+      "@/lib/integrations/ownership"
+    );
+
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({ organizationId: null } as never);
+    vi.mocked(prisma.integrationConnection.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.organization.findMany).mockResolvedValue([{ id: "org_only" }] as never);
+    vi.mocked(prisma.user.updateMany).mockResolvedValue({ count: 1 } as never);
+
+    await expect(ensureIntegrationOwnerOrganizationId("owner_1")).resolves.toBe("org_only");
+    expect(prisma.user.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "owner_1",
+        OR: [{ organizationId: null }, { organizationId: "" }],
+      },
+      data: {
+        organizationId: "org_only",
+      },
+    });
   });
 });
