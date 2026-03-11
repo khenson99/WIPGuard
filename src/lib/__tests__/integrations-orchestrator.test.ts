@@ -4,6 +4,7 @@ import { runRules } from "@/lib/integrations/orchestrator";
 import { runGmailCapture } from "@/lib/integrations/google-gmail-capture";
 import { runGoogleDriveCommentEscalation } from "@/lib/integrations/google-drive-comment-escalation";
 import { runGoogleCalendarPrepFollowup } from "@/lib/integrations/google-calendar-followup";
+import { resolveIntegrationOrganizationId } from "@/lib/integrations/ownership";
 import { runProviderMetricsRule } from "@/lib/integrations/provider-metrics-sync";
 import { prisma } from "@/lib/prisma";
 
@@ -28,13 +29,15 @@ vi.mock("@/lib/integrations/provider-metrics-sync", async () => {
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    user: {
-      findUnique: vi.fn(),
-    },
     integrationRule: {
       findMany: vi.fn(),
     },
   },
+}));
+
+vi.mock("@/lib/integrations/ownership", () => ({
+  resolveIntegrationOwnerUserId: vi.fn((userId: string) => userId),
+  resolveIntegrationOrganizationId: vi.fn(),
 }));
 
 describe("integrations orchestrator", () => {
@@ -43,9 +46,7 @@ describe("integrations orchestrator", () => {
   });
 
   it("runs enabled rules for the requested provider/user", async () => {
-    vi.mocked(prisma.user.findUnique).mockResolvedValue({
-      organizationId: "org_1",
-    } as never);
+    vi.mocked(resolveIntegrationOrganizationId).mockResolvedValue("org_1");
     vi.mocked(prisma.integrationRule.findMany).mockResolvedValueOnce([
       {
         id: "r1",
@@ -110,9 +111,7 @@ describe("integrations orchestrator", () => {
   });
 
   it("respects pageBudget", async () => {
-    vi.mocked(prisma.user.findUnique).mockResolvedValue({
-      organizationId: "org_1",
-    } as never);
+    vi.mocked(resolveIntegrationOrganizationId).mockResolvedValue("org_1");
     vi.mocked(prisma.integrationRule.findMany).mockResolvedValueOnce([
       {
         id: "r1",
@@ -162,7 +161,7 @@ describe("integrations orchestrator", () => {
 
   it("skips users that do not have an organization context", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.mocked(prisma.user.findUnique).mockResolvedValue(null as never);
+    vi.mocked(resolveIntegrationOrganizationId).mockResolvedValue(null);
 
     const result = await runRules({
       mode: "incremental",

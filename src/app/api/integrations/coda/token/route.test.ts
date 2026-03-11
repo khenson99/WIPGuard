@@ -10,6 +10,11 @@ vi.mock("@/lib/permissions", () => ({
   enforcePermission: vi.fn(),
 }));
 
+vi.mock("@/lib/integrations/ownership", () => ({
+  ensureIntegrationOwnerOrganizationId: vi.fn(),
+  resolveIntegrationOwnerUserId: vi.fn((userId: string) => userId),
+}));
+
 vi.mock("@/lib/integrations/oauth", () => ({
   compactErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Integration request failed",
@@ -37,11 +42,15 @@ describe("POST /api/integrations/coda/token", () => {
 
   it("accepts docUrl and persists normalized docId", async () => {
     const { auth } = await import("@/lib/auth");
+    const { ensureIntegrationOwnerOrganizationId } = await import("@/lib/integrations/ownership");
     const { enforcePermission } = await import("@/lib/permissions");
     const { verifyCodaApiToken } = await import("@/lib/integrations/oauth");
     const { prisma } = await import("@/lib/prisma");
 
-    vi.mocked(auth).mockResolvedValue({ user: { id: "user-1" } } as never);
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: "user-1", organizationId: "org-1" },
+    } as never);
+    vi.mocked(ensureIntegrationOwnerOrganizationId).mockResolvedValue("org-1");
     vi.mocked(enforcePermission).mockResolvedValue({ deniedResponse: null } as never);
     vi.mocked(verifyCodaApiToken).mockResolvedValue({
       providerAccountId: "acct-1",
@@ -74,6 +83,9 @@ describe("POST /api/integrations/coda/token", () => {
 
     expect(prisma.integrationConnection.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
+        create: expect.objectContaining({
+          organizationId: "org-1",
+        }),
         where: {
           userId_provider: {
             userId: "user-1",
@@ -81,21 +93,27 @@ describe("POST /api/integrations/coda/token", () => {
           },
         },
         update: expect.objectContaining({
+          organizationId: "org-1",
           metadata: expect.objectContaining({
             docId: "dAbCdEF1234",
           }),
         }),
       })
     );
+    expect(ensureIntegrationOwnerOrganizationId).toHaveBeenCalledWith("user-1", "org-1");
   });
 
   it("keeps prior docId when no doc input is provided", async () => {
     const { auth } = await import("@/lib/auth");
+    const { ensureIntegrationOwnerOrganizationId } = await import("@/lib/integrations/ownership");
     const { enforcePermission } = await import("@/lib/permissions");
     const { verifyCodaApiToken } = await import("@/lib/integrations/oauth");
     const { prisma } = await import("@/lib/prisma");
 
-    vi.mocked(auth).mockResolvedValue({ user: { id: "user-2" } } as never);
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: "user-2", organizationId: "org-2" },
+    } as never);
+    vi.mocked(ensureIntegrationOwnerOrganizationId).mockResolvedValue("org-2");
     vi.mocked(enforcePermission).mockResolvedValue({ deniedResponse: null } as never);
     vi.mocked(verifyCodaApiToken).mockResolvedValue({
       providerAccountId: "acct-2",
@@ -127,11 +145,15 @@ describe("POST /api/integrations/coda/token", () => {
 
   it("allows docId-only updates for existing connections without token", async () => {
     const { auth } = await import("@/lib/auth");
+    const { ensureIntegrationOwnerOrganizationId } = await import("@/lib/integrations/ownership");
     const { enforcePermission } = await import("@/lib/permissions");
     const { verifyCodaApiToken } = await import("@/lib/integrations/oauth");
     const { prisma } = await import("@/lib/prisma");
 
-    vi.mocked(auth).mockResolvedValue({ user: { id: "user-3" } } as never);
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: "user-3", organizationId: "org-3" },
+    } as never);
+    vi.mocked(ensureIntegrationOwnerOrganizationId).mockResolvedValue("org-3");
     vi.mocked(enforcePermission).mockResolvedValue({ deniedResponse: null } as never);
     vi.mocked(prisma.integrationConnection.findUnique).mockResolvedValue({
       metadata: { authType: "api_token", docId: "dOldDoc123" },
@@ -174,11 +196,15 @@ describe("POST /api/integrations/coda/token", () => {
 
   it("still requires token when no connection exists", async () => {
     const { auth } = await import("@/lib/auth");
+    const { ensureIntegrationOwnerOrganizationId } = await import("@/lib/integrations/ownership");
     const { enforcePermission } = await import("@/lib/permissions");
     const { verifyCodaApiToken } = await import("@/lib/integrations/oauth");
     const { prisma } = await import("@/lib/prisma");
 
-    vi.mocked(auth).mockResolvedValue({ user: { id: "user-4" } } as never);
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: "user-4", organizationId: "org-4" },
+    } as never);
+    vi.mocked(ensureIntegrationOwnerOrganizationId).mockResolvedValue("org-4");
     vi.mocked(enforcePermission).mockResolvedValue({ deniedResponse: null } as never);
     vi.mocked(prisma.integrationConnection.findUnique).mockResolvedValue(null as never);
 

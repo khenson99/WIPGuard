@@ -8,11 +8,15 @@ import {
 } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { getIntegrationEnvValue } from "@/lib/integrations/env";
-import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
+import {
+  ensureIntegrationOwnerOrganizationId,
+  resolveIntegrationOwnerUserId,
+} from "@/lib/integrations/ownership";
 import { compactErrorMessage } from "@/lib/integrations/oauth";
 import { protectIntegrationSecret } from "@/lib/integrations/token-crypto";
 import { enforcePermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { getAuthenticatedUser } from "@/lib/session-user";
 
 interface ConnectSemrushBody {
   token?: string;
@@ -23,6 +27,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await auth();
     if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const sessionUser = getAuthenticatedUser(session);
+    if (!sessionUser) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -38,6 +47,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
+    const organizationId = sessionUser.organizationId ?? null;
+    await ensureIntegrationOwnerOrganizationId(ownerUserId, organizationId);
     const body = (await request.json().catch(() => ({}))) as ConnectSemrushBody;
     const token = body.token?.trim() || getIntegrationEnvValue("SEMRUSH_API_TOKEN");
     const domain = body.domain?.trim() || process.env.SEMRUSH_DOMAIN?.trim();
@@ -85,6 +96,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         lastSyncedAt: new Date(),
         lastError: null,
         metadata,
+        organizationId,
       },
       update: {
         status: IntegrationConnectionStatus.CONNECTED,
@@ -97,6 +109,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         lastSyncedAt: new Date(),
         lastError: null,
         metadata,
+        organizationId,
       },
     });
 
