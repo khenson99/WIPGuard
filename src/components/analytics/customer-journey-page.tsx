@@ -4,8 +4,6 @@ import { useEffect, useState } from "react";
 import { HorizontalFunnel } from "@/components/charts";
 import { StatCard } from "./stat-card";
 import { DashboardSectionCard } from "./dashboard-section-card";
-import { AiInsightsPanel } from "./ai-insights-panel";
-import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-controls";
 import type {
   AnalyticsDashboardData,
   LifecycleStageId,
@@ -32,14 +30,17 @@ export function CustomerJourneyPage() {
     cacheKey: "analytics:overview:v1",
     deps: [],
     load: async ({ signal }) => {
-      const response = await fetch("/api/analytics?section=overview", { signal });
+      const response = await fetch("/api/analytics?section=overview", {
+        signal,
+        cache: "no-store",
+      });
       if (!response.ok) {
         throw new Error(`Analytics overview request failed (${response.status})`);
       }
       return (await response.json()) as AnalyticsDashboardData;
     },
     getLastUpdatedAt: (payload) =>
-      payload.meta?.servedAt ?? payload.lastFullRefresh ?? payload.generatedAt ?? null,
+      payload.meta?.servedAt ?? payload.lastFullRefresh ?? null,
     mapError: (error) =>
       error instanceof Error && error.message ? error.message : "Could not load journey data.",
   });

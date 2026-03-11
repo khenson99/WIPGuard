@@ -109,11 +109,11 @@ export function AnalyticsSummaryPage() {
       const [summarySettled, overviewSettled] = await Promise.allSettled([
         fetch(`/api/analytics/summary${summaryParams.toString() ? `?${summaryParams.toString()}` : ""}`, {
           signal,
-          cache: refresh ? "no-store" : "default",
+          cache: "no-store",
         }),
         fetch(`/api/analytics?${overviewParams.toString()}`, {
           signal,
-          cache: refresh ? "no-store" : "default",
+          cache: "no-store",
         }),
       ]);
 

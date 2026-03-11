@@ -1,5 +1,5 @@
-import { ExecutiveOverviewDashboard } from "@/components/dashboard/executive-overview-dashboard";
+import { OperatorDashboard } from "@/components/dashboard/operator-dashboard";
 
 export default function DashboardPage() {
-  return <ExecutiveOverviewDashboard />;
+  return <OperatorDashboard />;
 }
