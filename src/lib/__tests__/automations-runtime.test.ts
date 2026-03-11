@@ -133,6 +133,55 @@ describe("automation runtime AI lifecycle", () => {
     );
   });
 
+  it("marks queued AI jobs failed when dispatch to OpenAI errors", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { createAutomationOpenAiResponse } = await import("@/lib/automations/openai");
+
+    vi.mocked(prisma.automationAiJob.findMany).mockResolvedValue([
+      {
+        id: "job_dispatch_fail_1",
+        requestPayload: {
+          model: "gpt-4.1-mini",
+          input: [{ role: "user", content: "hello" }],
+        },
+        attemptCount: 2,
+      },
+    ] as never);
+    vi.mocked(createAutomationOpenAiResponse).mockRejectedValue(
+      new Error("OpenAI request failed")
+    );
+
+    const { dispatchAutomationAiJobs } = await import("@/lib/automations/runtime");
+    const processed = await dispatchAutomationAiJobs(1);
+
+    expect(processed).toBe(1);
+    expect(createAutomationOpenAiResponse).toHaveBeenCalledWith({
+      model: "gpt-4.1-mini",
+      input: [{ role: "user", content: "hello" }],
+    });
+    expect(prisma.automationAiJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "job_dispatch_fail_1" },
+        data: expect.objectContaining({
+          status: AutomationAiJobStatus.REQUESTED,
+          attemptCount: { increment: 1 },
+          lastError: null,
+        }),
+      })
+    );
+    expect(prisma.automationAiJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "job_dispatch_fail_1" },
+        data: expect.objectContaining({
+          status: AutomationAiJobStatus.FAILED,
+          attemptCount: { increment: 1 },
+          lastError: "OpenAI request failed",
+          nextAttemptAt: expect.any(Date),
+        }),
+      })
+    );
+  });
+
   it("polls in-flight AI jobs and settles completed responses", async () => {
     const { prisma } = await import("@/lib/prisma");
     const {
@@ -235,6 +284,38 @@ describe("automation runtime AI lifecycle", () => {
         data: expect.objectContaining({
           status: "SUCCEEDED",
           error: null,
+        }),
+      })
+    );
+  });
+
+  it("marks polled AI jobs failed when response retrieval errors", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { retrieveAutomationOpenAiResponse } = await import("@/lib/automations/openai");
+
+    vi.mocked(prisma.automationAiJob.findMany).mockResolvedValue([
+      {
+        id: "job_poll_fail_1",
+        responseId: "resp_poll_fail_1",
+        attemptCount: 2,
+      },
+    ] as never);
+    vi.mocked(retrieveAutomationOpenAiResponse).mockRejectedValue(
+      new Error("OpenAI poll timeout")
+    );
+
+    const { pollAutomationAiJobs } = await import("@/lib/automations/runtime");
+    const processed = await pollAutomationAiJobs(10);
+
+    expect(processed).toBe(1);
+    expect(retrieveAutomationOpenAiResponse).toHaveBeenCalledWith("resp_poll_fail_1");
+    expect(prisma.automationAiJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "job_poll_fail_1" },
+        data: expect.objectContaining({
+          status: AutomationAiJobStatus.FAILED,
+          lastError: "OpenAI poll timeout",
+          nextAttemptAt: expect.any(Date),
         }),
       })
     );
