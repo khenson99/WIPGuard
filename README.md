@@ -1,4 +1,6 @@
-# The Mother Node App
+# WIPGuard
+
+WIPGuard is Arda's GTM operator platform: a WIP-limited execution system with first-class integrations, automations, and analytics layered on top of daily work management.
 
 ## Local development
 

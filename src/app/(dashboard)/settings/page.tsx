@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Settings as SettingsIcon } from "lucide-react";
 import { clsx } from "clsx";
@@ -10,7 +10,6 @@ import { ProjectsTab } from "@/components/settings/projects-tab";
 import { PrioritiesTab } from "@/components/settings/priorities-tab";
 import { TeamTab } from "@/components/settings/team-tab";
 import { DepartmentsTab } from "@/components/settings/departments-tab";
-import { IntegrationsTab } from "@/components/settings/integrations-tab";
 import { OperationsTab } from "@/components/settings/operations-tab";
 
 const TABS = [
@@ -20,7 +19,6 @@ const TABS = [
   { id: "departments", label: "Departments" },
   { id: "priorities", label: "Company Priorities" },
   { id: "team", label: "Team" },
-  { id: "integrations", label: "Integrations" },
   { id: "operations", label: "Operations" },
 ] as const;
 
@@ -35,6 +33,15 @@ export default function SettingsPage() {
     tabParam && TABS.some((candidate) => candidate.id === tabParam)
       ? (tabParam as TabId)
       : "board";
+
+  useEffect(() => {
+    if (tabParam !== "integrations") return;
+
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    params.delete("tab");
+    const suffix = params.toString();
+    router.replace(`/integrations${suffix ? `?${suffix}` : ""}`, { scroll: false });
+  }, [router, searchParams, tabParam]);
 
   const handleTabChange = useCallback((tabId: TabId) => {
     const params = new URLSearchParams(searchParams?.toString() ?? "");
@@ -69,6 +76,10 @@ export default function SettingsPage() {
     [activeTab, handleTabChange],
   );
 
+  if (tabParam === "integrations") {
+    return null;
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-border px-6 py-3">
@@ -77,7 +88,7 @@ export default function SettingsPage() {
           Settings
         </h1>
         <p className="text-xs text-muted-foreground">
-          Configure your board, sprints, projects, and team
+          Configure platform defaults, WIP policy, team setup, and operating guardrails.
         </p>
       </div>
 
@@ -112,7 +123,6 @@ export default function SettingsPage() {
         {activeTab === "departments" && <DepartmentsTab />}
         {activeTab === "priorities" && <PrioritiesTab />}
         {activeTab === "team" && <TeamTab />}
-        {activeTab === "integrations" && <IntegrationsTab />}
         {activeTab === "operations" && <OperationsTab />}
       </div>
     </div>

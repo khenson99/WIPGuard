@@ -25,9 +25,8 @@ function getBaseUrl(request: NextRequest): string {
   return process.env.NEXTAUTH_URL || request.nextUrl.origin;
 }
 
-function settingsRedirect(request: NextRequest, status: string, provider?: string): URL {
-  const url = new URL("/settings", getBaseUrl(request));
-  url.searchParams.set("tab", "integrations");
+function integrationsRedirect(request: NextRequest, status: string, provider?: string): URL {
+  const url = new URL("/integrations", getBaseUrl(request));
   url.searchParams.set("status", status);
   if (provider) {
     url.searchParams.set("integration", provider);
@@ -64,7 +63,7 @@ export async function GET(
   const credentials = getIntegrationOAuthCredentials(definition);
   if (!credentials) {
     return NextResponse.redirect(
-      settingsRedirect(request, "missing_config", definition.slug)
+      integrationsRedirect(request, "missing_config", definition.slug)
     );
   }
 

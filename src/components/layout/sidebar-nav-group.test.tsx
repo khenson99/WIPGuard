@@ -11,16 +11,17 @@ vi.mock("next/navigation", () => ({
 }));
 
 const BASE_ITEM: NavItem = {
-  id: "ads-traffic",
-  href: "/analytics/ads-traffic",
-  label: "Ads & Traffic",
+  id: "analytics",
+  href: "/analytics",
+  label: "Analytics",
+  workspaceId: "analytics",
   icon: Megaphone,
   children: [
     {
-      id: "ads-google-ads",
-      href: "/analytics/ads-google-ads",
-      label: "Google Ads",
-      dataDomain: "googleAds",
+      id: "analytics-ai-insights",
+      href: "/analytics/ai-insights",
+      label: "AI Insights",
+      workspaceId: "analytics",
     },
   ],
 };
@@ -34,7 +35,7 @@ describe("SidebarNavGroup", () => {
   it("defaults to collapsed when no stored preference exists", () => {
     render(<SidebarNavGroup item={BASE_ITEM} />);
 
-    expect(screen.getByRole("button", { name: "Expand Ads & Traffic" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Expand Analytics" })).toBeTruthy();
   });
 
   it("respects stored collapsed preference", () => {
@@ -48,7 +49,7 @@ describe("SidebarNavGroup", () => {
 
     render(<SidebarNavGroup item={BASE_ITEM} />);
 
-    expect(screen.getByRole("button", { name: "Expand Ads & Traffic" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Expand Analytics" })).toBeTruthy();
   });
 
   it("forces expanded state when a child route is active", () => {
@@ -59,11 +60,11 @@ describe("SidebarNavGroup", () => {
         explicit: true,
       })
     );
-    mockPathname = "/analytics/ads-google-ads";
+    mockPathname = "/analytics/ai-insights";
 
     render(<SidebarNavGroup item={BASE_ITEM} />);
 
-    expect(screen.getByRole("button", { name: "Collapse Ads & Traffic" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Collapse Analytics" })).toBeTruthy();
   });
 
   it("treats legacy empty-array preference as no preference and collapses", () => {
@@ -71,7 +72,7 @@ describe("SidebarNavGroup", () => {
 
     render(<SidebarNavGroup item={BASE_ITEM} />);
 
-    expect(screen.getByRole("button", { name: "Expand Ads & Traffic" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Expand Analytics" })).toBeTruthy();
   });
 
   it("supports explicit collapse-all preference in new storage format", () => {
@@ -85,6 +86,6 @@ describe("SidebarNavGroup", () => {
 
     render(<SidebarNavGroup item={BASE_ITEM} />);
 
-    expect(screen.getByRole("button", { name: "Expand Ads & Traffic" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Expand Analytics" })).toBeTruthy();
   });
 });
