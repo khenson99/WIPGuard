@@ -284,7 +284,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
 
       const response = await fetch(`/api/analytics?${analyticsParams.toString()}`, {
         signal,
-        cache: refresh ? "no-store" : "default",
+        cache: "no-store",
       });
       if (!response.ok) {
         throw new Error(`Analytics section request failed (${response.status})`);

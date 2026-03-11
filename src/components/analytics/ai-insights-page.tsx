@@ -38,7 +38,7 @@ export function AiInsightsPage() {
 
       const response = await fetch(`/api/analytics?${params.toString()}`, {
         signal,
-        cache: refresh ? "no-store" : "default",
+        cache: "no-store",
       });
       if (!response.ok) {
         throw new Error(`Analytics overview request failed (${response.status})`);
@@ -46,7 +46,7 @@ export function AiInsightsPage() {
       return (await response.json()) as AnalyticsDashboardData;
     },
     getLastUpdatedAt: (payload) =>
-      payload.meta?.servedAt ?? payload.lastFullRefresh ?? payload.generatedAt ?? null,
+      payload.meta?.servedAt ?? payload.lastFullRefresh ?? null,
     mapError: (error) =>
       error instanceof Error && error.message ? error.message : "Could not load insights.",
   });
@@ -72,7 +72,6 @@ export function AiInsightsPage() {
     createTaskFromInsight,
     creatingTaskForId,
     sortAndFilter,
-    dismissedIds,
   } = useInsightPreferences();
 
   useEffect(() => {
@@ -80,11 +79,11 @@ export function AiInsightsPage() {
     populateConnectionStatus(data.freshness, data);
   }, [data]);
 
-  const allInsights = data?.aiInsights?.global ?? [];
+  const allInsights = useMemo(() => data?.aiInsights?.global ?? [], [data?.aiInsights?.global]);
 
   const dismissedCount = useMemo(
     () => allInsights.filter((i) => isDismissed(i.id)).length,
-    [allInsights, isDismissed, dismissedIds]
+    [allInsights, isDismissed]
   );
 
   const filtered = useMemo(() => {
@@ -109,7 +108,7 @@ export function AiInsightsPage() {
         : b.confidence - a.confidence;
 
     return [...pinned, ...unpinned.sort(sortFn)];
-  }, [allInsights, severityFilter, sectionFilter, sortMode, sortAndFilter, showDismissed, isPinned, dismissedIds]);
+  }, [allInsights, severityFilter, sectionFilter, sortMode, sortAndFilter, showDismissed, isPinned]);
 
   const totalInsights = filtered.length;
   const pageCount = Math.max(1, Math.ceil(totalInsights / pageSize));

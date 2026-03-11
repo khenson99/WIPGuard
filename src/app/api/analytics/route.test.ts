@@ -9,6 +9,13 @@ vi.mock("@/lib/analytics/credentials", () => ({
   getCredentials: vi.fn(),
 }));
 
+vi.mock("@/lib/integrations/ownership", () => ({
+  resolveIntegrationOwnerUserId: vi.fn((userId: string) => {
+    const owner = process.env.INTEGRATION_OWNER_USER_ID?.trim();
+    return owner && owner.length > 0 ? owner : userId;
+  }),
+}));
+
 vi.mock("@/lib/analytics/fetchers", () => ({
   fetchHubSpotData: vi.fn(),
   fetchMercuryData: vi.fn(),
@@ -58,6 +65,9 @@ vi.mock("@/lib/prisma", () => ({
     task: { count: vi.fn() },
     statusHistory: { findMany: vi.fn() },
     stripeCustomerLink: { findMany: vi.fn() },
+    budget: { findMany: vi.fn() },
+    financialGoal: { findMany: vi.fn() },
+    forecastScenario: { findMany: vi.fn() },
   },
 }));
 
@@ -395,6 +405,9 @@ describe("GET /api/analytics", () => {
         hubspotDealName: "Acme Corp",
       },
     ] as never);
+    vi.mocked(prisma.budget.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.financialGoal.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.forecastScenario.findMany).mockResolvedValue([] as never);
   });
 
   it("returns 403 when analytics read permission is denied", async () => {
@@ -452,16 +465,20 @@ describe("GET /api/analytics", () => {
 
     expect(response.status).toBe(200);
     expect(body.demoAnalytics).toBeTruthy();
-    expect(body.demoAnalytics.totalScheduled).toBeGreaterThan(0);
+    expect(body.demoAnalytics.upcomingCount).toBeGreaterThan(0);
   });
 
   it("hydrates stripe customer links onto hubspot deals", async () => {
+    const { prisma } = await import("@/lib/prisma");
     const { GET } = await import("@/app/api/analytics/route");
     const response = await GET(new Request("http://localhost/api/analytics?section=demo-analytics"));
     const body = await response.json();
 
     const deal = body.hubspot.deals.find((entry: { dealId: string }) => entry.dealId === "deal-1");
     expect(deal.stripeCustomerId).toBe("cus_123");
+    expect(prisma.stripeCustomerLink.findMany).toHaveBeenCalledWith({
+      where: { userId: "user-1" },
+    });
   });
 
   it("returns process analytics domain data", async () => {
@@ -613,7 +630,7 @@ describe("GET /api/analytics", () => {
     const { fetchIntegrationTelemetryData } = await import("@/lib/analytics/fetchers-integrations");
     const { prisma } = await import("@/lib/prisma");
 
-    vi.mocked(getCredentials).mockImplementation(async (requestedUserId: string) => {
+    vi.mocked(getCredentials).mockImplementation(async (requestedUserId?: string) => {
       if (requestedUserId !== "owner-1") {
         return {
           hubspotToken: null,
@@ -726,7 +743,7 @@ describe("GET /api/analytics", () => {
       expect(body.stripe).toEqual(STRIPE_DATA);
       expect(getCredentials).toHaveBeenCalledWith("owner-1");
       expect(prisma.stripeCustomerLink.findMany).toHaveBeenCalledWith({
-        where: { userId: "owner-1" },
+        where: { userId: "user-1" },
       });
 
       expect(
@@ -791,5 +808,209 @@ describe("GET /api/analytics", () => {
         process.env.INTEGRATION_OWNER_USER_ID = previousOwner;
       }
     }
+  });
+  it("reads provider-backed analytics using the integration owner user", async () => {
+    const previousOwner = process.env.INTEGRATION_OWNER_USER_ID;
+    process.env.INTEGRATION_OWNER_USER_ID = "owner-mercury";
+
+    const { getCredentials } = await import("@/lib/analytics/credentials");
+    const { readLatestSnapshot } = await import("@/lib/analytics/snapshots");
+
+    try {
+      vi.mocked(readLatestSnapshot).mockResolvedValueOnce({
+        payload: MERCURY_DATA,
+        capturedAt: "2026-02-10T00:00:00.000Z",
+        expiresAt: "2026-02-10T01:00:00.000Z",
+        needsRefresh: false,
+        stale: false,
+        fromSnapshot: true,
+        status: "SUCCESS",
+        error: null,
+      } as never);
+
+      const { GET } = await import("@/app/api/analytics/route");
+      const response = await GET(
+        new Request("http://localhost/api/analytics?section=finance-mercury")
+      );
+
+      expect(response.status).toBe(200);
+      expect(getCredentials).toHaveBeenCalledWith("owner-mercury");
+      expect(readLatestSnapshot).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: "owner-mercury",
+          providerKey: "mercury",
+        }),
+      );
+    } finally {
+      if (previousOwner === undefined) {
+        delete process.env.INTEGRATION_OWNER_USER_ID;
+      } else {
+        process.env.INTEGRATION_OWNER_USER_ID = previousOwner;
+      }
+    }
+  });
+
+  it("live-fetches finance-critical Mercury data even when a snapshot exists", async () => {
+    const previousOwner = process.env.INTEGRATION_OWNER_USER_ID;
+    process.env.INTEGRATION_OWNER_USER_ID = "owner-mercury";
+
+    const staleMercury = {
+      ...MERCURY_DATA,
+      cashFlow: {
+        ...MERCURY_DATA.cashFlow,
+        totalBalance: 1000,
+        runway: 1,
+      },
+    };
+    const liveMercury = {
+      ...MERCURY_DATA,
+      cashFlow: {
+        ...MERCURY_DATA.cashFlow,
+        totalBalance: 3000000,
+        runway: 3000,
+      },
+    };
+
+    const { readLatestSnapshot, storeAnalyticsSnapshot } = await import("@/lib/analytics/snapshots");
+    const { fetchMercuryData } = await import("@/lib/analytics/fetchers");
+
+    try {
+      vi.mocked(readLatestSnapshot).mockResolvedValueOnce({
+        payload: staleMercury,
+        capturedAt: "2026-02-10T00:00:00.000Z",
+        expiresAt: "2026-02-10T01:00:00.000Z",
+        needsRefresh: false,
+        stale: false,
+        fromSnapshot: true,
+        status: "SUCCESS",
+        error: null,
+      } as never);
+      vi.mocked(fetchMercuryData).mockResolvedValueOnce(liveMercury as never);
+
+      const { GET } = await import("@/app/api/analytics/route");
+      const response = await GET(
+        new Request("http://localhost/api/analytics?section=finance-mercury")
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.mercury.cashFlow.totalBalance).toBe(3000000);
+      expect(body.mercury.cashFlow.runway).toBe(3000);
+      expect(storeAnalyticsSnapshot).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: "owner-mercury",
+          providerKey: "mercury",
+          payload: liveMercury,
+        }),
+      );
+    } finally {
+      if (previousOwner === undefined) {
+        delete process.env.INTEGRATION_OWNER_USER_ID;
+      } else {
+        process.env.INTEGRATION_OWNER_USER_ID = previousOwner;
+      }
+    }
+  });
+
+  it("falls back to the last successful finance snapshot when the live fetch fails", async () => {
+    const previousOwner = process.env.INTEGRATION_OWNER_USER_ID;
+    process.env.INTEGRATION_OWNER_USER_ID = "owner-mercury";
+
+    const fallbackMercury = {
+      ...MERCURY_DATA,
+      cashFlow: {
+        ...MERCURY_DATA.cashFlow,
+        totalBalance: 250000,
+        runway: 250,
+      },
+    };
+
+    const { readLatestSnapshot, readLatestSuccessfulSnapshot, storeAnalyticsSnapshotFailure } =
+      await import("@/lib/analytics/snapshots");
+    const { fetchMercuryData } = await import("@/lib/analytics/fetchers");
+
+    try {
+      vi.mocked(readLatestSnapshot).mockResolvedValueOnce({
+        payload: MERCURY_DATA,
+        capturedAt: "2026-02-10T00:00:00.000Z",
+        expiresAt: "2026-02-10T01:00:00.000Z",
+        needsRefresh: false,
+        stale: false,
+        fromSnapshot: true,
+        status: "SUCCESS",
+        error: null,
+      } as never);
+      vi.mocked(fetchMercuryData).mockRejectedValueOnce(new Error("Mercury timeout"));
+      vi.mocked(readLatestSuccessfulSnapshot).mockResolvedValueOnce({
+        payload: fallbackMercury,
+        capturedAt: "2026-02-10T00:00:00.000Z",
+        expiresAt: "2026-02-10T01:00:00.000Z",
+        needsRefresh: false,
+        stale: true,
+        fromSnapshot: true,
+        status: "SUCCESS",
+        error: null,
+      } as never);
+
+      const { GET } = await import("@/app/api/analytics/route");
+      const response = await GET(
+        new Request("http://localhost/api/analytics?section=finance-mercury")
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.mercury.cashFlow.totalBalance).toBe(250000);
+      expect(body.staleDomains).toContain("mercury");
+      expect(body.errors).toContainEqual(
+        expect.objectContaining({
+          source: "mercury",
+          message: "Mercury timeout",
+        }),
+      );
+      expect(storeAnalyticsSnapshotFailure).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: "owner-mercury",
+          providerKey: "mercury",
+          error: "Mercury timeout",
+        }),
+      );
+    } finally {
+      if (previousOwner === undefined) {
+        delete process.env.INTEGRATION_OWNER_USER_ID;
+      } else {
+        process.env.INTEGRATION_OWNER_USER_ID = previousOwner;
+      }
+    }
+  });
+
+  it("keeps non-finance domains snapshot-first on normal requests", async () => {
+    const snapshotGa = {
+      ...GA_DATA,
+      sessions30d: 4321,
+    };
+
+    const { readLatestSnapshot } = await import("@/lib/analytics/snapshots");
+    const { fetchGAData } = await import("@/lib/analytics/fetchers-ga-webflow");
+
+    vi.mocked(readLatestSnapshot).mockResolvedValueOnce({
+      payload: snapshotGa,
+      capturedAt: "2026-02-10T00:00:00.000Z",
+      expiresAt: "2026-02-10T01:00:00.000Z",
+      needsRefresh: false,
+      stale: false,
+      fromSnapshot: true,
+      status: "SUCCESS",
+      error: null,
+    } as never);
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(
+      new Request("http://localhost/api/analytics?section=ads-google-analytics")
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.googleAnalytics.sessions30d).toBe(4321);
+    expect(fetchGAData).not.toHaveBeenCalled();
   });
 });
