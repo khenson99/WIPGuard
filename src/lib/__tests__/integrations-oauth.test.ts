@@ -107,8 +107,43 @@ describe("verifyPylonApiToken", () => {
     vi.restoreAllMocks();
   });
 
+  it("accepts the live /me response shape", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: {
+            id: "206a32d5-9d1c-4f36-9d45-196b70775af9",
+            name: "Arda",
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      )
+    );
+
+    const profile = await verifyPylonApiToken("token");
+
+    expect(profile).toEqual({
+      providerAccountId: "206a32d5-9d1c-4f36-9d45-196b70775af9",
+      accountLabel: "Arda",
+      metadata: {
+        name: "Arda",
+        email: null,
+        username: null,
+      },
+    });
+  });
+
   it("falls back to issues probe when identity endpoints return 404", async () => {
     vi.spyOn(global, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "Not Found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        })
+      )
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ message: "Not Found" }), {
           status: 404,
