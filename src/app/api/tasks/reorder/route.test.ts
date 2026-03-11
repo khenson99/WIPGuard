@@ -99,6 +99,8 @@ describe("PATCH /api/tasks/reorder", () => {
 
   it("persists status history inside the reorder transaction", async () => {
     const updatedAt = new Date("2026-03-01T12:00:00.000Z");
+    const backlogUpdatedAt = new Date("2026-03-01T11:00:00.000Z");
+    const activeUpdatedAt = new Date("2026-03-01T11:30:00.000Z");
     const existingTask = {
       id: "task-1",
       title: "Follow up",
@@ -113,8 +115,8 @@ describe("PATCH /api/tasks/reorder", () => {
       .mockResolvedValueOnce([existingTask] as never)
       .mockResolvedValueOnce([existingTask] as never);
     vi.mocked(prisma.boardSettings.findMany).mockResolvedValue([
-      { columnName: "BACKLOG", columnVersion: 4 },
-      { columnName: "ACTIVE", columnVersion: 8 },
+      { columnName: "BACKLOG", updatedAt: backlogUpdatedAt },
+      { columnName: "ACTIVE", updatedAt: activeUpdatedAt },
     ] as never);
 
     const { PATCH } = await import("@/app/api/tasks/reorder/route");
@@ -132,8 +134,8 @@ describe("PATCH /api/tasks/reorder", () => {
             },
           ],
           expectedColumnVersions: {
-            BACKLOG: 3,
-            ACTIVE: 7,
+            BACKLOG: backlogUpdatedAt.getTime(),
+            ACTIVE: activeUpdatedAt.getTime(),
           },
         }),
       })
@@ -143,12 +145,12 @@ describe("PATCH /api/tasks/reorder", () => {
     expect(response.status).toBe(200);
     expect(txMocks.boardSettingsUpsert).toHaveBeenCalledTimes(2);
     expect(txMocks.boardSettingsUpdateMany).toHaveBeenCalledWith({
-      where: { columnName: "ACTIVE", columnVersion: 7 },
-      data: { columnVersion: { increment: 1 } },
+      where: { columnName: "ACTIVE", updatedAt: activeUpdatedAt },
+      data: { updatedAt: expect.any(Date) },
     });
     expect(txMocks.boardSettingsUpdateMany).toHaveBeenCalledWith({
-      where: { columnName: "BACKLOG", columnVersion: 3 },
-      data: { columnVersion: { increment: 1 } },
+      where: { columnName: "BACKLOG", updatedAt: backlogUpdatedAt },
+      data: { updatedAt: expect.any(Date) },
     });
     expect(txMocks.taskUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -170,14 +172,16 @@ describe("PATCH /api/tasks/reorder", () => {
       ],
     });
     expect(payload.columnVersions).toMatchObject({
-      BACKLOG: 4,
-      ACTIVE: 8,
+      BACKLOG: backlogUpdatedAt.getTime(),
+      ACTIVE: activeUpdatedAt.getTime(),
     });
     expect(invalidateHierarchy).toHaveBeenCalledWith("user-1");
   });
 
   it("returns 409 when the column version is stale", async () => {
     const updatedAt = new Date("2026-03-01T12:00:00.000Z");
+    const backlogUpdatedAt = new Date("2026-03-01T11:00:00.000Z");
+    const activeUpdatedAt = new Date("2026-03-01T11:30:00.000Z");
     const existingTask = {
       id: "task-1",
       title: "Follow up",
@@ -192,8 +196,8 @@ describe("PATCH /api/tasks/reorder", () => {
       .mockResolvedValueOnce([existingTask] as never)
       .mockResolvedValueOnce([existingTask] as never);
     vi.mocked(prisma.boardSettings.findMany).mockResolvedValue([
-      { columnName: "BACKLOG", columnVersion: 4 },
-      { columnName: "ACTIVE", columnVersion: 8 },
+      { columnName: "BACKLOG", updatedAt: backlogUpdatedAt },
+      { columnName: "ACTIVE", updatedAt: activeUpdatedAt },
     ] as never);
     txMocks.boardSettingsUpdateMany.mockResolvedValueOnce({ count: 0 });
 
@@ -211,8 +215,8 @@ describe("PATCH /api/tasks/reorder", () => {
             },
           ],
           expectedColumnVersions: {
-            BACKLOG: 3,
-            ACTIVE: 7,
+            BACKLOG: backlogUpdatedAt.getTime(),
+            ACTIVE: activeUpdatedAt.getTime(),
           },
         }),
       })
@@ -223,8 +227,8 @@ describe("PATCH /api/tasks/reorder", () => {
     expect(payload.conflict).toMatchObject({
       reason: "STALE_COLUMN_VERSION",
       columnVersions: {
-        BACKLOG: 4,
-        ACTIVE: 8,
+        BACKLOG: backlogUpdatedAt.getTime(),
+        ACTIVE: activeUpdatedAt.getTime(),
       },
     });
     expect(txMocks.taskUpdate).not.toHaveBeenCalled();
