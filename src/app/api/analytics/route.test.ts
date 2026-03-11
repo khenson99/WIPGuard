@@ -603,4 +603,193 @@ describe("GET /api/analytics", () => {
       }
     }
   });
+
+  it("resolves integration credentials, snapshots, and telemetry through the shared owner", async () => {
+    const previousOwner = process.env.INTEGRATION_OWNER_USER_ID;
+    process.env.INTEGRATION_OWNER_USER_ID = "owner-1";
+
+    const { getCredentials } = await import("@/lib/analytics/credentials");
+    const { readLatestSnapshot, storeAnalyticsSnapshot } = await import("@/lib/analytics/snapshots");
+    const { fetchIntegrationTelemetryData } = await import("@/lib/analytics/fetchers-integrations");
+    const { prisma } = await import("@/lib/prisma");
+
+    vi.mocked(getCredentials).mockImplementation(async (requestedUserId: string) => {
+      if (requestedUserId !== "owner-1") {
+        return {
+          hubspotToken: null,
+          stripeKey: null,
+          mercuryKey: null,
+          gaPropertyId: null,
+          gaClientEmail: null,
+          gaPrivateKey: null,
+          googleAdsDevToken: null,
+          googleAdsCustomerId: null,
+          googleAdsRefreshToken: null,
+          googleAdsClientId: null,
+          googleAdsClientSecret: null,
+          googleAdsLoginCustomerId: null,
+          metaAccessToken: null,
+          metaAdAccountId: null,
+          metaPageId: null,
+          metaInstagramAccountId: null,
+          redditClientId: null,
+          redditClientSecret: null,
+          redditRefreshToken: null,
+          redditAdAccountId: null,
+          redditUserAgent: null,
+          webflowApiToken: null,
+          webflowSiteId: null,
+          semrushApiToken: null,
+          semrushDomain: null,
+          codaApiToken: null,
+          codaDocId: null,
+          pylonApiKey: null,
+          pylonBaseUrl: null,
+          googleWorkspaceAccessToken: null,
+          slackAccessToken: null,
+          freshness: {
+            [IntegrationProvider.GOOGLE_WORKSPACE]: freshness(IntegrationProvider.GOOGLE_WORKSPACE),
+            [IntegrationProvider.HUBSPOT]: freshness(IntegrationProvider.HUBSPOT),
+            [IntegrationProvider.SLACK]: freshness(IntegrationProvider.SLACK),
+            [IntegrationProvider.CODA]: freshness(IntegrationProvider.CODA),
+            [IntegrationProvider.REDDIT]: freshness(IntegrationProvider.REDDIT),
+            [IntegrationProvider.GOOGLE_ANALYTICS]: freshness(IntegrationProvider.GOOGLE_ANALYTICS),
+            [IntegrationProvider.STRIPE]: freshness(IntegrationProvider.STRIPE),
+            [IntegrationProvider.MERCURY]: freshness(IntegrationProvider.MERCURY),
+            [IntegrationProvider.WEBFLOW]: freshness(IntegrationProvider.WEBFLOW),
+            [IntegrationProvider.GOOGLE_ADS]: freshness(IntegrationProvider.GOOGLE_ADS),
+            [IntegrationProvider.META_ADS]: freshness(IntegrationProvider.META_ADS),
+            [IntegrationProvider.META_PAGE]: freshness(IntegrationProvider.META_PAGE),
+            [IntegrationProvider.SEMRUSH]: freshness(IntegrationProvider.SEMRUSH),
+            [IntegrationProvider.PYLON]: freshness(IntegrationProvider.PYLON),
+          },
+        } as never;
+      }
+
+      return {
+        hubspotToken: "hubspot",
+        stripeKey: "stripe",
+        mercuryKey: "mercury",
+        gaPropertyId: "ga-prop",
+        gaClientEmail: "ga@example.com",
+        gaPrivateKey: "ga-key",
+        googleAdsDevToken: "ads-dev",
+        googleAdsCustomerId: "ads-customer",
+        googleAdsRefreshToken: "ads-refresh",
+        googleAdsClientId: "ads-client",
+        googleAdsClientSecret: "ads-secret",
+        googleAdsLoginCustomerId: null,
+        metaAccessToken: "meta-token",
+        metaAdAccountId: "meta-ad",
+        metaPageId: "meta-page",
+        metaInstagramAccountId: null,
+        redditClientId: "reddit-client",
+        redditClientSecret: "reddit-secret",
+        redditRefreshToken: "reddit-refresh",
+        redditAdAccountId: "reddit-account",
+        redditUserAgent: "ua",
+        webflowApiToken: "webflow-token",
+        webflowSiteId: "webflow-site",
+        semrushApiToken: "semrush-token",
+        semrushDomain: "example.com",
+        codaApiToken: "coda-token",
+        codaDocId: "coda-doc",
+        pylonApiKey: "pylon-token",
+        pylonBaseUrl: null,
+        googleWorkspaceAccessToken: "workspace-token",
+        slackAccessToken: "slack-token",
+        freshness: {
+          [IntegrationProvider.GOOGLE_WORKSPACE]: freshness(IntegrationProvider.GOOGLE_WORKSPACE),
+          [IntegrationProvider.HUBSPOT]: freshness(IntegrationProvider.HUBSPOT),
+          [IntegrationProvider.SLACK]: freshness(IntegrationProvider.SLACK),
+          [IntegrationProvider.CODA]: freshness(IntegrationProvider.CODA),
+          [IntegrationProvider.REDDIT]: freshness(IntegrationProvider.REDDIT),
+          [IntegrationProvider.GOOGLE_ANALYTICS]: freshness(IntegrationProvider.GOOGLE_ANALYTICS),
+          [IntegrationProvider.STRIPE]: freshness(IntegrationProvider.STRIPE),
+          [IntegrationProvider.MERCURY]: freshness(IntegrationProvider.MERCURY),
+          [IntegrationProvider.WEBFLOW]: freshness(IntegrationProvider.WEBFLOW),
+          [IntegrationProvider.GOOGLE_ADS]: freshness(IntegrationProvider.GOOGLE_ADS),
+          [IntegrationProvider.META_ADS]: freshness(IntegrationProvider.META_ADS),
+          [IntegrationProvider.META_PAGE]: freshness(IntegrationProvider.META_PAGE),
+          [IntegrationProvider.SEMRUSH]: freshness(IntegrationProvider.SEMRUSH),
+          [IntegrationProvider.PYLON]: freshness(IntegrationProvider.PYLON),
+        },
+      } as never;
+    });
+
+    try {
+      const { GET } = await import("@/app/api/analytics/route");
+      const response = await GET(new Request("http://localhost/api/analytics"));
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.stripe).toEqual(STRIPE_DATA);
+      expect(getCredentials).toHaveBeenCalledWith("owner-1");
+      expect(prisma.stripeCustomerLink.findMany).toHaveBeenCalledWith({
+        where: { userId: "owner-1" },
+      });
+
+      expect(
+        vi.mocked(readLatestSnapshot).mock.calls.some(
+          ([input]) => input.userId === "owner-1" && input.providerKey === "stripe"
+        )
+      ).toBe(true);
+      expect(
+        vi.mocked(readLatestSnapshot).mock.calls.some(
+          ([input]) => input.userId === "owner-1" && input.providerKey === "googleWorkspace"
+        )
+      ).toBe(true);
+      expect(
+        vi.mocked(readLatestSnapshot).mock.calls.some(
+          ([input]) => input.userId === "user-1" && input.providerKey === "product"
+        )
+      ).toBe(true);
+
+      expect(
+        vi.mocked(storeAnalyticsSnapshot).mock.calls.some(
+          ([input]) => input.userId === "owner-1" && input.providerKey === "stripe"
+        )
+      ).toBe(true);
+      expect(
+        vi.mocked(storeAnalyticsSnapshot).mock.calls.some(
+          ([input]) => input.userId === "user-1" && input.providerKey === "product"
+        )
+      ).toBe(true);
+
+      expect(vi.mocked(fetchIntegrationTelemetryData).mock.calls.length).toBeGreaterThan(0);
+      expect(
+        vi.mocked(fetchIntegrationTelemetryData).mock.calls.every(
+          ([input]) => input.userId === "owner-1"
+        )
+      ).toBe(true);
+    } finally {
+      if (previousOwner === undefined) {
+        delete process.env.INTEGRATION_OWNER_USER_ID;
+      } else {
+        process.env.INTEGRATION_OWNER_USER_ID = previousOwner;
+      }
+    }
+  });
+
+  it("keeps analytics credential resolution per-user when no shared owner is configured", async () => {
+    const previousOwner = process.env.INTEGRATION_OWNER_USER_ID;
+    delete process.env.INTEGRATION_OWNER_USER_ID;
+
+    try {
+      const { getCredentials } = await import("@/lib/analytics/credentials");
+      const { GET } = await import("@/app/api/analytics/route");
+
+      const response = await GET(
+        new Request("http://localhost/api/analytics?section=finance")
+      );
+      expect(response.status).toBe(200);
+      expect(getCredentials).toHaveBeenCalledWith("user-1");
+    } finally {
+      if (previousOwner === undefined) {
+        delete process.env.INTEGRATION_OWNER_USER_ID;
+      } else {
+        process.env.INTEGRATION_OWNER_USER_ID = previousOwner;
+      }
+    }
+  });
 });
