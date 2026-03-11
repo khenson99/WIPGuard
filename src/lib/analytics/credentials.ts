@@ -526,11 +526,12 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     });
 
     // Owner fallback: when the configured owner has no connections yet
-    // (migration hasn't run), fetch from any connected user.
+    // (migration hasn't run), fetch from any connected user.  We order by
+    // connectedAt desc and deduplicate in JS to avoid a Prisma/PostgreSQL
+    // DISTINCT ON + ORDER BY constraint conflict.
     if (connections.length === 0 && isConfiguredIntegrationOwner(userId)) {
-      connections = await prisma.integrationConnection.findMany({
+      const allConnected = await prisma.integrationConnection.findMany({
         where: { status: IntegrationConnectionStatus.CONNECTED },
-        distinct: ["provider"],
         orderBy: { connectedAt: "desc" },
         select: {
           userId: true,
@@ -546,6 +547,13 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
           lastSyncedAt: true,
           lastError: true,
         },
+      });
+      // Keep only the most recently connected row per provider.
+      const seen = new Set<IntegrationProvider>();
+      connections = allConnected.filter((c) => {
+        if (seen.has(c.provider)) return false;
+        seen.add(c.provider);
+        return true;
       });
     }
 
