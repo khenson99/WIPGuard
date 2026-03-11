@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { IntegrationProvider } from "@/generated/prisma/client";
+import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import { enforcePermission } from "@/lib/permissions";
 import {
   getOrCreateGmailCaptureRule,
@@ -39,7 +40,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return permission.deniedResponse;
     }
 
-    const rule = await getOrCreateGmailCaptureRule(session.user.id);
+    const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
+    const rule = await getOrCreateGmailCaptureRule(ownerUserId);
     return NextResponse.json({
       rule: serializeGmailRuleState(rule),
     });
@@ -61,6 +63,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const body = (await request.json().catch(() => ({}))) as SyncRequestBody;
     const action = body.action ?? "sync";
+    const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
 
     const permission = await enforcePermission({
       userId: session.user.id,
@@ -74,7 +77,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     if (action === "configure") {
-      const updatedRule = await patchGmailRule(session.user.id, {
+      const updatedRule = await patchGmailRule(ownerUserId, {
         enabled: body.enabled,
         statusOverride: body.statusOverride,
         config: body.config,
@@ -88,8 +91,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const result = await withSyncObservability(
-      "google_gmail", "gmail-capture", session.user.id,
-      () => runGmailCapture({ userId: session.user.id, dryRun: body.dryRun }),
+      "google_gmail", "gmail-capture", ownerUserId,
+      () => runGmailCapture({ userId: ownerUserId, dryRun: body.dryRun }),
       { dryRun: body.dryRun },
     );
 

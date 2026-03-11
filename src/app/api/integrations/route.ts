@@ -6,8 +6,11 @@ import {
   IntegrationConnectionStatus,
   IntegrationProvider,
 } from "@/generated/prisma/client";
-import { getCredentials } from "@/lib/analytics/credentials";
-import { defaultFreshnessSnapshot } from "@/lib/analytics/credentials";
+import {
+  defaultFreshnessSnapshot,
+  getCredentials,
+  hasIntegrationCredential,
+} from "@/lib/analytics/credentials";
 import {
   evaluateProviderSyncHealth,
   snapshotKeysForIntegrationProvider,
@@ -37,57 +40,6 @@ function readCodaDocId(metadata: unknown): string | null {
     return null;
   }
   return normalizeCodaDocId(candidate);
-}
-
-function hasCredentialForProvider(
-  provider: IntegrationProvider,
-  credentials: Awaited<ReturnType<typeof getCredentials>>
-): boolean {
-  switch (provider) {
-    case IntegrationProvider.GOOGLE_WORKSPACE:
-      return Boolean(credentials.googleWorkspaceAccessToken);
-    case IntegrationProvider.HUBSPOT:
-      return Boolean(credentials.hubspotToken);
-    case IntegrationProvider.SLACK:
-      return Boolean(credentials.slackAccessToken);
-    case IntegrationProvider.CODA:
-      return Boolean(credentials.codaApiToken);
-    case IntegrationProvider.REDDIT:
-      return Boolean(credentials.redditRefreshToken);
-    case IntegrationProvider.GOOGLE_ANALYTICS:
-      return Boolean(
-        credentials.gaPropertyId &&
-          ((credentials.gaClientEmail && credentials.gaPrivateKey) ||
-            (process.env.GA_REFRESH_TOKEN &&
-              process.env.GOOGLE_CLIENT_ID &&
-              process.env.GOOGLE_CLIENT_SECRET))
-      );
-    case IntegrationProvider.STRIPE:
-      return Boolean(credentials.stripeKey);
-    case IntegrationProvider.MERCURY:
-      return Boolean(credentials.mercuryKey);
-    case IntegrationProvider.WEBFLOW:
-      return Boolean(credentials.webflowApiToken);
-    case IntegrationProvider.GOOGLE_ADS:
-      return Boolean(
-        credentials.googleAdsDevToken &&
-          credentials.googleAdsCustomerId &&
-          credentials.googleAdsRefreshToken &&
-          credentials.googleAdsClientId &&
-          credentials.googleAdsClientSecret
-      );
-    case IntegrationProvider.META_ADS:
-      return Boolean(credentials.metaAccessToken && credentials.metaAdAccountId);
-    case IntegrationProvider.META_PAGE:
-      return Boolean(
-        credentials.metaAccessToken &&
-          (credentials.metaPageId || credentials.metaInstagramAccountId)
-      );
-    case IntegrationProvider.PYLON:
-      return Boolean(credentials.pylonApiKey);
-    default:
-      return false;
-  }
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -228,7 +180,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       const freshness =
         credentials.freshness?.[definition.provider] ??
         defaultFreshnessSnapshot(definition.provider);
-      const hasCredential = hasCredentialForProvider(definition.provider, credentials);
+      const hasCredential = hasIntegrationCredential(definition.provider, credentials);
       const connected = status === IntegrationConnectionStatus.CONNECTED || hasCredential;
       const syncHealth = evaluateProviderSyncHealth({
         connected,

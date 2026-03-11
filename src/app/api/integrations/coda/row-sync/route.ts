@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { IntegrationProvider } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
+import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import { enforcePermission } from "@/lib/permissions";
 import {
   getOrCreateCodaRowSyncRule,
@@ -39,7 +40,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return permission.deniedResponse;
     }
 
-    const rule = await getOrCreateCodaRowSyncRule(session.user.id);
+    const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
+    const rule = await getOrCreateCodaRowSyncRule(ownerUserId);
     return NextResponse.json({
       rule: serializeCodaRuleState(rule),
     });
@@ -61,6 +63,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const body = (await request.json().catch(() => ({}))) as CodaSyncRequestBody;
     const action = body.action ?? "sync";
+    const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
 
     const permission = await enforcePermission({
       userId: session.user.id,
@@ -74,7 +77,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     if (action === "configure") {
-      const rule = await patchCodaRule(session.user.id, {
+      const rule = await patchCodaRule(ownerUserId, {
         enabled: body.enabled,
         statusOverride: body.statusOverride,
         config: body.config,
@@ -88,8 +91,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const result = await withSyncObservability(
-      "coda", "row-sync", session.user.id,
-      () => runCodaRowSync({ userId: session.user.id, dryRun: body.dryRun }),
+      "coda", "row-sync", ownerUserId,
+      () => runCodaRowSync({ userId: ownerUserId, dryRun: body.dryRun }),
       { dryRun: body.dryRun },
     );
 

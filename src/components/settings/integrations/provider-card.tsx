@@ -125,11 +125,6 @@ export function ProviderCard({
   onCodaTokenChange,
   onCodaDocChange,
   onConnectCoda,
-  semrushToken,
-  semrushDomain,
-  onSemrushTokenChange,
-  onSemrushDomainChange,
-  onConnectSemrush,
   pylonToken,
   pylonBaseUrl,
   onPylonTokenChange,
@@ -166,6 +161,16 @@ export function ProviderCard({
 
   const hasRuleErrors = sortedRules.some((entry) => Boolean(entry.state?.rule?.lastError));
   const health = getHealthTone(item);
+  const usesServerCredentials = item.credentialSource === "env";
+  const canDisconnectStoredConnection =
+    item.credentialSource === "connection" && item.status === "CONNECTED";
+  const storedConnectionLabel = usesServerCredentials
+    ? "Managed by server environment"
+    : item.status === "CONNECTED"
+      ? "Connected"
+      : item.status === "ERROR"
+        ? "Error"
+        : "Not connected";
 
   const [openRuleId, setOpenRuleId] = useState<string | null>(null);
   const [didUserToggleRule, setDidUserToggleRule] = useState(false);
@@ -250,7 +255,12 @@ export function ProviderCard({
 
         <div className="flex flex-wrap items-center gap-1.5">
           {item.authType === "oauth" ? (
-            item.status === "CONNECTED" ? (
+            usesServerCredentials ? (
+              <span className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground">
+                <Wrench className="h-3.5 w-3.5" />
+                Server-managed
+              </span>
+            ) : item.status === "CONNECTED" ? (
               <>
                 <button
                   type="button"
@@ -299,11 +309,7 @@ export function ProviderCard({
             <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground">
               <p>
                 <span className="font-medium text-foreground">Stored Connection:</span>{" "}
-                {item.status === "CONNECTED"
-                  ? "Connected"
-                  : item.status === "ERROR"
-                    ? "Error"
-                    : "Not connected"}
+                {storedConnectionLabel}
               </p>
               {item.accountLabel ? (
                 <p>
@@ -402,7 +408,7 @@ export function ProviderCard({
                     "Connect Coda"
                   )}
                 </button>
-                {item.status === "CONNECTED" ? (
+                {canDisconnectStoredConnection ? (
                   <button
                     type="button"
                     onClick={() => onDisconnect(item.slug)}
@@ -460,7 +466,7 @@ export function ProviderCard({
                     "Connect Pylon"
                   )}
                 </button>
-                {item.status === "CONNECTED" ? (
+                {canDisconnectStoredConnection ? (
                   <button
                     type="button"
                     onClick={() => onDisconnect(item.slug)}

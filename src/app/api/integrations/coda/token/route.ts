@@ -8,6 +8,7 @@ import {
 } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { resolveCodaDocId } from "@/lib/integrations/coda-config";
+import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import { compactErrorMessage, verifyCodaApiToken } from "@/lib/integrations/oauth";
 import { protectIntegrationSecret } from "@/lib/integrations/token-crypto";
 import { enforcePermission } from "@/lib/permissions";
@@ -58,11 +59,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return permission.deniedResponse;
     }
 
+    const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
     const body = (await request.json().catch(() => ({}))) as ConnectCodaBody;
     const connection = await prisma.integrationConnection.findUnique({
       where: {
         userId_provider: {
-          userId: session.user.id,
+          userId: ownerUserId,
           provider: IntegrationProvider.CODA,
         },
       },
@@ -87,13 +89,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         docId,
       };
 
-      await prisma.integrationConnection.update({
-        where: {
-          userId_provider: {
-            userId: session.user.id,
-            provider: IntegrationProvider.CODA,
+        await prisma.integrationConnection.update({
+          where: {
+            userId_provider: {
+              userId: ownerUserId,
+              provider: IntegrationProvider.CODA,
+            },
           },
-        },
         data: { metadata },
       });
 
@@ -115,12 +117,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     await prisma.integrationConnection.upsert({
       where: {
         userId_provider: {
-          userId: session.user.id,
+          userId: ownerUserId,
           provider: IntegrationProvider.CODA,
         },
       },
       create: {
-        userId: session.user.id,
+        userId: ownerUserId,
         provider: IntegrationProvider.CODA,
         status: IntegrationConnectionStatus.CONNECTED,
         providerAccountId: profile.providerAccountId,

@@ -1,11 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   getIntegrationBySlug,
+  getIntegrationOAuthCredentials,
   isOAuthIntegration,
   listIntegrationDefinitions,
 } from "@/lib/integrations/catalog";
 
 describe("integrations catalog", () => {
+  afterEach(() => {
+    delete process.env.META_APP_ID;
+    delete process.env.META_APP_SECRET;
+    delete process.env.META_CLIENT_ID;
+    delete process.env.META_CLIENT_SECRET;
+  });
+
   it("includes reddit as an oauth integration", () => {
     const reddit = getIntegrationBySlug("reddit");
 
@@ -51,5 +59,20 @@ describe("integrations catalog", () => {
     expect(gsc?.provider).toBe("GOOGLE_SEARCH_CONSOLE");
     expect(wipguard).not.toBeNull();
     expect(wipguard?.provider).toBe("WIPGUARD");
+  });
+
+  it("accepts legacy Meta env aliases for OAuth client credentials", () => {
+    process.env.META_CLIENT_ID = "legacy-meta-client";
+    process.env.META_CLIENT_SECRET = "legacy-meta-secret";
+
+    const metaAds = getIntegrationBySlug("meta-ads");
+    if (!metaAds || !isOAuthIntegration(metaAds)) {
+      throw new Error("Meta Ads integration definition must exist");
+    }
+
+    expect(getIntegrationOAuthCredentials(metaAds)).toEqual({
+      clientId: "legacy-meta-client",
+      clientSecret: "legacy-meta-secret",
+    });
   });
 });

@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { IntegrationProvider } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
+import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import { enforcePermission } from "@/lib/permissions";
 import {
   createTaskFromSlack,
@@ -56,8 +57,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return permission.deniedResponse;
     }
 
+    const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
     const result = await createTaskFromSlack({
-      userId: session.user.id,
+      userId: ownerUserId,
       payload: body.payload,
     });
 

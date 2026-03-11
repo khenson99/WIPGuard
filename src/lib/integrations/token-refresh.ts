@@ -1,6 +1,7 @@
 import { IntegrationProvider, IntegrationConnectionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { fetchJsonWithResilience } from "@/lib/integrations/http-client";
+import { getIntegrationEnvValue } from "@/lib/integrations/env";
 import {
   getIntegrationByProvider,
   getIntegrationOAuthCredentials,
@@ -113,8 +114,8 @@ async function refreshOAuthTokenViaRefreshToken(input: {
 async function refreshMetaLongLivedToken(input: {
   accessToken: string;
 }): Promise<OAuthRefreshResult> {
-  const clientId = process.env.META_APP_ID?.trim();
-  const clientSecret = process.env.META_APP_SECRET?.trim();
+  const clientId = getIntegrationEnvValue("META_APP_ID");
+  const clientSecret = getIntegrationEnvValue("META_APP_SECRET");
   if (!clientId || !clientSecret) {
     throw new IntegrationConfigError("meta", "META_APP_ID/META_APP_SECRET are missing on the server");
   }

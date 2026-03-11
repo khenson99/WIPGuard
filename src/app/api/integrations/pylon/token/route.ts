@@ -7,6 +7,7 @@ import {
   type Prisma,
 } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
+import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import { compactErrorMessage, verifyPylonApiToken } from "@/lib/integrations/oauth";
 import { protectIntegrationSecret, unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
 import { enforcePermission } from "@/lib/permissions";
@@ -50,13 +51,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return permission.deniedResponse;
     }
 
+    const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
     const body = (await request.json().catch(() => ({}))) as ConnectPylonBody;
     const baseUrl = body.baseUrl?.trim() ? body.baseUrl.trim() : null;
 
     const existing = await prisma.integrationConnection.findUnique({
       where: {
         userId_provider: {
-          userId: session.user.id,
+          userId: ownerUserId,
           provider: IntegrationProvider.PYLON,
         },
       },
@@ -94,12 +96,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     await prisma.integrationConnection.upsert({
       where: {
         userId_provider: {
-          userId: session.user.id,
+          userId: ownerUserId,
           provider: IntegrationProvider.PYLON,
         },
       },
       create: {
-        userId: session.user.id,
+        userId: ownerUserId,
         provider: IntegrationProvider.PYLON,
         status: IntegrationConnectionStatus.CONNECTED,
         providerAccountId: profile.providerAccountId,

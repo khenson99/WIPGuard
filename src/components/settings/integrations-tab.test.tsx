@@ -221,4 +221,49 @@ describe("IntegrationsTab", () => {
     });
     expect(screen.getByText("Save Config")).toBeTruthy();
   });
+
+  it("renders env-managed oauth integrations without connect or disconnect actions", async () => {
+    mockIntegrationsFetch({
+      items: [
+        {
+          slug: "google-ads",
+          provider: "GOOGLE_ADS",
+          name: "Google Ads",
+          description: "Google Ads integration",
+          capabilities: ["Campaigns"],
+          authType: "oauth",
+          configured: true,
+          missingEnv: [],
+          connected: true,
+          status: "DISCONNECTED",
+          accountLabel: null,
+          connectedAt: null,
+          lastSyncedAt: "2026-02-10T10:05:00.000Z",
+          lastError: null,
+          credentialSource: "env",
+          syncHealth: "healthy",
+          syncHealthReason: null,
+          lastSnapshotAt: "2026-02-10T10:05:00.000Z",
+          lastSnapshotStatus: "SUCCESS",
+        },
+      ],
+    });
+
+    render(<IntegrationsTab />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Toggle Google Ads")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByLabelText("Toggle Google Ads"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Toggle Google Ads").getAttribute("aria-expanded")).toBe("true");
+    });
+
+    expect(screen.getByText("Server-managed")).toBeTruthy();
+    expect(screen.queryByText("Connect")).toBeNull();
+    expect(screen.queryByText("Disconnect")).toBeNull();
+    expect(screen.getByText("Managed by server environment")).toBeTruthy();
+  });
 });
