@@ -133,6 +133,113 @@ describe("automation runtime AI lifecycle", () => {
     );
   });
 
+  it("polls in-flight AI jobs and settles completed responses", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const {
+      extractAutomationAiOutputText,
+      isTerminalAutomationAiStatus,
+      parseAutomationAiResponseEnvelope,
+      retrieveAutomationOpenAiResponse,
+    } = await import("@/lib/automations/openai");
+    const { buildRunExecutionContext, persistAutomationEnvelope } = await import(
+      "@/lib/automations/store"
+    );
+
+    vi.mocked(prisma.automationAiJob.findMany).mockResolvedValue([
+      {
+        id: "job_poll_1",
+        responseId: "resp_poll_1",
+        attemptCount: 1,
+      },
+    ] as never);
+    vi.mocked(prisma.automationAiJob.findUnique).mockResolvedValue({
+      id: "job_poll_1",
+      workflowId: "wf_poll_1",
+      runId: "run_poll_1",
+      stepId: "step_poll_1",
+      operatorKey: "ADS_OPTIMIZER",
+      nodeKey: "triage_dropoff",
+      jobType: "ai_analyze",
+      metadata: { parsedToolDefinitions: [] },
+      run: { requestedById: "user_1" },
+    } as never);
+    vi.mocked(retrieveAutomationOpenAiResponse).mockResolvedValue({
+      id: "resp_poll_1",
+      status: "completed",
+    } as never);
+    vi.mocked(extractAutomationAiOutputText).mockReturnValue("poll result");
+    vi.mocked(isTerminalAutomationAiStatus).mockReturnValue(true);
+    vi.mocked(parseAutomationAiResponseEnvelope).mockReturnValue({
+      summary: "Polled funnel diagnosis",
+      raw: { summary: "Polled funnel diagnosis" },
+    } as never);
+    vi.mocked(persistAutomationEnvelope).mockResolvedValue({
+      artifactIds: ["artifact_poll_1"],
+      recommendationIds: ["recommendation_poll_1"],
+    } as never);
+    vi.mocked(prisma.workflowDefinition.findUnique).mockResolvedValue({
+      graph: {
+        nodes: [
+          {
+            key: "triage_dropoff",
+            type: "ACTION",
+            label: "Triage Funnel Dropoff",
+            config: {
+              actionType: "ai_analyze",
+            },
+          },
+        ],
+        edges: [],
+      },
+    } as never);
+    vi.mocked(prisma.workflowRunStep.findFirst).mockResolvedValue({
+      output: {
+        artifactIds: ["artifact_poll_1"],
+        recommendationIds: ["recommendation_poll_1"],
+      },
+    } as never);
+    vi.mocked(buildRunExecutionContext).mockResolvedValue({
+      trigger: {
+        provider: "WIPGUARD",
+        eventType: "analytics.funnel.dropoff_detected",
+        externalId: "alert_poll_1",
+      },
+      state: {},
+    } as never);
+
+    const { pollAutomationAiJobs } = await import("@/lib/automations/runtime");
+    const processed = await pollAutomationAiJobs(10);
+
+    expect(processed).toBe(1);
+    expect(retrieveAutomationOpenAiResponse).toHaveBeenCalledWith("resp_poll_1");
+    expect(persistAutomationEnvelope).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflowId: "wf_poll_1",
+        runId: "run_poll_1",
+        aiJobId: "job_poll_1",
+      })
+    );
+    expect(prisma.automationAiJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "job_poll_1" },
+        data: expect.objectContaining({
+          status: AutomationAiJobStatus.SUCCEEDED,
+          responseStatus: "completed",
+          outputText: "poll result",
+        }),
+      })
+    );
+    expect(prisma.workflowRun.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "run_poll_1" },
+        data: expect.objectContaining({
+          status: "SUCCEEDED",
+          error: null,
+        }),
+      })
+    );
+  });
+
   it("skips creating duplicate workflow runs when a trigger event replays", async () => {
     const { prisma } = await import("@/lib/prisma");
     const { materializeSourceDocumentsFromTrigger } = await import(
@@ -230,6 +337,110 @@ describe("automation runtime AI lifecycle", () => {
           status: "DEAD_LETTER",
           attemptCount: 6,
           lastError: "workflow registry unavailable",
+        }),
+      })
+    );
+  });
+
+  it("routes timed out approvals into their timeout edge", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { executeApprovedRecommendationsForRun } = await import(
+      "@/lib/automations/recommendations"
+    );
+    const { buildRunExecutionContext } = await import("@/lib/automations/store");
+
+    vi.mocked(prisma.workflowApproval.findMany).mockResolvedValue([
+      {
+        id: "approval_timeout_1",
+        runId: "run_timeout_1",
+        workflowId: "wf_timeout_1",
+        nodeKey: "approval_review",
+        run: {
+          workflow: {
+            graph: {
+              nodes: [
+                {
+                  key: "approval_review",
+                  type: "APPROVAL",
+                  label: "Review Recommendations",
+                  config: {},
+                },
+                {
+                  key: "execute_recommendations",
+                  type: "ACTION",
+                  label: "Execute Recommendations",
+                  config: {
+                    actionType: "execute_recommendation",
+                    recommendationIds: ["recommendation_timeout_1"],
+                    actionTypes: ["create_task"],
+                    limit: 3,
+                  },
+                },
+              ],
+              edges: [
+                {
+                  source: "approval_review",
+                  target: "execute_recommendations",
+                  conditionLabel: "timeout",
+                  priority: 0,
+                },
+              ],
+            },
+          },
+        },
+      },
+    ] as never);
+    vi.mocked(buildRunExecutionContext).mockResolvedValue({
+      trigger: {
+        provider: "WIPGUARD",
+        eventType: "analytics.funnel.dropoff_detected",
+        externalId: "alert_timeout_1",
+      },
+      state: {},
+    } as never);
+    vi.mocked(prisma.workflowRunStep.create).mockResolvedValueOnce({
+      id: "step_timeout_1",
+    } as never);
+    vi.mocked(executeApprovedRecommendationsForRun).mockResolvedValue({
+      attempted: 1,
+      executed: 1,
+      failed: 0,
+      recommendationIds: ["recommendation_timeout_1"],
+    } as never);
+
+    const { processTimedOutApprovals } = await import("@/lib/automations/runtime");
+    const processed = await processTimedOutApprovals(20);
+
+    expect(processed).toBe(1);
+    expect(prisma.workflowApproval.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "approval_timeout_1" },
+        data: expect.objectContaining({
+          status: "TIMED_OUT",
+        }),
+      })
+    );
+    expect(executeApprovedRecommendationsForRun).toHaveBeenCalledWith({
+      runId: "run_timeout_1",
+      recommendationIds: ["recommendation_timeout_1"],
+      actionTypes: ["create_task"],
+      limit: 3,
+    });
+    expect(prisma.workflowRunStep.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          runId: "run_timeout_1",
+          nodeKey: "execute_recommendations",
+          nodeType: "ACTION",
+        }),
+      })
+    );
+    expect(prisma.workflowRun.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "run_timeout_1" },
+        data: expect.objectContaining({
+          status: "SUCCEEDED",
+          error: null,
         }),
       })
     );

@@ -137,6 +137,9 @@ describe("orchestrator structured error logging", () => {
 
     vi.doMock("@/lib/prisma", () => ({
       prisma: {
+        user: {
+          findUnique: vi.fn(async () => ({ organizationId: "org_1" })),
+        },
         integrationRule: {
           findMany: vi.fn()
             .mockResolvedValueOnce([{ userId: "user_1" }])
