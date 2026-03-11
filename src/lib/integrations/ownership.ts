@@ -11,6 +11,148 @@ export function resolveIntegrationOwnerUserId(fallbackUserId: string): string {
   return owner && owner.length > 0 ? owner : fallbackUserId;
 }
 
+function normalizeOrganizationId(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function readConnectedByUserId(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+
+  const candidate = (metadata as Record<string, unknown>).connectedByUserId;
+  if (typeof candidate !== "string") {
+    return null;
+  }
+
+  const trimmed = candidate.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+async function persistResolvedOrganizationId(
+  userId: string,
+  organizationId: string | null
+): Promise<string | null> {
+  const normalized = normalizeOrganizationId(organizationId);
+  if (!normalized) {
+    return null;
+  }
+
+  await prisma.user.updateMany({
+    where: {
+      id: userId,
+      OR: [{ organizationId: null }, { organizationId: "" }],
+    },
+    data: {
+      organizationId: normalized,
+    },
+  });
+
+  return normalized;
+}
+
+async function deriveOrganizationIdFromConnections(userId: string): Promise<string | null> {
+  const connections = await prisma.integrationConnection.findMany({
+    where: { userId },
+    select: {
+      organizationId: true,
+      metadata: true,
+      updatedAt: true,
+    },
+    orderBy: [{ updatedAt: "desc" }],
+    take: 25,
+  });
+
+  for (const connection of connections) {
+    const connectionOrganizationId = normalizeOrganizationId(connection.organizationId);
+    if (connectionOrganizationId) {
+      return connectionOrganizationId;
+    }
+  }
+
+  const connectedByUserIds = Array.from(
+    new Set(
+      connections
+        .map((connection) => readConnectedByUserId(connection.metadata))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+
+  if (connectedByUserIds.length === 0) {
+    return null;
+  }
+
+  const users = await prisma.user.findMany({
+    where: {
+      id: {
+        in: connectedByUserIds,
+      },
+    },
+    select: {
+      organizationId: true,
+    },
+  });
+
+  for (const user of users) {
+    const organizationId = normalizeOrganizationId(user.organizationId);
+    if (organizationId) {
+      return organizationId;
+    }
+  }
+
+  return null;
+}
+
+export async function ensureIntegrationOwnerOrganizationId(
+  ownerUserId: string,
+  fallbackOrganizationId?: string | null
+): Promise<string | null> {
+  const existingOrganizationId = normalizeOrganizationId(
+    (
+      await prisma.user.findUnique({
+        where: { id: ownerUserId },
+        select: { organizationId: true },
+      })
+    )?.organizationId
+  );
+
+  if (existingOrganizationId) {
+    return existingOrganizationId;
+  }
+
+  const normalizedFallback = normalizeOrganizationId(fallbackOrganizationId);
+  if (normalizedFallback) {
+    return persistResolvedOrganizationId(ownerUserId, normalizedFallback);
+  }
+
+  const derivedOrganizationId = await deriveOrganizationIdFromConnections(ownerUserId);
+  return persistResolvedOrganizationId(ownerUserId, derivedOrganizationId);
+}
+
+export async function resolveIntegrationOrganizationId(userId: string): Promise<string | null> {
+  const organizationId = normalizeOrganizationId(
+    (
+      await prisma.user.findUnique({
+        where: { id: userId },
+        select: { organizationId: true },
+      })
+    )?.organizationId
+  );
+
+  if (organizationId) {
+    return organizationId;
+  }
+
+  const ownerUserId = process.env.INTEGRATION_OWNER_USER_ID?.trim();
+  if (!ownerUserId || ownerUserId !== userId) {
+    return null;
+  }
+
+  return ensureIntegrationOwnerOrganizationId(ownerUserId);
+}
+
 /**
  * Best-effort migration helper:
  * If the owner user is missing a provider connection, copy one from any CONNECTED
@@ -23,6 +165,7 @@ export async function bestEffortMigrateConnectionsToOwner(ownerUserId: string): 
   copied: number;
   skipped: number;
 }> {
+  let ownerOrganizationId = await ensureIntegrationOwnerOrganizationId(ownerUserId);
   const providers = await prisma.integrationConnection.findMany({
     distinct: ["provider"],
     select: { provider: true },
@@ -52,12 +195,43 @@ export async function bestEffortMigrateConnectionsToOwner(ownerUserId: string): 
         status: "CONNECTED",
         userId: { not: ownerUserId },
       },
+      select: {
+        provider: true,
+        status: true,
+        providerAccountId: true,
+        accountLabel: true,
+        scopes: true,
+        accessToken: true,
+        refreshToken: true,
+        tokenType: true,
+        expiresAt: true,
+        connectedAt: true,
+        lastSyncedAt: true,
+        lastError: true,
+        metadata: true,
+        organizationId: true,
+        user: {
+          select: {
+            organizationId: true,
+          },
+        },
+      },
       orderBy: [{ connectedAt: "desc" }],
     });
 
     if (!source) {
       skipped += 1;
       continue;
+    }
+
+    const sourceOrganizationId =
+      normalizeOrganizationId(source.organizationId) ??
+      normalizeOrganizationId(source.user.organizationId);
+    if (!ownerOrganizationId && sourceOrganizationId) {
+      ownerOrganizationId = await persistResolvedOrganizationId(
+        ownerUserId,
+        sourceOrganizationId
+      );
     }
 
     await prisma.integrationConnection.create({
@@ -76,6 +250,7 @@ export async function bestEffortMigrateConnectionsToOwner(ownerUserId: string): 
         lastSyncedAt: source.lastSyncedAt,
         lastError: source.lastError,
         metadata: source.metadata as never,
+        organizationId: sourceOrganizationId ?? ownerOrganizationId,
       },
     });
     copied += 1;
@@ -146,4 +321,3 @@ export async function bestEffortMigrateRulesToOwner(ownerUserId: string): Promis
 
   return { copied, skipped };
 }
-

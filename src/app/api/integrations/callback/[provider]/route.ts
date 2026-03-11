@@ -25,10 +25,14 @@ import {
   exchangeMetaForLongLivedToken,
 } from "@/lib/integrations/meta-auth";
 import { validateIntegrationScopes } from "@/lib/integrations/scope-validation";
+import { getAuthenticatedUser } from "@/lib/session-user";
 import { enforcePermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { protectIntegrationSecret } from "@/lib/integrations/token-crypto";
-import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
+import {
+  ensureIntegrationOwnerOrganizationId,
+  resolveIntegrationOwnerUserId,
+} from "@/lib/integrations/ownership";
 
 interface RouteParams {
   params: Promise<{ provider: string }>;
@@ -158,7 +162,14 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const sessionUser = getAuthenticatedUser(session);
+  if (!sessionUser) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
+  const organizationId = sessionUser.organizationId ?? null;
+  await ensureIntegrationOwnerOrganizationId(ownerUserId, organizationId);
 
   const permission = await enforcePermission({
     userId: session.user.id,
@@ -377,6 +388,7 @@ export async function GET(
         lastSyncedAt: new Date(),
         lastError: scopeError,
         metadata,
+        organizationId,
       },
       update: {
         status: IntegrationConnectionStatus.CONNECTED,
@@ -393,6 +405,7 @@ export async function GET(
         lastSyncedAt: new Date(),
         lastError: scopeError,
         metadata,
+        organizationId,
       },
     });
 

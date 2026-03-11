@@ -1,6 +1,9 @@
 import { IntegrationProvider } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
+import {
+  resolveIntegrationOrganizationId,
+  resolveIntegrationOwnerUserId,
+} from "@/lib/integrations/ownership";
 import { runWithContextAsync } from "@/lib/request-context";
 import {
   GOOGLE_ADS_METRICS_RULE_KEY,
@@ -62,15 +65,6 @@ const METRICS_RULE_KEYS: ReadonlySet<string> = new Set([
 
 function isProviderMetricsRuleKey(value: string): value is ProviderMetricsRuleKey {
   return METRICS_RULE_KEYS.has(value);
-}
-
-async function resolveIntegrationOrganizationId(userId: string): Promise<string | null> {
-  return (
-    await prisma.user.findUnique({
-      where: { id: userId },
-      select: { organizationId: true },
-    })
-  )?.organizationId ?? null;
 }
 
 export async function runRules(input: RunRulesInput): Promise<RunRulesResult> {

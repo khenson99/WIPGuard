@@ -7,11 +7,15 @@ import {
   type Prisma,
 } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
-import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
+import {
+  ensureIntegrationOwnerOrganizationId,
+  resolveIntegrationOwnerUserId,
+} from "@/lib/integrations/ownership";
 import { compactErrorMessage, verifyPylonApiToken } from "@/lib/integrations/oauth";
 import { protectIntegrationSecret, unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
 import { enforcePermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { getAuthenticatedUser } from "@/lib/session-user";
 
 interface ConnectPylonBody {
   token?: string;
@@ -40,6 +44,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const sessionUser = getAuthenticatedUser(session);
+    if (!sessionUser) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const permission = await enforcePermission({
       userId: session.user.id,
       action: "profile.write",
@@ -52,6 +61,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const ownerUserId = resolveIntegrationOwnerUserId(session.user.id);
+    const organizationId = sessionUser.organizationId ?? null;
+    await ensureIntegrationOwnerOrganizationId(ownerUserId, organizationId);
     const body = (await request.json().catch(() => ({}))) as ConnectPylonBody;
     const baseUrl = body.baseUrl?.trim() ? body.baseUrl.trim() : null;
 
@@ -113,6 +124,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         lastSyncedAt: new Date(),
         lastError: null,
         metadata,
+        organizationId,
       },
       update: {
         status: IntegrationConnectionStatus.CONNECTED,
@@ -125,6 +137,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         lastSyncedAt: new Date(),
         lastError: null,
         metadata,
+        organizationId,
       },
     });
 
