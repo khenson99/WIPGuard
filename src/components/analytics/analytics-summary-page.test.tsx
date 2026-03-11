@@ -77,6 +77,11 @@ describe("AnalyticsSummaryPage", () => {
       expect(screen.getByText("Analytics Overview")).toBeTruthy();
     });
 
+    const fetchMock = vi.mocked(fetch);
+    expect(fetchMock).toHaveBeenCalled();
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ cache: "no-store" });
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ cache: "no-store" });
+
     expect(
       screen.queryByText("Showing cached analytics while background refresh completes or retries.")
     ).toBeNull();

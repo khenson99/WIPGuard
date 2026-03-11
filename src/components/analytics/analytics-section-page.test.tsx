@@ -48,6 +48,7 @@ describe("AnalyticsSectionPage", () => {
       expect(screen.getByText("Google Ads data is unavailable")).toBeTruthy();
     });
 
+    expect(vi.mocked(fetch).mock.calls[0]?.[1]).toMatchObject({ cache: "no-store" });
     expect(screen.getByText("Google Ads API quota exceeded")).toBeTruthy();
     expect(screen.getByText("Manage integration connection status in Settings")).toBeTruthy();
   });

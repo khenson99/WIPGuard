@@ -5,6 +5,7 @@ import { AnalyticsSnapshotStatus } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCredentials } from "@/lib/analytics/credentials";
+import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
 import { getAuthenticatedUser } from "@/lib/session-user";
 import {
@@ -37,9 +38,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const range = parseAnalyticsTimeRange(request.nextUrl.searchParams);
     const from = new Date(`${range.from}T00:00:00.000Z`);
     const to = new Date(`${range.to}T23:59:59.999Z`);
+    const integrationOwnerUserId = resolveIntegrationOwnerUserId(user.id);
 
     const [creds, tasksByStatus, overdueTasks, activeProjects, contributors, latestSnapshots] = await Promise.all([
-      getCredentials(user.id),
+      getCredentials(integrationOwnerUserId),
       prisma.task.groupBy({ by: ["status"], _count: { status: true } }),
       prisma.task.count({
         where: {
@@ -58,7 +60,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       }),
       prisma.analyticsSnapshot.findMany({
         where: {
-          userId: user.id,
+          userId: integrationOwnerUserId,
           rangePreset: range.preset,
           toDate: to,
           providerKey: {

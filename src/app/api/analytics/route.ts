@@ -4,6 +4,7 @@ import { IntegrationProvider } from "@/generated/prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma, type PrismaClientType } from "@/lib/prisma";
 import { enforcePermission } from "@/lib/permissions";
+import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import { runWithContextAsync } from "@/lib/request-context";
 import { getAuthenticatedUser } from "@/lib/session-user";
 import { getCredentials } from "@/lib/analytics/credentials";
@@ -29,6 +30,7 @@ import {
   parseVisitorFunnelFilters,
   syncVisitorFunnelArtifacts,
 } from "@/lib/analytics/visitor-funnel";
+import { getVisitorFunnelPrisma } from "@/lib/analytics/visitor-funnel-availability";
 import type {
   AnalyticsDashboardData,
   AnalyticsRecommendation,
@@ -542,6 +544,31 @@ const DEFAULT_ASSUMPTIONS: ForecastAssumptions = {
   additionalMonthlyRevenue: 0,
 };
 
+const LIVE_FIRST_FINANCE_SECTIONS = new Set([
+  "overview",
+  "finance",
+  "finance-mercury",
+  "finance-stripe",
+  "finance-hubspot",
+  "finance-planning",
+  "finance-forecast",
+  "finance-pnl",
+  "finance-unit-economics",
+]);
+
+const LIVE_FIRST_FINANCE_DOMAINS = new Set<FetchEntry["key"]>([
+  "hubspot",
+  "stripe",
+  "mercury",
+]);
+
+function isLiveFirstDomain(
+  section: string | null,
+  domain: FetchEntry["key"],
+): boolean {
+  return section !== null && LIVE_FIRST_FINANCE_SECTIONS.has(section) && LIVE_FIRST_FINANCE_DOMAINS.has(domain);
+}
+
 async function buildFinancialPlanningData(
   userId: string,
   data: AnalyticsDashboardData,
@@ -723,6 +750,7 @@ type FetchEntry = {
   | "processAnalytics"
   >;
   fn: () => Promise<unknown>;
+  snapshotUserId: string;
 };
 
 type FetchOutcome = {
@@ -825,6 +853,7 @@ export async function GET(request: Request) {
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const integrationUserId = resolveIntegrationOwnerUserId(userId);
 
   const permission = await enforcePermission({
     userId,
@@ -845,7 +874,7 @@ export async function GET(request: Request) {
   }
 
   return runWithContextAsync({ organizationId, userId }, async () => {
-    const creds = await getCredentials(userId);
+    const creds = await getCredentials(integrationUserId);
     const hasGAServiceAccount = Boolean(creds.gaPropertyId && creds.gaClientEmail && creds.gaPrivateKey);
     const hasGAOAuth = Boolean(
       creds.gaPropertyId &&
@@ -1015,6 +1044,7 @@ export async function GET(request: Request) {
     ...(creds.hubspotToken
       ? [{
           key: "hubspot" as const,
+          snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchHubSpotData } = await loadCoreAnalyticsFetchers();
             return fetchHubSpotData(creds.hubspotToken!, { fromDate, toDate });
@@ -1024,6 +1054,7 @@ export async function GET(request: Request) {
     ...(creds.stripeKey
       ? [{
           key: "stripe" as const,
+          snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchStripeData } = await loadCoreAnalyticsFetchers();
             return fetchStripeData(creds.stripeKey!, { fromDate, toDate });
@@ -1033,6 +1064,7 @@ export async function GET(request: Request) {
     ...(creds.mercuryKey
       ? [{
           key: "mercury" as const,
+          snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchMercuryData } = await loadCoreAnalyticsFetchers();
             return fetchMercuryData(creds.mercuryKey!, { fromDate, toDate });
@@ -1042,6 +1074,7 @@ export async function GET(request: Request) {
     ...((hasGAServiceAccount || hasGAOAuth)
       ? [{
           key: "googleAnalytics" as const,
+          snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchGAData } = await loadGaWebflowFetchers();
             return fetchGAData(
@@ -1056,6 +1089,7 @@ export async function GET(request: Request) {
     ...(creds.googleAdsDevToken && creds.googleAdsCustomerId && creds.googleAdsRefreshToken && creds.googleAdsClientId && creds.googleAdsClientSecret
       ? [{
           key: "googleAds" as const,
+          snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchGoogleAdsData } = await loadAdsFetchers();
             return fetchGoogleAdsData(
@@ -1073,6 +1107,7 @@ export async function GET(request: Request) {
     ...(creds.metaAccessToken && creds.metaAdAccountId
       ? [{
           key: "metaAds" as const,
+          snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchMetaAdsData } = await loadAdsFetchers();
             return fetchMetaAdsData(
@@ -1086,6 +1121,7 @@ export async function GET(request: Request) {
     ...(creds.metaAccessToken && creds.metaPageId
       ? [{
           key: "metaPage" as const,
+          snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchMetaPageData } = await loadAdsFetchers();
             return fetchMetaPageData(
@@ -1099,6 +1135,7 @@ export async function GET(request: Request) {
     ...(creds.metaAccessToken && creds.metaInstagramAccountId
       ? [{
           key: "instagram" as const,
+          snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchMetaInstagramData } = await loadAdsFetchers();
             return fetchMetaInstagramData(
@@ -1114,6 +1151,7 @@ export async function GET(request: Request) {
     ...(creds.redditClientId && creds.redditClientSecret && creds.redditRefreshToken && creds.redditAdAccountId
       ? [{
           key: "redditAds" as const,
+          snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchRedditAdsData } = await loadAdsFetchers();
             return fetchRedditAdsData(
@@ -1130,6 +1168,7 @@ export async function GET(request: Request) {
     ...(creds.webflowApiToken && creds.webflowSiteId
       ? [{
           key: "webflow" as const,
+          snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchWebflowData } = await loadGaWebflowFetchers();
             return fetchWebflowData(
@@ -1144,6 +1183,7 @@ export async function GET(request: Request) {
     ...(creds.codaApiToken && creds.codaDocId
       ? [{
           key: "coda" as const,
+          snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchCodaData } = await loadCodaFetchers();
             return fetchCodaData(creds.codaApiToken!, creds.codaDocId!, {
@@ -1156,6 +1196,7 @@ export async function GET(request: Request) {
     ...(creds.semrushApiToken && creds.semrushDomain
       ? [{
           key: "semrush" as const,
+          snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchSemrushData } = await loadSemrushFetchers();
             return fetchSemrushData(
@@ -1168,6 +1209,7 @@ export async function GET(request: Request) {
     ...(creds.pylonApiKey
       ? [{
           key: "pylon" as const,
+          snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchPylonData } = await loadPylonFetchers();
             return fetchPylonData({
@@ -1179,14 +1221,19 @@ export async function GET(request: Request) {
           },
         }]
       : []),
-    { key: "product" as const, fn: () => computeProductSuccessData(fromDate, toDate) },
+    {
+      key: "product" as const,
+      snapshotUserId: userId,
+      fn: () => computeProductSuccessData(fromDate, toDate),
+    },
     {
       key: "googleWorkspace" as const,
+      snapshotUserId: integrationUserId,
       fn: async () => {
         const { fetchIntegrationTelemetryData } =
           await loadIntegrationTelemetryFetchers();
         return fetchIntegrationTelemetryData({
-          userId,
+          userId: integrationUserId,
           provider: IntegrationProvider.GOOGLE_WORKSPACE,
           from: fromDate,
           to: toDate,
@@ -1195,11 +1242,12 @@ export async function GET(request: Request) {
     },
     {
       key: "hubspotOps" as const,
+      snapshotUserId: integrationUserId,
       fn: async () => {
         const { fetchIntegrationTelemetryData } =
           await loadIntegrationTelemetryFetchers();
         return fetchIntegrationTelemetryData({
-          userId,
+          userId: integrationUserId,
           provider: IntegrationProvider.HUBSPOT,
           from: fromDate,
           to: toDate,
@@ -1208,11 +1256,12 @@ export async function GET(request: Request) {
     },
     {
       key: "slack" as const,
+      snapshotUserId: integrationUserId,
       fn: async () => {
         const { fetchIntegrationTelemetryData } =
           await loadIntegrationTelemetryFetchers();
         return fetchIntegrationTelemetryData({
-          userId,
+          userId: integrationUserId,
           provider: IntegrationProvider.SLACK,
           from: fromDate,
           to: toDate,
@@ -1221,11 +1270,12 @@ export async function GET(request: Request) {
     },
     {
       key: "codaOps" as const,
+      snapshotUserId: integrationUserId,
       fn: async () => {
         const { fetchIntegrationTelemetryData } =
           await loadIntegrationTelemetryFetchers();
         return fetchIntegrationTelemetryData({
-          userId,
+          userId: integrationUserId,
           provider: IntegrationProvider.CODA,
           from: fromDate,
           to: toDate,
@@ -1234,11 +1284,12 @@ export async function GET(request: Request) {
     },
     {
       key: "redditOps" as const,
+      snapshotUserId: integrationUserId,
       fn: async () => {
         const { fetchIntegrationTelemetryData } =
           await loadIntegrationTelemetryFetchers();
         return fetchIntegrationTelemetryData({
-          userId,
+          userId: integrationUserId,
           provider: IntegrationProvider.REDDIT,
           from: fromDate,
           to: toDate,
@@ -1257,8 +1308,9 @@ export async function GET(request: Request) {
 
   const settled = await Promise.allSettled(
     fetchers.map(async (entry): Promise<FetchOutcome> => {
+      const liveFirst = isLiveFirstDomain(section, entry.key);
       const latestSnapshot = await readLatestSnapshot({
-        userId,
+        userId: entry.snapshotUserId,
         providerKey: entry.key,
         contextKey: "default",
         rangePreset: range.preset,
@@ -1266,10 +1318,10 @@ export async function GET(request: Request) {
         toDate,
       });
 
-      if (!forceRefresh && latestSnapshot.payload) {
+      if (!forceRefresh && !liveFirst && latestSnapshot.payload) {
         if (latestSnapshot.needsRefresh) {
           queueStaleSnapshotRefresh({
-            userId,
+            userId: entry.snapshotUserId,
             rangePreset: range.preset,
             fromDate,
             toDate,
@@ -1292,7 +1344,7 @@ export async function GET(request: Request) {
           () => withTimeout(entry.fn, TIMEOUT_OVERRIDES[entry.key] ?? DEFAULT_TIMEOUT, entry.key),
         );
         await storeAnalyticsSnapshot({
-          userId,
+          userId: entry.snapshotUserId,
           providerKey: entry.key,
           contextKey: "default",
           rangePreset: range.preset,
@@ -1313,7 +1365,7 @@ export async function GET(request: Request) {
         const message = error instanceof Error ? error.message : "Failed";
 
         await storeAnalyticsSnapshotFailure({
-          userId,
+          userId: entry.snapshotUserId,
           providerKey: entry.key,
           contextKey: "default",
           rangePreset: range.preset,
@@ -1324,7 +1376,7 @@ export async function GET(request: Request) {
         });
 
         const fallback = await readLatestSuccessfulSnapshot({
-          userId,
+          userId: entry.snapshotUserId,
           providerKey: entry.key,
           contextKey: "default",
           rangePreset: range.preset,
@@ -1412,24 +1464,28 @@ export async function GET(request: Request) {
     result.customerJourney = buildCustomerJourneyData(result);
   }
   if (domains.has("visitorFunnel")) {
-    const funnelPrisma = prisma as PrismaClientType;
-    await syncVisitorFunnelArtifacts({
-      prisma: funnelPrisma,
-      analyticsData: result,
-      stripeKey: creds.stripeKey ?? null,
-      from: fromDate,
-      to: toDate,
-    });
-    result.visitorFunnel = await buildVisitorFunnelData(funnelPrisma, {
-      from: fromDate,
-      to: toDate,
-      filters: parseVisitorFunnelFilters(url.searchParams),
-      closedWonCount: (result.hubspot?.deals ?? []).filter(
-        (deal) => deal.stageLabel.trim().toLowerCase() === "closed won",
-      ).length,
-      includeOperationalMetadata:
-        ((session.user as { role?: string } | undefined)?.role ?? null) === "admin",
-    });
+    const funnelPrisma = getVisitorFunnelPrisma(prisma as PrismaClientType);
+    if (funnelPrisma) {
+      await syncVisitorFunnelArtifacts({
+        prisma: funnelPrisma,
+        analyticsData: result,
+        stripeKey: creds.stripeKey ?? null,
+        from: fromDate,
+        to: toDate,
+      });
+      result.visitorFunnel = await buildVisitorFunnelData(funnelPrisma, {
+        from: fromDate,
+        to: toDate,
+        filters: parseVisitorFunnelFilters(url.searchParams),
+        closedWonCount: (result.hubspot?.deals ?? []).filter(
+          (deal) => deal.stageLabel.trim().toLowerCase() === "closed won",
+        ).length,
+        includeOperationalMetadata:
+          ((session.user as { role?: string } | undefined)?.role ?? null) === "admin",
+      });
+    } else {
+      result.visitorFunnel = null;
+    }
   }
   if (domains.has("recommendations")) {
     result.recommendations = buildRecommendations(result);
@@ -1467,7 +1523,7 @@ export async function GET(request: Request) {
 
       const [prevStripe, prevGa] = await Promise.all([
         readLatestSuccessfulSnapshot<StripeData>({
-          userId,
+          userId: integrationUserId,
           providerKey: "stripe",
           contextKey: "default",
           rangePreset: range.preset,
@@ -1475,7 +1531,7 @@ export async function GET(request: Request) {
           toDate: prevToDate,
         }),
         readLatestSuccessfulSnapshot<AnalyticsDashboardData["googleAnalytics"]>({
-          userId,
+          userId: integrationUserId,
           providerKey: "googleAnalytics",
           contextKey: "default",
           rangePreset: range.preset,
