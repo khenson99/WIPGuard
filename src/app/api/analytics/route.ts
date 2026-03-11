@@ -30,6 +30,7 @@ import {
   parseVisitorFunnelFilters,
   syncVisitorFunnelArtifacts,
 } from "@/lib/analytics/visitor-funnel";
+import { getVisitorFunnelPrisma } from "@/lib/analytics/visitor-funnel-availability";
 import type {
   AnalyticsDashboardData,
   AnalyticsRecommendation,
@@ -542,6 +543,31 @@ const DEFAULT_ASSUMPTIONS: ForecastAssumptions = {
   additionalMonthlyExpense: 0,
   additionalMonthlyRevenue: 0,
 };
+
+const LIVE_FIRST_FINANCE_SECTIONS = new Set([
+  "overview",
+  "finance",
+  "finance-mercury",
+  "finance-stripe",
+  "finance-hubspot",
+  "finance-planning",
+  "finance-forecast",
+  "finance-pnl",
+  "finance-unit-economics",
+]);
+
+const LIVE_FIRST_FINANCE_DOMAINS = new Set<FetchEntry["key"]>([
+  "hubspot",
+  "stripe",
+  "mercury",
+]);
+
+function isLiveFirstDomain(
+  section: string | null,
+  domain: FetchEntry["key"],
+): boolean {
+  return section !== null && LIVE_FIRST_FINANCE_SECTIONS.has(section) && LIVE_FIRST_FINANCE_DOMAINS.has(domain);
+}
 
 async function buildFinancialPlanningData(
   userId: string,
@@ -1282,6 +1308,7 @@ export async function GET(request: Request) {
 
   const settled = await Promise.allSettled(
     fetchers.map(async (entry): Promise<FetchOutcome> => {
+      const liveFirst = isLiveFirstDomain(section, entry.key);
       const latestSnapshot = await readLatestSnapshot({
         userId: entry.snapshotUserId,
         providerKey: entry.key,
@@ -1291,7 +1318,7 @@ export async function GET(request: Request) {
         toDate,
       });
 
-      if (!forceRefresh && latestSnapshot.payload) {
+      if (!forceRefresh && !liveFirst && latestSnapshot.payload) {
         if (latestSnapshot.needsRefresh) {
           queueStaleSnapshotRefresh({
             userId: entry.snapshotUserId,
@@ -1437,24 +1464,28 @@ export async function GET(request: Request) {
     result.customerJourney = buildCustomerJourneyData(result);
   }
   if (domains.has("visitorFunnel")) {
-    const funnelPrisma = prisma as PrismaClientType;
-    await syncVisitorFunnelArtifacts({
-      prisma: funnelPrisma,
-      analyticsData: result,
-      stripeKey: creds.stripeKey ?? null,
-      from: fromDate,
-      to: toDate,
-    });
-    result.visitorFunnel = await buildVisitorFunnelData(funnelPrisma, {
-      from: fromDate,
-      to: toDate,
-      filters: parseVisitorFunnelFilters(url.searchParams),
-      closedWonCount: (result.hubspot?.deals ?? []).filter(
-        (deal) => deal.stageLabel.trim().toLowerCase() === "closed won",
-      ).length,
-      includeOperationalMetadata:
-        ((session.user as { role?: string } | undefined)?.role ?? null) === "admin",
-    });
+    const funnelPrisma = getVisitorFunnelPrisma(prisma as PrismaClientType);
+    if (funnelPrisma) {
+      await syncVisitorFunnelArtifacts({
+        prisma: funnelPrisma,
+        analyticsData: result,
+        stripeKey: creds.stripeKey ?? null,
+        from: fromDate,
+        to: toDate,
+      });
+      result.visitorFunnel = await buildVisitorFunnelData(funnelPrisma, {
+        from: fromDate,
+        to: toDate,
+        filters: parseVisitorFunnelFilters(url.searchParams),
+        closedWonCount: (result.hubspot?.deals ?? []).filter(
+          (deal) => deal.stageLabel.trim().toLowerCase() === "closed won",
+        ).length,
+        includeOperationalMetadata:
+          ((session.user as { role?: string } | undefined)?.role ?? null) === "admin",
+      });
+    } else {
+      result.visitorFunnel = null;
+    }
   }
   if (domains.has("recommendations")) {
     result.recommendations = buildRecommendations(result);
