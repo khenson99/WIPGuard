@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { runAnalyticsRefresh } from "@/lib/analytics/refresh-runner";
 import { pruneAnalyticsSnapshots } from "@/lib/analytics/snapshots";
 import { runVisitorFunnelEnrichmentSyncs } from "@/lib/analytics/provider-enrichment-sync";
@@ -33,34 +33,29 @@ function parseRetentionDays(): number {
   return 30;
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+function shouldWaitForCompletion(request: NextRequest): boolean {
+  const wait = new URL(request.url).searchParams.get("wait")?.trim().toLowerCase();
+  return wait === "1" || wait === "true";
+}
 
-  const startedAt = new Date().toISOString();
-  const ownerUserId = process.env.INTEGRATION_OWNER_USER_ID?.trim() || null;
-
-  // Discover user IDs: prefer the explicit owner, otherwise query the DB for
-  // all users that have at least one connected integration.
-  const userIds: string[] = ownerUserId
-    ? [ownerUserId]
-    : (
-        await prisma.integrationConnection.findMany({
-          distinct: ["userId"],
-          where: { status: "CONNECTED" },
-          select: { userId: true },
-        })
-      ).map((row) => row.userId);
+async function executeCronSync(input: {
+  startedAt: string;
+  ownerUserId: string | null;
+  userIds: string[];
+}): Promise<{ status: number; body: Record<string, unknown> }> {
+  const { startedAt, ownerUserId, userIds } = input;
 
   if (userIds.length === 0) {
-    return NextResponse.json({
-      ok: true,
-      startedAt,
-      finishedAt: new Date().toISOString(),
-      ownerUserId,
-      message: "No connected integrations found — nothing to sync",
-    });
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        ownerUserId,
+        message: "No connected integrations found — nothing to sync",
+      },
+    };
   }
 
   try {
@@ -229,28 +224,86 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       console.error("POST /api/cron/sync pruning failed:", pruningResult.reason);
     }
 
-    return NextResponse.json({
-      ok: failures.length === 0,
-      startedAt,
-      finishedAt: new Date().toISOString(),
-      ownerUserId,
-      userIds,
-      migrations: {
-        connections: connectionsMigration,
-        rules: rulesMigration,
+    return {
+      status: 200,
+      body: {
+        ok: failures.length === 0,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        ownerUserId,
+        userIds,
+        migrations: {
+          connections: connectionsMigration,
+          rules: rulesMigration,
+        },
+        visitorFunnelEnrichment,
+        visitorFunnelEnrichmentHealth: {
+          alerts: visitorFunnelEnrichmentAlerts,
+          providers: visitorFunnelEnrichmentStatus,
+        },
+        visitorFunnelEnrichmentNotifications,
+        ...settled,
+        ...(failures.length > 0 ? { failures } : {}),
       },
-      visitorFunnelEnrichment,
-      visitorFunnelEnrichmentHealth: {
-        alerts: visitorFunnelEnrichmentAlerts,
-        providers: visitorFunnelEnrichmentStatus,
-      },
-      visitorFunnelEnrichmentNotifications,
-      ...settled,
-      ...(failures.length > 0 ? { failures } : {}),
-    });
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Cron sync failed";
     console.error("POST /api/cron/sync error:", error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return { status: 500, body: { error: message } };
   }
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const startedAt = new Date().toISOString();
+  const ownerUserId = process.env.INTEGRATION_OWNER_USER_ID?.trim() || null;
+
+  // Discover user IDs: prefer the explicit owner, otherwise query the DB for
+  // all users that have at least one connected integration.
+  const userIds: string[] = ownerUserId
+    ? [ownerUserId]
+    : (
+        await prisma.integrationConnection.findMany({
+          distinct: ["userId"],
+          where: { status: "CONNECTED" },
+          select: { userId: true },
+        })
+      ).map((row) => row.userId);
+
+  if (userIds.length === 0) {
+    return NextResponse.json({
+      ok: true,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      ownerUserId,
+      message: "No connected integrations found — nothing to sync",
+    });
+  }
+
+  if (shouldWaitForCompletion(request)) {
+    const result = await executeCronSync({ startedAt, ownerUserId, userIds });
+    return NextResponse.json(result.body, { status: result.status });
+  }
+
+  after(async () => {
+    const result = await executeCronSync({ startedAt, ownerUserId, userIds });
+    if (result.status >= 400) {
+      console.error("POST /api/cron/sync background error:", result.body);
+    }
+  });
+
+  return NextResponse.json(
+    {
+      ok: true,
+      queued: true,
+      mode: "background",
+      startedAt,
+      ownerUserId,
+      userIds,
+    },
+    { status: 202 }
+  );
 }
