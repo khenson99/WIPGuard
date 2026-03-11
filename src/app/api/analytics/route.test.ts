@@ -743,7 +743,7 @@ describe("GET /api/analytics", () => {
       expect(body.stripe).toEqual(STRIPE_DATA);
       expect(getCredentials).toHaveBeenCalledWith("owner-1");
       expect(prisma.stripeCustomerLink.findMany).toHaveBeenCalledWith({
-        where: { userId: "owner-1" },
+        where: { userId: "user-1" },
       });
 
       expect(

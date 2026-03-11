@@ -1444,7 +1444,7 @@ export async function GET(request: Request) {
     }
   });
 
-  await hydrateStripeCustomerLinks(integrationUserId, result);
+  await hydrateStripeCustomerLinks(userId, result);
 
   if (domains.has("funnelJourney")) {
     const { buildCrossFunnelData } = await loadFunnelBuilders();
