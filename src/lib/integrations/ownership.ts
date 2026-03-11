@@ -154,6 +154,18 @@ export async function resolveIntegrationOrganizationId(userId: string): Promise<
 }
 
 /**
+ * Returns true when the given userId matches the configured
+ * INTEGRATION_OWNER_USER_ID environment variable.
+ *
+ * When true, connection lookups that miss for the owner should fall back to
+ * searching across all users — connections may not yet have been migrated.
+ */
+export function isConfiguredIntegrationOwner(userId: string): boolean {
+  const owner = process.env.INTEGRATION_OWNER_USER_ID?.trim();
+  return Boolean(owner && owner.length > 0 && owner === userId);
+}
+
+/**
  * Best-effort migration helper:
  * If the owner user is missing a provider connection, copy one from any CONNECTED
  * user (without deleting the source row).

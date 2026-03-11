@@ -66,8 +66,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const isAdmin = permission.role === "admin";
 
     // Best-effort migration so existing per-user connections don't disappear
-    // when switching to org-level ownership.
-    if (isAdmin && ownerUserId !== session.user.id) {
+    // when switching to org-level ownership. Run for all users (not just
+    // admins) to ensure everyone can see org-level integrations.
+    if (ownerUserId !== session.user.id) {
       await bestEffortMigrateConnectionsToOwner(ownerUserId);
     }
 
