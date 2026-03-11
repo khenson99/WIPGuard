@@ -465,7 +465,7 @@ describe("GET /api/analytics", () => {
 
     expect(response.status).toBe(200);
     expect(body.demoAnalytics).toBeTruthy();
-    expect(body.demoAnalytics.upcomingCount).toBeGreaterThan(0);
+    expect(body.demoAnalytics.totalScheduled).toBeGreaterThan(0);
   });
 
   it("hydrates stripe customer links onto hubspot deals", async () => {
@@ -743,7 +743,7 @@ describe("GET /api/analytics", () => {
       expect(body.stripe).toEqual(STRIPE_DATA);
       expect(getCredentials).toHaveBeenCalledWith("owner-1");
       expect(prisma.stripeCustomerLink.findMany).toHaveBeenCalledWith({
-        where: { userId: "user-1" },
+        where: { userId: "owner-1" },
       });
 
       expect(
