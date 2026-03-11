@@ -304,7 +304,12 @@ export function DealsDashboard() {
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {pipelineColumns.map((col) => (
-                <div key={col.stage} className="space-y-2">
+                <div
+                  key={col.stage}
+                  className="space-y-2"
+                  data-stage={col.label}
+                  data-testid={`stage-${col.label.toLowerCase().replace(/\s+/g, "-")}`}
+                >
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-foreground">{col.label}</h3>
                     <span className="text-xs tabular-nums text-muted-foreground">{col.deals.length}</span>

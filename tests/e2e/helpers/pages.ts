@@ -2,7 +2,7 @@
  * Page Object helpers for common E2E interactions.
  * Encapsulates selectors and actions for reuse across test suites.
  */
-import { type Page, type Locator, expect } from '@playwright/test';
+import { type Page, type Locator } from '@playwright/test';
 
 /**
  * Helper for authentication-related page interactions.
@@ -237,7 +237,8 @@ export class SprintPage {
     return this.page.getByRole('button', { name: /commit|add.*task|assign/i });
   }
 
-  async createSprint(_name: string): Promise<string> {
+  async createSprint(name: string): Promise<string> {
+    void name;
     await this.getCreateSprintButton().click();
     // Sprint label is computed from dates in the UI; create a short sprint range.
     const today = new Date();
@@ -291,6 +292,12 @@ export class DealsPage {
     return this.page.getByRole('button', { name: /^create deal$|^creating\.\.\.$/i });
   }
 
+  getDealDetailHeading(name: string): Locator {
+    return this.page.getByRole('heading', {
+      name: new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
+    });
+  }
+
   getDeal(name: string): Locator {
     return this.page.getByText(name, { exact: false });
   }
@@ -314,10 +321,7 @@ export class DealsPage {
     await this.getSubmitButton().click();
     await this.page.getByRole('dialog').waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});
     // Creation navigates to the deal detail page; wait for the heading to render.
-    await this.page
-      .getByRole('heading', { name: new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') })
-      .waitFor({ state: 'visible', timeout: 15_000 })
-      .catch(() => {});
+    await this.getDealDetailHeading(name).waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {});
   }
 
   async advanceDealToStage(dealName: string, targetStage: string) {
