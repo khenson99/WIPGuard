@@ -28,6 +28,9 @@ vi.mock("@/lib/integrations/provider-metrics-sync", async () => {
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    user: {
+      findUnique: vi.fn(),
+    },
     integrationRule: {
       findMany: vi.fn(),
     },
@@ -40,6 +43,9 @@ describe("integrations orchestrator", () => {
   });
 
   it("runs enabled rules for the requested provider/user", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      organizationId: "org_1",
+    } as never);
     vi.mocked(prisma.integrationRule.findMany).mockResolvedValueOnce([
       {
         id: "r1",
@@ -104,6 +110,9 @@ describe("integrations orchestrator", () => {
   });
 
   it("respects pageBudget", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      organizationId: "org_1",
+    } as never);
     vi.mocked(prisma.integrationRule.findMany).mockResolvedValueOnce([
       {
         id: "r1",
@@ -149,5 +158,30 @@ describe("integrations orchestrator", () => {
     expect(runGmailCapture).toHaveBeenCalledTimes(1);
     expect(runGoogleDriveCommentEscalation).toHaveBeenCalledTimes(0);
     expect(runGoogleCalendarPrepFollowup).toHaveBeenCalledTimes(0);
+  });
+
+  it("skips users that do not have an organization context", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null as never);
+
+    const result = await runRules({
+      mode: "incremental",
+      providers: [IntegrationProvider.GOOGLE_WORKSPACE],
+      dryRun: false,
+      userIds: ["user_1"],
+      startedAt: "2026-02-18T00:00:00.000Z",
+    });
+
+    expect(result.executedRules).toBe(0);
+    expect(prisma.integrationRule.findMany).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(
+      "integration.orchestrator.user_skipped",
+      expect.objectContaining({
+        userId: "user_1",
+        error: "Missing organizationId for integration run context",
+      })
+    );
+
+    errorSpy.mockRestore();
   });
 });
