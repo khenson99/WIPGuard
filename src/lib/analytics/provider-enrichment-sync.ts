@@ -7,6 +7,11 @@ import {
   ingestVisitorEnrichmentSignals,
   type VisitorEnrichmentSignalInput,
 } from "@/lib/analytics/visitor-funnel";
+import {
+  VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON,
+  getVisitorFunnelPrisma,
+  type VisitorFunnelPrismaClient,
+} from "@/lib/analytics/visitor-funnel-availability";
 import type { PrismaClientType } from "@/lib/prisma";
 
 export type ProviderEnrichmentSyncResult = {
@@ -88,7 +93,12 @@ export function resolveUnifyPullRequest(now: Date): (UnifyPullRequest & {
 }
 
 async function latestUnifySignalCursor(prisma: PrismaClientType): Promise<Date | null> {
-  const latest = await prisma.funnelEnrichmentSignal.findFirst({
+  const funnelPrisma = getVisitorFunnelPrisma(prisma);
+  if (!funnelPrisma) {
+    return null;
+  }
+
+  const latest = await funnelPrisma.funnelEnrichmentSignal.findFirst({
     where: {
       provider: PrismaEnrichmentProvider.UNIFY,
     },
@@ -107,7 +117,7 @@ export async function runVisitorFunnelEnrichmentSyncs(input: {
   now?: Date;
   pullUnify?: typeof pullUnifySignalsFromApi;
   ingestSignals?: (
-    prisma: PrismaClientType,
+    prisma: VisitorFunnelPrismaClient,
     provider: "unify",
     signals: VisitorEnrichmentSignalInput[],
   ) => Promise<{ accepted: number; stored: number }>;
@@ -178,6 +188,23 @@ export async function runVisitorFunnelEnrichmentSyncs(input: {
     process.env.UNIFY_FUNNEL_INITIAL_LOOKBACK_HOURS,
     24 * 7,
   );
+  const funnelPrisma = getVisitorFunnelPrisma(input.prisma);
+  if (!funnelPrisma) {
+    return [
+      {
+        provider: "unify",
+        mode: "pull",
+        ok: false,
+        skipped: true,
+        reason: VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON,
+        pulled: 0,
+        stored: 0,
+        accepted: 0,
+        updatedAfter: null,
+      },
+      ...results,
+    ];
+  }
 
   try {
     const latestCursor = await latestUnifySignalCursor(input.prisma);
@@ -196,7 +223,7 @@ export async function runVisitorFunnelEnrichmentSyncs(input: {
     });
     const ingestImpl = input.ingestSignals ?? ingestVisitorEnrichmentSignals;
     const outcome = signals.length > 0
-      ? await ingestImpl(input.prisma, "unify", signals)
+      ? await ingestImpl(funnelPrisma, "unify", signals)
       : { accepted: 0, stored: 0 };
 
     return [

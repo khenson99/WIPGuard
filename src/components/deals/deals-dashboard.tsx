@@ -24,6 +24,7 @@ import {
 type ViewMode = "table" | "pipeline";
 
 const CACHE_KEY = "dashboard:deals:v1";
+const EMPTY_DEALS: DealListItem[] = [];
 
 const STAGE_BADGE_CLASSES: Record<DealStage, string> = {
   LEAD: "bg-slate-500/10 text-slate-700 dark:text-slate-300",
@@ -61,7 +62,7 @@ export function DealsDashboard() {
     },
   });
 
-  const deals = resource.data ?? [];
+  const deals = resource.data ?? EMPTY_DEALS;
 
   const owners = useMemo(() => {
     const map = new Map<string, UserSummary>();

@@ -49,6 +49,23 @@ export const RULE_DESCRIPTORS: RuleDescriptor[] = [
     ],
   },
   {
+    id: "drive-transcript-capture",
+    provider: "google-workspace",
+    title: "Drive Transcript Capture",
+    ruleKey: "google_drive_transcript_capture",
+    endpoint: "/api/integrations/google-workspace/drive-transcript-capture",
+    runAction: "sync",
+    supportsDryRun: true,
+    supportsStatusOverride: true,
+    editorType: "generic",
+    fields: [
+      { key: "folderIds", label: "Folder IDs", type: "string-list", description: "One transcript folder ID per line." },
+      { key: "lookbackHours", label: "Lookback Hours", type: "number", min: 1, max: 336 },
+      { key: "filenameKeywords", label: "Filename Keywords", type: "string-list", description: "One keyword or phrase per line." },
+      { key: "maxFilesPerRun", label: "Max Files Per Run", type: "number", min: 1, max: 500 },
+    ],
+  },
+  {
     id: "calendar-followup",
     provider: "google-workspace",
     title: "Calendar Prep + Follow-up",

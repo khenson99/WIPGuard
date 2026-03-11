@@ -4,8 +4,8 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@/generated/prisma/client";
 import { FunnelEventType } from "@/lib/analytics/prisma-funnel-enums";
 import {
-  hasVisitorFunnelPrismaModels,
   VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON,
+  getVisitorFunnelPrisma,
 } from "@/lib/analytics/visitor-funnel-availability";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -61,7 +61,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    if (!hasVisitorFunnelPrismaModels(prisma)) {
+    const funnelPrisma = getVisitorFunnelPrisma(prisma);
+    if (!funnelPrisma) {
       return NextResponse.json(
         {
           accepted: 0,
@@ -90,7 +91,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       asString(request.headers.get("x-forwarded-host")) ??
       asString(request.headers.get("host"));
 
-    const result = await collectVisitorEvent(prisma, {
+    const result = await collectVisitorEvent(funnelPrisma, {
       anonymousId,
       eventType,
       occurredAt: asString(body.occurredAt),

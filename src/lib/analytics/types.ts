@@ -1266,17 +1266,40 @@ export interface VisitorFunnelData {
 // ══════════════════════════════════════════════════════════
 
 export type DemoOutcome = "completed" | "no-show" | "rescheduled" | "pending" | "unknown";
+export type DemoTranscriptStatus = "matched" | "unmatched" | "missing";
+export type DemoAnalysisStatus = "ready" | "pending" | "missing";
+export type DemoOutcomeConfidence = "low" | "medium" | "high";
 
 export interface DemoRecord {
   dealId: string;
   dealName: string;
   contactEmail: string | null;
   scheduledAt: string;
+  meetingId: string | null;
+  meetingTitle: string | null;
+  meetingEndAt: string | null;
+  meetingStatus: string | null;
+  isUpcoming: boolean;
+  isUnscheduledFallback: boolean;
   source: string;
   outcome: DemoOutcome;
   followUpSent: boolean;
   daysToNextStage: number | null;
   resultingStage: string | null;
+  transcriptStatus: DemoTranscriptStatus;
+  transcriptMatchConfidence: number | null;
+  transcriptSourceUrl: string | null;
+  transcriptSourceTitle: string | null;
+  analysisStatus: DemoAnalysisStatus;
+  qualityScore: number | null;
+  qualitySummary: string | null;
+  strengths: string[];
+  gaps: string[];
+  nextSteps: string[];
+  customerSignals: string[];
+  outcomeConfidence: DemoOutcomeConfidence | null;
+  coachingMemo: string | null;
+  nextStepMemo: string | null;
 }
 
 export interface DemoSourceBreakdown {
@@ -1334,7 +1357,16 @@ export interface DemoAnalyticsData {
   totalNoShows: number;
   noShowRate: number;
   avgLeadTimeDays: number;
+  upcomingCount: number;
+  meetingBackedUpcomingCount: number;
+  unscheduledDemoCount: number;
+  analyzedDemoCount: number;
+  avgDemoQualityScore: number;
+  transcriptCoveragePct: number;
+  topStrengthThemes: Array<{ label: string; count: number }>;
+  topGapThemes: Array<{ label: string; count: number }>;
   demos: DemoRecord[];
+  upcomingDemos: DemoRecord[];
   bySource: DemoSourceBreakdown[];
   byOutcome: DemoOutcomeBreakdown[];
   conversionFunnel: DemoConversionStep[];

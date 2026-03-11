@@ -146,12 +146,12 @@ async function readColumnVersions(
 
   const rows = await prisma.boardSettings.findMany({
     where: { columnName: { in: uniqueStatuses } },
-    select: { columnName: true, columnVersion: true },
+    select: { columnName: true, updatedAt: true },
   });
 
   for (const row of rows) {
     if (isTaskStatus(row.columnName)) {
-      versions[row.columnName] = row.columnVersion;
+      versions[row.columnName] = row.updatedAt.getTime();
     }
   }
 
@@ -541,11 +541,11 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
         const expectedVersion = expectedColumnVersions[status];
         const result = await tx.boardSettings.updateMany({
           where:
-            expectedVersion === undefined
-              ? { columnName: status }
-              : { columnName: status, columnVersion: expectedVersion },
+            expectedVersion !== undefined
+              ? { columnName: status, updatedAt: new Date(expectedVersion) }
+              : { columnName: status },
           data: {
-            columnVersion: { increment: 1 },
+            updatedAt: new Date(),
           },
         });
 

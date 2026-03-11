@@ -21,6 +21,7 @@ import { runSlackStatusSync } from "@/lib/integrations/slack-status-sync";
 import { runSlackUnansweredDetector } from "@/lib/integrations/slack-unanswered-requests";
 import { runGmailCapture } from "@/lib/integrations/google-gmail-capture";
 import { runGoogleDriveCommentEscalation } from "@/lib/integrations/google-drive-comment-escalation";
+import { runGoogleDriveTranscriptCapture } from "@/lib/integrations/google-drive-transcript-capture";
 import { runGoogleCalendarPrepFollowup } from "@/lib/integrations/google-calendar-followup";
 import { runHubSpotStageChecklist } from "@/lib/integrations/hubspot-stage-checklist";
 import { runHubSpotRiskIntervention } from "@/lib/integrations/hubspot-risk-intervention";
@@ -154,6 +155,10 @@ export async function runRules(input: RunRulesInput): Promise<RunRulesResult> {
               break;
             case "google_drive_comment_escalation":
               await runGoogleDriveCommentEscalation({ userId, dryRun: input.dryRun });
+              executedRules += 1;
+              break;
+            case "google_drive_transcript_capture":
+              await runGoogleDriveTranscriptCapture({ userId, dryRun: input.dryRun });
               executedRules += 1;
               break;
             case "google_calendar_prep_followup":

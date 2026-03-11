@@ -17,7 +17,7 @@ vi.mock('@/lib/automations/runtime', () => ({
 }));
 
 // Minimal mock PrismaClient
-const mockPrisma = {} as unknown;
+const mockPrisma = {} as never;
 
 describe('sync orchestrator', () => {
   it('runs all enabled modules and returns results', async () => {

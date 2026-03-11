@@ -12,7 +12,6 @@ import type {
   CodaCreatorWindow,
   CodaKanbanData,
   CodaNewCreatorFeedEntry,
-  CodaRecentSubmitter,
 } from "./types";
 
 const CODA_API_BASE = "https://coda.io/apis/v1";
@@ -481,7 +480,7 @@ export async function fetchCodaData(
   const rows: CodaRow[] = [];
   let nextPageToken: string | null = null;
   do {
-    const rowsResponse = await fetch(
+    const rowsResponse: Response = await fetch(
       `${CODA_API_BASE}/docs/${docId}/tables/${tableId}/rows?limit=500&valueFormat=simple`,
       {
         headers: {
@@ -498,7 +497,7 @@ export async function fetchCodaData(
       );
     }
 
-    const rowsData = await safeJson<CodaRowsResponse>(rowsResponse, "Coda rows");
+    const rowsData: CodaRowsResponse = await safeJson<CodaRowsResponse>(rowsResponse, "Coda rows");
     rows.push(...(rowsData.items || []));
     nextPageToken = rowsData.nextPageToken ?? null;
   } while (nextPageToken);
@@ -688,9 +687,6 @@ export async function fetchCodaData(
     hubspotAccessToken: options.hubspotAccessToken,
     maxCandidates: options.maxLeadCandidates,
   });
-
-  const maxLeadCandidates = Math.max(1, options.maxLeadCandidates ?? 25);
-  const topLeadCandidates = scoredLeads.slice(0, maxLeadCandidates);
 
   const hubspotMatchingErrors = 0;
 

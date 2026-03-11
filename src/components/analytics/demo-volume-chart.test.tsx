@@ -6,6 +6,39 @@ import type { DemoWeeklyTrend, DemoRecord } from "@/lib/analytics/types";
 
 vi.mock("recharts", async () => import("@/lib/__mocks__/recharts"));
 
+function makeDemoRecord(
+  overrides: Partial<DemoRecord> &
+    Pick<DemoRecord, "dealId" | "dealName" | "scheduledAt" | "source" | "outcome">,
+): DemoRecord {
+  return {
+    contactEmail: null,
+    meetingId: null,
+    meetingTitle: null,
+    meetingEndAt: null,
+    meetingStatus: null,
+    isUpcoming: false,
+    isUnscheduledFallback: false,
+    followUpSent: false,
+    daysToNextStage: null,
+    resultingStage: null,
+    transcriptStatus: "missing",
+    transcriptMatchConfidence: null,
+    transcriptSourceUrl: null,
+    transcriptSourceTitle: null,
+    analysisStatus: "missing",
+    qualityScore: null,
+    qualitySummary: null,
+    strengths: [],
+    gaps: [],
+    nextSteps: [],
+    customerSignals: [],
+    outcomeConfidence: null,
+    coachingMemo: null,
+    nextStepMemo: null,
+    ...overrides,
+  };
+}
+
 const mockWeeklyTrend: DemoWeeklyTrend[] = [
   { week: "2026-01-05", scheduled: 5, completed: 3, noShows: 1 },
   { week: "2026-01-12", scheduled: 8, completed: 6, noShows: 2 },
@@ -13,61 +46,41 @@ const mockWeeklyTrend: DemoWeeklyTrend[] = [
 ];
 
 const mockDemos: DemoRecord[] = [
-  {
+  makeDemoRecord({
     dealId: "1",
     dealName: "Deal A",
-    contactEmail: null,
     scheduledAt: "2026-01-07T10:00:00Z",
     source: "Organic",
     outcome: "completed",
-    followUpSent: false,
-    daysToNextStage: null,
-    resultingStage: null,
-  },
-  {
+  }),
+  makeDemoRecord({
     dealId: "2",
     dealName: "Deal B",
-    contactEmail: null,
     scheduledAt: "2026-01-08T10:00:00Z",
     source: "Organic",
     outcome: "no-show",
-    followUpSent: false,
-    daysToNextStage: null,
-    resultingStage: null,
-  },
-  {
+  }),
+  makeDemoRecord({
     dealId: "3",
     dealName: "Deal C",
-    contactEmail: null,
     scheduledAt: "2026-01-07T10:00:00Z",
     source: "Paid",
     outcome: "completed",
-    followUpSent: false,
-    daysToNextStage: null,
-    resultingStage: null,
-  },
-  {
+  }),
+  makeDemoRecord({
     dealId: "4",
     dealName: "Deal D",
-    contactEmail: null,
     scheduledAt: "2026-01-14T10:00:00Z",
     source: "Paid",
     outcome: "completed",
-    followUpSent: false,
-    daysToNextStage: null,
-    resultingStage: null,
-  },
-  {
+  }),
+  makeDemoRecord({
     dealId: "5",
     dealName: "Deal E",
-    contactEmail: null,
     scheduledAt: "2026-01-14T10:00:00Z",
     source: "Referral",
     outcome: "completed",
-    followUpSent: false,
-    daysToNextStage: null,
-    resultingStage: null,
-  },
+  }),
 ];
 
 describe("DemoVolumeChart", () => {

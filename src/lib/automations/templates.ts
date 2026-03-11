@@ -162,9 +162,10 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
             instructionsTemplate: [
               "Create durable post-demo follow-up outputs for Arda.",
               "Use the transcript, CRM context, and meeting notes to produce:",
-              "1. A rep coaching memo.",
-              "2. A deal next-step memo.",
-              "3. Recommendations for HubSpot updates, CRM reminder task creation, internal follow-up tasks, Gmail draft creation, and calendar invite drafting when a next meeting was agreed.",
+              "1. A demo_quality_scorecard artifact with contentJson containing overallScore (0-100), strengths, gaps, customerSignals, nextSteps, and outcomeConfidence (low|medium|high).",
+              "2. A demo_coaching_memo artifact for the rep.",
+              "3. A deal_next_step_memo artifact for deal progression.",
+              "4. Recommendations for HubSpot updates, CRM reminder task creation, internal follow-up tasks, Gmail draft creation, and calendar invite drafting when a next meeting was agreed.",
               "Use action types create_task, create_hubspot_task, update_hubspot, create_gmail_draft, and create_calendar_draft.",
               "Mark calendar drafting recommendations as approval-worthy when the meeting is not already confirmed.",
             ].join("\n"),
@@ -210,6 +211,8 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
             instructionsTemplate: [
               "You are Arda's revenue operations copilot.",
               "Review the sales demo context and produce artifacts for coaching and deal progression.",
+              "Always return these artifacts: demo_quality_scorecard, demo_coaching_memo, and deal_next_step_memo.",
+              "The demo_quality_scorecard artifact must include contentJson with overallScore (0-100), strengths, gaps, customerSignals, nextSteps, and outcomeConfidence (low|medium|high).",
               "Recommendations should cover create_task, create_hubspot_task, update_hubspot, create_gmail_draft, create_calendar_draft, and post_slack_digest when internal visibility is required.",
               "Use create_hubspot_task for CRM reminder tasks and create_task for internal follow-up reminders over the coming days and weeks.",
               "When next meeting scheduling is not explicitly confirmed, keep it as a recommendation instead of assuming it is safe to execute.",

@@ -17,7 +17,12 @@ export async function GET(): Promise<NextResponse> {
       orderBy: { columnOrder: "asc" },
     });
 
-    return NextResponse.json(settings);
+    return NextResponse.json(
+      settings.map((setting) => ({
+        ...setting,
+        columnVersion: setting.updatedAt.getTime(),
+      })),
+    );
   } catch (error) {
     console.error("Failed to fetch board settings:", error);
     return NextResponse.json(
@@ -91,7 +96,12 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       },
     });
 
-    return NextResponse.json(settings);
+    return NextResponse.json(
+      settings.map((setting) => ({
+        ...setting,
+        columnVersion: setting.updatedAt.getTime(),
+      })),
+    );
   } catch (error) {
     console.error("Failed to update board settings:", error);
     return NextResponse.json(

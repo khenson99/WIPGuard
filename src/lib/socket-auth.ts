@@ -1,5 +1,4 @@
 import { parse } from "cookie";
-import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
 
 export interface SocketSessionData {
@@ -64,14 +63,21 @@ export async function verifyProjectAccess(
   projectId: string
 ): Promise<boolean> {
   try {
-    const membership = await prisma.projectMember.findFirst({
+    const project = await prisma.project.findFirst({
       where: {
-        userId,
-        projectId,
+        id: projectId,
+        OR: [
+          { responsible: { some: { id: userId } } },
+          { accountable: { some: { id: userId } } },
+          { consulted: { some: { id: userId } } },
+          { informed: { some: { id: userId } } },
+          { sponsor: { some: { id: userId } } },
+        ],
       },
+      select: { id: true },
     });
 
-    return membership !== null;
+    return project !== null;
   } catch (error) {
     console.error("[socket-auth] Failed to verify project access:", error);
     return false;

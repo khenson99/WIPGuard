@@ -71,13 +71,13 @@ describe("HubSpot local deal sync", () => {
 
     vi.mocked(prisma.user.findMany).mockResolvedValue([] as never);
     vi.mocked(prisma.deal.findUnique).mockResolvedValue(null as never);
-    vi.mocked(prisma.deal.upsert).mockImplementation(async (args: {
-      where: { hubspotDealId: string };
+    vi.mocked(prisma.deal.upsert).mockImplementation((async (args: {
+      where: { hubspotDealId?: string };
       create: { stage: DealStage };
     }) => ({
-      id: `local-${args.where.hubspotDealId}`,
+      id: `local-${args.where.hubspotDealId ?? "unknown"}`,
       stage: args.create.stage,
-    }) as never);
+    })) as never);
     vi.mocked(prisma.dealStageHistory.create).mockResolvedValue({} as never);
     vi.mocked(prisma.dealCompany.upsert).mockResolvedValue({ id: "company-1" } as never);
     vi.mocked(prisma.dealContact.upsert).mockResolvedValue({ id: "contact-1" } as never);

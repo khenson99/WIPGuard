@@ -17,8 +17,17 @@
  */
 
 import { PrismaClient } from '@/generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 
-const prisma = new PrismaClient();
+const databaseUrl = process.env.DATABASE_URL;
+
+if (!databaseUrl) {
+  throw new Error('DATABASE_URL must be set before running the organization backfill');
+}
+
+const pool = new Pool({ connectionString: databaseUrl });
+const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
 
 const DEFAULT_ORG_ID = 'org_default_000000000';
 const DEFAULT_ORG_NAME = 'Default Organization';

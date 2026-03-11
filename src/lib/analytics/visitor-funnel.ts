@@ -5,13 +5,14 @@ import {
   FunnelIdentityType,
   FunnelLinkProvenance,
 } from "@/lib/analytics/prisma-funnel-enums";
-import {
-  type Prisma,
-  type PrismaClient,
-} from "@/generated/prisma/client";
+import { type Prisma } from "@/generated/prisma/client";
 import { enrichStripeEmails } from "@/lib/analytics/stripe-email-enrichment";
 import { buildVisitorFunnelEnrichmentAlerts } from "@/lib/analytics/visitor-funnel-enrichment-alerts";
-import type { PrismaClientType } from "@/lib/prisma";
+import type {
+  VisitorFunnelPrismaClient,
+  VisitorFunnelVisitorRecord,
+  VisitorFunnelVisitorWithRelations,
+} from "@/lib/analytics/visitor-funnel-availability";
 import type {
   AnalyticsDashboardData,
   EnrichmentProvider,
@@ -30,10 +31,30 @@ import type {
   VisitorLinkProvenance,
 } from "@/lib/analytics/types";
 
-type FunnelPrismaClient = PrismaClientType;
-type PersistedVisitor = NonNullable<
-  Awaited<ReturnType<PrismaClient["funnelVisitor"]["findUnique"]>>
+type FunnelPrismaClient = VisitorFunnelPrismaClient;
+type PersistedVisitor = VisitorFunnelVisitorRecord;
+type RawVisitorRecord = VisitorFunnelVisitorWithRelations;
+type FunnelVisitorUpdateInput = Partial<
+  Pick<
+    PersistedVisitor,
+    | "siteHost"
+    | "firstSeenAt"
+    | "lastSeenAt"
+    | "firstTouchSource"
+    | "firstTouchChannel"
+    | "firstTouchCampaign"
+    | "firstTouchReferrer"
+    | "firstTouchLandingPath"
+    | "firstTouchLandingUrl"
+    | "lastTouchSource"
+    | "lastTouchChannel"
+    | "lastTouchCampaign"
+    | "lastTouchReferrer"
+    | "lastTouchPath"
+    | "lastTouchUrl"
+  >
 >;
+type FunnelVisitorWhereInput = Record<string, unknown>;
 type HubSpotDeal = NonNullable<
   NonNullable<AnalyticsDashboardData["hubspot"]>["deals"]
 >[number];
@@ -100,10 +121,6 @@ type IdentityInput = {
   userId?: string | null;
   metadata?: Prisma.InputJsonValue | null;
 };
-
-type RawVisitorRecord = Awaited<
-  ReturnType<typeof loadVisitorsForRecords>
->[number];
 
 type StripeStatusRecord = {
   subscriptionStatus: "active" | "trialing" | "past_due" | "paused" | "canceled" | "none" | "unknown";
@@ -622,7 +639,7 @@ async function syncIdentityLinks(
 async function findVisitorByIdentity(
   prisma: FunnelPrismaClient,
   identities: Array<Pick<IdentityInput, "type" | "value">>,
-): Promise<Awaited<ReturnType<PrismaClient["funnelVisitor"]["findUnique"]>>> {
+): Promise<PersistedVisitor | null> {
   if (identities.length === 0) return null;
   const candidates = identities
     .map((identity) => ({
@@ -678,7 +695,7 @@ async function createOrUpdateVisitor(
     },
   });
 
-  const update: Prisma.FunnelVisitorUpdateInput = {};
+  const update: FunnelVisitorUpdateInput = {};
   if (input.occurredAt <= existing.firstSeenAt) {
     update.firstSeenAt = input.occurredAt;
     update.firstTouchSource = attribution.source ?? existing.firstTouchSource;
@@ -1251,7 +1268,7 @@ async function loadVisitorRecords(
     filters: VisitorFunnelFilters;
   },
 ): Promise<VisitorFunnelRecord[]> {
-  const where: Prisma.FunnelVisitorWhereInput = {
+  const where: FunnelVisitorWhereInput = {
     firstSeenAt: {
       gte: input.from,
       lte: input.to,
@@ -1287,8 +1304,8 @@ async function loadVisitorRecords(
 
 async function loadVisitorsForRecords(
   prisma: FunnelPrismaClient,
-  where: Prisma.FunnelVisitorWhereInput,
-) {
+  where: FunnelVisitorWhereInput,
+): Promise<RawVisitorRecord[]> {
   return prisma.funnelVisitor.findMany({
     where,
     include: {

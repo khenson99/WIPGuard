@@ -12,7 +12,7 @@
  *       This is a scaffold that existing sync code should be moved into.
  */
 
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClientType } from '@/lib/prisma';
 import {
   dispatchAutomationAiJobs,
   dispatchWorkflowTriggerEvents,
@@ -44,7 +44,7 @@ export interface SyncResult {
  * @returns Array of results for each module
  */
 export async function runSync(
-  prisma: PrismaClient,
+  prisma: PrismaClientType,
   modules: SyncModules
 ): Promise<SyncResult[]> {
   const results: SyncResult[] = [];

@@ -25,6 +25,7 @@
   - Confirm `VISITOR_FUNNEL_ENRICH_SECRET` or the provider-specific secret is set in production.
   - If Unify pull mode is enabled, confirm `UNIFY_DATA_API_KEY` and `UNIFY_FUNNEL_OBJECT_NAME` are present.
   - Trigger `POST /api/cron/sync` with `x-cron-secret`; response should include `visitorFunnelEnrichment`.
+  - Use [`visitor-funnel-enrichment.md`](./visitor-funnel-enrichment.md) for provider-specific setup and sample payloads.
   - Expected status:
     - `unify.ok = true` when pull mode is configured.
     - `clay.skipped = true` and `rb2b.skipped = true` because those providers are push-only.

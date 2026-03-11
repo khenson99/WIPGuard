@@ -1,89 +1,375 @@
+import { prisma } from "@/lib/prisma";
+import { getRequiredOrganizationId } from "@/lib/request-context";
 import type {
   AnalyticsDashboardData,
+  DemoAnalysisStatus,
   DemoAnalyticsData,
   DemoConversionStep,
   DemoOutcome,
   DemoOutcomeBreakdown,
+  DemoOutcomeConfidence,
   DemoRecord,
   DemoSourceBreakdown,
+  DemoTranscriptStatus,
   DemoWeeklyTrend,
   JourneyPathRow,
 } from "@/lib/analytics/types";
 
-const DEMO_STAGES = new Set(["Demo Scheduled", "No-Show/Reschedule", "Demo Follow-Up"]);
-const POST_DEMO_STAGES = ["Demo Follow-Up", "Budgetary Quote Sent", "Payment Link Sent", "Free Trial", "Freemium", "Subscription", "Closed Won"];
+const POST_DEMO_STAGES = [
+  "Demo Follow-Up",
+  "Budgetary Quote Sent",
+  "Payment Link Sent",
+  "Free Trial",
+  "Freemium",
+  "Subscription",
+  "Closed Won",
+];
+const MEETING_STATUSES_FOR_COMPLETION = new Set(["COMPLETED"]);
+const MEETING_STATUSES_FOR_NO_SHOW = new Set(["NO_SHOW"]);
+const MEETING_STATUSES_FOR_RESCHEDULE = new Set(["CANCELED"]);
+const DEMO_ANALYSIS_ARTIFACT_TYPES = new Set([
+  "demo_quality_scorecard",
+  "demo_coaching_memo",
+  "deal_next_step_memo",
+]);
 
-function inferOutcome(stageLabel: string): DemoOutcome {
-  if (stageLabel === "No-Show/Reschedule") return "no-show";
-  if (stageLabel === "Demo Scheduled") return "pending";
-  if (POST_DEMO_STAGES.includes(stageLabel)) return "completed";
-  return "rescheduled";
+type HubSpotDeal = NonNullable<NonNullable<AnalyticsDashboardData["hubspot"]>["deals"]>[number];
+
+export interface DemoMeetingContext {
+  id: string;
+  title: string;
+  status: string;
+  startAt: string;
+  endAt: string | null;
+  location: string | null;
+  notes: string | null;
+  dealId: string | null;
+  dealName: string | null;
+  hubspotDealId: string | null;
+  companyName: string | null;
+  attendeeEmails: string[];
+  googleDriveFileId: string | null;
+  googleDriveFileName: string | null;
+  googleDriveFileUrl: string | null;
+  transcriptMatchedAt: string | null;
+  transcriptMatchConfidence: number | null;
+  analysisArtifactId: string | null;
+  demoQualityScore: number | null;
+  demoQualitySummary: string | null;
+  demoStrengths: string[];
+  demoGaps: string[];
+  analyzedAt: string | null;
+  analysisArtifact: {
+    id: string;
+    runId: string;
+    artifactType: string;
+    summary: string | null;
+    content: string | null;
+    contentJson: Record<string, unknown> | null;
+  } | null;
+  siblingArtifacts: Array<{
+    id: string;
+    artifactType: string;
+    title: string;
+    summary: string | null;
+    content: string | null;
+    contentJson: Record<string, unknown> | null;
+  }>;
 }
 
-function buildDemoRecords(data: AnalyticsDashboardData): DemoRecord[] {
-  const deals = data.hubspot?.deals ?? [];
-  const stages = data.hubspot?.funnel?.stages ?? [];
-  const stageMap = new Map(stages.map((s) => [s.label, s]));
+function normalizeKey(value: string | null | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
 
-  // Deals that ever reached Demo Scheduled or beyond
-  const demoDeals = deals.filter(
-    (deal) => DEMO_STAGES.has(deal.stageLabel) || POST_DEMO_STAGES.includes(deal.stageLabel)
+function uniqueStrings(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    ),
   );
+}
 
-  return demoDeals.map((deal) => {
-    let outcome = inferOutcome(deal.stageLabel);
-    
-    // Fallback scheduledAt to createdAt since updatedAt gets overwritten too often
-    const scheduledAt = deal.createdAt ?? new Date().toISOString();
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
 
-    // If a demo is "pending" but the scheduled date is in the past, mark it unknown (or rescheduled if preferred, 
-    // pending should strictly be future)
-    // We will mark them as "no-show" or "rescheduled" if they are in the past and still pending.
-    // The user requested: "pending demos that are in the past are just ones that we haven't updated. They should be unknown. Pending demos should just bei n the future"
-    // Since "unknown" isn't a DemoOutcome, we can add it, or map to "pending" but handle it later. We will add "unknown" to DemoOutcome.
-    if (outcome === "pending" && scheduledAt) {
-      // rough heuristic: if created > 14 days ago and still pending, it's unknown.
-      // better yet, just look at the date.
-      const daysSinceScheduled = Math.round(
-        (Date.now() - new Date(scheduledAt).getTime()) / 86_400_000
-      );
-      if (daysSinceScheduled > 1) { // 1 day grace period
-        outcome = "unknown" as DemoOutcome; 
-      }
-    }
+function findArtifactText(
+  artifacts: DemoMeetingContext["siblingArtifacts"],
+  artifactType: string,
+): string | null {
+  const artifact = artifacts.find((item) => item.artifactType === artifactType) ?? null;
+  if (!artifact) return null;
+  return artifact.content ?? artifact.summary ?? null;
+}
 
-    const currentStageIdx = POST_DEMO_STAGES.indexOf(deal.stageLabel);
-    const hasFollowUp = currentStageIdx >= 0;
+function cohortDemos(demos: DemoRecord[]): DemoRecord[] {
+  return demos.filter((demo) => !demo.isUpcoming || demo.isUnscheduledFallback);
+}
 
-    // Estimate days to next stage based on updatedAt
-    let daysToNextStage: number | null = null;
-    if (deal.updatedAt) {
-      const daysSinceUpdate = Math.round(
-        (Date.now() - new Date(deal.updatedAt).getTime()) / 86_400_000
-      );
-      if (outcome === "completed" && daysSinceUpdate > 0) {
-        daysToNextStage = daysSinceUpdate;
-      }
-    }
+function historicalAnalysisDemos(demos: DemoRecord[]): DemoRecord[] {
+  return demos.filter((demo) => !demo.isUpcoming);
+}
 
-    return {
-      dealId: deal.dealId,
-      dealName: deal.dealName,
-      contactEmail: null,
-      scheduledAt,
-      source: deal.source || "Unknown",
-      outcome,
-      followUpSent: hasFollowUp,
-      daysToNextStage,
-      resultingStage: outcome === "completed" ? deal.stageLabel : null,
-    };
+function deriveOutcome(input: {
+  now: Date;
+  meeting: DemoMeetingContext | null;
+  deal: HubSpotDeal | null;
+  scheduledAt: string;
+  isUpcoming: boolean;
+}): DemoOutcome {
+  if (input.isUpcoming) {
+    return "pending";
+  }
+
+  const meetingStatus = normalizeKey(input.meeting?.status);
+  if (MEETING_STATUSES_FOR_NO_SHOW.has(meetingStatus.toUpperCase())) {
+    return "no-show";
+  }
+  if (MEETING_STATUSES_FOR_RESCHEDULE.has(meetingStatus.toUpperCase())) {
+    return "rescheduled";
+  }
+  if (MEETING_STATUSES_FOR_COMPLETION.has(meetingStatus.toUpperCase())) {
+    return "completed";
+  }
+
+  const stageLabel = input.deal?.stageLabel ?? null;
+  if (stageLabel === "No-Show/Reschedule") return "no-show";
+  if (stageLabel && POST_DEMO_STAGES.includes(stageLabel)) return "completed";
+  if (stageLabel === "Demo Scheduled") {
+    const daysSinceScheduled = Math.round(
+      (input.now.getTime() - new Date(input.scheduledAt).getTime()) / 86_400_000,
+    );
+    return daysSinceScheduled > 1 ? "unknown" : "pending";
+  }
+
+  return "unknown";
+}
+
+function deriveDaysToNextStage(meeting: DemoMeetingContext | null, deal: HubSpotDeal | null): number | null {
+  if (!meeting?.endAt || !deal?.updatedAt) return null;
+  const from = new Date(meeting.endAt).getTime();
+  const to = new Date(deal.updatedAt).getTime();
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return null;
+  return Math.round((to - from) / 86_400_000);
+}
+
+function deriveTranscriptStatus(meeting: DemoMeetingContext | null): DemoTranscriptStatus {
+  if (!meeting) return "missing";
+  if (meeting.googleDriveFileId && meeting.transcriptMatchedAt) return "matched";
+  if (meeting.googleDriveFileId) return "unmatched";
+  return "missing";
+}
+
+function deriveAnalysisStatus(meeting: DemoMeetingContext | null): DemoAnalysisStatus {
+  if (!meeting) return "missing";
+  if (meeting.analyzedAt && meeting.demoQualityScore != null) return "ready";
+  if (meeting.googleDriveFileId) return "pending";
+  return "missing";
+}
+
+function deriveOutcomeConfidence(meeting: DemoMeetingContext | null): DemoOutcomeConfidence | null {
+  const scorecard = asRecord(meeting?.analysisArtifact?.contentJson);
+  const value = typeof scorecard?.outcomeConfidence === "string"
+    ? scorecard.outcomeConfidence.trim().toLowerCase()
+    : "";
+  if (value === "low" || value === "medium" || value === "high") {
+    return value;
+  }
+  return null;
+}
+
+function buildThemeCounts(items: string[]): Array<{ label: string; count: number }> {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const label = item.trim();
+    if (!label) continue;
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, 5);
+}
+
+function findHubSpotDealForMeeting(
+  meeting: DemoMeetingContext,
+  dealsByHubspotId: Map<string, HubSpotDeal>,
+  dealsByName: Map<string, HubSpotDeal>,
+): HubSpotDeal | null {
+  if (meeting.hubspotDealId) {
+    const byId = dealsByHubspotId.get(meeting.hubspotDealId);
+    if (byId) return byId;
+  }
+
+  if (meeting.dealName) {
+    const byName = dealsByName.get(normalizeKey(meeting.dealName));
+    if (byName) return byName;
+  }
+
+  return null;
+}
+
+function buildDemoRecordFromMeeting(input: {
+  now: Date;
+  meeting: DemoMeetingContext;
+  deal: HubSpotDeal | null;
+}): DemoRecord {
+  const scheduledAt = input.meeting.startAt;
+  const normalizedMeetingStatus = normalizeKey(input.meeting.status).toUpperCase();
+  const isUpcoming =
+    !MEETING_STATUSES_FOR_COMPLETION.has(normalizedMeetingStatus) &&
+    !MEETING_STATUSES_FOR_NO_SHOW.has(normalizedMeetingStatus) &&
+    !MEETING_STATUSES_FOR_RESCHEDULE.has(normalizedMeetingStatus) &&
+    new Date(scheduledAt).getTime() > input.now.getTime();
+  const outcome = deriveOutcome({
+    now: input.now,
+    meeting: input.meeting,
+    deal: input.deal,
+    scheduledAt,
+    isUpcoming,
   });
+  const siblingArtifacts = input.meeting.siblingArtifacts;
+
+  return {
+    dealId: input.deal?.dealId ?? input.meeting.dealId ?? input.meeting.id,
+    dealName: input.deal?.dealName ?? input.meeting.dealName ?? input.meeting.title,
+    contactEmail: input.meeting.attendeeEmails[0] ?? input.deal?.primaryContactEmail ?? null,
+    scheduledAt,
+    meetingId: input.meeting.id,
+    meetingTitle: input.meeting.title,
+    meetingEndAt: input.meeting.endAt,
+    meetingStatus: input.meeting.status,
+    isUpcoming,
+    isUnscheduledFallback: false,
+    source: input.deal?.source || "Unknown",
+    outcome,
+    followUpSent: Boolean(input.deal?.stageLabel && POST_DEMO_STAGES.includes(input.deal.stageLabel)),
+    daysToNextStage: deriveDaysToNextStage(input.meeting, input.deal),
+    resultingStage: input.deal?.stageLabel ?? null,
+    transcriptStatus: deriveTranscriptStatus(input.meeting),
+    transcriptMatchConfidence: input.meeting.transcriptMatchConfidence,
+    transcriptSourceUrl: input.meeting.googleDriveFileUrl,
+    transcriptSourceTitle: input.meeting.googleDriveFileName,
+    analysisStatus: deriveAnalysisStatus(input.meeting),
+    qualityScore: input.meeting.demoQualityScore,
+    qualitySummary: input.meeting.demoQualitySummary,
+    strengths: input.meeting.demoStrengths,
+    gaps: input.meeting.demoGaps,
+    nextSteps: uniqueStrings(asRecord(input.meeting.analysisArtifact?.contentJson)?.nextSteps),
+    customerSignals: uniqueStrings(asRecord(input.meeting.analysisArtifact?.contentJson)?.customerSignals),
+    outcomeConfidence: deriveOutcomeConfidence(input.meeting),
+    coachingMemo: findArtifactText(siblingArtifacts, "demo_coaching_memo"),
+    nextStepMemo: findArtifactText(siblingArtifacts, "deal_next_step_memo"),
+  };
+}
+
+function buildUnscheduledFallbackRecord(input: {
+  deal: HubSpotDeal;
+}): DemoRecord {
+  const stageLabel = input.deal.stageLabel;
+  const isUnscheduledFallback = stageLabel === "Demo Scheduled";
+  const scheduledAt = input.deal.updatedAt ?? input.deal.createdAt ?? new Date().toISOString();
+  const outcome: DemoOutcome =
+    stageLabel === "No-Show/Reschedule"
+      ? "no-show"
+      : stageLabel && POST_DEMO_STAGES.includes(stageLabel)
+        ? "completed"
+        : "pending";
+
+  return {
+    dealId: input.deal.dealId,
+    dealName: input.deal.dealName,
+    contactEmail: input.deal.primaryContactEmail ?? null,
+    scheduledAt,
+    meetingId: null,
+    meetingTitle: null,
+    meetingEndAt: null,
+    meetingStatus: null,
+    isUpcoming: isUnscheduledFallback,
+    isUnscheduledFallback,
+    source: input.deal.source || "Unknown",
+    outcome,
+    followUpSent: Boolean(stageLabel && POST_DEMO_STAGES.includes(stageLabel)),
+    daysToNextStage: null,
+    resultingStage: input.deal.stageLabel,
+    transcriptStatus: "missing",
+    transcriptMatchConfidence: null,
+    transcriptSourceUrl: null,
+    transcriptSourceTitle: null,
+    analysisStatus: "missing",
+    qualityScore: null,
+    qualitySummary: null,
+    strengths: [],
+    gaps: [],
+    nextSteps: [],
+    customerSignals: [],
+    outcomeConfidence: null,
+    coachingMemo: null,
+    nextStepMemo: null,
+  };
+}
+
+function buildDealAggregateRecord(input: {
+  now: Date;
+  deal: HubSpotDeal;
+}): DemoRecord {
+  const scheduledAt =
+    input.deal.updatedAt ??
+    input.deal.createdAt ??
+    input.now.toISOString();
+  const stageLabel = input.deal.stageLabel ?? null;
+  const outcome: DemoOutcome =
+    stageLabel === "No-Show/Reschedule"
+      ? "no-show"
+      : stageLabel && POST_DEMO_STAGES.includes(stageLabel)
+        ? "completed"
+        : stageLabel === "Demo Scheduled"
+          ? "pending"
+          : "unknown";
+
+  return {
+    dealId: input.deal.dealId,
+    dealName: input.deal.dealName,
+    contactEmail: input.deal.primaryContactEmail ?? null,
+    scheduledAt,
+    meetingId: null,
+    meetingTitle: null,
+    meetingEndAt: null,
+    meetingStatus: null,
+    isUpcoming: false,
+    isUnscheduledFallback: false,
+    source: input.deal.source || "Unknown",
+    outcome,
+    followUpSent: Boolean(stageLabel && POST_DEMO_STAGES.includes(stageLabel)),
+    daysToNextStage: null,
+    resultingStage: stageLabel,
+    transcriptStatus: "missing",
+    transcriptMatchConfidence: null,
+    transcriptSourceUrl: null,
+    transcriptSourceTitle: null,
+    analysisStatus: "missing",
+    qualityScore: null,
+    qualitySummary: null,
+    strengths: [],
+    gaps: [],
+    nextSteps: [],
+    customerSignals: [],
+    outcomeConfidence: null,
+    coachingMemo: null,
+    nextStepMemo: null,
+  };
 }
 
 function buildSourceBreakdown(demos: DemoRecord[]): DemoSourceBreakdown[] {
+  const historical = cohortDemos(demos);
   const bySource = new Map<string, { scheduled: number; completed: number; noShows: number }>();
 
-  for (const demo of demos) {
+  for (const demo of historical) {
     const entry = bySource.get(demo.source) ?? { scheduled: 0, completed: 0, noShows: 0 };
     entry.scheduled += 1;
     if (demo.outcome === "completed") entry.completed += 1;
@@ -105,10 +391,17 @@ function buildSourceBreakdown(demos: DemoRecord[]): DemoSourceBreakdown[] {
 }
 
 function buildOutcomeBreakdown(demos: DemoRecord[]): DemoOutcomeBreakdown[] {
-  const total = demos.length;
-  const counts: Record<DemoOutcome, number> = { completed: 0, "no-show": 0, rescheduled: 0, pending: 0, unknown: 0 };
+  const historical = cohortDemos(demos);
+  const total = historical.length;
+  const counts: Record<DemoOutcome, number> = {
+    completed: 0,
+    "no-show": 0,
+    rescheduled: 0,
+    pending: 0,
+    unknown: 0,
+  };
 
-  for (const demo of demos) {
+  for (const demo of historical) {
     counts[demo.outcome] += 1;
   }
 
@@ -119,49 +412,44 @@ function buildOutcomeBreakdown(demos: DemoRecord[]): DemoOutcomeBreakdown[] {
   }));
 }
 
-function buildConversionFunnel(data: AnalyticsDashboardData, demos: DemoRecord[]): DemoConversionStep[] {
-  const funnel = data.hubspot?.funnel;
-  if (!funnel) return [];
+function buildConversionFunnel(demos: DemoRecord[]): DemoConversionStep[] {
+  const historical = cohortDemos(demos);
+  const scheduledCount = historical.length;
+  if (scheduledCount === 0) return [];
+
+  const completedCount = historical.filter((d) => d.outcome === "completed").length;
+  const followUpCount = historical.filter((d) => d.followUpSent).length;
+  const closedWonCount = historical.filter((d) => d.resultingStage === "Closed Won").length;
 
   const steps: DemoConversionStep[] = [
-    { label: "Demo Scheduled", count: funnel.demoScheduled, conversionFromPrevious: null },
+    { label: "Demo Scheduled", count: scheduledCount, conversionFromPrevious: null },
     {
       label: "Demo Completed",
-      count: demos.filter((d) => d.outcome === "completed").length,
-      conversionFromPrevious: funnel.demoScheduled > 0
-        ? Math.round((demos.filter((d) => d.outcome === "completed").length / funnel.demoScheduled) * 1000) / 10
-        : null,
+      count: completedCount,
+      conversionFromPrevious: Math.round((completedCount / scheduledCount) * 1000) / 10,
     },
     {
       label: "Follow-Up Sent",
-      count: demos.filter((d) => d.followUpSent).length,
-      conversionFromPrevious: null,
+      count: followUpCount,
+      conversionFromPrevious: completedCount > 0
+        ? Math.round((followUpCount / completedCount) * 1000) / 10
+        : null,
     },
     {
       label: "Closed Won",
-      count: funnel.closedWon,
-      conversionFromPrevious: funnel.demoScheduled > 0
-        ? Math.round((funnel.closedWon / funnel.demoScheduled) * 1000) / 10
-        : null,
+      count: closedWonCount,
+      conversionFromPrevious: Math.round((closedWonCount / scheduledCount) * 1000) / 10,
     },
   ];
-
-  // Fill in follow-up → closed conversion
-  const followUpCount = steps[2].count;
-  if (followUpCount > 0) {
-    steps[2].conversionFromPrevious =
-      steps[1].count > 0
-        ? Math.round((followUpCount / steps[1].count) * 1000) / 10
-        : null;
-  }
 
   return steps;
 }
 
 function buildWeeklyTrend(demos: DemoRecord[]): DemoWeeklyTrend[] {
+  const historical = cohortDemos(demos);
   const byWeek = new Map<string, { scheduled: number; completed: number; noShows: number }>();
 
-  for (const demo of demos) {
+  for (const demo of historical) {
     const date = new Date(demo.scheduledAt);
     const weekStart = new Date(date);
     weekStart.setDate(date.getDate() - date.getDay());
@@ -186,15 +474,10 @@ function buildWeeklyTrend(demos: DemoRecord[]): DemoWeeklyTrend[] {
 
 const TERMINAL_STAGES = new Set(["Closed Won", "Closed Lost", "Unlikely"]);
 const DEMO_ENTRY_STAGES = new Set([
-  "Demo Scheduled", "No-Show/Reschedule",
+  "Demo Scheduled",
+  "No-Show/Reschedule",
   ...POST_DEMO_STAGES,
 ]);
-
-function pct(num: number, denom: number): number {
-  return denom > 0 ? Math.round((num / denom) * 1000) / 10 : 0;
-}
-
-// Stages that indicate the customer has been onboarded (reached Subscription or beyond)
 const ONBOARDED_STAGES = new Set(["Subscription", "Closed Won"]);
 const HUBSPOT_CHURN_STAGES = new Set(["Churn", "Closed Lost"]);
 
@@ -202,23 +485,13 @@ type StripeChurnEvent = NonNullable<
   AnalyticsDashboardData["stripe"]
 >["subscriptions"]["recentChurnEvents"][number];
 
-function normalizeKey(value: string | null | undefined): string {
-  return value?.trim().toLowerCase() ?? "";
-}
-
 function buildStripeChurnLookup(events: StripeChurnEvent[]): Map<string, StripeChurnEvent> {
   const lookup = new Map<string, StripeChurnEvent>();
   for (const event of events) {
     const key = normalizeKey(event.customer);
     if (!key) continue;
     const existing = lookup.get(key);
-    if (!existing) {
-      lookup.set(key, event);
-      continue;
-    }
-    const existingTime = new Date(existing.canceledAt).getTime();
-    const nextTime = new Date(event.canceledAt).getTime();
-    if (nextTime > existingTime) {
+    if (!existing || new Date(event.canceledAt).getTime() > new Date(existing.canceledAt).getTime()) {
       lookup.set(key, event);
     }
   }
@@ -227,7 +500,7 @@ function buildStripeChurnLookup(events: StripeChurnEvent[]): Map<string, StripeC
 
 function resolveStripeChurnEvent(
   deal: { dealId: string; dealName: string; stripeCustomerId?: string | null },
-  lookup: Map<string, StripeChurnEvent>
+  lookup: Map<string, StripeChurnEvent>,
 ): StripeChurnEvent | null {
   const candidates = [
     normalizeKey(deal.stripeCustomerId),
@@ -241,11 +514,13 @@ function resolveStripeChurnEvent(
   return null;
 }
 
+function pct(num: number, denom: number): number {
+  return denom > 0 ? Math.round((num / denom) * 1000) / 10 : 0;
+}
+
 function buildJourneyPathAnalysis(data: AnalyticsDashboardData): JourneyPathRow[] {
   const deals = data.hubspot?.deals ?? [];
   const stripeChurnEvents = data.stripe?.subscriptions?.recentChurnEvents ?? [];
-
-  // Build a lookup of Stripe-churned customer IDs for cross-referencing
   const stripeChurnLookup = buildStripeChurnLookup(stripeChurnEvents);
 
   const bySource = new Map<string, typeof deals>();
@@ -264,10 +539,7 @@ function buildJourneyPathAnalysis(data: AnalyticsDashboardData): JourneyPathRow[
     const demoCompleted = sourceDeals.filter((d) => POST_DEMO_STAGES.includes(d.stageLabel)).length;
     const demoNoShow = sourceDeals.filter((d) => d.stageLabel === "No-Show/Reschedule").length;
 
-    // Avg days to decision for terminal-stage deals (approximate from updatedAt)
-    const terminalDeals = sourceDeals.filter(
-      (d) => TERMINAL_STAGES.has(d.stageLabel) && d.updatedAt,
-    );
+    const terminalDeals = sourceDeals.filter((d) => TERMINAL_STAGES.has(d.stageLabel) && d.updatedAt);
     let avgDaysToDecision: number | null = null;
     if (terminalDeals.length > 0) {
       const totalDays = terminalDeals.reduce((sum, d) => {
@@ -280,20 +552,12 @@ function buildJourneyPathAnalysis(data: AnalyticsDashboardData): JourneyPathRow[
     const wonDeals = sourceDeals.filter((d) => d.stageLabel === "Closed Won");
     const closedWon = wonDeals.length;
     const closedLost = sourceDeals.filter((d) => d.stageLabel === "Closed Lost").length;
-
-    // Onboarding: deals that reached Subscription or Closed Won stage
-    // (indicates the customer completed onboarding after signing up)
-    // TODO: Replace with actual Google Calendar onboarding call detection with Mat
-    // once calendar event data is available in the analytics pipeline
     const onboarding = sourceDeals.filter((d) => ONBOARDED_STAGES.has(d.stageLabel)).length;
-
     const wonWithValue = wonDeals.filter((d) => d.amount > 0);
     const avgContractValue = wonWithValue.length > 0
-      ? Math.round(wonWithValue.reduce((s, d) => s + d.amount, 0) / wonWithValue.length)
+      ? Math.round(wonWithValue.reduce((sum, deal) => sum + deal.amount, 0) / wonWithValue.length)
       : null;
 
-    // Churn: HubSpot "Churn" / "Closed Lost" stages OR Stripe subscription cancellation
-    // Stripe churn events are matched by customer ID (deal name used as fallback identifier)
     const churnedDeals = sourceDeals.flatMap((deal) => {
       const stripeEvent = resolveStripeChurnEvent(deal, stripeChurnLookup);
       const hubspotChurned = HUBSPOT_CHURN_STAGES.has(deal.stageLabel);
@@ -304,17 +568,12 @@ function buildJourneyPathAnalysis(data: AnalyticsDashboardData): JourneyPathRow[
       }];
     });
 
-    // Not Activated: churned within 60 days of deal creation (signup)
     const notActivatedDeals = churnedDeals.filter(({ deal, churnedAt }) => {
       if (!deal.createdAt || !churnedAt) return false;
       const createdMs = new Date(deal.createdAt).getTime();
       const churnedMs = new Date(churnedAt).getTime();
-      const daysSinceCreation = (churnedMs - createdMs) / 86_400_000;
-      return daysSinceCreation <= 60;
+      return (churnedMs - createdMs) / 86_400_000 <= 60;
     });
-    const notActivated = notActivatedDeals.length;
-
-    const churned = churnedDeals.length;
 
     rows.push({
       source,
@@ -332,32 +591,202 @@ function buildJourneyPathAnalysis(data: AnalyticsDashboardData): JourneyPathRow[
       onboarding,
       onboardingPct: pct(onboarding, closedWon),
       avgContractValue,
-      churned,
-      churnedPct: pct(churned, closedWon),
-      notActivated,
-      notActivatedPct: pct(notActivated, closedWon),
+      churned: churnedDeals.length,
+      churnedPct: pct(churnedDeals.length, closedWon),
+      notActivated: notActivatedDeals.length,
+      notActivatedPct: pct(notActivatedDeals.length, closedWon),
     });
   }
 
   return rows.sort((a, b) => b.totalLeads - a.totalLeads);
 }
 
-export function buildDemoAnalyticsData(data: AnalyticsDashboardData): DemoAnalyticsData {
-  const demos = buildDemoRecords(data);
-  const totalScheduled = demos.length;
-  const totalCompleted = demos.filter((d) => d.outcome === "completed").length;
-  const totalNoShows = demos.filter((d) => d.outcome === "no-show").length;
+export async function listDemoAnalyticsMeetings(): Promise<DemoMeetingContext[]> {
+  const organizationId = getRequiredOrganizationId();
+  const meetings = await prisma.dealMeeting.findMany({
+    where: {
+      deal: {
+        organizationId,
+      },
+    },
+    include: {
+      deal: {
+        select: {
+          id: true,
+          name: true,
+          hubspotDealId: true,
+        },
+      },
+      company: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      attendees: {
+        select: {
+          email: true,
+        },
+      },
+      analysisArtifact: {
+        select: {
+          id: true,
+          runId: true,
+          artifactType: true,
+          summary: true,
+          content: true,
+          contentJson: true,
+        },
+      },
+    },
+    orderBy: {
+      startAt: "desc",
+    },
+  });
+
+  const runIds = Array.from(
+    new Set(
+      meetings
+        .map((meeting) => meeting.analysisArtifact?.runId ?? null)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  const siblingArtifacts = runIds.length > 0
+    ? await prisma.automationArtifact.findMany({
+        where: {
+          runId: { in: runIds },
+          artifactType: { in: Array.from(DEMO_ANALYSIS_ARTIFACT_TYPES) },
+        },
+        select: {
+          id: true,
+          runId: true,
+          artifactType: true,
+          title: true,
+          summary: true,
+          content: true,
+          contentJson: true,
+        },
+      })
+    : [];
+  const siblingByRunId = new Map<string, typeof siblingArtifacts>();
+  for (const artifact of siblingArtifacts) {
+    const group = siblingByRunId.get(artifact.runId) ?? [];
+    group.push(artifact);
+    siblingByRunId.set(artifact.runId, group);
+  }
+
+  return meetings.map((meeting) => ({
+    id: meeting.id,
+    title: meeting.title,
+    status: meeting.status,
+    startAt: meeting.startAt.toISOString(),
+    endAt: meeting.endAt?.toISOString() ?? null,
+    location: meeting.location,
+    notes: meeting.notes,
+    dealId: meeting.dealId,
+    dealName: meeting.deal?.name ?? null,
+    hubspotDealId: meeting.deal?.hubspotDealId ?? null,
+    companyName: meeting.company?.name ?? null,
+    attendeeEmails: meeting.attendees.map((attendee) => attendee.email).filter(Boolean) as string[],
+    googleDriveFileId: meeting.googleDriveFileId,
+    googleDriveFileName: meeting.googleDriveFileName,
+    googleDriveFileUrl: meeting.googleDriveFileUrl,
+    transcriptMatchedAt: meeting.transcriptMatchedAt?.toISOString() ?? null,
+    transcriptMatchConfidence: meeting.transcriptMatchConfidence,
+    analysisArtifactId: meeting.analysisArtifactId,
+    demoQualityScore: meeting.demoQualityScore,
+    demoQualitySummary: meeting.demoQualitySummary,
+    demoStrengths: uniqueStrings(meeting.demoStrengthsJson),
+    demoGaps: uniqueStrings(meeting.demoGapsJson),
+    analyzedAt: meeting.analyzedAt?.toISOString() ?? null,
+    analysisArtifact: meeting.analysisArtifact
+      ? {
+          id: meeting.analysisArtifact.id,
+          runId: meeting.analysisArtifact.runId,
+          artifactType: meeting.analysisArtifact.artifactType,
+          summary: meeting.analysisArtifact.summary,
+          content: meeting.analysisArtifact.content,
+          contentJson: asRecord(meeting.analysisArtifact.contentJson),
+        }
+      : null,
+    siblingArtifacts: meeting.analysisArtifact
+      ? (siblingByRunId.get(meeting.analysisArtifact.runId) ?? []).map((artifact) => ({
+          id: artifact.id,
+          artifactType: artifact.artifactType,
+          title: artifact.title,
+          summary: artifact.summary,
+          content: artifact.content,
+          contentJson: asRecord(artifact.contentJson),
+        }))
+      : [],
+  }));
+}
+
+export function buildDemoAnalyticsData(
+  data: AnalyticsDashboardData,
+  input?: { meetings?: DemoMeetingContext[] },
+): DemoAnalyticsData {
+  const now = new Date(
+    data.hubspot?._meta?.fetchedAt ??
+      data.timeRange?.to ??
+      new Date().toISOString(),
+  );
+  const meetings = input?.meetings ?? [];
+  const deals = data.hubspot?.deals ?? [];
+  const dealsByHubspotId = new Map(deals.map((deal) => [deal.dealId, deal] as const));
+  const dealsByName = new Map(deals.map((deal) => [normalizeKey(deal.dealName), deal] as const));
+  const aggregateDemos = deals
+    .filter((deal) => DEMO_ENTRY_STAGES.has(deal.stageLabel))
+    .map((deal) => buildDealAggregateRecord({ now, deal }));
+
+  const meetingPairs = meetings.map((meeting) => ({
+    meeting,
+    deal: findHubSpotDealForMeeting(meeting, dealsByHubspotId, dealsByName),
+  }));
+
+  const meetingBackedDemos = meetingPairs.map(({ meeting, deal }) =>
+    buildDemoRecordFromMeeting({
+      now,
+      meeting,
+      deal,
+    }),
+  );
+
+  const coveredHubSpotDealIds = new Set(
+    meetingPairs
+      .map(({ deal, meeting }) => deal?.dealId ?? meeting.hubspotDealId ?? null)
+      .filter((dealId): dealId is string => Boolean(dealId)),
+  );
+
+  const hubSpotFallbacks = deals
+    .filter((deal) => deal.stageLabel === "Demo Scheduled" && !coveredHubSpotDealIds.has(deal.dealId))
+    .map((deal) => buildUnscheduledFallbackRecord({ deal }));
+
+  const demos = [...meetingBackedDemos, ...hubSpotFallbacks].sort((a, b) => {
+    const timeDiff = new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+    if (timeDiff !== 0) return timeDiff;
+    return a.dealName.localeCompare(b.dealName);
+  });
+
+  const cohort = aggregateDemos;
+  const historical = historicalAnalysisDemos(demos);
+  const totalScheduled = cohort.length;
+  const totalCompleted = cohort.filter((demo) => demo.outcome === "completed").length;
+  const totalNoShows = cohort.filter((demo) => demo.outcome === "no-show").length;
   const noShowRate = totalScheduled > 0
     ? Math.round((totalNoShows / totalScheduled) * 1000) / 10
     : 0;
 
-  // Avg lead time from scheduling to next stage
-  const withNextStage = demos.filter((d) => d.daysToNextStage !== null);
+  const withNextStage = cohort.filter((demo) => demo.daysToNextStage !== null);
   const avgLeadTimeDays = withNextStage.length > 0
     ? Math.round(
-        (withNextStage.reduce((sum, d) => sum + (d.daysToNextStage ?? 0), 0) / withNextStage.length) * 10
+        (withNextStage.reduce((sum, demo) => sum + (demo.daysToNextStage ?? 0), 0) / withNextStage.length) * 10,
       ) / 10
     : 0;
+
+  const analyzed = historical.filter((demo) => demo.analysisStatus === "ready" && demo.qualityScore != null);
+  const matchedTranscripts = historical.filter((demo) => demo.transcriptStatus === "matched");
 
   return {
     totalScheduled,
@@ -365,11 +794,29 @@ export function buildDemoAnalyticsData(data: AnalyticsDashboardData): DemoAnalyt
     totalNoShows,
     noShowRate,
     avgLeadTimeDays,
+    upcomingCount: demos.filter((demo) => demo.isUpcoming).length,
+    meetingBackedUpcomingCount: demos.filter((demo) => demo.isUpcoming && !demo.isUnscheduledFallback).length,
+    unscheduledDemoCount: hubSpotFallbacks.filter((demo) => demo.isUnscheduledFallback).length,
+    analyzedDemoCount: analyzed.length,
+    avgDemoQualityScore: analyzed.length > 0
+      ? Math.round((analyzed.reduce((sum, demo) => sum + (demo.qualityScore ?? 0), 0) / analyzed.length) * 10) / 10
+      : 0,
+    transcriptCoveragePct: historical.length > 0
+      ? Math.round((matchedTranscripts.length / historical.length) * 1000) / 10
+      : 0,
+    topStrengthThemes: buildThemeCounts(analyzed.flatMap((demo) => demo.strengths)),
+    topGapThemes: buildThemeCounts(analyzed.flatMap((demo) => demo.gaps)),
     demos,
-    bySource: buildSourceBreakdown(demos),
-    byOutcome: buildOutcomeBreakdown(demos),
-    conversionFunnel: buildConversionFunnel(data, demos),
-    weeklyTrend: buildWeeklyTrend(demos),
+    upcomingDemos: demos.filter((demo) => demo.isUpcoming).sort((a, b) => {
+      if (a.isUnscheduledFallback !== b.isUnscheduledFallback) {
+        return a.isUnscheduledFallback ? 1 : -1;
+      }
+      return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+    }),
+    bySource: buildSourceBreakdown(cohort),
+    byOutcome: buildOutcomeBreakdown(cohort),
+    conversionFunnel: buildConversionFunnel(cohort),
+    weeklyTrend: buildWeeklyTrend(cohort),
     journeyPaths: buildJourneyPathAnalysis(data),
   };
 }

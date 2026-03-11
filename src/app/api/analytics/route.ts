@@ -127,6 +127,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "recommendations",
     "distilledInsights",
   ],
+  "ai-insights": [...ALL_DOMAINS],
   "ads-traffic": [
     "googleAnalytics",
     "googleAds",
@@ -219,6 +220,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   ],
   "demo-scheduling": ["hubspot", "googleWorkspace", "demoAnalytics"],
   "demo-attribution": ["hubspot", "googleAds", "metaAds", "instagram", "redditAds", "googleAnalytics", "webflow", "demoAnalytics"],
+  "demo-coaching": ["hubspot", "googleWorkspace", "demoAnalytics"],
 
   "process-analytics": [
     "hubspot", "stripe", "processAnalytics",
@@ -747,7 +749,7 @@ type FetchEntry = {
   | "customerJourney"
   | "visitorFunnel"
   | "demoAnalytics"
-  | "processAnalytics"
+    | "processAnalytics"
   >;
   fn: () => Promise<unknown>;
   snapshotUserId: string;
@@ -1496,7 +1498,9 @@ export async function GET(request: Request) {
   }
   if (domains.has("demoAnalytics")) {
     const { buildDemoAnalyticsData } = await loadDemoAnalyticsBuilder();
-    result.demoAnalytics = buildDemoAnalyticsData(result);
+    const { listDemoAnalyticsMeetings } = await loadDemoAnalyticsBuilder();
+    const meetings = await listDemoAnalyticsMeetings();
+    result.demoAnalytics = buildDemoAnalyticsData(result, { meetings });
   }
   if (domains.has("processAnalytics")) {
     const { buildProcessAnalyticsData } = await loadProcessAnalyticsBuilder();

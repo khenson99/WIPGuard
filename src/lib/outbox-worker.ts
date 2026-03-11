@@ -1,8 +1,8 @@
 import type {
   OutboxEvent,
   OutboxEventStatus,
-  Prisma,
 } from "@/generated/prisma/client";
+import type { PrismaClientType } from "@/lib/prisma";
 
 export const RETRYABLE_EVENT_STATUSES: OutboxEventStatus[] = [
   "PENDING",
@@ -50,7 +50,7 @@ export interface OutboxOperationalMetrics {
   }>;
 }
 
-type OutboxDelegate = Prisma.TransactionClient["outboxEvent"];
+type OutboxDelegate = PrismaClientType["outboxEvent"];
 
 type OutboxClient = {
   outboxEvent: OutboxDelegate;

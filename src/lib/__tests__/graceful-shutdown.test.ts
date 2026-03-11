@@ -144,7 +144,7 @@ describe("graceful-shutdown", () => {
 
       registerShutdownHandlers(mockServer, mockIo);
 
-      const registeredSignals = processOnSpy.mock.calls.map((call) => call[0]);
+      const registeredSignals = processOnSpy.mock.calls.map((call: unknown[]) => call[0]);
       expect(registeredSignals).toContain("SIGTERM");
       expect(registeredSignals).toContain("SIGINT");
     });
@@ -162,7 +162,7 @@ describe("graceful-shutdown", () => {
       registerShutdownHandlers(mockServer, mockIo, { stopOutboxWorker });
 
       // Find the SIGTERM handler and invoke it
-      const sigtermCall = processOnSpy.mock.calls.find((call) => call[0] === "SIGTERM");
+      const sigtermCall = processOnSpy.mock.calls.find((call: unknown[]) => call[0] === "SIGTERM");
       expect(sigtermCall).toBeDefined();
 
       const handler = sigtermCall![1] as () => void;
@@ -189,7 +189,7 @@ describe("graceful-shutdown", () => {
 
       registerShutdownHandlers(mockServer, mockIo, { onShutdownStart });
 
-      const sigtermCall = processOnSpy.mock.calls.find((call) => call[0] === "SIGTERM");
+      const sigtermCall = processOnSpy.mock.calls.find((call: unknown[]) => call[0] === "SIGTERM");
       const handler = sigtermCall![1] as () => void;
       handler();
 
@@ -201,14 +201,14 @@ describe("graceful-shutdown", () => {
     it("handles server.close error gracefully and continues shutdown", async () => {
       const mockServer = {
         close: vi.fn((cb: (err?: Error) => void) => cb(new Error("Already closed"))),
-      } as unknown;
+      } as unknown as Server;
       const mockIo = {
         disconnectSockets: vi.fn(),
-      } as unknown;
+      } as unknown as IOServer;
 
       registerShutdownHandlers(mockServer, mockIo);
 
-      const sigtermCall = processOnSpy.mock.calls.find((call) => call[0] === "SIGTERM");
+      const sigtermCall = processOnSpy.mock.calls.find((call: unknown[]) => call[0] === "SIGTERM");
       const handler = sigtermCall![1] as () => void;
       handler();
 

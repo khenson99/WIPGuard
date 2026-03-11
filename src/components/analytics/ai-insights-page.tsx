@@ -28,10 +28,10 @@ function clamp(value: number, min: number, max: number): number {
 
 export function AiInsightsPage() {
   const resource = useDashboardResource<AnalyticsDashboardData>({
-    cacheKey: "analytics:overview:v1",
+    cacheKey: "analytics:ai-insights:v1",
     deps: [],
     load: async ({ signal, refresh }) => {
-      const params = new URLSearchParams({ section: "overview" });
+      const params = new URLSearchParams({ section: "ai-insights" });
       if (refresh) {
         params.set("refresh", "true");
       }

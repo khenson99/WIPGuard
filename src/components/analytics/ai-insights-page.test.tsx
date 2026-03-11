@@ -37,7 +37,7 @@ function writeCachedOverviewData(globalCount: number) {
     },
   };
 
-  useDashboardCacheStore.getState().write("analytics:overview:v1", {
+  useDashboardCacheStore.getState().write("analytics:ai-insights:v1", {
     data: {
       aiInsights: bundle,
       freshness: {},
@@ -76,7 +76,7 @@ function writeCachedOverviewData(globalCount: number) {
   });
 
   const fetchMock = vi.fn(async () =>
-    new Response(JSON.stringify(useDashboardCacheStore.getState().read("analytics:overview:v1")?.data), { status: 200 }),
+    new Response(JSON.stringify(useDashboardCacheStore.getState().read("analytics:ai-insights:v1")?.data), { status: 200 }),
   );
   vi.stubGlobal("fetch", fetchMock);
 
@@ -152,16 +152,11 @@ describe("AiInsightsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Rerun AI insights" }));
 
     await waitFor(() => {
-      expect(
-        fetchMock.mock.calls.some(
-          ([url, options]) =>
-            url === "/api/analytics?section=overview&refresh=true" &&
-            typeof options === "object" &&
-            options !== null &&
-            "cache" in options &&
-            options.cache === "no-store",
-        ),
-      ).toBe(true);
+      const refreshCall = fetchMock.mock.calls.find(
+        (call: unknown[]) => call[0] === "/api/analytics?section=ai-insights&refresh=true",
+      ) as [string, RequestInit?] | undefined;
+      expect(refreshCall).toBeDefined();
+      expect(refreshCall?.[1]?.cache).toBe("no-store");
     });
   });
 });

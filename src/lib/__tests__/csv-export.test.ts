@@ -60,7 +60,9 @@ describe("downloadCsv", () => {
     vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
       if (tag === "a") {
         const el = realCreateElement("a") as HTMLAnchorElement;
-        el.click = clickMock;
+        el.click = (() => {
+          (clickMock as unknown as () => void)();
+        }) as typeof el.click;
         capturedAnchor = el;
         return el;
       }

@@ -3,6 +3,7 @@ import { IntegrationProvider } from "@/generated/prisma/client";
 import { runRules } from "@/lib/integrations/orchestrator";
 import { runGmailCapture } from "@/lib/integrations/google-gmail-capture";
 import { runGoogleDriveCommentEscalation } from "@/lib/integrations/google-drive-comment-escalation";
+import { runGoogleDriveTranscriptCapture } from "@/lib/integrations/google-drive-transcript-capture";
 import { runGoogleCalendarPrepFollowup } from "@/lib/integrations/google-calendar-followup";
 import { resolveIntegrationOrganizationId } from "@/lib/integrations/ownership";
 import { runProviderMetricsRule } from "@/lib/integrations/provider-metrics-sync";
@@ -13,6 +14,9 @@ vi.mock("@/lib/integrations/google-gmail-capture", () => ({
 }));
 vi.mock("@/lib/integrations/google-drive-comment-escalation", () => ({
   runGoogleDriveCommentEscalation: vi.fn(),
+}));
+vi.mock("@/lib/integrations/google-drive-transcript-capture", () => ({
+  runGoogleDriveTranscriptCapture: vi.fn(),
 }));
 vi.mock("@/lib/integrations/google-calendar-followup", () => ({
   runGoogleCalendarPrepFollowup: vi.fn(),
@@ -132,7 +136,7 @@ describe("integrations orchestrator", () => {
         id: "r3",
         userId: "user_1",
         provider: IntegrationProvider.GOOGLE_WORKSPACE,
-        key: "google_drive_comment_escalation",
+        key: "google_drive_transcript_capture",
         enabled: true,
         statusOverride: null,
         config: {},
@@ -155,6 +159,7 @@ describe("integrations orchestrator", () => {
     });
 
     expect(runGmailCapture).toHaveBeenCalledTimes(1);
+    expect(runGoogleDriveTranscriptCapture).toHaveBeenCalledTimes(0);
     expect(runGoogleDriveCommentEscalation).toHaveBeenCalledTimes(0);
     expect(runGoogleCalendarPrepFollowup).toHaveBeenCalledTimes(0);
   });

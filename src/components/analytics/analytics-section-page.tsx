@@ -41,6 +41,7 @@ const CustomerJourneyConversionTab = dynamic(() => import("@/components/analytic
 const VisitorFunnelTab = dynamic(() => import("@/components/analytics/visitor-funnel-tab").then((m) => m.VisitorFunnelTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const DemoSchedulingView = dynamic(() => import("@/components/analytics/demo-scheduling-view").then((m) => m.DemoSchedulingView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const DemoAttributionView = dynamic(() => import("@/components/analytics/demo-attribution-view").then((m) => m.DemoAttributionView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const DemoCoachingView = dynamic(() => import("@/components/analytics/demo-coaching-view").then((m) => m.DemoCoachingView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const ProcessBottlenecksView = dynamic(() => import("@/components/analytics/process-bottlenecks-view").then((m) => m.ProcessBottlenecksView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const ProcessHealthView = dynamic(() => import("@/components/analytics/process-health-view").then((m) => m.ProcessHealthView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const FinancePlanningTab = dynamic(() => import("@/components/analytics/finance-planning-tab").then((m) => m.FinancePlanningTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
@@ -105,6 +106,7 @@ export type AnalyticsChildRenderKind =
   | "visitorFunnel"
   | "demoScheduling"
   | "demoAttribution"
+  | "demoCoaching"
   | "processBottlenecks"
   | "processHealth"
   | "finance-planning"
@@ -149,6 +151,7 @@ const CHILD_ID_TO_RENDER_KIND = {
   // Demo Analytics
   "demo-scheduling": "demoScheduling",
   "demo-attribution": "demoAttribution",
+  "demo-coaching": "demoCoaching",
   // Process Analytics
   "process-bottlenecks": "processBottlenecks",
   "process-velocity": "processBottlenecks",
@@ -362,6 +365,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     if (renderKind === "visitorFunnel") return <VisitorFunnelTab data={analyticsData} />;
     if (renderKind === "demoScheduling") return <DemoSchedulingView data={analyticsData} />;
     if (renderKind === "demoAttribution") return <DemoAttributionView data={analyticsData} />;
+    if (renderKind === "demoCoaching") return <DemoCoachingView data={analyticsData} />;
     if (renderKind === "processBottlenecks") return <ProcessBottlenecksView data={analyticsData} />;
     if (renderKind === "processHealth") return <ProcessHealthView data={analyticsData} />;
 

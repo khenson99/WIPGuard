@@ -1,205 +1,128 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock('@/lib/prisma', () => ({
-  default: {
-    policy: {
-      findMany: vi.fn(),
-      findFirst: vi.fn(),
-      findUnique: vi.fn(),
+const {
+  mockWipPolicyFindMany,
+  mockTaskCount,
+  mockPolicyOverrideCreate,
+  mockUserFindUnique,
+} = vi.hoisted(() => ({
+  mockWipPolicyFindMany: vi.fn(),
+  mockTaskCount: vi.fn(),
+  mockPolicyOverrideCreate: vi.fn(),
+  mockUserFindUnique: vi.fn(),
+}));
+
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    wipPolicy: {
+      findMany: mockWipPolicyFindMany,
     },
-    workItem: {
-      findMany: vi.fn(),
-      count: vi.fn(),
+    task: {
+      count: mockTaskCount,
     },
-    board: {
-      findUnique: vi.fn(),
+    policyOverride: {
+      create: mockPolicyOverrideCreate,
     },
-    boardColumn: {
-      findMany: vi.fn(),
-      findFirst: vi.fn(),
+    user: {
+      findUnique: mockUserFindUnique,
     },
   },
 }));
 
-describe('policy-check module', () => {
+import {
+  countTasksInColumn,
+  enforcePolicy,
+  getUserRole,
+  loadPolicies,
+  recordPolicyOverride,
+} from "@/lib/policy-check";
+
+describe("policy-check", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe('module exports', () => {
-    it('should export policy check functions', async () => {
-      const policyCheck = await import('@/lib/policy-check');
+  it("loads WIP policies from Prisma rows", async () => {
+    mockWipPolicyFindMany.mockResolvedValue([
+      {
+        columnName: "ACTIVE",
+        wipLimit: 2,
+        enforcement: "BLOCK",
+        overrideRoles: ["admin"],
+      },
+    ]);
 
-      // Should export at least one function
-      const exports = Object.keys(policyCheck);
-      expect(exports.length).toBeGreaterThan(0);
+    await expect(loadPolicies()).resolves.toEqual([
+      {
+        columnName: "ACTIVE",
+        wipLimit: 2,
+        enforcement: "BLOCK",
+        overrideRoles: ["admin"],
+      },
+    ]);
+  });
 
-      // Check for common expected exports
-      const hasPolicyFn = exports.some((key) =>
-        key.toLowerCase().includes('policy')
-        || key.toLowerCase().includes('check')
-        || key.toLowerCase().includes('evaluate')
-        || key.toLowerCase().includes('validate')
-      );
-      expect(hasPolicyFn).toBe(true);
+  it("counts tasks in a column and excludes the current task when requested", async () => {
+    mockTaskCount.mockResolvedValue(3);
+
+    await expect(countTasksInColumn("ACTIVE", "task-1")).resolves.toBe(3);
+    expect(mockTaskCount).toHaveBeenCalledWith({
+      where: {
+        status: "ACTIVE",
+        id: { not: "task-1" },
+      },
     });
   });
 
-  describe('WIP limit checking', () => {
-    it('should detect WIP limit violation', async () => {
-      const policyCheck = await import('@/lib/policy-check');
-      const prisma = (await import('@/lib/prisma')).default;
+  it("blocks a transition when the WIP limit is reached for a non-override role", async () => {
+    mockWipPolicyFindMany.mockResolvedValue([
+      {
+        columnName: "ACTIVE",
+        wipLimit: 1,
+        enforcement: "BLOCK",
+        overrideRoles: ["admin"],
+      },
+    ]);
+    mockTaskCount.mockResolvedValue(1);
 
-      const checkFn = policyCheck.checkWipLimit
-        || policyCheck.evaluateWipPolicy
-        || policyCheck.checkPolicy
-        || policyCheck.validateWipLimit;
+    const result = await enforcePolicy("ACTIVE", "member");
 
-      if (checkFn) {
-        // Mock: column has WIP limit of 3, currently has 3 items
-        vi.mocked(prisma.workItem.count || prisma.workItem.findMany).mockResolvedValue(3 as unknown);
+    expect(result.allowed).toBe(false);
+    expect(result.enforcement).toBe("BLOCK");
+    expect(result.requiresOverride).toBe(false);
+  });
 
-        const result = await checkFn({
-          columnId: 'col-1',
-          wipLimit: 3,
-          boardId: 'board-1',
-        });
+  it("records policy overrides through Prisma", async () => {
+    mockPolicyOverrideCreate.mockResolvedValue({ id: "override-1" });
 
-        // Should indicate a violation
-        if (typeof result === 'boolean') {
-          expect(result).toBe(false); // false = not allowed
-        } else if (result && typeof result === 'object') {
-          expect(result.allowed === false || result.violated === true || result.violation).toBeTruthy();
-        }
-      }
+    await recordPolicyOverride({
+      taskId: "task-1",
+      action: "task.reorder",
+      reason: "Urgent customer escalation",
+      actorId: "user-1",
+      actorRole: "admin",
+      column: "ACTIVE",
+      wipCount: 3,
+      wipLimit: 2,
     });
 
-    it('should allow when under WIP limit', async () => {
-      const policyCheck = await import('@/lib/policy-check');
-      const prisma = (await import('@/lib/prisma')).default;
-
-      const checkFn = policyCheck.checkWipLimit
-        || policyCheck.evaluateWipPolicy
-        || policyCheck.checkPolicy
-        || policyCheck.validateWipLimit;
-
-      if (checkFn) {
-        // Mock: column has WIP limit of 5, currently has 2 items
-        vi.mocked(prisma.workItem.count || prisma.workItem.findMany).mockResolvedValue(2 as unknown);
-
-        const result = await checkFn({
-          columnId: 'col-1',
-          wipLimit: 5,
-          boardId: 'board-1',
-        });
-
-        if (typeof result === 'boolean') {
-          expect(result).toBe(true);
-        } else if (result && typeof result === 'object') {
-          expect(result.allowed === true || result.violated === false || !result.violation).toBeTruthy();
-        }
-      }
-    });
-
-    it('should handle no WIP limit (unlimited)', async () => {
-      const policyCheck = await import('@/lib/policy-check');
-
-      const checkFn = policyCheck.checkWipLimit
-        || policyCheck.evaluateWipPolicy
-        || policyCheck.checkPolicy
-        || policyCheck.validateWipLimit;
-
-      if (checkFn) {
-        const result = await checkFn({
-          columnId: 'col-1',
-          wipLimit: 0, // 0 or null typically means unlimited
-          boardId: 'board-1',
-        });
-
-        if (typeof result === 'boolean') {
-          expect(result).toBe(true);
-        } else if (result && typeof result === 'object') {
-          expect(result.allowed !== false).toBeTruthy();
-        }
-      }
+    expect(mockPolicyOverrideCreate).toHaveBeenCalledWith({
+      data: {
+        taskId: "task-1",
+        action: "task.reorder",
+        reason: "Urgent customer escalation",
+        actorId: "user-1",
+        actorRole: "admin",
+        column: "ACTIVE",
+        wipCount: 3,
+        wipLimit: 2,
+      },
     });
   });
 
-  describe('policy evaluation', () => {
-    it('should evaluate policies for a board', async () => {
-      const policyCheck = await import('@/lib/policy-check');
-      const prisma = (await import('@/lib/prisma')).default;
+  it("falls back to member when the user record is missing", async () => {
+    mockUserFindUnique.mockResolvedValue(null);
 
-      const evalFn = policyCheck.evaluatePolicies
-        || policyCheck.checkPolicies
-        || policyCheck.runPolicyChecks
-        || policyCheck.evaluateBoardPolicies;
-
-      if (evalFn) {
-        vi.mocked(prisma.policy.findMany).mockResolvedValue([
-          {
-            id: 'policy-1',
-            name: 'WIP Limit',
-            type: 'WIP_LIMIT',
-            config: JSON.stringify({ limit: 3 }),
-            boardId: 'board-1',
-            enabled: true,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          } as unknown,
-        ]);
-
-        const result = await evalFn({ boardId: 'board-1' });
-        expect(result).toBeDefined();
-      }
-    });
-
-    it('should handle boards with no policies', async () => {
-      const policyCheck = await import('@/lib/policy-check');
-      const prisma = (await import('@/lib/prisma')).default;
-
-      const evalFn = policyCheck.evaluatePolicies
-        || policyCheck.checkPolicies
-        || policyCheck.runPolicyChecks
-        || policyCheck.evaluateBoardPolicies;
-
-      if (evalFn) {
-        vi.mocked(prisma.policy.findMany).mockResolvedValue([]);
-
-        const result = await evalFn({ boardId: 'board-empty' });
-        expect(result).toBeDefined();
-        if (Array.isArray(result)) {
-          expect(result).toHaveLength(0);
-        }
-      }
-    });
-
-    it('should skip disabled policies', async () => {
-      const policyCheck = await import('@/lib/policy-check');
-      const prisma = (await import('@/lib/prisma')).default;
-
-      const evalFn = policyCheck.evaluatePolicies
-        || policyCheck.checkPolicies
-        || policyCheck.runPolicyChecks
-        || policyCheck.evaluateBoardPolicies;
-
-      if (evalFn) {
-        vi.mocked(prisma.policy.findMany).mockResolvedValue([
-          {
-            id: 'policy-disabled',
-            name: 'Disabled Policy',
-            type: 'WIP_LIMIT',
-            config: JSON.stringify({ limit: 1 }),
-            boardId: 'board-1',
-            enabled: false,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          } as unknown,
-        ]);
-
-        const result = await evalFn({ boardId: 'board-1' });
-        expect(result).toBeDefined();
-      }
-    });
+    await expect(getUserRole("missing-user")).resolves.toBe("member");
   });
 });

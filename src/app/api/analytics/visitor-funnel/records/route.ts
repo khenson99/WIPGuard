@@ -9,6 +9,10 @@ import {
   listVisitorFunnelRecords,
   parseVisitorFunnelFilters,
 } from "@/lib/analytics/visitor-funnel";
+import {
+  VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON,
+  getVisitorFunnelPrisma,
+} from "@/lib/analytics/visitor-funnel-availability";
 
 function parsePositiveInt(value: string | null, fallback: number, max: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
@@ -32,8 +36,26 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const to = new Date(`${range.to}T23:59:59.999Z`);
     const page = parsePositiveInt(request.nextUrl.searchParams.get("page"), 1, 10_000);
     const pageSize = parsePositiveInt(request.nextUrl.searchParams.get("pageSize"), 25, 100);
+    const funnelPrisma = getVisitorFunnelPrisma(prisma);
 
-    const result = await listVisitorFunnelRecords(prisma, {
+    if (!funnelPrisma) {
+      return NextResponse.json(
+        {
+          records: [],
+          pagination: {
+            page,
+            pageSize,
+            total: 0,
+            totalPages: 1,
+          },
+          disabled: true,
+          reason: VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON,
+        },
+        { status: 202 },
+      );
+    }
+
+    const result = await listVisitorFunnelRecords(funnelPrisma, {
       from,
       to,
       filters: parseVisitorFunnelFilters(request.nextUrl.searchParams),

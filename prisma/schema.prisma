@@ -767,6 +767,7 @@ model BoardSettings {
   id          String  @id @default(cuid())
   columnName  String  @unique
   wipLimit    Int     @default(0)
+  columnVersion Int   @default(0)
   columnOrder Int     @default(0)
   color       String?
 
@@ -1521,6 +1522,7 @@ model AutomationArtifact {
   createdByNodeKey String?
 
   recommendations AutomationRecommendation[]
+  analysisMeeting   DealMeeting? @relation("DealMeetingAnalysisArtifact")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1894,6 +1896,18 @@ model DealMeeting {
   endAt    DateTime?
   location String?
   notes    String?   @db.Text
+  googleDriveFileId       String?
+  googleDriveFileName     String?
+  googleDriveFileUrl      String?
+  transcriptMatchedAt     DateTime?
+  transcriptMatchConfidence Float?
+  analysisArtifactId      String? @unique
+  analysisArtifact        AutomationArtifact? @relation("DealMeetingAnalysisArtifact", fields: [analysisArtifactId], references: [id], onDelete: SetNull)
+  demoQualityScore        Int?
+  demoQualitySummary      String? @db.Text
+  demoStrengthsJson       Json?
+  demoGapsJson            Json?
+  analyzedAt              DateTime?
 
   expectedAttendees Int @default(0)
   actualAttendees   Int @default(0)
@@ -1919,6 +1933,8 @@ model DealMeeting {
   @@index([customerRecordId])
   @@index([startAt])
   @@index([status])
+  @@index([googleDriveFileId])
+  @@index([analyzedAt])
 }
 
 model CustomerRecord {
