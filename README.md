@@ -39,6 +39,10 @@ Integrations:
 - `HUBSPOT_CLIENT_ID`
 - `HUBSPOT_CLIENT_SECRET`
 - `HUBSPOT_SCOPES` (optional, comma or space-separated; requested as HubSpot `optional_scope`, defaults to `crm.objects.deals.read crm.objects.contacts.read`)
+- `STRIPE_CLIENT_ID` (required for in-app Stripe OAuth connect)
+- `STRIPE_CLIENT_SECRET` (required for in-app Stripe OAuth connect)
+- `STRIPE_SCOPES` (optional, defaults to `read_write`)
+- `STRIPE_SECRET_KEY` (optional fallback for server-managed Stripe analytics)
 
 Stripe churn attribution:
 - Populate the `StripeCustomerLink` table with Stripe customer IDs and HubSpot deal IDs.
@@ -95,6 +99,7 @@ Use these callback URLs in each provider app configuration:
 - Google Workspace: `http://localhost:3000/api/integrations/callback/google-workspace`
 - HubSpot: `http://localhost:3000/api/integrations/callback/hubspot`
 - Slack: `http://localhost:3000/api/integrations/callback/slack`
+- Stripe: `http://localhost:3000/api/integrations/callback/stripe`
 
 For deployed environments, replace `http://localhost:3000` with your production `NEXTAUTH_URL`.
 
