@@ -540,6 +540,165 @@ describe("automation runtime AI lifecycle", () => {
     );
   });
 
+  it("resumes completed AI webhooks into downstream recommendation execution", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const {
+      extractAutomationAiOutputText,
+      isTerminalAutomationAiStatus,
+      parseAutomationAiResponseEnvelope,
+      retrieveAutomationOpenAiResponse,
+      unwrapAutomationOpenAiWebhookEvent,
+    } = await import("@/lib/automations/openai");
+    const { executeApprovedRecommendationsForRun } = await import(
+      "@/lib/automations/recommendations"
+    );
+    const { buildRunExecutionContext, persistAutomationEnvelope } = await import(
+      "@/lib/automations/store"
+    );
+
+    vi.mocked(unwrapAutomationOpenAiWebhookEvent).mockResolvedValue({
+      type: "response.completed",
+      data: { id: "resp_resume_1" },
+    } as never);
+    vi.mocked(retrieveAutomationOpenAiResponse).mockResolvedValue({
+      id: "resp_resume_1",
+      status: "completed",
+    } as never);
+    vi.mocked(extractAutomationAiOutputText).mockReturnValue("resume analysis");
+    vi.mocked(isTerminalAutomationAiStatus).mockReturnValue(true);
+    vi.mocked(parseAutomationAiResponseEnvelope).mockReturnValue({
+      summary: "Recovered funnel diagnosis",
+      raw: { summary: "Recovered funnel diagnosis" },
+    } as never);
+    vi.mocked(persistAutomationEnvelope).mockResolvedValue({
+      artifactIds: ["artifact_resume_1"],
+      recommendationIds: ["recommendation_1"],
+    } as never);
+    vi.mocked(buildRunExecutionContext).mockResolvedValue({
+      trigger: {
+        provider: "WIPGUARD",
+        eventType: "analytics.funnel.dropoff_detected",
+        externalId: "alert_resume_1",
+      },
+      state: {},
+    } as never);
+    vi.mocked(executeApprovedRecommendationsForRun).mockResolvedValue({
+      attempted: 1,
+      executed: 1,
+      failed: 0,
+      recommendationIds: ["recommendation_1"],
+    } as never);
+
+    vi.mocked(prisma.automationAiJob.findUnique)
+      .mockResolvedValueOnce({ id: "job_resume_1" } as never)
+      .mockResolvedValueOnce({
+        id: "job_resume_1",
+        workflowId: "wf_resume_1",
+        runId: "run_resume_1",
+        stepId: "step_ai_1",
+        operatorKey: "ADS_OPTIMIZER",
+        nodeKey: "triage_dropoff",
+        jobType: "ai_analyze",
+        metadata: { parsedToolDefinitions: [] },
+        run: { requestedById: "user_1" },
+      } as never);
+    vi.mocked(prisma.workflowDefinition.findUnique).mockResolvedValue({
+      graph: {
+        nodes: [
+          {
+            key: "triage_dropoff",
+            type: "ACTION",
+            label: "Triage Funnel Dropoff",
+            config: {
+              actionType: "ai_analyze",
+            },
+          },
+          {
+            key: "execute_recommendations",
+            type: "ACTION",
+            label: "Execute Recommendations",
+            config: {
+              actionType: "execute_recommendation",
+              recommendationIds: ["recommendation_1"],
+              actionTypes: ["create_task"],
+              limit: 5,
+            },
+          },
+        ],
+        edges: [
+          {
+            source: "triage_dropoff",
+            target: "execute_recommendations",
+            priority: 0,
+          },
+        ],
+      },
+    } as never);
+    vi.mocked(prisma.workflowRunStep.findFirst).mockResolvedValue({
+      output: {
+        artifactIds: ["artifact_resume_1"],
+        recommendationIds: ["recommendation_1"],
+      },
+    } as never);
+    vi.mocked(prisma.workflowRunStep.create).mockResolvedValueOnce({
+      id: "step_exec_1",
+    } as never);
+
+    const { processAutomationAiWebhook } = await import("@/lib/automations/runtime");
+    const result = await processAutomationAiWebhook("{}", new Headers());
+
+    expect(result).toEqual({
+      handled: true,
+      responseId: "resp_resume_1",
+      eventType: "response.completed",
+    });
+    expect(persistAutomationEnvelope).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflowId: "wf_resume_1",
+        runId: "run_resume_1",
+        aiJobId: "job_resume_1",
+      })
+    );
+    expect(executeApprovedRecommendationsForRun).toHaveBeenCalledWith({
+      runId: "run_resume_1",
+      recommendationIds: ["recommendation_1"],
+      actionTypes: ["create_task"],
+      limit: 5,
+    });
+    expect(prisma.workflowRunStep.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          runId: "run_resume_1",
+          nodeKey: "execute_recommendations",
+          nodeType: "ACTION",
+        }),
+      })
+    );
+    expect(prisma.workflowRunStep.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "step_exec_1" },
+        data: expect.objectContaining({
+          status: "SUCCEEDED",
+          output: expect.objectContaining({
+            actionType: "execute_recommendation",
+            attempted: 1,
+            executed: 1,
+            recommendationIds: ["recommendation_1"],
+          }),
+        }),
+      })
+    );
+    expect(prisma.workflowRun.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "run_resume_1" },
+        data: expect.objectContaining({
+          status: "SUCCEEDED",
+          error: null,
+        }),
+      })
+    );
+  });
+
   it("fails completed AI jobs when envelope parsing breaks", async () => {
     const { prisma } = await import("@/lib/prisma");
     const {
