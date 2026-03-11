@@ -39,19 +39,38 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const startedAt = new Date().toISOString();
-  const ownerUserId = process.env.INTEGRATION_OWNER_USER_ID?.trim();
-  if (!ownerUserId) {
-    return NextResponse.json(
-      { error: "Missing INTEGRATION_OWNER_USER_ID for cron sync" },
-      { status: 500 }
-    );
+  const ownerUserId = process.env.INTEGRATION_OWNER_USER_ID?.trim() || null;
+
+  // Discover user IDs: prefer the explicit owner, otherwise query the DB for
+  // all users that have at least one connected integration.
+  const userIds: string[] = ownerUserId
+    ? [ownerUserId]
+    : (
+        await prisma.integrationConnection.findMany({
+          distinct: ["userId"],
+          where: { status: "CONNECTED" },
+          select: { userId: true },
+        })
+      ).map((row) => row.userId);
+
+  if (userIds.length === 0) {
+    return NextResponse.json({
+      ok: true,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      ownerUserId,
+      message: "No connected integrations found — nothing to sync",
+    });
   }
 
   try {
-    const [connectionsMigration, rulesMigration] = await Promise.all([
-      bestEffortMigrateConnectionsToOwner(ownerUserId),
-      bestEffortMigrateRulesToOwner(ownerUserId),
-    ]);
+    // Only run ownership migration when an explicit owner is configured.
+    const [connectionsMigration, rulesMigration] = ownerUserId
+      ? await Promise.all([
+          bestEffortMigrateConnectionsToOwner(ownerUserId),
+          bestEffortMigrateRulesToOwner(ownerUserId),
+        ])
+      : [{ copied: 0, skipped: 0 }, { copied: 0, skipped: 0 }];
 
     const visitorFunnelModelsAvailable = hasVisitorFunnelPrismaModels(prisma);
     let visitorFunnelEnrichment: Awaited<
@@ -67,7 +86,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ReturnType<typeof enqueueVisitorFunnelEnrichmentAlertNotifications>
     > = {
       enabled: false,
-      ownerUserId,
+      ownerUserId: ownerUserId ?? userIds[0],
       slackChannelId: null,
       minIntervalHours: 24,
       bucketStart: null,
@@ -115,7 +134,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           console.error("POST /api/cron/sync visitor funnel alert enqueue failed:", error);
           return {
             enabled: false,
-            ownerUserId,
+            ownerUserId: ownerUserId ?? userIds[0],
             slackChannelId: null,
             minIntervalHours: 24,
             bucketStart: null,
@@ -167,14 +186,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const [analyticsResult, rulesResult, healthResult, pruningResult] = await Promise.allSettled([
-      runAnalyticsRefresh({ userIds: [ownerUserId], rangePresets: ["7d", "30d"] }),
+      runAnalyticsRefresh({ userIds, rangePresets: ["7d", "30d"] }),
       runRules({
         mode: "incremental",
         dryRun: false,
-        userIds: [ownerUserId],
+        userIds,
         startedAt,
       }),
-      runIntegrationHealthChecks({ userId: ownerUserId }),
+      // Health checks run per-user; run for all discovered users.
+      Promise.all(userIds.map((uid) => runIntegrationHealthChecks({ userId: uid }))),
       pruneAnalyticsSnapshots({ olderThanDays: parseRetentionDays() }),
     ]);
 
@@ -214,6 +234,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       startedAt,
       finishedAt: new Date().toISOString(),
       ownerUserId,
+      userIds,
       migrations: {
         connections: connectionsMigration,
         rules: rulesMigration,
