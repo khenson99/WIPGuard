@@ -13,6 +13,8 @@ const connectionTimeoutMillis = parseInt(
   process.env.DB_POOL_CONNECTION_TIMEOUT || "10000",
   10
 );
+const tenantBypassEnabled =
+  process.env.PRISMA_TENANT_BYPASS === "true" || process.env.NODE_ENV === "development";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClientType | undefined;
@@ -44,7 +46,7 @@ function createPrismaClient(connectionString: string) {
   // For admin/system operations, use runWithContext() to set context.
   const extendedClient = client.$extends(
     createTenantExtension({
-      allowBypass: process.env.PRISMA_TENANT_BYPASS === "true",
+      allowBypass: tenantBypassEnabled,
     })
   );
 

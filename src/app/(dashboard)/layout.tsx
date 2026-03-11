@@ -1,35 +1,19 @@
-"use client";
-
-import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { SocketProvider } from "@/components/layout/socket-provider";
+import { auth } from "@/lib/auth";
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { status } = useSession();
-  const router = useRouter();
+  const session = await auth();
 
-  useEffect(() => {
-    if (status === "unauthenticated") {
-      router.push("/login");
-    }
-  }, [status, router]);
-
-  if (status === "loading") {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-primary" />
-      </div>
-    );
+  if (!session?.user) {
+    redirect("/login");
   }
-
-  if (status === "unauthenticated") return null;
 
   return (
     <SocketProvider>

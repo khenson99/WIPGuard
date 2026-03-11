@@ -39,21 +39,21 @@ describe("getDateRangeFromPreset", () => {
     const diffDays = (Date.now() - start!.getTime()) / (1000 * 60 * 60 * 24);
     // setHours(0,0,0,0) rounds to midnight, so diff may be slightly over N days
     expect(diffDays).toBeGreaterThanOrEqual(6.9);
-    expect(diffDays).toBeLessThanOrEqual(7.5);
+    expect(diffDays).toBeLessThanOrEqual(8);
   });
 
   it('returns start ~30 days ago for "30d"', () => {
     const { start } = getDateRangeFromPreset("30d");
     const diffDays = (Date.now() - start!.getTime()) / (1000 * 60 * 60 * 24);
     expect(diffDays).toBeGreaterThanOrEqual(29.9);
-    expect(diffDays).toBeLessThanOrEqual(30.5);
+    expect(diffDays).toBeLessThanOrEqual(31);
   });
 
   it('returns start ~90 days ago for "90d"', () => {
     const { start } = getDateRangeFromPreset("90d");
     const diffDays = (Date.now() - start!.getTime()) / (1000 * 60 * 60 * 24);
     expect(diffDays).toBeGreaterThanOrEqual(89.9);
-    expect(diffDays).toBeLessThanOrEqual(90.5);
+    expect(diffDays).toBeLessThanOrEqual(91);
   });
 });
 

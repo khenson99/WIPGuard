@@ -10,11 +10,62 @@ import { recordSecurityAuditEvent } from "@/lib/security-audit";
 
 const providers: NextAuthOptions["providers"] = [];
 const normalizeEmail = (email?: string | null) => email?.trim().toLowerCase() ?? null;
+const developmentOrganizationSlug = "local-dev";
+
+const authUserSelect = {
+  id: true,
+  name: true,
+  email: true,
+  emailVerified: true,
+  image: true,
+} as const;
 
 function isPrismaUniqueViolation(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const maybeCode = (error as { code?: unknown }).code;
   return maybeCode === "P2002";
+}
+
+async function ensureDevelopmentOrganizationId(userId: string): Promise<string | null> {
+  try {
+    const existingOrganizationId = (
+      await prisma.user.findUnique({
+        where: { id: userId },
+        select: { organizationId: true },
+      })
+    )?.organizationId;
+
+    if (existingOrganizationId) {
+      return existingOrganizationId;
+    }
+
+    const existingOrganization = await prisma.organization.findFirst({
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const organizationId =
+      existingOrganization?.id ??
+      (
+        await prisma.organization.create({
+          data: {
+            name: "Local Dev",
+            slug: developmentOrganizationSlug,
+          },
+          select: { id: true },
+        })
+      ).id;
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { organizationId },
+    });
+
+    return organizationId;
+  } catch (error) {
+    console.warn("[auth] Skipping development organization bootstrap:", error);
+    return null;
+  }
 }
 
 function createResilientAdapter(): Adapter {
@@ -38,6 +89,7 @@ function createResilientAdapter(): Adapter {
             mode: "insensitive",
           },
         },
+        select: authUserSelect,
       });
     },
     async createUser(data: Parameters<NonNullable<Adapter["createUser"]>>[0]) {
@@ -56,6 +108,7 @@ function createResilientAdapter(): Adapter {
               mode: "insensitive",
             },
           },
+          select: authUserSelect,
         });
         if (existingUser) return existingUser;
         throw error;
@@ -93,8 +146,17 @@ if (process.env.NODE_ENV !== "production" || process.env.E2E_MODE === "true") {
               mode: "insensitive",
             },
           },
+          select: {
+            ...authUserSelect,
+            organizationId: true,
+          },
         });
         if (!user) return null;
+
+        if (!user.organizationId) {
+          await ensureDevelopmentOrganizationId(user.id);
+        }
+
         return { id: user.id, name: user.name, email: user.email, image: user.image };
       },
     }),
@@ -180,9 +242,10 @@ export const authOptions: NextAuthOptions = {
         if (token.id) {
           const dbUser = await prisma.user.findUnique({
             where: { id: token.id as string },
-            select: { role: true },
+            select: { role: true, organizationId: true },
           });
           token.role = normalizeRole(dbUser?.role);
+          token.organizationId = dbUser?.organizationId ?? null;
         }
 
         if (
@@ -212,6 +275,8 @@ export const authOptions: NextAuthOptions = {
         (session.user as { id?: string }).id = token.id as string;
         (session.user as { role?: string }).role =
           (token.role as string | undefined) ?? "member";
+        (session.user as { organizationId?: string | null }).organizationId =
+          (token.organizationId as string | null | undefined) ?? null;
       }
 
       if (token.error) {

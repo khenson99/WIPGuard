@@ -14,6 +14,7 @@ export default defineConfig({
       "**/dist/**",
       "**/.next/**",
       "**/src/generated/**",
+      "**/tests/e2e/**",
     ],
   },
   resolve: {

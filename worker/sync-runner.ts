@@ -26,16 +26,49 @@ import { workerConfig } from './config';
 import { logger } from './logger';
 import { getWorkerPrisma, disconnectWorkerPrisma } from './prisma';
 import { startHealthServer, updateSyncStatus, setReady } from './health';
+import { withTimeout } from './timeout';
 
 // ─── Graceful Shutdown ───────────────────────────────────────────────────────
 
 let shuttingDown = false;
+let healthServer: ReturnType<typeof startHealthServer> | null = null;
 
-async function shutdown(signal: string) {
-  if (shuttingDown) return;
+async function shutdown(signal: string, exitCode = 0, error?: unknown) {
+  if (shuttingDown) {
+    if (exitCode !== 0) {
+      process.exit(exitCode);
+    }
+    return;
+  }
   shuttingDown = true;
+  setReady(false);
 
-  logger.info(`Received ${signal}, shutting down gracefully...`);
+  logger.info(`Received ${signal}, shutting down gracefully...`, {
+    exitCode,
+    error:
+      error instanceof Error
+        ? error.message
+        : error == null
+          ? undefined
+          : String(error),
+  });
+
+  if (healthServer) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        healthServer?.close((closeError) => {
+          if (closeError) {
+            reject(closeError);
+            return;
+          }
+          resolve();
+        });
+      });
+      healthServer = null;
+    } catch (err) {
+      logger.error('Error during health server shutdown', { error: String(err) });
+    }
+  }
 
   try {
     await disconnectWorkerPrisma();
@@ -43,11 +76,25 @@ async function shutdown(signal: string) {
     logger.error('Error during Prisma disconnect', { error: String(err) });
   }
 
-  process.exit(0);
+  process.exit(exitCode);
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled promise rejection', {
+    error: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined,
+  });
+  void shutdown('unhandledRejection', 1, reason);
+});
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught exception', {
+    error: error.message,
+    stack: error.stack,
+  });
+  void shutdown('uncaughtException', 1, error);
+});
 
 // ─── Sync Orchestration ──────────────────────────────────────────────────────
 
@@ -106,22 +153,15 @@ async function runSyncCycle(): Promise<void> {
 
   const prisma = getWorkerPrisma();
 
-  // Create a timeout promise
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => {
-      reject(new Error(`Sync cycle timed out after ${workerConfig.syncTimeoutMs}ms`));
-    }, workerConfig.syncTimeoutMs);
-  });
-
   try {
     const orchestrator = await loadOrchestrator();
 
     if (orchestrator) {
-      // Race the sync against the timeout
-      await Promise.race([
+      await withTimeout(
         orchestrator.runSync(prisma, workerConfig.modules),
-        timeoutPromise,
-      ]);
+        workerConfig.syncTimeoutMs,
+        `Sync cycle timed out after ${workerConfig.syncTimeoutMs}ms`
+      );
     } else {
       // No orchestrator found — run a stub that logs what would happen.
       // This allows deploying the worker infrastructure before the
@@ -190,7 +230,6 @@ async function main() {
   });
 
   // Start health check server (even in run-once mode, useful for debugging)
-  let healthServer: ReturnType<typeof startHealthServer> | null = null;
   if (!workerConfig.runOnce) {
     healthServer = startHealthServer();
   }

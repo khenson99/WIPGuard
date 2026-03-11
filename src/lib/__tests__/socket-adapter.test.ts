@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const mockCreateRedisClients = vi.fn();
-const mockCreateAdapter = vi.fn().mockReturnValue("redis-adapter-instance");
+const { mockCreateRedisClients, mockCreateAdapter } = vi.hoisted(() => ({
+  mockCreateRedisClients: vi.fn(),
+  mockCreateAdapter: vi.fn().mockReturnValue("redis-adapter-instance"),
+}));
 
 vi.mock("../redis-client", () => ({
   createRedisClients: mockCreateRedisClients,
@@ -14,13 +16,13 @@ vi.mock("@socket.io/redis-adapter", () => ({
 import { configureSocketAdapter } from "../socket-adapter";
 
 describe("socket-adapter", () => {
-  let mockIo: { adapter: ReturnType<typeof vi.fn> };
+  let mockIo: Parameters<typeof configureSocketAdapter>[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockIo = {
       adapter: vi.fn(),
-    };
+    } as unknown as Parameters<typeof configureSocketAdapter>[0];
   });
 
   it("returns false and uses in-memory when Redis clients are not available", async () => {
