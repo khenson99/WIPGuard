@@ -836,7 +836,7 @@ export async function verifyPylonApiToken(
   }
 
   const baseUrl = options?.baseUrl?.trim() || process.env.PYLON_API_BASE_URL?.trim() || "https://api.usepylon.com";
-  const endpoints = ["/v1/me", "/v1/users/me"];
+  const endpoints = ["/me", "/v1/me", "/v1/users/me"];
   const fallbackEndpoints = ["/issues?limit=1", "/v1/issues?limit=1", "/conversations?limit=1", "/v1/conversations?limit=1"];
 
   let lastStatus = 0;
@@ -861,7 +861,8 @@ export async function verifyPylonApiToken(
       continue;
     }
 
-    const profile = asRecord(raw);
+    const payload = asRecord(raw);
+    const profile = asRecord(payload?.data) ?? payload;
     if (!profile) {
       throw new Error("Pylon profile response was invalid");
     }
