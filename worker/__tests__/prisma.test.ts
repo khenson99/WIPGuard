@@ -1,12 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock PrismaClient before importing the module
 const mockDisconnect = vi.fn();
-vi.mock('@prisma/client', () => ({
-  PrismaClient: vi.fn().mockImplementation(() => ({
+const mockPrismaClient = vi.fn(function MockPrismaClient(this: object) {
+  return {
     $disconnect: mockDisconnect,
     $queryRaw: vi.fn(),
-  })),
+  };
+});
+
+vi.mock('@prisma/client', () => ({
+  PrismaClient: mockPrismaClient,
 }));
 
 describe('worker prisma', () => {
@@ -17,6 +21,7 @@ describe('worker prisma', () => {
     process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/testdb';
     vi.resetModules();
     mockDisconnect.mockReset();
+    mockPrismaClient.mockClear();
   });
 
   afterEach(() => {
@@ -55,11 +60,10 @@ describe('worker prisma', () => {
     process.env.WORKER_DATABASE_URL = 'postgresql://worker:pass@localhost:5432/workerdb';
     process.env.DATABASE_URL = 'postgresql://web:pass@localhost:5432/webdb';
 
-    const { PrismaClient } = await import('@prisma/client');
     const { getWorkerPrisma } = await import('../prisma');
     getWorkerPrisma();
 
-    expect(PrismaClient).toHaveBeenCalledWith(
+    expect(mockPrismaClient).toHaveBeenCalledWith(
       expect.objectContaining({
         datasourceUrl: expect.stringContaining('workerdb'),
       })

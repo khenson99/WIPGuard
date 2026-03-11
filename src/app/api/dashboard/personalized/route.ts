@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { buildDailyCountSeriesUtc } from "@/lib/dashboard-trends";
+import { runWithContextAsync } from "@/lib/request-context";
+import { getAuthenticatedUser } from "@/lib/session-user";
 
 const USER_SELECT = {
   id: true,
@@ -19,6 +21,32 @@ const PRIORITY_WEIGHT: Record<string, number> = {
   P3: 1,
 };
 
+const tenantBypassEnabled =
+  process.env.PRISMA_TENANT_BYPASS === "true" || process.env.NODE_ENV === "development";
+
+async function resolveDashboardOrganizationId(
+  session: unknown,
+  userId: string,
+): Promise<string | null> {
+  const sessionUser = getAuthenticatedUser(session as { user?: unknown } | null | undefined);
+  if (sessionUser?.organizationId) {
+    return sessionUser.organizationId;
+  }
+
+  try {
+    return (
+      (
+        await prisma.user.findUnique({
+          where: { id: userId },
+          select: { organizationId: true },
+        })
+      )?.organizationId ?? null
+    );
+  } catch {
+    return null;
+  }
+}
+
 function daysOverdue(value: Date | null): number {
   if (!value) return 0;
   const diff = Date.now() - value.getTime();
@@ -29,34 +57,45 @@ function daysOverdue(value: Date | null): number {
 export async function GET(): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const sessionUser = getAuthenticatedUser(session);
+    if (!sessionUser) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const now = new Date();
-    const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const completedTrendStartUtc = new Date(todayUtc.getTime() - 13 * 24 * 60 * 60 * 1000);
-    const completedTrendEndExclusiveUtc = new Date(todayUtc.getTime() + 24 * 60 * 60 * 1000);
-    const in7d = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    const fiveDaysAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const organizationId = await resolveDashboardOrganizationId(session, sessionUser.id);
+    if (!organizationId && !tenantBypassEnabled) {
+      return NextResponse.json(
+        { error: "Organization context required for personalized dashboard" },
+        { status: 403 }
+      );
+    }
 
-    const [
-      myActive,
-      myBlocked,
-      myOverdue,
-      myDueSoon,
-      myCompletedWeek,
-      completedTimestamps,
-      staleTeam,
-      blockedTeam,
-      overdueTeam,
-      activeProjects,
-      statusCounts,
-    ] = await Promise.all([
+    const loadDashboard = async () => {
+
+      const now = new Date();
+      const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      const completedTrendStartUtc = new Date(todayUtc.getTime() - 13 * 24 * 60 * 60 * 1000);
+      const completedTrendEndExclusiveUtc = new Date(todayUtc.getTime() + 24 * 60 * 60 * 1000);
+      const in7d = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const fiveDaysAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      const [
+        myActive,
+        myBlocked,
+        myOverdue,
+        myDueSoon,
+        myCompletedWeek,
+        completedTimestamps,
+        staleTeam,
+        blockedTeam,
+        overdueTeam,
+        activeProjects,
+        statusCounts,
+      ] = await Promise.all([
       prisma.task.findMany({
         where: {
-          responsible: { some: { id: session.user.id } },
+          responsible: { some: { id: sessionUser.id } },
           status: { in: ["WORKING_ON_TODAY", "ACTIVE", "QUEUED"] },
         },
         include: {
@@ -69,7 +108,7 @@ export async function GET(): Promise<NextResponse> {
       }),
       prisma.task.findMany({
         where: {
-          responsible: { some: { id: session.user.id } },
+          responsible: { some: { id: sessionUser.id } },
           status: "NOT_DONE",
         },
         include: {
@@ -82,7 +121,7 @@ export async function GET(): Promise<NextResponse> {
       }),
       prisma.task.findMany({
         where: {
-          responsible: { some: { id: session.user.id } },
+          responsible: { some: { id: sessionUser.id } },
           status: { notIn: ["DONE"] },
           dueDate: { lt: now },
         },
@@ -96,7 +135,7 @@ export async function GET(): Promise<NextResponse> {
       }),
       prisma.task.findMany({
         where: {
-          responsible: { some: { id: session.user.id } },
+          responsible: { some: { id: sessionUser.id } },
           status: { notIn: ["DONE"] },
           dueDate: { gte: now, lte: in7d },
         },
@@ -110,14 +149,14 @@ export async function GET(): Promise<NextResponse> {
       }),
       prisma.task.count({
         where: {
-          responsible: { some: { id: session.user.id } },
+          responsible: { some: { id: sessionUser.id } },
           status: "DONE",
           updatedAt: { gte: sevenDaysAgo },
         },
       }),
       prisma.task.findMany({
         where: {
-          responsible: { some: { id: session.user.id } },
+          responsible: { some: { id: sessionUser.id } },
           status: "DONE",
           updatedAt: { gte: completedTrendStartUtc, lt: completedTrendEndExclusiveUtc },
         },
@@ -155,81 +194,88 @@ export async function GET(): Promise<NextResponse> {
       }),
     ]);
 
-    const completedByDay = buildDailyCountSeriesUtc({
-      now,
-      days: 14,
-      timestamps: completedTimestamps.map((row) => row.updatedAt),
-    });
+      const completedByDay = buildDailyCountSeriesUtc({
+        now,
+        days: 14,
+        timestamps: completedTimestamps.map((row) => row.updatedAt),
+      });
 
-    const taskMap = new Map<string, (typeof myActive)[number]>();
-    for (const task of [...myOverdue, ...myBlocked, ...myDueSoon, ...myActive]) {
-      if (!taskMap.has(task.id)) taskMap.set(task.id, task);
-    }
-
-    const recommendations = Array.from(taskMap.values())
-      .map((task) => {
-        const priorityWeight = PRIORITY_WEIGHT[task.priority] ?? 1;
-        const overdueScore = daysOverdue(task.dueDate) * 2;
-        const blockedBonus = task.status === "NOT_DONE" ? 5 : 0;
-        const dependencyBonus = (task.dependedBy?.length ?? 0) * 2;
-        return {
-          ...task,
-          recommendationScore: priorityWeight + overdueScore + blockedBonus + dependencyBonus,
-        };
-      })
-      .sort((a, b) => b.recommendationScore - a.recommendationScore)
-      .slice(0, 12);
-
-    const projectSummaries = activeProjects.map((project) => {
-      const total = project.tasks.length;
-      const done = project.tasks.filter((task) => task.status === "DONE").length;
-      return {
-        id: project.id,
-        name: project.name,
-        department: project.department,
-        totalTasks: total,
-        doneTasks: done,
-        progress: total > 0 ? Math.round((done / total) * 100) : 0,
-      };
-    });
-
-    const taskStatusOverview: Record<string, number> = {};
-    for (const status of statusCounts) {
-      taskStatusOverview[status.status] = status._count.status;
-    }
-
-    return NextResponse.json(
-      {
-        meta: {
-          servedAt: new Date().toISOString(),
-          isPartial: false,
-        },
-        generatedAt: now.toISOString(),
-        personal: {
-          myActive,
-          myBlocked,
-          myOverdue,
-          myDueSoon,
-          myCompletedWeek,
-          completedByDay,
-          recommendations,
-        },
-        team: {
-          staleTasks: staleTeam,
-          blockedTasks: blockedTeam,
-          overdueTasks: overdueTeam,
-          taskStatusOverview,
-        },
-        projects: {
-          active: projectSummaries,
-        },
-      },
-      {
-        headers: {
-          "Cache-Control": "private, max-age=30, stale-while-revalidate=120",
-        },
+      const taskMap = new Map<string, (typeof myActive)[number]>();
+      for (const task of [...myOverdue, ...myBlocked, ...myDueSoon, ...myActive]) {
+        if (!taskMap.has(task.id)) taskMap.set(task.id, task);
       }
-    );
+
+      const recommendations = Array.from(taskMap.values())
+        .map((task) => {
+          const priorityWeight = PRIORITY_WEIGHT[task.priority] ?? 1;
+          const overdueScore = daysOverdue(task.dueDate) * 2;
+          const blockedBonus = task.status === "NOT_DONE" ? 5 : 0;
+          const dependencyBonus = (task.dependedBy?.length ?? 0) * 2;
+          return {
+            ...task,
+            recommendationScore: priorityWeight + overdueScore + blockedBonus + dependencyBonus,
+          };
+        })
+        .sort((a, b) => b.recommendationScore - a.recommendationScore)
+        .slice(0, 12);
+
+      const projectSummaries = activeProjects.map((project) => {
+        const total = project.tasks.length;
+        const done = project.tasks.filter((task) => task.status === "DONE").length;
+        return {
+          id: project.id,
+          name: project.name,
+          department: project.department,
+          totalTasks: total,
+          doneTasks: done,
+          progress: total > 0 ? Math.round((done / total) * 100) : 0,
+        };
+      });
+
+      const taskStatusOverview: Record<string, number> = {};
+      for (const status of statusCounts) {
+        taskStatusOverview[status.status] = status._count.status;
+      }
+
+      return NextResponse.json(
+        {
+          meta: {
+            servedAt: new Date().toISOString(),
+            isPartial: false,
+          },
+          generatedAt: now.toISOString(),
+          personal: {
+            myActive,
+            myBlocked,
+            myOverdue,
+            myDueSoon,
+            myCompletedWeek,
+            completedByDay,
+            recommendations,
+          },
+          team: {
+            staleTasks: staleTeam,
+            blockedTasks: blockedTeam,
+            overdueTasks: overdueTeam,
+            taskStatusOverview,
+          },
+          projects: {
+            active: projectSummaries,
+          },
+        },
+        {
+          headers: {
+            "Cache-Control": "private, max-age=30, stale-while-revalidate=120",
+          },
+        },
+      );
+    };
+
+    if (organizationId) {
+      return runWithContextAsync({ organizationId, userId: sessionUser.id }, loadDashboard);
+    }
+
+    return loadDashboard();
   } catch (error) {
     console.error("GET /api/dashboard/personalized error:", error);
     return NextResponse.json(

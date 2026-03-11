@@ -1,48 +1,26 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock Prisma before importing auth
-vi.mock('@/lib/prisma', () => ({
-  default: {
-    account: {
-      findFirst: vi.fn(),
-      findMany: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      deleteMany: vi.fn(),
-      findUnique: vi.fn(),
-    },
-    user: {
-      findFirst: vi.fn(),
-      findUnique: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-    },
-    session: {
-      findFirst: vi.fn(),
-      findUnique: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-    },
-    verificationToken: {
-      findUnique: vi.fn(),
-      create: vi.fn(),
-      delete: vi.fn(),
-    },
-  },
+const {
+  mockCreateUser,
+  mockFindFirst,
+  mockFindUnique,
+  mockUpdate,
+  mockOrganizationFindFirst,
+  mockOrganizationCreate,
+  mockRecordSecurityAuditEvent,
+} = vi.hoisted(() => ({
+  mockCreateUser: vi.fn(),
+  mockFindFirst: vi.fn(),
+  mockFindUnique: vi.fn(),
+  mockUpdate: vi.fn(),
+  mockOrganizationFindFirst: vi.fn(),
+  mockOrganizationCreate: vi.fn(),
+  mockRecordSecurityAuditEvent: vi.fn(async () => undefined),
 }));
 
-vi.mock('next-auth/providers/github', () => ({
-  default: vi.fn(() => ({ id: 'github', name: 'GitHub', type: 'oauth' })),
-}));
-
-vi.mock('next-auth/providers/google', () => ({
-  default: vi.fn(() => ({ id: 'google', name: 'Google', type: 'oauth' })),
-}));
-
-vi.mock('@auth/prisma-adapter', () => ({
+vi.mock("@auth/prisma-adapter", () => ({
   PrismaAdapter: vi.fn(() => ({
-    createUser: vi.fn(),
+    createUser: mockCreateUser,
     getUser: vi.fn(),
     getUserByEmail: vi.fn(),
     getUserByAccount: vi.fn(),
@@ -57,230 +35,298 @@ vi.mock('@auth/prisma-adapter', () => ({
   })),
 }));
 
-describe('auth module', () => {
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    user: {
+      findFirst: mockFindFirst,
+      findUnique: mockFindUnique,
+      update: mockUpdate,
+    },
+    organization: {
+      findFirst: mockOrganizationFindFirst,
+      create: mockOrganizationCreate,
+    },
+  },
+}));
+
+vi.mock("@/lib/permissions", () => ({
+  normalizeRole: (role?: string | null) => role ?? "member",
+}));
+
+vi.mock("@/lib/security-audit", () => ({
+  recordSecurityAuditEvent: mockRecordSecurityAuditEvent,
+}));
+
+async function loadAuthOptions() {
+  vi.resetModules();
+  const mutableEnv = process.env as Record<string, string | undefined>;
+  mutableEnv.NODE_ENV = "test";
+  mutableEnv.E2E_MODE = "false";
+  delete mutableEnv.GOOGLE_CLIENT_ID;
+  delete mutableEnv.GOOGLE_CLIENT_SECRET;
+  const { authOptions } = await import("@/lib/auth");
+  return authOptions;
+}
+
+describe("auth options", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCreateUser.mockReset();
+    mockFindFirst.mockReset();
+    mockFindUnique.mockReset();
+    mockUpdate.mockReset();
+    mockOrganizationFindFirst.mockReset();
+    mockOrganizationCreate.mockReset();
+    mockRecordSecurityAuditEvent.mockReset();
+    mockCreateUser.mockResolvedValue({ id: "created-user", email: "user@example.com" });
+    mockFindFirst.mockResolvedValue(null);
+    mockFindUnique.mockResolvedValue({ role: "member", organizationId: "org_1" });
+    mockUpdate.mockResolvedValue({ id: "user-1", organizationId: "org_1" });
+    mockOrganizationFindFirst.mockResolvedValue({ id: "org_1" });
+    mockOrganizationCreate.mockResolvedValue({ id: "org_1" });
+    mockRecordSecurityAuditEvent.mockResolvedValue(undefined);
   });
 
-  describe('resilientAdapter', () => {
-    it('should wrap PrismaAdapter methods', async () => {
-      const { resilientAdapter } = await import('@/lib/auth');
+  it("configures JWT sessions and the login page", async () => {
+    const authOptions = await loadAuthOptions();
 
-      expect(resilientAdapter).toBeDefined();
-      // The resilient adapter should expose standard adapter methods
-      if (resilientAdapter) {
-        expect(typeof resilientAdapter.createUser === 'function' || resilientAdapter.createUser === undefined).toBe(true);
-      }
-    });
-
-    it('should handle linkAccount deduplication gracefully', async () => {
-      const prisma = (await import('@/lib/prisma')).default;
-      const { resilientAdapter } = await import('@/lib/auth');
-
-      // Simulate a duplicate account scenario
-      vi.mocked(prisma.account.findFirst).mockResolvedValue({
-        id: 'existing-account',
-        userId: 'user-1',
-        type: 'oauth',
-        provider: 'github',
-        providerAccountId: '12345',
-        refresh_token: null,
-        access_token: 'token',
-        expires_at: null,
-        token_type: null,
-        scope: null,
-        id_token: null,
-        session_state: null,
-      });
-
-      if (resilientAdapter?.linkAccount) {
-        // Should not throw even if account already exists
-        const result = await resilientAdapter.linkAccount({
-          userId: 'user-1',
-          type: 'oauth',
-          provider: 'github',
-          providerAccountId: '12345',
-          access_token: 'token',
-        });
-        // Should handle gracefully (either return existing or create)
-        expect(result).toBeDefined();
-      }
-    });
-
-    it('should handle createUser with existing email gracefully', async () => {
-      const prisma = (await import('@/lib/prisma')).default;
-      const { resilientAdapter } = await import('@/lib/auth');
-
-      vi.mocked(prisma.user.findFirst).mockResolvedValue({
-        id: 'existing-user',
-        name: 'Test User',
-        email: 'test@example.com',
-        emailVerified: new Date(),
-        image: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      if (resilientAdapter?.createUser) {
-        const result = await resilientAdapter.createUser({
-          name: 'Test User',
-          email: 'test@example.com',
-          emailVerified: new Date(),
-          image: null,
-        } as Record<string, unknown>);
-        expect(result).toBeDefined();
-      }
-    });
+    expect(authOptions.session?.strategy).toBe("jwt");
+    expect(authOptions.pages?.signIn).toBe("/login");
   });
 
-  describe('authOptions', () => {
-    it('should export authOptions with required configuration', async () => {
-      const { authOptions } = await import('@/lib/auth');
-
-      expect(authOptions).toBeDefined();
-      expect(authOptions.providers).toBeDefined();
-      expect(Array.isArray(authOptions.providers)).toBe(true);
-    });
-
-    it('should have session strategy configured', async () => {
-      const { authOptions } = await import('@/lib/auth');
-
-      expect(authOptions.session).toBeDefined();
-      // Typically JWT strategy for serverless
-      expect(authOptions.session?.strategy).toBeDefined();
-    });
-
-    it('should have callbacks configured', async () => {
-      const { authOptions } = await import('@/lib/auth');
-
-      expect(authOptions.callbacks).toBeDefined();
-    });
-
-    describe('session callback', () => {
-      it('should add user id to session', async () => {
-        const { authOptions } = await import('@/lib/auth');
-        const sessionCallback = authOptions.callbacks?.session;
-
-        if (sessionCallback) {
-          const mockSession = {
-            user: { name: 'Test', email: 'test@example.com', image: null },
-            expires: new Date(Date.now() + 86400000).toISOString(),
+  it("includes the dev credentials provider outside production", async () => {
+    const authOptions = await loadAuthOptions();
+    const credentialsProvider = authOptions.providers?.find(
+      (provider) => provider.id === "credentials"
+    ) as
+      | {
+          authorize?: (credentials: Record<string, unknown>, request: unknown) => Promise<unknown>;
+          options?: {
+            authorize?: (credentials: Record<string, unknown>, request: unknown) => Promise<unknown>;
           };
-          const mockToken = {
-            sub: 'user-123',
-            name: 'Test',
-            email: 'test@example.com',
-          };
-
-          const result = await (sessionCallback as (...args: unknown[]) => unknown)({
-            session: mockSession,
-            token: mockToken,
-            user: { id: 'user-123', name: 'Test', email: 'test@example.com' },
-            trigger: 'update',
-            newSession: undefined,
-          });
-
-          expect(result).toBeDefined();
-          // Session should have user info
-          expect(result.user).toBeDefined();
         }
-      });
+      | undefined;
 
-      it('should handle missing token sub gracefully', async () => {
-        const { authOptions } = await import('@/lib/auth');
-        const sessionCallback = authOptions.callbacks?.session;
+    expect(credentialsProvider).toBeTruthy();
+  });
 
-        if (sessionCallback) {
-          const mockSession = {
-            user: { name: 'Test', email: 'test@example.com', image: null },
-            expires: new Date(Date.now() + 86400000).toISOString(),
+  it("bootstraps a development organization for credential logins without one", async () => {
+    const authOptions = await loadAuthOptions();
+    const credentialsProvider = authOptions.providers?.find(
+      (provider) => provider.id === "credentials"
+    ) as
+      | {
+          authorize?: (credentials: Record<string, unknown>, request: unknown) => Promise<unknown>;
+          options?: {
+            authorize?: (credentials: Record<string, unknown>, request: unknown) => Promise<unknown>;
           };
-          const mockToken = {
-            name: 'Test',
-            email: 'test@example.com',
-          };
-
-          const result = await (sessionCallback as (...args: unknown[]) => unknown)({
-            session: mockSession,
-            token: mockToken,
-            user: undefined,
-            trigger: 'update',
-            newSession: undefined,
-          });
-
-          expect(result).toBeDefined();
         }
-      });
+      | undefined;
+
+    mockFindFirst.mockResolvedValueOnce({
+      id: "user-1",
+      name: "Local Dev",
+      email: "local-dev@wipguard.local",
+      image: null,
+      organizationId: null,
     });
+    mockFindUnique.mockResolvedValueOnce({ organizationId: null });
+    mockOrganizationFindFirst.mockResolvedValueOnce({ id: "org_existing" });
 
-    describe('jwt callback', () => {
-      it('should add user id to JWT token', async () => {
-        const { authOptions } = await import('@/lib/auth');
-        const jwtCallback = authOptions.callbacks?.jwt;
+    const authorize =
+      credentialsProvider?.options?.authorize ?? credentialsProvider?.authorize;
+    const user = await authorize?.({ email: "local-dev@wipguard.local" }, {});
 
-        if (jwtCallback) {
-          const mockToken = { name: 'Test', email: 'test@example.com' };
-          const mockUser = { id: 'user-123', name: 'Test', email: 'test@example.com' };
-
-          const result = await (jwtCallback as (...args: unknown[]) => unknown)({
-            token: mockToken,
-            user: mockUser,
-            account: null,
-            trigger: 'signIn',
-          });
-
-          expect(result).toBeDefined();
-        }
-      });
-
-      it('should pass through token when no user present', async () => {
-        const { authOptions } = await import('@/lib/auth');
-        const jwtCallback = authOptions.callbacks?.jwt;
-
-        if (jwtCallback) {
-          const mockToken = {
-            sub: 'user-123',
-            name: 'Test',
-            email: 'test@example.com',
-          };
-
-          const result = await (jwtCallback as (...args: unknown[]) => unknown)({
-            token: mockToken,
-            user: undefined,
-            account: null,
-            trigger: 'update',
-          });
-
-          expect(result).toBeDefined();
-          expect(result.sub).toBe('user-123');
-        }
-      });
+    expect(mockUpdate).toHaveBeenCalledWith({
+      where: { id: "user-1" },
+      data: { organizationId: "org_existing" },
     });
-
-    describe('signIn callback', () => {
-      it('should allow sign-in for valid users', async () => {
-        const { authOptions } = await import('@/lib/auth');
-        const signInCallback = authOptions.callbacks?.signIn;
-
-        if (signInCallback) {
-          const result = await (signInCallback as (...args: unknown[]) => unknown)({
-            user: { id: 'user-1', email: 'test@example.com' },
-            account: { provider: 'github', providerAccountId: '123' },
-            profile: { email: 'test@example.com' },
-          });
-
-          // Should return true or a URL string
-          expect(result === true || typeof result === 'string').toBe(true);
-        }
-      });
+    expect(user).toEqual({
+      id: "user-1",
+      name: "Local Dev",
+      email: "local-dev@wipguard.local",
+      image: null,
     });
   });
 
-  describe('providers configuration', () => {
-    it('should include OAuth providers', async () => {
-      const { authOptions } = await import('@/lib/auth');
+  it("does not fail dev credential login when organization bootstrap is unavailable", async () => {
+    const authOptions = await loadAuthOptions();
+    const credentialsProvider = authOptions.providers?.find(
+      (provider) => provider.id === "credentials"
+    ) as
+      | {
+          authorize?: (credentials: Record<string, unknown>, request: unknown) => Promise<unknown>;
+          options?: {
+            authorize?: (credentials: Record<string, unknown>, request: unknown) => Promise<unknown>;
+          };
+        }
+      | undefined;
 
-      expect(authOptions.providers.length).toBeGreaterThan(0);
+    mockFindFirst.mockResolvedValueOnce({
+      id: "user-1",
+      name: "Local Dev",
+      email: "local-dev@wipguard.local",
+      image: null,
+      organizationId: null,
     });
+    mockFindUnique.mockResolvedValueOnce({ organizationId: null });
+    mockOrganizationFindFirst.mockRejectedValueOnce(
+      new Error('The table `public.Organization` does not exist')
+    );
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const authorize =
+      credentialsProvider?.options?.authorize ?? credentialsProvider?.authorize;
+    const user = await authorize?.({ email: "local-dev@wipguard.local" }, {});
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[auth] Skipping development organization bootstrap:",
+      expect.any(Error)
+    );
+    expect(user).toEqual({
+      id: "user-1",
+      name: "Local Dev",
+      email: "local-dev@wipguard.local",
+      image: null,
+    });
+  });
+
+  it("normalizes adapter email lookups and selects only auth-safe user fields", async () => {
+    const authOptions = await loadAuthOptions();
+
+    mockFindFirst.mockResolvedValueOnce({
+      id: "user-1",
+      name: "Local Dev",
+      email: "local-dev@wipguard.local",
+      image: null,
+    });
+
+    const user = await authOptions.adapter?.getUserByEmail?.("  LOCAL-DEV@WIPGUARD.LOCAL  ");
+
+    expect(mockFindFirst).toHaveBeenCalledWith({
+      where: {
+        email: {
+          equals: "local-dev@wipguard.local",
+          mode: "insensitive",
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        emailVerified: true,
+        image: true,
+      },
+    });
+    expect(user).toEqual({
+      id: "user-1",
+      name: "Local Dev",
+      email: "local-dev@wipguard.local",
+      image: null,
+    });
+  });
+
+  it("reuses an existing user after a unique-constraint collision", async () => {
+    const authOptions = await loadAuthOptions();
+    const adapter = authOptions.adapter!;
+
+    mockCreateUser.mockRejectedValueOnce({ code: "P2002" });
+    mockFindFirst.mockResolvedValueOnce({
+      id: "existing-user",
+      email: "user@example.com",
+      name: "Existing User",
+      emailVerified: null,
+      image: null,
+    });
+
+    const user = await adapter.createUser?.({
+      email: "USER@example.com",
+      name: "Existing User",
+      emailVerified: null,
+      image: null,
+    } as never);
+
+    expect(mockCreateUser).toHaveBeenCalledWith(
+      expect.objectContaining({ email: "user@example.com" })
+    );
+    expect(user).toEqual(
+      expect.objectContaining({ id: "existing-user", email: "user@example.com" })
+    );
+  });
+
+  it("marks expired OAuth tokens in the JWT and projects role into session", async () => {
+    const authOptions = await loadAuthOptions();
+    const jwt = authOptions.callbacks?.jwt;
+    const sessionCb = authOptions.callbacks?.session;
+
+    const token = await jwt?.({
+      token: {},
+      user: { id: "user-1" } as never,
+      account: {
+        provider: "google",
+        expires_at: Math.floor(Date.now() / 1000) - 5,
+      } as never,
+      profile: undefined,
+      trigger: "signIn",
+      session: undefined,
+      isNewUser: false,
+    });
+
+    expect(mockFindUnique).toHaveBeenCalledWith({
+      where: { id: "user-1" },
+      select: { role: true, organizationId: true },
+    });
+    expect(token).toEqual(
+      expect.objectContaining({
+        id: "user-1",
+        role: "member",
+        organizationId: "org_1",
+        error: "OAUTH_TOKEN_EXPIRED",
+      })
+    );
+
+    const session = await sessionCb?.({
+      session: { user: { name: "User" } } as never,
+      token: token as never,
+      user: undefined,
+      newSession: undefined,
+      trigger: "update",
+    } as never);
+
+    expect(session).toEqual(
+      expect.objectContaining({
+        user: expect.objectContaining({ id: "user-1", role: "member", organizationId: "org_1" }),
+        error: "OAUTH_TOKEN_EXPIRED",
+      })
+    );
+  });
+
+  it("denies sign-in for already expired non-credential OAuth tokens", async () => {
+    const authOptions = await loadAuthOptions();
+    const signIn = authOptions.callbacks?.signIn;
+
+    const allowed = await signIn?.({
+      user: { id: "user-1" } as never,
+      account: {
+        provider: "google",
+        expires_at: Math.floor(Date.now() / 1000) - 60,
+      } as never,
+      profile: { email_verified: true } as never,
+      credentials: undefined,
+      email: undefined,
+    });
+
+    expect(allowed).toBe(false);
+    expect(mockRecordSecurityAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "auth.signin",
+        outcome: "DENIED",
+        details: expect.objectContaining({
+          reason: "OAUTH_ACCESS_TOKEN_ALREADY_EXPIRED",
+          provider: "google",
+        }),
+      })
+    );
   });
 });

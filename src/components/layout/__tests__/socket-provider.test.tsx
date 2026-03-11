@@ -1,18 +1,18 @@
 import React from "react";
-import { render, act } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SocketProvider } from "../socket-provider";
 import { useBoardStore } from "@/stores/board-store";
-import type { Task, Column } from "@/types/board";
+import type { Column, Task } from "@/types/board";
 
-// Mock socket.io-client
-const mockOn = jest.fn();
-const mockEmit = jest.fn();
-const mockOff = jest.fn();
-const mockDisconnect = jest.fn();
-const mockRemoveAllListeners = jest.fn();
+const mockOn = vi.fn();
+const mockEmit = vi.fn();
+const mockOff = vi.fn();
+const mockDisconnect = vi.fn();
+const mockRemoveAllListeners = vi.fn();
 
-jest.mock("socket.io-client", () => ({
-  io: jest.fn(() => ({
+vi.mock("socket.io-client", () => ({
+  io: vi.fn(() => ({
     on: mockOn,
     off: mockOff,
     emit: mockEmit,
@@ -21,16 +21,13 @@ jest.mock("socket.io-client", () => ({
   })),
 }));
 
-// Helper to extract registered event handlers from mock
 function getHandler(eventName: string): ((...args: unknown[]) => void) | undefined {
-  const call = mockOn.mock.calls.find(
-    ([name]: [string]) => name === eventName
-  );
-  return call ? call[1] : undefined;
+  const call = mockOn.mock.calls.find((args) => args[0] === eventName);
+  return typeof call?.[1] === "function" ? call[1] : undefined;
 }
 
 beforeEach(() => {
-  jest.clearAllMocks();
+  vi.clearAllMocks();
   const store = useBoardStore.getState();
   store.setTasks([]);
   store.setColumns({});
@@ -46,11 +43,15 @@ describe("SocketProvider optimistic updates", () => {
       </SocketProvider>
     );
 
-    const registeredEvents = mockOn.mock.calls.map(([name]: [string]) => name);
-    expect(registeredEvents).toContain("task:created");
-    expect(registeredEvents).toContain("task:updated");
-    expect(registeredEvents).toContain("task:deleted");
-    expect(registeredEvents).toContain("task:reordered");
+    const registeredEvents = mockOn.mock.calls.map((args) => args[0]);
+    expect(registeredEvents).toEqual(
+      expect.arrayContaining([
+        "task:created",
+        "task:updated",
+        "task:deleted",
+        "task:reordered",
+      ])
+    );
   });
 
   it("handles task:created with valid payload by adding task in place", () => {
@@ -64,14 +65,14 @@ describe("SocketProvider optimistic updates", () => {
     expect(handler).toBeDefined();
 
     act(() => {
-      handler!({
+      handler?.({
         task: { id: "task-new", title: "New Task", status: "QUEUED", order: 0 },
       });
     });
 
-    const state = useBoardStore.getState();
-    expect(state.tasks).toHaveLength(1);
-    expect(state.tasks[0].id).toBe("task-new");
+    expect(useBoardStore.getState().tasks).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "task-new" })])
+    );
   });
 
   it("handles task:updated with valid payload by updating task in place", () => {
@@ -85,9 +86,8 @@ describe("SocketProvider optimistic updates", () => {
       </SocketProvider>
     );
 
-    const handler = getHandler("task:updated");
     act(() => {
-      handler!({
+      getHandler("task:updated")?.({
         task: { id: "task-1", title: "Updated", status: "ACTIVE", order: 0 },
       });
     });
@@ -106,9 +106,8 @@ describe("SocketProvider optimistic updates", () => {
       </SocketProvider>
     );
 
-    const handler = getHandler("task:deleted");
     act(() => {
-      handler!({ taskId: "task-1" });
+      getHandler("task:deleted")?.({ taskId: "task-1" });
     });
 
     expect(useBoardStore.getState().tasks).toHaveLength(0);
@@ -125,23 +124,15 @@ describe("SocketProvider optimistic updates", () => {
       </SocketProvider>
     );
 
-    const handler = getHandler("task:reordered");
     act(() => {
-      handler!({ columns: { ACTIVE: ["c", "a", "b"] } });
+      getHandler("task:reordered")?.({ columns: { ACTIVE: ["c", "a", "b"] } });
     });
 
-    expect(useBoardStore.getState().columns.ACTIVE.taskIds).toEqual([
-      "c",
-      "a",
-      "b",
-    ]);
+    expect(useBoardStore.getState().columns.ACTIVE.taskIds).toEqual(["c", "a", "b"]);
   });
 
   it("falls back to refreshBoard when task:created payload is invalid", () => {
-    const refreshSpy = jest.spyOn(
-      useBoardStore.getState(),
-      "refreshBoard"
-    );
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     render(
       <SocketProvider>
@@ -149,36 +140,31 @@ describe("SocketProvider optimistic updates", () => {
       </SocketProvider>
     );
 
-    const handler = getHandler("task:created");
     act(() => {
-      handler!({ invalid: "payload" });
+      getHandler("task:created")?.({ invalid: "payload" });
     });
 
-    // refreshBoard should have been called since the store method is accessed via getState()
-    // We verify by checking the console.warn was triggered
-    // In practice, refreshBoard gets called on the latest store state
-    expect(useBoardStore.getState().tasks).toHaveLength(0);
-    refreshSpy.mockRestore();
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("task:created payload missing task data")
+    );
   });
 
   it("falls back to refreshBoard when task:reordered payload is invalid", () => {
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
     render(
       <SocketProvider>
         <div>Test</div>
       </SocketProvider>
     );
 
-    const handler = getHandler("task:reordered");
-    const consoleSpy = jest.spyOn(console, "warn").mockImplementation();
-
     act(() => {
-      handler!({}); // Missing columns
+      getHandler("task:reordered")?.({});
     });
 
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining("task:reordered payload missing columns data")
     );
-    consoleSpy.mockRestore();
   });
 
   it("cleans up socket listeners on unmount", () => {

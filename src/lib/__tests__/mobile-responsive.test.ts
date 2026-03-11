@@ -1,12 +1,9 @@
 /** @vitest-environment jsdom */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
-  type Breakpoint,
-  type CardSize,
-  type ColumnLayout,
   BREAKPOINT_VALUES,
   getBreakpoint,
   getResponsiveColumns,
@@ -15,8 +12,6 @@ import {
 } from "@/lib/mobile/responsive-utils";
 
 import {
-  type SwipeDirection,
-  type TouchGesture,
   MIN_TOUCH_TARGET_PX,
   detectSwipe,
   classifyGesture,
@@ -25,8 +20,6 @@ import {
 } from "@/lib/mobile/touch-interactions";
 
 import {
-  type ConflictType,
-  type ConflictStrategy,
   detectConflict,
   resolveWithStrategy,
   mergeChanges,
@@ -34,7 +27,6 @@ import {
 
 import {
   type OfflineAction,
-  type SyncResult,
   createMemoryStorage,
   setStorage,
   getStorage,
@@ -361,7 +353,7 @@ describe("PWA manifest", () => {
   it("manifest.json exists and is valid JSON", () => {
     const raw = readFileSync(join(process.cwd(), "public", "manifest.json"), "utf-8");
     const manifest = JSON.parse(raw);
-    expect(manifest.name).toBe("The Mother Node");
+    expect(manifest.name).toBe("WIPGuard");
     expect(manifest.display).toBe("standalone");
   });
 
