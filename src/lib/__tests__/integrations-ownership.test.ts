@@ -147,4 +147,32 @@ describe("integration ownership", () => {
       },
     });
   });
+
+  it("falls back to the shared organization used by connected integration users", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { ensureIntegrationOwnerOrganizationId } = await import(
+      "@/lib/integrations/ownership"
+    );
+
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({ organizationId: null } as never);
+    vi.mocked(prisma.integrationConnection.findMany)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([
+        { user: { organizationId: "org_shared" } },
+        { user: { organizationId: "org_shared" } },
+      ] as never);
+    vi.mocked(prisma.organization.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.user.updateMany).mockResolvedValue({ count: 1 } as never);
+
+    await expect(ensureIntegrationOwnerOrganizationId("owner_1")).resolves.toBe("org_shared");
+    expect(prisma.user.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "owner_1",
+        OR: [{ organizationId: null }, { organizationId: "" }],
+      },
+      data: {
+        organizationId: "org_shared",
+      },
+    });
+  });
 });

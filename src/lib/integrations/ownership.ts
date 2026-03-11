@@ -117,6 +117,35 @@ async function deriveOrganizationIdFromSingleOrganization(): Promise<string | nu
   return organizations.length === 1 ? organizations[0].id : null;
 }
 
+async function deriveOrganizationIdFromConnectedUsers(
+  ownerUserId: string
+): Promise<string | null> {
+  const connections = await prisma.integrationConnection.findMany({
+    where: {
+      userId: { not: ownerUserId },
+      status: "CONNECTED",
+    },
+    distinct: ["userId"],
+    select: {
+      user: {
+        select: {
+          organizationId: true,
+        },
+      },
+    },
+  });
+
+  const organizationIds = Array.from(
+    new Set(
+      connections
+        .map((connection) => normalizeOrganizationId(connection.user?.organizationId))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+
+  return organizationIds.length === 1 ? organizationIds[0] : null;
+}
+
 export async function ensureIntegrationOwnerOrganizationId(
   ownerUserId: string,
   fallbackOrganizationId?: string | null
@@ -142,6 +171,13 @@ export async function ensureIntegrationOwnerOrganizationId(
   const derivedOrganizationId = await deriveOrganizationIdFromConnections(ownerUserId);
   if (derivedOrganizationId) {
     return persistResolvedOrganizationId(ownerUserId, derivedOrganizationId);
+  }
+
+  const connectedUsersOrganizationId = await deriveOrganizationIdFromConnectedUsers(
+    ownerUserId
+  );
+  if (connectedUsersOrganizationId) {
+    return persistResolvedOrganizationId(ownerUserId, connectedUsersOrganizationId);
   }
 
   const singleOrganizationId = await deriveOrganizationIdFromSingleOrganization();
