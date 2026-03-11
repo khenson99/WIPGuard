@@ -75,10 +75,12 @@ function writeCachedOverviewData(globalCount: number) {
     lastUpdatedAt: "2026-03-01T00:00:00.000Z",
   });
 
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => new Response(JSON.stringify(useDashboardCacheStore.getState().read("analytics:overview:v1")?.data), { status: 200 })),
+  const fetchMock = vi.fn(async () =>
+    new Response(JSON.stringify(useDashboardCacheStore.getState().read("analytics:overview:v1")?.data), { status: 200 }),
   );
+  vi.stubGlobal("fetch", fetchMock);
+
+  return fetchMock;
 }
 
 describe("AiInsightsPage", () => {
@@ -137,5 +139,29 @@ describe("AiInsightsPage", () => {
     expect(screen.getByText(/Page 1 of 1/)).toBeTruthy();
     expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(10);
   });
-});
 
+  it("reruns AI insights with a forced refresh request", async () => {
+    const fetchMock = writeCachedOverviewData(5);
+
+    render(<AiInsightsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Rerun AI insights" })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Rerun AI insights" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, options]) =>
+            url === "/api/analytics?section=overview&refresh=true" &&
+            typeof options === "object" &&
+            options !== null &&
+            "cache" in options &&
+            options.cache === "no-store",
+        ),
+      ).toBe(true);
+    });
+  });
+});
