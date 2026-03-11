@@ -119,3 +119,23 @@ For deployed environments, replace `http://localhost:3000` with your production 
 - HubSpot
 - Slack
 - Coda (API token-based)
+
+## Visitor funnel enrichment
+
+WIPGuard can normalize website-visitor enrichment signals from:
+
+- Unify via scheduled pull
+- Clay via webhook push
+- RB2B via webhook push
+
+The shared ingestion endpoint pattern is:
+
+- `/api/v1/analytics/funnel/enrich/unify`
+- `/api/v1/analytics/funnel/enrich/clay`
+- `/api/v1/analytics/funnel/enrich/rb2b`
+
+Configuration lives in [`.env.example`](./.env.example) under `Visitor Funnel Enrichment`.
+
+Setup and payload examples:
+
+- [`docs/runbooks/visitor-funnel-enrichment.md`](./docs/runbooks/visitor-funnel-enrichment.md)

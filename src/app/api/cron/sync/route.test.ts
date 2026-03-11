@@ -38,7 +38,7 @@ vi.mock("@/lib/analytics/visitor-funnel-enrichment-alerts", () => ({
 }));
 
 vi.mock("@/lib/analytics/visitor-funnel-availability", () => ({
-  hasVisitorFunnelPrismaModels: vi.fn(),
+  getVisitorFunnelPrisma: vi.fn(),
   VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON:
     "Visitor funnel Prisma models are unavailable in this deployment.",
 }));
@@ -84,7 +84,7 @@ describe("POST /api/cron/sync", () => {
     const { enqueueVisitorFunnelEnrichmentAlertNotifications } = await import(
       "@/lib/analytics/visitor-funnel-enrichment-alert-delivery"
     );
-    const { hasVisitorFunnelPrismaModels } = await import(
+    const { getVisitorFunnelPrisma } = await import(
       "@/lib/analytics/visitor-funnel-availability"
     );
     const { runRules } = await import("@/lib/integrations/orchestrator");
@@ -96,7 +96,7 @@ describe("POST /api/cron/sync", () => {
       "@/lib/integrations/health-checks"
     );
 
-    vi.mocked(hasVisitorFunnelPrismaModels).mockReturnValue(false);
+    vi.mocked(getVisitorFunnelPrisma).mockReturnValue(null);
     vi.mocked(bestEffortMigrateConnectionsToOwner).mockResolvedValue({
       migrated: 0,
       skipped: 0,
@@ -143,7 +143,7 @@ describe("POST /api/cron/sync", () => {
   it("queues heavy sync work in the background by default", async () => {
     const { runAnalyticsRefresh } = await import("@/lib/analytics/refresh-runner");
     const { pruneAnalyticsSnapshots } = await import("@/lib/analytics/snapshots");
-    const { hasVisitorFunnelPrismaModels } = await import(
+    const { getVisitorFunnelPrisma } = await import(
       "@/lib/analytics/visitor-funnel-availability"
     );
     const { runRules } = await import("@/lib/integrations/orchestrator");
@@ -155,7 +155,7 @@ describe("POST /api/cron/sync", () => {
       "@/lib/integrations/health-checks"
     );
 
-    vi.mocked(hasVisitorFunnelPrismaModels).mockReturnValue(false);
+    vi.mocked(getVisitorFunnelPrisma).mockReturnValue(null);
     vi.mocked(bestEffortMigrateConnectionsToOwner).mockResolvedValue({
       migrated: 0,
       skipped: 0,

@@ -16,8 +16,8 @@ import {
   type VisitorEnrichmentSignalInput,
 } from "@/lib/analytics/visitor-funnel";
 import {
-  hasVisitorFunnelPrismaModels,
   VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON,
+  getVisitorFunnelPrisma,
 } from "@/lib/analytics/visitor-funnel-availability";
 
 const SUPPORTED_PROVIDERS = new Set<EnrichmentProvider>(["unify", "clay", "rb2b"]);
@@ -238,7 +238,8 @@ export async function POST(
       );
     }
 
-    if (!hasVisitorFunnelPrismaModels(prisma)) {
+    const funnelPrisma = getVisitorFunnelPrisma(prisma);
+    if (!funnelPrisma) {
       return NextResponse.json(
         {
           accepted: 0,
@@ -254,7 +255,11 @@ export async function POST(
       );
     }
 
-    const result = await ingestVisitorEnrichmentSignals(prisma, provider, signals);
+    const result = await ingestVisitorEnrichmentSignals(
+      funnelPrisma,
+      provider,
+      signals,
+    );
     return NextResponse.json(
       {
         ...result,

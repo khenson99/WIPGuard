@@ -215,13 +215,13 @@ export async function buildRunExecutionContext(runId: string): Promise<Record<st
       steps: {
         orderBy: { createdAt: "asc" },
       },
-      sourceDocuments: {
+      automationSourceDocuments: {
         orderBy: { createdAt: "asc" },
       },
-      artifacts: {
+      automationArtifacts: {
         orderBy: { createdAt: "asc" },
       },
-      recommendations: {
+      automationRecommendations: {
         orderBy: { createdAt: "asc" },
       },
     },
@@ -238,6 +238,30 @@ export async function buildRunExecutionContext(runId: string): Promise<Record<st
     return acc;
   }, {});
 
+  type SourceDocument = (typeof run.automationSourceDocuments)[number];
+  type Artifact = (typeof run.automationArtifacts)[number];
+  type Recommendation = (typeof run.automationRecommendations)[number];
+  const legacyRun = run as typeof run & {
+    sourceDocuments?: SourceDocument[];
+    artifacts?: Artifact[];
+    recommendations?: Recommendation[];
+  };
+  const sourceDocuments: SourceDocument[] = Array.isArray(run.automationSourceDocuments)
+    ? run.automationSourceDocuments
+    : Array.isArray(legacyRun.sourceDocuments)
+      ? legacyRun.sourceDocuments
+      : [];
+  const artifacts: Artifact[] = Array.isArray(run.automationArtifacts)
+    ? run.automationArtifacts
+    : Array.isArray(legacyRun.artifacts)
+      ? legacyRun.artifacts
+      : [];
+  const recommendations: Recommendation[] = Array.isArray(run.automationRecommendations)
+    ? run.automationRecommendations
+    : Array.isArray(legacyRun.recommendations)
+      ? legacyRun.recommendations
+      : [];
+
   return {
     trigger: {
       provider: run.triggerProvider,
@@ -246,7 +270,7 @@ export async function buildRunExecutionContext(runId: string): Promise<Record<st
       payload: asRecord(run.triggerPayload) ?? {},
     },
     state,
-    sourceDocuments: run.sourceDocuments.map((document) => ({
+    sourceDocuments: sourceDocuments.map((document) => ({
       id: document.id,
       documentType: document.documentType,
       title: document.title,
@@ -258,7 +282,7 @@ export async function buildRunExecutionContext(runId: string): Promise<Record<st
       eventType: document.eventType,
       externalId: document.externalId,
     })),
-    artifacts: run.artifacts.map((artifact) => ({
+    artifacts: artifacts.map((artifact) => ({
       id: artifact.id,
       artifactType: artifact.artifactType,
       title: artifact.title,
@@ -268,7 +292,7 @@ export async function buildRunExecutionContext(runId: string): Promise<Record<st
       metadata: artifact.metadata,
       status: artifact.status,
     })),
-    recommendations: run.recommendations.map((recommendation) => ({
+    recommendations: recommendations.map((recommendation) => ({
       id: recommendation.id,
       recommendationType: recommendation.recommendationType,
       title: recommendation.title,

@@ -17,6 +17,20 @@ vi.mock("socket.io-client", () => ({
   io: vi.fn(() => mockSocket),
 }));
 
+type MockHandler = (...args: unknown[]) => void;
+
+function getManagerHandler(event: string): MockHandler {
+  const call = mockSocket.io.on.mock.calls.find((call) => call[0] === event);
+  expect(call).toBeDefined();
+  return call?.[1] as MockHandler;
+}
+
+function getSocketHandlers(event: string): MockHandler[] {
+  return mockSocket.on.mock.calls
+    .filter((call) => call[0] === event)
+    .map((call) => call[1] as MockHandler);
+}
+
 describe("useSocket", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -38,13 +52,7 @@ describe("useSocket", () => {
   it("should emit join-board on reconnect", () => {
     renderHook(() => useSocket());
 
-    // Find the reconnect handler registered on socket.io manager
-    const reconnectCall = mockSocket.io.on.mock.calls.find(
-      (call: [string, (...args: unknown[]) => unknown]) => call[0] === "reconnect"
-    );
-    expect(reconnectCall).toBeDefined();
-
-    const reconnectHandler = reconnectCall![1];
+    const reconnectHandler = getManagerHandler("reconnect");
 
     act(() => {
       reconnectHandler(1);
@@ -58,10 +66,7 @@ describe("useSocket", () => {
 
     renderHook(() => useSocket({ refreshBoard }));
 
-    const reconnectCall = mockSocket.io.on.mock.calls.find(
-      (call: [string, (...args: unknown[]) => unknown]) => call[0] === "reconnect"
-    );
-    const reconnectHandler = reconnectCall![1];
+    const reconnectHandler = getManagerHandler("reconnect");
 
     act(() => {
       reconnectHandler(1);
@@ -75,10 +80,7 @@ describe("useSocket", () => {
 
     renderHook(() => useSocket({ showToast }));
 
-    const reconnectCall = mockSocket.io.on.mock.calls.find(
-      (call: [string, (...args: unknown[]) => unknown]) => call[0] === "reconnect"
-    );
-    const reconnectHandler = reconnectCall![1];
+    const reconnectHandler = getManagerHandler("reconnect");
 
     act(() => {
       reconnectHandler(1);
@@ -94,10 +96,7 @@ describe("useSocket", () => {
 
     renderHook(() => useSocket({ onReconnect }));
 
-    const reconnectCall = mockSocket.io.on.mock.calls.find(
-      (call: [string, (...args: unknown[]) => unknown]) => call[0] === "reconnect"
-    );
-    const reconnectHandler = reconnectCall![1];
+    const reconnectHandler = getManagerHandler("reconnect");
 
     act(() => {
       reconnectHandler(3);
@@ -109,10 +108,7 @@ describe("useSocket", () => {
   it("should not throw if refreshBoard is not provided", () => {
     renderHook(() => useSocket());
 
-    const reconnectCall = mockSocket.io.on.mock.calls.find(
-      (call: [string, (...args: unknown[]) => unknown]) => call[0] === "reconnect"
-    );
-    const reconnectHandler = reconnectCall![1];
+    const reconnectHandler = getManagerHandler("reconnect");
 
     expect(() => {
       act(() => {
@@ -126,10 +122,7 @@ describe("useSocket", () => {
 
     renderHook(() => useSocket({ refreshBoard }));
 
-    const reconnectCall = mockSocket.io.on.mock.calls.find(
-      (call: [string, (...args: unknown[]) => unknown]) => call[0] === "reconnect"
-    );
-    const reconnectHandler = reconnectCall![1];
+    const reconnectHandler = getManagerHandler("reconnect");
 
     expect(() => {
       act(() => {
@@ -141,9 +134,7 @@ describe("useSocket", () => {
   it("should register board event listeners", () => {
     renderHook(() => useSocket());
 
-    const registeredEvents = mockSocket.on.mock.calls.map(
-      (call: [string, (...args: unknown[]) => unknown]) => call[0]
-    );
+    const registeredEvents = mockSocket.on.mock.calls.map((call) => String(call[0]));
 
     expect(registeredEvents).toContain("task:created");
     expect(registeredEvents).toContain("task:updated");
@@ -154,16 +145,13 @@ describe("useSocket", () => {
   it("should emit join-board on initial connect", () => {
     renderHook(() => useSocket());
 
-    // Find the second connect handler (the one that emits join-board)
-    const connectCalls = mockSocket.on.mock.calls.filter(
-      (call: [string, (...args: unknown[]) => unknown]) => call[0] === "connect"
-    );
+    const connectCalls = getSocketHandlers("connect");
 
     // There should be at least one connect handler that emits join-board
     expect(connectCalls.length).toBeGreaterThan(0);
 
     // Simulate connect event
-    const connectHandler = connectCalls[connectCalls.length - 1][1];
+    const connectHandler = connectCalls[connectCalls.length - 1];
     act(() => {
       connectHandler();
     });
@@ -186,10 +174,7 @@ describe("useSocket", () => {
 
     renderHook(() => useSocket({ refreshBoard, showToast }));
 
-    const reconnectCall = mockSocket.io.on.mock.calls.find(
-      (call: [string, (...args: unknown[]) => unknown]) => call[0] === "reconnect"
-    );
-    const reconnectHandler = reconnectCall![1];
+    const reconnectHandler = getManagerHandler("reconnect");
 
     act(() => {
       reconnectHandler(2);
@@ -204,10 +189,7 @@ describe("useSocket", () => {
   it("should set connected state on reconnect", () => {
     const { result } = renderHook(() => useSocket());
 
-    const reconnectCall = mockSocket.io.on.mock.calls.find(
-      (call: [string, (...args: unknown[]) => unknown]) => call[0] === "reconnect"
-    );
-    const reconnectHandler = reconnectCall![1];
+    const reconnectHandler = getManagerHandler("reconnect");
 
     act(() => {
       reconnectHandler(1);

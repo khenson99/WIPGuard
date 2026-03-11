@@ -2,12 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import React, { ReactNode } from "react";
 import { SocketProvider, useSocketContext } from "../socket-provider";
+import type { UseSocketOptions } from "../../hooks/use-socket";
 
 // Capture the options passed to useSocket so we can simulate events
-let capturedOptions: Record<string, unknown> = {};
+let capturedOptions: Partial<UseSocketOptions> = {};
 
 vi.mock("../../hooks/use-socket", () => ({
-  useSocket: (options: Record<string, unknown>) => {
+  useSocket: (options: UseSocketOptions) => {
     capturedOptions = options;
     return {
       getSocket: vi.fn(() => ({
@@ -53,6 +54,31 @@ describe("SocketProvider", () => {
         </SocketProvider>
       );
     };
+  }
+
+  function invokeOnConnect() {
+    expect(capturedOptions.onConnect).toBeTypeOf("function");
+    capturedOptions.onConnect?.();
+  }
+
+  function invokeOnDisconnect(reason: string) {
+    expect(capturedOptions.onDisconnect).toBeTypeOf("function");
+    capturedOptions.onDisconnect?.(reason);
+  }
+
+  function invokeOnReconnect(attempt: number) {
+    expect(capturedOptions.onReconnect).toBeTypeOf("function");
+    capturedOptions.onReconnect?.(attempt);
+  }
+
+  function invokeBoardEvent(event: string, data: unknown) {
+    expect(capturedOptions.onBoardEvent).toBeTypeOf("function");
+    capturedOptions.onBoardEvent?.(event, data);
+  }
+
+  async function invokeRefreshBoard() {
+    expect(capturedOptions.refreshBoard).toBeTypeOf("function");
+    await capturedOptions.refreshBoard?.();
   }
 
   it("should provide initial state", () => {
@@ -107,7 +133,7 @@ describe("SocketProvider", () => {
     });
 
     act(() => {
-      capturedOptions.onConnect();
+      invokeOnConnect();
     });
 
     expect(result.current.state.connected).toBe(true);
@@ -120,11 +146,11 @@ describe("SocketProvider", () => {
     });
 
     act(() => {
-      capturedOptions.onConnect();
+      invokeOnConnect();
     });
 
     act(() => {
-      capturedOptions.onDisconnect("transport close");
+      invokeOnDisconnect("transport close");
     });
 
     expect(result.current.state.connected).toBe(false);
@@ -138,13 +164,13 @@ describe("SocketProvider", () => {
 
     // Simulate disconnect then reconnect
     act(() => {
-      capturedOptions.onDisconnect("transport close");
+      invokeOnDisconnect("transport close");
     });
 
     expect(result.current.state.reconnecting).toBe(true);
 
     act(() => {
-      capturedOptions.onReconnect(1);
+      invokeOnReconnect(1);
     });
 
     expect(result.current.state.connected).toBe(true);
@@ -157,7 +183,7 @@ describe("SocketProvider", () => {
     });
 
     act(() => {
-      capturedOptions.onBoardEvent("task:created", {
+      invokeBoardEvent("task:created", {
         id: "3",
         title: "New Task",
         status: "todo",
@@ -176,7 +202,7 @@ describe("SocketProvider", () => {
 
     // First add a task
     act(() => {
-      capturedOptions.onBoardEvent("task:created", {
+      invokeBoardEvent("task:created", {
         id: "1",
         title: "Task 1",
         status: "todo",
@@ -186,7 +212,7 @@ describe("SocketProvider", () => {
 
     // Then update it
     act(() => {
-      capturedOptions.onBoardEvent("task:updated", {
+      invokeBoardEvent("task:updated", {
         id: "1",
         title: "Updated Task 1",
         status: "done",
@@ -205,7 +231,7 @@ describe("SocketProvider", () => {
 
     // Add a task
     act(() => {
-      capturedOptions.onBoardEvent("task:created", {
+      invokeBoardEvent("task:created", {
         id: "1",
         title: "Task 1",
         status: "todo",
@@ -217,7 +243,7 @@ describe("SocketProvider", () => {
 
     // Delete it
     act(() => {
-      capturedOptions.onBoardEvent("task:deleted", {
+      invokeBoardEvent("task:deleted", {
         id: "1",
       });
     });
@@ -231,7 +257,7 @@ describe("SocketProvider", () => {
     });
 
     act(() => {
-      capturedOptions.onBoardEvent("task:reordered", {});
+      invokeBoardEvent("task:reordered", {});
     });
 
     // refreshBoard triggers a fetch
@@ -282,7 +308,7 @@ describe("SocketProvider", () => {
 
     // Simulate what happens on reconnect: useSocket calls refreshBoard
     await act(async () => {
-      await capturedOptions.refreshBoard();
+      await invokeRefreshBoard();
     });
 
     expect(mockFetch).toHaveBeenCalledWith("/api/board");
@@ -296,13 +322,13 @@ describe("SocketProvider", () => {
 
     // Initial connect
     act(() => {
-      capturedOptions.onConnect();
+      invokeOnConnect();
     });
     expect(result.current.state.connected).toBe(true);
 
     // Add a task via event
     act(() => {
-      capturedOptions.onBoardEvent("task:created", {
+      invokeBoardEvent("task:created", {
         id: "1",
         title: "Task 1",
         status: "todo",
@@ -313,7 +339,7 @@ describe("SocketProvider", () => {
 
     // Disconnect
     act(() => {
-      capturedOptions.onDisconnect("transport close");
+      invokeOnDisconnect("transport close");
     });
     expect(result.current.state.connected).toBe(false);
     expect(result.current.state.reconnecting).toBe(true);
@@ -321,12 +347,12 @@ describe("SocketProvider", () => {
     // Reconnect — in real code, useSocket calls refreshBoard() and showToast()
     // Here we simulate what the reconnect handler does
     act(() => {
-      capturedOptions.onReconnect(1);
+      invokeOnReconnect(1);
     });
 
     // Simulate refreshBoard being called (as useSocket would do)
     await act(async () => {
-      await capturedOptions.refreshBoard();
+      await invokeRefreshBoard();
     });
 
     expect(result.current.state.connected).toBe(true);

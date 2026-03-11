@@ -54,6 +54,12 @@ interface ProviderActionState {
   message: string | null;
 }
 
+interface ProviderSetupGuide {
+  envVars: string[];
+  steps: string[];
+  requestExample: string;
+}
+
 const STAGE_LABELS: Record<string, string> = {
   visitors: "Visitors",
   identified: "Identified",
@@ -111,6 +117,58 @@ const PROVIDER_SAMPLE_PAYLOADS: Record<
   },
 };
 
+const PROVIDER_SETUP_GUIDES: Record<EnrichmentProvider, ProviderSetupGuide> = {
+  unify: {
+    envVars: [
+      "UNIFY_DATA_API_KEY",
+      "UNIFY_FUNNEL_OBJECT_NAME",
+      "UNIFY_FUNNEL_SYNC_ENABLED=true",
+      "UNIFY_FUNNEL_CURSOR_OVERLAP_MINUTES=60",
+    ],
+    steps: [
+      "Use Unify as the scheduled source of record for website visitor records.",
+      "Set the Unify API env vars in the app and keep /api/cron/sync enabled.",
+      "Use Pull now or Replay 24h here to validate the object mapping before relying on cron.",
+      "Optional: if you prefer push delivery, set UNIFY_FUNNEL_ENRICH_SECRET and post normalized payloads to the same endpoint.",
+    ],
+    requestExample: JSON.stringify(
+      {
+        mode: "pull",
+        updatedAfter: "2026-03-10T00:00:00.000Z",
+        maxRecords: 100,
+      },
+      null,
+      2,
+    ),
+  },
+  clay: {
+    envVars: [
+      "CLAY_FUNNEL_ENRICH_SECRET",
+      "VISITOR_FUNNEL_ENRICH_SECRET (shared fallback)",
+    ],
+    steps: [
+      "Create a Clay webhook or HTTP action that POSTs row payloads into WIPGuard.",
+      "Prefer an x-webhook-secret header; WIPGuard also accepts bearer auth or token query params.",
+      "Map Clay columns to identity fields like email, companyDomain, companyName, capturedUrl, and occurredAt.",
+      "Run Validate sample here after configuring the destination to confirm the payload normalizes cleanly.",
+    ],
+    requestExample: JSON.stringify(PROVIDER_SAMPLE_PAYLOADS.clay, null, 2),
+  },
+  rb2b: {
+    envVars: [
+      "RB2B_FUNNEL_ENRICH_SECRET",
+      "VISITOR_FUNNEL_ENRICH_SECRET (shared fallback)",
+    ],
+    steps: [
+      "Point RB2B's webhook destination at WIPGuard's enrichment endpoint.",
+      "If RB2B cannot send a custom header, append ?token=<secret> to the destination URL and store that same secret in WIPGuard.",
+      "RB2B payloads normalize best when Business Email, Company Name, Website, Captured URL, and Seen At are present.",
+      "Use Validate sample here to verify the endpoint accepts the expected RB2B field names before sending live traffic.",
+    ],
+    requestExample: JSON.stringify(PROVIDER_SAMPLE_PAYLOADS.rb2b, null, 2),
+  },
+};
+
 function providerActionToneClass(tone: ProviderActionState["tone"]): string {
   if (tone === "success") return "text-emerald-600";
   if (tone === "warning") return "text-amber-600";
@@ -143,6 +201,12 @@ function formatMilestone(record: VisitorFunnelRecord, stage: string): string {
   const milestone = record.milestones.find((entry) => entry.stage === stage);
   if (!milestone?.occurredAt) return "—";
   return new Date(milestone.occurredAt).toLocaleDateString();
+}
+
+function providerGuideSummary(provider: EnrichmentProvider): string {
+  if (provider === "unify") return "Pull setup";
+  if (provider === "clay") return "Webhook setup";
+  return "Webhook + token setup";
 }
 
 function buildCsvRows(records: VisitorFunnelRecord[]): string[][] {
@@ -604,6 +668,7 @@ export function VisitorFunnelTab({ data }: { data: AnalyticsDashboardData | null
                     : { label: "Healthy", cls: "bg-emerald-500/10 text-emerald-600", icon: CheckCircle2 };
               const StatusIcon = state.icon;
               const actionState = providerActionState[providerStatus.provider];
+              const setupGuide = PROVIDER_SETUP_GUIDES[providerStatus.provider];
 
               return (
                 <div key={providerStatus.provider} className="rounded-xl border border-border bg-background px-4 py-4">
@@ -660,6 +725,50 @@ export function VisitorFunnelTab({ data }: { data: AnalyticsDashboardData | null
                     <Link2 className="h-3.5 w-3.5" />
                     {providerStatus.syncEnabled ? "Enabled" : "Disabled"}
                   </div>
+
+                  <details className="mt-4 rounded-lg border border-border bg-card/60 px-3 py-3 text-xs">
+                    <summary className="cursor-pointer list-none font-medium text-foreground">
+                      {providerGuideSummary(providerStatus.provider)}
+                    </summary>
+                    <div className="mt-3 space-y-3 text-muted-foreground">
+                      <div>
+                        <p className="font-medium text-foreground">Required config</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {setupGuide.envVars.map((envVar) => (
+                            <code
+                              key={envVar}
+                              className="rounded bg-background px-2 py-1 text-[11px] text-foreground"
+                            >
+                              {envVar}
+                            </code>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="font-medium text-foreground">Setup steps</p>
+                        <ul className="mt-2 space-y-1.5 pl-4">
+                          {setupGuide.steps.map((step) => (
+                            <li key={step} className="list-disc">
+                              {step}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-medium text-foreground">Endpoint</p>
+                          <code className="text-[11px] text-foreground">
+                            {providerStatus.endpointPath}
+                          </code>
+                        </div>
+                        <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-background p-3 text-[11px] text-foreground">
+                          <code>{setupGuide.requestExample}</code>
+                        </pre>
+                      </div>
+                    </div>
+                  </details>
 
                   {providerStatus.provider === "unify" ? (
                     <div className="mt-4 space-y-3">

@@ -1,16 +1,45 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Mock PrismaClient before importing the module
-const mockDisconnect = vi.fn();
-const mockPrismaClient = vi.fn(function MockPrismaClient(this: object) {
+const {
+  mockDisconnect,
+  mockPoolEnd,
+  mockPrismaClient,
+  mockPoolCtor,
+  mockAdapterCtor,
+} = vi.hoisted(() => {
+  const disconnect = vi.fn();
+  const poolEnd = vi.fn().mockResolvedValue(undefined);
+
   return {
-    $disconnect: mockDisconnect,
-    $queryRaw: vi.fn(),
+    mockDisconnect: disconnect,
+    mockPoolEnd: poolEnd,
+    mockPrismaClient: vi.fn(function MockPrismaClient(this: object) {
+      return {
+        $disconnect: disconnect,
+        $queryRaw: vi.fn(),
+      };
+    }),
+    mockPoolCtor: vi.fn(function MockPool(this: object) {
+      return {
+        end: poolEnd,
+      };
+    }),
+    mockAdapterCtor: vi.fn(function MockPrismaPg(this: object) {
+      return {};
+    }),
   };
 });
 
-vi.mock('@prisma/client', () => ({
+vi.mock('@/generated/prisma/client', () => ({
   PrismaClient: mockPrismaClient,
+}));
+
+vi.mock('pg', () => ({
+  Pool: mockPoolCtor,
+}));
+
+vi.mock('@prisma/adapter-pg', () => ({
+  PrismaPg: mockAdapterCtor,
 }));
 
 describe('worker prisma', () => {
@@ -21,7 +50,10 @@ describe('worker prisma', () => {
     process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/testdb';
     vi.resetModules();
     mockDisconnect.mockReset();
+    mockPoolEnd.mockReset();
     mockPrismaClient.mockClear();
+    mockPoolCtor.mockClear();
+    mockAdapterCtor.mockClear();
   });
 
   afterEach(() => {
@@ -46,6 +78,7 @@ describe('worker prisma', () => {
     getWorkerPrisma();
     await disconnectWorkerPrisma();
     expect(mockDisconnect).toHaveBeenCalledOnce();
+    expect(mockPoolEnd).toHaveBeenCalledOnce();
   });
 
   it('throws if no DATABASE_URL is set', async () => {
@@ -63,10 +96,16 @@ describe('worker prisma', () => {
     const { getWorkerPrisma } = await import('../prisma');
     getWorkerPrisma();
 
+    expect(mockPoolCtor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectionString: expect.stringContaining('workerdb'),
+      })
+    );
+    expect(mockAdapterCtor).toHaveBeenCalledOnce();
     expect(mockPrismaClient).toHaveBeenCalledWith(
       expect.objectContaining({
-        datasourceUrl: expect.stringContaining('workerdb'),
-      })
+        adapter: expect.any(Object),
+      }),
     );
   });
 });

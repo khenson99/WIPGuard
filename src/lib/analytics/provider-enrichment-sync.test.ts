@@ -48,8 +48,25 @@ describe("runVisitorFunnelEnrichmentSyncs", () => {
 
     const results = await runVisitorFunnelEnrichmentSyncs({
       prisma: {
+        funnelVisitor: {
+          findUnique: vi.fn(),
+          findMany: vi.fn(),
+          upsert: vi.fn(),
+          update: vi.fn(),
+        },
+        funnelEvent: {
+          create: vi.fn(),
+          upsert: vi.fn(),
+        },
+        funnelIdentityLink: {
+          findFirst: vi.fn(),
+          upsert: vi.fn(),
+        },
         funnelEnrichmentSignal: {
           findFirst: vi.fn(),
+          count: vi.fn(),
+          upsert: vi.fn(),
+          update: vi.fn(),
         },
       } as never,
     });
@@ -70,11 +87,28 @@ describe("runVisitorFunnelEnrichmentSyncs", () => {
     process.env.UNIFY_FUNNEL_CURSOR_OVERLAP_MINUTES = "30";
 
     const prisma = {
+      funnelVisitor: {
+        findUnique: vi.fn(),
+        findMany: vi.fn(),
+        upsert: vi.fn(),
+        update: vi.fn(),
+      },
+      funnelEvent: {
+        create: vi.fn(),
+        upsert: vi.fn(),
+      },
+      funnelIdentityLink: {
+        findFirst: vi.fn(),
+        upsert: vi.fn(),
+      },
       funnelEnrichmentSignal: {
+        count: vi.fn(),
         findFirst: vi.fn().mockResolvedValue({
           occurredAt: new Date("2026-03-08T10:00:00.000Z"),
           createdAt: new Date("2026-03-08T10:05:00.000Z"),
         }),
+        upsert: vi.fn(),
+        update: vi.fn(),
       },
     } as never;
 

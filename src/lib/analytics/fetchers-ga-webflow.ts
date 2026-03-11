@@ -284,16 +284,14 @@ export async function fetchGAData(
   const trafficByChannelMap: Record<string, GATrafficChannel> = {};
   const dailyTrendMap: Record<string, number> = {};
 
-  (trafficAndTrend.rows || []).forEach(
-    (row: {
-      dimensionValues: Array<{ value: string }>;
-      metricValues: Array<{ value: string }>;
-    }) => {
-      const channel = row.dimensionValues[0]?.value || "Unknown";
-      const date = row.dimensionValues[1]?.value || "";
-      const sessions = parseInt(row.metricValues[0]?.value || "0");
-      const users = parseInt(row.metricValues[1]?.value || "0");
-      const pageviews = parseInt(row.metricValues[2]?.value || "0");
+  (trafficAndTrend.rows || []).forEach((row: GAReportRow) => {
+      const dimensionValues = row.dimensionValues ?? [];
+      const metricValues = row.metricValues ?? [];
+      const channel = dimensionValues[0]?.value || "Unknown";
+      const date = dimensionValues[1]?.value || "";
+      const sessions = parseInt(metricValues[0]?.value || "0");
+      const users = parseInt(metricValues[1]?.value || "0");
+      const pageviews = parseInt(metricValues[2]?.value || "0");
 
       // Aggregate by channel
       if (!trafficByChannelMap[channel]) {
@@ -312,8 +310,7 @@ export async function fetchGAData(
       if (date) {
         dailyTrendMap[date] = (dailyTrendMap[date] || 0) + sessions;
       }
-    }
-  );
+    });
 
   const trafficByChannel: GATrafficChannel[] = Object.values(trafficByChannelMap);
 
@@ -323,16 +320,15 @@ export async function fetchGAData(
   }));
 
   // Parse top pages
-  const topPages: GATopPage[] = (topPagesRaw.rows || []).map(
-    (row: {
-      dimensionValues: Array<{ value: string }>;
-      metricValues: Array<{ value: string }>;
-    }) => ({
-      path: row.dimensionValues[0]?.value || "/",
-      pageviews: parseInt(row.metricValues[0]?.value || "0"),
-      avgDuration: parseFloat(row.metricValues[1]?.value || "0"),
-    })
-  );
+  const topPages: GATopPage[] = (topPagesRaw.rows || []).map((row: GAReportRow) => {
+    const dimensionValues = row.dimensionValues ?? [];
+    const metricValues = row.metricValues ?? [];
+    return {
+      path: dimensionValues[0]?.value || "/",
+      pageviews: parseInt(metricValues[0]?.value || "0"),
+      avgDuration: parseFloat(metricValues[1]?.value || "0"),
+    };
+  });
 
   return {
     sessions30d,

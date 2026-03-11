@@ -158,6 +158,7 @@ describe("orchestrator structured error logging", () => {
 
     vi.doMock("@/lib/integrations/ownership", () => ({
       resolveIntegrationOwnerUserId: (id: string) => id,
+      resolveIntegrationOrganizationId: vi.fn(async () => "org_1"),
     }));
 
     vi.doMock("@/lib/integrations/slack-status-sync", () => ({

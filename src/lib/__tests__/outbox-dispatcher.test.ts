@@ -1,307 +1,146 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { OutboxEvent } from "@/generated/prisma/client";
 
-// Mock Prisma
-const mockFindMany = vi.fn();
-const mockUpdate = vi.fn();
-const mockUpdateMany = vi.fn();
-const mockCreate = vi.fn();
-const mockDelete = vi.fn();
-const mockDeleteMany = vi.fn();
-const mockTransaction = vi.fn();
+const {
+  mockWorkflowRunFindUnique,
+  mockSendSlackDirectMessage,
+  mockSendSlackNotification,
+} = vi.hoisted(() => ({
+  mockWorkflowRunFindUnique: vi.fn(),
+  mockSendSlackDirectMessage: vi.fn(),
+  mockSendSlackNotification: vi.fn(),
+}));
 
-vi.mock('@/lib/prisma', () => ({
-  default: {
-    outboxEvent: {
-      findMany: mockFindMany,
-      update: mockUpdate,
-      updateMany: mockUpdateMany,
-      create: mockCreate,
-      delete: mockDelete,
-      deleteMany: mockDeleteMany,
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    workflowRun: {
+      findUnique: mockWorkflowRunFindUnique,
     },
-    outboxMessage: {
-      findMany: mockFindMany,
-      update: mockUpdate,
-      updateMany: mockUpdateMany,
-      create: mockCreate,
-      delete: mockDelete,
-      deleteMany: mockDeleteMany,
-    },
-    $transaction: mockTransaction,
   },
 }));
 
-// Mock fetch for external dispatch
-global.fetch = vi.fn();
+vi.mock("@/lib/integrations/slack-notifications", () => ({
+  sendSlackDirectMessage: mockSendSlackDirectMessage,
+  sendSlackNotification: mockSendSlackNotification,
+}));
 
-describe('outbox-dispatcher module', () => {
+import { dispatchOutboxEvent } from "@/lib/outbox-dispatcher";
+
+function makeEvent(overrides: Partial<OutboxEvent>): OutboxEvent {
+  const now = new Date("2026-03-11T18:00:00.000Z");
+  return {
+    id: "evt-1",
+    eventType: "unknown.event",
+    aggregateType: "workflow_run",
+    aggregateId: "run-1",
+    payload: {},
+    status: "PENDING",
+    retryCount: 0,
+    nextAttemptAt: now,
+    dispatchedAt: null,
+    lastAttemptAt: null,
+    failedAt: null,
+    error: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  } as OutboxEvent;
+}
+
+describe("outbox-dispatcher", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.useFakeTimers();
-    mockFindMany.mockResolvedValue([]);
-    mockUpdate.mockResolvedValue({});
-    mockUpdateMany.mockResolvedValue({ count: 0 });
-    mockTransaction.mockImplementation(async (fn: unknown) => {
-      if (typeof fn === 'function') {
-        return fn({
-          outboxEvent: {
-            findMany: mockFindMany,
-            update: mockUpdate,
-            updateMany: mockUpdateMany,
-            delete: mockDelete,
-            deleteMany: mockDeleteMany,
-          },
-          outboxMessage: {
-            findMany: mockFindMany,
-            update: mockUpdate,
-            updateMany: mockUpdateMany,
-            delete: mockDelete,
-            deleteMany: mockDeleteMany,
-          },
-        });
-      }
-      return fn;
+  });
+
+  it("dispatches automation Slack notifications to the run requester", async () => {
+    mockWorkflowRunFindUnique.mockResolvedValue({
+      requestedById: "user-1",
+      workflow: { ownerId: "owner-1" },
+    });
+
+    await dispatchOutboxEvent(
+      makeEvent({
+        eventType: "automation.slack.notify",
+        payload: { message: "Ship the GTM report" },
+      }),
+    );
+
+    expect(mockSendSlackDirectMessage).toHaveBeenCalledWith({
+      userId: "user-1",
+      message: "Ship the GTM report",
     });
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
+  it("falls back to the workflow owner when the requester is missing", async () => {
+    mockWorkflowRunFindUnique.mockResolvedValue({
+      requestedById: null,
+      workflow: { ownerId: "owner-1" },
+    });
+
+    await dispatchOutboxEvent(
+      makeEvent({
+        eventType: "automation.slack.notify",
+        payload: { message: "Owner fallback" },
+      }),
+    );
+
+    expect(mockSendSlackDirectMessage).toHaveBeenCalledWith({
+      userId: "owner-1",
+      message: "Owner fallback",
+    });
   });
 
-  describe('dispatch routing', () => {
-    it('should process pending outbox events', async () => {
-      const pendingEvents = [
-        {
-          id: 'evt-1',
-          type: 'SLACK_NOTIFICATION',
-          payload: JSON.stringify({ channel: '#general', message: 'Test' }),
-          status: 'PENDING',
-          attempts: 0,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+  it("throws when the automation Slack payload has no message", async () => {
+    await expect(
+      dispatchOutboxEvent(
+        makeEvent({
+          eventType: "automation.slack.notify",
+          payload: {},
+        }),
+      ),
+    ).rejects.toThrow("automation.slack.notify missing message");
+  });
+
+  it("dispatches visitor funnel alert notifications", async () => {
+    await dispatchOutboxEvent(
+      makeEvent({
+        eventType: "visitor_funnel.enrichment.slack_alert",
+        aggregateId: "alert-1",
+        payload: {
+          alertId: "alert-1",
+          ownerUserId: "user-9",
+          channelId: "C123",
+          title: "Unify drift detected",
+          message: "Signal freshness degraded",
+          bucketStart: "2026-03-11T00:00:00.000Z",
+          kind: "freshness",
+          providerLabel: "UNIFY",
+          severity: "warning",
         },
-      ];
+      }),
+    );
 
-      mockFindMany.mockResolvedValueOnce(pendingEvents);
-      mockUpdate.mockResolvedValue({ ...pendingEvents[0], status: 'PROCESSED' });
-      vi.mocked(global.fetch).mockResolvedValue(new Response('ok', { status: 200 }));
-
-      const dispatcher = await import('@/lib/outbox-dispatcher');
-
-      const dispatchFn = dispatcher.dispatchOutboxEvents
-        || dispatcher.processOutbox
-        || dispatcher.runDispatcher
-        || dispatcher.dispatch
-        || dispatcher.default;
-
-      if (typeof dispatchFn === 'function') {
-        await dispatchFn();
-        // Should have queried for pending events
-        expect(mockFindMany).toHaveBeenCalled();
-      }
-    });
-
-    it('should handle empty outbox gracefully', async () => {
-      mockFindMany.mockResolvedValueOnce([]);
-
-      const dispatcher = await import('@/lib/outbox-dispatcher');
-
-      const dispatchFn = dispatcher.dispatchOutboxEvents
-        || dispatcher.processOutbox
-        || dispatcher.runDispatcher
-        || dispatcher.dispatch
-        || dispatcher.default;
-
-      if (typeof dispatchFn === 'function') {
-        await expect(dispatchFn()).resolves.not.toThrow();
-      }
-    });
-
-    it('should route different event types correctly', async () => {
-      const events = [
-        {
-          id: 'evt-slack',
-          type: 'SLACK_NOTIFICATION',
-          payload: JSON.stringify({ channel: '#dev', message: 'WIP exceeded' }),
-          status: 'PENDING',
-          attempts: 0,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+    expect(mockSendSlackNotification).toHaveBeenCalledWith({
+      userId: "user-9",
+      payload: {
+        type: "ops_alert",
+        taskId: "alert-1",
+        taskTitle: "Unify drift detected",
+        channelId: "C123",
+        context: {
+          bucketStart: "2026-03-11T00:00:00.000Z",
+          kind: "freshness",
+          provider: "UNIFY",
+          reason: "Signal freshness degraded",
+          severity: "warning",
         },
-        {
-          id: 'evt-email',
-          type: 'EMAIL_NOTIFICATION',
-          payload: JSON.stringify({ to: 'user@test.com', subject: 'Alert' }),
-          status: 'PENDING',
-          attempts: 0,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      ];
-
-      mockFindMany.mockResolvedValueOnce(events);
-      mockUpdate.mockResolvedValue({});
-      vi.mocked(global.fetch).mockResolvedValue(new Response('ok', { status: 200 }));
-
-      const dispatcher = await import('@/lib/outbox-dispatcher');
-
-      const dispatchFn = dispatcher.dispatchOutboxEvents
-        || dispatcher.processOutbox
-        || dispatcher.runDispatcher
-        || dispatcher.dispatch
-        || dispatcher.default;
-
-      if (typeof dispatchFn === 'function') {
-        await dispatchFn();
-        expect(mockFindMany).toHaveBeenCalled();
-      }
+      },
     });
   });
 
-  describe('error handling', () => {
-    it('should increment attempt count on failure', async () => {
-      const failingEvent = {
-        id: 'evt-fail',
-        type: 'SLACK_NOTIFICATION',
-        payload: JSON.stringify({ channel: '#general', message: 'Test' }),
-        status: 'PENDING',
-        attempts: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      mockFindMany.mockResolvedValueOnce([failingEvent]);
-      vi.mocked(global.fetch).mockRejectedValueOnce(new Error('Network error'));
-      mockUpdate.mockResolvedValue({});
-
-      const dispatcher = await import('@/lib/outbox-dispatcher');
-
-      const dispatchFn = dispatcher.dispatchOutboxEvents
-        || dispatcher.processOutbox
-        || dispatcher.runDispatcher
-        || dispatcher.dispatch
-        || dispatcher.default;
-
-      if (typeof dispatchFn === 'function') {
-        await dispatchFn();
-
-        // Should have attempted to update the event (increment attempts or mark failed)
-        const updateCalls = mockUpdate.mock.calls;
-        if (updateCalls.length > 0) {
-          const updateData = updateCalls[0][0];
-          // Verify some update was made (attempts incremented or status changed)
-          expect(updateData).toBeDefined();
-        }
-      }
-    });
-
-    it('should mark event as FAILED after max attempts', async () => {
-      const maxedOutEvent = {
-        id: 'evt-maxed',
-        type: 'SLACK_NOTIFICATION',
-        payload: JSON.stringify({ channel: '#general', message: 'Test' }),
-        status: 'PENDING',
-        attempts: 5,
-        maxAttempts: 5,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      mockFindMany.mockResolvedValueOnce([maxedOutEvent]);
-      vi.mocked(global.fetch).mockRejectedValueOnce(new Error('Still failing'));
-      mockUpdate.mockResolvedValue({});
-
-      const dispatcher = await import('@/lib/outbox-dispatcher');
-
-      const dispatchFn = dispatcher.dispatchOutboxEvents
-        || dispatcher.processOutbox
-        || dispatcher.runDispatcher
-        || dispatcher.dispatch
-        || dispatcher.default;
-
-      if (typeof dispatchFn === 'function') {
-        await dispatchFn();
-        // Verify the dispatcher processed the event
-        expect(mockFindMany).toHaveBeenCalled();
-      }
-    });
-
-    it('should not crash if prisma query throws', async () => {
-      mockFindMany.mockRejectedValueOnce(new Error('Database error'));
-
-      const dispatcher = await import('@/lib/outbox-dispatcher');
-
-      const dispatchFn = dispatcher.dispatchOutboxEvents
-        || dispatcher.processOutbox
-        || dispatcher.runDispatcher
-        || dispatcher.dispatch
-        || dispatcher.default;
-
-      if (typeof dispatchFn === 'function') {
-        // Should handle DB errors gracefully
-        try {
-          await dispatchFn();
-        } catch (e) {
-          // Some implementations may throw, which is also valid
-          expect(e).toBeDefined();
-        }
-      }
-    });
-  });
-
-  describe('batch processing', () => {
-    it('should process events in batches', async () => {
-      const batchEvents = Array.from({ length: 10 }, (_, i) => ({
-        id: `evt-${i}`,
-        type: 'SLACK_NOTIFICATION',
-        payload: JSON.stringify({ channel: '#general', message: `Test ${i}` }),
-        status: 'PENDING',
-        attempts: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }));
-
-      mockFindMany.mockResolvedValueOnce(batchEvents);
-      mockUpdate.mockResolvedValue({});
-      vi.mocked(global.fetch).mockResolvedValue(new Response('ok', { status: 200 }));
-
-      const dispatcher = await import('@/lib/outbox-dispatcher');
-
-      const dispatchFn = dispatcher.dispatchOutboxEvents
-        || dispatcher.processOutbox
-        || dispatcher.runDispatcher
-        || dispatcher.dispatch
-        || dispatcher.default;
-
-      if (typeof dispatchFn === 'function') {
-        await dispatchFn();
-        expect(mockFindMany).toHaveBeenCalled();
-      }
-    });
-
-    it('should limit batch size in queries', async () => {
-      mockFindMany.mockResolvedValueOnce([]);
-
-      const dispatcher = await import('@/lib/outbox-dispatcher');
-
-      const dispatchFn = dispatcher.dispatchOutboxEvents
-        || dispatcher.processOutbox
-        || dispatcher.runDispatcher
-        || dispatcher.dispatch
-        || dispatcher.default;
-
-      if (typeof dispatchFn === 'function') {
-        await dispatchFn();
-
-        // Verify findMany was called with a take/limit parameter
-        if (mockFindMany.mock.calls.length > 0) {
-          const queryArgs = mockFindMany.mock.calls[0][0];
-          if (queryArgs?.take) {
-            expect(queryArgs.take).toBeGreaterThan(0);
-            expect(queryArgs.take).toBeLessThanOrEqual(100);
-          }
-        }
-      }
-    });
+  it("no-ops for telemetry-only events", async () => {
+    await expect(dispatchOutboxEvent(makeEvent({ eventType: "telemetry.only" }))).resolves.toBeUndefined();
+    expect(mockSendSlackDirectMessage).not.toHaveBeenCalled();
+    expect(mockSendSlackNotification).not.toHaveBeenCalled();
   });
 });

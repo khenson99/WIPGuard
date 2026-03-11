@@ -20,7 +20,7 @@ vi.mock("@/lib/analytics/visitor-funnel", () => ({
 }));
 
 vi.mock("@/lib/analytics/visitor-funnel-availability", () => ({
-  hasVisitorFunnelPrismaModels: vi.fn(() => true),
+  getVisitorFunnelPrisma: vi.fn(() => ({})),
   VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON:
     "Visitor funnel Prisma models are unavailable in this deployment.",
 }));
@@ -182,14 +182,14 @@ describe("POST /api/analytics/funnel/enrich/[provider]", () => {
     const { ingestVisitorEnrichmentSignals } = await import(
       "@/lib/analytics/visitor-funnel"
     );
-    const { hasVisitorFunnelPrismaModels } = await import(
+    const { getVisitorFunnelPrisma } = await import(
       "@/lib/analytics/visitor-funnel-availability"
     );
 
     vi.mocked(auth).mockResolvedValue({
       user: { id: "admin-3", role: "admin" },
     } as never);
-    vi.mocked(hasVisitorFunnelPrismaModels).mockReturnValue(false);
+    vi.mocked(getVisitorFunnelPrisma).mockReturnValue(null);
     vi.mocked(normalizeNativeProviderSignals).mockReturnValue([
       {
         signalKey: "row-1",

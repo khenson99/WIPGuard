@@ -1054,6 +1054,74 @@ async function failAutomationAiJob(input: {
   });
 }
 
+function uniqueStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function toBoundedScore(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+async function denormalizeTranscriptAnalysisToMeeting(input: {
+  triggerType: string | null | undefined;
+  triggerPayload: unknown;
+  envelope: Awaited<ReturnType<typeof parseAutomationAiResponseEnvelope>>;
+  artifactIds: string[];
+}) {
+  if (input.triggerType !== "google-workspace.meet.transcript_ready") {
+    return;
+  }
+
+  const triggerPayload = asRecord(input.triggerPayload);
+  const meetingId =
+    (typeof triggerPayload?.meetingId === "string" && triggerPayload.meetingId.trim()) || null;
+  if (!meetingId) {
+    return;
+  }
+
+  const artifacts = Array.isArray(input.envelope.artifacts) ? input.envelope.artifacts : [];
+  const scorecardIndex = artifacts.findIndex(
+    (artifact) => artifact.artifactType === "demo_quality_scorecard"
+  );
+  if (scorecardIndex < 0) {
+    return;
+  }
+
+  const scorecard = artifacts[scorecardIndex];
+  const contentJson = asRecord(scorecard.contentJson);
+  const summary =
+    scorecard.summary ??
+    (typeof contentJson?.summary === "string" ? contentJson.summary : null) ??
+    scorecard.content ??
+    null;
+
+  await prisma.dealMeeting.update({
+    where: { id: meetingId },
+    data: {
+      analysisArtifactId: input.artifactIds[scorecardIndex] ?? null,
+      demoQualityScore: toBoundedScore(contentJson?.overallScore),
+      demoQualitySummary: summary,
+      demoStrengthsJson: uniqueStringList(contentJson?.strengths) as Prisma.InputJsonValue,
+      demoGapsJson: uniqueStringList(contentJson?.gaps) as Prisma.InputJsonValue,
+      analyzedAt: new Date(),
+    },
+  });
+}
+
 async function settleAutomationAiJobWithResponse(input: {
   jobId: string;
   response: Awaited<ReturnType<typeof retrieveAutomationOpenAiResponse>>;
@@ -1064,6 +1132,8 @@ async function settleAutomationAiJobWithResponse(input: {
       run: {
         select: {
           requestedById: true,
+          triggerType: true,
+          triggerPayload: true,
         },
       },
     },
@@ -1110,6 +1180,13 @@ async function settleAutomationAiJobWithResponse(input: {
         createdByNodeKey: job.nodeKey,
         requestedById: job.run.requestedById ?? null,
         envelope,
+      });
+
+      await denormalizeTranscriptAnalysisToMeeting({
+        triggerType: job.run.triggerType,
+        triggerPayload: job.run.triggerPayload,
+        envelope,
+        artifactIds: persisted.artifactIds,
       });
 
       await prisma.automationAiJob.update({

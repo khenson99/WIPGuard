@@ -4,7 +4,10 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { runAnalyticsRefresh } from "@/lib/analytics/refresh-runner";
 import { pruneAnalyticsSnapshots } from "@/lib/analytics/snapshots";
 import { runVisitorFunnelEnrichmentSyncs } from "@/lib/analytics/provider-enrichment-sync";
-import { VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON, hasVisitorFunnelPrismaModels } from "@/lib/analytics/visitor-funnel-availability";
+import {
+  VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON,
+  getVisitorFunnelPrisma,
+} from "@/lib/analytics/visitor-funnel-availability";
 import { buildVisitorFunnelEnrichmentStatus } from "@/lib/analytics/visitor-funnel";
 import { enqueueVisitorFunnelEnrichmentAlertNotifications } from "@/lib/analytics/visitor-funnel-enrichment-alert-delivery";
 import { instrumentVisitorFunnelEnrichmentAlerts } from "@/lib/analytics/visitor-funnel-enrichment-alerts";
@@ -67,7 +70,7 @@ async function executeCronSync(input: {
         ])
       : [{ copied: 0, skipped: 0 }, { copied: 0, skipped: 0 }];
 
-    const visitorFunnelModelsAvailable = hasVisitorFunnelPrismaModels(prisma);
+    const funnelPrisma = getVisitorFunnelPrisma(prisma);
     let visitorFunnelEnrichment: Awaited<
       ReturnType<typeof runVisitorFunnelEnrichmentSyncs>
     >;
@@ -90,11 +93,11 @@ async function executeCronSync(input: {
     };
     const failures: string[] = [];
 
-    if (visitorFunnelModelsAvailable) {
+    if (funnelPrisma) {
       visitorFunnelEnrichment = await runVisitorFunnelEnrichmentSyncs({
         prisma,
       });
-      visitorFunnelEnrichmentStatus = await buildVisitorFunnelEnrichmentStatus(prisma);
+      visitorFunnelEnrichmentStatus = await buildVisitorFunnelEnrichmentStatus(funnelPrisma);
       const visitorFunnelEnrichmentTelemetry = instrumentVisitorFunnelEnrichmentAlerts(
         visitorFunnelEnrichmentStatus,
       );

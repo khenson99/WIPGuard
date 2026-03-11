@@ -127,6 +127,7 @@ export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
 
   { id: "demo-scheduling", label: "Scheduling", path: "/analytics/demo-scheduling", parentId: "demo-analytics", dataDomain: "demoAnalytics" },
   { id: "demo-attribution", label: "Attribution", path: "/analytics/demo-attribution", parentId: "demo-analytics", dataDomain: "demoAnalytics" },
+  { id: "demo-coaching", label: "Coaching", path: "/analytics/demo-coaching", parentId: "demo-analytics", dataDomain: "demoAnalytics" },
 
   { id: "process-bottlenecks", label: "Bottlenecks", path: "/analytics/process-bottlenecks", parentId: "process-analytics", dataDomain: "processAnalytics" },
   { id: "process-velocity", label: "Velocity", path: "/analytics/process-velocity", parentId: "process-analytics", dataDomain: "processAnalytics" },

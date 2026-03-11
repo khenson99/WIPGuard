@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { hasVisitorFunnelPrismaModels } from "@/lib/analytics/visitor-funnel-availability";
+import {
+  getVisitorFunnelPrisma,
+  hasVisitorFunnelPrismaModels,
+} from "@/lib/analytics/visitor-funnel-availability";
 
 describe("hasVisitorFunnelPrismaModels", () => {
   it("returns false when funnel delegates exist without the required methods", () => {
@@ -18,12 +21,16 @@ describe("hasVisitorFunnelPrismaModels", () => {
       hasVisitorFunnelPrismaModels({
         funnelVisitor: {
           findUnique: () => null,
+          findMany: () => [],
           upsert: () => ({}),
+          update: () => ({}),
         },
         funnelEvent: {
+          create: () => ({}),
           upsert: () => ({}),
         },
         funnelIdentityLink: {
+          findFirst: () => null,
           upsert: () => ({}),
         },
         funnelEnrichmentSignal: {
@@ -34,5 +41,17 @@ describe("hasVisitorFunnelPrismaModels", () => {
         },
       })
     ).toBe(true);
+  });
+});
+
+describe("getVisitorFunnelPrisma", () => {
+  it("returns null when required delegates are missing", () => {
+    expect(
+      getVisitorFunnelPrisma({
+        funnelVisitor: {
+          findUnique: () => null,
+        },
+      })
+    ).toBeNull();
   });
 });

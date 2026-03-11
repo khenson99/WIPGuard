@@ -27,6 +27,7 @@ function baseData(): AnalyticsDashboardData {
     redditOps: null,
     funnelJourney: null,
     lifecycleFunnel: null,
+    visitorFunnel: null,
     recommendations: [],
     distilledInsights: [],
     aiInsights: {

@@ -7,7 +7,9 @@
  * The pool size and timeout are configured via WORKER_DB_* environment variables.
  */
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@/generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 import { workerConfig } from './config';
 import { logger } from './logger';
 
@@ -34,10 +36,18 @@ function buildDatasourceUrl(): string {
 }
 
 let workerPrisma: PrismaClient | null = null;
+let workerPool: Pool | null = null;
 
 export function getWorkerPrisma(): PrismaClient {
   if (!workerPrisma) {
     const datasourceUrl = buildDatasourceUrl();
+    workerPool = new Pool({
+      connectionString: datasourceUrl,
+      max: workerConfig.databasePoolSize,
+      idleTimeoutMillis: workerConfig.databaseTimeout,
+      connectionTimeoutMillis: workerConfig.databaseTimeout,
+    });
+    const adapter = new PrismaPg(workerPool);
 
     logger.info('Initializing worker Prisma client', {
       poolSize: workerConfig.databasePoolSize,
@@ -45,7 +55,7 @@ export function getWorkerPrisma(): PrismaClient {
     });
 
     workerPrisma = new PrismaClient({
-      datasourceUrl,
+      adapter,
       log:
         workerConfig.logLevel === 'debug'
           ? ['query', 'info', 'warn', 'error']
@@ -61,5 +71,9 @@ export async function disconnectWorkerPrisma(): Promise<void> {
     logger.info('Disconnecting worker Prisma client');
     await workerPrisma.$disconnect();
     workerPrisma = null;
+  }
+  if (workerPool) {
+    await workerPool.end();
+    workerPool = null;
   }
 }

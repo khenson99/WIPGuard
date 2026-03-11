@@ -20,9 +20,16 @@ export function DemoSchedulingView({ data }: { data: AnalyticsDashboardData | nu
   const filtered = useMemo(() => {
     if (!demo) return [];
     return demo.demos.filter((d) => {
+      if (d.isUpcoming) return false;
       if (search) {
         const q = search.toLowerCase();
-        if (!d.dealName.toLowerCase().includes(q) && !d.contactEmail?.toLowerCase().includes(q)) return false;
+        if (
+          !d.dealName.toLowerCase().includes(q) &&
+          !d.contactEmail?.toLowerCase().includes(q) &&
+          !d.meetingTitle?.toLowerCase().includes(q)
+        ) {
+          return false;
+        }
       }
       if (outcomeFilter !== "all" && d.outcome !== outcomeFilter) return false;
       return true;
@@ -114,8 +121,11 @@ export function DemoSchedulingView({ data }: { data: AnalyticsDashboardData | nu
               <tr className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
                 <th className="pb-2 text-left font-medium">Deal</th>
                 <th className="pb-2 text-left font-medium">Source</th>
-                <th className="pb-2 text-left font-medium">Scheduled</th>
+                <th className="pb-2 text-left font-medium">Meeting</th>
                 <th className="pb-2 text-left font-medium">Outcome</th>
+                <th className="pb-2 text-left font-medium">Transcript</th>
+                <th className="pb-2 text-left font-medium">Analysis</th>
+                <th className="pb-2 text-right font-medium">Quality</th>
                 <th className="pb-2 text-right font-medium">Follow-Up</th>
                 <th className="pb-2 text-right font-medium">Days to Next</th>
                 <th className="pb-2 text-right font-medium">Resulting Stage</th>
@@ -133,8 +143,11 @@ export function DemoSchedulingView({ data }: { data: AnalyticsDashboardData | nu
                       )}
                     </td>
                     <td className="py-2.5 text-xs text-muted-foreground">{d.source}</td>
-                    <td className="py-2.5 text-xs tabular-nums text-muted-foreground">
-                      {new Date(d.scheduledAt).toLocaleDateString()}
+                    <td className="py-2.5">
+                      <p className="text-xs font-medium text-foreground">{d.meetingTitle ?? "Unscheduled"}</p>
+                      <p className="text-[10px] tabular-nums text-muted-foreground">
+                        {new Date(d.scheduledAt).toLocaleString()}
+                      </p>
                     </td>
                     <td className="py-2.5">
                       <span
@@ -143,6 +156,45 @@ export function DemoSchedulingView({ data }: { data: AnalyticsDashboardData | nu
                       >
                         {config.label}
                       </span>
+                    </td>
+                    <td className="py-2.5 text-xs text-muted-foreground">
+                      <StatusChip
+                        label={
+                          d.transcriptStatus === "matched"
+                            ? "Matched"
+                            : d.transcriptStatus === "unmatched"
+                              ? "Unmatched"
+                              : "Missing"
+                        }
+                        tone={
+                          d.transcriptStatus === "matched"
+                            ? "good"
+                            : d.transcriptStatus === "unmatched"
+                              ? "warn"
+                              : "muted"
+                        }
+                      />
+                    </td>
+                    <td className="py-2.5 text-xs text-muted-foreground">
+                      <StatusChip
+                        label={
+                          d.analysisStatus === "ready"
+                            ? "Ready"
+                            : d.analysisStatus === "pending"
+                              ? "Pending"
+                              : "Missing"
+                        }
+                        tone={
+                          d.analysisStatus === "ready"
+                            ? "good"
+                            : d.analysisStatus === "pending"
+                              ? "warn"
+                              : "muted"
+                        }
+                      />
+                    </td>
+                    <td className="py-2.5 text-right text-xs tabular-nums text-muted-foreground">
+                      {d.qualityScore ?? "—"}
                     </td>
                     <td className="py-2.5 text-right text-xs">
                       {d.followUpSent ? (
@@ -171,6 +223,23 @@ export function DemoSchedulingView({ data }: { data: AnalyticsDashboardData | nu
       </div>
     </div>
   );
+}
+
+function StatusChip({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "good" | "warn" | "muted";
+}) {
+  const className =
+    tone === "good"
+      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+      : tone === "warn"
+        ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+        : "border-border bg-muted/40 text-muted-foreground";
+
+  return <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${className}`}>{label}</span>;
 }
 
 function EmptyState() {

@@ -543,6 +543,18 @@ export interface DealMeetingListItem {
   startAt: string;
   endAt: string | null;
   location: string | null;
+  notes: string | null;
+  googleDriveFileId: string | null;
+  googleDriveFileName: string | null;
+  googleDriveFileUrl: string | null;
+  transcriptMatchedAt: string | null;
+  transcriptMatchConfidence: number | null;
+  analysisArtifactId: string | null;
+  demoQualityScore: number | null;
+  demoQualitySummary: string | null;
+  demoStrengthsJson: unknown;
+  demoGapsJson: unknown;
+  analyzedAt: string | null;
   expectedAttendees: number;
   actualAttendees: number;
   dealId: string | null;

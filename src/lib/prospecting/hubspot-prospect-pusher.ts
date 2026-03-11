@@ -5,13 +5,13 @@ import {
   type ManufacturerProspect,
 } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-
-type TransactionClient = Prisma.TransactionClient;
 import {
   protectIntegrationSecret,
   unprotectIntegrationSecret,
 } from "@/lib/integrations/token-crypto";
 import type { PushResult } from "./types";
+
+type TransactionClient = Pick<typeof prisma, "integrationRule" | "integrationReceipt">;
 
 const HUBSPOT_TOKEN_ENDPOINT = "https://api.hubapi.com/oauth/v1/token";
 

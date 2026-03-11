@@ -68,6 +68,8 @@ vi.mock("@/lib/prisma", () => ({
     budget: { findMany: vi.fn() },
     financialGoal: { findMany: vi.fn() },
     forecastScenario: { findMany: vi.fn() },
+    dealMeeting: { findMany: vi.fn() },
+    automationArtifact: { findMany: vi.fn() },
   },
 }));
 
@@ -408,6 +410,8 @@ describe("GET /api/analytics", () => {
     vi.mocked(prisma.budget.findMany).mockResolvedValue([] as never);
     vi.mocked(prisma.financialGoal.findMany).mockResolvedValue([] as never);
     vi.mocked(prisma.forecastScenario.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.dealMeeting.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.automationArtifact.findMany).mockResolvedValue([] as never);
   });
 
   it("returns 403 when analytics read permission is denied", async () => {
@@ -431,6 +435,23 @@ describe("GET /api/analytics", () => {
     expect(response.status).toBe(200);
     expect(body.customerJourney).toBeTruthy();
     expect(body.customerJourney.journeys.length).toBeGreaterThan(0);
+  });
+
+  it("treats ai-insights as a full-domain analytics request", async () => {
+    const { fetchGoogleAdsData, fetchMetaAdsData, fetchRedditAdsData } = await import("@/lib/analytics/fetchers-ads");
+    const { fetchWebflowData } = await import("@/lib/analytics/fetchers-ga-webflow");
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=ai-insights&refresh=true"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(fetchGoogleAdsData).toHaveBeenCalled();
+    expect(fetchMetaAdsData).toHaveBeenCalled();
+    expect(fetchRedditAdsData).toHaveBeenCalled();
+    expect(fetchWebflowData).toHaveBeenCalled();
+    expect(body.meta?.section).toBe("ai-insights");
+    expect(body.meta?.forceRefresh).toBe(true);
+    expect(body.aiInsights).toBeTruthy();
   });
 
   it("runs customer-success product analytics inside tenant context", async () => {
