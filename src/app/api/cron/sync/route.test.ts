@@ -1,6 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
 
+const afterCallbacks: Array<() => void | Promise<void>> = [];
+
+vi.mock("next/server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/server")>();
+  return {
+    ...actual,
+    after: vi.fn((callback: () => void | Promise<void>) => {
+      afterCallbacks.push(callback);
+    }),
+  };
+});
+
 vi.mock("@/lib/analytics/refresh-runner", () => ({
   runAnalyticsRefresh: vi.fn(),
 }));
@@ -55,6 +67,7 @@ describe("POST /api/cron/sync", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.resetModules();
+    afterCallbacks.length = 0;
     process.env.CRON_SYNC_SECRET = "cron-secret";
     process.env.INTEGRATION_OWNER_USER_ID = "owner_1";
   });
@@ -98,7 +111,7 @@ describe("POST /api/cron/sync", () => {
     vi.mocked(pruneAnalyticsSnapshots).mockResolvedValue({ deleted: 0 } as never);
 
     const { POST } = await import("@/app/api/cron/sync/route");
-    const request = new Request("http://localhost/api/cron/sync", {
+    const request = new Request("http://localhost/api/cron/sync?wait=1", {
       method: "POST",
       headers: { "x-cron-secret": "cron-secret" },
     }) as unknown as NextRequest;
@@ -125,6 +138,70 @@ describe("POST /api/cron/sync", () => {
     expect(runVisitorFunnelEnrichmentSyncs).not.toHaveBeenCalled();
     expect(buildVisitorFunnelEnrichmentStatus).not.toHaveBeenCalled();
     expect(enqueueVisitorFunnelEnrichmentAlertNotifications).not.toHaveBeenCalled();
+  });
+
+  it("queues heavy sync work in the background by default", async () => {
+    const { runAnalyticsRefresh } = await import("@/lib/analytics/refresh-runner");
+    const { pruneAnalyticsSnapshots } = await import("@/lib/analytics/snapshots");
+    const { hasVisitorFunnelPrismaModels } = await import(
+      "@/lib/analytics/visitor-funnel-availability"
+    );
+    const { runRules } = await import("@/lib/integrations/orchestrator");
+    const {
+      bestEffortMigrateConnectionsToOwner,
+      bestEffortMigrateRulesToOwner,
+    } = await import("@/lib/integrations/ownership");
+    const { runIntegrationHealthChecks } = await import(
+      "@/lib/integrations/health-checks"
+    );
+
+    vi.mocked(hasVisitorFunnelPrismaModels).mockReturnValue(false);
+    vi.mocked(bestEffortMigrateConnectionsToOwner).mockResolvedValue({
+      migrated: 0,
+      skipped: 0,
+    } as never);
+    vi.mocked(bestEffortMigrateRulesToOwner).mockResolvedValue({
+      migrated: 0,
+      skipped: 0,
+    } as never);
+    vi.mocked(runAnalyticsRefresh).mockResolvedValue({ ok: true } as never);
+    vi.mocked(runRules).mockResolvedValue({ ok: true } as never);
+    vi.mocked(runIntegrationHealthChecks).mockResolvedValue({ ok: true } as never);
+    vi.mocked(pruneAnalyticsSnapshots).mockResolvedValue({ deleted: 0 } as never);
+
+    const { POST } = await import("@/app/api/cron/sync/route");
+    const request = new Request("http://localhost/api/cron/sync", {
+      method: "POST",
+      headers: { "x-cron-secret": "cron-secret" },
+    }) as unknown as NextRequest;
+
+    const response = await POST(request);
+    const body = (await response.json()) as {
+      ok: boolean;
+      queued: boolean;
+      mode: string;
+      userIds: string[];
+    };
+
+    expect(response.status).toBe(202);
+    expect(body).toMatchObject({
+      ok: true,
+      queued: true,
+      mode: "background",
+      userIds: ["owner_1"],
+    });
+    expect(afterCallbacks).toHaveLength(1);
+    expect(runAnalyticsRefresh).not.toHaveBeenCalled();
+    expect(runRules).not.toHaveBeenCalled();
+    expect(runIntegrationHealthChecks).not.toHaveBeenCalled();
+    expect(pruneAnalyticsSnapshots).not.toHaveBeenCalled();
+
+    await afterCallbacks[0]();
+
+    expect(runAnalyticsRefresh).toHaveBeenCalledOnce();
+    expect(runRules).toHaveBeenCalledOnce();
+    expect(runIntegrationHealthChecks).toHaveBeenCalledOnce();
+    expect(pruneAnalyticsSnapshots).toHaveBeenCalledOnce();
   });
 
   afterEach(() => {
