@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getIntegrationBySlug, isOAuthIntegration } from "@/lib/integrations/catalog";
-import { fetchOAuthAccountProfile } from "@/lib/integrations/oauth";
+import { fetchOAuthAccountProfile, verifyPylonApiToken } from "@/lib/integrations/oauth";
 
 describe("fetchOAuthAccountProfile webflow", () => {
   const webflow = getIntegrationBySlug("webflow");
@@ -99,5 +99,56 @@ describe("fetchOAuthAccountProfile google ads", () => {
       email: "ads@example.com",
       name: "Ads User",
     });
+  });
+});
+
+describe("verifyPylonApiToken", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("falls back to issues probe when identity endpoints return 404", async () => {
+    vi.spyOn(global, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "Not Found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "Not Found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      );
+
+    const profile = await verifyPylonApiToken("token");
+
+    expect(profile).toEqual({
+      providerAccountId: "pylon-token",
+      accountLabel: "Pylon API token",
+      metadata: {
+        fallback: "issues_probe",
+      },
+    });
+  });
+
+  it("surfaces the last failing status when all probes fail", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ message: "Not Found" }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      })
+    );
+
+    await expect(verifyPylonApiToken("token")).rejects.toThrow(
+      "Pylon token verification failed (404)"
+    );
   });
 });

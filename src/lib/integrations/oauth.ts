@@ -837,6 +837,7 @@ export async function verifyPylonApiToken(
 
   const baseUrl = options?.baseUrl?.trim() || process.env.PYLON_API_BASE_URL?.trim() || "https://api.usepylon.com";
   const endpoints = ["/v1/me", "/v1/users/me"];
+  const fallbackEndpoints = ["/issues?limit=1", "/v1/issues?limit=1", "/conversations?limit=1", "/v1/conversations?limit=1"];
 
   let lastStatus = 0;
   let lastMessage: string | null = null;
@@ -883,6 +884,38 @@ export async function verifyPylonApiToken(
         name: getString(profile, "name"),
         email: getString(profile, "email"),
         username: getString(profile, "username"),
+      },
+    };
+  }
+
+  // Some Pylon tenants do not expose a "me" identity endpoint but do allow
+  // token-authenticated access to the issues/conversations collections.
+  // Treat a successful lightweight collection probe as a valid token.
+  for (const endpoint of fallbackEndpoints) {
+    const response = await fetch(`${baseUrl}${endpoint}`, {
+      headers: {
+        Authorization: `Bearer ${normalizedToken}`,
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    });
+
+    const raw = (await response.json().catch(() => null)) as unknown;
+    if (!response.ok) {
+      lastStatus = response.status;
+      const details = asRecord(raw);
+      lastMessage =
+        getString(details ?? {}, "message") ||
+        getString(details ?? {}, "error") ||
+        getString(details ?? {}, "detail");
+      continue;
+    }
+
+    return {
+      providerAccountId: "pylon-token",
+      accountLabel: "Pylon API token",
+      metadata: {
+        fallback: "issues_probe",
       },
     };
   }
