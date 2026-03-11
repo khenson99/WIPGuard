@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { InsightCardFull } from "./insight-card-full";
 import { StatCard } from "./stat-card";
 import { DismissUndoToast } from "./dismiss-undo-toast";
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { DashboardErrorBanner } from "@/components/dashboard/dashboard-error-banner";
+import { DashboardStaleBanner } from "@/components/dashboard/dashboard-stale-banner";
 import type { AnalyticsDashboardData, AnalyticsSectionId, AiInsight } from "@/lib/analytics/types";
 import { AlertTriangle, AlertCircle, Info, BarChart3 } from "lucide-react";
 import { populateConnectionStatus } from "@/hooks/use-connection-status";
@@ -27,8 +30,16 @@ export function AiInsightsPage() {
   const resource = useDashboardResource<AnalyticsDashboardData>({
     cacheKey: "analytics:overview:v1",
     deps: [],
-    load: async ({ signal }) => {
-      const response = await fetch("/api/analytics?section=overview", { signal });
+    load: async ({ signal, refresh }) => {
+      const params = new URLSearchParams({ section: "overview" });
+      if (refresh) {
+        params.set("refresh", "true");
+      }
+
+      const response = await fetch(`/api/analytics?${params.toString()}`, {
+        signal,
+        cache: refresh ? "no-store" : "default",
+      });
       if (!response.ok) {
         throw new Error(`Analytics overview request failed (${response.status})`);
       }
@@ -157,26 +168,58 @@ export function AiInsightsPage() {
 
   if (!data) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <p className="text-sm text-muted-foreground">{error ?? "Could not load insights."}</p>
+      <div className="p-4">
+        <DashboardEmptyState
+          title="AI insights unavailable"
+          message={error ?? "Could not load insights."}
+          actionLabel="Rerun insights"
+          onAction={resource.refresh}
+        />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-bold text-foreground">AI Insights</h2>
-        <p className="text-sm text-muted-foreground">
-          Cross-functional recommendations based on all connected data sources
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-foreground">AI Insights</h2>
+          <p className="text-sm text-muted-foreground">
+            Cross-functional recommendations based on all connected data sources
+          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Last updated: {resource.lastUpdatedAt ? new Date(resource.lastUpdatedAt).toLocaleString() : "Unknown"}
+            {resource.fromCache ? " (cache warm start)" : ""}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={resource.refresh}
+          disabled={resource.refreshing}
+          aria-label="Rerun AI insights"
+          className="rounded-md border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-70"
+        >
+          {resource.refreshing ? "Rerunning..." : "Rerun insights"}
+        </button>
       </div>
 
-      {error && (
-        <div className="rounded-xl border border-border bg-card p-4">
-          <p className="text-sm text-muted-foreground">{error}</p>
-        </div>
-      )}
+      {!error && resource.stale ? (
+        <DashboardStaleBanner
+          lastUpdatedAt={resource.lastUpdatedAt}
+          onRefresh={resource.refresh}
+          refreshing={resource.refreshing}
+          label="Showing cached AI insights while the latest rerun completes or retries."
+        />
+      ) : null}
+
+      {error ? (
+        <DashboardErrorBanner
+          message={error}
+          onRetry={resource.refresh}
+          retryLabel="Rerun insights"
+        />
+      ) : null}
 
       {taskError && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-900/10">
