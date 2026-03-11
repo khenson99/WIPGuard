@@ -86,13 +86,12 @@ function getBaseUrl(request: NextRequest): string {
   return process.env.NEXTAUTH_URL || request.nextUrl.origin;
 }
 
-function buildSettingsUrl(
+function buildIntegrationsUrl(
   request: NextRequest,
   status: string,
   provider?: string
 ): URL {
-  const url = new URL("/settings", getBaseUrl(request));
-  url.searchParams.set("tab", "integrations");
+  const url = new URL("/integrations", getBaseUrl(request));
   url.searchParams.set("status", status);
   if (provider) {
     url.searchParams.set("integration", provider);
@@ -106,7 +105,7 @@ function redirectWithStateCookieCleared(
   cookieName: string,
   provider?: string
 ): NextResponse {
-  const response = NextResponse.redirect(buildSettingsUrl(request, status, provider));
+  const response = NextResponse.redirect(buildIntegrationsUrl(request, status, provider));
   response.cookies.set({
     name: cookieName,
     value: "",

@@ -1,43 +1,42 @@
 import { describe, expect, it } from "vitest";
 import { buildNavItems } from "@/components/layout/sidebar-nav-config";
 
-describe("sidebar analytics navigation", () => {
+describe("sidebar workspace navigation", () => {
   const navItems = buildNavItems();
 
-  it("builds analytics as grouped entries with nested children", () => {
-    const ads = navItems.find((item) => item.id === "ads-traffic");
-    const finance = navItems.find((item) => item.id === "finance");
-    const sales = navItems.find((item) => item.id === "sales-pipeline");
-    const cs = navItems.find((item) => item.id === "customer-success");
-
-    expect(ads?.children?.length).toBeGreaterThan(0);
-    expect(finance?.children?.length).toBeGreaterThan(0);
-    expect(sales?.children?.length).toBeGreaterThan(0);
-    expect(cs?.children?.length).toBeGreaterThan(0);
+  it("builds the six top-level product pillars", () => {
+    expect(navItems.map((item) => item.id)).toEqual([
+      "dashboard",
+      "work",
+      "deals",
+      "analytics",
+      "integrations",
+      "automations",
+    ]);
   });
 
-  it("includes nested links for each tier-1 analytics dashboard", () => {
-    const analyticsGroups = navItems.filter((item) => item.children && item.children.length > 0);
-    const hrefs = new Set(analyticsGroups.map((item) => item.href));
+  it("groups work, analytics, and automations as nested workspace entries", () => {
+    const work = navItems.find((item) => item.id === "work");
+    const analytics = navItems.find((item) => item.id === "analytics");
+    const automations = navItems.find((item) => item.id === "automations");
 
-    expect(hrefs.size).toBeGreaterThan(0);
+    expect(work?.children?.map((child) => child.href)).toEqual(["/tasks", "/logbook"]);
+    expect(analytics?.children?.some((child) => child.href === "/analytics/ai-insights")).toBe(true);
+    expect(
+      automations?.children?.map((child) => child.href)
+    ).toEqual([
+      "/automations",
+      "/automations/recommendations",
+      "/automations/approvals",
+      "/automations/artifacts",
+    ]);
   });
 
-  it("includes customer journey and AI insights pages", () => {
-    const customerJourney = navItems.find((item) => item.id === "customer-journey");
-    const aiInsights = navItems.find((item) => item.id === "ai-insights");
+  it("promotes integrations to a first-class workspace", () => {
+    const integrations = navItems.find((item) => item.id === "integrations");
 
-    expect(customerJourney).toBeTruthy();
-    expect(customerJourney?.href).toBe("/analytics/customer-journey");
-    expect(aiInsights).toBeTruthy();
-    expect(aiInsights?.href).toBe("/analytics/ai-insights");
-  });
-
-  it("omits removed task-management navigation entries", () => {
-    expect(navItems.find((item) => item.id === "projects")).toBeFalsy();
-    expect(navItems.find((item) => item.id === "conferences")).toBeFalsy();
-    expect(navItems.find((item) => item.id === "tasks")).toBeFalsy();
-    expect(navItems.find((item) => item.id === "whip")).toBeFalsy();
-    expect(navItems.find((item) => item.id === "standup")).toBeFalsy();
+    expect(integrations).toBeTruthy();
+    expect(integrations?.href).toBe("/integrations");
+    expect(integrations?.children).toBeUndefined();
   });
 });

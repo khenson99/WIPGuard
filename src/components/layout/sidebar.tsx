@@ -3,12 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { clsx } from "clsx";
-import { LayoutDashboard, BookOpen, Settings } from "lucide-react";
+import { LayoutDashboard, Settings } from "lucide-react";
 import { buildNavItems } from "./sidebar-nav-config";
 import { SidebarNavGroup } from "./sidebar-nav-group";
 
 export const SECONDARY_NAV_ITEMS = [
-  { href: "/logbook", label: "Logbook", icon: BookOpen },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -36,6 +35,7 @@ export function Sidebar() {
             <Link
               key={item.id}
               href={item.href}
+              data-workspace-id={item.workspaceId}
               aria-current={isActive(item.href) ? "page" : undefined}
               className={clsx(
                 "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2",
