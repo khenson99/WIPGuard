@@ -1,77 +1,53 @@
 import {
-  LayoutDashboard,
-  Handshake,
-  Megaphone,
-  Landmark,
-  Target,
-  HeartHandshake,
-  Route,
-  Presentation,
   Activity,
+  Cable,
+  LayoutDashboard,
   Bot,
-  Sparkles,
+  Handshake,
+  Workflow,
   type LucideIcon,
 } from "lucide-react";
-import {
-  ANALYTICS_PRIMARY_SECTIONS,
-  getAnalyticsSecondaryForPrimary,
-  type AnalyticsPrimarySectionId,
-} from "@/lib/analytics/section-registry";
+import { WORKSPACE_NAV_ITEMS, type WorkspaceId } from "@/lib/platform/workspaces";
 
 export interface NavChildItem {
   id: string;
   href: string;
   label: string;
-  dataDomain: string;
+  workspaceId: WorkspaceId;
+  dataDomain?: string;
 }
 
 export interface NavItem {
-  id: string;
+  id: WorkspaceId;
   href: string;
   label: string;
+  workspaceId: WorkspaceId;
   icon: LucideIcon;
   children?: NavChildItem[];
 }
 
-const ANALYTICS_ICONS: Record<AnalyticsPrimarySectionId, LucideIcon> = {
-  "ads-traffic": Megaphone,
-  finance: Landmark,
-  "sales-pipeline": Target,
-  "customer-success": HeartHandshake,
-  "customer-journey": Route,
-  "demo-analytics": Presentation,
-  "process-analytics": Activity,
+const WORKSPACE_ICONS: Record<WorkspaceId, LucideIcon> = {
+  dashboard: LayoutDashboard,
+  work: Workflow,
+  deals: Handshake,
+  analytics: Activity,
+  integrations: Cable,
+  automations: Bot,
 };
 
 export function buildNavItems(): NavItem[] {
-  const topStatic: NavItem[] = [
-    { id: "dashboard", href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "deals", href: "/deals", label: "Deals", icon: Handshake },
-  ];
-
-  const analyticsGroups: NavItem[] = ANALYTICS_PRIMARY_SECTIONS.map((section) => {
-    const subs = getAnalyticsSecondaryForPrimary(section.id);
-    return {
-      id: section.id,
-      href: section.path,
-      label: section.label,
-      icon: ANALYTICS_ICONS[section.id],
-      children: subs.map((sub) => ({
-        id: sub.id,
-        href: sub.path,
-        label: sub.label,
-        dataDomain: sub.dataDomain,
-      })),
-    };
-  });
-
-  const newPages: NavItem[] = [
-    { id: "ai-insights", href: "/analytics/ai-insights", label: "AI Insights", icon: Sparkles },
-  ];
-
-  const bottomStatic: NavItem[] = [
-    { id: "automations", href: "/automations", label: "Automations", icon: Bot },
-  ];
-
-  return [...topStatic, ...analyticsGroups, ...newPages, ...bottomStatic];
+  return WORKSPACE_NAV_ITEMS.map((item) => ({
+    id: item.id,
+    href: item.href,
+    label: item.label,
+    workspaceId: item.id,
+    icon: WORKSPACE_ICONS[item.id],
+    children: item.children?.map((child) => ({
+      id: child.id,
+      href: child.href,
+      label: child.label,
+      workspaceId: child.workspaceId,
+      dataDomain: child.dataDomain,
+    })),
+  }));
 }

@@ -6,9 +6,9 @@ import {
   resolveDashboardOrganizationId,
   tenantBypassEnabled,
 } from "@/lib/platform/dashboard/context";
+import { loadDashboardOverview } from "@/lib/platform/dashboard/overview";
 import { runWithContextAsync } from "@/lib/request-context";
 import { getAuthenticatedUser } from "@/lib/session-user";
-import { loadPersonalizedDashboard } from "@/lib/work/dashboard/personalized";
 
 export async function GET(): Promise<NextResponse> {
   try {
@@ -21,15 +21,20 @@ export async function GET(): Promise<NextResponse> {
     const organizationId = await resolveDashboardOrganizationId(session, sessionUser.id);
     if (!organizationId && !tenantBypassEnabled) {
       return NextResponse.json(
-        { error: "Organization context required for personalized dashboard" },
-        { status: 403 }
+        { error: "Organization context required for dashboard overview" },
+        { status: 403 },
       );
     }
 
-    const loadDashboard = async () => loadPersonalizedDashboard(sessionUser.id);
+    const loadOverview = () =>
+      loadDashboardOverview({
+        userId: sessionUser.id,
+        organizationId,
+      });
+
     const payload = organizationId
-      ? await runWithContextAsync({ organizationId, userId: sessionUser.id }, loadDashboard)
-      : await loadDashboard();
+      ? await runWithContextAsync({ organizationId, userId: sessionUser.id }, loadOverview)
+      : await loadOverview();
 
     return NextResponse.json(payload, {
       headers: {
@@ -37,10 +42,10 @@ export async function GET(): Promise<NextResponse> {
       },
     });
   } catch (error) {
-    console.error("GET /api/dashboard/personalized error:", error);
+    console.error("GET /api/dashboard/overview error:", error);
     return NextResponse.json(
-      { error: "Failed to load personalized dashboard" },
-      { status: 500 }
+      { error: "Failed to load dashboard overview" },
+      { status: 500 },
     );
   }
 }

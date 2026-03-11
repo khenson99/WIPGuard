@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import type { WorkspaceId } from "@/lib/platform/workspaces";
 import { prisma } from "@/lib/prisma";
 import { recordSecurityAuditEvent } from "@/lib/security-audit";
 
@@ -100,6 +101,44 @@ export function can(role: AppRole, action: PermissionAction): boolean {
   return PERMISSION_MATRIX[role].includes(action);
 }
 
+export function workspaceIdForPermissionAction(
+  action: PermissionAction
+): WorkspaceId | null {
+  switch (action) {
+    case "board.write":
+    case "task.read":
+    case "task.write":
+    case "task.transition":
+    case "project.read":
+    case "project.write":
+    case "hierarchy.read":
+    case "sprint.write":
+    case "priority.write":
+    case "policy.write":
+    case "policy.override":
+      return "work";
+    case "conference.write":
+    case "deals.read":
+    case "deals.write":
+      return "deals";
+    case "analytics.read":
+    case "analytics.write":
+      return "analytics";
+    case "integration.read":
+    case "integration.manage":
+      return "integrations";
+    case "automation.write":
+    case "automation.approve":
+      return "automations";
+    case "team.invite":
+    case "team.role.write":
+    case "profile.write":
+      return "dashboard";
+    default:
+      return null;
+  }
+}
+
 interface EnforcePermissionInput {
   userId: string;
   action: PermissionAction;
@@ -134,6 +173,7 @@ export async function enforcePermission(
       reason: "ROLE_FORBIDDEN",
       requiredAction: input.action,
       role,
+      workspaceId: workspaceIdForPermissionAction(input.action),
     },
   });
 

@@ -1,5 +1,5 @@
-import { PersonalizedDashboard } from "@/components/dashboard/personalized-dashboard";
+import { OperatorDashboard } from "@/components/dashboard/operator-dashboard";
 
 export default function DashboardPage() {
-  return <PersonalizedDashboard />;
+  return <OperatorDashboard />;
 }

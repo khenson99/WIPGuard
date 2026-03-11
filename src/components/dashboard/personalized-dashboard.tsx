@@ -11,48 +11,7 @@ import { DonutChart } from "@/components/charts/donut-chart";
 import { StackedBarChart } from "@/components/charts/stacked-bar-chart";
 import { SparkLine } from "@/components/charts/spark-line";
 import { getChartColor } from "@/components/charts/chart-theme";
-
-interface DashboardTask {
-  id: string;
-  title: string;
-  status: string;
-  priority: string;
-  dueDate: string | null;
-  project: { id: string; name: string } | null;
-  recommendationScore?: number;
-}
-
-interface PersonalizedDashboardPayload {
-  generatedAt: string;
-  meta?: {
-    servedAt: string;
-    isPartial: boolean;
-  };
-  personal: {
-    myActive: DashboardTask[];
-    myBlocked: DashboardTask[];
-    myOverdue: DashboardTask[];
-    myDueSoon: DashboardTask[];
-    myCompletedWeek: number;
-    completedByDay?: Array<{ date: string; count: number }>;
-    recommendations: DashboardTask[];
-  };
-  team: {
-    staleTasks: number;
-    blockedTasks: number;
-    overdueTasks: number;
-    taskStatusOverview: Record<string, number>;
-  };
-  projects: {
-    active: Array<{
-      id: string;
-      name: string;
-      progress: number;
-      doneTasks: number;
-      totalTasks: number;
-    }>;
-  };
-}
+import type { PersonalizedDashboardPayload } from "@/lib/work/dashboard/personalized";
 
 const PERSONALIZED_DASHBOARD_CACHE_KEY = "dashboard:personalized:v2";
 
@@ -95,7 +54,7 @@ function isPersonalizedDashboardPayload(value: unknown): value is PersonalizedDa
   );
 }
 
-function relativeDate(date: string | null): string {
+function relativeDate(date: string | Date | null): string {
   if (!date) return "No due date";
   const target = new Date(date).getTime();
   const diffDays = Math.ceil((target - Date.now()) / (1000 * 60 * 60 * 24));
@@ -112,7 +71,7 @@ function TaskList({
   maxItems = 8,
 }: {
   title: string;
-  items: DashboardTask[];
+  items: PersonalizedDashboardPayload["personal"]["myActive"];
   empty: string;
   maxItems?: number;
 }) {
@@ -149,7 +108,15 @@ function TaskList({
   );
 }
 
-export function PersonalizedDashboard() {
+interface PersonalizedDashboardProps {
+  title?: string;
+  description?: string;
+}
+
+export function PersonalizedDashboard({
+  title = "Dashboard",
+  description = "Your workload, trends, and team signals.",
+}: PersonalizedDashboardProps) {
   const focusRef = useRef<HTMLDivElement | null>(null);
   const [focusKey, setFocusKey] = useState<"blocked" | "overdue" | "dueSoon" | "active">("blocked");
 
@@ -254,7 +221,7 @@ export function PersonalizedDashboard() {
     return (
       <div className="p-4">
         <DashboardEmptyState
-          title="Dashboard unavailable"
+          title={`${title} unavailable`}
           message={resource.error ?? "No personalized dashboard data was returned."}
           actionLabel="Refresh now"
           onAction={resource.refresh}
@@ -267,8 +234,8 @@ export function PersonalizedDashboard() {
     <div className="space-y-4 px-4 py-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">Dashboard</h1>
-          <p className="text-xs text-muted-foreground">Your workload, trends, and team signals.</p>
+          <h1 className="text-xl font-semibold text-foreground">{title}</h1>
+          <p className="text-xs text-muted-foreground">{description}</p>
           <p className="mt-1 text-[11px] text-muted-foreground">
             Last updated: {resource.lastUpdatedAt ? new Date(resource.lastUpdatedAt).toLocaleString() : "Unknown"}
             {resource.fromCache ? " (cache warm start)" : ""}

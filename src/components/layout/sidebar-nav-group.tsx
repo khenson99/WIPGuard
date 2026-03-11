@@ -119,6 +119,7 @@ export function SidebarNavGroup({ item }: { item: NavItem }) {
       <div className="flex items-center">
         <Link
           href={item.href}
+          data-workspace-id={item.workspaceId}
           aria-current={isParentActive || isChildActive ? "page" : undefined}
           className={clsx(
             "flex flex-1 items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2",
@@ -146,14 +147,18 @@ export function SidebarNavGroup({ item }: { item: NavItem }) {
               <Link
                 key={child.id}
                 href={child.href}
+                data-workspace-id={child.workspaceId}
                 aria-current={childActive ? "page" : undefined}
                 className={clsx(
-                  "flex items-center justify-between rounded-md py-1.5 pl-10 pr-3 text-[13px]",
+                  "flex items-center rounded-md py-1.5 pl-10 pr-3 text-[13px]",
+                  child.dataDomain ? "justify-between" : "justify-start",
                   childActive ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <span>{child.label}</span>
-                <ConnectionDot status={getStatus(child.dataDomain)} size="sm" />
+                {child.dataDomain ? (
+                  <ConnectionDot status={getStatus(child.dataDomain)} size="sm" />
+                ) : null}
               </Link>
             );
           })}
