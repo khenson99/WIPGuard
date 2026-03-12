@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { validateWorkflowGraph } from "@/lib/automations/graph";
+import { AUTOMATION_OPERATORS } from "@/lib/automations/operators";
 import { AUTOMATION_TEMPLATES } from "@/lib/automations/templates";
 
 describe("automations graph", () => {
@@ -69,5 +70,22 @@ describe("automations graph", () => {
         );
       })
     ).toBe(true);
+  });
+
+  it("ships only valid template graphs", () => {
+    for (const template of AUTOMATION_TEMPLATES) {
+      const result = validateWorkflowGraph(template.graph);
+      expect(result.valid, `${template.key}: ${result.errors.join(", ")}`).toBe(true);
+    }
+  });
+
+  it("covers every Arda automation operator with a seeded template", () => {
+    const operatorTemplates = new Set(
+      AUTOMATION_TEMPLATES.map((template) => template.operatorKey).filter(Boolean)
+    );
+
+    for (const operator of AUTOMATION_OPERATORS) {
+      expect(operatorTemplates.has(operator.key)).toBe(true);
+    }
   });
 });

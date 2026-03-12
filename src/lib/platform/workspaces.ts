@@ -113,6 +113,12 @@ export const WORKSPACE_NAV_ITEMS: WorkspaceNavItem[] = [
         workspaceId: "automations",
       },
       {
+        id: "automations-ralph-board",
+        label: "Ralph Board",
+        href: "/automations/ralph-board",
+        workspaceId: "automations",
+      },
+      {
         id: "automations-recommendations",
         label: "Recommendations",
         href: "/automations/recommendations",

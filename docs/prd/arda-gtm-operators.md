@@ -14,6 +14,8 @@ Extend WIPGuard into Arda's internal GTM operator platform. The system should in
 - Add API surfaces for recommendation and artifact access plus recommendation approval and execution.
 - Add a recommendation inbox next to the existing workflow approval inbox.
 - Seed a dedicated Ralph execution surface separate from the existing WIPGuard board.
+  Dedicated Ralph board definition:
+  project-backed rollout board seeded as `Arda GTM Operators` with Wave 0-3 tasks, exposed in the app at `/automations/ralph-board`.
 
 ## Execution Model
 

@@ -1,10 +1,15 @@
 "use client";
 
+import { useMemo } from "react";
 import { useBoardStore } from "@/store/board-store";
 import { Filter, X } from "lucide-react";
 import { getSprintLabel } from "@/lib/sprints";
 
-export function BoardFilters() {
+export function BoardFilters({
+  lockedProjectId = null,
+}: {
+  lockedProjectId?: string | null;
+}) {
   const {
     teamMembers,
     projects,
@@ -16,8 +21,14 @@ export function BoardFilters() {
     setFilter,
   } = useBoardStore();
 
+  const resolvedProjectFilter = lockedProjectId ?? filterProject;
+  const lockedProjectLabel = useMemo(
+    () => projects.find((project) => project.id === lockedProjectId)?.name ?? "Locked project",
+    [lockedProjectId, projects]
+  );
+
   const hasActiveFilters =
-    filterAssignee || filterProject || filterPriority || filterSprint;
+    filterAssignee || resolvedProjectFilter || filterPriority || filterSprint;
 
   return (
     <div className="flex items-center gap-2" role="group" aria-label="Board filters">
@@ -40,19 +51,26 @@ export function BoardFilters() {
       </select>
 
       <select
-        value={filterProject || ""}
+        value={resolvedProjectFilter || ""}
         onChange={(e) =>
           setFilter("filterProject", e.target.value || null)
         }
         aria-label="Filter by project"
+        disabled={Boolean(lockedProjectId)}
         className="rounded-md border border-border bg-secondary text-foreground px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2"
       >
-        <option value="">All Projects</option>
-        {projects.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}
-          </option>
-        ))}
+        {lockedProjectId ? (
+          <option value={lockedProjectId}>{lockedProjectLabel}</option>
+        ) : (
+          <>
+            <option value="">All Projects</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </>
+        )}
       </select>
 
       <select
@@ -91,7 +109,9 @@ export function BoardFilters() {
         <button
           onClick={() => {
             setFilter("filterAssignee", null);
-            setFilter("filterProject", null);
+            if (!lockedProjectId) {
+              setFilter("filterProject", null);
+            }
             setFilter("filterPriority", null);
             setFilter("filterSprint", null);
           }}

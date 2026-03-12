@@ -4,12 +4,20 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { AlertTriangle, Bot, Filter, PlusCircle, ShieldCheck } from "lucide-react";
+import {
+  AlertTriangle,
+  Bot,
+  Filter,
+  FolderKanban,
+  PlusCircle,
+  ShieldCheck,
+} from "lucide-react";
 import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 
 type WorkflowListItem = {
   id: string;
   name: string;
+  operatorKey?: string | null;
   scope: "PRIVATE" | "SHARED";
   status: "DRAFT" | "ACTIVE" | "PAUSED" | "ERROR" | "ARCHIVED";
   providers: string[];
@@ -23,6 +31,7 @@ type TemplateItem = {
   name: string;
   description: string;
   providers: string[];
+  operatorKey?: string | null;
   graph: Record<string, unknown>;
 };
 
@@ -42,6 +51,20 @@ interface AutomationsResponse {
 }
 
 const AUTOMATIONS_CACHE_KEY = "dashboard:automations:v1";
+
+const OPERATOR_LABELS: Record<string, string> = {
+  SALES_FOLLOWUP: "Sales Follow-up",
+  CUSTOMER_HEALTH: "Customer Health",
+  GTM_SCRUM: "GTM Scrum",
+  SEO_GROWTH: "SEO & Growth",
+  ADS_OPTIMIZER: "Ads Optimizer",
+  ROADMAP_INTELLIGENCE: "Roadmap Intelligence",
+};
+
+function getOperatorLabel(operatorKey: string | null | undefined): string | null {
+  if (!operatorKey) return null;
+  return OPERATOR_LABELS[operatorKey] ?? operatorKey;
+}
 
 export default function AutomationsPage() {
   const router = useRouter();
@@ -176,6 +199,7 @@ export default function AutomationsPage() {
         body: JSON.stringify({
           name: template.name,
           description: template.description,
+          operatorKey: template.operatorKey,
           providers: template.providers,
           graph: template.graph,
         }),
@@ -188,6 +212,16 @@ export default function AutomationsPage() {
       setIsCreating(false);
     }
   };
+
+  const operatorTemplates = useMemo(
+    () => (data?.templates ?? []).filter((template) => Boolean(template.operatorKey)),
+    [data]
+  );
+
+  const starterTemplates = useMemo(
+    () => (data?.templates ?? []).filter((template) => !template.operatorKey),
+    [data]
+  );
 
   return (
     <div className="space-y-6 p-4">
@@ -213,6 +247,12 @@ export default function AutomationsPage() {
             Recommendation Inbox
           </Link>
           <Link
+            href="/automations/ralph-board"
+            className="rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+          >
+            Ralph Board
+          </Link>
+          <Link
             href="/automations/approvals"
             className="rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
           >
@@ -234,6 +274,27 @@ export default function AutomationsPage() {
           </div>
         )}
       </div>
+
+      <section className="rounded-xl border border-border bg-card p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <FolderKanban className="h-4 w-4 text-primary" />
+              Arda GTM Operator Rollout
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              The dedicated Ralph board is a project-backed rollout board for Wave 0-3 operator work.
+              Use it to track launch tasks across the seeded GTM operator program.
+            </p>
+          </div>
+          <Link
+            href="/automations/ralph-board"
+            className="rounded-md border border-border bg-background px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
+          >
+            Open Ralph Board
+          </Link>
+        </div>
+      </section>
 
       <div role="group" aria-label="Workflow filters" className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-3 py-3">
         <Filter className="h-4 w-4 text-muted-foreground" />
@@ -330,6 +391,11 @@ export default function AutomationsPage() {
                 <p className="text-xs text-muted-foreground">
                   {workflow.scope} · {workflow.status} · {workflow.providers.join(", ") || "No providers"}
                 </p>
+                {workflow.operatorKey && (
+                  <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.18em] text-primary">
+                    {getOperatorLabel(workflow.operatorKey)}
+                  </p>
+                )}
                 <p className="mt-2 text-[11px] text-muted-foreground">
                   Owner: {workflow.owner.name || workflow.owner.email}
                 </p>
@@ -345,9 +411,37 @@ export default function AutomationsPage() {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-sm font-semibold text-foreground">Template Gallery</h2>
+        <h2 className="text-sm font-semibold text-foreground">Arda GTM Operators</h2>
+        <p className="text-xs text-muted-foreground">
+          Shared starting points for mixed-autonomy operator workflows. Safe internal actions auto-execute, while outbound drafts stay in the approval queue.
+        </p>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {operatorTemplates.map((template) => (
+            <div key={template.key} className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-foreground">{template.name}</h3>
+                <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-primary">
+                  {getOperatorLabel(template.operatorKey)}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{template.description}</p>
+              <p className="mt-2 text-[11px] text-muted-foreground">{template.providers.join(", ")}</p>
+              <button
+                onClick={() => createFromTemplate(template)}
+                disabled={isCreating}
+                className="mt-3 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                Use Operator Template
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-foreground">Starter Templates</h2>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-          {(data?.templates ?? []).map((template) => (
+          {starterTemplates.map((template) => (
             <div key={template.key} className="rounded-xl border border-border bg-card p-4">
               <h3 className="text-sm font-semibold text-foreground">{template.name}</h3>
               <p className="mt-1 text-xs text-muted-foreground">{template.description}</p>
