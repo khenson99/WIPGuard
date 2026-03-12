@@ -699,14 +699,15 @@ export async function runGoogleDriveTranscriptCapture(input: {
             sourceDocumentId: archivedDocument.sourceDocumentId,
             sourceDocument: {
               id: archivedDocument.sourceDocumentId,
-              workflowId: archivedDocument.workflowId,
-              runId: archivedDocument.runId,
               documentType: "transcript",
               title: file.name ?? `Transcript ${file.id}`,
               mimeType: file.mimeType ?? "text/plain",
               sourceUrl,
               textContent,
-              metadata,
+              metadata: {
+                ...metadata,
+                archivedSourceDocumentId: archivedDocument.sourceDocumentId,
+              },
             },
             transcript: textContent,
             documents: [

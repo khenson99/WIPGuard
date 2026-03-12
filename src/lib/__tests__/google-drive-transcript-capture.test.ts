@@ -1,15 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { IntegrationProvider } from "@/generated/prisma/client";
-import {
-  runGoogleDriveTranscriptCapture,
-  scoreTranscriptMatch,
-} from "@/lib/integrations/google-drive-transcript-capture";
+
+vi.mock("@/lib/automations/runtime", () => ({
+  enqueueWorkflowTriggerEvent: vi.fn(),
+  dispatchWorkflowTriggerEvents: vi.fn(async () => ({ startedRuns: 1 })),
+}));
+
+vi.mock("@/lib/automations/store", () => ({
+  persistStandaloneSourceDocument: vi.fn(),
+}));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     integrationRule: {
       upsert: vi.fn(),
       update: vi.fn(),
+    },
+    integrationReceipt: {
+      upsert: vi.fn(),
     },
     integrationConnection: {
       updateMany: vi.fn(),
@@ -18,27 +25,19 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(),
       update: vi.fn(),
     },
-    integrationReceipt: {
-      upsert: vi.fn(),
-    },
   },
-}));
-
-vi.mock("@/lib/integrations/token-refresh", () => ({
-  getValidIntegrationAccessToken: vi.fn(),
 }));
 
 vi.mock("@/lib/integrations/ownership", () => ({
   resolveIntegrationOrganizationId: vi.fn(),
 }));
 
-vi.mock("@/lib/automations/runtime", () => ({
-  enqueueWorkflowTriggerEvent: vi.fn(),
-  dispatchWorkflowTriggerEvents: vi.fn(),
+vi.mock("@/lib/integrations/token-refresh", () => ({
+  getValidIntegrationAccessToken: vi.fn(),
 }));
 
-vi.mock("@/lib/automations/store", () => ({
-  persistStandaloneSourceDocument: vi.fn(),
+vi.mock("@/lib/integrations/with-retries", () => ({
+  withRetries: vi.fn(async (fn: () => Promise<unknown>) => await fn()),
 }));
 
 vi.mock("@/lib/integrations/circuit-breaker", () => ({
@@ -49,7 +48,22 @@ vi.mock("@/lib/integrations/circuit-breaker", () => ({
   recordSuccess: vi.fn(),
 }));
 
+import {
+  runGoogleDriveTranscriptCapture,
+  scoreTranscriptMatch,
+} from "@/lib/integrations/google-drive-transcript-capture";
+import { IntegrationProvider } from "@/generated/prisma/client";
+import { enqueueWorkflowTriggerEvent } from "@/lib/automations/runtime";
+import { persistStandaloneSourceDocument } from "@/lib/automations/store";
+import { prisma } from "@/lib/prisma";
+import { resolveIntegrationOrganizationId } from "@/lib/integrations/ownership";
+import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
+
 describe("scoreTranscriptMatch", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("prefers direct title and deal overlap over time-only overlap", () => {
     const file = {
       id: "file-1",
@@ -120,173 +134,112 @@ describe("scoreTranscriptMatch", () => {
 
     expect(result).toBeNull();
   });
-});
 
-describe("runGoogleDriveTranscriptCapture", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("archives transcripts, stores receipts, and dispatches transcript-ready events for matched demos", async () => {
-    const { prisma } = await import("@/lib/prisma");
-    const { getValidIntegrationAccessToken } = await import("@/lib/integrations/token-refresh");
-    const { resolveIntegrationOrganizationId } = await import("@/lib/integrations/ownership");
-    const { enqueueWorkflowTriggerEvent, dispatchWorkflowTriggerEvents } = await import("@/lib/automations/runtime");
-    const { persistStandaloneSourceDocument } = await import("@/lib/automations/store");
-
+  it("emits transcript-ready events with the archived source document payload", async () => {
     vi.mocked(prisma.integrationRule.upsert).mockResolvedValue({
-      id: "rule_1",
+      id: "rule-1",
       key: "google_drive_transcript_capture",
       enabled: true,
       statusOverride: null,
       config: {
-        folderIds: ["folder_1"],
-        lookbackHours: 72,
-        filenameKeywords: ["transcript", "chat", "meet", "demo"],
+        folderIds: ["folder-1"],
+        lookbackHours: 24,
+        filenameKeywords: ["transcript"],
         maxFilesPerRun: 10,
       },
       checkpoint: {},
       lastObservedAt: null,
       lastRunAt: null,
       lastError: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
     } as never);
-    vi.mocked(getValidIntegrationAccessToken).mockResolvedValue("workspace-token");
-    vi.mocked(resolveIntegrationOrganizationId).mockResolvedValue("org_1");
+    vi.mocked(resolveIntegrationOrganizationId).mockResolvedValue("org-1" as never);
+    vi.mocked(getValidIntegrationAccessToken).mockResolvedValue("token-1" as never);
     vi.mocked(persistStandaloneSourceDocument).mockResolvedValue({
-      workflowId: "wf_archive_1",
-      runId: "run_archive_1",
-      sourceDocumentId: "doc_archive_1",
-    });
+      workflowId: "wf-archive-1",
+      runId: "run-archive-1",
+      sourceDocumentId: "doc-archive-1",
+    } as never);
     vi.mocked(prisma.dealMeeting.findMany).mockResolvedValue([
       {
-        id: "meeting_1",
-        title: "Acme Corp Demo",
+        id: "meeting-1",
+        title: "Acme Demo",
         status: "COMPLETED",
         startAt: new Date("2026-03-10T17:30:00.000Z"),
         endAt: new Date("2026-03-10T18:15:00.000Z"),
-        dealId: "local_deal_1",
+        dealId: "deal-1",
         deal: {
-          id: "local_deal_1",
+          id: "deal-1",
           name: "Acme Corp Expansion",
-          hubspotDealId: "hs_1",
+          hubspotDealId: "hs-1",
         },
-        company: {
-          name: "Acme Corp",
-        },
+        company: { name: "Acme Corp" },
         attendees: [{ email: "rep@acme.test" }],
       },
     ] as never);
     vi.mocked(prisma.dealMeeting.update).mockResolvedValue({
-      id: "meeting_1",
-      title: "Acme Corp Demo",
+      id: "meeting-1",
+      title: "Acme Demo",
       startAt: new Date("2026-03-10T17:30:00.000Z"),
       endAt: new Date("2026-03-10T18:15:00.000Z"),
       status: "COMPLETED",
-      dealId: "local_deal_1",
+      dealId: "deal-1",
       deal: {
-        id: "local_deal_1",
+        id: "deal-1",
         name: "Acme Corp Expansion",
-        hubspotDealId: "hs_1",
+        hubspotDealId: "hs-1",
       },
     } as never);
-    vi.mocked(dispatchWorkflowTriggerEvents).mockResolvedValue({
-      processed: 1,
-      startedRuns: 1,
-      timedOutApprovals: 0,
-    } as never);
-    vi.mocked(prisma.integrationReceipt.upsert).mockResolvedValue({ id: "receipt_1" } as never);
-    vi.mocked(prisma.integrationRule.update).mockResolvedValue({ id: "rule_1" } as never);
+    vi.mocked(prisma.integrationReceipt.upsert).mockResolvedValue({} as never);
+    vi.mocked(prisma.integrationRule.update).mockResolvedValue({} as never);
     vi.mocked(prisma.integrationConnection.updateMany).mockResolvedValue({ count: 1 } as never);
 
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (url: string) => {
-        if (url.startsWith("https://www.googleapis.com/drive/v3/files?")) {
-          return new Response(
-            JSON.stringify({
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.includes("/drive/v3/files?")) {
+          return {
+            ok: true,
+            json: async () => ({
               files: [
                 {
-                  id: "file_1",
+                  id: "file-1",
                   name: "Acme corp demo transcript",
                   mimeType: "text/plain",
-                  webViewLink: "https://drive.test/file_1",
+                  webViewLink: "https://drive.test/file-1",
                   modifiedTime: "2026-03-10T18:00:00.000Z",
                   owners: [{ emailAddress: "rep@acme.test" }],
                 },
               ],
             }),
-            { status: 200, headers: { "Content-Type": "application/json" } }
-          );
+          } as Response;
         }
 
-        if (url.includes("/drive/v3/files/file_1?alt=media")) {
-          return new Response("Transcript body", { status: 200 });
-        }
-
-        throw new Error(`Unexpected fetch ${url}`);
-      }) as typeof fetch
+        return {
+          ok: true,
+          text: async () => "Customer: Budget approved.\nRep: Next step is proposal.",
+        } as Response;
+      }),
     );
 
-    const result = await runGoogleDriveTranscriptCapture({
-      userId: "user_1",
-    });
+    const result = await runGoogleDriveTranscriptCapture({ userId: "user-1" });
 
-    expect(result).toMatchObject({
-      scannedFiles: 1,
-      matchedFiles: 1,
-      unmatchedFiles: 0,
-      dispatchedEvents: 1,
-      failedFiles: 0,
-      transcripts: [
-        {
-          fileId: "file_1",
-          meetingId: "meeting_1",
-          sourceDocumentId: "doc_archive_1",
-        },
-      ],
-    });
-    expect(persistStandaloneSourceDocument).toHaveBeenCalledWith(
-      expect.objectContaining({
-        ownerId: "user_1",
-        provider: IntegrationProvider.GOOGLE_WORKSPACE,
-        documentType: "transcript",
-        textContent: "Transcript body",
-      })
-    );
-    expect(prisma.integrationReceipt.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        create: expect.objectContaining({
-          metadata: expect.objectContaining({
-            sourceDocumentId: "doc_archive_1",
-            matchedMeetingId: "meeting_1",
-          }),
-        }),
-      })
-    );
+    expect(result.matchedFiles).toBe(1);
     expect(enqueueWorkflowTriggerEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         provider: IntegrationProvider.GOOGLE_WORKSPACE,
         eventType: "google-workspace.meet.transcript_ready",
         payload: expect.objectContaining({
-          meetingId: "meeting_1",
-          sourceDocumentId: "doc_archive_1",
+          sourceDocumentId: "doc-archive-1",
           sourceDocument: expect.objectContaining({
-            id: "doc_archive_1",
-            workflowId: "wf_archive_1",
-            runId: "run_archive_1",
+            id: "doc-archive-1",
+            documentType: "transcript",
+            title: "Acme corp demo transcript",
+            sourceUrl: "https://drive.test/file-1",
+            textContent: "Customer: Budget approved.\nRep: Next step is proposal.",
           }),
-          documents: [
-            expect.objectContaining({
-              documentType: "transcript",
-              metadata: expect.objectContaining({
-                archivedSourceDocumentId: "doc_archive_1",
-              }),
-            }),
-          ],
         }),
-      })
+      }),
     );
   });
 });

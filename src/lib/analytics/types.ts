@@ -1290,6 +1290,8 @@ export interface DemoRecord {
   transcriptMatchConfidence: number | null;
   transcriptSourceUrl: string | null;
   transcriptSourceTitle: string | null;
+  transcriptSourceDocumentId: string | null;
+  transcriptText: string | null;
   analysisStatus: DemoAnalysisStatus;
   qualityScore: number | null;
   qualitySummary: string | null;
