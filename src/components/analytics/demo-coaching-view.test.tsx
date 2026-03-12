@@ -9,6 +9,7 @@ function makeDemoRecord(
     Pick<DemoRecord, "dealId" | "dealName" | "scheduledAt" | "source" | "outcome">,
 ): DemoRecord {
   return {
+    ownerName: null,
     contactEmail: null,
     meetingId: null,
     meetingTitle: null,

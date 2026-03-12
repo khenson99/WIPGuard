@@ -6,80 +6,93 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 vi.mock("@/lib/permissions", () => ({
-  enforcePermission: vi.fn(async () => ({ deniedResponse: null })),
+  enforcePermission: vi.fn(async () => ({ role: "member" })),
 }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     dealMeeting: {
       findUnique: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
     },
   },
 }));
 
-describe("GET /api/deals/meetings/[id]", () => {
-  beforeEach(() => {
+describe("deal meeting detail route", () => {
+  beforeEach(async () => {
     vi.resetAllMocks();
-    vi.resetModules();
+
+    const { auth } = await import("@/lib/auth");
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: "user-1",
+        email: "user@example.com",
+      },
+    } as never);
   });
 
-  it("returns enriched meeting detail including transcript metadata", async () => {
-    const { auth } = await import("@/lib/auth");
+  it("returns transcript and analysis fields for the meeting detail response", async () => {
     const { prisma } = await import("@/lib/prisma");
-
-    vi.mocked(auth).mockResolvedValue({ user: { id: "user_1" } } as never);
     vi.mocked(prisma.dealMeeting.findUnique).mockResolvedValue({
-      id: "meeting_1",
-      title: "Demo",
-      status: "COMPLETED",
-      startAt: new Date("2026-03-10T18:00:00.000Z"),
-      endAt: new Date("2026-03-10T18:30:00.000Z"),
-      location: null,
-      notes: "Call notes",
-      googleDriveFileId: "drive_1",
-      googleDriveFileName: "demo transcript",
-      googleDriveFileUrl: "https://drive.test/file",
-      transcriptMatchedAt: new Date("2026-03-10T19:00:00.000Z"),
-      transcriptMatchConfidence: 0.91,
-      analysisArtifactId: "artifact_1",
-      demoQualityScore: 87,
-      demoQualitySummary: "Strong demo",
-      demoStrengthsJson: ["Discovery"],
-      demoGapsJson: ["Pricing"],
-      analyzedAt: new Date("2026-03-10T19:30:00.000Z"),
-      expectedAttendees: 2,
-      actualAttendees: 2,
-      dealId: "deal_1",
-      deal: { id: "deal_1", name: "Acme" },
-      companyId: "company_1",
-      company: { id: "company_1", name: "Acme Co" },
+      id: "meeting-1",
+      title: "Acme demo",
+      googleDriveFileId: "file-1",
+      googleDriveFileName: "Acme Demo Transcript",
+      googleDriveFileUrl: "https://drive.google.com/file/d/file-1/view",
+      transcriptMatchedAt: new Date("2026-03-11T18:00:00.000Z"),
+      transcriptMatchConfidence: 0.92,
+      analysisArtifactId: "artifact-1",
+      demoQualityScore: 86,
+      demoQualitySummary: "Handled discovery well and closed on next steps.",
+      demoStrengthsJson: ["Strong discovery", "Clear next steps"],
+      demoGapsJson: ["Pricing objection handling"],
+      analyzedAt: new Date("2026-03-11T19:00:00.000Z"),
+      deal: { id: "deal-1", name: "Acme" },
+      company: { id: "company-1", name: "Acme Corp" },
       attendees: [
-        { id: "contact_1", firstName: "Taylor", lastName: "Kim", email: "taylor@test.com" },
+        {
+          id: "contact-1",
+          firstName: "Avery",
+          lastName: "Buyer",
+          email: "avery@acme.com",
+        },
       ],
-      createdAt: new Date("2026-03-01T00:00:00.000Z"),
-      updatedAt: new Date("2026-03-10T19:30:00.000Z"),
     } as never);
 
     const { GET } = await import("@/app/api/deals/meetings/[id]/route");
-    const response = await GET(
-      new NextRequest("http://localhost/api/deals/meetings/meeting_1"),
-      { params: Promise.resolve({ id: "meeting_1" }) }
-    );
-    const body = await response.json();
+    const response = await GET(new NextRequest("http://localhost/api/deals/meetings/meeting-1"), {
+      params: Promise.resolve({ id: "meeting-1" }),
+    });
+    const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toMatchObject({
-      id: "meeting_1",
-      googleDriveFileId: "drive_1",
-      transcriptMatchConfidence: 0.91,
-      analysisArtifactId: "artifact_1",
-      demoQualityScore: 87,
-      attendees: [
-        expect.objectContaining({
-          id: "contact_1",
-          email: "taylor@test.com",
-        }),
-      ],
+    expect(data).toEqual(
+      expect.objectContaining({
+        id: "meeting-1",
+        googleDriveFileId: "file-1",
+        googleDriveFileName: "Acme Demo Transcript",
+        googleDriveFileUrl: "https://drive.google.com/file/d/file-1/view",
+        transcriptMatchConfidence: 0.92,
+        analysisArtifactId: "artifact-1",
+        demoQualityScore: 86,
+        demoQualitySummary: "Handled discovery well and closed on next steps.",
+        demoStrengthsJson: ["Strong discovery", "Clear next steps"],
+        demoGapsJson: ["Pricing objection handling"],
+      })
+    );
+  });
+
+  it("returns a 404 when the meeting is missing", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    vi.mocked(prisma.dealMeeting.findUnique).mockResolvedValue(null as never);
+
+    const { GET } = await import("@/app/api/deals/meetings/[id]/route");
+    const response = await GET(new NextRequest("http://localhost/api/deals/meetings/missing"), {
+      params: Promise.resolve({ id: "missing" }),
     });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: "Meeting not found" });
   });
 });

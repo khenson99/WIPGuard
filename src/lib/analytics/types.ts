@@ -1273,6 +1273,7 @@ export type DemoOutcomeConfidence = "low" | "medium" | "high";
 export interface DemoRecord {
   dealId: string;
   dealName: string;
+  ownerName: string | null;
   contactEmail: string | null;
   scheduledAt: string;
   meetingId: string | null;
