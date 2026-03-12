@@ -33,8 +33,8 @@ import { normalizeWorkflowRolePolicy } from "@/lib/automations/service";
 import {
   buildRunExecutionContext,
   materializeSourceDocumentsFromTrigger,
-  persistAutomationEnvelope,
   type AutomationResultEnvelope,
+  persistAutomationEnvelope,
 } from "@/lib/automations/store";
 import { getAppRole } from "@/lib/permissions";
 
@@ -1077,115 +1077,127 @@ function toBoundedScore(value: unknown): number | null {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-function normalizeOutcomeConfidence(value: unknown): "low" | "medium" | "high" | null {
-  if (typeof value !== "string") {
-    return null;
+function resolveTranscriptSourceDocumentId(triggerPayload: unknown): string | null {
+  const payload = asRecord(triggerPayload);
+  const directId =
+    typeof payload?.sourceDocumentId === "string" ? payload.sourceDocumentId.trim() : "";
+  if (directId) {
+    return directId;
   }
 
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "low" || normalized === "medium" || normalized === "high") {
-    return normalized;
+  const documents = Array.isArray(payload?.documents) ? payload.documents : [];
+  for (const document of documents) {
+    const record = asRecord(document);
+    const metadata = asRecord(record?.metadata);
+    const archivedId =
+      typeof metadata?.archivedSourceDocumentId === "string"
+        ? metadata.archivedSourceDocumentId.trim()
+        : "";
+    if (archivedId) {
+      return archivedId;
+    }
   }
 
   return null;
 }
 
-function firstArtifactText(
-  artifacts: NonNullable<AutomationResultEnvelope["artifacts"]>
-): string | null {
-  for (const artifact of artifacts) {
-    const text =
-      (typeof artifact.content === "string" && artifact.content.trim()) ||
-      (typeof artifact.summary === "string" && artifact.summary.trim()) ||
-      null;
-    if (text) {
-      return text;
-    }
+function normalizeOutcomeConfidence(value: unknown): "low" | "medium" | "high" | null {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "low" || normalized === "medium" || normalized === "high") {
+    return normalized;
   }
   return null;
 }
 
 function normalizeDemoAnalysisEnvelope(input: {
   triggerType: string | null | undefined;
+  triggerPayload: unknown;
   envelope: AutomationResultEnvelope;
 }): AutomationResultEnvelope {
   if (input.triggerType !== "google-workspace.meet.transcript_ready") {
     return input.envelope;
   }
 
+  const sourceDocumentId = resolveTranscriptSourceDocumentId(input.triggerPayload);
   const artifacts = Array.isArray(input.envelope.artifacts)
     ? [...input.envelope.artifacts]
     : [];
-  const summaryFallback =
-    (typeof input.envelope.summary === "string" && input.envelope.summary.trim()) ||
-    firstArtifactText(artifacts) ||
-    "Demo analysis generated from transcript context.";
-
-  const existingScorecard = artifacts.find(
+  const scorecardIndex = artifacts.findIndex(
     (artifact) => artifact.artifactType === "demo_quality_scorecard"
   );
-  const existingScorecardJson = asRecord(existingScorecard?.contentJson) ?? {};
-  const normalizedScorecard: NonNullable<AutomationResultEnvelope["artifacts"]>[number] = {
+  const existingScorecard = scorecardIndex >= 0 ? artifacts[scorecardIndex] : null;
+  const scorecardJson = asRecord(existingScorecard?.contentJson);
+  const normalizedScorecardJson = {
+    overallScore: toBoundedScore(scorecardJson?.overallScore),
+    strengths: uniqueStringList(scorecardJson?.strengths),
+    gaps: uniqueStringList(scorecardJson?.gaps),
+    customerSignals: uniqueStringList(scorecardJson?.customerSignals),
+    nextSteps: uniqueStringList(scorecardJson?.nextSteps),
+    outcomeConfidence: normalizeOutcomeConfidence(scorecardJson?.outcomeConfidence),
+  } satisfies Record<string, unknown>;
+  const scorecardSummaryCandidates = [
+    existingScorecard?.summary ?? null,
+    typeof scorecardJson?.summary === "string" ? scorecardJson.summary.trim() : null,
+    typeof existingScorecard?.content === "string" ? existingScorecard.content.trim() : null,
+    typeof input.envelope.summary === "string" ? input.envelope.summary.trim() : null,
+  ];
+  const scorecardSummary =
+    scorecardSummaryCandidates.find(
+      (candidate): candidate is string => typeof candidate === "string" && candidate.length > 0
+    ) ?? "Demo analysis captured from transcript.";
+  const scorecardArtifact = {
+    ...(existingScorecard ?? {}),
     artifactType: "demo_quality_scorecard",
-    title: existingScorecard?.title ?? "Demo Quality Scorecard",
-    summary: existingScorecard?.summary ?? summaryFallback,
-    content: existingScorecard?.content ?? null,
-    contentJson: {
-      overallScore: toBoundedScore(existingScorecardJson.overallScore),
-      strengths: uniqueStringList(existingScorecardJson.strengths),
-      gaps: uniqueStringList(existingScorecardJson.gaps),
-      customerSignals: uniqueStringList(existingScorecardJson.customerSignals),
-      nextSteps: uniqueStringList(existingScorecardJson.nextSteps),
-      outcomeConfidence: normalizeOutcomeConfidence(existingScorecardJson.outcomeConfidence),
-      summary:
-        (typeof existingScorecardJson.summary === "string" && existingScorecardJson.summary.trim()) ||
-        existingScorecard?.summary ||
-        summaryFallback,
-    },
-    metadata: existingScorecard?.metadata ?? null,
-    dedupeKey: existingScorecard?.dedupeKey,
-    sourceDocumentId: existingScorecard?.sourceDocumentId ?? null,
+    title: existingScorecard?.title?.trim() || "Demo Quality Scorecard",
+    summary: scorecardSummary,
+    contentJson: normalizedScorecardJson,
+    sourceDocumentId: existingScorecard?.sourceDocumentId ?? sourceDocumentId,
   };
 
-  const nextSteps = uniqueStringList(
-    (normalizedScorecard.contentJson as Record<string, unknown>).nextSteps
-  );
-  const nextStepText =
-    nextSteps.length > 0 ? nextSteps.map((step) => `- ${step}`).join("\n") : summaryFallback;
+  if (scorecardIndex >= 0) {
+    artifacts[scorecardIndex] = scorecardArtifact;
+  } else {
+    artifacts.unshift(scorecardArtifact);
+  }
 
   const upsertArtifact = (
-    artifactType: string,
-    title: string,
-    content: string
+    artifactType: "demo_coaching_memo" | "deal_next_step_memo",
+    defaults: { title: string; content: string }
   ) => {
-    const existing = artifacts.find((artifact) => artifact.artifactType === artifactType);
-    return {
+    const index = artifacts.findIndex((artifact) => artifact.artifactType === artifactType);
+    if (index >= 0) {
+      artifacts[index] = {
+        ...artifacts[index],
+        title: artifacts[index].title?.trim() || defaults.title,
+        content: artifacts[index].content?.trim() || defaults.content,
+        sourceDocumentId: artifacts[index].sourceDocumentId ?? sourceDocumentId,
+      };
+      return;
+    }
+
+    artifacts.push({
       artifactType,
-      title: existing?.title ?? title,
-      summary: existing?.summary ?? summaryFallback,
-      content: existing?.content ?? content,
-      contentJson: existing?.contentJson ?? null,
-      metadata: existing?.metadata ?? null,
-      dedupeKey: existing?.dedupeKey,
-      sourceDocumentId: existing?.sourceDocumentId ?? null,
-    };
+      title: defaults.title,
+      content: defaults.content,
+      sourceDocumentId,
+    });
   };
 
-  const remaining = artifacts.filter(
-    (artifact) =>
-      artifact.artifactType !== "demo_quality_scorecard" &&
-      artifact.artifactType !== "demo_coaching_memo" &&
-      artifact.artifactType !== "deal_next_step_memo"
-  );
+  upsertArtifact("demo_coaching_memo", {
+    title: "Demo Coaching Memo",
+    content: scorecardSummary,
+  });
+  upsertArtifact("deal_next_step_memo", {
+    title: "Deal Next-Step Memo",
+    content:
+      normalizedScorecardJson.nextSteps.length > 0
+        ? normalizedScorecardJson.nextSteps.join("\n")
+        : scorecardSummary,
+  });
 
   return {
     ...input.envelope,
-    artifacts: [
-      normalizedScorecard,
-      upsertArtifact("demo_coaching_memo", "Demo Coaching Memo", summaryFallback),
-      upsertArtifact("deal_next_step_memo", "Deal Next-Step Memo", nextStepText),
-      ...remaining,
-    ],
+    artifacts,
   };
 }
 
@@ -1280,13 +1292,14 @@ async function settleAutomationAiJobWithResponse(input: {
       const parsedToolDefinitions = Array.isArray(metadata.parsedToolDefinitions)
         ? metadata.parsedToolDefinitions.filter((item) => asRecord(item))
         : [];
-      const rawEnvelope = parseAutomationAiResponseEnvelope({
+      const envelope = parseAutomationAiResponseEnvelope({
         response: input.response,
         parsedToolDefinitions,
       });
-      const envelope = normalizeDemoAnalysisEnvelope({
+      const normalizedEnvelope = normalizeDemoAnalysisEnvelope({
         triggerType: job.run.triggerType,
-        envelope: rawEnvelope,
+        triggerPayload: job.run.triggerPayload,
+        envelope,
       });
 
       const persisted = await persistAutomationEnvelope({
@@ -1296,13 +1309,13 @@ async function settleAutomationAiJobWithResponse(input: {
         operatorKey: job.operatorKey,
         createdByNodeKey: job.nodeKey,
         requestedById: job.run.requestedById ?? null,
-        envelope,
+        envelope: normalizedEnvelope,
       });
 
       await denormalizeTranscriptAnalysisToMeeting({
         triggerType: job.run.triggerType,
         triggerPayload: job.run.triggerPayload,
-        envelope,
+        envelope: normalizedEnvelope,
         artifactIds: persisted.artifactIds,
       });
 
@@ -1313,7 +1326,7 @@ async function settleAutomationAiJobWithResponse(input: {
           responseStatus,
           responsePayload: toInputJsonValue(input.response),
           outputText,
-          parsedOutput: toNullableJsonValue(envelope.raw),
+          parsedOutput: toNullableJsonValue(normalizedEnvelope.raw),
           lastError: null,
           completedAt: new Date(),
         },
@@ -1328,7 +1341,7 @@ async function settleAutomationAiJobWithResponse(input: {
               actionType: job.jobType,
               aiJobId: job.id,
               responseId: input.response.id,
-              summary: envelope.summary ?? null,
+              summary: normalizedEnvelope.summary ?? null,
               artifactIds: persisted.artifactIds,
               recommendationIds: persisted.recommendationIds,
             } as Prisma.JsonObject,
