@@ -7,6 +7,8 @@ import {
   type AutomationOperatorKey,
   type IntegrationProvider,
   Prisma,
+  WorkflowScope,
+  WorkflowStatus,
 } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 
@@ -58,6 +60,8 @@ export interface AutomationResultEnvelope {
   raw?: Record<string, unknown> | null;
 }
 
+const SYSTEM_TRANSCRIPT_ARCHIVE_WORKFLOW_NAME = "System Transcript Archive";
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -88,6 +92,50 @@ function toNullableJsonValue(
     return Prisma.DbNull;
   }
   return value as Prisma.InputJsonValue;
+}
+
+async function ensureSystemTranscriptArchiveWorkflow(input: {
+  ownerId: string;
+  provider?: IntegrationProvider | null;
+  operatorKey?: AutomationOperatorKey | null;
+}): Promise<string> {
+  const existing = await prisma.workflowDefinition.findFirst({
+    where: {
+      ownerId: input.ownerId,
+      name: SYSTEM_TRANSCRIPT_ARCHIVE_WORKFLOW_NAME,
+      isSystemManaged: true,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (existing) {
+    return existing.id;
+  }
+
+  const created = await prisma.workflowDefinition.create({
+    data: {
+      ownerId: input.ownerId,
+      name: SYSTEM_TRANSCRIPT_ARCHIVE_WORKFLOW_NAME,
+      description: "System-managed archive workflow for durable transcript persistence.",
+      scope: WorkflowScope.PRIVATE,
+      status: WorkflowStatus.ACTIVE,
+      providers: input.provider ? [input.provider] : [],
+      operatorKey: input.operatorKey ?? null,
+      isSystemManaged: true,
+      graph: {
+        nodes: [],
+        edges: [],
+      } as Prisma.InputJsonValue,
+      lastPublishedAt: new Date(),
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  return created.id;
 }
 
 export function recommendationRequiresApproval(actionType: string): boolean {
@@ -206,6 +254,96 @@ export async function materializeSourceDocumentsFromTrigger(input: {
   }
 
   return prepared.length;
+}
+
+export async function persistStandaloneSourceDocument(input: {
+  ownerId: string;
+  requestedById?: string | null;
+  operatorKey?: AutomationOperatorKey | null;
+  provider?: IntegrationProvider | null;
+  eventType?: string | null;
+  externalId?: string | null;
+  triggerPayload?: Record<string, unknown> | null;
+  documentType: string;
+  title?: string | null;
+  mimeType?: string | null;
+  sourceUrl?: string | null;
+  textContent?: string | null;
+  structuredData?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
+  dedupeKey: string;
+}): Promise<{ workflowId: string; runId: string; sourceDocumentId: string }> {
+  const workflowId = await ensureSystemTranscriptArchiveWorkflow({
+    ownerId: input.ownerId,
+    provider: input.provider ?? null,
+    operatorKey: input.operatorKey ?? null,
+  });
+
+  const runDedupeKey = `${input.dedupeKey}:run`;
+  const existingRun = await prisma.workflowRun.findUnique({
+    where: { dedupeKey: runDedupeKey },
+    select: { id: true },
+  });
+
+  const runId = existingRun
+    ? existingRun.id
+    : (
+        await prisma.workflowRun.create({
+          data: {
+            workflowId,
+            requestedById: input.requestedById ?? input.ownerId,
+            triggerProvider: input.provider ?? null,
+            triggerType: input.eventType ?? "system.transcript.archive",
+            triggerId: input.externalId ?? null,
+            triggerPayload: toNullableJsonValue(input.triggerPayload ?? null),
+            dedupeKey: runDedupeKey,
+            status: "SUCCEEDED",
+            startedAt: new Date(),
+            finishedAt: new Date(),
+          },
+          select: { id: true },
+        })
+      ).id;
+
+  const sourceDocument = await prisma.automationSourceDocument.upsert({
+    where: { dedupeKey: input.dedupeKey },
+    create: {
+      workflowId,
+      runId,
+      operatorKey: input.operatorKey ?? null,
+      provider: input.provider ?? null,
+      eventType: input.eventType ?? null,
+      externalId: input.externalId ?? null,
+      documentType: input.documentType,
+      status: AutomationSourceDocumentStatus.READY,
+      title: input.title ?? null,
+      mimeType: input.mimeType ?? null,
+      sourceUrl: input.sourceUrl ?? null,
+      textContent: input.textContent ?? null,
+      structuredData: toNullableJsonValue(input.structuredData),
+      metadata: toNullableJsonValue(input.metadata),
+      dedupeKey: input.dedupeKey,
+    },
+    update: {
+      title: input.title ?? null,
+      mimeType: input.mimeType ?? null,
+      sourceUrl: input.sourceUrl ?? null,
+      textContent: input.textContent ?? null,
+      structuredData: toNullableJsonValue(input.structuredData),
+      metadata: toNullableJsonValue(input.metadata),
+      status: AutomationSourceDocumentStatus.READY,
+      observedAt: new Date(),
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  return {
+    workflowId,
+    runId,
+    sourceDocumentId: sourceDocument.id,
+  };
 }
 
 export async function buildRunExecutionContext(runId: string): Promise<Record<string, unknown>> {

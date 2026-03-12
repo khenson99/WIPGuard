@@ -6,6 +6,7 @@ import {
   type TaskStatus,
 } from "@/generated/prisma/client";
 import { dispatchWorkflowTriggerEvents, enqueueWorkflowTriggerEvent } from "@/lib/automations/runtime";
+import { persistStandaloneSourceDocument } from "@/lib/automations/store";
 import { prisma } from "@/lib/prisma";
 import { withRetries } from "@/lib/integrations/with-retries";
 import {
@@ -596,6 +597,29 @@ export async function runGoogleDriveTranscriptCapture(input: {
           continue;
         }
 
+        const archivedDocument = await persistStandaloneSourceDocument({
+          ownerId: input.userId,
+          requestedById: input.userId,
+          operatorKey: "SALES_FOLLOWUP",
+          provider: IntegrationProvider.GOOGLE_WORKSPACE,
+          eventType: "google-workspace.drive.transcript_captured",
+          externalId: file.id,
+          triggerPayload: {
+            sourceUrl,
+            fileId: file.id,
+            fileName: file.name ?? `Transcript ${file.id}`,
+            modifiedTime: observedAtIso,
+            matchedMeetingId: bestMatch?.meetingId ?? null,
+          },
+          documentType: "transcript",
+          title: file.name ?? `Transcript ${file.id}`,
+          mimeType: file.mimeType ?? "text/plain",
+          sourceUrl,
+          textContent,
+          metadata,
+          dedupeKey: `google-workspace:drive-transcript:${file.id}:${normalizeKey(observedAtIso)}`,
+        });
+
         const receiptDedupeKey = buildTranscriptReceiptDedupeKey(file);
         await prisma.integrationReceipt.upsert({
           where: { dedupeKey: receiptDedupeKey },
@@ -606,12 +630,18 @@ export async function runGoogleDriveTranscriptCapture(input: {
             externalObjectId: file.id,
             sourceUrl,
             lastObservedAt: Number.isFinite(observedAtMs) ? new Date(observedAtMs) : new Date(),
-            metadata: metadata as Prisma.InputJsonValue,
+            metadata: {
+              ...metadata,
+              sourceDocumentId: archivedDocument.sourceDocumentId,
+            } as Prisma.InputJsonValue,
           },
           update: {
             sourceUrl,
             lastObservedAt: Number.isFinite(observedAtMs) ? new Date(observedAtMs) : new Date(),
-            metadata: metadata as Prisma.InputJsonValue,
+            metadata: {
+              ...metadata,
+              sourceDocumentId: archivedDocument.sourceDocumentId,
+            } as Prisma.InputJsonValue,
           },
         });
 
@@ -623,7 +653,7 @@ export async function runGoogleDriveTranscriptCapture(input: {
             operation: "stored",
             meetingId: null,
             confidence: null,
-            sourceDocumentId: null,
+            sourceDocumentId: archivedDocument.sourceDocumentId,
           });
           continue;
         }
@@ -666,6 +696,7 @@ export async function runGoogleDriveTranscriptCapture(input: {
             dealName: matchedMeeting.deal?.name ?? null,
             title: matchedMeeting.title,
             sourceUrl,
+            sourceDocumentId: archivedDocument.sourceDocumentId,
             transcript: textContent,
             documents: [
               {
@@ -675,7 +706,10 @@ export async function runGoogleDriveTranscriptCapture(input: {
                 mimeType: file.mimeType ?? "text/plain",
                 sourceUrl,
                 textContent,
-                metadata,
+                metadata: {
+                  ...metadata,
+                  archivedSourceDocumentId: archivedDocument.sourceDocumentId,
+                },
               },
             ],
             meeting: {
@@ -703,7 +737,7 @@ export async function runGoogleDriveTranscriptCapture(input: {
           operation: "matched",
           meetingId: matchedMeeting.id,
           confidence: bestMatch.confidence,
-          sourceDocumentId: null,
+          sourceDocumentId: archivedDocument.sourceDocumentId,
         });
       } catch (error) {
         failedFiles += 1;

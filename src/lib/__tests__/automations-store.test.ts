@@ -10,6 +10,7 @@ import {
 import {
   buildRunExecutionContext,
   materializeSourceDocumentsFromTrigger,
+  persistStandaloneSourceDocument,
   persistAutomationEnvelope,
 } from "@/lib/automations/store";
 import { prisma } from "@/lib/prisma";
@@ -25,8 +26,13 @@ vi.mock("@/lib/prisma", () => ({
     automationRecommendation: {
       upsert: vi.fn(),
     },
+    workflowDefinition: {
+      findFirst: vi.fn(),
+      create: vi.fn(),
+    },
     workflowRun: {
       findUnique: vi.fn(),
+      create: vi.fn(),
     },
   },
 }));
@@ -139,6 +145,81 @@ describe("automation store", () => {
           requiresApproval: true,
           status: AutomationRecommendationStatus.PENDING_APPROVAL,
           approvedAt: null,
+        }),
+      })
+    );
+  });
+
+  it("persists standalone source documents through a system-managed archive workflow", async () => {
+    vi.mocked(prisma.workflowDefinition.findFirst).mockResolvedValue(null as never);
+    vi.mocked(prisma.workflowDefinition.create).mockResolvedValue({
+      id: "wf_archive_1",
+    } as never);
+    vi.mocked(prisma.workflowRun.findUnique).mockResolvedValue(null as never);
+    vi.mocked(prisma.workflowRun.create).mockResolvedValue({
+      id: "run_archive_1",
+    } as never);
+    vi.mocked(prisma.automationSourceDocument.upsert).mockResolvedValue({
+      id: "doc_archive_1",
+    } as never);
+
+    const result = await persistStandaloneSourceDocument({
+      ownerId: "user_1",
+      requestedById: "user_1",
+      operatorKey: "SALES_FOLLOWUP",
+      provider: IntegrationProvider.GOOGLE_WORKSPACE,
+      eventType: "google-workspace.drive.transcript_captured",
+      externalId: "file_1",
+      triggerPayload: {
+        fileId: "file_1",
+      },
+      documentType: "transcript",
+      title: "Acme transcript",
+      mimeType: "text/plain",
+      sourceUrl: "https://drive.test/file_1",
+      textContent: "Transcript body",
+      metadata: {
+        fileId: "file_1",
+      },
+      dedupeKey: "google-workspace:drive-transcript:file_1:2026-03-11t00:00:00.000z",
+    });
+
+    expect(result).toEqual({
+      workflowId: "wf_archive_1",
+      runId: "run_archive_1",
+      sourceDocumentId: "doc_archive_1",
+    });
+
+    expect(prisma.workflowDefinition.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          ownerId: "user_1",
+          name: "System Transcript Archive",
+          isSystemManaged: true,
+          providers: [IntegrationProvider.GOOGLE_WORKSPACE],
+        }),
+      })
+    );
+    expect(prisma.workflowRun.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          workflowId: "wf_archive_1",
+          triggerType: "google-workspace.drive.transcript_captured",
+          triggerId: "file_1",
+        }),
+      })
+    );
+    expect(prisma.automationSourceDocument.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          dedupeKey: "google-workspace:drive-transcript:file_1:2026-03-11t00:00:00.000z",
+        },
+        create: expect.objectContaining({
+          workflowId: "wf_archive_1",
+          runId: "run_archive_1",
+          documentType: "transcript",
+          title: "Acme transcript",
+          textContent: "Transcript body",
         }),
       })
     );
