@@ -1273,6 +1273,7 @@ export type DemoOutcomeConfidence = "low" | "medium" | "high";
 export interface DemoRecord {
   dealId: string;
   dealName: string;
+  ownerName: string | null;
   contactEmail: string | null;
   scheduledAt: string;
   meetingId: string | null;
@@ -1290,6 +1291,8 @@ export interface DemoRecord {
   transcriptMatchConfidence: number | null;
   transcriptSourceUrl: string | null;
   transcriptSourceTitle: string | null;
+  transcriptSourceDocumentId: string | null;
+  transcriptText: string | null;
   analysisStatus: DemoAnalysisStatus;
   qualityScore: number | null;
   qualitySummary: string | null;

@@ -391,6 +391,26 @@ describe("automation runtime AI lifecycle", () => {
     const processed = await pollAutomationAiJobs(10);
 
     expect(processed).toBe(1);
+    expect(persistAutomationEnvelope).toHaveBeenCalledWith(
+      expect.objectContaining({
+        envelope: expect.objectContaining({
+          artifacts: expect.arrayContaining([
+            expect.objectContaining({
+              artifactType: "demo_quality_scorecard",
+              sourceDocumentId: null,
+            }),
+            expect.objectContaining({
+              artifactType: "demo_coaching_memo",
+              sourceDocumentId: null,
+            }),
+            expect.objectContaining({
+              artifactType: "deal_next_step_memo",
+              sourceDocumentId: null,
+            }),
+          ]),
+        }),
+      })
+    );
     expect(prisma.dealMeeting.update).toHaveBeenCalledWith({
       where: { id: "meeting_demo_1" },
       data: expect.objectContaining({
@@ -402,6 +422,127 @@ describe("automation runtime AI lifecycle", () => {
         analyzedAt: expect.any(Date),
       }),
     });
+  });
+
+  it("normalizes transcript-ready artifact envelopes and anchors them to the archived transcript", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const {
+      extractAutomationAiOutputText,
+      isTerminalAutomationAiStatus,
+      parseAutomationAiResponseEnvelope,
+      retrieveAutomationOpenAiResponse,
+    } = await import("@/lib/automations/openai");
+    const { persistAutomationEnvelope } = await import("@/lib/automations/store");
+
+    vi.mocked(prisma.automationAiJob.findMany).mockResolvedValue([
+      {
+        id: "job_demo_2",
+        responseId: "resp_demo_2",
+        attemptCount: 1,
+      },
+    ] as never);
+    vi.mocked(prisma.automationAiJob.findUnique).mockResolvedValue({
+      id: "job_demo_2",
+      workflowId: "wf_demo_2",
+      runId: "run_demo_2",
+      stepId: "step_demo_2",
+      operatorKey: "SALES_FOLLOWUP",
+      nodeKey: "analyze_followup",
+      jobType: "ai_analyze",
+      metadata: { parsedToolDefinitions: [] },
+      run: {
+        requestedById: "user_1",
+        triggerType: "google-workspace.meet.transcript_ready",
+        triggerPayload: {
+          meetingId: "meeting_demo_2",
+          sourceDocumentId: "doc_transcript_1",
+        },
+      },
+    } as never);
+    vi.mocked(retrieveAutomationOpenAiResponse).mockResolvedValue({
+      id: "resp_demo_2",
+      status: "completed",
+    } as never);
+    vi.mocked(extractAutomationAiOutputText).mockReturnValue("demo result");
+    vi.mocked(isTerminalAutomationAiStatus).mockReturnValue(true);
+    vi.mocked(parseAutomationAiResponseEnvelope).mockReturnValue({
+      summary: "Strong discovery call",
+      raw: { summary: "Strong discovery call" },
+      artifacts: [
+        {
+          artifactType: "demo_quality_scorecard",
+          title: "Scorecard",
+          contentJson: {
+            overallScore: 91,
+            strengths: ["Strong discovery"],
+            nextSteps: ["Send pricing recap", "Book technical validation"],
+            outcomeConfidence: "high",
+          },
+        },
+      ],
+      recommendations: [],
+    } as never);
+    vi.mocked(persistAutomationEnvelope).mockResolvedValue({
+      artifactIds: ["artifact_score_2", "artifact_memo_2", "artifact_next_2"],
+      recommendationIds: [],
+    } as never);
+    vi.mocked(prisma.workflowDefinition.findUnique).mockResolvedValue({
+      graph: {
+        nodes: [
+          {
+            key: "analyze_followup",
+            type: "ACTION",
+            label: "Analyze Follow-up",
+            config: {
+              actionType: "ai_analyze",
+            },
+          },
+        ],
+        edges: [],
+      },
+    } as never);
+    vi.mocked(prisma.workflowRunStep.findFirst).mockResolvedValue({
+      output: {
+        artifactIds: ["artifact_score_2"],
+        recommendationIds: [],
+      },
+    } as never);
+    vi.mocked(prisma.dealMeeting.update).mockResolvedValue({ id: "meeting_demo_2" } as never);
+
+    const { pollAutomationAiJobs } = await import("@/lib/automations/runtime");
+    const processed = await pollAutomationAiJobs(10);
+
+    expect(processed).toBe(1);
+    expect(persistAutomationEnvelope).toHaveBeenCalledWith(
+      expect.objectContaining({
+        envelope: expect.objectContaining({
+          artifacts: [
+            expect.objectContaining({
+              artifactType: "demo_quality_scorecard",
+              sourceDocumentId: "doc_transcript_1",
+              contentJson: {
+                overallScore: 91,
+                strengths: ["Strong discovery"],
+                gaps: [],
+                customerSignals: [],
+                nextSteps: ["Send pricing recap", "Book technical validation"],
+                outcomeConfidence: "high",
+              },
+            }),
+            expect.objectContaining({
+              artifactType: "demo_coaching_memo",
+              sourceDocumentId: "doc_transcript_1",
+              content: "Strong discovery call",
+            }),
+            expect.objectContaining({
+              artifactType: "deal_next_step_memo",
+              sourceDocumentId: "doc_transcript_1",
+              content: "Send pricing recap\nBook technical validation",
+            }),
+          ],
+        }),
+      })
+    );
   });
 
   it("marks polled AI jobs failed when response retrieval errors", async () => {

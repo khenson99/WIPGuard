@@ -33,6 +33,7 @@ import { normalizeWorkflowRolePolicy } from "@/lib/automations/service";
 import {
   buildRunExecutionContext,
   materializeSourceDocumentsFromTrigger,
+  type AutomationResultEnvelope,
   persistAutomationEnvelope,
 } from "@/lib/automations/store";
 import { getAppRole } from "@/lib/permissions";
@@ -1076,6 +1077,130 @@ function toBoundedScore(value: unknown): number | null {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
+function resolveTranscriptSourceDocumentId(triggerPayload: unknown): string | null {
+  const payload = asRecord(triggerPayload);
+  const directId =
+    typeof payload?.sourceDocumentId === "string" ? payload.sourceDocumentId.trim() : "";
+  if (directId) {
+    return directId;
+  }
+
+  const documents = Array.isArray(payload?.documents) ? payload.documents : [];
+  for (const document of documents) {
+    const record = asRecord(document);
+    const metadata = asRecord(record?.metadata);
+    const archivedId =
+      typeof metadata?.archivedSourceDocumentId === "string"
+        ? metadata.archivedSourceDocumentId.trim()
+        : "";
+    if (archivedId) {
+      return archivedId;
+    }
+  }
+
+  return null;
+}
+
+function normalizeOutcomeConfidence(value: unknown): "low" | "medium" | "high" | null {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "low" || normalized === "medium" || normalized === "high") {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizeDemoAnalysisEnvelope(input: {
+  triggerType: string | null | undefined;
+  triggerPayload: unknown;
+  envelope: AutomationResultEnvelope;
+}): AutomationResultEnvelope {
+  if (input.triggerType !== "google-workspace.meet.transcript_ready") {
+    return input.envelope;
+  }
+
+  const sourceDocumentId = resolveTranscriptSourceDocumentId(input.triggerPayload);
+  const artifacts = Array.isArray(input.envelope.artifacts)
+    ? [...input.envelope.artifacts]
+    : [];
+  const scorecardIndex = artifacts.findIndex(
+    (artifact) => artifact.artifactType === "demo_quality_scorecard"
+  );
+  const existingScorecard = scorecardIndex >= 0 ? artifacts[scorecardIndex] : null;
+  const scorecardJson = asRecord(existingScorecard?.contentJson);
+  const normalizedScorecardJson = {
+    overallScore: toBoundedScore(scorecardJson?.overallScore),
+    strengths: uniqueStringList(scorecardJson?.strengths),
+    gaps: uniqueStringList(scorecardJson?.gaps),
+    customerSignals: uniqueStringList(scorecardJson?.customerSignals),
+    nextSteps: uniqueStringList(scorecardJson?.nextSteps),
+    outcomeConfidence: normalizeOutcomeConfidence(scorecardJson?.outcomeConfidence),
+  } satisfies Record<string, unknown>;
+  const scorecardSummaryCandidates = [
+    existingScorecard?.summary ?? null,
+    typeof scorecardJson?.summary === "string" ? scorecardJson.summary.trim() : null,
+    typeof existingScorecard?.content === "string" ? existingScorecard.content.trim() : null,
+    typeof input.envelope.summary === "string" ? input.envelope.summary.trim() : null,
+  ];
+  const scorecardSummary =
+    scorecardSummaryCandidates.find(
+      (candidate): candidate is string => typeof candidate === "string" && candidate.length > 0
+    ) ?? "Demo analysis captured from transcript.";
+  const scorecardArtifact = {
+    ...(existingScorecard ?? {}),
+    artifactType: "demo_quality_scorecard",
+    title: existingScorecard?.title?.trim() || "Demo Quality Scorecard",
+    summary: scorecardSummary,
+    contentJson: normalizedScorecardJson,
+    sourceDocumentId: existingScorecard?.sourceDocumentId ?? sourceDocumentId,
+  };
+
+  if (scorecardIndex >= 0) {
+    artifacts[scorecardIndex] = scorecardArtifact;
+  } else {
+    artifacts.unshift(scorecardArtifact);
+  }
+
+  const upsertArtifact = (
+    artifactType: "demo_coaching_memo" | "deal_next_step_memo",
+    defaults: { title: string; content: string }
+  ) => {
+    const index = artifacts.findIndex((artifact) => artifact.artifactType === artifactType);
+    if (index >= 0) {
+      artifacts[index] = {
+        ...artifacts[index],
+        title: artifacts[index].title?.trim() || defaults.title,
+        content: artifacts[index].content?.trim() || defaults.content,
+        sourceDocumentId: artifacts[index].sourceDocumentId ?? sourceDocumentId,
+      };
+      return;
+    }
+
+    artifacts.push({
+      artifactType,
+      title: defaults.title,
+      content: defaults.content,
+      sourceDocumentId,
+    });
+  };
+
+  upsertArtifact("demo_coaching_memo", {
+    title: "Demo Coaching Memo",
+    content: scorecardSummary,
+  });
+  upsertArtifact("deal_next_step_memo", {
+    title: "Deal Next-Step Memo",
+    content:
+      normalizedScorecardJson.nextSteps.length > 0
+        ? normalizedScorecardJson.nextSteps.join("\n")
+        : scorecardSummary,
+  });
+
+  return {
+    ...input.envelope,
+    artifacts,
+  };
+}
+
 async function denormalizeTranscriptAnalysisToMeeting(input: {
   triggerType: string | null | undefined;
   triggerPayload: unknown;
@@ -1171,6 +1296,11 @@ async function settleAutomationAiJobWithResponse(input: {
         response: input.response,
         parsedToolDefinitions,
       });
+      const normalizedEnvelope = normalizeDemoAnalysisEnvelope({
+        triggerType: job.run.triggerType,
+        triggerPayload: job.run.triggerPayload,
+        envelope,
+      });
 
       const persisted = await persistAutomationEnvelope({
         workflowId: job.workflowId,
@@ -1179,13 +1309,13 @@ async function settleAutomationAiJobWithResponse(input: {
         operatorKey: job.operatorKey,
         createdByNodeKey: job.nodeKey,
         requestedById: job.run.requestedById ?? null,
-        envelope,
+        envelope: normalizedEnvelope,
       });
 
       await denormalizeTranscriptAnalysisToMeeting({
         triggerType: job.run.triggerType,
         triggerPayload: job.run.triggerPayload,
-        envelope,
+        envelope: normalizedEnvelope,
         artifactIds: persisted.artifactIds,
       });
 
@@ -1196,7 +1326,7 @@ async function settleAutomationAiJobWithResponse(input: {
           responseStatus,
           responsePayload: toInputJsonValue(input.response),
           outputText,
-          parsedOutput: toNullableJsonValue(envelope.raw),
+          parsedOutput: toNullableJsonValue(normalizedEnvelope.raw),
           lastError: null,
           completedAt: new Date(),
         },
@@ -1211,7 +1341,7 @@ async function settleAutomationAiJobWithResponse(input: {
               actionType: job.jobType,
               aiJobId: job.id,
               responseId: input.response.id,
-              summary: envelope.summary ?? null,
+              summary: normalizedEnvelope.summary ?? null,
               artifactIds: persisted.artifactIds,
               recommendationIds: persisted.recommendationIds,
             } as Prisma.JsonObject,

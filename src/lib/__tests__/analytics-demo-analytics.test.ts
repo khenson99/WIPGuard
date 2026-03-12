@@ -355,6 +355,7 @@ describe("buildDemoAnalyticsData", () => {
           amount: 4000,
           source: "Organic",
           ownerId: null,
+          repName: "Avery",
           updatedAt: "2026-02-10T00:00:00.000Z",
           createdAt: "2026-02-01T00:00:00.000Z",
         }),
@@ -432,6 +433,12 @@ describe("buildDemoAnalyticsData", () => {
               nextSteps: ["Send proposal"],
               outcomeConfidence: "high",
             },
+            sourceDocument: {
+              id: "doc-1",
+              title: "Archived transcript",
+              sourceUrl: "https://archive.test/transcript",
+              textContent: "Customer: We have budget approval.\nRep: I will send the proposal today.",
+            },
           },
           siblingArtifacts: [
             {
@@ -463,12 +470,17 @@ describe("buildDemoAnalyticsData", () => {
     expect(demo.transcriptCoveragePct).toBe(100);
     expect(demo.upcomingDemos).toHaveLength(2);
     expect(demo.upcomingDemos[0].meetingId).toBe("meeting-upcoming");
+    expect(demo.upcomingDemos[0].ownerName).toBe("Avery");
     expect(demo.upcomingDemos[1].isUnscheduledFallback).toBe(true);
     expect(demo.topStrengthThemes).toEqual([{ label: "Discovery depth", count: 1 }]);
     expect(demo.topGapThemes).toEqual([{ label: "Pricing clarity", count: 1 }]);
 
     const historical = demo.demos.find((entry) => entry.meetingId === "meeting-historical");
     expect(historical?.transcriptStatus).toBe("matched");
+    expect(historical?.transcriptSourceUrl).toBe("https://archive.test/transcript");
+    expect(historical?.transcriptSourceTitle).toBe("Archived transcript");
+    expect(historical?.transcriptSourceDocumentId).toBe("doc-1");
+    expect(historical?.transcriptText).toContain("budget approval");
     expect(historical?.analysisStatus).toBe("ready");
     expect(historical?.qualityScore).toBe(88);
     expect(historical?.coachingMemo).toContain("ROI");

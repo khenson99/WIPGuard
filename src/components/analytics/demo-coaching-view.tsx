@@ -43,6 +43,16 @@ export function DemoCoachingView({ data }: { data: AnalyticsDashboardData | null
                 <p className="text-xs text-muted-foreground">
                   {record.meetingTitle ?? "Historical demo"} · {new Date(record.scheduledAt).toLocaleString()}
                 </p>
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                  <MetaPill label={`Transcript: ${record.transcriptStatus}`} />
+                  {record.transcriptMatchConfidence != null && (
+                    <MetaPill label={`Match ${Math.round(record.transcriptMatchConfidence * 100)}%`} />
+                  )}
+                  <MetaPill label={`Analysis: ${record.analysisStatus}`} />
+                  {record.outcomeConfidence && (
+                    <MetaPill label={`Outcome: ${record.outcomeConfidence}`} />
+                  )}
+                </div>
               </div>
               <div className={`text-sm font-semibold ${scoreTone(record.qualityScore)}`}>
                 {record.qualityScore != null ? `${record.qualityScore}/100` : "Unscored"}
@@ -66,6 +76,17 @@ export function DemoCoachingView({ data }: { data: AnalyticsDashboardData | null
               <ListCard title="Recommended Next Steps" items={record.nextSteps} />
             </div>
 
+            {record.transcriptText && (
+              <div className="mt-4 rounded-xl border border-border/70 bg-background/40 p-4">
+                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Transcript Excerpt
+                </h4>
+                <p className="whitespace-pre-wrap text-sm text-foreground">
+                  {truncateTranscript(record.transcriptText)}
+                </p>
+              </div>
+            )}
+
             {record.transcriptSourceUrl && (
               <a
                 href={record.transcriptSourceUrl}
@@ -81,6 +102,22 @@ export function DemoCoachingView({ data }: { data: AnalyticsDashboardData | null
         ))}
       </div>
     </div>
+  );
+}
+
+function truncateTranscript(value: string, maxLength = 600): string {
+  const normalized = value.trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength).trimEnd()}...`;
+}
+
+function MetaPill({ label }: { label: string }) {
+  return (
+    <span className="inline-flex rounded-full border border-border/70 bg-background/60 px-2 py-0.5 text-[11px] text-muted-foreground">
+      {label}
+    </span>
   );
 }
 

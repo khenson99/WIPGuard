@@ -11,6 +11,7 @@ function makeDemoRecord(
     Pick<DemoRecord, "dealId" | "dealName" | "scheduledAt" | "source" | "outcome">,
 ): DemoRecord {
   return {
+    ownerName: null,
     contactEmail: null,
     meetingId: null,
     meetingTitle: null,
@@ -25,6 +26,8 @@ function makeDemoRecord(
     transcriptMatchConfidence: null,
     transcriptSourceUrl: null,
     transcriptSourceTitle: null,
+    transcriptSourceDocumentId: null,
+    transcriptText: null,
     analysisStatus: "missing",
     qualityScore: null,
     qualitySummary: null,

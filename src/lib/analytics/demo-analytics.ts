@@ -66,6 +66,12 @@ export interface DemoMeetingContext {
     summary: string | null;
     content: string | null;
     contentJson: Record<string, unknown> | null;
+    sourceDocument: {
+      id: string;
+      title: string | null;
+      sourceUrl: string | null;
+      textContent: string | null;
+    } | null;
   } | null;
   siblingArtifacts: Array<{
     id: string;
@@ -234,10 +240,12 @@ function buildDemoRecordFromMeeting(input: {
     isUpcoming,
   });
   const siblingArtifacts = input.meeting.siblingArtifacts;
+  const transcriptSource = input.meeting.analysisArtifact?.sourceDocument;
 
   return {
     dealId: input.deal?.dealId ?? input.meeting.dealId ?? input.meeting.id,
     dealName: input.deal?.dealName ?? input.meeting.dealName ?? input.meeting.title,
+    ownerName: input.deal?.repName ?? null,
     contactEmail: input.meeting.attendeeEmails[0] ?? input.deal?.primaryContactEmail ?? null,
     scheduledAt,
     meetingId: input.meeting.id,
@@ -253,8 +261,10 @@ function buildDemoRecordFromMeeting(input: {
     resultingStage: input.deal?.stageLabel ?? null,
     transcriptStatus: deriveTranscriptStatus(input.meeting),
     transcriptMatchConfidence: input.meeting.transcriptMatchConfidence,
-    transcriptSourceUrl: input.meeting.googleDriveFileUrl,
-    transcriptSourceTitle: input.meeting.googleDriveFileName,
+    transcriptSourceUrl: transcriptSource?.sourceUrl ?? input.meeting.googleDriveFileUrl,
+    transcriptSourceTitle: transcriptSource?.title ?? input.meeting.googleDriveFileName,
+    transcriptSourceDocumentId: transcriptSource?.id ?? null,
+    transcriptText: transcriptSource?.textContent ?? null,
     analysisStatus: deriveAnalysisStatus(input.meeting),
     qualityScore: input.meeting.demoQualityScore,
     qualitySummary: input.meeting.demoQualitySummary,
@@ -284,6 +294,7 @@ function buildUnscheduledFallbackRecord(input: {
   return {
     dealId: input.deal.dealId,
     dealName: input.deal.dealName,
+    ownerName: input.deal.repName ?? null,
     contactEmail: input.deal.primaryContactEmail ?? null,
     scheduledAt,
     meetingId: null,
@@ -301,6 +312,8 @@ function buildUnscheduledFallbackRecord(input: {
     transcriptMatchConfidence: null,
     transcriptSourceUrl: null,
     transcriptSourceTitle: null,
+    transcriptSourceDocumentId: null,
+    transcriptText: null,
     analysisStatus: "missing",
     qualityScore: null,
     qualitySummary: null,
@@ -335,6 +348,7 @@ function buildDealAggregateRecord(input: {
   return {
     dealId: input.deal.dealId,
     dealName: input.deal.dealName,
+    ownerName: input.deal.repName ?? null,
     contactEmail: input.deal.primaryContactEmail ?? null,
     scheduledAt,
     meetingId: null,
@@ -352,6 +366,8 @@ function buildDealAggregateRecord(input: {
     transcriptMatchConfidence: null,
     transcriptSourceUrl: null,
     transcriptSourceTitle: null,
+    transcriptSourceDocumentId: null,
+    transcriptText: null,
     analysisStatus: "missing",
     qualityScore: null,
     qualitySummary: null,
@@ -636,6 +652,14 @@ export async function listDemoAnalyticsMeetings(): Promise<DemoMeetingContext[]>
           summary: true,
           content: true,
           contentJson: true,
+          sourceDocument: {
+            select: {
+              id: true,
+              title: true,
+              sourceUrl: true,
+              textContent: true,
+            },
+          },
         },
       },
     },
@@ -708,6 +732,14 @@ export async function listDemoAnalyticsMeetings(): Promise<DemoMeetingContext[]>
           summary: meeting.analysisArtifact.summary,
           content: meeting.analysisArtifact.content,
           contentJson: asRecord(meeting.analysisArtifact.contentJson),
+          sourceDocument: meeting.analysisArtifact.sourceDocument
+            ? {
+                id: meeting.analysisArtifact.sourceDocument.id,
+                title: meeting.analysisArtifact.sourceDocument.title,
+                sourceUrl: meeting.analysisArtifact.sourceDocument.sourceUrl,
+                textContent: meeting.analysisArtifact.sourceDocument.textContent,
+              }
+            : null,
         }
       : null,
     siblingArtifacts: meeting.analysisArtifact

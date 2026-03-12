@@ -28,7 +28,7 @@ vi.mock("@/lib/prisma", () => ({
     },
     workflowDefinition: {
       findFirst: vi.fn(),
-      create: vi.fn(),
+      upsert: vi.fn(),
     },
     workflowRun: {
       findUnique: vi.fn(),
@@ -152,7 +152,7 @@ describe("automation store", () => {
 
   it("persists standalone source documents through a system-managed archive workflow", async () => {
     vi.mocked(prisma.workflowDefinition.findFirst).mockResolvedValue(null as never);
-    vi.mocked(prisma.workflowDefinition.create).mockResolvedValue({
+    vi.mocked(prisma.workflowDefinition.upsert).mockResolvedValue({
       id: "wf_archive_1",
     } as never);
     vi.mocked(prisma.workflowRun.findUnique).mockResolvedValue(null as never);
@@ -190,13 +190,18 @@ describe("automation store", () => {
       sourceDocumentId: "doc_archive_1",
     });
 
-    expect(prisma.workflowDefinition.create).toHaveBeenCalledWith(
+    expect(prisma.workflowDefinition.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
+        where: { id: expect.stringMatching(/^wf_sys_transcript_archive_/) },
+        create: expect.objectContaining({
           ownerId: "user_1",
           name: "System Transcript Archive",
           isSystemManaged: true,
           providers: [IntegrationProvider.GOOGLE_WORKSPACE],
+        }),
+        update: expect.objectContaining({
+          status: "ACTIVE",
+          isSystemManaged: true,
         }),
       })
     );
