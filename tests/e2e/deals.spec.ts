@@ -91,7 +91,7 @@ test.describe('Deal Pipeline', () => {
     );
 
     await page.getByLabel(/deal stage/i).selectOption({ label: targetStage });
-    await page.getByRole('button', { name: /save changes/i }).click();
+    await page.getByRole('button', { name: /save.*changes/i }).click();
     await saveResponse;
 
     await dealsPage.goto();
