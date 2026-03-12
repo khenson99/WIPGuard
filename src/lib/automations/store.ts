@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   AutomationArtifactStatus,
   AutomationRecommendationStatus,
@@ -62,6 +63,25 @@ export interface AutomationResultEnvelope {
 
 const SYSTEM_TRANSCRIPT_ARCHIVE_WORKFLOW_NAME = "System Transcript Archive";
 
+function buildSystemTranscriptArchiveWorkflowId(input: {
+  ownerId: string;
+  provider?: IntegrationProvider | null;
+  operatorKey?: AutomationOperatorKey | null;
+}): string {
+  const digest = createHash("sha256")
+    .update(
+      JSON.stringify({
+        ownerId: input.ownerId,
+        provider: input.provider ?? null,
+        operatorKey: input.operatorKey ?? null,
+      })
+    )
+    .digest("hex")
+    .slice(0, 24);
+
+  return `wf_sys_transcript_archive_${digest}`;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -114,8 +134,11 @@ async function ensureSystemTranscriptArchiveWorkflow(input: {
     return existing.id;
   }
 
-  const created = await prisma.workflowDefinition.create({
-    data: {
+  const workflowId = buildSystemTranscriptArchiveWorkflowId(input);
+  const created = await prisma.workflowDefinition.upsert({
+    where: { id: workflowId },
+    create: {
+      id: workflowId,
       ownerId: input.ownerId,
       name: SYSTEM_TRANSCRIPT_ARCHIVE_WORKFLOW_NAME,
       description: "System-managed archive workflow for durable transcript persistence.",
@@ -130,9 +153,13 @@ async function ensureSystemTranscriptArchiveWorkflow(input: {
       } as Prisma.InputJsonValue,
       lastPublishedAt: new Date(),
     },
-    select: {
-      id: true,
+    update: {
+      providers: input.provider ? [input.provider] : [],
+      operatorKey: input.operatorKey ?? null,
+      status: WorkflowStatus.ACTIVE,
+      isSystemManaged: true,
     },
+    select: { id: true },
   });
 
   return created.id;

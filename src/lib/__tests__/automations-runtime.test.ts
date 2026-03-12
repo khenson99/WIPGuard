@@ -391,6 +391,26 @@ describe("automation runtime AI lifecycle", () => {
     const processed = await pollAutomationAiJobs(10);
 
     expect(processed).toBe(1);
+    expect(persistAutomationEnvelope).toHaveBeenCalledWith(
+      expect.objectContaining({
+        envelope: expect.objectContaining({
+          artifacts: expect.arrayContaining([
+            expect.objectContaining({
+              artifactType: "demo_quality_scorecard",
+              sourceDocumentId: null,
+            }),
+            expect.objectContaining({
+              artifactType: "demo_coaching_memo",
+              sourceDocumentId: null,
+            }),
+            expect.objectContaining({
+              artifactType: "deal_next_step_memo",
+              sourceDocumentId: null,
+            }),
+          ]),
+        }),
+      })
+    );
     expect(prisma.dealMeeting.update).toHaveBeenCalledWith({
       where: { id: "meeting_demo_1" },
       data: expect.objectContaining({
@@ -404,7 +424,7 @@ describe("automation runtime AI lifecycle", () => {
     });
   });
 
-  it("backfills canonical demo artifacts for transcript-ready runs when the AI response is incomplete", async () => {
+  it("normalizes transcript-ready artifact envelopes and anchors them to the archived transcript", async () => {
     const { prisma } = await import("@/lib/prisma");
     const {
       extractAutomationAiOutputText,
@@ -416,16 +436,16 @@ describe("automation runtime AI lifecycle", () => {
 
     vi.mocked(prisma.automationAiJob.findMany).mockResolvedValue([
       {
-        id: "job_demo_incomplete_1",
-        responseId: "resp_demo_incomplete_1",
+        id: "job_demo_2",
+        responseId: "resp_demo_2",
         attemptCount: 1,
       },
     ] as never);
     vi.mocked(prisma.automationAiJob.findUnique).mockResolvedValue({
-      id: "job_demo_incomplete_1",
-      workflowId: "wf_demo_incomplete_1",
-      runId: "run_demo_incomplete_1",
-      stepId: "step_demo_incomplete_1",
+      id: "job_demo_2",
+      workflowId: "wf_demo_2",
+      runId: "run_demo_2",
+      stepId: "step_demo_2",
       operatorKey: "SALES_FOLLOWUP",
       nodeKey: "analyze_followup",
       jobType: "ai_analyze",
@@ -433,23 +453,37 @@ describe("automation runtime AI lifecycle", () => {
       run: {
         requestedById: "user_1",
         triggerType: "google-workspace.meet.transcript_ready",
-        triggerPayload: { meetingId: "meeting_demo_incomplete_1" },
+        triggerPayload: {
+          meetingId: "meeting_demo_2",
+          sourceDocumentId: "doc_transcript_1",
+        },
       },
     } as never);
     vi.mocked(retrieveAutomationOpenAiResponse).mockResolvedValue({
-      id: "resp_demo_incomplete_1",
+      id: "resp_demo_2",
       status: "completed",
     } as never);
     vi.mocked(extractAutomationAiOutputText).mockReturnValue("demo result");
     vi.mocked(isTerminalAutomationAiStatus).mockReturnValue(true);
     vi.mocked(parseAutomationAiResponseEnvelope).mockReturnValue({
-      summary: "Buyer was engaged but next step ownership was fuzzy.",
-      raw: { summary: "Buyer was engaged but next step ownership was fuzzy." },
-      artifacts: [],
+      summary: "Strong discovery call",
+      raw: { summary: "Strong discovery call" },
+      artifacts: [
+        {
+          artifactType: "demo_quality_scorecard",
+          title: "Scorecard",
+          contentJson: {
+            overallScore: 91,
+            strengths: ["Strong discovery"],
+            nextSteps: ["Send pricing recap", "Book technical validation"],
+            outcomeConfidence: "high",
+          },
+        },
+      ],
       recommendations: [],
     } as never);
     vi.mocked(persistAutomationEnvelope).mockResolvedValue({
-      artifactIds: ["artifact_score_1", "artifact_coaching_1", "artifact_next_1"],
+      artifactIds: ["artifact_score_2", "artifact_memo_2", "artifact_next_2"],
       recommendationIds: [],
     } as never);
     vi.mocked(prisma.workflowDefinition.findUnique).mockResolvedValue({
@@ -469,11 +503,11 @@ describe("automation runtime AI lifecycle", () => {
     } as never);
     vi.mocked(prisma.workflowRunStep.findFirst).mockResolvedValue({
       output: {
-        artifactIds: ["artifact_score_1", "artifact_coaching_1", "artifact_next_1"],
+        artifactIds: ["artifact_score_2"],
         recommendationIds: [],
       },
     } as never);
-    vi.mocked(prisma.dealMeeting.update).mockResolvedValue({ id: "meeting_demo_incomplete_1" } as never);
+    vi.mocked(prisma.dealMeeting.update).mockResolvedValue({ id: "meeting_demo_2" } as never);
 
     const { pollAutomationAiJobs } = await import("@/lib/automations/runtime");
     const processed = await pollAutomationAiJobs(10);
@@ -485,34 +519,30 @@ describe("automation runtime AI lifecycle", () => {
           artifacts: [
             expect.objectContaining({
               artifactType: "demo_quality_scorecard",
-              title: "Demo Quality Scorecard",
-              contentJson: expect.objectContaining({
-                strengths: [],
+              sourceDocumentId: "doc_transcript_1",
+              contentJson: {
+                overallScore: 91,
+                strengths: ["Strong discovery"],
                 gaps: [],
                 customerSignals: [],
-                nextSteps: [],
-                outcomeConfidence: null,
-              }),
+                nextSteps: ["Send pricing recap", "Book technical validation"],
+                outcomeConfidence: "high",
+              },
             }),
             expect.objectContaining({
               artifactType: "demo_coaching_memo",
-              title: "Demo Coaching Memo",
+              sourceDocumentId: "doc_transcript_1",
+              content: "Strong discovery call",
             }),
             expect.objectContaining({
               artifactType: "deal_next_step_memo",
-              title: "Deal Next-Step Memo",
+              sourceDocumentId: "doc_transcript_1",
+              content: "Send pricing recap\nBook technical validation",
             }),
           ],
         }),
       })
     );
-    expect(prisma.dealMeeting.update).toHaveBeenCalledWith({
-      where: { id: "meeting_demo_incomplete_1" },
-      data: expect.objectContaining({
-        analysisArtifactId: "artifact_score_1",
-        demoQualitySummary: "Buyer was engaged but next step ownership was fuzzy.",
-      }),
-    });
   });
 
   it("marks polled AI jobs failed when response retrieval errors", async () => {
