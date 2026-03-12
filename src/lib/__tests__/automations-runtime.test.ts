@@ -10,7 +10,9 @@ vi.mock("@/lib/prisma", () => ({
       update: vi.fn(),
     },
     workflowApproval: {
+      create: vi.fn(),
       findMany: vi.fn(),
+      findUnique: vi.fn(),
       update: vi.fn(),
     },
     workflowTriggerEvent: {
@@ -778,6 +780,240 @@ describe("automation runtime AI lifecycle", () => {
         data: expect.objectContaining({
           status: "SUCCEEDED",
           error: null,
+        }),
+      })
+    );
+  });
+
+  it("pauses workflow runs when they reach an approval node", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { buildRunExecutionContext } = await import("@/lib/automations/store");
+
+    vi.mocked(prisma.workflowRun.findUnique).mockResolvedValue({
+      id: "run_approval_1",
+      workflowId: "wf_approval_1",
+      startedAt: null,
+      workflow: {
+        graph: {
+          nodes: [
+            {
+              key: "trigger_review",
+              type: "TRIGGER",
+              label: "Review Trigger",
+              config: {
+                provider: "wipguard",
+                eventType: "review.requested",
+              },
+            },
+            {
+              key: "approval_review",
+              type: "APPROVAL",
+              label: "Review Recommendations",
+              config: {
+                approverId: "user_admin_1",
+                timeoutMinutes: 30,
+              },
+            },
+          ],
+          edges: [
+            {
+              source: "trigger_review",
+              target: "approval_review",
+              priority: 0,
+            },
+          ],
+        },
+      },
+    } as never);
+    vi.mocked(buildRunExecutionContext).mockResolvedValue({
+      trigger: {
+        provider: "WIPGUARD",
+        eventType: "review.requested",
+        externalId: "review_1",
+      },
+      state: {},
+    } as never);
+    vi.mocked(prisma.workflowRunStep.create)
+      .mockResolvedValueOnce({ id: "step_trigger_approval_1" } as never)
+      .mockResolvedValueOnce({ id: "step_approval_1" } as never);
+
+    const { executeWorkflowRun } = await import("@/lib/automations/runtime");
+    await executeWorkflowRun("run_approval_1");
+
+    expect(prisma.workflowApproval.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          runId: "run_approval_1",
+          stepId: "step_approval_1",
+          nodeKey: "approval_review",
+          approverId: "user_admin_1",
+          status: "PENDING",
+          timeoutAt: expect.any(Date),
+        }),
+      })
+    );
+    expect(prisma.workflowRunStep.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "step_approval_1" },
+        data: expect.objectContaining({
+          status: "WAITING_APPROVAL",
+          output: { waitingApproval: true },
+          finishedAt: expect.any(Date),
+        }),
+      })
+    );
+    expect(prisma.workflowRun.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "run_approval_1" },
+        data: expect.objectContaining({
+          status: "WAITING_APPROVAL",
+        }),
+      })
+    );
+    expect(prisma.workflowDefinition.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "wf_approval_1" },
+        data: expect.objectContaining({
+          lastError: null,
+        }),
+      })
+    );
+  });
+
+  it("resumes approved workflow approvals into downstream recommendation execution", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { executeApprovedRecommendationsForRun } = await import(
+      "@/lib/automations/recommendations"
+    );
+    const { buildRunExecutionContext } = await import("@/lib/automations/store");
+    const { getAppRole } = await import("@/lib/permissions");
+
+    vi.mocked(prisma.workflowApproval.findUnique).mockResolvedValue({
+      id: "approval_resume_1",
+      runId: "run_approval_resume_1",
+      nodeKey: "approval_review",
+      stepId: "step_approval_resume_1",
+      status: "PENDING",
+      approverId: null,
+      run: {
+        workflowId: "wf_approval_resume_1",
+        workflow: {
+          rolePolicy: null,
+        },
+      },
+    } as never);
+    vi.mocked(getAppRole).mockResolvedValue("admin" as never);
+    vi.mocked(prisma.workflowDefinition.findUnique).mockResolvedValue({
+      graph: {
+        nodes: [
+          {
+            key: "approval_review",
+            type: "APPROVAL",
+            label: "Review Recommendations",
+            config: {},
+          },
+          {
+            key: "execute_recommendations",
+            type: "ACTION",
+            label: "Execute Recommendations",
+            config: {
+              actionType: "execute_recommendation",
+              recommendationIds: ["recommendation_approval_1"],
+              actionTypes: ["create_task"],
+              limit: 2,
+            },
+          },
+        ],
+        edges: [
+          {
+            source: "approval_review",
+            target: "execute_recommendations",
+            conditionLabel: "approved",
+            priority: 0,
+          },
+        ],
+      },
+    } as never);
+    vi.mocked(buildRunExecutionContext).mockResolvedValue({
+      trigger: {
+        provider: "WIPGUARD",
+        eventType: "review.requested",
+        externalId: "review_resume_1",
+      },
+      state: {},
+    } as never);
+    vi.mocked(executeApprovedRecommendationsForRun).mockResolvedValue({
+      attempted: 1,
+      executed: 1,
+      failed: 0,
+      recommendationIds: ["recommendation_approval_1"],
+    } as never);
+    vi.mocked(prisma.workflowRunStep.create).mockResolvedValueOnce({
+      id: "step_exec_approval_1",
+    } as never);
+
+    const { resolveWorkflowApproval } = await import("@/lib/automations/runtime");
+    await resolveWorkflowApproval({
+      approvalId: "approval_resume_1",
+      actorUserId: "user_admin_1",
+      decision: "approve",
+      note: "Ship it",
+    });
+
+    expect(getAppRole).toHaveBeenCalledWith("user_admin_1");
+    expect(prisma.workflowApproval.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "approval_resume_1" },
+        data: expect.objectContaining({
+          status: "APPROVED",
+          decisionNote: "Ship it",
+          approverId: "user_admin_1",
+          resolvedAt: expect.any(Date),
+        }),
+      })
+    );
+    expect(prisma.workflowRunStep.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "step_approval_resume_1" },
+        data: expect.objectContaining({
+          status: "SUCCEEDED",
+          output: {
+            decision: "approve",
+            note: "Ship it",
+          },
+          finishedAt: expect.any(Date),
+        }),
+      })
+    );
+    expect(executeApprovedRecommendationsForRun).toHaveBeenCalledWith({
+      runId: "run_approval_resume_1",
+      recommendationIds: ["recommendation_approval_1"],
+      actionTypes: ["create_task"],
+      limit: 2,
+    });
+    expect(prisma.workflowRunStep.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          runId: "run_approval_resume_1",
+          nodeKey: "execute_recommendations",
+          nodeType: "ACTION",
+        }),
+      })
+    );
+    expect(prisma.workflowRun.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "run_approval_resume_1" },
+        data: expect.objectContaining({
+          status: "SUCCEEDED",
+          error: null,
+        }),
+      })
+    );
+    expect(prisma.workflowDefinition.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "wf_approval_resume_1" },
+        data: expect.objectContaining({
+          lastError: null,
         }),
       })
     );
