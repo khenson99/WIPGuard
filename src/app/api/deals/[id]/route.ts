@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { DealStage } from "@/generated/prisma/client";
 import { enforcePermission } from "@/lib/permissions";
@@ -25,7 +24,7 @@ export async function GET(
     return NextResponse.json({ error: "Deal id is required" }, { status: 400 });
   }
 
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   const user = getAuthenticatedUser(session);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -74,7 +73,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Deal id is required" }, { status: 400 });
   }
 
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   const user = getAuthenticatedUser(session);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -244,7 +243,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Deal id is required" }, { status: 400 });
   }
 
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   const user = getAuthenticatedUser(session);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

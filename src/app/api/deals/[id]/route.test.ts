@@ -7,12 +7,8 @@ const txMocks = vi.hoisted(() => ({
   dealStageHistoryCreate: vi.fn(),
 }));
 
-vi.mock("next-auth", () => ({
-  getServerSession: vi.fn(),
-}));
-
 vi.mock("@/lib/auth", () => ({
-  authOptions: {},
+  auth: vi.fn(),
 }));
 
 vi.mock("@/lib/permissions", () => ({
@@ -55,8 +51,8 @@ describe("deal detail route", () => {
     txMocks.dealUpdateMany.mockResolvedValue({ count: 1 });
     txMocks.dealStageHistoryCreate.mockResolvedValue({});
 
-    const { getServerSession } = await import("next-auth");
-    vi.mocked(getServerSession).mockResolvedValue({
+    const { auth } = await import("@/lib/auth");
+    vi.mocked(auth).mockResolvedValue({
       user: {
         id: "user-1",
         email: "user@example.com",
@@ -89,6 +85,43 @@ describe("deal detail route", () => {
 
     expect(response.status).toBe(403);
     expect(prisma.deal.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("returns deal detail when the auth session is available", async () => {
+    const { prisma } = await import("@/lib/prisma");
+
+    vi.mocked(prisma.deal.findFirst).mockResolvedValue({
+      id: "deal-1",
+      name: "Acme",
+      stage: "LEAD",
+      amount: 1000,
+      source: "OTHER",
+      expectedCloseDate: null,
+      closedAt: null,
+      notes: null,
+      companyId: null,
+      company: null,
+      ownerId: "user-1",
+      owner: { id: "user-1", name: "Owner", email: "owner@example.com" },
+      contacts: [],
+      meetings: [],
+      stageHistory: [],
+      createdAt: new Date("2026-03-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-03-01T00:00:00.000Z"),
+    } as never);
+
+    const { GET } = await import("@/app/api/deals/[id]/route");
+    const response = await GET(new NextRequest("http://localhost/api/deals/deal-1"), {
+      params: Promise.resolve({ id: "deal-1" }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      id: "deal-1",
+      name: "Acme",
+      owner: { id: "user-1" },
+    });
   });
 
   it("records stage history inside the deal update transaction", async () => {
