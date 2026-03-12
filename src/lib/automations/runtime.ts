@@ -34,6 +34,7 @@ import {
   buildRunExecutionContext,
   materializeSourceDocumentsFromTrigger,
   persistAutomationEnvelope,
+  type AutomationResultEnvelope,
 } from "@/lib/automations/store";
 import { getAppRole } from "@/lib/permissions";
 
@@ -1076,6 +1077,118 @@ function toBoundedScore(value: unknown): number | null {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
+function normalizeOutcomeConfidence(value: unknown): "low" | "medium" | "high" | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "low" || normalized === "medium" || normalized === "high") {
+    return normalized;
+  }
+
+  return null;
+}
+
+function firstArtifactText(
+  artifacts: NonNullable<AutomationResultEnvelope["artifacts"]>
+): string | null {
+  for (const artifact of artifacts) {
+    const text =
+      (typeof artifact.content === "string" && artifact.content.trim()) ||
+      (typeof artifact.summary === "string" && artifact.summary.trim()) ||
+      null;
+    if (text) {
+      return text;
+    }
+  }
+  return null;
+}
+
+function normalizeDemoAnalysisEnvelope(input: {
+  triggerType: string | null | undefined;
+  envelope: AutomationResultEnvelope;
+}): AutomationResultEnvelope {
+  if (input.triggerType !== "google-workspace.meet.transcript_ready") {
+    return input.envelope;
+  }
+
+  const artifacts = Array.isArray(input.envelope.artifacts)
+    ? [...input.envelope.artifacts]
+    : [];
+  const summaryFallback =
+    (typeof input.envelope.summary === "string" && input.envelope.summary.trim()) ||
+    firstArtifactText(artifacts) ||
+    "Demo analysis generated from transcript context.";
+
+  const existingScorecard = artifacts.find(
+    (artifact) => artifact.artifactType === "demo_quality_scorecard"
+  );
+  const existingScorecardJson = asRecord(existingScorecard?.contentJson) ?? {};
+  const normalizedScorecard: NonNullable<AutomationResultEnvelope["artifacts"]>[number] = {
+    artifactType: "demo_quality_scorecard",
+    title: existingScorecard?.title ?? "Demo Quality Scorecard",
+    summary: existingScorecard?.summary ?? summaryFallback,
+    content: existingScorecard?.content ?? null,
+    contentJson: {
+      overallScore: toBoundedScore(existingScorecardJson.overallScore),
+      strengths: uniqueStringList(existingScorecardJson.strengths),
+      gaps: uniqueStringList(existingScorecardJson.gaps),
+      customerSignals: uniqueStringList(existingScorecardJson.customerSignals),
+      nextSteps: uniqueStringList(existingScorecardJson.nextSteps),
+      outcomeConfidence: normalizeOutcomeConfidence(existingScorecardJson.outcomeConfidence),
+      summary:
+        (typeof existingScorecardJson.summary === "string" && existingScorecardJson.summary.trim()) ||
+        existingScorecard?.summary ||
+        summaryFallback,
+    },
+    metadata: existingScorecard?.metadata ?? null,
+    dedupeKey: existingScorecard?.dedupeKey,
+    sourceDocumentId: existingScorecard?.sourceDocumentId ?? null,
+  };
+
+  const nextSteps = uniqueStringList(
+    (normalizedScorecard.contentJson as Record<string, unknown>).nextSteps
+  );
+  const nextStepText =
+    nextSteps.length > 0 ? nextSteps.map((step) => `- ${step}`).join("\n") : summaryFallback;
+
+  const upsertArtifact = (
+    artifactType: string,
+    title: string,
+    content: string
+  ) => {
+    const existing = artifacts.find((artifact) => artifact.artifactType === artifactType);
+    return {
+      artifactType,
+      title: existing?.title ?? title,
+      summary: existing?.summary ?? summaryFallback,
+      content: existing?.content ?? content,
+      contentJson: existing?.contentJson ?? null,
+      metadata: existing?.metadata ?? null,
+      dedupeKey: existing?.dedupeKey,
+      sourceDocumentId: existing?.sourceDocumentId ?? null,
+    };
+  };
+
+  const remaining = artifacts.filter(
+    (artifact) =>
+      artifact.artifactType !== "demo_quality_scorecard" &&
+      artifact.artifactType !== "demo_coaching_memo" &&
+      artifact.artifactType !== "deal_next_step_memo"
+  );
+
+  return {
+    ...input.envelope,
+    artifacts: [
+      normalizedScorecard,
+      upsertArtifact("demo_coaching_memo", "Demo Coaching Memo", summaryFallback),
+      upsertArtifact("deal_next_step_memo", "Deal Next-Step Memo", nextStepText),
+      ...remaining,
+    ],
+  };
+}
+
 async function denormalizeTranscriptAnalysisToMeeting(input: {
   triggerType: string | null | undefined;
   triggerPayload: unknown;
@@ -1167,9 +1280,13 @@ async function settleAutomationAiJobWithResponse(input: {
       const parsedToolDefinitions = Array.isArray(metadata.parsedToolDefinitions)
         ? metadata.parsedToolDefinitions.filter((item) => asRecord(item))
         : [];
-      const envelope = parseAutomationAiResponseEnvelope({
+      const rawEnvelope = parseAutomationAiResponseEnvelope({
         response: input.response,
         parsedToolDefinitions,
+      });
+      const envelope = normalizeDemoAnalysisEnvelope({
+        triggerType: job.run.triggerType,
+        envelope: rawEnvelope,
       });
 
       const persisted = await persistAutomationEnvelope({
