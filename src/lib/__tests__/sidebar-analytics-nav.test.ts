@@ -26,6 +26,7 @@ describe("sidebar workspace navigation", () => {
       automations?.children?.map((child) => child.href)
     ).toEqual([
       "/automations",
+      "/automations/ralph-board",
       "/automations/recommendations",
       "/automations/approvals",
       "/automations/artifacts",

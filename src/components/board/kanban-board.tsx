@@ -27,6 +27,8 @@ import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache"
 interface KanbanBoardProps {
   filterByUser?: string;
   filterByStatus?: TaskStatus[];
+  filterByProject?: string;
+  lockProjectFilter?: boolean;
 }
 
 type DisplayPreset = "standard" | "dense" | "triage";
@@ -211,7 +213,12 @@ function ConfirmDialog({
   );
 }
 
-export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) {
+export function KanbanBoard({
+  filterByUser,
+  filterByStatus,
+  filterByProject,
+  lockProjectFilter = false,
+}: KanbanBoardProps) {
   const { data: session } = useSession();
   const {
     columns,
@@ -256,6 +263,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
   /* ----- Confirm Dialog state ----- */
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const confirmResolveRef = useRef<((confirmed: boolean) => void) | null>(null);
+  const effectiveProjectFilter = filterByProject ?? filterProject;
 
   const showConfirm = useCallback(
     (opts: { title: string; message: string; confirmLabel?: string; cancelLabel?: string; variant?: "warning" | "destructive" }): Promise<boolean> => {
@@ -309,12 +317,19 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
       "dashboard:kanban:v1",
       filterByUser || "all",
       filterAssignee || "all",
-      filterProject || "all",
+      effectiveProjectFilter || "all",
       filterPriority || "all",
       filterSprint || "all",
       statusKey,
     ].join(":");
-  }, [filterAssignee, filterByStatus, filterByUser, filterPriority, filterProject, filterSprint]);
+  }, [
+    effectiveProjectFilter,
+    filterAssignee,
+    filterByStatus,
+    filterByUser,
+    filterPriority,
+    filterSprint,
+  ]);
 
   const applyBoardSnapshot = useCallback(
     (snapshot: KanbanSnapshot) => {
@@ -406,7 +421,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
       const params = new URLSearchParams();
       if (filterByUser) params.set("assignee", filterByUser);
       if (filterAssignee) params.set("assignee", filterAssignee);
-      if (filterProject) params.set("project", filterProject);
+      if (effectiveProjectFilter) params.set("project", effectiveProjectFilter);
       if (filterPriority) params.set("priority", filterPriority);
       if (filterSprint) params.set("sprint", filterSprint);
 
@@ -465,9 +480,9 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
   }, [
     applyBoardSnapshot,
     boardCacheKey,
+    effectiveProjectFilter,
     filterByUser,
     filterAssignee,
-    filterProject,
     filterPriority,
     filterSprint,
   ]);
@@ -873,7 +888,7 @@ export function KanbanBoard({ filterByUser, filterByStatus }: KanbanBoardProps) 
       <div className="inline-flex min-w-full flex-col">
       <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b border-border/40 bg-background/95 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 shadow-sm">
         <div className="flex min-w-0 flex-1 items-center gap-4">
-          <BoardFilters />
+          <BoardFilters lockedProjectId={lockProjectFilter ? effectiveProjectFilter ?? null : null} />
           <div className="flex items-center gap-2.5">
             {/* Group By selector */}
             <div className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/50 px-2.5 py-1.5 shadow-sm transition-colors hover:bg-secondary">

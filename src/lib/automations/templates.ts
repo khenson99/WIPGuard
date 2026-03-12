@@ -1,25 +1,22 @@
-import type {
-  AutomationOperatorKey,
-  Prisma,
-} from "@/generated/prisma/client";
+import type { AutomationOperatorKey, Prisma } from "@/generated/prisma/client";
 
 export interface AutomationTemplate {
   key: string;
   name: string;
   description: string;
-  operatorKey?: AutomationOperatorKey | null;
   providers: string[];
+  operatorKey?: AutomationOperatorKey;
   graph: Prisma.JsonObject;
 }
 
-function operatorExecutionNode(positionX: number, positionY: number) {
+function executeApprovedRecommendationsNode(key: string, positionX: number, positionY: number) {
   return {
-    key: "execute_recommendations",
+    key,
     type: "ACTION" as const,
-    label: "Execute Approved Recommendations",
+    label: "Execute Safe Recommendations",
     config: {
       actionType: "execute_recommendation",
-      limit: 50,
+      actionTypes: ["create_task", "update_hubspot", "create_github_issue", "post_slack_digest"],
     },
     positionX,
     positionY,
@@ -140,7 +137,6 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     name: "HubSpot Demo Follow-up",
     description:
       "Analyze post-demo context, draft follow-up assets, and prepare CRM updates for the deal owner.",
-    operatorKey: "SALES_FOLLOWUP",
     providers: ["HUBSPOT", "GOOGLE_WORKSPACE"],
     graph: {
       nodes: [
@@ -173,239 +169,11 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
           positionX: 360,
           positionY: 120,
         },
-        operatorExecutionNode(650, 120),
+        executeApprovedRecommendationsNode("execute_demo_actions", 650, 120),
       ],
       edges: [
         { source: "trigger_demo_complete", target: "analyze_demo", priority: 0 },
-        { source: "analyze_demo", target: "execute_recommendations", priority: 0 },
-      ],
-    },
-  },
-  {
-    key: "sales-followup-operator",
-    name: "Sales Follow-up Operator",
-    description:
-      "Turn sales demo transcripts into coaching, CRM actions, follow-up drafts, and reminder tasks.",
-    operatorKey: "SALES_FOLLOWUP",
-    providers: ["GOOGLE_WORKSPACE", "HUBSPOT", "WIPGUARD"],
-    graph: {
-      nodes: [
-        {
-          key: "trigger_sales_transcript",
-          type: "TRIGGER",
-          label: "Transcript Ready",
-          config: {
-            provider: "google-workspace",
-            eventType: "google-workspace.meet.transcript_ready",
-          },
-          positionX: 80,
-          positionY: 120,
-        },
-        {
-          key: "analyze_followup",
-          type: "ACTION",
-          label: "Analyze Follow-up",
-          config: {
-            actionType: "ai_analyze",
-            promptVersion: "2026-03-08",
-            instructionsTemplate: [
-              "You are Arda's revenue operations copilot.",
-              "Review the sales demo context and produce artifacts for coaching and deal progression.",
-              "Always return these artifacts: demo_quality_scorecard, demo_coaching_memo, and deal_next_step_memo.",
-              "The demo_quality_scorecard artifact must include contentJson with overallScore (0-100), strengths, gaps, customerSignals, nextSteps, and outcomeConfidence (low|medium|high).",
-              "Recommendations should cover create_task, create_hubspot_task, update_hubspot, create_gmail_draft, create_calendar_draft, and post_slack_digest when internal visibility is required.",
-              "Use create_hubspot_task for CRM reminder tasks and create_task for internal follow-up reminders over the coming days and weeks.",
-              "When next meeting scheduling is not explicitly confirmed, keep it as a recommendation instead of assuming it is safe to execute.",
-            ].join("\n"),
-          },
-          positionX: 360,
-          positionY: 120,
-        },
-        operatorExecutionNode(650, 120),
-      ],
-      edges: [
-        { source: "trigger_sales_transcript", target: "analyze_followup", priority: 0 },
-        { source: "analyze_followup", target: "execute_recommendations", priority: 0 },
-      ],
-    },
-  },
-  {
-    key: "customer-health-operator",
-    name: "Customer Health Operator",
-    description:
-      "Translate churn-risk signals into intervention plans, renewal tasks, and internal alerts.",
-    operatorKey: "CUSTOMER_HEALTH",
-    providers: ["WIPGUARD", "STRIPE", "PYLON", "HUBSPOT", "SLACK", "GOOGLE_WORKSPACE"],
-    graph: {
-      nodes: [
-        {
-          key: "trigger_health_risk",
-          type: "TRIGGER",
-          label: "Health Risk Detected",
-          config: {
-            provider: "wipguard",
-            eventType: "customer.health.risk_detected",
-          },
-          positionX: 80,
-          positionY: 120,
-        },
-        {
-          key: "analyze_health",
-          type: "ACTION",
-          label: "Analyze Account Health",
-          config: {
-            actionType: "ai_analyze",
-            promptVersion: "2026-03-08",
-            instructionsTemplate: [
-              "Diagnose the leading indicators of churn from the supplied account-health signals.",
-              "Create at least one intervention artifact and actionable recommendations.",
-              "Use create_task for internal intervention work, create_hubspot_task for CRM reminder tasks, update_hubspot for CRM notes, and create_gmail_draft only when customer outreach is warranted.",
-              "Prefer internal actions unless the supplied context clearly calls for customer communication.",
-            ].join("\n"),
-          },
-          positionX: 360,
-          positionY: 120,
-        },
-        operatorExecutionNode(650, 120),
-      ],
-      edges: [
-        { source: "trigger_health_risk", target: "analyze_health", priority: 0 },
-        { source: "analyze_health", target: "execute_recommendations", priority: 0 },
-      ],
-    },
-  },
-  {
-    key: "gtm-scrum-operator",
-    name: "GTM Scrum Operator",
-    description:
-      "Aggregate GTM recommendations into a prioritized execution digest and GitHub ticket backlog.",
-    operatorKey: "GTM_SCRUM",
-    providers: ["WIPGUARD", "GOOGLE_ANALYTICS", "HUBSPOT", "STRIPE", "SLACK"],
-    graph: {
-      nodes: [
-        {
-          key: "trigger_gtm_scrum",
-          type: "TRIGGER",
-          label: "GTM Scrum Intake Ready",
-          config: {
-            provider: "wipguard",
-            eventType: "gtm.scrum.digest_requested",
-          },
-          positionX: 80,
-          positionY: 120,
-        },
-        {
-          key: "synthesize_scrum",
-          type: "ACTION",
-          label: "Synthesize Priorities",
-          config: {
-            actionType: "ai_generate",
-            promptVersion: "2026-03-08",
-            instructionsTemplate: [
-              "Aggregate the current GTM inputs into a prioritized execution backlog.",
-              "Artifacts should include a daily or weekly digest memo.",
-              "Recommendations should use create_github_issue, create_task, and post_slack_digest.",
-              "Use labels that include operator:sales, operator:cs, operator:growth, operator:roadmap, or operator:scrum when creating GitHub issues.",
-            ].join("\n"),
-          },
-          positionX: 360,
-          positionY: 120,
-        },
-        operatorExecutionNode(650, 120),
-      ],
-      edges: [
-        { source: "trigger_gtm_scrum", target: "synthesize_scrum", priority: 0 },
-        { source: "synthesize_scrum", target: "execute_recommendations", priority: 0 },
-      ],
-    },
-  },
-  {
-    key: "seo-growth-operator",
-    name: "SEO Growth Operator",
-    description:
-      "Convert Search Console, analytics, and Webflow signals into SEO fixes and content briefs.",
-    operatorKey: "SEO_GROWTH",
-    providers: ["GOOGLE_SEARCH_CONSOLE", "GOOGLE_ANALYTICS", "WEBFLOW", "SEMRUSH"],
-    graph: {
-      nodes: [
-        {
-          key: "trigger_search_console",
-          type: "TRIGGER",
-          label: "Search Snapshot Ready",
-          config: {
-            provider: "google-search-console",
-            eventType: "search-console.snapshot.ready",
-          },
-          positionX: 80,
-          positionY: 120,
-        },
-        {
-          key: "analyze_growth",
-          type: "ACTION",
-          label: "Analyze SEO Growth",
-          config: {
-            actionType: "ai_analyze",
-            promptVersion: "2026-03-08",
-            instructionsTemplate: [
-              "Produce SEO optimization artifacts and execution recommendations for Arda's website.",
-              "Artifacts should include page-fix backlogs, content briefs, and repurposed channel copy.",
-              "Recommendations should prefer create_task and create_github_issue for implementation work.",
-              "Only recommend create_gmail_draft when explicit outreach to partners or customers is clearly justified by the context.",
-            ].join("\n"),
-          },
-          positionX: 360,
-          positionY: 120,
-        },
-        operatorExecutionNode(650, 120),
-      ],
-      edges: [
-        { source: "trigger_search_console", target: "analyze_growth", priority: 0 },
-        { source: "analyze_growth", target: "execute_recommendations", priority: 0 },
-      ],
-    },
-  },
-  {
-    key: "ads-optimizer-operator",
-    name: "Ads Optimizer",
-    description:
-      "Review paid channel snapshots and recommend spend shifts, landing-page tests, and messaging changes.",
-    operatorKey: "ADS_OPTIMIZER",
-    providers: ["GOOGLE_ADS", "META_ADS", "REDDIT", "GOOGLE_ANALYTICS", "WEBFLOW", "WIPGUARD"],
-    graph: {
-      nodes: [
-        {
-          key: "trigger_ads_snapshot",
-          type: "TRIGGER",
-          label: "Ads Snapshot Ready",
-          config: {
-            provider: "wipguard",
-            eventType: "ads.snapshot.ready",
-          },
-          positionX: 80,
-          positionY: 120,
-        },
-        {
-          key: "optimize_ads",
-          type: "ACTION",
-          label: "Optimize Ads",
-          config: {
-            actionType: "ai_analyze",
-            promptVersion: "2026-03-08",
-            instructionsTemplate: [
-              "Identify channel-level anomalies, experiment opportunities, and landing-page fixes.",
-              "Spend changes should remain recommendations and should never be auto-executed.",
-              "Use create_task and create_github_issue for internal implementation work.",
-              "If a spend adjustment is recommended, express it as actionType adjust_ad_spend so it remains approval-gated.",
-            ].join("\n"),
-          },
-          positionX: 360,
-          positionY: 120,
-        },
-        operatorExecutionNode(650, 120),
-      ],
-      edges: [
-        { source: "trigger_ads_snapshot", target: "optimize_ads", priority: 0 },
-        { source: "optimize_ads", target: "execute_recommendations", priority: 0 },
+        { source: "analyze_demo", target: "execute_demo_actions", priority: 0 },
       ],
     },
   },
@@ -413,8 +181,7 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     key: "funnel-dropoff-operator",
     name: "Funnel Dropoff Operator",
     description:
-      "Triage funnel dropoff alerts into explainable diagnostics, landing-page experiments, and GTM follow-up work.",
-    operatorKey: "ADS_OPTIMIZER",
+      "Triage funnel dropoff alerts into diagnostics, experiment briefs, and GTM follow-up work.",
     providers: ["WIPGUARD", "GOOGLE_ANALYTICS", "WEBFLOW", "GOOGLE_ADS", "META_ADS", "REDDIT"],
     graph: {
       nodes: [
@@ -446,55 +213,11 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
           positionX: 360,
           positionY: 120,
         },
-        operatorExecutionNode(650, 120),
+        executeApprovedRecommendationsNode("execute_dropoff_actions", 650, 120),
       ],
       edges: [
         { source: "trigger_funnel_dropoff", target: "triage_dropoff", priority: 0 },
-        { source: "triage_dropoff", target: "execute_recommendations", priority: 0 },
-      ],
-    },
-  },
-  {
-    key: "roadmap-intelligence-operator",
-    name: "Roadmap Intelligence",
-    description:
-      "Synthesize customer, sales, product, and competitor inputs into roadmap proposals and reprioritization guidance.",
-    operatorKey: "ROADMAP_INTELLIGENCE",
-    providers: ["WIPGUARD", "PYLON", "GOOGLE_WORKSPACE", "HUBSPOT"],
-    graph: {
-      nodes: [
-        {
-          key: "trigger_roadmap_intake",
-          type: "TRIGGER",
-          label: "Roadmap Intake Ready",
-          config: {
-            provider: "wipguard",
-            eventType: "roadmap.intake.ready",
-          },
-          positionX: 80,
-          positionY: 120,
-        },
-        {
-          key: "analyze_roadmap",
-          type: "ACTION",
-          label: "Analyze Roadmap Inputs",
-          config: {
-            actionType: "ai_generate",
-            promptVersion: "2026-03-08",
-            instructionsTemplate: [
-              "Create roadmap memos, reprioritization rationale, and implementation-ready issue recommendations.",
-              "Recommendations should use create_github_issue and create_task.",
-              "Every recommendation should state which customer or market signal it addresses and why it matters now.",
-            ].join("\n"),
-          },
-          positionX: 360,
-          positionY: 120,
-        },
-        operatorExecutionNode(650, 120),
-      ],
-      edges: [
-        { source: "trigger_roadmap_intake", target: "analyze_roadmap", priority: 0 },
-        { source: "analyze_roadmap", target: "execute_recommendations", priority: 0 },
+        { source: "triage_dropoff", target: "execute_dropoff_actions", priority: 0 },
       ],
     },
   },
@@ -562,6 +285,685 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
         },
       ],
       edges: [{ source: "trigger_reddit", target: "create_task", priority: 0 }],
+    },
+  },
+  {
+    key: "arda-sales-followup-operator",
+    operatorKey: "SALES_FOLLOWUP",
+    name: "Arda Sales Follow-up Operator",
+    description:
+      "Turn post-demo meeting signals into an account brief, safe internal follow-up tasks, CRM updates, and approval-gated customer drafts.",
+    providers: ["HUBSPOT", "GOOGLE_WORKSPACE", "WIPGUARD"],
+    graph: {
+      nodes: [
+        {
+          key: "trigger_sales",
+          type: "TRIGGER",
+          label: "Demo Completed",
+          config: { provider: "hubspot", eventType: "hubspot.meeting.completed" },
+          positionX: 80,
+          positionY: 100,
+        },
+        {
+          key: "analyze_followup",
+          type: "ACTION",
+          label: "Draft Follow-up Plan",
+          config: {
+            actionType: "ai_generate",
+            promptVersion: "arda-sales-followup-v1",
+            instructionsTemplate: [
+              "You are Arda's sales follow-up operator.",
+              "Review the trigger payload, source documents, and prior workflow state.",
+              "Produce a durable account brief artifact and only concrete next-step recommendations.",
+              "Internal workflow or CRM updates can auto-execute.",
+              "Any customer-facing email draft must require approval.",
+            ].join("\n"),
+            inputTemplate: [
+              "Generate a post-demo follow-up package for this account.",
+              "",
+              "Execution context:",
+              "{{trigger.payload}}",
+            ].join("\n"),
+            tools: [
+              {
+                name: "create_followup_task",
+                description: "Create an internal follow-up task for the account owner.",
+                actionType: "create_task",
+                recommendationType: "task",
+                requiresApproval: false,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    summary: { type: "string" },
+                    priority: { type: "string" },
+                    actionPayload: {
+                      type: "object",
+                      properties: {
+                        title: { type: "string" },
+                        notes: { type: "string" },
+                        priority: { type: "string" },
+                        status: { type: "string" },
+                        responsibleId: { type: "string" },
+                      },
+                    },
+                  },
+                  required: ["title", "summary", "actionPayload"],
+                },
+              },
+              {
+                name: "update_hubspot_next_step",
+                description: "Update the HubSpot deal with a clear next step and meeting summary.",
+                actionType: "update_hubspot",
+                recommendationType: "crm_update",
+                requiresApproval: false,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    summary: { type: "string" },
+                    actionPayload: {
+                      type: "object",
+                      properties: {
+                        dealId: { type: "string" },
+                        stage: { type: "string" },
+                        noteBody: { type: "string" },
+                      },
+                    },
+                  },
+                  required: ["title", "summary", "actionPayload"],
+                },
+              },
+              {
+                name: "draft_customer_followup_email",
+                description: "Prepare a customer-facing follow-up email draft for approval.",
+                actionType: "create_gmail_draft",
+                recommendationType: "email_draft",
+                requiresApproval: true,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    summary: { type: "string" },
+                    actionPayload: {
+                      type: "object",
+                      properties: {
+                        to: {
+                          type: "array",
+                          items: { type: "string" },
+                        },
+                        subject: { type: "string" },
+                        body: { type: "string" },
+                      },
+                    },
+                  },
+                  required: ["title", "summary", "actionPayload"],
+                },
+              },
+            ],
+          },
+          positionX: 360,
+          positionY: 100,
+        },
+        executeApprovedRecommendationsNode("execute_sales_actions", 680, 100),
+      ],
+      edges: [
+        { source: "trigger_sales", target: "analyze_followup", priority: 0 },
+        { source: "analyze_followup", target: "execute_sales_actions", priority: 0 },
+      ],
+    },
+  },
+  {
+    key: "arda-customer-health-operator",
+    operatorKey: "CUSTOMER_HEALTH",
+    name: "Arda Customer Health Operator",
+    description:
+      "Analyze account health events, create intervention briefs, auto-queue internal saves, and gate outreach drafts behind approval.",
+    providers: ["STRIPE", "HUBSPOT", "SLACK", "WIPGUARD"],
+    graph: {
+      nodes: [
+        {
+          key: "trigger_health",
+          type: "TRIGGER",
+          label: "Customer Health Changed",
+          config: { provider: "wipguard", eventType: "wipguard.customer.health.changed" },
+          positionX: 80,
+          positionY: 100,
+        },
+        {
+          key: "analyze_health",
+          type: "ACTION",
+          label: "Plan Intervention",
+          config: {
+            actionType: "ai_generate",
+            promptVersion: "arda-customer-health-v1",
+            instructionsTemplate: [
+              "You are Arda's customer health operator.",
+              "Assess expansion risk, churn indicators, usage signals, and renewal urgency.",
+              "Always produce an artifact summarizing account health and recommended interventions.",
+              "Internal tasks and Slack digests may auto-execute. Customer email drafts require approval.",
+            ].join("\n"),
+            tools: [
+              {
+                name: "create_intervention_task",
+                description: "Create an internal task for the account team to address a health risk.",
+                actionType: "create_task",
+                recommendationType: "task",
+                requiresApproval: false,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    summary: { type: "string" },
+                    actionPayload: {
+                      type: "object",
+                      properties: {
+                        title: { type: "string" },
+                        notes: { type: "string" },
+                        priority: { type: "string" },
+                        status: { type: "string" },
+                      },
+                    },
+                  },
+                  required: ["title", "summary", "actionPayload"],
+                },
+              },
+              {
+                name: "post_health_digest",
+                description: "Send an internal Slack digest summarizing the health issue and next steps.",
+                actionType: "post_slack_digest",
+                recommendationType: "slack_digest",
+                requiresApproval: false,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    summary: { type: "string" },
+                    actionPayload: {
+                      type: "object",
+                      properties: {
+                        message: { type: "string" },
+                        slackUserId: { type: "string" },
+                      },
+                    },
+                  },
+                  required: ["title", "summary", "actionPayload"],
+                },
+              },
+              {
+                name: "draft_customer_checkin",
+                description: "Draft a proactive customer check-in email for approval.",
+                actionType: "create_gmail_draft",
+                recommendationType: "email_draft",
+                requiresApproval: true,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    summary: { type: "string" },
+                    actionPayload: {
+                      type: "object",
+                      properties: {
+                        to: { type: "array", items: { type: "string" } },
+                        subject: { type: "string" },
+                        body: { type: "string" },
+                      },
+                    },
+                  },
+                  required: ["title", "summary", "actionPayload"],
+                },
+              },
+            ],
+          },
+          positionX: 360,
+          positionY: 100,
+        },
+        executeApprovedRecommendationsNode("execute_health_actions", 680, 100),
+      ],
+      edges: [
+        { source: "trigger_health", target: "analyze_health", priority: 0 },
+        { source: "analyze_health", target: "execute_health_actions", priority: 0 },
+      ],
+    },
+  },
+  {
+    key: "arda-gtm-scrum-operator",
+    operatorKey: "GTM_SCRUM",
+    name: "Arda GTM Scrum Operator",
+    description:
+      "Convert daily GTM signal bundles into a ranked scrum brief, internal Slack digest, backlog tasks, and board-ready follow-ups.",
+    providers: ["WIPGUARD", "SLACK", "HUBSPOT"],
+    graph: {
+      nodes: [
+        {
+          key: "trigger_scrum",
+          type: "TRIGGER",
+          label: "Daily GTM Signal Bundle",
+          config: { provider: "wipguard", eventType: "wipguard.gtm.daily_bundle" },
+          positionX: 80,
+          positionY: 100,
+        },
+        {
+          key: "analyze_scrum",
+          type: "ACTION",
+          label: "Compile GTM Scrum Brief",
+          config: {
+            actionType: "ai_generate",
+            promptVersion: "arda-gtm-scrum-v1",
+            instructionsTemplate: [
+              "You are Arda's GTM scrum operator.",
+              "Synthesize cross-functional GTM changes into a short daily brief.",
+              "Recommend only concrete internal actions with explicit owners and rationale.",
+              "Tasks, GitHub issues, and Slack digests may auto-execute when clearly internal.",
+            ].join("\n"),
+            tools: [
+              {
+                name: "create_alignment_task",
+                description: "Create a task to resolve a GTM dependency or follow-up before the next scrum.",
+                actionType: "create_task",
+                recommendationType: "task",
+                requiresApproval: false,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    summary: { type: "string" },
+                    actionPayload: {
+                      type: "object",
+                      properties: {
+                        title: { type: "string" },
+                        notes: { type: "string" },
+                        priority: { type: "string" },
+                        status: { type: "string" },
+                      },
+                    },
+                  },
+                  required: ["title", "summary", "actionPayload"],
+                },
+              },
+              {
+                name: "post_scrum_digest",
+                description: "Publish an internal scrum digest to Slack.",
+                actionType: "post_slack_digest",
+                recommendationType: "slack_digest",
+                requiresApproval: false,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    summary: { type: "string" },
+                    actionPayload: {
+                      type: "object",
+                      properties: {
+                        message: { type: "string" },
+                        slackUserId: { type: "string" },
+                      },
+                    },
+                  },
+                  required: ["title", "summary", "actionPayload"],
+                },
+              },
+              {
+                name: "open_gtm_issue",
+                description: "Create a GitHub issue for a durable GTM or process gap.",
+                actionType: "create_github_issue",
+                recommendationType: "github_issue",
+                requiresApproval: false,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    summary: { type: "string" },
+                    actionPayload: {
+                      type: "object",
+                      properties: {
+                        title: { type: "string" },
+                        body: { type: "string" },
+                        labels: {
+                          type: "array",
+                          items: { type: "string" },
+                        },
+                      },
+                    },
+                  },
+                  required: ["title", "summary", "actionPayload"],
+                },
+              },
+            ],
+          },
+          positionX: 360,
+          positionY: 100,
+        },
+        executeApprovedRecommendationsNode("execute_scrum_actions", 680, 100),
+      ],
+      edges: [
+        { source: "trigger_scrum", target: "analyze_scrum", priority: 0 },
+        { source: "analyze_scrum", target: "execute_scrum_actions", priority: 0 },
+      ],
+    },
+  },
+  {
+    key: "arda-seo-growth-operator",
+    operatorKey: "SEO_GROWTH",
+    name: "Arda SEO Growth Operator",
+    description:
+      "Translate search and traffic changes into content briefs, internal growth tasks, and GitHub-ready follow-ups for execution.",
+    providers: ["GOOGLE_SEARCH_CONSOLE", "GOOGLE_ANALYTICS", "SEMRUSH", "WIPGUARD"],
+    graph: {
+      nodes: [
+        {
+          key: "trigger_seo",
+          type: "TRIGGER",
+          label: "Weekly Search Delta",
+          config: { provider: "google_search_console", eventType: "gsc.weekly.delta" },
+          positionX: 80,
+          positionY: 100,
+        },
+        {
+          key: "analyze_seo",
+          type: "ACTION",
+          label: "Build SEO Action Plan",
+          config: {
+            actionType: "ai_generate",
+            promptVersion: "arda-seo-growth-v1",
+            instructionsTemplate: [
+              "You are Arda's SEO growth operator.",
+              "Look for ranking losses, opportunity pages, and content expansion themes.",
+              "Produce an artifact that explains the search movement and specific next actions.",
+              "Internal tasks and GitHub issues may auto-execute.",
+            ].join("\n"),
+            tools: [
+              {
+                name: "create_growth_task",
+                description: "Create a task for a growth experiment or content update.",
+                actionType: "create_task",
+                recommendationType: "task",
+                requiresApproval: false,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    summary: { type: "string" },
+                    actionPayload: {
+                      type: "object",
+                      properties: {
+                        title: { type: "string" },
+                        notes: { type: "string" },
+                        priority: { type: "string" },
+                        status: { type: "string" },
+                      },
+                    },
+                  },
+                  required: ["title", "summary", "actionPayload"],
+                },
+              },
+              {
+                name: "open_seo_issue",
+                description: "Open a GitHub issue for a durable SEO or site-structure change.",
+                actionType: "create_github_issue",
+                recommendationType: "github_issue",
+                requiresApproval: false,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    summary: { type: "string" },
+                    actionPayload: {
+                      type: "object",
+                      properties: {
+                        title: { type: "string" },
+                        body: { type: "string" },
+                        labels: {
+                          type: "array",
+                          items: { type: "string" },
+                        },
+                      },
+                    },
+                  },
+                  required: ["title", "summary", "actionPayload"],
+                },
+              },
+            ],
+          },
+          positionX: 360,
+          positionY: 100,
+        },
+        executeApprovedRecommendationsNode("execute_seo_actions", 680, 100),
+      ],
+      edges: [
+        { source: "trigger_seo", target: "analyze_seo", priority: 0 },
+        { source: "analyze_seo", target: "execute_seo_actions", priority: 0 },
+      ],
+    },
+  },
+  {
+    key: "arda-ads-optimizer-operator",
+    operatorKey: "ADS_OPTIMIZER",
+    name: "Arda Ads Optimizer Operator",
+    description:
+      "Review paid-channel anomalies, summarize findings, and auto-queue internal investigations while keeping external comms approval-gated.",
+    providers: ["GOOGLE_ADS", "META_ADS", "GOOGLE_ANALYTICS", "WIPGUARD"],
+    graph: {
+      nodes: [
+        {
+          key: "trigger_ads",
+          type: "TRIGGER",
+          label: "Campaign Anomaly",
+          config: { provider: "google_ads", eventType: "google_ads.campaign.anomaly" },
+          positionX: 80,
+          positionY: 100,
+        },
+        {
+          key: "analyze_ads",
+          type: "ACTION",
+          label: "Draft Ads Investigation",
+          config: {
+            actionType: "ai_generate",
+            promptVersion: "arda-ads-optimizer-v1",
+            instructionsTemplate: [
+              "You are Arda's ads optimizer operator.",
+              "Explain what changed, the likely cause, and the recommended investigation path.",
+              "Do not recommend spend adjustments because those are not directly executable in WIPGuard yet.",
+              "Internal tasks and Slack digests may auto-execute. External stakeholder drafts require approval.",
+            ].join("\n"),
+            tools: [
+              {
+                name: "create_ads_investigation_task",
+                description: "Create an internal task to investigate a paid media anomaly.",
+                actionType: "create_task",
+                recommendationType: "task",
+                requiresApproval: false,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    summary: { type: "string" },
+                    actionPayload: {
+                      type: "object",
+                      properties: {
+                        title: { type: "string" },
+                        notes: { type: "string" },
+                        priority: { type: "string" },
+                        status: { type: "string" },
+                      },
+                    },
+                  },
+                  required: ["title", "summary", "actionPayload"],
+                },
+              },
+              {
+                name: "post_ads_digest",
+                description: "Send an internal digest describing the anomaly and recommended checks.",
+                actionType: "post_slack_digest",
+                recommendationType: "slack_digest",
+                requiresApproval: false,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    summary: { type: "string" },
+                    actionPayload: {
+                      type: "object",
+                      properties: {
+                        message: { type: "string" },
+                        slackUserId: { type: "string" },
+                      },
+                    },
+                  },
+                  required: ["title", "summary", "actionPayload"],
+                },
+              },
+              {
+                name: "draft_ads_status_email",
+                description: "Draft an external status email for approval if a customer or stakeholder needs an update.",
+                actionType: "create_gmail_draft",
+                recommendationType: "email_draft",
+                requiresApproval: true,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    summary: { type: "string" },
+                    actionPayload: {
+                      type: "object",
+                      properties: {
+                        to: { type: "array", items: { type: "string" } },
+                        subject: { type: "string" },
+                        body: { type: "string" },
+                      },
+                    },
+                  },
+                  required: ["title", "summary", "actionPayload"],
+                },
+              },
+            ],
+          },
+          positionX: 360,
+          positionY: 100,
+        },
+        executeApprovedRecommendationsNode("execute_ads_actions", 680, 100),
+      ],
+      edges: [
+        { source: "trigger_ads", target: "analyze_ads", priority: 0 },
+        { source: "analyze_ads", target: "execute_ads_actions", priority: 0 },
+      ],
+    },
+  },
+  {
+    key: "arda-roadmap-intelligence-operator",
+    operatorKey: "ROADMAP_INTELLIGENCE",
+    name: "Arda Roadmap Intelligence Operator",
+    description:
+      "Synthesize product signals into a roadmap memo, GitHub-ready opportunities, and internal follow-up tasks without losing auditability.",
+    providers: ["HUBSPOT", "SLACK", "WIPGUARD"],
+    graph: {
+      nodes: [
+        {
+          key: "trigger_roadmap",
+          type: "TRIGGER",
+          label: "Product Signal Bundle",
+          config: { provider: "wipguard", eventType: "wipguard.product.signal.bundle" },
+          positionX: 80,
+          positionY: 100,
+        },
+        {
+          key: "analyze_roadmap",
+          type: "ACTION",
+          label: "Generate Roadmap Brief",
+          config: {
+            actionType: "ai_generate",
+            promptVersion: "arda-roadmap-intelligence-v1",
+            instructionsTemplate: [
+              "You are Arda's roadmap intelligence operator.",
+              "Synthesize sales, support, and product signals into a roadmap-ready brief.",
+              "Recommend internal issues or tasks when the evidence is strong and recurring.",
+              "Customer-facing follow-up drafts require approval.",
+            ].join("\n"),
+            tools: [
+              {
+                name: "create_product_issue",
+                description: "Create a GitHub issue capturing a validated roadmap opportunity.",
+                actionType: "create_github_issue",
+                recommendationType: "github_issue",
+                requiresApproval: false,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    summary: { type: "string" },
+                    actionPayload: {
+                      type: "object",
+                      properties: {
+                        title: { type: "string" },
+                        body: { type: "string" },
+                        labels: {
+                          type: "array",
+                          items: { type: "string" },
+                        },
+                      },
+                    },
+                  },
+                  required: ["title", "summary", "actionPayload"],
+                },
+              },
+              {
+                name: "create_product_followup_task",
+                description: "Create an internal task to collect more evidence or align stakeholders.",
+                actionType: "create_task",
+                recommendationType: "task",
+                requiresApproval: false,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    summary: { type: "string" },
+                    actionPayload: {
+                      type: "object",
+                      properties: {
+                        title: { type: "string" },
+                        notes: { type: "string" },
+                        priority: { type: "string" },
+                        status: { type: "string" },
+                      },
+                    },
+                  },
+                  required: ["title", "summary", "actionPayload"],
+                },
+              },
+              {
+                name: "draft_customer_response",
+                description: "Draft a customer-facing response summarizing how the request is being handled.",
+                actionType: "create_gmail_draft",
+                recommendationType: "email_draft",
+                requiresApproval: true,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    summary: { type: "string" },
+                    actionPayload: {
+                      type: "object",
+                      properties: {
+                        to: { type: "array", items: { type: "string" } },
+                        subject: { type: "string" },
+                        body: { type: "string" },
+                      },
+                    },
+                  },
+                  required: ["title", "summary", "actionPayload"],
+                },
+              },
+            ],
+          },
+          positionX: 360,
+          positionY: 100,
+        },
+        executeApprovedRecommendationsNode("execute_roadmap_actions", 680, 100),
+      ],
+      edges: [
+        { source: "trigger_roadmap", target: "analyze_roadmap", priority: 0 },
+        { source: "analyze_roadmap", target: "execute_roadmap_actions", priority: 0 },
+      ],
     },
   },
 ];
