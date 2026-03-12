@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-const fs = require("node:fs");
-const path = require("node:path");
-const { spawn } = require("node:child_process");
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 
 const repoRoot = process.cwd();
 const standaloneDir = path.join(repoRoot, ".next", "standalone");

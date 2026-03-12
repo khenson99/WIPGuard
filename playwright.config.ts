@@ -70,7 +70,7 @@ export default defineConfig({
     // On CI, run the production standalone server after staging static/public assets.
     // Dev-mode auth is enabled in CI via `E2E_MODE=true`.
     command: process.env.CI
-      ? `PORT=${e2ePort} HOSTNAME=127.0.0.1 node scripts/start-e2e-standalone.cjs`
+      ? `PORT=${e2ePort} HOSTNAME=127.0.0.1 node scripts/start-e2e-standalone.mjs`
       : `npm run dev -- -H 127.0.0.1 -p ${e2ePort}`,
     env: e2eServerEnv,
     url: e2eBaseUrl,
