@@ -51,6 +51,17 @@ export function DemoCoachingView({ data }: { data: AnalyticsDashboardData | null
 
             <p className="mt-3 text-sm text-foreground">{record.qualitySummary ?? "No coaching summary available."}</p>
 
+            <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+              {record.outcomeConfidence && (
+                <MetaPill label={`Outcome confidence: ${record.outcomeConfidence}`} />
+              )}
+              {record.transcriptMatchConfidence != null && (
+                <MetaPill label={`Transcript match: ${Math.round(record.transcriptMatchConfidence * 100)}%`} />
+              )}
+              <MetaPill label={`Transcript: ${record.transcriptStatus}`} />
+              <MetaPill label={`Analysis: ${record.analysisStatus}`} />
+            </div>
+
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
               <ListCard title="Strengths" items={record.strengths} />
               <ListCard title="Gaps" items={record.gaps} negative />
@@ -101,6 +112,14 @@ function CoachingStat({
       </div>
       <div className="mt-2 text-2xl font-semibold text-foreground">{value}</div>
     </div>
+  );
+}
+
+function MetaPill({ label }: { label: string }) {
+  return (
+    <span className="inline-flex rounded-full border border-border bg-background/60 px-2 py-1">
+      {label}
+    </span>
   );
 }
 

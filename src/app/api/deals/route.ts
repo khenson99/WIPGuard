@@ -9,6 +9,12 @@ import { DealStage, DealSource } from "@/generated/prisma/client";
 
 const USER_SELECT = { id: true, name: true, email: true, image: true } as const;
 
+function getOptionalOrganizationId(session: unknown): string | null {
+  const orgId = (session as { user?: { organizationId?: unknown } } | null | undefined)?.user
+    ?.organizationId;
+  return typeof orgId === "string" && orgId.trim() ? orgId : null;
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await auth();
@@ -109,6 +115,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         ? (body.stage as DealStage)
         : DealStage.LEAD;
 
+    const organizationId = getOptionalOrganizationId(session);
     const source =
       typeof body.source === "string" && Object.values(DealSource).includes(body.source as DealSource)
         ? (body.source as DealSource)
@@ -116,6 +123,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const deal = await prisma.deal.create({
       data: {
+        organizationId: organizationId ?? undefined,
         name: body.name.trim(),
         stage,
         amount: typeof body.amount === "number" ? body.amount : 0,

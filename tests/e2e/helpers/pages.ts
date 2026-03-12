@@ -2,7 +2,7 @@
  * Page Object helpers for common E2E interactions.
  * Encapsulates selectors and actions for reuse across test suites.
  */
-import { type Page, type Locator } from '@playwright/test';
+import { expect, type Page, type Locator } from '@playwright/test';
 
 /**
  * Helper for authentication-related page interactions.
@@ -293,9 +293,13 @@ export class DealsPage {
   }
 
   getDealDetailHeading(name: string): Locator {
-    return this.page.getByRole('heading', {
-      name: new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
+    return this.page.locator('[data-testid="deal-detail-title"]').filter({
+      hasText: new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
     });
+  }
+
+  getDealDetailPage(): Locator {
+    return this.page.locator('[data-testid="deal-detail-page"]');
   }
 
   getDeal(name: string): Locator {
@@ -315,13 +319,22 @@ export class DealsPage {
   }
 
   async createDeal(name: string) {
+    const createResponse = this.page.waitForResponse((response) =>
+      response.request().method() === 'POST' &&
+      /\/api\/deals$/i.test(response.url())
+    );
+
     await this.getCreateDealButton().click();
     await this.page.getByRole('dialog').waitFor({ state: 'visible', timeout: 10_000 });
     await this.getDealNameInput().fill(name);
     await this.getSubmitButton().click();
-    await this.page.getByRole('dialog').waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});
-    // Creation navigates to the deal detail page; wait for the heading to render.
-    await this.getDealDetailHeading(name).waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {});
+    const response = await createResponse;
+
+    expect(response.ok()).toBeTruthy();
+    await this.page.getByRole('dialog').waitFor({ state: 'hidden', timeout: 10_000 });
+    await expect(this.page).toHaveURL(/\/deals\/[^/]+$/i);
+    await expect(this.getDealDetailPage()).toBeVisible({ timeout: 15_000 });
+    await expect(this.getDealDetailHeading(name)).toBeVisible({ timeout: 15_000 });
   }
 
   async advanceDealToStage(dealName: string, targetStage: string) {
