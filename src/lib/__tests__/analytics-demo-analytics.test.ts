@@ -432,6 +432,12 @@ describe("buildDemoAnalyticsData", () => {
               nextSteps: ["Send proposal"],
               outcomeConfidence: "high",
             },
+            sourceDocument: {
+              id: "doc-1",
+              title: "Archived transcript",
+              sourceUrl: "https://archive.test/transcript",
+              textContent: "Customer: We have budget approval.\nRep: I will send the proposal today.",
+            },
           },
           siblingArtifacts: [
             {
@@ -469,6 +475,10 @@ describe("buildDemoAnalyticsData", () => {
 
     const historical = demo.demos.find((entry) => entry.meetingId === "meeting-historical");
     expect(historical?.transcriptStatus).toBe("matched");
+    expect(historical?.transcriptSourceUrl).toBe("https://archive.test/transcript");
+    expect(historical?.transcriptSourceTitle).toBe("Archived transcript");
+    expect(historical?.transcriptSourceDocumentId).toBe("doc-1");
+    expect(historical?.transcriptText).toContain("budget approval");
     expect(historical?.analysisStatus).toBe("ready");
     expect(historical?.qualityScore).toBe(88);
     expect(historical?.coachingMemo).toContain("ROI");
