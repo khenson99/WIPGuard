@@ -248,7 +248,7 @@ export function DealDetail({ dealId }: { dealId: string }) {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="deal-detail-page">
       {/* Header */}
       <div className="flex items-center gap-3">
         <Link
@@ -259,7 +259,12 @@ export function DealDetail({ dealId }: { dealId: string }) {
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-xl font-bold text-foreground">{deal.name}</h1>
+          <h1
+            className="truncate text-xl font-bold text-foreground"
+            data-testid="deal-detail-title"
+          >
+            {deal.name}
+          </h1>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_BADGE_CLASSES[deal.stage]}`}>
               {DEAL_STAGE_LABELS[deal.stage]}
