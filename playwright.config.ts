@@ -5,6 +5,16 @@ import path from 'path';
  * Playwright configuration for The Mother Node E2E tests.
  * @see https://playwright.dev/docs/test-configuration
  */
+const e2eBaseUrl = process.env.E2E_BASE_URL || 'http://localhost:3000';
+const e2ePort = new URL(e2eBaseUrl).port || '3000';
+const e2eServerEnv = {
+  ...process.env,
+  E2E_MODE: process.env.E2E_MODE || 'true',
+  NEXT_PUBLIC_E2E_MODE: process.env.NEXT_PUBLIC_E2E_MODE || 'true',
+  NEXTAUTH_URL: process.env.NEXTAUTH_URL || e2eBaseUrl,
+  PRISMA_TENANT_BYPASS: process.env.PRISMA_TENANT_BYPASS || 'true',
+};
+
 export default defineConfig({
   testDir: './tests/e2e',
   /* Run tests in files in parallel */
@@ -22,7 +32,7 @@ export default defineConfig({
   /* Shared settings for all the projects below */
   use: {
     /* Base URL to use in actions like `await page.goto('/')` */
-    baseURL: process.env.E2E_BASE_URL || 'http://localhost:3000',
+    baseURL: e2eBaseUrl,
     /* Collect trace when retrying the failed test */
     trace: 'on-first-retry',
     /* Capture screenshot on failure */
@@ -60,9 +70,10 @@ export default defineConfig({
     // On CI, run a production server (`next start`) for fidelity/stability.
     // Dev-mode auth is enabled in CI via `E2E_MODE=true`.
     command: process.env.CI
-      ? 'PORT=3000 npm run start'
-      : 'npm run dev -- -p 3000',
-    url: 'http://localhost:3000',
+      ? `PORT=${e2ePort} HOSTNAME=127.0.0.1 node .next/standalone/server.js`
+      : `npm run dev -- -H 127.0.0.1 -p ${e2ePort}`,
+    env: e2eServerEnv,
+    url: e2eBaseUrl,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
