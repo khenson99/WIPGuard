@@ -113,6 +113,9 @@ export function DemoAnalyticsTab({ data }: { data: AnalyticsDashboardData | null
                     <p className="text-xs text-muted-foreground">
                       {record.meetingTitle ?? "No calendar event linked"}
                     </p>
+                    {record.ownerName && (
+                      <p className="text-[11px] text-muted-foreground">Owner: {record.ownerName}</p>
+                    )}
                   </div>
                   <span className="text-xs tabular-nums text-muted-foreground">
                     {record.isUnscheduledFallback ? "Unscheduled" : new Date(record.scheduledAt).toLocaleString()}

@@ -245,6 +245,7 @@ function buildDemoRecordFromMeeting(input: {
   return {
     dealId: input.deal?.dealId ?? input.meeting.dealId ?? input.meeting.id,
     dealName: input.deal?.dealName ?? input.meeting.dealName ?? input.meeting.title,
+    ownerName: input.deal?.repName ?? null,
     contactEmail: input.meeting.attendeeEmails[0] ?? input.deal?.primaryContactEmail ?? null,
     scheduledAt,
     meetingId: input.meeting.id,
@@ -293,6 +294,7 @@ function buildUnscheduledFallbackRecord(input: {
   return {
     dealId: input.deal.dealId,
     dealName: input.deal.dealName,
+    ownerName: input.deal.repName ?? null,
     contactEmail: input.deal.primaryContactEmail ?? null,
     scheduledAt,
     meetingId: null,
@@ -346,6 +348,7 @@ function buildDealAggregateRecord(input: {
   return {
     dealId: input.deal.dealId,
     dealName: input.deal.dealName,
+    ownerName: input.deal.repName ?? null,
     contactEmail: input.deal.primaryContactEmail ?? null,
     scheduledAt,
     meetingId: null,

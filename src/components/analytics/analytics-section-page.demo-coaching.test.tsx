@@ -48,6 +48,7 @@ describe("AnalyticsSectionPage demo coaching", () => {
         {
           dealId: "deal-1",
           dealName: "Acme",
+          ownerName: null,
           contactEmail: null,
           scheduledAt: "2026-03-05T18:00:00.000Z",
           meetingId: "meeting-1",
