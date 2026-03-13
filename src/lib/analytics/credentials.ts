@@ -528,12 +528,24 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     });
 
     // Owner fallback: when the configured owner is missing one or more providers
-    // (migration hasn't run or only partially completed), fill only the missing
-    // providers from the most recently connected non-owner rows.
+    // (migration hasn't run or only partially completed), fill providers that
+    // are absent or only have stale non-connected owner rows from the most
+    // recently connected non-owner rows.
     if (isConfiguredIntegrationOwner(userId)) {
-      const seenProviders = new Set(connections.map((connection) => connection.provider));
+      const ownerConnectionByProvider = new Map(
+        connections.map((connection) => [connection.provider, connection])
+      );
+      const fallbackProviders = Array.from(
+        new Set(
+          Object.values(IntegrationProvider).filter((provider) => {
+            const ownerConnection = ownerConnectionByProvider.get(provider);
+            return !ownerConnection || ownerConnection.status !== IntegrationConnectionStatus.CONNECTED;
+          })
+        )
+      );
+
       const fallbackWhere =
-        seenProviders.size === 0
+        fallbackProviders.length === Object.values(IntegrationProvider).length
           ? {
               status: IntegrationConnectionStatus.CONNECTED,
               userId: { not: userId },
@@ -541,7 +553,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
           : {
               status: IntegrationConnectionStatus.CONNECTED,
               userId: { not: userId },
-              provider: { notIn: Array.from(seenProviders) },
+              provider: { in: fallbackProviders },
             };
 
       const fallbackConnections = await prisma.integrationConnection.findMany({
@@ -550,12 +562,24 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
         select: connectionSelect,
       });
 
+      const fallbackProvidersResolved = new Set<IntegrationProvider>();
       for (const connection of fallbackConnections) {
-        if (seenProviders.has(connection.provider)) {
+        if (fallbackProvidersResolved.has(connection.provider)) {
           continue;
         }
-        seenProviders.add(connection.provider);
-        connections.push(connection);
+        fallbackProvidersResolved.add(connection.provider);
+
+        const ownerIndex = connections.findIndex(
+          (ownerConnection) => ownerConnection.provider === connection.provider
+        );
+        if (ownerIndex === -1) {
+          connections.push(connection);
+          continue;
+        }
+
+        if (connections[ownerIndex].status !== IntegrationConnectionStatus.CONNECTED) {
+          connections[ownerIndex] = connection;
+        }
       }
     }
 

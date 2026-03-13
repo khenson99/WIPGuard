@@ -86,10 +86,17 @@ export function DesignInterviewTab() {
     (completedPromptIds.size / DESIGN_INTERVIEW_PROMPTS.length) * 100,
   );
 
-  const generatedPrompt = useMemo(() => buildDesignInterviewPrompt(), []);
   const outputTemplate = useMemo(
     () =>
       personalizeDesignInterviewTemplate(draft.intervieweeName, draft.intervieweeRole),
+    [draft.intervieweeName, draft.intervieweeRole],
+  );
+  const generatedPrompt = useMemo(
+    () =>
+      buildDesignInterviewPrompt({
+        intervieweeName: draft.intervieweeName,
+        intervieweeRole: draft.intervieweeRole,
+      }),
     [draft.intervieweeName, draft.intervieweeRole],
   );
   const previousTemplateRef = useRef(outputTemplate);

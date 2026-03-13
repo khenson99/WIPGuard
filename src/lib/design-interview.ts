@@ -210,7 +210,14 @@ export const DEFAULT_DESIGN_INTERVIEW_DRAFT: DesignInterviewDraft = {
   completedPromptIds: [],
 };
 
-export function buildDesignInterviewPrompt(): string {
+export function buildDesignInterviewPrompt(input?: {
+  intervieweeName?: string;
+  intervieweeRole?: string;
+}): string {
+  const intervieweeName = input?.intervieweeName?.trim() ?? "";
+  const intervieweeRole = input?.intervieweeRole?.trim() ?? "";
+  const interviewee = [intervieweeName, intervieweeRole].filter(Boolean).join(", ");
+  const outputTemplate = personalizeDesignInterviewTemplate(intervieweeName, intervieweeRole);
   const promptSections = DESIGN_INTERVIEW_PROMPTS.map((section, index) => {
     const sectionLines = [
       `## Prompt ${index + 1}: ${section.title}`,
@@ -241,6 +248,9 @@ export function buildDesignInterviewPrompt(): string {
   return [
     "You are running a design interview for Arda, a lean manufacturing tool that helps small manufacturers manage inventory through physical kanban cards, QR scanning, and automated reordering. The interview captures design intent to generate a company design skill that AI agents will use when building Arda's UI.",
     "",
+    ...(interviewee
+      ? [`This session is for: ${interviewee}`, ""]
+      : []),
     "Here's what we already know from the codebase:",
     ...DESIGN_INTERVIEW_CONTEXT.map((line) => `- ${line}`),
     "",
@@ -265,7 +275,7 @@ export function buildDesignInterviewPrompt(): string {
     "## After all prompts, compile into this format:",
     "",
     "```markdown",
-    DESIGN_INTERVIEW_OUTPUT_TEMPLATE,
+    outputTemplate,
     "```",
     "",
     "Present the compiled output and ask: \"Does this capture what you said? Anything I got wrong or missed?\" Let them correct before finalizing.",

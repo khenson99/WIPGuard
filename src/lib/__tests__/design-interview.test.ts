@@ -37,4 +37,14 @@ describe("design interview prompt builder", () => {
     expect(prompt).toContain("Then ask specifically about Visual Aesthetics:");
     expect(prompt).toContain("Now let's talk about how Arda should look");
   });
+
+  it("personalizes the generated prompt with the session interviewee", () => {
+    const prompt = buildDesignInterviewPrompt({
+      intervieweeName: "Kyle Henson",
+      intervieweeRole: "Founder",
+    });
+
+    expect(prompt).toContain("This session is for: Kyle Henson, Founder");
+    expect(prompt).toContain("**Interviewee:** Kyle Henson, Founder");
+  });
 });
