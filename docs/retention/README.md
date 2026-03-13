@@ -20,6 +20,8 @@ This directory contains the retention analysis assets for Arda inside WIPGuard.
 - `npm run retention:sync`
 - `npm run retention:build-dataset`
 - `npm run retention:analyze`
+- `npm run retention:analyze-coda-lir`
+- `npm run retention:analyze-arda-coda-lir`
 - `npm run retention:materialize`
 - `npm run retention:gaps`
 - `npm run retention:run`
@@ -41,3 +43,5 @@ This directory contains the retention analysis assets for Arda inside WIPGuard.
 - The runtime ingestion path uses server-side APIs and database persistence; Coda MCP is used for developer-side inspection, not app runtime execution.
 - Missing-source coverage is persisted and surfaced in the dashboard rather than silently excluding tenants.
 - Unresolved tenant joins are exported to `docs/retention/gaps-report.md` and `docs/retention/gaps-report.json`.
+- Direct Coda-only retention scoring is exported to `docs/retention/arda-coda-lir-analysis.md` and `docs/retention/arda-coda-lir-analysis.json`.
+- Arda-enriched matched-tenant scoring is exported to `docs/retention/arda-enriched-lir-analysis.md` and `docs/retention/arda-enriched-lir-analysis.json`.

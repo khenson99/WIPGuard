@@ -1,0 +1,1417 @@
+{
+  "generatedAt": "2026-03-13T19:50:59.644Z",
+  "source": {
+    "stage2ArticleUrl": "https://www.stage2.capital/blog/from-customer-level-to-cohorts-the-lir-journey",
+    "codaDocId": "cgSn33D4N9",
+    "summaryTableId": "grid-2WSbYvHlQY",
+    "rawTableId": "grid-GPpAfsGmqQ",
+    "ardaBaseUrl": "https://prod.alpha001.io.arda.cards"
+  },
+  "population": {
+    "baselineObservationCount": 194,
+    "baselineCustomerCount": 38,
+    "matchedObservationCount": 57,
+    "matchedCustomerCount": 8,
+    "matchedBaselineNext8WeekRate": 0.9474
+  },
+  "matchedCustomers": [
+    {
+      "customer": "Austere Manufacturing",
+      "tenantIds": [
+        "8d53c9a0-3e9c-4f5a-9dbe-ad06b56bc3e4"
+      ]
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "tenantIds": [
+        "b5ea0be9-ce18-4bf0-81c8-b5981a893189"
+      ]
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "tenantIds": [
+        "2d7a820e-f4e4-48bc-8c6d-4307a151b5cc"
+      ]
+    },
+    {
+      "customer": "Gimbel Group",
+      "tenantIds": [
+        "9189acf9-4f89-46cd-9760-0d4933d58c67"
+      ]
+    },
+    {
+      "customer": "Lichen Precision",
+      "tenantIds": [
+        "6d81d80e-7010-468f-a191-f1dab4f4fc79"
+      ]
+    },
+    {
+      "customer": "Neff Machine",
+      "tenantIds": [
+        "1193d42d-ef80-4bc8-ab11-84e5c8046892"
+      ]
+    },
+    {
+      "customer": "Reachable Technology LLC",
+      "tenantIds": [
+        "9db131b9-da94-4c20-bcab-0f70e079bd0d"
+      ]
+    },
+    {
+      "customer": "Roam Rig",
+      "tenantIds": [
+        "a9e3aef7-86aa-4199-bfa7-0e29d05b2774",
+        "e7a57a86-bef9-4dcf-b39e-c956da5d15c1",
+        "3a1aa0ea-6611-477f-bb30-36058c40eee8",
+        "9db77bed-83ee-4b19-afb6-0b670e37cd20"
+      ]
+    }
+  ],
+  "indicatorChecks": {
+    "activeWeeksGe5": {
+      "n": 37,
+      "retentionRate": 1
+    },
+    "anyArdaTouch30": {
+      "n": 2,
+      "retentionRate": 1
+    },
+    "ardaCombinedTouchesGe10": {
+      "n": 0,
+      "retentionRate": null
+    },
+    "ardaCardTouchesGe5": {
+      "n": 0,
+      "retentionRate": null
+    },
+    "ardaItemTouchesGe5": {
+      "n": 0,
+      "retentionRate": null
+    }
+  },
+  "bucketSummaries": {
+    "combinedTouchesTrailing30": {
+      "0": {
+        "n": 55,
+        "retentionRate": 0.9455
+      },
+      "1-4": {
+        "n": 1,
+        "retentionRate": 1
+      },
+      "5-19": {
+        "n": 1,
+        "retentionRate": 1
+      }
+    },
+    "cardTouchesTrailing30": {
+      "0": {
+        "n": 55,
+        "retentionRate": 0.9455
+      },
+      "1-4": {
+        "n": 2,
+        "retentionRate": 1
+      }
+    },
+    "itemTouchesTrailing30": {
+      "0": {
+        "n": 55,
+        "retentionRate": 0.9455
+      },
+      "1-4": {
+        "n": 2,
+        "retentionRate": 1
+      }
+    },
+    "facilities": {
+      "0-1": {
+        "n": 57,
+        "retentionRate": 0.9474
+      }
+    }
+  },
+  "combinedChecks": {
+    "strongWeeksWithArdaTouch": {
+      "n": 1,
+      "retentionRate": 1
+    },
+    "weakWeeksWithArdaTouch": {
+      "n": 1,
+      "retentionRate": 1
+    },
+    "weakWeeksNoArdaTouch": {
+      "n": 19,
+      "retentionRate": 0.8421
+    },
+    "strongWeeksAndCardTouchesGe5": {
+      "n": 0,
+      "retentionRate": null
+    }
+  },
+  "customerSnapshots": [
+    {
+      "customer": "Blackwell Engineering",
+      "tenantIds": [
+        "b5ea0be9-ce18-4bf0-81c8-b5981a893189"
+      ],
+      "observations": 10,
+      "retainedObservationRate": 1,
+      "maxCardTouchesTrailing30": 3,
+      "maxItemTouchesTrailing30": 4,
+      "maxFacilities": 1
+    },
+    {
+      "customer": "Neff Machine",
+      "tenantIds": [
+        "1193d42d-ef80-4bc8-ab11-84e5c8046892"
+      ],
+      "observations": 5,
+      "retainedObservationRate": 1,
+      "maxCardTouchesTrailing30": 1,
+      "maxItemTouchesTrailing30": 1,
+      "maxFacilities": 0
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "tenantIds": [
+        "8d53c9a0-3e9c-4f5a-9dbe-ad06b56bc3e4"
+      ],
+      "observations": 10,
+      "retainedObservationRate": 1,
+      "maxCardTouchesTrailing30": 0,
+      "maxItemTouchesTrailing30": 0,
+      "maxFacilities": 0
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "tenantIds": [
+        "2d7a820e-f4e4-48bc-8c6d-4307a151b5cc"
+      ],
+      "observations": 10,
+      "retainedObservationRate": 1,
+      "maxCardTouchesTrailing30": 0,
+      "maxItemTouchesTrailing30": 0,
+      "maxFacilities": 0
+    },
+    {
+      "customer": "Gimbel Group",
+      "tenantIds": [
+        "9189acf9-4f89-46cd-9760-0d4933d58c67"
+      ],
+      "observations": 1,
+      "retainedObservationRate": 0,
+      "maxCardTouchesTrailing30": 0,
+      "maxItemTouchesTrailing30": 0,
+      "maxFacilities": 0
+    },
+    {
+      "customer": "Lichen Precision",
+      "tenantIds": [
+        "6d81d80e-7010-468f-a191-f1dab4f4fc79"
+      ],
+      "observations": 10,
+      "retainedObservationRate": 1,
+      "maxCardTouchesTrailing30": 0,
+      "maxItemTouchesTrailing30": 0,
+      "maxFacilities": 0
+    },
+    {
+      "customer": "Reachable Technology LLC",
+      "tenantIds": [
+        "9db131b9-da94-4c20-bcab-0f70e079bd0d"
+      ],
+      "observations": 3,
+      "retainedObservationRate": 0.3333,
+      "maxCardTouchesTrailing30": 0,
+      "maxItemTouchesTrailing30": 0,
+      "maxFacilities": 0
+    },
+    {
+      "customer": "Roam Rig",
+      "tenantIds": [
+        "a9e3aef7-86aa-4199-bfa7-0e29d05b2774",
+        "e7a57a86-bef9-4dcf-b39e-c956da5d15c1",
+        "3a1aa0ea-6611-477f-bb30-36058c40eee8",
+        "9db77bed-83ee-4b19-afb6-0b670e37cd20"
+      ],
+      "observations": 8,
+      "retainedObservationRate": 1,
+      "maxCardTouchesTrailing30": 0,
+      "maxItemTouchesTrailing30": 0,
+      "maxFacilities": 0
+    }
+  ],
+  "matchedObservations": [
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-01-01",
+      "currentOrders": 207,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 151,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 3.6745562130177514,
+      "future8WeekOrders": 319,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "2d7a820e-f4e4-48bc-8c6d-4307a151b5cc"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-02-01",
+      "currentOrders": 138,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 104,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.1280653950953679,
+      "future8WeekOrders": 490,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "2d7a820e-f4e4-48bc-8c6d-4307a151b5cc"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-03-01",
+      "currentOrders": 233,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 140,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.5129870129870129,
+      "future8WeekOrders": 513,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "2d7a820e-f4e4-48bc-8c6d-4307a151b5cc"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-04-01",
+      "currentOrders": 285,
+      "activeWeeksTrailing8": 9,
+      "uniqueItemsTrailing30": 147,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.4792387543252596,
+      "future8WeekOrders": 340,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "2d7a820e-f4e4-48bc-8c6d-4307a151b5cc"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-05-01",
+      "currentOrders": 218,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 171,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.9969512195121951,
+      "future8WeekOrders": 320,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "2d7a820e-f4e4-48bc-8c6d-4307a151b5cc"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-06-01",
+      "currentOrders": 157,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 122,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.639945652173913,
+      "future8WeekOrders": 334,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "2d7a820e-f4e4-48bc-8c6d-4307a151b5cc"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-07-01",
+      "currentOrders": 189,
+      "activeWeeksTrailing8": 9,
+      "uniqueItemsTrailing30": 151,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.8590909090909091,
+      "future8WeekOrders": 370,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "2d7a820e-f4e4-48bc-8c6d-4307a151b5cc"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-08-01",
+      "currentOrders": 214,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 193,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.1382978723404256,
+      "future8WeekOrders": 338,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "2d7a820e-f4e4-48bc-8c6d-4307a151b5cc"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-09-01",
+      "currentOrders": 169,
+      "activeWeeksTrailing8": 9,
+      "uniqueItemsTrailing30": 122,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.9053571428571429,
+      "future8WeekOrders": 415,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "2d7a820e-f4e4-48bc-8c6d-4307a151b5cc"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-10-01",
+      "currentOrders": 194,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 163,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.0174825174825175,
+      "future8WeekOrders": 333,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "2d7a820e-f4e4-48bc-8c6d-4307a151b5cc"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-01-01",
+      "currentOrders": 42,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 14,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.8129032258064517,
+      "future8WeekOrders": 67,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "6d81d80e-7010-468f-a191-f1dab4f4fc79"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-02-01",
+      "currentOrders": 32,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 16,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.732824427480916,
+      "future8WeekOrders": 62,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "6d81d80e-7010-468f-a191-f1dab4f4fc79"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-03-01",
+      "currentOrders": 31,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 12,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.7948717948717948,
+      "future8WeekOrders": 43,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "6d81d80e-7010-468f-a191-f1dab4f4fc79"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-04-01",
+      "currentOrders": 33,
+      "activeWeeksTrailing8": 9,
+      "uniqueItemsTrailing30": 12,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.9428571428571428,
+      "future8WeekOrders": 38,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "6d81d80e-7010-468f-a191-f1dab4f4fc79"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-05-01",
+      "currentOrders": 10,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 3,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.3125,
+      "future8WeekOrders": 49,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "6d81d80e-7010-468f-a191-f1dab4f4fc79"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-06-01",
+      "currentOrders": 28,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.135135135135135,
+      "future8WeekOrders": 34,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "6d81d80e-7010-468f-a191-f1dab4f4fc79"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-07-01",
+      "currentOrders": 23,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 4,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.9718309859154929,
+      "future8WeekOrders": 44,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "6d81d80e-7010-468f-a191-f1dab4f4fc79"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-08-01",
+      "currentOrders": 19,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.9344262295081968,
+      "future8WeekOrders": 32,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "6d81d80e-7010-468f-a191-f1dab4f4fc79"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-09-01",
+      "currentOrders": 26,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.1142857142857143,
+      "future8WeekOrders": 27,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "6d81d80e-7010-468f-a191-f1dab4f4fc79"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-10-01",
+      "currentOrders": 13,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.5735294117647058,
+      "future8WeekOrders": 43,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "6d81d80e-7010-468f-a191-f1dab4f4fc79"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-01-01",
+      "currentOrders": 7,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 7,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.28,
+      "future8WeekOrders": 105,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "8d53c9a0-3e9c-4f5a-9dbe-ad06b56bc3e4"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-02-01",
+      "currentOrders": 23,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 9,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.9166666666666667,
+      "future8WeekOrders": 114,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "8d53c9a0-3e9c-4f5a-9dbe-ad06b56bc3e4"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-03-01",
+      "currentOrders": 82,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 5.125,
+      "future8WeekOrders": 45,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "8d53c9a0-3e9c-4f5a-9dbe-ad06b56bc3e4"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-04-01",
+      "currentOrders": 32,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.8571428571428571,
+      "future8WeekOrders": 71,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "8d53c9a0-3e9c-4f5a-9dbe-ad06b56bc3e4"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-05-01",
+      "currentOrders": 15,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.3284671532846716,
+      "future8WeekOrders": 72,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "8d53c9a0-3e9c-4f5a-9dbe-ad06b56bc3e4"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-06-01",
+      "currentOrders": 56,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.302325581395349,
+      "future8WeekOrders": 55,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "8d53c9a0-3e9c-4f5a-9dbe-ad06b56bc3e4"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-07-01",
+      "currentOrders": 17,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.4951456310679611,
+      "future8WeekOrders": 60,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "8d53c9a0-3e9c-4f5a-9dbe-ad06b56bc3e4"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-08-01",
+      "currentOrders": 48,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.6363636363636365,
+      "future8WeekOrders": 50,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "8d53c9a0-3e9c-4f5a-9dbe-ad06b56bc3e4"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-09-01",
+      "currentOrders": 24,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.5950413223140496,
+      "future8WeekOrders": 74,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "8d53c9a0-3e9c-4f5a-9dbe-ad06b56bc3e4"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-10-01",
+      "currentOrders": 26,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.8764044943820224,
+      "future8WeekOrders": 49,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "8d53c9a0-3e9c-4f5a-9dbe-ad06b56bc3e4"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Neff Machine",
+      "monthStart": "2025-06-01",
+      "currentOrders": 36,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 22,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "1193d42d-ef80-4bc8-ab11-84e5c8046892"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Neff Machine",
+      "monthStart": "2025-07-01",
+      "currentOrders": 20,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 1.6666666666666667,
+      "future8WeekOrders": 13,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "1193d42d-ef80-4bc8-ab11-84e5c8046892"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Neff Machine",
+      "monthStart": "2025-08-01",
+      "currentOrders": 7,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 0.375,
+      "future8WeekOrders": 22,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "1193d42d-ef80-4bc8-ab11-84e5c8046892"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Neff Machine",
+      "monthStart": "2025-09-01",
+      "currentOrders": 9,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.42857142857142855,
+      "future8WeekOrders": 35,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "1193d42d-ef80-4bc8-ab11-84e5c8046892"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Neff Machine",
+      "monthStart": "2025-10-01",
+      "currentOrders": 19,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.5833333333333333,
+      "future8WeekOrders": 23,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "1193d42d-ef80-4bc8-ab11-84e5c8046892"
+      ],
+      "ardaCardTouchesTrailing30": 1,
+      "ardaItemTouchesTrailing30": 1,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 2,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": true
+    },
+    {
+      "customer": "Roam Rig",
+      "monthStart": "2025-03-01",
+      "currentOrders": 2,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 15,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "a9e3aef7-86aa-4199-bfa7-0e29d05b2774",
+        "e7a57a86-bef9-4dcf-b39e-c956da5d15c1",
+        "3a1aa0ea-6611-477f-bb30-36058c40eee8",
+        "9db77bed-83ee-4b19-afb6-0b670e37cd20"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Roam Rig",
+      "monthStart": "2025-04-01",
+      "currentOrders": 9,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 13.5,
+      "future8WeekOrders": 94,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "a9e3aef7-86aa-4199-bfa7-0e29d05b2774",
+        "e7a57a86-bef9-4dcf-b39e-c956da5d15c1",
+        "3a1aa0ea-6611-477f-bb30-36058c40eee8",
+        "9db77bed-83ee-4b19-afb6-0b670e37cd20"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Roam Rig",
+      "monthStart": "2025-05-01",
+      "currentOrders": 30,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 8.181818181818182,
+      "future8WeekOrders": 214,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "a9e3aef7-86aa-4199-bfa7-0e29d05b2774",
+        "e7a57a86-bef9-4dcf-b39e-c956da5d15c1",
+        "3a1aa0ea-6611-477f-bb30-36058c40eee8",
+        "9db77bed-83ee-4b19-afb6-0b670e37cd20"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Roam Rig",
+      "monthStart": "2025-06-01",
+      "currentOrders": 121,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 8.853658536585366,
+      "future8WeekOrders": 340,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "a9e3aef7-86aa-4199-bfa7-0e29d05b2774",
+        "e7a57a86-bef9-4dcf-b39e-c956da5d15c1",
+        "3a1aa0ea-6611-477f-bb30-36058c40eee8",
+        "9db77bed-83ee-4b19-afb6-0b670e37cd20"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Roam Rig",
+      "monthStart": "2025-07-01",
+      "currentOrders": 135,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 2.53125,
+      "future8WeekOrders": 379,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "a9e3aef7-86aa-4199-bfa7-0e29d05b2774",
+        "e7a57a86-bef9-4dcf-b39e-c956da5d15c1",
+        "3a1aa0ea-6611-477f-bb30-36058c40eee8",
+        "9db77bed-83ee-4b19-afb6-0b670e37cd20"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Roam Rig",
+      "monthStart": "2025-08-01",
+      "currentOrders": 205,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 2.1503496503496504,
+      "future8WeekOrders": 200,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "a9e3aef7-86aa-4199-bfa7-0e29d05b2774",
+        "e7a57a86-bef9-4dcf-b39e-c956da5d15c1",
+        "3a1aa0ea-6611-477f-bb30-36058c40eee8",
+        "9db77bed-83ee-4b19-afb6-0b670e37cd20"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Roam Rig",
+      "monthStart": "2025-09-01",
+      "currentOrders": 168,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.0932754880694144,
+      "future8WeekOrders": 83,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "a9e3aef7-86aa-4199-bfa7-0e29d05b2774",
+        "e7a57a86-bef9-4dcf-b39e-c956da5d15c1",
+        "3a1aa0ea-6611-477f-bb30-36058c40eee8",
+        "9db77bed-83ee-4b19-afb6-0b670e37cd20"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Roam Rig",
+      "monthStart": "2025-10-01",
+      "currentOrders": 42,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 22,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.2480314960629921,
+      "future8WeekOrders": 64,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "a9e3aef7-86aa-4199-bfa7-0e29d05b2774",
+        "e7a57a86-bef9-4dcf-b39e-c956da5d15c1",
+        "3a1aa0ea-6611-477f-bb30-36058c40eee8",
+        "9db77bed-83ee-4b19-afb6-0b670e37cd20"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-01-01",
+      "currentOrders": 6,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 4,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.6923076923076924,
+      "future8WeekOrders": 19,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "b5ea0be9-ce18-4bf0-81c8-b5981a893189"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-02-01",
+      "currentOrders": 15,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 2.368421052631579,
+      "future8WeekOrders": 8,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "b5ea0be9-ce18-4bf0-81c8-b5981a893189"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-03-01",
+      "currentOrders": 6,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.72,
+      "future8WeekOrders": 7,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "b5ea0be9-ce18-4bf0-81c8-b5981a893189"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-04-01",
+      "currentOrders": 2,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.2222222222222222,
+      "future8WeekOrders": 26,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "b5ea0be9-ce18-4bf0-81c8-b5981a893189"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-05-01",
+      "currentOrders": 11,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.434782608695652,
+      "future8WeekOrders": 20,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "b5ea0be9-ce18-4bf0-81c8-b5981a893189"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-06-01",
+      "currentOrders": 15,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 2.368421052631579,
+      "future8WeekOrders": 13,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "b5ea0be9-ce18-4bf0-81c8-b5981a893189"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-07-01",
+      "currentOrders": 5,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.5357142857142857,
+      "future8WeekOrders": 10,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "b5ea0be9-ce18-4bf0-81c8-b5981a893189"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-08-01",
+      "currentOrders": 8,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.7741935483870968,
+      "future8WeekOrders": 10,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "b5ea0be9-ce18-4bf0-81c8-b5981a893189"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-09-01",
+      "currentOrders": 2,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.21428571428571427,
+      "future8WeekOrders": 15,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "b5ea0be9-ce18-4bf0-81c8-b5981a893189"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-10-01",
+      "currentOrders": 15,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 3,
+      "future8WeekOrders": 14,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "b5ea0be9-ce18-4bf0-81c8-b5981a893189"
+      ],
+      "ardaCardTouchesTrailing30": 3,
+      "ardaItemTouchesTrailing30": 4,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 7,
+      "ardaFacilities": 1,
+      "ardaAnyTouchTrailing30": true
+    },
+    {
+      "customer": "Reachable Technology LLC",
+      "monthStart": "2025-01-01",
+      "currentOrders": 2,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 2,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 1.2,
+      "future8WeekOrders": 4,
+      "future8WeekActive": true,
+      "tenantIds": [
+        "9db131b9-da94-4c20-bcab-0f70e079bd0d"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Reachable Technology LLC",
+      "monthStart": "2025-02-01",
+      "currentOrders": 4,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 4,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 4,
+      "future8WeekOrders": 0,
+      "future8WeekActive": false,
+      "tenantIds": [
+        "9db131b9-da94-4c20-bcab-0f70e079bd0d"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Reachable Technology LLC",
+      "monthStart": "2025-07-01",
+      "currentOrders": 6,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 5,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 0,
+      "future8WeekActive": false,
+      "tenantIds": [
+        "9db131b9-da94-4c20-bcab-0f70e079bd0d"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    },
+    {
+      "customer": "Gimbel Group",
+      "monthStart": "2025-02-01",
+      "currentOrders": 2,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 1.5,
+      "future8WeekOrders": 0,
+      "future8WeekActive": false,
+      "tenantIds": [
+        "9189acf9-4f89-46cd-9760-0d4933d58c67"
+      ],
+      "ardaCardTouchesTrailing30": 0,
+      "ardaItemTouchesTrailing30": 0,
+      "ardaOrderTouchesTrailing30": 0,
+      "ardaCombinedTouchesTrailing30": 0,
+      "ardaFacilities": 0,
+      "ardaAnyTouchTrailing30": false
+    }
+  ],
+  "notes": [
+    "Matched customers were joined to Arda tenants manually from tenant names/domains on 2026-03-13.",
+    "Arda metrics are point-in-time monthly snapshots using /query endpoints with effectiveasof and recordedasof at month end.",
+    "Trailing-30 touch counts proxy operational engagement by counting records whose asOf or createdAt timestamp falls inside the prior 30 days.",
+    "This Arda-enriched subset is smaller than the Coda baseline and should be treated as directional unless sample size is increased with more tenant matches."
+  ]
+}
