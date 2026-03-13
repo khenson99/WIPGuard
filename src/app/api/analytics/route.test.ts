@@ -152,6 +152,32 @@ const STRIPE_DATA = {
   _meta: META,
 };
 
+const ZERO_STRIPE_DATA = {
+  revenue: {
+    mrr: 0,
+    mrrChange: 0,
+    totalRevenue30d: 0,
+    totalRevenuePrev30d: 0,
+    revenueGrowth: 0,
+    avgRevenuePerCustomer: 0,
+  },
+  subscriptions: {
+    active: 0,
+    pastDue: 0,
+    canceled: 0,
+    trialing: 0,
+    churnRate: 0,
+    recentChurnEvents: [],
+  },
+  payments: {
+    succeeded: 0,
+    failed: 0,
+    successRate: 0,
+  },
+  revenueTrend: [],
+  _meta: META,
+};
+
 const MERCURY_DATA = {
   accounts: [],
   cashFlow: {
@@ -541,6 +567,96 @@ describe("GET /api/analytics", () => {
       ).toBe(false);
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it("falls back to the env stripe key when the connection-backed account is empty", async () => {
+    const previousStripeSecretKey = process.env.STRIPE_SECRET_KEY;
+
+    try {
+      process.env.STRIPE_SECRET_KEY = "stripe-env";
+
+      const { getCredentials } = await import("@/lib/analytics/credentials");
+      vi.mocked(getCredentials).mockResolvedValue({
+        hubspotToken: "hubspot",
+        stripeKey: "stripe-connection",
+        mercuryKey: "mercury",
+        gaPropertyId: "ga-prop",
+        gaClientEmail: "ga@example.com",
+        gaPrivateKey: "ga-key",
+        googleAdsDevToken: "ads-dev",
+        googleAdsCustomerId: "ads-customer",
+        googleAdsRefreshToken: "ads-refresh",
+        googleAdsClientId: "ads-client",
+        googleAdsClientSecret: "ads-secret",
+        googleAdsLoginCustomerId: null,
+        metaAccessToken: "meta-token",
+        metaAdAccountId: "meta-ad",
+        metaPageId: "meta-page",
+        metaInstagramAccountId: null,
+        redditClientId: "reddit-client",
+        redditClientSecret: "reddit-secret",
+        redditRefreshToken: "reddit-refresh",
+        redditAdAccountId: "reddit-account",
+        redditUserAgent: "ua",
+        webflowApiToken: "webflow-token",
+        webflowSiteId: "webflow-site",
+        semrushApiToken: "semrush-token",
+        semrushDomain: "example.com",
+        codaApiToken: "coda-token",
+        codaDocId: "coda-doc",
+        pylonApiKey: "pylon-token",
+        pylonBaseUrl: null,
+        googleWorkspaceAccessToken: "workspace-token",
+        slackAccessToken: "slack-token",
+        freshness: {
+          [IntegrationProvider.GOOGLE_WORKSPACE]: freshness(IntegrationProvider.GOOGLE_WORKSPACE),
+          [IntegrationProvider.HUBSPOT]: freshness(IntegrationProvider.HUBSPOT),
+          [IntegrationProvider.SLACK]: freshness(IntegrationProvider.SLACK),
+          [IntegrationProvider.CODA]: freshness(IntegrationProvider.CODA),
+          [IntegrationProvider.REDDIT]: freshness(IntegrationProvider.REDDIT),
+          [IntegrationProvider.GOOGLE_ANALYTICS]: freshness(IntegrationProvider.GOOGLE_ANALYTICS),
+          [IntegrationProvider.STRIPE]: freshness(IntegrationProvider.STRIPE),
+          [IntegrationProvider.MERCURY]: freshness(IntegrationProvider.MERCURY),
+          [IntegrationProvider.WEBFLOW]: freshness(IntegrationProvider.WEBFLOW),
+          [IntegrationProvider.GOOGLE_ADS]: freshness(IntegrationProvider.GOOGLE_ADS),
+          [IntegrationProvider.META_ADS]: freshness(IntegrationProvider.META_ADS),
+          [IntegrationProvider.META_PAGE]: freshness(IntegrationProvider.META_PAGE),
+          [IntegrationProvider.SEMRUSH]: freshness(IntegrationProvider.SEMRUSH),
+          [IntegrationProvider.PYLON]: freshness(IntegrationProvider.PYLON),
+        },
+      } as never);
+
+      const { fetchStripeData } = await import("@/lib/analytics/fetchers");
+      vi.mocked(fetchStripeData)
+        .mockResolvedValueOnce(ZERO_STRIPE_DATA as never)
+        .mockResolvedValueOnce(STRIPE_DATA as never);
+
+      const { GET } = await import("@/app/api/analytics/route");
+      const response = await GET(
+        new Request("http://localhost/api/analytics?section=finance-stripe")
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.stripe).toEqual(STRIPE_DATA);
+      expect(body.freshness.stripe.source).toBe("env");
+      expect(fetchStripeData).toHaveBeenNthCalledWith(
+        1,
+        "stripe-connection",
+        expect.objectContaining({})
+      );
+      expect(fetchStripeData).toHaveBeenNthCalledWith(
+        2,
+        "stripe-env",
+        expect.objectContaining({})
+      );
+    } finally {
+      if (previousStripeSecretKey === undefined) {
+        delete process.env.STRIPE_SECRET_KEY;
+      } else {
+        process.env.STRIPE_SECRET_KEY = previousStripeSecretKey;
+      }
     }
   });
 

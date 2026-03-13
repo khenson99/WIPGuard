@@ -571,6 +571,24 @@ function isLiveFirstDomain(
   return section !== null && LIVE_FIRST_FINANCE_SECTIONS.has(section) && LIVE_FIRST_FINANCE_DOMAINS.has(domain);
 }
 
+function stripePayloadHasSignal(data: StripeData | null | undefined): boolean {
+  if (!data) return false;
+
+  return Boolean(
+    data.revenue.mrr > 0 ||
+      data.revenue.totalRevenue30d > 0 ||
+      data.revenue.totalRevenuePrev30d > 0 ||
+      data.subscriptions.active > 0 ||
+      data.subscriptions.pastDue > 0 ||
+      data.subscriptions.canceled > 0 ||
+      data.subscriptions.trialing > 0 ||
+      data.subscriptions.recentChurnEvents.length > 0 ||
+      data.payments.succeeded > 0 ||
+      data.payments.failed > 0 ||
+      data.revenueTrend.some((point) => point.revenue > 0)
+  );
+}
+
 async function buildFinancialPlanningData(
   userId: string,
   data: AnalyticsDashboardData,
@@ -714,6 +732,8 @@ function providerForDomain(
   | "coda"
   | "reddit"
   | "redditAds"
+  | "stripe"
+  | "mercury"
   | "googleAnalytics"
   | "googleAds"
   | "metaAds"
@@ -726,6 +746,8 @@ function providerForDomain(
   if (domain === "googleWorkspace") return "google_workspace";
   if (domain === "slack") return "slack";
   if (domain === "coda" || domain === "codaOps") return "coda";
+  if (domain === "stripe") return "stripe";
+  if (domain === "mercury") return "mercury";
   if (domain === "googleAnalytics") return "googleAnalytics";
   if (domain === "googleAds") return "googleAds";
   if (domain === "metaAds") return "metaAds";
@@ -1059,7 +1081,29 @@ export async function GET(request: Request) {
           snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchStripeData } = await loadCoreAnalyticsFetchers();
-            return fetchStripeData(creds.stripeKey!, { fromDate, toDate });
+            const primary = await fetchStripeData(creds.stripeKey!, { fromDate, toDate });
+            const envStripeKey = process.env.STRIPE_SECRET_KEY?.trim() ?? null;
+            const shouldTryEnvFallback =
+              creds.freshness.STRIPE.source === "connection" &&
+              Boolean(envStripeKey) &&
+              envStripeKey !== creds.stripeKey &&
+              !stripePayloadHasSignal(primary);
+
+            if (!shouldTryEnvFallback) {
+              return primary;
+            }
+
+            try {
+              const fallback = await fetchStripeData(envStripeKey!, { fromDate, toDate });
+              if (stripePayloadHasSignal(fallback)) {
+                stripeUsedEnvFallback = true;
+                return fallback;
+              }
+            } catch (error) {
+              console.warn("[analytics] Stripe env fallback fetch failed", error);
+            }
+
+            return primary;
           },
         }]
       : []),
@@ -1307,6 +1351,7 @@ export async function GET(request: Request) {
 
   const snapshotExpiresAt = snapshotExpiryFromNow(1);
   const capturedAtByDomain: Partial<Record<DomainKey, string | null>> = {};
+  let stripeUsedEnvFallback = false;
 
   const settled = await Promise.allSettled(
     fetchers.map(async (entry): Promise<FetchOutcome> => {
@@ -1440,6 +1485,7 @@ export async function GET(request: Request) {
         result.freshness[provider] = patchFreshnessWithStale(existing, {
           stale,
           capturedAt,
+          source: key === "stripe" && stripeUsedEnvFallback ? "env" : undefined,
           lastError: fallbackError ?? null,
         });
       }
