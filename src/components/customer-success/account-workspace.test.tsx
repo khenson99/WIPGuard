@@ -64,6 +64,43 @@ function buildDetail(overrides: Partial<CustomerSuccessAccountDetail> = {}): Cus
           lastUpdatedAt: "2026-03-09T10:00:00.000Z",
         },
       },
+      leadingIndicators: {
+        recency: {
+          label: "Activity recency",
+          score: 76,
+          status: "watch",
+          value: "5d since touch",
+          evidence: ["Customer touch landed this week"],
+        },
+        cadence: {
+          label: "Touch cadence",
+          score: 72,
+          status: "watch",
+          value: "3 touches / 30d",
+          evidence: ["Follow-up rhythm is acceptable"],
+        },
+        consistency: {
+          label: "Touch consistency",
+          score: 81,
+          status: "healthy",
+          value: "3/3 months active",
+          evidence: ["Touch pattern stayed consistent"],
+        },
+        depth: {
+          label: "Execution depth",
+          score: 74,
+          status: "watch",
+          value: "2/3 milestones done",
+          evidence: ["Success plan is progressing"],
+        },
+        breadth: {
+          label: "Relationship breadth",
+          score: 84,
+          status: "healthy",
+          value: "2/2 stakeholders covered",
+          evidence: ["Champion + admin both covered"],
+        },
+      },
     },
     alerts: [],
     timeline: [
@@ -177,5 +214,28 @@ describe("CustomerSuccessAccountWorkspace", () => {
       "/api/customer-success/accounts/acct_1/notes",
       expect.objectContaining({ method: "POST" })
     );
+  });
+
+  it("renders retention leading indicators in the health view", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => buildDetail(),
+      }))
+    );
+
+    render(<CustomerSuccessAccountWorkspace accountId="acct_1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Acme Co")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Health Details" }));
+
+    expect(screen.getByText("Retention Leading Indicators")).toBeTruthy();
+    expect(screen.getByText("Activity recency")).toBeTruthy();
+    expect(screen.getByText("5d since touch")).toBeTruthy();
   });
 });

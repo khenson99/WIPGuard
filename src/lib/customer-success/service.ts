@@ -30,6 +30,7 @@ import type {
   CustomerSuccessEvent,
   CustomerSuccessHealth,
   CustomerSuccessHealthComponent,
+  CustomerSuccessLeadingIndicator,
   CustomerSuccessPortfolio,
   CustomerSuccessTaskSummary,
   CustomerSuccessStakeholder,
@@ -395,13 +396,12 @@ function providerSet(snapshot: CustomerSuccessAccountSnapshot): Set<CustomerExte
   return new Set(snapshot.externalProviders);
 }
 
-function getLatestTouch(snapshot: CustomerSuccessAccountSnapshot): Date | null {
+function getLatestActivity(snapshot: CustomerSuccessAccountSnapshot): Date | null {
   const candidates = [
     snapshot.updatedAt,
     ...snapshot.notes.map((note) => note.createdAt),
     ...snapshot.meetings.map((meeting) => meeting.startAt),
-    ...snapshot.outreach
-      .map((message) => message.sentAt ?? message.createdAt),
+    ...snapshot.outreach.map((message) => message.sentAt ?? message.createdAt),
     ...snapshot.tasks.map((task) => task.completedOn ?? task.updatedAt),
     ...snapshot.alerts.map((alert) => alert.updatedAt),
   ];
@@ -411,6 +411,19 @@ function getLatestTouch(snapshot: CustomerSuccessAccountSnapshot): Date | null {
   return candidates.reduce((latest, current) =>
     current.getTime() > latest.getTime() ? current : latest
   );
+}
+
+function getCustomerTouchDates(snapshot: CustomerSuccessAccountSnapshot): Date[] {
+  return [
+    ...snapshot.notes.map((note) => note.createdAt),
+    ...snapshot.meetings.map((meeting) => meeting.startAt),
+    ...snapshot.outreach.map((message) => message.sentAt ?? message.createdAt),
+  ].sort((a, b) => a.getTime() - b.getTime());
+}
+
+function getLatestCustomerTouch(snapshot: CustomerSuccessAccountSnapshot): Date | null {
+  const touchDates = getCustomerTouchDates(snapshot);
+  return touchDates[touchDates.length - 1] ?? null;
 }
 
 function buildStakeholders(
@@ -480,13 +493,41 @@ function buildComponent(input: {
   };
 }
 
+function buildLeadingIndicator(input: {
+  label: string;
+  score: number;
+  value: string;
+  evidence: string[];
+}): CustomerSuccessLeadingIndicator {
+  const score = clamp(round(input.score));
+  return {
+    label: input.label,
+    score,
+    status: mapScoreToStatus(score),
+    value: input.value,
+    evidence: input.evidence,
+  };
+}
+
+function maxGapInDays(dates: Date[], now: Date): number {
+  if (dates.length === 0) return 90;
+
+  let maxGap = daysBetween(dates[dates.length - 1], now);
+  for (let index = 1; index < dates.length; index += 1) {
+    maxGap = Math.max(maxGap, daysBetween(dates[index - 1], dates[index]));
+  }
+  return maxGap;
+}
+
 export function buildCustomerSuccessHealth(
   snapshot: CustomerSuccessAccountSnapshot,
   now: Date = new Date()
 ): CustomerSuccessHealth {
   const providers = providerSet(snapshot);
-  const latestTouch = getLatestTouch(snapshot);
-  const daysSinceTouch = latestTouch ? daysBetween(latestTouch, now) : 90;
+  const latestActivity = getLatestActivity(snapshot);
+  const touchDates = getCustomerTouchDates(snapshot);
+  const latestCustomerTouch = getLatestCustomerTouch(snapshot);
+  const daysSinceTouch = latestCustomerTouch ? daysBetween(latestCustomerTouch, now) : 90;
   const activePlan =
     snapshot.plans.find((plan) => plan.status === CustomerSuccessPlanStatus.ACTIVE) ??
     snapshot.plans[0] ??
@@ -508,6 +549,12 @@ export function buildCustomerSuccessHealth(
     const touchedAt = message.sentAt ?? message.createdAt;
     return daysBetween(touchedAt, now) <= 30;
   }).length;
+  const recentTouches30d = touchDates.filter((date) => daysBetween(date, now) <= 30);
+  const recentTouches90d = touchDates.filter((date) => daysBetween(date, now) <= 90);
+  const coveredTouchWindows90d = new Set(
+    recentTouches90d.map((date) => Math.min(2, Math.floor(daysBetween(date, now) / 30)))
+  ).size;
+  const maxTouchGapDays = maxGapInDays(recentTouches90d, now);
   const stakeholders = buildStakeholders(snapshot, now);
   const coveredStakeholders = stakeholders.filter((stakeholder) => stakeholder.coverageStatus === "covered").length;
   const hasChampion = stakeholders.some((stakeholder) =>
@@ -539,7 +586,7 @@ export function buildCustomerSuccessHealth(
         : "No success-plan milestones linked yet",
       providers.has(CustomerExternalProvider.CODA) ? "Coda signal available" : "No Coda reference connected",
     ],
-    updatedAt: latestTouch ?? snapshot.updatedAt,
+    updatedAt: latestActivity ?? snapshot.updatedAt,
   });
 
   const engagement = buildComponent({
@@ -557,13 +604,13 @@ export function buildCustomerSuccessHealth(
           ? "declining"
           : "stable",
     evidence: [
-      latestTouch ? `Last customer touch ${daysSinceTouch} days ago` : "No recent customer touch found",
+      latestCustomerTouch ? `Last customer touch ${daysSinceTouch} days ago` : "No recent customer touch found",
       `${recentMeetings} meetings, ${recentNotes} notes, ${recentOutreach} outreach messages in the last 30 days`,
       providers.has(CustomerExternalProvider.SLACK) || providers.has(CustomerExternalProvider.GOOGLE_WORKSPACE)
         ? "Workspace collaboration signals available"
         : "Workspace collaboration signals missing",
     ],
-    updatedAt: latestTouch ?? snapshot.updatedAt,
+    updatedAt: latestCustomerTouch ?? latestActivity ?? snapshot.updatedAt,
   });
 
   const relationship = buildComponent({
@@ -586,7 +633,7 @@ export function buildCustomerSuccessHealth(
       snapshot.ownerName ? `Customer owner: ${snapshot.ownerName}` : "No owner assigned",
       hasChampion ? "Champion-level stakeholder present" : "Champion coverage missing",
     ],
-    updatedAt: latestTouch ?? snapshot.updatedAt,
+    updatedAt: latestCustomerTouch ?? latestActivity ?? snapshot.updatedAt,
   });
 
   const support = buildComponent({
@@ -608,7 +655,7 @@ export function buildCustomerSuccessHealth(
       `${overdueTasks} overdue customer-success tasks`,
       supportAlerts > 0 ? "Support or health alerts need attention" : "Support load is within threshold",
     ],
-    updatedAt: latestTouch ?? snapshot.updatedAt,
+    updatedAt: latestActivity ?? snapshot.updatedAt,
   });
 
   const commercial = buildComponent({
@@ -632,8 +679,78 @@ export function buildCustomerSuccessHealth(
       renewalDays === null ? "Renewal date unavailable" : `Renewal in ${renewalDays} days`,
       snapshot.expansionPotential ? `Expansion potential ${snapshot.expansionPotential}` : "Expansion potential not scored",
     ],
-    updatedAt: latestTouch ?? snapshot.updatedAt,
+    updatedAt: latestActivity ?? snapshot.updatedAt,
   });
+
+  const leadingIndicators = {
+    recency: buildLeadingIndicator({
+      label: "Activity recency",
+      score: 100 - Math.min(daysSinceTouch * 3.5, 88),
+      value: latestCustomerTouch ? `${daysSinceTouch}d since touch` : "No recent touch",
+      evidence: [
+        latestCustomerTouch ? `Most recent meeting, note, or outreach was ${daysSinceTouch} days ago` : "No meeting, note, or outreach found",
+        latestActivity && !latestCustomerTouch ? "Recent internal work exists, but no customer-facing touch was detected" : "Customer-facing touch signals are available",
+      ],
+    }),
+    cadence: buildLeadingIndicator({
+      label: "Touch cadence",
+      score:
+        22 +
+        Math.min(recentTouches30d.length * 16, 48) +
+        Math.min(recentMeetings * 8, 16) +
+        Math.min(recentOutreach * 6, 12),
+      value: `${recentTouches30d.length} touches / 30d`,
+      evidence: [
+        `${recentMeetings} meetings, ${recentNotes} notes, ${recentOutreach} outreach messages in the last 30 days`,
+        recentTouches30d.length >= 4 ? "Healthy follow-up rhythm this month" : "Follow-up rhythm is still light this month",
+      ],
+    }),
+    consistency: buildLeadingIndicator({
+      label: "Touch consistency",
+      score:
+        18 +
+        coveredTouchWindows90d * 20 +
+        Math.min(recentTouches90d.length * 5, 20) -
+        Math.min(Math.max(maxTouchGapDays - 14, 0) * 1.5, 26),
+      value: `${coveredTouchWindows90d}/3 months active`,
+      evidence: [
+        `${recentTouches90d.length} customer touches recorded in the last 90 days`,
+        maxTouchGapDays > 21 ? `Largest gap between touches is ${maxTouchGapDays} days` : "Touch gaps stayed within a 3-week window",
+      ],
+    }),
+    depth: buildLeadingIndicator({
+      label: "Execution depth",
+      score:
+        26 +
+        milestoneRatio * 36 +
+        Math.min(completedTasks30d * 10, 24) +
+        (activePlan ? 8 : 0) +
+        (providers.has(CustomerExternalProvider.CODA) ? 6 : 0) -
+        Math.min(openTasks * 4, 20),
+      value:
+        totalMilestones > 0
+          ? `${completedMilestones}/${totalMilestones} milestones done`
+          : `${completedTasks30d} tasks done / 30d`,
+      evidence: [
+        activePlan ? `Active success plan: ${activePlan.name}` : "No active success plan linked",
+        `${completedTasks30d} tasks completed and ${openTasks} open tasks in the last/current 30-day window`,
+      ],
+    }),
+    breadth: buildLeadingIndicator({
+      label: "Relationship breadth",
+      score:
+        24 +
+        Math.min(stakeholders.length * 8, 24) +
+        Math.min(coveredStakeholders * 10, 30) +
+        (hasChampion ? 10 : 0) +
+        (coveredStakeholders >= 2 ? 8 : 0),
+      value: `${coveredStakeholders}/${stakeholders.length || 0} stakeholders covered`,
+      evidence: [
+        `${stakeholders.length} stakeholders mapped, ${coveredStakeholders} touched in the last 30 days`,
+        hasChampion ? "Champion-level contact is present" : "Champion-level contact is missing",
+      ],
+    }),
+  } satisfies CustomerSuccessHealth["leadingIndicators"];
 
   const score =
     adoption.weightedScore +
@@ -665,7 +782,7 @@ export function buildCustomerSuccessHealth(
     grade: mapScoreToGrade(roundedScore),
     trend: mapTrendScore(trendValue),
     confidence,
-    updatedAt: (latestTouch ?? snapshot.updatedAt).toISOString(),
+    updatedAt: (latestActivity ?? snapshot.updatedAt).toISOString(),
     components: {
       adoption,
       engagement,
@@ -673,6 +790,7 @@ export function buildCustomerSuccessHealth(
       support,
       commercial,
     },
+    leadingIndicators,
   };
 }
 
@@ -691,6 +809,25 @@ function alertPriority(alert: CustomerSuccessAlert): number {
   }[alert.slaStatus];
 
   return severityRank * 10 + slaRank;
+}
+
+function pickLeadingIndicatorAction(health: CustomerSuccessHealth): string {
+  const weakestIndicator = Object.entries(health.leadingIndicators).sort(([, left], [, right]) => left.score - right.score)[0]?.[0];
+
+  switch (weakestIndicator) {
+    case "recency":
+      return "Re-establish direct customer contact this week.";
+    case "cadence":
+      return "Increase touch cadence over the next 30 days.";
+    case "consistency":
+      return "Set a steadier 30/60/90-day follow-up rhythm.";
+    case "depth":
+      return "Advance the success plan and close open execution items.";
+    case "breadth":
+      return "Expand coverage beyond the current champion.";
+    default:
+      return "Review account workspace";
+  }
 }
 
 function buildAlert(snapshot: CustomerSuccessAccountSnapshot, alert: CustomerSuccessAccountSnapshot["alerts"][number]): CustomerSuccessAlert {
@@ -901,7 +1038,7 @@ export function buildCustomerSuccessPortfolioFromSnapshots(
   const generatedAt = now.toISOString();
   const accounts = snapshots.map((snapshot) => {
     const health = buildCustomerSuccessHealth(snapshot, now);
-    const lastActivityAt = getLatestTouch(snapshot)?.toISOString();
+    const lastActivityAt = getLatestActivity(snapshot)?.toISOString();
     const openAlertCount = snapshot.alerts.filter((alert) => isAlertOpen(alert.status)).length;
     const activeUsers30d = buildStakeholders(snapshot, now).filter(
       (stakeholder) => stakeholder.coverageStatus === "covered"
@@ -955,9 +1092,8 @@ export function buildCustomerSuccessPortfolioFromSnapshots(
       lifecycleStage: snapshots.find((snapshot) => snapshot.id === account.accountId)?.lifecycleStage ?? "ACTIVE",
       nextAction:
         alerts.find((alert) => alert.accountId === account.accountId && alert.status !== "resolved")?.suggestedAction ??
-        pickRecommendedTemplates(
-          snapshots.find((snapshot) => snapshot.id === account.accountId) ?? snapshots[0]
-        )[0],
+        pickLeadingIndicatorAction(account.health) ??
+        pickRecommendedTemplates(snapshots.find((snapshot) => snapshot.id === account.accountId) ?? snapshots[0])[0],
     }));
 
   const avgHealthScore =
