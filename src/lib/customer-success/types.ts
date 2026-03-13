@@ -195,6 +195,14 @@ export interface CustomerSuccessHealthComponent {
   lastUpdatedAt: string;
 }
 
+export interface CustomerSuccessLeadingIndicator {
+  label: string;
+  score: number;
+  status: CustomerSuccessHealthStatus;
+  value: string;
+  evidence: string[];
+}
+
 export interface CustomerSuccessHealth {
   score: number;
   grade: CustomerSuccessHealthGrade;
@@ -207,6 +215,13 @@ export interface CustomerSuccessHealth {
     relationship: CustomerSuccessHealthComponent;
     support: CustomerSuccessHealthComponent;
     commercial: CustomerSuccessHealthComponent;
+  };
+  leadingIndicators: {
+    recency: CustomerSuccessLeadingIndicator;
+    cadence: CustomerSuccessLeadingIndicator;
+    consistency: CustomerSuccessLeadingIndicator;
+    depth: CustomerSuccessLeadingIndicator;
+    breadth: CustomerSuccessLeadingIndicator;
   };
 }
 

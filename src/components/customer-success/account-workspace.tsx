@@ -372,25 +372,60 @@ export function CustomerSuccessAccountWorkspace({ accountId }: { accountId: stri
       ) : null}
 
       {activeTab === "health" ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          {Object.entries(detail.health.components).map(([key, component]) => (
-            <div key={key} className="rounded-2xl border border-border bg-card p-5">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">{key}</p>
-              <p className={`mt-2 text-2xl font-semibold ${formatHealthTone(component.score)}`}>
-                {formatNumber(component.score)}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {component.status} • {component.trend}
-              </p>
-              <div className="mt-3 space-y-2">
-                {component.evidence.map((item) => (
-                  <p key={item} className="text-xs text-muted-foreground">
-                    {item}
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Health Components</h2>
+            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              {Object.entries(detail.health.components).map(([key, component]) => (
+                <div key={key} className="rounded-2xl border border-border bg-card p-5">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">{key}</p>
+                  <p className={`mt-2 text-2xl font-semibold ${formatHealthTone(component.score)}`}>
+                    {formatNumber(component.score)}
                   </p>
-                ))}
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {component.status} • {component.trend}
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    {component.evidence.map((item) => (
+                      <p key={item} className="text-xs text-muted-foreground">
+                        {item}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">Retention Leading Indicators</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Recency, cadence, consistency, depth, and breadth behind the health score.
+                </p>
               </div>
             </div>
-          ))}
+            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              {Object.entries(detail.health.leadingIndicators).map(([key, indicator]) => (
+                <div key={key} className="rounded-2xl border border-border bg-card p-5">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">{indicator.label}</p>
+                  <p className={`mt-2 text-2xl font-semibold ${formatHealthTone(indicator.score)}`}>
+                    {formatNumber(indicator.score)}
+                  </p>
+                  <p className="mt-1 text-xs font-medium text-foreground">{indicator.value}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{indicator.status}</p>
+                  <div className="mt-3 space-y-2">
+                    {indicator.evidence.map((item) => (
+                      <p key={item} className="text-xs text-muted-foreground">
+                        {item}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       ) : null}
 
