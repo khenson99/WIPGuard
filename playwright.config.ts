@@ -67,10 +67,10 @@ export default defineConfig({
   ],
   /* Run your local dev server before starting the tests */
   webServer: {
-    // On CI, run a production server (`next start`) for fidelity/stability.
+    // On CI, run the production standalone server after staging static/public assets.
     // Dev-mode auth is enabled in CI via `E2E_MODE=true`.
     command: process.env.CI
-      ? `PORT=${e2ePort} HOSTNAME=127.0.0.1 node .next/standalone/server.js`
+      ? `PORT=${e2ePort} HOSTNAME=127.0.0.1 node scripts/start-e2e-standalone.mjs`
       : `npm run dev -- -H 127.0.0.1 -p ${e2ePort}`,
     env: e2eServerEnv,
     url: e2eBaseUrl,
