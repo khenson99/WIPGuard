@@ -507,54 +507,80 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
   let byProvider = new Map<IntegrationProvider, ConnectionRecord>();
 
   if (userId) {
-    let connections = await prisma.integrationConnection.findMany({
+    const connectionSelect = {
+      userId: true,
+      provider: true,
+      status: true,
+      accessToken: true,
+      refreshToken: true,
+      tokenType: true,
+      expiresAt: true,
+      scopes: true,
+      metadata: true,
+      connectedAt: true,
+      lastSyncedAt: true,
+      lastError: true,
+    } as const;
+
+    const connections = await prisma.integrationConnection.findMany({
       where: { userId },
-      select: {
-        userId: true,
-        provider: true,
-        status: true,
-        accessToken: true,
-        refreshToken: true,
-        tokenType: true,
-        expiresAt: true,
-        scopes: true,
-        metadata: true,
-        connectedAt: true,
-        lastSyncedAt: true,
-        lastError: true,
-      },
+      select: connectionSelect,
     });
 
-    // Owner fallback: when the configured owner has no connections yet
-    // (migration hasn't run), fetch from any connected user.  We order by
-    // connectedAt desc and deduplicate in JS to avoid a Prisma/PostgreSQL
-    // DISTINCT ON + ORDER BY constraint conflict.
-    if (connections.length === 0 && isConfiguredIntegrationOwner(userId)) {
-      const allConnected = await prisma.integrationConnection.findMany({
-        where: { status: IntegrationConnectionStatus.CONNECTED },
+    // Owner fallback: when the configured owner is missing one or more providers
+    // (migration hasn't run or only partially completed), fill providers that
+    // are absent or only have stale non-connected owner rows from the most
+    // recently connected non-owner rows.
+    if (isConfiguredIntegrationOwner(userId)) {
+      const ownerConnectionByProvider = new Map(
+        connections.map((connection) => [connection.provider, connection])
+      );
+      const fallbackProviders = Array.from(
+        new Set(
+          Object.values(IntegrationProvider).filter((provider) => {
+            const ownerConnection = ownerConnectionByProvider.get(provider);
+            return !ownerConnection || ownerConnection.status !== IntegrationConnectionStatus.CONNECTED;
+          })
+        )
+      );
+
+      const fallbackWhere =
+        fallbackProviders.length === Object.values(IntegrationProvider).length
+          ? {
+              status: IntegrationConnectionStatus.CONNECTED,
+              userId: { not: userId },
+            }
+          : {
+              status: IntegrationConnectionStatus.CONNECTED,
+              userId: { not: userId },
+              provider: { in: fallbackProviders },
+            };
+
+      const fallbackConnections = await prisma.integrationConnection.findMany({
+        where: fallbackWhere,
         orderBy: { connectedAt: "desc" },
-        select: {
-          userId: true,
-          provider: true,
-          status: true,
-          accessToken: true,
-          refreshToken: true,
-          tokenType: true,
-          expiresAt: true,
-          scopes: true,
-          metadata: true,
-          connectedAt: true,
-          lastSyncedAt: true,
-          lastError: true,
-        },
+        select: connectionSelect,
       });
-      // Keep only the most recently connected row per provider.
-      const seen = new Set<IntegrationProvider>();
-      connections = allConnected.filter((c) => {
-        if (seen.has(c.provider)) return false;
-        seen.add(c.provider);
-        return true;
-      });
+
+      const fallbackProvidersResolved = new Set<IntegrationProvider>();
+      for (const connection of fallbackConnections) {
+        if (fallbackProvidersResolved.has(connection.provider)) {
+          continue;
+        }
+        fallbackProvidersResolved.add(connection.provider);
+
+        const ownerIndex = connections.findIndex(
+          (ownerConnection) => ownerConnection.provider === connection.provider
+        );
+        if (ownerIndex === -1) {
+          connections.push(connection);
+          continue;
+        }
+
+        if (connections[ownerIndex].status !== IntegrationConnectionStatus.CONNECTED) {
+          connections[ownerIndex] = connection;
+        }
+      }
     }
 
     byProvider = new Map(
