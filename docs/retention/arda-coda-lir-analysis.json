@@ -1,0 +1,2341 @@
+{
+  "generatedAt": "2026-03-13T18:56:41.628Z",
+  "source": {
+    "stage2ArticleUrl": "https://www.stage2.capital/blog/from-customer-level-to-cohorts-the-lir-journey",
+    "codaDocId": "cgSn33D4N9",
+    "summaryTableId": "grid-2WSbYvHlQY",
+    "rawTableId": "grid-GPpAfsGmqQ"
+  },
+  "population": {
+    "observationCount": 194,
+    "customerCount": 38,
+    "baselineNext8WeekRate": 0.9175,
+    "baselineNext8WeekRateExRossmonster": 0.913
+  },
+  "bucketSummaries": {
+    "activeWeeksTrailing8": {
+      "0-2": {
+        "n": 42,
+        "retentionRate": 0.6667
+      },
+      "3-4": {
+        "n": 38,
+        "retentionRate": 0.9737
+      },
+      "5-6": {
+        "n": 48,
+        "retentionRate": 0.9792
+      },
+      "7-8": {
+        "n": 66,
+        "retentionRate": 1
+      }
+    },
+    "activeMonthsPrev3": {
+      "0": {
+        "n": 26,
+        "retentionRate": 0.6923
+      },
+      "1": {
+        "n": 20,
+        "retentionRate": 0.95
+      },
+      "2": {
+        "n": 29,
+        "retentionRate": 0.8966
+      },
+      "3": {
+        "n": 119,
+        "retentionRate": 0.9664
+      }
+    },
+    "uniqueItemsTrailing30": {
+      "1": {
+        "n": 154,
+        "retentionRate": 0.9156
+      },
+      "10+": {
+        "n": 29,
+        "retentionRate": 1
+      },
+      "2-4": {
+        "n": 7,
+        "retentionRate": 0.7143
+      },
+      "5-9": {
+        "n": 4,
+        "retentionRate": 0.75
+      }
+    },
+    "trendRatio": {
+      "<0.5x": {
+        "n": 28,
+        "retentionRate": 0.8929
+      },
+      ">1.2x": {
+        "n": 73,
+        "retentionRate": 0.9452
+      },
+      "0.5-0.9x": {
+        "n": 33,
+        "retentionRate": 1
+      },
+      "0.9-1.2x": {
+        "n": 34,
+        "retentionRate": 0.9706
+      }
+    }
+  },
+  "indicatorChecks": {
+    "activeWeeksGe5": {
+      "all": {
+        "n": 114,
+        "retentionRate": 0.9912
+      },
+      "exRossmonster": {
+        "n": 104,
+        "retentionRate": 0.9904
+      }
+    },
+    "activeMonthsPrev3Ge2": {
+      "all": {
+        "n": 148,
+        "retentionRate": 0.9527
+      },
+      "exRossmonster": {
+        "n": 138,
+        "retentionRate": 0.9493
+      }
+    },
+    "uniqueItemsGe5": {
+      "all": {
+        "n": 33,
+        "retentionRate": 0.9697
+      },
+      "exRossmonster": {
+        "n": 23,
+        "retentionRate": 0.9565
+      }
+    },
+    "trendBelowHalf": {
+      "all": {
+        "n": 28,
+        "retentionRate": 0.8929
+      },
+      "exRossmonster": {
+        "n": 27,
+        "retentionRate": 0.8889
+      }
+    }
+  },
+  "combinedChecks": {
+    "lowWeeksAndNoHistory": {
+      "n": 20,
+      "retentionRate": 0.6
+    },
+    "lowWeeksOnly": {
+      "n": 42,
+      "retentionRate": 0.6667
+    },
+    "lowWeeksAndDrop": {
+      "n": 9,
+      "retentionRate": 0.6667
+    },
+    "strongWeeksAndHistory": {
+      "n": 94,
+      "retentionRate": 0.9894
+    }
+  },
+  "topCustomers2025Orders": [
+    {
+      "customer": "Rossmonster",
+      "orders2025": 5043
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "orders2025": 2269
+    },
+    {
+      "customer": "Fat Fender Garage",
+      "orders2025": 1453
+    },
+    {
+      "customer": "Super Pacific",
+      "orders2025": 758
+    },
+    {
+      "customer": "Roam Rig",
+      "orders2025": 755
+    },
+    {
+      "customer": "Campworks Nomadic Systems",
+      "orders2025": 474
+    },
+    {
+      "customer": "Egg Collective",
+      "orders2025": 423
+    },
+    {
+      "customer": "Contoro Robotics",
+      "orders2025": 408
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "orders2025": 372
+    },
+    {
+      "customer": "Lichen Precision",
+      "orders2025": 285
+    },
+    {
+      "customer": "Sandy Vans",
+      "orders2025": 238
+    },
+    {
+      "customer": "Nook Vans",
+      "orders2025": 221
+    }
+  ],
+  "observations": [
+    {
+      "customer": "Fat Fender Garage",
+      "monthStart": "2025-01-01",
+      "currentOrders": 59,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 58,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Fat Fender Garage",
+      "monthStart": "2025-02-01",
+      "currentOrders": 15,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 0.7627118644067796,
+      "future8WeekOrders": 250,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Fat Fender Garage",
+      "monthStart": "2025-03-01",
+      "currentOrders": 50,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 2.0270270270270268,
+      "future8WeekOrders": 497,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Fat Fender Garage",
+      "monthStart": "2025-04-01",
+      "currentOrders": 232,
+      "activeWeeksTrailing8": 9,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 5.612903225806451,
+      "future8WeekOrders": 315,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Fat Fender Garage",
+      "monthStart": "2025-05-01",
+      "currentOrders": 265,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 2.676767676767677,
+      "future8WeekOrders": 136,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Fat Fender Garage",
+      "monthStart": "2025-06-01",
+      "currentOrders": 52,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.2851919561243144,
+      "future8WeekOrders": 84,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Fat Fender Garage",
+      "monthStart": "2025-07-01",
+      "currentOrders": 84,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.45901639344262296,
+      "future8WeekOrders": 169,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Fat Fender Garage",
+      "monthStart": "2025-08-01",
+      "currentOrders": 1,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.007481296758104739,
+      "future8WeekOrders": 349,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Fat Fender Garage",
+      "monthStart": "2025-09-01",
+      "currentOrders": 190,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 4.160583941605839,
+      "future8WeekOrders": 348,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Fat Fender Garage",
+      "monthStart": "2025-10-01",
+      "currentOrders": 196,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 2.138181818181818,
+      "future8WeekOrders": 434,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Trax",
+      "monthStart": "2025-02-01",
+      "currentOrders": 20,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 25,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Trax",
+      "monthStart": "2025-03-01",
+      "currentOrders": 18,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 2.6999999999999997,
+      "future8WeekOrders": 29,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Trax",
+      "monthStart": "2025-04-01",
+      "currentOrders": 13,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 1.0263157894736843,
+      "future8WeekOrders": 37,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Trax",
+      "monthStart": "2025-05-01",
+      "currentOrders": 25,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.4705882352941178,
+      "future8WeekOrders": 24,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Trax",
+      "monthStart": "2025-06-01",
+      "currentOrders": 12,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.6428571428571428,
+      "future8WeekOrders": 29,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Trax",
+      "monthStart": "2025-07-01",
+      "currentOrders": 13,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.7799999999999999,
+      "future8WeekOrders": 47,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Trax",
+      "monthStart": "2025-08-01",
+      "currentOrders": 20,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.2,
+      "future8WeekOrders": 55,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Trax",
+      "monthStart": "2025-09-01",
+      "currentOrders": 28,
+      "activeWeeksTrailing8": 9,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.8666666666666667,
+      "future8WeekOrders": 30,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Trax",
+      "monthStart": "2025-10-01",
+      "currentOrders": 28,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.3770491803278688,
+      "future8WeekOrders": 7,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Northeast Precision CNC",
+      "monthStart": "2025-02-01",
+      "currentOrders": 9,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 9,
+      "future8WeekOrders": 38,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Northeast Precision CNC",
+      "monthStart": "2025-03-01",
+      "currentOrders": 21,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 5.25,
+      "future8WeekOrders": 44,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Northeast Precision CNC",
+      "monthStart": "2025-04-01",
+      "currentOrders": 23,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 2.3,
+      "future8WeekOrders": 47,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Northeast Precision CNC",
+      "monthStart": "2025-05-01",
+      "currentOrders": 27,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.5283018867924527,
+      "future8WeekOrders": 32,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Northeast Precision CNC",
+      "monthStart": "2025-06-01",
+      "currentOrders": 24,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.0140845070422535,
+      "future8WeekOrders": 33,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Northeast Precision CNC",
+      "monthStart": "2025-07-01",
+      "currentOrders": 21,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.8513513513513513,
+      "future8WeekOrders": 31,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Northeast Precision CNC",
+      "monthStart": "2025-08-01",
+      "currentOrders": 18,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.75,
+      "future8WeekOrders": 30,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Northeast Precision CNC",
+      "monthStart": "2025-09-01",
+      "currentOrders": 16,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.7619047619047619,
+      "future8WeekOrders": 17,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Northeast Precision CNC",
+      "monthStart": "2025-10-01",
+      "currentOrders": 14,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.7636363636363637,
+      "future8WeekOrders": 11,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Assembly Industrial Fabrication",
+      "monthStart": "2025-02-01",
+      "currentOrders": 14,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 7,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 34,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Assembly Industrial Fabrication",
+      "monthStart": "2025-03-01",
+      "currentOrders": 4,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 2,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 0.8571428571428571,
+      "future8WeekOrders": 30,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Assembly Industrial Fabrication",
+      "monthStart": "2025-04-01",
+      "currentOrders": 30,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 14,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 5,
+      "future8WeekOrders": 5,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Assembly Industrial Fabrication",
+      "monthStart": "2025-05-01",
+      "currentOrders": 2,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.125,
+      "future8WeekOrders": 23,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Assembly Industrial Fabrication",
+      "monthStart": "2025-06-01",
+      "currentOrders": 23,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.9166666666666667,
+      "future8WeekOrders": 21,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Assembly Industrial Fabrication",
+      "monthStart": "2025-08-01",
+      "currentOrders": 4,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 0.48,
+      "future8WeekOrders": 37,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Assembly Industrial Fabrication",
+      "monthStart": "2025-09-01",
+      "currentOrders": 16,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 1.7777777777777777,
+      "future8WeekOrders": 23,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Assembly Industrial Fabrication",
+      "monthStart": "2025-10-01",
+      "currentOrders": 21,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 3.15,
+      "future8WeekOrders": 20,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-01-01",
+      "currentOrders": 207,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 151,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 3.6745562130177514,
+      "future8WeekOrders": 319,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-02-01",
+      "currentOrders": 138,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 104,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.1280653950953679,
+      "future8WeekOrders": 490,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-03-01",
+      "currentOrders": 233,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 140,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.5129870129870129,
+      "future8WeekOrders": 513,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-04-01",
+      "currentOrders": 285,
+      "activeWeeksTrailing8": 9,
+      "uniqueItemsTrailing30": 147,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.4792387543252596,
+      "future8WeekOrders": 340,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-05-01",
+      "currentOrders": 218,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 171,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.9969512195121951,
+      "future8WeekOrders": 320,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-06-01",
+      "currentOrders": 157,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 122,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.639945652173913,
+      "future8WeekOrders": 334,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-07-01",
+      "currentOrders": 189,
+      "activeWeeksTrailing8": 9,
+      "uniqueItemsTrailing30": 151,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.8590909090909091,
+      "future8WeekOrders": 370,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-08-01",
+      "currentOrders": 214,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 193,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.1382978723404256,
+      "future8WeekOrders": 338,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-09-01",
+      "currentOrders": 169,
+      "activeWeeksTrailing8": 9,
+      "uniqueItemsTrailing30": 122,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.9053571428571429,
+      "future8WeekOrders": 415,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Bluewater Sportfishing Boats",
+      "monthStart": "2025-10-01",
+      "currentOrders": 194,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 163,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.0174825174825175,
+      "future8WeekOrders": 333,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-01-01",
+      "currentOrders": 42,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 14,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.8129032258064517,
+      "future8WeekOrders": 67,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-02-01",
+      "currentOrders": 32,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 16,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.732824427480916,
+      "future8WeekOrders": 62,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-03-01",
+      "currentOrders": 31,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 12,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.7948717948717948,
+      "future8WeekOrders": 43,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-04-01",
+      "currentOrders": 33,
+      "activeWeeksTrailing8": 9,
+      "uniqueItemsTrailing30": 12,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.9428571428571428,
+      "future8WeekOrders": 38,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-05-01",
+      "currentOrders": 10,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 3,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.3125,
+      "future8WeekOrders": 49,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-06-01",
+      "currentOrders": 28,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.135135135135135,
+      "future8WeekOrders": 34,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-07-01",
+      "currentOrders": 23,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 4,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.9718309859154929,
+      "future8WeekOrders": 44,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-08-01",
+      "currentOrders": 19,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.9344262295081968,
+      "future8WeekOrders": 32,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-09-01",
+      "currentOrders": 26,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.1142857142857143,
+      "future8WeekOrders": 27,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Lichen Precision",
+      "monthStart": "2025-10-01",
+      "currentOrders": 13,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.5735294117647058,
+      "future8WeekOrders": 43,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Rossmonster",
+      "monthStart": "2025-01-01",
+      "currentOrders": 148,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 103,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.3399693721286371,
+      "future8WeekOrders": 675,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Rossmonster",
+      "monthStart": "2025-02-01",
+      "currentOrders": 367,
+      "activeWeeksTrailing8": 9,
+      "uniqueItemsTrailing30": 241,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.8822115384615384,
+      "future8WeekOrders": 724,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Rossmonster",
+      "monthStart": "2025-03-01",
+      "currentOrders": 321,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 250,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.8154106689246401,
+      "future8WeekOrders": 777,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Rossmonster",
+      "monthStart": "2025-04-01",
+      "currentOrders": 420,
+      "activeWeeksTrailing8": 9,
+      "uniqueItemsTrailing30": 260,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.507177033492823,
+      "future8WeekOrders": 791,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Rossmonster",
+      "monthStart": "2025-05-01",
+      "currentOrders": 454,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 288,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.2292418772563178,
+      "future8WeekOrders": 860,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Rossmonster",
+      "monthStart": "2025-06-01",
+      "currentOrders": 447,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 297,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.1221757322175734,
+      "future8WeekOrders": 997,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Rossmonster",
+      "monthStart": "2025-07-01",
+      "currentOrders": 527,
+      "activeWeeksTrailing8": 9,
+      "uniqueItemsTrailing30": 307,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.1968205904617715,
+      "future8WeekOrders": 1006,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Rossmonster",
+      "monthStart": "2025-08-01",
+      "currentOrders": 557,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 357,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.1701680672268908,
+      "future8WeekOrders": 1001,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Rossmonster",
+      "monthStart": "2025-09-01",
+      "currentOrders": 551,
+      "activeWeeksTrailing8": 9,
+      "uniqueItemsTrailing30": 338,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.0796864794252123,
+      "future8WeekOrders": 1165,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Rossmonster",
+      "monthStart": "2025-10-01",
+      "currentOrders": 586,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 408,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.075229357798165,
+      "future8WeekOrders": 1016,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-01-01",
+      "currentOrders": 7,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 7,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.28,
+      "future8WeekOrders": 105,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-02-01",
+      "currentOrders": 23,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 9,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.9166666666666667,
+      "future8WeekOrders": 114,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-03-01",
+      "currentOrders": 82,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 5.125,
+      "future8WeekOrders": 45,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-04-01",
+      "currentOrders": 32,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.8571428571428571,
+      "future8WeekOrders": 71,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-05-01",
+      "currentOrders": 15,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.3284671532846716,
+      "future8WeekOrders": 72,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-06-01",
+      "currentOrders": 56,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.302325581395349,
+      "future8WeekOrders": 55,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-07-01",
+      "currentOrders": 17,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.4951456310679611,
+      "future8WeekOrders": 60,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-08-01",
+      "currentOrders": 48,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.6363636363636365,
+      "future8WeekOrders": 50,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-09-01",
+      "currentOrders": 24,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.5950413223140496,
+      "future8WeekOrders": 74,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Austere Manufacturing",
+      "monthStart": "2025-10-01",
+      "currentOrders": 26,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.8764044943820224,
+      "future8WeekOrders": 49,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Super Pacific",
+      "monthStart": "2025-05-01",
+      "currentOrders": 4,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 245,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Super Pacific",
+      "monthStart": "2025-06-01",
+      "currentOrders": 130,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 97.5,
+      "future8WeekOrders": 242,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Super Pacific",
+      "monthStart": "2025-07-01",
+      "currentOrders": 140,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 3.1343283582089554,
+      "future8WeekOrders": 216,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Super Pacific",
+      "monthStart": "2025-08-01",
+      "currentOrders": 100,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.094890510948905,
+      "future8WeekOrders": 249,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Super Pacific",
+      "monthStart": "2025-09-01",
+      "currentOrders": 116,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.9405405405405406,
+      "future8WeekOrders": 244,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Super Pacific",
+      "monthStart": "2025-10-01",
+      "currentOrders": 169,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.4241573033707864,
+      "future8WeekOrders": 143,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Nook Vans",
+      "monthStart": "2025-01-01",
+      "currentOrders": 7,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 0.875,
+      "future8WeekOrders": 61,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Nook Vans",
+      "monthStart": "2025-02-01",
+      "currentOrders": 24,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 8,
+      "future8WeekOrders": 50,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Nook Vans",
+      "monthStart": "2025-03-01",
+      "currentOrders": 37,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 3.3636363636363638,
+      "future8WeekOrders": 56,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Nook Vans",
+      "monthStart": "2025-04-01",
+      "currentOrders": 24,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.0588235294117647,
+      "future8WeekOrders": 42,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Nook Vans",
+      "monthStart": "2025-05-01",
+      "currentOrders": 35,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.2352941176470589,
+      "future8WeekOrders": 43,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Nook Vans",
+      "monthStart": "2025-06-01",
+      "currentOrders": 39,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.21875,
+      "future8WeekOrders": 25,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Nook Vans",
+      "monthStart": "2025-07-01",
+      "currentOrders": 15,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.45918367346938777,
+      "future8WeekOrders": 19,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Nook Vans",
+      "monthStart": "2025-08-01",
+      "currentOrders": 17,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.5730337078651685,
+      "future8WeekOrders": 16,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Nook Vans",
+      "monthStart": "2025-09-01",
+      "currentOrders": 2,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.08450704225352113,
+      "future8WeekOrders": 20,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Nook Vans",
+      "monthStart": "2025-10-01",
+      "currentOrders": 15,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.3235294117647058,
+      "future8WeekOrders": 18,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Contoro Robotics",
+      "monthStart": "2025-06-01",
+      "currentOrders": 70,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 34,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Contoro Robotics",
+      "monthStart": "2025-07-01",
+      "currentOrders": 5,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 0.2142857142857143,
+      "future8WeekOrders": 55,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Contoro Robotics",
+      "monthStart": "2025-08-01",
+      "currentOrders": 10,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 0.4,
+      "future8WeekOrders": 87,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Contoro Robotics",
+      "monthStart": "2025-09-01",
+      "currentOrders": 46,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.6235294117647059,
+      "future8WeekOrders": 257,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Contoro Robotics",
+      "monthStart": "2025-10-01",
+      "currentOrders": 205,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 10.081967213114755,
+      "future8WeekOrders": 74,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Neff Machine",
+      "monthStart": "2025-06-01",
+      "currentOrders": 36,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 22,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Neff Machine",
+      "monthStart": "2025-07-01",
+      "currentOrders": 20,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 1.6666666666666667,
+      "future8WeekOrders": 13,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Neff Machine",
+      "monthStart": "2025-08-01",
+      "currentOrders": 7,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 0.375,
+      "future8WeekOrders": 22,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Neff Machine",
+      "monthStart": "2025-09-01",
+      "currentOrders": 9,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.42857142857142855,
+      "future8WeekOrders": 35,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Neff Machine",
+      "monthStart": "2025-10-01",
+      "currentOrders": 19,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.5833333333333333,
+      "future8WeekOrders": 23,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "J&J µPrecision",
+      "monthStart": "2025-08-01",
+      "currentOrders": 13,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 12,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "J&J µPrecision",
+      "monthStart": "2025-09-01",
+      "currentOrders": 5,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 1.153846153846154,
+      "future8WeekOrders": 25,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "J&J µPrecision",
+      "monthStart": "2025-10-01",
+      "currentOrders": 9,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 1.5,
+      "future8WeekOrders": 19,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Sandy Vans",
+      "monthStart": "2025-09-01",
+      "currentOrders": 37,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 189,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Sandy Vans",
+      "monthStart": "2025-10-01",
+      "currentOrders": 111,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 9,
+      "future8WeekOrders": 139,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Egg Collective",
+      "monthStart": "2025-01-01",
+      "currentOrders": 54,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 35,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Egg Collective",
+      "monthStart": "2025-02-01",
+      "currentOrders": 3,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 0.16666666666666666,
+      "future8WeekOrders": 57,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Egg Collective",
+      "monthStart": "2025-03-01",
+      "currentOrders": 32,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 1.6842105263157894,
+      "future8WeekOrders": 89,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Egg Collective",
+      "monthStart": "2025-04-01",
+      "currentOrders": 41,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.3820224719101124,
+      "future8WeekOrders": 72,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Egg Collective",
+      "monthStart": "2025-05-01",
+      "currentOrders": 50,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.973684210526316,
+      "future8WeekOrders": 63,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Egg Collective",
+      "monthStart": "2025-06-01",
+      "currentOrders": 24,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.5853658536585366,
+      "future8WeekOrders": 72,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Egg Collective",
+      "monthStart": "2025-07-01",
+      "currentOrders": 44,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.1478260869565218,
+      "future8WeekOrders": 58,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Egg Collective",
+      "monthStart": "2025-08-01",
+      "currentOrders": 39,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.9915254237288135,
+      "future8WeekOrders": 70,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Egg Collective",
+      "monthStart": "2025-09-01",
+      "currentOrders": 32,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.8971962616822431,
+      "future8WeekOrders": 78,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Egg Collective",
+      "monthStart": "2025-10-01",
+      "currentOrders": 50,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.3043478260869565,
+      "future8WeekOrders": 64,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Roam Rig",
+      "monthStart": "2025-03-01",
+      "currentOrders": 2,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 15,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Roam Rig",
+      "monthStart": "2025-04-01",
+      "currentOrders": 9,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 13.5,
+      "future8WeekOrders": 94,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Roam Rig",
+      "monthStart": "2025-05-01",
+      "currentOrders": 30,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 8.181818181818182,
+      "future8WeekOrders": 214,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Roam Rig",
+      "monthStart": "2025-06-01",
+      "currentOrders": 121,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 8.853658536585366,
+      "future8WeekOrders": 340,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Roam Rig",
+      "monthStart": "2025-07-01",
+      "currentOrders": 135,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 2.53125,
+      "future8WeekOrders": 379,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Roam Rig",
+      "monthStart": "2025-08-01",
+      "currentOrders": 205,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 2.1503496503496504,
+      "future8WeekOrders": 200,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Roam Rig",
+      "monthStart": "2025-09-01",
+      "currentOrders": 168,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.0932754880694144,
+      "future8WeekOrders": 83,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Roam Rig",
+      "monthStart": "2025-10-01",
+      "currentOrders": 42,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 22,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.2480314960629921,
+      "future8WeekOrders": 64,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "OhmniLabs",
+      "monthStart": "2025-04-01",
+      "currentOrders": 1,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 62,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "OhmniLabs",
+      "monthStart": "2025-05-01",
+      "currentOrders": 40,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 120,
+      "future8WeekOrders": 47,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "OhmniLabs",
+      "monthStart": "2025-06-01",
+      "currentOrders": 22,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 1.6097560975609757,
+      "future8WeekOrders": 49,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "OhmniLabs",
+      "monthStart": "2025-07-01",
+      "currentOrders": 32,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.5238095238095237,
+      "future8WeekOrders": 45,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "OhmniLabs",
+      "monthStart": "2025-08-01",
+      "currentOrders": 17,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.5425531914893618,
+      "future8WeekOrders": 43,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "OhmniLabs",
+      "monthStart": "2025-09-01",
+      "currentOrders": 21,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.8873239436619718,
+      "future8WeekOrders": 61,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "OhmniLabs",
+      "monthStart": "2025-10-01",
+      "currentOrders": 26,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.1142857142857143,
+      "future8WeekOrders": 51,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "3dReloaded",
+      "monthStart": "2025-01-01",
+      "currentOrders": 16,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 12,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.9411764705882353,
+      "future8WeekOrders": 30,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "3dReloaded",
+      "monthStart": "2025-02-01",
+      "currentOrders": 20,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 20,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.090909090909091,
+      "future8WeekOrders": 19,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "3dReloaded",
+      "monthStart": "2025-03-01",
+      "currentOrders": 10,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 10,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.5,
+      "future8WeekOrders": 9,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "3dReloaded",
+      "monthStart": "2025-04-01",
+      "currentOrders": 9,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.5869565217391304,
+      "future8WeekOrders": 6,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "3dReloaded",
+      "monthStart": "2025-06-01",
+      "currentOrders": 6,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 0.9473684210526316,
+      "future8WeekOrders": 19,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "3dReloaded",
+      "monthStart": "2025-07-01",
+      "currentOrders": 19,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 3.8,
+      "future8WeekOrders": 3,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "3dReloaded",
+      "monthStart": "2025-09-01",
+      "currentOrders": 3,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 0.36,
+      "future8WeekOrders": 14,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "3dReloaded",
+      "monthStart": "2025-10-01",
+      "currentOrders": 13,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 1.7727272727272727,
+      "future8WeekOrders": 8,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Lone Wolf Precision",
+      "monthStart": "2025-06-01",
+      "currentOrders": 1,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 1,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Lone Wolf Precision",
+      "monthStart": "2025-07-01",
+      "currentOrders": 1,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 3,
+      "future8WeekOrders": 6,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Lone Wolf Precision",
+      "monthStart": "2025-08-01",
+      "currentOrders": 3,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 4.5,
+      "future8WeekOrders": 3,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Lone Wolf Precision",
+      "monthStart": "2025-09-01",
+      "currentOrders": 3,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.7999999999999998,
+      "future8WeekOrders": 2,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Vanmade Gear",
+      "monthStart": "2025-08-01",
+      "currentOrders": 8,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 4,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Vanmade Gear",
+      "monthStart": "2025-10-01",
+      "currentOrders": 4,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 1.5,
+      "future8WeekOrders": 11,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "OzTech",
+      "monthStart": "2025-08-01",
+      "currentOrders": 17,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 63,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "OzTech",
+      "monthStart": "2025-09-01",
+      "currentOrders": 47,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 8.294117647058822,
+      "future8WeekOrders": 77,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "OzTech",
+      "monthStart": "2025-10-01",
+      "currentOrders": 37,
+      "activeWeeksTrailing8": 6,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 1.734375,
+      "future8WeekOrders": 82,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Sound MFG",
+      "monthStart": "2025-07-01",
+      "currentOrders": 9,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 12,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Sound MFG",
+      "monthStart": "2025-08-01",
+      "currentOrders": 3,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 1,
+      "future8WeekOrders": 9,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Sound MFG",
+      "monthStart": "2025-09-01",
+      "currentOrders": 9,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 2.25,
+      "future8WeekOrders": 0,
+      "future8WeekActive": false
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-01-01",
+      "currentOrders": 6,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 4,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.6923076923076924,
+      "future8WeekOrders": 19,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-02-01",
+      "currentOrders": 15,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 2.368421052631579,
+      "future8WeekOrders": 8,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-03-01",
+      "currentOrders": 6,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.72,
+      "future8WeekOrders": 7,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-04-01",
+      "currentOrders": 2,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.2222222222222222,
+      "future8WeekOrders": 26,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-05-01",
+      "currentOrders": 11,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.434782608695652,
+      "future8WeekOrders": 20,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-06-01",
+      "currentOrders": 15,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 2.368421052631579,
+      "future8WeekOrders": 13,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-07-01",
+      "currentOrders": 5,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.5357142857142857,
+      "future8WeekOrders": 10,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-08-01",
+      "currentOrders": 8,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.7741935483870968,
+      "future8WeekOrders": 10,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-09-01",
+      "currentOrders": 2,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.21428571428571427,
+      "future8WeekOrders": 15,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Blackwell Engineering",
+      "monthStart": "2025-10-01",
+      "currentOrders": 15,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 3,
+      "future8WeekOrders": 14,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Midnight Morning",
+      "monthStart": "2025-09-01",
+      "currentOrders": 5,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 0,
+      "future8WeekActive": false
+    },
+    {
+      "customer": "B & B FORMICA AND GRANITE",
+      "monthStart": "2025-08-01",
+      "currentOrders": 4,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 8,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "B & B FORMICA AND GRANITE",
+      "monthStart": "2025-09-01",
+      "currentOrders": 7,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 5.25,
+      "future8WeekOrders": 1,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "B & B FORMICA AND GRANITE",
+      "monthStart": "2025-10-01",
+      "currentOrders": 1,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 0.27272727272727276,
+      "future8WeekOrders": 1,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Weber Tack",
+      "monthStart": "2025-10-01",
+      "currentOrders": 4,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 0,
+      "future8WeekActive": false
+    },
+    {
+      "customer": "Archer",
+      "monthStart": "2025-08-01",
+      "currentOrders": 13,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 0,
+      "future8WeekActive": false
+    },
+    {
+      "customer": "JN Shapiro Watches",
+      "monthStart": "2025-01-01",
+      "currentOrders": 43,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.032,
+      "future8WeekOrders": 103,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "JN Shapiro Watches",
+      "monthStart": "2025-02-01",
+      "currentOrders": 30,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.6666666666666666,
+      "future8WeekOrders": 73,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "JN Shapiro Watches",
+      "monthStart": "2025-03-01",
+      "currentOrders": 66,
+      "activeWeeksTrailing8": 8,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.3846153846153846,
+      "future8WeekOrders": 10,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "JN Shapiro Watches",
+      "monthStart": "2025-04-01",
+      "currentOrders": 7,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.1510791366906475,
+      "future8WeekOrders": 4,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "JN Shapiro Watches",
+      "monthStart": "2025-05-01",
+      "currentOrders": 3,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.08737864077669902,
+      "future8WeekOrders": 1,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "JN Shapiro Watches",
+      "monthStart": "2025-06-01",
+      "currentOrders": 1,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.03947368421052632,
+      "future8WeekOrders": 0,
+      "future8WeekActive": false
+    },
+    {
+      "customer": "Thermo Fisher Scientific",
+      "monthStart": "2025-06-01",
+      "currentOrders": 4,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 0,
+      "future8WeekActive": false
+    },
+    {
+      "customer": "Van America",
+      "monthStart": "2025-06-01",
+      "currentOrders": 2,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 0,
+      "future8WeekActive": false
+    },
+    {
+      "customer": "Reachable Technology LLC",
+      "monthStart": "2025-01-01",
+      "currentOrders": 2,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 2,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 1.2,
+      "future8WeekOrders": 4,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Reachable Technology LLC",
+      "monthStart": "2025-02-01",
+      "currentOrders": 4,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 4,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 4,
+      "future8WeekOrders": 0,
+      "future8WeekActive": false
+    },
+    {
+      "customer": "Reachable Technology LLC",
+      "monthStart": "2025-07-01",
+      "currentOrders": 6,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 5,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 0,
+      "future8WeekActive": false
+    },
+    {
+      "customer": "CSM Performance",
+      "monthStart": "2025-03-01",
+      "currentOrders": 72,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 2,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "CSM Performance",
+      "monthStart": "2025-04-01",
+      "currentOrders": 2,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 0.08333333333333333,
+      "future8WeekOrders": 2,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "CSM Performance",
+      "monthStart": "2025-05-01",
+      "currentOrders": 2,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 0.08108108108108107,
+      "future8WeekOrders": 0,
+      "future8WeekActive": false
+    },
+    {
+      "customer": "Flux Workholding",
+      "monthStart": "2025-02-01",
+      "currentOrders": 1,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 3,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Flux Workholding",
+      "monthStart": "2025-03-01",
+      "currentOrders": 2,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 6,
+      "future8WeekOrders": 13,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Flux Workholding",
+      "monthStart": "2025-04-01",
+      "currentOrders": 9,
+      "activeWeeksTrailing8": 3,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 2,
+      "trendRatio": 9,
+      "future8WeekOrders": 4,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Flux Workholding",
+      "monthStart": "2025-05-01",
+      "currentOrders": 4,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1,
+      "future8WeekOrders": 0,
+      "future8WeekActive": false
+    },
+    {
+      "customer": "Campworks Nomadic Systems",
+      "monthStart": "2025-01-01",
+      "currentOrders": 257,
+      "activeWeeksTrailing8": 4,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 6.883928571428571,
+      "future8WeekOrders": 112,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Campworks Nomadic Systems",
+      "monthStart": "2025-02-01",
+      "currentOrders": 107,
+      "activeWeeksTrailing8": 7,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.0844594594594594,
+      "future8WeekOrders": 110,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Campworks Nomadic Systems",
+      "monthStart": "2025-03-01",
+      "currentOrders": 94,
+      "activeWeeksTrailing8": 5,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.7085427135678393,
+      "future8WeekOrders": 16,
+      "future8WeekActive": true
+    },
+    {
+      "customer": "Campworks Nomadic Systems",
+      "monthStart": "2025-04-01",
+      "currentOrders": 16,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 0.10480349344978167,
+      "future8WeekOrders": 0,
+      "future8WeekActive": false
+    },
+    {
+      "customer": "Toolpath",
+      "monthStart": "2025-05-01",
+      "currentOrders": 1,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 0,
+      "future8WeekActive": false
+    },
+    {
+      "customer": "Laserox",
+      "monthStart": "2025-05-01",
+      "currentOrders": 3,
+      "activeWeeksTrailing8": 1,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 0,
+      "trendRatio": null,
+      "future8WeekOrders": 0,
+      "future8WeekActive": false
+    },
+    {
+      "customer": "Gimbel Group",
+      "monthStart": "2025-02-01",
+      "currentOrders": 2,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 0,
+      "activeMonthsPrev3": 1,
+      "trendRatio": 1.5,
+      "future8WeekOrders": 0,
+      "future8WeekActive": false
+    },
+    {
+      "customer": "Braun Brush Company",
+      "monthStart": "2025-01-01",
+      "currentOrders": 4,
+      "activeWeeksTrailing8": 2,
+      "uniqueItemsTrailing30": 4,
+      "activeMonthsPrev3": 3,
+      "trendRatio": 1.7142857142857142,
+      "future8WeekOrders": 0,
+      "future8WeekActive": false
+    }
+  ],
+  "notes": [
+    "Outcome metric is any order activity in the next 8 weeks.",
+    "Observation window covers active customer-months from January 2025 through October 2025 so each row has a forward-looking retention window.",
+    "Internal/testing entities were excluded, and known customer-name variants were normalized before scoring.",
+    "This analysis measures order cadence and item breadth from Coda only; it does not yet incorporate Arda cards/items APIs, support tickets, or billing health."
+  ]
+}
