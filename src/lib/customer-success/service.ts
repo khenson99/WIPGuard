@@ -1,4 +1,9 @@
 import {
+  MeetingStatus,
+  Prisma,
+  TaskStatus,
+} from "@/generated/prisma/client";
+import {
   CustomerExternalProvider,
   CustomerRecordStatus,
   CustomerSuccessNoteSource,
@@ -9,9 +14,7 @@ import {
   CustomerSuccessOutreachChannel,
   CustomerSuccessOutreachStatus,
   CustomerSuccessPlanStatus,
-  MeetingStatus,
-  Prisma,
-} from "@/generated/prisma/client";
+} from "@/lib/customer-success/prisma-enums";
 import { buildOutboxIdempotencyKey, publishDomainEvent } from "@/lib/event-bus";
 import { prisma } from "@/lib/prisma";
 import { runWithContextAsync } from "@/lib/request-context";
