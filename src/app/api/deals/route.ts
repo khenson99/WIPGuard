@@ -113,6 +113,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       typeof body.source === "string" && Object.values(DealSource).includes(body.source as DealSource)
         ? (body.source as DealSource)
         : DealSource.OTHER;
+    const organizationId = user.organizationId ?? null;
 
     const deal = await prisma.deal.create({
       data: {
@@ -124,6 +125,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         notes: typeof body.notes === "string" ? body.notes : null,
         companyId: typeof body.companyId === "string" ? body.companyId : null,
         ownerId: typeof body.ownerId === "string" ? body.ownerId : user.id,
+        organizationId,
         contacts:
           Array.isArray(body.contactIds) && body.contactIds.length > 0
             ? { connect: body.contactIds.map((id: string) => ({ id })) }

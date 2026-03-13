@@ -49,17 +49,17 @@ test.describe('Deal Pipeline', () => {
     const dealName = uniqueDealName();
 
     await dealsPage.createDeal(dealName);
-
-    await expect(page).toHaveURL(/\/deals\/[^/]+$/i);
-    await expect(dealsPage.getDealDetailHeading(dealName)).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="deal-detail-page"]')).toBeVisible();
+    await expect(page.locator('[data-testid="deal-detail-title"]')).toHaveText(
+      new RegExp(dealName, 'i')
+    );
   });
 
   test('should show new deal in the first pipeline stage', async ({ page }) => {
     const dealName = uniqueDealName();
 
     await dealsPage.createDeal(dealName);
-    await expect(page).toHaveURL(/\/deals\/[^/]+$/i);
-    await expect(dealsPage.getDealDetailHeading(dealName)).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="deal-detail-page"]')).toBeVisible();
 
     await dealsPage.goto();
     await expect(dealsPage.getDeal(dealName)).toBeVisible({ timeout: 10_000 });
@@ -81,8 +81,7 @@ test.describe('Deal Pipeline', () => {
 
     // Create the deal
     await dealsPage.createDeal(dealName);
-    await expect(page).toHaveURL(/\/deals\/[^/]+$/i);
-    await expect(dealsPage.getDealDetailHeading(dealName)).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="deal-detail-page"]')).toBeVisible();
 
     const targetStage = DEAL_STAGES[1]; // "Qualified"
     const saveResponse = page.waitForResponse((response) =>
@@ -92,7 +91,7 @@ test.describe('Deal Pipeline', () => {
     );
 
     await page.getByLabel(/deal stage/i).selectOption({ label: targetStage });
-    await page.getByRole('button', { name: /save changes/i }).click();
+    await page.getByTestId('save-deal-changes').click();
     await saveResponse;
 
     await dealsPage.goto();
@@ -105,16 +104,14 @@ test.describe('Deal Pipeline', () => {
     const deal2 = uniqueDealName();
 
     await dealsPage.createDeal(deal1);
-    await expect(page).toHaveURL(/\/deals\/[^/]+$/i);
-    await expect(dealsPage.getDealDetailHeading(deal1)).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="deal-detail-page"]')).toBeVisible();
 
     // Creating a deal navigates to its detail view; go back to the deals list before creating another.
     await dealsPage.goto();
     await expect(dealsPage.getDeal(deal1)).toBeVisible({ timeout: 10_000 });
 
     await dealsPage.createDeal(deal2);
-    await expect(page).toHaveURL(/\/deals\/[^/]+$/i);
-    await expect(dealsPage.getDealDetailHeading(deal2)).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="deal-detail-page"]')).toBeVisible();
 
     // Back on the list, both deals should be visible.
     await dealsPage.goto();

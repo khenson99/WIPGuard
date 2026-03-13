@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   ci:
-    name: Lint · Build
+    name: Lint · Test · Build
     runs-on: ubuntu-latest
 
     env:
@@ -39,6 +39,9 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Test
+        run: npm test
 
       - name: Build
         run: npm run build

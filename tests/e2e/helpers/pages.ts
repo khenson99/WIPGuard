@@ -2,7 +2,7 @@
  * Page Object helpers for common E2E interactions.
  * Encapsulates selectors and actions for reuse across test suites.
  */
-import { type Page, type Locator } from '@playwright/test';
+import { expect, type Page, type Locator } from '@playwright/test';
 
 /**
  * Helper for authentication-related page interactions.
@@ -45,10 +45,11 @@ export class AuthPage {
     // Wait for the login UI to hydrate/fetch providers in CI.
     // The page starts with minimal chrome and then renders provider buttons.
     const noProviderMessage = this.page.getByText(/no sign-in provider is configured/i);
+    const googleButton = this.page.getByRole('button', { name: /sign in with google/i });
     await Promise.race([
       this.devUserSelect.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => null),
       this.emailInput.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => null),
-      this.page.getByRole('button', { name: /sign in with google/i }).waitFor({ state: 'visible', timeout: 15_000 }).catch(() => null),
+      googleButton.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => null),
       noProviderMessage.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => null),
     ]);
 
@@ -56,6 +57,12 @@ export class AuthPage {
     // If we see it, give the dev login selector a moment to appear before failing.
     const noProviderVisible = await noProviderMessage.isVisible().catch(() => false);
     if (noProviderVisible) {
+      await this.devUserSelect.waitFor({ state: 'visible', timeout: 5_000 }).catch(() => null);
+    }
+
+    const googleVisible = await googleButton.isVisible().catch(() => false);
+    if (googleVisible) {
+      // Google can render before the dev user picker finishes loading from /api/dev/users.
       await this.devUserSelect.waitFor({ state: 'visible', timeout: 5_000 }).catch(() => null);
     }
 
@@ -293,9 +300,13 @@ export class DealsPage {
   }
 
   getDealDetailHeading(name: string): Locator {
-    return this.page.getByRole('heading', {
-      name: new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
+    return this.page.locator('[data-testid="deal-detail-title"]').filter({
+      hasText: new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
     });
+  }
+
+  getDealDetailPage(): Locator {
+    return this.page.locator('[data-testid="deal-detail-page"]');
   }
 
   getDeal(name: string): Locator {
@@ -315,13 +326,22 @@ export class DealsPage {
   }
 
   async createDeal(name: string) {
+    const createResponse = this.page.waitForResponse((response) =>
+      response.request().method() === 'POST' &&
+      /\/api\/deals$/i.test(response.url())
+    );
+
     await this.getCreateDealButton().click();
     await this.page.getByRole('dialog').waitFor({ state: 'visible', timeout: 10_000 });
     await this.getDealNameInput().fill(name);
     await this.getSubmitButton().click();
-    await this.page.getByRole('dialog').waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});
-    // Creation navigates to the deal detail page; wait for the heading to render.
-    await this.getDealDetailHeading(name).waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {});
+    const response = await createResponse;
+
+    expect(response.ok()).toBeTruthy();
+    await this.page.getByRole('dialog').waitFor({ state: 'hidden', timeout: 10_000 });
+    await expect(this.page).toHaveURL(/\/deals\/[^/]+$/i);
+    await expect(this.getDealDetailPage()).toBeVisible({ timeout: 15_000 });
+    await expect(this.getDealDetailHeading(name)).toBeVisible({ timeout: 15_000 });
   }
 
   async advanceDealToStage(dealName: string, targetStage: string) {

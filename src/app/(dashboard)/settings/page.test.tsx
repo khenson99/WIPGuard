@@ -27,6 +27,10 @@ vi.mock("@/components/settings/priorities-tab", () => ({
   PrioritiesTab: () => <div>Priorities</div>,
 }));
 
+vi.mock("@/components/settings/design-interview-tab", () => ({
+  DesignInterviewTab: () => <div>Design Interview</div>,
+}));
+
 vi.mock("@/components/settings/team-tab", () => ({
   TeamTab: () => <div>Team</div>,
 }));
@@ -49,6 +53,7 @@ describe("SettingsPage", () => {
     const { queryByRole, getByText } = render(<SettingsPage />);
 
     expect(getByText("Board Settings")).toBeTruthy();
+    expect(queryByRole("tab", { name: "Design Interview" })).toBeTruthy();
     expect(queryByRole("tab", { name: "Integrations" })).toBeNull();
   });
 

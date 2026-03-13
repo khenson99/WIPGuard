@@ -481,7 +481,9 @@ describe("coda analytics fetcher", () => {
 
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
-    const data = await fetchCodaData("token", "doc-id");
+    const data = await fetchCodaData("token", "doc-id", {
+      now: new Date("2026-02-20T00:00:00.000Z"),
+    });
     const window30 = data.creatorWindows?.find((window) => window.windowDays === 30);
 
     expect(window30?.byCreator[0]?.creator).toBe("Unknown");
