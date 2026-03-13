@@ -93,6 +93,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         orderBy: [{ capturedAt: "desc" }],
       }),
     ]);
+    const [retentionTenantCount, latestRetentionRun] = await Promise.all([
+      user.organizationId
+        ? prisma.retentionTenantCurrent.count({
+            where: { organizationId: user.organizationId },
+          })
+        : Promise.resolve(0),
+      user.organizationId
+        ? prisma.retentionSyncRun.findFirst({
+            where: { organizationId: user.organizationId },
+            orderBy: [{ startedAt: "desc" }],
+            select: {
+              startedAt: true,
+              lastError: true,
+              status: true,
+            },
+          })
+        : Promise.resolve(null),
+    ]);
 
     const totalTasks = tasksByStatus.reduce((sum, item) => sum + item._count.status, 0);
     const activeContributors = contributors.filter((entry) => Boolean(entry.changedBy)).length;
@@ -178,6 +196,30 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     };
 
     const primarySections = ANALYTICS_PRIMARY_SECTIONS.map((primary) => {
+      if (primary.id === "retention") {
+        const status: SectionStatus =
+          retentionTenantCount > 0 ? "connected" : latestRetentionRun?.status === "ERROR" ? "degraded" : "missing";
+        return {
+          id: primary.id,
+          label: primary.label,
+          description: primary.description,
+          href: primary.path,
+          status,
+          integrationCount: 1,
+          connectedCount: retentionTenantCount > 0 ? 1 : 0,
+          children: [
+            {
+              id: "retention",
+              label: "Retention",
+              href: primary.path,
+              status,
+              lastSnapshotAt: latestRetentionRun?.startedAt.toISOString() ?? null,
+              lastError: latestRetentionRun?.status === "ERROR" ? latestRetentionRun.lastError ?? null : null,
+            },
+          ],
+        };
+      }
+
       const children = ANALYTICS_SUB_SECTIONS.filter((child) => child.parentId === primary.id).map((child) => {
         const configured = domainConnected[child.dataDomain];
         const snapshotKey = domainSnapshotKey[child.dataDomain];

@@ -34,6 +34,10 @@ model Organization {
   customerSuccessPlanMilestones   CustomerSuccessPlanMilestone[]
   customerSuccessAlertRecords     CustomerSuccessAlertRecord[]
   customerSuccessOutreachMessages CustomerSuccessOutreachMessage[]
+  retentionSyncRuns               RetentionSyncRun[]
+  retentionSourceRecords          RetentionSourceRecord[]
+  retentionTenantMonths           RetentionTenantMonth[]
+  retentionTenantCurrents         RetentionTenantCurrent[]
 }
 
 // ============================================================
@@ -1966,6 +1970,9 @@ model CustomerRecord {
   outreachMessages CustomerSuccessOutreachMessage[]
   tasks            Task[]
   meetings         DealMeeting[]
+  retentionSourceRecords RetentionSourceRecord[]
+  retentionTenantMonths  RetentionTenantMonth[]
+  retentionTenantCurrent RetentionTenantCurrent?
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
@@ -1977,6 +1984,159 @@ model CustomerRecord {
   @@index([ownerId])
   @@index([mergedIntoId])
   @@index([status, lifecycleStage])
+}
+
+enum RetentionSourceKind {
+  ARDA
+  CODA
+  STRIPE
+  HUBSPOT
+  PYLON
+}
+
+enum RetentionSyncRunStatus {
+  SUCCESS
+  PARTIAL
+  ERROR
+}
+
+enum RetentionLifecyclePhase {
+  ONBOARDING
+  MATURE
+}
+
+enum RetentionTenantStatus {
+  HEALTHY
+  WATCH
+  AT_RISK
+  ONBOARDING_RISK
+  BILLING_RISK
+}
+
+model RetentionSyncRun {
+  id        String                 @id @default(cuid())
+  source    RetentionSourceKind
+  status    RetentionSyncRunStatus @default(SUCCESS)
+  startedAt DateTime               @default(now())
+  completedAt DateTime?
+  windowStart DateTime?
+  windowEnd   DateTime?
+  recordCount Int                  @default(0)
+  mappedCount Int                  @default(0)
+  errorCount  Int                  @default(0)
+  notes     Json?
+  lastError String? @db.Text
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  sourceRecords RetentionSourceRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([source, startedAt])
+  @@index([organizationId, source, startedAt])
+}
+
+model RetentionSourceRecord {
+  id         String              @id @default(cuid())
+  syncRunId  String
+  syncRun    RetentionSyncRun    @relation(fields: [syncRunId], references: [id], onDelete: Cascade)
+  source     RetentionSourceKind
+  objectType String
+  externalId String
+  tenantKey  String?
+  occurredAt DateTime?
+  sourceCreatedAt DateTime?
+  sourceUpdatedAt DateTime?
+  payload Json
+
+  customerRecordId String?
+  customerRecord   CustomerRecord? @relation(fields: [customerRecordId], references: [id], onDelete: SetNull)
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([source, objectType, externalId])
+  @@index([syncRunId])
+  @@index([source, objectType, occurredAt])
+  @@index([customerRecordId, occurredAt])
+  @@index([organizationId, source, objectType])
+}
+
+model RetentionTenantMonth {
+  id             String                 @id @default(cuid())
+  customerRecordId String
+  customerRecord   CustomerRecord       @relation(fields: [customerRecordId], references: [id], onDelete: Cascade)
+  monthStart     DateTime
+  monthEnd       DateTime
+  lifecyclePhase RetentionLifecyclePhase
+  status         RetentionTenantStatus?
+  featureVersion String                 @default("v1")
+  primaryLirPassed     Boolean          @default(false)
+  primaryLirLabel      String?
+  primaryLirValue      Float?
+  primaryLirThreshold  Float?
+  primaryLirScore      Float?
+  reasonCodes          Json?
+  featureData          Json
+  outcomeData          Json
+  coverageData         Json?
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  currentSnapshot RetentionTenantCurrent?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([customerRecordId, monthStart, featureVersion])
+  @@index([organizationId, monthStart])
+  @@index([status, monthStart])
+  @@index([customerRecordId, monthStart(sort: Desc)])
+}
+
+model RetentionTenantCurrent {
+  id             String                 @id @default(cuid())
+  customerRecordId String               @unique
+  customerRecord   CustomerRecord       @relation(fields: [customerRecordId], references: [id], onDelete: Cascade)
+  monthFactId    String                 @unique
+  monthFact      RetentionTenantMonth   @relation(fields: [monthFactId], references: [id], onDelete: Cascade)
+  lifecyclePhase RetentionLifecyclePhase
+  status         RetentionTenantStatus
+  primaryLirPassed    Boolean           @default(false)
+  primaryLirLabel     String
+  primaryLirValue     Float?
+  primaryLirThreshold Float?
+  currentMonthActivity Float?
+  activityTrendPct    Float?
+  supportRisk   Boolean                 @default(false)
+  billingRisk   Boolean                 @default(false)
+  onboardingRisk Boolean                @default(false)
+  icp           Boolean                 @default(false)
+  ownerName     String?
+  segment       String?
+  plan          String?
+  ageBucket     String?
+  summaryData   Json
+  detailData    Json
+  reasonCodes   Json
+  lastMaterializedAt DateTime           @default(now())
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, status])
+  @@index([organizationId, lifecyclePhase])
+  @@index([organizationId, icp])
 }
 
 model CustomerRecordExternalRef {

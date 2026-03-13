@@ -1571,6 +1571,7 @@ export function buildAiInsightsBundle(data: AnalyticsDashboardData): AiInsightsB
       "ads-traffic": [],
       finance: [],
       "sales-pipeline": [],
+      retention: [],
       "customer-success": [],
       "customer-journey": [],
       "demo-analytics": [],

@@ -853,6 +853,7 @@ export type AnalyticsSectionId =
   | "ads-traffic"
   | "finance"
   | "sales-pipeline"
+  | "retention"
   | "customer-success"
   | "customer-journey"
   | "demo-analytics"

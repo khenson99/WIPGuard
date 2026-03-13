@@ -11,6 +11,7 @@ const FILTERS: Array<{ id: InsightFilter; label: string }> = [
   { id: "ads-traffic", label: "Ads" },
   { id: "finance", label: "Finance" },
   { id: "sales-pipeline", label: "Sales" },
+  { id: "retention", label: "Retention" },
   { id: "customer-success", label: "CS" },
 ];
 

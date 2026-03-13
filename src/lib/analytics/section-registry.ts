@@ -2,6 +2,7 @@ export type AnalyticsPrimarySectionId =
   | "ads-traffic"
   | "finance"
   | "sales-pipeline"
+  | "retention"
   | "customer-success"
   | "customer-journey"
   | "demo-analytics"
@@ -64,6 +65,12 @@ export const ANALYTICS_PRIMARY_SECTIONS: AnalyticsPrimarySection[] = [
     label: "Sales & Pipeline",
     path: "/analytics/sales-pipeline",
     description: "Pipeline progression and close performance.",
+  },
+  {
+    id: "retention",
+    label: "Retention",
+    path: "/analytics/retention",
+    description: "Tenant-level leading indicators of retention and contraction risk.",
   },
   {
     id: "customer-success",
