@@ -14,6 +14,7 @@ describe("analytics section registry", () => {
     expect(ids.has("ads-traffic")).toBe(true);
     expect(ids.has("finance")).toBe(true);
     expect(ids.has("sales-pipeline")).toBe(true);
+    expect(ids.has("retention")).toBe(true);
     expect(ids.has("customer-success")).toBe(true);
     expect(ids.has("customer-journey")).toBe(true);
     expect(ids.has("demo-analytics")).toBe(true);

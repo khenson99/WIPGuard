@@ -8,6 +8,7 @@ export function createEmptyAiInsightsBundle(generatedAt: string = new Date().toI
       "ads-traffic": [],
       finance: [],
       "sales-pipeline": [],
+      retention: [],
       "customer-success": [],
       "customer-journey": [],
       "demo-analytics": [],

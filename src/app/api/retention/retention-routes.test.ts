@@ -1,0 +1,148 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest, NextResponse } from "next/server";
+
+vi.mock("@/lib/customer-success/access", () => ({
+  requireCustomerSuccessActor: vi.fn(),
+}));
+
+vi.mock("@/lib/retention/service", () => ({
+  getRetentionSummary: vi.fn(),
+  listRetentionTenants: vi.fn(),
+  getRetentionTenantDetail: vi.fn(),
+  normalizeRetentionFilters: vi.fn(() => ({ status: null })),
+}));
+
+const ACTOR = {
+  id: "user_1",
+  organizationId: "org_1",
+  email: "owner@example.com",
+  name: "Owner",
+};
+
+function detailContext(customerRecordId = "cust_1") {
+  return { params: Promise.resolve({ customerRecordId }) };
+}
+
+describe("retention routes", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.resetModules();
+  });
+
+  it("passes through auth failures for summary requests", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    });
+
+    const { GET } = await import("@/app/api/retention/summary/route");
+    const response = await GET(new NextRequest("http://localhost/api/retention/summary"));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: "Unauthorized" });
+  });
+
+  it("returns retention summary data for authenticated actors", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getRetentionSummary, normalizeRetentionFilters } = await import("@/lib/retention/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(normalizeRetentionFilters).mockReturnValue({ status: "At Risk" });
+    vi.mocked(getRetentionSummary).mockResolvedValue({
+      generatedAt: "2026-03-13T10:00:00.000Z",
+      lirDefinition: {
+        id: "mature-active-weeks",
+        label: "Active weeks trailing 8",
+        lifecyclePhase: "MATURE",
+        metricKey: "activeWeeksTrailing8",
+        comparator: "gte",
+        threshold: 5,
+        windowLabel: "Trailing 8 weeks",
+        description: "Tenant is active in at least five of the last eight weeks.",
+        rationale: "Habitual weekly operations are usually the clearest signal of embedded workflow value.",
+      },
+      totals: {
+        tenants: 1,
+        activeTenants: 1,
+        lirPassingTenants: 1,
+        atRiskTenants: 0,
+        onboardingRiskTenants: 0,
+        billingRiskTenants: 0,
+      },
+      kpis: [],
+      byIcp: [],
+      byPlan: [],
+      byAgeBucket: [],
+      sharpDeclines: [],
+      onboardingMisses: [],
+      supportHeavyHighUsage: [],
+      billingRiskAccounts: [],
+      cohorts: [],
+      dataCoverage: [],
+    } as never);
+
+    const { GET } = await import("@/app/api/retention/summary/route");
+    const request = new NextRequest("http://localhost/api/retention/summary?status=At%20Risk");
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    expect(normalizeRetentionFilters).toHaveBeenCalledWith(request.nextUrl.searchParams);
+    expect(getRetentionSummary).toHaveBeenCalledWith(ACTOR, { status: "At Risk" });
+  });
+
+  it("returns retention tenant list data", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { listRetentionTenants } = await import("@/lib/retention/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(listRetentionTenants).mockResolvedValue([
+      {
+        customerRecordId: "cust_1",
+        tenantName: "Arda Foods",
+        status: "Healthy",
+        lifecyclePhase: "MATURE",
+        primaryLirPassed: true,
+        primaryLirLabel: "Active weeks trailing 8",
+        primaryLirValue: 6,
+        primaryLirThreshold: 5,
+        currentMonthActivity: 24,
+        trendVsPriorPct: 8,
+        supportRisk: false,
+        billingRisk: false,
+        onboardingRisk: false,
+        icp: true,
+        ownerName: "CS Owner",
+        segment: "Mid-market",
+        plan: "Growth",
+        ageBucket: "180d+",
+        reasonCodes: [],
+        lastMaterializedAt: "2026-03-13T10:00:00.000Z",
+      },
+    ] as never);
+
+    const { GET } = await import("@/app/api/retention/tenants/route");
+    const response = await GET(new NextRequest("http://localhost/api/retention/tenants"));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.tenants).toHaveLength(1);
+    expect(listRetentionTenants).toHaveBeenCalledWith(ACTOR, { status: null });
+  });
+
+  it("returns 404 when retention tenant detail is missing", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getRetentionTenantDetail } = await import("@/lib/retention/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getRetentionTenantDetail).mockResolvedValue(null);
+
+    const { GET } = await import("@/app/api/retention/tenants/[customerRecordId]/route");
+    const response = await GET(
+      new NextRequest("http://localhost/api/retention/tenants/cust_missing"),
+      detailContext("cust_missing")
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: "Retention tenant not found" });
+  });
+});

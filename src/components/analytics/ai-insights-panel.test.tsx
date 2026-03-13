@@ -64,6 +64,7 @@ function makeBundle(): AiInsightsBundle {
       "ads-traffic": [],
       finance: [],
       "sales-pipeline": [],
+      retention: [],
       "customer-success": [],
       "customer-journey": [],
       "demo-analytics": [],
@@ -78,6 +79,7 @@ describe("AiInsightsPanel", () => {
     bundle.bySection["ads-traffic"] = [bundle.global[0]];
     bundle.bySection.finance = [bundle.global[2]];
     bundle.bySection["sales-pipeline"] = [bundle.global[1]];
+    bundle.bySection.retention = [];
     bundle.bySection["customer-success"] = [];
     bundle.bySection["customer-journey"] = [];
     bundle.bySection["demo-analytics"] = [];
@@ -104,6 +106,7 @@ describe("AiInsightsPanel", () => {
     bundle.bySection["ads-traffic"] = [bundle.global[0]];
     bundle.bySection.finance = [bundle.global[2]];
     bundle.bySection["sales-pipeline"] = [bundle.global[1]];
+    bundle.bySection.retention = [];
     bundle.bySection["customer-success"] = [];
     bundle.bySection["customer-journey"] = [];
     bundle.bySection["demo-analytics"] = [];

@@ -5,6 +5,12 @@
   "scripts": {
     "dev": "next dev",
     "db:generate": "prisma generate --schema prisma/schema.prisma",
+    "retention:sync": "npx tsx scripts/retention/sync-sources.ts",
+    "retention:build-dataset": "npx tsx scripts/retention/build-dataset.ts",
+    "retention:analyze": "npx tsx scripts/retention/run-analysis.ts",
+    "retention:materialize": "npx tsx scripts/retention/materialize-current.ts",
+    "retention:gaps": "npx tsx scripts/retention/export-gaps.ts",
+    "retention:run": "npx tsx scripts/retention/run-all.ts",
     "ops:ads-preflight": "./scripts/ads-analytics-preflight.sh",
     "ops:backfill-google-oauth-scopes": "node ./scripts/backfill-google-oauth-scope-aliases.cjs",
     "prepare": "husky",
