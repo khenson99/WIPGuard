@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { enforcePermission } from "@/lib/permissions";
 import { MeetingStatus } from "@/generated/prisma/client";
+import { toDealsErrorResponse } from "@/lib/deals/schema-guard";
 
 export async function GET(
   _request: NextRequest,
@@ -34,10 +35,7 @@ export async function GET(
 
     return NextResponse.json(meeting);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch meeting" },
-      { status: 500 },
-    );
+    return toDealsErrorResponse(error, "Failed to fetch meeting");
   }
 }
 
@@ -93,10 +91,7 @@ export async function PATCH(
 
     return NextResponse.json(meeting);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update meeting" },
-      { status: 500 },
-    );
+    return toDealsErrorResponse(error, "Failed to update meeting");
   }
 }
 
@@ -121,9 +116,6 @@ export async function DELETE(
     await prisma.dealMeeting.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to delete meeting" },
-      { status: 500 },
-    );
+    return toDealsErrorResponse(error, "Failed to delete meeting");
   }
 }

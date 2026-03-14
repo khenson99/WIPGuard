@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { enforcePermission } from "@/lib/permissions";
 import { MeetingStatus } from "@/generated/prisma/client";
+import { toDealsErrorResponse } from "@/lib/deals/schema-guard";
 
 export async function GET(): Promise<NextResponse> {
   try {
@@ -24,10 +25,7 @@ export async function GET(): Promise<NextResponse> {
 
     return NextResponse.json(meetings);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch meetings" },
-      { status: 500 },
-    );
+    return toDealsErrorResponse(error, "Failed to fetch meetings");
   }
 }
 
@@ -86,9 +84,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json(meeting, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create meeting" },
-      { status: 500 },
-    );
+    return toDealsErrorResponse(error, "Failed to create meeting");
   }
 }

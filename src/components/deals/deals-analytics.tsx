@@ -19,6 +19,10 @@ import { AreaTrend } from "@/components/charts/area-trend";
 import { StackedBarChart } from "@/components/charts/stacked-bar-chart";
 import { DonutChart } from "@/components/charts/donut-chart";
 import { CHART_PALETTE } from "@/components/charts/chart-theme";
+import {
+  DEALS_SCHEMA_MISSING_MESSAGE,
+  isDealsSchemaMissingPayload,
+} from "@/lib/deals/schema-state";
 import { DEAL_STAGE_LABELS, DEAL_SOURCE_LABELS, type DealStage, type DealSource } from "@/types";
 
 interface PipelineStage {
@@ -103,14 +107,27 @@ export function DealsAnalytics() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [setupRequired, setSetupRequired] = useState(false);
 
   useEffect(() => {
     fetch("/api/deals/analytics")
-      .then((r) => {
-        if (!r.ok) throw new Error(`Analytics failed (${r.status})`);
-        return r.json();
+      .then(async (r): Promise<AnalyticsData> => {
+        const payload = (await r.json().catch(() => null)) as unknown;
+        if (!r.ok) {
+          if (r.status === 503 && isDealsSchemaMissingPayload(payload)) {
+            setSetupRequired(true);
+            throw new Error(payload.error);
+          }
+          const errorMessage =
+            payload && typeof payload === "object" && typeof (payload as { error?: unknown }).error === "string"
+              ? (payload as { error: string }).error
+              : `Analytics failed (${r.status})`;
+          throw new Error(errorMessage);
+        }
+        setSetupRequired(false);
+        return payload as AnalyticsData;
       })
-      .then((payload: AnalyticsData) => {
+      .then((payload) => {
         setData(payload);
         setError(null);
       })
@@ -122,8 +139,8 @@ export function DealsAnalytics() {
   if (!data) {
     return (
       <DashboardEmptyState
-        title="Analytics unavailable"
-        message={error ?? "No analytics data available."}
+        title={setupRequired ? "Deals setup required" : "Analytics unavailable"}
+        message={error ?? (setupRequired ? DEALS_SCHEMA_MISSING_MESSAGE : "No analytics data available.")}
       />
     );
   }

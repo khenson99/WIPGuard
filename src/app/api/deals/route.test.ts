@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 
 const authMock = vi.hoisted(() => vi.fn());
 const enforcePermissionMock = vi.hoisted(() => vi.fn());
+const dealFindManyMock = vi.hoisted(() => vi.fn());
 const dealCreateMock = vi.hoisted(() => vi.fn());
 const dealStageHistoryCreateMock = vi.hoisted(() => vi.fn());
 
@@ -17,6 +18,7 @@ vi.mock("@/lib/permissions", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     deal: {
+      findMany: dealFindManyMock,
       create: dealCreateMock,
     },
     dealStageHistory: {
@@ -39,6 +41,7 @@ describe("deals route", () => {
     });
 
     enforcePermissionMock.mockResolvedValue({ role: "member" });
+    dealFindManyMock.mockResolvedValue([]);
     dealCreateMock.mockResolvedValue({
       id: "deal-1",
       name: "Acme Expansion",
@@ -79,6 +82,22 @@ describe("deals route", () => {
         toStage: "LEAD",
         changedBy: "user-1",
       },
+    });
+  });
+
+  it("returns setup-required when the deals schema is missing", async () => {
+    dealFindManyMock.mockRejectedValueOnce(
+      new Error("The table `public.Deal` does not exist"),
+    );
+
+    const { GET } = await import("@/app/api/deals/route");
+    const response = await GET(new NextRequest("http://localhost/api/deals"));
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(body).toEqual({
+      code: "DEALS_SCHEMA_MISSING",
+      error: "Deals requires local database setup.",
     });
   });
 });

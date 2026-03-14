@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { enforcePermission } from "@/lib/permissions";
+import { toDealsErrorResponse } from "@/lib/deals/schema-guard";
 
 export async function GET(
   _request: NextRequest,
@@ -35,10 +36,7 @@ export async function GET(
 
     return NextResponse.json(company);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch company" },
-      { status: 500 },
-    );
+    return toDealsErrorResponse(error, "Failed to fetch company");
   }
 }
 
@@ -72,10 +70,7 @@ export async function PATCH(
     const company = await prisma.dealCompany.update({ where: { id }, data });
     return NextResponse.json(company);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update company" },
-      { status: 500 },
-    );
+    return toDealsErrorResponse(error, "Failed to update company");
   }
 }
 
@@ -100,9 +95,6 @@ export async function DELETE(
     await prisma.dealCompany.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to delete company" },
-      { status: 500 },
-    );
+    return toDealsErrorResponse(error, "Failed to delete company");
   }
 }

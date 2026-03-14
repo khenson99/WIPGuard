@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { enforcePermission } from "@/lib/permissions";
 import { getAuthenticatedUser } from "@/lib/session-user";
 import { DealStage, DealSource } from "@/generated/prisma/client";
+import { toDealsErrorResponse } from "@/lib/deals/schema-guard";
 
 const USER_SELECT = { id: true, name: true, email: true, image: true } as const;
 
@@ -83,10 +84,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json(enriched);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch deals" },
-      { status: 500 },
-    );
+    return toDealsErrorResponse(error, "Failed to fetch deals");
   }
 }
 
@@ -151,9 +149,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json(deal, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create deal" },
-      { status: 500 },
-    );
+    return toDealsErrorResponse(error, "Failed to create deal");
   }
 }

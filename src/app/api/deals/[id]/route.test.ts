@@ -124,6 +124,25 @@ describe("deal detail route", () => {
     });
   });
 
+  it("returns setup-required when the deal schema is missing", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    vi.mocked(prisma.deal.findFirst).mockRejectedValueOnce(
+      new Error("The table `public.Deal` does not exist"),
+    );
+
+    const { GET } = await import("@/app/api/deals/[id]/route");
+    const response = await GET(new NextRequest("http://localhost/api/deals/deal-1"), {
+      params: Promise.resolve({ id: "deal-1" }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(body).toEqual({
+      code: "DEALS_SCHEMA_MISSING",
+      error: "Deals requires local database setup.",
+    });
+  });
+
   it("records stage history inside the deal update transaction", async () => {
     const { prisma } = await import("@/lib/prisma");
     vi.mocked(prisma.deal.findFirst)

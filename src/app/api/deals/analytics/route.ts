@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { DealStage, MeetingStatus } from "@/generated/prisma/client";
+import { toDealsErrorResponse } from "@/lib/deals/schema-guard";
 
 const OPEN_STAGES: DealStage[] = [DealStage.LEAD, DealStage.QUALIFIED, DealStage.PROPOSAL, DealStage.NEGOTIATION];
 const STALE_THRESHOLD_DAYS = 14;
@@ -215,9 +216,6 @@ export async function GET(): Promise<NextResponse> {
       staleDeals,
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to compute analytics" },
-      { status: 500 },
-    );
+    return toDealsErrorResponse(error, "Failed to compute analytics");
   }
 }

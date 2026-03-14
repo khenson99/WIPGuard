@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { enforcePermission } from "@/lib/permissions";
+import { toDealsErrorResponse } from "@/lib/deals/schema-guard";
 
 export async function GET(): Promise<NextResponse> {
   try {
@@ -19,10 +20,7 @@ export async function GET(): Promise<NextResponse> {
 
     return NextResponse.json(contacts);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch contacts" },
-      { status: 500 },
-    );
+    return toDealsErrorResponse(error, "Failed to fetch contacts");
   }
 }
 
@@ -66,9 +64,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json(contact, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create contact" },
-      { status: 500 },
-    );
+    return toDealsErrorResponse(error, "Failed to create contact");
   }
 }
