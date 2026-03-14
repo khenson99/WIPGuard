@@ -127,6 +127,25 @@ export function makeHealth(input: MakeHealthInput = {}): CustomerSuccessPortfoli
   };
 }
 
+export function makeAccount(
+  accountId: string,
+  input: Partial<CustomerSuccessPortfolio["accounts"][number]> & {
+    health?: CustomerSuccessPortfolio["accounts"][number]["health"];
+  } = {}
+): CustomerSuccessPortfolio["accounts"][number] {
+  return {
+    accountId,
+    name: input.name ?? accountId,
+    ownerName: input.ownerName ?? "Owner",
+    health: input.health ?? makeHealth(),
+    openAlertCount: input.openAlertCount ?? 0,
+    lastActivityAt: input.lastActivityAt ?? "2026-03-10T00:00:00.000Z",
+    renewalDate: input.renewalDate ?? "2026-06-01T00:00:00.000Z",
+    segment: input.segment,
+    tier: input.tier,
+  };
+}
+
 export function makePortfolio(): CustomerSuccessPortfolio {
   return {
     generatedAt: "2026-03-10T08:00:00.000Z",
@@ -183,25 +202,29 @@ export function makePortfolio(): CustomerSuccessPortfolio {
     accounts: [
       {
         accountId: "acct_2",
-        name: "Beacon Ltd",
-        segment: "Enterprise",
-        tier: "Strategic",
-        ownerName: "Morgan",
-        health: makeHealth({ score: 88, grade: "A" }),
-        lastActivityAt: "2026-03-10T12:00:00.000Z",
-        renewalDate: "2026-05-30T00:00:00.000Z",
-        openAlertCount: 5,
+        ...makeAccount("acct_2", {
+          name: "Beacon Ltd",
+          segment: "Enterprise",
+          tier: "Strategic",
+          ownerName: "Morgan",
+          health: makeHealth({ score: 88, grade: "A" }),
+          lastActivityAt: "2026-03-10T12:00:00.000Z",
+          renewalDate: "2026-05-30T00:00:00.000Z",
+          openAlertCount: 5,
+        }),
       },
       {
         accountId: "acct_1",
-        name: "Acme Co",
-        segment: "Mid-market",
-        tier: "Growth",
-        ownerName: "Casey",
-        health: makeHealth({ score: 58, grade: "D" }),
-        lastActivityAt: "2026-03-09T12:00:00.000Z",
-        renewalDate: "2026-04-20T00:00:00.000Z",
-        openAlertCount: 2,
+        ...makeAccount("acct_1", {
+          name: "Acme Co",
+          segment: "Mid-market",
+          tier: "Growth",
+          ownerName: "Casey",
+          health: makeHealth({ score: 58, grade: "D" }),
+          lastActivityAt: "2026-03-09T12:00:00.000Z",
+          renewalDate: "2026-04-20T00:00:00.000Z",
+          openAlertCount: 2,
+        }),
       },
     ],
   };
