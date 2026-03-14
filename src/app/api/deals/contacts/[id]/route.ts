@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { enforcePermission } from "@/lib/permissions";
+import { toDealsErrorResponse } from "@/lib/deals/schema-guard";
 
 export async function GET(
   _request: NextRequest,
@@ -34,10 +35,7 @@ export async function GET(
 
     return NextResponse.json(contact);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch contact" },
-      { status: 500 },
-    );
+    return toDealsErrorResponse(error, "Failed to fetch contact");
   }
 }
 
@@ -79,10 +77,7 @@ export async function PATCH(
 
     return NextResponse.json(contact);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update contact" },
-      { status: 500 },
-    );
+    return toDealsErrorResponse(error, "Failed to update contact");
   }
 }
 
@@ -107,9 +102,6 @@ export async function DELETE(
     await prisma.dealContact.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to delete contact" },
-      { status: 500 },
-    );
+    return toDealsErrorResponse(error, "Failed to delete contact");
   }
 }

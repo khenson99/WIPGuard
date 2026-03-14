@@ -9,6 +9,10 @@ import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-stat
 import { DataTable, type DataTableColumn, fmt$ } from "@/components/analytics/dashboard-primitives";
 import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 import {
+  DEALS_SCHEMA_MISSING_MESSAGE,
+  isDealsSchemaMissingPayload,
+} from "@/lib/deals/schema-state";
+import {
   DEAL_STAGE_LABELS,
   DEAL_SOURCE_LABELS,
   MEETING_STATUS_LABELS,
@@ -136,8 +140,18 @@ export function DealDetail({ dealId }: { dealId: string }) {
   const loadDeal = useCallback(async () => {
     try {
       const res = await fetch(`/api/deals/${dealId}`);
-      if (!res.ok) throw new Error(`Failed to load deal (${res.status})`);
-      const data = (await res.json()) as DealDetailData;
+      const payload = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) {
+        if (res.status === 503 && isDealsSchemaMissingPayload(payload)) {
+          throw new Error(payload.error);
+        }
+        const errorMessage =
+          payload && typeof payload === "object" && typeof (payload as { error?: unknown }).error === "string"
+            ? (payload as { error: string }).error
+            : `Failed to load deal (${res.status})`;
+        throw new Error(errorMessage);
+      }
+      const data = payload as DealDetailData;
       setDeal(data);
       setForm({
         name: data.name,
@@ -183,6 +197,7 @@ export function DealDetail({ dealId }: { dealId: string }) {
 
   const saveDeal = async () => {
     setSaving(true);
+    setError(null);
     try {
       const res = await fetch(`/api/deals/${dealId}`, {
         method: "PATCH",
@@ -198,10 +213,19 @@ export function DealDetail({ dealId }: { dealId: string }) {
           ownerId: form.ownerId || null,
         }),
       });
-      if (!res.ok) throw new Error("Failed to save");
+      const payload = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) {
+        const errorMessage =
+          res.status === 503 && isDealsSchemaMissingPayload(payload)
+            ? payload.error
+            : payload && typeof payload === "object" && typeof (payload as { error?: unknown }).error === "string"
+              ? (payload as { error: string }).error
+              : "Failed to save";
+        throw new Error(errorMessage);
+      }
       await loadDeal();
-    } catch {
-      // Keep form state so user can retry
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save deal.");
     } finally {
       setSaving(false);
     }
@@ -209,9 +233,10 @@ export function DealDetail({ dealId }: { dealId: string }) {
 
   if (loading) return <DashboardLoadingState message="Loading deal..." className="h-[50vh]" />;
   if (!deal) {
+    const setupRequired = error === DEALS_SCHEMA_MISSING_MESSAGE;
     return (
       <DashboardEmptyState
-        title="Deal not found"
+        title={setupRequired ? "Deals setup required" : "Deal not found"}
         message={error ?? "This deal could not be loaded."}
         actionLabel="Back to Deals"
         onAction={() => router.push("/deals")}
@@ -303,6 +328,11 @@ export function DealDetail({ dealId }: { dealId: string }) {
       {/* Overview Tab */}
       {tab === "overview" && (
         <div className="rounded-xl border border-border bg-card p-6">
+          {error && (
+            <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+              {error}
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <label className="mb-1 block text-xs font-medium text-muted-foreground">Deal Name</label>

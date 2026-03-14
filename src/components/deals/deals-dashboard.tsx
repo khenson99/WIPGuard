@@ -14,6 +14,10 @@ import { DashboardStaleBanner } from "@/components/dashboard/dashboard-stale-ban
 import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
 import { DataTable, type DataTableColumn, fmt$ } from "@/components/analytics/dashboard-primitives";
 import {
+  DEALS_SCHEMA_MISSING_MESSAGE,
+  isDealsSchemaMissingPayload,
+} from "@/lib/deals/schema-state";
+import {
   DEAL_STAGE_LABELS,
   DEAL_STAGE_ORDER,
   type DealListItem,
@@ -25,6 +29,13 @@ type ViewMode = "table" | "pipeline";
 
 const CACHE_KEY = "dashboard:deals:v1";
 const EMPTY_DEALS: DealListItem[] = [];
+
+class DealsSetupRequiredError extends Error {
+  constructor(message: string = DEALS_SCHEMA_MISSING_MESSAGE) {
+    super(message);
+    this.name = "DealsSetupRequiredError";
+  }
+}
 
 const STAGE_BADGE_CLASSES: Record<DealStage, string> = {
   LEAD: "bg-slate-500/10 text-slate-700 dark:text-slate-300",
@@ -57,8 +68,18 @@ export function DealsDashboard() {
         signal,
         cache: refresh ? "no-store" : "default",
       });
-      if (!res.ok) throw new Error(`Deals request failed (${res.status})`);
-      return (await res.json()) as DealListItem[];
+      const payload = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) {
+        if (res.status === 503 && isDealsSchemaMissingPayload(payload)) {
+          throw new DealsSetupRequiredError(payload.error);
+        }
+        const errorMessage =
+          payload && typeof payload === "object" && typeof (payload as { error?: unknown }).error === "string"
+            ? (payload as { error: string }).error
+            : `Deals request failed (${res.status})`;
+        throw new Error(errorMessage);
+      }
+      return Array.isArray(payload) ? (payload as DealListItem[]) : EMPTY_DEALS;
     },
   });
 
@@ -161,9 +182,10 @@ export function DealsDashboard() {
   }
 
   if (!resource.data) {
+    const setupRequired = resource.error === DEALS_SCHEMA_MISSING_MESSAGE;
     return (
       <DashboardEmptyState
-        title="Deals unavailable"
+        title={setupRequired ? "Deals setup required" : "Deals unavailable"}
         message={resource.error ?? "No deal data available."}
         actionLabel="Refresh now"
         onAction={resource.refresh}

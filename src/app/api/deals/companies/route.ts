@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { enforcePermission } from "@/lib/permissions";
+import { toDealsErrorResponse } from "@/lib/deals/schema-guard";
 
 export async function GET(): Promise<NextResponse> {
   try {
@@ -19,10 +20,7 @@ export async function GET(): Promise<NextResponse> {
 
     return NextResponse.json(companies);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch companies" },
-      { status: 500 },
-    );
+    return toDealsErrorResponse(error, "Failed to fetch companies");
   }
 }
 
@@ -56,9 +54,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json(company, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create company" },
-      { status: 500 },
-    );
+    return toDealsErrorResponse(error, "Failed to create company");
   }
 }

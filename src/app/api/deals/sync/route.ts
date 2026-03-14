@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { enforcePermission } from "@/lib/permissions";
 import { syncDealsFromHubSpot } from "@/lib/deals/hubspot-sync";
+import { toDealsErrorResponse } from "@/lib/deals/schema-guard";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
@@ -22,7 +23,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const result = await syncDealsFromHubSpot(session.user.id);
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Sync failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return toDealsErrorResponse(error, "Sync failed");
   }
 }
