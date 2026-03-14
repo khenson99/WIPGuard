@@ -1,43 +1,8 @@
 import { describe, expect, it } from "vitest";
+import {
+  makeAnalyticsData,
+} from "@/components/analytics/__tests__/customer-success-test-helpers";
 import { deriveCustomerSuccessOperationalView } from "@/components/analytics/customer-success-operational-view-model";
-import type { AnalyticsDashboardData } from "@/lib/analytics/types";
-
-function makeAnalyticsData(): AnalyticsDashboardData {
-  return {
-    freshness: {
-      google_workspace: { status: "CONNECTED", stale: false },
-      slack: { status: "CONNECTED", stale: true },
-      coda: { status: "CONNECTED", stale: false },
-    },
-    pylon: {
-      openConversations: 28,
-      urgentConversations: 18,
-    },
-    product: {
-      backlogGrowth: 8,
-      throughputRate: 62.4,
-      overdueOpenTasks: 9,
-    },
-    coda: {
-      totalCards: 42,
-    },
-    slack: {
-      enabledRules: 2,
-      totalRules: 2,
-      trend: [{ date: "2026-03-08", createdTasks: 2, receipts: 3 }],
-    },
-    googleWorkspace: {
-      enabledRules: 1,
-      totalRules: 1,
-      trend: [{ date: "2026-03-08", createdTasks: 1, receipts: 1 }],
-    },
-    codaOps: {
-      enabledRules: 3,
-      totalRules: 3,
-      trend: [{ date: "2026-03-08", createdTasks: 4, receipts: 2 }],
-    },
-  } as unknown as AnalyticsDashboardData;
-}
 
 describe("deriveCustomerSuccessOperationalView", () => {
   it("derives integration statuses, trend, risks, and actions", () => {
