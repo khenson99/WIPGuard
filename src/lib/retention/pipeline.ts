@@ -50,6 +50,46 @@ interface IdentityIndexes {
   customerByDomain: Map<string, string>;
 }
 
+interface CustomerIndexSeed {
+  id: string;
+  name: string;
+  dealCompany: {
+    domain: string | null;
+  } | null;
+}
+
+interface CodaApiRow {
+  [key: string]: unknown;
+  id?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  values?: Record<string, unknown>;
+}
+
+interface ArdaTenantConfig {
+  tenantId: string;
+  configuredTenantId: string;
+  tenantName: string;
+  companyName: string;
+  customerStatus: string | null;
+  health: string | null;
+  mainCodaDocId: string | null;
+  orderArchiveDocumentId: string | null;
+  churned: boolean;
+}
+
+interface ArdaEntityRecord {
+  rId?: string;
+  asOf?: Record<string, unknown>;
+  createdAt?: Record<string, unknown>;
+  payload?: Record<string, unknown>;
+}
+
+interface ArdaPageResult {
+  results?: ArdaEntityRecord[];
+  nextPage?: string | null;
+}
+
 interface MonthlyTenantAccumulator {
   customerRecordId: string;
   monthStart: Date;
@@ -122,6 +162,57 @@ function asBoolean(value: unknown): boolean | null {
   return null;
 }
 
+function isUuid(value: string | null): value is string {
+  return Boolean(
+    value &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+  );
+}
+
+const ARDA_CUSTOMER_NAME_ALIASES: Record<string, string> = {
+  austere: "Austere Manufacturing",
+  "austere manufacturing": "Austere Manufacturing",
+  "north east precision cnc": "Northeast Precision CNC",
+  "norteast precision cnc": "Northeast Precision CNC",
+  "northeast precision cnc": "Northeast Precision CNC",
+  contoro: "Contoro Robotics",
+  "contoro robotics": "Contoro Robotics",
+  "arda merch inc.": "Arda Merchandising",
+  "arda merch inc": "Arda Merchandising",
+  "arda merchendising": "Arda Merchandising",
+  "lights out mfg": "Lights Out Manufacturing",
+  neff: "Neff Machine",
+  lichen: "Lichen Precision",
+  blackwell: "Blackwell Engineering",
+  reachable: "Reachable Technology LLC",
+  bluewater: "Bluewater Sportfishing Boats",
+  gimbel: "Gimbel Group",
+};
+
+const ARDA_CUSTOMER_TENANT_IDS: Record<string, string[]> = {
+  "Austere Manufacturing": ["8d53c9a0-3e9c-4f5a-9dbe-ad06b56bc3e4"],
+  "Blackwell Engineering": ["b5ea0be9-ce18-4bf0-81c8-b5981a893189"],
+  "Bluewater Sportfishing Boats": ["2d7a820e-f4e4-48bc-8c6d-4307a151b5cc"],
+  "Gimbel Group": ["9189acf9-4f89-46cd-9760-0d4933d58c67"],
+  "Lichen Precision": ["6d81d80e-7010-468f-a191-f1dab4f4fc79"],
+  "Lights Out Manufacturing": ["baa1f883-ecfa-4912-b5be-d5784d8b96a4"],
+  "Neff Machine": ["1193d42d-ef80-4bc8-ab11-84e5c8046892"],
+  "Reachable Technology LLC": ["9db131b9-da94-4c20-bcab-0f70e079bd0d"],
+  "Roam Rig": [
+    "a9e3aef7-86aa-4199-bfa7-0e29d05b2774",
+    "e7a57a86-bef9-4dcf-b39e-c956da5d15c1",
+    "3a1aa0ea-6611-477f-bb30-36058c40eee8",
+    "9db77bed-83ee-4b19-afb6-0b670e37cd20",
+  ],
+  "The Label Factory": ["21ee51b8-2ec8-4adc-879e-8f0cd3dd804a"],
+};
+
+function normalizeArdaCustomerName(name: string | null): string | null {
+  if (!name) return null;
+  const lowered = name.trim().toLowerCase().replace(/\s+/g, " ");
+  return ARDA_CUSTOMER_NAME_ALIASES[lowered] ?? name.trim();
+}
+
 function asReasonCodes(value: unknown): RetentionReasonCode[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -156,6 +247,11 @@ function isoOrNull(date: Date | null | undefined): string | null {
   return date ? date.toISOString() : null;
 }
 
+function asTimestamp(value: unknown): number | null {
+  const record = asRecord(value);
+  return asNumber(record.recorded) ?? asNumber(record.effective);
+}
+
 function dayKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -179,6 +275,12 @@ function monthKey(date: Date): string {
   return date.toISOString().slice(0, 7);
 }
 
+function shiftUtcDays(date: Date, days: number): Date {
+  const copy = new Date(date);
+  copy.setUTCDate(copy.getUTCDate() + days);
+  return copy;
+}
+
 function normalizeDomain(value: string | null): string | null {
   if (!value) return null;
   return value.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
@@ -190,8 +292,317 @@ function normalizeName(value: string | null): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function timestampToIso(timestamp: number | null): string | null {
+  return timestamp ? new Date(timestamp).toISOString() : null;
+}
+
+function ardaCreatedTimestamp(record: ArdaEntityRecord): string | null {
+  return timestampToIso(asTimestamp(record.createdAt));
+}
+
+function ardaObservedTimestamp(record: ArdaEntityRecord): string | null {
+  return timestampToIso(asTimestamp(record.asOf));
+}
+
+function ardaOccurredAt(record: ArdaEntityRecord): string | null {
+  return ardaCreatedTimestamp(record) ?? ardaObservedTimestamp(record);
+}
+
+function ardaPayload(record: ArdaEntityRecord): Record<string, unknown> {
+  return asRecord(record.payload);
+}
+
+function ardaRecordId(record: ArdaEntityRecord): string | null {
+  const payload = ardaPayload(record);
+  return (
+    asString(record.rId) ??
+    asString(payload.id) ??
+    asString(payload.eid) ??
+    asString(payload.entityId)
+  );
+}
+
+function buildArdaAuthHeaderCandidates(token: string): Array<Record<string, string>> {
+  const trimmed = token.trim();
+  if (!trimmed) return [];
+
+  const explicitHeader = asString(process.env.ARDA_API_AUTH_HEADER);
+  const bearerValue = trimmed.toLowerCase().startsWith("bearer ") ? trimmed : `Bearer ${trimmed}`;
+  const candidates: Array<Record<string, string>> = [];
+  const seen = new Set<string>();
+
+  const pushCandidate = (headerName: string | null, value: string) => {
+    if (!headerName) return;
+    const normalizedHeader = headerName.trim();
+    if (!normalizedHeader) return;
+    const key = `${normalizedHeader.toLowerCase()}::${value}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push({ [normalizedHeader]: value });
+  };
+
+  if (explicitHeader) {
+    pushCandidate(
+      explicitHeader,
+      explicitHeader.toLowerCase() === "authorization" ? bearerValue : trimmed
+    );
+  }
+
+  pushCandidate("bearer-token-arda-auth", trimmed);
+  pushCandidate("Authorization", bearerValue);
+
+  return candidates;
+}
+
+async function fetchCodaApiRows(
+  docId: string,
+  tableId: string,
+  token: string,
+  pageLimit = 10
+): Promise<CodaApiRow[]> {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+  };
+  const rows: CodaApiRow[] = [];
+  let pageToken: string | null = null;
+
+  for (let page = 0; page < pageLimit; page += 1) {
+    const url = new URL(
+      `https://coda.io/apis/v1/docs/${encodeURIComponent(docId)}/tables/${encodeURIComponent(tableId)}/rows`
+    );
+    url.searchParams.set("limit", "500");
+    url.searchParams.set("useColumnNames", "true");
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const response = await fetch(url, { headers, cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(
+        `Coda request failed for doc ${docId} table ${tableId}: ${response.status} ${response.statusText}`
+      );
+    }
+    const payload = (await response.json()) as { items?: CodaApiRow[]; nextPageToken?: string };
+    rows.push(...(Array.isArray(payload.items) ? payload.items : []));
+    pageToken = asString(payload.nextPageToken);
+    if (!pageToken) break;
+  }
+
+  return rows;
+}
+
+function normalizeArdaTenantConfigRow(row: CodaApiRow): ArdaTenantConfig | null {
+  const values = asRecord(row.values);
+  const tenantId = asString(values.tenantId);
+  const companyName =
+    asString(values.CompanyName) ??
+    asString(asRecord(values.Customer).name) ??
+    asString(values.Customer);
+  if (!tenantId || !companyName) return null;
+
+  const loweredTenantId = tenantId.toLowerCase();
+  if (loweredTenantId === "deleted" || loweredTenantId === "not found") return null;
+
+  const customerStatus = asString(values["Customer status"]);
+  if ((customerStatus ?? "").toLowerCase().includes("churned")) return null;
+  if ((customerStatus ?? "").toLowerCase().includes("potential")) return null;
+
+  return {
+    tenantId,
+    configuredTenantId: tenantId,
+    tenantName: companyName,
+    companyName,
+    customerStatus,
+    health: asString(values.Health),
+    mainCodaDocId: asString(values.mainCodaDocId) ?? asString(values["ActiveMainDoc ID"]),
+    orderArchiveDocumentId: asString(values.orderArchiveDocumentId),
+    churned: Boolean(asBoolean(values.Churned)),
+  };
+}
+
+function resolveArdaTenantIds(config: ArdaTenantConfig): string[] {
+  if (isUuid(config.tenantId)) return [config.tenantId];
+
+  const normalizedCompanyName =
+    normalizeArdaCustomerName(config.companyName) ?? normalizeArdaCustomerName(config.tenantName);
+  if (!normalizedCompanyName) return [];
+
+  return ARDA_CUSTOMER_TENANT_IDS[normalizedCompanyName] ?? [];
+}
+
+async function loadArdaTenantConfigs(): Promise<ArdaTenantConfig[]> {
+  const token = process.env.CODA_API_TOKEN?.trim();
+  const docId = process.env.ARDA_TENANT_CONFIG_CODA_DOC_ID?.trim() || "oRkoolViAM";
+  const tableId = process.env.ARDA_TENANT_CONFIG_TABLE_ID?.trim() || "grid-5Kc9QNP-nT";
+  if (!token) return [];
+
+  const rows = await fetchCodaApiRows(docId, tableId, token, 5);
+  const configs = rows
+    .map(normalizeArdaTenantConfigRow)
+    .filter((config): config is ArdaTenantConfig => config !== null);
+  const resolved: ArdaTenantConfig[] = [];
+  const unresolved: string[] = [];
+
+  for (const config of configs) {
+    const tenantIds = resolveArdaTenantIds(config);
+    if (tenantIds.length === 0) {
+      unresolved.push(config.companyName);
+      continue;
+    }
+    for (const tenantId of tenantIds) {
+      resolved.push({
+        ...config,
+        tenantId,
+      });
+    }
+  }
+
+  if (unresolved.length > 0) {
+    console.warn(
+      `[retention] Skipping ${unresolved.length} Arda tenant configs without UUID resolution`,
+      unresolved.slice(0, 10)
+    );
+  }
+
+  return resolved;
+}
+
+async function fetchArdaPage(
+  requestPath: string,
+  init: RequestInit,
+  sharedHeaders: Record<string, string>
+): Promise<Response> {
+  const token = process.env.ARDA_API_TOKEN?.trim();
+  if (!token) {
+    throw new Error("ARDA_API_TOKEN is required for Arda retention sync.");
+  }
+
+  const authHeaderCandidates = buildArdaAuthHeaderCandidates(token);
+  let lastUnauthorized: Response | null = null;
+
+  for (const authHeaders of authHeaderCandidates) {
+    const response = await fetch(requestPath, {
+      ...init,
+      headers: {
+        ...sharedHeaders,
+        ...authHeaders,
+      },
+      cache: "no-store",
+    });
+    if (response.status !== 401) return response;
+    lastUnauthorized = response;
+  }
+
+  if (lastUnauthorized) return lastUnauthorized;
+  throw new Error("Unable to build Arda auth headers for the configured token.");
+}
+
+async function queryArdaCollection(
+  endpoint: string,
+  tenantId: string,
+  asOfMs: number
+): Promise<ArdaEntityRecord[]> {
+  const baseUrl = process.env.ARDA_API_BASE_URL?.trim();
+  if (!baseUrl) return [];
+
+  const sharedHeaders = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    "X-Author": process.env.ARDA_API_AUTHOR?.trim() || "WIPGuard-retention-sync",
+    "X-Tenant-Id": tenantId,
+  };
+
+  const allResults: ArdaEntityRecord[] = [];
+  const queryString = `effectiveasof=${asOfMs}&recordedasof=${asOfMs}`;
+
+  const first = await fetchArdaPage(
+    `${baseUrl.replace(/\/$/, "")}/v1/${endpoint}/query?${queryString}`,
+    {
+      method: "POST",
+      body: JSON.stringify({}),
+    },
+    sharedHeaders
+  );
+  if (first.status === 401) {
+    throw new Error(
+      `Arda request unauthorized for tenant ${tenantId} at ${baseUrl}. The token may not belong to this environment.`
+    );
+  }
+  if (!first.ok) {
+    throw new Error(`Arda request failed for ${endpoint}: ${first.status} ${first.statusText}`);
+  }
+
+  const firstPage = (await first.json()) as ArdaPageResult;
+  allResults.push(...(Array.isArray(firstPage.results) ? firstPage.results : []));
+
+  let nextPage = asString(firstPage.nextPage);
+  let pageCount = 0;
+  while (nextPage && pageCount < 100) {
+    pageCount += 1;
+    const response = await fetchArdaPage(
+      `${baseUrl.replace(/\/$/, "")}/v1/${endpoint}/query/${encodeURIComponent(nextPage)}?${queryString}`,
+      {
+        method: "GET",
+      },
+      sharedHeaders
+    );
+    if (!response.ok) {
+      throw new Error(`Arda pagination failed for ${endpoint}: ${response.status} ${response.statusText}`);
+    }
+    const page = (await response.json()) as ArdaPageResult;
+    allResults.push(...(Array.isArray(page.results) ? page.results : []));
+    nextPage = asString(page.nextPage);
+  }
+
+  return allResults;
+}
+
 function recordDate(seed: SourceSeedRecord): Date | null {
   return parseDate(seed.occurredAt) ?? parseDate(seed.sourceUpdatedAt) ?? parseDate(seed.sourceCreatedAt);
+}
+
+async function tableExists(tableName: string): Promise<boolean> {
+  const result = await prisma.$queryRaw<Array<{ exists: string | null }>>(
+    Prisma.sql`SELECT to_regclass(${`public."${tableName}"`})::text AS exists`
+  );
+  return Boolean(result[0]?.exists);
+}
+
+async function loadCustomerIndexSeeds(organizationId: string): Promise<CustomerIndexSeed[]> {
+  try {
+    const customers = await prisma.customerRecord.findMany({
+      where: { organizationId },
+      select: {
+        id: true,
+        name: true,
+        dealCompany: {
+          select: {
+            domain: true,
+          },
+        },
+      },
+    });
+    return customers.map((customer) => ({
+      id: customer.id,
+      name: customer.name,
+      dealCompany: customer.dealCompany ? { domain: customer.dealCompany.domain ?? null } : null,
+    }));
+  } catch (error) {
+    const missingDealCompany =
+      error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2021";
+    if (!missingDealCompany) throw error;
+  }
+
+  const customers = await prisma.customerRecord.findMany({
+    where: { organizationId },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  return customers.map((customer) => ({
+    id: customer.id,
+    name: customer.name,
+    dealCompany: null,
+  }));
 }
 
 async function buildIdentityIndexes(organizationId: string): Promise<IdentityIndexes> {
@@ -204,16 +615,7 @@ async function buildIdentityIndexes(organizationId: string): Promise<IdentityInd
         customerRecordId: true,
       },
     }),
-    prisma.customerRecord.findMany({
-      where: { organizationId },
-      include: {
-        dealCompany: {
-          select: {
-            domain: true,
-          },
-        },
-      },
-    }),
+    loadCustomerIndexSeeds(organizationId),
   ]);
 
   const externalRefToCustomerId = new Map<string, string>();
@@ -392,12 +794,22 @@ async function upsertSourceRecords(
 }
 
 async function loadHubSpotSourceRecords(actor: RetentionActor): Promise<SourceSeedRecord[]> {
+  const [hasDealCompany, hasDeal] = await Promise.all([tableExists("DealCompany"), tableExists("Deal")]);
+
   const customers = await prisma.customerRecord.findMany({
     where: { organizationId: actor.organizationId },
     include: {
       owner: { select: { name: true } },
-      dealCompany: { select: { name: true, domain: true, industry: true, hubspotCompanyId: true } },
-      primaryDeal: { select: { id: true, amount: true, stage: true, hubspotDealId: true, expectedCloseDate: true, createdAt: true } },
+      ...(hasDealCompany
+        ? { dealCompany: { select: { name: true, domain: true, industry: true, hubspotCompanyId: true } } }
+        : {}),
+      ...(hasDeal
+        ? {
+            primaryDeal: {
+              select: { id: true, amount: true, stage: true, hubspotDealId: true, expectedCloseDate: true, createdAt: true },
+            },
+          }
+        : {}),
       externalRefs: {
         where: { provider: "HUBSPOT" },
         select: { externalId: true, externalObjectType: true, metadata: true },
@@ -518,40 +930,30 @@ async function loadStripeSourceRecords(): Promise<SourceSeedRecord[]> {
 
 async function loadCodaSourceRecords(): Promise<SourceSeedRecord[]> {
   const token = process.env.CODA_API_TOKEN?.trim();
-  const docId = process.env.CODA_RETENTION_DOC_ID?.trim() ?? process.env.CODA_DOC_ID?.trim();
-  const tableId = process.env.CODA_MASTER_ORDER_ARCHIVE_TABLE_ID?.trim();
+  const docId =
+    process.env.CODA_RETENTION_DOC_ID?.trim() ??
+    process.env.CODA_DOC_ID?.trim() ??
+    "cgSn33D4N9";
+  const tableId =
+    process.env.CODA_MASTER_ORDER_ARCHIVE_TABLE_ID?.trim() ??
+    "grid-GPpAfsGmqQ";
   if (!token || !docId || !tableId) return [];
 
-  const headers = {
-    Authorization: `Bearer ${token}`,
-  };
+  const sourceRows = await fetchCodaApiRows(docId, tableId, token, 10);
   const rows: SourceSeedRecord[] = [];
-  let pageToken: string | null = null;
-
-  for (let page = 0; page < 10; page += 1) {
-    const url = new URL(`https://coda.io/apis/v1/docs/${encodeURIComponent(docId)}/tables/${encodeURIComponent(tableId)}/rows`);
-    url.searchParams.set("limit", "500");
-    if (pageToken) url.searchParams.set("pageToken", pageToken);
-    const response = await fetch(url, { headers, cache: "no-store" });
-    if (!response.ok) break;
-    const payload = (await response.json()) as { items?: Array<Record<string, unknown>>; nextPageToken?: string };
-    const items = Array.isArray(payload.items) ? payload.items : [];
-    for (const row of items) {
-      const normalizedRow = normalizeCodaMasterOrderArchiveRow(row);
-      if (!normalizedRow) continue;
-      rows.push({
-        source: "CODA",
-        objectType: "master_order_archive",
-        externalId: normalizedRow.externalId,
-        tenantKey: normalizedRow.tenantKey,
-        occurredAt: normalizedRow.occurredAt,
-        sourceCreatedAt: normalizedRow.sourceCreatedAt,
-        sourceUpdatedAt: normalizedRow.sourceUpdatedAt,
-        payload: normalizedRow.payload,
-      });
-    }
-    pageToken = asString(payload.nextPageToken);
-    if (!pageToken) break;
+  for (const row of sourceRows) {
+    const normalizedRow = normalizeCodaMasterOrderArchiveRow(row);
+    if (!normalizedRow) continue;
+    rows.push({
+      source: "CODA",
+      objectType: "master_order_archive",
+      externalId: normalizedRow.externalId,
+      tenantKey: normalizedRow.tenantKey,
+      occurredAt: normalizedRow.occurredAt,
+      sourceCreatedAt: normalizedRow.sourceCreatedAt,
+      sourceUpdatedAt: normalizedRow.sourceUpdatedAt,
+      payload: normalizedRow.payload,
+    });
   }
 
   return rows;
@@ -599,100 +1001,123 @@ async function loadPylonSourceRecords(): Promise<SourceSeedRecord[]> {
   });
 }
 
-async function fetchArdaList(endpoint: string): Promise<Array<Record<string, unknown>>> {
+async function loadArdaSourceRecords(): Promise<SourceSeedRecord[]> {
   const baseUrl = process.env.ARDA_API_BASE_URL?.trim();
   const token = process.env.ARDA_API_TOKEN?.trim();
   if (!baseUrl || !token) return [];
-  const response = await fetch(new URL(endpoint, baseUrl), {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-    cache: "no-store",
-  });
-  if (!response.ok) return [];
-  const payload = (await response.json()) as { data?: Array<Record<string, unknown>> } | Array<Record<string, unknown>>;
-  if (Array.isArray(payload)) return payload;
-  return Array.isArray(payload.data) ? payload.data : [];
-}
 
-async function loadArdaSourceRecords(): Promise<SourceSeedRecord[]> {
-  const [tenants, orders, cards, items] = await Promise.all([
-    fetchArdaList(process.env.ARDA_API_TENANTS_PATH?.trim() || "/tenants"),
-    fetchArdaList(process.env.ARDA_API_ORDERS_PATH?.trim() || "/orders"),
-    fetchArdaList(process.env.ARDA_API_CARDS_PATH?.trim() || "/cards"),
-    fetchArdaList(process.env.ARDA_API_ITEMS_PATH?.trim() || "/items"),
-  ]);
+  const tenantConfigs = await loadArdaTenantConfigs();
+  if (tenantConfigs.length === 0) return [];
 
-  return [
-    ...tenants.map((tenant) => ({
-      source: "ARDA" as const,
+  const asOfMs = Date.now();
+  const rows: SourceSeedRecord[] = [];
+
+  for (const config of tenantConfigs) {
+    rows.push({
+      source: "ARDA",
       objectType: "tenant",
-      externalId: asString(tenant.id) ?? crypto.randomUUID(),
-      tenantKey: asString(tenant.id),
-      occurredAt: asString(tenant.createdAt),
-      sourceCreatedAt: asString(tenant.createdAt),
-      sourceUpdatedAt: asString(tenant.updatedAt),
+      externalId: config.tenantId,
+      tenantKey: config.tenantId,
+      occurredAt: null,
+      sourceCreatedAt: null,
+      sourceUpdatedAt: null,
       payload: {
-        ardaTenantId: asString(tenant.id),
-        tenantName: asString(tenant.name),
-        domain: asString(tenant.domain),
-        goLiveDate: asString(tenant.goLiveDate),
-        implementationStage: asString(tenant.implementationStage),
-        locationsCount: asNumber(tenant.locationsCount),
-        workflowCount: asNumber(tenant.workflowCount),
+        ardaTenantId: config.tenantId,
+        configuredTenantId: config.configuredTenantId,
+        tenantName: config.tenantName,
+        companyName: config.companyName,
+        customerStatus: config.customerStatus,
+        health: config.health,
+        mainCodaDocId: config.mainCodaDocId,
+        orderArchiveDocumentId: config.orderArchiveDocumentId,
+        implementationStage:
+          config.customerStatus && config.customerStatus.toLowerCase().includes("freemium")
+            ? "TRIAL"
+            : "LIVE",
       },
-    })),
-    ...orders.map((order) => ({
-      source: "ARDA" as const,
-      objectType: "order",
-      externalId: asString(order.id) ?? crypto.randomUUID(),
-      tenantKey: asString(order.tenantId),
-      occurredAt: asString(order.createdAt),
-      sourceCreatedAt: asString(order.createdAt),
-      sourceUpdatedAt: asString(order.updatedAt),
-      payload: {
-        ardaTenantId: asString(order.tenantId),
-        tenantName: asString(order.tenantName),
-        orderId: asString(order.id),
-        actorUserId: asString(order.userId),
-        locationId: asString(order.locationId),
-        workflowId: asString(order.workflowId),
-        quantity: asNumber(order.quantity),
-      },
-    })),
-    ...cards.map((card) => ({
-      source: "ARDA" as const,
-      objectType: "card",
-      externalId: asString(card.id) ?? crypto.randomUUID(),
-      tenantKey: asString(card.tenantId),
-      occurredAt: asString(card.updatedAt) ?? asString(card.createdAt),
-      sourceCreatedAt: asString(card.createdAt),
-      sourceUpdatedAt: asString(card.updatedAt),
-      payload: {
-        ardaTenantId: asString(card.tenantId),
-        tenantName: asString(card.tenantName),
-        cardId: asString(card.id),
-        active: asBoolean(card.active),
-        locationId: asString(card.locationId),
-      },
-    })),
-    ...items.map((item) => ({
-      source: "ARDA" as const,
-      objectType: "item",
-      externalId: asString(item.id) ?? crypto.randomUUID(),
-      tenantKey: asString(item.tenantId),
-      occurredAt: asString(item.updatedAt) ?? asString(item.createdAt),
-      sourceCreatedAt: asString(item.createdAt),
-      sourceUpdatedAt: asString(item.updatedAt),
-      payload: {
-        ardaTenantId: asString(item.tenantId),
-        tenantName: asString(item.tenantName),
-        itemId: asString(item.id),
-        active: asBoolean(item.active),
-        locationId: asString(item.locationId),
-      },
-    })),
-  ];
+    });
+
+    const [orders, cards, items] = await Promise.all([
+      queryArdaCollection("order/order", config.tenantId, asOfMs),
+      queryArdaCollection("kanban/kanban-card", config.tenantId, asOfMs),
+      queryArdaCollection("item/item", config.tenantId, asOfMs),
+    ]);
+
+    for (const record of orders) {
+      const payload = ardaPayload(record);
+      rows.push({
+        source: "ARDA",
+        objectType: "order",
+        externalId: ardaRecordId(record) ?? crypto.randomUUID(),
+        tenantKey: config.tenantId,
+        occurredAt: ardaOccurredAt(record),
+        sourceCreatedAt: ardaCreatedTimestamp(record) ?? ardaOccurredAt(record),
+        sourceUpdatedAt: ardaObservedTimestamp(record) ?? ardaOccurredAt(record),
+        payload: {
+          ...payload,
+          ardaTenantId: config.tenantId,
+          configuredTenantId: config.configuredTenantId,
+          tenantName: config.tenantName,
+          companyName: config.companyName,
+          orderId: ardaRecordId(record),
+          locationId: asString(payload.locationId),
+          workflowId: asString(payload.workflowId),
+          quantity: asNumber(payload.quantity),
+          createdAt: ardaCreatedTimestamp(record) ?? ardaOccurredAt(record),
+        },
+      });
+    }
+
+    for (const record of cards) {
+      const payload = ardaPayload(record);
+      rows.push({
+        source: "ARDA",
+        objectType: "card",
+        externalId: ardaRecordId(record) ?? crypto.randomUUID(),
+        tenantKey: config.tenantId,
+        occurredAt: ardaOccurredAt(record),
+        sourceCreatedAt: ardaCreatedTimestamp(record) ?? ardaOccurredAt(record),
+        sourceUpdatedAt: ardaObservedTimestamp(record) ?? ardaOccurredAt(record),
+        payload: {
+          ...payload,
+          ardaTenantId: config.tenantId,
+          configuredTenantId: config.configuredTenantId,
+          tenantName: config.tenantName,
+          companyName: config.companyName,
+          cardId: ardaRecordId(record),
+          active: asBoolean(payload.active),
+          locationId:
+            asString(payload.locationId) ?? asString(asRecord(payload.locator).facility),
+        },
+      });
+    }
+
+    for (const record of items) {
+      const payload = ardaPayload(record);
+      rows.push({
+        source: "ARDA",
+        objectType: "item",
+        externalId: ardaRecordId(record) ?? crypto.randomUUID(),
+        tenantKey: config.tenantId,
+        occurredAt: ardaOccurredAt(record),
+        sourceCreatedAt: ardaCreatedTimestamp(record) ?? ardaOccurredAt(record),
+        sourceUpdatedAt: ardaObservedTimestamp(record) ?? ardaOccurredAt(record),
+        payload: {
+          ...payload,
+          ardaTenantId: config.tenantId,
+          configuredTenantId: config.configuredTenantId,
+          tenantName: config.tenantName,
+          companyName: config.companyName,
+          itemId: ardaRecordId(record),
+          active: asBoolean(payload.active),
+          locationId:
+            asString(payload.locationId) ?? asString(asRecord(payload.locator).facility),
+        },
+      });
+    }
+  }
+
+  return rows;
 }
 
 async function syncSource(
@@ -728,11 +1153,26 @@ async function syncSource(
 }
 
 export async function syncRetentionSources(actor: RetentionActor): Promise<void> {
-  await syncSource(actor, "HUBSPOT", () => loadHubSpotSourceRecords(actor));
-  await syncSource(actor, "STRIPE", loadStripeSourceRecords);
-  await syncSource(actor, "PYLON", loadPylonSourceRecords);
-  await syncSource(actor, "CODA", loadCodaSourceRecords);
-  await syncSource(actor, "ARDA", loadArdaSourceRecords);
+  const sources: Array<[SourceSeedRecord["source"], () => Promise<SourceSeedRecord[]>]> = [
+    ["HUBSPOT", () => loadHubSpotSourceRecords(actor)],
+    ["STRIPE", loadStripeSourceRecords],
+    ["PYLON", loadPylonSourceRecords],
+    ["CODA", loadCodaSourceRecords],
+    ["ARDA", loadArdaSourceRecords],
+  ];
+  const failures: string[] = [];
+
+  for (const [source, loader] of sources) {
+    try {
+      await syncSource(actor, source, loader);
+    } catch (error) {
+      failures.push(`${source}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`Retention source sync failed: ${failures.join("; ")}`);
+  }
 }
 
 function initAccumulator(customerRecordId: string, monthStart: Date, monthEnd: Date, customerName: string): MonthlyTenantAccumulator {
@@ -919,9 +1359,63 @@ function determineLifecyclePhase(acc: MonthlyTenantAccumulator): RetentionLifecy
   return ageDays <= 90 ? "ONBOARDING" : "MATURE";
 }
 
+function deriveLifecycleStartDate(
+  current: MonthlyTenantAccumulator,
+  history: MonthlyTenantAccumulator[]
+): string | null {
+  const candidates = [current, ...history]
+    .flatMap((month) => [month.goLiveDate, month.subscriptionStartDate])
+    .map((value) => parseDate(value))
+    .filter((value): value is Date => value !== null)
+    .sort((a, b) => a.getTime() - b.getTime());
+
+  if (candidates.length > 0) {
+    return candidates[0].toISOString();
+  }
+
+  return null;
+}
+
+function deriveOnboardingStartDate(
+  current: MonthlyTenantAccumulator,
+  history: MonthlyTenantAccumulator[]
+): string | null {
+  const candidates = [current, ...history]
+    .flatMap((month) => [month.goLiveDate, month.subscriptionStartDate])
+    .map((value) => parseDate(value))
+    .filter((value): value is Date => value !== null)
+    .sort((a, b) => a.getTime() - b.getTime());
+  return candidates[0]?.toISOString() ?? null;
+}
+
+function computeActiveWeeksTrailing8(
+  current: MonthlyTenantAccumulator,
+  history: MonthlyTenantAccumulator[]
+): number {
+  const allowedWeeks = new Set<string>();
+  let cursor = new Date(current.monthEnd);
+  for (let index = 0; index < 8; index += 1) {
+    allowedWeeks.add(weekKey(cursor));
+    cursor = shiftUtcDays(cursor, -7);
+  }
+
+  const seenWeeks = new Set<string>();
+  for (const month of [current, ...history]) {
+    for (const activeWeek of month.activeWeeks) {
+      if (allowedWeeks.has(activeWeek)) {
+        seenWeeks.add(activeWeek);
+      }
+    }
+  }
+
+  return seenWeeks.size;
+}
+
 function buildFeaturePayload(
   acc: MonthlyTenantAccumulator,
-  trailing: MonthlyTenantAccumulator[]
+  trailing: MonthlyTenantAccumulator[],
+  lifecycleStartDate: string | null,
+  onboardingStartDate: string | null
 ): RetentionFeaturePayload {
   const trailingOrders = trailing.map((month) => month.orderCount);
   const historicalBaseline =
@@ -930,9 +1424,10 @@ function buildFeaturePayload(
       : 0;
   const recentBaselineRatio = historicalBaseline > 0 ? acc.orderCount / historicalBaseline : null;
   const timeToFirstOrderDays =
-    acc.goLiveDate && acc.firstOrderDate
-      ? Math.round((new Date(acc.firstOrderDate).getTime() - new Date(acc.goLiveDate).getTime()) / (24 * 60 * 60 * 1000))
+    onboardingStartDate && acc.firstOrderDate
+      ? Math.round((new Date(acc.firstOrderDate).getTime() - new Date(onboardingStartDate).getTime()) / (24 * 60 * 60 * 1000))
       : null;
+  const activeWeeksTrailing8 = computeActiveWeeksTrailing8(acc, trailing);
 
   return {
     commercial: {
@@ -972,12 +1467,12 @@ function buildFeaturePayload(
       invoiceIrregularities: acc.invoiceIrregularities,
     },
     overlays: {
-      goLiveDate: acc.goLiveDate,
+      goLiveDate: lifecycleStartDate,
       implementationStage: acc.implementationStage,
       icp: acc.icp,
     },
     candidateMetrics: {
-      activeWeeksTrailing8: acc.activeWeeks.size,
+      activeWeeksTrailing8,
       recentBaselineRatio,
       ordersPerMonth: acc.orderCount,
       daysActiveLast30: acc.daysActive.size,
@@ -1180,11 +1675,17 @@ export async function buildRetentionDataset(actor: RetentionActor): Promise<void
     for (let index = 0; index < months.length; index += 1) {
       const current = months[index];
       const trailing = dedupeTrailingMonths(months.slice(0, index), 3);
+      const history = months.slice(0, index);
+      const lifecycleStartDate = deriveLifecycleStartDate(current, history);
+      const onboardingStartDate = deriveOnboardingStartDate(current, history);
       const future = months.slice(index + 1);
-      const featurePayload = buildFeaturePayload(current, trailing);
+      const featurePayload = buildFeaturePayload(current, trailing, lifecycleStartDate, onboardingStartDate);
       const outcomePayload = buildOutcomePayload(current, future, featurePayload);
       const coveragePayload = buildCoverage(current);
-      const lifecyclePhase = determineLifecyclePhase(current);
+      const lifecyclePhase = determineLifecyclePhase({
+        ...current,
+        goLiveDate: lifecycleStartDate,
+      });
       const candidateMetrics = asRecord(featurePayload.candidateMetrics);
       const primaryDefinition = selectLirDefinition(lifecyclePhase, candidateMetrics);
       const primaryValue = asNumber(candidateMetrics[primaryDefinition.metricKey]);
@@ -1371,3 +1872,12 @@ export async function materializeRetentionCurrent(actor: RetentionActor): Promis
     });
   }
 }
+
+export const __test__ = {
+  ardaCreatedTimestamp,
+  ardaObservedTimestamp,
+  ardaOccurredAt,
+  deriveLifecycleStartDate,
+  deriveOnboardingStartDate,
+  computeActiveWeeksTrailing8,
+};
