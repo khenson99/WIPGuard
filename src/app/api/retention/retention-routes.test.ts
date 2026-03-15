@@ -12,6 +12,12 @@ vi.mock("@/lib/retention/service", () => ({
   normalizeRetentionFilters: vi.fn(() => ({ status: null })),
 }));
 
+vi.mock("@/lib/retention/pipeline", () => ({
+  syncRetentionSources: vi.fn(),
+  buildRetentionDataset: vi.fn(),
+  materializeRetentionCurrent: vi.fn(),
+}));
+
 const ACTOR = {
   id: "user_1",
   organizationId: "org_1",
@@ -144,5 +150,43 @@ describe("retention routes", () => {
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({ error: "Retention tenant not found" });
+  });
+
+  it("passes through auth failures for retention sync requests", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    });
+
+    const { POST } = await import("@/app/api/retention/sync/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/retention/sync", {
+        method: "POST",
+      })
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
+  });
+
+  it("runs the full retention pipeline for authenticated actors", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { syncRetentionSources, buildRetentionDataset, materializeRetentionCurrent } = await import("@/lib/retention/pipeline");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+
+    const { POST } = await import("@/app/api/retention/sync/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/retention/sync", {
+        method: "POST",
+        body: JSON.stringify({ mode: "full" }),
+        headers: { "content-type": "application/json" },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(syncRetentionSources).toHaveBeenCalledWith(ACTOR);
+    expect(buildRetentionDataset).toHaveBeenCalledWith(ACTOR);
+    expect(materializeRetentionCurrent).toHaveBeenCalledWith(ACTOR);
   });
 });

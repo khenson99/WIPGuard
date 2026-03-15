@@ -100,4 +100,19 @@ describe("deals route", () => {
       error: "Deals requires local database setup.",
     });
   });
+
+  it("scopes deal queries to the authenticated organization", async () => {
+    const { GET } = await import("@/app/api/deals/route");
+
+    const response = await GET(new NextRequest("http://localhost/api/deals"));
+
+    expect(response.status).toBe(200);
+    expect(dealFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: "org-1",
+        }),
+      }),
+    );
+  });
 });

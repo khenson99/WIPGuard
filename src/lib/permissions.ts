@@ -116,7 +116,7 @@ export function workspaceIdForPermissionAction(
     case "priority.write":
     case "policy.write":
     case "policy.override":
-      return "work";
+      return "dashboard";
     case "conference.write":
     case "deals.read":
     case "deals.write":

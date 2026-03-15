@@ -156,6 +156,10 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
         metaPage.pageFollowers > 0 ||
         metaPage.postReach30d > 0 ||
         metaPage.postEngagement30d > 0 ||
+        metaPage.traffic > 0 ||
+        metaPage.clicks > 0 ||
+        metaPage.returningVisitors > 0 ||
+        metaPage.bounceRate > 0 ||
         metaPage.topPosts.length > 0)
   );
 
@@ -164,6 +168,10 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
       (instagram.followers > 0 ||
         instagram.reach30d > 0 ||
         instagram.engagement30d > 0 ||
+        instagram.traffic > 0 ||
+        instagram.clicks > 0 ||
+        instagram.returningVisitors > 0 ||
+        instagram.bounceRate > 0 ||
         instagram.topPosts.length > 0)
   );
 
@@ -433,8 +441,8 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
               : metaPageStatus.state === 'not_configured'
                 ? "Meta Page"
                 : metaPageStatus.state === 'no_data'
-                  ? "No page insights in selected range"
-                  : "Meta Page"
+                  ? "Configured, but no Meta Page signals were returned in this range"
+                  : "Meta Page connected"
           }
           icon={Facebook}
         />
@@ -769,7 +777,7 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
           ) : metaPageStatus.state === 'failing' ? (
             <p className="text-destructive text-center py-8">Configured but failing: {metaPageStatus.error}</p>
           ) : metaPageStatus.state === 'no_data' ? (
-            <p className="text-muted-foreground text-center py-8">No Meta Page data in selected range</p>
+            <p className="text-muted-foreground text-center py-8">Meta Page is connected, but no page-level signals were returned in this range.</p>
           ) : (
             <div className="space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -837,7 +845,7 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
           ) : instagramStatus.state === 'failing' ? (
             <p className="text-destructive text-center py-8">Configured but failing: {instagramStatus.error}</p>
           ) : instagramStatus.state === 'no_data' ? (
-            <p className="text-muted-foreground text-center py-8">No Instagram data in selected range</p>
+            <p className="text-muted-foreground text-center py-8">Instagram is connected, but no audience or traffic signals were returned in this range.</p>
           ) : (
             <div className="space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

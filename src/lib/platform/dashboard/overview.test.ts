@@ -7,8 +7,6 @@ import {
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    task: { count: vi.fn() },
-    customerSuccessAlertRecord: { count: vi.fn() },
     deal: { count: vi.fn(), aggregate: vi.fn() },
     workflowDefinition: { count: vi.fn() },
     workflowApproval: { count: vi.fn() },
@@ -52,16 +50,10 @@ describe("loadDashboardOverview", () => {
     vi.resetAllMocks();
   });
 
-  it("summarizes work, revenue, integrations, automations, and analytics freshness", async () => {
+  it("summarizes revenue, integrations, automations, and analytics freshness", async () => {
     const { prisma } = await import("@/lib/prisma");
     const { loadDashboardOverview } = await import("@/lib/platform/dashboard/overview");
 
-    vi.mocked(prisma.task.count)
-      .mockResolvedValueOnce(4 as never)
-      .mockResolvedValueOnce(2 as never)
-      .mockResolvedValueOnce(1 as never)
-      .mockResolvedValueOnce(3 as never);
-    vi.mocked(prisma.customerSuccessAlertRecord.count).mockResolvedValue(2 as never);
     vi.mocked(prisma.deal.count)
       .mockResolvedValueOnce(6 as never)
       .mockResolvedValueOnce(3 as never)
@@ -104,14 +96,6 @@ describe("loadDashboardOverview", () => {
       organizationId: "org-1",
     });
 
-    expect(payload.workSummary).toMatchObject({
-      workspaceId: "work",
-      activeTasks: 4,
-      overdueTasks: 2,
-      blockedTasks: 1,
-      dueSoonTasks: 3,
-      openAlerts: 2,
-    });
     expect(payload.revenueSummary).toMatchObject({
       workspaceId: "deals",
       openDeals: 6,
@@ -148,8 +132,6 @@ describe("loadDashboardOverview", () => {
     const { prisma } = await import("@/lib/prisma");
     const { loadDashboardOverview } = await import("@/lib/platform/dashboard/overview");
 
-    vi.mocked(prisma.task.count).mockResolvedValue(0 as never);
-    vi.mocked(prisma.customerSuccessAlertRecord.count).mockResolvedValue(0 as never);
     vi.mocked(prisma.deal.count).mockResolvedValue(0 as never);
     vi.mocked(prisma.deal.aggregate).mockResolvedValue({ _sum: { amount: 0 } } as never);
     vi.mocked(prisma.workflowDefinition.count).mockResolvedValue(0 as never);

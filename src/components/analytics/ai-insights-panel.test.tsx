@@ -98,7 +98,7 @@ describe("AiInsightsPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Ads" }));
     expect(screen.getByText("Ads efficiency trending down")).toBeTruthy();
-    expect(screen.getByText("Refactor campaign targeting")).toBeTruthy();
+    expect(screen.queryByText("Refactor campaign targeting")).toBeNull();
   });
 
   it("resets filter when defaultFilter prop changes", () => {

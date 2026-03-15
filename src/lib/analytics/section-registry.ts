@@ -122,8 +122,6 @@ export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
   { id: "sales-slack", label: "Slack", path: "/analytics/sales-slack", parentId: "sales-pipeline", dataDomain: "slack" },
 
   { id: "cs-pylon", label: "Pylon", path: "/analytics/cs-pylon", parentId: "customer-success", dataDomain: "pylon" },
-  { id: "cs-coda", label: "Coda", path: "/analytics/cs-coda", parentId: "customer-success", dataDomain: "coda" },
-  { id: "cs-product", label: "Product", path: "/analytics/cs-product", parentId: "customer-success", dataDomain: "product" },
   { id: "cs-google-workspace", label: "Google Workspace", path: "/analytics/cs-google-workspace", parentId: "customer-success", dataDomain: "googleWorkspace" },
   { id: "cs-slack", label: "Slack", path: "/analytics/cs-slack", parentId: "customer-success", dataDomain: "slack" },
 
@@ -180,7 +178,7 @@ export const LEGACY_ANALYTICS_ROUTE_REDIRECTS: Record<string, string> = {
   sales: "/analytics/sales-pipeline",
   finance: "/analytics/finance",
   marketing: "/analytics/ads-traffic",
-  tasks: "/analytics/customer-success",
+  tasks: "/dashboard",
   hubspot: "/analytics/sales-hubspot",
   stripe: "/analytics/finance-stripe",
   mercury: "/analytics/finance-mercury",

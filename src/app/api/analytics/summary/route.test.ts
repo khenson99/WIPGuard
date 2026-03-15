@@ -16,9 +16,6 @@ vi.mock("@/lib/integrations/ownership", () => ({
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    task: { groupBy: vi.fn(), count: vi.fn() },
-    project: { count: vi.fn() },
-    statusHistory: { findMany: vi.fn() },
     analyticsSnapshot: { findMany: vi.fn() },
   },
 }));
@@ -95,17 +92,6 @@ describe("GET /api/analytics/summary", () => {
         [IntegrationProvider.PYLON]: freshness(IntegrationProvider.PYLON),
       },
     } as never);
-
-    vi.mocked(prisma.task.groupBy).mockResolvedValue([
-      { status: "DONE", _count: { status: 3 } },
-      { status: "ACTIVE", _count: { status: 2 } },
-    ] as never);
-    vi.mocked(prisma.task.count).mockResolvedValue(1 as never);
-    vi.mocked(prisma.project.count).mockResolvedValue(4 as never);
-    vi.mocked(prisma.statusHistory.findMany).mockResolvedValue([
-      { changedBy: "user-1" },
-      { changedBy: "user-2" },
-    ] as never);
     vi.mocked(prisma.analyticsSnapshot.findMany).mockResolvedValue([
       {
         providerKey: "mercury",

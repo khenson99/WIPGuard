@@ -40,6 +40,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const search = url.searchParams.get("search");
 
     const where: Record<string, unknown> = {};
+    const organizationId = getOptionalOrganizationId(session);
+    if (organizationId) {
+      where.organizationId = organizationId;
+    }
     if (stage && Object.values(DealStage).includes(stage as DealStage)) {
       where.stage = stage;
     }
@@ -113,11 +117,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         ? (body.stage as DealStage)
         : DealStage.LEAD;
 
-    const organizationId = getOptionalOrganizationId(session);
     const source =
       typeof body.source === "string" && Object.values(DealSource).includes(body.source as DealSource)
         ? (body.source as DealSource)
         : DealSource.OTHER;
+    const organizationId = getOptionalOrganizationId(session);
 
     const deal = await prisma.deal.create({
       data: {

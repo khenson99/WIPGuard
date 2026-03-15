@@ -117,8 +117,8 @@ export function TelemetryDashboard({
   if (tasksCreatedInRange > 0 && receiptsInRange > 0) {
     const conversionRate = (tasksCreatedInRange / receiptsInRange) * 100;
     insights.push({
-      title: "Automation Conversion",
-      insight: `${conversionRate.toFixed(0)}% of receipts generated tasks (${tasksCreatedInRange} of ${receiptsInRange}).`,
+      title: "Automation Coverage",
+      insight: `${conversionRate.toFixed(0)}% of receipts triggered downstream automation activity (${tasksCreatedInRange} of ${receiptsInRange}).`,
       action: conversionRate < 20
         ? "Low conversion — review rule conditions and ensure proper event mapping."
         : "Healthy automation throughput.",
@@ -171,7 +171,7 @@ export function TelemetryDashboard({
           icon={<Zap className="h-4 w-4" />}
         />
         <StatCard
-          title="Tasks Created"
+          title="Automations Triggered"
           value={fmtN(tasksCreatedInRange)}
           icon={<CheckCircle2 className="h-4 w-4" />}
         />
@@ -209,7 +209,7 @@ export function TelemetryDashboard({
 
       {/* ── Activity Trend ─────────────────────────── */}
       {trend.length > 0 && (
-        <SectionCard title="Activity Trend" subtitle="Daily receipts and task creation">
+        <SectionCard title="Activity Trend" subtitle="Daily automation receipts captured">
           <div className="flex items-end gap-1" style={{ height: 120 }}>
             {trend.map((t, i) => (
               <div key={i} className="flex flex-1 flex-col items-center gap-0.5">
