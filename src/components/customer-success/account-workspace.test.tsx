@@ -429,6 +429,91 @@ describe("CustomerSuccessAccountWorkspace", () => {
     );
   });
 
+  it("dismisses an alert and refreshes the attention queue", async () => {
+    let getCount = 0;
+    const initialDetail = buildDetail({
+      alerts: [
+        {
+          id: "alert_1",
+          accountId: "acct_1",
+          title: "Relationship gap detected",
+          category: "risk",
+          severity: "medium",
+          status: "open",
+          slaStatus: "at_risk",
+          source: "relationship",
+          evidence: ["No exec touch in 45 days"],
+          suggestedAction: "Rebuild sponsor alignment",
+          createdAt: "2026-03-09T10:00:00.000Z",
+          updatedAt: "2026-03-10T08:00:00.000Z",
+        },
+      ],
+    });
+    const refreshedDetail = buildDetail({
+      alerts: [
+        {
+          id: "alert_1",
+          accountId: "acct_1",
+          title: "Relationship gap detected",
+          category: "risk",
+          severity: "medium",
+          status: "dismissed",
+          slaStatus: "on_track",
+          source: "relationship",
+          evidence: ["False positive after manual review"],
+          suggestedAction: "No follow-up needed",
+          createdAt: "2026-03-09T10:00:00.000Z",
+          updatedAt: "2026-03-10T09:00:00.000Z",
+        },
+      ],
+    });
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/customer-success/accounts/acct_1" && (!init?.method || init.method === "GET")) {
+        getCount += 1;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => (getCount === 1 ? initialDetail : refreshedDetail),
+        } as Response;
+      }
+
+      if (url === "/api/customer-success/accounts/acct_1/alerts/alert_1/status" && init?.method === "POST") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: "alert_1" }),
+        } as Response;
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CustomerSuccessAccountWorkspace accountId="acct_1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Relationship gap detected")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Alert dismissed.")).toBeTruthy();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Medium • Dismissed • On Track/)).toBeTruthy();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/customer-success/accounts/acct_1/alerts/alert_1/status",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
   it("renders retention leading indicators in the health view", async () => {
     vi.stubGlobal(
       "fetch",
