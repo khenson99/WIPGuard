@@ -589,6 +589,73 @@ function stripePayloadHasSignal(data: StripeData | null | undefined): boolean {
   );
 }
 
+const GENERIC_EMAIL_DOMAINS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "yahoo.com",
+  "outlook.com",
+  "hotmail.com",
+  "icloud.com",
+  "me.com",
+  "proton.me",
+  "protonmail.com",
+]);
+
+function normalizeEmail(value: string | null | undefined): string | null {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeEmailDomain(value: string | null | undefined): string | null {
+  const email = normalizeEmail(value);
+  if (!email || !email.includes("@")) return null;
+  const [, domain] = email.split("@");
+  const normalized = domain?.trim().toLowerCase() ?? "";
+  if (!normalized || GENERIC_EMAIL_DOMAINS.has(normalized)) {
+    return null;
+  }
+  return normalized;
+}
+
+function buildSubscriptionOverview(data: AnalyticsDashboardData): FinancialPlanningData["subscriptionOverview"] {
+  const stripeRefs = data.stripe?.subscriptions.activeCustomerRefs ?? [];
+  const hubspotDeals = (data.hubspot?.deals ?? []).filter(
+    (deal) => deal.stageLabel.trim().toLowerCase() === "subscription",
+  );
+
+  const stripeCustomerIds = new Set(
+    stripeRefs
+      .map((ref) => ref.customerId.trim())
+      .filter((customerId) => customerId.length > 0 && customerId !== "Unknown customer"),
+  );
+  const stripeEmails = new Set(
+    stripeRefs.map((ref) => normalizeEmail(ref.email)).filter(Boolean) as string[],
+  );
+  const stripeDomains = new Set(
+    stripeRefs.map((ref) => ref.emailDomain?.trim().toLowerCase() ?? null).filter(Boolean) as string[],
+  );
+
+  let hubspotOnlyCount = 0;
+
+  for (const deal of hubspotDeals) {
+    const customerId = deal.stripeCustomerId?.trim() || null;
+    const email = normalizeEmail(deal.primaryContactEmail);
+    const emailDomain = normalizeEmailDomain(deal.primaryContactEmail);
+
+    if (customerId && stripeCustomerIds.has(customerId)) continue;
+    if (email && stripeEmails.has(email)) continue;
+    if (emailDomain && stripeDomains.has(emailDomain)) continue;
+
+    hubspotOnlyCount += 1;
+  }
+
+  return {
+    mergedActiveSubscriptions: stripeRefs.length + hubspotOnlyCount,
+    stripeActiveSubscriptions: data.stripe?.subscriptions.active ?? 0,
+    hubspotActiveSubscriptions: data.hubspot?.funnel.activeSubscriptions ?? hubspotDeals.length,
+  };
+}
+
 async function buildFinancialPlanningData(
   userId: string,
   data: AnalyticsDashboardData,
@@ -608,6 +675,7 @@ async function buildFinancialPlanningData(
   const stripe = data.stripe as StripeData | null;
   const mercury = data.mercury as MercuryData | null;
   const hubspot = data.hubspot as HubSpotData | null;
+  const subscriptionOverview = buildSubscriptionOverview(data);
 
   const [dbBudgets, dbGoals, dbForecasts] = await Promise.all([
     prisma.budget.findMany({
@@ -642,28 +710,28 @@ async function buildFinancialPlanningData(
 
   // --- Budgets with variance ---
   const budgets: BudgetData[] = dbBudgets.map((b: { id: string; name: string; period: string; startDate: Date; endDate: Date; lineItems: { id: string; category: string; plannedAmount: number; notes: string | null }[] }) => {
-    const lineItems: BudgetLineItemData[] = computeBudgetActuals(
-      {
-        id: b.id,
-        name: b.name,
-        period: b.period.toLowerCase() as BudgetData["period"],
-        startDate: b.startDate.toISOString(),
-        endDate: b.endDate.toISOString(),
-        lineItems: b.lineItems.map((li: { id: string; category: string; plannedAmount: number; notes: string | null }) => ({
-          id: li.id,
-          category: li.category.toLowerCase() as BudgetLineItemData["category"],
-          plannedAmount: li.plannedAmount,
-          actualAmount: null,
-          variance: null,
-          variancePct: null,
-          notes: li.notes ?? undefined,
-        })),
-        totalPlanned: b.lineItems.reduce((s: number, li: { plannedAmount: number }) => s + li.plannedAmount, 0),
-        totalActual: null,
-        totalVariance: null,
-      },
-      mercury,
-    );
+    const budgetDraft = {
+      id: b.id,
+      name: b.name,
+      period: b.period.toLowerCase() as BudgetData["period"],
+      startDate: b.startDate.toISOString(),
+      endDate: b.endDate.toISOString(),
+      lineItems: b.lineItems.map((li: { id: string; category: string; plannedAmount: number; notes: string | null }) => ({
+        id: li.id,
+        category: li.category.toLowerCase() as BudgetLineItemData["category"],
+        plannedAmount: li.plannedAmount,
+        actualAmount: null,
+        variance: null,
+        variancePct: null,
+        notes: li.notes ?? undefined,
+      })),
+      totalPlanned: b.lineItems.reduce((s: number, li: { plannedAmount: number }) => s + li.plannedAmount, 0),
+      totalActual: null,
+      totalVariance: null,
+    };
+    const lineItems: BudgetLineItemData[] = mercury?.cashFlow
+      ? budgetDraft.lineItems
+      : computeBudgetActuals(budgetDraft, mercury);
     const summary = computeBudgetSummary(lineItems);
     return {
       id: b.id,
@@ -686,7 +754,7 @@ async function buildFinancialPlanningData(
     burn_rate: mercury?.cashFlow.burnRate ?? 0,
     net_cash_flow: mercury?.cashFlow.netCashFlow ?? 0,
     revenue: stripe?.revenue.totalRevenue30d ?? 0,
-    customer_count: stripe?.subscriptions.active ?? 0,
+    customer_count: subscriptionOverview?.mergedActiveSubscriptions ?? 0,
   };
 
   const goals: FinancialGoalData[] = dbGoals.map((g: { id: string; metric: GoalMetric | string; targetValue: number; deadline: Date; }) => {
@@ -720,6 +788,7 @@ async function buildFinancialPlanningData(
     goals,
     pnl,
     unitEconomics,
+    subscriptionOverview,
   };
 }
 

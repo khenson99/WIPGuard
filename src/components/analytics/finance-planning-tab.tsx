@@ -16,7 +16,6 @@ import {
   type DataTableColumn,
 } from "./dashboard-primitives";
 import {
-  computeBudgetActuals,
   computeBudgetSummary,
   type BudgetActualItem,
 } from "@/lib/analytics/budget-variance";
@@ -25,7 +24,7 @@ import {
   endDateForPeriod,
   type BudgetPeriod,
 } from "@/lib/analytics/budget-period";
-import { computeVariance, fmtDelta, runwayColor } from "@/lib/analytics/finance-utils";
+import { fmtDelta } from "@/lib/analytics/finance-utils";
 import { computeFinancialGoals, type FinancialGoal } from "@/lib/analytics/finance-modeling";
 
 type BudgetPeriodApi = BudgetPeriod;
@@ -193,25 +192,32 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
     seedFormFromBudget,
   ]);
 
-  const budgetAmounts = useMemo(() => {
-    if (!activeBudget || !activeBudget.lineItems?.length) return undefined;
-    const amounts: Record<string, number> = {};
-    for (const config of CATEGORY_CONFIG) {
-      amounts[config.label] = 0;
-    }
-    for (const item of activeBudget.lineItems) {
-      const config = CATEGORY_CONFIG.find((entry) => entry.key === item.category);
-      if (!config) continue;
-      amounts[config.label] = item.plannedAmount ?? 0;
-    }
-    return amounts;
-  }, [activeBudget]);
+  const activeBudgetWithActuals = useMemo(() => {
+    if (!activeBudget) return data?.financialPlanning?.activeBudget ?? null;
+    const serverBudget = data?.financialPlanning?.budgets.find((budget) => budget.id === activeBudget.id);
+    return serverBudget ?? data?.financialPlanning?.activeBudget ?? null;
+  }, [activeBudget, data?.financialPlanning]);
 
   /* ── Computed data ────────────────────────────────── */
 
   const budgetItems = useMemo(
-    () => computeBudgetActuals(data?.mercury ?? null, budgetAmounts),
-    [data?.mercury, budgetAmounts],
+    () =>
+      (activeBudgetWithActuals?.lineItems ?? []).map((item) => ({
+        category: item.category,
+        budgeted: item.plannedAmount,
+        actual: item.actualAmount ?? 0,
+        variance: item.variance ?? 0,
+        variancePct: item.variancePct ?? 0,
+        status:
+          item.variance == null || item.variancePct == null
+            ? "on_track"
+            : item.variance > 0
+              ? "over"
+              : item.variance < 0
+                ? "under"
+                : "on_track",
+      })) satisfies BudgetActualItem[],
+    [activeBudgetWithActuals],
   );
 
   const budgetSummary = useMemo(
@@ -675,17 +681,21 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
       </SectionCard>
 
       {/* Budget Category Breakdown */}
-      {budgetItems.length > 0 && (
-        <SectionCard title="Category Breakdown" subtitle="Actual spending by category">
-          <BarDisplay items={barItems} formatValue={fmt$} />
-          <div className="mt-4">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Budget Allocation
-            </p>
-            <BarDisplay items={barBudgetItems} formatValue={fmt$} />
-          </div>
-        </SectionCard>
-      )}
+      <SectionCard title="Category Breakdown" subtitle="Actual spending by category">
+        {budgetItems.length > 0 ? (
+          <>
+            <BarDisplay items={barItems} formatValue={fmt$} />
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Budget Allocation
+              </p>
+              <BarDisplay items={barBudgetItems} formatValue={fmt$} />
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">No category breakdown available until a budget baseline is configured.</p>
+        )}
+      </SectionCard>
 
       {/* Goals Tracker */}
       {goals.length > 0 && (

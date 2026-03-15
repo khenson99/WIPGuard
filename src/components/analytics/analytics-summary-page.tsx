@@ -33,10 +33,10 @@ interface SummaryPayload {
     label: string;
   };
   highlights: {
-    totalTasks: number;
-    overdueTasks: number;
-    activeProjects: number;
-    activeContributors: number;
+    connectedSections: number;
+    degradedSections: number;
+    missingSections: number;
+    connectedIntegrations: number;
     disciplineCoverage: number;
   };
   primarySections: Array<{
@@ -168,10 +168,10 @@ export function AnalyticsSummaryPage() {
       "analytics-highlights.csv",
       ["Metric", "Value"],
       [
-        ["Total Tasks", String(h.totalTasks)],
-        ["Overdue Tasks", String(h.overdueTasks)],
-        ["Active Projects", String(h.activeProjects)],
-        ["Active Contributors", String(h.activeContributors)],
+        ["Connected Sections", String(h.connectedSections)],
+        ["Degraded Sections", String(h.degradedSections)],
+        ["Missing Sections", String(h.missingSections)],
+        ["Connected Integrations", String(h.connectedIntegrations)],
         ["Discipline Coverage (%)", String(h.disciplineCoverage)],
       ],
     );
@@ -301,20 +301,20 @@ export function AnalyticsSummaryPage() {
           <p className="mt-1 text-2xl font-semibold text-foreground">{summary.highlights.disciplineCoverage}%</p>
         </div>
         <div className="rounded-xl border border-border bg-card px-4 py-3">
-          <p className="text-xs text-muted-foreground">Active Projects</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{summary.highlights.activeProjects}</p>
+          <p className="text-xs text-muted-foreground">Connected Sections</p>
+          <p className="mt-1 text-2xl font-semibold text-foreground">{summary.highlights.connectedSections}</p>
         </div>
         <div className="rounded-xl border border-border bg-card px-4 py-3">
-          <p className="text-xs text-muted-foreground">Active Contributors</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{summary.highlights.activeContributors}</p>
+          <p className="text-xs text-muted-foreground">Degraded Sections</p>
+          <p className="mt-1 text-2xl font-semibold text-amber-600">{summary.highlights.degradedSections}</p>
         </div>
         <div className="rounded-xl border border-border bg-card px-4 py-3">
-          <p className="text-xs text-muted-foreground">Total Tasks</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{summary.highlights.totalTasks}</p>
+          <p className="text-xs text-muted-foreground">Missing Sections</p>
+          <p className="mt-1 text-2xl font-semibold text-foreground">{summary.highlights.missingSections}</p>
         </div>
         <div className="rounded-xl border border-border bg-card px-4 py-3">
-          <p className="text-xs text-muted-foreground">Overdue Tasks</p>
-          <p className="mt-1 text-2xl font-semibold text-red-500">{summary.highlights.overdueTasks}</p>
+          <p className="text-xs text-muted-foreground">Connected Integrations</p>
+          <p className="mt-1 text-2xl font-semibold text-foreground">{summary.highlights.connectedIntegrations}</p>
         </div>
       </div>
 

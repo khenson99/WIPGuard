@@ -165,10 +165,10 @@ export default function AutomationRecommendationsPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-foreground">
-            Recommendation Inbox
+            Suggested Actions
           </h1>
           <p className="text-xs text-muted-foreground">
-            Review, approve, and execute operator recommendations.
+            Review suggested actions, approve gated changes, and execute safe workflow updates.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -182,7 +182,7 @@ export default function AutomationRecommendationsPage() {
             href="/automations/approvals"
             className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
           >
-            Approval Inbox
+            Review Queue
           </Link>
           <Link
             href="/automations"
@@ -204,7 +204,7 @@ export default function AutomationRecommendationsPage() {
           type="text"
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder="Search recommendations..."
+          placeholder="Search suggested actions..."
           className="rounded-md border border-border bg-secondary px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground"
         />
         <select
@@ -227,7 +227,7 @@ export default function AutomationRecommendationsPage() {
         </div>
       ) : filteredRecommendations.length === 0 ? (
         <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
-          No recommendations match the current filters.
+          No suggested actions match the current filters.
         </div>
       ) : (
         <div className="space-y-3">
@@ -268,7 +268,7 @@ export default function AutomationRecommendationsPage() {
                   )}
                   <p className="text-[11px] text-muted-foreground">
                     Action: {recommendation.actionType}
-                    {recommendation.requiresApproval ? " · approval required" : ""}
+                    {recommendation.requiresApproval ? " · review required" : ""}
                   </p>
                   {recommendation.executionError && (
                     <p className="text-[11px] text-red-500">
@@ -300,8 +300,8 @@ export default function AutomationRecommendationsPage() {
                       >
                         {processingId === recommendation.id &&
                         processingAction === "reject"
-                          ? "Rejecting..."
-                          : "Reject"}
+                          ? "Declining..."
+                          : "Decline"}
                       </button>
                       <button
                         onClick={() =>

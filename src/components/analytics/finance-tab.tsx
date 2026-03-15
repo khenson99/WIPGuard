@@ -180,7 +180,10 @@ export function FinanceTab({ data }: FinanceTabProps) {
   // Extract metrics with fallbacks
   const mrr = stripe?.revenue?.mrr ?? 0;
   const mrrChange = stripe?.revenue?.mrrChange ?? 0;
-  const activeSubs = stripe?.subscriptions?.active ?? 0;
+  const subscriptionOverview = fp?.subscriptionOverview ?? null;
+  const activeSubs = subscriptionOverview?.mergedActiveSubscriptions ?? (stripe?.subscriptions?.active ?? 0);
+  const stripeSubs = subscriptionOverview?.stripeActiveSubscriptions ?? (stripe?.subscriptions?.active ?? 0);
+  const hubspotSubs = subscriptionOverview?.hubspotActiveSubscriptions ?? 0;
   const pastDue = stripe?.subscriptions?.pastDue ?? 0;
   const trialing = stripe?.subscriptions?.trialing ?? 0;
   const cashBalance = mercury?.cashFlow?.totalBalance ?? 0;
@@ -206,7 +209,7 @@ export function FinanceTab({ data }: FinanceTabProps) {
         <StatCard
           label="Active Subscriptions"
           value={activeSubs.toLocaleString()}
-          subtitle={`${pastDue} past due, ${trialing} trialing`}
+          subtitle={`${stripeSubs} Stripe · ${hubspotSubs} HubSpot · ${pastDue} past due · ${trialing} trialing`}
           icon={CreditCard}
         />
         <StatCard
@@ -459,6 +462,12 @@ export function FinanceTab({ data }: FinanceTabProps) {
             <span className="text-xs text-muted-foreground ml-auto">{fp.activeBudget.name}</span>
           </div>
 
+          {fp.activeBudget.totalActual == null ? (
+            <div className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
+              Actuals are hidden until transaction categories are mapped to budget lines.
+            </div>
+          ) : null}
+
           {/* Summary row */}
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="bg-secondary/40 rounded-lg p-4">
@@ -624,7 +633,7 @@ export function FinanceTab({ data }: FinanceTabProps) {
           <div className="bg-card border border-border rounded-xl p-6">
             <div className="flex items-center justify-between mb-3">
               <span className="text-muted-foreground text-sm font-medium">
-                Burn Rate
+                Net Burn
               </span>
               <TrendingDown className="w-4 h-4 text-orange-600" />
             </div>

@@ -570,11 +570,24 @@ export async function fetchCodaData(
     })
     .slice(0, 10);
 
+  const analysisNow =
+    options.now ??
+    cards.reduce<Date | null>((latest, card) => {
+      if (!card.createdAtIso) return latest;
+      const parsed = new Date(card.createdAtIso);
+      if (Number.isNaN(parsed.getTime())) return latest;
+      if (!latest || parsed.getTime() > latest.getTime()) {
+        return parsed;
+      }
+      return latest;
+    }, null) ??
+    now;
+
   const creatorWindows: CodaCreatorWindow[] = windowDays <= 30
-    ? [buildCreatorWindow(cards, 30, now)]
+    ? [buildCreatorWindow(cards, 30, analysisNow)]
     : windowDays <= 60
-      ? [buildCreatorWindow(cards, 30, now), buildCreatorWindow(cards, 60, now)]
-      : [buildCreatorWindow(cards, 30, now), buildCreatorWindow(cards, 60, now), buildCreatorWindow(cards, 90, now)];
+      ? [buildCreatorWindow(cards, 30, analysisNow), buildCreatorWindow(cards, 60, analysisNow)]
+      : [buildCreatorWindow(cards, 30, analysisNow), buildCreatorWindow(cards, 60, analysisNow), buildCreatorWindow(cards, 90, analysisNow)];
 
   const unknownCards = cards.filter((card) => card.creator === "Unknown").length;
   const unknownCreatorRatio = cards.length > 0 ? (unknownCards / cards.length) * 100 : 0;
@@ -588,7 +601,7 @@ export async function fetchCodaData(
   const newCreatorFeed = buildNewCreatorFeed(cards);
 
   const cardsCreatedTrend = buildDailyTrend(
-    cards.filter((card) => isWithinDays(card.createdAtIso, windowDays, now)),
+    cards.filter((card) => isWithinDays(card.createdAtIso, windowDays, analysisNow)),
     windowDays
   );
   const creatorFirstSeenCards = cards.filter((card) => card.creator !== "Unknown");
@@ -601,14 +614,14 @@ export async function fetchCodaData(
     }
   }
   const newCreatorsTrend = buildDailyTrend(
-    [...byCreatorFirstSeen.values()].filter((card) => isWithinDays(card.createdAtIso, windowDays, now)),
+    [...byCreatorFirstSeen.values()].filter((card) => isWithinDays(card.createdAtIso, windowDays, analysisNow)),
     windowDays
   );
 
   const dailyTrendStart = shouldFilterByRange
     ? options.fromDate!
-    : new Date(now.getTime() - 89 * 24 * 60 * 60 * 1000);
-  const dailyTrendEnd = shouldFilterByRange ? options.toDate! : now;
+    : new Date(analysisNow.getTime() - 89 * 24 * 60 * 60 * 1000);
+  const dailyTrendEnd = shouldFilterByRange ? options.toDate! : analysisNow;
 
   const downloadsByDay = new Map<string, number>();
   const downloadersByDay = new Map<string, Set<string>>();
@@ -656,11 +669,11 @@ export async function fetchCodaData(
       lastActivityAt: null,
     };
 
-    if (isWithinDays(card.createdAtIso, windowDays, now)) {
+    if (isWithinDays(card.createdAtIso, windowDays, analysisNow)) {
       existing.cards30d += 1;
       const day = toDayKey(card.createdAtIso);
       if (day) existing.activeDays30d.add(day);
-    } else if (isWithinPreviousWindow(card.createdAtIso, windowDays, now)) {
+    } else if (isWithinPreviousWindow(card.createdAtIso, windowDays, analysisNow)) {
       existing.cardsPrevious30d += 1;
     }
 
@@ -679,7 +692,7 @@ export async function fetchCodaData(
       activeDays30d: creator.activeDays30d.size,
       lastActivityAt: creator.lastActivityAt,
     })),
-    now,
+    now: analysisNow,
   });
 
   const leadEnrichment = await enrichCodaLeadFunnelStatus({

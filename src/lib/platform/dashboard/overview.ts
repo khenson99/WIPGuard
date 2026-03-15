@@ -17,14 +17,6 @@ import { prisma } from "@/lib/prisma";
 
 export interface DashboardOverviewPayload {
   generatedAt: string;
-  workSummary: {
-    workspaceId: WorkspaceId;
-    activeTasks: number;
-    overdueTasks: number;
-    blockedTasks: number;
-    dueSoonTasks: number;
-    openAlerts: number;
-  };
   revenueSummary: {
     workspaceId: WorkspaceId;
     openDeals: number;
@@ -86,7 +78,6 @@ export async function loadDashboardOverview(
   input: LoadDashboardOverviewInput,
 ): Promise<DashboardOverviewPayload> {
   const now = new Date();
-  const in7d = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   const staleSyncThreshold = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const monthStart = startOfUtcMonth(now);
   const nextMonthStart = startOfNextUtcMonth(now);
@@ -107,11 +98,6 @@ export async function loadDashboardOverview(
   );
 
   const [
-    activeTasks,
-    overdueTasks,
-    blockedTasks,
-    dueSoonTasks,
-    openAlerts,
     openDeals,
     pipelineAggregate,
     closingThisMonth,
@@ -125,38 +111,6 @@ export async function loadDashboardOverview(
     credentials,
     latestRows,
   ] = await Promise.all([
-    prisma.task.count({
-      where: {
-        ...organizationFilter,
-        status: { in: ["WORKING_ON_TODAY", "ACTIVE", "QUEUED"] },
-      },
-    }),
-    prisma.task.count({
-      where: {
-        ...organizationFilter,
-        status: { notIn: ["DONE"] },
-        dueDate: { lt: now },
-      },
-    }),
-    prisma.task.count({
-      where: {
-        ...organizationFilter,
-        status: "NOT_DONE",
-      },
-    }),
-    prisma.task.count({
-      where: {
-        ...organizationFilter,
-        status: { notIn: ["DONE"] },
-        dueDate: { gte: now, lte: in7d },
-      },
-    }),
-    prisma.customerSuccessAlertRecord.count({
-      where: {
-        ...organizationFilter,
-        status: "OPEN",
-      },
-    }),
     prisma.deal.count({
       where: {
         ...organizationFilter,
@@ -337,14 +291,6 @@ export async function loadDashboardOverview(
 
   return {
     generatedAt: now.toISOString(),
-    workSummary: {
-      workspaceId: "work",
-      activeTasks,
-      overdueTasks,
-      blockedTasks,
-      dueSoonTasks,
-      openAlerts,
-    },
     revenueSummary: {
       workspaceId: "deals",
       openDeals,

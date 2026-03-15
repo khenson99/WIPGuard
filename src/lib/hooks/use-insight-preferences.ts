@@ -18,8 +18,6 @@ interface UseInsightPreferencesReturn {
   togglePin: (id: string) => Promise<void>;
   dismiss: (id: string) => Promise<void>;
   undoDismiss: (id: string) => Promise<void>;
-  createTaskFromInsight: (insight: AiInsight) => Promise<void>;
-  creatingTaskForId: string | null;
   sortAndFilter: (insights: AiInsight[], showDismissed?: boolean) => AiInsight[];
   loading: boolean;
 }
@@ -35,29 +33,10 @@ async function setPreference(insightId: string, status: InsightStatus): Promise<
   }
 }
 
-function buildTaskDescription(insight: AiInsight): string {
-  const lines: string[] = [
-    insight.why,
-    "",
-    insight.expectedImpact ? `**Expected impact:** ${insight.expectedImpact}` : "",
-    "",
-    "---",
-    `*Auto-created from AI insight: ${insight.id}*`,
-    `*Section: ${insight.section}*`,
-    `*Severity: ${insight.severity}*`,
-  ].filter((line, idx, arr) => {
-    // Remove consecutive empty lines
-    if (line === "" && arr[idx - 1] === "") return false;
-    return true;
-  });
-  return lines.join("\n").trim();
-}
-
 export function useInsightPreferences(): UseInsightPreferencesReturn {
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [creatingTaskForId, setCreatingTaskForId] = useState<string | null>(null);
 
   // Load preferences from API on mount
   useEffect(() => {
@@ -146,27 +125,6 @@ export function useInsightPreferences(): UseInsightPreferencesReturn {
     }
   }, []);
 
-  const createTaskFromInsight = useCallback(async (insight: AiInsight): Promise<void> => {
-    setCreatingTaskForId(insight.id);
-    try {
-      const res = await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: `[Insight] ${insight.title}`,
-          notes: buildTaskDescription(insight),
-          status: "BACKLOG",
-          priority: insight.severity === "critical" ? "P1" : insight.severity === "warning" ? "P2" : "P3",
-        }),
-      });
-      if (!res.ok) {
-        throw new Error(`Failed to create task: ${res.status}`);
-      }
-    } finally {
-      setCreatingTaskForId(null);
-    }
-  }, []);
-
   const sortAndFilter = useCallback(
     (insights: AiInsight[], showDismissed = false): AiInsight[] => {
       const filtered = showDismissed
@@ -188,8 +146,6 @@ export function useInsightPreferences(): UseInsightPreferencesReturn {
     togglePin,
     dismiss,
     undoDismiss,
-    createTaskFromInsight,
-    creatingTaskForId,
     sortAndFilter,
     loading,
   };

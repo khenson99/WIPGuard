@@ -56,14 +56,6 @@ describe("GET /api/dashboard/overview", () => {
     vi.mocked(resolveDashboardOrganizationId).mockResolvedValue("org-1" as never);
     vi.mocked(loadDashboardOverview).mockResolvedValue({
       generatedAt: "2026-03-11T16:00:00.000Z",
-      workSummary: {
-        workspaceId: "work",
-        activeTasks: 1,
-        overdueTasks: 0,
-        blockedTasks: 0,
-        dueSoonTasks: 0,
-        openAlerts: 0,
-      },
       revenueSummary: {
         workspaceId: "deals",
         openDeals: 0,
@@ -110,7 +102,7 @@ describe("GET /api/dashboard/overview", () => {
       organizationId: "org-1",
     });
     expect(response.status).toBe(200);
-    expect(payload.workSummary.workspaceId).toBe("work");
+    expect(payload.revenueSummary.workspaceId).toBe("deals");
   });
 
   it("returns 403 when organization context is required but unavailable", async () => {

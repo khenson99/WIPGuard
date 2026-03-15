@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -146,6 +146,7 @@ export function AiInsightsPage() {
   const data = resource.data;
   const loading = resource.loading && !resource.data;
   const error = resource.error;
+  const refreshInsights = resource.refresh;
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
   const [sectionFilter, setSectionFilter] = useState<SectionFilter>("all");
   const [sortMode, setSortMode] = useState<SortMode>("urgency");
@@ -180,11 +181,11 @@ export function AiInsightsPage() {
     if (!autoRefresh) return;
 
     const intervalId = window.setInterval(() => {
-      void resource.refresh();
+      void refreshInsights();
     }, 60_000);
 
     return () => window.clearInterval(intervalId);
-  }, [autoRefresh, resource.refresh]);
+  }, [autoRefresh, refreshInsights]);
 
   const allInsights = useMemo(() => data?.aiInsights?.global ?? [], [data?.aiInsights?.global]);
 
@@ -253,12 +254,6 @@ export function AiInsightsPage() {
     sortAndFilter,
     sortMode,
   ]);
-
-  useEffect(() => {
-    startTransition(() => {
-      setPage(1);
-    });
-  }, [actionableOnly, crossDomainOnly, deferredSearchQuery, pageSize, sectionFilter, severityFilter, showDismissed, sortMode]);
 
   const totalInsights = filtered.length;
   const pageCount = Math.max(1, Math.ceil(totalInsights / pageSize));
@@ -448,6 +443,7 @@ export function AiInsightsPage() {
     setActionableOnly(false);
     setCrossDomainOnly(false);
     setShowDismissed(false);
+    setPage(1);
   }, []);
 
   if (loading) {
@@ -818,7 +814,10 @@ export function AiInsightsPage() {
                           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                           <input
                             value={searchQuery}
-                            onChange={(event) => setSearchQuery(event.target.value)}
+                            onChange={(event) => {
+                              setSearchQuery(event.target.value);
+                              setPage(1);
+                            }}
                             placeholder="Search titles, evidence, actions"
                             className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary"
                           />
@@ -832,7 +831,10 @@ export function AiInsightsPage() {
                             <button
                               key={severity}
                               type="button"
-                              onClick={() => setSeverityFilter(severity)}
+                              onClick={() => {
+                                setSeverityFilter(severity);
+                                setPage(1);
+                              }}
                               aria-pressed={severityFilter === severity}
                               className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
                                 severityFilter === severity
@@ -851,7 +853,10 @@ export function AiInsightsPage() {
                         <div className="flex flex-wrap gap-2" role="group" aria-label="Section filter">
                           <button
                             type="button"
-                            onClick={() => setSectionFilter("all")}
+                            onClick={() => {
+                              setSectionFilter("all");
+                              setPage(1);
+                            }}
                             aria-pressed={sectionFilter === "all"}
                             className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
                               sectionFilter === "all"
@@ -865,7 +870,10 @@ export function AiInsightsPage() {
                             <button
                               key={section}
                               type="button"
-                              onClick={() => setSectionFilter(section)}
+                              onClick={() => {
+                                setSectionFilter(section);
+                                setPage(1);
+                              }}
                               aria-pressed={sectionFilter === section}
                               className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
                                 sectionFilter === section
@@ -885,7 +893,10 @@ export function AiInsightsPage() {
                           <button
                             type="button"
                             aria-pressed={actionableOnly}
-                            onClick={() => setActionableOnly((current) => !current)}
+                            onClick={() => {
+                              setActionableOnly((current) => !current);
+                              setPage(1);
+                            }}
                             className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
                               actionableOnly
                                 ? "border-primary bg-primary/10 text-foreground"
@@ -898,7 +909,10 @@ export function AiInsightsPage() {
                           <button
                             type="button"
                             aria-pressed={crossDomainOnly}
-                            onClick={() => setCrossDomainOnly((current) => !current)}
+                            onClick={() => {
+                              setCrossDomainOnly((current) => !current);
+                              setPage(1);
+                            }}
                             className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
                               crossDomainOnly
                                 ? "border-primary bg-primary/10 text-foreground"
@@ -918,7 +932,10 @@ export function AiInsightsPage() {
                         <select
                           className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground"
                           value={sortMode}
-                          onChange={(event) => setSortMode(event.target.value as SortMode)}
+                          onChange={(event) => {
+                            setSortMode(event.target.value as SortMode);
+                            setPage(1);
+                          }}
                           aria-label="Sort mode"
                         >
                           <option value="urgency">Urgency score</option>
@@ -932,7 +949,10 @@ export function AiInsightsPage() {
                           id="ai-insights-page-size"
                           className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground"
                           value={String(pageSize)}
-                          onChange={(event) => setPageSize(Number(event.target.value) as (typeof PAGE_SIZES)[number])}
+                          onChange={(event) => {
+                            setPageSize(Number(event.target.value) as (typeof PAGE_SIZES)[number]);
+                            setPage(1);
+                          }}
                           aria-label="Per page"
                         >
                           {PAGE_SIZES.map((size) => (
@@ -987,7 +1007,10 @@ export function AiInsightsPage() {
               {dismissedCount > 0 ? (
                 <button
                   type="button"
-                  onClick={() => setShowDismissed((previous) => !previous)}
+                  onClick={() => {
+                    setShowDismissed((previous) => !previous);
+                    setPage(1);
+                  }}
                   className="inline-flex w-fit items-center gap-2 rounded-full border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground"
                 >
                   {showDismissed

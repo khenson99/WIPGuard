@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Landmark, DollarSign, TrendingUp, TrendingDown,
+  Landmark, TrendingUp, TrendingDown,
   AlertTriangle, ArrowDownRight, ArrowUpRight, Wallet,
 } from "lucide-react";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
@@ -9,7 +9,7 @@ import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-stat
 import { RingStat } from "@/components/analytics/bar-display";
 import { StatCard } from "@/components/analytics/stat-card";
 import {
-  fmt$, fmtN,
+  fmt$,
   AlertBanner, InsightCard, SectionCard,
 } from "./dashboard-primitives";
 import { AiInsightsPanel } from "./ai-insights-panel";
@@ -74,13 +74,13 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
     alerts.push({
       severity: "critical",
       title: `Runway at ${fmtRunway(cashFlow.runway)}`,
-      description: "Less than 6 months of runway remaining. Urgently review burn rate, cut non-essential spend, and accelerate revenue.",
+      description: "Less than 6 months of runway remaining. Urgently review net burn, cut non-essential spend, and accelerate revenue.",
     });
   } else if (cashFlow.runway > 0 && cashFlow.runway < 12) {
     alerts.push({
       severity: "warning",
       title: `Runway at ${fmtRunway(cashFlow.runway)}`,
-      description: "Less than 12 months of runway. Monitor burn rate closely and consider fundraising timeline.",
+      description: "Less than 12 months of runway. Monitor net burn closely and consider fundraising timeline.",
     });
   }
   if (cashFlow.netCashFlow < 0) {
@@ -132,7 +132,7 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
     const efficiency = (cashFlow.inflows30d / cashFlow.burnRate) * 100;
     insights.push({
       title: "Burn Efficiency",
-      insight: `Inflows cover ${efficiency.toFixed(0)}% of monthly burn. ${efficiency >= 100 ? "Self-sustaining at current rates." : "Relying on reserves to cover the gap."}`,
+      insight: `Inflows cover ${efficiency.toFixed(0)}% of net burn. ${efficiency >= 100 ? "Self-sustaining at current rates." : "Relying on reserves to cover the gap."}`,
       severity: efficiency >= 100 ? "success" : efficiency >= 70 ? "info" : "warning",
     });
   }
@@ -178,7 +178,7 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
           icon={ArrowUpRight}
         />
         <StatCard
-          label="Burn Rate"
+          label="Net Burn"
           value={fmt$(cashFlow.burnRate)}
           subtitle="Monthly"
           icon={AlertTriangle}
@@ -261,7 +261,7 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
       {/* Runway + Account Balances */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Runway Projection */}
-        <SectionCard title="Runway Projection" subtitle="Months remaining at current burn rate">
+        <SectionCard title="Runway Projection" subtitle="Months remaining at the current net burn rate">
           <div className="flex flex-col items-center gap-4">
             <RingStat
               value={Math.min(cashFlow.runway, 24)}
@@ -275,7 +275,7 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
                 {cashFlow.runway > 0 ? fmtRunway(cashFlow.runway) : "Sustainable"}
               </p>
               <p className="text-xs text-muted-foreground">
-                at {fmt$(cashFlow.burnRate)}/month burn rate
+                at {fmt$(cashFlow.burnRate)}/month net burn
               </p>
             </div>
             {/* Runway scale */}

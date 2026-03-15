@@ -12,52 +12,6 @@ interface DefaultSavedView {
   config: Prisma.InputJsonValue;
 }
 
-const DEFAULT_TASK_SAVED_VIEWS: DefaultSavedView[] = [
-  {
-    slug: "all-work",
-    name: "All Work",
-    isDefault: true,
-    config: {
-      layout: "kanban",
-      boardFilter: "all",
-      density: "standard",
-      showMetadata: true,
-    },
-  },
-  {
-    slug: "my-work",
-    name: "My Work",
-    isDefault: false,
-    config: {
-      layout: "kanban",
-      boardFilter: "my_work",
-      density: "standard",
-      showMetadata: true,
-    },
-  },
-  {
-    slug: "today-focus",
-    name: "Today Focus",
-    isDefault: false,
-    config: {
-      layout: "kanban",
-      boardFilter: "today_focus",
-      density: "triage",
-      showMetadata: false,
-    },
-  },
-  {
-    slug: "table-audit",
-    name: "Table Audit",
-    isDefault: false,
-    config: {
-      layout: "table",
-      sortBy: "dueDate",
-      sortDirection: "asc",
-    },
-  },
-];
-
 const DEFAULT_PROJECT_SAVED_VIEWS: DefaultSavedView[] = [
   {
     slug: "active",
@@ -89,9 +43,10 @@ const DEFAULT_PROJECT_SAVED_VIEWS: DefaultSavedView[] = [
 ];
 
 function defaultsForScope(scope: SavedViewScope): DefaultSavedView[] {
-  return scope === SavedViewScope.TASKS
-    ? DEFAULT_TASK_SAVED_VIEWS
-    : DEFAULT_PROJECT_SAVED_VIEWS;
+  if (scope === SavedViewScope.TASKS) {
+    return [];
+  }
+  return DEFAULT_PROJECT_SAVED_VIEWS;
 }
 
 function normalizeSlug(value: string): string {

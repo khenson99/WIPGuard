@@ -598,7 +598,10 @@ export async function fetchHubSpotData(
   let closedLost = stageAgg[STAGE_CLOSED_LOST]?.count || 0;
   let unlikely = stageAgg[STAGE_UNLIKELY]?.count || 0;
   let churn = stageAgg[STAGE_CHURN]?.count || 0;
-  let subscriptions = 0;
+  let subscriptions = allMainPipelineDeals.filter((deal) => {
+    const label = resolveHubSpotStageLabel(deal.properties?.dealstage || "", stageLabelById).toLowerCase();
+    return label === "subscription";
+  }).length;
   let noShows = stageAgg[STAGE_NO_SHOW]?.count || 0;
   let demoScheduled = stageAgg[STAGE_DEMO_SCHEDULED]?.count || 0;
   let demoFollowUp = stageAgg[STAGE_DEMO_FOLLOW_UP]?.count || 0;
@@ -649,7 +652,10 @@ export async function fetchHubSpotData(
     closedLost = stageEntryAgg[STAGE_CLOSED_LOST]?.count || 0;
     unlikely = stageEntryAgg[STAGE_UNLIKELY]?.count || 0;
     churn = stageEntryAgg[STAGE_CHURN]?.count || 0;
-    subscriptions = 0;
+    subscriptions = eventsInRange.filter((event) => {
+      const label = resolveHubSpotStageLabel(event.toStage, stageLabelById).toLowerCase();
+      return label === "subscription";
+    }).length;
     noShows = stageEntryAgg[STAGE_NO_SHOW]?.count || 0;
     demoScheduled = stageEntryAgg[STAGE_DEMO_SCHEDULED]?.count || 0;
     demoFollowUp = stageEntryAgg[STAGE_DEMO_FOLLOW_UP]?.count || 0;
@@ -1144,7 +1150,7 @@ interface StripeSubItem {
 interface StripeSub {
   id: string;
   items: { data: StripeSubItem[] };
-  customer: string | { id?: string | null } | null;
+  customer: string | { id?: string | null; email?: string | null } | null;
   canceled_at: number | null;
 }
 
@@ -1170,6 +1176,26 @@ function stripeSubscriptionCustomerId(customer: StripeSub["customer"]): string {
   }
 
   return "Unknown customer";
+}
+
+function stripeSubscriptionCustomerEmail(customer: StripeSub["customer"]): string | null {
+  if (
+    customer &&
+    typeof customer === "object" &&
+    typeof customer.email === "string" &&
+    customer.email.trim().length > 0
+  ) {
+    return customer.email.trim().toLowerCase();
+  }
+
+  return null;
+}
+
+function normalizeEmailDomain(email: string | null): string | null {
+  if (!email || !email.includes("@")) return null;
+  const [, domain] = email.split("@");
+  const normalized = domain?.trim().toLowerCase() ?? "";
+  return normalized.length > 0 ? normalized : null;
 }
 
 export async function fetchStripeData(
@@ -1201,7 +1227,7 @@ export async function fetchStripeData(
     let startingAfter: string | undefined;
 
     for (let page = 0; page < 1000; page++) {
-      let url = `${baseUrl}/subscriptions?limit=100&status=${encodeURIComponent(status)}`;
+      let url = `${baseUrl}/subscriptions?limit=100&status=${encodeURIComponent(status)}&expand[]=data.customer`;
       if (startingAfter) url += `&starting_after=${startingAfter}`;
 
       const res = await fetchStripe(url);
@@ -1373,6 +1399,15 @@ export async function fetchStripeData(
       churnRate: activeSubs.length + canceledSubs.length > 0
         ? (canceledSubs.length / (activeSubs.length + canceledSubs.length)) * 100 : 0,
       recentChurnEvents: recentChurn,
+      activeCustomerRefs: activeSubs.map((subscription) => {
+        const customerId = stripeSubscriptionCustomerId(subscription.customer);
+        const email = stripeSubscriptionCustomerEmail(subscription.customer);
+        return {
+          customerId,
+          email,
+          emailDomain: normalizeEmailDomain(email),
+        };
+      }),
     },
     payments: {
       succeeded,
@@ -1611,8 +1646,8 @@ export async function fetchMercuryData(
     }
   }
 
-  const burnRate = outflows > 0 ? outflows : 1;
-  const runway = totalBalance / burnRate;
+  const burnRate = Math.max(outflows - inflows, 0);
+  const runway = burnRate > 0 ? totalBalance / burnRate : 999;
 
   return {
     accounts,
