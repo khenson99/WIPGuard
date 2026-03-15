@@ -7,7 +7,6 @@ import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-stat
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-error-banner";
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-state";
 import { DashboardStaleBanner } from "@/components/dashboard/dashboard-stale-banner";
-import { PersonalizedDashboard } from "@/components/dashboard/personalized-dashboard";
 import { WorkspaceBadge } from "@/components/dashboard/workspace-badge";
 import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
 import type { DashboardOverviewPayload } from "@/lib/platform/dashboard/overview";
@@ -22,7 +21,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isDashboardOverviewPayload(value: unknown): value is DashboardOverviewPayload {
   if (!isRecord(value)) return false;
   return (
-    isRecord(value.workSummary) &&
     isRecord(value.revenueSummary) &&
     isRecord(value.integrationHealth) &&
     isRecord(value.automationAttention) &&
@@ -109,21 +107,12 @@ export function OperatorDashboard() {
   const cards = useMemo(() => {
     if (!resource.data) return [];
 
-    const work = getWorkspaceById(resource.data.workSummary.workspaceId);
     const deals = getWorkspaceById(resource.data.revenueSummary.workspaceId);
     const integrations = getWorkspaceById(resource.data.integrationHealth.workspaceId);
     const automations = getWorkspaceById(resource.data.automationAttention.workspaceId);
     const analytics = getWorkspaceById(resource.data.analyticsFreshness.workspaceId);
 
     return [
-      {
-        workspaceId: resource.data.workSummary.workspaceId,
-        title: work?.label ?? "Work",
-        href: work?.href ?? "/tasks",
-        primary: `${resource.data.workSummary.activeTasks} active tasks in motion`,
-        secondary: `${resource.data.workSummary.overdueTasks} overdue, ${resource.data.workSummary.blockedTasks} blocked`,
-        tertiary: `${resource.data.workSummary.openAlerts} open customer alerts, ${resource.data.workSummary.dueSoonTasks} due soon`,
-      },
       {
         workspaceId: resource.data.revenueSummary.workspaceId,
         title: deals?.label ?? "Deals",
@@ -166,7 +155,7 @@ export function OperatorDashboard() {
           <div>
             <h1 className="text-xl font-semibold text-foreground">Operator Cockpit</h1>
             <p className="text-xs text-muted-foreground">
-              Platform-wide GTM signals across work, revenue, integrations, automations, and analytics.
+              Platform-wide GTM signals across revenue, integrations, automations, and analytics.
             </p>
             <p className="mt-1 text-[11px] text-muted-foreground">
               Last updated:{" "}
@@ -218,11 +207,6 @@ export function OperatorDashboard() {
           </section>
         ) : null}
       </div>
-
-      <PersonalizedDashboard
-        title="My Work"
-        description="Your personal queue, recommendations, and team flow signals."
-      />
     </div>
   );
 }

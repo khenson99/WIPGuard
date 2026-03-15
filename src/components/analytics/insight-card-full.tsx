@@ -15,8 +15,6 @@ interface InsightCardFullProps {
   isPinned?: boolean;
   onTogglePin?: () => void;
   onDismiss?: () => void;
-  onCreateTask?: () => void;
-  isCreatingTask?: boolean;
 }
 
 export function InsightCardFull({
@@ -24,13 +22,12 @@ export function InsightCardFull({
   isPinned = false,
   onTogglePin,
   onDismiss,
-  onCreateTask,
-  isCreatingTask = false,
 }: InsightCardFullProps) {
   const cfg = SEVERITY_CONFIG[insight.severity];
   const Icon = cfg.icon;
+  const visibleActions = insight.actions.filter((action) => action.type !== "create_task");
 
-  const showActions = onTogglePin != null && onDismiss != null && onCreateTask != null;
+  const showActions = onTogglePin != null && onDismiss != null;
 
   return (
     <div
@@ -68,8 +65,6 @@ export function InsightCardFull({
                   isPinned={isPinned}
                   onTogglePin={onTogglePin!}
                   onDismiss={onDismiss!}
-                  onCreateTask={onCreateTask!}
-                  isCreatingTask={isCreatingTask}
                 />
               </div>
             )}
@@ -78,17 +73,17 @@ export function InsightCardFull({
         </div>
       </div>
 
-      <div className="mt-4 flex items-center gap-3">
-        <span className="text-xs text-muted-foreground">Confidence</span>
+      <div className="mt-3 flex items-center gap-3">
+        <span className="text-[11px] text-muted-foreground">Confidence</span>
         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary">
           <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${insight.confidence * 100}%` }} />
         </div>
-        <span className="text-xs font-medium tabular-nums text-foreground">{(insight.confidence * 100).toFixed(0)}%</span>
+        <span className="text-[11px] font-medium tabular-nums text-foreground">{(insight.confidence * 100).toFixed(0)}%</span>
       </div>
 
       {insight.evidence.length > 0 && (
-        <div className="mt-4">
-          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Evidence</h4>
+        <div className="mt-3">
+          <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Evidence</h4>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -115,19 +110,19 @@ export function InsightCardFull({
       )}
 
       {insight.expectedImpact && (
-        <div className="mt-4 rounded-lg bg-secondary/40 px-3 py-2">
-          <span className="text-xs font-medium text-muted-foreground">Expected Impact: </span>
-          <span className="text-xs text-foreground">{insight.expectedImpact}</span>
+        <div className="mt-3 rounded-lg bg-secondary/40 px-3 py-2">
+          <span className="text-[11px] font-medium text-muted-foreground">Expected impact: </span>
+          <span className="text-[11px] text-foreground">{insight.expectedImpact}</span>
         </div>
       )}
 
-      {insight.actions.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {insight.actions.map((action, i) => (
+      {visibleActions.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {visibleActions.map((action, i) => (
             <button
               key={i}
               type="button"
-              className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-secondary"
+              className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-foreground transition-colors hover:bg-secondary"
             >
               {action.label}
               <ExternalLink className="h-3 w-3 text-muted-foreground" aria-hidden="true" />

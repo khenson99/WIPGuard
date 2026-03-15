@@ -160,4 +160,16 @@ describe("AiInsightsPage", () => {
       expect(refreshCall?.[1]?.cache).toBe("no-store");
     });
   });
+
+  it("does not render a create-task action in the insight toolbar", async () => {
+    writeCachedOverviewData(3);
+
+    render(<AiInsightsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("AI Insights")).toBeTruthy();
+    });
+
+    expect(screen.queryByRole("button", { name: "Create task from this insight" })).toBeNull();
+  });
 });

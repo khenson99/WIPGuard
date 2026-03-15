@@ -30,6 +30,11 @@ import {
   getPylonIssueStatus,
   getPylonIssueTags,
 } from "@/lib/integrations/pylon-client";
+import {
+  discoverArdaTenantIdsFromUserDetails,
+  extractArdaTenantIdsFromResult,
+  normalizeArdaTenantLookupKey,
+} from "@/lib/retention/arda-tenant-resolution";
 import { normalizeCodaMasterOrderArchiveRow } from "@/lib/retention/coda-normalization";
 
 interface SourceSeedRecord {
@@ -71,11 +76,13 @@ interface ArdaTenantConfig {
   configuredTenantId: string;
   tenantName: string;
   companyName: string;
+  customerName: string | null;
   customerStatus: string | null;
   health: string | null;
   mainCodaDocId: string | null;
   orderArchiveDocumentId: string | null;
   churned: boolean;
+  resultTenantIds: string[];
 }
 
 interface ArdaEntityRecord {
@@ -358,7 +365,8 @@ async function fetchCodaApiRows(
   docId: string,
   tableId: string,
   token: string,
-  pageLimit = 10
+  pageLimit = 10,
+  useColumnNames = true
 ): Promise<CodaApiRow[]> {
   const headers = {
     Authorization: `Bearer ${token}`,
@@ -371,7 +379,7 @@ async function fetchCodaApiRows(
       `https://coda.io/apis/v1/docs/${encodeURIComponent(docId)}/tables/${encodeURIComponent(tableId)}/rows`
     );
     url.searchParams.set("limit", "500");
-    url.searchParams.set("useColumnNames", "true");
+    url.searchParams.set("useColumnNames", useColumnNames ? "true" : "false");
     if (pageToken) url.searchParams.set("pageToken", pageToken);
     const response = await fetch(url, { headers, cache: "no-store" });
     if (!response.ok) {
@@ -391,10 +399,9 @@ async function fetchCodaApiRows(
 function normalizeArdaTenantConfigRow(row: CodaApiRow): ArdaTenantConfig | null {
   const values = asRecord(row.values);
   const tenantId = asString(values.tenantId);
-  const companyName =
-    asString(values.CompanyName) ??
-    asString(asRecord(values.Customer).name) ??
-    asString(values.Customer);
+  const customerName =
+    asString(asRecord(values.Customer).name) ?? asString(values.Customer);
+  const companyName = asString(values.CompanyName) ?? customerName;
   if (!tenantId || !companyName) return null;
 
   const loweredTenantId = tenantId.toLowerCase();
@@ -409,22 +416,70 @@ function normalizeArdaTenantConfigRow(row: CodaApiRow): ArdaTenantConfig | null 
     configuredTenantId: tenantId,
     tenantName: companyName,
     companyName,
+    customerName,
     customerStatus,
     health: asString(values.Health),
     mainCodaDocId: asString(values.mainCodaDocId) ?? asString(values["ActiveMainDoc ID"]),
     orderArchiveDocumentId: asString(values.orderArchiveDocumentId),
     churned: Boolean(asBoolean(values.Churned)),
+    resultTenantIds: extractArdaTenantIdsFromResult(values.Result),
   };
 }
 
-function resolveArdaTenantIds(config: ArdaTenantConfig): string[] {
+async function discoverArdaTenantIdsByConfig(
+  docId: string,
+  token: string,
+  configs: ArdaTenantConfig[]
+): Promise<Map<string, string[]>> {
+  const userDetailsTableId =
+    process.env.ARDA_USER_DETAILS_TABLE_ID?.trim() ??
+    "grid-sync-22507-RowDataObject-dynamic-76fe62dd30b7a8c4df850cd9ee639fcfdf09c9067d2e7472911d2a718e7e2f1f";
+  try {
+    const rows = await fetchCodaApiRows(docId, userDetailsTableId, token, 5, false);
+    return discoverArdaTenantIdsFromUserDetails(
+      configs.map((config) => ({
+        configuredTenantId: config.configuredTenantId,
+        companyName: config.companyName,
+        customerName: config.customerName,
+      })),
+      rows.map((row) => {
+        const values = asRecord(row.values);
+        return {
+          email: asString(values["c-qNAXS3SO0E"]),
+          tenantId: asString(values["c-WEBsoGYauT"]),
+        };
+      })
+    );
+  } catch (error) {
+    console.warn(
+      `[retention] Unable to derive Arda tenant UUIDs from User Details: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    return new Map();
+  }
+}
+
+function resolveArdaTenantIds(
+  config: ArdaTenantConfig,
+  discoveredTenantIdsByConfig: Map<string, string[]>
+): string[] {
   if (isUuid(config.tenantId)) return [config.tenantId];
+  if (config.resultTenantIds.length > 0) return config.resultTenantIds;
 
-  const normalizedCompanyName =
-    normalizeArdaCustomerName(config.companyName) ?? normalizeArdaCustomerName(config.tenantName);
-  if (!normalizedCompanyName) return [];
+  for (const candidate of [config.companyName, config.customerName, config.tenantName]) {
+    const normalizedCompanyName = normalizeArdaCustomerName(candidate);
+    if (!normalizedCompanyName) continue;
+    const manualTenantIds = ARDA_CUSTOMER_TENANT_IDS[normalizedCompanyName];
+    if (manualTenantIds?.length) return manualTenantIds;
+  }
 
-  return ARDA_CUSTOMER_TENANT_IDS[normalizedCompanyName] ?? [];
+  return (
+    discoveredTenantIdsByConfig.get(
+      normalizeArdaTenantLookupKey(config.configuredTenantId)
+    ) ??
+    []
+  );
 }
 
 async function loadArdaTenantConfigs(): Promise<ArdaTenantConfig[]> {
@@ -437,11 +492,16 @@ async function loadArdaTenantConfigs(): Promise<ArdaTenantConfig[]> {
   const configs = rows
     .map(normalizeArdaTenantConfigRow)
     .filter((config): config is ArdaTenantConfig => config !== null);
+  const discoveredTenantIdsByConfig = await discoverArdaTenantIdsByConfig(
+    docId,
+    token,
+    configs
+  );
   const resolved: ArdaTenantConfig[] = [];
   const unresolved: string[] = [];
 
   for (const config of configs) {
-    const tenantIds = resolveArdaTenantIds(config);
+    const tenantIds = resolveArdaTenantIds(config, discoveredTenantIdsByConfig);
     if (tenantIds.length === 0) {
       unresolved.push(config.companyName);
       continue;
@@ -452,6 +512,12 @@ async function loadArdaTenantConfigs(): Promise<ArdaTenantConfig[]> {
         tenantId,
       });
     }
+  }
+
+  if (discoveredTenantIdsByConfig.size > 0) {
+    console.info(
+      `[retention] Discovered ${discoveredTenantIdsByConfig.size} Arda tenant UUID mappings from User Details`
+    );
   }
 
   if (unresolved.length > 0) {

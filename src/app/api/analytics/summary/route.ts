@@ -36,28 +36,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const range = parseAnalyticsTimeRange(request.nextUrl.searchParams);
-    const from = new Date(`${range.from}T00:00:00.000Z`);
     const to = new Date(`${range.to}T23:59:59.999Z`);
     const integrationOwnerUserId = resolveIntegrationOwnerUserId(user.id);
 
-    const [creds, tasksByStatus, overdueTasks, activeProjects, contributors, latestSnapshots] = await Promise.all([
+    const [creds, latestSnapshots] = await Promise.all([
       getCredentials(integrationOwnerUserId),
-      prisma.task.groupBy({ by: ["status"], _count: { status: true } }),
-      prisma.task.count({
-        where: {
-          status: { not: "DONE" },
-          dueDate: { lt: to },
-        },
-      }),
-      prisma.project.count({ where: { status: "ACTIVE" } }),
-      prisma.statusHistory.findMany({
-        where: {
-          changedAt: { gte: from, lte: to },
-          changedBy: { not: null },
-        },
-        distinct: ["changedBy"],
-        select: { changedBy: true },
-      }),
       prisma.analyticsSnapshot.findMany({
         where: {
           userId: integrationOwnerUserId,
@@ -112,8 +95,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         : Promise.resolve(null),
     ]);
 
-    const totalTasks = tasksByStatus.reduce((sum, item) => sum + item._count.status, 0);
-    const activeContributors = contributors.filter((entry) => Boolean(entry.changedBy)).length;
     const now = Date.now();
 
     const latestSnapshotByProvider = new Map<
@@ -267,6 +248,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     });
 
     const connectedPrimary = primarySections.filter((section) => section.status !== "missing").length;
+    const degradedPrimary = primarySections.filter((section) => section.status === "degraded" || section.status === "partial").length;
+    const missingPrimary = primarySections.filter((section) => section.status === "missing").length;
+    const connectedIntegrations = primarySections.reduce((sum, section) => sum + section.connectedCount, 0);
     const disciplineCoverage = Math.round((connectedPrimary / primarySections.length) * 100);
     const isPartial = primarySections.some((section) => section.status === "degraded" || section.status === "partial");
 
@@ -279,10 +263,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         generatedAt: new Date().toISOString(),
         timeRange: range,
         highlights: {
-          totalTasks,
-          overdueTasks,
-          activeProjects,
-          activeContributors,
+          connectedSections: connectedPrimary,
+          degradedSections: degradedPrimary,
+          missingSections: missingPrimary,
+          connectedIntegrations,
           disciplineCoverage,
         },
         primarySections,

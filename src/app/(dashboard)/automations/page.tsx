@@ -8,7 +8,6 @@ import {
   AlertTriangle,
   Bot,
   Filter,
-  FolderKanban,
   PlusCircle,
   ShieldCheck,
 } from "lucide-react";
@@ -229,7 +228,7 @@ export default function AutomationsPage() {
         <div>
           <h1 className="text-xl font-semibold text-foreground">Automations</h1>
           <p className="text-xs text-muted-foreground">
-            Build trigger-based workflows across Google, HubSpot, Slack, Coda, Reddit, and WIPGuard.
+            Build cross-system workflows, monitor run health, and manage outbound drafts across your connected tools.
           </p>
         </div>
 
@@ -239,24 +238,6 @@ export default function AutomationsPage() {
             className="rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
           >
             Artifact Inbox
-          </Link>
-          <Link
-            href="/automations/recommendations"
-            className="rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
-          >
-            Recommendation Inbox
-          </Link>
-          <Link
-            href="/automations/ralph-board"
-            className="rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
-          >
-            Ralph Board
-          </Link>
-          <Link
-            href="/automations/approvals"
-            className="rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
-          >
-            Approval Inbox
           </Link>
           <button
             onClick={createBlankWorkflow}
@@ -274,27 +255,6 @@ export default function AutomationsPage() {
           </div>
         )}
       </div>
-
-      <section className="rounded-xl border border-border bg-card p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-              <FolderKanban className="h-4 w-4 text-primary" />
-              Arda GTM Operator Rollout
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              The dedicated Ralph board is a project-backed rollout board for Wave 0-3 operator work.
-              Use it to track launch tasks across the seeded GTM operator program.
-            </p>
-          </div>
-          <Link
-            href="/automations/ralph-board"
-            className="rounded-md border border-border bg-background px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
-          >
-            Open Ralph Board
-          </Link>
-        </div>
-      </section>
 
       <div role="group" aria-label="Workflow filters" className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-3 py-3">
         <Filter className="h-4 w-4 text-muted-foreground" />
@@ -413,7 +373,7 @@ export default function AutomationsPage() {
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-foreground">Arda GTM Operators</h2>
         <p className="text-xs text-muted-foreground">
-          Shared starting points for mixed-autonomy operator workflows. Safe internal actions auto-execute, while outbound drafts stay in the approval queue.
+          Shared starting points for mixed-autonomy operator workflows. Safe internal actions can auto-execute, while external drafts stay in guarded workflow review steps.
         </p>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {operatorTemplates.map((template) => (

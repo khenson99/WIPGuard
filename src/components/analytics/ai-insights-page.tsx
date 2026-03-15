@@ -61,7 +61,6 @@ export function AiInsightsPage() {
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(25);
   const [showDismissed, setShowDismissed] = useState(false);
   const [recentlyDismissed, setRecentlyDismissed] = useState<{ id: string; title: string } | null>(null);
-  const [taskError, setTaskError] = useState<string | null>(null);
 
   const {
     isPinned,
@@ -69,8 +68,6 @@ export function AiInsightsPage() {
     togglePin,
     dismiss,
     undoDismiss,
-    createTaskFromInsight,
-    creatingTaskForId,
     sortAndFilter,
   } = useInsightPreferences();
 
@@ -148,15 +145,6 @@ export function AiInsightsPage() {
     }
   }, [recentlyDismissed, undoDismiss]);
 
-  const handleCreateTask = useCallback(async (insight: AiInsight) => {
-    setTaskError(null);
-    try {
-      await createTaskFromInsight(insight);
-    } catch {
-      setTaskError(`Failed to create task for "${insight.title}". Please try again.`);
-    }
-  }, [createTaskFromInsight]);
-
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -220,13 +208,7 @@ export function AiInsightsPage() {
         />
       ) : null}
 
-      {taskError && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-900/10">
-          <p className="text-sm text-red-600 dark:text-red-400">{taskError}</p>
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Critical" value={String(criticalCount)} icon={AlertTriangle} iconColor="text-red-500" />
         <StatCard label="Warnings" value={String(warningCount)} icon={AlertCircle} iconColor="text-yellow-500" />
         <StatCard label="Info" value={String(infoCount)} icon={Info} iconColor="text-blue-500" />
@@ -239,7 +221,10 @@ export function AiInsightsPage() {
             <button
               key={sev}
               type="button"
-              onClick={() => setSeverityFilter(sev)}
+              onClick={() => {
+                setSeverityFilter(sev);
+                setPage(1);
+              }}
               aria-pressed={severityFilter === sev}
               className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 severityFilter === sev ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
@@ -255,7 +240,10 @@ export function AiInsightsPage() {
             <button
               key={sec}
               type="button"
-              onClick={() => setSectionFilter(sec)}
+              onClick={() => {
+                setSectionFilter(sec);
+                setPage(1);
+              }}
               aria-pressed={sectionFilter === sec}
               className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 sectionFilter === sec ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
@@ -271,7 +259,10 @@ export function AiInsightsPage() {
             <button
               key={mode}
               type="button"
-              onClick={() => setSortMode(mode)}
+              onClick={() => {
+                setSortMode(mode);
+                setPage(1);
+              }}
               aria-pressed={sortMode === mode}
               className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 sortMode === mode ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
@@ -283,7 +274,7 @@ export function AiInsightsPage() {
         </div>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         {filtered.length === 0 ? (
           <div className="flex h-32 items-center justify-center rounded-xl border border-border bg-card">
             <p className="text-sm text-muted-foreground">No insights match current filters</p>
@@ -296,8 +287,6 @@ export function AiInsightsPage() {
               isPinned={isPinned(insight.id)}
               onTogglePin={() => void togglePin(insight.id)}
               onDismiss={() => handleDismiss(insight)}
-              onCreateTask={() => void handleCreateTask(insight)}
-              isCreatingTask={creatingTaskForId === insight.id}
             />
           ))
         )}
@@ -306,7 +295,10 @@ export function AiInsightsPage() {
       {dismissedCount > 0 && (
         <button
           type="button"
-          onClick={() => setShowDismissed((prev) => !prev)}
+          onClick={() => {
+            setShowDismissed((prev) => !prev);
+            setPage(1);
+          }}
           className="text-xs text-muted-foreground underline hover:text-foreground"
         >
           {showDismissed
@@ -346,7 +338,10 @@ export function AiInsightsPage() {
               id="ai-insights-page-size"
               className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground"
               value={String(pageSize)}
-              onChange={(e) => setPageSize(Number(e.target.value) as (typeof PAGE_SIZES)[number])}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value) as (typeof PAGE_SIZES)[number]);
+                setPage(1);
+              }}
             >
               {PAGE_SIZES.map((size) => (
                 <option key={size} value={String(size)}>

@@ -1,17 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import type { CustomerSuccessPortfolio } from "@/lib/customer-success/types";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-error-banner";
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-state";
 import { DashboardStaleBanner } from "@/components/dashboard/dashboard-stale-banner";
 import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
-
-function formatPct(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "—";
-  return `${value.toFixed(1)}%`;
-}
 
 function formatDate(value?: string): string {
   if (!value) return "—";
@@ -93,7 +89,6 @@ interface CSAction {
 
 function deriveCSActions(input: {
   pylon: AnalyticsDashboardData["pylon"];
-  product: AnalyticsDashboardData["product"];
   coda: AnalyticsDashboardData["coda"];
 }): CSAction[] {
   const actions: CSAction[] = [];
@@ -108,33 +103,32 @@ function deriveCSActions(input: {
     });
   }
 
-  const backlogGrowth = input.product?.backlogGrowth ?? 0;
-  if (backlogGrowth > 5) {
+  const waitingOnTeam = input.pylon?.waitingOnTeam ?? 0;
+  if (waitingOnTeam > 8) {
     actions.push({
-      title: "Throttle backlog inflow",
-      detail: `Backlog grew by ${backlogGrowth} net items. Route non-critical requests into weekly batches and prioritize customer-blocking items.`,
-      impact: "Expected: improved throughput and queue stability.",
-      severity: backlogGrowth > 15 ? "critical" : "warning",
+      title: "Clear the waiting-on-team queue",
+      detail: `${waitingOnTeam} conversations are waiting on the internal team. Assign owners and publish a twice-daily update cadence until that queue is back under control.`,
+      impact: "Expected: faster customer updates and fewer support escalations.",
+      severity: waitingOnTeam > 15 ? "critical" : "warning",
     });
   }
 
-  const throughputRate = input.product?.throughputRate ?? 100;
-  if (throughputRate < 70) {
+  const avgFirstResponse = input.pylon?.avgFirstResponseMinutes ?? null;
+  if (avgFirstResponse !== null && avgFirstResponse > 120) {
     actions.push({
-      title: "Automate follow-up execution",
-      detail: `Throughput at ${throughputRate.toFixed(1)}% — below 70% target. Use Slack/Coda workflows to auto-create and assign post-resolution follow-up tasks.`,
-      impact: "Expected: faster closure and improved customer confidence.",
-      severity: throughputRate < 50 ? "critical" : "warning",
+      title: "Tighten first-response coverage",
+      detail: `Average first response is ${avgFirstResponse.toFixed(0)} minutes. Expand triage coverage windows or add routing for high-priority accounts.`,
+      impact: "Expected: lower time-to-first-response and better queue health.",
+      severity: avgFirstResponse > 240 ? "critical" : "warning",
     });
   }
 
-  const overdueOpen = input.product?.overdueOpenTasks ?? 0;
-  if (overdueOpen > 5) {
+  if ((input.coda?.totalCards ?? 0) === 0) {
     actions.push({
-      title: "Review overdue task assignments",
-      detail: `${overdueOpen} tasks are overdue. Reassign or rescope blockers to restore delivery cadence.`,
-      impact: "Expected: reduced retention risk from stalled execution.",
-      severity: overdueOpen > 15 ? "critical" : "warning",
+      title: "Restore customer ops coverage",
+      detail: "No Coda-backed customer-ops records were found in the selected range. Verify the shared success workspace and onboarding trackers are still syncing.",
+      impact: "Expected: better account visibility and clearer follow-up coverage.",
+      severity: "info",
     });
   }
 
@@ -151,6 +145,9 @@ function deriveCSActions(input: {
 }
 
 function CustomerSuccessPortfolioPanels() {
+  const [syncingRelationships, setSyncingRelationships] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const resource = useDashboardResource<CustomerSuccessPortfolio>({
     cacheKey: "customer-success:portfolio",
     deps: [],
@@ -183,6 +180,40 @@ function CustomerSuccessPortfolioPanels() {
   const portfolio = resource.data;
   const accountsWithCoda = portfolio.accounts.filter((account) => !(account.relationship?.missingSources ?? []).includes("coda")).length;
   const coverageGaps = portfolio.accounts.filter((account) => (account.relationship?.missingSources.length ?? 0) > 0).length;
+  const missingCodaAccounts = portfolio.accounts.filter((account) => (account.relationship?.missingSources ?? []).includes("coda"));
+  const lirFailAccounts = portfolio.accounts.filter((account) => account.relationship?.primaryLirPassed === false);
+  const implementationBlockedAccounts = portfolio.accounts.filter((account) =>
+    (account.relationship?.implementationStage ?? "").toLowerCase().includes("blocked")
+  );
+
+  async function syncRelationshipData() {
+    setSyncError(null);
+    setSyncMessage(null);
+    setSyncingRelationships(true);
+    try {
+      const response = await fetch("/api/retention/sync", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ mode: "full" }),
+      });
+      const body = (await response.json().catch(() => ({}))) as { error?: string; completed?: string[] };
+      if (!response.ok) {
+        throw new Error(body.error || `Retention sync failed (${response.status})`);
+      }
+      await resource.refresh();
+      setSyncMessage(
+        body.completed && body.completed.length > 0
+          ? `Relationship data synced: ${body.completed.join(", ")}`
+          : "Relationship data synced."
+      );
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : "Retention sync failed");
+    } finally {
+      setSyncingRelationships(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -194,6 +225,30 @@ function CustomerSuccessPortfolioPanels() {
           refreshing={resource.refreshing}
         />
       ) : null}
+
+      {syncError ? <DashboardErrorBanner message={syncError} onRetry={syncRelationshipData} /> : null}
+      {syncMessage ? (
+        <div className="rounded-xl border border-[var(--success)]/30 bg-[var(--success)]/10 px-4 py-3 text-sm text-[var(--success)]">
+          {syncMessage}
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Customer Relationship Portfolio</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Unified Coda, retention, and customer-success state across the portfolio.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void syncRelationshipData()}
+          disabled={syncingRelationships}
+          className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground disabled:opacity-60"
+        >
+          {syncingRelationships ? "Syncing relationship data..." : "Sync relationship data"}
+        </button>
+      </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div className="rounded-xl border border-border bg-card px-4 py-3">
@@ -287,6 +342,72 @@ function CustomerSuccessPortfolioPanels() {
             ))}
             {portfolio.attentionAccounts.length === 0 ? (
               <p className="text-sm text-muted-foreground">No accounts currently need intervention.</p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="rounded-xl border border-border bg-card p-4">
+          <h3 className="text-sm font-semibold text-foreground">Relationship Coverage</h3>
+          <div className="mt-4 space-y-3">
+            <div className="rounded-md border border-border bg-background px-3 py-2">
+              <p className="text-xs text-muted-foreground">Missing Coda Coverage</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">{formatNumber(missingCodaAccounts.length)}</p>
+            </div>
+            <div className="rounded-md border border-border bg-background px-3 py-2">
+              <p className="text-xs text-muted-foreground">Failing Primary LIR</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">{formatNumber(lirFailAccounts.length)}</p>
+            </div>
+            <div className="rounded-md border border-border bg-background px-3 py-2">
+              <p className="text-xs text-muted-foreground">Implementation Blocked</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">{formatNumber(implementationBlockedAccounts.length)}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-4">
+          <h3 className="text-sm font-semibold text-foreground">Missing Coda Accounts</h3>
+          <div className="mt-4 space-y-3">
+            {missingCodaAccounts.slice(0, 6).map((account) => (
+              <div key={account.accountId} className="rounded-md border border-border bg-background px-3 py-2">
+                <Link
+                  href={`/analytics/customer-success/accounts/${account.accountId}`}
+                  className="text-sm font-medium text-foreground hover:text-primary"
+                >
+                  {account.name}
+                </Link>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {account.ownerName || "Unassigned"}
+                  {account.relationship?.missingSources.length ? ` • Missing ${account.relationship.missingSources.join(", ")}` : ""}
+                </p>
+              </div>
+            ))}
+            {missingCodaAccounts.length === 0 ? (
+              <p className="text-sm text-muted-foreground">All visible accounts have Coda coverage.</p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-4">
+          <h3 className="text-sm font-semibold text-foreground">LIR Fail Queue</h3>
+          <div className="mt-4 space-y-3">
+            {lirFailAccounts.slice(0, 6).map((account) => (
+              <div key={account.accountId} className="rounded-md border border-border bg-background px-3 py-2">
+                <Link
+                  href={`/analytics/customer-success/accounts/${account.accountId}`}
+                  className="text-sm font-medium text-foreground hover:text-primary"
+                >
+                  {account.name}
+                </Link>
+                <p className={`mt-1 text-xs ${relationshipTone(account.relationship?.retentionStatus)}`}>
+                  {account.relationship?.retentionStatus || "No retention status"}
+                  {account.relationship?.implementationStage ? ` • ${account.relationship.implementationStage}` : ""}
+                </p>
+              </div>
+            ))}
+            {lirFailAccounts.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No accounts are currently failing the primary LIR.</p>
             ) : null}
           </div>
         </div>
@@ -407,7 +528,6 @@ function CustomerSuccessPortfolioPanels() {
 export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | null }) {
   const pylon = data?.pylon;
   const coda = data?.coda;
-  const product = data?.product;
   const googleWorkspace = data?.googleWorkspace;
   const slackOps = data?.slack;
   const codaOps = data?.codaOps;
@@ -447,7 +567,7 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
     },
   ];
 
-  const hasLegacyAnalytics = Boolean(pylon || coda || product);
+  const hasLegacyAnalytics = Boolean(pylon || coda);
   const riskItems = [
     {
       id: "urgent",
@@ -458,20 +578,20 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
     },
     {
       id: "backlog",
-      label: "Backlog Growth",
-      value: product?.backlogGrowth ?? 0,
-      threshold: 1,
-      description: "Growing backlog can degrade response quality.",
+      label: "Waiting on Team",
+      value: pylon?.waitingOnTeam ?? 0,
+      threshold: 8,
+      description: "Internal follow-up delays can increase churn risk.",
     },
     {
       id: "overdue",
-      label: "Overdue Open Tasks",
-      value: product?.overdueOpenTasks ?? 0,
-      threshold: 5,
-      description: "Overdue execution creates retention delays.",
+      label: "First Response Minutes",
+      value: pylon?.avgFirstResponseMinutes ?? 0,
+      threshold: 120,
+      description: "Slow first responses weaken customer confidence.",
     },
   ];
-  const actions = deriveCSActions({ pylon: pylon ?? null, product: product ?? null, coda: coda ?? null });
+  const actions = deriveCSActions({ pylon: pylon ?? null, coda: coda ?? null });
 
   return (
     <div className="space-y-4">
@@ -511,8 +631,10 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
               <p className="mt-1 text-2xl font-semibold text-red-500">{pylon?.urgentConversations ?? "—"}</p>
             </div>
             <div className="rounded-xl border border-border bg-card px-4 py-3">
-              <p className="text-xs text-muted-foreground">Product Throughput</p>
-              <p className="mt-1 text-2xl font-semibold text-foreground">{formatPct(product?.throughputRate)}</p>
+              <p className="text-xs text-muted-foreground">Avg First Response</p>
+              <p className="mt-1 text-2xl font-semibold text-foreground">
+                {pylon?.avgFirstResponseMinutes != null ? `${formatNumber(pylon.avgFirstResponseMinutes)} min` : "—"}
+              </p>
             </div>
             <div className="rounded-xl border border-border bg-card px-4 py-3">
               <p className="text-xs text-muted-foreground">Coda Cards</p>

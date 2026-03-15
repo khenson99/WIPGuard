@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CustomerSuccessTab } from "@/components/analytics/customer-success-tab";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
@@ -140,6 +140,24 @@ function makePortfolio(): CustomerSuccessPortfolio {
           missingSources: ["pylon"],
         },
       },
+      {
+        accountId: "acct_2",
+        name: "No Coda Co",
+        segment: "SMB",
+        tier: "Starter",
+        ownerName: "Morgan",
+        health: makeHealth(66, "D"),
+        lastActivityAt: "2026-03-08T12:00:00.000Z",
+        renewalDate: "2026-05-20T00:00:00.000Z",
+        openAlertCount: 1,
+        relationship: {
+          connectedSystems: 1,
+          retentionStatus: "Watch",
+          primaryLirPassed: false,
+          implementationStage: "BLOCKED",
+          missingSources: ["coda", "pylon"],
+        },
+      },
     ],
   };
 }
@@ -154,11 +172,8 @@ function makeAnalyticsData(): AnalyticsDashboardData {
     pylon: {
       openConversations: 28,
       urgentConversations: 18,
-    },
-    product: {
-      backlogGrowth: 8,
-      throughputRate: 62.4,
-      overdueOpenTasks: 9,
+      waitingOnTeam: 12,
+      avgFirstResponseMinutes: 180,
     },
     coda: {
       totalCards: 42,
@@ -214,12 +229,17 @@ describe("CustomerSuccessTab", () => {
     expect(screen.getByText("QBR completed")).toBeTruthy();
     expect(screen.getByText("Integration Delivery Status")).toBeTruthy();
     expect(screen.getByText("Accounts With Coda")).toBeTruthy();
+    expect(screen.getByText("Relationship Coverage")).toBeTruthy();
+    expect(screen.getByText("Missing Coda Accounts")).toBeTruthy();
+    expect(screen.getByText("LIR Fail Queue")).toBeTruthy();
+    expect(screen.getAllByText("No Coda Co").length).toBeGreaterThan(0);
     expect(screen.getAllByText("At Risk").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Missing pylon/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Missing coda/).length).toBeGreaterThan(0);
     expect(screen.getByText("Connected but stale")).toBeTruthy();
     expect(screen.getByText("Rebalance urgent queue ownership")).toBeTruthy();
-    expect(screen.getByText("Throttle backlog inflow")).toBeTruthy();
-    expect(screen.getByText("Review overdue task assignments")).toBeTruthy();
+    expect(screen.getByText("Clear the waiting-on-team queue")).toBeTruthy();
+    expect(screen.getByText("Tighten first-response coverage")).toBeTruthy();
   });
 
   it("shows the portfolio-only fallback when integration analytics are unavailable", async () => {
@@ -244,5 +264,52 @@ describe("CustomerSuccessTab", () => {
       )
     ).toBeTruthy();
     expect(screen.getAllByText("Not provisioned").length).toBeGreaterThan(0);
+  });
+
+  it("runs the relationship sync action and refreshes the portfolio", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/customer-success/portfolio") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => makePortfolio(),
+        } as Response;
+      }
+
+      if (url === "/api/retention/sync" && init?.method === "POST") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            completed: ["sync_sources", "build_dataset", "materialize"],
+          }),
+        } as Response;
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CustomerSuccessTab data={makeAnalyticsData()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Customer Relationship Portfolio")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Sync relationship data" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Relationship data synced: sync_sources, build_dataset, materialize")).toBeTruthy();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/retention/sync",
+      expect.objectContaining({
+        method: "POST",
+      })
+    );
   });
 });

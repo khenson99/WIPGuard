@@ -527,19 +527,14 @@ export function buildCustomerSuccessHealth(
   const completedMilestones =
     activePlan?.milestones.filter((milestone) => milestone.status === "COMPLETED").length ?? 0;
   const milestoneRatio = totalMilestones > 0 ? completedMilestones / totalMilestones : 0;
-  const completedTasks30d = snapshot.tasks.filter(
-    (task) => task.completedOn && daysBetween(task.completedOn, now) <= 30
-  ).length;
-  const openTasks = snapshot.tasks.filter((task) => !isTaskDone(task.status)).length;
-  const overdueTasks = snapshot.tasks.filter(
-    (task) => !isTaskDone(task.status) && task.dueDate && task.dueDate.getTime() < now.getTime()
-  ).length;
   const recentMeetings = snapshot.meetings.filter((meeting) => daysBetween(meeting.startAt, now) <= 30).length;
   const recentNotes = snapshot.notes.filter((note) => daysBetween(note.createdAt, now) <= 30).length;
   const recentOutreach = snapshot.outreach.filter((message) => {
     const touchedAt = message.sentAt ?? message.createdAt;
     return daysBetween(touchedAt, now) <= 30;
   }).length;
+  const blockedMilestones =
+    activePlan?.milestones.filter((milestone) => milestone.status === "BLOCKED").length ?? 0;
   const stakeholders = buildStakeholders(snapshot, now);
   const coveredStakeholders = stakeholders.filter((stakeholder) => stakeholder.coverageStatus === "covered").length;
   const hasChampion = stakeholders.some((stakeholder) =>
@@ -557,18 +552,23 @@ export function buildCustomerSuccessHealth(
   const adoption = buildComponent({
     score:
       36 +
-      Math.min(completedTasks30d * 8, 24) +
+      Math.min((recentMeetings + recentNotes + recentOutreach) * 5, 24) +
       milestoneRatio * 26 +
       (providers.has(CustomerExternalProvider.CODA) ? 10 : 0) -
-      Math.min(openTasks * 5, 18),
+      Math.min(blockedMilestones * 12, 24),
     weight: HEALTH_WEIGHTS.adoption,
     trend:
-      completedTasks30d > openTasks ? "improving" : openTasks > completedTasks30d + 2 ? "declining" : "stable",
+      blockedMilestones > 0
+        ? "declining"
+        : recentMeetings + recentNotes + recentOutreach >= 3
+          ? "improving"
+          : "stable",
     evidence: [
-      `${completedTasks30d} customer-success tasks completed in the last 30 days`,
+      `${recentMeetings + recentNotes + recentOutreach} customer-success touches in the last 30 days`,
       totalMilestones > 0
         ? `${completedMilestones}/${totalMilestones} plan milestones completed`
         : "No success-plan milestones linked yet",
+      blockedMilestones > 0 ? `${blockedMilestones} plan milestones are blocked` : "No blocked success-plan milestones",
       providers.has(CustomerExternalProvider.CODA) ? "Coda signal available" : "No Coda reference connected",
     ],
     updatedAt: latestTouch ?? snapshot.updatedAt,
@@ -626,18 +626,17 @@ export function buildCustomerSuccessHealth(
       95 -
       criticalAlerts * 24 -
       highAlerts * 12 -
-      supportAlerts * 5 -
-      overdueTasks * 4,
+      supportAlerts * 5,
     weight: HEALTH_WEIGHTS.support,
     trend:
-      criticalAlerts > 0 || overdueTasks > 2
+      criticalAlerts > 0
         ? "declining"
-        : supportAlerts === 0 && overdueTasks === 0
+        : supportAlerts === 0
           ? "improving"
           : "stable",
     evidence: [
       `${openAlerts.length} open alerts, ${criticalAlerts} critical`,
-      `${overdueTasks} overdue customer-success tasks`,
+      `${supportAlerts} support or health alerts in queue`,
       supportAlerts > 0 ? "Support or health alerts need attention" : "Support load is within threshold",
     ],
     updatedAt: latestTouch ?? snapshot.updatedAt,
@@ -677,7 +676,7 @@ export function buildCustomerSuccessHealth(
   const confidenceSignals = [
     snapshot.externalProviders.length > 0,
     snapshot.contacts.length > 0,
-    snapshot.tasks.length > 0,
+    snapshot.plans.length > 0,
     snapshot.outreach.length > 0 || snapshot.notes.length > 0,
     snapshot.alerts.length > 0 || snapshot.primaryDealAmount !== null,
   ];

@@ -5,7 +5,6 @@ import {
 
 export type WorkspaceId =
   | "dashboard"
-  | "work"
   | "deals"
   | "analytics"
   | "integrations"
@@ -33,26 +32,6 @@ export const WORKSPACE_NAV_ITEMS: WorkspaceNavItem[] = [
     label: "Dashboard",
     href: "/dashboard",
     description: "Cross-platform GTM operating view.",
-  },
-  {
-    id: "work",
-    label: "Work",
-    href: "/tasks",
-    description: "WIP-limited execution, queues, and audit trail.",
-    children: [
-      {
-        id: "tasks",
-        label: "Tasks",
-        href: "/tasks",
-        workspaceId: "work",
-      },
-      {
-        id: "logbook",
-        label: "Logbook",
-        href: "/logbook",
-        workspaceId: "work",
-      },
-    ],
   },
   {
     id: "deals",
@@ -104,30 +83,12 @@ export const WORKSPACE_NAV_ITEMS: WorkspaceNavItem[] = [
     id: "automations",
     label: "Automations",
     href: "/automations",
-    description: "Workflow orchestration, approvals, and artifacts.",
+    description: "Workflow orchestration, run health, and artifacts.",
     children: [
       {
         id: "automations-home",
-        label: "Workflows",
+        label: "Automation Center",
         href: "/automations",
-        workspaceId: "automations",
-      },
-      {
-        id: "automations-ralph-board",
-        label: "Ralph Board",
-        href: "/automations/ralph-board",
-        workspaceId: "automations",
-      },
-      {
-        id: "automations-recommendations",
-        label: "Recommendations",
-        href: "/automations/recommendations",
-        workspaceId: "automations",
-      },
-      {
-        id: "automations-approvals",
-        label: "Approvals",
-        href: "/automations/approvals",
         workspaceId: "automations",
       },
       {
