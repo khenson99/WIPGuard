@@ -1,0 +1,115 @@
+{
+  "generatedAt": "2026-03-15T10:50:50.352Z",
+  "organizationId": "org_default_000000000",
+  "summary": {
+    "unresolvedRecords": 21,
+    "unresolvedBuckets": 2,
+    "sourcesImpacted": 2
+  },
+  "buckets": [
+    {
+      "source": "STRIPE",
+      "objectType": "subscription",
+      "unresolvedRecords": 11,
+      "examples": [
+        {
+          "source": "STRIPE",
+          "objectType": "subscription",
+          "externalId": "sub_1T4aaIBj5FeOe1MmrZFTrCDH",
+          "tenantKey": "cus_TbBZ0zfmk88oWo",
+          "occurredAt": "2026-02-25T05:24:30.000Z",
+          "candidateName": null,
+          "candidateDomain": "gmail.com"
+        },
+        {
+          "source": "STRIPE",
+          "objectType": "subscription",
+          "externalId": "sub_1RvfwfBj5FeOe1MmlQrKpXxd",
+          "tenantKey": "cus_SrOke059TzpQN3",
+          "occurredAt": "2025-08-13T14:46:28.000Z",
+          "candidateName": null,
+          "candidateDomain": null
+        },
+        {
+          "source": "STRIPE",
+          "objectType": "subscription",
+          "externalId": "sub_1RtQl7Bj5FeOe1MmsUjvXfIW",
+          "tenantKey": "cus_Sp4wr7OSzE362H",
+          "occurredAt": "2025-08-07T10:10:58.000Z",
+          "candidateName": null,
+          "candidateDomain": null
+        },
+        {
+          "source": "STRIPE",
+          "objectType": "subscription",
+          "externalId": "sub_1RtOJPBj5FeOe1MmxMd9A711",
+          "tenantKey": "cus_Sp2OQwSoKL4kks",
+          "occurredAt": "2025-08-07T07:33:06.000Z",
+          "candidateName": null,
+          "candidateDomain": null
+        },
+        {
+          "source": "STRIPE",
+          "objectType": "subscription",
+          "externalId": "sub_1QRhpZBj5FeOe1MmwiDycFib",
+          "tenantKey": "cus_RKMYSNLodEB7XN",
+          "occurredAt": "2024-12-02T22:11:01.000Z",
+          "candidateName": null,
+          "candidateDomain": null
+        }
+      ]
+    },
+    {
+      "source": "ARDA",
+      "objectType": "tenant",
+      "unresolvedRecords": 10,
+      "examples": [
+        {
+          "source": "ARDA",
+          "objectType": "tenant",
+          "externalId": "e335bfe0-5010-4a97-bb89-45d013906fbe",
+          "tenantKey": "e335bfe0-5010-4a97-bb89-45d013906fbe",
+          "occurredAt": null,
+          "candidateName": "a",
+          "candidateDomain": null
+        },
+        {
+          "source": "ARDA",
+          "objectType": "tenant",
+          "externalId": "ca7843da-9d3f-5a65-afcc-5ddc2947910c",
+          "tenantKey": "ca7843da-9d3f-5a65-afcc-5ddc2947910c",
+          "occurredAt": null,
+          "candidateName": "a",
+          "candidateDomain": null
+        },
+        {
+          "source": "ARDA",
+          "objectType": "tenant",
+          "externalId": "433ae8a1-ccea-41f3-83fa-4b4df2ad3153",
+          "tenantKey": "433ae8a1-ccea-41f3-83fa-4b4df2ad3153",
+          "occurredAt": null,
+          "candidateName": "a",
+          "candidateDomain": null
+        },
+        {
+          "source": "ARDA",
+          "objectType": "tenant",
+          "externalId": "9189acf9-4f89-46cd-9760-0d4933d58c67",
+          "tenantKey": "9189acf9-4f89-46cd-9760-0d4933d58c67",
+          "occurredAt": null,
+          "candidateName": "Gimbel Group",
+          "candidateDomain": null
+        },
+        {
+          "source": "ARDA",
+          "objectType": "tenant",
+          "externalId": "9db131b9-da94-4c20-bcab-0f70e079bd0d",
+          "tenantKey": "9db131b9-da94-4c20-bcab-0f70e079bd0d",
+          "occurredAt": null,
+          "candidateName": "Reachable Technology LLC",
+          "candidateDomain": null
+        }
+      ]
+    }
+  ]
+}
