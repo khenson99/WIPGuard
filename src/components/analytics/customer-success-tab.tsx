@@ -27,6 +27,13 @@ function formatNumber(value: number | null | undefined): string {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
 }
 
+function relationshipTone(status?: string): string {
+  if (status === "Healthy") return "text-[var(--success)]";
+  if (status === "Watch" || status === "Onboarding Risk") return "text-[var(--warning)]";
+  if (status === "At Risk" || status === "Billing Risk") return "text-red-500";
+  return "text-muted-foreground";
+}
+
 type IntegrationStatus = "Not provisioned" | "Connected but stale" | "Active";
 
 function deriveIntegrationStatus(input: {
@@ -174,6 +181,8 @@ function CustomerSuccessPortfolioPanels() {
   }
 
   const portfolio = resource.data;
+  const accountsWithCoda = portfolio.accounts.filter((account) => !(account.relationship?.missingSources ?? []).includes("coda")).length;
+  const coverageGaps = portfolio.accounts.filter((account) => (account.relationship?.missingSources.length ?? 0) > 0).length;
 
   return (
     <div className="space-y-4">
@@ -204,6 +213,14 @@ function CustomerSuccessPortfolioPanels() {
         <div className="rounded-xl border border-border bg-card px-4 py-3">
           <p className="text-xs text-muted-foreground">Open Alerts</p>
           <p className="mt-1 text-2xl font-semibold text-foreground">{formatNumber(portfolio.summary.openAlerts)}</p>
+        </div>
+        <div className="rounded-xl border border-border bg-card px-4 py-3">
+          <p className="text-xs text-muted-foreground">Accounts With Coda</p>
+          <p className="mt-1 text-2xl font-semibold text-foreground">{formatNumber(accountsWithCoda)}</p>
+        </div>
+        <div className="rounded-xl border border-border bg-card px-4 py-3">
+          <p className="text-xs text-muted-foreground">Coverage Gaps</p>
+          <p className="mt-1 text-2xl font-semibold text-[var(--warning)]">{formatNumber(coverageGaps)}</p>
         </div>
       </div>
 
@@ -243,11 +260,26 @@ function CustomerSuccessPortfolioPanels() {
                     <p className="mt-1 text-xs text-muted-foreground">
                       {account.lifecycleStage} • {account.ownerName || "Unassigned"} • {account.openAlertCount} open alerts
                     </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {account.relationship?.connectedSystems ?? 0} systems
+                      {account.relationship?.implementationStage ? ` • ${account.relationship.implementationStage}` : ""}
+                      {account.relationship?.missingSources.length
+                        ? ` • Missing ${account.relationship.missingSources.join(", ")}`
+                        : ""}
+                    </p>
                   </div>
                   <div className="text-left md:text-right">
                     <p className={`text-sm font-semibold ${healthTone(account.health.score)}`}>
                       {account.health.grade} {formatNumber(account.health.score)}
                     </p>
+                    {account.relationship?.retentionStatus ? (
+                      <p className={`mt-1 text-xs ${relationshipTone(account.relationship.retentionStatus)}`}>
+                        {account.relationship.retentionStatus}
+                        {account.relationship.primaryLirPassed !== undefined
+                          ? ` • LIR ${account.relationship.primaryLirPassed ? "pass" : "fail"}`
+                          : ""}
+                      </p>
+                    ) : null}
                     <p className="mt-1 text-xs text-muted-foreground">{account.nextAction || "Review account workspace"}</p>
                   </div>
                 </div>
@@ -318,6 +350,8 @@ function CustomerSuccessPortfolioPanels() {
                 <th className="pb-2 font-medium">Account</th>
                 <th className="pb-2 font-medium">Owner</th>
                 <th className="pb-2 font-medium">Health</th>
+                <th className="pb-2 font-medium">Retention</th>
+                <th className="pb-2 font-medium">Systems</th>
                 <th className="pb-2 font-medium">Alerts</th>
                 <th className="pb-2 font-medium">Last Activity</th>
                 <th className="pb-2 font-medium">Renewal</th>
@@ -340,6 +374,22 @@ function CustomerSuccessPortfolioPanels() {
                   <td className="py-3 text-muted-foreground">{account.ownerName || "Unassigned"}</td>
                   <td className={`py-3 font-medium ${healthTone(account.health.score)}`}>
                     {account.health.grade} {formatNumber(account.health.score)}
+                  </td>
+                  <td className={`py-3 text-sm ${relationshipTone(account.relationship?.retentionStatus)}`}>
+                    {account.relationship?.retentionStatus || "—"}
+                    {account.relationship?.primaryLirPassed !== undefined ? (
+                      <div className="text-xs text-muted-foreground">
+                        LIR {account.relationship.primaryLirPassed ? "pass" : "fail"}
+                      </div>
+                    ) : null}
+                  </td>
+                  <td className="py-3 text-muted-foreground">
+                    {formatNumber(account.relationship?.connectedSystems)}
+                    {account.relationship?.missingSources.length ? (
+                      <div className="text-xs text-[var(--warning)]">
+                        Missing {account.relationship.missingSources.join(", ")}
+                      </div>
+                    ) : null}
                   </td>
                   <td className="py-3 text-muted-foreground">{formatNumber(account.openAlertCount)}</td>
                   <td className="py-3 text-muted-foreground">{formatDate(account.lastActivityAt)}</td>

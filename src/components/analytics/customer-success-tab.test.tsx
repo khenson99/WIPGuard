@@ -85,6 +85,13 @@ function makePortfolio(): CustomerSuccessPortfolio {
         health: makeHealth(58, "D"),
         openAlertCount: 2,
         lifecycleStage: "AT_RISK",
+        relationship: {
+          connectedSystems: 3,
+          retentionStatus: "At Risk",
+          primaryLirPassed: false,
+          implementationStage: "LIVE",
+          missingSources: ["pylon"],
+        },
         nextAction: "Schedule exec check-in",
       },
     ],
@@ -125,6 +132,13 @@ function makePortfolio(): CustomerSuccessPortfolio {
         lastActivityAt: "2026-03-09T12:00:00.000Z",
         renewalDate: "2026-04-20T00:00:00.000Z",
         openAlertCount: 2,
+        relationship: {
+          connectedSystems: 3,
+          retentionStatus: "At Risk",
+          primaryLirPassed: false,
+          implementationStage: "LIVE",
+          missingSources: ["pylon"],
+        },
       },
     ],
   };
@@ -199,6 +213,9 @@ describe("CustomerSuccessTab", () => {
     expect(screen.getByText("Renewal risk rising")).toBeTruthy();
     expect(screen.getByText("QBR completed")).toBeTruthy();
     expect(screen.getByText("Integration Delivery Status")).toBeTruthy();
+    expect(screen.getByText("Accounts With Coda")).toBeTruthy();
+    expect(screen.getAllByText("At Risk").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Missing pylon/).length).toBeGreaterThan(0);
     expect(screen.getByText("Connected but stale")).toBeTruthy();
     expect(screen.getByText("Rebalance urgent queue ownership")).toBeTruthy();
     expect(screen.getByText("Throttle backlog inflow")).toBeTruthy();

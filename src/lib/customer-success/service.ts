@@ -31,6 +31,11 @@ import type {
   CustomerSuccessHealth,
   CustomerSuccessHealthComponent,
   CustomerSuccessPortfolio,
+  CustomerSuccessPortfolioRelationshipSummary,
+  CustomerSuccessProviderLink,
+  CustomerSuccessRelationshipIntelligence,
+  CustomerSuccessRelationshipReason,
+  CustomerSuccessRetentionSummary,
   CustomerSuccessTaskSummary,
   CustomerSuccessStakeholder,
   SendCustomerSuccessOutreachInput,
@@ -139,6 +144,15 @@ export interface CustomerSuccessAccountSnapshot {
   paymentStatus: string | null;
   expansionPotential: string | null;
   externalProviders: CustomerExternalProvider[];
+  externalRefs: Array<{
+    provider: CustomerExternalProvider;
+    externalObjectType: string;
+    externalId: string;
+    label: string | null;
+    isPrimary: boolean;
+    metadata: Record<string, unknown> | null;
+    updatedAt: Date;
+  }>;
   contacts: Array<{
     id: string;
     firstName: string;
@@ -260,6 +274,24 @@ function normalizeOptionalString(value: string | null | undefined): string | nul
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function asArray<T = unknown>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function asBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
 }
 
 function toJsonMetadata(value: Record<string, unknown> | undefined): Prisma.InputJsonValue | undefined {
@@ -842,6 +874,41 @@ function buildTaskSummaries(snapshot: CustomerSuccessAccountSnapshot): CustomerS
   }));
 }
 
+function providerDocUrl(provider: CustomerExternalProvider, externalId: string, metadata: Record<string, unknown> | null): string | undefined {
+  const browserLink =
+    asString(metadata?.browserLink) ??
+    asString(metadata?.url) ??
+    asString(metadata?.docUrl) ??
+    asString(metadata?.sourceUrl);
+  if (browserLink) return browserLink;
+
+  if (provider === CustomerExternalProvider.CODA) {
+    return `https://coda.io/d/_d${encodeURIComponent(externalId)}`;
+  }
+
+  return undefined;
+}
+
+function buildProviderLinks(snapshot: CustomerSuccessAccountSnapshot): CustomerSuccessProviderLink[] {
+  return snapshot.externalRefs
+    .slice()
+    .sort((left, right) => {
+      if (left.provider !== right.provider) return left.provider.localeCompare(right.provider);
+      if (left.externalObjectType !== right.externalObjectType) {
+        return left.externalObjectType.localeCompare(right.externalObjectType);
+      }
+      return right.updatedAt.getTime() - left.updatedAt.getTime();
+    })
+    .map((ref) => ({
+      provider: ref.provider,
+      externalObjectType: ref.externalObjectType,
+      externalId: ref.externalId,
+      label: ref.label ?? undefined,
+      isPrimary: ref.isPrimary,
+      url: providerDocUrl(ref.provider, ref.externalId, ref.metadata),
+    }));
+}
+
 export function buildCustomerSuccessAccountDetailFromSnapshot(
   snapshot: CustomerSuccessAccountSnapshot,
   now: Date = new Date()
@@ -891,12 +958,16 @@ export function buildCustomerSuccessAccountDetailFromSnapshot(
       paymentStatus: snapshot.paymentStatus ?? undefined,
       expansionPotential: snapshot.expansionPotential ?? undefined,
     },
+    relationshipIntelligence: {
+      providers: buildProviderLinks(snapshot),
+    },
   };
 }
 
 export function buildCustomerSuccessPortfolioFromSnapshots(
   snapshots: CustomerSuccessAccountSnapshot[],
-  now: Date = new Date()
+  now: Date = new Date(),
+  relationshipMap: Map<string, Omit<CustomerSuccessPortfolioRelationshipSummary, "connectedSystems">> = new Map()
 ): CustomerSuccessPortfolio {
   const generatedAt = now.toISOString();
   const accounts = snapshots.map((snapshot) => {
@@ -906,6 +977,7 @@ export function buildCustomerSuccessPortfolioFromSnapshots(
     const activeUsers30d = buildStakeholders(snapshot, now).filter(
       (stakeholder) => stakeholder.coverageStatus === "covered"
     ).length;
+    const relationship = relationshipMap.get(snapshot.id);
 
     return {
       accountId: snapshot.id,
@@ -918,6 +990,13 @@ export function buildCustomerSuccessPortfolioFromSnapshots(
       activeUsers30d,
       renewalDate: snapshot.renewalDate?.toISOString(),
       openAlertCount,
+      relationship: {
+        connectedSystems: snapshot.externalRefs.length,
+        retentionStatus: relationship?.retentionStatus,
+        primaryLirPassed: relationship?.primaryLirPassed,
+        implementationStage: relationship?.implementationStage,
+        missingSources: relationship?.missingSources ?? [],
+      },
     };
   });
 
@@ -953,6 +1032,7 @@ export function buildCustomerSuccessPortfolioFromSnapshots(
       health: account.health,
       openAlertCount: account.openAlertCount,
       lifecycleStage: snapshots.find((snapshot) => snapshot.id === account.accountId)?.lifecycleStage ?? "ACTIVE",
+      relationship: account.relationship,
       nextAction:
         alerts.find((alert) => alert.accountId === account.accountId && alert.status !== "resolved")?.suggestedAction ??
         pickRecommendedTemplates(
@@ -1024,6 +1104,15 @@ function mapCustomerRecordToSnapshot(record: CustomerRecordWithRelations): Custo
           ? "high"
           : null,
     externalProviders: record.externalRefs.map((ref) => ref.provider),
+    externalRefs: record.externalRefs.map((ref) => ({
+      provider: ref.provider,
+      externalObjectType: ref.externalObjectType,
+      externalId: ref.externalId,
+      label: ref.label,
+      isPrimary: ref.isPrimary,
+      metadata: ref.metadata && typeof ref.metadata === "object" ? (ref.metadata as Record<string, unknown>) : null,
+      updatedAt: ref.updatedAt,
+    })),
     contacts: Array.from(contactsById.values()),
     notes: record.notes.map((note) => ({
       id: note.id,
@@ -1140,11 +1229,227 @@ async function listCustomerSuccessSnapshots(actor: CustomerSuccessActor): Promis
   });
 }
 
+async function getCustomerSuccessSnapshotById(
+  actor: CustomerSuccessActor,
+  accountId: string
+): Promise<CustomerSuccessAccountSnapshot | null> {
+  return withCustomerSuccessContext(actor, async () => {
+    const record = await prisma.customerRecord.findFirst({
+      where: {
+        organizationId: actor.organizationId,
+        id: accountId,
+        status: { not: CustomerRecordStatus.MERGED },
+      },
+      include: CUSTOMER_RECORD_INCLUDE,
+    });
+
+    return record ? mapCustomerRecordToSnapshot(record) : null;
+  });
+}
+
+function humanizeRetentionStatus(value: string | null | undefined): string {
+  const normalized = (value ?? "WATCH").replace(/_/g, " ").toLowerCase();
+  return normalized
+    .split(" ")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function parseRelationshipReasons(value: unknown): CustomerSuccessRelationshipReason[] {
+  return asArray<Record<string, unknown>>(value)
+    .map((entry) => {
+      const code = asString(entry.code);
+      const label = asString(entry.label);
+      const detail = asString(entry.detail);
+      const severity = asString(entry.severity);
+      const dimension = asString(entry.dimension);
+      if (!code || !label || !detail || !severity || !dimension) return null;
+      return {
+        code,
+        label,
+        detail,
+        severity: severity as CustomerSuccessRelationshipReason["severity"],
+        dimension: dimension as CustomerSuccessRelationshipReason["dimension"],
+      };
+    })
+    .filter((entry): entry is CustomerSuccessRelationshipReason => entry !== null);
+}
+
+function buildDerivedCoverage(
+  sourceRows: Array<{ source: string }>
+): CustomerSuccessRetentionSummary["coverage"] {
+  const seen = new Set(sourceRows.map((row) => row.source.toLowerCase()));
+  const missingSources = ["arda", "coda", "stripe", "hubspot", "pylon"].filter((source) => !seen.has(source));
+  return {
+    arda: seen.has("arda"),
+    coda: seen.has("coda"),
+    stripe: seen.has("stripe"),
+    hubspot: seen.has("hubspot"),
+    pylon: seen.has("pylon"),
+    missingSources,
+  };
+}
+
+function buildPortfolioRelationshipSummary(input: {
+  connectedSystems: number;
+  retentionCurrent?: {
+    status: string;
+    primaryLirPassed: boolean;
+    detailData: unknown;
+    monthFact?: { coverageData: unknown } | null;
+  } | null;
+}): CustomerSuccessPortfolioRelationshipSummary {
+  const detailData = input.retentionCurrent ? asRecord(input.retentionCurrent.detailData) : {};
+  const coverageData =
+    input.retentionCurrent?.monthFact ? asRecord(input.retentionCurrent.monthFact.coverageData) : {};
+
+  return {
+    connectedSystems: input.connectedSystems,
+    retentionStatus: input.retentionCurrent ? humanizeRetentionStatus(input.retentionCurrent.status) : undefined,
+    primaryLirPassed: input.retentionCurrent?.primaryLirPassed ?? undefined,
+    implementationStage: asString(detailData.implementationStage) ?? undefined,
+    missingSources: asArray<string>(coverageData.missingSources),
+  };
+}
+
+async function buildRelationshipIntelligence(
+  actor: CustomerSuccessActor,
+  snapshot: CustomerSuccessAccountSnapshot
+): Promise<CustomerSuccessRelationshipIntelligence> {
+  const [retentionCurrent, sourceRows] = await withCustomerSuccessContext(actor, async () =>
+    Promise.all([
+      prisma.retentionTenantCurrent.findFirst({
+        where: {
+          organizationId: actor.organizationId,
+          customerRecordId: snapshot.id,
+        },
+        include: {
+          monthFact: {
+            select: {
+              coverageData: true,
+            },
+          },
+        },
+      }),
+      prisma.retentionSourceRecord.findMany({
+        where: {
+          organizationId: actor.organizationId,
+          customerRecordId: snapshot.id,
+          source: { in: ["ARDA", "CODA", "STRIPE", "HUBSPOT", "PYLON"] },
+        },
+        orderBy: [{ sourceUpdatedAt: "desc" }, { occurredAt: "desc" }, { createdAt: "desc" }],
+        select: {
+          source: true,
+          objectType: true,
+          occurredAt: true,
+          sourceUpdatedAt: true,
+          payload: true,
+        },
+      }),
+    ])
+  );
+
+  const providers = buildProviderLinks(snapshot);
+  const latestArdaTenant = sourceRows.find((row) => row.source === "ARDA" && row.objectType === "tenant") ?? null;
+  const codaOrderRows = sourceRows.filter((row) => row.source === "CODA");
+  const latestCodaOrder = codaOrderRows
+    .map((row) => row.occurredAt ?? row.sourceUpdatedAt)
+    .filter((value): value is Date => value instanceof Date)
+    .sort((left, right) => right.getTime() - left.getTime())[0];
+
+  const latestArdaPayload = latestArdaTenant ? asRecord(latestArdaTenant.payload) : {};
+  const retentionDetail = retentionCurrent ? asRecord(retentionCurrent.detailData) : {};
+  const retentionCoverageRaw =
+    retentionCurrent && retentionCurrent.monthFact ? asRecord(retentionCurrent.monthFact.coverageData) : null;
+  const coverage =
+    retentionCoverageRaw && Object.keys(retentionCoverageRaw).length > 0
+      ? {
+          arda: Boolean(asBoolean(retentionCoverageRaw.arda)),
+          coda: Boolean(asBoolean(retentionCoverageRaw.coda)),
+          stripe: Boolean(asBoolean(retentionCoverageRaw.stripe)),
+          hubspot: Boolean(asBoolean(retentionCoverageRaw.hubspot)),
+          pylon: Boolean(asBoolean(retentionCoverageRaw.pylon)),
+          missingSources: asArray<string>(retentionCoverageRaw.missingSources),
+        }
+      : buildDerivedCoverage(sourceRows);
+
+  return {
+    providers,
+    retention: retentionCurrent
+      ? {
+          status: humanizeRetentionStatus(retentionCurrent.status),
+          lifecyclePhase: retentionCurrent.lifecyclePhase,
+          primaryLirLabel: retentionCurrent.primaryLirLabel,
+          primaryLirPassed: retentionCurrent.primaryLirPassed,
+          primaryLirValue: retentionCurrent.primaryLirValue ?? undefined,
+          primaryLirThreshold: retentionCurrent.primaryLirThreshold ?? undefined,
+          currentMonthActivity: retentionCurrent.currentMonthActivity ?? undefined,
+          trendVsPriorPct: retentionCurrent.activityTrendPct ?? undefined,
+          implementationStage: asString(retentionDetail.implementationStage) ?? undefined,
+          goLiveDate: asString(retentionDetail.goLiveDate) ?? undefined,
+          subscriptionStartDate: asString(retentionDetail.subscriptionStartDate) ?? undefined,
+          firstOrderDate: asString(retentionDetail.firstOrderDate) ?? undefined,
+          explanation: asString(retentionDetail.explanation) ?? undefined,
+          reasonCodes: parseRelationshipReasons(retentionCurrent.reasonCodes),
+          coverage,
+          detailUrl: `/analytics/retention/${snapshot.id}`,
+        }
+      : undefined,
+    coda:
+      latestArdaTenant || codaOrderRows.length > 0
+        ? {
+            customerStatus: asString(latestArdaPayload.customerStatus) ?? undefined,
+            configuredHealth: asString(latestArdaPayload.health) ?? undefined,
+            mainDocId: asString(latestArdaPayload.mainCodaDocId) ?? undefined,
+            orderArchiveDocumentId: asString(latestArdaPayload.orderArchiveDocumentId) ?? undefined,
+            mainDocUrl: asString(latestArdaPayload.mainCodaDocId)
+              ? `https://coda.io/d/_d${encodeURIComponent(asString(latestArdaPayload.mainCodaDocId)!)}`
+              : undefined,
+            orderArchiveDocumentUrl: asString(latestArdaPayload.orderArchiveDocumentId)
+              ? `https://coda.io/d/_d${encodeURIComponent(asString(latestArdaPayload.orderArchiveDocumentId)!)}`
+              : undefined,
+            lastOrderAt: latestCodaOrder?.toISOString(),
+            sourceRecordCount: codaOrderRows.length,
+          }
+        : undefined,
+  };
+}
+
 export async function getCustomerSuccessPortfolio(
   actor: CustomerSuccessActor
 ): Promise<CustomerSuccessPortfolio> {
   const snapshots = await listCustomerSuccessSnapshots(actor);
-  return buildCustomerSuccessPortfolioFromSnapshots(snapshots);
+  const retentionCurrents = await withCustomerSuccessContext(actor, async () =>
+    prisma.retentionTenantCurrent.findMany({
+      where: {
+        organizationId: actor.organizationId,
+        customerRecordId: { in: snapshots.map((snapshot) => snapshot.id) },
+      },
+      include: {
+        monthFact: {
+          select: {
+            coverageData: true,
+          },
+        },
+      },
+    })
+  );
+
+  const relationshipMap = new Map<string, Omit<CustomerSuccessPortfolioRelationshipSummary, "connectedSystems">>();
+  retentionCurrents.forEach((current) => {
+    const summary = buildPortfolioRelationshipSummary({
+      connectedSystems: 0,
+      retentionCurrent: current,
+    });
+    relationshipMap.set(current.customerRecordId, {
+      retentionStatus: summary.retentionStatus,
+      primaryLirPassed: summary.primaryLirPassed,
+      implementationStage: summary.implementationStage,
+      missingSources: summary.missingSources,
+    });
+  });
+
+  return buildCustomerSuccessPortfolioFromSnapshots(snapshots, new Date(), relationshipMap);
 }
 
 export async function getCustomerSuccessAlertFeed(
@@ -1179,10 +1484,11 @@ export async function getCustomerSuccessAccountDetail(
   actor: CustomerSuccessActor,
   accountId: string
 ): Promise<CustomerSuccessAccountDetail | null> {
-  const snapshots = await listCustomerSuccessSnapshots(actor);
-  const snapshot = snapshots.find((item) => item.id === accountId);
+  const snapshot = await getCustomerSuccessSnapshotById(actor, accountId);
   if (!snapshot) return null;
-  return buildCustomerSuccessAccountDetailFromSnapshot(snapshot);
+  const detail = buildCustomerSuccessAccountDetailFromSnapshot(snapshot);
+  detail.relationshipIntelligence = await buildRelationshipIntelligence(actor, snapshot);
+  return detail;
 }
 
 export async function createCustomerSuccessNote(

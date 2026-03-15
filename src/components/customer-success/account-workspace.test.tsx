@@ -101,6 +101,61 @@ function buildDetail(overrides: Partial<CustomerSuccessAccountDetail> = {}): Cus
       paymentStatus: "current",
       expansionPotential: "medium",
     },
+    relationshipIntelligence: {
+      providers: [
+        {
+          provider: "CODA",
+          externalObjectType: "doc",
+          externalId: "VYLC2rzPN_",
+          label: "Customer Success and Implementation",
+          isPrimary: true,
+          url: "https://coda.io/d/_dVYLC2rzPN_",
+        },
+      ],
+      retention: {
+        status: "Watch",
+        lifecyclePhase: "MATURE",
+        primaryLirLabel: "5 orders / 5 items in 30 days",
+        primaryLirPassed: false,
+        primaryLirValue: 2,
+        primaryLirThreshold: 5,
+        currentMonthActivity: 4,
+        trendVsPriorPct: -37.5,
+        implementationStage: "LIVE",
+        goLiveDate: "2025-10-01T00:00:00.000Z",
+        subscriptionStartDate: "2025-09-15T00:00:00.000Z",
+        firstOrderDate: "2025-10-05T00:00:00.000Z",
+        explanation: "watch because activity is trailing and recent usage is below the habit threshold.",
+        reasonCodes: [
+          {
+            code: "low_recent_activity",
+            label: "Low recent activity",
+            detail: "Recent activity is below the current habit threshold.",
+            severity: "warning",
+            dimension: "usage",
+          },
+        ],
+        coverage: {
+          arda: true,
+          coda: true,
+          stripe: true,
+          hubspot: true,
+          pylon: false,
+          missingSources: ["pylon"],
+        },
+        detailUrl: "/analytics/retention/acct_1",
+      },
+      coda: {
+        customerStatus: "Won",
+        configuredHealth: "Yellow",
+        mainDocId: "VYLC2rzPN_",
+        mainDocUrl: "https://coda.io/d/_dVYLC2rzPN_",
+        orderArchiveDocumentId: "cgSn33D4N9",
+        orderArchiveDocumentUrl: "https://coda.io/d/_dcgSn33D4N9",
+        lastOrderAt: "2026-03-07T10:00:00.000Z",
+        sourceRecordCount: 12,
+      },
+    },
     ...overrides,
   };
 }
@@ -177,5 +232,24 @@ describe("CustomerSuccessAccountWorkspace", () => {
       "/api/customer-success/accounts/acct_1/notes",
       expect.objectContaining({ method: "POST" })
     );
+  });
+
+  it("renders relationship intelligence from Coda and retention overlays", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => buildDetail(),
+    })) as unknown as typeof fetch);
+
+    render(<CustomerSuccessAccountWorkspace accountId="acct_1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Relationship Intelligence")).toBeTruthy();
+    });
+
+    expect(screen.getByText("Unified provider links, Coda account metadata, and current retention posture.")).toBeTruthy();
+    expect(screen.getByText("Main Coda Doc")).toBeTruthy();
+    expect(screen.getByText("Low recent activity")).toBeTruthy();
+    expect(screen.getByText(/Customer Success and Implementation/)).toBeTruthy();
   });
 });
