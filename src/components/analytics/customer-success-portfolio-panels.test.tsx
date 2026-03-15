@@ -61,6 +61,9 @@ describe("CustomerSuccessPortfolioPanels", () => {
       expect(screen.getByText("Portfolio Accounts")).toBeTruthy();
     });
 
+    expect(screen.getByText("Accounts With Coda")).toBeTruthy();
+    expect(screen.getAllByText("At Risk").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Missing pylon/).length).toBeGreaterThan(0);
     expect(screen.getByText("Leading Indicator Pressure")).toBeTruthy();
     expect(screen.getByText("Health Distribution")).toBeTruthy();
     expect(screen.getByText("Attention Queue")).toBeTruthy();

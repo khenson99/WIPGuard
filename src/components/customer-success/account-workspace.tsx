@@ -54,6 +54,11 @@ function formatNumber(value?: number): string {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
 }
 
+function formatPercent(value?: number): string {
+  if (value === undefined || value === null) return "—";
+  return `${value.toFixed(1)}%`;
+}
+
 function formatHealthTone(score: number): string {
   if (score >= 80) return "text-[var(--success)]";
   if (score >= 65) return "text-[var(--warning)]";
@@ -179,6 +184,9 @@ export function CustomerSuccessAccountWorkspace({ accountId }: { accountId: stri
 
   const detail = resource.data;
   const activeAlerts = detail.alerts.filter((alert) => alert.status === "open" || alert.status === "in_progress");
+  const relationship = detail.relationshipIntelligence;
+  const retention = relationship?.retention;
+  const coda = relationship?.coda;
 
   return (
     <div className="space-y-6">
@@ -281,7 +289,178 @@ export function CustomerSuccessAccountWorkspace({ accountId }: { accountId: stri
                 <p className="text-xs text-muted-foreground">Success Plan Milestones</p>
                 <p className="mt-1 text-sm font-medium text-foreground">{detail.successPlan.milestones.length}</p>
               </div>
+              <div className="rounded-xl border border-border bg-background p-4">
+                <p className="text-xs text-muted-foreground">Connected Systems</p>
+                <p className="mt-1 text-sm font-medium text-foreground">{relationship?.providers.length ?? 0}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-background p-4">
+                <p className="text-xs text-muted-foreground">Primary LIR</p>
+                <p className="mt-1 text-sm font-medium text-foreground">
+                  {retention ? `${retention.primaryLirPassed ? "Pass" : "Fail"} · ${retention.primaryLirLabel}` : "—"}
+                </p>
+              </div>
             </div>
+
+            {relationship ? (
+              <div className="mt-4 rounded-xl border border-border bg-background p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">Relationship Intelligence</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Unified provider links, Coda account metadata, and current retention posture.
+                    </p>
+                  </div>
+                  {retention ? (
+                    <Link href={retention.detailUrl} className="text-xs text-primary hover:underline">
+                      Open retention detail
+                    </Link>
+                  ) : null}
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-xl border border-border bg-card px-4 py-3">
+                    <p className="text-xs text-muted-foreground">Retention Status</p>
+                    <p className="mt-1 text-sm font-medium text-foreground">{retention?.status || "No retention snapshot"}</p>
+                  </div>
+                  <div className="rounded-xl border border-border bg-card px-4 py-3">
+                    <p className="text-xs text-muted-foreground">Implementation</p>
+                    <p className="mt-1 text-sm font-medium text-foreground">{retention?.implementationStage || "—"}</p>
+                  </div>
+                  <div className="rounded-xl border border-border bg-card px-4 py-3">
+                    <p className="text-xs text-muted-foreground">Current Activity</p>
+                    <p className="mt-1 text-sm font-medium text-foreground">{formatNumber(retention?.currentMonthActivity)}</p>
+                  </div>
+                  <div className="rounded-xl border border-border bg-card px-4 py-3">
+                    <p className="text-xs text-muted-foreground">Trend vs Prior</p>
+                    <p className="mt-1 text-sm font-medium text-foreground">{formatPercent(retention?.trendVsPriorPct)}</p>
+                  </div>
+                </div>
+
+                {retention?.explanation ? (
+                  <p className="mt-4 text-sm text-muted-foreground">{retention.explanation}</p>
+                ) : null}
+
+                <div className="mt-4 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source Coverage</h4>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {retention ? (
+                          ["arda", "coda", "stripe", "hubspot", "pylon"].map((source) => {
+                            const covered = retention.coverage[source as keyof typeof retention.coverage];
+                            if (typeof covered !== "boolean") return null;
+                            return (
+                              <span
+                                key={source}
+                                className={`rounded-full border px-2 py-1 text-[11px] ${
+                                  covered
+                                    ? "border-[var(--success)]/30 bg-[var(--success)]/10 text-[var(--success)]"
+                                    : "border-[var(--warning)]/30 bg-[var(--warning)]/10 text-[var(--warning)]"
+                                }`}
+                              >
+                                {source} {covered ? "connected" : "missing"}
+                              </span>
+                            );
+                          })
+                        ) : (
+                          <span className="text-xs text-muted-foreground">No coverage snapshot.</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {coda ? (
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Coda</h4>
+                        <div className="mt-2 space-y-2 text-sm">
+                          <p className="text-muted-foreground">Customer Status: <span className="text-foreground">{coda.customerStatus || "—"}</span></p>
+                          <p className="text-muted-foreground">Configured Health: <span className="text-foreground">{coda.configuredHealth || "—"}</span></p>
+                          <p className="text-muted-foreground">Last Coda Order: <span className="text-foreground">{formatDate(coda.lastOrderAt)}</span></p>
+                          <p className="text-muted-foreground">Order Records: <span className="text-foreground">{formatNumber(coda.sourceRecordCount)}</span></p>
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            {coda.mainDocUrl ? (
+                              <a
+                                href={coda.mainDocUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="rounded-full border border-border px-3 py-1 text-xs text-foreground hover:bg-secondary"
+                              >
+                                Main Coda Doc
+                              </a>
+                            ) : null}
+                            {coda.orderArchiveDocumentUrl ? (
+                              <a
+                                href={coda.orderArchiveDocumentUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="rounded-full border border-border px-3 py-1 text-xs text-foreground hover:bg-secondary"
+                              >
+                                Order Archive
+                              </a>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Connected Records</h4>
+                      <div className="mt-2 space-y-2">
+                        {relationship.providers.length > 0 ? (
+                          relationship.providers.map((provider) => (
+                            <div key={`${provider.provider}:${provider.externalObjectType}:${provider.externalId}`} className="rounded-xl border border-border bg-card px-3 py-2 text-sm">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="font-medium text-foreground">
+                                  {formatEnumLabel(provider.provider)} {provider.label ? `• ${provider.label}` : ""}
+                                </p>
+                                {provider.isPrimary ? (
+                                  <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
+                                    Primary
+                                  </span>
+                                ) : null}
+                              </div>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {provider.externalObjectType} · {provider.externalId}
+                              </p>
+                              {provider.url ? (
+                                <a
+                                  href={provider.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="mt-2 inline-block text-xs text-primary hover:underline"
+                                >
+                                  Open linked record
+                                </a>
+                              ) : null}
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No provider links on this account yet.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {retention?.reasonCodes.length ? (
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current Drivers</h4>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {retention.reasonCodes.map((reason) => (
+                            <span
+                              key={reason.code}
+                              title={reason.detail}
+                              className="rounded-full border border-border bg-card px-2 py-1 text-[11px] text-muted-foreground"
+                            >
+                              {reason.label}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="rounded-2xl border border-border bg-card p-5">

@@ -62,6 +62,8 @@ export function CustomerSuccessPortfolioPanels() {
   }
 
   const portfolio = resource.data;
+  const accountsWithCoda = portfolio.accounts.filter((account) => !(account.relationship?.missingSources ?? []).includes("coda")).length;
+  const coverageGaps = portfolio.accounts.filter((account) => (account.relationship?.missingSources.length ?? 0) > 0).length;
   const weakSignalThreshold = 65;
   const {
     filteredAccounts,
@@ -88,8 +90,10 @@ export function CustomerSuccessPortfolioPanels() {
       ) : null}
 
       <PortfolioSummaryCards
+        accountsWithCoda={accountsWithCoda}
         avgHealthScore={portfolio.summary.avgHealthScore}
         atRiskAccounts={portfolio.summary.atRiskAccounts}
+        coverageGaps={coverageGaps}
         formatNumber={formatNumber}
         healthTone={healthTone}
         openAlerts={portfolio.summary.openAlerts}
