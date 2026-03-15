@@ -681,17 +681,21 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
       </SectionCard>
 
       {/* Budget Category Breakdown */}
-      {budgetItems.length > 0 && (
-        <SectionCard title="Category Breakdown" subtitle="Actual spending by category">
-          <BarDisplay items={barItems} formatValue={fmt$} />
-          <div className="mt-4">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Budget Allocation
-            </p>
-            <BarDisplay items={barBudgetItems} formatValue={fmt$} />
-          </div>
-        </SectionCard>
-      )}
+      <SectionCard title="Category Breakdown" subtitle="Actual spending by category">
+        {budgetItems.length > 0 ? (
+          <>
+            <BarDisplay items={barItems} formatValue={fmt$} />
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Budget Allocation
+              </p>
+              <BarDisplay items={barBudgetItems} formatValue={fmt$} />
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">No category breakdown available until a budget baseline is configured.</p>
+        )}
+      </SectionCard>
 
       {/* Goals Tracker */}
       {goals.length > 0 && (
