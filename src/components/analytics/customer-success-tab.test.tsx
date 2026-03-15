@@ -38,6 +38,9 @@ describe("CustomerSuccessTab", () => {
     expect(screen.getByText("Renewal risk rising")).toBeTruthy();
     expect(screen.getByText("QBR completed")).toBeTruthy();
     expect(screen.getByText("Integration Delivery Status")).toBeTruthy();
+    expect(screen.getByText("Accounts With Coda")).toBeTruthy();
+    expect(screen.getAllByText("At Risk").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Missing pylon/).length).toBeGreaterThan(0);
     expect(screen.getByText("Connected but stale")).toBeTruthy();
     expect(screen.getByText("Leading Indicator Pressure")).toBeTruthy();
     expect(screen.getByText("Accounts with indicator scores below 65 across the portfolio.")).toBeTruthy();

@@ -25,6 +25,19 @@ function accountFixture(
     paymentStatus: overrides.paymentStatus ?? "current",
     expansionPotential: overrides.expansionPotential ?? "medium",
     externalProviders: overrides.externalProviders ?? ["HUBSPOT", "STRIPE", "SLACK", "GOOGLE_WORKSPACE", "CODA"],
+    externalRefs: overrides.externalRefs ?? [
+      {
+        provider: "CODA",
+        externalObjectType: "doc",
+        externalId: "VYLC2rzPN_",
+        label: "Customer Success and Implementation",
+        isPrimary: true,
+        metadata: {
+          docUrl: "https://coda.io/d/_dVYLC2rzPN_",
+        },
+        updatedAt: new Date("2026-03-06T00:00:00.000Z"),
+      },
+    ],
     contacts: overrides.contacts ?? [
       {
         id: `${overrides.id}-contact-1`,
@@ -239,6 +252,12 @@ describe("customer success service", () => {
     ).toBeLessThan(
       portfolio.accounts.find((account) => account.accountId === "acct-healthy")!.health.score
     );
+    expect(portfolio.accounts.find((account) => account.accountId === "acct-stalled")?.relationship).toEqual(
+      expect.objectContaining({
+        connectedSystems: 1,
+        missingSources: [],
+      })
+    );
   });
 
   it("verifies health score composition and grade output from all five translated components", () => {
@@ -348,6 +367,7 @@ describe("customer success service", () => {
         id: "acct-partial-detail",
         name: "Partial Detail",
         externalProviders: [],
+        externalRefs: [],
         contacts: [],
         notes: [],
         outreach: [],
@@ -369,5 +389,25 @@ describe("customer success service", () => {
     expect(detail.tasks).toEqual([]);
     expect(detail.successPlan.milestones).toEqual([]);
     expect(detail.outreach.recentMessages).toEqual([]);
+  });
+
+  it("exposes connected provider links on the account detail payload", () => {
+    const detail = buildCustomerSuccessAccountDetailFromSnapshot(
+      accountFixture({
+        id: "acct-links",
+        name: "Provider Links",
+      }),
+      NOW
+    );
+
+    expect(detail.relationshipIntelligence?.providers).toEqual([
+      expect.objectContaining({
+        provider: "CODA",
+        externalObjectType: "doc",
+        externalId: "VYLC2rzPN_",
+        label: "Customer Success and Implementation",
+        url: "https://coda.io/d/_dVYLC2rzPN_",
+      }),
+    ]);
   });
 });

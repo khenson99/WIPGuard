@@ -143,6 +143,7 @@ export function makeAccount(
     renewalDate: input.renewalDate ?? "2026-06-01T00:00:00.000Z",
     segment: input.segment,
     tier: input.tier,
+    relationship: input.relationship,
   };
 }
 
@@ -170,6 +171,13 @@ export function makePortfolio(): CustomerSuccessPortfolio {
         health: makeHealth({ score: 58, grade: "D" }),
         openAlertCount: 2,
         lifecycleStage: "AT_RISK",
+        relationship: {
+          connectedSystems: 3,
+          retentionStatus: "At Risk",
+          primaryLirPassed: false,
+          implementationStage: "LIVE",
+          missingSources: ["pylon"],
+        },
         nextAction: "Schedule exec check-in",
       },
     ],
@@ -200,9 +208,7 @@ export function makePortfolio(): CustomerSuccessPortfolio {
       },
     ],
     accounts: [
-      {
-        accountId: "acct_2",
-        ...makeAccount("acct_2", {
+      makeAccount("acct_2", {
           name: "Beacon Ltd",
           segment: "Enterprise",
           tier: "Strategic",
@@ -211,11 +217,15 @@ export function makePortfolio(): CustomerSuccessPortfolio {
           lastActivityAt: "2026-03-10T12:00:00.000Z",
           renewalDate: "2026-05-30T00:00:00.000Z",
           openAlertCount: 5,
+          relationship: {
+            connectedSystems: 2,
+            retentionStatus: "Healthy",
+            primaryLirPassed: true,
+            implementationStage: "LIVE",
+            missingSources: [],
+          },
         }),
-      },
-      {
-        accountId: "acct_1",
-        ...makeAccount("acct_1", {
+      makeAccount("acct_1", {
           name: "Acme Co",
           segment: "Mid-market",
           tier: "Growth",
@@ -224,8 +234,14 @@ export function makePortfolio(): CustomerSuccessPortfolio {
           lastActivityAt: "2026-03-09T12:00:00.000Z",
           renewalDate: "2026-04-20T00:00:00.000Z",
           openAlertCount: 2,
+          relationship: {
+            connectedSystems: 3,
+            retentionStatus: "At Risk",
+            primaryLirPassed: false,
+            implementationStage: "LIVE",
+            missingSources: ["pylon"],
+          },
         }),
-      },
     ],
   };
 }

@@ -21,8 +21,10 @@ describe("customer-success-portfolio-sections", () => {
   it("renders the portfolio summary cards", () => {
     render(
       <PortfolioSummaryCards
+        accountsWithCoda={9}
         avgHealthScore={74}
         atRiskAccounts={3}
+        coverageGaps={4}
         formatNumber={formatNumber}
         healthTone={healthTone}
         openAlerts={6}
@@ -34,6 +36,8 @@ describe("customer-success-portfolio-sections", () => {
     expect(screen.getByText("12")).toBeTruthy();
     expect(screen.getByText("Average Health")).toBeTruthy();
     expect(screen.getByText("74")).toBeTruthy();
+    expect(screen.getByText("Accounts With Coda")).toBeTruthy();
+    expect(screen.getByText("Coverage Gaps")).toBeTruthy();
   });
 
   it("renders pressure, attention, alert, activity, and distribution panels", () => {
@@ -155,6 +159,13 @@ describe("customer-success-portfolio-sections", () => {
               },
               openAlertCount: 2,
               lifecycleStage: "AT_RISK",
+              relationship: {
+                connectedSystems: 3,
+                retentionStatus: "At Risk",
+                primaryLirPassed: false,
+                implementationStage: "LIVE",
+                missingSources: ["pylon"],
+              },
               nextAction: "Schedule exec check-in",
             },
           ]}
@@ -199,6 +210,8 @@ describe("customer-success-portfolio-sections", () => {
     expect(screen.getByText("Filtering table")).toBeTruthy();
     expect(screen.getByText("Health Distribution")).toBeTruthy();
     expect(screen.getByText("Attention Queue")).toBeTruthy();
+    expect(screen.getByText(/At Risk/)).toBeTruthy();
+    expect(screen.getByText("3 systems • LIVE • Missing pylon")).toBeTruthy();
     expect(screen.getByText("Primary risk: Activity recency • 7d since touch")).toBeTruthy();
     expect(screen.getByText("Open Alerts")).toBeTruthy();
     expect(screen.getByText("Renewal risk rising")).toBeTruthy();

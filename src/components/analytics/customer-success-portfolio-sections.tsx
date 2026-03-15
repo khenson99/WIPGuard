@@ -13,18 +13,36 @@ type PortfolioAlert = CustomerSuccessPortfolio["alerts"][number];
 type PortfolioActivity = CustomerSuccessPortfolio["recentActivity"][number];
 type PortfolioAttentionAccount = CustomerSuccessPortfolio["attentionAccounts"][number];
 
+function relationshipTone(status?: string): string {
+  if (status === "Healthy") return "text-[var(--success)]";
+  if (status === "Watch" || status === "Onboarding Risk") return "text-[var(--warning)]";
+  if (status === "At Risk" || status === "Billing Risk") return "text-red-500";
+  return "text-muted-foreground";
+}
+
 export function PortfolioSummaryCards(props: {
+  accountsWithCoda: number;
   avgHealthScore: number;
   atRiskAccounts: number;
+  coverageGaps: number;
   formatNumber: (value: number | null | undefined) => string;
   healthTone: (score: number) => string;
   openAlerts: number;
   totalAccounts: number;
 }) {
-  const { avgHealthScore, atRiskAccounts, formatNumber, healthTone, openAlerts, totalAccounts } = props;
+  const {
+    accountsWithCoda,
+    avgHealthScore,
+    atRiskAccounts,
+    coverageGaps,
+    formatNumber,
+    healthTone,
+    openAlerts,
+    totalAccounts,
+  } = props;
 
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
       <div className="rounded-xl border border-border bg-card px-4 py-3">
         <p className="text-xs text-muted-foreground">Customer Records</p>
         <p className="mt-1 text-2xl font-semibold text-foreground">{formatNumber(totalAccounts)}</p>
@@ -40,6 +58,14 @@ export function PortfolioSummaryCards(props: {
       <div className="rounded-xl border border-border bg-card px-4 py-3">
         <p className="text-xs text-muted-foreground">Open Alerts</p>
         <p className="mt-1 text-2xl font-semibold text-foreground">{formatNumber(openAlerts)}</p>
+      </div>
+      <div className="rounded-xl border border-border bg-card px-4 py-3">
+        <p className="text-xs text-muted-foreground">Accounts With Coda</p>
+        <p className="mt-1 text-2xl font-semibold text-foreground">{formatNumber(accountsWithCoda)}</p>
+      </div>
+      <div className="rounded-xl border border-border bg-card px-4 py-3">
+        <p className="text-xs text-muted-foreground">Coverage Gaps</p>
+        <p className="mt-1 text-2xl font-semibold text-[var(--warning)]">{formatNumber(coverageGaps)}</p>
       </div>
     </div>
   );
@@ -100,6 +126,13 @@ export function PortfolioAttentionQueuePanel(props: {
                   <p className="mt-1 text-xs text-muted-foreground">
                     {account.lifecycleStage} • {account.ownerName || "Unassigned"} • {account.openAlertCount} open alerts
                   </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {account.relationship?.connectedSystems ?? 0} systems
+                    {account.relationship?.implementationStage ? ` • ${account.relationship.implementationStage}` : ""}
+                    {account.relationship?.missingSources.length
+                      ? ` • Missing ${account.relationship.missingSources.join(", ")}`
+                      : ""}
+                  </p>
                   <p className="mt-2 text-xs text-muted-foreground">
                     Primary risk: {primarySignal.label} • {primarySignal.value}
                   </p>
@@ -108,6 +141,14 @@ export function PortfolioAttentionQueuePanel(props: {
                   <p className={`text-sm font-semibold ${healthTone(account.health.score)}`}>
                     {account.health.grade} {formatNumber(account.health.score)}
                   </p>
+                  {account.relationship?.retentionStatus ? (
+                    <p className={`mt-1 text-xs ${relationshipTone(account.relationship.retentionStatus)}`}>
+                      {account.relationship.retentionStatus}
+                      {account.relationship.primaryLirPassed !== undefined
+                        ? ` • LIR ${account.relationship.primaryLirPassed ? "pass" : "fail"}`
+                        : ""}
+                    </p>
+                  ) : null}
                   <p className="mt-1 text-xs text-muted-foreground">{account.nextAction || "Review account workspace"}</p>
                 </div>
               </div>
@@ -316,6 +357,8 @@ export function PortfolioAccountsTable(props: {
               <th className="pb-2 font-medium">Account</th>
               <th className="pb-2 font-medium">Owner</th>
               <th className="pb-2 font-medium">Health</th>
+              <th className="pb-2 font-medium">Retention</th>
+              <th className="pb-2 font-medium">Systems</th>
               <th className="pb-2 font-medium">Primary Signal</th>
               <th className="pb-2 font-medium">Alerts</th>
               <th className="pb-2 font-medium">Last Activity</th>
@@ -343,6 +386,22 @@ export function PortfolioAccountsTable(props: {
                   <td className={`py-3 font-medium ${healthTone(account.health.score)}`}>
                     {account.health.grade} {formatNumber(account.health.score)}
                   </td>
+                  <td className={`py-3 text-sm ${relationshipTone(account.relationship?.retentionStatus)}`}>
+                    {account.relationship?.retentionStatus || "—"}
+                    {account.relationship?.primaryLirPassed !== undefined ? (
+                      <div className="text-xs text-muted-foreground">
+                        LIR {account.relationship.primaryLirPassed ? "pass" : "fail"}
+                      </div>
+                    ) : null}
+                  </td>
+                  <td className="py-3 text-muted-foreground">
+                    {formatNumber(account.relationship?.connectedSystems)}
+                    {account.relationship?.missingSources.length ? (
+                      <div className="text-xs text-[var(--warning)]">
+                        Missing {account.relationship.missingSources.join(", ")}
+                      </div>
+                    ) : null}
+                  </td>
                   <td className="py-3">
                     <div className="text-foreground">{primarySignal.label}</div>
                     <div className="text-xs text-muted-foreground">{primarySignal.value}</div>
@@ -355,7 +414,7 @@ export function PortfolioAccountsTable(props: {
             })}
             {filteredAccounts.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-6 text-center text-sm text-muted-foreground">
+                <td colSpan={9} className="py-6 text-center text-sm text-muted-foreground">
                   No accounts match the current leading-indicator filter.
                 </td>
               </tr>

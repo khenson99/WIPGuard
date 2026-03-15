@@ -268,6 +268,74 @@ export interface CustomerSuccessTaskSummary {
   priority?: string;
 }
 
+export interface CustomerSuccessProviderLink {
+  provider: CustomerExternalProvider;
+  externalObjectType: string;
+  externalId: string;
+  label?: string;
+  isPrimary: boolean;
+  url?: string;
+}
+
+export interface CustomerSuccessRelationshipReason {
+  code: string;
+  label: string;
+  detail: string;
+  severity: "info" | "warning" | "critical";
+  dimension: "usage" | "adoption" | "support" | "billing" | "onboarding" | "commercial" | "data";
+}
+
+export interface CustomerSuccessRetentionSummary {
+  status: string;
+  lifecyclePhase: "ONBOARDING" | "MATURE";
+  primaryLirLabel: string;
+  primaryLirPassed: boolean;
+  primaryLirValue?: number;
+  primaryLirThreshold?: number;
+  currentMonthActivity?: number;
+  trendVsPriorPct?: number;
+  implementationStage?: string;
+  goLiveDate?: string;
+  subscriptionStartDate?: string;
+  firstOrderDate?: string;
+  explanation?: string;
+  reasonCodes: CustomerSuccessRelationshipReason[];
+  coverage: {
+    arda: boolean;
+    coda: boolean;
+    stripe: boolean;
+    hubspot: boolean;
+    pylon: boolean;
+    missingSources: string[];
+  };
+  detailUrl: string;
+}
+
+export interface CustomerSuccessCodaSummary {
+  customerStatus?: string;
+  configuredHealth?: string;
+  mainDocId?: string;
+  orderArchiveDocumentId?: string;
+  mainDocUrl?: string;
+  orderArchiveDocumentUrl?: string;
+  lastOrderAt?: string;
+  sourceRecordCount: number;
+}
+
+export interface CustomerSuccessRelationshipIntelligence {
+  providers: CustomerSuccessProviderLink[];
+  retention?: CustomerSuccessRetentionSummary;
+  coda?: CustomerSuccessCodaSummary;
+}
+
+export interface CustomerSuccessPortfolioRelationshipSummary {
+  connectedSystems: number;
+  retentionStatus?: string;
+  primaryLirPassed?: boolean;
+  implementationStage?: string;
+  missingSources: string[];
+}
+
 export interface CustomerSuccessPortfolioAccount {
   accountId: string;
   name: string;
@@ -279,6 +347,7 @@ export interface CustomerSuccessPortfolioAccount {
   activeUsers30d?: number;
   renewalDate?: string;
   openAlertCount: number;
+  relationship?: CustomerSuccessPortfolioRelationshipSummary;
 }
 
 export interface CustomerSuccessPortfolio {
@@ -301,6 +370,7 @@ export interface CustomerSuccessPortfolio {
     openAlertCount: number;
     lifecycleStage: string;
     nextAction?: string;
+    relationship?: CustomerSuccessPortfolioRelationshipSummary;
   }>;
   alerts: CustomerSuccessAlert[];
   recentActivity: CustomerSuccessEvent[];
@@ -360,6 +430,7 @@ export interface CustomerSuccessAccountDetail {
     paymentStatus?: string;
     expansionPotential?: string;
   };
+  relationshipIntelligence?: CustomerSuccessRelationshipIntelligence;
 }
 
 export interface CreateCustomerSuccessNoteInput {
