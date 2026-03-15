@@ -21,11 +21,13 @@ describe("analytics section registry", () => {
     expect(ids.has("process-analytics")).toBe(true);
   });
 
-  it("keeps the remaining customer-success child sections", () => {
+  it("keeps only non-task customer-success child sections", () => {
     const ids = new Set(ANALYTICS_SUB_SECTIONS.map((section) => section.id));
     expect(ids.has("cs-pylon")).toBe(true);
-    expect(ids.has("cs-coda")).toBe(true);
-    expect(ids.has("cs-product")).toBe(true);
+    expect(ids.has("cs-coda")).toBe(false);
+    expect(ids.has("cs-product")).toBe(false);
+    expect(ids.has("cs-google-workspace")).toBe(true);
+    expect(ids.has("cs-slack")).toBe(true);
   });
 
   it("omits removed task-management analytics sections", () => {

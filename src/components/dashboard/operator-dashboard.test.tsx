@@ -2,12 +2,6 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OperatorDashboard } from "@/components/dashboard/operator-dashboard";
 
-vi.mock("@/components/dashboard/personalized-dashboard", () => ({
-  PersonalizedDashboard: ({ title }: { title?: string }) => (
-    <div>{title ?? "Personalized Dashboard"}</div>
-  ),
-}));
-
 describe("OperatorDashboard", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -20,14 +14,6 @@ describe("OperatorDashboard", () => {
         new Response(
           JSON.stringify({
             generatedAt: "2026-03-11T16:00:00.000Z",
-            workSummary: {
-              workspaceId: "work",
-              activeTasks: 4,
-              overdueTasks: 2,
-              blockedTasks: 1,
-              dueSoonTasks: 3,
-              openAlerts: 2,
-            },
             revenueSummary: {
               workspaceId: "deals",
               openDeals: 6,
@@ -71,11 +57,10 @@ describe("OperatorDashboard", () => {
       expect(screen.getByText("Operator Cockpit")).toBeTruthy();
     });
 
-    expect(screen.getByText("4 active tasks in motion")).toBeTruthy();
     expect(screen.getByText("6 open deals worth $42,500")).toBeTruthy();
     expect(screen.getByText("6/8 providers connected")).toBeTruthy();
     expect(screen.getByText("5 active workflows running")).toBeTruthy();
     expect(screen.getByText("5 healthy analytics domains")).toBeTruthy();
-    expect(screen.getByText("My Work")).toBeTruthy();
+    expect(screen.queryByText("My Work")).toBeNull();
   });
 });

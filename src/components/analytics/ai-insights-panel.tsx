@@ -41,6 +41,8 @@ function severityDot(severity: AiInsight["severity"]): string {
 }
 
 function InsightCard({ insight }: { insight: AiInsight }) {
+  const visibleActions = insight.actions.filter((action) => action.type !== "create_task");
+
   return (
     <article className="rounded-lg border border-border/70 bg-background p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -84,11 +86,11 @@ function InsightCard({ insight }: { insight: AiInsight }) {
         </div>
       )}
 
-      {insight.actions.length > 0 && (
+      {visibleActions.length > 0 && (
         <div className="mt-2 border-t border-border/50 pt-2">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Actions</p>
           <div className="mt-1 space-y-1">
-            {insight.actions.slice(0, 2).map((action) => (
+            {visibleActions.slice(0, 2).map((action) => (
               <p key={`${insight.id}-${action.label}`} className="text-xs text-foreground">
                 {action.label}
               </p>

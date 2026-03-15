@@ -51,6 +51,7 @@ const FinanceUnitEconomicsTab = dynamic(() => import("@/components/analytics/fin
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import { buildRangeQuery } from "@/lib/analytics/time-range";
 import {
+  ANALYTICS_SUB_SECTIONS,
   getAnalyticsPrimaryForSection,
   getAnalyticsSecondaryForPrimary,
   getAnalyticsSubSectionById,
@@ -191,6 +192,27 @@ function sectionCacheKey(sectionId: string, querySignature: string): string {
   return `${SECTION_CACHE_PREFIX}${sectionId}:${querySignature || "default"}`;
 }
 
+function staleDomainsForSection(sectionId: string, staleDomains: string[]): string[] {
+  const primary = getAnalyticsPrimaryForSection(sectionId);
+  const child = getAnalyticsSubSectionById(sectionId);
+  const relevantDomains = new Set<string>();
+
+  if (child) {
+    relevantDomains.add(child.dataDomain);
+  } else if (primary) {
+    ANALYTICS_SUB_SECTIONS.filter((item) => item.parentId === primary.id).forEach((item) => {
+      relevantDomains.add(item.dataDomain);
+    });
+  }
+
+  if (relevantDomains.has("metaAds")) {
+    relevantDomains.add("metaPage");
+    relevantDomains.add("instagram");
+  }
+
+  return staleDomains.filter((domain) => relevantDomains.has(domain));
+}
+
 function summarizePayload(payload: Record<string, unknown>) {
   const keys = Object.keys(payload);
   const scalarEntries = keys.filter((key) => {
@@ -312,6 +334,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
   });
 
   const analyticsData = resource.data?.analyticsData ?? null;
+  const relevantStaleDomains = staleDomainsForSection(sectionId, analyticsData?.staleDomains ?? []);
   const title = child?.label ?? primary?.label ?? "Analytics";
 
   const primaryContent = useMemo(() => {
@@ -428,11 +451,16 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         </div>
       </div>
 
-      {!resource.error && (resource.stale || (analyticsData?.staleDomains.length ?? 0) > 0) && (
+      {!resource.error && (resource.stale || relevantStaleDomains.length > 0) && (
         <DashboardStaleBanner
           lastUpdatedAt={resource.lastUpdatedAt}
           onRefresh={resource.refresh}
           refreshing={resource.refreshing}
+          label={
+            relevantStaleDomains.length > 0
+              ? `Showing cached data for stale providers: ${relevantStaleDomains.join(", ")}.`
+              : undefined
+          }
         />
       )}
 

@@ -164,63 +164,6 @@ describe("useInsightPreferences", () => {
     expect(sorted.some((i) => i.id === "dismissed-one")).toBe(true);
   });
 
-  it("createTaskFromInsight calls POST /api/tasks with correct payload", async () => {
-    const fetchMock = mockFetch();
-    vi.stubGlobal("fetch", fetchMock);
-
-    const { result } = renderHook(() => useInsightPreferences());
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    const insight = makeInsight({ id: "ins-1", title: "Fix pipeline", severity: "critical" });
-
-    await act(async () => {
-      await result.current.createTaskFromInsight(insight);
-    });
-
-    // Find the POST /api/tasks call (the first call was GET /api/insights/preferences)
-    const taskCall = fetchMock.mock.calls.find(
-      ([url, opts]) => url === "/api/tasks" && (opts as RequestInit)?.method === "POST"
-    );
-    expect(taskCall).toBeTruthy();
-
-    const body = JSON.parse((taskCall![1] as RequestInit).body as string);
-    expect(body.title).toBe("[Insight] Fix pipeline");
-    expect(body.status).toBe("BACKLOG");
-    expect(body.priority).toBe("P1"); // critical → P1
-  });
-
-  it("createTaskFromInsight sets creatingTaskForId during fetch, resets after", async () => {
-    let resolveTask!: (v: Response) => void;
-    const taskPromise = new Promise<Response>((r) => { resolveTask = r; });
-
-    const fetchMock = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
-      if ((opts?.method ?? "GET") === "GET") {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ preferences: [] }) } as Response);
-      }
-      return taskPromise;
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const { result } = renderHook(() => useInsightPreferences());
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    const insight = makeInsight({ id: "ins-2" });
-    let createDone = false;
-
-    act(() => {
-      result.current.createTaskFromInsight(insight).then(() => { createDone = true; });
-    });
-
-    // After kicking off createTask, creatingTaskForId should be set
-    await waitFor(() => expect(result.current.creatingTaskForId).toBe("ins-2"));
-
-    // Resolve the task API call
-    resolveTask({ ok: true, json: () => Promise.resolve({ id: "task-1", title: "[Insight] Test" }) } as Response);
-
-    await waitFor(() => expect(createDone).toBe(true));
-    expect(result.current.creatingTaskForId).toBeNull();
-  });
-
   it("sortAndFilter preserves relative order within each group", async () => {
     vi.stubGlobal("fetch", mockFetch([{ insightId: "b", status: "pinned" }]));
     const { result } = renderHook(() => useInsightPreferences());

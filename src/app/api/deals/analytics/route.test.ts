@@ -31,6 +31,7 @@ describe("deals analytics route", () => {
       user: {
         id: "user-1",
         email: "user@example.com",
+        organizationId: "org-1",
       },
     });
 
@@ -53,5 +54,28 @@ describe("deals analytics route", () => {
       code: "DEALS_SCHEMA_MISSING",
       error: "Deals requires local database setup.",
     });
+  });
+
+  it("scopes analytics queries to the authenticated organization", async () => {
+    const { GET } = await import("@/app/api/deals/analytics/route");
+
+    const response = await GET();
+
+    expect(response.status).toBe(200);
+    expect(dealFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { organizationId: "org-1" },
+      }),
+    );
+    expect(dealMeetingFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { deal: { organizationId: "org-1" } },
+      }),
+    );
+    expect(dealStageHistoryFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { deal: { organizationId: "org-1" } },
+      }),
+    );
   });
 });

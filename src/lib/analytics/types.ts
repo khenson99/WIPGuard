@@ -315,6 +315,11 @@ export interface SubscriptionMetrics {
   trialing: number;
   churnRate: number;
   recentChurnEvents: { customer: string; canceledAt: string; amount: number }[];
+  activeCustomerRefs?: Array<{
+    customerId: string;
+    email: string | null;
+    emailDomain: string | null;
+  }>;
 }
 
 export interface PaymentMetrics {
@@ -1542,6 +1547,11 @@ export interface FinancialPlanningData {
   goals: FinancialGoalData[];
   pnl: ProfitAndLoss | null;
   unitEconomics: UnitEconomics | null;
+  subscriptionOverview: {
+    mergedActiveSubscriptions: number;
+    stripeActiveSubscriptions: number;
+    hubspotActiveSubscriptions: number;
+  } | null;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1668,8 +1678,7 @@ export type AnalyticsTab =
   | "overview"
   | "sales"
   | "finance"
-  | "marketing"
-  | "tasks";
+  | "marketing";
 
 export interface TabConfig {
   id: AnalyticsTab;
@@ -1682,5 +1691,4 @@ export const ANALYTICS_TABS: TabConfig[] = [
   { id: "sales", label: "Sales & Pipeline", description: "HubSpot deals & conversions" },
   { id: "finance", label: "Revenue & Finance", description: "Stripe MRR & Mercury cash" },
   { id: "marketing", label: "Ads & Traffic", description: "Google Analytics, Ads, Meta & Reddit" },
-  { id: "tasks", label: "Tasks", description: "Coda kanban board" },
 ];

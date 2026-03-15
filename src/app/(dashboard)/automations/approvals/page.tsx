@@ -168,8 +168,8 @@ export default function AutomationApprovalsPage() {
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">Approval Inbox</h1>
-          <p className="text-xs text-muted-foreground">Pending workflow approval steps.</p>
+          <h1 className="text-lg font-semibold text-foreground">Review Queue</h1>
+          <p className="text-xs text-muted-foreground">Workflow steps waiting for human review.</p>
         </div>
         <div className="flex items-center gap-2">
           <Link
@@ -182,7 +182,7 @@ export default function AutomationApprovalsPage() {
             href="/automations/recommendations"
             className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
           >
-            Recommendation Inbox
+            Suggested Actions
           </Link>
           <Link
             href="/automations"
@@ -195,13 +195,13 @@ export default function AutomationApprovalsPage() {
 
       {error && <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-500">{error}</div>}
 
-      <div role="group" aria-label="Approval filters" className="flex flex-wrap items-center gap-2">
+      <div role="group" aria-label="Review queue filters" className="flex flex-wrap items-center gap-2">
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search approvals..."
-          aria-label="Search approvals"
+          placeholder="Search review items..."
+          aria-label="Search review items"
           className="rounded-md border border-border bg-secondary px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground"
         />
         <select
@@ -227,12 +227,12 @@ export default function AutomationApprovalsPage() {
       </div>
 
       {loading ? (
-        <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">Loading approvals...</div>
+        <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">Loading review queue...</div>
       ) : filteredApprovals.length === 0 ? (
         <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
           {statusFilter !== "all" || searchQuery.trim()
-            ? "No approvals match the current filters."
-            : "No pending approvals."}
+            ? "No review items match the current filters."
+            : "No review items are waiting right now."}
         </div>
       ) : (
         <div className="space-y-2">
@@ -269,7 +269,7 @@ export default function AutomationApprovalsPage() {
                         Rejecting…
                       </span>
                     ) : (
-                      "Reject"
+                      "Decline"
                     )}
                   </button>
                   <button
@@ -283,7 +283,7 @@ export default function AutomationApprovalsPage() {
                         Approving…
                       </span>
                     ) : (
-                      "Approve"
+                      "Approve for execution"
                     )}
                   </button>
                 </div>
@@ -295,7 +295,7 @@ export default function AutomationApprovalsPage() {
                     ref={notesRef}
                     value={notesText}
                     onChange={(e) => setNotesText(e.target.value)}
-                    placeholder="Add notes (optional)..."
+                    placeholder="Add review notes (optional)..."
                     rows={2}
                     disabled={processingId === approval.id}
                     className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
@@ -316,7 +316,7 @@ export default function AutomationApprovalsPage() {
                           {notesFor.action === "approve" ? "Approving…" : "Rejecting…"}
                         </span>
                       ) : (
-                        notesFor.action === "approve" ? "Confirm Approve" : "Confirm Reject"
+                        notesFor.action === "approve" ? "Confirm approval" : "Confirm decline"
                       )}
                     </button>
                     <button

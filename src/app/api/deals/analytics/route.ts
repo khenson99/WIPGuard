@@ -9,6 +9,12 @@ import { toDealsErrorResponse } from "@/lib/deals/schema-guard";
 const OPEN_STAGES: DealStage[] = [DealStage.LEAD, DealStage.QUALIFIED, DealStage.PROPOSAL, DealStage.NEGOTIATION];
 const STALE_THRESHOLD_DAYS = 14;
 
+function getOptionalOrganizationId(session: unknown): string | null {
+  const orgId = (session as { user?: { organizationId?: unknown } } | null | undefined)?.user
+    ?.organizationId;
+  return typeof orgId === "string" && orgId.trim() ? orgId : null;
+}
+
 function monthKey(date: Date): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
@@ -24,15 +30,28 @@ export async function GET(): Promise<NextResponse> {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const organizationId = getOptionalOrganizationId(session);
+    const organizationFilter = organizationId ? { organizationId } : {};
+
     const [allDeals, allMeetings, allHistory] = await Promise.all([
       prisma.deal.findMany({
+        where: organizationFilter,
         include: {
           company: { select: { id: true, name: true } },
           meetings: { select: { startAt: true }, orderBy: { startAt: "desc" }, take: 1 },
         },
       }),
-      prisma.dealMeeting.findMany(),
-      prisma.dealStageHistory.findMany({ orderBy: { changedAt: "asc" } }),
+      prisma.dealMeeting.findMany({
+        where: {
+          deal: organizationFilter,
+        },
+      }),
+      prisma.dealStageHistory.findMany({
+        where: {
+          deal: organizationFilter,
+        },
+        orderBy: { changedAt: "asc" },
+      }),
     ]);
 
     // ── Pipeline breakdown ──

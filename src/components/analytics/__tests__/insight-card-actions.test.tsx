@@ -7,15 +7,13 @@ const baseProps = {
   isPinned: false,
   onTogglePin: vi.fn(),
   onDismiss: vi.fn(),
-  onCreateTask: vi.fn(),
-  isCreatingTask: false,
 };
 
 describe("InsightCardActions", () => {
-  it("renders three action buttons", () => {
+  it("renders two action buttons", () => {
     render(<InsightCardActions {...baseProps} />);
     const buttons = screen.getAllByRole("button");
-    expect(buttons.length).toBe(3);
+    expect(buttons.length).toBe(2);
   });
 
   it("pin button has correct aria-label when unpinned", () => {
@@ -44,26 +42,6 @@ describe("InsightCardActions", () => {
     render(<InsightCardActions {...baseProps} onDismiss={onDismiss} />);
     fireEvent.click(screen.getByRole("button", { name: "Dismiss insight" }));
     expect(onDismiss).toHaveBeenCalledTimes(1);
-  });
-
-  it("create task button calls onCreateTask on click", () => {
-    const onCreateTask = vi.fn();
-    render(<InsightCardActions {...baseProps} onCreateTask={onCreateTask} />);
-    fireEvent.click(screen.getByRole("button", { name: "Create task from this insight" }));
-    expect(onCreateTask).toHaveBeenCalledTimes(1);
-  });
-
-  it("create task button is disabled when isCreatingTask is true", () => {
-    render(<InsightCardActions {...baseProps} isCreatingTask={true} />);
-    const btn = screen.getByRole("button", { name: "Create task from this insight" });
-    expect(btn.hasAttribute("disabled")).toBe(true);
-  });
-
-  it("create task button shows spinner when isCreatingTask is true", () => {
-    const { container } = render(<InsightCardActions {...baseProps} isCreatingTask={true} />);
-    // Loader2 renders with animate-spin class
-    const spinner = container.querySelector(".animate-spin");
-    expect(spinner).toBeTruthy();
   });
 
   it("all buttons are keyboard-accessible (have button role)", () => {

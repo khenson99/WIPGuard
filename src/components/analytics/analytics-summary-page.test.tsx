@@ -33,10 +33,10 @@ describe("AnalyticsSummaryPage", () => {
     const summary = {
       generatedAt: "2026-02-17T00:00:00.000Z",
       highlights: {
-        totalTasks: 10,
-        overdueTasks: 2,
-        activeProjects: 3,
-        activeContributors: 4,
+        connectedSections: 3,
+        degradedSections: 1,
+        missingSections: 1,
+        connectedIntegrations: 4,
         disciplineCoverage: 75,
       },
       timeRange: {

@@ -128,6 +128,31 @@ export function RetentionDashboard() {
     ageBucket: searchParams?.get("ageBucket") ?? "",
     search: searchParams?.get("search") ?? "",
   };
+  const hasActiveFilters = Object.values(filters).some((value) => value.length > 0);
+
+  if ((tenants?.length ?? 0) === 0 && !hasActiveFilters) {
+    return (
+      <div className="space-y-4 p-4">
+        {resource.stale ? (
+          <DashboardStaleBanner
+            lastUpdatedAt={resource.lastUpdatedAt}
+            refreshing={resource.refreshing}
+            onRefresh={resource.refresh}
+            label="Showing cached retention analytics while the latest snapshot refreshes."
+          />
+        ) : null}
+        <div className="rounded-xl border border-border bg-card p-8 text-center">
+          <h1 className="text-xl font-semibold text-foreground">Retention</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            No retention dataset has been materialized for this organization yet.
+          </p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Run the retention sync, then refresh this view once tenant snapshots are available.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 p-4">
