@@ -20,6 +20,8 @@ vi.mock("@/lib/customer-success/service", () => {
     CustomerSuccessServiceError,
     getCustomerSuccessPortfolio: vi.fn(),
     getCustomerSuccessAccountDetail: vi.fn(),
+    getCustomerSuccessAlertFeed: vi.fn(),
+    getCustomerSuccessActivityFeed: vi.fn(),
     createCustomerSuccessNote: vi.fn(),
     createCustomerSuccessTask: vi.fn(),
     createCustomerSuccessPlan: vi.fn(),
@@ -85,6 +87,38 @@ describe("customer-success mutation routes", () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({ error: "Unauthorized" });
+  });
+
+  it("passes through auth failures for alert feed reads", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessAlertFeed } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    });
+
+    const { GET } = await import("@/app/api/customer-success/alerts/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/alerts"));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
+    expect(getCustomerSuccessAlertFeed).not.toHaveBeenCalled();
+  });
+
+  it("passes through auth failures for activity feed reads", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessActivityFeed } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    });
+
+    const { GET } = await import("@/app/api/customer-success/activity/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/activity"));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: "Unauthorized" });
+    expect(getCustomerSuccessActivityFeed).not.toHaveBeenCalled();
   });
 
   it("passes through auth failures for alert updates", async () => {
@@ -245,6 +279,42 @@ describe("customer-success mutation routes", () => {
 
     expect(response.status).toBe(200);
     expect(getCustomerSuccessPortfolio).toHaveBeenCalledWith(ACTOR);
+  });
+
+  it("returns the customer-success alert feed for authenticated actors", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessAlertFeed } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessAlertFeed).mockResolvedValue({
+      generatedAt: "2026-03-10T08:00:00.000Z",
+      alerts: [{ id: "alert_1", accountId: "acct_1", severity: "HIGH", title: "Engagement dropped" }],
+    } as never);
+
+    const { GET } = await import("@/app/api/customer-success/alerts/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/alerts"));
+
+    expect(response.status).toBe(200);
+    expect(getCustomerSuccessAlertFeed).toHaveBeenCalledWith(ACTOR);
+  });
+
+  it("returns the customer-success activity feed for authenticated actors", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessActivityFeed } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessActivityFeed).mockResolvedValue({
+      generatedAt: "2026-03-10T08:00:00.000Z",
+      items: [
+        { id: "activity_1", accountId: "acct_1", type: "NOTE_CREATED", title: "Renewal follow-up captured" },
+      ],
+    } as never);
+
+    const { GET } = await import("@/app/api/customer-success/activity/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/activity"));
+
+    expect(response.status).toBe(200);
+    expect(getCustomerSuccessActivityFeed).toHaveBeenCalledWith(ACTOR);
   });
 
   it("maps note requests into createCustomerSuccessNote", async () => {
