@@ -845,6 +845,33 @@ describe("customer-success mutation routes", () => {
     });
   });
 
+  it("rejects outreach draft creation when account id is missing", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessOutreachDraft } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+
+    const { POST } = await import(
+      "@/app/api/customer-success/accounts/[accountId]/outreach/drafts/route"
+    );
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/drafts", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "ops@example.com",
+          body: "Sharing the latest recovery plan.",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext("")
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Account id is required" });
+    expect(createCustomerSuccessOutreachDraft).not.toHaveBeenCalled();
+  });
+
   it("maps outreach send requests into sendCustomerSuccessOutreach", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { sendCustomerSuccessOutreach } = await import("@/lib/customer-success/service");
@@ -881,6 +908,31 @@ describe("customer-success mutation routes", () => {
       body: "Here is the recovery plan.",
       metadata: { source: "cs-workspace" },
     });
+  });
+
+  it("rejects outreach sends when account id is missing", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { sendCustomerSuccessOutreach } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/outreach/send/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/send", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "champion@example.com",
+          body: "Checking in on implementation milestones.",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext("")
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Account id is required" });
+    expect(sendCustomerSuccessOutreach).not.toHaveBeenCalled();
   });
 
   it("maps customer-success service errors for alert updates", async () => {
