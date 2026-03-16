@@ -268,6 +268,52 @@ describe("customer-success mutation routes", () => {
     expect(createCustomerSuccessNote).not.toHaveBeenCalled();
   });
 
+  it("maps customer-success service errors for note creation", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessNote, CustomerSuccessServiceError } = await import(
+      "@/lib/customer-success/service"
+    );
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(createCustomerSuccessNote).mockRejectedValue(
+      new CustomerSuccessServiceError("Note visibility is invalid", 400)
+    );
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/notes/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/notes", {
+        method: "POST",
+        body: JSON.stringify({ body: "Capture renewal risk and stakeholder changes" }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Note visibility is invalid" });
+  });
+
+  it("returns 500s for unexpected note creation failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessNote } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(createCustomerSuccessNote).mockRejectedValue(new Error("Note store unavailable"));
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/notes/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/notes", {
+        method: "POST",
+        body: JSON.stringify({ body: "Capture renewal risk and stakeholder changes" }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Note store unavailable" });
+  });
+
   it("returns task permission denials before creating linked tasks", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { enforcePermission } = await import("@/lib/permissions");
