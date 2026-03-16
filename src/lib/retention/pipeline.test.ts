@@ -141,6 +141,31 @@ describe("retention pipeline helpers", () => {
     ]);
   });
 
+  it("keeps Arda tenant configs with a company name even when tenantId is blank", () => {
+    expect(
+      __test__.normalizeArdaTenantConfigRow({
+        values: {
+          tenantId: "",
+          CompanyName: "Lights Out Manufacturing",
+          "Customer status": "Live",
+          mainCodaDocId: "fphF1v7jCB",
+          orderArchiveDocumentId: "cgSn33D4N9",
+        },
+      })
+    ).toEqual({
+      tenantId: "",
+      configuredTenantId: "",
+      tenantName: "Lights Out Manufacturing",
+      companyName: "Lights Out Manufacturing",
+      customerStatus: "Live",
+      health: null,
+      mainCodaDocId: "fphF1v7jCB",
+      orderArchiveDocumentId: "cgSn33D4N9",
+      churned: false,
+      resultTenantIds: [],
+    });
+  });
+
   it("keeps unresolved Arda tenant configs as metadata-only rows", () => {
     expect(
       __test__.materializeArdaTenantConfigs(

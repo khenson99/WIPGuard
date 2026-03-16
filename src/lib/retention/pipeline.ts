@@ -422,12 +422,12 @@ async function fetchCodaApiRows(
 
 function normalizeArdaTenantConfigRow(row: CodaApiRow): ArdaTenantConfig | null {
   const values = asRecord(row.values);
-  const tenantId = asString(values.tenantId);
+  const tenantId = asString(values.tenantId) ?? "";
   const companyName =
     asString(values.CompanyName) ??
     asString(asRecord(values.Customer).name) ??
     asString(values.Customer);
-  if (!tenantId || !companyName) return null;
+  if (!companyName) return null;
 
   const loweredTenantId = tenantId.toLowerCase();
   if (loweredTenantId === "deleted" || loweredTenantId === "not found") return null;
@@ -2124,6 +2124,7 @@ export const __test__ = {
   buildDerivedCodaExternalRefsFromSourceRecords,
   fallbackArdaTenantExternalId,
   materializeArdaTenantConfigs,
+  normalizeArdaTenantConfigRow,
   deriveLifecycleStartDate,
   deriveOnboardingStartDate,
   computeActiveWeeksTrailing8,
