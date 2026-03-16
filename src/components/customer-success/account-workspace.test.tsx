@@ -514,6 +514,91 @@ describe("CustomerSuccessAccountWorkspace", () => {
     );
   });
 
+  it("marks an alert in progress and refreshes the attention queue", async () => {
+    let getCount = 0;
+    const initialDetail = buildDetail({
+      alerts: [
+        {
+          id: "alert_1",
+          accountId: "acct_1",
+          title: "Implementation plan stalled",
+          category: "risk",
+          severity: "medium",
+          status: "open",
+          slaStatus: "at_risk",
+          source: "implementation",
+          evidence: ["Milestone completion slipped"],
+          suggestedAction: "Coordinate unblock with implementation lead",
+          createdAt: "2026-03-09T10:00:00.000Z",
+          updatedAt: "2026-03-10T08:00:00.000Z",
+        },
+      ],
+    });
+    const refreshedDetail = buildDetail({
+      alerts: [
+        {
+          id: "alert_1",
+          accountId: "acct_1",
+          title: "Implementation plan stalled",
+          category: "risk",
+          severity: "medium",
+          status: "in_progress",
+          slaStatus: "on_track",
+          source: "implementation",
+          evidence: ["Owner assigned and recovery plan in motion"],
+          suggestedAction: "Track weekly until the milestone is back on plan",
+          createdAt: "2026-03-09T10:00:00.000Z",
+          updatedAt: "2026-03-10T09:00:00.000Z",
+        },
+      ],
+    });
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/customer-success/accounts/acct_1" && (!init?.method || init.method === "GET")) {
+        getCount += 1;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => (getCount === 1 ? initialDetail : refreshedDetail),
+        } as Response;
+      }
+
+      if (url === "/api/customer-success/accounts/acct_1/alerts/alert_1/status" && init?.method === "POST") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: "alert_1" }),
+        } as Response;
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CustomerSuccessAccountWorkspace accountId="acct_1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Implementation plan stalled")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark In Progress" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Alert moved to in progress.")).toBeTruthy();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Medium • In Progress • On Track/)).toBeTruthy();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/customer-success/accounts/acct_1/alerts/alert_1/status",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
   it("renders retention leading indicators in the health view", async () => {
     vi.stubGlobal(
       "fetch",
