@@ -185,4 +185,56 @@ describe("deal detail route", () => {
       },
     });
   });
+
+  it("updates source and allows nullable deal fields to be cleared", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    vi.mocked(prisma.deal.findFirst)
+      .mockResolvedValueOnce({
+        id: "deal-1",
+        stage: "LEAD",
+      } as never)
+      .mockResolvedValueOnce({
+        id: "deal-1",
+        stage: "LEAD",
+        source: "REFERRAL",
+        expectedCloseDate: null,
+        notes: null,
+        companyId: null,
+        company: null,
+        ownerId: null,
+        owner: null,
+        contacts: [],
+        meetings: [],
+        stageHistory: [],
+      } as never);
+
+    const { PATCH } = await import("@/app/api/deals/[id]/route");
+    const response = await PATCH(
+      new NextRequest("http://localhost/api/deals/deal-1", {
+        method: "PATCH",
+        body: JSON.stringify({
+          source: "REFERRAL",
+          companyId: null,
+          ownerId: null,
+          expectedCloseDate: null,
+          notes: null,
+        }),
+      }),
+      {
+        params: Promise.resolve({ id: "deal-1" }),
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(txMocks.dealUpdate).toHaveBeenCalledWith({
+      where: { id: "deal-1" },
+      data: {
+        source: "REFERRAL",
+        companyId: null,
+        ownerId: null,
+        expectedCloseDate: null,
+        notes: null,
+      },
+    });
+  });
 });
