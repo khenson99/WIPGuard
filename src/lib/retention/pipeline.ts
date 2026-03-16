@@ -648,7 +648,8 @@ async function loadArdaTenantConfigs(): Promise<ArdaTenantConfig[]> {
   const tableId = process.env.ARDA_TENANT_CONFIG_TABLE_ID?.trim() || "grid-5Kc9QNP-nT";
   if (!token) return [];
 
-  const rows = await fetchCodaApiRows(docId, tableId, token, 5);
+  const pageLimit = positiveEnvInt("ARDA_TENANT_CONFIG_PAGE_LIMIT", 10);
+  const rows = await fetchCodaApiRows(docId, tableId, token, pageLimit);
   const configs = rows
     .map(normalizeArdaTenantConfigRow)
     .filter((config): config is ArdaTenantConfig => config !== null);
@@ -753,12 +754,16 @@ async function queryArdaCollection(
 
   const allResults: ArdaEntityRecord[] = [];
   const queryString = `effectiveasof=${asOfMs}&recordedasof=${asOfMs}`;
+  const queryBody =
+    endpoint === "order/order"
+      ? { filter: true, paginate: { index: 0, size: 250 } }
+      : {};
 
   const first = await fetchArdaPage(
     `${baseUrl.replace(/\/$/, "")}/v1/${endpoint}/query?${queryString}`,
     {
       method: "POST",
-      body: JSON.stringify({}),
+      body: JSON.stringify(queryBody),
     },
     sharedHeaders
   );
@@ -778,13 +783,26 @@ async function queryArdaCollection(
   let pageCount = 0;
   while (nextPage && pageCount < 100) {
     pageCount += 1;
-    const response = await fetchArdaPage(
-      `${baseUrl.replace(/\/$/, "")}/v1/${endpoint}/query/${encodeURIComponent(nextPage)}?${queryString}`,
-      {
-        method: "GET",
-      },
-      sharedHeaders
-    );
+    const response =
+      endpoint === "order/order"
+        ? await fetchArdaPage(
+            `${baseUrl.replace(/\/$/, "")}/v1/${endpoint}/query?${queryString}`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                ...queryBody,
+                pageToken: nextPage,
+              }),
+            },
+            sharedHeaders
+          )
+        : await fetchArdaPage(
+            `${baseUrl.replace(/\/$/, "")}/v1/${endpoint}/query/${encodeURIComponent(nextPage)}?${queryString}`,
+            {
+              method: "GET",
+            },
+            sharedHeaders
+          );
     if (!response.ok) {
       throw new Error(`Arda pagination failed for ${endpoint}: ${response.status} ${response.statusText}`);
     }
@@ -1181,7 +1199,8 @@ async function loadCodaSourceRecords(): Promise<SourceSeedRecord[]> {
     "grid-GPpAfsGmqQ";
   if (!token || !docId || !tableId) return [];
 
-  const sourceRows = await fetchCodaApiRows(docId, tableId, token, 10);
+  const pageLimit = positiveEnvInt("CODA_MASTER_ORDER_ARCHIVE_PAGE_LIMIT", 20);
+  const sourceRows = await fetchCodaApiRows(docId, tableId, token, pageLimit);
   const rows: SourceSeedRecord[] = [];
   for (const row of sourceRows) {
     const normalizedRow = normalizeCodaMasterOrderArchiveRow(row);
@@ -2224,4 +2243,6 @@ export const __test__ = {
   computeActiveWeeksTrailing8,
   parseArdaUserDetailsRow,
   resolveArdaTenantIds,
+  queryArdaCollection,
+  loadCodaSourceRecords,
 };
