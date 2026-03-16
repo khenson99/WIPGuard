@@ -35,6 +35,7 @@ import {
   getPylonIssueTags,
 } from "@/lib/integrations/pylon-client";
 import {
+  ardaTenantResolutionKey,
   discoverArdaTenantIdsFromUserDetails,
   extractArdaTenantIdsFromResult,
   normalizeArdaTenantLookupKey,
@@ -499,7 +500,10 @@ function resolveArdaTenantIds(
 
   return (
     discoveredTenantIdsByConfig.get(
-      normalizeArdaTenantLookupKey(config.configuredTenantId)
+      ardaTenantResolutionKey({
+        configuredTenantId: config.configuredTenantId,
+        companyName: config.companyName,
+      })
     ) ??
     []
   );

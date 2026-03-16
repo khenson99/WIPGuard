@@ -41,6 +41,13 @@ export function normalizeArdaTenantLookupKey(value: string | null): string {
     .replace(/[^a-z0-9]+/g, "");
 }
 
+export function ardaTenantResolutionKey(config: ArdaTenantResolutionConfig): string {
+  return (
+    normalizeArdaTenantLookupKey(config.configuredTenantId) ||
+    normalizeArdaTenantLookupKey(config.companyName)
+  );
+}
+
 function simplifyArdaIdentifier(value: string | null): string {
   return normalizeArdaTenantLookupKey(value).replace(
     /(llc|inc|ltd|company|co|mfg|manufacturing|systems|group|services)$/,
@@ -161,7 +168,8 @@ export function discoverArdaTenantIdsFromUserDetails(
     if (!best || best.score < 90) continue;
     if (second && second.score >= best.score) continue;
 
-    const key = normalizeArdaTenantLookupKey(best.config.configuredTenantId);
+    const key = ardaTenantResolutionKey(best.config);
+    if (!key) continue;
     const bucket = discovered.get(key) ?? new Set<string>();
     bucket.add(tenantUuid);
     discovered.set(key, bucket);
