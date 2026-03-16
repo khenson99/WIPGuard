@@ -27,6 +27,42 @@ function normalizePylonTimestamp(value: string, boundary: "start" | "end"): stri
     : `${trimmed}T23:59:59.999Z`;
 }
 
+function splitPylonDateRange(input: {
+  from: string;
+  to: string;
+  maxWindowDays?: number;
+}): Array<{ from: string; to: string }> {
+  const maxWindowDays = input.maxWindowDays ?? 30;
+  const normalizedFrom = normalizePylonTimestamp(input.from, "start");
+  const normalizedTo = normalizePylonTimestamp(input.to, "end");
+  const start = new Date(normalizedFrom);
+  const end = new Date(normalizedTo);
+
+  if (
+    !Number.isFinite(start.getTime()) ||
+    !Number.isFinite(end.getTime()) ||
+    end.getTime() < start.getTime() ||
+    maxWindowDays <= 0
+  ) {
+    return [{ from: normalizedFrom, to: normalizedTo }];
+  }
+
+  const maxWindowMs = maxWindowDays * 24 * 60 * 60 * 1000;
+  const windows: Array<{ from: string; to: string }> = [];
+  let cursor = start.getTime();
+
+  while (cursor <= end.getTime()) {
+    const windowEnd = Math.min(end.getTime(), cursor + maxWindowMs - 1);
+    windows.push({
+      from: new Date(cursor).toISOString(),
+      to: new Date(windowEnd).toISOString(),
+    });
+    cursor = windowEnd + 1;
+  }
+
+  return windows;
+}
+
 function parseIssueArray(payload: unknown): PylonIssue[] {
   const record = asRecord(payload);
   if (!record) return [];
@@ -88,43 +124,61 @@ export async function fetchPylonIssues(input: {
   const baseUrl = input.baseUrl || "https://api.usepylon.com";
   const limit = input.limit ?? 200;
   const timeoutMs = input.timeoutMs ?? 10_000;
+  const issuesById = new Map<string, PylonIssue>();
+  const issuesWithoutId: PylonIssue[] = [];
 
-  const query = new URLSearchParams({
-    limit: String(limit),
-    start_time: normalizePylonTimestamp(input.from, "start"),
-    end_time: normalizePylonTimestamp(input.to, "end"),
-  });
+  for (const window of splitPylonDateRange({ from: input.from, to: input.to })) {
+    const query = new URLSearchParams({
+      limit: String(limit),
+      start_time: window.from,
+      end_time: window.to,
+    });
 
-  const endpoints = [
-    `${baseUrl}/issues?${query.toString()}`,
-    `${baseUrl}/v1/issues?${query.toString()}`,
-    // Some Pylon tenants expose the issues collection under conversations.
-    `${baseUrl}/conversations?${query.toString()}`,
-    `${baseUrl}/v1/conversations?${query.toString()}`,
-  ];
+    const endpoints = [
+      `${baseUrl}/issues?${query.toString()}`,
+      `${baseUrl}/v1/issues?${query.toString()}`,
+      // Some Pylon tenants expose the issues collection under conversations.
+      `${baseUrl}/conversations?${query.toString()}`,
+      `${baseUrl}/v1/conversations?${query.toString()}`,
+    ];
 
-  let lastError: { status: number; message: string } | null = null;
-  let sawNotFound = false;
-  for (const url of endpoints) {
-    const result = await fetchJsonWithTimeout({ url, apiKey: input.apiKey, timeoutMs });
-    if (result.ok) {
-      return parseIssueArray(result.payload);
+    let lastError: { status: number; message: string } | null = null;
+    let sawNotFound = false;
+    let payload: PylonIssue[] | null = null;
+    for (const url of endpoints) {
+      const result = await fetchJsonWithTimeout({ url, apiKey: input.apiKey, timeoutMs });
+      if (result.ok) {
+        payload = parseIssueArray(result.payload);
+        break;
+      }
+      if (result.status === 404) {
+        sawNotFound = true;
+        continue;
+      }
+      lastError = { status: result.status, message: result.message };
     }
-    if (result.status === 404) {
-      sawNotFound = true;
-      continue;
+
+    if (!payload) {
+      if (sawNotFound && !lastError) {
+        continue;
+      }
+      if (lastError) {
+        throw new Error(lastError.message);
+      }
+      throw new Error("Pylon request failed");
     }
-    lastError = { status: result.status, message: result.message };
+
+    for (const issue of payload) {
+      const issueId = getPylonIssueId(issue);
+      if (issueId) {
+        issuesById.set(issueId, issue);
+      } else {
+        issuesWithoutId.push(issue);
+      }
+    }
   }
 
-  if (sawNotFound && !lastError) {
-    return [];
-  }
-
-  if (lastError) {
-    throw new Error(lastError.message);
-  }
-  throw new Error("Pylon request failed");
+  return [...issuesById.values(), ...issuesWithoutId];
 }
 
 export function getPylonIssueId(issue: PylonIssue): string | null {
@@ -188,4 +242,5 @@ export function getPylonIssueUrl(issue: PylonIssue): string | null {
 
 export const __test__ = {
   normalizePylonTimestamp,
+  splitPylonDateRange,
 };

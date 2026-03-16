@@ -63,4 +63,58 @@ describe("pylon client", () => {
     expect(__test__.normalizePylonTimestamp("2026-03-15", "end")).toBe("2026-03-15T23:59:59.999Z");
     expect(__test__.normalizePylonTimestamp("2026-03-01T05:00:00Z", "start")).toBe("2026-03-01T05:00:00Z");
   });
+
+  it("splits long sync windows into 30-day chunks", async () => {
+    expect(
+      __test__.splitPylonDateRange({
+        from: "2026-01-01",
+        to: "2026-03-16",
+      }),
+    ).toEqual([
+      {
+        from: "2026-01-01T00:00:00.000Z",
+        to: "2026-01-30T23:59:59.999Z",
+      },
+      {
+        from: "2026-01-31T00:00:00.000Z",
+        to: "2026-03-01T23:59:59.999Z",
+      },
+      {
+        from: "2026-03-02T00:00:00.000Z",
+        to: "2026-03-16T23:59:59.999Z",
+      },
+    ]);
+  });
+
+  it("requests each Pylon window separately and deduplicates issue ids", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      if (!url.pathname.endsWith("/issues")) {
+        return jsonResponse({ error: "unexpected fallback" }, 500);
+      }
+
+      const startTime = url.searchParams.get("start_time");
+      if (startTime === "2026-01-01T00:00:00.000Z") {
+        return jsonResponse({ items: [{ id: "i1" }, { id: "i2" }] });
+      }
+      if (startTime === "2026-01-31T00:00:00.000Z") {
+        return jsonResponse({ items: [{ id: "i2" }, { id: "i3" }] });
+      }
+      return jsonResponse({ items: [{ id: "i4" }] });
+    });
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const issues = await fetchPylonIssues({
+      apiKey: "pylon-key",
+      from: "2026-01-01",
+      to: "2026-03-16",
+      baseUrl: "https://api.example.test",
+      limit: 100,
+      timeoutMs: 2_000,
+    });
+
+    expect(issues.map((issue) => issue.id)).toEqual(["i1", "i2", "i3", "i4"]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
 });
