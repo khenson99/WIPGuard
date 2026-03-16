@@ -260,14 +260,6 @@ export interface CustomerSuccessStakeholder {
   lastTouchAt?: string;
 }
 
-export interface CustomerSuccessTaskSummary {
-  id: string;
-  title: string;
-  status: string;
-  dueDate?: string;
-  priority?: string;
-}
-
 export interface CustomerSuccessProviderLink {
   provider: CustomerExternalProvider;
   externalObjectType: string;
@@ -417,7 +409,6 @@ export interface CustomerSuccessAccountDetail {
   alerts: CustomerSuccessAlert[];
   timeline: CustomerSuccessEvent[];
   stakeholders: CustomerSuccessStakeholder[];
-  tasks: CustomerSuccessTaskSummary[];
   successPlan: {
     templateKey?: string;
     milestones: Array<{
@@ -466,19 +457,6 @@ export interface UpdateCustomerSuccessAlertStatusInput {
   accountId: string;
   alertId: string;
   status: CustomerSuccessAlertStatus;
-}
-
-export interface CreateCustomerSuccessTaskInput {
-  accountId: string;
-  title: string;
-  notes?: string;
-  status?: string;
-  priority?: string;
-  dueDate?: string;
-  responsibleIds?: string[];
-  accountableIds?: string[];
-  consultedIds?: string[];
-  informedIds?: string[];
 }
 
 export interface SendCustomerSuccessOutreachInput {

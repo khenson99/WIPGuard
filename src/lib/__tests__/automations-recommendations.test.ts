@@ -74,16 +74,16 @@ describe("automation recommendations", () => {
     expect(executeAutomationAction).not.toHaveBeenCalled();
   });
 
-  it("skips manual-only recommendation action types during batch execution", async () => {
+  it("executes supported recommendation action types during batch execution", async () => {
     vi.mocked(prisma.automationRecommendation.findMany).mockResolvedValue([
       { id: "rec_manual", actionType: "adjust_ad_spend" },
-      { id: "rec_task", actionType: "create_task" },
+      { id: "rec_crm", actionType: "create_hubspot_task" },
     ] as never);
     vi.mocked(prisma.automationRecommendation.findUnique).mockResolvedValue({
-      id: "rec_task",
+      id: "rec_crm",
       runId: "run_1",
-      actionType: "create_task",
-      actionPayload: { title: "Follow up" },
+      actionType: "create_hubspot_task",
+      actionPayload: { title: "Create CRM follow-up" },
       requiresApproval: false,
       status: AutomationRecommendationStatus.APPROVED,
       requestedById: "user_1",
@@ -97,13 +97,13 @@ describe("automation recommendations", () => {
       },
     } as never);
     vi.mocked(executeAutomationAction).mockResolvedValue({
-      actionType: "create_task",
+      actionType: "create_hubspot_task",
       status: "executed",
-      targetId: "task_1",
-      detail: "Follow up",
+      targetId: "hubspot_task_1",
+      detail: "Create CRM follow-up",
     } as never);
     vi.mocked(prisma.automationRecommendation.update).mockResolvedValue({
-      id: "rec_task",
+      id: "rec_crm",
       status: AutomationRecommendationStatus.EXECUTED,
     } as never);
 
@@ -116,7 +116,7 @@ describe("automation recommendations", () => {
       attempted: 1,
       executed: 1,
       failed: 0,
-      recommendationIds: ["rec_task"],
+      recommendationIds: ["rec_crm"],
     });
     expect(executeAutomationAction).toHaveBeenCalledTimes(1);
   });

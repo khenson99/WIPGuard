@@ -565,13 +565,12 @@ export interface DealMeetingListItem {
   createdAt: string;
 }
 
-export type SavedViewScope = "TASKS" | "PROJECTS";
+export type SavedViewScope = "PROJECTS";
 
 export interface UserUiPreference {
   id: string;
   userId: string;
   dashboardConfig: Record<string, unknown> | null;
-  tasksConfig: Record<string, unknown> | null;
   projectsConfig: Record<string, unknown> | null;
   analyticsConfig: Record<string, unknown> | null;
   createdAt: string;

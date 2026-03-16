@@ -21,7 +21,6 @@ vi.mock("@/lib/customer-success/service", () => {
     getCustomerSuccessPortfolio: vi.fn(),
     getCustomerSuccessAccountDetail: vi.fn(),
     createCustomerSuccessNote: vi.fn(),
-    createCustomerSuccessTask: vi.fn(),
     createCustomerSuccessPlan: vi.fn(),
     createCustomerSuccessOutreachDraft: vi.fn(),
     sendCustomerSuccessOutreach: vi.fn(),
@@ -112,15 +111,7 @@ describe("customer-success mutation routes", () => {
     expect(updateCustomerSuccessAlertStatus).not.toHaveBeenCalled();
   });
 
-  it("passes through auth failures for linked task creation", async () => {
-    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
-    const { enforcePermission } = await import("@/lib/permissions");
-    const { createCustomerSuccessTask } = await import("@/lib/customer-success/service");
-
-    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({
-      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
-    });
-
+  it("returns 410 for retired linked task creation", async () => {
     const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/tasks/route");
     const response = await POST(
       new NextRequest("http://localhost/api/customer-success/accounts/acct_1/tasks", {
@@ -131,10 +122,10 @@ describe("customer-success mutation routes", () => {
       accountContext()
     );
 
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toEqual({ error: "Unauthorized" });
-    expect(enforcePermission).not.toHaveBeenCalled();
-    expect(createCustomerSuccessTask).not.toHaveBeenCalled();
+    expect(response.status).toBe(410);
+    await expect(response.json()).resolves.toEqual({
+      error: "Customer success task creation has been retired with the Work section.",
+    });
   });
 
   it("passes through auth failures for success plan creation", async () => {
@@ -266,193 +257,6 @@ describe("customer-success mutation routes", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({ error: "Account id is required" });
     expect(createCustomerSuccessNote).not.toHaveBeenCalled();
-  });
-
-  it("returns task permission denials before creating linked tasks", async () => {
-    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
-    const { enforcePermission } = await import("@/lib/permissions");
-    const { createCustomerSuccessTask } = await import("@/lib/customer-success/service");
-
-    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
-    vi.mocked(enforcePermission).mockResolvedValue({
-      deniedResponse: NextResponse.json({ error: "Task write denied" }, { status: 403 }),
-    } as never);
-
-    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/tasks/route");
-    const response = await POST(
-      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/tasks", {
-        method: "POST",
-        body: JSON.stringify({ title: "Schedule escalation call" }),
-        headers: { "content-type": "application/json" },
-      }),
-      accountContext()
-    );
-
-    expect(response.status).toBe(403);
-    expect(createCustomerSuccessTask).not.toHaveBeenCalled();
-  });
-
-  it("filters empty responsibility ids before creating linked tasks", async () => {
-    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
-    const { createCustomerSuccessTask } = await import("@/lib/customer-success/service");
-    const { enforcePermission } = await import("@/lib/permissions");
-
-    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
-    vi.mocked(enforcePermission).mockResolvedValue({ deniedResponse: null } as never);
-    vi.mocked(createCustomerSuccessTask).mockResolvedValue({ id: "task_1" } as never);
-
-    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/tasks/route");
-    const response = await POST(
-      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/tasks", {
-        method: "POST",
-        body: JSON.stringify({
-          title: "Coordinate exec recovery plan",
-          notes: "Includes product + support owners",
-          status: "ACTIVE",
-          priority: "P1",
-          dueDate: "2026-03-15",
-          responsibleIds: ["user_2", "", "   ", 9],
-          accountableIds: ["user_3"],
-          consultedIds: ["user_4", null],
-          informedIds: ["user_5", undefined],
-        }),
-        headers: { "content-type": "application/json" },
-      }),
-      accountContext()
-    );
-
-    expect(response.status).toBe(201);
-    expect(createCustomerSuccessTask).toHaveBeenCalledWith(ACTOR, {
-      accountId: "acct_1",
-      title: "Coordinate exec recovery plan",
-      notes: "Includes product + support owners",
-      status: "ACTIVE",
-      priority: "P1",
-      dueDate: "2026-03-15",
-      responsibleIds: ["user_2"],
-      accountableIds: ["user_3"],
-      consultedIds: ["user_4"],
-      informedIds: ["user_5"],
-    });
-  });
-
-  it("rejects linked task creation when title is missing", async () => {
-    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
-    const { createCustomerSuccessTask } = await import("@/lib/customer-success/service");
-    const { enforcePermission } = await import("@/lib/permissions");
-
-    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
-    vi.mocked(enforcePermission).mockResolvedValue({ deniedResponse: null } as never);
-
-    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/tasks/route");
-    const response = await POST(
-      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/tasks", {
-        method: "POST",
-        body: JSON.stringify({ title: "   " }),
-        headers: { "content-type": "application/json" },
-      }),
-      accountContext()
-    );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: "Task title is required" });
-    expect(createCustomerSuccessTask).not.toHaveBeenCalled();
-  });
-
-  it("rejects linked task creation when account id is missing", async () => {
-    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
-    const { createCustomerSuccessTask } = await import("@/lib/customer-success/service");
-    const { enforcePermission } = await import("@/lib/permissions");
-
-    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
-    vi.mocked(enforcePermission).mockResolvedValue({ deniedResponse: null } as never);
-
-    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/tasks/route");
-    const response = await POST(
-      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/tasks", {
-        method: "POST",
-        body: JSON.stringify({ title: "Coordinate exec recovery plan" }),
-        headers: { "content-type": "application/json" },
-      }),
-      accountContext("")
-    );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: "Account id is required" });
-    expect(createCustomerSuccessTask).not.toHaveBeenCalled();
-  });
-
-  it("maps customer-success service errors for linked task creation", async () => {
-    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
-    const { createCustomerSuccessTask, CustomerSuccessServiceError } = await import(
-      "@/lib/customer-success/service"
-    );
-    const { enforcePermission } = await import("@/lib/permissions");
-
-    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
-    vi.mocked(enforcePermission).mockResolvedValue({ deniedResponse: null } as never);
-    vi.mocked(createCustomerSuccessTask).mockRejectedValue(
-      new CustomerSuccessServiceError("Task owner is invalid", 400)
-    );
-
-    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/tasks/route");
-    const response = await POST(
-      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/tasks", {
-        method: "POST",
-        body: JSON.stringify({ title: "Coordinate exec recovery plan" }),
-        headers: { "content-type": "application/json" },
-      }),
-      accountContext()
-    );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: "Task owner is invalid" });
-  });
-
-  it("returns 500s for unexpected linked task creation failures", async () => {
-    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
-    const { createCustomerSuccessTask } = await import("@/lib/customer-success/service");
-    const { enforcePermission } = await import("@/lib/permissions");
-
-    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
-    vi.mocked(enforcePermission).mockResolvedValue({ deniedResponse: null } as never);
-    vi.mocked(createCustomerSuccessTask).mockRejectedValue(new Error("Task store unavailable"));
-
-    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/tasks/route");
-    const response = await POST(
-      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/tasks", {
-        method: "POST",
-        body: JSON.stringify({ title: "Coordinate exec recovery plan" }),
-        headers: { "content-type": "application/json" },
-      }),
-      accountContext()
-    );
-
-    expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toEqual({ error: "Task store unavailable" });
-  });
-
-  it("returns generic 500s for non-error linked task creation failures", async () => {
-    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
-    const { createCustomerSuccessTask } = await import("@/lib/customer-success/service");
-    const { enforcePermission } = await import("@/lib/permissions");
-
-    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
-    vi.mocked(enforcePermission).mockResolvedValue({ deniedResponse: null } as never);
-    vi.mocked(createCustomerSuccessTask).mockRejectedValue("task-store-down");
-
-    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/tasks/route");
-    const response = await POST(
-      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/tasks", {
-        method: "POST",
-        body: JSON.stringify({ title: "Coordinate exec recovery plan" }),
-        headers: { "content-type": "application/json" },
-      }),
-      accountContext()
-    );
-
-    expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toEqual({ error: "Failed to create linked customer success task" });
   });
 
   it("filters blank milestone titles before creating success plans", async () => {

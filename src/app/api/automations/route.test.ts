@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { RETIRED_AUTOMATION_ACTION_TYPES } from "@/lib/automations/retired-actions";
 
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(),
@@ -24,7 +25,7 @@ describe("GET /api/automations", () => {
     vi.resetAllMocks();
   });
 
-  it("filters retired task-oriented templates and create_task actions from public templates", async () => {
+  it("filters retired workflow templates and actions from public templates", async () => {
     const { auth } = await import("@/lib/auth");
     const { getAuthenticatedUser } = await import("@/lib/session-user");
     const { prisma } = await import("@/lib/prisma");
@@ -65,8 +66,12 @@ describe("GET /api/automations", () => {
     expect(
       payload.templates.some((template) =>
         template.graph.nodes?.some((node) =>
-          node.config?.actionTypes?.includes("create_task") ||
-          node.config?.tools?.some((tool) => tool.actionType === "create_task")
+          node.config?.actionTypes?.some((actionType) =>
+            RETIRED_AUTOMATION_ACTION_TYPES.includes(actionType as never)
+          ) ||
+          node.config?.tools?.some((tool) =>
+            RETIRED_AUTOMATION_ACTION_TYPES.includes(tool.actionType as never)
+          )
         )
       )
     ).toBe(false);

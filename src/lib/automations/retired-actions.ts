@@ -4,7 +4,8 @@ export const RETIRED_AUTOMATION_ACTION_TYPES = [
   "create_task",
   "update_task",
   "create_checklist_tasks",
- ] as const;
+  "logbook_entry",
+] as const;
 
 const retiredAutomationActionTypeSet = new Set(RETIRED_AUTOMATION_ACTION_TYPES);
 

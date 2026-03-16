@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  RETIRED_AUTOMATION_ACTION_MESSAGE,
+  RETIRED_AUTOMATION_ACTION_TYPES,
+} from "@/lib/automations/retired-actions";
 import { executeAutomationAction } from "@/lib/automations/actions";
 import { fetchJsonWithResilience } from "@/lib/integrations/http-client";
 import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
@@ -30,6 +34,9 @@ vi.mock("@/lib/integrations/slack-notifications", () => ({
 }));
 
 describe("automation actions", () => {
+  const retiredCreateActionType = RETIRED_AUTOMATION_ACTION_TYPES[0];
+  const retiredUpdateActionType = RETIRED_AUTOMATION_ACTION_TYPES[1];
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(prisma.workflowRun.findUnique).mockResolvedValue({
@@ -40,10 +47,10 @@ describe("automation actions", () => {
     } as never);
   });
 
-  it("skips retired create_task actions", async () => {
+  it("skips retired workflow creation actions", async () => {
     const result = await executeAutomationAction({
       runId: "run_1",
-      actionType: "create_task",
+      actionType: retiredCreateActionType,
       actionPayload: {
         title: "Follow up",
         status: "active",
@@ -53,16 +60,16 @@ describe("automation actions", () => {
 
     expect(prisma.task.create).not.toHaveBeenCalled();
     expect(result).toEqual({
-      actionType: "create_task",
+      actionType: retiredCreateActionType,
       status: "skipped",
-      detail: "Task-oriented workflow actions have been retired with the Work section.",
+      detail: RETIRED_AUTOMATION_ACTION_MESSAGE,
     });
   });
 
-  it("skips retired update_task actions", async () => {
+  it("skips retired workflow update actions", async () => {
     const result = await executeAutomationAction({
       runId: "run_1",
-      actionType: "update_task",
+      actionType: retiredUpdateActionType,
       actionPayload: {
         taskId: "task_2",
         title: " Renamed ",
@@ -73,9 +80,9 @@ describe("automation actions", () => {
 
     expect(prisma.task.update).not.toHaveBeenCalled();
     expect(result).toEqual({
-      actionType: "update_task",
+      actionType: retiredUpdateActionType,
       status: "skipped",
-      detail: "Task-oriented workflow actions have been retired with the Work section.",
+      detail: RETIRED_AUTOMATION_ACTION_MESSAGE,
     });
   });
 

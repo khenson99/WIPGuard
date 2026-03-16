@@ -95,7 +95,7 @@ export function addVersionHeaders(
  *
  * @example
  * export async function GET(request: Request) {
- *   const data = await fetchTasks();
+ *   const data = await fetchDeals();
  *   return versionedResponse(data, "v1");
  * }
  */

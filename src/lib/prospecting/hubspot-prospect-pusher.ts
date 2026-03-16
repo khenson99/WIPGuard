@@ -19,7 +19,7 @@ const HUBSPOT_TOKEN_ENDPOINT = "https://api.hubapi.com/oauth/v1/token";
 
 let refreshPromise: Promise<string> | null = null;
 
-// ── Token management (mirrors hubspot-customer-signals.ts pattern) ───────────
+// ── Token management follows the shared single-flight refresh pattern ────────
 
 async function getValidAccessToken(
   userId: string

@@ -106,10 +106,10 @@ describe("automation store", () => {
         ],
         recommendations: [
           {
-            recommendationType: "task",
-            title: "Create task",
-            summary: "Create a follow-up task.",
-            actionType: "create_task",
+            recommendationType: "crm_followup",
+            title: "Create CRM follow-up",
+            summary: "Create a CRM follow-up for the sales owner.",
+            actionType: "create_hubspot_task",
           },
           {
             recommendationType: "email",
@@ -275,11 +275,11 @@ describe("automation store", () => {
       recommendations: [
         {
           id: "rec_1",
-          recommendationType: "task",
-          title: "Create task",
-          summary: "Follow up with pricing.",
+          recommendationType: "crm_followup",
+          title: "Create CRM follow-up",
+          summary: "Follow up with pricing in the CRM.",
           detail: null,
-          actionType: "create_task",
+          actionType: "create_hubspot_task",
           actionPayload: { priority: "P1" },
           requiresApproval: false,
           status: AutomationRecommendationStatus.APPROVED,

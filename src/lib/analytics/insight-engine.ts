@@ -325,8 +325,8 @@ function buildFinanceInsights(data: AnalyticsDashboardData): AiInsight[] {
       actions: [
         {
           type: "create_automation_from_template",
-          label: "Enable HubSpot stage checklist automation",
-          payload: { templateKey: "hubspot-stage-checklist" },
+          label: "Review sales pipeline automation coverage",
+          payload: { section: "sales-pipeline" },
         },
       ],
     });

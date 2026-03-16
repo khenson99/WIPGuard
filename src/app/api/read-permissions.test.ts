@@ -59,31 +59,6 @@ describe("collection read permissions", () => {
     expect(prisma.deal.findMany).not.toHaveBeenCalled();
   });
 
-  it("blocks GET /api/tasks when read permission is denied", async () => {
-    const { enforcePermission } = await import("@/lib/permissions");
-    const { prisma } = await import("@/lib/prisma");
-
-    vi.mocked(enforcePermission).mockResolvedValue({
-      role: "observer",
-      deniedResponse: NextResponse.json(
-        { error: "Forbidden: insufficient permissions" },
-        { status: 403 }
-      ),
-    } as never);
-
-    const { GET } = await import("@/app/api/tasks/route");
-    const response = await GET(new NextRequest("http://localhost/api/tasks"));
-
-    expect(response.status).toBe(403);
-    expect(enforcePermission).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: "task.read",
-        userId: "user-1",
-      })
-    );
-    expect(prisma.task.findMany).not.toHaveBeenCalled();
-  });
-
   it("blocks GET /api/projects when read permission is denied", async () => {
     const { enforcePermission } = await import("@/lib/permissions");
     const { prisma } = await import("@/lib/prisma");

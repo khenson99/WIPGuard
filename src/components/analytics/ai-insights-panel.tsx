@@ -41,7 +41,7 @@ function severityDot(severity: AiInsight["severity"]): string {
 }
 
 function InsightCard({ insight }: { insight: AiInsight }) {
-  const visibleActions = insight.actions.filter((action) => action.type !== "create_task");
+  const visibleActions = insight.actions;
 
   return (
     <article className="rounded-lg border border-border/70 bg-background p-3">

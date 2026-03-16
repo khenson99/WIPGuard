@@ -10,19 +10,15 @@ import {
   CustomerSuccessOutreachStatus,
   CustomerSuccessPlanStatus,
   MeetingStatus,
-  Priority,
   Prisma,
-  TaskStatus,
 } from "@/generated/prisma/client";
 import { buildOutboxIdempotencyKey, publishDomainEvent } from "@/lib/event-bus";
 import { prisma } from "@/lib/prisma";
 import { runWithContextAsync } from "@/lib/request-context";
-import { getNextColumnOrder } from "@/lib/task-order";
 import type { CustomerSuccessActor } from "@/lib/customer-success/access";
 import type {
   CreateCustomerSuccessNoteInput,
   CreateCustomerSuccessPlanInput,
-  CreateCustomerSuccessTaskInput,
   CustomerSuccessAccountDetail,
   CustomerSuccessActivityFeed,
   CustomerSuccessAlert,
@@ -37,7 +33,6 @@ import type {
   CustomerSuccessRelationshipIntelligence,
   CustomerSuccessRelationshipReason,
   CustomerSuccessRetentionSummary,
-  CustomerSuccessTaskSummary,
   CustomerSuccessStakeholder,
   SendCustomerSuccessOutreachInput,
   UpdateCustomerSuccessAlertStatusInput,
@@ -108,10 +103,6 @@ const CUSTOMER_RECORD_INCLUDE = {
     include: {
       authorUser: { select: USER_SUMMARY_SELECT },
     },
-  },
-  tasks: {
-    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
-    take: 16,
   },
   meetings: {
     orderBy: [{ startAt: "desc" }],
@@ -211,16 +202,6 @@ export interface CustomerSuccessAccountSnapshot {
     createdAt: Date;
     channel: string;
   }>;
-  tasks: Array<{
-    id: string;
-    title: string;
-    status: string;
-    priority: string;
-    dueDate: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-    completedOn: Date | null;
-  }>;
   meetings: Array<{
     id: string;
     title: string;
@@ -307,22 +288,6 @@ function parseDateInput(value: string | undefined, fieldName: string): Date | nu
     throw new CustomerSuccessServiceError(`${fieldName} must be a valid ISO date`, 400);
   }
   return parsed;
-}
-
-function parseTaskStatusInput(value: string | undefined): TaskStatus {
-  if (!value) return TaskStatus.BACKLOG;
-  if (Object.values(TaskStatus).includes(value as TaskStatus)) {
-    return value as TaskStatus;
-  }
-  throw new CustomerSuccessServiceError("Invalid task status", 400);
-}
-
-function parsePriorityInput(value: string | undefined): Priority {
-  if (!value) return Priority.P2;
-  if (Object.values(Priority).includes(value as Priority)) {
-    return value as Priority;
-  }
-  throw new CustomerSuccessServiceError("Invalid task priority", 400);
 }
 
 function parseNoteSourceInput(value: string | undefined): CustomerSuccessNoteSource {
@@ -434,7 +399,6 @@ function getLatestActivity(snapshot: CustomerSuccessAccountSnapshot): Date | nul
     ...snapshot.notes.map((note) => note.createdAt),
     ...snapshot.meetings.map((meeting) => meeting.startAt),
     ...snapshot.outreach.map((message) => message.sentAt ?? message.createdAt),
-    ...snapshot.tasks.map((task) => task.completedOn ?? task.updatedAt),
     ...snapshot.alerts.map((alert) => alert.updatedAt),
   ];
 
@@ -752,19 +716,22 @@ export function buildCustomerSuccessHealth(
     depth: buildLeadingIndicator({
       label: "Execution depth",
       score:
-        26 +
-        milestoneRatio * 36 +
-        Math.min(completedTasks30d * 10, 24) +
-        (activePlan ? 8 : 0) +
-        (providers.has(CustomerExternalProvider.CODA) ? 6 : 0) -
-        Math.min(openTasks * 4, 20),
+        28 +
+        milestoneRatio * 44 +
+        (activePlan ? 12 : 0) +
+        (providers.has(CustomerExternalProvider.CODA) ? 8 : 0) -
+        Math.min(blockedMilestones * 10, 24),
       value:
         totalMilestones > 0
           ? `${completedMilestones}/${totalMilestones} milestones done`
-          : `${completedTasks30d} tasks done / 30d`,
+          : activePlan
+            ? "Active plan with no milestones"
+            : "No active plan",
       evidence: [
         activePlan ? `Active success plan: ${activePlan.name}` : "No active success plan linked",
-        `${completedTasks30d} tasks completed and ${openTasks} open tasks in the last/current 30-day window`,
+        totalMilestones > 0
+          ? `${blockedMilestones} blocked and ${totalMilestones - completedMilestones - blockedMilestones} in-flight milestones`
+          : "No milestone-based execution plan linked",
       ],
     }),
     breadth: buildLeadingIndicator({
@@ -958,25 +925,6 @@ function buildEvents(snapshot: CustomerSuccessAccountSnapshot): CustomerSuccessE
     });
   });
 
-  snapshot.tasks.forEach((task) => {
-    const occurredAt = task.completedOn ?? task.updatedAt;
-    pushEvent(events, {
-      id: `task:${task.id}`,
-      accountId: snapshot.id,
-      type: "workflow",
-      title: isTaskDone(task.status) ? `Task completed: ${task.title}` : `Task updated: ${task.title}`,
-      description:
-        task.dueDate && !isTaskDone(task.status)
-          ? `Due ${task.dueDate.toISOString().slice(0, 10)}`
-          : undefined,
-      occurredAt: occurredAt.toISOString(),
-      metadata: {
-        status: task.status,
-        priority: task.priority,
-      },
-    });
-  });
-
   return events.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
 }
 
@@ -998,16 +946,6 @@ function pickRecommendedTemplates(snapshot: CustomerSuccessAccountSnapshot): str
   }
 
   return Array.from(templates);
-}
-
-function buildTaskSummaries(snapshot: CustomerSuccessAccountSnapshot): CustomerSuccessTaskSummary[] {
-  return snapshot.tasks.slice(0, 8).map((task) => ({
-    id: task.id,
-    title: task.title,
-    status: task.status,
-    dueDate: task.dueDate?.toISOString(),
-    priority: task.priority,
-  }));
 }
 
 function providerDocUrl(provider: CustomerExternalProvider, externalId: string, metadata: Record<string, unknown> | null): string | undefined {
@@ -1068,7 +1006,6 @@ export function buildCustomerSuccessAccountDetailFromSnapshot(
     alerts: snapshot.alerts.map((alert) => buildAlert(snapshot, alert)),
     timeline,
     stakeholders,
-    tasks: buildTaskSummaries(snapshot),
     successPlan: {
       templateKey: currentPlan?.templateKey ?? undefined,
       milestones:
@@ -1296,16 +1233,6 @@ function mapCustomerRecordToSnapshot(record: CustomerRecordWithRelations): Custo
       sentAt: message.sentAt,
       createdAt: message.createdAt,
       channel: message.channel,
-    })),
-    tasks: record.tasks.map((task) => ({
-      id: task.id,
-      title: task.title,
-      status: task.status,
-      priority: task.priority,
-      dueDate: task.dueDate,
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
-      completedOn: task.completedOn,
     })),
     meetings: record.meetings.map((meeting) => ({
       id: meeting.id,
@@ -1724,67 +1651,6 @@ export async function updateCustomerSuccessAlertStatus(
   });
 }
 
-export async function createCustomerSuccessTask(
-  actor: CustomerSuccessActor,
-  input: CreateCustomerSuccessTaskInput
-) {
-  const title = normalizeOptionalString(input.title);
-  if (!title) {
-    throw new CustomerSuccessServiceError("Task title is required", 400);
-  }
-
-  await requireCustomerSuccessRecord(actor, input.accountId);
-
-  return withCustomerSuccessContext(actor, async () => {
-    const status = parseTaskStatusInput(input.status);
-    const priority = parsePriorityInput(input.priority);
-    const dueDate = parseDateInput(input.dueDate, "dueDate");
-    const nextColumnOrder = await getNextColumnOrder(prisma, status);
-
-    return prisma.task.create({
-      data: {
-        title,
-        notes: normalizeOptionalString(input.notes),
-        status,
-        priority,
-        dueDate: dueDate ?? undefined,
-        assignedOn: input.responsibleIds && input.responsibleIds.length > 0 ? new Date() : undefined,
-        addedBy: actor.id,
-        columnOrder: nextColumnOrder,
-        customerRecordId: input.accountId,
-        responsible: {
-          connect: (input.responsibleIds ?? []).map((id) => ({ id })),
-        },
-        accountable: {
-          connect: (input.accountableIds ?? []).map((id) => ({ id })),
-        },
-        consulted: {
-          connect: (input.consultedIds ?? []).map((id) => ({ id })),
-        },
-        informed: {
-          connect: (input.informedIds ?? []).map((id) => ({ id })),
-        },
-        statusHistory: {
-          create: {
-            fromStatus: null,
-            toStatus: status,
-            changedBy: actor.id,
-          },
-        },
-      },
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        priority: true,
-        dueDate: true,
-        customerRecordId: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-  });
-}
 
 export async function createCustomerSuccessPlan(
   actor: CustomerSuccessActor,

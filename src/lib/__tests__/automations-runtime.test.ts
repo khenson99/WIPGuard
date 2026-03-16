@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AutomationAiJobStatus } from "@/lib/automations/prisma-enums";
+import {
+  RETIRED_AUTOMATION_ACTION_MESSAGE,
+  RETIRED_AUTOMATION_ACTION_TYPES,
+} from "@/lib/automations/retired-actions";
+
+const executableRecommendationActionType = "create_hubspot_task";
+const retiredWorkflowActionType = RETIRED_AUTOMATION_ACTION_TYPES[0];
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -711,7 +718,7 @@ describe("automation runtime AI lifecycle", () => {
                   config: {
                     actionType: "execute_recommendation",
                     recommendationIds: ["recommendation_timeout_1"],
-                    actionTypes: ["create_task"],
+                    actionTypes: [executableRecommendationActionType],
                     limit: 3,
                   },
                 },
@@ -762,7 +769,7 @@ describe("automation runtime AI lifecycle", () => {
     expect(executeApprovedRecommendationsForRun).toHaveBeenCalledWith({
       runId: "run_timeout_1",
       recommendationIds: ["recommendation_timeout_1"],
-      actionTypes: ["create_task"],
+      actionTypes: [executableRecommendationActionType],
       limit: 3,
     });
     expect(prisma.workflowRunStep.create).toHaveBeenCalledWith(
@@ -880,7 +887,7 @@ describe("automation runtime AI lifecycle", () => {
     );
   });
 
-  it("skips retired task action nodes and still completes the workflow run", async () => {
+  it("skips retired workflow action nodes and still completes the workflow run", async () => {
     const { prisma } = await import("@/lib/prisma");
     const { buildRunExecutionContext } = await import("@/lib/automations/store");
 
@@ -901,18 +908,18 @@ describe("automation runtime AI lifecycle", () => {
               },
             },
             {
-              key: "create_followup_task",
+              key: "run_retired_action",
               type: "ACTION",
-              label: "Create Follow-up Task",
+              label: "Run Retired Action",
               config: {
-                actionType: "create_task",
+                actionType: retiredWorkflowActionType,
               },
             },
           ],
           edges: [
             {
               source: "trigger_review",
-              target: "create_followup_task",
+              target: "run_retired_action",
               priority: 0,
             },
           ],
@@ -940,10 +947,10 @@ describe("automation runtime AI lifecycle", () => {
         data: expect.objectContaining({
           status: "SUCCEEDED",
           output: expect.objectContaining({
-            actionType: "create_task",
+            actionType: retiredWorkflowActionType,
             skipped: true,
             reason: "retired_workflow_action",
-            detail: "Task-oriented workflow actions have been retired with the Work section.",
+            detail: RETIRED_AUTOMATION_ACTION_MESSAGE,
           }),
         }),
       })
@@ -998,7 +1005,7 @@ describe("automation runtime AI lifecycle", () => {
             config: {
               actionType: "execute_recommendation",
               recommendationIds: ["recommendation_approval_1"],
-              actionTypes: ["create_task"],
+              actionTypes: [executableRecommendationActionType],
               limit: 2,
             },
           },
@@ -1067,7 +1074,7 @@ describe("automation runtime AI lifecycle", () => {
     expect(executeApprovedRecommendationsForRun).toHaveBeenCalledWith({
       runId: "run_approval_resume_1",
       recommendationIds: ["recommendation_approval_1"],
-      actionTypes: ["create_task"],
+      actionTypes: [executableRecommendationActionType],
       limit: 2,
     });
     expect(prisma.workflowRunStep.create).toHaveBeenCalledWith(
@@ -1483,7 +1490,7 @@ describe("automation runtime AI lifecycle", () => {
             config: {
               actionType: "execute_recommendation",
               recommendationIds: ["recommendation_1"],
-              actionTypes: ["create_task"],
+              actionTypes: [executableRecommendationActionType],
               limit: 5,
             },
           },
@@ -1525,7 +1532,7 @@ describe("automation runtime AI lifecycle", () => {
     expect(executeApprovedRecommendationsForRun).toHaveBeenCalledWith({
       runId: "run_resume_1",
       recommendationIds: ["recommendation_1"],
-      actionTypes: ["create_task"],
+      actionTypes: [executableRecommendationActionType],
       limit: 5,
     });
     expect(prisma.workflowRunStep.create).toHaveBeenCalledWith(

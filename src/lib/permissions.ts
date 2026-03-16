@@ -8,9 +8,6 @@ export type AppRole = "admin" | "member" | "observer";
 
 export type PermissionAction =
   | "board.write"
-  | "task.read"
-  | "task.write"
-  | "task.transition"
   | "project.read"
   | "project.write"
   | "conference.write"
@@ -35,9 +32,6 @@ const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> 
   {
     admin: [
       "board.write",
-      "task.read",
-      "task.write",
-      "task.transition",
       "project.read",
       "project.write",
       "conference.write",
@@ -60,9 +54,6 @@ const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> 
     ],
     member: [
       "board.write",
-      "task.read",
-      "task.write",
-      "task.transition",
       "project.read",
       "project.write",
       "conference.write",
@@ -106,9 +97,6 @@ export function workspaceIdForPermissionAction(
 ): WorkspaceId | null {
   switch (action) {
     case "board.write":
-    case "task.read":
-    case "task.write":
-    case "task.transition":
     case "project.read":
     case "project.write":
     case "hierarchy.read":

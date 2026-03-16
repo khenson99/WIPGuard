@@ -1,7 +1,12 @@
 export const dynamic = "force-dynamic";
 
-import { createRetiredWorkRoute } from "@/app/api/_lib/retired-work";
+import { NextResponse } from "next/server";
 
-export const POST = createRetiredWorkRoute(
-  "Task-oriented integration workflows have been retired with the Work section."
-);
+// Keep the external HubSpot webhook healthy while task workflows are retired.
+export async function POST(): Promise<NextResponse> {
+  return NextResponse.json({
+    ok: true,
+    processed: 0,
+    retired: true,
+  });
+}

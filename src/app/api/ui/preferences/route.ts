@@ -10,7 +10,6 @@ import {
   normalizeAnalyticsConfig,
   normalizeDashboardConfig,
   normalizeProjectsConfig,
-  normalizeTasksConfig,
 } from "@/lib/ui-preferences";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -37,7 +36,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({
       ...preference,
       dashboardConfig: normalizeDashboardConfig(preference.dashboardConfig),
-      tasksConfig: normalizeTasksConfig(preference.tasksConfig),
       projectsConfig: normalizeProjectsConfig(preference.projectsConfig),
       analyticsConfig: normalizeAnalyticsConfig(preference.analyticsConfig),
     });
@@ -77,11 +75,6 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
         ? normalizeDashboardConfig(body.dashboardConfig)
         : normalizeDashboardConfig(current.dashboardConfig);
 
-    const tasksConfig =
-      body.tasksConfig !== undefined
-        ? normalizeTasksConfig(body.tasksConfig)
-        : normalizeTasksConfig(current.tasksConfig);
-
     const projectsConfig =
       body.projectsConfig !== undefined
         ? normalizeProjectsConfig(body.projectsConfig)
@@ -96,7 +89,6 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
       where: { userId: session.user.id },
       data: {
         dashboardConfig: dashboardConfig as unknown as Prisma.InputJsonValue,
-        tasksConfig: tasksConfig as unknown as Prisma.InputJsonValue,
         projectsConfig: projectsConfig as unknown as Prisma.InputJsonValue,
         analyticsConfig: analyticsConfig as unknown as Prisma.InputJsonValue,
       },

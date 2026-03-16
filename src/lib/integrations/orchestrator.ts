@@ -17,19 +17,6 @@ import {
   runProviderMetricsRule,
   type ProviderMetricsRuleKey,
 } from "@/lib/integrations/provider-metrics-sync";
-import { runSlackStatusSync } from "@/lib/integrations/slack-status-sync";
-import { runSlackUnansweredDetector } from "@/lib/integrations/slack-unanswered-requests";
-import { runGmailCapture } from "@/lib/integrations/google-gmail-capture";
-import { runGoogleDriveCommentEscalation } from "@/lib/integrations/google-drive-comment-escalation";
-import { runGoogleDriveTranscriptCapture } from "@/lib/integrations/google-drive-transcript-capture";
-import { runGoogleCalendarPrepFollowup } from "@/lib/integrations/google-calendar-followup";
-import { runHubSpotStageChecklist } from "@/lib/integrations/hubspot-stage-checklist";
-import { runHubSpotRiskIntervention } from "@/lib/integrations/hubspot-risk-intervention";
-import { runHubSpotCustomerSignalAutomation } from "@/lib/integrations/hubspot-customer-signals";
-import { runHubSpotBidirectionalSync } from "@/lib/integrations/hubspot-bidirectional-sync";
-import { runCodaRowSync } from "@/lib/integrations/coda-row-sync";
-import { runCodaDependencyGateAutomation } from "@/lib/integrations/coda-dependency-gates";
-import { runCodaDecisionActionConverter } from "@/lib/integrations/coda-decision-actions";
 
 export type IntegrationRunMode = "incremental" | "backfill";
 
@@ -141,60 +128,8 @@ export async function runRules(input: RunRulesInput): Promise<RunRulesResult> {
           }
 
           switch (rule.key) {
-            case "slack_status_thread_sync":
-              await runSlackStatusSync({ userId, dryRun: input.dryRun });
-              executedRules += 1;
-              break;
-            case "slack_unanswered_request_detector":
-              await runSlackUnansweredDetector({ userId, dryRun: input.dryRun });
-              executedRules += 1;
-              break;
-            case "gmail_commitment_capture":
-              await runGmailCapture({ userId, dryRun: input.dryRun });
-              executedRules += 1;
-              break;
-            case "google_drive_comment_escalation":
-              await runGoogleDriveCommentEscalation({ userId, dryRun: input.dryRun });
-              executedRules += 1;
-              break;
-            case "google_drive_transcript_capture":
-              await runGoogleDriveTranscriptCapture({ userId, dryRun: input.dryRun });
-              executedRules += 1;
-              break;
-            case "google_calendar_prep_followup":
-              await runGoogleCalendarPrepFollowup({ userId, dryRun: input.dryRun });
-              executedRules += 1;
-              break;
-            case "hubspot_stage_transition_checklist":
-              await runHubSpotStageChecklist({ userId, dryRun: input.dryRun });
-              executedRules += 1;
-              break;
-            case "hubspot_stale_risk_intervention":
-              await runHubSpotRiskIntervention({ userId, dryRun: input.dryRun });
-              executedRules += 1;
-              break;
-            case "hubspot_customer_signal_followup":
-              await runHubSpotCustomerSignalAutomation({ userId, dryRun: input.dryRun });
-              executedRules += 1;
-              break;
-            case "hubspot_bidirectional_sync":
-              await runHubSpotBidirectionalSync({ userId, dryRun: input.dryRun });
-              executedRules += 1;
-              break;
-            case "coda_row_task_upsert":
-              await runCodaRowSync({ userId, dryRun: input.dryRun });
-              executedRules += 1;
-              break;
-            case "coda_dependency_gate_automation":
-              await runCodaDependencyGateAutomation({ userId, dryRun: input.dryRun });
-              executedRules += 1;
-              break;
-            case "coda_decision_action_converter":
-              await runCodaDecisionActionConverter({ userId, dryRun: input.dryRun });
-              executedRules += 1;
-              break;
             default:
-              // Skip unsupported/event-driven rules.
+              // Skip unsupported or retired event-driven rules.
               break;
           }
         } catch (error) {
