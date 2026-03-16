@@ -36,6 +36,7 @@ import {
   normalizeArdaTenantLookupKey,
 } from "@/lib/retention/arda-tenant-resolution";
 import { normalizeCodaMasterOrderArchiveRow } from "@/lib/retention/coda-normalization";
+import { runWithContextAsync } from "@/lib/request-context";
 
 interface SourceSeedRecord {
   source: "ARDA" | "CODA" | "STRIPE" | "HUBSPOT" | "PYLON";
@@ -1217,26 +1218,28 @@ async function syncSource(
 }
 
 export async function syncRetentionSources(actor: RetentionActor): Promise<void> {
-  const sources: Array<[SourceSeedRecord["source"], () => Promise<SourceSeedRecord[]>]> = [
-    ["HUBSPOT", () => loadHubSpotSourceRecords(actor)],
-    ["STRIPE", loadStripeSourceRecords],
-    ["PYLON", loadPylonSourceRecords],
-    ["CODA", loadCodaSourceRecords],
-    ["ARDA", loadArdaSourceRecords],
-  ];
-  const failures: string[] = [];
+  return runWithContextAsync({ organizationId: actor.organizationId, userId: actor.id }, async () => {
+    const sources: Array<[SourceSeedRecord["source"], () => Promise<SourceSeedRecord[]>]> = [
+      ["HUBSPOT", () => loadHubSpotSourceRecords(actor)],
+      ["STRIPE", loadStripeSourceRecords],
+      ["PYLON", loadPylonSourceRecords],
+      ["CODA", loadCodaSourceRecords],
+      ["ARDA", loadArdaSourceRecords],
+    ];
+    const failures: string[] = [];
 
-  for (const [source, loader] of sources) {
-    try {
-      await syncSource(actor, source, loader);
-    } catch (error) {
-      failures.push(`${source}: ${error instanceof Error ? error.message : String(error)}`);
+    for (const [source, loader] of sources) {
+      try {
+        await syncSource(actor, source, loader);
+      } catch (error) {
+        failures.push(`${source}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
-  }
 
-  if (failures.length > 0) {
-    throw new Error(`Retention source sync failed: ${failures.join("; ")}`);
-  }
+    if (failures.length > 0) {
+      throw new Error(`Retention source sync failed: ${failures.join("; ")}`);
+    }
+  });
 }
 
 function initAccumulator(customerRecordId: string, monthStart: Date, monthEnd: Date, customerName: string): MonthlyTenantAccumulator {
@@ -1705,96 +1708,98 @@ function buildCurrentDetailPayload(
 }
 
 export async function buildRetentionDataset(actor: RetentionActor): Promise<void> {
-  const rows = await loadSourceRecordsForDataset(actor);
-  const accumulators = new Map<string, MonthlyTenantAccumulator>();
+  return runWithContextAsync({ organizationId: actor.organizationId, userId: actor.id }, async () => {
+    const rows = await loadSourceRecordsForDataset(actor);
+    const accumulators = new Map<string, MonthlyTenantAccumulator>();
 
-  for (const row of rows) {
-    const occurredAt = row.occurredAt;
-    if (!occurredAt) continue;
-    const { monthStart, monthEnd } = monthBounds(occurredAt);
-    const key = `${row.customerRecordId}:${monthKey(monthStart)}`;
-    const current = accumulators.get(key) ?? initAccumulator(row.customerRecordId, monthStart, monthEnd, row.customerName);
-    mergeSourceRecord(current, {
-      source: row.source,
-      objectType: row.objectType,
-      occurredAt,
-      payload: row.payload,
-    });
-    accumulators.set(key, current);
-  }
-
-  const groupedByCustomer = new Map<string, MonthlyTenantAccumulator[]>();
-  for (const acc of accumulators.values()) {
-    const list = groupedByCustomer.get(acc.customerRecordId) ?? [];
-    list.push(acc);
-    groupedByCustomer.set(acc.customerRecordId, list);
-  }
-
-  await prisma.retentionTenantMonth.deleteMany({
-    where: { organizationId: actor.organizationId },
-  });
-
-  for (const [customerRecordId, months] of groupedByCustomer.entries()) {
-    months.sort((a, b) => a.monthStart.getTime() - b.monthStart.getTime());
-    for (let index = 0; index < months.length; index += 1) {
-      const current = months[index];
-      const trailing = dedupeTrailingMonths(months.slice(0, index), 3);
-      const history = months.slice(0, index);
-      const lifecycleStartDate = deriveLifecycleStartDate(current, history);
-      const onboardingStartDate = deriveOnboardingStartDate(current, history);
-      const future = months.slice(index + 1);
-      const featurePayload = buildFeaturePayload(current, trailing, lifecycleStartDate, onboardingStartDate);
-      const outcomePayload = buildOutcomePayload(current, future, featurePayload);
-      const coveragePayload = buildCoverage(current);
-      const lifecyclePhase = determineLifecyclePhase({
-        ...current,
-        goLiveDate: lifecycleStartDate,
+    for (const row of rows) {
+      const occurredAt = row.occurredAt;
+      if (!occurredAt) continue;
+      const { monthStart, monthEnd } = monthBounds(occurredAt);
+      const key = `${row.customerRecordId}:${monthKey(monthStart)}`;
+      const current = accumulators.get(key) ?? initAccumulator(row.customerRecordId, monthStart, monthEnd, row.customerName);
+      mergeSourceRecord(current, {
+        source: row.source,
+        objectType: row.objectType,
+        occurredAt,
+        payload: row.payload,
       });
-      const candidateMetrics = asRecord(featurePayload.candidateMetrics);
-      const primaryDefinition = selectLirDefinition(lifecyclePhase, candidateMetrics);
-      const primaryValue = asNumber(candidateMetrics[primaryDefinition.metricKey]);
-      const reasons = buildReasonCodes(current, featurePayload, outcomePayload, primaryDefinition, primaryValue);
-      const status = classifyRetentionStatus({
-        lifecyclePhase,
-        primaryLirDefinition: primaryDefinition,
-        primaryLirValue: primaryValue,
-        supportRisk: outcomePayload.supportDistress,
-        billingRisk: current.delinquent || current.failedPayments > 0,
-        onboardingRisk:
-          lifecyclePhase === "ONBOARDING" &&
-          (!current.firstOrderDate || (asNumber(candidateMetrics.timeToFirstOrderDays) ?? 999) > 21),
-        usageCollapse: outcomePayload.usageCollapse,
-        reasonCodes: reasons,
-      });
-
-      await prisma.retentionTenantMonth.create({
-        data: {
-          organizationId: actor.organizationId,
-          customerRecordId,
-          monthStart: current.monthStart,
-          monthEnd: current.monthEnd,
-          lifecyclePhase,
-          status: retentionStatusToDb(status) as PrismaRetentionTenantStatus,
-          featureVersion: RETENTION_FEATURE_VERSION,
-          primaryLirPassed: evaluateLir(primaryDefinition, primaryValue),
-          primaryLirLabel: primaryDefinition.label,
-          primaryLirValue: primaryValue,
-          primaryLirThreshold: primaryDefinition.threshold,
-          primaryLirScore:
-            primaryValue !== null && primaryDefinition.threshold > 0
-              ? Number((primaryValue / primaryDefinition.threshold).toFixed(3))
-              : null,
-          reasonCodes: reasons as unknown as Prisma.InputJsonValue,
-          featureData: featurePayload as unknown as Prisma.InputJsonValue,
-          outcomeData: {
-            ...outcomePayload,
-            primaryLirPassed: evaluateLir(primaryDefinition, primaryValue),
-          } as unknown as Prisma.InputJsonValue,
-          coverageData: coveragePayload as unknown as Prisma.InputJsonValue,
-        },
-      });
+      accumulators.set(key, current);
     }
-  }
+
+    const groupedByCustomer = new Map<string, MonthlyTenantAccumulator[]>();
+    for (const acc of accumulators.values()) {
+      const list = groupedByCustomer.get(acc.customerRecordId) ?? [];
+      list.push(acc);
+      groupedByCustomer.set(acc.customerRecordId, list);
+    }
+
+    await prisma.retentionTenantMonth.deleteMany({
+      where: { organizationId: actor.organizationId },
+    });
+
+    for (const [customerRecordId, months] of groupedByCustomer.entries()) {
+      months.sort((a, b) => a.monthStart.getTime() - b.monthStart.getTime());
+      for (let index = 0; index < months.length; index += 1) {
+        const current = months[index];
+        const trailing = dedupeTrailingMonths(months.slice(0, index), 3);
+        const history = months.slice(0, index);
+        const lifecycleStartDate = deriveLifecycleStartDate(current, history);
+        const onboardingStartDate = deriveOnboardingStartDate(current, history);
+        const future = months.slice(index + 1);
+        const featurePayload = buildFeaturePayload(current, trailing, lifecycleStartDate, onboardingStartDate);
+        const outcomePayload = buildOutcomePayload(current, future, featurePayload);
+        const coveragePayload = buildCoverage(current);
+        const lifecyclePhase = determineLifecyclePhase({
+          ...current,
+          goLiveDate: lifecycleStartDate,
+        });
+        const candidateMetrics = asRecord(featurePayload.candidateMetrics);
+        const primaryDefinition = selectLirDefinition(lifecyclePhase, candidateMetrics);
+        const primaryValue = asNumber(candidateMetrics[primaryDefinition.metricKey]);
+        const reasons = buildReasonCodes(current, featurePayload, outcomePayload, primaryDefinition, primaryValue);
+        const status = classifyRetentionStatus({
+          lifecyclePhase,
+          primaryLirDefinition: primaryDefinition,
+          primaryLirValue: primaryValue,
+          supportRisk: outcomePayload.supportDistress,
+          billingRisk: current.delinquent || current.failedPayments > 0,
+          onboardingRisk:
+            lifecyclePhase === "ONBOARDING" &&
+            (!current.firstOrderDate || (asNumber(candidateMetrics.timeToFirstOrderDays) ?? 999) > 21),
+          usageCollapse: outcomePayload.usageCollapse,
+          reasonCodes: reasons,
+        });
+
+        await prisma.retentionTenantMonth.create({
+          data: {
+            organizationId: actor.organizationId,
+            customerRecordId,
+            monthStart: current.monthStart,
+            monthEnd: current.monthEnd,
+            lifecyclePhase,
+            status: retentionStatusToDb(status) as PrismaRetentionTenantStatus,
+            featureVersion: RETENTION_FEATURE_VERSION,
+            primaryLirPassed: evaluateLir(primaryDefinition, primaryValue),
+            primaryLirLabel: primaryDefinition.label,
+            primaryLirValue: primaryValue,
+            primaryLirThreshold: primaryDefinition.threshold,
+            primaryLirScore:
+              primaryValue !== null && primaryDefinition.threshold > 0
+                ? Number((primaryValue / primaryDefinition.threshold).toFixed(3))
+                : null,
+            reasonCodes: reasons as unknown as Prisma.InputJsonValue,
+            featureData: featurePayload as unknown as Prisma.InputJsonValue,
+            outcomeData: {
+              ...outcomePayload,
+              primaryLirPassed: evaluateLir(primaryDefinition, primaryValue),
+            } as unknown as Prisma.InputJsonValue,
+            coverageData: coveragePayload as unknown as Prisma.InputJsonValue,
+          },
+        });
+      }
+    }
+  });
 }
 
 function candidateScore(candidate: RetentionAnalysisCandidateResult): number {
@@ -1862,79 +1867,81 @@ export async function runRetentionAnalysis(actor: RetentionActor): Promise<Reten
 }
 
 export async function materializeRetentionCurrent(actor: RetentionActor): Promise<void> {
-  const months = await prisma.retentionTenantMonth.findMany({
-    where: { organizationId: actor.organizationId },
-    orderBy: [{ customerRecordId: "asc" }, { monthStart: "desc" }],
-  });
+  return runWithContextAsync({ organizationId: actor.organizationId, userId: actor.id }, async () => {
+    const months = await prisma.retentionTenantMonth.findMany({
+      where: { organizationId: actor.organizationId },
+      orderBy: [{ customerRecordId: "asc" }, { monthStart: "desc" }],
+    });
 
-  const latestByCustomer = new Map<string, typeof months[number]>();
-  for (const month of months) {
-    if (!latestByCustomer.has(month.customerRecordId)) {
-      latestByCustomer.set(month.customerRecordId, month);
+    const latestByCustomer = new Map<string, typeof months[number]>();
+    for (const month of months) {
+      if (!latestByCustomer.has(month.customerRecordId)) {
+        latestByCustomer.set(month.customerRecordId, month);
+      }
     }
-  }
 
-  await prisma.retentionTenantCurrent.deleteMany({
-    where: { organizationId: actor.organizationId },
+    await prisma.retentionTenantCurrent.deleteMany({
+      where: { organizationId: actor.organizationId },
+    });
+
+    for (const month of latestByCustomer.values()) {
+      const customer = await prisma.customerRecord.findUnique({
+        where: { id: month.customerRecordId },
+        select: { name: true },
+      });
+      const features = asRecord(month.featureData);
+      const usage = asRecord(features.usage);
+      const commercial = asRecord(features.commercial);
+      const support = asRecord(features.support);
+      const billing = asRecord(features.billing);
+      const coverage = asRecord(month.coverageData) as unknown as RetentionCoveragePayload;
+      const reasons = asReasonCodes(month.reasonCodes);
+      const detailPayload = buildCurrentDetailPayload(
+        features as unknown as RetentionFeaturePayload,
+        coverage,
+        month.status ?? "WATCH",
+        reasons
+      );
+
+      const candidateMetrics = asRecord(features.candidateMetrics);
+      const lifecyclePhase = month.lifecyclePhase as RetentionLifecyclePhase;
+      const primaryDefinition = selectLirDefinition(lifecyclePhase, candidateMetrics);
+      const ageDays =
+        detailPayload.goLiveDate
+          ? Math.round((month.monthEnd.getTime() - new Date(detailPayload.goLiveDate).getTime()) / (24 * 60 * 60 * 1000))
+          : null;
+
+      await prisma.retentionTenantCurrent.create({
+        data: {
+          organizationId: actor.organizationId,
+          customerRecordId: month.customerRecordId,
+          monthFactId: month.id,
+          lifecyclePhase,
+          status: (month.status ?? PrismaRetentionTenantStatus.WATCH) as PrismaRetentionTenantStatus,
+          primaryLirPassed: month.primaryLirPassed,
+          primaryLirLabel: month.primaryLirLabel ?? primaryDefinition.label,
+          primaryLirValue: month.primaryLirValue,
+          primaryLirThreshold: month.primaryLirThreshold,
+          currentMonthActivity: asNumber(usage.currentMonthActivity),
+          activityTrendPct: asNumber(candidateMetrics.recentBaselineRatio) !== null ? Number((((asNumber(candidateMetrics.recentBaselineRatio) ?? 1) - 1) * 100).toFixed(1)) : null,
+          supportRisk: (asNumber(support.urgentTickets) ?? 0) > 0 || (asNumber(support.unresolvedTickets) ?? 0) >= 5,
+          billingRisk: Boolean(asBoolean(billing.delinquent)) || (asNumber(billing.failedPayments) ?? 0) > 0,
+          onboardingRisk: lifecyclePhase === "ONBOARDING" && !month.primaryLirPassed,
+          icp: Boolean(asBoolean(asRecord(features.overlays).icp)),
+          ownerName: asString(commercial.ownerName),
+          segment: asString(commercial.segment),
+          plan: asString(commercial.plan),
+          ageBucket: ageDays === null ? null : ageDays <= 30 ? "0-30d" : ageDays <= 90 ? "31-90d" : ageDays <= 180 ? "91-180d" : "180d+",
+          summaryData: {
+            customerName: customer?.name ?? "Unknown Tenant",
+          } as Prisma.InputJsonValue,
+          detailData: detailPayload as unknown as Prisma.InputJsonValue,
+          reasonCodes: reasons as unknown as Prisma.InputJsonValue,
+          lastMaterializedAt: new Date(),
+        },
+      });
+    }
   });
-
-  for (const month of latestByCustomer.values()) {
-    const customer = await prisma.customerRecord.findUnique({
-      where: { id: month.customerRecordId },
-      select: { name: true },
-    });
-    const features = asRecord(month.featureData);
-    const usage = asRecord(features.usage);
-    const commercial = asRecord(features.commercial);
-    const support = asRecord(features.support);
-    const billing = asRecord(features.billing);
-    const coverage = asRecord(month.coverageData) as unknown as RetentionCoveragePayload;
-    const reasons = asReasonCodes(month.reasonCodes);
-    const detailPayload = buildCurrentDetailPayload(
-      features as unknown as RetentionFeaturePayload,
-      coverage,
-      month.status ?? "WATCH",
-      reasons
-    );
-
-    const candidateMetrics = asRecord(features.candidateMetrics);
-    const lifecyclePhase = month.lifecyclePhase as RetentionLifecyclePhase;
-    const primaryDefinition = selectLirDefinition(lifecyclePhase, candidateMetrics);
-    const ageDays =
-      detailPayload.goLiveDate
-        ? Math.round((month.monthEnd.getTime() - new Date(detailPayload.goLiveDate).getTime()) / (24 * 60 * 60 * 1000))
-        : null;
-
-    await prisma.retentionTenantCurrent.create({
-      data: {
-        organizationId: actor.organizationId,
-        customerRecordId: month.customerRecordId,
-        monthFactId: month.id,
-        lifecyclePhase,
-        status: (month.status ?? PrismaRetentionTenantStatus.WATCH) as PrismaRetentionTenantStatus,
-        primaryLirPassed: month.primaryLirPassed,
-        primaryLirLabel: month.primaryLirLabel ?? primaryDefinition.label,
-        primaryLirValue: month.primaryLirValue,
-        primaryLirThreshold: month.primaryLirThreshold,
-        currentMonthActivity: asNumber(usage.currentMonthActivity),
-        activityTrendPct: asNumber(candidateMetrics.recentBaselineRatio) !== null ? Number((((asNumber(candidateMetrics.recentBaselineRatio) ?? 1) - 1) * 100).toFixed(1)) : null,
-        supportRisk: (asNumber(support.urgentTickets) ?? 0) > 0 || (asNumber(support.unresolvedTickets) ?? 0) >= 5,
-        billingRisk: Boolean(asBoolean(billing.delinquent)) || (asNumber(billing.failedPayments) ?? 0) > 0,
-        onboardingRisk: lifecyclePhase === "ONBOARDING" && !month.primaryLirPassed,
-        icp: Boolean(asBoolean(asRecord(features.overlays).icp)),
-        ownerName: asString(commercial.ownerName),
-        segment: asString(commercial.segment),
-        plan: asString(commercial.plan),
-        ageBucket: ageDays === null ? null : ageDays <= 30 ? "0-30d" : ageDays <= 90 ? "31-90d" : ageDays <= 180 ? "91-180d" : "180d+",
-        summaryData: {
-          customerName: customer?.name ?? "Unknown Tenant",
-        } as Prisma.InputJsonValue,
-        detailData: detailPayload as unknown as Prisma.InputJsonValue,
-        reasonCodes: reasons as unknown as Prisma.InputJsonValue,
-        lastMaterializedAt: new Date(),
-      },
-    });
-  }
 }
 
 export const __test__ = {
