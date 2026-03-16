@@ -39,5 +39,22 @@ describe("pylon client", () => {
     expect(requestUrls.some((u) => u.includes("/issues?"))).toBe(true);
     expect(requestUrls.some((u) => u.includes("/conversations?"))).toBe(true);
   });
-});
 
+  it("returns no issues when every Pylon endpoint returns 404", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ error: "not found" }, 404));
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const issues = await fetchPylonIssues({
+      apiKey: "pylon-key",
+      from: "2026-02-01",
+      to: "2026-02-28",
+      baseUrl: "https://api.example.test",
+      limit: 1,
+      timeoutMs: 2_000,
+    });
+
+    expect(issues).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+});

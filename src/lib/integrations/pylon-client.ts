@@ -95,12 +95,21 @@ export async function fetchPylonIssues(input: {
   ];
 
   let lastError: { status: number; message: string } | null = null;
+  let sawNotFound = false;
   for (const url of endpoints) {
     const result = await fetchJsonWithTimeout({ url, apiKey: input.apiKey, timeoutMs });
     if (result.ok) {
       return parseIssueArray(result.payload);
     }
+    if (result.status === 404) {
+      sawNotFound = true;
+      continue;
+    }
     lastError = { status: result.status, message: result.message };
+  }
+
+  if (sawNotFound && !lastError) {
+    return [];
   }
 
   if (lastError) {

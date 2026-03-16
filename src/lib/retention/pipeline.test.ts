@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { __test__ } from "@/lib/retention/pipeline";
 
 function makeMonth(overrides: Partial<{
@@ -56,6 +56,10 @@ function makeMonth(overrides: Partial<{
 }
 
 describe("retention pipeline helpers", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("prefers Arda createdAt over snapshot asOf when deriving occurredAt", () => {
     expect(
       __test__.ardaOccurredAt({
@@ -84,5 +88,15 @@ describe("retention pipeline helpers", () => {
         [makeMonth({ subscriptionStartDate: "2026-01-10T00:00:00.000Z" })]
       )
     ).toBe("2026-01-10T00:00:00.000Z");
+  });
+
+  it("treats a missing Coda table as an empty source instead of throwing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ error: "not found" }), { status: 404, statusText: "Not Found" })) as
+        unknown as typeof fetch
+    );
+
+    await expect(__test__.fetchCodaApiRows("doc123", "table123", "token123", 1)).resolves.toEqual([]);
   });
 });

@@ -383,6 +383,12 @@ async function fetchCodaApiRows(
     if (pageToken) url.searchParams.set("pageToken", pageToken);
     const response = await fetch(url, { headers, cache: "no-store" });
     if (!response.ok) {
+      if (response.status === 404) {
+        console.warn(
+          `[retention] skipping missing Coda source doc=${docId} table=${tableId} (${response.status} ${response.statusText})`
+        );
+        return rows;
+      }
       throw new Error(
         `Coda request failed for doc ${docId} table ${tableId}: ${response.status} ${response.statusText}`
       );
@@ -1951,4 +1957,5 @@ export const __test__ = {
   deriveLifecycleStartDate,
   deriveOnboardingStartDate,
   computeActiveWeeksTrailing8,
+  fetchCodaApiRows,
 };
