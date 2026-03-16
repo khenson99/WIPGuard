@@ -1243,7 +1243,7 @@ export async function syncRetentionSources(actor: RetentionActor): Promise<void>
     }
 
     if (failures.length > 0) {
-      throw new Error(`Retention source sync failed: ${failures.join("; ")}`);
+      console.warn(`[retention] continuing after partial source sync failures: ${failures.join("; ")}`);
     }
   });
 }
