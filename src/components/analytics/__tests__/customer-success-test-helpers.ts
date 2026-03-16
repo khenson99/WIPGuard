@@ -156,6 +156,28 @@ export function makePortfolio(): CustomerSuccessPortfolio {
       atRiskAccounts: 3,
       openAlerts: 6,
     },
+    relationshipOps: {
+      lastCompletedAt: "2026-03-10T09:30:00.000Z",
+      sources: [
+        {
+          source: "CODA",
+          status: "SUCCESS",
+          completedAt: "2026-03-10T09:30:00.000Z",
+          recordCount: 120,
+          mappedCount: 110,
+          errorCount: 0,
+        },
+        {
+          source: "PYLON",
+          status: "PARTIAL",
+          completedAt: "2026-03-10T09:28:00.000Z",
+          recordCount: 15,
+          mappedCount: 10,
+          errorCount: 2,
+          lastError: "2 issue rows failed",
+        },
+      ],
+    },
     healthDistribution: [
       { label: "A", count: 2 },
       { label: "B", count: 4 },

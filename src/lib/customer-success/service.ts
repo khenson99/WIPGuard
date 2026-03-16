@@ -1555,20 +1555,29 @@ export async function getCustomerSuccessPortfolio(
   actor: CustomerSuccessActor
 ): Promise<CustomerSuccessPortfolio> {
   const snapshots = await listCustomerSuccessSnapshots(actor);
-  const retentionCurrents = await withCustomerSuccessContext(actor, async () =>
-    prisma.retentionTenantCurrent.findMany({
-      where: {
-        organizationId: actor.organizationId,
-        customerRecordId: { in: snapshots.map((snapshot) => snapshot.id) },
-      },
-      include: {
-        monthFact: {
-          select: {
-            coverageData: true,
+  const [retentionCurrents, syncRuns] = await withCustomerSuccessContext(actor, async () =>
+    Promise.all([
+      prisma.retentionTenantCurrent.findMany({
+        where: {
+          organizationId: actor.organizationId,
+          customerRecordId: { in: snapshots.map((snapshot) => snapshot.id) },
+        },
+        include: {
+          monthFact: {
+            select: {
+              coverageData: true,
+            },
           },
         },
-      },
-    })
+      }),
+      prisma.retentionSyncRun.findMany({
+        where: {
+          organizationId: actor.organizationId,
+        },
+        orderBy: [{ startedAt: "desc" }],
+        take: 25,
+      }),
+    ])
   );
 
   const relationshipMap = new Map<string, Omit<CustomerSuccessPortfolioRelationshipSummary, "connectedSystems">>();
@@ -1585,7 +1594,32 @@ export async function getCustomerSuccessPortfolio(
     });
   });
 
-  return buildCustomerSuccessPortfolioFromSnapshots(snapshots, new Date(), relationshipMap);
+  const portfolio = buildCustomerSuccessPortfolioFromSnapshots(snapshots, new Date(), relationshipMap);
+  const latestRunsBySource = new Map<string, typeof syncRuns[number]>();
+  syncRuns.forEach((run) => {
+    if (!latestRunsBySource.has(run.source)) {
+      latestRunsBySource.set(run.source, run);
+    }
+  });
+  const latestCompletedAt = [...latestRunsBySource.values()]
+    .map((run) => run.completedAt)
+    .filter((value): value is Date => value instanceof Date)
+    .sort((left, right) => right.getTime() - left.getTime())[0];
+
+  portfolio.relationshipOps = {
+    lastCompletedAt: latestCompletedAt?.toISOString(),
+    sources: [...latestRunsBySource.values()].map((run) => ({
+      source: run.source,
+      status: run.status,
+      completedAt: run.completedAt?.toISOString(),
+      recordCount: run.recordCount,
+      mappedCount: run.mappedCount,
+      errorCount: run.errorCount,
+      lastError: run.lastError ?? undefined,
+    })),
+  };
+
+  return portfolio;
 }
 
 export async function getCustomerSuccessAlertFeed(

@@ -358,6 +358,18 @@ export interface CustomerSuccessPortfolio {
     atRiskAccounts: number;
     openAlerts: number;
   };
+  relationshipOps?: {
+    lastCompletedAt?: string;
+    sources: Array<{
+      source: string;
+      status: "SUCCESS" | "PARTIAL" | "ERROR";
+      completedAt?: string;
+      recordCount: number;
+      mappedCount: number;
+      errorCount: number;
+      lastError?: string;
+    }>;
+  };
   healthDistribution: Array<{
     label: CustomerSuccessHealthGrade;
     count: number;

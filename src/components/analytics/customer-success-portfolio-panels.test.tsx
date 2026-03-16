@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   makePortfolio,
@@ -62,13 +62,64 @@ describe("CustomerSuccessPortfolioPanels", () => {
     });
 
     expect(screen.getByText("Accounts With Coda")).toBeTruthy();
+    expect(screen.getByText("Relationship Data")).toBeTruthy();
+    expect(screen.getByText("Relationship Freshness")).toBeTruthy();
     expect(screen.getAllByText("At Risk").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Missing pylon/).length).toBeGreaterThan(0);
+    expect(screen.getByText("coda success")).toBeTruthy();
+    expect(screen.getByText("pylon partial")).toBeTruthy();
     expect(screen.getByText("Leading Indicator Pressure")).toBeTruthy();
     expect(screen.getByText("Health Distribution")).toBeTruthy();
     expect(screen.getByText("Attention Queue")).toBeTruthy();
     expect(screen.getByText("Renewal risk rising")).toBeTruthy();
     expect(screen.getByText("Recent Activity")).toBeTruthy();
     expect(screen.getByText("Primary Signal")).toBeTruthy();
+  });
+
+  it("runs the relationship sync action and refreshes the portfolio", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/customer-success/portfolio") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => makePortfolio(),
+        } as Response;
+      }
+
+      if (url === "/api/retention/sync" && init?.method === "POST") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            completed: ["sync_sources", "build_dataset", "materialize"],
+          }),
+        } as Response;
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CustomerSuccessPortfolioPanels />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Portfolio Accounts")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Sync relationship data" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Relationship data synced: sync_sources, build_dataset, materialize")).toBeTruthy();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/retention/sync",
+      expect.objectContaining({
+        method: "POST",
+      })
+    );
   });
 });
