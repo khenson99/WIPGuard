@@ -1058,6 +1058,58 @@ describe("customer-success mutation routes", () => {
     await expect(response.json()).resolves.toEqual({ error: "Recipient address is invalid" });
   });
 
+  it("returns 500s for unexpected outreach draft creation failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessOutreachDraft } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(createCustomerSuccessOutreachDraft).mockRejectedValue(new Error("Draft store unavailable"));
+
+    const { POST } = await import(
+      "@/app/api/customer-success/accounts/[accountId]/outreach/drafts/route"
+    );
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/drafts", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "ops@example.com",
+          body: "Sharing a follow-up draft.",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Draft store unavailable" });
+  });
+
+  it("returns 500s for unexpected outreach send failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { sendCustomerSuccessOutreach } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(sendCustomerSuccessOutreach).mockRejectedValue(new Error("Message queue unavailable"));
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/outreach/send/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/send", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "ops@example.com",
+          body: "Sending the implementation follow-up.",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Message queue unavailable" });
+  });
+
   it("maps customer-success service errors for alert updates", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { CustomerSuccessServiceError, updateCustomerSuccessAlertStatus } = await import(
