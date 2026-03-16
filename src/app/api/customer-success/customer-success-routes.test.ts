@@ -442,6 +442,29 @@ describe("customer-success mutation routes", () => {
     await expect(response.json()).resolves.toEqual({ error: "Alert not found" });
   });
 
+  it("rejects alert updates when status is missing", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { updateCustomerSuccessAlertStatus } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+
+    const { POST } = await import(
+      "@/app/api/customer-success/accounts/[accountId]/alerts/[alertId]/status/route"
+    );
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/alerts/alert_1/status", {
+        method: "POST",
+        body: JSON.stringify({ status: "   " }),
+        headers: { "content-type": "application/json" },
+      }),
+      alertContext()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Alert status is required" });
+    expect(updateCustomerSuccessAlertStatus).not.toHaveBeenCalled();
+  });
+
   it("maps alert status updates into updateCustomerSuccessAlertStatus", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { updateCustomerSuccessAlertStatus } = await import("@/lib/customer-success/service");
