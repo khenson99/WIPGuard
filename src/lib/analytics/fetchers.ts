@@ -14,8 +14,11 @@ import type {
   MercuryData,
   AnalyticsTimestamp,
   DealStage,
+  ExpenseCategory,
+  MercuryExpenseMapping,
 } from "./types";
 import { safeJson } from "@/lib/analytics/fetcher-utils";
+import { normalizeMercuryDataPayload } from "@/lib/analytics/mercury-normalization";
 
 function makeMeta(source: "live" | "cached" = "live"): AnalyticsTimestamp {
   const now = new Date();
@@ -24,6 +27,13 @@ function makeMeta(source: "live" | "cached" = "live"): AnalyticsTimestamp {
     nextRefresh: new Date(now.getTime() + 60 * 60 * 1000).toISOString(),
     source,
   };
+}
+
+function inclusiveUtcDaySpan(from: Date, to: Date): number {
+  const start = Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate());
+  const end = Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate());
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 30;
+  return Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1566,8 +1576,11 @@ export async function fetchStripeChargesByCustomer(
 
 export async function fetchMercuryData(
   apiKey: string,
-  options?: { fromDate?: Date; toDate?: Date }
+  options?: { fromDate?: Date; toDate?: Date; expenseMappings?: MercuryExpenseMapping[] }
 ): Promise<MercuryData> {
+  const MERCURY_PAGE_LIMIT = 500;
+  const MERCURY_MAX_PAGES = 100;
+
   type MercuryAccount = {
     id?: string;
     name?: string;
@@ -1576,11 +1589,210 @@ export async function fetchMercuryData(
   };
 
   type MercuryTransaction = {
+    id?: string;
     postedAt?: string;
     createdAt?: string;
     timestamp?: string;
     status?: string;
     amount?: number;
+    counterpartyName?: string | null;
+    bankDescription?: string | null;
+    note?: string | null;
+    externalMemo?: string | null;
+    mercuryCategory?: string | null;
+    categoryData?: {
+      categoryDataId?: string | null;
+      categoryDataName?: string | null;
+    } | null;
+  };
+
+  type MercuryPageResponse<T> = {
+    accounts?: T[];
+    transactions?: T[];
+    cursor?: string | number | null;
+    nextCursor?: string | number | null;
+    pagination?: {
+      cursor?: string | number | null;
+      nextCursor?: string | number | null;
+      hasNextPage?: boolean | null;
+      has_next_page?: boolean | null;
+    } | null;
+    paging?: {
+      next?: {
+        cursor?: string | number | null;
+        startAfter?: string | number | null;
+        start_after?: string | number | null;
+      } | null;
+    } | null;
+  };
+
+  const emptyExpenseBreakdown = (): Record<ExpenseCategory, number> => ({
+    cogs: 0,
+    payroll: 0,
+    marketing: 0,
+    infrastructure: 0,
+    ops: 0,
+    other: 0,
+  });
+
+  const MERCURY_CATEGORY_KEYWORDS: Record<ExpenseCategory, string[]> = {
+    cogs: [
+      "cost of goods",
+      "cogs",
+      "hosting",
+      "cloud",
+      "compute",
+      "inference",
+      "api usage",
+      "payment processing",
+      "merchant fee",
+      "processing fee",
+      "aws",
+      "amazon web services",
+      "google cloud",
+      "gcp",
+      "azure",
+      "openai",
+      "anthropic",
+      "pinecone",
+      "twilio",
+      "sendgrid",
+      "resend",
+      "cloudinary",
+    ],
+    payroll: [
+      "payroll",
+      "salary",
+      "wages",
+      "benefits",
+      "contractor",
+      "gusto",
+      "rippling",
+      "deel",
+      "adp",
+      "paychex",
+      "justworks",
+      "trinet",
+      "remote",
+      "oyster",
+    ],
+    marketing: [
+      "marketing",
+      "advertising",
+      "ad spend",
+      "paid search",
+      "paid social",
+      "sponsorship",
+      "google ads",
+      "meta ads",
+      "facebook ads",
+      "linkedin ads",
+      "reddit ads",
+      "tiktok ads",
+      "hubspot",
+      "semrush",
+      "mailchimp",
+      "klaviyo",
+    ],
+    infrastructure: [
+      "software",
+      "saas",
+      "tools",
+      "tooling",
+      "monitoring",
+      "security",
+      "domain",
+      "dns",
+      "vercel",
+      "cloudflare",
+      "github",
+      "gitlab",
+      "notion",
+      "slack",
+      "zoom",
+      "linear",
+      "figma",
+      "datadog",
+      "sentry",
+      "railway",
+      "render",
+      "netlify",
+    ],
+    ops: [
+      "operations",
+      "office",
+      "rent",
+      "travel",
+      "legal",
+      "insurance",
+      "tax",
+      "bank fee",
+      "wire fee",
+      "accounting",
+      "bookkeeping",
+      "admin",
+      "general & administrative",
+      "g&a",
+      "mercury fee",
+    ],
+    other: [],
+  };
+
+  const classifyMercuryExpense = (tx: MercuryTransaction): ExpenseCategory => {
+    const categoryLabel = tx.categoryData?.categoryDataName ?? tx.mercuryCategory ?? "";
+    const haystack = [
+      categoryLabel,
+      tx.counterpartyName ?? "",
+      tx.bankDescription ?? "",
+      tx.note ?? "",
+      tx.externalMemo ?? "",
+    ]
+      .join(" ")
+      .trim()
+      .toLowerCase();
+
+    if (!haystack) return "other";
+
+    for (const mapping of options?.expenseMappings ?? []) {
+      if (haystack.includes(mapping.match.toLowerCase())) {
+        return mapping.category;
+      }
+    }
+
+    for (const category of ["payroll", "marketing", "cogs", "infrastructure", "ops"] as const) {
+      if (MERCURY_CATEGORY_KEYWORDS[category].some((keyword) => haystack.includes(keyword))) {
+        return category;
+      }
+    }
+
+    return "other";
+  };
+
+  const hasExcludedStatus = (status: string): boolean => {
+    const normalized = status.trim().toLowerCase();
+    if (!normalized) return false;
+
+    return [
+      "cancel",
+      "reject",
+      "fail",
+      "return",
+      "reverse",
+      "void",
+      "pendingapproval",
+      "pending_approval",
+      "pending approval",
+    ].some((pattern) => normalized.includes(pattern));
+  };
+
+  const shouldCountTransaction = (tx: MercuryTransaction): boolean => {
+    const amount = tx.amount ?? 0;
+    if (!Number.isFinite(amount) || amount === 0) return false;
+
+    const status = tx.status ?? "";
+    if (!status.trim()) return true;
+
+    return !hasExcludedStatus(status);
   };
 
   const headers: Record<string, string> = {
@@ -1589,13 +1801,78 @@ export async function fetchMercuryData(
   };
   const baseUrl = "https://api.mercury.com/api/v1";
 
-  // Fetch accounts
-  const accountsRes = await fetch(`${baseUrl}/accounts`, { headers });
-  if (!accountsRes.ok) {
-    throw new Error(`Mercury accounts error ${accountsRes.status}`);
+  function readMercuryNextCursor<T extends { id?: string }>(
+    body: MercuryPageResponse<T> | null,
+    batch: T[],
+    pageLimit: number,
+  ): string | null {
+    const explicitCursor =
+      body?.paging?.next?.start_after ??
+      body?.paging?.next?.startAfter ??
+      body?.paging?.next?.cursor ??
+      body?.pagination?.nextCursor ??
+      body?.pagination?.cursor ??
+      body?.nextCursor ??
+      body?.cursor;
+
+    if (explicitCursor != null && String(explicitCursor).trim()) {
+      return String(explicitCursor);
+    }
+
+    const hasNextPage = body?.pagination?.hasNextPage ?? body?.pagination?.has_next_page;
+    if (hasNextPage === false) return null;
+
+    if (batch.length < pageLimit) return null;
+
+    const lastId = batch[batch.length - 1]?.id;
+    return lastId?.trim() ? lastId : null;
   }
-  const accountsData = await safeJson<{ accounts?: MercuryAccount[] }>(accountsRes, "mercury accounts");
-  const accounts = (accountsData.accounts ?? []).map((account) => ({
+
+  async function fetchMercuryPages<T extends { id?: string }>(
+    path: string,
+    extract: (body: MercuryPageResponse<T> | null) => T[],
+    searchParams: Record<string, string>,
+    label: string,
+  ): Promise<T[]> {
+    const all: T[] = [];
+    let startAfter: string | null = null;
+
+    for (let page = 0; page < MERCURY_MAX_PAGES; page++) {
+      const url = new URL(`${baseUrl}${path}`);
+      for (const [key, value] of Object.entries(searchParams)) {
+        url.searchParams.set(key, value);
+      }
+      if (startAfter) {
+        url.searchParams.set("start_after", startAfter);
+      }
+
+      const res = await fetch(url.toString(), { headers, cache: "no-store" });
+      if (!res.ok) {
+        throw new Error(`Mercury ${label} error ${res.status}`);
+      }
+
+      const body = await safeJson<MercuryPageResponse<T>>(res, `mercury ${label}`);
+      const batch = extract(body);
+      all.push(...batch);
+
+      const nextCursor = readMercuryNextCursor(body, batch, MERCURY_PAGE_LIMIT);
+      if (!nextCursor || batch.length === 0) {
+        return all;
+      }
+      startAfter = nextCursor;
+    }
+
+    throw new Error(`Mercury ${label} pagination exceeded ${MERCURY_MAX_PAGES} pages`);
+  }
+
+  // Fetch accounts
+  const mercuryAccounts = await fetchMercuryPages<MercuryAccount>(
+    "/accounts",
+    (body) => body?.accounts ?? [],
+    { limit: String(MERCURY_PAGE_LIMIT) },
+    "accounts",
+  );
+  const accounts = mercuryAccounts.map((account) => ({
     accountId: account.id ?? "",
     accountName: account.name ?? "Unknown account",
     balance: account.currentBalance ?? 0,
@@ -1616,51 +1893,74 @@ export async function fetchMercuryData(
   const startKey = (useRange ? rangeFrom! : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
     .toISOString()
     .split("T")[0];
+  const observedPeriodDays = useRange && rangeFrom && rangeTo
+    ? inclusiveUtcDaySpan(rangeFrom, rangeTo)
+    : 30;
 
   let inflows = 0, outflows = 0;
+  const expenseBreakdown = emptyExpenseBreakdown();
   for (const account of accounts) {
-    try {
-      const txRes = await fetch(
-        `${baseUrl}/account/${account.accountId}/transactions?start=${startKey}&limit=500`,
-        { headers }
-      );
-      if (!txRes.ok) continue;
-      const txData = await safeJson<{ transactions?: MercuryTransaction[] }>(txRes, "mercury transactions");
-      for (const tx of txData.transactions ?? []) {
-        if (useRange && rangeTo) {
-          const postedAt = tx.postedAt || tx.createdAt || tx.timestamp || "";
-          if (postedAt) {
-            const postedMs = Date.parse(postedAt);
-            if (Number.isFinite(postedMs) && postedMs > rangeTo.getTime()) continue;
-          }
-        }
-        if (tx.status === "sent") {
-          const amount = tx.amount ?? 0;
-          const amt = Math.abs(amount);
-          if (amount > 0) inflows += amt;
-          else outflows += amt;
+    const transactions = await fetchMercuryPages<MercuryTransaction>(
+      `/account/${account.accountId}/transactions`,
+      (body) => body?.transactions ?? [],
+      {
+        start: startKey,
+        limit: String(MERCURY_PAGE_LIMIT),
+      },
+      "transactions",
+    );
+    for (const tx of transactions) {
+      if (useRange && rangeTo) {
+        const postedAt = tx.postedAt || tx.createdAt || tx.timestamp || "";
+        if (postedAt) {
+          const postedMs = Date.parse(postedAt);
+          if (Number.isFinite(postedMs) && postedMs > rangeTo.getTime()) continue;
         }
       }
-    } catch {
-      // Skip account on error
+      if (!shouldCountTransaction(tx)) continue;
+
+      const amount = tx.amount ?? 0;
+      const amt = Math.abs(amount);
+      if (amount > 0) inflows += amt;
+      else {
+        outflows += amt;
+        expenseBreakdown[classifyMercuryExpense(tx)] += amt;
+      }
     }
   }
 
-  const burnRate = Math.max(outflows - inflows, 0);
+  const monthlyInflows = observedPeriodDays > 0 ? inflows * (30 / observedPeriodDays) : inflows;
+  const monthlyOutflows = observedPeriodDays > 0 ? outflows * (30 / observedPeriodDays) : outflows;
+  const monthlyNetCashFlow = monthlyInflows - monthlyOutflows;
+  const burnRate = Math.max(monthlyOutflows - monthlyInflows, 0);
   const runway = burnRate > 0 ? totalBalance / burnRate : 999;
+  const monthlyExpenseBreakdown: Record<ExpenseCategory, number> = {
+    cogs: observedPeriodDays > 0 ? expenseBreakdown.cogs * (30 / observedPeriodDays) : expenseBreakdown.cogs,
+    payroll: observedPeriodDays > 0 ? expenseBreakdown.payroll * (30 / observedPeriodDays) : expenseBreakdown.payroll,
+    marketing: observedPeriodDays > 0 ? expenseBreakdown.marketing * (30 / observedPeriodDays) : expenseBreakdown.marketing,
+    infrastructure: observedPeriodDays > 0 ? expenseBreakdown.infrastructure * (30 / observedPeriodDays) : expenseBreakdown.infrastructure,
+    ops: observedPeriodDays > 0 ? expenseBreakdown.ops * (30 / observedPeriodDays) : expenseBreakdown.ops,
+    other: observedPeriodDays > 0 ? expenseBreakdown.other * (30 / observedPeriodDays) : expenseBreakdown.other,
+  };
 
-  return {
+  return normalizeMercuryDataPayload({
     accounts,
     cashFlow: {
       totalBalance,
-      inflows30d: inflows,
-      outflows30d: outflows,
-      netCashFlow: inflows - outflows,
+      inflows30d: Math.round(monthlyInflows * 100) / 100,
+      outflows30d: Math.round(monthlyOutflows * 100) / 100,
+      netCashFlow: Math.round(monthlyNetCashFlow * 100) / 100,
       runway: Math.round(runway * 10) / 10,
-      burnRate,
+      burnRate: Math.round(burnRate * 100) / 100,
+      observedPeriodDays,
+      observedInflowTotal: inflows,
+      observedOutflowTotal: outflows,
+      observedNetCashFlow: inflows - outflows,
+      expenseBreakdown30d: monthlyExpenseBreakdown,
+      observedExpenseBreakdown: expenseBreakdown,
     },
     _meta: makeMeta(),
-  };
+  })!;
 }
 
 type HubSpotDeal = NonNullable<HubSpotData["deals"]>[number];

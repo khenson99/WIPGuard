@@ -1,11 +1,9 @@
-// Budget-vs-actual variance analysis — computes estimated actuals per budget
-// line item using Mercury aggregate outflow data.
+// Budget-vs-actual variance analysis — computes actuals or estimated actuals
+// per budget line item from Mercury cash-flow data.
 //
-// Mercury data only provides aggregate inflows/outflows totals (no transaction-
-// level detail such as merchant names, categories, or descriptions). Therefore,
-// actual expenses per category are **estimated** using the same SaaS-standard
-// ratios defined in pnl-builder.ts. The "other" category absorbs any remainder
-// not covered by the known ratios.
+// When Mercury transaction metadata has been classified into category totals,
+// line items use that direct category breakdown. Otherwise the module falls
+// back to planned budget mix and then legacy SaaS-standard ratios.
 //
 // This module is pure computation — no database calls, no side effects.
 
@@ -40,18 +38,39 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-/** Scale 30-day outflows to match the budget date range. */
-function estimateOutflowMultiplier(budget: BudgetData): number {
+/** Scale observed Mercury spend to match the budget date range. */
+function estimateOutflowMultiplier(
+  budget: BudgetData,
+  observedPeriodDays: number = 30,
+): number {
   const start = new Date(budget.startDate);
   const end = new Date(budget.endDate);
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
     return 1;
   }
-  const ms = end.getTime() - start.getTime();
+
+  // Budget records are typically stored from date-only form inputs, which land
+  // in the database as midnight UTC timestamps. Treat an end date at exactly
+  // 00:00 UTC as an inclusive calendar boundary so a Jan 1 -> Jan 31 budget
+  // spans 31 days instead of 30.
+  const normalizedEnd = new Date(end.getTime());
+  if (
+    normalizedEnd.getUTCHours() === 0 &&
+    normalizedEnd.getUTCMinutes() === 0 &&
+    normalizedEnd.getUTCSeconds() === 0 &&
+    normalizedEnd.getUTCMilliseconds() === 0
+  ) {
+    normalizedEnd.setUTCDate(normalizedEnd.getUTCDate() + 1);
+  }
+
+  const ms = normalizedEnd.getTime() - start.getTime();
   if (ms <= 0) return 1;
   const days = ms / (1000 * 60 * 60 * 24);
   if (!Number.isFinite(days) || days <= 0) return 1;
-  return Math.max(days / 30, 0);
+  const baselineDays = Number.isFinite(observedPeriodDays) && observedPeriodDays > 0
+    ? observedPeriodDays
+    : 30;
+  return Math.max(days / baselineDays, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -59,14 +78,16 @@ function estimateOutflowMultiplier(budget: BudgetData): number {
 // ---------------------------------------------------------------------------
 
 /**
- * Estimate actual amounts for each budget line item using Mercury's total
- * outflows and the SaaS-standard category ratios.
+ * Estimate actual amounts for each budget line item using Mercury expense data.
  *
- * For every line item, `actualAmount` is derived from:
- *   `mercury.cashFlow.outflows30d * outflowMultiplier * CATEGORY_RATIOS[category]`
+ * Preference order:
+ * 1. Classified Mercury transaction totals per category.
+ * 2. Planned budget mix applied to observed total outflows scaled from the
+ *    Mercury period to the budget period.
+ * 3. Legacy SaaS-standard category ratios.
  *
- * The "other" category receives whatever is left after all known-ratio
- * categories have been allocated.
+ * Planned-share allocation is derived from:
+ *   `observedOutflowTotal * outflowMultiplier * plannedAmount / totalPlanned`
  *
  * When `mercury` is null (disconnected / unavailable), all actuals fields
  * are returned as null.
@@ -84,44 +105,36 @@ function computeBudgetActualsCore(
     }));
   }
 
+  const observedPeriodDays = mercury.cashFlow.observedPeriodDays ?? 30;
+  const observedOutflowTotal = mercury.cashFlow.observedOutflowTotal ?? mercury.cashFlow.outflows30d;
   const totalOutflows =
-    mercury.cashFlow.outflows30d * estimateOutflowMultiplier(budget);
+    observedOutflowTotal * estimateOutflowMultiplier(budget, observedPeriodDays);
+  const totalPlanned = budget.lineItems.reduce(
+    (sum, item) => sum + Math.max(item.plannedAmount, 0),
+    0,
+  );
+  const transactionBreakdown =
+    mercury.cashFlow.observedExpenseBreakdown ?? mercury.cashFlow.expenseBreakdown30d;
+  const transactionBreakdownTotal = transactionBreakdown
+    ? Object.values(transactionBreakdown).reduce((sum, value) => sum + value, 0)
+    : 0;
 
-  // First pass: compute actuals for all known-ratio categories and track the
-  // sum so we can derive the "other" remainder.
-  let knownCategoryActualsSum = 0;
-
-  const withActuals: BudgetLineItemData[] = budget.lineItems.map((item) => {
-    if (item.category !== "other") {
-      const actualAmount = round2(totalOutflows * CATEGORY_RATIOS[item.category]);
-      knownCategoryActualsSum += actualAmount;
-      const { variance, variancePct } = computeVariance(item.plannedAmount, actualAmount);
-      return {
-        ...item,
-        actualAmount,
-        variance: variance != null ? round2(variance) : null,
-        variancePct: variancePct != null ? round2(variancePct) : null,
-      };
-    }
-    // Placeholder for "other" — filled in the second pass below.
-    return { ...item };
+  return budget.lineItems.map((item) => {
+    const actualAmount = transactionBreakdownTotal > 0
+      ? round2((transactionBreakdown?.[item.category] ?? 0) * estimateOutflowMultiplier(budget, observedPeriodDays))
+      : round2(
+          totalOutflows * (totalPlanned > 0
+            ? Math.max(item.plannedAmount, 0) / totalPlanned
+            : CATEGORY_RATIOS[item.category])
+        );
+    const { variance, variancePct } = computeVariance(item.plannedAmount, actualAmount);
+    return {
+      ...item,
+      actualAmount,
+      variance: variance != null ? round2(variance) : null,
+      variancePct: variancePct != null ? round2(variancePct) : null,
+    };
   });
-
-  // Second pass: assign "other" category the remainder.
-  for (let i = 0; i < withActuals.length; i++) {
-    if (withActuals[i].category === "other") {
-      const actualAmount = round2(totalOutflows - knownCategoryActualsSum);
-      const { variance, variancePct } = computeVariance(withActuals[i].plannedAmount, actualAmount);
-      withActuals[i] = {
-        ...withActuals[i],
-        actualAmount,
-        variance: variance != null ? round2(variance) : null,
-        variancePct: variancePct != null ? round2(variancePct) : null,
-      };
-    }
-  }
-
-  return withActuals;
 }
 
 // ---------------------------------------------------------------------------

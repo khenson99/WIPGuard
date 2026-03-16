@@ -1,10 +1,10 @@
 // Unit-economics engine — pure computation module for SaaS unit economics.
 //
 // Derives LTV, CAC, LTV:CAC ratio, ARPA, payback period, and gross margin
-// from Stripe, Mercury, and HubSpot provider data.  Mercury only exposes
-// aggregate cash-flow figures, so expense-category estimates (COGS, marketing
-// spend) use SaaS-standard ratios applied to total outflows — identical to the
-// approach used in pnl-builder.ts.
+// from Stripe, Mercury, and HubSpot provider data. When Mercury transaction
+// metadata has been classified into category totals, those ratios are used for
+// COGS and marketing spend. Otherwise the module falls back to SaaS-standard
+// ratios, matching pnl-builder.ts.
 
 import type {
   StripeData,
@@ -12,16 +12,19 @@ import type {
   HubSpotData,
   UnitEconomics,
 } from "@/lib/analytics/types";
+import type { ExpenseRatios } from "./pnl-builder";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Fraction of Mercury outflows attributed to COGS (hosting, infra, etc.) */
-const COGS_RATIO = 0.25;
-
-/** Fraction of Mercury outflows attributed to marketing / sales spend. */
-const MARKETING_SPEND_RATIO = 0.15;
+const DEFAULT_EXPENSE_RATIOS: ExpenseRatios = {
+  cogs: 0.25,
+  payroll: 0.35,
+  marketing: 0.15,
+  infrastructure: 0.10,
+  ops: 0.15,
+};
 
 /** When churn is zero we cap LTV at 10 years worth of ARPA. */
 const MAX_LTV_MONTHS = 120;
@@ -58,7 +61,33 @@ export function computeUnitEconomics(
   stripe: StripeData | null,
   mercury: MercuryData | null,
   hubspot: HubSpotData | null,
+  opts: {
+    ratios?: Partial<ExpenseRatios>;
+  } = {},
 ): UnitEconomicsData {
+  const mercuryBreakdown = mercury?.cashFlow.expenseBreakdown30d;
+  const mercuryBreakdownTotal = mercuryBreakdown
+    ? (mercuryBreakdown.cogs ?? 0) +
+      (mercuryBreakdown.payroll ?? 0) +
+      (mercuryBreakdown.marketing ?? 0) +
+      (mercuryBreakdown.infrastructure ?? 0) +
+      (mercuryBreakdown.ops ?? 0) +
+      (mercuryBreakdown.other ?? 0)
+    : 0;
+  const ratios: ExpenseRatios = {
+    ...DEFAULT_EXPENSE_RATIOS,
+    ...(mercuryBreakdownTotal > 0
+      ? {
+          cogs: (mercuryBreakdown?.cogs ?? 0) / mercuryBreakdownTotal,
+          payroll: (mercuryBreakdown?.payroll ?? 0) / mercuryBreakdownTotal,
+          marketing: (mercuryBreakdown?.marketing ?? 0) / mercuryBreakdownTotal,
+          infrastructure: (mercuryBreakdown?.infrastructure ?? 0) / mercuryBreakdownTotal,
+          ops: ((mercuryBreakdown?.ops ?? 0) + (mercuryBreakdown?.other ?? 0)) / mercuryBreakdownTotal,
+        }
+      : {}),
+    ...opts.ratios,
+  };
+
   // -- Early exit: nothing to compute ---
   if (!stripe && !mercury && !hubspot) {
     return {
@@ -104,7 +133,7 @@ export function computeUnitEconomics(
   // ---------------------------------------------------------------------------
 
   const revenue = stripe?.revenue.totalRevenue30d ?? 0;
-  const cogs = (mercury?.cashFlow.outflows30d ?? 0) * COGS_RATIO;
+  const cogs = (mercury?.cashFlow.outflows30d ?? 0) * ratios.cogs;
   const grossMarginPct =
     revenue === 0 ? 0 : ((revenue - cogs) / revenue) * 100;
 
@@ -112,7 +141,7 @@ export function computeUnitEconomics(
   // 5. CAC — Customer Acquisition Cost
   // ---------------------------------------------------------------------------
 
-  const marketingSpend = (mercury?.cashFlow.outflows30d ?? 0) * MARKETING_SPEND_RATIO;
+  const marketingSpend = (mercury?.cashFlow.outflows30d ?? 0) * ratios.marketing;
 
   let newCustomers = hubspot?.funnel.closedWon ?? 0;
   if (newCustomers <= 0 && stripe) {

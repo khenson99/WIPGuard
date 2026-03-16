@@ -10,6 +10,9 @@ import { getAuthenticatedUser } from "@/lib/session-user";
 import { getCredentials } from "@/lib/analytics/credentials";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
 import { computeProgressPct } from "@/lib/analytics/finance-utils";
+import { normalizeStoredBudgetEndDate } from "@/lib/analytics/budget-period";
+import { normalizeMercuryExpenseMappings } from "@/lib/analytics/mercury-expense-mappings";
+import { normalizeMercuryDataPayload } from "@/lib/analytics/mercury-normalization";
 import { createEmptyAnalyticsDashboardData, patchFreshnessWithStale } from "@/lib/analytics/response-shape";
 import {
   analyticsErrorFromReason,
@@ -42,11 +45,14 @@ import type {
   ForecastScenarioData,
   GoalMetric,
   GoalStatus,
+  IntegrationTelemetryData,
   ProductSuccessData,
   StripeData,
   MercuryData,
+  MercuryExpenseMapping,
   HubSpotData,
 } from "@/lib/analytics/types";
+import { MERCURY_CASHFLOW_SYNC_RULE_KEY } from "@/lib/integrations/provider-metrics-sync";
 
 export const revalidate = 300;
 
@@ -198,8 +204,6 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "sales-google-workspace": ["googleWorkspace"],
   "sales-slack": ["slack"],
   "cs-pylon": ["pylon"],
-  "cs-coda": ["coda", "codaOps"],
-  "cs-product": ["product"],
   "cs-google-workspace": ["googleWorkspace"],
   "cs-slack": ["slack"],
 
@@ -233,6 +237,64 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
 
   "sales-performance": ["salesPerformance"],
 };
+
+const LEGACY_SECTION_ALIASES: Record<string, string> = {
+  "cs-coda": "customer-success",
+  "cs-product": "customer-success",
+};
+
+const INTEGRATION_TELEMETRY_DOMAINS = new Set<DomainKey>([
+  "googleWorkspace",
+  "hubspotOps",
+  "slack",
+  "codaOps",
+  "redditOps",
+]);
+
+type LegacyIntegrationTrendPoint = {
+  date: string;
+  receipts: number;
+  failures: number;
+  automationsTriggered?: number;
+  createdTasks?: number;
+};
+
+type LegacyIntegrationTelemetryData = Omit<IntegrationTelemetryData, "automationsTriggeredInRange" | "trend"> & {
+  automationsTriggeredInRange?: number;
+  tasksCreatedInRange?: number;
+  trend?: LegacyIntegrationTrendPoint[];
+};
+
+function normalizeIntegrationTelemetryPayload(payload: unknown): IntegrationTelemetryData | unknown {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+
+  const telemetry = payload as LegacyIntegrationTelemetryData;
+  const {
+    tasksCreatedInRange,
+    automationsTriggeredInRange,
+    trend = [],
+    ...rest
+  } = telemetry;
+
+  return {
+    ...rest,
+    automationsTriggeredInRange:
+      typeof automationsTriggeredInRange === "number"
+        ? automationsTriggeredInRange
+        : typeof tasksCreatedInRange === "number"
+          ? tasksCreatedInRange
+          : 0,
+    trend: trend.map(({ createdTasks, automationsTriggered, ...point }) => ({
+      ...point,
+      automationsTriggered:
+        typeof automationsTriggered === "number"
+          ? automationsTriggered
+          : typeof createdTasks === "number"
+            ? createdTasks
+            : 0,
+    })),
+  } as IntegrationTelemetryData;
+}
 
 function loadOnce<T>(loader: () => Promise<T>): () => Promise<T> {
   let promise: Promise<T> | null = null;
@@ -295,7 +357,8 @@ const loadBudgetVarianceBuilder = loadOnce(
 
 function requiredDomainsForSection(section: string | null): Set<DomainKey> {
   if (!section) return new Set(ALL_DOMAINS);
-  return new Set(SECTION_DOMAINS[section] ?? ALL_DOMAINS);
+  const normalizedSection = LEGACY_SECTION_ALIASES[section] ?? section;
+  return new Set(SECTION_DOMAINS[normalizedSection] ?? ALL_DOMAINS);
 }
 
 async function resolveAnalyticsOrganizationId(
@@ -558,6 +621,14 @@ const LIVE_FIRST_FINANCE_SECTIONS = new Set([
   "finance-unit-economics",
 ]);
 
+const FINANCIAL_PLANNING_SECTIONS = new Set([
+  "finance",
+  "finance-planning",
+  "finance-forecast",
+  "finance-pnl",
+  "finance-unit-economics",
+]);
+
 const LIVE_FIRST_FINANCE_DOMAINS = new Set<FetchEntry["key"]>([
   "hubspot",
   "stripe",
@@ -617,16 +688,25 @@ function normalizeEmailDomain(value: string | null | undefined): string | null {
   return normalized;
 }
 
+function normalizeStripeCustomerId(value: string | null | undefined): string | null {
+  const normalized = value?.trim() ?? "";
+  if (!normalized || normalized === "Unknown customer") {
+    return null;
+  }
+  return normalized;
+}
+
 function buildSubscriptionOverview(data: AnalyticsDashboardData): FinancialPlanningData["subscriptionOverview"] {
   const stripeRefs = data.stripe?.subscriptions.activeCustomerRefs ?? [];
   const hubspotDeals = (data.hubspot?.deals ?? []).filter(
     (deal) => deal.stageLabel.trim().toLowerCase() === "subscription",
   );
+  const stripeActiveSubscriptions = data.stripe?.subscriptions.active ?? stripeRefs.length;
 
   const stripeCustomerIds = new Set(
     stripeRefs
-      .map((ref) => ref.customerId.trim())
-      .filter((customerId) => customerId.length > 0 && customerId !== "Unknown customer"),
+      .map((ref) => normalizeStripeCustomerId(ref.customerId))
+      .filter(Boolean) as string[],
   );
   const stripeEmails = new Set(
     stripeRefs.map((ref) => normalizeEmail(ref.email)).filter(Boolean) as string[],
@@ -635,12 +715,23 @@ function buildSubscriptionOverview(data: AnalyticsDashboardData): FinancialPlann
     stripeRefs.map((ref) => ref.emailDomain?.trim().toLowerCase() ?? null).filter(Boolean) as string[],
   );
 
+  const seenHubspotEntities = new Set<string>();
+  let uniqueHubspotActiveSubscriptions = 0;
   let hubspotOnlyCount = 0;
 
   for (const deal of hubspotDeals) {
-    const customerId = deal.stripeCustomerId?.trim() || null;
+    const customerId = normalizeStripeCustomerId(deal.stripeCustomerId);
     const email = normalizeEmail(deal.primaryContactEmail);
     const emailDomain = normalizeEmailDomain(deal.primaryContactEmail);
+    const entityKey = customerId
+      ? `customer:${customerId}`
+      : email
+        ? `email:${email}`
+        : `deal:${deal.dealId}`;
+
+    if (seenHubspotEntities.has(entityKey)) continue;
+    seenHubspotEntities.add(entityKey);
+    uniqueHubspotActiveSubscriptions += 1;
 
     if (customerId && stripeCustomerIds.has(customerId)) continue;
     if (email && stripeEmails.has(email)) continue;
@@ -650,9 +741,9 @@ function buildSubscriptionOverview(data: AnalyticsDashboardData): FinancialPlann
   }
 
   return {
-    mergedActiveSubscriptions: stripeRefs.length + hubspotOnlyCount,
-    stripeActiveSubscriptions: data.stripe?.subscriptions.active ?? 0,
-    hubspotActiveSubscriptions: data.hubspot?.funnel.activeSubscriptions ?? hubspotDeals.length,
+    mergedActiveSubscriptions: stripeActiveSubscriptions + hubspotOnlyCount,
+    stripeActiveSubscriptions,
+    hubspotActiveSubscriptions: uniqueHubspotActiveSubscriptions,
   };
 }
 
@@ -690,11 +781,124 @@ async function buildFinancialPlanningData(
     prisma.forecastScenario.findMany({ where: { userId } }),
   ]);
 
+  type FinancialExpenseRatios = {
+    cogs: number;
+    payroll: number;
+    marketing: number;
+    infrastructure: number;
+    ops: number;
+  };
+
+  function mapBudgetDraft(
+    budget: {
+      id: string;
+      name: string;
+      period: string;
+      startDate: Date;
+      endDate: Date;
+      lineItems: { id: string; category: string; plannedAmount: number; notes: string | null }[];
+    },
+  ): BudgetData {
+    return {
+      id: budget.id,
+      name: budget.name,
+      period: budget.period.toLowerCase() as BudgetData["period"],
+      startDate: budget.startDate.toISOString(),
+      endDate: normalizeStoredBudgetEndDate(
+        budget.startDate.toISOString(),
+        budget.endDate.toISOString(),
+        budget.period as "MONTHLY" | "QUARTERLY" | "ANNUAL",
+      ),
+      lineItems: budget.lineItems.map((lineItem) => ({
+        id: lineItem.id,
+        category: lineItem.category.toLowerCase() as BudgetLineItemData["category"],
+        plannedAmount: lineItem.plannedAmount,
+        actualAmount: null,
+        variance: null,
+        variancePct: null,
+        notes: lineItem.notes ?? undefined,
+      })),
+      totalPlanned: budget.lineItems.reduce((sum, lineItem) => sum + lineItem.plannedAmount, 0),
+      totalActual: null,
+      totalVariance: null,
+    };
+  }
+
+  function deriveExpenseRatiosFromBudget(budget: BudgetData | null): FinancialExpenseRatios | null {
+    if (!budget) return null;
+
+    const totals = {
+      cogs: 0,
+      payroll: 0,
+      marketing: 0,
+      infrastructure: 0,
+      ops: 0,
+    };
+
+    for (const item of budget.lineItems) {
+      if (item.plannedAmount <= 0) continue;
+      if (item.category === "other") {
+        totals.ops += item.plannedAmount;
+        continue;
+      }
+      totals[item.category] += item.plannedAmount;
+    }
+
+    const totalPlanned = Object.values(totals).reduce((sum, value) => sum + value, 0);
+    if (totalPlanned <= 0) return null;
+
+    return {
+      cogs: totals.cogs / totalPlanned,
+      payroll: totals.payroll / totalPlanned,
+      marketing: totals.marketing / totalPlanned,
+      infrastructure: totals.infrastructure / totalPlanned,
+      ops: totals.ops / totalPlanned,
+    };
+  }
+
+  function deriveExpenseRatiosFromMercury(mercuryData: MercuryData | null): FinancialExpenseRatios | null {
+    const breakdown = mercuryData?.cashFlow.expenseBreakdown30d;
+    if (!breakdown) return null;
+
+    const totals = {
+      cogs: breakdown.cogs ?? 0,
+      payroll: breakdown.payroll ?? 0,
+      marketing: breakdown.marketing ?? 0,
+      infrastructure: breakdown.infrastructure ?? 0,
+      ops: (breakdown.ops ?? 0) + (breakdown.other ?? 0),
+    };
+
+    const totalExpenses = Object.values(totals).reduce((sum, value) => sum + value, 0);
+    if (totalExpenses <= 0) return null;
+
+    return {
+      cogs: totals.cogs / totalExpenses,
+      payroll: totals.payroll / totalExpenses,
+      marketing: totals.marketing / totalExpenses,
+      infrastructure: totals.infrastructure / totalExpenses,
+      ops: totals.ops / totalExpenses,
+    };
+  }
+
+  const budgetDrafts = dbBudgets.map(mapBudgetDraft);
+  const activeBudgetRatios = deriveExpenseRatiosFromBudget(budgetDrafts[0] ?? null);
+  const mercuryExpenseRatios = deriveExpenseRatiosFromMercury(mercury);
+  const effectiveExpenseRatios = mercuryExpenseRatios ?? activeBudgetRatios;
+
   // --- P&L ---
-  const pnl = buildProfitAndLoss(stripe, mercury);
+  const pnl = buildProfitAndLoss(
+    stripe,
+    mercury,
+    effectiveExpenseRatios ? { ratios: effectiveExpenseRatios } : undefined,
+  );
 
   // --- Unit Economics ---
-  const unitEconomics = computeUnitEconomics(stripe, mercury, hubspot);
+  const unitEconomics = computeUnitEconomics(
+    stripe,
+    mercury,
+    hubspot,
+    effectiveExpenseRatios ? { ratios: effectiveExpenseRatios } : undefined,
+  );
 
   // --- Forecasts: defaults + custom saved scenarios ---
   const defaultForecasts = buildDefaultScenarios(stripe, mercury);
@@ -709,36 +913,17 @@ async function buildFinancialPlanningData(
   const forecasts = [...defaultForecasts, ...customForecasts];
 
   // --- Budgets with variance ---
-  const budgets: BudgetData[] = dbBudgets.map((b: { id: string; name: string; period: string; startDate: Date; endDate: Date; lineItems: { id: string; category: string; plannedAmount: number; notes: string | null }[] }) => {
-    const budgetDraft = {
-      id: b.id,
-      name: b.name,
-      period: b.period.toLowerCase() as BudgetData["period"],
-      startDate: b.startDate.toISOString(),
-      endDate: b.endDate.toISOString(),
-      lineItems: b.lineItems.map((li: { id: string; category: string; plannedAmount: number; notes: string | null }) => ({
-        id: li.id,
-        category: li.category.toLowerCase() as BudgetLineItemData["category"],
-        plannedAmount: li.plannedAmount,
-        actualAmount: null,
-        variance: null,
-        variancePct: null,
-        notes: li.notes ?? undefined,
-      })),
-      totalPlanned: b.lineItems.reduce((s: number, li: { plannedAmount: number }) => s + li.plannedAmount, 0),
-      totalActual: null,
-      totalVariance: null,
-    };
+  const budgets: BudgetData[] = budgetDrafts.map((budgetDraft) => {
     const lineItems: BudgetLineItemData[] = mercury?.cashFlow
-      ? budgetDraft.lineItems
-      : computeBudgetActuals(budgetDraft, mercury);
+      ? computeBudgetActuals(budgetDraft, mercury)
+      : budgetDraft.lineItems;
     const summary = computeBudgetSummary(lineItems);
     return {
-      id: b.id,
-      name: b.name,
-      period: b.period.toLowerCase() as BudgetData["period"],
-      startDate: b.startDate.toISOString(),
-      endDate: b.endDate.toISOString(),
+      id: budgetDraft.id,
+      name: budgetDraft.name,
+      period: budgetDraft.period,
+      startDate: budgetDraft.startDate,
+      endDate: budgetDraft.endDate,
       lineItems,
       totalPlanned: summary.totalPlanned,
       totalActual: summary.totalActual,
@@ -1182,7 +1367,24 @@ export async function GET(request: Request) {
           snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchMercuryData } = await loadCoreAnalyticsFetchers();
-            return fetchMercuryData(creds.mercuryKey!, { fromDate, toDate });
+            const mercuryRule = await prisma.integrationRule.findUnique({
+              where: {
+                userId_provider_key: {
+                  userId: integrationUserId,
+                  provider: IntegrationProvider.MERCURY,
+                  key: MERCURY_CASHFLOW_SYNC_RULE_KEY,
+                },
+              },
+              select: { config: true },
+            });
+            const expenseMappings: MercuryExpenseMapping[] = normalizeMercuryExpenseMappings(
+              mercuryRule?.config ?? null,
+            );
+            return fetchMercuryData(creds.mercuryKey!, {
+              fromDate,
+              toDate,
+              expenseMappings,
+            });
           },
         }]
       : []),
@@ -1537,7 +1739,12 @@ export async function GET(request: Request) {
     }
 
     const { key, payload, stale, capturedAt, fallbackError } = outcome.value;
-    (result as unknown as Record<string, unknown>)[key] = payload;
+    const normalizedPayload = key === "mercury"
+      ? normalizeMercuryDataPayload(payload as MercuryData | null)
+      : INTEGRATION_TELEMETRY_DOMAINS.has(key)
+        ? normalizeIntegrationTelemetryPayload(payload)
+        : payload;
+    (result as unknown as Record<string, unknown>)[key] = normalizedPayload;
     capturedAtByDomain[key] = capturedAt;
 
     if (stale) {
@@ -1622,8 +1829,8 @@ export async function GET(request: Request) {
     result.processAnalytics = buildProcessAnalyticsData(result);
   }
 
-  // Populate financial planning data when the finance section is requested
-  if (section === "finance" || section === null) {
+  // Populate financial planning data for finance surfaces that depend on it.
+  if (section === null || FINANCIAL_PLANNING_SECTIONS.has(section)) {
     try {
       result.financialPlanning = await buildFinancialPlanningData(userId, result);
     } catch (error) {

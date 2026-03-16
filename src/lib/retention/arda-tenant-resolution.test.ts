@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  discoverArdaOidcSubjectsByTenant,
   discoverArdaTenantIdsFromUserDetails,
   extractArdaTenantIdsFromResult,
   normalizeArdaTenantLookupKey,
@@ -107,5 +108,24 @@ describe("arda tenant resolution helpers", () => {
     expect(discovered.get(normalizeArdaTenantLookupKey("P-20010"))).toEqual([
       "e24408eb-69b3-477d-9090-97e314113996",
     ]);
+  });
+
+  it("captures one oidc subject per tenant uuid", () => {
+    const subjects = discoverArdaOidcSubjectsByTenant([
+      {
+        email: "user@smartconsolutions.com",
+        tenantId: "e24408eb-69b3-477d-9090-97e314113996",
+        oidcSubject: "14f8f4b8-f071-70f2-ae92-1fbf4bba71bd",
+      },
+      {
+        email: "other@smartconsolutions.com",
+        tenantId: "e24408eb-69b3-477d-9090-97e314113996",
+        oidcSubject: "ignored-second-subject",
+      },
+    ]);
+
+    expect(subjects.get("e24408eb-69b3-477d-9090-97e314113996")).toBe(
+      "14f8f4b8-f071-70f2-ae92-1fbf4bba71bd"
+    );
   });
 });

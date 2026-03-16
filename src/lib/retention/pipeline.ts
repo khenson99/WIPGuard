@@ -31,6 +31,7 @@ import {
   getPylonIssueTags,
 } from "@/lib/integrations/pylon-client";
 import {
+  discoverArdaOidcSubjectsByTenant,
   discoverArdaTenantIdsFromUserDetails,
   extractArdaTenantIdsFromResult,
   normalizeArdaTenantLookupKey,
@@ -77,6 +78,12 @@ interface ArdaTenantConfig {
   tenantName: string;
   companyName: string;
   customerName: string | null;
+  oidcSubject: string | null;
+  userDetailsCounts: {
+    items: number;
+    cards: number;
+    orders: number;
+  } | null;
   customerStatus: string | null;
   health: string | null;
   mainCodaDocId: string | null;
@@ -121,6 +128,12 @@ interface MonthlyTenantAccumulator {
   itemTouches: number;
   activeCardCount: number;
   activeItemCount: number;
+  ardaOrderRecords: number;
+  ardaCardRecords: number;
+  ardaItemRecords: number;
+  ardaUserDetailsOrderCount: number;
+  ardaUserDetailsCardCount: number;
+  ardaUserDetailsItemCount: number;
   locations: Set<string>;
   workflows: Set<string>;
   ticketsLast30: number;
@@ -329,6 +342,15 @@ function ardaRecordId(record: ArdaEntityRecord): string | null {
   );
 }
 
+function ardaTenantLabel(config: Pick<ArdaTenantConfig, "configuredTenantId" | "companyName" | "tenantId">): string {
+  return `${config.companyName} [${config.configuredTenantId} -> ${config.tenantId}]`;
+}
+
+function ardaRequestTimeoutMs(): number {
+  const raw = asNumber(process.env.ARDA_API_TIMEOUT_MS);
+  return raw && raw > 0 ? raw : 20_000;
+}
+
 function buildArdaAuthHeaderCandidates(token: string): Array<Record<string, string>> {
   const trimmed = token.trim();
   if (!trimmed) return [];
@@ -417,6 +439,8 @@ function normalizeArdaTenantConfigRow(row: CodaApiRow): ArdaTenantConfig | null 
     tenantName: companyName,
     companyName,
     customerName,
+    oidcSubject: null,
+    userDetailsCounts: null,
     customerStatus,
     health: asString(values.Health),
     mainCodaDocId: asString(values.mainCodaDocId) ?? asString(values["ActiveMainDoc ID"]),
@@ -430,33 +454,72 @@ async function discoverArdaTenantIdsByConfig(
   docId: string,
   token: string,
   configs: ArdaTenantConfig[]
-): Promise<Map<string, string[]>> {
+): Promise<{
+  tenantIdsByConfig: Map<string, string[]>;
+  oidcSubjectByTenant: Map<string, string>;
+  userDetailsCountsByTenant: Map<string, { items: number; cards: number; orders: number }>;
+}> {
   const userDetailsTableId =
     process.env.ARDA_USER_DETAILS_TABLE_ID?.trim() ??
     "grid-sync-22507-RowDataObject-dynamic-76fe62dd30b7a8c4df850cd9ee639fcfdf09c9067d2e7472911d2a718e7e2f1f";
   try {
     const rows = await fetchCodaApiRows(docId, userDetailsTableId, token, 5, false);
-    return discoverArdaTenantIdsFromUserDetails(
+    const userDetailsRows = rows.map((row) => {
+      const values = asRecord(row.values);
+      const summary = asString(values["c-yoAdpl41FS"]);
+      const summaryMatch = summary?.match(/Items:\s*(\d+),\s*Cards:\s*(\d+),\s*Orders:\s*(\d+)/i);
+      return {
+        email: asString(values["c-qNAXS3SO0E"]),
+        tenantId: asString(values["c-WEBsoGYauT"]),
+        oidcSubject: asString(values["c-N0x4hFU6Uo"]),
+        counts: summaryMatch
+          ? {
+              items: Number(summaryMatch[1]),
+              cards: Number(summaryMatch[2]),
+              orders: Number(summaryMatch[3]),
+            }
+          : null,
+      };
+    });
+    const userDetailsCountsByTenant = new Map<string, { items: number; cards: number; orders: number }>();
+    for (const row of userDetailsRows) {
+      if (!isUuid(row.tenantId)) continue;
+      const counts = (row as typeof row & {
+        counts: { items: number; cards: number; orders: number } | null;
+      }).counts;
+      if (!counts) continue;
+      const existing = userDetailsCountsByTenant.get(row.tenantId);
+      if (
+        !existing ||
+        counts.items + counts.cards + counts.orders >
+          existing.items + existing.cards + existing.orders
+      ) {
+        userDetailsCountsByTenant.set(row.tenantId, counts);
+      }
+    }
+    return {
+      tenantIdsByConfig: discoverArdaTenantIdsFromUserDetails(
       configs.map((config) => ({
         configuredTenantId: config.configuredTenantId,
         companyName: config.companyName,
         customerName: config.customerName,
       })),
-      rows.map((row) => {
-        const values = asRecord(row.values);
-        return {
-          email: asString(values["c-qNAXS3SO0E"]),
-          tenantId: asString(values["c-WEBsoGYauT"]),
-        };
-      })
-    );
+      userDetailsRows
+      ),
+      oidcSubjectByTenant: discoverArdaOidcSubjectsByTenant(userDetailsRows),
+      userDetailsCountsByTenant,
+    };
   } catch (error) {
     console.warn(
       `[retention] Unable to derive Arda tenant UUIDs from User Details: ${
         error instanceof Error ? error.message : String(error)
       }`
     );
-    return new Map();
+    return {
+      tenantIdsByConfig: new Map(),
+      oidcSubjectByTenant: new Map(),
+      userDetailsCountsByTenant: new Map(),
+    };
   }
 }
 
@@ -492,7 +555,12 @@ async function loadArdaTenantConfigs(): Promise<ArdaTenantConfig[]> {
   const configs = rows
     .map(normalizeArdaTenantConfigRow)
     .filter((config): config is ArdaTenantConfig => config !== null);
-  const discoveredTenantIdsByConfig = await discoverArdaTenantIdsByConfig(
+  const {
+    tenantIdsByConfig: discoveredTenantIdsByConfig,
+    oidcSubjectByTenant,
+    userDetailsCountsByTenant,
+  } =
+    await discoverArdaTenantIdsByConfig(
     docId,
     token,
     configs
@@ -510,6 +578,8 @@ async function loadArdaTenantConfigs(): Promise<ArdaTenantConfig[]> {
       resolved.push({
         ...config,
         tenantId,
+        oidcSubject: oidcSubjectByTenant.get(tenantId) ?? null,
+        userDetailsCounts: userDetailsCountsByTenant.get(tenantId) ?? null,
       });
     }
   }
@@ -526,6 +596,10 @@ async function loadArdaTenantConfigs(): Promise<ArdaTenantConfig[]> {
       unresolved.slice(0, 10)
     );
   }
+
+  console.info(
+    `[retention] Resolved ${resolved.length} Arda tenant config rows from ${configs.length} active configs`
+  );
 
   return resolved;
 }
@@ -550,6 +624,7 @@ async function fetchArdaPage(
         ...sharedHeaders,
         ...authHeaders,
       },
+      signal: init.signal ?? AbortSignal.timeout(ardaRequestTimeoutMs()),
       cache: "no-store",
     });
     if (response.status !== 401) return response;
@@ -563,17 +638,21 @@ async function fetchArdaPage(
 async function queryArdaCollection(
   endpoint: string,
   tenantId: string,
-  asOfMs: number
+  asOfMs: number,
+  oidcSubject: string | null = null
 ): Promise<ArdaEntityRecord[]> {
   const baseUrl = process.env.ARDA_API_BASE_URL?.trim();
   if (!baseUrl) return [];
 
-  const sharedHeaders = {
+  const sharedHeaders: Record<string, string> = {
     Accept: "application/json",
     "Content-Type": "application/json",
     "X-Author": process.env.ARDA_API_AUTHOR?.trim() || "WIPGuard-retention-sync",
     "X-Tenant-Id": tenantId,
   };
+  if (oidcSubject) {
+    sharedHeaders["X-oidc-subject"] = oidcSubject;
+  }
 
   const allResults: ArdaEntityRecord[] = [];
   const queryString = `effectiveasof=${asOfMs}&recordedasof=${asOfMs}`;
@@ -1079,14 +1158,16 @@ async function loadArdaSourceRecords(): Promise<SourceSeedRecord[]> {
   const rows: SourceSeedRecord[] = [];
 
   for (const config of tenantConfigs) {
+    const tenantRowsStart = rows.length;
+    const tenantLabel = ardaTenantLabel(config);
     rows.push({
       source: "ARDA",
       objectType: "tenant",
       externalId: config.tenantId,
       tenantKey: config.tenantId,
-      occurredAt: null,
+      occurredAt: new Date(asOfMs).toISOString(),
       sourceCreatedAt: null,
-      sourceUpdatedAt: null,
+      sourceUpdatedAt: new Date(asOfMs).toISOString(),
       payload: {
         ardaTenantId: config.tenantId,
         configuredTenantId: config.configuredTenantId,
@@ -1096,6 +1177,10 @@ async function loadArdaSourceRecords(): Promise<SourceSeedRecord[]> {
         health: config.health,
         mainCodaDocId: config.mainCodaDocId,
         orderArchiveDocumentId: config.orderArchiveDocumentId,
+        oidcSubject: config.oidcSubject,
+        userDetailsItemCount: config.userDetailsCounts?.items ?? null,
+        userDetailsCardCount: config.userDetailsCounts?.cards ?? null,
+        userDetailsOrderCount: config.userDetailsCounts?.orders ?? null,
         implementationStage:
           config.customerStatus && config.customerStatus.toLowerCase().includes("freemium")
             ? "TRIAL"
@@ -1104,10 +1189,18 @@ async function loadArdaSourceRecords(): Promise<SourceSeedRecord[]> {
     });
 
     const [orders, cards, items] = await Promise.all([
-      queryArdaCollection("order/order", config.tenantId, asOfMs),
-      queryArdaCollection("kanban/kanban-card", config.tenantId, asOfMs),
-      queryArdaCollection("item/item", config.tenantId, asOfMs),
+      queryArdaCollection("order/order", config.tenantId, asOfMs, config.oidcSubject),
+      queryArdaCollection("kanban/kanban-card", config.tenantId, asOfMs, config.oidcSubject),
+      queryArdaCollection("item/item", config.tenantId, asOfMs, config.oidcSubject),
     ]);
+
+    console.info(
+      `[retention] Arda collections for ${tenantLabel}: orders=${orders.length}, cards=${cards.length}, items=${items.length}, userDetails=${
+        config.userDetailsCounts
+          ? `${config.userDetailsCounts.items}/${config.userDetailsCounts.cards}/${config.userDetailsCounts.orders}`
+          : "n/a"
+      }`
+    );
 
     for (const record of orders) {
       const payload = ardaPayload(record);
@@ -1181,7 +1274,15 @@ async function loadArdaSourceRecords(): Promise<SourceSeedRecord[]> {
         },
       });
     }
+
+    console.info(
+      `[retention] Built ${rows.length - tenantRowsStart} Arda source rows for ${tenantLabel}`
+    );
   }
+
+  console.info(
+    `[retention] Built ${rows.length} Arda source rows across ${tenantConfigs.length} resolved tenant configs`
+  );
 
   return rows;
 }
@@ -1273,6 +1374,12 @@ function initAccumulator(customerRecordId: string, monthStart: Date, monthEnd: D
     itemTouches: 0,
     activeCardCount: 0,
     activeItemCount: 0,
+    ardaOrderRecords: 0,
+    ardaCardRecords: 0,
+    ardaItemRecords: 0,
+    ardaUserDetailsOrderCount: 0,
+    ardaUserDetailsCardCount: 0,
+    ardaUserDetailsItemCount: 0,
     locations: new Set<string>(),
     workflows: new Set<string>(),
     ticketsLast30: 0,
@@ -1295,9 +1402,29 @@ function addActivity(acc: MonthlyTenantAccumulator, occurredAt: Date | null): vo
   acc.activeWeeks.add(weekKey(occurredAt));
 }
 
+function ardaActivityRecordCount(acc: MonthlyTenantAccumulator): number {
+  return acc.ardaOrderRecords + acc.ardaCardRecords + acc.ardaItemRecords;
+}
+
+function ardaUserDetailsFallbackAvailable(acc: MonthlyTenantAccumulator): boolean {
+  return (
+    acc.ardaUserDetailsOrderCount > 0 ||
+    acc.ardaUserDetailsCardCount > 0 ||
+    acc.ardaUserDetailsItemCount > 0
+  );
+}
+
+function ardaAdoptionCountsSource(acc: MonthlyTenantAccumulator): "ARDA_ACTIVITY" | "ARDA_USER_DETAILS" | "NONE" {
+  if (ardaActivityRecordCount(acc) > 0) return "ARDA_ACTIVITY";
+  if (ardaUserDetailsFallbackAvailable(acc)) return "ARDA_USER_DETAILS";
+  return "NONE";
+}
+
 function mergeSourceRecord(acc: MonthlyTenantAccumulator, record: { source: string; objectType: string; occurredAt: Date | null; payload: Record<string, unknown> }): void {
   const payload = record.payload;
-  addActivity(acc, record.occurredAt);
+  if (!(record.source === "ARDA" && record.objectType === "tenant")) {
+    addActivity(acc, record.occurredAt);
+  }
 
   if (record.source === "HUBSPOT") {
     acc.coverage.hubspot = true;
@@ -1350,6 +1477,26 @@ function mergeSourceRecord(acc: MonthlyTenantAccumulator, record: { source: stri
     if (record.objectType === "tenant") {
       acc.goLiveDate = asString(payload.goLiveDate) ?? acc.goLiveDate;
       acc.implementationStage = asString(payload.implementationStage) ?? acc.implementationStage;
+      acc.ardaUserDetailsOrderCount = Math.max(
+        acc.ardaUserDetailsOrderCount,
+        asNumber(payload.userDetailsOrderCount) ?? 0
+      );
+      acc.ardaUserDetailsCardCount = Math.max(
+        acc.ardaUserDetailsCardCount,
+        asNumber(payload.userDetailsCardCount) ?? 0
+      );
+      acc.ardaUserDetailsItemCount = Math.max(
+        acc.ardaUserDetailsItemCount,
+        asNumber(payload.userDetailsItemCount) ?? 0
+      );
+      acc.activeCardCount = Math.max(
+        acc.activeCardCount,
+        asNumber(payload.userDetailsCardCount) ?? 0
+      );
+      acc.activeItemCount = Math.max(
+        acc.activeItemCount,
+        asNumber(payload.userDetailsItemCount) ?? 0
+      );
       if (asNumber(payload.locationsCount)) {
         for (let i = 0; i < Number(payload.locationsCount); i += 1) acc.locations.add(`loc-${i + 1}`);
       }
@@ -1358,6 +1505,7 @@ function mergeSourceRecord(acc: MonthlyTenantAccumulator, record: { source: stri
       }
     }
     if (record.objectType === "order") {
+      acc.ardaOrderRecords += 1;
       acc.orderCount += 1;
       const locationId = asString(payload.locationId);
       if (locationId) acc.locations.add(locationId);
@@ -1369,12 +1517,14 @@ function mergeSourceRecord(acc: MonthlyTenantAccumulator, record: { source: stri
       }
     }
     if (record.objectType === "card") {
+      acc.ardaCardRecords += 1;
       acc.cardTouches += 1;
       if (asBoolean(payload.active)) acc.activeCardCount += 1;
       const locationId = asString(payload.locationId);
       if (locationId) acc.locations.add(locationId);
     }
     if (record.objectType === "item") {
+      acc.ardaItemRecords += 1;
       acc.itemTouches += 1;
       if (asBoolean(payload.active)) acc.activeItemCount += 1;
       const locationId = asString(payload.locationId);
@@ -1518,6 +1668,18 @@ function buildFeaturePayload(
       locationCount: acc.locations.size,
       workflowCount: acc.workflows.size,
       breadthScore: acc.locations.size + acc.workflows.size + (acc.activeCardCount > 0 ? 1 : 0) + (acc.activeItemCount > 0 ? 1 : 0),
+      ardaAdoptionCountsSource: ardaAdoptionCountsSource(acc),
+      ardaActivityCollectionAvailable: ardaActivityRecordCount(acc) > 0,
+      ardaDirectActivityCounts: {
+        orders: acc.ardaOrderRecords,
+        cards: acc.ardaCardRecords,
+        items: acc.ardaItemRecords,
+      },
+      ardaUserDetailsCounts: {
+        orders: acc.ardaUserDetailsOrderCount,
+        cards: acc.ardaUserDetailsCardCount,
+        items: acc.ardaUserDetailsItemCount,
+      },
     },
     support: {
       ticketsLast30: acc.ticketsLast30,
@@ -1556,6 +1718,8 @@ function buildCoverage(acc: MonthlyTenantAccumulator): RetentionCoveragePayload 
   if (!acc.coverage.pylon) missingSources.push("pylon");
   return {
     ...acc.coverage,
+    ardaActivityCollectionAvailable: ardaActivityRecordCount(acc) > 0,
+    ardaUserDetailsFallback: ardaUserDetailsFallbackAvailable(acc),
     missingSources,
   };
 }
@@ -1669,6 +1833,20 @@ function buildReasonCodes(
         code: "partial_coverage",
         label: "Partial source coverage",
         detail: `Missing sources: ${buildCoverage(acc).missingSources.join(", ")}.`,
+        severity: "info",
+        dimension: "data",
+      })
+    );
+  }
+  if (acc.coverage.arda && ardaActivityRecordCount(acc) === 0) {
+    reasons.push(
+      buildReasonCode({
+        code: "arda_activity_unavailable",
+        label: "Arda activity history unavailable",
+        detail:
+          ardaAdoptionCountsSource(acc) === "ARDA_USER_DETAILS"
+            ? "Arda item/card/order history is unavailable, so adoption breadth is currently sourced from User Details snapshot counts."
+            : "Arda tenant metadata is present, but item/card/order history is unavailable for this tenant.",
         severity: "info",
         dimension: "data",
       })
@@ -1943,6 +2121,7 @@ export const __test__ = {
   ardaCreatedTimestamp,
   ardaObservedTimestamp,
   ardaOccurredAt,
+  ardaAdoptionCountsSource,
   deriveLifecycleStartDate,
   deriveOnboardingStartDate,
   computeActiveWeeksTrailing8,

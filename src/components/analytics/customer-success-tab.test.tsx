@@ -70,6 +70,28 @@ function makePortfolio(): CustomerSuccessPortfolio {
       atRiskAccounts: 3,
       openAlerts: 6,
     },
+    relationshipOps: {
+      lastCompletedAt: "2026-03-10T09:30:00.000Z",
+      sources: [
+        {
+          source: "CODA",
+          status: "SUCCESS",
+          completedAt: "2026-03-10T09:30:00.000Z",
+          recordCount: 120,
+          mappedCount: 110,
+          errorCount: 0,
+        },
+        {
+          source: "PYLON",
+          status: "PARTIAL",
+          completedAt: "2026-03-10T09:28:00.000Z",
+          recordCount: 15,
+          mappedCount: 10,
+          errorCount: 2,
+          lastError: "2 issue rows failed",
+        },
+      ],
+    },
     healthDistribution: [
       { label: "A", count: 2 },
       { label: "B", count: 4 },
@@ -90,6 +112,7 @@ function makePortfolio(): CustomerSuccessPortfolio {
           retentionStatus: "At Risk",
           primaryLirPassed: false,
           implementationStage: "LIVE",
+          ardaAdoptionCountsSource: "ARDA_USER_DETAILS",
           missingSources: ["pylon"],
         },
         nextAction: "Schedule exec check-in",
@@ -137,6 +160,7 @@ function makePortfolio(): CustomerSuccessPortfolio {
           retentionStatus: "At Risk",
           primaryLirPassed: false,
           implementationStage: "LIVE",
+          ardaAdoptionCountsSource: "ARDA_USER_DETAILS",
           missingSources: ["pylon"],
         },
       },
@@ -155,6 +179,7 @@ function makePortfolio(): CustomerSuccessPortfolio {
           retentionStatus: "Watch",
           primaryLirPassed: false,
           implementationStage: "BLOCKED",
+          ardaAdoptionCountsSource: "NONE",
           missingSources: ["coda", "pylon"],
         },
       },
@@ -181,17 +206,17 @@ function makeAnalyticsData(): AnalyticsDashboardData {
     slack: {
       enabledRules: 2,
       totalRules: 2,
-      trend: [{ date: "2026-03-08", createdTasks: 2, receipts: 3 }],
+      trend: [{ date: "2026-03-08", automationsTriggered: 2, receipts: 3 }],
     },
     googleWorkspace: {
       enabledRules: 1,
       totalRules: 1,
-      trend: [{ date: "2026-03-08", createdTasks: 1, receipts: 1 }],
+      trend: [{ date: "2026-03-08", automationsTriggered: 1, receipts: 1 }],
     },
     codaOps: {
       enabledRules: 3,
       totalRules: 3,
-      trend: [{ date: "2026-03-08", createdTasks: 4, receipts: 2 }],
+      trend: [{ date: "2026-03-08", automationsTriggered: 4, receipts: 2 }],
     },
   } as unknown as AnalyticsDashboardData;
 }
@@ -228,12 +253,18 @@ describe("CustomerSuccessTab", () => {
     expect(screen.getByText("Renewal risk rising")).toBeTruthy();
     expect(screen.getByText("QBR completed")).toBeTruthy();
     expect(screen.getByText("Integration Delivery Status")).toBeTruthy();
+    expect(screen.getByText("Customer Ops Activity (7 buckets)")).toBeTruthy();
     expect(screen.getByText("Accounts With Coda")).toBeTruthy();
+    expect(screen.getByText("Relationship Freshness")).toBeTruthy();
     expect(screen.getByText("Relationship Coverage")).toBeTruthy();
     expect(screen.getByText("Missing Coda Accounts")).toBeTruthy();
     expect(screen.getByText("LIR Fail Queue")).toBeTruthy();
+    expect(screen.getByText("Arda Fallback Mode")).toBeTruthy();
     expect(screen.getAllByText("No Coda Co").length).toBeGreaterThan(0);
+    expect(screen.getByText("coda success")).toBeTruthy();
+    expect(screen.getByText("pylon partial")).toBeTruthy();
     expect(screen.getAllByText("At Risk").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Arda fallback").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Missing pylon/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Missing coda/).length).toBeGreaterThan(0);
     expect(screen.getByText("Connected but stale")).toBeTruthy();

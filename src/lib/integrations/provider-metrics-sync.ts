@@ -5,6 +5,7 @@ import {
   type IntegrationRule,
   type TaskStatus,
 } from "@/generated/prisma/client";
+import type { MercuryExpenseMapping } from "@/lib/analytics/types";
 import { getCredentials } from "@/lib/analytics/credentials";
 import {
   fetchGoogleAdsData,
@@ -20,6 +21,7 @@ import {
   storeAnalyticsSnapshot,
 } from "@/lib/analytics/snapshots";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
+import { normalizeMercuryExpenseMappings } from "@/lib/analytics/mercury-expense-mappings";
 import { prisma } from "@/lib/prisma";
 
 export const GOOGLE_ADS_METRICS_RULE_KEY = "google_ads_metrics_pull";
@@ -95,6 +97,7 @@ type SupportedAutoTaskStatus = "QUEUED" | "ACTIVE" | "NOT_DONE";
 export interface ProviderMetricsSyncConfig {
   rangePreset: "7d" | "30d" | "90d";
   contextKey: string;
+  mercuryExpenseMappings?: MercuryExpenseMapping[];
   googleAdsCustomerId?: string;
   googleAdsLoginCustomerId?: string;
   metaAdAccountId?: string;
@@ -167,6 +170,7 @@ function normalizeConfig(raw: unknown): ProviderMetricsSyncConfig {
   return {
     rangePreset,
     contextKey,
+    mercuryExpenseMappings: normalizeMercuryExpenseMappings(input),
     googleAdsCustomerId: normalizeOptionalString(input.googleAdsCustomerId),
     googleAdsLoginCustomerId: normalizeOptionalString(input.googleAdsLoginCustomerId),
     metaAdAccountId: normalizeOptionalString(input.metaAdAccountId),
@@ -420,12 +424,6 @@ async function fetchProviderPayload(input: {
     );
   }
 
-  const params = new URLSearchParams();
-  params.set("range", input.config.rangePreset);
-  const range = parseAnalyticsTimeRange(params);
-  const fromDate = new Date(`${range.from}T00:00:00.000Z`);
-  const toDate = new Date(`${range.to}T23:59:59.999Z`);
-
   if (input.ruleKey === STRIPE_REVENUE_SYNC_RULE_KEY) {
     if (!creds.stripeKey) {
       throw new Error("Missing Stripe credential");
@@ -437,7 +435,11 @@ return fetchStripeData(creds.stripeKey, { fromDate: input.fromDate, toDate: inpu
     if (!creds.mercuryKey) {
       throw new Error("Missing Mercury credential");
     }
-return fetchMercuryData(creds.mercuryKey, { fromDate: input.fromDate, toDate: input.toDate });
+    return fetchMercuryData(creds.mercuryKey, {
+      fromDate: input.fromDate,
+      toDate: input.toDate,
+      expenseMappings: input.config.mercuryExpenseMappings,
+    });
   }
 
   if (input.ruleKey === PYLON_CONVERSATION_SYNC_RULE_KEY) {

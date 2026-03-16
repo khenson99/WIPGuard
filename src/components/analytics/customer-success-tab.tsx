@@ -30,6 +30,12 @@ function relationshipTone(status?: string): string {
   return "text-muted-foreground";
 }
 
+function syncRunTone(status: "SUCCESS" | "PARTIAL" | "ERROR"): string {
+  if (status === "SUCCESS") return "border-[var(--success)]/30 bg-[var(--success)]/10 text-[var(--success)]";
+  if (status === "PARTIAL") return "border-[var(--warning)]/30 bg-[var(--warning)]/10 text-[var(--warning)]";
+  return "border-red-500/30 bg-red-500/10 text-red-500";
+}
+
 type IntegrationStatus = "Not provisioned" | "Connected but stale" | "Active";
 
 function deriveIntegrationStatus(input: {
@@ -63,14 +69,30 @@ function healthTone(score: number): string {
   return "text-red-500";
 }
 
-function buildCombinedTrend(data: AnalyticsDashboardData | null): Array<{ date: string; total: number }> {
+function describeRelationshipArdaMode(
+  relationship?: CustomerSuccessPortfolio["accounts"][number]["relationship"]
+): string | null {
+  if (!relationship) return null;
+  if (relationship.ardaAdoptionCountsSource === "ARDA_USER_DETAILS") {
+    return "Arda fallback";
+  }
+  if (relationship.ardaAdoptionCountsSource === "ARDA_ACTIVITY") {
+    return "Arda activity";
+  }
+  return null;
+}
+
+function buildCombinedActivityTrend(data: AnalyticsDashboardData | null): Array<{ date: string; total: number }> {
   if (!data) return [];
   const buckets = new Map<string, number>();
   const trendSources = [data.slack?.trend ?? [], data.googleWorkspace?.trend ?? [], data.codaOps?.trend ?? []];
 
   trendSources.forEach((trend) => {
     trend.forEach((item) => {
-      buckets.set(item.date, (buckets.get(item.date) ?? 0) + item.createdTasks + item.receipts);
+      buckets.set(
+        item.date,
+        (buckets.get(item.date) ?? 0) + item.automationsTriggered + item.receipts,
+      );
     });
   });
 
@@ -185,6 +207,9 @@ function CustomerSuccessPortfolioPanels() {
   const implementationBlockedAccounts = portfolio.accounts.filter((account) =>
     (account.relationship?.implementationStage ?? "").toLowerCase().includes("blocked")
   );
+  const ardaFallbackAccounts = portfolio.accounts.filter(
+    (account) => account.relationship?.ardaAdoptionCountsSource === "ARDA_USER_DETAILS"
+  );
 
   async function syncRelationshipData() {
     setSyncError(null);
@@ -249,6 +274,30 @@ function CustomerSuccessPortfolioPanels() {
           {syncingRelationships ? "Syncing relationship data..." : "Sync relationship data"}
         </button>
       </div>
+
+      {portfolio.relationshipOps?.sources.length ? (
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Relationship Freshness</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Last completed rebuild {formatDate(portfolio.relationshipOps.lastCompletedAt)}.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {portfolio.relationshipOps.sources.map((run) => (
+              <span
+                key={run.source}
+                title={run.lastError || `${run.recordCount} records · ${run.mappedCount} mapped`}
+                className={`rounded-full border px-2 py-1 text-[11px] ${syncRunTone(run.status)}`}
+              >
+                {run.source.toLowerCase()} {run.status.toLowerCase()}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div className="rounded-xl border border-border bg-card px-4 py-3">
@@ -318,6 +367,9 @@ function CustomerSuccessPortfolioPanels() {
                     <p className="mt-1 text-xs text-muted-foreground">
                       {account.relationship?.connectedSystems ?? 0} systems
                       {account.relationship?.implementationStage ? ` • ${account.relationship.implementationStage}` : ""}
+                      {describeRelationshipArdaMode(account.relationship)
+                        ? ` • ${describeRelationshipArdaMode(account.relationship)}`
+                        : ""}
                       {account.relationship?.missingSources.length
                         ? ` • Missing ${account.relationship.missingSources.join(", ")}`
                         : ""}
@@ -363,6 +415,10 @@ function CustomerSuccessPortfolioPanels() {
               <p className="text-xs text-muted-foreground">Implementation Blocked</p>
               <p className="mt-1 text-lg font-semibold text-foreground">{formatNumber(implementationBlockedAccounts.length)}</p>
             </div>
+            <div className="rounded-md border border-border bg-background px-3 py-2">
+              <p className="text-xs text-muted-foreground">Arda Fallback Mode</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">{formatNumber(ardaFallbackAccounts.length)}</p>
+            </div>
           </div>
         </div>
 
@@ -403,6 +459,9 @@ function CustomerSuccessPortfolioPanels() {
                 <p className={`mt-1 text-xs ${relationshipTone(account.relationship?.retentionStatus)}`}>
                   {account.relationship?.retentionStatus || "No retention status"}
                   {account.relationship?.implementationStage ? ` • ${account.relationship.implementationStage}` : ""}
+                  {describeRelationshipArdaMode(account.relationship)
+                    ? ` • ${describeRelationshipArdaMode(account.relationship)}`
+                    : ""}
                 </p>
               </div>
             ))}
@@ -503,6 +562,11 @@ function CustomerSuccessPortfolioPanels() {
                         LIR {account.relationship.primaryLirPassed ? "pass" : "fail"}
                       </div>
                     ) : null}
+                    {describeRelationshipArdaMode(account.relationship) ? (
+                      <div className="text-xs text-muted-foreground">
+                        {describeRelationshipArdaMode(account.relationship)}
+                      </div>
+                    ) : null}
                   </td>
                   <td className="py-3 text-muted-foreground">
                     {formatNumber(account.relationship?.connectedSystems)}
@@ -531,7 +595,7 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
   const googleWorkspace = data?.googleWorkspace;
   const slackOps = data?.slack;
   const codaOps = data?.codaOps;
-  const trend = buildCombinedTrend(data);
+  const trend = buildCombinedActivityTrend(data);
   const maxTrend = Math.max(1, ...trend.map((item) => item.total));
 
   const integrationStatuses = [
@@ -643,9 +707,9 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
           </div>
 
           <div className="rounded-xl border border-border bg-card p-4">
-            <h3 className="text-sm font-semibold text-foreground">Customer Ops Trend (7 buckets)</h3>
+            <h3 className="text-sm font-semibold text-foreground">Customer Ops Activity (7 buckets)</h3>
             {trend.length === 0 ? (
-              <p className="mt-2 text-xs text-muted-foreground">No workflow trend available in this range.</p>
+              <p className="mt-2 text-xs text-muted-foreground">No automation activity available in this range.</p>
             ) : (
               <div className="mt-3 grid grid-cols-7 gap-2">
                 {trend.map((item) => {

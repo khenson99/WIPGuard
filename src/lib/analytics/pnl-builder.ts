@@ -1,8 +1,8 @@
 // P&L builder — derives a Profit & Loss statement from Stripe + Mercury data.
 //
-// Mercury data only provides aggregate inflows/outflows (no transaction-level
-// detail), so expense categorisation uses configurable SaaS-standard ratios
-// applied to total outflows rather than merchant-based classification.
+// When Mercury transaction metadata has been classified into category totals,
+// the builder uses that breakdown directly. Otherwise it falls back to
+// configurable SaaS-standard ratios applied to total outflows.
 
 import type {
   PnLRow,
@@ -30,6 +30,34 @@ const DEFAULT_RATIOS: ExpenseRatios = {
   infrastructure: 0.10,
   ops: 0.15,
 };
+
+function deriveExpenseRatiosFromMercury(
+  mercury: MercuryData | null,
+): Partial<ExpenseRatios> | null {
+  const breakdown = mercury?.cashFlow.expenseBreakdown30d;
+  if (!breakdown) return null;
+
+  const normalized = {
+    cogs: breakdown.cogs ?? 0,
+    payroll: breakdown.payroll ?? 0,
+    marketing: breakdown.marketing ?? 0,
+    infrastructure: breakdown.infrastructure ?? 0,
+    ops: (breakdown.ops ?? 0) + (breakdown.other ?? 0),
+  };
+  const total = (Object.keys(normalized) as Array<keyof ExpenseRatios>).reduce(
+    (sum, key) => sum + normalized[key],
+    0,
+  );
+  if (total <= 0) return null;
+
+  return {
+    cogs: normalized.cogs / total,
+    payroll: normalized.payroll / total,
+    marketing: normalized.marketing / total,
+    infrastructure: normalized.infrastructure / total,
+    ops: normalized.ops / total,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -80,9 +108,10 @@ function previousPeriodLabel(periodLabel: string): string {
  * `timeRange` controls the period label; the underlying data always reflects
  * the most recent 30-day window from Stripe charges and Mercury transactions.
  *
- * Because Mercury data lacks transaction-level detail, expense categories are
- * estimated using `ratios` (defaults to SaaS-standard splits). Override these
- * when actual breakdowns are known (e.g., from budget data).
+ * Prefers Mercury transaction-derived category totals when available.
+ * Otherwise expense categories are estimated using `ratios` (defaults to
+ * SaaS-standard splits). Override these when a better breakdown is known
+ * (for example, from an active budget).
  */
 export function buildProfitAndLossCore(
   stripe: StripeData | null,
@@ -92,7 +121,11 @@ export function buildProfitAndLossCore(
     ratios?: Partial<ExpenseRatios>;
   } = {},
 ): ProfitAndLoss {
-  const ratios: ExpenseRatios = { ...DEFAULT_RATIOS, ...opts.ratios };
+  const ratios: ExpenseRatios = {
+    ...DEFAULT_RATIOS,
+    ...deriveExpenseRatiosFromMercury(mercury),
+    ...opts.ratios,
+  };
   const periodLabel = opts.timeRange ?? "Last 30 days";
 
   // --- Revenue ---

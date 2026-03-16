@@ -60,6 +60,23 @@ export interface RetentionSegmentRollup {
   atRiskRate: number;
 }
 
+export interface RetentionArdaDataQuality {
+  latestSync: {
+    status: string;
+    startedAt: string;
+    completedAt: string | null;
+    recordCount: number;
+    mappedCount: number;
+    errorCount: number;
+    lastError: string | null;
+  } | null;
+  tenantRecords: number;
+  activityRecords: number;
+  tenantsWithUserDetailsBreadth: number;
+  adoptionBreadthSource: "ARDA_ACTIVITY" | "ARDA_USER_DETAILS" | "NONE";
+  note: string;
+}
+
 export interface RetentionSummary {
   generatedAt: string;
   lirDefinition: LirDefinition;
@@ -91,6 +108,9 @@ export interface RetentionSummary {
     totalTenants: number;
     coveragePct: number;
   }>;
+  dataQuality: {
+    arda: RetentionArdaDataQuality;
+  };
 }
 
 export interface RetentionTenantRow {
@@ -187,6 +207,8 @@ export interface RetentionCoveragePayload {
   stripe: boolean;
   hubspot: boolean;
   pylon: boolean;
+  ardaActivityCollectionAvailable?: boolean;
+  ardaUserDetailsFallback?: boolean;
   missingSources: string[];
 }
 

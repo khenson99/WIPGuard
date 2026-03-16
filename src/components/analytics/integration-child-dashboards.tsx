@@ -159,7 +159,7 @@ function TelemetryDashboard({
           { label: "Errored Rules", value: fmtInt(telemetry.erroredRules) },
           { label: "Events in Range", value: fmtInt(telemetry.eventsInRange) },
           { label: "Receipts", value: fmtInt(telemetry.receiptsInRange) },
-          { label: "Tasks Created", value: fmtInt(telemetry.tasksCreatedInRange) },
+          { label: "Automations Triggered", value: fmtInt(telemetry.automationsTriggeredInRange) },
           { label: "Failures", value: fmtInt(telemetry.failuresInRange) },
           { label: "Failure Ratio", value: fmtPct((telemetry.failuresInRange / Math.max(1, telemetry.eventsInRange)) * 100) },
         ]}
@@ -189,8 +189,11 @@ function TelemetryDashboard({
           ) : (
             <div className="mt-3 grid grid-cols-7 gap-2">
               {telemetry.trend.slice(-7).map((point) => {
-                const total = point.receipts + point.createdTasks;
-                const maxTotal = Math.max(1, ...telemetry.trend.map((t) => t.receipts + t.createdTasks));
+                const total = point.receipts + point.automationsTriggered;
+                const maxTotal = Math.max(
+                  1,
+                  ...telemetry.trend.map((t) => t.receipts + t.automationsTriggered),
+                );
                 const height = Math.max(8, Math.round((total / maxTotal) * 100));
                 return (
                   <div key={point.date} className="flex flex-col items-center gap-1">
@@ -969,8 +972,6 @@ export const INTEGRATION_CHILD_DASHBOARD_REGISTRY: Record<string, (props: Integr
   "sales-google-workspace": SalesGoogleWorkspaceDashboard,
   "sales-slack": SalesSlackDashboard,
   "cs-pylon": CustomerSuccessPylonDashboard,
-  "cs-coda": CustomerSuccessCodaDashboard,
-  "cs-product": CustomerSuccessProductDashboard,
   "cs-google-workspace": CustomerSuccessGoogleWorkspaceDashboard,
   "cs-slack": CustomerSuccessSlackDashboard,
 };

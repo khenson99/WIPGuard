@@ -73,7 +73,7 @@ describe("financial planning helpers", () => {
       name: "Q1 Budget",
       period: "quarterly",
       startDate: "2026-01-01T00:00:00.000Z",
-      endDate: "2026-04-01T00:00:00.000Z",
+      endDate: "2026-03-31T00:00:00.000Z",
       lineItems: [
         {
           id: "line-1",
@@ -90,8 +90,79 @@ describe("financial planning helpers", () => {
     };
 
     const [item] = computeBudgetActuals(budget, mercuryFixture);
-    const expected = 3000 * 3 * 0.15;
+    const expected = 3000 * 3;
 
     expect(item.actualAmount).toBeCloseTo(expected, 2);
+  });
+
+  it("treats midnight end dates as inclusive calendar boundaries", () => {
+    const budget: BudgetData = {
+      id: "budget-2",
+      name: "January Budget",
+      period: "monthly",
+      startDate: "2026-01-01T00:00:00.000Z",
+      endDate: "2026-01-31T00:00:00.000Z",
+      lineItems: [
+        {
+          id: "line-1",
+          category: "marketing",
+          plannedAmount: 1000,
+          actualAmount: null,
+          variance: null,
+          variancePct: null,
+        },
+      ],
+      totalPlanned: 1000,
+      totalActual: null,
+      totalVariance: null,
+    };
+
+    const [item] = computeBudgetActuals(budget, mercuryFixture);
+    const expected = 3000 * (31 / 30);
+
+    expect(item.actualAmount).toBeCloseTo(expected, 2);
+  });
+
+  it("scales Mercury transaction breakdowns to the budget period when the observed range is wider", () => {
+    const budget: BudgetData = {
+      id: "budget-3",
+      name: "April Budget",
+      period: "monthly",
+      startDate: "2026-04-01T00:00:00.000Z",
+      endDate: "2026-04-30T00:00:00.000Z",
+      lineItems: [
+        {
+          id: "line-1",
+          category: "marketing",
+          plannedAmount: 1000,
+          actualAmount: null,
+          variance: null,
+          variancePct: null,
+        },
+      ],
+      totalPlanned: 1000,
+      totalActual: null,
+      totalVariance: null,
+    };
+
+    const mercuryForQuarter: MercuryData = {
+      ...mercuryFixture,
+      cashFlow: {
+        ...mercuryFixture.cashFlow,
+        observedPeriodDays: 90,
+        expenseBreakdown30d: {
+          cogs: 0,
+          payroll: 0,
+          marketing: 900,
+          infrastructure: 0,
+          ops: 0,
+          other: 0,
+        },
+      },
+    };
+
+    const [item] = computeBudgetActuals(budget, mercuryForQuarter);
+
+    expect(item.actualAmount).toBeCloseTo(300, 2);
   });
 });

@@ -51,6 +51,13 @@ function sortInsights(items: AiInsight[]): AiInsight[] {
   });
 }
 
+function sanitizeInsightActions<T extends { actions: Array<{ type: string }> }>(items: T[]): T[] {
+  return items.map((item) => ({
+    ...item,
+    actions: item.actions.filter((action) => action.type !== "create_task"),
+  }));
+}
+
 // ── Ads & Traffic ────────────────────────────────────────
 
 function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
@@ -1106,7 +1113,7 @@ function buildCustomerSuccessInsights(data: AnalyticsDashboardData): AiInsight[]
     insights.push({
       id: "ai-cs-throughput-stall",
       section: "customer-success",
-      subsectionId: "cs-product",
+      subsectionId: "customer-success",
       severity: throughputRate < 0.50 ? "critical" : "warning",
       title: "Execution throughput has stalled below target",
       why: `Throughput rate is ${(throughputRate * 100).toFixed(1)}% — below the 70% healthy threshold. Backlog is growing at ${backlogGrowth}/period.`,
@@ -1560,7 +1567,9 @@ export function buildAiInsightsBundle(data: AnalyticsDashboardData): AiInsightsB
     ...[buildJourneyInsight(data), buildDemoInsight(data), buildProcessInsight(data)].filter((item): item is AiInsight => item !== null),
   ];
 
-  const global = sortInsights(candidateInsights.length > 0 ? candidateInsights : [buildSteadyStateInsight(data)]).slice(0, 12);
+  const global = sanitizeInsightActions(
+    sortInsights(candidateInsights.length > 0 ? candidateInsights : [buildSteadyStateInsight(data)]).slice(0, 12)
+  );
 
   const bySection = SECTION_ORDER.reduce<AiInsightsBundle["bySection"]>(
     (acc, section) => {

@@ -290,6 +290,15 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 function asBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
@@ -1285,6 +1294,8 @@ function buildDerivedCoverage(
     stripe: seen.has("stripe"),
     hubspot: seen.has("hubspot"),
     pylon: seen.has("pylon"),
+    ardaActivityCollectionAvailable: undefined,
+    ardaUserDetailsFallback: undefined,
     missingSources,
   };
 }
@@ -1299,6 +1310,7 @@ function buildPortfolioRelationshipSummary(input: {
   } | null;
 }): CustomerSuccessPortfolioRelationshipSummary {
   const detailData = input.retentionCurrent ? asRecord(input.retentionCurrent.detailData) : {};
+  const adoptionData = asRecord(detailData.adoptionSummary);
   const coverageData =
     input.retentionCurrent?.monthFact ? asRecord(input.retentionCurrent.monthFact.coverageData) : {};
 
@@ -1307,6 +1319,12 @@ function buildPortfolioRelationshipSummary(input: {
     retentionStatus: input.retentionCurrent ? humanizeRetentionStatus(input.retentionCurrent.status) : undefined,
     primaryLirPassed: input.retentionCurrent?.primaryLirPassed ?? undefined,
     implementationStage: asString(detailData.implementationStage) ?? undefined,
+    ardaAdoptionCountsSource:
+      (asString(adoptionData.ardaAdoptionCountsSource) as
+        | "ARDA_ACTIVITY"
+        | "ARDA_USER_DETAILS"
+        | "NONE"
+        | undefined) ?? undefined,
     missingSources: asArray<string>(coverageData.missingSources),
   };
 }
@@ -1358,6 +1376,7 @@ async function buildRelationshipIntelligence(
 
   const latestArdaPayload = latestArdaTenant ? asRecord(latestArdaTenant.payload) : {};
   const retentionDetail = retentionCurrent ? asRecord(retentionCurrent.detailData) : {};
+  const retentionAdoption = asRecord(retentionDetail.adoptionSummary);
   const retentionCoverageRaw =
     retentionCurrent && retentionCurrent.monthFact ? asRecord(retentionCurrent.monthFact.coverageData) : null;
   const coverage =
@@ -1368,6 +1387,8 @@ async function buildRelationshipIntelligence(
           stripe: Boolean(asBoolean(retentionCoverageRaw.stripe)),
           hubspot: Boolean(asBoolean(retentionCoverageRaw.hubspot)),
           pylon: Boolean(asBoolean(retentionCoverageRaw.pylon)),
+          ardaActivityCollectionAvailable: asBoolean(retentionCoverageRaw.ardaActivityCollectionAvailable) ?? undefined,
+          ardaUserDetailsFallback: asBoolean(retentionCoverageRaw.ardaUserDetailsFallback) ?? undefined,
           missingSources: asArray<string>(retentionCoverageRaw.missingSources),
         }
       : buildDerivedCoverage(sourceRows);
@@ -1390,6 +1411,22 @@ async function buildRelationshipIntelligence(
           firstOrderDate: asString(retentionDetail.firstOrderDate) ?? undefined,
           explanation: asString(retentionDetail.explanation) ?? undefined,
           reasonCodes: parseRelationshipReasons(retentionCurrent.reasonCodes),
+          ardaAdoptionCountsSource:
+            asString(retentionAdoption.ardaAdoptionCountsSource) as
+              | "ARDA_ACTIVITY"
+              | "ARDA_USER_DETAILS"
+              | "NONE"
+              | undefined,
+          ardaDirectActivityCounts: {
+            orders: asNumber(asRecord(retentionAdoption.ardaDirectActivityCounts).orders) ?? 0,
+            cards: asNumber(asRecord(retentionAdoption.ardaDirectActivityCounts).cards) ?? 0,
+            items: asNumber(asRecord(retentionAdoption.ardaDirectActivityCounts).items) ?? 0,
+          },
+          ardaUserDetailsCounts: {
+            orders: asNumber(asRecord(retentionAdoption.ardaUserDetailsCounts).orders) ?? 0,
+            cards: asNumber(asRecord(retentionAdoption.ardaUserDetailsCounts).cards) ?? 0,
+            items: asNumber(asRecord(retentionAdoption.ardaUserDetailsCounts).items) ?? 0,
+          },
           coverage,
           detailUrl: `/analytics/retention/${snapshot.id}`,
         }
@@ -1418,20 +1455,29 @@ export async function getCustomerSuccessPortfolio(
   actor: CustomerSuccessActor
 ): Promise<CustomerSuccessPortfolio> {
   const snapshots = await listCustomerSuccessSnapshots(actor);
-  const retentionCurrents = await withCustomerSuccessContext(actor, async () =>
-    prisma.retentionTenantCurrent.findMany({
-      where: {
-        organizationId: actor.organizationId,
-        customerRecordId: { in: snapshots.map((snapshot) => snapshot.id) },
-      },
-      include: {
-        monthFact: {
-          select: {
-            coverageData: true,
+  const [retentionCurrents, syncRuns] = await withCustomerSuccessContext(actor, async () =>
+    Promise.all([
+      prisma.retentionTenantCurrent.findMany({
+        where: {
+          organizationId: actor.organizationId,
+          customerRecordId: { in: snapshots.map((snapshot) => snapshot.id) },
+        },
+        include: {
+          monthFact: {
+            select: {
+              coverageData: true,
+            },
           },
         },
-      },
-    })
+      }),
+      prisma.retentionSyncRun.findMany({
+        where: {
+          organizationId: actor.organizationId,
+        },
+        orderBy: [{ startedAt: "desc" }],
+        take: 25,
+      }),
+    ])
   );
 
   const relationshipMap = new Map<string, Omit<CustomerSuccessPortfolioRelationshipSummary, "connectedSystems">>();
@@ -1444,11 +1490,37 @@ export async function getCustomerSuccessPortfolio(
       retentionStatus: summary.retentionStatus,
       primaryLirPassed: summary.primaryLirPassed,
       implementationStage: summary.implementationStage,
+      ardaAdoptionCountsSource: summary.ardaAdoptionCountsSource,
       missingSources: summary.missingSources,
     });
   });
 
-  return buildCustomerSuccessPortfolioFromSnapshots(snapshots, new Date(), relationshipMap);
+  const portfolio = buildCustomerSuccessPortfolioFromSnapshots(snapshots, new Date(), relationshipMap);
+  const latestRunsBySource = new Map<string, typeof syncRuns[number]>();
+  syncRuns.forEach((run) => {
+    if (!latestRunsBySource.has(run.source)) {
+      latestRunsBySource.set(run.source, run);
+    }
+  });
+  const latestCompletedAt = [...latestRunsBySource.values()]
+    .map((run) => run.completedAt)
+    .filter((value): value is Date => value instanceof Date)
+    .sort((left, right) => right.getTime() - left.getTime())[0];
+
+  portfolio.relationshipOps = {
+    lastCompletedAt: latestCompletedAt?.toISOString(),
+    sources: [...latestRunsBySource.values()].map((run) => ({
+      source: run.source,
+      status: run.status,
+      completedAt: run.completedAt?.toISOString(),
+      recordCount: run.recordCount,
+      mappedCount: run.mappedCount,
+      errorCount: run.errorCount,
+      lastError: run.lastError ?? undefined,
+    })),
+  };
+
+  return portfolio;
 }
 
 export async function getCustomerSuccessAlertFeed(

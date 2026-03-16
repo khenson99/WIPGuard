@@ -3,24 +3,16 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { endDateForPeriod, normalizeStoredBudgetEndDate } from "@/lib/analytics/budget-period";
 
 const VALID_PERIODS = new Set(["MONTHLY", "QUARTERLY", "ANNUAL"]);
 
 function computeEndDate(startDate: Date, period: string): Date {
-  const endDate = new Date(startDate);
-  switch (period) {
-    case "QUARTERLY":
-      endDate.setMonth(endDate.getMonth() + 3);
-      break;
-    case "ANNUAL":
-      endDate.setFullYear(endDate.getFullYear() + 1);
-      break;
-    case "MONTHLY":
-    default:
-      endDate.setMonth(endDate.getMonth() + 1);
-      break;
-  }
-  return endDate;
+  const inclusiveEnd = endDateForPeriod(
+    startDate.toISOString().slice(0, 10),
+    period as "MONTHLY" | "QUARTERLY" | "ANNUAL",
+  );
+  return new Date(`${inclusiveEnd}T00:00:00.000Z`);
 }
 
 export async function GET(): Promise<NextResponse> {
@@ -38,7 +30,16 @@ export async function GET(): Promise<NextResponse> {
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json(budgets);
+    return NextResponse.json(
+      budgets.map((budget) => ({
+        ...budget,
+        endDate: normalizeStoredBudgetEndDate(
+          budget.startDate.toISOString(),
+          budget.endDate.toISOString(),
+          budget.period as "MONTHLY" | "QUARTERLY" | "ANNUAL",
+        ),
+      })),
+    );
   } catch (error) {
     console.error("GET /api/financial-planning/budgets error:", error);
     return NextResponse.json(
@@ -113,7 +114,17 @@ export async function POST(
       include: { lineItems: true },
     });
 
-    return NextResponse.json(budget, { status: 201 });
+    return NextResponse.json(
+      {
+        ...budget,
+        endDate: normalizeStoredBudgetEndDate(
+          budget.startDate.toISOString(),
+          budget.endDate.toISOString(),
+          budget.period as "MONTHLY" | "QUARTERLY" | "ANNUAL",
+        ),
+      },
+      { status: 201 },
+    );
   } catch (error) {
     console.error("POST /api/financial-planning/budgets error:", error);
     return NextResponse.json(

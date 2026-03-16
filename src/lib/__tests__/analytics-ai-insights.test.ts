@@ -111,6 +111,7 @@ describe("analytics AI insights bundle", () => {
     expect(bundle.bySection.finance.length).toBeGreaterThan(0);
     expect(bundle.global.some((item) => item.stale)).toBe(true);
     expect(bundle.global.every((item) => item.evidence.length > 0)).toBe(true);
+    expect(bundle.global.every((item) => item.actions.every((action) => action.type !== "create_task"))).toBe(true);
   });
 
   it("caps insights at 12 globally", () => {
@@ -198,7 +199,7 @@ describe("analytics AI insights bundle", () => {
     const distilled = buildDistilledInsights(data);
     expect(distilled.length).toBe(1);
     expect(distilled[0].title).toContain("No critical");
-    expect(distilled[0].actions.length).toBeGreaterThan(0);
+    expect(distilled[0].actions.every((action) => action.type !== "create_task")).toBe(true);
   });
 
   it("returns steady-state insight when all data is null", () => {
@@ -627,7 +628,7 @@ describe("customer success insights", () => {
     const stall = bundle.global.find((i) => i.id === "ai-cs-throughput-stall");
     expect(stall).toBeDefined();
     expect(stall!.severity).toBe("warning");
-    expect(stall!.subsectionId).toBe("cs-product");
+    expect(stall!.subsectionId).toBe("customer-success");
   });
 
   it("escalates throughput stall to critical below 50%", () => {

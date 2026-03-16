@@ -54,7 +54,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       if (maxAmount) (where.amount as Record<string, number>).lte = parseFloat(maxAmount);
     }
     if (search) {
-      where.name = { contains: search, mode: "insensitive" };
+      where.OR = [
+        { name: { contains: search, mode: "insensitive" } },
+        {
+          company: {
+            is: {
+              name: { contains: search, mode: "insensitive" },
+            },
+          },
+        },
+      ];
     }
 
     const deals = await prisma.deal.findMany({

@@ -2,14 +2,18 @@ import { render, screen } from "@testing-library/react";
 import type { ComponentType } from "react";
 import { describe, expect, it } from "vitest";
 import { INTEGRATION_CHILD_DASHBOARD_REGISTRY, type IntegrationChildDashboardProps } from "@/components/analytics/integration-child-dashboards";
+import { ANALYTICS_SUB_SECTIONS } from "@/lib/analytics/section-registry";
 import { createEmptyAnalyticsDashboardData } from "@/lib/analytics/response-shape";
 
 describe("integration child dashboards", () => {
   const baseData = createEmptyAnalyticsDashboardData({ freshness: {}, timeRange: undefined });
   const entries = Object.entries(INTEGRATION_CHILD_DASHBOARD_REGISTRY);
+  const expectedDashboardCount = ANALYTICS_SUB_SECTIONS.filter((section) =>
+    !["customerJourney", "visitorFunnel", "demoAnalytics", "processAnalytics", "financePlanning", "financeForecast", "financePnl", "financeUnitEconomics"].includes(section.dataDomain)
+  ).length;
 
   it("registers all non-ops integration child dashboards", () => {
-    expect(entries.length).toBeGreaterThanOrEqual(19);
+    expect(entries.length).toBe(expectedDashboardCount);
   });
 
   for (const [childId, Dashboard] of entries) {

@@ -1,5 +1,6 @@
 import { IntegrationProvider } from "@/generated/prisma/client";
 import { getCredentials } from "@/lib/analytics/credentials";
+import { normalizeMercuryExpenseMappings } from "@/lib/analytics/mercury-expense-mappings";
 import {
   fetchHubSpotData,
   fetchMercuryData,
@@ -14,6 +15,7 @@ import { fetchSemrushData } from "@/lib/analytics/fetchers-semrush";
 import { providerForSnapshotKey } from "@/lib/analytics/provider-health";
 import { snapshotExpiryFromNow, storeAnalyticsSnapshot, storeAnalyticsSnapshotFailure } from "@/lib/analytics/snapshots";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
+import { MERCURY_CASHFLOW_SYNC_RULE_KEY } from "@/lib/integrations/provider-metrics-sync";
 import { prisma } from "@/lib/prisma";
 
 function timeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -133,9 +135,20 @@ async function refreshForUserAndRange(input: {
     });
   }
   if (creds.mercuryKey) {
+    const mercuryRule = await prisma.integrationRule.findUnique({
+      where: {
+        userId_provider_key: {
+          userId: input.userId,
+          provider: IntegrationProvider.MERCURY,
+          key: MERCURY_CASHFLOW_SYNC_RULE_KEY,
+        },
+      },
+      select: { config: true },
+    });
+    const expenseMappings = normalizeMercuryExpenseMappings(mercuryRule?.config ?? null);
     jobs.push({
       providerKey: "mercury",
-      run: () => fetchMercuryData(creds.mercuryKey!, { fromDate, toDate }),
+      run: () => fetchMercuryData(creds.mercuryKey!, { fromDate, toDate, expenseMappings }),
     });
   }
   const hasGAServiceAccount = Boolean(

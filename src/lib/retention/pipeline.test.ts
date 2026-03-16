@@ -39,6 +39,12 @@ function makeMonth(overrides: Partial<{
     itemTouches: 0,
     activeCardCount: 0,
     activeItemCount: 0,
+    ardaOrderRecords: 0,
+    ardaCardRecords: 0,
+    ardaItemRecords: 0,
+    ardaUserDetailsOrderCount: 0,
+    ardaUserDetailsCardCount: 0,
+    ardaUserDetailsItemCount: 0,
     locations: new Set<string>(),
     workflows: new Set<string>(),
     ticketsLast30: 0,
@@ -84,5 +90,14 @@ describe("retention pipeline helpers", () => {
         [makeMonth({ subscriptionStartDate: "2026-01-10T00:00:00.000Z" })]
       )
     ).toBe("2026-01-10T00:00:00.000Z");
+  });
+
+  it("marks User Details as the Arda adoption source when direct activity is absent", () => {
+    expect(
+      __test__.ardaAdoptionCountsSource({
+        ...makeMonth(),
+        ardaUserDetailsCardCount: 12,
+      })
+    ).toBe("ARDA_USER_DETAILS");
   });
 });

@@ -50,6 +50,8 @@ describe("analytics section registry", () => {
   });
 
   it("redirects removed customer-success ops routes to the parent dashboard", () => {
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS.tasks).toBe("/analytics/customer-success");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS.coda).toBe("/analytics/customer-success");
     expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["decision-dashboard"]).toBe("/analytics/customer-success");
     expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["flow-metrics"]).toBe("/analytics/customer-success");
     expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["flow-risk"]).toBe("/analytics/customer-success");

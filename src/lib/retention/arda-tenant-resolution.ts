@@ -7,6 +7,7 @@ export interface ArdaTenantResolutionConfig {
 export interface ArdaTenantUserDetailsRow {
   email: string | null;
   tenantId: string | null;
+  oidcSubject?: string | null;
 }
 
 const UUID_PATTERN =
@@ -175,4 +176,21 @@ export function discoverArdaTenantIdsFromUserDetails(
   return new Map(
     [...discovered.entries()].map(([key, tenantIds]) => [key, [...tenantIds]])
   );
+}
+
+export function discoverArdaOidcSubjectsByTenant(
+  userDetailsRows: ArdaTenantUserDetailsRow[]
+): Map<string, string> {
+  const subjects = new Map<string, string>();
+
+  for (const row of userDetailsRows) {
+    if (!isUuid(row.tenantId)) continue;
+    const subject = asString(row.oidcSubject);
+    if (!subject) continue;
+    if (!subjects.has(row.tenantId)) {
+      subjects.set(row.tenantId, subject);
+    }
+  }
+
+  return subjects;
 }

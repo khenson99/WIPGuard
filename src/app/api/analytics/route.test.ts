@@ -68,6 +68,7 @@ vi.mock("@/lib/prisma", () => ({
     budget: { findMany: vi.fn() },
     financialGoal: { findMany: vi.fn() },
     forecastScenario: { findMany: vi.fn() },
+    integrationRule: { findUnique: vi.fn() },
     dealMeeting: { findMany: vi.fn() },
     automationArtifact: { findMany: vi.fn() },
   },
@@ -289,7 +290,7 @@ const TELEMETRY_DATA = {
   enabledRules: 1,
   erroredRules: 0,
   receiptsInRange: 1,
-  tasksCreatedInRange: 1,
+  automationsTriggeredInRange: 1,
   eventsInRange: 1,
   failuresInRange: 0,
   trend: [],
@@ -318,6 +319,7 @@ describe("GET /api/analytics", () => {
     } as never);
 
     const { getCredentials } = await import("@/lib/analytics/credentials");
+    const { prisma } = await import("@/lib/prisma");
     vi.mocked(getCredentials).mockResolvedValue({
       hubspotToken: "hubspot",
       stripeKey: "stripe",
@@ -366,6 +368,7 @@ describe("GET /api/analytics", () => {
         [IntegrationProvider.PYLON]: freshness(IntegrationProvider.PYLON),
       },
     } as never);
+    vi.mocked(prisma.integrationRule.findUnique).mockResolvedValue(null as never);
 
     const { fetchHubSpotData, fetchMercuryData, fetchStripeData } = await import("@/lib/analytics/fetchers");
     vi.mocked(fetchHubSpotData).mockResolvedValue(HUBSPOT_DATA as never);
@@ -416,7 +419,6 @@ describe("GET /api/analytics", () => {
       error: null,
     } as never);
 
-    const { prisma } = await import("@/lib/prisma");
     vi.mocked(prisma.user.findUnique).mockResolvedValue({
       role: "member",
       organizationId: "org-1",
@@ -505,6 +507,102 @@ describe("GET /api/analytics", () => {
     expect(body.errors.some((entry: { source: string; message: string }) => entry.message === "Missing tenant context")).toBe(false);
   });
 
+  it("normalizes legacy integration telemetry snapshots to automation fields", async () => {
+    const { readLatestSnapshot } = await import("@/lib/analytics/snapshots");
+
+    vi.mocked(readLatestSnapshot).mockImplementation(async (input) => {
+      if (input.providerKey === "googleWorkspace") {
+        return {
+          payload: {
+            provider: "google_workspace",
+            totalRules: 2,
+            enabledRules: 2,
+            erroredRules: 0,
+            receiptsInRange: 4,
+            tasksCreatedInRange: 3,
+            eventsInRange: 4,
+            failuresInRange: 0,
+            trend: [
+              { date: "2026-02-10", receipts: 2, createdTasks: 2, failures: 0 },
+            ],
+            topFailureReasons: [],
+            _meta: META,
+          },
+          capturedAt: "2026-02-10T00:00:00.000Z",
+          expiresAt: "2026-02-10T01:00:00.000Z",
+          needsRefresh: false,
+          stale: false,
+          fromSnapshot: true,
+          status: "SUCCESS",
+          error: null,
+        } as never;
+      }
+
+      return {
+        payload: null,
+        capturedAt: null,
+        expiresAt: null,
+        needsRefresh: false,
+        stale: false,
+        fromSnapshot: false,
+        status: null,
+        error: null,
+      } as never;
+    });
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=sales-google-workspace"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.googleWorkspace.automationsTriggeredInRange).toBe(3);
+    expect(body.googleWorkspace.trend[0].automationsTriggered).toBe(2);
+    expect(body.googleWorkspace.tasksCreatedInRange).toBeUndefined();
+    expect(body.googleWorkspace.trend[0].createdTasks).toBeUndefined();
+  });
+
+  it("passes configured Mercury expense mappings into the live fetch", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { fetchMercuryData } = await import("@/lib/analytics/fetchers");
+
+    vi.mocked(prisma.integrationRule.findUnique).mockResolvedValueOnce({
+      config: {
+        mercuryExpenseMappings: [
+          { match: "google ads", category: "ops" },
+        ],
+      },
+    } as never);
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=finance-mercury"));
+
+    expect(response.status).toBe(200);
+    expect(fetchMercuryData).toHaveBeenCalledWith(
+      "mercury",
+      expect.objectContaining({
+        expenseMappings: [
+          { match: "google ads", category: "ops" },
+        ],
+      }),
+    );
+  });
+
+  it("aliases removed customer-success subsection routes to the parent domain set", async () => {
+    const { fetchGoogleAdsData } = await import("@/lib/analytics/fetchers-ads");
+    const { fetchCodaData } = await import("@/lib/analytics/fetchers-coda");
+    const { fetchPylonData } = await import("@/lib/analytics/fetchers-pylon");
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=cs-coda"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.meta?.section).toBe("cs-coda");
+    expect(fetchCodaData).toHaveBeenCalled();
+    expect(fetchPylonData).toHaveBeenCalled();
+    expect(fetchGoogleAdsData).not.toHaveBeenCalled();
+  });
+
   it("returns demo analytics domain data", async () => {
     const { GET } = await import("@/app/api/analytics/route");
     const response = await GET(new Request("http://localhost/api/analytics?section=demo-analytics"));
@@ -526,6 +624,324 @@ describe("GET /api/analytics", () => {
     expect(prisma.stripeCustomerLink.findMany).toHaveBeenCalledWith({
       where: { userId: "user-1" },
     });
+  });
+
+  it("dedupes hubspot subscription deals when building merged subscription counts", async () => {
+    const { fetchHubSpotData, fetchStripeData } = await import("@/lib/analytics/fetchers");
+
+    vi.mocked(fetchStripeData).mockResolvedValueOnce({
+      ...STRIPE_DATA,
+      subscriptions: {
+        ...STRIPE_DATA.subscriptions,
+        active: 2,
+        activeCustomerRefs: [
+          { customerId: "cus_123", email: "owner@acme.com", emailDomain: "acme.com" },
+          { customerId: "cus_456", email: "finance@beta.com", emailDomain: "beta.com" },
+        ],
+      },
+    } as never);
+
+    vi.mocked(fetchHubSpotData).mockResolvedValueOnce({
+      ...HUBSPOT_DATA,
+      funnel: {
+        ...HUBSPOT_DATA.funnel,
+        activeSubscriptions: 4,
+      },
+      deals: [
+        {
+          dealId: "subscription-1",
+          dealName: "Acme Renewal",
+          stageId: "subscription",
+          stageLabel: "Subscription",
+          amount: 5000,
+          source: "Organic",
+          ownerId: "owner-1",
+          updatedAt: "2026-02-10T00:00:00.000Z",
+          stripeCustomerId: "cus_123",
+          primaryContactEmail: "owner@acme.com",
+        },
+        {
+          dealId: "subscription-2",
+          dealName: "Acme Renewal Duplicate",
+          stageId: "subscription",
+          stageLabel: "Subscription",
+          amount: 5000,
+          source: "Organic",
+          ownerId: "owner-1",
+          updatedAt: "2026-02-11T00:00:00.000Z",
+          stripeCustomerId: "cus_123",
+          primaryContactEmail: "owner@acme.com",
+        },
+        {
+          dealId: "subscription-3",
+          dealName: "Gamma Corp",
+          stageId: "subscription",
+          stageLabel: "Subscription",
+          amount: 3000,
+          source: "Paid",
+          ownerId: "owner-2",
+          updatedAt: "2026-02-12T00:00:00.000Z",
+          primaryContactEmail: "ops@gamma.io",
+        },
+        {
+          dealId: "subscription-4",
+          dealName: "Gamma Corp Duplicate",
+          stageId: "subscription",
+          stageLabel: "Subscription",
+          amount: 3000,
+          source: "Paid",
+          ownerId: "owner-2",
+          updatedAt: "2026-02-13T00:00:00.000Z",
+          primaryContactEmail: "ops@gamma.io",
+        },
+        {
+          dealId: "subscription-5",
+          dealName: "Beta Expansion",
+          stageId: "subscription",
+          stageLabel: "Subscription",
+          amount: 3500,
+          source: "Referral",
+          ownerId: "owner-3",
+          updatedAt: "2026-02-14T00:00:00.000Z",
+          primaryContactEmail: "ceo@beta.com",
+        },
+      ],
+    } as never);
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=finance"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.financialPlanning.subscriptionOverview).toEqual({
+      mergedActiveSubscriptions: 3,
+      stripeActiveSubscriptions: 2,
+      hubspotActiveSubscriptions: 3,
+    });
+  });
+
+  it("hydrates budget actuals from Mercury when a finance budget exists", async () => {
+    const { prisma } = await import("@/lib/prisma");
+
+    vi.mocked(prisma.budget.findMany).mockResolvedValueOnce([
+      {
+        id: "budget-1",
+        name: "February Budget",
+        period: "MONTHLY",
+        startDate: new Date("2026-02-01T00:00:00.000Z"),
+        endDate: new Date("2026-02-28T00:00:00.000Z"),
+        lineItems: [
+          {
+            id: "line-1",
+            category: "MARKETING",
+            plannedAmount: 6000,
+            notes: null,
+          },
+          {
+            id: "line-2",
+            category: "OPS",
+            plannedAmount: 4000,
+            notes: null,
+          },
+        ],
+      },
+    ] as never);
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=finance-planning"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.financialPlanning.activeBudget.totalActual).toBe(5600);
+    expect(body.financialPlanning.activeBudget.totalVariance).toBe(-4400);
+    expect(body.financialPlanning.activeBudget.lineItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "line-1",
+          category: "marketing",
+          actualAmount: 3360,
+          variance: -2640,
+          variancePct: -44,
+        }),
+        expect.objectContaining({
+          id: "line-2",
+          category: "ops",
+          actualAmount: 2240,
+          variance: -1760,
+          variancePct: -44,
+        }),
+      ]),
+    );
+  });
+
+  it("scales budget actuals from Mercury transaction breakdowns to the budget period", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { fetchMercuryData } = await import("@/lib/analytics/fetchers");
+
+    vi.mocked(fetchMercuryData).mockResolvedValueOnce({
+      ...MERCURY_DATA,
+      cashFlow: {
+        ...MERCURY_DATA.cashFlow,
+        observedPeriodDays: 90,
+        expenseBreakdown30d: {
+          cogs: 0,
+          payroll: 0,
+          marketing: 900,
+          infrastructure: 0,
+          ops: 0,
+          other: 0,
+        },
+      },
+    } as never);
+
+    vi.mocked(prisma.budget.findMany).mockResolvedValueOnce([
+      {
+        id: "budget-1",
+        name: "April Budget",
+        period: "MONTHLY",
+        startDate: new Date("2026-04-01T00:00:00.000Z"),
+        endDate: new Date("2026-04-30T00:00:00.000Z"),
+        lineItems: [
+          {
+            id: "line-1",
+            category: "MARKETING",
+            plannedAmount: 1000,
+            notes: null,
+          },
+        ],
+      },
+    ] as never);
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=finance-planning"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.financialPlanning.activeBudget.totalActual).toBe(300);
+    expect(body.financialPlanning.activeBudget.totalVariance).toBe(-700);
+    expect(body.financialPlanning.activeBudget.lineItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "line-1",
+          category: "marketing",
+          actualAmount: 300,
+          variance: -700,
+          variancePct: -70,
+        }),
+      ]),
+    );
+  });
+
+  it("uses the active budget mix to attribute Mercury expenses in pnl and unit economics", async () => {
+    const { prisma } = await import("@/lib/prisma");
+
+    vi.mocked(prisma.budget.findMany).mockResolvedValueOnce([
+      {
+        id: "budget-1",
+        name: "Growth Budget",
+        period: "MONTHLY",
+        startDate: new Date("2026-02-01T00:00:00.000Z"),
+        endDate: new Date("2026-02-28T00:00:00.000Z"),
+        lineItems: [
+          {
+            id: "line-1",
+            category: "MARKETING",
+            plannedAmount: 9000,
+            notes: null,
+          },
+          {
+            id: "line-2",
+            category: "COGS",
+            plannedAmount: 1000,
+            notes: null,
+          },
+        ],
+      },
+    ] as never);
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=finance-planning"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.financialPlanning.unitEconomics.cac).toBe(5400);
+    expect(body.financialPlanning.unitEconomics.grossMarginPct).toBe(96);
+    expect(body.financialPlanning.pnl.operatingExpenses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "Marketing & Sales",
+          currentPeriod: 5400,
+        }),
+        expect.objectContaining({
+          label: "General & Administrative",
+          currentPeriod: 0,
+        }),
+      ]),
+    );
+  });
+
+  it("prefers Mercury transaction breakdown over budget mix for pnl and unit economics", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { fetchMercuryData } = await import("@/lib/analytics/fetchers");
+
+    vi.mocked(fetchMercuryData).mockResolvedValueOnce({
+      ...MERCURY_DATA,
+      cashFlow: {
+        ...MERCURY_DATA.cashFlow,
+        expenseBreakdown30d: {
+          cogs: 3000,
+          payroll: 0,
+          marketing: 600,
+          infrastructure: 0,
+          ops: 2400,
+          other: 0,
+        },
+      },
+    } as never);
+
+    vi.mocked(prisma.budget.findMany).mockResolvedValueOnce([
+      {
+        id: "budget-1",
+        name: "Growth Budget",
+        period: "MONTHLY",
+        startDate: new Date("2026-02-01T00:00:00.000Z"),
+        endDate: new Date("2026-02-28T00:00:00.000Z"),
+        lineItems: [
+          {
+            id: "line-1",
+            category: "MARKETING",
+            plannedAmount: 9000,
+            notes: null,
+          },
+          {
+            id: "line-2",
+            category: "COGS",
+            plannedAmount: 1000,
+            notes: null,
+          },
+        ],
+      },
+    ] as never);
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=finance-planning"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.financialPlanning.unitEconomics.cac).toBe(600);
+    expect(body.financialPlanning.unitEconomics.grossMarginPct).toBe(80);
+    expect(body.financialPlanning.pnl.operatingExpenses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "Marketing & Sales",
+          currentPeriod: 600,
+        }),
+        expect.objectContaining({
+          label: "General & Administrative",
+          currentPeriod: 2400,
+        }),
+      ]),
+    );
   });
 
   it("returns process analytics domain data", async () => {
@@ -1111,6 +1527,89 @@ describe("GET /api/analytics", () => {
           error: "Mercury timeout",
         }),
       );
+    } finally {
+      if (previousOwner === undefined) {
+        delete process.env.INTEGRATION_OWNER_USER_ID;
+      } else {
+        process.env.INTEGRATION_OWNER_USER_ID = previousOwner;
+      }
+    }
+  });
+
+  it("normalizes legacy Mercury fallback snapshots with observed-period totals", async () => {
+    const previousOwner = process.env.INTEGRATION_OWNER_USER_ID;
+    process.env.INTEGRATION_OWNER_USER_ID = "owner-mercury";
+
+    const legacyFallbackMercury = {
+      ...MERCURY_DATA,
+      cashFlow: {
+        ...MERCURY_DATA.cashFlow,
+        totalBalance: 12000,
+        inflows30d: 100,
+        outflows30d: 1000,
+        netCashFlow: -900,
+        burnRate: 900,
+        runway: 13.3,
+        observedPeriodDays: 90,
+        expenseBreakdown30d: {
+          cogs: 1000,
+          payroll: 0,
+          marketing: 0,
+          infrastructure: 0,
+          ops: 0,
+          other: 0,
+        },
+      },
+    };
+
+    const { readLatestSnapshot, readLatestSuccessfulSnapshot } =
+      await import("@/lib/analytics/snapshots");
+    const { fetchMercuryData } = await import("@/lib/analytics/fetchers");
+
+    try {
+      vi.mocked(readLatestSnapshot).mockResolvedValueOnce({
+        payload: MERCURY_DATA,
+        capturedAt: "2026-02-10T00:00:00.000Z",
+        expiresAt: "2026-02-10T01:00:00.000Z",
+        needsRefresh: false,
+        stale: false,
+        fromSnapshot: true,
+        status: "SUCCESS",
+        error: null,
+      } as never);
+      vi.mocked(fetchMercuryData).mockRejectedValueOnce(new Error("Mercury timeout"));
+      vi.mocked(readLatestSuccessfulSnapshot).mockResolvedValueOnce({
+        payload: legacyFallbackMercury,
+        capturedAt: "2026-02-10T00:00:00.000Z",
+        expiresAt: "2026-02-10T01:00:00.000Z",
+        needsRefresh: false,
+        stale: true,
+        fromSnapshot: true,
+        status: "SUCCESS",
+        error: null,
+      } as never);
+
+      const { GET } = await import("@/app/api/analytics/route");
+      const response = await GET(
+        new Request("http://localhost/api/analytics?section=finance-mercury")
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.mercury.cashFlow.inflows30d).toBe(33.33);
+      expect(body.mercury.cashFlow.outflows30d).toBe(333.33);
+      expect(body.mercury.cashFlow.netCashFlow).toBe(-300);
+      expect(body.mercury.cashFlow.burnRate).toBe(300);
+      expect(body.mercury.cashFlow.runway).toBe(40);
+      expect(body.mercury.cashFlow.observedOutflowTotal).toBe(1000);
+      expect(body.mercury.cashFlow.observedExpenseBreakdown).toEqual({
+        cogs: 1000,
+        payroll: 0,
+        marketing: 0,
+        infrastructure: 0,
+        ops: 0,
+        other: 0,
+      });
     } finally {
       if (previousOwner === undefined) {
         delete process.env.INTEGRATION_OWNER_USER_ID;

@@ -31,6 +31,19 @@ function parseIssueArray(payload: unknown): PylonIssue[] {
   return [];
 }
 
+function parsePagination(payload: unknown): { cursor: string | null; hasNextPage: boolean } {
+  const record = asRecord(payload);
+  const pagination = asRecord(record?.pagination);
+  const cursor = asString(pagination?.cursor) ?? asString(record?.next_cursor);
+  const hasNextPage =
+    pagination?.has_next_page === true ||
+    pagination?.hasNextPage === true ||
+    record?.has_next_page === true ||
+    record?.hasNextPage === true;
+
+  return { cursor, hasNextPage };
+}
+
 async function fetchJsonWithTimeout(input: {
   url: string;
   apiKey: string;
@@ -79,33 +92,68 @@ export async function fetchPylonIssues(input: {
   const baseUrl = input.baseUrl || "https://api.usepylon.com";
   const limit = input.limit ?? 200;
   const timeoutMs = input.timeoutMs ?? 10_000;
+  const maxPages = 20;
 
-  const query = new URLSearchParams({
-    limit: String(limit),
-    start_time: input.from,
-    end_time: input.to,
-  });
+  function buildQuery(cursor?: string): string {
+    const query = new URLSearchParams({
+      limit: String(limit),
+      start_time: input.from,
+      end_time: input.to,
+    });
+    if (cursor) {
+      query.set("cursor", cursor);
+    }
+    return query.toString();
+  }
 
   const endpoints = [
-    `${baseUrl}/issues?${query.toString()}`,
-    `${baseUrl}/v1/issues?${query.toString()}`,
+    `${baseUrl}/issues`,
+    `${baseUrl}/v1/issues`,
     // Some Pylon tenants expose the issues collection under conversations.
-    `${baseUrl}/conversations?${query.toString()}`,
-    `${baseUrl}/v1/conversations?${query.toString()}`,
+    `${baseUrl}/conversations`,
+    `${baseUrl}/v1/conversations`,
   ];
 
   let lastError: { status: number; message: string } | null = null;
-  for (const url of endpoints) {
-    const result = await fetchJsonWithTimeout({ url, apiKey: input.apiKey, timeoutMs });
-    if (result.ok) {
-      return parseIssueArray(result.payload);
+  for (const endpoint of endpoints) {
+    const issues: PylonIssue[] = [];
+    let cursor: string | null = null;
+    let pageCount = 0;
+
+    while (pageCount < maxPages) {
+      const result = await fetchJsonWithTimeout({
+        url: `${endpoint}?${buildQuery(cursor ?? undefined)}`,
+        apiKey: input.apiKey,
+        timeoutMs,
+      });
+      pageCount += 1;
+
+      if (!result.ok) {
+        if (issues.length > 0) {
+          throw new Error(result.message);
+        }
+        lastError = { status: result.status, message: result.message };
+        break;
+      }
+
+      issues.push(...parseIssueArray(result.payload));
+      const pagination = parsePagination(result.payload);
+      if (!pagination.hasNextPage || !pagination.cursor) {
+        return issues;
+      }
+
+      cursor = pagination.cursor;
     }
-    lastError = { status: result.status, message: result.message };
+
+    if (issues.length > 0) {
+      throw new Error("Pylon pagination exceeded the maximum page limit");
+    }
   }
 
   if (lastError) {
     throw new Error(lastError.message);
   }
+
   throw new Error("Pylon request failed");
 }
 

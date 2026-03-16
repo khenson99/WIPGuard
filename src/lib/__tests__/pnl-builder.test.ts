@@ -290,6 +290,40 @@ describe("buildProfitAndLoss", () => {
     expect(result.grossMargin).toBe(-87.5);
   });
 
+  it("prefers Mercury transaction-derived expense breakdown when present", () => {
+    const mercury = makeMercury({
+      cashFlow: {
+        totalBalance: 500_000,
+        inflows30d: 12_000,
+        outflows30d: 45_000,
+        netCashFlow: -33_000,
+        runway: 15,
+        burnRate: 45_000,
+        expenseBreakdown30d: {
+          cogs: 5_000,
+          payroll: 10_000,
+          marketing: 15_000,
+          infrastructure: 5_000,
+          ops: 10_000,
+          other: 0,
+        },
+      },
+    });
+
+    const result = buildProfitAndLoss(makeStripe(), mercury);
+
+    expect(result.items[1].current).toBe(5_000);
+    expect(result.items.slice(3, 7)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "Payroll & Compensation", current: 10_000 }),
+        expect.objectContaining({ label: "Marketing & Sales", current: 15_000 }),
+        expect.objectContaining({ label: "Infrastructure & Tools", current: 5_000 }),
+        expect.objectContaining({ label: "General & Administrative", current: 10_000 }),
+      ]),
+    );
+    expect(result.grossMargin).toBe(58.3);
+  });
+
   /* ── Rounding ── */
 
   it("all monetary values are rounded to 2 decimal places", () => {

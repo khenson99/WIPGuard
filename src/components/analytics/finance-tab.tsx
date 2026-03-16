@@ -458,15 +458,13 @@ export function FinanceTab({ data }: FinanceTabProps) {
         <div className="bg-card border border-border rounded-xl p-6">
           <div className="flex items-center gap-2 mb-6">
             <AlertTriangle className="w-5 h-5 text-muted-foreground" />
-            <h3 className="text-foreground font-semibold">Budget vs Actual</h3>
+            <h3 className="text-foreground font-semibold">Budget vs Estimated Actuals</h3>
             <span className="text-xs text-muted-foreground ml-auto">{fp.activeBudget.name}</span>
           </div>
 
-          {fp.activeBudget.totalActual == null ? (
-            <div className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
-              Actuals are hidden until transaction categories are mapped to budget lines.
-            </div>
-          ) : null}
+          <div className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
+            Estimated actuals are derived from aggregate Mercury outflows until transaction categories are mapped to budget lines.
+          </div>
 
           {/* Summary row */}
           <div className="grid grid-cols-3 gap-4 mb-6">
@@ -475,13 +473,13 @@ export function FinanceTab({ data }: FinanceTabProps) {
               <p className="text-lg font-bold text-foreground tabular-nums">{fmt$(fp.activeBudget.totalPlanned)}</p>
             </div>
             <div className="bg-secondary/40 rounded-lg p-4">
-              <p className="text-xs text-muted-foreground uppercase mb-1">Actual</p>
+              <p className="text-xs text-muted-foreground uppercase mb-1">Est. Actual</p>
               <p className="text-lg font-bold text-foreground tabular-nums">
                 {fp.activeBudget.totalActual != null ? fmt$(fp.activeBudget.totalActual) : "—"}
               </p>
             </div>
             <div className="bg-secondary/40 rounded-lg p-4">
-              <p className="text-xs text-muted-foreground uppercase mb-1">Variance</p>
+              <p className="text-xs text-muted-foreground uppercase mb-1">Est. Variance</p>
               <p className={`text-lg font-bold tabular-nums ${
                 fp.activeBudget.totalVariance != null
                   ? fp.activeBudget.totalVariance > 0
@@ -500,8 +498,8 @@ export function FinanceTab({ data }: FinanceTabProps) {
           <div className="grid grid-cols-5 gap-4 pb-2 border-b border-border">
             <span className="text-xs font-semibold text-muted-foreground uppercase">Category</span>
             <span className="text-xs font-semibold text-muted-foreground uppercase text-right">Planned</span>
-            <span className="text-xs font-semibold text-muted-foreground uppercase text-right">Actual</span>
-            <span className="text-xs font-semibold text-muted-foreground uppercase text-right">Variance</span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase text-right">Est. Actual</span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase text-right">Est. Variance</span>
             <span className="text-xs font-semibold text-muted-foreground uppercase text-right">Var %</span>
           </div>
           {fp.activeBudget.lineItems.map((item) => {
