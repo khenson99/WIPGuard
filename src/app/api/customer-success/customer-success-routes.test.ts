@@ -121,6 +121,25 @@ describe("customer-success mutation routes", () => {
     expect(getCustomerSuccessActivityFeed).not.toHaveBeenCalled();
   });
 
+  it("passes through auth failures for account detail reads", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessAccountDetail } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    });
+
+    const { GET } = await import("@/app/api/customer-success/accounts/[accountId]/route");
+    const response = await GET(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1"),
+      accountContext()
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
+    expect(getCustomerSuccessAccountDetail).not.toHaveBeenCalled();
+  });
+
   it("passes through auth failures for alert updates", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { updateCustomerSuccessAlertStatus } = await import("@/lib/customer-success/service");
@@ -974,6 +993,23 @@ describe("customer-success mutation routes", () => {
 
     expect(response.status).toBe(200);
     expect(getCustomerSuccessAccountDetail).toHaveBeenCalledWith(ACTOR, "acct_1");
+  });
+
+  it("rejects account detail reads when account id is missing", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessAccountDetail } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+
+    const { GET } = await import("@/app/api/customer-success/accounts/[accountId]/route");
+    const response = await GET(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1"),
+      accountContext("")
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Account id is required" });
+    expect(getCustomerSuccessAccountDetail).not.toHaveBeenCalled();
   });
 
   it("maps outreach draft requests into createCustomerSuccessOutreachDraft", async () => {
