@@ -137,6 +137,29 @@ describe("customer-success mutation routes", () => {
     expect(createCustomerSuccessTask).not.toHaveBeenCalled();
   });
 
+  it("passes through auth failures for success plan creation", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessPlan } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    });
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/success-plan/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/success-plan", {
+        method: "POST",
+        body: JSON.stringify({ name: "Renewal Recovery" }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
+    expect(createCustomerSuccessPlan).not.toHaveBeenCalled();
+  });
+
   it("returns the customer-success portfolio for authenticated actors", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { getCustomerSuccessPortfolio } = await import("@/lib/customer-success/service");
