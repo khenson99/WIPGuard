@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchPylonIssues } from "@/lib/integrations/pylon-client";
+import { __test__, fetchPylonIssues } from "@/lib/integrations/pylon-client";
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -56,5 +56,11 @@ describe("pylon client", () => {
 
     expect(issues).toEqual([]);
     expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("normalizes date-only filters to RFC3339 timestamps", async () => {
+    expect(__test__.normalizePylonTimestamp("2026-03-01", "start")).toBe("2026-03-01T00:00:00.000Z");
+    expect(__test__.normalizePylonTimestamp("2026-03-15", "end")).toBe("2026-03-15T23:59:59.999Z");
+    expect(__test__.normalizePylonTimestamp("2026-03-01T05:00:00Z", "start")).toBe("2026-03-01T05:00:00Z");
   });
 });

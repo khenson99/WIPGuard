@@ -18,6 +18,15 @@ function asString(value: unknown): string | null {
   return null;
 }
 
+function normalizePylonTimestamp(value: string, boundary: "start" | "end"): string {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return trimmed;
+  if (trimmed.includes("T")) return trimmed;
+  return boundary === "start"
+    ? `${trimmed}T00:00:00.000Z`
+    : `${trimmed}T23:59:59.999Z`;
+}
+
 function parseIssueArray(payload: unknown): PylonIssue[] {
   const record = asRecord(payload);
   if (!record) return [];
@@ -82,8 +91,8 @@ export async function fetchPylonIssues(input: {
 
   const query = new URLSearchParams({
     limit: String(limit),
-    start_time: input.from,
-    end_time: input.to,
+    start_time: normalizePylonTimestamp(input.from, "start"),
+    end_time: normalizePylonTimestamp(input.to, "end"),
   });
 
   const endpoints = [
@@ -176,3 +185,7 @@ export function getPylonIssueUrl(issue: PylonIssue): string | null {
     asString(issue.html_url)
   );
 }
+
+export const __test__ = {
+  normalizePylonTimestamp,
+};
