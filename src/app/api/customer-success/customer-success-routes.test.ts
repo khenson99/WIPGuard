@@ -998,6 +998,66 @@ describe("customer-success mutation routes", () => {
     expect(sendCustomerSuccessOutreach).not.toHaveBeenCalled();
   });
 
+  it("maps customer-success service errors for outreach draft creation", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessOutreachDraft, CustomerSuccessServiceError } = await import(
+      "@/lib/customer-success/service"
+    );
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(createCustomerSuccessOutreachDraft).mockRejectedValue(
+      new CustomerSuccessServiceError("Outreach template is invalid", 400)
+    );
+
+    const { POST } = await import(
+      "@/app/api/customer-success/accounts/[accountId]/outreach/drafts/route"
+    );
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/drafts", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "ops@example.com",
+          body: "Sharing a follow-up draft.",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Outreach template is invalid" });
+  });
+
+  it("maps customer-success service errors for outreach sends", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { sendCustomerSuccessOutreach, CustomerSuccessServiceError } = await import(
+      "@/lib/customer-success/service"
+    );
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(sendCustomerSuccessOutreach).mockRejectedValue(
+      new CustomerSuccessServiceError("Recipient address is invalid", 400)
+    );
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/outreach/send/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/send", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "ops@example.com",
+          body: "Sharing the implementation follow-up.",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Recipient address is invalid" });
+  });
+
   it("maps customer-success service errors for alert updates", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { CustomerSuccessServiceError, updateCustomerSuccessAlertStatus } = await import(
