@@ -314,6 +314,27 @@ describe("customer-success mutation routes", () => {
     await expect(response.json()).resolves.toEqual({ error: "Note store unavailable" });
   });
 
+  it("returns generic 500s for non-error note creation failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessNote } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(createCustomerSuccessNote).mockRejectedValue("note-store-down");
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/notes/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/notes", {
+        method: "POST",
+        body: JSON.stringify({ body: "Capture renewal risk and stakeholder changes" }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Failed to create customer success note" });
+  });
+
   it("returns task permission denials before creating linked tasks", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { enforcePermission } = await import("@/lib/permissions");
