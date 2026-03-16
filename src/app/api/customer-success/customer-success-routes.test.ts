@@ -271,6 +271,29 @@ describe("customer-success mutation routes", () => {
     });
   });
 
+  it("rejects linked task creation when title is missing", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessTask } = await import("@/lib/customer-success/service");
+    const { enforcePermission } = await import("@/lib/permissions");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(enforcePermission).mockResolvedValue({ deniedResponse: null } as never);
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/tasks/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/tasks", {
+        method: "POST",
+        body: JSON.stringify({ title: "   " }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Task title is required" });
+    expect(createCustomerSuccessTask).not.toHaveBeenCalled();
+  });
+
   it("filters blank milestone titles before creating success plans", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { createCustomerSuccessPlan } = await import("@/lib/customer-success/service");
