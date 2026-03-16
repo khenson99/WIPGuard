@@ -281,6 +281,34 @@ describe("customer-success mutation routes", () => {
     expect(getCustomerSuccessPortfolio).toHaveBeenCalledWith(ACTOR);
   });
 
+  it("returns 500s for unexpected portfolio read failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessPortfolio } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessPortfolio).mockRejectedValue(new Error("Portfolio store unavailable"));
+
+    const { GET } = await import("@/app/api/customer-success/portfolio/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/portfolio"));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Portfolio store unavailable" });
+  });
+
+  it("returns fallback 500s for non-error portfolio read failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessPortfolio } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessPortfolio).mockRejectedValue("portfolio failure");
+
+    const { GET } = await import("@/app/api/customer-success/portfolio/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/portfolio"));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Failed to load customer success portfolio" });
+  });
+
   it("returns the customer-success alert feed for authenticated actors", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { getCustomerSuccessAlertFeed } = await import("@/lib/customer-success/service");
