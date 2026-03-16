@@ -1012,6 +1012,40 @@ describe("customer-success mutation routes", () => {
     expect(getCustomerSuccessAccountDetail).not.toHaveBeenCalled();
   });
 
+  it("returns 500s for unexpected account detail failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessAccountDetail } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessAccountDetail).mockRejectedValue(new Error("Account store unavailable"));
+
+    const { GET } = await import("@/app/api/customer-success/accounts/[accountId]/route");
+    const response = await GET(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1"),
+      accountContext()
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Account store unavailable" });
+  });
+
+  it("returns fallback 500s for non-error account detail failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessAccountDetail } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessAccountDetail).mockRejectedValue("account failure");
+
+    const { GET } = await import("@/app/api/customer-success/accounts/[accountId]/route");
+    const response = await GET(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1"),
+      accountContext()
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Failed to load customer success account" });
+  });
+
   it("maps outreach draft requests into createCustomerSuccessOutreachDraft", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { createCustomerSuccessOutreachDraft } = await import("@/lib/customer-success/service");
