@@ -12,6 +12,7 @@ import { runWithContextAsync } from "@/lib/request-context";
 import { getNextColumnOrder } from "@/lib/task-order";
 import { buildOutboxIdempotencyKey, publishDomainEvent } from "@/lib/event-bus";
 import {
+  createCustomerSuccessOutreachDraft,
   createCustomerSuccessNote,
   createCustomerSuccessPlan,
   createCustomerSuccessTask,
@@ -301,6 +302,50 @@ describe("customer success write service", () => {
     expect(updated).toMatchObject({
       id: "alert_1",
       status: CustomerSuccessAlertStatus.DISMISSED,
+    });
+  });
+
+  it("creates outreach drafts without publishing an outbox event", async () => {
+    vi.mocked(prisma.customerSuccessOutreachMessage.create).mockResolvedValue({
+      id: "draft_1",
+      status: CustomerSuccessOutreachStatus.DRAFT,
+      recipientAddress: "taylor@example.com",
+      subject: "Check-in",
+      body: "How is rollout going?",
+    } as never);
+
+    const draft = await createCustomerSuccessOutreachDraft(ACTOR, {
+      accountId: "acct_1",
+      channel: CustomerSuccessOutreachChannel.EMAIL,
+      templateKey: "check-in",
+      recipientName: " Taylor ",
+      recipientAddress: " taylor@example.com ",
+      subject: " Check-in ",
+      body: " How is rollout going? ",
+      metadata: { source: "workspace" },
+    });
+
+    expect(prisma.customerSuccessOutreachMessage.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        customerRecordId: "acct_1",
+        authorUserId: "user_1",
+        channel: CustomerSuccessOutreachChannel.EMAIL,
+        status: CustomerSuccessOutreachStatus.DRAFT,
+        templateKey: "check-in",
+        recipientName: "Taylor",
+        recipientAddress: "taylor@example.com",
+        subject: "Check-in",
+        body: "How is rollout going?",
+        metadata: { source: "workspace" },
+      }),
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(buildOutboxIdempotencyKey).not.toHaveBeenCalled();
+    expect(publishDomainEvent).not.toHaveBeenCalled();
+    expect(draft).toMatchObject({
+      id: "draft_1",
+      status: CustomerSuccessOutreachStatus.DRAFT,
+      recipientAddress: "taylor@example.com",
     });
   });
 
