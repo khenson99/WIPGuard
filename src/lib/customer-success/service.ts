@@ -1075,7 +1075,7 @@ function buildDerivedCodaProviderLinks(latestArdaPayload: Record<string, unknown
   if (mainDocId) {
     links.push({
       provider: CustomerExternalProvider.CODA,
-      externalObjectType: "main_doc",
+      externalObjectType: "doc",
       externalId: mainDocId,
       label: "Customer Success and Implementation",
       isPrimary: true,

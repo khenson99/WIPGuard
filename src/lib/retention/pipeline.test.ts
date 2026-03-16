@@ -99,4 +99,45 @@ describe("retention pipeline helpers", () => {
 
     await expect(__test__.fetchCodaApiRows("doc123", "table123", "token123", 1)).resolves.toEqual([]);
   });
+
+  it("derives persisted Coda external refs from latest Arda tenant metadata", () => {
+    expect(
+      __test__.buildDerivedCodaExternalRefsFromSourceRecords([
+        {
+          customerRecordId: "customer_1",
+          source: "ARDA",
+          objectType: "tenant",
+          payload: {
+            mainCodaDocId: "VYLC2rzPN_",
+            orderArchiveDocumentId: "cgSn33D4N9",
+          },
+        },
+      ])
+    ).toEqual([
+      {
+        customerRecordId: "customer_1",
+        provider: "CODA",
+        externalObjectType: "doc",
+        externalId: "VYLC2rzPN_",
+        label: "Customer Success and Implementation",
+        isPrimary: true,
+        metadata: {
+          docUrl: "https://coda.io/d/_dVYLC2rzPN_",
+          source: "retention_arda_tenant",
+        },
+      },
+      {
+        customerRecordId: "customer_1",
+        provider: "CODA",
+        externalObjectType: "order_archive_doc",
+        externalId: "cgSn33D4N9",
+        label: "Master Order Archive",
+        isPrimary: false,
+        metadata: {
+          docUrl: "https://coda.io/d/_dcgSn33D4N9",
+          source: "retention_arda_tenant",
+        },
+      },
+    ]);
+  });
 });

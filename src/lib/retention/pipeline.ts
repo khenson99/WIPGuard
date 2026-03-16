@@ -1,4 +1,8 @@
-import { Prisma, RetentionTenantStatus as PrismaRetentionTenantStatus } from "@/generated/prisma/client";
+import {
+  CustomerExternalProvider,
+  Prisma,
+  RetentionTenantStatus as PrismaRetentionTenantStatus,
+} from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   DEFAULT_RETENTION_LIR_BY_PHASE,
@@ -95,6 +99,16 @@ interface ArdaEntityRecord {
 interface ArdaPageResult {
   results?: ArdaEntityRecord[];
   nextPage?: string | null;
+}
+
+interface DerivedExternalRefSeed {
+  customerRecordId: string;
+  provider: CustomerExternalProvider;
+  externalObjectType: string;
+  externalId: string;
+  label: string | null;
+  isPrimary: boolean;
+  metadata: Record<string, unknown>;
 }
 
 interface MonthlyTenantAccumulator {
@@ -864,6 +878,116 @@ async function upsertSourceRecords(
   return { mappedCount, windowStart, windowEnd };
 }
 
+function buildDerivedCodaExternalRefsFromSourceRecords(
+  records: Array<{
+    customerRecordId: string;
+    source: string;
+    objectType: string;
+    payload: Record<string, unknown>;
+  }>
+): DerivedExternalRefSeed[] {
+  const latestArdaTenantByCustomer = new Map<string, Record<string, unknown>>();
+  for (const record of records) {
+    if (record.source !== "ARDA" || record.objectType !== "tenant") continue;
+    if (!latestArdaTenantByCustomer.has(record.customerRecordId)) {
+      latestArdaTenantByCustomer.set(record.customerRecordId, record.payload);
+    }
+  }
+
+  const refs = new Map<string, DerivedExternalRefSeed>();
+  for (const [customerRecordId, payload] of latestArdaTenantByCustomer.entries()) {
+    const mainDocId = asString(payload.mainCodaDocId);
+    if (mainDocId) {
+      refs.set(`${customerRecordId}:CODA:doc:${mainDocId}`, {
+        customerRecordId,
+        provider: CustomerExternalProvider.CODA,
+        externalObjectType: "doc",
+        externalId: mainDocId,
+        label: "Customer Success and Implementation",
+        isPrimary: true,
+        metadata: {
+          docUrl: `https://coda.io/d/_d${encodeURIComponent(mainDocId)}`,
+          source: "retention_arda_tenant",
+        },
+      });
+    }
+
+    const orderArchiveDocumentId = asString(payload.orderArchiveDocumentId);
+    if (orderArchiveDocumentId) {
+      refs.set(`${customerRecordId}:CODA:order_archive_doc:${orderArchiveDocumentId}`, {
+        customerRecordId,
+        provider: CustomerExternalProvider.CODA,
+        externalObjectType: "order_archive_doc",
+        externalId: orderArchiveDocumentId,
+        label: "Master Order Archive",
+        isPrimary: !mainDocId,
+        metadata: {
+          docUrl: `https://coda.io/d/_d${encodeURIComponent(orderArchiveDocumentId)}`,
+          source: "retention_arda_tenant",
+        },
+      });
+    }
+  }
+
+  return [...refs.values()];
+}
+
+async function syncDerivedCustomerExternalRefs(actor: RetentionActor): Promise<void> {
+  const sourceRecords = await prisma.retentionSourceRecord.findMany({
+    where: {
+      organizationId: actor.organizationId,
+      customerRecordId: { not: null },
+      source: "ARDA",
+      objectType: "tenant",
+    },
+    orderBy: [{ sourceUpdatedAt: "desc" }, { createdAt: "desc" }],
+    select: {
+      customerRecordId: true,
+      source: true,
+      objectType: true,
+      payload: true,
+    },
+  });
+
+  const derivedRefs = buildDerivedCodaExternalRefsFromSourceRecords(
+    sourceRecords.map((record) => ({
+      customerRecordId: record.customerRecordId!,
+      source: record.source,
+      objectType: record.objectType,
+      payload: asRecord(record.payload),
+    }))
+  );
+
+  for (const ref of derivedRefs) {
+    await prisma.customerRecordExternalRef.upsert({
+      where: {
+        customerRecordId_provider_externalObjectType_externalId: {
+          customerRecordId: ref.customerRecordId,
+          provider: ref.provider,
+          externalObjectType: ref.externalObjectType,
+          externalId: ref.externalId,
+        },
+      },
+      create: {
+        customerRecordId: ref.customerRecordId,
+        organizationId: actor.organizationId,
+        provider: ref.provider,
+        externalObjectType: ref.externalObjectType,
+        externalId: ref.externalId,
+        label: ref.label,
+        isPrimary: ref.isPrimary,
+        metadata: ref.metadata as Prisma.InputJsonValue,
+      },
+      update: {
+        organizationId: actor.organizationId,
+        label: ref.label,
+        isPrimary: ref.isPrimary,
+        metadata: ref.metadata as Prisma.InputJsonValue,
+      },
+    });
+  }
+}
+
 async function loadHubSpotSourceRecords(actor: RetentionActor): Promise<SourceSeedRecord[]> {
   const [hasDealCompany, hasDeal] = await Promise.all([tableExists("DealCompany"), tableExists("Deal")]);
 
@@ -1240,6 +1364,12 @@ export async function syncRetentionSources(actor: RetentionActor): Promise<void>
       } catch (error) {
         failures.push(`${source}: ${error instanceof Error ? error.message : String(error)}`);
       }
+    }
+
+    try {
+      await syncDerivedCustomerExternalRefs(actor);
+    } catch (error) {
+      failures.push(`DERIVED_EXTERNAL_REFS: ${error instanceof Error ? error.message : String(error)}`);
     }
 
     if (failures.length > 0) {
@@ -1954,6 +2084,7 @@ export const __test__ = {
   ardaCreatedTimestamp,
   ardaObservedTimestamp,
   ardaOccurredAt,
+  buildDerivedCodaExternalRefsFromSourceRecords,
   deriveLifecycleStartDate,
   deriveOnboardingStartDate,
   computeActiveWeeksTrailing8,
