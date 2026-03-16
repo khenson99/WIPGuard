@@ -822,6 +822,46 @@ describe("customer-success mutation routes", () => {
     expect(getCustomerSuccessAccountDetail).toHaveBeenCalledWith(ACTOR, "acct_1");
   });
 
+  it("maps outreach draft requests into createCustomerSuccessOutreachDraft", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessOutreachDraft } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(createCustomerSuccessOutreachDraft).mockResolvedValue({ id: "draft_1" } as never);
+
+    const { POST } = await import(
+      "@/app/api/customer-success/accounts/[accountId]/outreach/drafts/route"
+    );
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/drafts", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "ops@example.com",
+          recipientName: "Pat",
+          templateKey: "renewal-recovery",
+          subject: "Recovery plan draft",
+          body: "Drafting the next step plan.",
+          metadata: { source: "workspace" },
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(201);
+    expect(createCustomerSuccessOutreachDraft).toHaveBeenCalledWith(ACTOR, {
+      accountId: "acct_1",
+      channel: "EMAIL",
+      recipientAddress: "ops@example.com",
+      recipientName: "Pat",
+      templateKey: "renewal-recovery",
+      subject: "Recovery plan draft",
+      body: "Drafting the next step plan.",
+      metadata: { source: "workspace" },
+    });
+  });
+
   it("validates required outreach draft fields", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { createCustomerSuccessOutreachDraft } = await import("@/lib/customer-success/service");
@@ -907,6 +947,29 @@ describe("customer-success mutation routes", () => {
       subject: "Renewal risk follow-up",
       body: "Here is the recovery plan.",
       metadata: { source: "cs-workspace" },
+    });
+  });
+
+  it("validates required outreach send fields", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { sendCustomerSuccessOutreach } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/outreach/send/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/send", {
+        method: "POST",
+        body: JSON.stringify({ recipientAddress: "ops@example.com" }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(400);
+    expect(sendCustomerSuccessOutreach).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({
+      error: "channel, recipientAddress, and body are required",
     });
   });
 
