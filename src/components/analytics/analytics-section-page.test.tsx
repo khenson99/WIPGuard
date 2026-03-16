@@ -76,7 +76,7 @@ describe("AnalyticsSectionPage", () => {
     render(<AnalyticsSectionPage sectionId="customer-journey" />);
 
     await waitFor(() => {
-      expect(screen.getByText("No customer journey data available")).toBeTruthy();
+      expect(screen.getByText("No customer journey data yet")).toBeTruthy();
     });
   });
 });
