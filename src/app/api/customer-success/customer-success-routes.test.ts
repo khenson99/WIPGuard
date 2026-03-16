@@ -317,6 +317,62 @@ describe("customer-success mutation routes", () => {
     expect(getCustomerSuccessActivityFeed).toHaveBeenCalledWith(ACTOR);
   });
 
+  it("returns 500s for unexpected alert feed failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessAlertFeed } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessAlertFeed).mockRejectedValue(new Error("Alert store unavailable"));
+
+    const { GET } = await import("@/app/api/customer-success/alerts/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/alerts"));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Alert store unavailable" });
+  });
+
+  it("returns 500s for unexpected activity feed failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessActivityFeed } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessActivityFeed).mockRejectedValue(new Error("Activity store unavailable"));
+
+    const { GET } = await import("@/app/api/customer-success/activity/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/activity"));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Activity store unavailable" });
+  });
+
+  it("returns fallback 500s for non-error alert feed failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessAlertFeed } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessAlertFeed).mockRejectedValue("alert failure");
+
+    const { GET } = await import("@/app/api/customer-success/alerts/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/alerts"));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Failed to load customer success alerts" });
+  });
+
+  it("returns fallback 500s for non-error activity feed failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessActivityFeed } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessActivityFeed).mockRejectedValue("activity failure");
+
+    const { GET } = await import("@/app/api/customer-success/activity/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/activity"));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Failed to load customer success activity" });
+  });
+
   it("maps note requests into createCustomerSuccessNote", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { createCustomerSuccessNote } = await import("@/lib/customer-success/service");
