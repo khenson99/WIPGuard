@@ -140,4 +140,74 @@ describe("retention pipeline helpers", () => {
       },
     ]);
   });
+
+  it("keeps unresolved Arda tenant configs as metadata-only rows", () => {
+    expect(
+      __test__.materializeArdaTenantConfigs(
+        [
+          {
+            tenantId: "",
+            configuredTenantId: "",
+            tenantName: "Lights Out Manufacturing",
+            companyName: "Lights Out Manufacturing",
+            customerStatus: "Live",
+            health: "Healthy",
+            mainCodaDocId: "fphF1v7jCB",
+            orderArchiveDocumentId: "cgSn33D4N9",
+            churned: false,
+            resultTenantIds: [],
+          },
+        ],
+        new Map()
+      )
+    ).toEqual([
+      {
+        tenantId: "baa1f883-ecfa-4912-b5be-d5784d8b96a4",
+        configuredTenantId: "",
+        tenantName: "Lights Out Manufacturing",
+        companyName: "Lights Out Manufacturing",
+        customerStatus: "Live",
+        health: "Healthy",
+        mainCodaDocId: "fphF1v7jCB",
+        orderArchiveDocumentId: "cgSn33D4N9",
+        churned: false,
+        resultTenantIds: [],
+        tenantIdResolved: true,
+      },
+    ]);
+
+    expect(
+      __test__.materializeArdaTenantConfigs(
+        [
+          {
+            tenantId: "",
+            configuredTenantId: "",
+            tenantName: "Unknown Shop",
+            companyName: "Unknown Shop",
+            customerStatus: "Live",
+            health: null,
+            mainCodaDocId: "doc_unknown",
+            orderArchiveDocumentId: null,
+            churned: false,
+            resultTenantIds: [],
+          },
+        ],
+        new Map()
+      )
+    ).toEqual([
+      {
+        tenantId: "unknownshop",
+        configuredTenantId: "",
+        tenantName: "Unknown Shop",
+        companyName: "Unknown Shop",
+        customerStatus: "Live",
+        health: null,
+        mainCodaDocId: "doc_unknown",
+        orderArchiveDocumentId: null,
+        churned: false,
+        resultTenantIds: [],
+        tenantIdResolved: false,
+      },
+    ]);
+  });
 });

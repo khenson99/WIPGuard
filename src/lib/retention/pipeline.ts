@@ -89,6 +89,10 @@ interface ArdaTenantConfig {
   resultTenantIds: string[];
 }
 
+interface MaterializedArdaTenantConfig extends ArdaTenantConfig {
+  tenantIdResolved: boolean;
+}
+
 interface ArdaEntityRecord {
   rId?: string;
   asOf?: Record<string, unknown>;
@@ -501,7 +505,57 @@ function resolveArdaTenantIds(
   );
 }
 
-async function loadArdaTenantConfigs(): Promise<ArdaTenantConfig[]> {
+function fallbackArdaTenantExternalId(config: ArdaTenantConfig): string {
+  return (
+    config.configuredTenantId ||
+    normalizeArdaTenantLookupKey(
+      normalizeArdaCustomerName(config.companyName) ??
+        normalizeArdaCustomerName(config.tenantName) ??
+        config.companyName
+    ) ||
+    crypto.randomUUID()
+  );
+}
+
+function materializeArdaTenantConfigs(
+  configs: ArdaTenantConfig[],
+  discoveredTenantIdsByConfig: Map<string, string[]>
+): MaterializedArdaTenantConfig[] {
+  const materialized: MaterializedArdaTenantConfig[] = [];
+  const unresolved: string[] = [];
+
+  for (const config of configs) {
+    const tenantIds = resolveArdaTenantIds(config, discoveredTenantIdsByConfig);
+    if (tenantIds.length === 0) {
+      unresolved.push(config.companyName);
+      materialized.push({
+        ...config,
+        tenantId: fallbackArdaTenantExternalId(config),
+        tenantIdResolved: false,
+      });
+      continue;
+    }
+
+    for (const tenantId of tenantIds) {
+      materialized.push({
+        ...config,
+        tenantId,
+        tenantIdResolved: true,
+      });
+    }
+  }
+
+  if (unresolved.length > 0) {
+    console.warn(
+      `[retention] Keeping ${unresolved.length} Arda tenant configs without UUID resolution as metadata-only rows`,
+      unresolved.slice(0, 10)
+    );
+  }
+
+  return materialized;
+}
+
+async function loadArdaTenantConfigs(): Promise<MaterializedArdaTenantConfig[]> {
   const token = process.env.CODA_API_TOKEN?.trim();
   const docId = process.env.ARDA_TENANT_CONFIG_CODA_DOC_ID?.trim() || "oRkoolViAM";
   const tableId = process.env.ARDA_TENANT_CONFIG_TABLE_ID?.trim() || "grid-5Kc9QNP-nT";
@@ -516,22 +570,6 @@ async function loadArdaTenantConfigs(): Promise<ArdaTenantConfig[]> {
     token,
     configs
   );
-  const resolved: ArdaTenantConfig[] = [];
-  const unresolved: string[] = [];
-
-  for (const config of configs) {
-    const tenantIds = resolveArdaTenantIds(config, discoveredTenantIdsByConfig);
-    if (tenantIds.length === 0) {
-      unresolved.push(config.companyName);
-      continue;
-    }
-    for (const tenantId of tenantIds) {
-      resolved.push({
-        ...config,
-        tenantId,
-      });
-    }
-  }
 
   if (discoveredTenantIdsByConfig.size > 0) {
     console.info(
@@ -539,14 +577,7 @@ async function loadArdaTenantConfigs(): Promise<ArdaTenantConfig[]> {
     );
   }
 
-  if (unresolved.length > 0) {
-    console.warn(
-      `[retention] Skipping ${unresolved.length} Arda tenant configs without UUID resolution`,
-      unresolved.slice(0, 10)
-    );
-  }
-
-  return resolved;
+  return materializeArdaTenantConfigs(configs, discoveredTenantIdsByConfig);
 }
 
 async function fetchArdaPage(
@@ -1208,6 +1239,7 @@ async function loadArdaSourceRecords(): Promise<SourceSeedRecord[]> {
   const rows: SourceSeedRecord[] = [];
 
   for (const config of tenantConfigs) {
+    const hasResolvedTenantId = isUuid(config.tenantId) && config.tenantIdResolved;
     rows.push({
       source: "ARDA",
       objectType: "tenant",
@@ -1223,6 +1255,7 @@ async function loadArdaSourceRecords(): Promise<SourceSeedRecord[]> {
         companyName: config.companyName,
         customerStatus: config.customerStatus,
         health: config.health,
+        tenantIdResolved: hasResolvedTenantId,
         mainCodaDocId: config.mainCodaDocId,
         orderArchiveDocumentId: config.orderArchiveDocumentId,
         implementationStage:
@@ -1231,6 +1264,10 @@ async function loadArdaSourceRecords(): Promise<SourceSeedRecord[]> {
             : "LIVE",
       },
     });
+
+    if (!hasResolvedTenantId) {
+      continue;
+    }
 
     const [orders, cards, items] = await Promise.all([
       queryArdaCollection("order/order", config.tenantId, asOfMs),
@@ -2085,6 +2122,8 @@ export const __test__ = {
   ardaObservedTimestamp,
   ardaOccurredAt,
   buildDerivedCodaExternalRefsFromSourceRecords,
+  fallbackArdaTenantExternalId,
+  materializeArdaTenantConfigs,
   deriveLifecycleStartDate,
   deriveOnboardingStartDate,
   computeActiveWeeksTrailing8,
