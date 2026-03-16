@@ -442,6 +442,29 @@ describe("customer-success mutation routes", () => {
     await expect(response.json()).resolves.toEqual({ error: "Alert not found" });
   });
 
+  it("returns 500s for unexpected alert update failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { updateCustomerSuccessAlertStatus } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(updateCustomerSuccessAlertStatus).mockRejectedValue(new Error("Database unavailable"));
+
+    const { POST } = await import(
+      "@/app/api/customer-success/accounts/[accountId]/alerts/[alertId]/status/route"
+    );
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/alerts/alert_1/status", {
+        method: "POST",
+        body: JSON.stringify({ status: "RESOLVED" }),
+        headers: { "content-type": "application/json" },
+      }),
+      alertContext()
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Database unavailable" });
+  });
+
   it("rejects alert updates when status is missing", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { updateCustomerSuccessAlertStatus } = await import("@/lib/customer-success/service");
