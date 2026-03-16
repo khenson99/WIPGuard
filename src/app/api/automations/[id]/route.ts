@@ -10,6 +10,7 @@ import { auth } from "@/lib/auth";
 import {
   normalizeAutomationOperatorKey,
 } from "@/lib/automations/operators";
+import { isRetiredAutomationActionType } from "@/lib/automations/retired-actions";
 import {
   assertCanEditWorkflow,
   assertCanViewWorkflow,
@@ -33,6 +34,36 @@ function parseBody(input: unknown): Record<string, unknown> {
     return {};
   }
   return input as Record<string, unknown>;
+}
+
+function sanitizeWorkflowDetail<T extends {
+  nodes: Array<{ nodeKey: string; config: unknown }>;
+  edges: Array<{ sourceNodeKey: string; targetNodeKey: string }>;
+}>(workflow: T): T {
+  const retiredNodeKeys = new Set(
+    workflow.nodes
+      .filter((node) => {
+        const config =
+          node.config && typeof node.config === "object" && !Array.isArray(node.config)
+            ? (node.config as Record<string, unknown>)
+            : null;
+        return isRetiredAutomationActionType(config?.actionType);
+      })
+      .map((node) => node.nodeKey)
+  );
+
+  if (retiredNodeKeys.size === 0) {
+    return workflow;
+  }
+
+  return {
+    ...workflow,
+    nodes: workflow.nodes.filter((node) => !retiredNodeKeys.has(node.nodeKey)),
+    edges: workflow.edges.filter(
+      (edge) =>
+        !retiredNodeKeys.has(edge.sourceNodeKey) && !retiredNodeKeys.has(edge.targetNodeKey)
+    ),
+  };
 }
 
 export async function GET(
@@ -73,7 +104,7 @@ export async function GET(
       return NextResponse.json({ error: "Workflow not found" }, { status: 404 });
     }
 
-    return NextResponse.json(workflow);
+    return NextResponse.json(sanitizeWorkflowDetail(workflow));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to fetch workflow";
     const status = message === "Forbidden" ? 403 : 500;
@@ -189,7 +220,7 @@ export async function PATCH(
       },
     });
 
-    return NextResponse.json(workflow);
+    return NextResponse.json(sanitizeWorkflowDetail(workflow));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to update workflow";
     const status = message === "Forbidden" ? 403 : 500;

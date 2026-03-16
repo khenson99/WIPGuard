@@ -165,7 +165,7 @@ export default function AutomationArtifactsPage() {
             href="/automations/recommendations"
             className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
           >
-            Recommendation Inbox
+            Recommendations
           </Link>
           <Link
             href="/automations"

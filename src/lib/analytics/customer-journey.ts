@@ -53,6 +53,10 @@ function hubspotTouchpoints(data: AnalyticsDashboardData): Touchpoint[] {
 function stripeTouchpoints(data: AnalyticsDashboardData): Touchpoint[] {
   const touchpoints: Touchpoint[] = [];
   const churnEvents = data.stripe?.subscriptions?.recentChurnEvents ?? [];
+  const mergedActiveSubscriptions =
+    data.financialPlanning?.subscriptionOverview?.mergedActiveSubscriptions
+    ?? data.stripe?.subscriptions?.active
+    ?? 0;
   for (const evt of churnEvents) {
     touchpoints.push({
       timestamp: evt.canceledAt,
@@ -62,12 +66,12 @@ function stripeTouchpoints(data: AnalyticsDashboardData): Touchpoint[] {
       value: -evt.amount,
     });
   }
-  if (data.stripe?.subscriptions?.active) {
+  if (mergedActiveSubscriptions > 0) {
     touchpoints.push({
       timestamp: new Date().toISOString(),
       channel: "stripe",
       type: "conversion",
-      detail: `${data.stripe.subscriptions.active} active subscriptions`,
+      detail: `${mergedActiveSubscriptions} active subscriptions`,
       value: data.stripe.revenue?.mrr ?? null,
     });
   }
@@ -167,7 +171,7 @@ function telemetryTouchpoints(
     timestamp: new Date().toISOString(),
     channel,
     type: "engagement",
-    detail: `${telemetry.receiptsInRange} integration events, ${telemetry.tasksCreatedInRange} tasks`,
+    detail: `${telemetry.receiptsInRange} integration events`,
     value: null,
   }];
 }

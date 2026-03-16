@@ -105,16 +105,15 @@ export function buildForecastScenario(
   const baseGrowthRate = (stripe?.revenue?.revenueGrowth ?? 0) / 100;
   const baseChurnRate = (stripe?.subscriptions?.churnRate ?? 0) / 100;
   const cashBalance = mercury?.cashFlow?.totalBalance ?? 0;
-  const baseBurnRate = mercury?.cashFlow?.burnRate ?? 0;
+  const baseExpenses = mercury?.cashFlow?.outflows30d ?? 0;
 
   // Apply assumption deltas
   const growthRate = baseGrowthRate + assumptions.revenueGrowthRate / 100;
   const churnRate = Math.max(baseChurnRate + assumptions.churnRateDelta / 100, 0);
   const monthlyExpenses =
-    baseBurnRate +
+    baseExpenses +
     assumptions.burnRateDelta +
-    assumptions.additionalMonthlyExpense -
-    assumptions.additionalMonthlyRevenue;
+    assumptions.additionalMonthlyExpense;
 
   // Effective starting MRR includes additional recurring revenue
   const effectiveMrr = currentMrr + assumptions.additionalMonthlyRevenue;
@@ -130,7 +129,8 @@ export function buildForecastScenario(
     forecastMonths,
   );
 
-  const runwayMonths = projectRunway(cashBalance, monthlyExpenses, 0);
+  const initialNetBurn = Math.max(monthlyExpenses - effectiveMrr, 0);
+  const runwayMonths = projectRunway(cashBalance, initialNetBurn, 0);
 
   return {
     id: opts.id ?? crypto.randomUUID(),
@@ -152,7 +152,7 @@ export function buildDefaultScenarios(
   mercury: MercuryData | null,
   months: number = 18,
 ): ForecastScenarioData[] {
-  const baseBurn = mercury?.cashFlow?.burnRate ?? 0;
+  const baseBurn = mercury?.cashFlow?.outflows30d ?? 0;
 
   const base: ForecastAssumptions = {
     revenueGrowthRate: 0,

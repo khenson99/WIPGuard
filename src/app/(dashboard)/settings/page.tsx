@@ -4,9 +4,6 @@ import { useCallback, useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Settings as SettingsIcon } from "lucide-react";
 import { clsx } from "clsx";
-import { BoardSettingsTab } from "@/components/settings/board-settings-tab";
-import { SprintsTab } from "@/components/settings/sprints-tab";
-import { ProjectsTab } from "@/components/settings/projects-tab";
 import { PrioritiesTab } from "@/components/settings/priorities-tab";
 import { TeamTab } from "@/components/settings/team-tab";
 import { DepartmentsTab } from "@/components/settings/departments-tab";
@@ -14,9 +11,6 @@ import { OperationsTab } from "@/components/settings/operations-tab";
 import { DesignInterviewTab } from "@/components/settings/design-interview-tab";
 
 const TABS = [
-  { id: "board", label: "Board & WIP Limits" },
-  { id: "sprints", label: "Sprints" },
-  { id: "projects", label: "Projects" },
   { id: "departments", label: "Departments" },
   { id: "priorities", label: "Company Priorities" },
   { id: "design-interview", label: "Design Interview" },
@@ -34,16 +28,30 @@ export default function SettingsPage() {
   const activeTab: TabId =
     tabParam && TABS.some((candidate) => candidate.id === tabParam)
       ? (tabParam as TabId)
-      : "board";
+      : "departments";
 
   useEffect(() => {
-    if (tabParam !== "integrations") return;
+    if (
+      tabParam !== "integrations" &&
+      tabParam !== "board" &&
+      tabParam !== "sprints" &&
+      tabParam !== "projects"
+    ) {
+      return;
+    }
 
     const params = new URLSearchParams(searchParams?.toString() ?? "");
-    params.delete("tab");
-    const suffix = params.toString();
-    router.replace(`/integrations${suffix ? `?${suffix}` : ""}`, { scroll: false });
-  }, [router, searchParams, tabParam]);
+    if (tabParam === "integrations") {
+      params.delete("tab");
+      const suffix = params.toString();
+      router.replace(`/integrations${suffix ? `?${suffix}` : ""}`, { scroll: false });
+      return;
+    }
+
+    params.set("tab", "departments");
+    const basePath = pathname || "/settings";
+    router.replace(`${basePath}?${params.toString()}`, { scroll: false });
+  }, [pathname, router, searchParams, tabParam]);
 
   const handleTabChange = useCallback((tabId: TabId) => {
     const params = new URLSearchParams(searchParams?.toString() ?? "");
@@ -90,7 +98,7 @@ export default function SettingsPage() {
           Settings
         </h1>
         <p className="text-xs text-muted-foreground">
-          Configure platform defaults, WIP policy, team setup, and operating guardrails.
+          Configure platform defaults, team setup, and operating guardrails.
         </p>
       </div>
 
@@ -119,9 +127,6 @@ export default function SettingsPage() {
 
       {/* Tab content */}
       <div role="tabpanel" id={`tabpanel-${activeTab}`} aria-labelledby={`tab-${activeTab}`} className="flex-1 overflow-auto px-6 py-5">
-        {activeTab === "board" && <BoardSettingsTab />}
-        {activeTab === "sprints" && <SprintsTab />}
-        {activeTab === "projects" && <ProjectsTab />}
         {activeTab === "departments" && <DepartmentsTab />}
         {activeTab === "priorities" && <PrioritiesTab />}
         {activeTab === "design-interview" && <DesignInterviewTab />}

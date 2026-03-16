@@ -46,14 +46,10 @@ function cashZeroDate(scenario: ForecastScenarioData): string | null {
   return null;
 }
 
-function monthlyBurn(scenario: ForecastScenarioData, data: AnalyticsDashboardData): number {
-  const baseBurn = data.mercury?.cashFlow?.burnRate ?? 0;
-  return (
-    baseBurn +
-    scenario.assumptions.burnRateDelta +
-    scenario.assumptions.additionalMonthlyExpense -
-    scenario.assumptions.additionalMonthlyRevenue
-  );
+function monthlyBurn(scenario: ForecastScenarioData): number {
+  const firstMonth = scenario.months[0];
+  if (!firstMonth) return 0;
+  return Math.max(firstMonth.projectedExpenses - firstMonth.projectedRevenue, 0);
 }
 
 function scenarioValueAtMonth(scenario: ForecastScenarioData, month: number): number {
@@ -224,9 +220,9 @@ export function FinanceForecastTab({
       {/* ── Alerts ─────────────────────────────────────── */}
       {alerts.length > 0 && (
         <div className="space-y-2">
-          {alerts.map((a, i) => (
+          {alerts.map((a) => (
             <AlertBanner
-              key={i}
+              key={`${a.severity}:${a.title}`}
               severity={a.severity}
               title={a.title}
               description={a.description}
@@ -237,7 +233,7 @@ export function FinanceForecastTab({
 
       {/* ── Scenario Comparison StatCards ──────────────── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {scenarios.map((s, i) => {
+        {scenarios.map((s) => {
           const last12 =
             s.months[Math.min(12, s.months.length - 1)]?.projectedRevenue ?? 0;
           const growthRate =
@@ -287,7 +283,7 @@ export function FinanceForecastTab({
       <SectionCard title="Scenario Details" subtitle="Assumptions and outcomes per scenario">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {scenarios.map((s, i) => {
-            const burn = data ? monthlyBurn(s, data) : 0;
+            const burn = monthlyBurn(s);
             const zeroDate = cashZeroDate(s);
             const rwColor = runwayColor(s.runwayMonths ?? 0);
 

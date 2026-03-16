@@ -480,29 +480,23 @@ describe("GET /api/analytics", () => {
     expect(body.aiInsights).toBeTruthy();
   });
 
-  it("runs customer-success product analytics inside tenant context", async () => {
+  it("omits removed customer-success product analytics", async () => {
     const { getServerSession } = await import("next-auth");
     const { prisma } = await import("@/lib/prisma");
-    const { getRequestContext } = await import("@/lib/request-context");
 
     vi.mocked(getServerSession).mockResolvedValue({
       user: { id: "user-1", email: "user@example.com" },
     } as never);
 
-    vi.mocked(prisma.task.count).mockImplementation(async () => {
-      if (getRequestContext()?.organizationId !== "org-1") {
-        throw new Error("Missing tenant context");
-      }
-      return 0 as never;
-    });
+    vi.mocked(prisma.task.count).mockResolvedValue(0 as never);
 
     const { GET } = await import("@/app/api/analytics/route");
     const response = await GET(new Request("http://localhost/api/analytics?section=customer-success"));
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.product).toBeTruthy();
-    expect(body.errors.some((entry: { source: string; message: string }) => entry.message === "Missing tenant context")).toBe(false);
+    expect(body.product).toBeNull();
+    expect(prisma.task.count).not.toHaveBeenCalled();
   });
 
   it("returns demo analytics domain data", async () => {
@@ -526,6 +520,131 @@ describe("GET /api/analytics", () => {
     expect(prisma.stripeCustomerLink.findMany).toHaveBeenCalledWith({
       where: { userId: "user-1" },
     });
+  });
+
+  it("dedupes merged active subscriptions by unique customer identity", async () => {
+    const { fetchHubSpotData, fetchStripeData } = await import("@/lib/analytics/fetchers");
+    vi.mocked(fetchHubSpotData).mockResolvedValue({
+      ...HUBSPOT_DATA,
+      funnel: {
+        ...HUBSPOT_DATA.funnel,
+        activeSubscriptions: 3,
+      },
+      deals: [
+        {
+          dealId: "deal-sub-1",
+          dealName: "Acme Subscription",
+          stageId: "subscription",
+          stageLabel: "Subscription",
+          amount: 5000,
+          source: "Organic",
+          ownerId: "owner-1",
+          updatedAt: "2026-02-10T00:00:00.000Z",
+          stripeCustomerId: "cus_dup",
+          primaryContactEmail: "ops@acme.com",
+        },
+        {
+          dealId: "deal-sub-2",
+          dealName: "Beta Subscription",
+          stageId: "subscription",
+          stageLabel: "Subscription",
+          amount: 3000,
+          source: "Paid",
+          ownerId: "owner-2",
+          updatedAt: "2026-02-11T00:00:00.000Z",
+          stripeCustomerId: null,
+          primaryContactEmail: "owner@beta.io",
+        },
+        {
+          dealId: "deal-sub-3",
+          dealName: "Gamma Subscription",
+          stageId: "subscription",
+          stageLabel: "Subscription",
+          amount: 2000,
+          source: "Referral",
+          ownerId: "owner-3",
+          updatedAt: "2026-02-12T00:00:00.000Z",
+          stripeCustomerId: null,
+          primaryContactEmail: "team@gamma.io",
+        },
+      ],
+    } as never);
+    vi.mocked(fetchStripeData).mockResolvedValue({
+      ...STRIPE_DATA,
+      subscriptions: {
+        ...STRIPE_DATA.subscriptions,
+        active: 3,
+        activeCustomerRefs: [
+          { customerId: "cus_dup", email: "ops@acme.com", emailDomain: "acme.com" },
+          { customerId: "cus_dup", email: "billing@acme.com", emailDomain: "acme.com" },
+          { customerId: "cus_beta", email: "owner@beta.io", emailDomain: "beta.io" },
+        ],
+      },
+    } as never);
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=finance"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.financialPlanning.subscriptionOverview).toEqual({
+      mergedActiveSubscriptions: 3,
+      stripeActiveSubscriptions: 3,
+      hubspotActiveSubscriptions: 3,
+    });
+  });
+
+  it("keeps budget category actuals unavailable until spend is mapped to budget lines", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    vi.mocked(prisma.budget.findMany).mockResolvedValue([
+      {
+        id: "budget-1",
+        name: "Operating Plan",
+        period: "MONTHLY",
+        startDate: new Date("2026-02-01T00:00:00.000Z"),
+        endDate: new Date("2026-02-28T00:00:00.000Z"),
+        lineItems: [
+          {
+            id: "line-1",
+            category: "MARKETING",
+            plannedAmount: 5000,
+            notes: null,
+          },
+          {
+            id: "line-2",
+            category: "PAYROLL",
+            plannedAmount: 12000,
+            notes: null,
+          },
+        ],
+      },
+    ] as never);
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=finance"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.financialPlanning.activeBudget.totalActual).toBeNull();
+    expect(body.financialPlanning.activeBudget.totalVariance).toBeNull();
+    expect(body.financialPlanning.activeBudget.lineItems).toEqual([
+      expect.objectContaining({
+        id: "line-1",
+        category: "marketing",
+        plannedAmount: 5000,
+        actualAmount: null,
+        variance: null,
+        variancePct: null,
+      }),
+      expect.objectContaining({
+        id: "line-2",
+        category: "payroll",
+        plannedAmount: 12000,
+        actualAmount: null,
+        variance: null,
+        variancePct: null,
+      }),
+    ]);
   });
 
   it("returns process analytics domain data", async () => {
@@ -895,9 +1014,9 @@ describe("GET /api/analytics", () => {
       ).toBe(true);
       expect(
         vi.mocked(readLatestSnapshot).mock.calls.some(
-          ([input]) => input.userId === "user-1" && input.providerKey === "product"
+          ([input]) => input.providerKey === "product"
         )
-      ).toBe(true);
+      ).toBe(false);
 
       expect(
         vi.mocked(storeAnalyticsSnapshot).mock.calls.some(
@@ -906,9 +1025,9 @@ describe("GET /api/analytics", () => {
       ).toBe(true);
       expect(
         vi.mocked(storeAnalyticsSnapshot).mock.calls.some(
-          ([input]) => input.userId === "user-1" && input.providerKey === "product"
+          ([input]) => input.providerKey === "product"
         )
-      ).toBe(true);
+      ).toBe(false);
 
       expect(vi.mocked(fetchIntegrationTelemetryData).mock.calls.length).toBeGreaterThan(0);
       expect(

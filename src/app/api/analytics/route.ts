@@ -42,7 +42,6 @@ import type {
   ForecastScenarioData,
   GoalMetric,
   GoalStatus,
-  ProductSuccessData,
   StripeData,
   MercuryData,
   HubSpotData,
@@ -65,7 +64,6 @@ type DomainKey =
   | "coda"
   | "semrush"
   | "pylon"
-  | "product"
   | "googleWorkspace"
   | "slack"
   | "hubspotOps"
@@ -95,7 +93,6 @@ const ALL_DOMAINS: DomainKey[] = [
   "coda",
   "semrush",
   "pylon",
-  "product",
   "googleWorkspace",
   "slack",
   "hubspotOps",
@@ -118,7 +115,6 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "stripe",
     "mercury",
     "pylon",
-    "product",
     "googleWorkspace",
     "slack",
     "lifecycleFunnel",
@@ -173,7 +169,6 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "customer-success": [
     "pylon",
     "coda",
-    "product",
     "googleWorkspace",
     "slack",
     "codaOps",
@@ -198,8 +193,6 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "sales-google-workspace": ["googleWorkspace"],
   "sales-slack": ["slack"],
   "cs-pylon": ["pylon"],
-  "cs-coda": ["coda", "codaOps"],
-  "cs-product": ["product"],
   "cs-google-workspace": ["googleWorkspace"],
   "cs-slack": ["slack"],
 
@@ -425,46 +418,6 @@ async function hydrateStripeCustomerLinks(
   });
 }
 
-async function computeProductSuccessData(from: Date, to: Date): Promise<ProductSuccessData> {
-  const [createdTasksInRange, completedTasksInRange, overdueOpenTasks, contributors] = await Promise.all([
-    prisma.task.count({ where: { createdAt: { gte: from, lte: to } } }),
-    prisma.task.count({ where: { completedOn: { gte: from, lte: to } } }),
-    prisma.task.count({
-      where: {
-        status: { not: "DONE" },
-        dueDate: { lt: to },
-      },
-    }),
-    prisma.statusHistory.findMany({
-      where: {
-        changedAt: { gte: from, lte: to },
-        changedBy: { not: null },
-      },
-      distinct: ["changedBy"],
-      select: { changedBy: true },
-    }),
-  ]);
-
-  const activeContributors = contributors.filter((entry) => Boolean(entry.changedBy)).length;
-  const backlogGrowth = createdTasksInRange - completedTasksInRange;
-  const throughputRate =
-    createdTasksInRange > 0 ? Math.round((completedTasksInRange / createdTasksInRange) * 10000) / 100 : null;
-
-  return {
-    activeContributors,
-    createdTasksInRange,
-    completedTasksInRange,
-    overdueOpenTasks,
-    backlogGrowth,
-    throughputRate,
-    _meta: {
-      fetchedAt: new Date().toISOString(),
-      nextRefresh: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-      source: "live",
-    },
-  };
-}
-
 function buildRecommendations(data: AnalyticsDashboardData): AnalyticsRecommendation[] {
   const recommendations: AnalyticsRecommendation[] = [];
 
@@ -498,17 +451,6 @@ function buildRecommendations(data: AnalyticsDashboardData): AnalyticsRecommenda
       title: "Cash runway is below 4 months",
       insight: `Estimated runway is ${(data.mercury?.cashFlow?.runway ?? 0).toFixed(1)} months.`,
       suggestedAction: "Cut non-performing spend and prioritize collections/revenue acceleration this month.",
-    });
-  }
-
-  if ((data.product?.backlogGrowth ?? 0) > 0) {
-    recommendations.push({
-      id: "cs-backlog",
-      section: "customer-success",
-      severity: "warning",
-      title: "Execution backlog is growing",
-      insight: `Backlog grew by ${data.product?.backlogGrowth ?? 0} items in the selected range.`,
-      suggestedAction: "Enable queue-throttling automations and rebalance owner load across active contributors.",
     });
   }
 
@@ -617,6 +559,29 @@ function normalizeEmailDomain(value: string | null | undefined): string | null {
   return normalized;
 }
 
+function subscriptionIdentityKey(input: {
+  customerId?: string | null;
+  email?: string | null;
+  emailDomain?: string | null;
+  fallback: string;
+}): string {
+  const customerId = input.customerId?.trim();
+  if (customerId && customerId !== "Unknown customer") {
+    return `customer:${customerId}`;
+  }
+
+  const email = normalizeEmail(input.email);
+  if (email) {
+    return `email:${email}`;
+  }
+
+  const emailDomain = input.emailDomain?.trim().toLowerCase();
+  if (emailDomain) {
+    return `domain:${emailDomain}`;
+  }
+
+  return `fallback:${input.fallback}`;
+}
 function buildSubscriptionOverview(data: AnalyticsDashboardData): FinancialPlanningData["subscriptionOverview"] {
   const stripeRefs = data.stripe?.subscriptions.activeCustomerRefs ?? [];
   const hubspotDeals = (data.hubspot?.deals ?? []).filter(
@@ -634,10 +599,20 @@ function buildSubscriptionOverview(data: AnalyticsDashboardData): FinancialPlann
   const stripeDomains = new Set(
     stripeRefs.map((ref) => ref.emailDomain?.trim().toLowerCase() ?? null).filter(Boolean) as string[],
   );
+  const stripeIdentities = new Set(
+    stripeRefs.map((ref, index) =>
+      subscriptionIdentityKey({
+        customerId: ref.customerId,
+        email: ref.email,
+        emailDomain: ref.emailDomain,
+        fallback: `${index}`,
+      }),
+    ),
+  );
 
-  let hubspotOnlyCount = 0;
+  const hubspotOnlyIdentities = new Set<string>();
 
-  for (const deal of hubspotDeals) {
+  for (const [index, deal] of hubspotDeals.entries()) {
     const customerId = deal.stripeCustomerId?.trim() || null;
     const email = normalizeEmail(deal.primaryContactEmail);
     const emailDomain = normalizeEmailDomain(deal.primaryContactEmail);
@@ -646,11 +621,18 @@ function buildSubscriptionOverview(data: AnalyticsDashboardData): FinancialPlann
     if (email && stripeEmails.has(email)) continue;
     if (emailDomain && stripeDomains.has(emailDomain)) continue;
 
-    hubspotOnlyCount += 1;
+    hubspotOnlyIdentities.add(
+      subscriptionIdentityKey({
+        customerId,
+        email,
+        emailDomain,
+        fallback: deal.dealId || `${index}`,
+      }),
+    );
   }
 
   return {
-    mergedActiveSubscriptions: stripeRefs.length + hubspotOnlyCount,
+    mergedActiveSubscriptions: stripeIdentities.size + hubspotOnlyIdentities.size,
     stripeActiveSubscriptions: data.stripe?.subscriptions.active ?? 0,
     hubspotActiveSubscriptions: data.hubspot?.funnel.activeSubscriptions ?? hubspotDeals.length,
   };
@@ -664,7 +646,7 @@ async function buildFinancialPlanningData(
     { buildProfitAndLossCore: buildProfitAndLoss },
     { computeUnitEconomics },
     { buildDefaultScenarios, buildForecastScenario },
-    { computeBudgetActuals, computeBudgetSummary },
+    { computeBudgetSummary },
   ] = await Promise.all([
     loadPnlBuilder(),
     loadUnitEconomicsBuilder(),
@@ -729,9 +711,10 @@ async function buildFinancialPlanningData(
       totalActual: null,
       totalVariance: null,
     };
-    const lineItems: BudgetLineItemData[] = mercury?.cashFlow
-      ? budgetDraft.lineItems
-      : computeBudgetActuals(budgetDraft, mercury);
+    // Do not fabricate category actuals from aggregate Mercury outflows.
+    // Until transaction categories are mapped to budget lines, expose only the
+    // planned baseline and let the UI render actuals/variance as unavailable.
+    const lineItems: BudgetLineItemData[] = budgetDraft.lineItems;
     const summary = computeBudgetSummary(lineItems);
     return {
       id: b.id,
@@ -1336,11 +1319,6 @@ export async function GET(request: Request) {
           },
         }]
       : []),
-    {
-      key: "product" as const,
-      snapshotUserId: userId,
-      fn: () => computeProductSuccessData(fromDate, toDate),
-    },
     {
       key: "googleWorkspace" as const,
       snapshotUserId: integrationUserId,

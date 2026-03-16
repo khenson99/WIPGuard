@@ -159,7 +159,6 @@ function TelemetryDashboard({
           { label: "Errored Rules", value: fmtInt(telemetry.erroredRules) },
           { label: "Events in Range", value: fmtInt(telemetry.eventsInRange) },
           { label: "Receipts", value: fmtInt(telemetry.receiptsInRange) },
-          { label: "Tasks Created", value: fmtInt(telemetry.tasksCreatedInRange) },
           { label: "Failures", value: fmtInt(telemetry.failuresInRange) },
           { label: "Failure Ratio", value: fmtPct((telemetry.failuresInRange / Math.max(1, telemetry.eventsInRange)) * 100) },
         ]}
@@ -189,8 +188,8 @@ function TelemetryDashboard({
           ) : (
             <div className="mt-3 grid grid-cols-7 gap-2">
               {telemetry.trend.slice(-7).map((point) => {
-                const total = point.receipts + point.createdTasks;
-                const maxTotal = Math.max(1, ...telemetry.trend.map((t) => t.receipts + t.createdTasks));
+                const total = point.receipts;
+                const maxTotal = Math.max(1, ...telemetry.trend.map((t) => t.receipts));
                 const height = Math.max(8, Math.round((total / maxTotal) * 100));
                 return (
                   <div key={point.date} className="flex flex-col items-center gap-1">
@@ -907,29 +906,6 @@ export function CustomerSuccessCodaDashboard({ data }: IntegrationChildDashboard
   );
 }
 
-export function CustomerSuccessProductDashboard({ data }: IntegrationChildDashboardProps) {
-  const product = data?.product;
-  const reasons = providerErrors(data, ["product"]);
-  if (!product) {
-    return <EmptyProviderState title="Product data is unavailable" description="Product execution metrics are unavailable for this range." reasons={reasons} />;
-  }
-
-  return (
-    <DashboardShell title="Product" subtitle="Execution throughput and backlog health for customer-success commitments.">
-      <MetricGrid
-        metrics={[
-          { label: "Active Contributors", value: fmtInt(product.activeContributors) },
-          { label: "Created Tasks", value: fmtInt(product.createdTasksInRange) },
-          { label: "Completed Tasks", value: fmtInt(product.completedTasksInRange) },
-          { label: "Overdue Open", value: fmtInt(product.overdueOpenTasks) },
-          { label: "Backlog Growth", value: fmtInt(product.backlogGrowth) },
-          { label: "Throughput", value: fmtRatio(product.throughputRate) },
-        ]}
-      />
-    </DashboardShell>
-  );
-}
-
 export function CustomerSuccessGoogleWorkspaceDashboard({ data }: IntegrationChildDashboardProps) {
   return (
     <TelemetryDashboard
@@ -969,8 +945,6 @@ export const INTEGRATION_CHILD_DASHBOARD_REGISTRY: Record<string, (props: Integr
   "sales-google-workspace": SalesGoogleWorkspaceDashboard,
   "sales-slack": SalesSlackDashboard,
   "cs-pylon": CustomerSuccessPylonDashboard,
-  "cs-coda": CustomerSuccessCodaDashboard,
-  "cs-product": CustomerSuccessProductDashboard,
   "cs-google-workspace": CustomerSuccessGoogleWorkspaceDashboard,
   "cs-slack": CustomerSuccessSlackDashboard,
 };

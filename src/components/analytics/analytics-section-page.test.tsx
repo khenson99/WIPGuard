@@ -79,4 +79,46 @@ describe("AnalyticsSectionPage", () => {
       expect(screen.getByText("No customer journey data yet")).toBeTruthy();
     });
   });
+
+  it("does not show stale-provider banner when a provider only errored without stale fallback data", async () => {
+    const payload = createEmptyAnalyticsDashboardData({
+      freshness: {},
+      timeRange: {
+        preset: "30d",
+        from: "2026-01-01",
+        to: "2026-01-30",
+        days: 30,
+        label: "Last 30 days",
+      },
+    });
+    payload.meta = {
+      servedAt: "2026-01-30T00:00:00.000Z",
+      section: "ads-traffic",
+      forceRefresh: false,
+      isPartial: true,
+      staleDomains: ["metaPage"],
+      erroredDomains: ["metaPage"],
+    };
+    payload.staleDomains = ["metaPage"];
+    payload.errors.push({
+      source: "metaPage",
+      message: "Meta Page request failed (500)",
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => payload,
+      }))
+    );
+
+    render(<AnalyticsSectionPage sectionId="ads-traffic" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Ads & Traffic")).toBeTruthy();
+    });
+
+    expect(screen.queryByText(/Showing cached data for stale providers:/)).toBeNull();
+  });
 });

@@ -83,7 +83,7 @@ export const WORKSPACE_NAV_ITEMS: WorkspaceNavItem[] = [
     id: "automations",
     label: "Automations",
     href: "/automations",
-    description: "Workflow orchestration, run health, and artifacts.",
+    description: "Workflow orchestration, monitoring, and artifacts.",
     children: [
       {
         id: "automations-home",

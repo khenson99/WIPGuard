@@ -29,7 +29,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const scope = scopeFromRequest(request);
     if (!scope) {
       return NextResponse.json(
-        { error: "scope query param is required (tasks|projects)" },
+        { error: "scope query param is required (projects)" },
         { status: 400 }
       );
     }

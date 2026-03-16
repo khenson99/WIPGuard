@@ -49,15 +49,18 @@ interface TenantsResponse {
   tenants: RetentionTenantRow[];
 }
 
+interface RetentionDashboardPayload {
+  summary: SummaryResponse;
+  tenants: TenantsResponse;
+  tenantsError: string | null;
+}
+
 export function RetentionDashboard() {
   const query = useRetentionQuery();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const resource = useDashboardResource<{
-    summary: SummaryResponse;
-    tenants: TenantsResponse;
-  }>({
+  const resource = useDashboardResource<RetentionDashboardPayload>({
     cacheKey: `retention-dashboard:${query || "default"}`,
     deps: [query],
     async load({ signal }) {
@@ -69,12 +72,21 @@ export function RetentionDashboard() {
       if (!summaryResponse.ok) {
         throw new Error(`Retention summary request failed (${summaryResponse.status})`);
       }
-      if (!tenantsResponse.ok) {
-        throw new Error(`Retention tenants request failed (${tenantsResponse.status})`);
+      const summary = (await summaryResponse.json()) as SummaryResponse;
+      if (tenantsResponse.ok) {
+        return {
+          summary,
+          tenants: (await tenantsResponse.json()) as TenantsResponse,
+          tenantsError: null,
+        };
       }
       return {
-        summary: (await summaryResponse.json()) as SummaryResponse,
-        tenants: (await tenantsResponse.json()) as TenantsResponse,
+        summary,
+        tenants: {
+          generatedAt: summary.generatedAt,
+          tenants: [],
+        },
+        tenantsError: `Retention tenant list request failed (${tenantsResponse.status})`,
       };
     },
     getLastUpdatedAt: (payload) => payload.summary.generatedAt,
@@ -82,6 +94,7 @@ export function RetentionDashboard() {
 
   const summary = resource.data?.summary ?? null;
   const tenants = resource.data?.tenants.tenants;
+  const tenantsError = resource.data?.tenantsError ?? null;
   const ownerOptions = useMemo(
     () =>
       [...new Set((tenants ?? []).map((tenant) => tenant.ownerName).filter((value): value is string => Boolean(value)))]
@@ -130,7 +143,7 @@ export function RetentionDashboard() {
   };
   const hasActiveFilters = Object.values(filters).some((value) => value.length > 0);
 
-  if ((tenants?.length ?? 0) === 0 && !hasActiveFilters) {
+  if ((tenants?.length ?? 0) === 0 && summary.totals.tenants === 0 && !hasActiveFilters && !tenantsError) {
     return (
       <div className="space-y-4 p-4">
         {resource.stale ? (
@@ -162,6 +175,13 @@ export function RetentionDashboard() {
           refreshing={resource.refreshing}
           onRefresh={resource.refresh}
           label="Showing cached retention analytics while the latest snapshot refreshes."
+        />
+      ) : null}
+      {tenantsError ? (
+        <DashboardErrorBanner
+          message={`${tenantsError}. Summary metrics are still shown below.`}
+          onRetry={resource.refresh}
+          retryLabel={resource.refreshing ? "Refreshing..." : "Retry tenant view"}
         />
       ) : null}
 
@@ -335,79 +355,91 @@ export function RetentionDashboard() {
             </div>
             <p className="text-xs text-muted-foreground">{(tenants ?? []).length} tenants</p>
           </div>
-          <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-border text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                  <th className="pb-2 pr-4">Tenant</th>
-                  <th className="pb-2 pr-4">Status</th>
-                  <th className="pb-2 pr-4">LIR</th>
-                  <th className="pb-2 pr-4">Activity</th>
-                  <th className="pb-2 pr-4">Trend</th>
-                  <th className="pb-2 pr-4">Overlay</th>
-                  <th className="pb-2">Reason codes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(tenants ?? []).map((tenant) => (
-                  <tr key={tenant.customerRecordId} className="border-b border-border/60 align-top">
-                    <td className="py-3 pr-4">
-                      <Link
-                        href={`/analytics/retention/${tenant.customerRecordId}`}
-                        className="font-medium text-foreground hover:text-primary"
-                      >
-                        {tenant.tenantName}
-                      </Link>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {tenant.ownerName ?? "Unassigned"} · {tenant.segment ?? "Unknown segment"} · {tenant.plan ?? "Unknown plan"}
-                      </p>
-                    </td>
-                    <td className="py-3 pr-4">
-                      <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-medium ${statusClass(tenant.status)}`}>
-                        {tenant.status}
-                      </span>
-                    </td>
-                    <td className="py-3 pr-4">
-                      <p className="font-medium text-foreground">
-                        {tenant.primaryLirPassed ? "Pass" : "Fail"} · {tenant.primaryLirLabel}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {fmtNum(tenant.primaryLirValue)} / {fmtNum(tenant.primaryLirThreshold)}
-                      </p>
-                    </td>
-                    <td className="py-3 pr-4 text-foreground">{fmtNum(tenant.currentMonthActivity)}</td>
-                    <td className="py-3 pr-4">
-                      <div className="flex items-center gap-1 text-foreground">
-                        <TrendingDown className={`h-4 w-4 ${(tenant.trendVsPriorPct ?? 0) < 0 ? "text-red-500" : "text-emerald-500 rotate-180"}`} />
-                        {fmtPct(tenant.trendVsPriorPct)}
-                      </div>
-                    </td>
-                    <td className="py-3 pr-4">
-                      <p className="text-xs text-muted-foreground">
-                        {tenant.supportRisk ? "Support risk" : "Support ok"} · {tenant.billingRisk ? "Billing risk" : "Billing ok"} · {tenant.icp ? "ICP" : "Non-ICP"}
-                      </p>
-                    </td>
-                    <td className="py-3">
-                      <div className="flex flex-wrap gap-2">
-                        {tenant.reasonCodes.slice(0, 3).map((reason) => (
-                          <span
-                            key={reason.code}
-                            title={reason.detail}
-                            className="rounded-full border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground"
-                          >
-                            {reason.label}
-                          </span>
-                        ))}
-                        {tenant.reasonCodes.length === 0 ? (
-                          <span className="text-xs text-muted-foreground">No active warnings</span>
-                        ) : null}
-                      </div>
-                    </td>
+          {tenantsError ? (
+            <div className="mt-4 rounded-lg border border-border bg-background px-4 py-6 text-sm text-muted-foreground">
+              Tenant-level retention rows are temporarily unavailable. Refresh to retry this panel.
+            </div>
+          ) : (tenants?.length ?? 0) === 0 ? (
+            <div className="mt-4 rounded-lg border border-border bg-background px-4 py-6 text-sm text-muted-foreground">
+              {hasActiveFilters
+                ? "No tenants match the current retention filters. Adjust filters to expand this view."
+                : "Retention summary metrics are available, but no tenant-level rows were returned for this range yet."}
+            </div>
+          ) : (
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-border text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                    <th className="pb-2 pr-4">Tenant</th>
+                    <th className="pb-2 pr-4">Status</th>
+                    <th className="pb-2 pr-4">LIR</th>
+                    <th className="pb-2 pr-4">Activity</th>
+                    <th className="pb-2 pr-4">Trend</th>
+                    <th className="pb-2 pr-4">Overlay</th>
+                    <th className="pb-2">Reason codes</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {(tenants ?? []).map((tenant) => (
+                    <tr key={tenant.customerRecordId} className="border-b border-border/60 align-top">
+                      <td className="py-3 pr-4">
+                        <Link
+                          href={`/analytics/retention/${tenant.customerRecordId}`}
+                          className="font-medium text-foreground hover:text-primary"
+                        >
+                          {tenant.tenantName}
+                        </Link>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {tenant.ownerName ?? "Unassigned"} · {tenant.segment ?? "Unknown segment"} · {tenant.plan ?? "Unknown plan"}
+                        </p>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-medium ${statusClass(tenant.status)}`}>
+                          {tenant.status}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <p className="font-medium text-foreground">
+                          {tenant.primaryLirPassed ? "Pass" : "Fail"} · {tenant.primaryLirLabel}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {fmtNum(tenant.primaryLirValue)} / {fmtNum(tenant.primaryLirThreshold)}
+                        </p>
+                      </td>
+                      <td className="py-3 pr-4 text-foreground">{fmtNum(tenant.currentMonthActivity)}</td>
+                      <td className="py-3 pr-4">
+                        <div className="flex items-center gap-1 text-foreground">
+                          <TrendingDown className={`h-4 w-4 ${(tenant.trendVsPriorPct ?? 0) < 0 ? "text-red-500" : "text-emerald-500 rotate-180"}`} />
+                          {fmtPct(tenant.trendVsPriorPct)}
+                        </div>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <p className="text-xs text-muted-foreground">
+                          {tenant.supportRisk ? "Support risk" : "Support ok"} · {tenant.billingRisk ? "Billing risk" : "Billing ok"} · {tenant.icp ? "ICP" : "Non-ICP"}
+                        </p>
+                      </td>
+                      <td className="py-3">
+                        <div className="flex flex-wrap gap-2">
+                          {tenant.reasonCodes.slice(0, 3).map((reason) => (
+                            <span
+                              key={reason.code}
+                              title={reason.detail}
+                              className="rounded-full border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground"
+                            >
+                              {reason.label}
+                            </span>
+                          ))}
+                          {tenant.reasonCodes.length === 0 ? (
+                            <span className="text-xs text-muted-foreground">No active warnings</span>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         <div className="space-y-4">
@@ -434,6 +466,11 @@ export function RetentionDashboard() {
                   </p>
                 </div>
               ))}
+              {summary.byIcp.length === 0 ? (
+                <p className="rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+                  No ICP or segment rollups are available yet.
+                </p>
+              ) : null}
             </div>
           </section>
 
@@ -483,6 +520,11 @@ export function RetentionDashboard() {
                   <p className="mt-1 text-xs text-muted-foreground">Coverage {fmtPct(coverage.coveragePct)}</p>
                 </div>
               ))}
+              {summary.dataCoverage.length === 0 ? (
+                <p className="rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+                  No source coverage diagnostics are available yet.
+                </p>
+              ) : null}
             </div>
           </section>
         </div>

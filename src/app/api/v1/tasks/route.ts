@@ -1,15 +1,11 @@
 /**
- * API v1: Tasks
+ * API v1: Retired Work Endpoint
  *
  * Versioned endpoint: /api/v1/tasks
- * This re-exports the main tasks route handlers for version pinning.
- *
- * When v2 is needed, create /api/v2/tasks/route.ts with new behavior
- * while keeping this v1 route stable.
+ * This re-exports the retired tasks handler for backward compatibility.
  */
 
 export const dynamic = "force-dynamic";
 
-// Re-export from the main (unversioned) route
-// This allows /api/v1/tasks and /api/tasks to serve the same handlers
+// Re-export the retired compatibility handler from the main route.
 export { GET, POST } from "../../tasks/route";

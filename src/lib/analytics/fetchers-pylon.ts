@@ -27,7 +27,8 @@ function isWaitingOnTeam(issue: PylonIssue): boolean {
   return (
     status.includes("waiting_on_team") ||
     status.includes("pending_internal") ||
-    status === "open"
+    status.includes("awaiting_internal") ||
+    status.includes("waiting on team")
   );
 }
 

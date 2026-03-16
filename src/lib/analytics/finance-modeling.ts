@@ -175,7 +175,7 @@ export function buildRunwayScenarios(
   months: number = 24,
 ): RunwayScenario[] {
   const totalBalance = data.mercury?.cashFlow?.totalBalance ?? 0;
-  const currentBurn = data.mercury?.cashFlow?.burnRate ?? 0;
+  const currentOutflows = data.mercury?.cashFlow?.outflows30d ?? 0;
   const currentInflows = data.mercury?.cashFlow?.inflows30d ?? 0;
 
   const scenarios: { label: string; burnMultiplier: number; inflowMultiplier: number }[] = [
@@ -185,7 +185,7 @@ export function buildRunwayScenarios(
   ];
 
   return scenarios.map(({ label, burnMultiplier, inflowMultiplier }) => {
-    const monthlyBurn = currentBurn * burnMultiplier;
+    const monthlyBurn = currentOutflows * burnMultiplier;
     const monthlyInflow = currentInflows * inflowMultiplier;
     const projectedCash: RunwayScenarioPoint[] = [];
     let cash = totalBalance;
@@ -364,7 +364,6 @@ export function runSensitivityAnalysis(
   const churnRate = (data.stripe?.subscriptions?.churnRate ?? 0) / 100;
   const burnRate = data.mercury?.cashFlow?.burnRate ?? 0;
   const totalBalance = data.mercury?.cashFlow?.totalBalance ?? 0;
-  const inflows = data.mercury?.cashFlow?.inflows30d ?? 0;
 
   // Helper: compute 12-month MRR from rates
   function mrrAt12(growth: number, churn: number): number {
@@ -377,9 +376,8 @@ export function runSensitivityAnalysis(
 
   // Helper: compute runway from burn
   function runwayFromBurn(burn: number): number {
-    const netBurn = burn - inflows;
-    if (netBurn <= 0) return 999;
-    return totalBalance / netBurn;
+    if (burn <= 0) return 999;
+    return totalBalance / burn;
   }
 
   const baseMrr12 = mrrAt12(growthRate, churnRate);

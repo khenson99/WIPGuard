@@ -274,15 +274,13 @@ export function makeAnalyticsData(): AnalyticsDashboardData {
       google_workspace: { status: "CONNECTED", stale: false },
       slack: { status: "CONNECTED", stale: true },
       coda: { status: "CONNECTED", stale: false },
+      pylon: { status: "CONNECTED", stale: false },
     },
     pylon: {
       openConversations: 28,
       urgentConversations: 18,
-    },
-    product: {
-      backlogGrowth: 8,
-      throughputRate: 62.4,
-      overdueOpenTasks: 9,
+      waitingOnTeam: 12,
+      avgFirstResponseMinutes: 180,
     },
     coda: {
       totalCards: 42,

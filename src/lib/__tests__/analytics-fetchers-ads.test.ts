@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchGoogleAdsData,
   fetchMetaAdsData,
+  fetchMetaPageData,
   fetchMetaInstagramData,
   fetchRedditAdsData,
 } from "@/lib/analytics/fetchers-ads";
@@ -189,6 +190,57 @@ describe("analytics ads fetchers", () => {
     await expect(fetchMetaAdsData("123|not-a-user-token", "12345")).rejects.toThrow(
       "looks like an app access token"
     );
+  });
+
+  it("hydrates Meta Page follower, traffic, and click metrics from insights", async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          fan_count: 100,
+          followers_count: 150,
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            { name: "page_impressions", values: [{ value: 300 }, { value: 200 }] },
+            { name: "page_engaged_users", values: [{ value: 80 }, { value: 20 }] },
+            { name: "page_views_total", values: [{ value: 42 }, { value: 18 }] },
+            { name: "page_total_actions", values: [{ value: 9 }, { value: 6 }] },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              message: "Launch post",
+              created_time: "2026-02-01T00:00:00+0000",
+              insights: {
+                data: [
+                  { name: "post_impressions", values: [{ value: 120 }] },
+                  { name: "post_engaged_users", values: [{ value: 14 }] },
+                ],
+              },
+            },
+          ],
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchMetaPageData("meta-token", "page_123", {
+      fromDate: new Date("2026-02-01T00:00:00.000Z"),
+      toDate: new Date("2026-02-24T00:00:00.000Z"),
+    });
+
+    expect(data.pageLikes).toBe(100);
+    expect(data.pageFollowers).toBe(150);
+    expect(data.postReach30d).toBe(500);
+    expect(data.postEngagement30d).toBe(100);
+    expect(data.traffic).toBe(60);
+    expect(data.clicks).toBe(15);
   });
 
   it("uses Reddit v3 report shape and joins campaign metadata", async () => {
@@ -498,6 +550,15 @@ describe("analytics ads fetchers", () => {
             },
           ],
         })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            { name: "reach", values: [{ value: 250 }] },
+            { name: "profile_views", values: [{ value: 31 }] },
+            { name: "website_clicks", values: [{ value: 7 }] },
+          ],
+        })
       );
 
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
@@ -511,7 +572,10 @@ describe("analytics ads fetchers", () => {
     );
 
     expect(data.followers).toBe(912);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(data.reach30d).toBe(250);
+    expect(data.traffic).toBe(31);
+    expect(data.clicks).toBe(7);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
 
     const mediaUrl = String(fetchMock.mock.calls[2]?.[0] ?? "");
     expect(mediaUrl).toContain("/ig_123/media");
@@ -542,6 +606,15 @@ describe("analytics ads fetchers", () => {
             },
           ],
         })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            { name: "reach", values: [{ value: 90 }] },
+            { name: "profile_views", values: [{ value: 14 }] },
+            { name: "website_clicks", values: [{ value: 3 }] },
+          ],
+        })
       );
 
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
@@ -555,7 +628,10 @@ describe("analytics ads fetchers", () => {
     );
 
     expect(data.followers).toBe(321);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(data.reach30d).toBe(90);
+    expect(data.traffic).toBe(14);
+    expect(data.clicks).toBe(3);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
 
     const firstUrl = String(fetchMock.mock.calls[0]?.[0] ?? "");
     expect(firstUrl).toContain("/page_1");

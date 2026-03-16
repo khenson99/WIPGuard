@@ -1576,11 +1576,20 @@ export async function fetchMercuryData(
   };
 
   type MercuryTransaction = {
+    id?: string;
     postedAt?: string;
     createdAt?: string;
     timestamp?: string;
     status?: string;
     amount?: number;
+    bankDescription?: string | null;
+    counterpartyName?: string | null;
+    counterpartyNickname?: string | null;
+    mercuryCategory?: string | null;
+  };
+
+  type MercuryLedgerTransaction = MercuryTransaction & {
+    accountId: string;
   };
 
   const headers: Record<string, string> = {
@@ -1588,6 +1597,112 @@ export async function fetchMercuryData(
     "Content-Type": "application/json",
   };
   const baseUrl = "https://api.mercury.com/api/v1";
+  const excludedStatuses = new Set([
+    "pending",
+    "scheduled",
+    "cancelled",
+    "canceled",
+    "failed",
+    "rejected",
+    "declined",
+    "voided",
+    "reversed",
+    "returned",
+  ]);
+
+  function shouldCountTransaction(tx: MercuryTransaction): boolean {
+    if (!Number.isFinite(tx.amount ?? Number.NaN) || tx.amount === 0) {
+      return false;
+    }
+    const status = (tx.status ?? "").trim().toLowerCase();
+    if (excludedStatuses.has(status)) {
+      return false;
+    }
+    if (tx.postedAt) {
+      const postedMs = Date.parse(tx.postedAt);
+      if (Number.isFinite(postedMs)) {
+        return true;
+      }
+    }
+    return (
+      status.length === 0 ||
+      status === "sent" ||
+      status === "posted" ||
+      status === "completed" ||
+      status === "settled" ||
+      status === "processed" ||
+      status === "cleared" ||
+      status === "succeeded"
+    );
+  }
+
+  function transactionDateKey(tx: MercuryTransaction): string | null {
+    const timestamp = tx.postedAt || tx.createdAt || tx.timestamp || "";
+    if (!timestamp) return null;
+    const parsed = Date.parse(timestamp);
+    if (!Number.isFinite(parsed)) return null;
+    return new Date(parsed).toISOString().split("T")[0] ?? null;
+  }
+
+  function textSuggestsInternalTransfer(tx: MercuryTransaction): boolean {
+    const fields = [
+      tx.bankDescription,
+      tx.counterpartyName,
+      tx.counterpartyNickname,
+      tx.mercuryCategory,
+    ]
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .map((value) => value.trim().toLowerCase());
+
+    return fields.some((value) =>
+      value.includes("internal transfer") ||
+      value.includes("between your mercury accounts") ||
+      value.includes("between your accounts")
+    );
+  }
+
+  function filterInternalTransferPairs(transactions: MercuryLedgerTransaction[]): MercuryLedgerTransaction[] {
+    const grouped = new Map<string, MercuryLedgerTransaction[]>();
+
+    for (const tx of transactions) {
+      const amount = tx.amount ?? 0;
+      const dateKey = transactionDateKey(tx);
+      if (!dateKey || !Number.isFinite(amount) || amount === 0) continue;
+      const key = `${dateKey}:${Math.abs(amount)}`;
+      const bucket = grouped.get(key) ?? [];
+      bucket.push(tx);
+      grouped.set(key, bucket);
+    }
+
+    const excludedIds = new Set<string>();
+    const excludedRefs = new Set<MercuryLedgerTransaction>();
+
+    for (const bucket of grouped.values()) {
+      const negatives = bucket.filter((tx) => (tx.amount ?? 0) < 0);
+      const positives = bucket.filter((tx) => (tx.amount ?? 0) > 0);
+      if (negatives.length === 0 || positives.length === 0) continue;
+
+      const hinted = bucket.some(textSuggestsInternalTransfer);
+      if (!hinted && (negatives.length !== 1 || positives.length !== 1)) {
+        continue;
+      }
+
+      const availablePositives = [...positives];
+      for (const debit of negatives) {
+        const matchIndex = availablePositives.findIndex((credit) => credit.accountId !== debit.accountId);
+        if (matchIndex === -1) continue;
+        const [credit] = availablePositives.splice(matchIndex, 1);
+        if (debit.id) excludedIds.add(debit.id); else excludedRefs.add(debit);
+        if (credit.id) excludedIds.add(credit.id); else excludedRefs.add(credit);
+      }
+    }
+
+    return transactions.filter((tx) => {
+      if (tx.id && excludedIds.has(tx.id)) return false;
+      if (!tx.id && excludedRefs.has(tx)) return false;
+      return true;
+    });
+  }
 
   // Fetch accounts
   const accountsRes = await fetch(`${baseUrl}/accounts`, { headers });
@@ -1616,17 +1731,21 @@ export async function fetchMercuryData(
   const startKey = (useRange ? rangeFrom! : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
     .toISOString()
     .split("T")[0];
+  const endKey = (useRange ? rangeTo! : new Date())
+    .toISOString()
+    .split("T")[0];
 
-  let inflows = 0, outflows = 0;
+  const ledgerTransactions: MercuryLedgerTransaction[] = [];
   for (const account of accounts) {
     try {
       const txRes = await fetch(
-        `${baseUrl}/account/${account.accountId}/transactions?start=${startKey}&limit=500`,
+        `${baseUrl}/account/${account.accountId}/transactions?start=${startKey}&end=${endKey}&limit=500`,
         { headers }
       );
       if (!txRes.ok) continue;
       const txData = await safeJson<{ transactions?: MercuryTransaction[] }>(txRes, "mercury transactions");
       for (const tx of txData.transactions ?? []) {
+        if (!shouldCountTransaction(tx)) continue;
         if (useRange && rangeTo) {
           const postedAt = tx.postedAt || tx.createdAt || tx.timestamp || "";
           if (postedAt) {
@@ -1634,18 +1753,24 @@ export async function fetchMercuryData(
             if (Number.isFinite(postedMs) && postedMs > rangeTo.getTime()) continue;
           }
         }
-        if (tx.status === "sent") {
-          const amount = tx.amount ?? 0;
-          const amt = Math.abs(amount);
-          if (amount > 0) inflows += amt;
-          else outflows += amt;
-        }
+        ledgerTransactions.push({
+          ...tx,
+          accountId: account.accountId,
+        });
       }
     } catch {
       // Skip account on error
     }
   }
 
+  const externalTransactions = filterInternalTransferPairs(ledgerTransactions);
+  let inflows = 0, outflows = 0;
+  for (const tx of externalTransactions) {
+    const amount = tx.amount ?? 0;
+    const amt = Math.abs(amount);
+    if (amount > 0) inflows += amt;
+    else outflows += amt;
+  }
   const burnRate = Math.max(outflows - inflows, 0);
   const runway = burnRate > 0 ? totalBalance / burnRate : 999;
 

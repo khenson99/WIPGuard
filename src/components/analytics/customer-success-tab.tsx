@@ -1,6 +1,6 @@
 "use client";
+
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
-import { formatPct } from "@/components/analytics/customer-success-formatters";
 import { deriveCustomerSuccessOperationalView } from "@/components/analytics/customer-success-operational-view-model";
 import { CustomerSuccessPortfolioPanels } from "@/components/analytics/customer-success-portfolio-panels";
 import {
@@ -24,7 +24,11 @@ export function CustomerSuccessTab({ data }: { data: AnalyticsDashboardData | nu
         maxTrend={operationalView.maxTrend}
         openConversations={operationalView.openConversations}
         riskItems={operationalView.riskItems}
-        throughputRateLabel={formatPct(operationalView.throughputRate)}
+        firstResponseLabel={
+          operationalView.avgFirstResponseMinutes == null
+            ? "—"
+            : `${Math.round(operationalView.avgFirstResponseMinutes)} min`
+        }
         trend={operationalView.trend}
         urgentConversations={operationalView.urgentConversations}
       />

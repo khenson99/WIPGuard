@@ -46,7 +46,7 @@ export function TelemetryDashboard({
 }) {
   const {
     totalRules, enabledRules, erroredRules,
-    receiptsInRange, tasksCreatedInRange, eventsInRange, failuresInRange,
+    receiptsInRange, eventsInRange, failuresInRange,
     trend, topFailureReasons,
   } = telemetry;
 
@@ -114,18 +114,6 @@ export function TelemetryDashboard({
     });
   }
 
-  if (tasksCreatedInRange > 0 && receiptsInRange > 0) {
-    const conversionRate = (tasksCreatedInRange / receiptsInRange) * 100;
-    insights.push({
-      title: "Automation Coverage",
-      insight: `${conversionRate.toFixed(0)}% of receipts triggered downstream automation activity (${tasksCreatedInRange} of ${receiptsInRange}).`,
-      action: conversionRate < 20
-        ? "Low conversion — review rule conditions and ensure proper event mapping."
-        : "Healthy automation throughput.",
-      severity: conversionRate < 20 ? "warning" : "info",
-    });
-  }
-
   if (failuresInRange === 0 && eventsInRange > 0) {
     insights.push({
       title: "Zero Failures",
@@ -171,11 +159,6 @@ export function TelemetryDashboard({
           icon={<Zap className="h-4 w-4" />}
         />
         <StatCard
-          title="Automations Triggered"
-          value={fmtN(tasksCreatedInRange)}
-          icon={<CheckCircle2 className="h-4 w-4" />}
-        />
-        <StatCard
           title="Failures"
           value={fmtN(failuresInRange)}
           icon={<AlertTriangle className="h-4 w-4" />}
@@ -209,7 +192,7 @@ export function TelemetryDashboard({
 
       {/* ── Activity Trend ─────────────────────────── */}
       {trend.length > 0 && (
-        <SectionCard title="Activity Trend" subtitle="Daily automation receipts captured">
+        <SectionCard title="Activity Trend" subtitle="Daily automation receipts">
           <div className="flex items-end gap-1" style={{ height: 120 }}>
             {trend.map((t, i) => (
               <div key={i} className="flex flex-1 flex-col items-center gap-0.5">

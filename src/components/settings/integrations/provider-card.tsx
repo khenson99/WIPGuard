@@ -14,12 +14,7 @@ import {
 import { descriptorsForProvider } from "@/components/settings/integrations/rule-descriptors";
 import { credentialSourceLabel, type RemediationStep } from "@/components/settings/integrations/remediation";
 import { RuleEditor } from "@/components/settings/integrations/rule-editor";
-import type {
-  HubSpotDiagnosticsResponse,
-  HubSpotDriftReport,
-  IntegrationItem,
-  RuleLoadState,
-} from "@/components/settings/integrations/types";
+import type { IntegrationItem, RuleLoadState } from "@/components/settings/integrations/types";
 
 function formatDate(value: string | null): string {
   if (!value) return "Never";
@@ -98,15 +93,6 @@ interface ProviderCardProps {
   ) => Promise<void>;
   onChannelRoutingAddPolicy: (ruleId: string, policy: Record<string, unknown>) => Promise<void>;
   onChannelRoutingRemovePolicy: (ruleId: string, policyIndex: number) => Promise<void>;
-  hubspotDiagnostics: {
-    loading: boolean;
-    error: string | null;
-    data: HubSpotDiagnosticsResponse | null;
-    driftLoading: boolean;
-    driftReport: HubSpotDriftReport | null;
-  };
-  onReloadHubspotDiagnostics: () => Promise<void>;
-  onRunHubspotDrift: () => Promise<void>;
 }
 
 export function ProviderCard({
@@ -135,9 +121,6 @@ export function ProviderCard({
   onRuleRun,
   onChannelRoutingAddPolicy,
   onChannelRoutingRemovePolicy,
-  hubspotDiagnostics,
-  onReloadHubspotDiagnostics,
-  onRunHubspotDrift,
 }: ProviderCardProps) {
   const contentId = useId();
 
@@ -477,94 +460,6 @@ export function ProviderCard({
                   </button>
                 ) : null}
               </div>
-            </div>
-          ) : null}
-
-          {item.slug === "hubspot" ? (
-            <div className="rounded-lg border border-border p-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium text-foreground">HubSpot Diagnostics</p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onReloadHubspotDiagnostics()}
-                    disabled={hubspotDiagnostics.loading}
-                    className="rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
-                  >
-                    Reload
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onRunHubspotDrift()}
-                    disabled={hubspotDiagnostics.driftLoading}
-                    className="rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
-                  >
-                    {hubspotDiagnostics.driftLoading ? "Running..." : "Run Drift Report"}
-                  </button>
-                </div>
-              </div>
-
-              {hubspotDiagnostics.error ? (
-                <p className="mt-2 text-xs text-[var(--danger)]">{hubspotDiagnostics.error}</p>
-              ) : null}
-
-              {hubspotDiagnostics.data ? (
-                <div className="mt-2 space-y-2 text-xs text-muted-foreground">
-                  <p>
-                    Connection status: {hubspotDiagnostics.data.connection?.status || "unknown"} · Last synced:{" "}
-                    {formatDate(hubspotDiagnostics.data.connection?.lastSyncedAt ?? null)}
-                  </p>
-                  {hubspotDiagnostics.data.mappingValidation.length > 0 ? (
-                    <div className="rounded-md border border-[var(--warning)]/40 bg-[var(--warning)]/10 p-2">
-                      <p className="font-medium text-foreground">Mapping validation issues</p>
-                      <ul className="mt-1 space-y-1">
-                        {hubspotDiagnostics.data.mappingValidation.map((issue, index) => (
-                          <li key={`${issue}-${index}`}>{issue}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : (
-                    <p className="text-[var(--success)]">No mapping validation issues detected.</p>
-                  )}
-                  <div>
-                    <p className="font-medium text-foreground">Recent receipts</p>
-                    {hubspotDiagnostics.data.recentReceipts.length === 0 ? (
-                      <p>No recent sync receipts.</p>
-                    ) : (
-                      <ul className="mt-1 space-y-1">
-                        {hubspotDiagnostics.data.recentReceipts.slice(0, 5).map((receipt) => (
-                          <li key={receipt.id}>
-                            {receipt.direction} · deal {receipt.dealId} · task {receipt.taskId || "none"} ·{" "}
-                            {formatDate(receipt.createdAt)}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-              ) : null}
-
-              {hubspotDiagnostics.driftReport ? (
-                <div className="mt-2 rounded-md border border-border bg-background p-2 text-xs text-muted-foreground">
-                  <p className="font-medium text-foreground">Latest Drift Report</p>
-                  <p>Drift count: {hubspotDiagnostics.driftReport.drifts.length}</p>
-                  <p>
-                    Scanned deals: {hubspotDiagnostics.driftReport.scannedDeals} · tasks:{" "}
-                    {hubspotDiagnostics.driftReport.scannedTasks}
-                  </p>
-                  {hubspotDiagnostics.driftReport.drifts.length > 0 ? (
-                    <ul className="mt-1 space-y-1">
-                      {hubspotDiagnostics.driftReport.drifts.slice(0, 5).map((drift, index) => (
-                        <li key={`${drift.dealId}-${index}`}>
-                          {drift.kind}: {drift.detail}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p>No drift entries returned.</p>
-                  )}
-                </div>
-              ) : null}
             </div>
           ) : null}
 

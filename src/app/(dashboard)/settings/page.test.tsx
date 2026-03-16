@@ -11,18 +11,6 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => mockSearchParams,
 }));
 
-vi.mock("@/components/settings/board-settings-tab", () => ({
-  BoardSettingsTab: () => <div>Board Settings</div>,
-}));
-
-vi.mock("@/components/settings/sprints-tab", () => ({
-  SprintsTab: () => <div>Sprints</div>,
-}));
-
-vi.mock("@/components/settings/projects-tab", () => ({
-  ProjectsTab: () => <div>Projects</div>,
-}));
-
 vi.mock("@/components/settings/priorities-tab", () => ({
   PrioritiesTab: () => <div>Priorities</div>,
 }));
@@ -50,11 +38,14 @@ describe("SettingsPage", () => {
   });
 
   it("renders settings tabs without an integrations tab", () => {
-    const { queryByRole, getByText } = render(<SettingsPage />);
+    const { queryByRole } = render(<SettingsPage />);
 
-    expect(getByText("Board Settings")).toBeTruthy();
+    expect(queryByRole("tabpanel")?.textContent).toContain("Departments");
     expect(queryByRole("tab", { name: "Design Interview" })).toBeTruthy();
     expect(queryByRole("tab", { name: "Integrations" })).toBeNull();
+    expect(queryByRole("tab", { name: "Board & WIP Limits" })).toBeNull();
+    expect(queryByRole("tab", { name: "Sprints" })).toBeNull();
+    expect(queryByRole("tab", { name: "Projects" })).toBeNull();
   });
 
   it("redirects legacy integrations tab links into the integrations workspace", async () => {
@@ -67,6 +58,26 @@ describe("SettingsPage", () => {
         "/integrations?status=connected&integration=slack",
         { scroll: false },
       );
+    });
+  });
+
+  it("redirects legacy work-management tabs to departments", async () => {
+    mockSearchParams = new URLSearchParams("tab=board");
+
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(replace).toHaveBeenCalledWith("/settings?tab=departments", { scroll: false });
+    });
+  });
+
+  it("redirects legacy sprint and project tabs to departments", async () => {
+    mockSearchParams = new URLSearchParams("tab=sprints");
+
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(replace).toHaveBeenCalledWith("/settings?tab=departments", { scroll: false });
     });
   });
 });

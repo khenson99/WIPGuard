@@ -15,6 +15,9 @@ function statusClasses(status: IntegrationStatus): string {
   if (status === "Connected but stale") {
     return "border-[var(--warning)]/40 bg-[var(--warning)]/10 text-[var(--warning)]";
   }
+  if (status === "Connected but no data") {
+    return "border-amber-500/30 bg-amber-500/5 text-amber-600";
+  }
   return "border-border bg-secondary/30 text-muted-foreground";
 }
 
@@ -51,7 +54,7 @@ export function LegacyCustomerSuccessAnalytics({
   maxTrend,
   openConversations,
   riskItems,
-  throughputRateLabel,
+  firstResponseLabel,
   trend,
   urgentConversations,
 }: {
@@ -61,7 +64,7 @@ export function LegacyCustomerSuccessAnalytics({
   maxTrend: number;
   openConversations: number | string;
   riskItems: RiskItem[];
-  throughputRateLabel: string;
+  firstResponseLabel: string;
   trend: CustomerOpsTrendPoint[];
   urgentConversations: number | string;
 }) {
@@ -85,8 +88,8 @@ export function LegacyCustomerSuccessAnalytics({
           <p className="mt-1 text-2xl font-semibold text-red-500">{urgentConversations}</p>
         </div>
         <div className="rounded-xl border border-border bg-card px-4 py-3">
-          <p className="text-xs text-muted-foreground">Product Throughput</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{throughputRateLabel}</p>
+          <p className="text-xs text-muted-foreground">First Response</p>
+          <p className="mt-1 text-2xl font-semibold text-foreground">{firstResponseLabel}</p>
         </div>
         <div className="rounded-xl border border-border bg-card px-4 py-3">
           <p className="text-xs text-muted-foreground">Coda Cards</p>

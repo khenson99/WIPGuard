@@ -445,6 +445,7 @@ describe("coda analytics fetcher", () => {
 
     const data = await fetchCodaData("token", "doc-id", {
       creatorColumn: "Created By",
+      now: new Date("2026-02-20T00:00:00.000Z"),
     });
 
     expect(data.totalCards).toBe(2);
@@ -536,5 +537,95 @@ describe("coda analytics fetcher", () => {
 
     expect(data.totalCards).toBe(2);
     expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("dedupes downloader identities across gmail aliases", async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ items: [{ id: "grid-tasks", name: "Tasks" }] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            { id: "col-1", name: "Name" },
+            { id: "col-2", name: "Status" },
+            { id: "col-3", name: "Created By" },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              id: "row-1",
+              createdAt: "2026-02-10T10:00:00.000Z",
+              updatedAt: "2026-02-10T10:00:00.000Z",
+              values: ["Card A", "Downloaded", { name: "Alice", email: "alice.smith+ads@gmail.com" }],
+            },
+            {
+              id: "row-2",
+              createdAt: "2026-02-12T10:00:00.000Z",
+              updatedAt: "2026-02-12T10:00:00.000Z",
+              values: ["Card B", "Downloaded", { name: "Alice", email: "alicesmith@gmail.com" }],
+            },
+            {
+              id: "row-3",
+              createdAt: "2026-02-13T10:00:00.000Z",
+              updatedAt: "2026-02-13T10:00:00.000Z",
+              values: ["Card C", "Downloaded", { name: "Bob", email: "bob@example.com" }],
+            },
+          ],
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchCodaData("token", "doc-id", {
+      fromDate: new Date("2026-02-01T00:00:00.000Z"),
+      toDate: new Date("2026-02-28T23:59:59.999Z"),
+    });
+
+    expect(data.rangeSummary?.cardsCreated).toBe(3);
+    expect(data.rangeSummary?.submissions).toBe(2);
+    expect(data.recentSubmitters).toHaveLength(2);
+    expect(data.recentSubmitters?.find((entry) => entry.creator === "Alice")?.cardsCreated).toBe(2);
+  });
+
+  it("returns the full unique downloader list by default instead of truncating to 25 rows", async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ items: [{ id: "grid-tasks", name: "Tasks" }] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            { id: "col-1", name: "Name" },
+            { id: "col-2", name: "Status" },
+            { id: "col-3", name: "Created By" },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: Array.from({ length: 30 }, (_, index) => ({
+            id: `row-${index + 1}`,
+            createdAt: `2026-02-${String((index % 28) + 1).padStart(2, "0")}T10:00:00.000Z`,
+            updatedAt: `2026-02-${String((index % 28) + 1).padStart(2, "0")}T10:00:00.000Z`,
+            values: [
+              `Card ${index + 1}`,
+              "Downloaded",
+              { name: `User ${index + 1}`, email: `user${index + 1}@example.com` },
+            ],
+          })),
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchCodaData("token", "doc-id", {
+      fromDate: new Date("2026-02-01T00:00:00.000Z"),
+      toDate: new Date("2026-02-28T23:59:59.999Z"),
+    });
+
+    expect(data.rangeSummary?.submissions).toBe(30);
+    expect(data.recentSubmitters).toHaveLength(30);
   });
 });

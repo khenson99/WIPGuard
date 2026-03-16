@@ -168,7 +168,58 @@ describe("FinancePlanningTab", () => {
 
   describe("category breakdown", () => {
     it("renders Category Breakdown section", () => {
-      render(<FinancePlanningTab data={makePayload()} />);
+      const data = makePayload();
+      data.financialPlanning = {
+        budgets: [
+          {
+            id: "budget-1",
+            name: "Baseline Budget",
+            period: "monthly",
+            startDate: "2026-01-01T00:00:00.000Z",
+            endDate: "2026-01-31T00:00:00.000Z",
+            lineItems: [
+              {
+                id: "line-1",
+                category: "cogs",
+                plannedAmount: 10000,
+                actualAmount: 9000,
+                variance: -1000,
+                variancePct: -10,
+              },
+            ],
+            totalPlanned: 10000,
+            totalActual: 9000,
+            totalVariance: -1000,
+          },
+        ],
+        activeBudget: {
+          id: "budget-1",
+          name: "Baseline Budget",
+          period: "monthly",
+          startDate: "2026-01-01T00:00:00.000Z",
+          endDate: "2026-01-31T00:00:00.000Z",
+          lineItems: [
+            {
+              id: "line-1",
+              category: "cogs",
+              plannedAmount: 10000,
+              actualAmount: 9000,
+              variance: -1000,
+              variancePct: -10,
+            },
+          ],
+          totalPlanned: 10000,
+          totalActual: 9000,
+          totalVariance: -1000,
+        },
+        forecasts: [],
+        goals: [],
+        pnl: null,
+        unitEconomics: null,
+        subscriptionOverview: null,
+      };
+
+      render(<FinancePlanningTab data={data} />);
       expect(screen.getByText("Category Breakdown")).toBeTruthy();
     });
   });
@@ -211,6 +262,69 @@ describe("FinancePlanningTab", () => {
       expect(screen.getByText("Budget baseline not configured")).toBeTruthy();
       expect(screen.queryByText("Under Budget Overall")).toBeNull();
       expect(screen.queryByText("Significant Budget Overrun")).toBeNull();
+    });
+
+    it("preserves unavailable category actuals instead of coercing them to zero", () => {
+      const data = makePayload();
+      data.financialPlanning = {
+        budgets: [
+          {
+            id: "budget-1",
+            name: "Baseline Budget",
+            period: "monthly",
+            startDate: "2026-01-01T00:00:00.000Z",
+            endDate: "2026-01-31T00:00:00.000Z",
+            lineItems: [
+              {
+                id: "line-1",
+                category: "cogs",
+                plannedAmount: 10000,
+                actualAmount: null,
+                variance: null,
+                variancePct: null,
+              },
+            ],
+            totalPlanned: 10000,
+            totalActual: null,
+            totalVariance: null,
+          },
+        ],
+        activeBudget: {
+          id: "budget-1",
+          name: "Baseline Budget",
+          period: "monthly",
+          startDate: "2026-01-01T00:00:00.000Z",
+          endDate: "2026-01-31T00:00:00.000Z",
+          lineItems: [
+            {
+              id: "line-1",
+              category: "cogs",
+              plannedAmount: 10000,
+              actualAmount: null,
+              variance: null,
+              variancePct: null,
+            },
+          ],
+          totalPlanned: 10000,
+          totalActual: null,
+          totalVariance: null,
+        },
+        forecasts: [],
+        goals: [],
+        pnl: null,
+        unitEconomics: null,
+        subscriptionOverview: null,
+      };
+
+      render(<FinancePlanningTab data={data} />);
+
+      expect(screen.getByText("Actual spend by category unavailable")).toBeTruthy();
+      expect(screen.queryByText("Budget baseline not configured")).toBeNull();
+      expect(screen.queryByText("Under Budget Overall")).toBeNull();
+      expect(screen.queryByText("Significant Budget Overrun")).toBeNull();
+
+      expect(screen.getByText("Unavailable")).toBeTruthy();
+      expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
     });
   });
 

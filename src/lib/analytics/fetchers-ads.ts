@@ -46,6 +46,29 @@ function readNumber(value: unknown): number {
   return 0;
 }
 
+function readInsightValue(value: unknown): number {
+  if (typeof value === "number" || typeof value === "string") {
+    return readNumber(value);
+  }
+
+  const record = asRecord(value);
+  if (!record) return 0;
+
+  return Object.values(record).reduce((sum, entry) => sum + readNumber(entry), 0);
+}
+
+function sumInsightSeries(
+  metrics: Array<{
+    name: string;
+    values?: Array<{ value: unknown }>;
+  }> | undefined,
+  metricName: string
+): number {
+  const series = metrics?.find((metric) => metric.name === metricName);
+  if (!series) return 0;
+  return (series.values ?? []).reduce((sum, item) => sum + readInsightValue(item.value), 0);
+}
+
 function extractApiErrorMessage(payload: unknown): string | null {
   const record = asRecord(payload);
   if (!record) return null;
@@ -720,47 +743,59 @@ export async function fetchMetaPageData(
   const pageLikes = readNumber(pageData.fan_count);
   const pageFollowers = readNumber(pageData.followers_count);
 
-  const insightsUrl = new URL(
-    `https://graph.facebook.com/${META_GRAPH_VERSION}/${normalizedPageId}/insights`
-  );
-  insightsUrl.searchParams.set("metric", "page_impressions,page_engaged_users");
-  if (useRange) {
-    insightsUrl.searchParams.set("period", "day");
-    insightsUrl.searchParams.set("since", since!);
-    insightsUrl.searchParams.set("until", until!);
-  } else {
-    insightsUrl.searchParams.set("period", "days_28");
-  }
-
-  const insightsResponse = await fetch(insightsUrl, { headers: baseHeaders });
-  if (!insightsResponse.ok) {
-    throw new Error(
-      `Meta Page insights error (${insightsResponse.status}): ${await parseErrorBody(insightsResponse)}`
+  const fetchPageInsights = async (
+    metrics: string
+  ): Promise<Array<{ name: string; values?: Array<{ value: unknown }> }>> => {
+    const insightsUrl = new URL(
+      `https://graph.facebook.com/${META_GRAPH_VERSION}/${normalizedPageId}/insights`
     );
-  }
-  const insightsData = (await safeJson<{
-    data?: Array<{
-      name: string;
-      values?: Array<{ value: string | number }>;
-    }>;
-  }>(insightsResponse, "Meta Page insights")) as {
-    data?: Array<{
-      name: string;
-      values?: Array<{ value: string | number }>;
-    }>;
+    insightsUrl.searchParams.set("metric", metrics);
+    if (useRange) {
+      insightsUrl.searchParams.set("period", "day");
+      insightsUrl.searchParams.set("since", since!);
+      insightsUrl.searchParams.set("until", until!);
+    } else {
+      insightsUrl.searchParams.set("period", "days_28");
+    }
+
+    const insightsResponse = await fetch(insightsUrl, { headers: baseHeaders });
+    if (!insightsResponse.ok) {
+      throw new Error(
+        `Meta Page insights error (${insightsResponse.status}): ${await parseErrorBody(insightsResponse)}`
+      );
+    }
+    const insightsData = (await safeJson<{
+      data?: Array<{
+        name: string;
+        values?: Array<{ value: unknown }>;
+      }>;
+    }>(insightsResponse, "Meta Page insights")) as {
+      data?: Array<{
+        name: string;
+        values?: Array<{ value: unknown }>;
+      }>;
+    };
+
+    return insightsData.data ?? [];
   };
 
-  let postReach30d = 0;
-  let postEngagement30d = 0;
-  for (const metric of insightsData.data ?? []) {
-    const value = (metric.values ?? []).reduce((sum, item) => sum + readNumber(item.value), 0);
-    if (metric.name === "page_impressions") {
-      postReach30d = value;
+  let pageInsightMetrics: Array<{ name: string; values?: Array<{ value: unknown }> }>;
+  try {
+    pageInsightMetrics = await fetchPageInsights(
+      "page_impressions,page_engaged_users,page_views_total,page_total_actions"
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("Meta Page insights error (400)")) {
+      throw error;
     }
-    if (metric.name === "page_engaged_users") {
-      postEngagement30d = value;
-    }
+    pageInsightMetrics = await fetchPageInsights("page_impressions,page_engaged_users");
   }
+
+  const postReach30d = sumInsightSeries(pageInsightMetrics, "page_impressions");
+  const postEngagement30d = sumInsightSeries(pageInsightMetrics, "page_engaged_users");
+  const traffic = sumInsightSeries(pageInsightMetrics, "page_views_total");
+  const clicks = sumInsightSeries(pageInsightMetrics, "page_total_actions");
 
   const postsUrl = new URL(
     `https://graph.facebook.com/${META_GRAPH_VERSION}/${normalizedPageId}/posts`
@@ -833,9 +868,9 @@ export async function fetchMetaPageData(
     pageFollowers,
     postReach30d,
     postEngagement30d,
-    traffic: 0,
+    traffic,
     bounceRate: 0,
-    clicks: 0,
+    clicks,
     returningVisitors: 0,
     topPosts,
     _meta: makeMeta("live"),
@@ -1041,13 +1076,60 @@ export async function fetchMetaInstagramData(
     createdAt: m.timestamp,
   }));
 
+  const fetchInstagramInsights = async (
+    metrics: string
+  ): Promise<Array<{ name: string; values?: Array<{ value: unknown }> }>> => {
+    const insightsUrl = new URL(
+      `https://graph.facebook.com/${META_GRAPH_VERSION}/${resolvedProfile.id}/insights`
+    );
+    insightsUrl.searchParams.set("metric", metrics);
+    insightsUrl.searchParams.set("period", "day");
+    insightsUrl.searchParams.set("since", fromTime.toString());
+    insightsUrl.searchParams.set("until", toTime.toString());
+
+    const insightsResponse = await fetch(insightsUrl, { headers: baseHeaders });
+    if (!insightsResponse.ok) {
+      throw new Error(
+        `Meta Instagram insights error (${insightsResponse.status}): ${await parseErrorBody(insightsResponse)}`
+      );
+    }
+
+    const insightsData = (await safeJson<{
+      data?: Array<{
+        name: string;
+        values?: Array<{ value: unknown }>;
+      }>;
+    }>(insightsResponse, "Instagram insights")) as {
+      data?: Array<{
+        name: string;
+        values?: Array<{ value: unknown }>;
+      }>;
+    };
+
+    return insightsData.data ?? [];
+  };
+
+  let instagramInsightMetrics: Array<{ name: string; values?: Array<{ value: unknown }> }> = [];
+  try {
+    instagramInsightMetrics = await fetchInstagramInsights("reach,profile_views,website_clicks");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("Meta Instagram insights error (400)")) {
+      throw error;
+    }
+  }
+
+  const reach30d = sumInsightSeries(instagramInsightMetrics, "reach");
+  const traffic = sumInsightSeries(instagramInsightMetrics, "profile_views");
+  const clicks = sumInsightSeries(instagramInsightMetrics, "website_clicks");
+
   return {
     followers: resolvedProfile.followersCount,
-    reach30d: engagement30d, // Using engagements as proxy for reach30d
+    reach30d: reach30d > 0 ? reach30d : engagement30d,
     engagement30d,
-    traffic: 0,
+    traffic,
     bounceRate: 0,
-    clicks: 0,
+    clicks,
     returningVisitors: 0,
     topPosts,
     _meta: makeMeta("live"),

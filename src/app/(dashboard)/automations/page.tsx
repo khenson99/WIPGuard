@@ -228,7 +228,7 @@ export default function AutomationsPage() {
         <div>
           <h1 className="text-xl font-semibold text-foreground">Automations</h1>
           <p className="text-xs text-muted-foreground">
-            Build cross-system workflows, monitor run health, and manage outbound drafts across your connected tools.
+            Build cross-system workflows, inspect workflow outputs, and manage approval-gated drafts across your connected tools.
           </p>
         </div>
 
@@ -238,6 +238,18 @@ export default function AutomationsPage() {
             className="rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
           >
             Artifact Inbox
+          </Link>
+          <Link
+            href="/automations/recommendations"
+            className="rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+          >
+            Recommendations
+          </Link>
+          <Link
+            href="/automations/approvals"
+            className="rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+          >
+            Approvals
           </Link>
           <button
             onClick={createBlankWorkflow}
@@ -373,7 +385,7 @@ export default function AutomationsPage() {
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-foreground">Arda GTM Operators</h2>
         <p className="text-xs text-muted-foreground">
-          Shared starting points for mixed-autonomy operator workflows. Safe internal actions can auto-execute, while external drafts stay in guarded workflow review steps.
+          Shared starting points for mixed-autonomy operator workflows. Safe internal actions can auto-execute, while external drafts stay approval-gated.
         </p>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {operatorTemplates.map((template) => (

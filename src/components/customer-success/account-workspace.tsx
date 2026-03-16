@@ -14,7 +14,6 @@ type WorkspaceTab =
   | "commercial"
   | "timeline"
   | "stakeholders"
-  | "tasks"
   | "success-plan"
   | "outreach";
 
@@ -31,13 +30,9 @@ const TABS: Array<{ id: WorkspaceTab; label: string }> = [
   { id: "commercial", label: "Commercial" },
   { id: "timeline", label: "Timeline" },
   { id: "stakeholders", label: "Stakeholders" },
-  { id: "tasks", label: "Tasks" },
   { id: "success-plan", label: "Success Plan" },
   { id: "outreach", label: "Outreach" },
 ];
-
-const TASK_STATUSES = ["BACKLOG", "QUEUED", "ACTIVE"] as const;
-const TASK_PRIORITIES = ["P0", "P1", "P2", "P3"] as const;
 const OUTREACH_CHANNELS = ["EMAIL", "SLACK"] as const;
 
 function formatDate(value?: string): string {
@@ -110,12 +105,6 @@ export function CustomerSuccessAccountWorkspace({ accountId }: { accountId: stri
 
   const [noteTitle, setNoteTitle] = useState("");
   const [noteBody, setNoteBody] = useState("");
-
-  const [taskTitle, setTaskTitle] = useState("");
-  const [taskNotes, setTaskNotes] = useState("");
-  const [taskStatus, setTaskStatus] = useState<(typeof TASK_STATUSES)[number]>("ACTIVE");
-  const [taskPriority, setTaskPriority] = useState<(typeof TASK_PRIORITIES)[number]>("P2");
-  const [taskDueDate, setTaskDueDate] = useState("");
 
   const [planName, setPlanName] = useState("");
   const [planTemplateKey, setPlanTemplateKey] = useState("");
@@ -727,96 +716,6 @@ export function CustomerSuccessAccountWorkspace({ accountId }: { accountId: stri
                 ))}
               </tbody>
             </table>
-          </div>
-        </div>
-      ) : null}
-
-      {activeTab === "tasks" ? (
-        <div className="grid gap-4 lg:grid-cols-[0.75fr_1.25fr]">
-          <div className="rounded-2xl border border-border bg-card p-5">
-            <h2 className="text-sm font-semibold text-foreground">Create Linked Task</h2>
-            <div className="mt-4 space-y-3">
-              <input
-                value={taskTitle}
-                onChange={(event) => setTaskTitle(event.target.value)}
-                placeholder="Task title"
-                className={inputClasses()}
-              />
-              <textarea
-                value={taskNotes}
-                onChange={(event) => setTaskNotes(event.target.value)}
-                placeholder="Optional notes or handoff context"
-                className={inputClasses(true)}
-              />
-              <div className="grid gap-3 sm:grid-cols-3">
-                <select value={taskStatus} onChange={(event) => setTaskStatus(event.target.value as (typeof TASK_STATUSES)[number])} className={inputClasses()}>
-                  {TASK_STATUSES.map((status) => (
-                    <option key={status} value={status}>
-                      {formatEnumLabel(status)}
-                    </option>
-                  ))}
-                </select>
-                <select value={taskPriority} onChange={(event) => setTaskPriority(event.target.value as (typeof TASK_PRIORITIES)[number])} className={inputClasses()}>
-                  {TASK_PRIORITIES.map((priority) => (
-                    <option key={priority} value={priority}>
-                      {priority}
-                    </option>
-                  ))}
-                </select>
-                <input type="date" value={taskDueDate} onChange={(event) => setTaskDueDate(event.target.value)} className={inputClasses()} />
-              </div>
-              <button
-                type="button"
-                className={buttonClasses("primary")}
-                disabled={activeMutation === "task:create"}
-                onClick={() => {
-                  if (!taskTitle.trim()) {
-                    setMutationBanner({ tone: "error", message: "Task title is required." });
-                    return;
-                  }
-
-                  void runMutation({
-                    key: "task:create",
-                    successMessage: "Linked task created.",
-                    request: () =>
-                      postJson(`/api/customer-success/accounts/${accountId}/tasks`, {
-                        title: taskTitle,
-                        notes: taskNotes || undefined,
-                        status: taskStatus,
-                        priority: taskPriority,
-                        dueDate: taskDueDate || undefined,
-                      }),
-                    afterSuccess: () => {
-                      setTaskTitle("");
-                      setTaskNotes("");
-                      setTaskStatus("ACTIVE");
-                      setTaskPriority("P2");
-                      setTaskDueDate("");
-                    },
-                  });
-                }}
-              >
-                {activeMutation === "task:create" ? "Creating..." : "Create Task"}
-              </button>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card p-5">
-            <h2 className="text-sm font-semibold text-foreground">Linked Tasks</h2>
-            <div className="mt-4 space-y-3">
-              {detail.tasks.map((task) => (
-                <div key={task.id} className="rounded-xl border border-border bg-background p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-foreground">{task.title}</p>
-                    <p className="text-xs text-muted-foreground">{formatEnumLabel(task.status)}</p>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Priority {task.priority || "—"} • Due {formatDate(task.dueDate)}
-                  </p>
-                </div>
-              ))}
-              {detail.tasks.length === 0 ? <p className="text-sm text-muted-foreground">No linked tasks.</p> : null}
-            </div>
           </div>
         </div>
       ) : null}

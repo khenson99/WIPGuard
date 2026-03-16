@@ -8,7 +8,7 @@ import type {
   RuleLoadState,
 } from "@/components/settings/integrations/types";
 
-const TASK_STATUSES = ["BACKLOG", "QUEUED", "WORKING_ON_TODAY", "ACTIVE", "NOT_DONE", "DONE"] as const;
+const WORKFLOW_STATUSES = ["BACKLOG", "QUEUED", "WORKING_ON_TODAY", "ACTIVE", "NOT_DONE", "DONE"] as const;
 const SUPPORTED_AUTOMATION_STATUSES = ["QUEUED", "ACTIVE", "NOT_DONE"] as const;
 
 function formatDate(value: string | null): string {
@@ -48,35 +48,6 @@ function parseStringList(raw: string): string[] {
     .filter(Boolean);
 }
 
-function stringifyTaskStatusMap(value: unknown): string {
-  const record = asRecord(value);
-  return TASK_STATUSES.map((status) => `${status}=${typeof record[status] === "string" ? record[status] : ""}`).join("\n");
-}
-
-function parseTaskStatusMap(raw: string): Record<string, string> {
-  const output: Record<string, string> = {};
-  for (const status of TASK_STATUSES) {
-    output[status] = "";
-  }
-
-  for (const [index, lineRaw] of raw.split("\n").entries()) {
-    const line = lineRaw.trim();
-    if (!line) continue;
-    const splitIndex = line.indexOf("=");
-    if (splitIndex < 1) {
-      throw new Error(`Line ${index + 1} must use STATUS=stage`);
-    }
-    const key = line.slice(0, splitIndex).trim();
-    const value = line.slice(splitIndex + 1).trim();
-    if (!TASK_STATUSES.includes(key as (typeof TASK_STATUSES)[number])) {
-      throw new Error(`Line ${index + 1} has invalid task status: ${key}`);
-    }
-    output[key] = value;
-  }
-
-  return output;
-}
-
 function stringifyStringStatusMap(value: unknown): string {
   const record = asRecord(value);
   return Object.entries(record)
@@ -99,48 +70,10 @@ function parseStringStatusMap(raw: string): Record<string, string> {
     if (!key) {
       throw new Error(`Line ${index + 1} is missing deal stage key`);
     }
-    if (!TASK_STATUSES.includes(status as (typeof TASK_STATUSES)[number])) {
-      throw new Error(`Line ${index + 1} has invalid task status: ${status}`);
+    if (!WORKFLOW_STATUSES.includes(status as (typeof WORKFLOW_STATUSES)[number])) {
+      throw new Error(`Line ${index + 1} has invalid status: ${status}`);
     }
     output[key] = status;
-  }
-  return output;
-}
-
-function stringifyStageChecklistMap(value: unknown): string {
-  const record = asRecord(value);
-  return Object.entries(record)
-    .map(([stageKey, template]) => {
-      const parsed = asRecord(template);
-      const stageLabel = typeof parsed.stageLabel === "string" ? parsed.stageLabel : "";
-      const dueInDays = typeof parsed.dueInDays === "number" ? parsed.dueInDays : 1;
-      const checklistItems = asStringArray(parsed.checklistItems).join(";");
-      return `${stageKey}|${stageLabel}|${dueInDays}|${checklistItems}`;
-    })
-    .join("\n");
-}
-
-function parseStageChecklistMap(raw: string): Record<string, unknown> {
-  const output: Record<string, unknown> = {};
-  for (const [index, lineRaw] of raw.split("\n").entries()) {
-    const line = lineRaw.trim();
-    if (!line) continue;
-    const [stageKey, stageLabel, dueInDaysRaw, itemsRaw = ""] = line.split("|");
-    if (!stageKey?.trim() || !stageLabel?.trim() || !dueInDaysRaw?.trim()) {
-      throw new Error(`Line ${index + 1} must use stageId|Stage Label|dueInDays|item1;item2`);
-    }
-    const dueInDays = Number(dueInDaysRaw.trim());
-    if (!Number.isFinite(dueInDays)) {
-      throw new Error(`Line ${index + 1} has invalid dueInDays`);
-    }
-    output[stageKey.trim()] = {
-      stageLabel: stageLabel.trim(),
-      dueInDays: Math.floor(dueInDays),
-      checklistItems: itemsRaw
-        .split(";")
-        .map((entry) => entry.trim())
-        .filter(Boolean),
-    };
   }
   return output;
 }
@@ -210,9 +143,7 @@ function parseBoolean(value: unknown): boolean {
 function isTextField(type: RuleFieldDefinition["type"]): boolean {
   return (
     type === "string-list" ||
-    type === "task-status-map" ||
     type === "string-status-map" ||
-    type === "stage-checklist-map" ||
     type === "signal-template-map"
   );
 }
@@ -223,18 +154,14 @@ function isEnumListField(type: RuleFieldDefinition["type"]): boolean {
 
 function parseComplexField(type: RuleFieldDefinition["type"], raw: string): unknown {
   if (type === "string-list") return parseStringList(raw);
-  if (type === "task-status-map") return parseTaskStatusMap(raw);
   if (type === "string-status-map") return parseStringStatusMap(raw);
-  if (type === "stage-checklist-map") return parseStageChecklistMap(raw);
   if (type === "signal-template-map") return parseSignalTemplateMap(raw);
   return raw;
 }
 
 function serializeComplexField(type: RuleFieldDefinition["type"], value: unknown): string {
   if (type === "string-list") return stringifyStringList(value);
-  if (type === "task-status-map") return stringifyTaskStatusMap(value);
   if (type === "string-status-map") return stringifyStringStatusMap(value);
-  if (type === "stage-checklist-map") return stringifyStageChecklistMap(value);
   if (type === "signal-template-map") return stringifySignalTemplateMap(value);
   return "";
 }
@@ -328,16 +255,6 @@ export function RuleEditor({
     initialDraft.rawTextValues
   );
   const [parseError, setParseError] = useState<string | null>(null);
-
-  const [capturePayload, setCapturePayload] = useState({
-    triggerType: "reaction",
-    channelId: "",
-    threadTs: "",
-    messageTs: "",
-    reaction: "",
-    text: "",
-    title: "",
-  });
 
   const [newPolicy, setNewPolicy] = useState({
     label: "",
@@ -653,95 +570,6 @@ export function RuleEditor({
         })}
       </div>
 
-      {descriptor.editorType === "thread-capture" ? (
-        <div className="mt-3 rounded-md border border-border bg-background p-3">
-          <p className="text-sm font-medium text-foreground">Capture Test Payload</p>
-          <div className="mt-2 grid gap-2 md:grid-cols-2">
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              Trigger Type
-              <select
-                value={capturePayload.triggerType}
-                onChange={(event) =>
-                  setCapturePayload((prev) => ({
-                    ...prev,
-                    triggerType: event.target.value as "reaction" | "shortcut",
-                  }))
-                }
-                className="rounded-md border border-border bg-secondary px-2 py-1.5 text-sm text-foreground"
-              >
-                <option value="reaction">reaction</option>
-                <option value="shortcut">shortcut</option>
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              Channel ID
-              <input
-                type="text"
-                value={capturePayload.channelId}
-                onChange={(event) =>
-                  setCapturePayload((prev) => ({ ...prev, channelId: event.target.value }))
-                }
-                className="rounded-md border border-border bg-secondary px-2 py-1.5 text-sm text-foreground"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              Thread TS
-              <input
-                type="text"
-                value={capturePayload.threadTs}
-                onChange={(event) =>
-                  setCapturePayload((prev) => ({ ...prev, threadTs: event.target.value }))
-                }
-                className="rounded-md border border-border bg-secondary px-2 py-1.5 text-sm text-foreground"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              Message TS (optional)
-              <input
-                type="text"
-                value={capturePayload.messageTs}
-                onChange={(event) =>
-                  setCapturePayload((prev) => ({ ...prev, messageTs: event.target.value }))
-                }
-                className="rounded-md border border-border bg-secondary px-2 py-1.5 text-sm text-foreground"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              Reaction (optional)
-              <input
-                type="text"
-                value={capturePayload.reaction}
-                onChange={(event) =>
-                  setCapturePayload((prev) => ({ ...prev, reaction: event.target.value }))
-                }
-                className="rounded-md border border-border bg-secondary px-2 py-1.5 text-sm text-foreground"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              Title override (optional)
-              <input
-                type="text"
-                value={capturePayload.title}
-                onChange={(event) =>
-                  setCapturePayload((prev) => ({ ...prev, title: event.target.value }))
-                }
-                className="rounded-md border border-border bg-secondary px-2 py-1.5 text-sm text-foreground"
-              />
-            </label>
-          </div>
-          <label className="mt-2 flex flex-col gap-1 text-xs text-muted-foreground">
-            Text override (optional)
-            <textarea
-              value={capturePayload.text}
-              onChange={(event) =>
-                setCapturePayload((prev) => ({ ...prev, text: event.target.value }))
-              }
-              className="min-h-[56px] rounded-md border border-border bg-secondary px-2 py-1.5 text-sm text-foreground"
-            />
-          </label>
-        </div>
-      ) : null}
-
       {descriptor.editorType === "channel-routing" ? (
         <div className="mt-3 rounded-md border border-border bg-background p-3">
           <p className="text-sm font-medium text-foreground">Channel Routing Policies</p>
@@ -906,30 +734,6 @@ export function RuleEditor({
               Run Now
             </button>
           </>
-        ) : null}
-
-        {descriptor.runAction === "capture" ? (
-          <button
-            type="button"
-            onClick={() =>
-              onRun({
-                payload: {
-                  triggerType: capturePayload.triggerType,
-                  channelId: capturePayload.channelId,
-                  threadTs: capturePayload.threadTs,
-                  messageTs: capturePayload.messageTs || undefined,
-                  reaction: capturePayload.reaction || undefined,
-                  text: capturePayload.text || undefined,
-                  title: capturePayload.title || undefined,
-                },
-              })
-            }
-            disabled={state.running || !capturePayload.channelId || !capturePayload.threadTs}
-            className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
-          >
-            {state.running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-            Run Capture Test
-          </button>
         ) : null}
 
         <button

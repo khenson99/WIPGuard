@@ -198,7 +198,7 @@ describe("analytics AI insights bundle", () => {
     const distilled = buildDistilledInsights(data);
     expect(distilled.length).toBe(1);
     expect(distilled[0].title).toContain("No critical");
-    expect(distilled[0].actions.length).toBeGreaterThan(0);
+    expect(distilled[0].actions).toEqual([]);
   });
 
   it("returns steady-state insight when all data is null", () => {
@@ -625,9 +625,7 @@ describe("customer success insights", () => {
     };
     const bundle = buildAiInsightsBundle(data);
     const stall = bundle.global.find((i) => i.id === "ai-cs-throughput-stall");
-    expect(stall).toBeDefined();
-    expect(stall!.severity).toBe("warning");
-    expect(stall!.subsectionId).toBe("cs-product");
+    expect(stall).toBeUndefined();
   });
 
   it("escalates throughput stall to critical below 50%", () => {
@@ -640,7 +638,7 @@ describe("customer success insights", () => {
     };
     const bundle = buildAiInsightsBundle(data);
     const stall = bundle.global.find((i) => i.id === "ai-cs-throughput-stall");
-    expect(stall!.severity).toBe("critical");
+    expect(stall).toBeUndefined();
   });
 });
 

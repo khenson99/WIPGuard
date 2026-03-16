@@ -387,8 +387,8 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
 
       {/* Recent Submitters */}
       <SectionCard
-        title="Recent Downloaders"
-        subtitle={`${recentSubmitters.length} downloader${recentSubmitters.length !== 1 ? "s" : ""} (distinct emails)`}
+        title="Downloader Emails"
+        subtitle={`${recentSubmitters.length} unique email${recentSubmitters.length !== 1 ? "s" : ""} in range`}
       >
         <DataTable columns={submitterColumns} rows={recentSubmitters} emptyMessage="No downloaders in this range" />
       </SectionCard>

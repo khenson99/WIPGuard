@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { WorkflowScope, WorkflowStatus, type Prisma } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { normalizeAutomationOperatorKey } from "@/lib/automations/operators";
+import { isRetiredAutomationActionType } from "@/lib/automations/retired-actions";
 import { AUTOMATION_TEMPLATES } from "@/lib/automations/templates";
 import {
   integrationProvidersFromInput,
@@ -15,12 +16,79 @@ import {
 import { getAppRole } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { getAuthenticatedUser } from "@/lib/session-user";
+import type { AutomationTemplate } from "@/lib/automations/templates";
 
 function parseBody(input: unknown): Record<string, unknown> {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     return {};
   }
   return input as Record<string, unknown>;
+}
+
+function sanitizeTemplateCopy(value: string): string {
+  return value;
+}
+
+function sanitizeTemplateGraphValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => sanitizeTemplateGraphValue(item))
+      .filter((item) => item !== null);
+  }
+
+  if (!value || typeof value !== "object") {
+    return typeof value === "string" ? sanitizeTemplateCopy(value) : value;
+  }
+
+  const record = value as Record<string, unknown>;
+  const sanitized: Record<string, unknown> = {};
+
+  for (const [key, raw] of Object.entries(record)) {
+    if (key === "actionTypes" && Array.isArray(raw)) {
+      const actionTypes = raw.filter(
+        (item): item is string =>
+          typeof item === "string" && !isRetiredAutomationActionType(item)
+      );
+      sanitized[key] = actionTypes;
+      continue;
+    }
+
+    if (key === "tools" && Array.isArray(raw)) {
+      const tools = raw
+        .filter((item) => {
+          if (!item || typeof item !== "object") return true;
+          const actionType = (item as Record<string, unknown>).actionType;
+          return !isRetiredAutomationActionType(actionType);
+        })
+        .map((item) => sanitizeTemplateGraphValue(item));
+      sanitized[key] = tools;
+      continue;
+    }
+
+    sanitized[key] = sanitizeTemplateGraphValue(raw);
+  }
+
+  return sanitized;
+}
+
+function graphHasRetiredActionNode(template: AutomationTemplate): boolean {
+  const graph = template.graph as { nodes?: Array<{ config?: { actionType?: string } }> };
+  return (graph.nodes ?? []).some((node) => {
+    const actionType = node.config?.actionType;
+    return isRetiredAutomationActionType(actionType);
+  });
+}
+
+function sanitizeAutomationTemplate(template: AutomationTemplate): AutomationTemplate | null {
+  if (graphHasRetiredActionNode(template)) {
+    return null;
+  }
+
+  return {
+    ...template,
+    description: sanitizeTemplateCopy(template.description),
+    graph: sanitizeTemplateGraphValue(template.graph) as Prisma.JsonObject,
+  };
 }
 
 export async function GET(): Promise<NextResponse> {
@@ -91,9 +159,13 @@ export async function GET(): Promise<NextResponse> {
       lastError: rule.lastError,
     }));
 
+    const publicTemplates = AUTOMATION_TEMPLATES.map(sanitizeAutomationTemplate).filter(
+      (template): template is AutomationTemplate => Boolean(template)
+    );
+
     return NextResponse.json({
       workflows,
-      templates: AUTOMATION_TEMPLATES,
+      templates: publicTemplates,
       systemManagedRecipes,
     });
   } catch (error) {

@@ -168,8 +168,8 @@ export default function AutomationApprovalsPage() {
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">Review Queue</h1>
-          <p className="text-xs text-muted-foreground">Workflow steps waiting for human review.</p>
+          <h1 className="text-lg font-semibold text-foreground">Approvals</h1>
+          <p className="text-xs text-muted-foreground">Workflow steps waiting for human approval.</p>
         </div>
         <div className="flex items-center gap-2">
           <Link
@@ -182,7 +182,7 @@ export default function AutomationApprovalsPage() {
             href="/automations/recommendations"
             className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
           >
-            Suggested Actions
+            Recommendations
           </Link>
           <Link
             href="/automations"
@@ -231,8 +231,8 @@ export default function AutomationApprovalsPage() {
       ) : filteredApprovals.length === 0 ? (
         <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
           {statusFilter !== "all" || searchQuery.trim()
-            ? "No review items match the current filters."
-            : "No review items are waiting right now."}
+            ? "No approvals match the current filters."
+            : "No approvals are waiting right now."}
         </div>
       ) : (
         <div className="space-y-2">

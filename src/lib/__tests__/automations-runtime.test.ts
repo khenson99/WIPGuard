@@ -880,6 +880,85 @@ describe("automation runtime AI lifecycle", () => {
     );
   });
 
+  it("skips retired task action nodes and still completes the workflow run", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { buildRunExecutionContext } = await import("@/lib/automations/store");
+
+    vi.mocked(prisma.workflowRun.findUnique).mockResolvedValue({
+      id: "run_retired_action_1",
+      workflowId: "wf_retired_action_1",
+      startedAt: null,
+      workflow: {
+        graph: {
+          nodes: [
+            {
+              key: "trigger_review",
+              type: "TRIGGER",
+              label: "Review Trigger",
+              config: {
+                provider: "wipguard",
+                eventType: "review.requested",
+              },
+            },
+            {
+              key: "create_followup_task",
+              type: "ACTION",
+              label: "Create Follow-up Task",
+              config: {
+                actionType: "create_task",
+              },
+            },
+          ],
+          edges: [
+            {
+              source: "trigger_review",
+              target: "create_followup_task",
+              priority: 0,
+            },
+          ],
+        },
+      },
+    } as never);
+    vi.mocked(buildRunExecutionContext).mockResolvedValue({
+      trigger: {
+        provider: "WIPGUARD",
+        eventType: "review.requested",
+        externalId: "review_retired_1",
+      },
+      state: {},
+    } as never);
+    vi.mocked(prisma.workflowRunStep.create)
+      .mockResolvedValueOnce({ id: "step_trigger_retired_1" } as never)
+      .mockResolvedValueOnce({ id: "step_action_retired_1" } as never);
+
+    const { executeWorkflowRun } = await import("@/lib/automations/runtime");
+    await executeWorkflowRun("run_retired_action_1");
+
+    expect(prisma.workflowRunStep.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "step_action_retired_1" },
+        data: expect.objectContaining({
+          status: "SUCCEEDED",
+          output: expect.objectContaining({
+            actionType: "create_task",
+            skipped: true,
+            reason: "retired_workflow_action",
+            detail: "Task-oriented workflow actions have been retired with the Work section.",
+          }),
+        }),
+      })
+    );
+    expect(prisma.workflowRun.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "run_retired_action_1" },
+        data: expect.objectContaining({
+          status: "SUCCEEDED",
+          error: null,
+        }),
+      })
+    );
+  });
+
   it("resumes approved workflow approvals into downstream recommendation execution", async () => {
     const { prisma } = await import("@/lib/prisma");
     const { executeApprovedRecommendationsForRun } = await import(

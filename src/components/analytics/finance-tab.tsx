@@ -305,6 +305,9 @@ export function FinanceTab({ data }: FinanceTabProps) {
             <h3 className="text-foreground font-semibold">Profit & Loss Statement</h3>
             <span className="text-xs text-muted-foreground ml-auto">{fp.pnl.periodLabel}</span>
           </div>
+          <p className="mb-4 text-xs text-muted-foreground">
+            Revenue is sourced from Stripe. Expense categories are modeled from aggregate Mercury outflows until transaction mapping is configured.
+          </p>
 
           {/* Header */}
           <div className="grid grid-cols-4 gap-4 pb-2 border-b border-border">

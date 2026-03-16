@@ -57,8 +57,6 @@ interface InsightCardFullProps {
   isPinned?: boolean;
   onTogglePin?: () => void;
   onDismiss?: () => void;
-  onCreateTask?: () => void;
-  isCreatingTask?: boolean;
 }
 
 export function InsightCardFull({
@@ -69,12 +67,10 @@ export function InsightCardFull({
   isPinned = false,
   onTogglePin,
   onDismiss,
-  onCreateTask,
-  isCreatingTask = false,
 }: InsightCardFullProps) {
   const config = SEVERITY_CONFIG[insight.severity];
   const Icon = config.icon;
-  const showActions = onTogglePin != null && onDismiss != null && onCreateTask != null;
+  const showActions = onTogglePin != null && onDismiss != null;
 
   return (
     <article
@@ -134,8 +130,6 @@ export function InsightCardFull({
                 isPinned={isPinned}
                 onTogglePin={onTogglePin!}
                 onDismiss={onDismiss!}
-                onCreateTask={onCreateTask!}
-                isCreatingTask={isCreatingTask}
               />
             </div>
           ) : null}
@@ -185,7 +179,10 @@ export function InsightCardFull({
                     </thead>
                     <tbody>
                       {insight.evidence.map((evidence, index) => (
-                        <tr key={`${evidence.source}-${evidence.metric}-${index}`} className="border-b border-border/30 last:border-0">
+                        <tr
+                          key={`${evidence.source}-${evidence.metric}-${index}`}
+                          className="border-b border-border/30 last:border-0"
+                        >
                           <td className="py-2 text-foreground">{evidence.source}</td>
                           <td className="py-2 text-muted-foreground">{evidence.metric}</td>
                           <td className="py-2 text-right text-muted-foreground">

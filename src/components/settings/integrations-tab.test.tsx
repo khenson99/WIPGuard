@@ -152,22 +152,17 @@ describe("IntegrationsTab", () => {
     expect(screen.getByLabelText("Toggle Webflow").getAttribute("aria-expanded")).toBe("false");
 
     await waitFor(() => {
-      expect(screen.getByText("Slack Status Thread Sync")).toBeTruthy();
+      expect(screen.getByText("Slack Channel Routing")).toBeTruthy();
     });
     expect(screen.queryByText("Save Config")).toBeNull();
 
-    fireEvent.click(screen.getByText("Slack Status Thread Sync"));
+    fireEvent.click(screen.getByText("Slack Channel Routing"));
 
     await waitFor(() => {
-      expect(screen.getByText("Statuses To Sync")).toBeTruthy();
+      expect(screen.getByText("Default Channel ID")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByText("Slack Unanswered Request Detector"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Channel IDs")).toBeTruthy();
-    });
-    expect(screen.queryByText("Statuses To Sync")).toBeNull();
+    expect(screen.getByText("Save Config")).toBeTruthy();
 
     fireEvent.click(screen.getByLabelText("Toggle Webflow"));
 
@@ -180,7 +175,7 @@ describe("IntegrationsTab", () => {
     });
   });
 
-  it("auto-opens the first failing rule when provider is expanded by default", async () => {
+  it("shows the first failing visible rule once the provider is expanded", async () => {
     mockIntegrationsFetch({
       items: [
         {
@@ -206,20 +201,22 @@ describe("IntegrationsTab", () => {
         },
       ],
       slackRuleErrors: {
-        "status-sync": "upstream failure",
+        "channel-routing": "upstream failure",
       },
     });
 
     render(<IntegrationsTab />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Toggle Slack").getAttribute("aria-expanded")).toBe("true");
+      expect(screen.getByLabelText("Toggle Slack")).toBeTruthy();
     });
 
+    fireEvent.click(screen.getByLabelText("Toggle Slack"));
+
     await waitFor(() => {
-      expect(screen.getByText("upstream failure")).toBeTruthy();
+      expect(screen.getAllByText("Slack Channel Routing").length).toBeGreaterThan(0);
     });
-    expect(screen.getByText("Save Config")).toBeTruthy();
+    expect(screen.getByText("Error")).toBeTruthy();
   });
 
   it("renders env-managed oauth integrations without connect or disconnect actions", async () => {

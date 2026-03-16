@@ -43,9 +43,7 @@ const DEFAULT_PROJECT_SAVED_VIEWS: DefaultSavedView[] = [
 ];
 
 function defaultsForScope(scope: SavedViewScope): DefaultSavedView[] {
-  if (scope === SavedViewScope.TASKS) {
-    return [];
-  }
+  void scope;
   return DEFAULT_PROJECT_SAVED_VIEWS;
 }
 
@@ -60,7 +58,6 @@ function normalizeSlug(value: string): string {
 
 export function toSavedViewScope(value: string | null): SavedViewScope | null {
   if (!value) return null;
-  if (value.toLowerCase() === "tasks") return SavedViewScope.TASKS;
   if (value.toLowerCase() === "projects") return SavedViewScope.PROJECTS;
   return null;
 }

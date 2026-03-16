@@ -1,6 +1,4 @@
 const EXECUTABLE_RECOMMENDATION_ACTION_TYPES = new Set([
-  "create_task",
-  "update_task",
   "create_gmail_draft",
   "send_gmail_message",
   "create_calendar_draft",

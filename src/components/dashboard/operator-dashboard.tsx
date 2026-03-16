@@ -87,7 +87,12 @@ export function OperatorDashboard() {
       });
 
       if (!response.ok) {
-        throw new Error(`Overview request failed (${response.status})`);
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        const errorMessage =
+          payload?.error && payload.error.trim().length > 0
+            ? payload.error
+            : `Overview request failed (${response.status})`;
+        throw new Error(errorMessage);
       }
 
       const payload = (await response.json()) as unknown;
@@ -99,10 +104,17 @@ export function OperatorDashboard() {
     },
     getLastUpdatedAt: (payload) => payload.generatedAt,
     mapError: (error) => {
-      if (error instanceof Error && error.message.trim().length > 0) return error.message;
+      if (error instanceof Error && error.message.trim().length > 0) {
+        if (error.message === "Organization context required for dashboard overview") {
+          return "Dashboard overview needs an organization context before it can load operator metrics.";
+        }
+        return error.message;
+      }
       return "Could not load operator overview.";
     },
   });
+  const requiresOrganizationContext =
+    resource.error === "Dashboard overview needs an organization context before it can load operator metrics.";
 
   const cards = useMemo(() => {
     if (!resource.data) return [];
@@ -134,8 +146,8 @@ export function OperatorDashboard() {
         title: automations?.label ?? "Automations",
         href: automations?.href ?? "/automations",
         primary: `${resource.data.automationAttention.activeWorkflows} active workflows running`,
-        secondary: `${resource.data.automationAttention.pendingApprovals} approvals and ${resource.data.automationAttention.pendingRecommendations} recommendations pending`,
-        tertiary: `${resource.data.automationAttention.failingRuns} failing runs, ${resource.data.automationAttention.waitingExternalRuns} waiting on external work`,
+        secondary: `${resource.data.automationAttention.failingRuns} failing runs, ${resource.data.automationAttention.waitingExternalRuns} waiting externally`,
+        tertiary: `${resource.data.automationAttention.pendingApprovals + resource.data.automationAttention.pendingRecommendations} runs paused at human checkpoints`,
       },
       {
         workspaceId: resource.data.analyticsFreshness.workspaceId,
@@ -182,7 +194,7 @@ export function OperatorDashboard() {
           />
         ) : null}
 
-        {resource.error ? (
+        {resource.error && resource.data ? (
           <DashboardErrorBanner message={resource.error} onRetry={resource.refresh} />
         ) : null}
 
@@ -192,8 +204,11 @@ export function OperatorDashboard() {
 
         {!resource.loading && !resource.data ? (
           <DashboardEmptyState
-            title="Operator overview unavailable"
-            message={resource.error ?? "No operator overview data was returned."}
+            title={requiresOrganizationContext ? "Organization Context Required" : "Operator overview unavailable"}
+            message={
+              resource.error ??
+              "No operator overview data was returned."
+            }
             actionLabel="Refresh now"
             onAction={resource.refresh}
           />

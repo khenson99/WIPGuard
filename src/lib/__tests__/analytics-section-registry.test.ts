@@ -43,21 +43,23 @@ describe("analytics section registry", () => {
     expect(LEGACY_ANALYTICS_TAB_REDIRECTS.sales).toBe("/analytics/sales-pipeline");
     expect(LEGACY_ANALYTICS_TAB_REDIRECTS.finance).toBe("/analytics/finance");
     expect(LEGACY_ANALYTICS_TAB_REDIRECTS.marketing).toBe("/analytics/ads-traffic");
-    expect(LEGACY_ANALYTICS_TAB_REDIRECTS.tasks).toBe("/analytics/customer-success");
+    expect("tasks" in LEGACY_ANALYTICS_TAB_REDIRECTS).toBe(false);
     expect(LEGACY_ANALYTICS_TAB_REDIRECTS.journey).toBe("/analytics/customer-journey");
     expect(LEGACY_ANALYTICS_TAB_REDIRECTS.demos).toBe("/analytics/demo-analytics");
     expect(LEGACY_ANALYTICS_TAB_REDIRECTS.process).toBe("/analytics/process-analytics");
   });
 
   it("redirects removed customer-success ops routes to the parent dashboard", () => {
-    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["decision-dashboard"]).toBe("/analytics/customer-success");
-    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["flow-metrics"]).toBe("/analytics/customer-success");
-    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["flow-risk"]).toBe("/analytics/customer-success");
-    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS.observability).toBe("/analytics/customer-success");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["decision-dashboard"]).toBe("/analytics/process-analytics");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["flow-metrics"]).toBe("/analytics/process-analytics");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["flow-risk"]).toBe("/analytics/process-analytics");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS.observability).toBe("/analytics/process-analytics");
     expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-decision-dashboard"]).toBe("/analytics/customer-success");
     expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-flow-metrics"]).toBe("/analytics/customer-success");
     expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-flow-risk"]).toBe("/analytics/customer-success");
     expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-observability"]).toBe("/analytics/customer-success");
+    expect("tasks" in LEGACY_ANALYTICS_ROUTE_REDIRECTS).toBe(false);
+    expect("cs-product" in LEGACY_ANALYTICS_ROUTE_REDIRECTS).toBe(false);
   });
 
   it("returns the owning primary section for child routes", () => {

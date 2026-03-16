@@ -57,7 +57,7 @@ const operatingModel = [
     step: "02",
     title: "Limit concurrent work",
     body:
-      "WIP policies make overcommitment obvious before another task gets pulled into motion.",
+      "Clear operating limits make overcommitment obvious before another request gets pulled into motion.",
   },
   {
     step: "03",

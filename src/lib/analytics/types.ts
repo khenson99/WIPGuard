@@ -793,10 +793,9 @@ export interface IntegrationTelemetryData {
   enabledRules: number;
   erroredRules: number;
   receiptsInRange: number;
-  tasksCreatedInRange: number;
   eventsInRange: number;
   failuresInRange: number;
-  trend: Array<{ date: string; receipts: number; createdTasks: number; failures: number }>;
+  trend: Array<{ date: string; receipts: number; failures: number }>;
   topFailureReasons: Array<{ reason: string; count: number }>;
   coverageStatus?: "active" | "stale" | "not_provisioned" | null;
   configuredRules?: string[];
@@ -933,7 +932,6 @@ export interface AnalyticsRecommendation {
 }
 
 export type InsightActionType =
-  | "create_task"
   | "assign_owner"
   | "create_automation_from_template"
   | "open_integration_followup";

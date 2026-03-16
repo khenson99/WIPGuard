@@ -63,17 +63,54 @@ function splitPylonDateRange(input: {
   return windows;
 }
 
-function parseIssueArray(payload: unknown): PylonIssue[] {
-  const record = asRecord(payload);
-  if (!record) return [];
+function asNamedString(value: unknown): string | null {
+  const direct = asString(value);
+  if (direct) return direct;
 
-  const candidates = [record.data, record.items, record.conversations];
-  for (const candidate of candidates) {
-    if (Array.isArray(candidate)) {
-      return candidate.filter((item) => item && typeof item === "object") as PylonIssue[];
+  const record = asRecord(value);
+  if (!record) return null;
+
+  return (
+    asString(record.name) ??
+    asString(record.label) ??
+    asString(record.value) ??
+    asString(record.key) ??
+    asString(record.id)
+  );
+}
+
+function parseIssueArray(payload: unknown): PylonIssue[] {
+  const visited = new Set<unknown>();
+
+  function visit(value: unknown): PylonIssue[] {
+    if (!value || visited.has(value)) return [];
+    if (Array.isArray(value)) {
+      return value.filter((item) => item && typeof item === "object") as PylonIssue[];
     }
+
+    const record = asRecord(value);
+    if (!record) return [];
+    visited.add(value);
+
+    const directCandidates = [
+      record.data,
+      record.items,
+      record.conversations,
+      record.results,
+      record.records,
+      record.edges,
+      record.nodes,
+    ];
+
+    for (const candidate of directCandidates) {
+      const parsed = visit(candidate);
+      if (parsed.length > 0) return parsed;
+    }
+
+    return [];
   }
-  return [];
+
+  return visit(payload);
 }
 
 async function fetchJsonWithTimeout(input: {
@@ -201,11 +238,19 @@ export function getPylonIssueTitle(issue: PylonIssue): string | null {
 }
 
 export function getPylonIssueStatus(issue: PylonIssue): string | null {
-  return asString(issue.status) ?? asString(issue.state);
+  return (
+    asNamedString(issue.status) ??
+    asNamedString(issue.state) ??
+    asNamedString(issue.workflowStatus) ??
+    asNamedString(issue.workflow_status)
+  );
 }
 
 export function getPylonIssuePriority(issue: PylonIssue): string | null {
-  return asString(issue.priority);
+  return (
+    asNamedString(issue.priority) ??
+    asNamedString(issue.severity)
+  );
 }
 
 export function getPylonIssueTags(issue: PylonIssue): string[] {

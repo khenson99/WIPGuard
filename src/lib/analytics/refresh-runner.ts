@@ -14,7 +14,6 @@ import { fetchSemrushData } from "@/lib/analytics/fetchers-semrush";
 import { providerForSnapshotKey } from "@/lib/analytics/provider-health";
 import { snapshotExpiryFromNow, storeAnalyticsSnapshot, storeAnalyticsSnapshotFailure } from "@/lib/analytics/snapshots";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
-import { prisma } from "@/lib/prisma";
 
 function timeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -34,46 +33,6 @@ function timeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 function timeoutMsForRefreshJob(providerKey: string): number {
   if (providerKey === "stripe") return 25_000;
   return 10_000;
-}
-
-async function computeProductSnapshot(userId: string, fromDate: Date, toDate: Date) {
-  const [createdTasksInRange, completedTasksInRange, overdueOpenTasks, contributors] = await Promise.all([
-    prisma.task.count({ where: { createdAt: { gte: fromDate, lte: toDate } } }),
-    prisma.task.count({ where: { completedOn: { gte: fromDate, lte: toDate } } }),
-    prisma.task.count({
-      where: {
-        status: { not: "DONE" },
-        dueDate: { lt: toDate },
-      },
-    }),
-    prisma.statusHistory.findMany({
-      where: {
-        changedAt: { gte: fromDate, lte: toDate },
-        changedBy: { not: null },
-      },
-      distinct: ["changedBy"],
-      select: { changedBy: true },
-    }),
-  ]);
-
-  const activeContributors = contributors.filter((entry) => Boolean(entry.changedBy)).length;
-  const backlogGrowth = createdTasksInRange - completedTasksInRange;
-  const throughputRate =
-    createdTasksInRange > 0 ? Math.round((completedTasksInRange / createdTasksInRange) * 10000) / 100 : null;
-
-  return {
-    activeContributors,
-    createdTasksInRange,
-    completedTasksInRange,
-    overdueOpenTasks,
-    backlogGrowth,
-    throughputRate,
-    _meta: {
-      fetchedAt: new Date().toISOString(),
-      nextRefresh: snapshotExpiryFromNow(1).toISOString(),
-      source: "live" as const,
-    },
-  };
 }
 
 interface ProviderRefreshOutcome {
@@ -233,8 +192,6 @@ async function refreshForUserAndRange(input: {
         }),
     });
   }
-
-  jobs.push({ providerKey: "product", run: () => computeProductSnapshot(input.userId, fromDate, toDate) });
 
   jobs.push({
     providerKey: "googleWorkspace",
