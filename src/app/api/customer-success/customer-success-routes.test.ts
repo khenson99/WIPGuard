@@ -445,6 +445,48 @@ describe("customer-success mutation routes", () => {
     });
   });
 
+  it("rejects success plan creation when name is missing", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessPlan } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/success-plan/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/success-plan", {
+        method: "POST",
+        body: JSON.stringify({ name: "   " }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Success plan name is required" });
+    expect(createCustomerSuccessPlan).not.toHaveBeenCalled();
+  });
+
+  it("rejects success plan creation when account id is missing", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessPlan } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/success-plan/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/success-plan", {
+        method: "POST",
+        body: JSON.stringify({ name: "Renewal Recovery" }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext("")
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Account id is required" });
+    expect(createCustomerSuccessPlan).not.toHaveBeenCalled();
+  });
+
   it("returns 404 when a customer-success account detail is missing", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { getCustomerSuccessAccountDetail } = await import("@/lib/customer-success/service");
