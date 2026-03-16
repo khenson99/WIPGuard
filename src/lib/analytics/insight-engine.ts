@@ -715,6 +715,9 @@ function buildUnitEconomicsInsights(
     data.stripe,
     data.mercury ?? null,
     data.hubspot ?? null,
+    {
+      observedPeriodDays: data.mercury?.cashFlow.observedPeriodDays ?? data.timeRange?.days ?? 30,
+    },
   );
 
   const insights: AiInsight[] = [];

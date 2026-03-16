@@ -189,6 +189,32 @@ describe("computeUnitEconomics", () => {
     expect(result.magicNumber).toBe(0.96);
   });
 
+  it("normalizes in-range closed won counts to a monthly equivalent", () => {
+    const ninetyDayMercury = makeMercury({
+      cashFlow: {
+        totalBalance: 500_000,
+        inflows30d: 12_000,
+        outflows30d: 45_000,
+        netCashFlow: -33_000,
+        runway: 15,
+        burnRate: 45_000,
+        observedPeriodDays: 90,
+      },
+    });
+    const ninetyDayHubspot = makeHubSpot({
+      funnel: {
+        ...hubspot.funnel,
+        closedWon: 9,
+      },
+    });
+
+    const result = computeUnitEconomics(stripe, ninetyDayMercury, ninetyDayHubspot);
+
+    expect(result.cac).toBe(2250);
+    expect(result.paybackMonths).toBe(180);
+    expect(result.ltvCacRatio).toBe(2.22);
+  });
+
   /* ─── Churn edge cases ──────────────────────────────────── */
 
   it("caps LTV at 10 years when churnRate is zero", () => {

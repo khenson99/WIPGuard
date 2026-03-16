@@ -63,6 +63,7 @@ export function computeUnitEconomics(
   hubspot: HubSpotData | null,
   opts: {
     ratios?: Partial<ExpenseRatios>;
+    observedPeriodDays?: number;
   } = {},
 ): UnitEconomicsData {
   const mercuryBreakdown = mercury?.cashFlow.expenseBreakdown30d;
@@ -87,6 +88,10 @@ export function computeUnitEconomics(
       : {}),
     ...opts.ratios,
   };
+  const observedPeriodDays =
+    opts.observedPeriodDays ??
+    mercury?.cashFlow.observedPeriodDays ??
+    30;
 
   // -- Early exit: nothing to compute ---
   if (!stripe && !mercury && !hubspot) {
@@ -144,6 +149,9 @@ export function computeUnitEconomics(
   const marketingSpend = (mercury?.cashFlow.outflows30d ?? 0) * ratios.marketing;
 
   let newCustomers = hubspot?.funnel.closedWon ?? 0;
+  if (newCustomers > 0 && Number.isFinite(observedPeriodDays) && observedPeriodDays > 0) {
+    newCustomers = newCustomers * (30 / observedPeriodDays);
+  }
   if (newCustomers <= 0 && stripe) {
     // Approximate new customers from active-sub base and churn rate (the
     // minimum number of new subs needed just to replace churn).

@@ -51,7 +51,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       request.nextUrl.searchParams.get("timeRange") ?? "Last 30 days";
 
     const pnl = buildProfitAndLoss(stripe, normalizedMercury, { timeRange });
-    const unitEconomics = computeUnitEconomics(stripe, normalizedMercury, hubspot);
+    const unitEconomics = computeUnitEconomics(stripe, normalizedMercury, hubspot, {
+      observedPeriodDays: normalizedMercury?.cashFlow.observedPeriodDays ?? 30,
+    });
 
     return NextResponse.json(
       { pnl, unitEconomics },

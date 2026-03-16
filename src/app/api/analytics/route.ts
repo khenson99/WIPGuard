@@ -897,7 +897,10 @@ async function buildFinancialPlanningData(
     stripe,
     mercury,
     hubspot,
-    effectiveExpenseRatios ? { ratios: effectiveExpenseRatios } : undefined,
+    {
+      ...(effectiveExpenseRatios ? { ratios: effectiveExpenseRatios } : {}),
+      observedPeriodDays: mercury?.cashFlow.observedPeriodDays ?? data.timeRange?.days ?? 30,
+    },
   );
 
   // --- Forecasts: defaults + custom saved scenarios ---

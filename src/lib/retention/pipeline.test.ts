@@ -100,4 +100,54 @@ describe("retention pipeline helpers", () => {
       })
     ).toBe("ARDA_USER_DETAILS");
   });
+
+  it("prefers discovered tenant ids over generic result payload ids", () => {
+    expect(
+      __test__.resolveArdaTenantIds(
+        {
+          tenantId: "northstar",
+          configuredTenantId: "northstar",
+          tenantName: "Northstar Chemical",
+          companyName: "Northstar Chemical",
+          customerName: "Northstar Chemical",
+          oidcSubject: null,
+          userDetailsCounts: null,
+          customerStatus: "Active",
+          health: null,
+          mainCodaDocId: null,
+          orderArchiveDocumentId: null,
+          churned: false,
+          resultTenantIds: ["11111111-1111-1111-1111-111111111111"],
+        },
+        new Map([
+          [
+            "northstar",
+            ["22222222-2222-2222-2222-222222222222"],
+          ],
+        ])
+      )
+    ).toEqual(["22222222-2222-2222-2222-222222222222"]);
+  });
+
+  it("parses user-details rows from human-readable column names", () => {
+    expect(
+      __test__.parseArdaUserDetailsRow({
+        values: {
+          "Email Address": "ops@northstarchemical.com",
+          "Tenant ID": "6fa02301-2cd9-4cfa-a258-40474b828945",
+          "OIDC Subject": "subject-123",
+          Summary: "Items: 4, Cards: 5, Orders: 6",
+        },
+      })
+    ).toEqual({
+      email: "ops@northstarchemical.com",
+      tenantId: "6fa02301-2cd9-4cfa-a258-40474b828945",
+      oidcSubject: "subject-123",
+      counts: {
+        items: 4,
+        cards: 5,
+        orders: 6,
+      },
+    });
+  });
 });

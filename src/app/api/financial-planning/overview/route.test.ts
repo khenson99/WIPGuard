@@ -165,6 +165,9 @@ describe("GET /api/financial-planning/overview", () => {
         }),
       }),
       expect.any(Object),
+      expect.objectContaining({
+        observedPeriodDays: 90,
+      }),
     );
   });
 });

@@ -415,7 +415,87 @@ async function fetchCodaApiRows(
     if (!pageToken) break;
   }
 
+  if (pageToken) {
+    throw new Error(
+      `Coda request exceeded page limit for doc ${docId} table ${tableId}; increase the configured limit to avoid partial results`
+    );
+  }
+
   return rows;
+}
+
+interface ParsedArdaUserDetailsRow {
+  email: string | null;
+  tenantId: string | null;
+  oidcSubject: string | null;
+  counts: { items: number; cards: number; orders: number } | null;
+}
+
+function extractArdaUserDetailsCounts(summary: string | null): { items: number; cards: number; orders: number } | null {
+  const summaryMatch = summary?.match(/Items:\s*(\d+),\s*Cards:\s*(\d+),\s*Orders:\s*(\d+)/i);
+  return summaryMatch
+    ? {
+        items: Number(summaryMatch[1]),
+        cards: Number(summaryMatch[2]),
+        orders: Number(summaryMatch[3]),
+      }
+    : null;
+}
+
+function readFirstString(record: Record<string, unknown>, candidates: readonly string[]): string | null {
+  for (const candidate of candidates) {
+    const value = asString(record[candidate]);
+    if (value) return value;
+  }
+  return null;
+}
+
+function positiveEnvInt(name: string, fallback: number): number {
+  const parsed = asNumber(process.env[name]);
+  return parsed && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+function parseArdaUserDetailsRow(
+  row: CodaApiRow,
+  candidateKeys?: {
+    email?: string[];
+    tenantId?: string[];
+    oidcSubject?: string[];
+    summary?: string[];
+  }
+): ParsedArdaUserDetailsRow {
+  const values = asRecord(row.values);
+  const email = readFirstString(values, candidateKeys?.email ?? [
+    process.env.ARDA_USER_DETAILS_EMAIL_KEY?.trim() || "c-qNAXS3SO0E",
+    "Email",
+    "email",
+    "Email Address",
+  ]);
+  const tenantId = readFirstString(values, candidateKeys?.tenantId ?? [
+    process.env.ARDA_USER_DETAILS_TENANT_ID_KEY?.trim() || "c-WEBsoGYauT",
+    "tenantId",
+    "Tenant ID",
+    "Tenant Id",
+  ]);
+  const oidcSubject = readFirstString(values, candidateKeys?.oidcSubject ?? [
+    process.env.ARDA_USER_DETAILS_OIDC_SUBJECT_KEY?.trim() || "c-N0x4hFU6Uo",
+    "oidcSubject",
+    "OIDC Subject",
+    "OIDC subject",
+  ]);
+  const summary = readFirstString(values, candidateKeys?.summary ?? [
+    process.env.ARDA_USER_DETAILS_SUMMARY_KEY?.trim() || "c-yoAdpl41FS",
+    "Summary",
+    "summary",
+    "User Details Summary",
+  ]);
+
+  return {
+    email,
+    tenantId,
+    oidcSubject,
+    counts: extractArdaUserDetailsCounts(summary),
+  };
 }
 
 function normalizeArdaTenantConfigRow(row: CodaApiRow): ArdaTenantConfig | null {
@@ -463,30 +543,47 @@ async function discoverArdaTenantIdsByConfig(
     process.env.ARDA_USER_DETAILS_TABLE_ID?.trim() ??
     "grid-sync-22507-RowDataObject-dynamic-76fe62dd30b7a8c4df850cd9ee639fcfdf09c9067d2e7472911d2a718e7e2f1f";
   try {
-    const rows = await fetchCodaApiRows(docId, userDetailsTableId, token, 5, false);
-    const userDetailsRows = rows.map((row) => {
-      const values = asRecord(row.values);
-      const summary = asString(values["c-yoAdpl41FS"]);
-      const summaryMatch = summary?.match(/Items:\s*(\d+),\s*Cards:\s*(\d+),\s*Orders:\s*(\d+)/i);
-      return {
-        email: asString(values["c-qNAXS3SO0E"]),
-        tenantId: asString(values["c-WEBsoGYauT"]),
-        oidcSubject: asString(values["c-N0x4hFU6Uo"]),
-        counts: summaryMatch
-          ? {
-              items: Number(summaryMatch[1]),
-              cards: Number(summaryMatch[2]),
-              orders: Number(summaryMatch[3]),
-            }
-          : null,
-      };
-    });
+    const pageLimit = positiveEnvInt("ARDA_USER_DETAILS_PAGE_LIMIT", 50);
+    const rowsById = await fetchCodaApiRows(docId, userDetailsTableId, token, pageLimit, false);
+    let userDetailsRows = rowsById.map((row) => parseArdaUserDetailsRow(row));
+    const hasViableIdRows = userDetailsRows.some((row) => row.email || row.tenantId || row.oidcSubject);
+
+    if (!hasViableIdRows) {
+      const rowsByName = await fetchCodaApiRows(docId, userDetailsTableId, token, pageLimit, true);
+      userDetailsRows = rowsByName.map((row) =>
+        parseArdaUserDetailsRow(row, {
+          email: [
+            process.env.ARDA_USER_DETAILS_EMAIL_KEY?.trim() || "",
+            "Email",
+            "email",
+            "Email Address",
+          ].filter(Boolean),
+          tenantId: [
+            process.env.ARDA_USER_DETAILS_TENANT_ID_KEY?.trim() || "",
+            "tenantId",
+            "Tenant ID",
+            "Tenant Id",
+          ].filter(Boolean),
+          oidcSubject: [
+            process.env.ARDA_USER_DETAILS_OIDC_SUBJECT_KEY?.trim() || "",
+            "oidcSubject",
+            "OIDC Subject",
+            "OIDC subject",
+          ].filter(Boolean),
+          summary: [
+            process.env.ARDA_USER_DETAILS_SUMMARY_KEY?.trim() || "",
+            "Summary",
+            "summary",
+            "User Details Summary",
+          ].filter(Boolean),
+        })
+      );
+    }
+
     const userDetailsCountsByTenant = new Map<string, { items: number; cards: number; orders: number }>();
     for (const row of userDetailsRows) {
       if (!isUuid(row.tenantId)) continue;
-      const counts = (row as typeof row & {
-        counts: { items: number; cards: number; orders: number } | null;
-      }).counts;
+      const counts = row.counts;
       if (!counts) continue;
       const existing = userDetailsCountsByTenant.get(row.tenantId);
       if (
@@ -528,7 +625,6 @@ function resolveArdaTenantIds(
   discoveredTenantIdsByConfig: Map<string, string[]>
 ): string[] {
   if (isUuid(config.tenantId)) return [config.tenantId];
-  if (config.resultTenantIds.length > 0) return config.resultTenantIds;
 
   for (const candidate of [config.companyName, config.customerName, config.tenantName]) {
     const normalizedCompanyName = normalizeArdaCustomerName(candidate);
@@ -537,12 +633,13 @@ function resolveArdaTenantIds(
     if (manualTenantIds?.length) return manualTenantIds;
   }
 
-  return (
+  const discovered =
     discoveredTenantIdsByConfig.get(
       normalizeArdaTenantLookupKey(config.configuredTenantId)
-    ) ??
-    []
-  );
+    ) ?? [];
+  if (discovered.length > 0) return discovered;
+
+  return config.resultTenantIds;
 }
 
 async function loadArdaTenantConfigs(): Promise<ArdaTenantConfig[]> {
@@ -2125,4 +2222,6 @@ export const __test__ = {
   deriveLifecycleStartDate,
   deriveOnboardingStartDate,
   computeActiveWeeksTrailing8,
+  parseArdaUserDetailsRow,
+  resolveArdaTenantIds,
 };

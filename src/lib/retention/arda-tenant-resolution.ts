@@ -98,10 +98,6 @@ function parseEmbeddedJson(value: string): unknown {
 
 function collectResultTenantIds(value: unknown, acc: Set<string>): void {
   if (typeof value === "string") {
-    if (isUuid(value)) {
-      acc.add(value);
-      return;
-    }
     const maybeJson = parseEmbeddedJson(value);
     if (maybeJson !== value) collectResultTenantIds(maybeJson, acc);
     return;
@@ -115,7 +111,12 @@ function collectResultTenantIds(value: unknown, acc: Set<string>): void {
   const record = asRecord(value);
   for (const [key, child] of Object.entries(record)) {
     const loweredKey = key.toLowerCase();
-    if (loweredKey === "tenantid" || loweredKey === "eid") {
+    if (
+      loweredKey === "tenantid" ||
+      loweredKey === "tenant_id" ||
+      loweredKey === "tenantuuid" ||
+      loweredKey === "tenant_uuid"
+    ) {
       const candidate = asString(child);
       if (isUuid(candidate)) acc.add(candidate);
     }

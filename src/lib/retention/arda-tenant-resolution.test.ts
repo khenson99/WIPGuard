@@ -17,10 +17,7 @@ describe("arda tenant resolution helpers", () => {
           eId: "1193d42d-ef80-4bc8-ab11-84e5c8046892",
         },
       })
-    ).toEqual([
-      "9189acf9-4f89-46cd-9760-0d4933d58c67",
-      "1193d42d-ef80-4bc8-ab11-84e5c8046892",
-    ]);
+    ).toEqual(["9189acf9-4f89-46cd-9760-0d4933d58c67"]);
   });
 
   it("extracts tenant UUIDs from JSON-encoded result payloads", () => {
