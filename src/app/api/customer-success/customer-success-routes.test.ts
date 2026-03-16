@@ -469,6 +469,40 @@ describe("customer-success mutation routes", () => {
     });
   });
 
+  it("maps resolved alert status updates into updateCustomerSuccessAlertStatus", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { updateCustomerSuccessAlertStatus } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(updateCustomerSuccessAlertStatus).mockResolvedValue({
+      id: "alert_1",
+      status: "RESOLVED",
+    } as never);
+
+    const { POST } = await import(
+      "@/app/api/customer-success/accounts/[accountId]/alerts/[alertId]/status/route"
+    );
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/alerts/alert_1/status", {
+        method: "POST",
+        body: JSON.stringify({ status: "RESOLVED" }),
+        headers: { "content-type": "application/json" },
+      }),
+      alertContext()
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      id: "alert_1",
+      status: "RESOLVED",
+    });
+    expect(updateCustomerSuccessAlertStatus).toHaveBeenCalledWith(ACTOR, {
+      accountId: "acct_1",
+      alertId: "alert_1",
+      status: "RESOLVED",
+    });
+  });
+
   it("maps dismissed alert status updates into updateCustomerSuccessAlertStatus", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { updateCustomerSuccessAlertStatus } = await import("@/lib/customer-success/service");
