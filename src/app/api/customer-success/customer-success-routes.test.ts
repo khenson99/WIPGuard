@@ -226,6 +226,48 @@ describe("customer-success mutation routes", () => {
     });
   });
 
+  it("rejects note creation when body is missing", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessNote } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/notes/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/notes", {
+        method: "POST",
+        body: JSON.stringify({ body: "   " }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Note body is required" });
+    expect(createCustomerSuccessNote).not.toHaveBeenCalled();
+  });
+
+  it("rejects note creation when account id is missing", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessNote } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/notes/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/notes", {
+        method: "POST",
+        body: JSON.stringify({ body: "Capture renewal risk and stakeholder changes" }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext("")
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Account id is required" });
+    expect(createCustomerSuccessNote).not.toHaveBeenCalled();
+  });
+
   it("returns task permission denials before creating linked tasks", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { enforcePermission } = await import("@/lib/permissions");
