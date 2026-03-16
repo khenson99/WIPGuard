@@ -160,6 +160,64 @@ describe("customer-success mutation routes", () => {
     expect(createCustomerSuccessPlan).not.toHaveBeenCalled();
   });
 
+  it("passes through auth failures for outreach draft creation", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessOutreachDraft } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    });
+
+    const { POST } = await import(
+      "@/app/api/customer-success/accounts/[accountId]/outreach/drafts/route"
+    );
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/drafts", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "owner@example.com",
+          body: "Checking in on renewal risk.",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: "Unauthorized" });
+    expect(createCustomerSuccessOutreachDraft).not.toHaveBeenCalled();
+  });
+
+  it("passes through auth failures for outreach sends", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { sendCustomerSuccessOutreach } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    });
+
+    const { POST } = await import(
+      "@/app/api/customer-success/accounts/[accountId]/outreach/send/route"
+    );
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/send", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "owner@example.com",
+          body: "Following up on onboarding blockers.",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
+    expect(sendCustomerSuccessOutreach).not.toHaveBeenCalled();
+  });
+
   it("returns the customer-success portfolio for authenticated actors", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { getCustomerSuccessPortfolio } = await import("@/lib/customer-success/service");
