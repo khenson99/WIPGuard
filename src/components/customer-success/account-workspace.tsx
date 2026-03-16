@@ -291,7 +291,7 @@ export function CustomerSuccessAccountWorkspace({ accountId }: { accountId: stri
               </div>
               <div className="rounded-xl border border-border bg-background p-4">
                 <p className="text-xs text-muted-foreground">Connected Systems</p>
-                <p className="mt-1 text-sm font-medium text-foreground">{relationship?.providers.length ?? 0}</p>
+                <p className="mt-1 text-sm font-medium text-foreground">{relationship?.connectedSystems ?? relationship?.providers.length ?? 0}</p>
               </div>
               <div className="rounded-xl border border-border bg-background p-4">
                 <p className="text-xs text-muted-foreground">Primary LIR</p>
@@ -307,7 +307,7 @@ export function CustomerSuccessAccountWorkspace({ accountId }: { accountId: stri
                   <div>
                     <h3 className="text-sm font-semibold text-foreground">Relationship Intelligence</h3>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Unified provider links, Coda account metadata, and current retention posture.
+                      Unified provider links, Arda and Coda account metadata, and current retention posture.
                     </p>
                   </div>
                   {retention ? (
@@ -398,6 +398,19 @@ export function CustomerSuccessAccountWorkspace({ accountId }: { accountId: stri
                               </a>
                             ) : null}
                           </div>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {relationship.arda ? (
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Arda</h4>
+                        <div className="mt-2 space-y-2 text-sm">
+                          <p className="text-muted-foreground">Tenant: <span className="text-foreground">{relationship.arda.tenantName || relationship.arda.companyName || "—"}</span></p>
+                          <p className="text-muted-foreground">Configured Tenant ID: <span className="text-foreground">{relationship.arda.configuredTenantId || relationship.arda.tenantId || "—"}</span></p>
+                          <p className="text-muted-foreground">Customer Status: <span className="text-foreground">{relationship.arda.customerStatus || "—"}</span></p>
+                          <p className="text-muted-foreground">Configured Health: <span className="text-foreground">{relationship.arda.configuredHealth || "—"}</span></p>
+                          <p className="text-muted-foreground">Source Records: <span className="text-foreground">{formatNumber(relationship.arda.sourceRecordCount)}</span></p>
                         </div>
                       </div>
                     ) : null}

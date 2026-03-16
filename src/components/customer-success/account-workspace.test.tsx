@@ -139,6 +139,7 @@ function buildDetail(overrides: Partial<CustomerSuccessAccountDetail> = {}): Cus
       expansionPotential: "medium",
     },
     relationshipIntelligence: {
+      connectedSystems: 2,
       providers: [
         {
           provider: "CODA",
@@ -181,6 +182,16 @@ function buildDetail(overrides: Partial<CustomerSuccessAccountDetail> = {}): Cus
           missingSources: ["pylon"],
         },
         detailUrl: "/analytics/retention/acct_1",
+      },
+      arda: {
+        tenantId: "tenant-123",
+        configuredTenantId: "tenant-123",
+        tenantName: "Acme Co",
+        companyName: "Acme Co",
+        customerStatus: "Won",
+        configuredHealth: "Yellow",
+        implementationStage: "LIVE",
+        sourceRecordCount: 24,
       },
       coda: {
         customerStatus: "Won",
@@ -247,7 +258,7 @@ describe("CustomerSuccessAccountWorkspace", () => {
     render(<CustomerSuccessAccountWorkspace accountId="acct_1" />);
 
     await waitFor(() => {
-      expect(screen.getByText("Acme Co")).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "Acme Co" })).toBeTruthy();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Timeline" }));
@@ -315,7 +326,7 @@ describe("CustomerSuccessAccountWorkspace", () => {
     render(<CustomerSuccessAccountWorkspace accountId="acct_1" />);
 
     await waitFor(() => {
-      expect(screen.getByText("Acme Co")).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "Acme Co" })).toBeTruthy();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Tasks" }));
@@ -612,7 +623,7 @@ describe("CustomerSuccessAccountWorkspace", () => {
     render(<CustomerSuccessAccountWorkspace accountId="acct_1" />);
 
     await waitFor(() => {
-      expect(screen.getByText("Acme Co")).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "Acme Co" })).toBeTruthy();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Health Details" }));
@@ -635,7 +646,8 @@ describe("CustomerSuccessAccountWorkspace", () => {
       expect(screen.getByText("Relationship Intelligence")).toBeTruthy();
     });
 
-    expect(screen.getByText("Unified provider links, Coda account metadata, and current retention posture.")).toBeTruthy();
+    expect(screen.getByText("Unified provider links, Arda and Coda account metadata, and current retention posture.")).toBeTruthy();
+    expect(screen.getByText("Arda")).toBeTruthy();
     expect(screen.getByText("Main Coda Doc")).toBeTruthy();
     expect(screen.getByText("Low recent activity")).toBeTruthy();
     expect(screen.getByText(/Customer Success and Implementation/)).toBeTruthy();

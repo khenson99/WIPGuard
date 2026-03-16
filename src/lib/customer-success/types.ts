@@ -322,9 +322,22 @@ export interface CustomerSuccessCodaSummary {
   sourceRecordCount: number;
 }
 
+export interface CustomerSuccessArdaSummary {
+  tenantId?: string;
+  configuredTenantId?: string;
+  tenantName?: string;
+  companyName?: string;
+  customerStatus?: string;
+  configuredHealth?: string;
+  implementationStage?: string;
+  sourceRecordCount: number;
+}
+
 export interface CustomerSuccessRelationshipIntelligence {
+  connectedSystems: number;
   providers: CustomerSuccessProviderLink[];
   retention?: CustomerSuccessRetentionSummary;
+  arda?: CustomerSuccessArdaSummary;
   coda?: CustomerSuccessCodaSummary;
 }
 
