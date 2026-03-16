@@ -533,6 +533,27 @@ describe("customer-success mutation routes", () => {
     await expect(response.json()).resolves.toEqual({ error: "Plan store unavailable" });
   });
 
+  it("returns generic 500s for non-error success plan creation failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessPlan } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(createCustomerSuccessPlan).mockRejectedValue("plan-store-down");
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/success-plan/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/success-plan", {
+        method: "POST",
+        body: JSON.stringify({ name: "Renewal Recovery" }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Failed to create customer success plan" });
+  });
+
   it("returns 404 when a customer-success account detail is missing", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { getCustomerSuccessAccountDetail } = await import("@/lib/customer-success/service");
