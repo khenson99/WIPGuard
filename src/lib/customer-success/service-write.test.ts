@@ -275,6 +275,35 @@ describe("customer success write service", () => {
     });
   });
 
+  it("dismisses customer-success alerts with a resolved timestamp", async () => {
+    vi.mocked(prisma.customerSuccessAlertRecord.findFirst).mockResolvedValue({
+      id: "alert_1",
+    } as never);
+    vi.mocked(prisma.customerSuccessAlertRecord.update).mockResolvedValue({
+      id: "alert_1",
+      status: CustomerSuccessAlertStatus.DISMISSED,
+    } as never);
+
+    const updated = await updateCustomerSuccessAlertStatus(ACTOR, {
+      accountId: "acct_1",
+      alertId: "alert_1",
+      status: "DISMISSED",
+    });
+
+    expect(prisma.customerSuccessAlertRecord.update).toHaveBeenCalledWith({
+      where: { id: "alert_1" },
+      data: expect.objectContaining({
+        status: CustomerSuccessAlertStatus.DISMISSED,
+        resolvedAt: expect.any(Date),
+        lastEvaluatedAt: expect.any(Date),
+      }),
+    });
+    expect(updated).toMatchObject({
+      id: "alert_1",
+      status: CustomerSuccessAlertStatus.DISMISSED,
+    });
+  });
+
   it("queues outreach sends and publishes an outbox event after persisting the message", async () => {
     const tx = {
       customerSuccessOutreachMessage: {
