@@ -1,9 +1,11 @@
 export const dynamic = "force-dynamic";
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { DealStage, MeetingStatus } from "@/generated/prisma/client";
+import { enforcePermission } from "@/lib/permissions";
+import { getAuthenticatedUser } from "@/lib/session-user";
 import { toDealsErrorResponse } from "@/lib/deals/schema-guard";
 
 const OPEN_STAGES: DealStage[] = [DealStage.LEAD, DealStage.QUALIFIED, DealStage.PROPOSAL, DealStage.NEGOTIATION];
@@ -23,11 +25,22 @@ function daysBetween(a: Date, b: Date): number {
   return Math.abs(b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24);
 }
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await auth();
-    if (!session?.user) {
+    const user = getAuthenticatedUser(session);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { deniedResponse } = await enforcePermission({
+      userId: user.id,
+      action: "deals.read",
+      request,
+      targetType: "deal",
+    });
+    if (deniedResponse) {
+      return deniedResponse;
     }
 
     const organizationId = getOptionalOrganizationId(session);

@@ -1,12 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest, NextResponse } from "next/server";
 
 const authMock = vi.hoisted(() => vi.fn());
+const enforcePermissionMock = vi.hoisted(() => vi.fn());
 const dealFindManyMock = vi.hoisted(() => vi.fn());
 const dealMeetingFindManyMock = vi.hoisted(() => vi.fn());
 const dealStageHistoryFindManyMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/auth", () => ({
   auth: authMock,
+}));
+
+vi.mock("@/lib/permissions", () => ({
+  enforcePermission: enforcePermissionMock,
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -35,6 +41,7 @@ describe("deals analytics route", () => {
       },
     });
 
+    enforcePermissionMock.mockResolvedValue({ role: "member" });
     dealFindManyMock.mockResolvedValue([]);
     dealMeetingFindManyMock.mockResolvedValue([]);
     dealStageHistoryFindManyMock.mockResolvedValue([]);
@@ -46,7 +53,7 @@ describe("deals analytics route", () => {
     );
 
     const { GET } = await import("@/app/api/deals/analytics/route");
-    const response = await GET();
+    const response = await GET(new NextRequest("http://localhost/api/deals/analytics"));
     const body = await response.json();
 
     expect(response.status).toBe(503);
@@ -59,7 +66,7 @@ describe("deals analytics route", () => {
   it("scopes analytics queries to the authenticated organization", async () => {
     const { GET } = await import("@/app/api/deals/analytics/route");
 
-    const response = await GET();
+    const response = await GET(new NextRequest("http://localhost/api/deals/analytics"));
 
     expect(response.status).toBe(200);
     expect(dealFindManyMock).toHaveBeenCalledWith(
@@ -77,5 +84,20 @@ describe("deals analytics route", () => {
         where: { deal: { organizationId: "org-1" } },
       }),
     );
+  });
+
+  it("blocks analytics when read permission is denied", async () => {
+    enforcePermissionMock.mockResolvedValueOnce({
+      role: "observer",
+      deniedResponse: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    });
+
+    const { GET } = await import("@/app/api/deals/analytics/route");
+    const response = await GET(new NextRequest("http://localhost/api/deals/analytics"));
+
+    expect(response.status).toBe(403);
+    expect(dealFindManyMock).not.toHaveBeenCalled();
+    expect(dealMeetingFindManyMock).not.toHaveBeenCalled();
+    expect(dealStageHistoryFindManyMock).not.toHaveBeenCalled();
   });
 });

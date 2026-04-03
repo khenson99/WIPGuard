@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-state";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
@@ -104,6 +105,7 @@ const STAGE_COLORS: Record<string, string> = {
 };
 
 export function DealsAnalytics() {
+  const router = useRouter();
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -142,6 +144,38 @@ export function DealsAnalytics() {
         title={setupRequired ? "Deals setup required" : "Analytics unavailable"}
         message={error ?? (setupRequired ? DEALS_SCHEMA_MISSING_MESSAGE : "No analytics data available.")}
       />
+    );
+  }
+
+  const hasAnalyticsData =
+    data.pipeline.totalDeals > 0 ||
+    data.closeRate.won > 0 ||
+    data.closeRate.lost > 0 ||
+    data.meetings.total > 0 ||
+    data.sourceAttribution.some((entry) => entry.count > 0) ||
+    data.staleDeals.length > 0 ||
+    data.velocity.trend.length > 0 ||
+    data.closeRate.trend.length > 0;
+
+  if (!hasAnalyticsData) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <Link href="/deals" className="icon-btn-muted rounded-md p-2" aria-label="Back to deals">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <div>
+            <h1 className="text-xl font-bold text-foreground">Deals Analytics</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Pipeline health, velocity, and performance metrics.</p>
+          </div>
+        </div>
+        <DashboardEmptyState
+          title="No deals to analyze yet"
+          message="Load pipeline data first by creating a deal or syncing your current pipeline from HubSpot."
+          actionLabel="Open Pipeline View"
+          onAction={() => router.push("/deals")}
+        />
+      </div>
     );
   }
 
