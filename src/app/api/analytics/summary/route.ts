@@ -151,6 +151,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       financeForecast: Boolean(creds.stripeKey || creds.mercuryKey),
       financePnl: Boolean(creds.stripeKey || creds.mercuryKey),
       financeUnitEconomics: Boolean(creds.stripeKey),
+      financeMonthlyHistory: Boolean(creds.stripeKey || creds.mercuryKey),
+      financeAiBrief: Boolean(creds.stripeKey || creds.mercuryKey),
       product: true,
       customerJourney: true,
       visitorFunnel: true,
