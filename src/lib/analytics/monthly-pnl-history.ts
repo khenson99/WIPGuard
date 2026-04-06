@@ -4,7 +4,6 @@
 import { prisma } from "@/lib/prisma";
 import { AnalyticsSnapshotStatus } from "@/generated/prisma/client";
 import { buildProfitAndLossCore } from "./pnl-builder";
-import { normalizeMercuryDataPayload } from "./mercury-normalization";
 import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import type { StripeData, MercuryData, PnLRow } from "./types";
 
@@ -111,7 +110,7 @@ async function loadMonthlySnapshots(
   return sortedMonths.map(([month, data]) => ({
     month,
     stripe: data.stripe,
-    mercury: data.mercury ? normalizeMercuryDataPayload(data.mercury) : null,
+    mercury: data.mercury,
   }));
 }
 
