@@ -8,6 +8,14 @@ export type AnalyticsPrimarySectionId =
   | "demo-analytics"
   | "process-analytics";
 
+export type FinanceDataDomain =
+  | "financePlanning"
+  | "financeForecast"
+  | "financePnl"
+  | "financeUnitEconomics"
+  | "financeMonthlyHistory"
+  | "financeAiBrief";
+
 export interface AnalyticsPrimarySection {
   id: AnalyticsPrimarySectionId;
   label: string;
@@ -44,7 +52,9 @@ export interface AnalyticsSubSection {
     | "financePlanning"
     | "financeForecast"
     | "financePnl"
-    | "financeUnitEconomics";
+    | "financeUnitEconomics"
+    | "financeMonthlyHistory"
+    | "financeAiBrief";
 }
 
 export const ANALYTICS_PRIMARY_SECTIONS: AnalyticsPrimarySection[] = [
@@ -114,6 +124,8 @@ export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
   { id: "finance-forecast", label: "Forecasts", path: "/analytics/finance-forecast", parentId: "finance", dataDomain: "financeForecast" },
   { id: "finance-pnl", label: "P&L", path: "/analytics/finance-pnl", parentId: "finance", dataDomain: "financePnl" },
   { id: "finance-unit-economics", label: "Unit Economics", path: "/analytics/finance-unit-economics", parentId: "finance", dataDomain: "financeUnitEconomics" },
+  { id: "finance-monthly-history", label: "Monthly History", path: "/analytics/finance-monthly-history", parentId: "finance", dataDomain: "financeMonthlyHistory" },
+  { id: "finance-ai-brief", label: "AI Executive Brief", path: "/analytics/finance-ai-brief", parentId: "finance", dataDomain: "financeAiBrief" },
 
   { id: "sales-hubspot", label: "HubSpot", path: "/analytics/sales-hubspot", parentId: "sales-pipeline", dataDomain: "hubspot" },
   { id: "sales-stripe", label: "Stripe", path: "/analytics/sales-stripe", parentId: "sales-pipeline", dataDomain: "stripe" },
@@ -207,4 +219,6 @@ export const LEGACY_ANALYTICS_ROUTE_REDIRECTS: Record<string, string> = {
   "finance-forecast": "/analytics/finance-forecast",
   "finance-pnl": "/analytics/finance-pnl",
   "finance-unit-economics": "/analytics/finance-unit-economics",
+  "finance-monthly-history": "/analytics/finance-monthly-history",
+  "finance-ai-brief": "/analytics/finance-ai-brief",
 };

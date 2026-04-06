@@ -48,6 +48,8 @@ const FinancePlanningTab = dynamic(() => import("@/components/analytics/finance-
 const FinanceForecastTab = dynamic(() => import("@/components/analytics/finance-forecast-tab").then((m) => m.FinanceForecastTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const FinancePnlTab = dynamic(() => import("@/components/analytics/finance-pnl-tab").then((m) => m.FinancePnlTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const FinanceUnitEconomicsTab = dynamic(() => import("@/components/analytics/finance-unit-economics-tab").then((m) => m.FinanceUnitEconomicsTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const FinanceMonthlyHistoryTab = dynamic(() => import("@/components/analytics/finance-monthly-history-tab").then((m) => m.FinanceMonthlyHistoryTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const ExecutiveAiBrief = dynamic(() => import("@/components/analytics/executive-ai-brief").then((m) => m.ExecutiveAiBrief), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import { buildRangeQuery } from "@/lib/analytics/time-range";
 import {
@@ -114,6 +116,8 @@ export type AnalyticsChildRenderKind =
   | "finance-forecast"
   | "finance-pnl"
   | "finance-unit-economics"
+  | "finance-monthly-history"
+  | "finance-ai-brief"
   | "snapshot";
 
 const CHILD_ID_TO_RENDER_KIND = {
@@ -125,6 +129,8 @@ const CHILD_ID_TO_RENDER_KIND = {
   "finance-forecast": "finance-forecast",
   "finance-pnl": "finance-pnl",
   "finance-unit-economics": "finance-unit-economics",
+  "finance-monthly-history": "finance-monthly-history",
+  "finance-ai-brief": "finance-ai-brief",
   // Sales
   "sales-hubspot": "sales-hubspot",
   "sales-stripe": "sales-stripe",
@@ -363,6 +369,8 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     if (renderKind === "finance-forecast") return <FinanceForecastTab data={analyticsData} />;
     if (renderKind === "finance-pnl") return <FinancePnlTab data={analyticsData} />;
     if (renderKind === "finance-unit-economics") return <FinanceUnitEconomicsTab data={analyticsData} />;
+    if (renderKind === "finance-monthly-history") return <FinanceMonthlyHistoryTab />;
+    if (renderKind === "finance-ai-brief") return <ExecutiveAiBrief />;
     // Sales
     if (renderKind === "sales-hubspot") return <SalesHubspotTab data={analyticsData} />;
     if (renderKind === "sales-stripe") return <SalesStripeTab data={analyticsData} />;

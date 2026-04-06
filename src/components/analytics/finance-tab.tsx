@@ -21,6 +21,7 @@ import { fmtDelta, fmtMonths, fmtRatio, runwayColor, ltvCacSeverity } from "@/li
 import { StatCard } from "./stat-card";
 import { RingStat } from "./bar-display";
 import { FinanceDataEmptyState } from "./finance-empty-state";
+import { ExecutiveAiBrief } from "./executive-ai-brief";
 
 interface FinanceTabProps {
   data: AnalyticsDashboardData | null;
@@ -225,6 +226,11 @@ export function FinanceTab({ data }: FinanceTabProps) {
           icon={TrendingDown}
         />
       </div>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* AI EXECUTIVE BRIEF                                        */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <ExecutiveAiBrief />
 
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* UNIT ECONOMICS                                            */}

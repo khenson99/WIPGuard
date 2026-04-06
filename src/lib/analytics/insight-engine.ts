@@ -484,6 +484,12 @@ function buildFinanceInsights(data: AnalyticsDashboardData): AiInsight[] {
   // 10. Revenue vs. forecast gap
   insights.push(...buildRevenueVsForecastInsights(data, financeStale));
 
+  // 11. Expense growth outpacing revenue growth
+  insights.push(...buildExpenseRevenueGrowthDivergenceInsights(data, financeStale));
+
+  // 12. Multi-month revenue trend pattern detection
+  insights.push(...buildRevenueTrendPatternInsights(data, financeStale));
+
   return insights;
 }
 
@@ -901,6 +907,175 @@ function buildRevenueVsForecastInsights(
       ],
     },
   ];
+}
+
+// ── Expense vs Revenue Growth Divergence ────────────────
+
+function buildExpenseRevenueGrowthDivergenceInsights(
+  data: AnalyticsDashboardData,
+  stale: boolean,
+): AiInsight[] {
+  const revenueGrowth = data.stripe?.revenue?.revenueGrowth ?? 0;
+  const outflows = data.mercury?.cashFlow?.outflows30d ?? 0;
+  const revenue = data.stripe?.revenue?.totalRevenue30d ?? 0;
+
+  // If expenses are growing faster than revenue (expense ratio worsening)
+  // We detect this when burn rate exceeds 80% of revenue while revenue growth is below 10%
+  if (revenue > 0 && outflows > 0 && outflows > revenue * 0.8 && revenueGrowth < 10) {
+    const expenseRatio = (outflows / revenue) * 100;
+    return [
+      {
+        id: "ai-finance-expense-revenue-divergence",
+        section: "finance" as const,
+        subsectionId: "finance-pnl",
+        severity: expenseRatio > 100 ? ("critical" as const) : ("warning" as const),
+        title: "Expenses growing faster than revenue",
+        why: `Expense-to-revenue ratio is ${expenseRatio.toFixed(0)}% with revenue growth at only ${revenueGrowth.toFixed(1)}%. Operating expenses of $${outflows.toLocaleString()} are ${expenseRatio > 100 ? "exceeding" : "approaching"} revenue of $${revenue.toLocaleString()}.`,
+        confidence: clampConfidence(0.83),
+        expectedImpact: "Correcting the divergence by 10% extends runway and improves path to profitability.",
+        stale,
+        evidence: [
+          {
+            source: "Stripe + Mercury",
+            domain: "stripe" as const,
+            metric: "Expense/Revenue Ratio",
+            value: `${expenseRatio.toFixed(0)}%`,
+            delta: `Revenue growth: ${revenueGrowth.toFixed(1)}%`,
+          },
+        ],
+        actions: [
+          {
+            type: "create_task",
+            label: "Conduct expense audit and identify reduction targets",
+            payload: {
+              title: "Expense-to-revenue ratio audit",
+              priority: "P1",
+              status: "QUEUED",
+            },
+          },
+        ],
+      },
+    ];
+  }
+
+  return [];
+}
+
+// ── Revenue Trend Pattern Detection ─────────────────────
+
+function buildRevenueTrendPatternInsights(
+  data: AnalyticsDashboardData,
+  stale: boolean,
+): AiInsight[] {
+  const trend = data.stripe?.revenueTrend ?? [];
+  if (trend.length < 3) return [];
+
+  const insights: AiInsight[] = [];
+  const values = trend.map((t) => t.revenue);
+
+  // Detect consecutive decline (3+ months)
+  let consecutiveDeclines = 0;
+  for (let i = 1; i < values.length; i++) {
+    if (values[i] < values[i - 1]) {
+      consecutiveDeclines++;
+    } else {
+      consecutiveDeclines = 0;
+    }
+  }
+
+  if (consecutiveDeclines >= 3) {
+    const firstDecline = values[values.length - consecutiveDeclines - 1];
+    const latest = values[values.length - 1];
+    const totalDrop = firstDecline > 0 ? ((firstDecline - latest) / firstDecline * 100).toFixed(1) : "N/A";
+
+    insights.push({
+      id: "ai-finance-consecutive-revenue-decline",
+      section: "finance" as const,
+      subsectionId: "finance-stripe",
+      severity: consecutiveDeclines >= 4 ? ("critical" as const) : ("warning" as const),
+      title: `Revenue declining for ${consecutiveDeclines} consecutive months`,
+      why: `Revenue has declined each month for ${consecutiveDeclines} months, a total drop of ${totalDrop}%. This pattern suggests a structural issue rather than seasonal variation.`,
+      confidence: clampConfidence(0.88),
+      expectedImpact: "Identifying and addressing the root cause (churn, pricing, acquisition) is critical to stabilize MRR.",
+      stale,
+      evidence: [
+        {
+          source: "Stripe",
+          domain: "stripe" as const,
+          metric: "Revenue Trend",
+          value: `${consecutiveDeclines}-month decline`,
+          delta: `-${totalDrop}% total`,
+          trendValues: values,
+        },
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: "Investigate revenue decline root cause",
+          payload: {
+            title: "Multi-month revenue decline investigation",
+            priority: "P0",
+            status: "WORKING_ON_TODAY",
+          },
+        },
+      ],
+    });
+  }
+
+  // Detect accelerating growth (3+ months of increasing MoM growth rate)
+  if (values.length >= 4) {
+    const growthRates: number[] = [];
+    for (let i = 1; i < values.length; i++) {
+      growthRates.push(values[i - 1] > 0 ? ((values[i] - values[i - 1]) / values[i - 1]) * 100 : 0);
+    }
+
+    let accelerating = 0;
+    for (let i = 1; i < growthRates.length; i++) {
+      if (growthRates[i] > growthRates[i - 1] && growthRates[i] > 0) {
+        accelerating++;
+      } else {
+        accelerating = 0;
+      }
+    }
+
+    if (accelerating >= 3) {
+      const latestGrowth = growthRates[growthRates.length - 1];
+      insights.push({
+        id: "ai-finance-accelerating-growth",
+        section: "finance" as const,
+        subsectionId: "finance-stripe",
+        severity: "info" as const,
+        title: "Revenue growth accelerating — consider scaling investment",
+        why: `MoM revenue growth has accelerated for ${accelerating} consecutive months, reaching ${latestGrowth.toFixed(1)}%. This signals strong product-market fit momentum.`,
+        confidence: clampConfidence(0.80),
+        expectedImpact: "Scaling acquisition spend during acceleration can compound growth before the inflection point.",
+        stale,
+        evidence: [
+          {
+            source: "Stripe",
+            domain: "stripe" as const,
+            metric: "MoM Growth Rate",
+            value: `${latestGrowth.toFixed(1)}%`,
+            delta: `Accelerating for ${accelerating} months`,
+            trendValues: values,
+          },
+        ],
+        actions: [
+          {
+            type: "create_task",
+            label: "Evaluate scaling acquisition spend",
+            payload: {
+              title: "Growth acceleration opportunity assessment",
+              priority: "P1",
+              status: "QUEUED",
+            },
+          },
+        ],
+      });
+    }
+  }
+
+  return insights;
 }
 
 // ── Sales & Pipeline ─────────────────────────────────────
