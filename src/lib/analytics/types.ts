@@ -463,6 +463,76 @@ export interface MetaPageData {
 // INSTAGRAM PAGE TYPES
 // ══════════════════════════════════════════════════════════
 
+export interface InstagramTopPost {
+  id: string;
+  message: string;
+  reach: number;
+  engagement: number;
+  createdAt: string;
+  mediaType: string;
+  mediaProductType: string | null;
+  permalink: string | null;
+  thumbnailUrl: string | null;
+  likeCount: number;
+  commentCount: number;
+  performanceScore: number;
+  engagementRate: number;
+  ageInDays: number;
+  engagementVelocity: number;
+  captionLength: number;
+  hashtagCount: number;
+  mentionCount: number;
+  emojiCount: number;
+  hasQuestionHook: boolean;
+  hasCallToAction: boolean;
+  postedTimeBucket: "morning" | "afternoon" | "evening" | "overnight";
+  isVideo: boolean;
+  isReel: boolean;
+  isCarousel: boolean;
+  creativeSummary?: string | null;
+  hasPersonVisible?: boolean | null;
+  hasTextOverlayVisible?: boolean | null;
+  looksLikeShopFloor?: boolean | null;
+  looksLikeProductDemo?: boolean | null;
+  looksEducational?: boolean | null;
+  looksPromotional?: boolean | null;
+  performanceDrivers?: Array<{
+    key: string;
+    label: string;
+    source: "metadata" | "ai_visual";
+    sampled: boolean;
+    confidence: "low" | "medium" | "high";
+    liftPct: number;
+  }>;
+  nextTests?: Array<{
+    key: string;
+    label: string;
+    action: "add" | "reduce";
+    source: "metadata" | "ai_visual";
+    sampled: boolean;
+    confidence: "low" | "medium" | "high";
+    estimatedImpactPct: number;
+  }>;
+}
+
+export interface InstagramAttributeCorrelation {
+  key: string;
+  label: string;
+  source: "metadata" | "ai_visual";
+  correlation: number;
+  sampleSize: number;
+  comparisonSampleSize: number;
+  eligiblePostCount: number;
+  coveragePct: number;
+  trueAvgEngagement: number;
+  falseAvgEngagement: number;
+  liftPct: number;
+  sampled: boolean;
+  confidence: "low" | "medium" | "high";
+  confidenceScore: number;
+  interpretation: string;
+}
+
 export interface InstagramData {
   followers: number;
   reach30d: number;
@@ -471,7 +541,67 @@ export interface InstagramData {
   bounceRate: number;
   clicks: number;
   returningVisitors: number;
-  topPosts: { message: string; reach: number; engagement: number; createdAt: string }[];
+  topPosts: InstagramTopPost[];
+  topVideos?: InstagramTopPost[];
+  videosToImprove?: InstagramTopPost[];
+  mediaTypeBreakdown?: {
+    image: number;
+    video: number;
+    reel: number;
+    carousel: number;
+    other: number;
+  };
+  creativeAnalysis?: {
+    analyzedVideos: number;
+    totalVideoCandidates: number;
+    sampled: boolean;
+  };
+  opportunities?: Array<{
+    key: string;
+    label: string;
+    source: "metadata" | "ai_visual";
+    sampled: boolean;
+    confidence: "low" | "medium" | "high";
+    estimatedImpactPct: number;
+    adoptionPct: number;
+  }>;
+  experimentPlan?: Array<{
+    key: string;
+    title: string;
+    brief: string;
+    action: "add" | "reduce";
+    source: "metadata" | "ai_visual";
+    sampled: boolean;
+    confidence: "low" | "medium" | "high";
+    estimatedImpactPct: number;
+    supportingVideos: number;
+    exampleVideos: string[];
+  }>;
+  testBacklog?: Array<{
+    key: string;
+    label: string;
+    action: "add" | "reduce";
+    source: "metadata" | "ai_visual";
+    sampled: boolean;
+    confidence: "low" | "medium" | "high";
+    estimatedImpactPct: number;
+    supportingVideos: number;
+  }>;
+  attributeCorrelations?: InstagramAttributeCorrelation[];
+  winningPatterns?: Array<{
+    title: string;
+    detail: string;
+    source: "metadata" | "ai_visual";
+    sampled: boolean;
+    confidence: "low" | "medium" | "high";
+  }>;
+  losingPatterns?: Array<{
+    title: string;
+    detail: string;
+    source: "metadata" | "ai_visual";
+    sampled: boolean;
+    confidence: "low" | "medium" | "high";
+  }>;
   _meta: AnalyticsTimestamp;
 }
 

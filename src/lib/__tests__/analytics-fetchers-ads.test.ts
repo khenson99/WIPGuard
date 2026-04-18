@@ -491,10 +491,43 @@ describe("analytics ads fetchers", () => {
           data: [
             {
               id: "media_1",
-              caption: "hello",
+              caption: "hello #manufacturing",
               timestamp: "2026-02-01T00:00:00+0000",
               like_count: 5,
               comments_count: 1,
+              media_type: "VIDEO",
+              media_product_type: "REELS",
+              permalink: "https://instagram.com/p/media_1",
+              thumbnail_url: "https://cdn.example.com/media_1.jpg",
+            },
+            {
+              id: "media_2",
+              caption: "Need cleaner replenishment?",
+              timestamp: "2026-02-02T00:00:00+0000",
+              like_count: 12,
+              comments_count: 4,
+              media_type: "VIDEO",
+              media_product_type: "REELS",
+              permalink: "https://instagram.com/p/media_2",
+              thumbnail_url: "https://cdn.example.com/media_2.jpg",
+            },
+            {
+              id: "media_3",
+              caption: "Shop floor stills",
+              timestamp: "2026-02-03T00:00:00+0000",
+              like_count: 2,
+              comments_count: 0,
+              media_type: "IMAGE",
+              media_product_type: "FEED",
+            },
+            {
+              id: "media_4",
+              caption: "Batch label update #ops",
+              timestamp: "2026-02-04T00:00:00+0000",
+              like_count: 3,
+              comments_count: 1,
+              media_type: "IMAGE",
+              media_product_type: "FEED",
             },
           ],
         })
@@ -511,10 +544,118 @@ describe("analytics ads fetchers", () => {
     );
 
     expect(data.followers).toBe(912);
+    expect(data.topPosts[0]?.id).toBe("media_2");
+    expect(data.topPosts[0]?.isVideo).toBe(true);
+    expect(data.topPosts[0]?.performanceScore).toBeGreaterThan(data.topPosts[1]?.performanceScore ?? 0);
+    expect(data.topPosts[0]?.engagementVelocity).toBeGreaterThan(0);
+    expect(data.topPosts[0]?.performanceDrivers?.length).toBeGreaterThan(0);
+    expect(
+      data.topPosts[0]?.performanceDrivers?.every((item) => item.confidence !== "low")
+    ).toBe(true);
+    if (data.topPosts[0]?.nextTests) {
+      expect(
+        data.topPosts[0].nextTests.every((item) => item.confidence !== "low")
+      ).toBe(true);
+    }
+    expect(data.opportunities?.every((item) => item.adoptionPct <= 50)).toBe(true);
+    expect(data.opportunities?.every((item) => item.estimatedImpactPct >= 0)).toBe(true);
+    expect(data.testBacklog?.length).toBeGreaterThan(0);
+    expect(data.testBacklog?.every((item) => item.supportingVideos >= 1)).toBe(true);
+    expect(data.experimentPlan?.length).toBeGreaterThan(0);
+    expect(data.experimentPlan?.every((item) => item.exampleVideos.length >= 1)).toBe(true);
+    expect(data.videosToImprove?.every((item) => item.isVideo)).toBe(true);
+    expect(data.videosToImprove?.every((item) => (item.nextTests?.length ?? 0) > 0)).toBe(true);
+    expect(data.topVideos?.length).toBe(2);
+    expect(data.mediaTypeBreakdown).toEqual({
+      image: 2,
+      video: 0,
+      reel: 2,
+      carousel: 0,
+      other: 0,
+    });
+    expect(data.creativeAnalysis).toEqual({
+      analyzedVideos: 0,
+      totalVideoCandidates: 2,
+      sampled: false,
+    });
+    expect(data.attributeCorrelations?.length).toBeGreaterThan(0);
+    expect(data.attributeCorrelations?.every((item) => typeof item.sampled === "boolean")).toBe(true);
+    expect(data.attributeCorrelations?.every((item) => item.source === "metadata" || item.source === "ai_visual")).toBe(true);
+    expect(
+      data.attributeCorrelations?.every(
+        (item) =>
+          typeof item.coveragePct === "number" &&
+          typeof item.confidenceScore === "number" &&
+          (item.confidence === "low" || item.confidence === "medium" || item.confidence === "high")
+      )
+    ).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(3);
 
     const mediaUrl = String(fetchMock.mock.calls[2]?.[0] ?? "");
     expect(mediaUrl).toContain("/ig_123/media");
+    expect(mediaUrl).toContain("media_type");
+  });
+
+  it("ranks Instagram posts by normalized performance instead of raw lifetime engagement alone", async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          instagram_business_account: {
+            id: "ig_123",
+            username: "acme",
+            followers_count: 1000,
+            media_count: 2,
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: "older-post",
+              caption: "Steady performer",
+              timestamp: "2026-02-01T00:00:00+0000",
+              like_count: 30,
+              comments_count: 10,
+              media_type: "VIDEO",
+              media_product_type: "REELS",
+            },
+            {
+              id: "fresh-breakout",
+              caption: "Why is this workflow still manual?",
+              timestamp: "2026-02-22T00:00:00+0000",
+              like_count: 20,
+              comments_count: 8,
+              media_type: "VIDEO",
+              media_product_type: "REELS",
+            },
+          ],
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchMetaInstagramData(
+      "meta-token",
+      "page_999",
+      { pageId: "page_999" },
+      new Date("2026-02-01T00:00:00.000Z"),
+      new Date("2026-02-24T00:00:00.000Z")
+    );
+
+    expect(data.topPosts[0]?.id).toBe("fresh-breakout");
+    expect(data.topPosts[0]?.engagement).toBe(28);
+    expect(data.topPosts[1]?.engagement).toBe(40);
+    expect(data.topPosts[0]?.engagementVelocity).toBeGreaterThan(
+      data.topPosts[1]?.engagementVelocity ?? 0
+    );
+    expect(data.topPosts[0]?.performanceScore).toBeGreaterThan(
+      data.topPosts[1]?.performanceScore ?? 0
+    );
+    expect(data.engagement30d).toBe(68);
+    expect(data.winningPatterns?.every((item) => item.confidence !== "low")).toBe(true);
+    expect(data.losingPatterns?.every((item) => item.confidence !== "low")).toBe(true);
   });
 
   it("uses options.pageId to resolve Instagram account without failing first", async () => {
@@ -539,6 +680,8 @@ describe("analytics ads fetchers", () => {
               timestamp: "2026-02-10T00:00:00+0000",
               like_count: 2,
               comments_count: 0,
+              media_type: "IMAGE",
+              media_product_type: "FEED",
             },
           ],
         })
