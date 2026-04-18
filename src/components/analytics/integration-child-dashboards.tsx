@@ -6,6 +6,8 @@ import type {
   CodaKanbanData,
   IntegrationTelemetryData,
 } from "@/lib/analytics/types";
+import { ExecutiveAiBrief } from "@/components/analytics/executive-ai-brief";
+import { FinanceMonthlyHistoryTab } from "@/components/analytics/finance-monthly-history-tab";
 import { FinanceStripeTab } from "@/components/analytics/finance-stripe-tab";
 import { FinanceHubSpotTab } from "@/components/analytics/finance-hubspot-tab";
 import { SalesFunnelTab } from "@/components/analytics/sales-funnel-tab";
@@ -780,6 +782,22 @@ export function FinanceHubSpotDashboard({ data }: IntegrationChildDashboardProps
   );
 }
 
+export function FinanceMonthlyHistoryDashboard() {
+  return (
+    <DashboardShell title="Monthly History" subtitle="Month-over-month P&L trends, cash movement, and operating snapshots.">
+      <FinanceMonthlyHistoryTab />
+    </DashboardShell>
+  );
+}
+
+export function FinanceAiBriefDashboard() {
+  return (
+    <DashboardShell title="AI Executive Brief" subtitle="AI-generated summary of recent financial trends, risks, and recommended actions.">
+      <ExecutiveAiBrief />
+    </DashboardShell>
+  );
+}
+
 export function SalesHubSpotDashboard({ data }: IntegrationChildDashboardProps) {
   return (
     <DashboardShell title="HubSpot Pipeline" subtitle="Stage conversion, bottlenecks, and source quality for sales execution.">
@@ -963,6 +981,8 @@ export const INTEGRATION_CHILD_DASHBOARD_REGISTRY: Record<string, (props: Integr
   "finance-mercury": FinanceMercuryDashboard,
   "finance-stripe": FinanceStripeDashboard,
   "finance-hubspot": FinanceHubSpotDashboard,
+  "finance-monthly-history": FinanceMonthlyHistoryDashboard,
+  "finance-ai-brief": FinanceAiBriefDashboard,
   "sales-hubspot": SalesHubSpotDashboard,
   "sales-stripe": SalesStripeDashboard,
   "sales-performance": SalesPerformanceDashboard,
