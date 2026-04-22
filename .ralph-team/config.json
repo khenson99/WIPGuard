@@ -1,5 +1,5 @@
 {
-  "project_url": "https://github.com/users/khenson99/projects/4",
+  "project_url": "https://github.com/users/khenson99/projects/9",
   "repo_type": "backend",
   "repo_name": "app",
   "repo_url": "https://github.com/khenson99/WIPGuard.git",
@@ -23,7 +23,8 @@
     "priority": ["priority:high", "priority:medium", "priority:low"],
     "type": ["type:feature", "type:bug", "type:chore", "type:test"],
     "repo": ["repo:backend", "repo:frontend", "repo:shared"],
-    "status": ["status:ready", "status:blocked", "status:in-progress", "status:done"]
+    "status": ["status:ready", "status:blocked", "status:in-progress", "status:done"],
+    "operator": ["operator:sales", "operator:cs", "operator:growth", "operator:roadmap", "operator:scrum"]
   },
   "initialized_at": "2026-02-13T15:52:18Z"
 }
