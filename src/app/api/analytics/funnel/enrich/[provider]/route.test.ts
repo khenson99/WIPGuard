@@ -220,14 +220,24 @@ describe("POST /api/analytics/funnel/enrich/[provider]", () => {
       disabled: boolean;
       reason: string;
       stored: number;
+      rows: Array<Record<string, unknown>>;
     };
 
     expect(response.status).toBe(202);
     expect(body).toMatchObject({
-      accepted: 0,
+      accepted: 1,
       disabled: true,
       reason: "Visitor funnel Prisma models are unavailable in this deployment.",
       stored: 0,
+    });
+    expect(body.rows).toHaveLength(1);
+    expect(body.rows[0]).toMatchObject({
+      row_id: "row-1",
+      email: "sample@example.com",
+      domain: "example.com",
+      company: "Example Co",
+      confidence: 0.9,
+      occurred_at: "2026-03-08T12:00:00.000Z",
     });
     expect(ingestVisitorEnrichmentSignals).not.toHaveBeenCalled();
   });
