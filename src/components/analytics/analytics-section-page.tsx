@@ -137,7 +137,7 @@ const CHILD_ID_TO_RENDER_KIND = {
   "sales-performance": "sales-performance",
   "sales-google-workspace": "sales-google-workspace",
   "sales-slack": "sales-slack",
-  // Ads & Traffic
+  // Website traffic + social media children
   "ads-google-analytics": "ads-google-analytics",
   "ads-google-ads": "ads-google-ads",
   "ads-meta-ads": "ads-meta-ads",
@@ -344,7 +344,8 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
   const title = child?.label ?? primary?.label ?? "Analytics";
 
   const primaryContent = useMemo(() => {
-    if (sectionId === "ads-traffic") return <MarketingTabNew data={analyticsData} />;
+    if (sectionId === "website-traffic") return <MarketingTabNew data={analyticsData} variant="website-traffic" />;
+    if (sectionId === "social-media") return <MarketingTabNew data={analyticsData} variant="social-media" />;
     if (sectionId === "finance") return <FinanceTab data={analyticsData} />;
     if (sectionId === "sales-pipeline") return <SalesFunnelTab data={analyticsData} />;
     if (sectionId === "customer-success") return <CustomerSuccessTab data={analyticsData} />;
@@ -377,7 +378,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     if (renderKind === "sales-performance") return <SalesPerformanceView pack={analyticsData?.salesPerformance ?? null} />;
     if (renderKind === "sales-google-workspace") return <GenericWorkspaceTab data={analyticsData} />;
     if (renderKind === "sales-slack") return <GenericSlackTab data={analyticsData} />;
-    // Ads & Traffic
+    // Website traffic + social media
     if (renderKind === "ads-google-analytics") return <AdsGoogleAnalyticsTab data={analyticsData} />;
     if (renderKind === "ads-google-ads") return <AdsGoogleAdsTab data={analyticsData} />;
     if (renderKind === "ads-meta-ads") return <AdsMetaAdsTab data={analyticsData} />;

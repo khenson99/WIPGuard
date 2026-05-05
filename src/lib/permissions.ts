@@ -116,7 +116,7 @@ export function workspaceIdForPermissionAction(
     case "priority.write":
     case "policy.write":
     case "policy.override":
-      return "dashboard";
+      return "analytics";
     case "conference.write":
     case "deals.read":
     case "deals.write":
@@ -133,7 +133,7 @@ export function workspaceIdForPermissionAction(
     case "team.invite":
     case "team.role.write":
     case "profile.write":
-      return "dashboard";
+      return "analytics";
     default:
       return null;
   }

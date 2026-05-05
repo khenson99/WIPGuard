@@ -95,7 +95,7 @@ describe("analytics hubspot fetcher", () => {
     expect(data.pipelineDetected).toEqual({ pipelineId: "default", dealCount: 0 });
   });
 
-  it("filters non-default pipelines and resolves contractsent to Ping Later from live metadata", async () => {
+  it("keeps subscription pipeline deals out of main deals while exposing active subscriptions", async () => {
     const fetchMock = createHubSpotFetchMock({
       activeDeals: [
         {
@@ -134,8 +134,12 @@ describe("analytics hubspot fetcher", () => {
 
     expect(data.deals?.map((deal) => deal.dealId)).toEqual(["deal-default"]);
     expect(data.deals?.[0]?.stageLabel).toBe("Ping Later");
+    expect(data.subscriptionDeals?.map((deal) => deal.dealId)).toEqual(["deal-subscription"]);
+    expect(data.subscriptionDeals?.[0]?.stageLabel).toBe("Subscriptions");
+    expect(data.subscriptionPipelineDetected).toEqual({ pipelineId: "1390107368", dealCount: 1 });
     expect(data.pipelineStages?.find((stage) => stage.stageId === "contractsent")?.label).toBe("Ping Later");
-    expect(data.funnel.activeSubscriptions).toBe(0);
+    expect(data.funnel.activeSubscriptions).toBe(1);
+    expect(data._meta.diagnostics?.subscriptionDealsFetched).toBe(1);
   });
 
   it("keeps funnel metrics activity-based but builds display deals from last-modified recency", async () => {

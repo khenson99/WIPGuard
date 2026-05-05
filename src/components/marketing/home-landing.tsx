@@ -12,83 +12,83 @@ import {
 
 const metrics = [
   {
-    label: "One surface",
-    value: "Pipeline, campaigns, CS, and ops work",
+    label: "Source trust",
+    value: "Freshness, lineage, and warnings stay attached to every number",
   },
   {
-    label: "One rule",
-    value: "Treat WIP like a budget, not a suggestion",
+    label: "Board packs",
+    value: "Weekly exec, board, investor, and custom snapshots reuse the same facts",
   },
   {
-    label: "One record",
-    value: "Board movement leaves the audit trail behind it",
+    label: "Live integrations",
+    value: "Finance, CRM, ads, web, CS, and workspace systems meet in one API layer",
   },
 ];
 
 const painPoints = [
   {
     icon: Gauge,
-    title: "Invisible overload",
+    title: "Metric drift",
     body:
-      "Teams look busy while queue depth climbs, cycle time stretches, and the real bottleneck stays hidden.",
+      "The same number changes across dashboards, exports, and meetings because every surface recalculates it differently.",
   },
   {
     icon: Workflow,
-    title: "Broken handoffs",
+    title: "Disconnected sources",
     body:
-      "Marketing, sales, customer success, and ops all update different systems, so the customer path stops making sense.",
+      "Finance, CRM, ads, customer success, and workspace systems each hold part of the story with different timestamps.",
   },
   {
     icon: Cable,
-    title: "Manual record tax",
+    title: "Manual board prep",
     body:
-      "Every deal stage, follow-up, and support signal asks the team to do the same admin twice.",
+      "Weekly meetings and board packets become spreadsheet archaeology when freshness, lineage, and warnings are detached.",
   },
 ];
 
 const operatingModel = [
   {
     step: "01",
-    title: "See the actual work mix",
+    title: "Ingest source snapshots",
     body:
-      "Board, deals, demos, automations, and analytics sit in one operating surface instead of five tabs and a spreadsheet.",
+      "Each provider lands in one analytics API layer with source timestamps, sync health, and raw snapshot lineage.",
   },
   {
     step: "02",
-    title: "Limit concurrent work",
+    title: "Compute canonical metrics",
     body:
-      "WIP policies make overcommitment obvious before another task gets pulled into motion.",
+      "Reusable calculators produce one governed value for dashboards, exports, investor updates, and board materials.",
   },
   {
     step: "03",
-    title: "Move work, update systems",
+    title: "Label trust state",
     body:
-      "Status changes generate the CRM, calendar, Slack, and reporting artifacts the team would usually forget to log.",
+      "Every metric carries freshness, confidence, warnings, calculation version, and cited source snapshots.",
   },
   {
     step: "04",
-    title: "Orient before acting",
+    title: "Reuse locked facts",
     body:
-      "Signed-in users land on a dashboard first so they understand the constraint, risk, and next action before touching the board.",
+      "The CEO command center and report packs use the same locked values so meeting narratives do not diverge.",
   },
 ];
 
 const roleCards = [
   {
     title: "CEO / Founder",
-    body: "See where the quarter is actually stuck without running another status meeting.",
+    body: "Walk into weekly and board conversations with current numbers, visible caveats, and cited sources.",
   },
   {
     title: "Marketing",
-    body: "Tie traffic, campaigns, and conference work back to real demo and revenue flow.",
+    body: "Tie traffic, campaigns, and conference signals back to demo and revenue motion without copy-paste reporting.",
   },
   {
     title: "Sales",
-    body: "Work the pipeline without losing the thread between outreach, demos, and close motion.",
+    body: "Read pipeline metrics beside revenue, source health, and customer journey context.",
   },
   {
     title: "Customer Success / Ops",
-    body: "Spot risk early, route follow-ups, and keep the operating record clean as accounts evolve.",
+    body: "Surface account risk and source gaps before they distort executive reporting.",
   },
 ];
 
@@ -128,15 +128,15 @@ export function HomeLanding() {
 
               <div className="space-y-5">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-black/45">
-                  WIP-limited GTM operating system
+                  Analytics API meeting place
                 </p>
                 <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-[#080808] sm:text-5xl lg:text-6xl">
-                  Stop starting. Start finishing revenue work.
+                  Make every business metric traceable.
                 </h1>
                 <p className="max-w-2xl text-base leading-7 text-black/65 sm:text-lg">
-                  WIPGuard gives GTM teams one place to run campaigns, deals,
-                  demos, follow-ups, and customer handoffs without losing the
-                  thread of the customer journey.
+                  WIPGuard brings finance, sales, marketing, customer success,
+                  and internal execution sources into one governed metric layer
+                  with freshness, lineage, and board-ready exports.
                 </p>
               </div>
 
@@ -152,7 +152,7 @@ export function HomeLanding() {
                   href="#how-it-works"
                   className="rounded-full border border-black/15 bg-white px-5 py-3 text-sm font-medium text-black transition hover:border-black/30 hover:bg-white/70"
                 >
-                  See the flow
+                  See the metric layer
                 </Link>
               </div>
 
@@ -176,9 +176,9 @@ export function HomeLanding() {
                 <div className="flex items-center justify-between rounded-[24px] bg-black px-5 py-4 text-white">
                   <div>
                     <p className="text-xs uppercase tracking-[0.18em] text-white/55">
-                      Today&apos;s operating view
+                      Today&apos;s metric trust view
                     </p>
-                    <p className="mt-1 text-lg font-semibold">Orient before you pull more work</p>
+                    <p className="mt-1 text-lg font-semibold">One value, with sources attached</p>
                   </div>
                   <ShieldCheck className="h-5 w-5 text-[#fc5a29]" aria-hidden="true" />
                 </div>
@@ -186,21 +186,21 @@ export function HomeLanding() {
                 <div className="mt-5 grid gap-4 md:grid-cols-[1.1fr_0.9fr]">
                   <div className="rounded-[24px] bg-[#f5f5f5] p-4">
                     <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold">Queue pressure</p>
+                      <p className="text-sm font-semibold">Source health</p>
                       <span className="rounded-full bg-[#fc5a29]/10 px-3 py-1 text-xs font-medium text-[#fc5a29]">
-                        WIP at limit
+                        Trust labeled
                       </span>
                     </div>
                     <div className="mt-4 space-y-3">
                       {[
-                        { lane: "Queued", count: "06", fill: "bg-[#1d1d1d]", width: "w-[78%]" },
-                        { lane: "Active", count: "03", fill: "bg-[#fc5a29]", width: "w-[54%]" },
-                        { lane: "Blocked", count: "02", fill: "bg-[#f2b3a0]", width: "w-[36%]" },
+                        { lane: "Fresh", count: "18", fill: "bg-[#1d1d1d]", width: "w-[78%]" },
+                        { lane: "Partial", count: "03", fill: "bg-[#fc5a29]", width: "w-[54%]" },
+                        { lane: "Missing", count: "02", fill: "bg-[#f2b3a0]", width: "w-[36%]" },
                       ].map((lane) => (
                         <div key={lane.lane} className="rounded-2xl bg-white p-3">
                           <div className="flex items-center justify-between text-sm">
                             <span className="font-medium">{lane.lane}</span>
-                            <span className="text-black/55">{lane.count} cards</span>
+                            <span className="text-black/55">{lane.count} metrics</span>
                           </div>
                           <div className="mt-3 h-2 rounded-full bg-black/8">
                             <div className={`h-2 rounded-full ${lane.fill} ${lane.width}`} />
@@ -217,7 +217,7 @@ export function HomeLanding() {
                         <div>
                           <p className="text-sm font-semibold">Upcoming customer load</p>
                           <p className="text-sm text-black/65">
-                            4 demos and 2 follow-ups are driving today&apos;s constraints.
+                            Demo, pipeline, and retention signals share one customer timeline.
                           </p>
                         </div>
                       </div>
@@ -241,7 +241,7 @@ export function HomeLanding() {
                         <div>
                           <p className="text-sm font-semibold">Record-keeping on movement</p>
                           <p className="text-sm text-white/65">
-                            Moving the work updates the system of record instead of asking the rep to do it twice.
+                            Report exports cite the same locked facts that power the command center.
                           </p>
                         </div>
                       </div>
@@ -257,10 +257,10 @@ export function HomeLanding() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="max-w-2xl">
               <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-black/45">
-                Why the customer journey gets distorted
+                Why executive reporting gets distorted
               </p>
               <h2 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
-                The journey breaks the moment each team owns a different truth.
+                The meeting breaks the moment each team owns a different truth.
               </h2>
             </div>
 
@@ -291,9 +291,9 @@ export function HomeLanding() {
                 </h2>
               </div>
               <p className="max-w-xl text-sm leading-6 text-black/65">
-                The first touch should explain the system, the sign-in step should
-                clarify access, and the first authenticated screen should orient
-                the user before they jump into execution.
+                Source snapshots enter once, canonical calculators create the metric,
+                and every dashboard or export reuses that value with the same trust
+                state and citations.
               </p>
             </div>
 
@@ -315,10 +315,10 @@ export function HomeLanding() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="max-w-2xl">
               <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-black/45">
-                Built for the full GTM loop
+                Built for the operating meeting loop
               </p>
               <h2 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
-                One operating surface for the people who actually move revenue.
+                One metric surface for the people accountable for the business.
               </h2>
             </div>
             <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -344,7 +344,7 @@ export function HomeLanding() {
               <p className="mt-4 text-sm leading-7 text-white/65 sm:text-base">
                 Existing team members and beta operators can sign in to their
                 workspace. Everyone else should start by understanding the
-                operating model, not by getting dumped into an internal dashboard.
+                metric trust model, not by getting dropped into an internal source map.
               </p>
             </div>
             <Link

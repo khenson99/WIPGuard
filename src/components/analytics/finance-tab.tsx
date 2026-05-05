@@ -179,15 +179,17 @@ export function FinanceTab({ data }: FinanceTabProps) {
   }
 
   // Extract metrics with fallbacks
-  const mrr = stripe?.revenue?.mrr ?? 0;
-  const mrrChange = stripe?.revenue?.mrrChange ?? 0;
   const subscriptionOverview = fp?.subscriptionOverview ?? null;
+  const mrr = subscriptionOverview?.totalMrr ?? (stripe?.revenue?.mrr ?? 0);
+  const mrrChange = stripe?.revenue?.mrrChange ?? 0;
   const activeSubs = subscriptionOverview?.mergedActiveSubscriptions ?? (stripe?.subscriptions?.active ?? 0);
   const stripeSubs = subscriptionOverview?.stripeActiveSubscriptions ?? (stripe?.subscriptions?.active ?? 0);
   const hubspotSubs = subscriptionOverview?.hubspotActiveSubscriptions ?? 0;
   const pastDue = stripe?.subscriptions?.pastDue ?? 0;
   const trialing = stripe?.subscriptions?.trialing ?? 0;
   const cashBalance = mercury?.cashFlow?.totalBalance ?? 0;
+  const bankCash = mercury?.cashFlow?.bankCash ?? null;
+  const treasuryCash = mercury?.cashFlow?.treasuryCash ?? null;
   const runway = mercury?.cashFlow?.runway ?? 0;
   const netCashFlow = mercury?.cashFlow?.netCashFlow ?? 0;
   const successRate = normalizePercentValue(stripe?.payments?.successRate ?? 0);
@@ -216,7 +218,12 @@ export function FinanceTab({ data }: FinanceTabProps) {
         <StatCard
           label="Cash Balance"
           value={fmt$(cashBalance)}
-          subtitle={runway > 0 ? `${runway.toFixed(1)} months runway` : undefined}
+          subtitle={[
+            bankCash !== null && treasuryCash !== null
+              ? `${fmt$(bankCash)} bank · ${fmt$(treasuryCash)} Treasury`
+              : null,
+            runway > 0 ? `${runway.toFixed(1)} months runway` : null,
+          ].filter(Boolean).join(" · ") || undefined}
           icon={Wallet}
         />
         <StatCard

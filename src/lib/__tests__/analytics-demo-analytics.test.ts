@@ -221,6 +221,62 @@ describe("buildDemoAnalyticsData", () => {
     ]);
   });
 
+  it("includes uncovered post-demo HubSpot deals in the scheduling records", () => {
+    const data = baseData();
+    data.hubspot = {
+      funnel: {
+        totalDeals: 2,
+        closedWon: 1,
+        closedLost: 0,
+        unlikely: 0,
+        churn: 0,
+        activeSubscriptions: 0,
+        noShows: 0,
+        demoScheduled: 2,
+        demoFollowUp: 1,
+        avgDealSize: 4500,
+        winRate: 50,
+        effectiveWinRate: 50,
+        noShowRate: 0,
+        stages: [],
+        dealsBySource: [],
+      },
+      contacts: { totalContacts: 0, recentContacts: 0, bySource: [] },
+      deals: [
+        makeDeal({
+          dealId: "follow-up-deal",
+          dealName: "Follow Up Co",
+          stageId: "follow",
+          stageLabel: "Demo Follow-Up",
+          amount: 4000,
+          source: "Organic",
+          ownerId: null,
+          updatedAt: "2026-02-12T00:00:00.000Z",
+          createdAt: "2026-01-10T00:00:00.000Z",
+        }),
+        makeDeal({
+          dealId: "won-deal",
+          dealName: "Won Co",
+          stageId: "won",
+          stageLabel: "Closed Won",
+          amount: 5000,
+          source: "Paid",
+          ownerId: null,
+          updatedAt: "2026-02-15T00:00:00.000Z",
+          createdAt: "2026-01-12T00:00:00.000Z",
+        }),
+      ],
+      _meta: META,
+    };
+
+    const demo = buildDemoAnalyticsData(data);
+
+    expect(demo.totalScheduled).toBe(2);
+    expect(demo.demos.map((record) => record.dealId)).toEqual(["follow-up-deal", "won-deal"]);
+    expect(demo.demos.every((record) => record.isUpcoming === false)).toBe(true);
+    expect(demo.demos.every((record) => record.outcome === "completed")).toBe(true);
+  });
+
   it("builds journey path analysis across full lifecycle", () => {
     const data = baseData();
     data.hubspot = {

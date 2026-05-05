@@ -8,7 +8,8 @@ type InsightFilter = "all" | AnalyticsSectionId;
 
 const FILTERS: Array<{ id: InsightFilter; label: string }> = [
   { id: "all", label: "All" },
-  { id: "ads-traffic", label: "Ads" },
+  { id: "website-traffic", label: "Web" },
+  { id: "social-media", label: "Social" },
   { id: "finance", label: "Finance" },
   { id: "sales-pipeline", label: "Sales" },
   { id: "retention", label: "Retention" },

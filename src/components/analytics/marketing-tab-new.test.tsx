@@ -21,7 +21,7 @@ describe("MarketingTabNew provider states", () => {
     const data = makeData();
     data.errors.push({ source: "googleAds", message: "Google Ads API quota exceeded" });
 
-    render(<MarketingTabNew data={data} />);
+    render(<MarketingTabNew data={data} variant="social-media" />);
 
     expect(screen.getAllByText("Configured but failing").length).toBeGreaterThan(0);
     expect(screen.getByText("Configured but failing: Google Ads API quota exceeded")).toBeTruthy();
@@ -56,7 +56,7 @@ describe("MarketingTabNew provider states", () => {
       },
     };
 
-    render(<MarketingTabNew data={data} />);
+    render(<MarketingTabNew data={data} variant="social-media" />);
 
     expect(screen.getByText("No Google Ads data in selected range")).toBeTruthy();
   });
@@ -380,7 +380,7 @@ describe("MarketingTabNew provider states", () => {
       },
     };
 
-    render(<MarketingTabNew data={data} />);
+    render(<MarketingTabNew data={data} variant="social-media" />);
 
     expect(
       screen.getByText(

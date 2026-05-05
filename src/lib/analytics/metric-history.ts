@@ -11,18 +11,18 @@ interface MetricDefinition {
 }
 
 const METRIC_REGISTRY: MetricDefinition[] = [
-  // Ads & Traffic
-  { key: "ga.sessions30d", section: "ads-traffic", label: "Sessions (30d)", extract: (d) => d.googleAnalytics?.sessions30d ?? null },
-  { key: "ga.bounceRate", section: "ads-traffic", label: "Bounce Rate", extract: (d) => d.googleAnalytics?.bounceRate ?? null },
-  { key: "ga.users30d", section: "ads-traffic", label: "Users (30d)", extract: (d) => d.googleAnalytics?.users30d ?? null },
-  { key: "ga.pageviews30d", section: "ads-traffic", label: "Pageviews (30d)", extract: (d) => d.googleAnalytics?.pageviews30d ?? null },
-  { key: "ga.avgSessionDuration", section: "ads-traffic", label: "Avg Session Duration", extract: (d) => d.googleAnalytics?.avgSessionDuration ?? null },
-  { key: "googleAds.spend", section: "ads-traffic", label: "Google Ads Spend", extract: (d) => d.googleAds?.totalSpend30d ?? null },
-  { key: "googleAds.clicks", section: "ads-traffic", label: "Google Ads Clicks", extract: (d) => d.googleAds?.totalClicks ?? null },
-  { key: "googleAds.conversions", section: "ads-traffic", label: "Google Ads Conversions", extract: (d) => d.googleAds?.totalConversions ?? null },
-  { key: "googleAds.roas", section: "ads-traffic", label: "Google Ads ROAS", extract: (d) => d.googleAds?.roas ?? null },
-  { key: "metaAds.spend", section: "ads-traffic", label: "Meta Ads Spend", extract: (d) => d.metaAds?.totalSpend30d ?? null },
-  { key: "metaAds.clicks", section: "ads-traffic", label: "Meta Ads Clicks", extract: (d) => d.metaAds?.totalClicks ?? null },
+  // Website traffic + social media
+  { key: "ga.sessions30d", section: "website-traffic", label: "Sessions (30d)", extract: (d) => d.googleAnalytics?.sessions30d ?? null },
+  { key: "ga.bounceRate", section: "website-traffic", label: "Bounce Rate", extract: (d) => d.googleAnalytics?.bounceRate ?? null },
+  { key: "ga.users30d", section: "website-traffic", label: "Users (30d)", extract: (d) => d.googleAnalytics?.users30d ?? null },
+  { key: "ga.pageviews30d", section: "website-traffic", label: "Pageviews (30d)", extract: (d) => d.googleAnalytics?.pageviews30d ?? null },
+  { key: "ga.avgSessionDuration", section: "website-traffic", label: "Avg Session Duration", extract: (d) => d.googleAnalytics?.avgSessionDuration ?? null },
+  { key: "googleAds.spend", section: "social-media", label: "Google Ads Spend", extract: (d) => d.googleAds?.totalSpend30d ?? null },
+  { key: "googleAds.clicks", section: "social-media", label: "Google Ads Clicks", extract: (d) => d.googleAds?.totalClicks ?? null },
+  { key: "googleAds.conversions", section: "social-media", label: "Google Ads Conversions", extract: (d) => d.googleAds?.totalConversions ?? null },
+  { key: "googleAds.roas", section: "social-media", label: "Google Ads ROAS", extract: (d) => d.googleAds?.roas ?? null },
+  { key: "metaAds.spend", section: "social-media", label: "Meta Ads Spend", extract: (d) => d.metaAds?.totalSpend30d ?? null },
+  { key: "metaAds.clicks", section: "social-media", label: "Meta Ads Clicks", extract: (d) => d.metaAds?.totalClicks ?? null },
 
   // Finance
   { key: "stripe.mrr", section: "finance", label: "MRR", extract: (d) => d.stripe?.revenue?.mrr ?? null },

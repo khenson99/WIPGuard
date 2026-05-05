@@ -7,10 +7,10 @@ export function DecisionDashboardView({ payload }: { payload: Record<string, unk
 
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
-      <MetricCard label="Flow Reliability" value={northStar.flowReliabilityScore} />
+      <MetricCard label="Internal Execution Reliability" value={northStar.flowReliabilityScore} />
       <MetricCard label="Throughput (30d)" value={northStar.throughput30d} />
       <MetricCard label="On-Time Completion" value={northStar.onTimeCompletionRate} suffix="%" />
-      <MetricCard label="Overdue Open Tasks" value={supporting.overdueOpenTasks} />
+      <MetricCard label="Legacy Open Execution Items" value={supporting.overdueOpenTasks} />
     </div>
   );
 }
@@ -112,4 +112,3 @@ function MetricCard({
     </div>
   );
 }
-

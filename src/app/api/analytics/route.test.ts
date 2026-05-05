@@ -123,6 +123,24 @@ const HUBSPOT_DATA = {
       updatedAt: "2026-02-11T00:00:00.000Z",
     },
   ],
+  subscriptionDeals: [
+    {
+      dealId: "deal-subscription",
+      dealName: "Zaybra Subscription",
+      stageId: "2239936224",
+      stageLabel: "Subscriptions",
+      amount: 3598,
+      source: "HubSpot",
+      ownerId: "owner-3",
+      updatedAt: "2026-02-12T00:00:00.000Z",
+      createdAt: "2026-02-01T00:00:00.000Z",
+      stripeCustomerId: null,
+      pipelineId: "1390107368",
+      contactIds: [],
+      primaryContactId: null,
+      primaryContactEmail: "ops@example-subscription.com",
+    },
+  ],
   _meta: META,
 };
 
@@ -142,6 +160,9 @@ const STRIPE_DATA = {
     trialing: 2,
     churnRate: 0.02,
     recentChurnEvents: [],
+    activeCustomerRefs: [
+      { customerId: "cus_123", email: "billing@example.com", emailDomain: "example.com" },
+    ],
   },
   payments: {
     succeeded: 100,
@@ -168,6 +189,7 @@ const ZERO_STRIPE_DATA = {
     trialing: 0,
     churnRate: 0,
     recentChurnEvents: [],
+    activeCustomerRefs: [],
   },
   payments: {
     succeeded: 0,
@@ -525,6 +547,26 @@ describe("GET /api/analytics", () => {
     expect(deal.stripeCustomerId).toBe("cus_123");
     expect(prisma.stripeCustomerLink.findMany).toHaveBeenCalledWith({
       where: { userId: "user-1" },
+    });
+  });
+
+  it("builds finance-planning subscription overview from HubSpot subscription pipeline deals", async () => {
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=finance-planning"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.hubspot.subscriptionDeals).toHaveLength(1);
+    expect(body.financialPlanning.subscriptionOverview).toEqual({
+      mergedActiveSubscriptions: 2,
+      stripeActiveSubscriptions: 20,
+      hubspotActiveSubscriptions: 1,
+      stripeMrr: 12000,
+      hubspotSubscriptionMrr: 3598,
+      hubspotOnlySubscriptionMrr: 3598,
+      excludedLinkedHubspotSubscriptionMrr: 0,
+      totalMrr: 15598,
+      totalArr: 187176,
     });
   });
 

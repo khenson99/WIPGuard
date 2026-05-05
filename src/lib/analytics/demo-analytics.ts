@@ -792,8 +792,12 @@ export function buildDemoAnalyticsData(
   );
 
   const hubSpotFallbacks = deals
-    .filter((deal) => deal.stageLabel === "Demo Scheduled" && !coveredHubSpotDealIds.has(deal.dealId))
-    .map((deal) => buildUnscheduledFallbackRecord({ deal }));
+    .filter((deal) => DEMO_ENTRY_STAGES.has(deal.stageLabel) && !coveredHubSpotDealIds.has(deal.dealId))
+    .map((deal) => (
+      deal.stageLabel === "Demo Scheduled"
+        ? buildUnscheduledFallbackRecord({ deal })
+        : buildDealAggregateRecord({ now, deal })
+    ));
 
   const demos = [...meetingBackedDemos, ...hubSpotFallbacks].sort((a, b) => {
     const timeDiff = new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();

@@ -71,7 +71,7 @@ function lifecycleStageDefinitions(): StageDefinition[] {
     {
       id: "awareness",
       label: "Awareness",
-      section: "ads-traffic",
+      section: "website-traffic",
       rawVolume: (data) =>
         data.googleAnalytics?.users30d ??
         data.googleAnalytics?.sessions30d ??

@@ -60,7 +60,8 @@ describe("analytics API response shape helpers", () => {
   it("initializes empty AI insights bundle with all sections", () => {
     const bundle = createEmptyAiInsightsBundle("2026-01-31T00:00:00.000Z");
     expect(bundle.generatedAt).toBe("2026-01-31T00:00:00.000Z");
-    expect(bundle.bySection["ads-traffic"]).toEqual([]);
+    expect(bundle.bySection["website-traffic"]).toEqual([]);
+    expect(bundle.bySection["social-media"]).toEqual([]);
     expect(bundle.bySection["sales-pipeline"]).toEqual([]);
   });
 });

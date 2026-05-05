@@ -1,5 +1,6 @@
 export type AnalyticsPrimarySectionId =
-  | "ads-traffic"
+  | "website-traffic"
+  | "social-media"
   | "finance"
   | "sales-pipeline"
   | "retention"
@@ -59,10 +60,16 @@ export interface AnalyticsSubSection {
 
 export const ANALYTICS_PRIMARY_SECTIONS: AnalyticsPrimarySection[] = [
   {
-    id: "ads-traffic",
-    label: "Ads & Traffic",
-    path: "/analytics/ads-traffic",
-    description: "Campaigns, traffic, and content performance.",
+    id: "website-traffic",
+    label: "Website Traffic",
+    path: "/analytics/website-traffic",
+    description: "Site traffic, content performance, and web conversions.",
+  },
+  {
+    id: "social-media",
+    label: "Social Media",
+    path: "/analytics/social-media",
+    description: "Paid and organic social platform performance.",
   },
   {
     id: "finance",
@@ -109,13 +116,13 @@ export const ANALYTICS_PRIMARY_SECTIONS: AnalyticsPrimarySection[] = [
 ];
 
 export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
-  { id: "ads-google-analytics", label: "Google Analytics", path: "/analytics/ads-google-analytics", parentId: "ads-traffic", dataDomain: "googleAnalytics" },
-  { id: "ads-google-ads", label: "Google Ads", path: "/analytics/ads-google-ads", parentId: "ads-traffic", dataDomain: "googleAds" },
-  { id: "ads-meta-ads", label: "Meta Ads", path: "/analytics/ads-meta-ads", parentId: "ads-traffic", dataDomain: "metaAds" },
-  { id: "ads-reddit-ads", label: "Reddit Ads", path: "/analytics/ads-reddit-ads", parentId: "ads-traffic", dataDomain: "redditAds" },
-  { id: "ads-webflow", label: "Webflow", path: "/analytics/ads-webflow", parentId: "ads-traffic", dataDomain: "webflow" },
-  { id: "ads-semrush", label: "SEMrush", path: "/analytics/ads-semrush", parentId: "ads-traffic", dataDomain: "semrush" },
-  { id: "ads-coda-kanban", label: "Free Kanban Generator (Whitepaper)", path: "/analytics/ads-coda-kanban", parentId: "ads-traffic", dataDomain: "coda" },
+  { id: "ads-google-analytics", label: "Google Analytics", path: "/analytics/ads-google-analytics", parentId: "website-traffic", dataDomain: "googleAnalytics" },
+  { id: "ads-google-ads", label: "Google Ads", path: "/analytics/ads-google-ads", parentId: "social-media", dataDomain: "googleAds" },
+  { id: "ads-meta-ads", label: "Meta Ads", path: "/analytics/ads-meta-ads", parentId: "social-media", dataDomain: "metaAds" },
+  { id: "ads-reddit-ads", label: "Reddit Ads", path: "/analytics/ads-reddit-ads", parentId: "social-media", dataDomain: "redditAds" },
+  { id: "ads-webflow", label: "Webflow", path: "/analytics/ads-webflow", parentId: "website-traffic", dataDomain: "webflow" },
+  { id: "ads-semrush", label: "SEMrush", path: "/analytics/ads-semrush", parentId: "website-traffic", dataDomain: "semrush" },
+  { id: "ads-coda-kanban", label: "Coda Lead Magnet (Whitepaper)", path: "/analytics/ads-coda-kanban", parentId: "website-traffic", dataDomain: "coda" },
 
   { id: "finance-mercury", label: "Mercury", path: "/analytics/finance-mercury", parentId: "finance", dataDomain: "mercury" },
   { id: "finance-stripe", label: "Stripe", path: "/analytics/finance-stripe", parentId: "finance", dataDomain: "stripe" },
@@ -178,7 +185,7 @@ export const LEGACY_ANALYTICS_TAB_REDIRECTS: Record<string, string> = {
   overview: "/analytics",
   sales: "/analytics/sales-pipeline",
   finance: "/analytics/finance",
-  marketing: "/analytics/ads-traffic",
+  marketing: "/analytics/website-traffic",
   tasks: "/analytics/customer-success",
   journey: "/analytics/customer-journey",
   demos: "/analytics/demo-analytics",
@@ -189,8 +196,9 @@ export const LEGACY_ANALYTICS_ROUTE_REDIRECTS: Record<string, string> = {
   overview: "/analytics",
   sales: "/analytics/sales-pipeline",
   finance: "/analytics/finance",
-  marketing: "/analytics/ads-traffic",
-  tasks: "/dashboard",
+  marketing: "/analytics/website-traffic",
+  "ads-traffic": "/analytics/website-traffic",
+  tasks: "/analytics/customer-success",
   hubspot: "/analytics/sales-hubspot",
   stripe: "/analytics/finance-stripe",
   mercury: "/analytics/finance-mercury",

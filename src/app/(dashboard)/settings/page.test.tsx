@@ -11,32 +11,8 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => mockSearchParams,
 }));
 
-vi.mock("@/components/settings/board-settings-tab", () => ({
-  BoardSettingsTab: () => <div>Board Settings</div>,
-}));
-
-vi.mock("@/components/settings/sprints-tab", () => ({
-  SprintsTab: () => <div>Sprints</div>,
-}));
-
-vi.mock("@/components/settings/projects-tab", () => ({
-  ProjectsTab: () => <div>Projects</div>,
-}));
-
-vi.mock("@/components/settings/priorities-tab", () => ({
-  PrioritiesTab: () => <div>Priorities</div>,
-}));
-
-vi.mock("@/components/settings/design-interview-tab", () => ({
-  DesignInterviewTab: () => <div>Design Interview</div>,
-}));
-
 vi.mock("@/components/settings/team-tab", () => ({
   TeamTab: () => <div>Team</div>,
-}));
-
-vi.mock("@/components/settings/departments-tab", () => ({
-  DepartmentsTab: () => <div>Departments</div>,
 }));
 
 vi.mock("@/components/settings/operations-tab", () => ({
@@ -49,12 +25,18 @@ describe("SettingsPage", () => {
     replace.mockReset();
   });
 
-  it("renders settings tabs without an integrations tab", () => {
-    const { queryByRole, getByText } = render(<SettingsPage />);
+  it("renders only analytics-era settings tabs", () => {
+    const { queryByRole } = render(<SettingsPage />);
 
-    expect(getByText("Board Settings")).toBeTruthy();
-    expect(queryByRole("tab", { name: "Design Interview" })).toBeTruthy();
+    expect(queryByRole("tab", { name: "Team" })).toBeTruthy();
+    expect(queryByRole("tab", { name: "Operations" })).toBeTruthy();
     expect(queryByRole("tab", { name: "Integrations" })).toBeNull();
+    expect(queryByRole("tab", { name: "Board & WIP Limits" })).toBeNull();
+    expect(queryByRole("tab", { name: "Sprints" })).toBeNull();
+    expect(queryByRole("tab", { name: "Projects" })).toBeNull();
+    expect(queryByRole("tab", { name: "Departments" })).toBeNull();
+    expect(queryByRole("tab", { name: "Company Priorities" })).toBeNull();
+    expect(queryByRole("tab", { name: "Design Interview" })).toBeNull();
   });
 
   it("redirects legacy integrations tab links into the integrations workspace", async () => {
@@ -65,6 +47,19 @@ describe("SettingsPage", () => {
     await waitFor(() => {
       expect(replace).toHaveBeenCalledWith(
         "/integrations?status=connected&integration=slack",
+        { scroll: false },
+      );
+    });
+  });
+
+  it("redirects legacy task-management tabs to team settings", async () => {
+    mockSearchParams = new URLSearchParams("tab=board&source=old-link");
+
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(replace).toHaveBeenCalledWith(
+        "/settings?tab=team&source=old-link",
         { scroll: false },
       );
     });

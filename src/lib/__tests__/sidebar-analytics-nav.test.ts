@@ -4,14 +4,14 @@ import { buildNavItems } from "@/components/layout/sidebar-nav-config";
 describe("sidebar workspace navigation", () => {
   const navItems = buildNavItems();
 
-  it("builds the five top-level product pillars", () => {
+  it("builds the analytics-first workspace pillars", () => {
     expect(navItems.map((item) => item.id)).toEqual([
-      "dashboard",
-      "deals",
       "analytics",
       "integrations",
+      "deals",
       "automations",
     ]);
+    expect(navItems.some((item) => item.href === "/dashboard")).toBe(false);
   });
 
   it("groups analytics and automations as nested workspace entries", () => {

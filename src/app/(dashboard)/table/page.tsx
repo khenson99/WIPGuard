@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { redirectToAnalyticsHome } from "@/app/(dashboard)/legacy-analytics-redirect";
 
 export default function TablePage() {
-  redirect("/dashboard");
+  redirectToAnalyticsHome();
 }

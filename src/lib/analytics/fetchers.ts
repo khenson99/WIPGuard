@@ -160,6 +160,10 @@ function isMainHubSpotPipeline(pipelineId: string | null | undefined): boolean {
   return !normalized || normalized === HUBSPOT_MAIN_PIPELINE_ID;
 }
 
+function isHubSpotSubscriptionPipeline(pipelineId: string | null | undefined): boolean {
+  return pipelineId?.trim() === HUBSPOT_SUBSCRIPTION_PIPELINE_ID;
+}
+
 function compareHubSpotDealsByRecency(
   a: { dealId: string; updatedAt: string | null; createdAt: string | null },
   b: { dealId: string; updatedAt: string | null; createdAt: string | null },
@@ -476,6 +480,11 @@ export async function fetchHubSpotData(
 
   const mainPipeline = pipelineResult.pipelines.find((pipeline) => pipeline.id === HUBSPOT_MAIN_PIPELINE_ID) ?? null;
   const stageLabelById = new Map(
+    pipelineResult.pipelines.flatMap((pipeline) =>
+      pipeline.stages.map((stage) => [stage.id, stage.label] as const),
+    ),
+  );
+  const mainStageLabelById = new Map(
     (mainPipeline?.stages ?? []).map((stage) => [stage.id, stage.label]),
   );
 
@@ -489,8 +498,14 @@ export async function fetchHubSpotData(
   const allMainPipelineDeals = allDeals.filter((deal) =>
     isMainHubSpotPipeline(deal.properties?.pipeline ?? null),
   );
+  const allSubscriptionPipelineDeals = allDeals.filter((deal) =>
+    isHubSpotSubscriptionPipeline(deal.properties?.pipeline ?? null),
+  );
   const activeDeals = activeDealsResult.deals.filter((deal) =>
     isMainHubSpotPipeline(deal.properties?.pipeline ?? null),
+  );
+  const activeSubscriptionPipelineDeals = activeDealsResult.deals.filter((deal) =>
+    isHubSpotSubscriptionPipeline(deal.properties?.pipeline ?? null),
   );
   const dealsFetched = allMainPipelineDeals.length;
 
@@ -525,7 +540,7 @@ export async function fetchHubSpotData(
     const props = deal.properties || {};
 
     const stage = props.dealstage || "unknown";
-    const mappedLabel = resolveHubSpotStageLabel(stage, stageLabelById);
+    const mappedLabel = resolveHubSpotStageLabel(stage, mainStageLabelById);
     const amount = parseFloat(props.amount) || 0;
     const source = props.hs_analytics_source || "Unknown";
 
@@ -563,6 +578,30 @@ export async function fetchHubSpotData(
       dealId: String((deal as { id?: string }).id ?? ""),
       dealName: props.dealname || "Untitled deal",
       stageId,
+      stageLabel: resolveHubSpotStageLabel(stageId, mainStageLabelById),
+      amount: parseFloat(props.amount) || 0,
+      source: props.hs_analytics_source || "Unknown",
+      ownerId,
+      repName: resolveOwnerName(ownerId),
+      updatedAt: props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).toISOString() : null,
+      createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
+      closedAt: props.closedate ? new Date(props.closedate).toISOString() : null,
+      stripeCustomerId: props.stripe_customer_id || props.stripe_customer || null,
+      pipelineId: props.pipeline || null,
+      contactIds: [] as string[],
+      primaryContactId: null as string | null,
+      primaryContactEmail: null as string | null,
+    };
+  });
+
+  const subscriptionDeals = activeSubscriptionPipelineDeals.map((deal) => {
+    const props = deal.properties || {};
+    const stageId = props.dealstage || "unknown";
+    const ownerId = props.hubspot_owner_id || null;
+    return {
+      dealId: String((deal as { id?: string }).id ?? ""),
+      dealName: props.dealname || "Untitled subscription",
+      stageId,
       stageLabel: resolveHubSpotStageLabel(stageId, stageLabelById),
       amount: parseFloat(props.amount) || 0,
       source: props.hs_analytics_source || "Unknown",
@@ -598,10 +637,7 @@ export async function fetchHubSpotData(
   let closedLost = stageAgg[STAGE_CLOSED_LOST]?.count || 0;
   let unlikely = stageAgg[STAGE_UNLIKELY]?.count || 0;
   let churn = stageAgg[STAGE_CHURN]?.count || 0;
-  let subscriptions = allMainPipelineDeals.filter((deal) => {
-    const label = resolveHubSpotStageLabel(deal.properties?.dealstage || "", stageLabelById).toLowerCase();
-    return label === "subscription";
-  }).length;
+  let subscriptions = activeSubscriptionPipelineDeals.length;
   let noShows = stageAgg[STAGE_NO_SHOW]?.count || 0;
   let demoScheduled = stageAgg[STAGE_DEMO_SCHEDULED]?.count || 0;
   let demoFollowUp = stageAgg[STAGE_DEMO_FOLLOW_UP]?.count || 0;
@@ -652,10 +688,7 @@ export async function fetchHubSpotData(
     closedLost = stageEntryAgg[STAGE_CLOSED_LOST]?.count || 0;
     unlikely = stageEntryAgg[STAGE_UNLIKELY]?.count || 0;
     churn = stageEntryAgg[STAGE_CHURN]?.count || 0;
-    subscriptions = eventsInRange.filter((event) => {
-      const label = resolveHubSpotStageLabel(event.toStage, stageLabelById).toLowerCase();
-      return label === "subscription";
-    }).length;
+    subscriptions = activeSubscriptionPipelineDeals.length;
     noShows = stageEntryAgg[STAGE_NO_SHOW]?.count || 0;
     demoScheduled = stageEntryAgg[STAGE_DEMO_SCHEDULED]?.count || 0;
     demoFollowUp = stageEntryAgg[STAGE_DEMO_FOLLOW_UP]?.count || 0;
@@ -776,6 +809,7 @@ export async function fetchHubSpotData(
   }
 
   deals.sort(compareHubSpotDealsByRecency);
+  subscriptionDeals.sort(compareHubSpotDealsByRecency);
 
   let displayDeals = [...deals];
   if (useActivityInRange && rangeFrom && rangeTo) {
@@ -811,9 +845,9 @@ export async function fetchHubSpotData(
 
   // ── Enrich deals with contact analytics for attribution ──
   try {
-    const dealIdsForContacts = deals.map((d) => d.dealId).filter(Boolean);
+    const dealIdsForContacts = [...deals, ...subscriptionDeals].map((d) => d.dealId).filter(Boolean);
     const contactAnalytics = await fetchDealContactAnalytics(baseUrl, headers, dealIdsForContacts);
-    for (const deal of deals) {
+    for (const deal of [...deals, ...subscriptionDeals]) {
       const analytics = contactAnalytics.get(deal.dealId);
       if (analytics) {
         deal.contactIds = analytics.contactIds;
@@ -838,8 +872,13 @@ export async function fetchHubSpotData(
     activeDealsRaw: activeDealsResult.deals.length,
     archivedDealsRaw: archivedDealsResult.deals.length,
     includedPipelineId: HUBSPOT_MAIN_PIPELINE_ID,
-    excludedPipelineIds: [HUBSPOT_SUBSCRIPTION_PIPELINE_ID],
-    excludedDeals: allDeals.length - allMainPipelineDeals.length,
+    subscriptionPipelineId: HUBSPOT_SUBSCRIPTION_PIPELINE_ID,
+    subscriptionDealsFetched: allSubscriptionPipelineDeals.length,
+    subscriptionActiveDealsFetched: activeSubscriptionPipelineDeals.length,
+    excludedPipelineIds: pipelineResult.pipelines
+      .map((pipeline) => pipeline.id)
+      .filter((pipelineId) => pipelineId !== HUBSPOT_MAIN_PIPELINE_ID && pipelineId !== HUBSPOT_SUBSCRIPTION_PIPELINE_ID),
+    excludedDeals: allDeals.length - allMainPipelineDeals.length - allSubscriptionPipelineDeals.length,
     lastAfter: {
       active: activeDealsResult.lastAfter,
       archived: archivedDealsResult.lastAfter,
@@ -881,6 +920,10 @@ export async function fetchHubSpotData(
       pipelineId: HUBSPOT_MAIN_PIPELINE_ID,
       dealCount: deals.length,
     },
+    subscriptionPipelineDetected: {
+      pipelineId: HUBSPOT_SUBSCRIPTION_PIPELINE_ID,
+      dealCount: subscriptionDeals.length,
+    },
     pipelineStageLabelsSource: pipelineResult.source,
     pipelineStages: (mainPipeline?.stages ?? []).map((stage) => ({
       stageId: stage.id,
@@ -888,6 +931,7 @@ export async function fetchHubSpotData(
     })),
     repScoreboard,
     deals,
+    subscriptionDeals,
     displayDeals,
     _meta: meta,
   };
@@ -1572,15 +1616,20 @@ export async function fetchMercuryData(
     id?: string;
     name?: string;
     currentBalance?: number;
+    availableBalance?: number;
     type?: string;
+    status?: string;
   };
 
   type MercuryTransaction = {
+    id?: string;
     postedAt?: string;
     createdAt?: string;
     timestamp?: string;
     status?: string;
     amount?: number;
+    kind?: string | null;
+    mercuryCategory?: string | null;
   };
 
   const headers: Record<string, string> = {
@@ -1602,7 +1651,34 @@ export async function fetchMercuryData(
     type: account.type ?? "checking",
   }));
 
-  const totalBalance = accounts.reduce((s: number, a: { balance: number }) => s + a.balance, 0);
+  try {
+    const treasuryRes = await fetch(`${baseUrl}/treasury?limit=1000`, { headers });
+    if (treasuryRes.ok) {
+      const treasuryData = await safeJson<{ accounts?: MercuryAccount[] }>(treasuryRes, "mercury treasury");
+      const treasuryAccounts = (treasuryData.accounts ?? [])
+        .filter((account) => account.status !== "deleted" && account.status !== "archived")
+        .map((account, index) => ({
+          accountId: account.id ?? `treasury-${index}`,
+          accountName: account.name ?? `Mercury Treasury${index > 0 ? ` ${index + 1}` : ""}`,
+          balance: account.currentBalance ?? 0,
+          type: "treasury",
+        }));
+      accounts.push(...treasuryAccounts);
+    }
+  } catch {
+    // Older Mercury tokens/accounts may not expose Treasury. Keep bank cash available.
+  }
+
+  const isTreasuryAccount = (account: { type?: string | null }): boolean =>
+    (account.type ?? "").toLowerCase() === "treasury";
+  const bankCash = accounts
+    .filter((account) => !isTreasuryAccount(account))
+    .reduce((sum: number, account: { balance: number }) => sum + account.balance, 0);
+  const treasuryCash = accounts
+    .filter(isTreasuryAccount)
+    .reduce((sum: number, account: { balance: number }) => sum + account.balance, 0);
+  const totalCash = bankCash + treasuryCash;
+  const totalBalance = totalCash;
 
   // Fetch recent transactions for cash flow
   const rangeFrom = options?.fromDate ?? null;
@@ -1617,32 +1693,79 @@ export async function fetchMercuryData(
     .toISOString()
     .split("T")[0];
 
+  const endKey = (useRange ? rangeTo! : new Date()).toISOString().split("T")[0];
+  const shouldCountCashFlow = (tx: MercuryTransaction): boolean => {
+    if (tx.status !== "sent") return false;
+    if (typeof tx.amount !== "number" || !Number.isFinite(tx.amount) || tx.amount === 0) return false;
+    const kind = (tx.kind ?? "").toLowerCase();
+    const mercuryCategory = (tx.mercuryCategory ?? "").toLowerCase();
+    return !(
+      kind === "internaltransfer" ||
+      kind === "treasurytransfer" ||
+      mercuryCategory === "treasurytransfer"
+    );
+  };
+  const addCashFlow = (tx: MercuryTransaction): void => {
+    if (!shouldCountCashFlow(tx)) return;
+    const amount = tx.amount ?? 0;
+    const amt = Math.abs(amount);
+    if (amount > 0) inflows += amt;
+    else outflows += amt;
+  };
+
   let inflows = 0, outflows = 0;
-  for (const account of accounts) {
-    try {
-      const txRes = await fetch(
-        `${baseUrl}/account/${account.accountId}/transactions?start=${startKey}&limit=500`,
-        { headers }
-      );
-      if (!txRes.ok) continue;
+  let usedGlobalTransactions = false;
+  try {
+    let startAfter: string | null = null;
+    for (let page = 0; page < 10; page += 1) {
+      const params = new URLSearchParams({
+        postedStart: startKey,
+        postedEnd: endKey,
+        status: "sent",
+        limit: "1000",
+        order: "desc",
+      });
+      if (startAfter) params.set("start_after", startAfter);
+      const txRes = await fetch(`${baseUrl}/transactions?${params.toString()}`, { headers });
+      if (!txRes.ok) break;
+      usedGlobalTransactions = true;
       const txData = await safeJson<{ transactions?: MercuryTransaction[] }>(txRes, "mercury transactions");
-      for (const tx of txData.transactions ?? []) {
-        if (useRange && rangeTo) {
-          const postedAt = tx.postedAt || tx.createdAt || tx.timestamp || "";
-          if (postedAt) {
-            const postedMs = Date.parse(postedAt);
-            if (Number.isFinite(postedMs) && postedMs > rangeTo.getTime()) continue;
+      const txs = txData.transactions ?? [];
+      for (const tx of txs) addCashFlow(tx);
+      if (txs.length < 1000) break;
+      const lastId = txs[txs.length - 1]?.id;
+      if (!lastId || lastId === startAfter) break;
+      startAfter = lastId;
+    }
+  } catch {
+    usedGlobalTransactions = false;
+    inflows = 0;
+    outflows = 0;
+  }
+
+  const bankAccounts = accounts.filter((account) => !isTreasuryAccount(account));
+  if (!usedGlobalTransactions) {
+    for (const account of bankAccounts) {
+      try {
+        const txRes = await fetch(
+          `${baseUrl}/account/${account.accountId}/transactions?start=${startKey}&limit=500`,
+          { headers }
+        );
+        if (!txRes.ok) continue;
+        const txData = await safeJson<{ transactions?: MercuryTransaction[] }>(txRes, "mercury transactions");
+        for (const tx of txData.transactions ?? []) {
+          if (useRange && rangeTo) {
+            const postedAt = tx.postedAt || tx.createdAt || tx.timestamp || "";
+            if (postedAt) {
+              const postedMs = Date.parse(postedAt);
+              if (Number.isFinite(postedMs) && postedMs > rangeTo.getTime()) continue;
+            }
           }
+          addCashFlow(tx);
         }
-        if (tx.status === "sent") {
-          const amount = tx.amount ?? 0;
-          const amt = Math.abs(amount);
-          if (amount > 0) inflows += amt;
-          else outflows += amt;
-        }
+      } catch {
+        // Skip account on error
       }
-    } catch {
-      // Skip account on error
     }
   }
 
@@ -1653,6 +1776,9 @@ export async function fetchMercuryData(
     accounts,
     cashFlow: {
       totalBalance,
+      bankCash,
+      treasuryCash,
+      totalCash,
       inflows30d: inflows,
       outflows30d: outflows,
       netCashFlow: inflows - outflows,

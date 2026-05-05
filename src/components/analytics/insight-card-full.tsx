@@ -32,8 +32,10 @@ const SEVERITY_CONFIG = {
 
 function formatSectionLabel(section: AiInsight["section"]): string {
   switch (section) {
-    case "ads-traffic":
-      return "Ads & Traffic";
+    case "website-traffic":
+      return "Website Traffic";
+    case "social-media":
+      return "Social Media";
     case "sales-pipeline":
       return "Sales Pipeline";
     case "customer-success":
@@ -57,8 +59,6 @@ interface InsightCardFullProps {
   isPinned?: boolean;
   onTogglePin?: () => void;
   onDismiss?: () => void;
-  onCreateTask?: () => void;
-  isCreatingTask?: boolean;
 }
 
 export function InsightCardFull({
@@ -69,12 +69,10 @@ export function InsightCardFull({
   isPinned = false,
   onTogglePin,
   onDismiss,
-  onCreateTask,
-  isCreatingTask = false,
 }: InsightCardFullProps) {
   const config = SEVERITY_CONFIG[insight.severity];
   const Icon = config.icon;
-  const showActions = onTogglePin != null && onDismiss != null && onCreateTask != null;
+  const showActions = onTogglePin != null && onDismiss != null;
 
   return (
     <article
@@ -134,8 +132,6 @@ export function InsightCardFull({
                 isPinned={isPinned}
                 onTogglePin={onTogglePin!}
                 onDismiss={onDismiss!}
-                onCreateTask={onCreateTask!}
-                isCreatingTask={isCreatingTask}
               />
             </div>
           ) : null}

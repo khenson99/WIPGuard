@@ -56,6 +56,15 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
   }
 
   const { accounts, cashFlow } = mercury;
+  const bankCash = cashFlow.bankCash ?? accounts
+    .filter((account) => account.type.toLowerCase() !== "treasury")
+    .reduce((sum, account) => sum + account.balance, 0);
+  const treasuryCash = cashFlow.treasuryCash ?? accounts
+    .filter((account) => account.type.toLowerCase() === "treasury")
+    .reduce((sum, account) => sum + account.balance, 0);
+  const totalBalanceSubtitle = treasuryCash > 0
+    ? `${fmt$(bankCash)} bank · ${fmt$(treasuryCash)} Treasury`
+    : undefined;
 
   if (accounts.length === 0 && cashFlow.totalBalance === 0) {
     return (
@@ -158,6 +167,7 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
         <StatCard
           label="Total Balance"
           value={fmt$(cashFlow.totalBalance)}
+          subtitle={totalBalanceSubtitle}
           icon={Landmark}
         />
         <StatCard
@@ -333,7 +343,12 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
                 })}
               {/* Total row */}
               <div className="flex items-center justify-between border-t border-border pt-3">
-                <span className="text-sm font-semibold text-foreground">Total Balance</span>
+                <div>
+                  <span className="text-sm font-semibold text-foreground">Total Balance</span>
+                  {totalBalanceSubtitle ? (
+                    <p className="text-[11px] text-muted-foreground">{totalBalanceSubtitle}</p>
+                  ) : null}
+                </div>
                 <span className="text-lg font-bold tabular-nums text-foreground">{fmt$(cashFlow.totalBalance)}</span>
               </div>
             </div>
