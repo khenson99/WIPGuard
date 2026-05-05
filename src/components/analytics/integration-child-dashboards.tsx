@@ -730,12 +730,20 @@ export function FinanceMercuryDashboard({ data }: IntegrationChildDashboardProps
   if (!mercury) {
     return <EmptyProviderState title="Mercury data is unavailable" description="Connect Mercury to inspect cash position and runway." reasons={reasons} />;
   }
+  const bankCash = mercury.cashFlow.bankCash ?? mercury.accounts
+    .filter((account) => account.type.toLowerCase() !== "treasury")
+    .reduce((sum, account) => sum + account.balance, 0);
+  const treasuryCash = mercury.cashFlow.treasuryCash ?? mercury.accounts
+    .filter((account) => account.type.toLowerCase() === "treasury")
+    .reduce((sum, account) => sum + account.balance, 0);
 
   return (
     <DashboardShell title="Mercury" subtitle="Cash position, burn profile, and account-level liquidity.">
       <MetricGrid
         metrics={[
           { label: "Total Balance", value: fmtCurrency(mercury.cashFlow.totalBalance) },
+          { label: "Bank Cash", value: fmtCurrency(bankCash) },
+          { label: "Treasury Cash", value: fmtCurrency(treasuryCash) },
           { label: "Inflows (30d)", value: fmtCurrency(mercury.cashFlow.inflows30d) },
           { label: "Outflows (30d)", value: fmtCurrency(mercury.cashFlow.outflows30d) },
           { label: "Net Cash Flow", value: fmtCurrency(mercury.cashFlow.netCashFlow) },

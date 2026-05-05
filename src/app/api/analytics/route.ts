@@ -25,6 +25,7 @@ import {
 import { buildAnalyticsRouteMeta } from "@/lib/analytics/route-meta";
 import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { computeKpiDelta } from "@/lib/analytics/kpi-deltas";
+import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
 import {
   buildVisitorFunnelData,
   parseVisitorFunnelFilters,
@@ -128,15 +129,23 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "distilledInsights",
   ],
   "ai-insights": [...ALL_DOMAINS],
-  "ads-traffic": [
+  "website-traffic": [
     "googleAnalytics",
-    "googleAds",
-    "metaAds",
-    "instagram",
-    "redditAds",
     "webflow",
     "semrush",
     "coda",
+    "lifecycleFunnel",
+    "funnelJourney",
+    "aiInsights",
+    "recommendations",
+    "distilledInsights",
+  ],
+  "social-media": [
+    "googleAds",
+    "metaAds",
+    "metaPage",
+    "instagram",
+    "redditAds",
     "lifecycleFunnel",
     "funnelJourney",
     "aiInsights",
@@ -154,7 +163,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "recommendations",
     "distilledInsights",
   ],
-  "finance-planning": ["stripe", "mercury"],
+  "finance-planning": ["stripe", "mercury", "hubspot"],
   "finance-forecast": ["stripe", "mercury"],
   "finance-pnl": ["stripe", "mercury"],
   "finance-unit-economics": ["stripe", "mercury", "hubspot"],
@@ -471,7 +480,7 @@ function buildRecommendations(data: AnalyticsDashboardData): AnalyticsRecommenda
   if ((data.googleAnalytics?.bounceRate ?? 0) > 0.55) {
     recommendations.push({
       id: "ads-bounce",
-      section: "ads-traffic",
+      section: "website-traffic",
       severity: "warning",
       title: "Reduce high bounce traffic",
       insight: `Bounce rate is ${((data.googleAnalytics?.bounceRate ?? 0) * 100).toFixed(1)}%, indicating weak landing relevance.`,
@@ -589,70 +598,21 @@ function stripePayloadHasSignal(data: StripeData | null | undefined): boolean {
   );
 }
 
-const GENERIC_EMAIL_DOMAINS = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "yahoo.com",
-  "outlook.com",
-  "hotmail.com",
-  "icloud.com",
-  "me.com",
-  "proton.me",
-  "protonmail.com",
-]);
-
-function normalizeEmail(value: string | null | undefined): string | null {
-  const normalized = value?.trim().toLowerCase() ?? "";
-  return normalized.length > 0 ? normalized : null;
-}
-
-function normalizeEmailDomain(value: string | null | undefined): string | null {
-  const email = normalizeEmail(value);
-  if (!email || !email.includes("@")) return null;
-  const [, domain] = email.split("@");
-  const normalized = domain?.trim().toLowerCase() ?? "";
-  if (!normalized || GENERIC_EMAIL_DOMAINS.has(normalized)) {
-    return null;
-  }
-  return normalized;
-}
-
 function buildSubscriptionOverview(data: AnalyticsDashboardData): FinancialPlanningData["subscriptionOverview"] {
-  const stripeRefs = data.stripe?.subscriptions.activeCustomerRefs ?? [];
-  const hubspotDeals = (data.hubspot?.deals ?? []).filter(
-    (deal) => deal.stageLabel.trim().toLowerCase() === "subscription",
-  );
-
-  const stripeCustomerIds = new Set(
-    stripeRefs
-      .map((ref) => ref.customerId.trim())
-      .filter((customerId) => customerId.length > 0 && customerId !== "Unknown customer"),
-  );
-  const stripeEmails = new Set(
-    stripeRefs.map((ref) => normalizeEmail(ref.email)).filter(Boolean) as string[],
-  );
-  const stripeDomains = new Set(
-    stripeRefs.map((ref) => ref.emailDomain?.trim().toLowerCase() ?? null).filter(Boolean) as string[],
-  );
-
-  let hubspotOnlyCount = 0;
-
-  for (const deal of hubspotDeals) {
-    const customerId = deal.stripeCustomerId?.trim() || null;
-    const email = normalizeEmail(deal.primaryContactEmail);
-    const emailDomain = normalizeEmailDomain(deal.primaryContactEmail);
-
-    if (customerId && stripeCustomerIds.has(customerId)) continue;
-    if (email && stripeEmails.has(email)) continue;
-    if (emailDomain && stripeDomains.has(emailDomain)) continue;
-
-    hubspotOnlyCount += 1;
-  }
-
+  const breakdown = buildSubscriptionMrrBreakdown({
+    stripe: data.stripe,
+    hubspot: data.hubspot,
+  });
   return {
-    mergedActiveSubscriptions: stripeRefs.length + hubspotOnlyCount,
-    stripeActiveSubscriptions: data.stripe?.subscriptions.active ?? 0,
-    hubspotActiveSubscriptions: data.hubspot?.funnel.activeSubscriptions ?? hubspotDeals.length,
+    mergedActiveSubscriptions: breakdown.mergedActiveSubscriptions,
+    stripeActiveSubscriptions: breakdown.stripeActiveSubscriptions,
+    hubspotActiveSubscriptions: breakdown.hubspotActiveSubscriptions,
+    stripeMrr: breakdown.stripeMrr,
+    hubspotSubscriptionMrr: breakdown.hubspotSubscriptionMrr,
+    hubspotOnlySubscriptionMrr: breakdown.hubspotOnlySubscriptionMrr,
+    excludedLinkedHubspotSubscriptionMrr: breakdown.excludedLinkedHubspotSubscriptionMrr,
+    totalMrr: breakdown.totalMrr,
+    totalArr: breakdown.totalArr,
   };
 }
 
@@ -676,6 +636,7 @@ async function buildFinancialPlanningData(
   const mercury = data.mercury as MercuryData | null;
   const hubspot = data.hubspot as HubSpotData | null;
   const subscriptionOverview = buildSubscriptionOverview(data);
+  const totalMrr = subscriptionOverview?.totalMrr ?? stripe?.revenue.mrr ?? 0;
 
   const [dbBudgets, dbGoals, dbForecasts] = await Promise.all([
     prisma.budget.findMany({
@@ -748,8 +709,8 @@ async function buildFinancialPlanningData(
 
   // --- Goals with current progress ---
   const currentMetrics: Record<string, number> = {
-    mrr: stripe?.revenue.mrr ?? 0,
-    arr: (stripe?.revenue.mrr ?? 0) * 12,
+    mrr: totalMrr,
+    arr: totalMrr * 12,
     runway: mercury?.cashFlow.runway ?? 0,
     burn_rate: mercury?.cashFlow.burnRate ?? 0,
     net_cash_flow: mercury?.cashFlow.netCashFlow ?? 0,
@@ -1623,7 +1584,7 @@ export async function GET(request: Request) {
   }
 
   // Populate financial planning data when the finance section is requested
-  if (section === "finance" || section === null) {
+  if (section === "finance" || section === "finance-planning" || section === null) {
     try {
       result.financialPlanning = await buildFinancialPlanningData(userId, result);
     } catch (error) {

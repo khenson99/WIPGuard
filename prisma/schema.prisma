@@ -38,6 +38,9 @@ model Organization {
   retentionSourceRecords          RetentionSourceRecord[]
   retentionTenantMonths           RetentionTenantMonth[]
   retentionTenantCurrents         RetentionTenantCurrent[]
+  ceoMetricValueSnapshots         CeoMetricValueSnapshot[]
+  ceoReportPacks                  CeoReportPack[]
+  ceoReportRuns                   CeoReportRun[]
 }
 
 // ============================================================
@@ -111,6 +114,9 @@ model User {
 
   submissionEvents   SubmissionEvent[]
   insightPreferences InsightPreference[]
+  ceoMetricValueSnapshots CeoMetricValueSnapshot[]
+  ceoReportPacks          CeoReportPack[]
+  ceoReportRuns           CeoReportRun[]
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
@@ -975,6 +981,185 @@ model MetricHistory {
   @@index([userId, metricKey, periodEnd(sort: Desc)])
   @@index([userId, section, periodEnd(sort: Desc)])
   @@index([capturedAt])
+}
+
+// ============================================================
+// CEO METRIC TRUST LAYER
+// ============================================================
+
+enum CeoMetricUnit {
+  COUNT
+  CURRENCY
+  DAYS
+  PERCENT
+  RATIO
+  SCORE
+  TEXT
+}
+
+enum CeoMetricTrustStatus {
+  FRESH
+  STALE
+  PARTIAL
+  MISSING
+  ERROR
+  CONFLICTED
+}
+
+enum CeoReportCadence {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  AD_HOC
+}
+
+enum CeoReportAudience {
+  CEO
+  BOARD
+  TEAM
+  INVESTOR
+}
+
+model CeoMetricDefinition {
+  id                 String        @id @default(cuid())
+  key                String        @unique
+  label              String
+  domain             String
+  ownerAudience      CeoReportAudience
+  unit               CeoMetricUnit
+  calculationVersion String
+  sourceDependencies String[]
+  freshnessSlaHours  Int
+  boardEligible      Boolean       @default(false)
+  weeklyEligible     Boolean       @default(false)
+  description        String        @db.Text
+
+  valueSnapshots CeoMetricValueSnapshot[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([domain])
+  @@index([boardEligible])
+  @@index([weeklyEligible])
+}
+
+model CeoMetricValueSnapshot {
+  id           String              @id @default(cuid())
+  metricKey    String
+  definitionId String?
+  definition   CeoMetricDefinition? @relation(fields: [definitionId], references: [id], onDelete: SetNull)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  periodStart DateTime
+  periodEnd   DateTime
+  value       Json
+  priorValue  Json?
+  delta       Float?
+  asOf        DateTime
+  computedAt  DateTime
+
+  trustStatus CeoMetricTrustStatus
+  confidence  Float
+  warnings    String[]
+  sourceState Json
+
+  lineage CeoMetricSourceLineage[]
+
+  createdAt DateTime @default(now())
+
+  @@index([metricKey, periodEnd(sort: Desc)])
+  @@index([userId, periodEnd(sort: Desc)])
+  @@index([organizationId, periodEnd(sort: Desc)])
+  @@index([trustStatus])
+}
+
+model CeoMetricSourceLineage {
+  id              String                 @id @default(cuid())
+  valueSnapshotId String
+  valueSnapshot   CeoMetricValueSnapshot @relation(fields: [valueSnapshotId], references: [id], onDelete: Cascade)
+
+  sourceKey  String
+  sourceType String
+  sourceId   String?
+  capturedAt DateTime?
+  metadata   Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([valueSnapshotId])
+  @@index([sourceKey, capturedAt])
+}
+
+model CeoReportPack {
+  id          String            @id @default(cuid())
+  slug        String
+  name        String
+  description String            @db.Text
+  cadence     CeoReportCadence
+  audience    CeoReportAudience
+  metricKeys  String[]
+  isDefault   Boolean           @default(false)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  sections CeoReportSection[]
+  runs     CeoReportRun[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, userId, slug])
+  @@index([isDefault])
+}
+
+model CeoReportSection {
+  id     String        @id @default(cuid())
+  packId String
+  pack   CeoReportPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+
+  title      String
+  position   Int
+  metricKeys String[]
+
+  @@index([packId, position])
+}
+
+model CeoReportRun {
+  id       String         @id @default(cuid())
+  packId   String?
+  pack     CeoReportPack? @relation(fields: [packId], references: [id], onDelete: SetNull)
+  packSlug String
+  packName String
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  generatedAt        DateTime @default(now())
+  metricPayload      Json
+  deterministicNotes String[]
+  markdown           String   @db.Text
+  csv                String   @db.Text
+  slideJson          Json
+  aiDraft            String?  @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([packSlug, generatedAt(sort: Desc)])
+  @@index([userId, generatedAt(sort: Desc)])
+  @@index([organizationId, generatedAt(sort: Desc)])
 }
 
 enum InsightFeedbackAction {

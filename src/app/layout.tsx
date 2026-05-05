@@ -4,7 +4,7 @@ import { Providers } from "@/components/layout/providers";
 
 export const metadata: Metadata = {
   title: "WIPGuard",
-  description: "WIP-limited GTM operating system for revenue teams",
+  description: "Analytics API meeting place with governed metric trust for revenue teams",
 };
 
 export default function RootLayout({

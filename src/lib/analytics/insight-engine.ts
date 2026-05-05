@@ -12,7 +12,8 @@ import { buildProfitAndLoss } from "./pnl-builder";
 import { computeUnitEconomics } from "./unit-economics";
 
 const SECTION_ORDER: AnalyticsSectionId[] = [
-  "ads-traffic",
+  "website-traffic",
+  "social-media",
   "finance",
   "sales-pipeline",
   "customer-success",
@@ -51,7 +52,7 @@ function sortInsights(items: AiInsight[]): AiInsight[] {
   });
 }
 
-// ── Ads & Traffic ────────────────────────────────────────
+// ── Website Traffic + Social Media ───────────────────────
 
 function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
   const insights: AiInsight[] = [];
@@ -75,7 +76,7 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
   if (bounce > 0.55) {
     insights.push({
       id: "ai-ads-bounce-rate",
-      section: "ads-traffic",
+      section: "website-traffic",
       subsectionId: "ads-google-analytics",
       severity: bounce > 0.65 ? "critical" : "warning",
       title: "High bounce rate signals landing page mismatch",
@@ -107,7 +108,7 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
   if (totalClicks > 100 && clickToConv < 0.02) {
     insights.push({
       id: "ai-ads-click-conv",
-      section: "ads-traffic",
+      section: "social-media",
       severity: clickToConv < 0.015 ? "critical" : "warning",
       title: "Click-to-conversion rate below efficient threshold",
       why: `Across all paid channels: ${(clickToConv * 100).toFixed(2)}% conversion rate on ${totalClicks.toLocaleString()} clicks.`,
@@ -143,7 +144,7 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
     const dropPct = ((sessionsPrev - sessionsCurrent) / sessionsPrev * 100).toFixed(1);
     insights.push({
       id: "ai-ads-session-decline",
-      section: "ads-traffic",
+      section: "website-traffic",
       subsectionId: "ads-google-analytics",
       severity: sessionsCurrent < sessionsPrev * 0.7 ? "critical" : "warning",
       title: "Session volume declining period-over-period",
@@ -185,7 +186,7 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
     const cheapCPA = gCPA > mCPA ? mCPA : gCPA;
     insights.push({
       id: "ai-ads-cpa-disparity",
-      section: "ads-traffic",
+      section: "social-media",
       severity: "warning",
       title: `${expensive} CPA is ${(expCPA / cheapCPA).toFixed(1)}x higher than ${cheap}`,
       why: `${expensive} CPA: $${expCPA.toFixed(0)} vs ${cheap} CPA: $${cheapCPA.toFixed(0)}. Budget reallocation could improve overall efficiency.`,
@@ -226,7 +227,7 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
   if (organicTraffic > 100 && organicTraffic < sessionsCurrent * 0.1) {
     insights.push({
       id: "ai-ads-seo-underperforming",
-      section: "ads-traffic",
+      section: "website-traffic",
       severity: "warning",
       title: "Organic search heavily underperforming relative to overall traffic",
       why: `Organic traffic is only ${toPct(organicTraffic / sessionsCurrent)} of total sessions (${organicTraffic} out of ${sessionsCurrent}). High paid dependency.`,
@@ -253,7 +254,7 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
   } else if (organicKw > 0 && paidKw > organicKw * 2) {
     insights.push({
       id: "ai-ads-paid-heavy",
-      section: "ads-traffic",
+      section: "website-traffic",
       severity: "warning",
       title: "Over-reliance on Paid Keywords vs Organic",
       why: `Bidding on ${paidKw} keywords but only ranking organically for ${organicKw}. Missing opportunity to capture free traffic for proven terms.`,
@@ -285,7 +286,7 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
   if (sessionsCurrent > 500 && submissions === 0 && pages > 0) {
     insights.push({
       id: "ai-ads-webflow-zero-conv",
-      section: "ads-traffic",
+      section: "website-traffic",
       severity: "critical",
       title: "0 form submissions despite meaningful traffic",
       why: `The site generated ${sessionsCurrent} sessions but recorded 0 form submissions in Webflow.`,
@@ -1322,7 +1323,7 @@ function buildCrossdomainInsights(data: AnalyticsDashboardData): AiInsight[] {
   if (totalAdSpend > 1000 && pipelineValue > 0 && closedWonValue < totalAdSpend * 0.5) {
     insights.push({
       id: "ai-xd-spend-vs-pipeline",
-      section: "ads-traffic",
+      section: "social-media",
       severity: closedWonValue < totalAdSpend * 0.25 ? "critical" : "warning",
       title: "Ad spend not translating to pipeline value",
       why: `$${totalAdSpend.toLocaleString()} ad spend but only $${closedWonValue.toLocaleString()} closed won — pipeline ROI is ${pipelineValue > 0 ? (closedWonValue / totalAdSpend * 100).toFixed(0) : 0}%.`,
@@ -1743,7 +1744,8 @@ export function buildAiInsightsBundle(data: AnalyticsDashboardData): AiInsightsB
       return acc;
     },
     {
-      "ads-traffic": [],
+      "website-traffic": [],
+      "social-media": [],
       finance: [],
       "sales-pipeline": [],
       retention: [],

@@ -289,12 +289,10 @@ describe("CustomerSuccessAccountWorkspace", () => {
       tasks: [
         {
           id: "task_1",
-          accountId: "acct_1",
           title: "Call champion about rollout",
           status: "ACTIVE",
           priority: "P1",
           dueDate: "2026-03-12T00:00:00.000Z",
-          notes: "Confirm blocker owners",
         },
       ],
     });
@@ -537,7 +535,7 @@ describe("CustomerSuccessAccountWorkspace", () => {
           severity: "medium",
           status: "open",
           slaStatus: "at_risk",
-          source: "implementation",
+          source: "workflow",
           evidence: ["Milestone completion slipped"],
           suggestedAction: "Coordinate unblock with implementation lead",
           createdAt: "2026-03-09T10:00:00.000Z",
@@ -555,7 +553,7 @@ describe("CustomerSuccessAccountWorkspace", () => {
           severity: "medium",
           status: "in_progress",
           slaStatus: "on_track",
-          source: "implementation",
+          source: "workflow",
           evidence: ["Owner assigned and recovery plan in motion"],
           suggestedAction: "Track weekly until the milestone is back on plan",
           createdAt: "2026-03-09T10:00:00.000Z",

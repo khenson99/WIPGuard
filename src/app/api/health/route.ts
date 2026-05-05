@@ -8,7 +8,7 @@ const APP_VERSION = process.env.APP_VERSION?.trim() || packageJson.version;
 /**
  * GET /api/health
  *
- * Health check endpoint that verifies database connectivity
+ * Dependency health endpoint that verifies database connectivity
  * and reports pool status.
  *
  * Returns:

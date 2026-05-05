@@ -74,6 +74,11 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
           label="Cash Balance"
           value={cash ? fmt$(cash.totalBalance) : "—"}
           change={cash ? `${cash.runway.toFixed(1)} months runway` : undefined}
+          subtitle={
+            cash && cash.bankCash !== undefined && cash.treasuryCash !== undefined
+              ? `${fmt$(cash.bankCash)} bank · ${fmt$(cash.treasuryCash)} Treasury`
+              : undefined
+          }
           changeType={cash && cash.runway > 6 ? "positive" : cash && cash.runway > 3 ? "neutral" : "negative"}
           icon={Wallet}
         />

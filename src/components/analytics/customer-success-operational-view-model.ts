@@ -179,7 +179,7 @@ export function deriveCustomerSuccessOperationalView(data: AnalyticsDashboardDat
     },
     {
       id: "overdue",
-      label: "Overdue Open Tasks",
+      label: "Legacy Open Execution Items",
       value: product?.overdueOpenTasks ?? 0,
       threshold: 5,
       description: "Overdue execution creates retention delays.",

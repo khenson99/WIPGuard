@@ -48,10 +48,10 @@ describe("AnalyticsSummaryPage", () => {
       },
       primarySections: [
         {
-          id: "ads-traffic",
-          label: "Ads & Traffic",
+          id: "website-traffic",
+          label: "Website Traffic",
           description: "desc",
-          href: "/analytics/ads-traffic",
+          href: "/analytics/website-traffic",
           status: "connected",
           integrationCount: 4,
           connectedCount: 4,

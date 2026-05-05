@@ -4,7 +4,6 @@ import {
 } from "@/lib/analytics/section-registry";
 
 export type WorkspaceId =
-  | "dashboard"
   | "deals"
   | "analytics"
   | "integrations"
@@ -28,10 +27,36 @@ export interface WorkspaceNavItem {
 
 export const WORKSPACE_NAV_ITEMS: WorkspaceNavItem[] = [
   {
-    id: "dashboard",
-    label: "Dashboard",
-    href: "/dashboard",
-    description: "Cross-platform GTM operating view.",
+    id: "analytics",
+    label: "Analytics",
+    href: "/analytics",
+    description: "Metric trust, source health, customer journey, and operating intelligence.",
+    children: [
+      {
+        id: "ceo-command-center",
+        label: "CEO Command Center",
+        href: "/analytics/ceo",
+        workspaceId: "analytics",
+      },
+      ...ANALYTICS_PRIMARY_SECTIONS.map((section) => ({
+        id: section.id,
+        label: section.label,
+        href: section.path,
+        workspaceId: "analytics" as const,
+      })),
+      {
+        id: "ai-insights",
+        label: "AI Insights",
+        href: "/analytics/ai-insights",
+        workspaceId: "analytics",
+      },
+    ],
+  },
+  {
+    id: "integrations",
+    label: "Integrations",
+    href: "/integrations",
+    description: "Connections, sync health, and provider operations.",
   },
   {
     id: "deals",
@@ -52,32 +77,6 @@ export const WORKSPACE_NAV_ITEMS: WorkspaceNavItem[] = [
         workspaceId: "deals",
       },
     ],
-  },
-  {
-    id: "analytics",
-    label: "Analytics",
-    href: "/analytics",
-    description: "Performance, customer journey, and operational intelligence.",
-    children: [
-      ...ANALYTICS_PRIMARY_SECTIONS.map((section) => ({
-        id: section.id,
-        label: section.label,
-        href: section.path,
-        workspaceId: "analytics" as const,
-      })),
-      {
-        id: "ai-insights",
-        label: "AI Insights",
-        href: "/analytics/ai-insights",
-        workspaceId: "analytics",
-      },
-    ],
-  },
-  {
-    id: "integrations",
-    label: "Integrations",
-    href: "/integrations",
-    description: "Connections, sync health, and provider operations.",
   },
   {
     id: "automations",

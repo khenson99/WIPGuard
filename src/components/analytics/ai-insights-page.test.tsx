@@ -6,7 +6,7 @@ import type { AiInsightsBundle, AnalyticsDashboardData } from "@/lib/analytics/t
 
 function makeInsights(count: number): AiInsightsBundle["global"] {
   const severities = ["critical", "warning", "info"] as const;
-  const sections = ["ads-traffic", "finance", "sales-pipeline", "customer-success"] as const;
+  const sections = ["website-traffic", "social-media", "finance", "sales-pipeline"] as const;
 
   return Array.from({ length: count }, (_, idx) => ({
     id: `insight-${idx + 1}`,
@@ -27,7 +27,8 @@ function writeCachedOverviewData(globalCount: number) {
     generatedAt: "2026-03-01T00:00:00.000Z",
     global: makeInsights(globalCount),
     bySection: {
-      "ads-traffic": [],
+      "website-traffic": [],
+      "social-media": [],
       finance: [],
       "sales-pipeline": [],
       retention: [],
@@ -170,6 +171,9 @@ describe("AiInsightsPage", () => {
       expect(screen.getByText("AI Insights")).toBeTruthy();
     });
 
-    expect(screen.queryByRole("button", { name: "Create task from this insight" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Recommended moves" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /create task/i })).toBeNull();
+    expect(screen.queryByText(/^Task$/)).toBeNull();
+    expect(screen.queryByText(/Creating\.\.\./)).toBeNull();
   });
 });

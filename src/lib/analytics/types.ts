@@ -123,9 +123,44 @@ export interface HubSpotData {
   contacts: ContactMetrics;
   repScoreboard?: HubSpotRepScoreboardRow[];
   pipelineDetected?: { pipelineId: string; dealCount: number };
+  subscriptionPipelineDetected?: { pipelineId: string; dealCount: number };
   pipelineStageLabelsSource?: "api" | "fallback";
   pipelineStages?: Array<{ stageId: string; label: string }>;
   deals?: Array<{
+    dealId: string;
+    dealName: string;
+    stageId: string;
+    stageLabel: string;
+    amount: number;
+    source: string;
+    ownerId: string | null;
+    repName?: string;
+    updatedAt: string | null;
+    createdAt: string | null;
+    closedAt?: string | null;
+    stripeCustomerId?: string | null;
+    pipelineId: string | null;
+    contactIds: string[];
+    primaryContactId: string | null;
+    primaryContactEmail: string | null;
+    primaryContactAnalytics?: {
+      createdAt?: string | null;
+      source: string | null;
+      sourceData1: string | null;
+      sourceData2: string | null;
+      firstSeenAt: string | null;
+      lastSeenAt: string | null;
+      firstUrl: string | null;
+      lastUrl: string | null;
+      numVisits: number | null;
+      numPageViews: number | null;
+      utmSource: string | null;
+      utmMedium: string | null;
+      utmCampaign: string | null;
+    };
+    stageHistory?: Array<{ occurredAt: string; stageId: string; stageLabel: string }>;
+  }>;
+  subscriptionDeals?: Array<{
     dealId: string;
     dealName: string;
     stageId: string;
@@ -354,6 +389,9 @@ export interface AccountBalance {
 
 export interface CashFlowMetrics {
   totalBalance: number;
+  bankCash?: number;
+  treasuryCash?: number;
+  totalCash?: number;
   inflows30d: number;
   outflows30d: number;
   netCashFlow: number;
@@ -985,7 +1023,8 @@ export interface CrossFunnelData {
 }
 
 export type AnalyticsSectionId =
-  | "ads-traffic"
+  | "website-traffic"
+  | "social-media"
   | "finance"
   | "sales-pipeline"
   | "retention"
@@ -1681,6 +1720,12 @@ export interface FinancialPlanningData {
     mergedActiveSubscriptions: number;
     stripeActiveSubscriptions: number;
     hubspotActiveSubscriptions: number;
+    stripeMrr: number;
+    hubspotSubscriptionMrr: number;
+    hubspotOnlySubscriptionMrr: number;
+    excludedLinkedHubspotSubscriptionMrr: number;
+    totalMrr: number;
+    totalArr: number;
   } | null;
 }
 
@@ -1820,5 +1865,5 @@ export const ANALYTICS_TABS: TabConfig[] = [
   { id: "overview", label: "Overview", description: "Key metrics at a glance" },
   { id: "sales", label: "Sales & Pipeline", description: "HubSpot deals & conversions" },
   { id: "finance", label: "Revenue & Finance", description: "Stripe MRR & Mercury cash" },
-  { id: "marketing", label: "Ads & Traffic", description: "Google Analytics, Ads, Meta & Reddit" },
+  { id: "marketing", label: "Website Traffic", description: "Legacy alias that redirects to website traffic analytics" },
 ];

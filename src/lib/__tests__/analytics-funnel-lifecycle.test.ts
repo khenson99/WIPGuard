@@ -32,7 +32,8 @@ function baseData(): AnalyticsDashboardData {
       generatedAt: "2026-01-01T00:00:00.000Z",
       global: [],
       bySection: {
-        "ads-traffic": [],
+        "website-traffic": [],
+        "social-media": [],
         finance: [],
         "sales-pipeline": [],
         retention: [],

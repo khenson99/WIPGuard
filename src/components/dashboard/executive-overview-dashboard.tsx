@@ -270,7 +270,7 @@ function TrafficSection({ data }: { data: ExecutiveOverviewPayload["traffic"] })
           </div>
         )}
 
-        <SectionFooter href="/analytics/ads-traffic" label="View full traffic dashboard" />
+        <SectionFooter href="/analytics/website-traffic" label="View full traffic dashboard" />
       </div>
     </SectionCard>
   );
@@ -585,7 +585,7 @@ export function ExecutiveOverviewDashboard() {
               <p className="text-lg font-bold tabular-nums">{fmt$(data.adSpend.blendedCpa)}</p>
             </div>
           </div>
-          <SectionFooter href="/analytics/ads-traffic" label="View full ad performance" />
+          <SectionFooter href="/analytics/social-media" label="View full social media performance" />
         </SectionCard>
       )}
 

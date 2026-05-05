@@ -1,5 +1,6 @@
 import type { AnalyticsDashboardData } from "./types";
 import { normalizePercentValue } from "./percentage-utils";
+import { buildSubscriptionMrrBreakdown } from "./subscription-mrr";
 
 /**
  * Compute fallback KPIs from raw provider data when `data.kpis` is not
@@ -25,7 +26,7 @@ export function computeAnalyticsKpis(data: AnalyticsDashboardData) {
 
   // ── Finance KPIs ──
   const stripe = data.stripe;
-  const mrr = stripe?.revenue.mrr ?? 0;
+  const mrr = buildSubscriptionMrrBreakdown({ stripe, hubspot: data.hubspot }).totalMrr;
   const paymentSuccessPct = normalizePercentValue(stripe?.payments.successRate ?? 0);
 
   return {

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import React, { useState } from 'react';
 import { AnalyticsDashboardData } from '@/lib/analytics/types';
 import { StatCard } from './stat-card';
@@ -25,6 +26,7 @@ import {
 
 interface MarketingTabNewProps {
   data: AnalyticsDashboardData | null;
+  variant?: 'website-traffic' | 'social-media';
 }
 
 // Helper functions
@@ -83,7 +85,7 @@ function resolveProviderState(input: {
   return { state: 'healthy', error: null };
 }
 
-export function MarketingTabNew({ data }: MarketingTabNewProps) {
+export function MarketingTabNew({ data, variant = 'website-traffic' }: MarketingTabNewProps) {
   const [expandedPlatforms, setExpandedPlatforms] = useState<Record<string, boolean>>({
     googleAds: true,
     metaAds: true,
@@ -353,112 +355,170 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
   const igAttributeCorrelations = data.instagram?.attributeCorrelations || [];
   const igWinningPatterns = data.instagram?.winningPatterns || [];
   const igLosingPatterns = data.instagram?.losingPatterns || [];
+  const isWebsiteTraffic = variant === 'website-traffic';
+  const companionRoute = isWebsiteTraffic ? '/analytics/social-media' : '/analytics/website-traffic';
+  const companionLabel = isWebsiteTraffic ? 'Social Media' : 'Website Traffic';
+  const insightFilter = isWebsiteTraffic ? 'website-traffic' : 'social-media';
+  const gaUsers30d = data.googleAnalytics?.users30d || 0;
+  const webflowSubmissions = data.webflow?.totalFormSubmissions ?? 0;
+  const semrushOrganicTraffic = data.semrush?.organicTraffic ?? 0;
 
   return (
     <div className="space-y-6">
-      <AiInsightsPanel bundle={data.aiInsights || null} defaultFilter="ads-traffic" />
+      <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border bg-card p-4">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">
+            {isWebsiteTraffic ? 'Website Traffic' : 'Social Media'}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {isWebsiteTraffic
+              ? 'Website acquisition, content performance, and onsite conversion health.'
+              : 'Paid and organic social performance across campaigns, pages, and Instagram content.'}
+          </p>
+        </div>
+        <Link
+          href={companionRoute}
+          className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground hover:bg-secondary/50"
+        >
+          Open {companionLabel}
+        </Link>
+      </div>
+
+      <AiInsightsPanel bundle={data.aiInsights || null} defaultFilter={insightFilter} />
 
       {/* Top KPI Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          label="Sessions (30d)"
-          value={
-            gaStatus.state === 'not_configured'
-              ? "Not configured"
-              : gaStatus.state === 'failing'
-                ? "Configured but failing"
-                : gaStatus.state === 'no_data'
-                  ? "No data"
-                  : fmtNum(sessions30d)
-          }
-          change={gaStatus.state === 'healthy' && sessionsChange != null ? fmtPct(sessionsChange) : undefined}
-          changeType={
-            sessionsChange == null
-              ? 'neutral'
-              : sessionsChange > 0
-                ? 'positive'
-                : 'negative'
-          }
-          subtitle={
-            gaStatus.state === 'failing'
-              ? gaStatus.error || "Google Analytics request failed"
-              : gaStatus.state === 'not_configured'
-                ? "Google Analytics"
-                : gaStatus.state === 'no_data'
-                  ? "No GA data in selected range"
-                  : undefined
-          }
-          icon={TrendingUp}
-        />
-        <StatCard
-          label="Total Ad Spend"
-          value={
-            !paidConfigured
-              ? "Not configured"
-              : paidFailure
-                ? "Configured but failing"
-                : paidHealthy
-                  ? fmtCurrency(totalAdSpend)
-                  : "No data"
-          }
-          subtitle={
-            !paidConfigured
-              ? "Google Ads, Meta Ads, Reddit Ads"
-              : paidFailure
-                ? paidFailure.error || "One or more ad providers failed"
-                : paidHealthy
-                  ? "Google + Meta + Reddit"
-                  : "No ad spend in selected range"
-          }
-          icon={DollarSign}
-        />
-        <StatCard
-          label="Total Conversions"
-          value={
-            !conversionConfigured
-              ? "Not configured"
-              : conversionFailure
-                ? "Configured but failing"
-                : conversionHealthy
-                  ? fmtNum(totalConversions)
-                  : "No data"
-          }
-          subtitle={
-            !conversionConfigured
-              ? "Google Ads, Meta Ads"
-              : conversionFailure
-                ? conversionFailure.error || "Conversion providers failed"
-                : conversionHealthy
-                  ? "Google + Meta"
-                  : "No conversion data in selected range"
-          }
-          icon={MousePointerClick}
-        />
-        <StatCard
-          label="Page Followers"
-          value={
-            metaPageStatus.state === 'not_configured'
-              ? "Not configured"
-              : metaPageStatus.state === 'failing'
-                ? "Configured but failing"
-                : metaPageStatus.state === 'no_data'
-                  ? "No data"
-                  : fmtNum(pageFollowers)
-          }
-          subtitle={
-            metaPageStatus.state === 'failing'
-              ? metaPageStatus.error || "Meta Page request failed"
-              : metaPageStatus.state === 'not_configured'
-                ? "Meta Page"
-                : metaPageStatus.state === 'no_data'
-                  ? "Configured, but no Meta Page signals were returned in this range"
-                  : "Meta Page connected"
-          }
-          icon={Facebook}
-        />
+        {isWebsiteTraffic ? (
+          <>
+            <StatCard
+              label="Sessions (30d)"
+              value={
+                gaStatus.state === 'not_configured'
+                  ? "Not configured"
+                  : gaStatus.state === 'failing'
+                    ? "Configured but failing"
+                    : gaStatus.state === 'no_data'
+                      ? "No data"
+                      : fmtNum(sessions30d)
+              }
+              change={gaStatus.state === 'healthy' && sessionsChange != null ? fmtPct(sessionsChange) : undefined}
+              changeType={
+                sessionsChange == null
+                  ? 'neutral'
+                  : sessionsChange > 0
+                    ? 'positive'
+                    : 'negative'
+              }
+              subtitle={
+                gaStatus.state === 'failing'
+                  ? gaStatus.error || "Google Analytics request failed"
+                  : gaStatus.state === 'not_configured'
+                    ? "Google Analytics"
+                    : gaStatus.state === 'no_data'
+                      ? "No GA data in selected range"
+                      : undefined
+              }
+              icon={TrendingUp}
+            />
+            <StatCard
+              label="Users (30d)"
+              value={gaStatus.state === 'healthy' ? fmtNum(gaUsers30d) : gaStatus.state === 'no_data' ? "No data" : "Not configured"}
+              subtitle="Google Analytics"
+              icon={Globe}
+            />
+            <StatCard
+              label="Organic Traffic"
+              value={semrushStatus.state === 'healthy' ? fmtNum(semrushOrganicTraffic) : semrushStatus.state === 'no_data' ? "No data" : "Not configured"}
+              subtitle={semrushStatus.state === 'failing' ? semrushStatus.error || "SEMrush request failed" : "SEMrush"}
+              icon={Search}
+            />
+            <StatCard
+              label="Form Submissions"
+              value={webflowStatus.state === 'healthy' ? fmtNum(webflowSubmissions) : webflowStatus.state === 'no_data' ? "No data" : "Not configured"}
+              subtitle={webflowStatus.state === 'failing' ? webflowStatus.error || "Webflow request failed" : "Webflow"}
+              icon={Layout}
+            />
+          </>
+        ) : (
+          <>
+            <StatCard
+              label="Total Ad Spend"
+              value={
+                !paidConfigured
+                  ? "Not configured"
+                  : paidFailure
+                    ? "Configured but failing"
+                    : paidHealthy
+                      ? fmtCurrency(totalAdSpend)
+                      : "No data"
+              }
+              subtitle={
+                !paidConfigured
+                  ? "Google Ads, Meta Ads, Reddit Ads"
+                  : paidFailure
+                    ? paidFailure.error || "One or more ad providers failed"
+                    : paidHealthy
+                      ? "Google + Meta + Reddit"
+                      : "No ad spend in selected range"
+              }
+              icon={DollarSign}
+            />
+            <StatCard
+              label="Total Conversions"
+              value={
+                !conversionConfigured
+                  ? "Not configured"
+                  : conversionFailure
+                    ? "Configured but failing"
+                    : conversionHealthy
+                      ? fmtNum(totalConversions)
+                      : "No data"
+              }
+              subtitle={
+                !conversionConfigured
+                  ? "Google Ads, Meta Ads"
+                  : conversionFailure
+                    ? conversionFailure.error || "Conversion providers failed"
+                    : conversionHealthy
+                      ? "Google + Meta"
+                      : "No conversion data in selected range"
+              }
+              icon={MousePointerClick}
+            />
+            <StatCard
+              label="Page Followers"
+              value={
+                metaPageStatus.state === 'not_configured'
+                  ? "Not configured"
+                  : metaPageStatus.state === 'failing'
+                    ? "Configured but failing"
+                    : metaPageStatus.state === 'no_data'
+                      ? "No data"
+                      : fmtNum(pageFollowers)
+              }
+              subtitle={
+                metaPageStatus.state === 'failing'
+                  ? metaPageStatus.error || "Meta Page request failed"
+                  : metaPageStatus.state === 'not_configured'
+                    ? "Meta Page"
+                    : metaPageStatus.state === 'no_data'
+                      ? "Configured, but no Meta Page signals were returned in this range"
+                      : "Meta Page connected"
+              }
+              icon={Facebook}
+            />
+            <StatCard
+              label="Instagram Followers"
+              value={instagramStatus.state === 'healthy' ? fmtNum(igFollowers) : instagramStatus.state === 'no_data' ? "No data" : "Not configured"}
+              subtitle={instagramStatus.state === 'failing' ? instagramStatus.error || "Instagram request failed" : "Instagram"}
+              icon={Instagram}
+            />
+          </>
+        )}
       </div>
 
-      {/* Traffic Section */}
+      {/* Website Traffic Section */}
+      {isWebsiteTraffic ? (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Traffic by Channel */}
         <div className="bg-card border border-border rounded-xl p-6">
@@ -509,9 +569,10 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
           )}
         </div>
       </div>
-      
-      {/* Channel Comparison */}
-      {paidConfigured && paidHealthy ? (
+      ) : null}
+
+      {/* Social Media comparison */}
+      {!isWebsiteTraffic && paidConfigured && paidHealthy ? (
         <div className="bg-card border border-border rounded-xl p-6">
           <h3 className="text-lg font-semibold text-foreground mb-4">Channel Comparison</h3>
           <ChannelTable byPlatform={byPlatform} />
@@ -519,6 +580,7 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
       ) : null}
 
       {/* Ad Performance Section */}
+      {!isWebsiteTraffic ? (
       <div className="space-y-4">
         <h2 className="text-xl font-semibold text-foreground">Ad Performance</h2>
 
@@ -773,8 +835,10 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
           )}
         </div>
       </div>
+      ) : null}
 
-      {/* Social & Web Section */}
+      {/* Social Section */}
+      {!isWebsiteTraffic ? (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Meta Page Insights */}
         <div className="bg-card border border-border rounded-xl p-6">
@@ -1172,6 +1236,12 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
           )}
         </div>
 
+      </div>
+      ) : null}
+
+      {/* Website Section */}
+      {isWebsiteTraffic ? (
+      <div className="grid grid-cols-1 gap-6">
         {/* Webflow Site Info */}
         <div className="bg-card border border-border rounded-xl p-6">
           <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
@@ -1261,8 +1331,10 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
           )}
         </div>
       </div>
+      ) : null}
 
       {/* -- SEMrush SEO Intelligence -- */}
+      {isWebsiteTraffic ? (
       <div className="mt-6">
         <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
           <Search className="w-5 h-5 text-[#fc5a29]" />
@@ -1354,6 +1426,7 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
           </div>
         )}
       </div>
+      ) : null}
     </div>
   );
 }

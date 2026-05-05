@@ -85,6 +85,7 @@ function makeFinancialPlanning(
     goals: [],
     pnl: null,
     unitEconomics: null,
+    subscriptionOverview: null,
     ...overrides,
   };
 }
@@ -225,4 +226,3 @@ describe("FinanceTab", () => {
     expect(screen.getByText("Operating")).toBeTruthy();
   });
 });
-

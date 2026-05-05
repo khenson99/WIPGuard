@@ -1,8 +1,7 @@
 import {
   Activity,
-  Cable,
-  LayoutDashboard,
   Bot,
+  Cable,
   Handshake,
   type LucideIcon,
 } from "lucide-react";
@@ -26,10 +25,9 @@ export interface NavItem {
 }
 
 const WORKSPACE_ICONS: Record<WorkspaceId, LucideIcon> = {
-  dashboard: LayoutDashboard,
-  deals: Handshake,
   analytics: Activity,
   integrations: Cable,
+  deals: Handshake,
   automations: Bot,
 };
 

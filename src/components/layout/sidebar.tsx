@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { clsx } from "clsx";
-import { LayoutDashboard, Settings } from "lucide-react";
+import { Activity, Settings } from "lucide-react";
 import { buildNavItems } from "./sidebar-nav-config";
 import { SidebarNavGroup } from "./sidebar-nav-group";
 
@@ -23,8 +23,8 @@ export function Sidebar() {
   return (
     <aside className="flex h-screen w-56 flex-col border-r border-sidebar-border bg-sidebar-bg text-sm text-sidebar-foreground">
       <div className="flex items-center gap-2 border-b border-sidebar-border px-4 py-4">
-        <LayoutDashboard className="h-6 w-6 text-primary" aria-hidden="true" />
-        <span className="text-lg font-bold text-foreground">WIPGuard</span>
+        <Activity className="h-6 w-6 text-primary" aria-hidden="true" />
+        <span className="text-lg font-bold text-foreground">WIPGuard Analytics</span>
       </div>
 
       <nav aria-label="Main navigation" className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">

@@ -14,7 +14,7 @@ function makeLifecycle(): LifecycleFunnelData {
         conversionFromPrevious: null,
         trendDeltaPct: 10,
         confidence: 0.91,
-        section: "ads-traffic",
+        section: "website-traffic",
         evidence: [
           {
             source: "Google Analytics",
@@ -33,7 +33,7 @@ function makeLifecycle(): LifecycleFunnelData {
         conversionFromPrevious: 50,
         trendDeltaPct: 7,
         confidence: 0.85,
-        section: "ads-traffic",
+        section: "website-traffic",
         evidence: [
           {
             source: "Google Ads",
@@ -155,7 +155,7 @@ function makeInsights(): AiInsight[] {
   return [
     {
       id: "ai-ads",
-      section: "ads-traffic",
+      section: "website-traffic",
       severity: "warning",
       title: "Improve paid traffic quality",
       why: "Bounce rising.",

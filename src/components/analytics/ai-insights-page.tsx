@@ -40,7 +40,8 @@ const SEVERITY_ORDER: Record<AiInsight["severity"], number> = {
 const PAGE_SIZES = [10, 25, 50] as const;
 
 const SECTION_LABELS: Partial<Record<AnalyticsSectionId, string>> = {
-  "ads-traffic": "Ads & Traffic",
+  "website-traffic": "Website Traffic",
+  "social-media": "Social Media",
   finance: "Finance",
   "sales-pipeline": "Sales Pipeline",
   retention: "Retention",
@@ -158,7 +159,6 @@ export function AiInsightsPage() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [showDismissed, setShowDismissed] = useState(false);
   const [recentlyDismissed, setRecentlyDismissed] = useState<{ id: string; title: string } | null>(null);
-  const [taskError, setTaskError] = useState<string | null>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const {
@@ -167,8 +167,6 @@ export function AiInsightsPage() {
     togglePin,
     dismiss,
     undoDismiss,
-    createTaskFromInsight,
-    creatingTaskForId,
     sortAndFilter,
   } = useInsightPreferences();
 
@@ -422,18 +420,6 @@ export function AiInsightsPage() {
     setRecentlyDismissed(null);
   }, [recentlyDismissed, undoDismiss]);
 
-  const handleCreateTask = useCallback(
-    async (insight: AiInsight) => {
-      setTaskError(null);
-      try {
-        await createTaskFromInsight(insight);
-      } catch {
-        setTaskError(`Failed to create task for "${insight.title}". Please try again.`);
-      }
-    },
-    [createTaskFromInsight]
-  );
-
   const resetFilters = useCallback(() => {
     setSeverityFilter("all");
     setSectionFilter("all");
@@ -633,12 +619,6 @@ export function AiInsightsPage() {
           ) : null}
 
           {error ? <DashboardErrorBanner message={error} onRetry={resource.refresh} retryLabel="Rerun insights" /> : null}
-
-          {taskError ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-900/10">
-              <p className="text-sm text-red-600 dark:text-red-400">{taskError}</p>
-            </div>
-          ) : null}
 
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <StatCard
@@ -997,8 +977,6 @@ export function AiInsightsPage() {
                       isPinned={isPinned(insight.id)}
                       onTogglePin={() => void togglePin(insight.id)}
                       onDismiss={() => handleDismiss(insight)}
-                      onCreateTask={() => void handleCreateTask(insight)}
-                      isCreatingTask={creatingTaskForId === insight.id}
                     />
                   ))
                 )}
@@ -1092,7 +1070,7 @@ export function AiInsightsPage() {
               <section className="rounded-3xl border border-border bg-card p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h2 className="text-base font-semibold text-foreground">Action queue</h2>
+                    <h2 className="text-base font-semibold text-foreground">Recommended moves</h2>
                     <p className="text-sm text-muted-foreground">Highest-leverage moves across the visible set.</p>
                   </div>
                   <ListTodo className="h-4 w-4 text-muted-foreground" />
@@ -1113,24 +1091,14 @@ export function AiInsightsPage() {
                         </div>
                         <div className="mt-3 flex items-center justify-between gap-3">
                           <p className="text-xs text-muted-foreground">{action.sectionLabel}</p>
-                          <div className="flex items-center gap-3">
-                            <button
-                              type="button"
-                              onClick={() => void handleCreateTask(action.insight)}
-                              disabled={creatingTaskForId === action.insight.id}
-                              className="text-xs font-medium text-foreground underline decoration-border underline-offset-4 hover:text-primary disabled:opacity-50"
+                          {action.destination ? (
+                            <Link
+                              href={action.destination.href}
+                              className="text-xs font-medium text-foreground underline decoration-border underline-offset-4 hover:text-primary"
                             >
-                              {creatingTaskForId === action.insight.id ? "Creating..." : "Create task"}
-                            </button>
-                            {action.destination ? (
-                              <Link
-                                href={action.destination.href}
-                                className="text-xs font-medium text-foreground underline decoration-border underline-offset-4 hover:text-primary"
-                              >
-                                Open {action.destination.label}
-                              </Link>
-                            ) : null}
-                          </div>
+                              Open {action.destination.label}
+                            </Link>
+                          ) : null}
                         </div>
                       </div>
                     ))

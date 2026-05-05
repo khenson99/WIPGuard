@@ -1,7 +1,18 @@
 #!/bin/sh
 set -e
 
-MIGRATIONS_MODE="${MIGRATIONS_MODE:-best-effort}"
+MIGRATIONS_DIR="${MIGRATIONS_DIR:-/app/prisma/migrations}"
+if [ ! -d "$MIGRATIONS_DIR" ] && [ -d "prisma/migrations" ]; then
+  MIGRATIONS_DIR="prisma/migrations"
+fi
+
+if [ -z "${MIGRATIONS_MODE+x}" ]; then
+  if [ -d "$MIGRATIONS_DIR" ] && find "$MIGRATIONS_DIR" -maxdepth 1 -type d -name "*ceo_metric*" | grep -q .; then
+    MIGRATIONS_MODE="strict"
+  else
+    MIGRATIONS_MODE="best-effort"
+  fi
+fi
 
 case "$MIGRATIONS_MODE" in
   skip)

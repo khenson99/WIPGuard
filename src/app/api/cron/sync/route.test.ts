@@ -50,10 +50,15 @@ vi.mock("@/lib/integrations/orchestrator", () => ({
 vi.mock("@/lib/integrations/ownership", () => ({
   bestEffortMigrateConnectionsToOwner: vi.fn(),
   bestEffortMigrateRulesToOwner: vi.fn(),
+  ensureIntegrationOwnerOrganizationId: vi.fn(),
 }));
 
 vi.mock("@/lib/integrations/health-checks", () => ({
   runIntegrationHealthChecks: vi.fn(),
+}));
+
+vi.mock("@/lib/retention/pipeline", () => ({
+  materializeRetentionCurrent: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -91,10 +96,12 @@ describe("POST /api/cron/sync", () => {
     const {
       bestEffortMigrateConnectionsToOwner,
       bestEffortMigrateRulesToOwner,
+      ensureIntegrationOwnerOrganizationId,
     } = await import("@/lib/integrations/ownership");
     const { runIntegrationHealthChecks } = await import(
       "@/lib/integrations/health-checks"
     );
+    const { materializeRetentionCurrent } = await import("@/lib/retention/pipeline");
 
     vi.mocked(getVisitorFunnelPrisma).mockReturnValue(null);
     vi.mocked(bestEffortMigrateConnectionsToOwner).mockResolvedValue({
@@ -109,6 +116,8 @@ describe("POST /api/cron/sync", () => {
     vi.mocked(runRules).mockResolvedValue({ ok: true } as never);
     vi.mocked(runIntegrationHealthChecks).mockResolvedValue({ ok: true } as never);
     vi.mocked(pruneAnalyticsSnapshots).mockResolvedValue({ deleted: 0 } as never);
+    vi.mocked(ensureIntegrationOwnerOrganizationId).mockResolvedValue("org_1" as never);
+    vi.mocked(materializeRetentionCurrent).mockResolvedValue(undefined as never);
 
     const { POST } = await import("@/app/api/cron/sync/route");
     const request = new Request("http://localhost/api/cron/sync?wait=1", {
@@ -122,6 +131,7 @@ describe("POST /api/cron/sync", () => {
       visitorFunnelEnrichment: Array<{ skipped: boolean; reason: string | null }>;
       visitorFunnelEnrichmentHealth: { alerts: unknown[]; providers: unknown[] };
       visitorFunnelEnrichmentNotifications: { skippedReason: string | null };
+      retention: { attempted: number; materialized: number };
     };
 
     expect(response.status).toBe(200);
@@ -138,6 +148,11 @@ describe("POST /api/cron/sync", () => {
     expect(runVisitorFunnelEnrichmentSyncs).not.toHaveBeenCalled();
     expect(buildVisitorFunnelEnrichmentStatus).not.toHaveBeenCalled();
     expect(enqueueVisitorFunnelEnrichmentAlertNotifications).not.toHaveBeenCalled();
+    expect(body.retention).toMatchObject({ attempted: 1, materialized: 1 });
+    expect(materializeRetentionCurrent).toHaveBeenCalledWith({
+      id: "owner_1",
+      organizationId: "org_1",
+    });
   });
 
   it("queues heavy sync work in the background by default", async () => {
@@ -150,10 +165,12 @@ describe("POST /api/cron/sync", () => {
     const {
       bestEffortMigrateConnectionsToOwner,
       bestEffortMigrateRulesToOwner,
+      ensureIntegrationOwnerOrganizationId,
     } = await import("@/lib/integrations/ownership");
     const { runIntegrationHealthChecks } = await import(
       "@/lib/integrations/health-checks"
     );
+    const { materializeRetentionCurrent } = await import("@/lib/retention/pipeline");
 
     vi.mocked(getVisitorFunnelPrisma).mockReturnValue(null);
     vi.mocked(bestEffortMigrateConnectionsToOwner).mockResolvedValue({
@@ -168,6 +185,8 @@ describe("POST /api/cron/sync", () => {
     vi.mocked(runRules).mockResolvedValue({ ok: true } as never);
     vi.mocked(runIntegrationHealthChecks).mockResolvedValue({ ok: true } as never);
     vi.mocked(pruneAnalyticsSnapshots).mockResolvedValue({ deleted: 0 } as never);
+    vi.mocked(ensureIntegrationOwnerOrganizationId).mockResolvedValue("org_1" as never);
+    vi.mocked(materializeRetentionCurrent).mockResolvedValue(undefined as never);
 
     const { POST } = await import("@/app/api/cron/sync/route");
     const request = new Request("http://localhost/api/cron/sync", {
@@ -202,6 +221,7 @@ describe("POST /api/cron/sync", () => {
     expect(runRules).toHaveBeenCalledOnce();
     expect(runIntegrationHealthChecks).toHaveBeenCalledOnce();
     expect(pruneAnalyticsSnapshots).toHaveBeenCalledOnce();
+    expect(materializeRetentionCurrent).toHaveBeenCalledOnce();
   });
 
   afterEach(() => {
