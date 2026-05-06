@@ -15,7 +15,7 @@ export async function GET(): Promise<NextResponse> {
     const userId = (session.user as { id: string }).id;
 
     // Build the monthly history, then generate AI analysis from it
-    const history = await buildMonthlyPnLHistory(userId, 12);
+    const history = await buildMonthlyPnLHistory(userId);
 
     if (history.months.length === 0) {
       return NextResponse.json(

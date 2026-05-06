@@ -104,7 +104,7 @@ export function FinanceMonthlyHistoryTab() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/financial-planning/monthly-history?months=12");
+      const res = await fetch("/api/financial-planning/monthly-history");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setData(json);

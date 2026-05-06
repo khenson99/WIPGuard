@@ -63,34 +63,73 @@ interface MonthlySnapshot {
   mercury: MercuryData | null;
 }
 
+export const MONTHLY_HISTORY_START_DATE = new Date(Date.UTC(2025, 0, 1));
+export const MONTHLY_HISTORY_CONTEXT_KEY = "financial-planning";
+export const MONTHLY_HISTORY_RANGE_PRESET = "monthly";
+
+function monthKeyUtc(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function addMonthsUtc(date: Date, months: number): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
+}
+
+function buildMonthKeys(startDate: Date, endDate: Date): string[] {
+  const keys: string[] = [];
+  for (
+    let cursor = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), 1));
+    cursor <= endDate;
+    cursor = addMonthsUtc(cursor, 1)
+  ) {
+    keys.push(monthKeyUtc(cursor));
+  }
+  return keys;
+}
+
+function defaultHistoryEndDate(): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+}
+
 async function loadMonthlySnapshots(
   userId: string,
-  monthsBack: number,
+  startDate: Date,
+  endDate: Date,
 ): Promise<MonthlySnapshot[]> {
-  const now = new Date();
-  const cutoff = new Date(now.getFullYear(), now.getMonth() - monthsBack, 1);
-
-  // Fetch all successful snapshots for stripe and mercury since cutoff
+  // Fetch all successful monthly source snapshots inside the reporting window.
   const snapshots = await prisma.analyticsSnapshot.findMany({
     where: {
       userId,
       providerKey: { in: ["stripe", "mercury"] },
+      contextKey: MONTHLY_HISTORY_CONTEXT_KEY,
+      rangePreset: MONTHLY_HISTORY_RANGE_PRESET,
       status: AnalyticsSnapshotStatus.SUCCESS,
-      capturedAt: { gte: cutoff },
+      fromDate: { gte: startDate },
     },
-    orderBy: { capturedAt: "desc" },
+    orderBy: [{ fromDate: "desc" }, { capturedAt: "desc" }],
     select: {
       providerKey: true,
       payload: true,
+      fromDate: true,
       capturedAt: true,
     },
   });
 
   // Group by month, taking the latest snapshot per provider per month
   const monthMap = new Map<string, { stripe: StripeData | null; mercury: MercuryData | null }>();
+  let latestSnapshotMonth: Date | null = null;
 
   for (const snap of snapshots) {
-    const month = `${snap.capturedAt.getFullYear()}-${String(snap.capturedAt.getMonth() + 1).padStart(2, "0")}`;
+    if (snap.fromDate.getTime() > endDate.getTime()) continue;
+
+    if (
+      latestSnapshotMonth == null ||
+      snap.fromDate.getTime() > latestSnapshotMonth.getTime()
+    ) {
+      latestSnapshotMonth = snap.fromDate;
+    }
+    const month = monthKeyUtc(snap.fromDate);
     if (!monthMap.has(month)) {
       monthMap.set(month, { stripe: null, mercury: null });
     }
@@ -104,13 +143,14 @@ async function loadMonthlySnapshots(
     }
   }
 
-  // Sort months chronologically
-  const sortedMonths = [...monthMap.entries()].sort(([a], [b]) => a.localeCompare(b));
+  if (!latestSnapshotMonth) return [];
 
-  return sortedMonths.map(([month, data]) => ({
+  const rangeEnd = latestSnapshotMonth.getTime() < endDate.getTime() ? latestSnapshotMonth : endDate;
+
+  return buildMonthKeys(startDate, rangeEnd).map((month) => ({
     month,
-    stripe: data.stripe,
-    mercury: data.mercury,
+    stripe: monthMap.get(month)?.stripe ?? null,
+    mercury: monthMap.get(month)?.mercury ?? null,
   }));
 }
 
@@ -176,10 +216,15 @@ function pctChange(current: number, previous: number): number {
 
 export async function buildMonthlyPnLHistory(
   sessionUserId: string,
-  monthsBack = 12,
+  options: {
+    startDate?: Date;
+    endDate?: Date;
+  } = {},
 ): Promise<MonthlyPnLHistory> {
   const userId = resolveIntegrationOwnerUserId(sessionUserId);
-  const snapshots = await loadMonthlySnapshots(userId, monthsBack);
+  const startDate = options.startDate ?? MONTHLY_HISTORY_START_DATE;
+  const endDate = options.endDate ?? defaultHistoryEndDate();
+  const snapshots = await loadMonthlySnapshots(userId, startDate, endDate);
 
   const months = snapshots.map((s) =>
     buildMonthEntry(s.month, s.stripe, s.mercury),

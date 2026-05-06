@@ -70,7 +70,7 @@ export function GoogleAnalyticsDashboard({ data }: GoogleAnalyticsDashboardProps
     );
   }
 
-  const kpis = data.kpis ?? computeAnalyticsKpis(data);
+  const kpis = data.metrics?.kpis ?? data.kpis ?? computeAnalyticsKpis(data);
   const bounceRatePct = kpis.traffic.bounceRatePct ?? 0;
 
   const sessionsChange = calculateChange(ga.sessions30d, ga.sessionsPrev30d);

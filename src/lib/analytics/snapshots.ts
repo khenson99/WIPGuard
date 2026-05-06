@@ -1,4 +1,8 @@
 import { Prisma, AnalyticsSnapshotStatus } from "@/generated/prisma/client";
+import {
+  MONTHLY_HISTORY_CONTEXT_KEY,
+  MONTHLY_HISTORY_RANGE_PRESET,
+} from "@/lib/analytics/monthly-pnl-history";
 import { prisma } from "@/lib/prisma";
 
 export interface SnapshotQueryInput {
@@ -220,6 +224,10 @@ export async function pruneAnalyticsSnapshots(input: { olderThanDays: number }):
   const result = await prisma.analyticsSnapshot.deleteMany({
     where: {
       capturedAt: { lt: cutoffDate },
+      NOT: {
+        contextKey: MONTHLY_HISTORY_CONTEXT_KEY,
+        rangePreset: MONTHLY_HISTORY_RANGE_PRESET,
+      },
     },
   });
   return { deleted: result.count, cutoff: cutoffDate.toISOString() };

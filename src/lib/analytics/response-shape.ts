@@ -58,6 +58,7 @@ export function createEmptyAnalyticsDashboardData(input: {
     timeRange: input.timeRange,
     lastFullRefresh: input.lastFullRefresh ?? new Date().toISOString(),
     financialPlanning: null,
+    metrics: null,
     errors: [],
   };
 }

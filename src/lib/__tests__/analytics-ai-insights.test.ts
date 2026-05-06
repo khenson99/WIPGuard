@@ -30,6 +30,7 @@ function baseData(): AnalyticsDashboardData {
     visitorFunnel: null,
     recommendations: [],
     distilledInsights: [],
+    metrics: null,
     aiInsights: {
       generatedAt: "2026-01-01T00:00:00.000Z",
       global: [],

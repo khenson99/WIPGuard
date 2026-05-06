@@ -59,11 +59,11 @@ export function AdsGoogleAnalyticsTab({ data }: AdsGoogleAnalyticsTabProps) {
     sessions30d, sessionsPrev30d,
     users30d, usersPrev30d,
     pageviews30d, pageviewsPrev30d,
-    bounceRate, avgSessionDuration,
+    avgSessionDuration,
     trafficByChannel, topPages, dailyTrend,
   } = ga;
 
-  const kpis = data.kpis ?? computeAnalyticsKpis(data);
+  const kpis = data.metrics?.kpis ?? data.kpis ?? computeAnalyticsKpis(data);
   const bounceRatePct = kpis.traffic.bounceRatePct ?? 0;
   const pagesPerSession = kpis.traffic.pagesPerSession ?? (sessions30d > 0 ? pageviews30d / sessions30d : 0);
   const engagementScore = kpis.traffic.engagementScore ?? Math.round(100 - bounceRatePct);

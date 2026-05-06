@@ -94,4 +94,113 @@ describe("financial planning helpers", () => {
 
     expect(item.actualAmount).toBeCloseTo(expected, 2);
   });
+
+  it("maps Mercury transaction detail to budget categories when available", () => {
+    const budget: BudgetData = {
+      id: "budget-2",
+      name: "Monthly Budget",
+      period: "monthly",
+      startDate: "2026-02-01T00:00:00.000Z",
+      endDate: "2026-03-01T00:00:00.000Z",
+      lineItems: [
+        {
+          id: "payroll",
+          category: "payroll",
+          plannedAmount: 1000,
+          actualAmount: null,
+          variance: null,
+          variancePct: null,
+        },
+        {
+          id: "marketing",
+          category: "marketing",
+          plannedAmount: 1000,
+          actualAmount: null,
+          variance: null,
+          variancePct: null,
+        },
+        {
+          id: "infrastructure",
+          category: "infrastructure",
+          plannedAmount: 1000,
+          actualAmount: null,
+          variance: null,
+          variancePct: null,
+        },
+        {
+          id: "other",
+          category: "other",
+          plannedAmount: 1000,
+          actualAmount: null,
+          variance: null,
+          variancePct: null,
+        },
+      ],
+      totalPlanned: 4000,
+      totalActual: null,
+      totalVariance: null,
+    };
+
+    const mercuryWithTransactions: MercuryData = {
+      ...mercuryFixture,
+      cashFlow: {
+        ...mercuryFixture.cashFlow,
+        outflows30d: 99_999,
+      },
+      transactions: [
+        {
+          id: "gusto",
+          postedAt: "2026-02-10T00:00:00.000Z",
+          amount: -1200,
+          kind: "outgoingPayment",
+          mercuryCategory: null,
+          description: "Gusto payroll",
+          counterpartyName: "Gusto",
+        },
+        {
+          id: "linkedin",
+          postedAt: "2026-02-11T00:00:00.000Z",
+          amount: -450,
+          kind: "debitCardTransaction",
+          mercuryCategory: null,
+          description: "LinkedIn Ads",
+          counterpartyName: "LinkedIn",
+        },
+        {
+          id: "vercel",
+          postedAt: "2026-02-12T00:00:00.000Z",
+          amount: -125,
+          kind: "debitCardTransaction",
+          mercuryCategory: null,
+          description: "Vercel hosting",
+          counterpartyName: "Vercel",
+        },
+        {
+          id: "unknown",
+          postedAt: "2026-02-13T00:00:00.000Z",
+          amount: -75,
+          kind: "outgoingPayment",
+          mercuryCategory: null,
+          description: "Unmapped vendor",
+          counterpartyName: "Vendor",
+        },
+        {
+          id: "old",
+          postedAt: "2026-01-13T00:00:00.000Z",
+          amount: -999,
+          kind: "outgoingPayment",
+          mercuryCategory: null,
+          description: "Gusto payroll",
+          counterpartyName: "Gusto",
+        },
+      ],
+    };
+
+    const items = computeBudgetActuals(budget, mercuryWithTransactions);
+
+    expect(items.find((item) => item.category === "payroll")?.actualAmount).toBe(1200);
+    expect(items.find((item) => item.category === "marketing")?.actualAmount).toBe(450);
+    expect(items.find((item) => item.category === "infrastructure")?.actualAmount).toBe(125);
+    expect(items.find((item) => item.category === "other")?.actualAmount).toBe(75);
+  });
 });

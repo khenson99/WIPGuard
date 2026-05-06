@@ -1,4 +1,4 @@
-import { IntegrationProvider } from "@/generated/prisma/client";
+import { AnalyticsSnapshotStatus, IntegrationProvider } from "@/generated/prisma/client";
 import { getCredentials } from "@/lib/analytics/credentials";
 import {
   fetchHubSpotData,
@@ -14,7 +14,14 @@ import { fetchSemrushData } from "@/lib/analytics/fetchers-semrush";
 import { providerForSnapshotKey } from "@/lib/analytics/provider-health";
 import { snapshotExpiryFromNow, storeAnalyticsSnapshot, storeAnalyticsSnapshotFailure } from "@/lib/analytics/snapshots";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
+import {
+  MONTHLY_HISTORY_CONTEXT_KEY,
+  MONTHLY_HISTORY_RANGE_PRESET,
+  MONTHLY_HISTORY_START_DATE,
+} from "@/lib/analytics/monthly-pnl-history";
 import { prisma } from "@/lib/prisma";
+
+type RollingRangePreset = "7d" | "30d" | "90d";
 
 function timeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -34,6 +41,69 @@ function timeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 function timeoutMsForRefreshJob(providerKey: string): number {
   if (providerKey === "stripe") return 25_000;
   return 10_000;
+}
+
+function startOfUtcMonth(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+}
+
+function endOfUtcMonth(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+}
+
+function addUtcMonths(date: Date, months: number): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
+}
+
+function buildMonthlyHistoryPeriods(input: {
+  startDate?: Date;
+  asOf?: Date;
+} = {}): Array<{ fromDate: Date; toDate: Date }> {
+  const startDate = startOfUtcMonth(input.startDate ?? MONTHLY_HISTORY_START_DATE);
+  const endDate = startOfUtcMonth(input.asOf ?? new Date());
+  const periods: Array<{ fromDate: Date; toDate: Date }> = [];
+
+  for (let cursor = startDate; cursor <= endDate; cursor = addUtcMonths(cursor, 1)) {
+    periods.push({
+      fromDate: cursor,
+      toDate: endOfUtcMonth(cursor),
+    });
+  }
+
+  return periods;
+}
+
+function monthlySnapshotKey(input: { providerKey: string; fromDate: Date }): string {
+  return `${input.providerKey}:${input.fromDate.toISOString()}`;
+}
+
+async function loadExistingMonthlyFinancialSnapshotKeys(input: {
+  userId: string;
+  fromDate: Date;
+}): Promise<Set<string>> {
+  const snapshots = await prisma.analyticsSnapshot.findMany({
+    where: {
+      userId: input.userId,
+      providerKey: { in: ["stripe", "mercury"] },
+      contextKey: MONTHLY_HISTORY_CONTEXT_KEY,
+      rangePreset: MONTHLY_HISTORY_RANGE_PRESET,
+      status: AnalyticsSnapshotStatus.SUCCESS,
+      fromDate: { gte: input.fromDate },
+    },
+    select: {
+      providerKey: true,
+      fromDate: true,
+    },
+  });
+
+  return new Set(
+    snapshots.map((snapshot) =>
+      monthlySnapshotKey({
+        providerKey: snapshot.providerKey,
+        fromDate: snapshot.fromDate,
+      }),
+    ),
+  );
 }
 
 async function computeProductSnapshot(userId: string, fromDate: Date, toDate: Date) {
@@ -107,7 +177,7 @@ function recordProviderOutcome(
 
 async function refreshForUserAndRange(input: {
   userId: string;
-  rangePreset: "7d" | "30d" | "90d";
+  rangePreset: RollingRangePreset;
 }): Promise<{ refreshed: number; failures: number; providerOutcomes: Map<IntegrationProvider, ProviderRefreshOutcome> }> {
   const params = new URLSearchParams();
   params.set("range", input.rangePreset);
@@ -328,17 +398,95 @@ async function refreshForUserAndRange(input: {
   return { refreshed, failures, providerOutcomes };
 }
 
+async function refreshMonthlyFinancialHistoryForUser(input: {
+  userId: string;
+}): Promise<{ refreshed: number; failures: number; providerOutcomes: Map<IntegrationProvider, ProviderRefreshOutcome> }> {
+  const creds = await getCredentials(input.userId);
+  const expiresAt = snapshotExpiryFromNow(24);
+  const periods = buildMonthlyHistoryPeriods();
+  const currentMonthStart = startOfUtcMonth(new Date());
+  const existingSnapshotKeys =
+    periods.length > 0
+      ? await loadExistingMonthlyFinancialSnapshotKeys({
+          userId: input.userId,
+          fromDate: periods[0].fromDate,
+        })
+      : new Set<string>();
+  let refreshed = 0;
+  let failures = 0;
+  const providerOutcomes = new Map<IntegrationProvider, ProviderRefreshOutcome>();
+
+  for (const period of periods) {
+    const jobs: Array<{ providerKey: "stripe" | "mercury"; run: () => Promise<unknown> }> = [];
+    if (creds.stripeKey) {
+      const providerKey = "stripe";
+      const isCurrentMonth = period.fromDate.getTime() === currentMonthStart.getTime();
+      if (isCurrentMonth || !existingSnapshotKeys.has(monthlySnapshotKey({ providerKey, fromDate: period.fromDate }))) {
+        jobs.push({
+          providerKey,
+          run: () => fetchStripeData(creds.stripeKey!, period),
+        });
+      }
+    }
+    if (creds.mercuryKey) {
+      const providerKey = "mercury";
+      const isCurrentMonth = period.fromDate.getTime() === currentMonthStart.getTime();
+      if (isCurrentMonth || !existingSnapshotKeys.has(monthlySnapshotKey({ providerKey, fromDate: period.fromDate }))) {
+        jobs.push({
+          providerKey,
+          run: () => fetchMercuryData(creds.mercuryKey!, period),
+        });
+      }
+    }
+
+    for (const job of jobs) {
+      const provider = providerForSnapshotKey(job.providerKey);
+      try {
+        const payload = await timeout(job.run(), timeoutMsForRefreshJob(job.providerKey));
+        await storeAnalyticsSnapshot({
+          userId: input.userId,
+          providerKey: job.providerKey,
+          contextKey: MONTHLY_HISTORY_CONTEXT_KEY,
+          rangePreset: MONTHLY_HISTORY_RANGE_PRESET,
+          fromDate: period.fromDate,
+          toDate: period.toDate,
+          payload,
+          expiresAt,
+        });
+        refreshed += 1;
+        recordProviderOutcome(providerOutcomes, provider, { success: true });
+      } catch (error) {
+        failures += 1;
+        const message = error instanceof Error ? error.message : "monthly refresh failed";
+        await storeAnalyticsSnapshotFailure({
+          userId: input.userId,
+          providerKey: job.providerKey,
+          contextKey: MONTHLY_HISTORY_CONTEXT_KEY,
+          rangePreset: MONTHLY_HISTORY_RANGE_PRESET,
+          fromDate: period.fromDate,
+          toDate: period.toDate,
+          error: message,
+          expiresAt,
+        });
+        recordProviderOutcome(providerOutcomes, provider, { success: false, error: message });
+      }
+    }
+  }
+
+  return { refreshed, failures, providerOutcomes };
+}
+
 export async function runAnalyticsRefresh(input: {
   userIds?: string[];
-  rangePresets?: Array<"7d" | "30d" | "90d">;
+  rangePresets?: RollingRangePreset[];
+  includeMonthlyFinancialHistory?: boolean;
 } = {}): Promise<{
   usersProcessed: number;
   refreshCount: number;
   failureCount: number;
   completedAt: string;
 }> {
-  const rangePresets: Array<"7d" | "30d" | "90d"> =
-    input.rangePresets && input.rangePresets.length > 0 ? input.rangePresets : ["30d"];
+  const rangePresets: RollingRangePreset[] = input.rangePresets ?? ["30d"];
 
   const userIds =
     input.userIds && input.userIds.length > 0
@@ -358,6 +506,26 @@ export async function runAnalyticsRefresh(input: {
 
     for (const rangePreset of rangePresets) {
       const result = await refreshForUserAndRange({ userId, rangePreset });
+      refreshCount += result.refreshed;
+      failureCount += result.failures;
+
+      for (const [provider, outcome] of result.providerOutcomes.entries()) {
+        const existing = providerOutcomes.get(provider) ?? {
+          succeeded: false,
+          failed: false,
+          lastError: null,
+        };
+        existing.succeeded = existing.succeeded || outcome.succeeded;
+        existing.failed = existing.failed || outcome.failed;
+        if (outcome.lastError) {
+          existing.lastError = outcome.lastError;
+        }
+        providerOutcomes.set(provider, existing);
+      }
+    }
+
+    if (input.includeMonthlyFinancialHistory) {
+      const result = await refreshMonthlyFinancialHistoryForUser({ userId });
       refreshCount += result.refreshed;
       failureCount += result.failures;
 
