@@ -40,6 +40,7 @@ interface RunRulesInput {
   dryRun: boolean;
   pageBudget?: number;
   startedAt: string;
+  includeLegacyTaskAutomations?: boolean;
 }
 
 interface RunRulesResult {
@@ -51,6 +52,7 @@ interface RunRulesResult {
   userIds: string[] | null;
   pageBudget: number | null;
   executedRules: number;
+  skippedLegacyTaskRules: number;
 }
 
 const METRICS_RULE_KEYS: ReadonlySet<string> = new Set([
@@ -64,14 +66,53 @@ const METRICS_RULE_KEYS: ReadonlySet<string> = new Set([
   PYLON_CONVERSATION_SYNC_RULE_KEY,
 ]);
 
+const LEGACY_TASK_AUTOMATION_RULE_KEYS: ReadonlySet<string> = new Set([
+  "slack_status_thread_sync",
+  "slack_unanswered_request_detector",
+  "gmail_commitment_capture",
+  "google_drive_comment_escalation",
+  "google_drive_transcript_capture",
+  "google_calendar_prep_followup",
+  "hubspot_stage_transition_checklist",
+  "hubspot_stale_risk_intervention",
+  "hubspot_customer_signal_followup",
+  "hubspot_bidirectional_sync",
+  "coda_row_task_upsert",
+  "coda_dependency_gate_automation",
+  "coda_decision_action_converter",
+]);
+
 function isProviderMetricsRuleKey(value: string): value is ProviderMetricsRuleKey {
   return METRICS_RULE_KEYS.has(value);
+}
+
+function isLegacyTaskAutomationRuleKey(value: string): boolean {
+  return LEGACY_TASK_AUTOMATION_RULE_KEYS.has(value);
+}
+
+function legacyTaskAutomationsEnabled(override: boolean | undefined): boolean {
+  if (typeof override === "boolean") {
+    return override;
+  }
+
+  const flag = process.env.ENABLE_LEGACY_TASK_AUTOMATIONS?.trim().toLowerCase();
+  if (flag === "1" || flag === "true" || flag === "yes" || flag === "on") {
+    return true;
+  }
+  if (flag === "0" || flag === "false" || flag === "no" || flag === "off") {
+    return false;
+  }
+
+  return process.env.NODE_ENV !== "production";
 }
 
 export async function runRules(input: RunRulesInput): Promise<RunRulesResult> {
   const startedAt = input.startedAt;
   const pageBudget = input.pageBudget ?? null;
   const maxRules = input.pageBudget ? Math.max(1, Math.floor(input.pageBudget)) : Number.POSITIVE_INFINITY;
+  const runLegacyTaskAutomations = legacyTaskAutomationsEnabled(
+    input.includeLegacyTaskAutomations
+  );
 
   const inferredUserIds =
     input.userIds && input.userIds.length > 0
@@ -104,6 +145,7 @@ export async function runRules(input: RunRulesInput): Promise<RunRulesResult> {
         ).map((row) => row.provider);
 
   let executedRules = 0;
+  let skippedLegacyTaskRules = 0;
 
   for (const rawUserId of userIds) {
     if (executedRules >= maxRules) break;
@@ -132,6 +174,11 @@ export async function runRules(input: RunRulesInput): Promise<RunRulesResult> {
 
       for (const rule of rules) {
         if (executedRules >= maxRules) break;
+
+        if (!runLegacyTaskAutomations && isLegacyTaskAutomationRuleKey(rule.key)) {
+          skippedLegacyTaskRules += 1;
+          continue;
+        }
 
         try {
           if (isProviderMetricsRuleKey(rule.key)) {
@@ -222,5 +269,6 @@ export async function runRules(input: RunRulesInput): Promise<RunRulesResult> {
     userIds,
     pageBudget,
     executedRules,
+    skippedLegacyTaskRules,
   };
 }
