@@ -48,8 +48,21 @@ describe("Mercury analytics fetcher", () => {
             { id: "internal-out", status: "sent", kind: "internalTransfer", amount: -10_000 },
             { id: "internal-in", status: "sent", kind: "internalTransfer", amount: 10_000 },
             { id: "wire-in", status: "sent", kind: "incomingDomesticWire", amount: 500 },
-            { id: "vendor", status: "sent", kind: "outgoingPayment", amount: -2_000 },
-            { id: "card", status: "sent", kind: "debitCardTransaction", amount: -100 },
+            {
+              id: "vendor",
+              status: "sent",
+              kind: "outgoingPayment",
+              amount: -2_000,
+              description: "Gusto payroll",
+              counterpartyName: "Gusto",
+            },
+            {
+              id: "card",
+              status: "sent",
+              kind: "debitCardTransaction",
+              amount: -100,
+              bankDescription: "Vercel",
+            },
             { id: "pending", status: "pending", kind: "outgoingPayment", amount: -999 },
           ],
         })
@@ -84,6 +97,20 @@ describe("Mercury analytics fetcher", () => {
     expect(data.cashFlow.outflows30d).toBe(2_100);
     expect(data.cashFlow.netCashFlow).toBe(-1_600);
     expect(data.cashFlow.burnRate).toBe(1_600);
+    expect(data.transactions).toEqual([
+      expect.objectContaining({ id: "wire-in", amount: 500 }),
+      expect.objectContaining({
+        id: "vendor",
+        amount: -2_000,
+        description: "Gusto payroll",
+        counterpartyName: "Gusto",
+      }),
+      expect.objectContaining({
+        id: "card",
+        amount: -100,
+        bankDescription: "Vercel",
+      }),
+    ]);
 
     const transactionsUrl = String(fetchMock.mock.calls[2]?.[0] ?? "");
     expect(transactionsUrl).toContain("/transactions?");

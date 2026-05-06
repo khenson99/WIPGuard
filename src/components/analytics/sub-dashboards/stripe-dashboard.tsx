@@ -42,7 +42,7 @@ export function StripeDashboard({ data }: StripeDashboardProps) {
   }
 
   const { revenue, subscriptions, payments, revenueTrend } = stripe;
-  const kpis = data.kpis ?? computeAnalyticsKpis(data);
+  const kpis = data.metrics?.kpis ?? data.kpis ?? computeAnalyticsKpis(data);
   const mrr = kpis.finance.mrr ?? revenue.mrr;
   const paymentSuccessPct = kpis.finance.paymentSuccessPct ?? payments.successRate;
 

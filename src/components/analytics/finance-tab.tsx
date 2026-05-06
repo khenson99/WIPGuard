@@ -160,6 +160,7 @@ export function FinanceTab({ data }: FinanceTabProps) {
   const stripe = data.stripe;
   const mercury = data.mercury;
   const fp = data.financialPlanning;
+  const budgetActuals = data.metrics?.finance.budgetActuals ?? null;
   const financeErrors = data.errors
     .filter((entry) => entry.source === "stripe" || entry.source === "mercury")
     .map((entry) => `${entry.source}: ${entry.message}`);
@@ -467,44 +468,36 @@ export function FinanceTab({ data }: FinanceTabProps) {
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* BUDGET VARIANCE                                           */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      {fp?.activeBudget && (
+      {budgetActuals && (
         <div className="bg-card border border-border rounded-xl p-6">
           <div className="flex items-center gap-2 mb-6">
             <AlertTriangle className="w-5 h-5 text-muted-foreground" />
             <h3 className="text-foreground font-semibold">Budget vs Actual</h3>
-            <span className="text-xs text-muted-foreground ml-auto">{fp.activeBudget.name}</span>
+            <span className="text-xs text-muted-foreground ml-auto">{budgetActuals.budgetName}</span>
           </div>
-
-          {fp.activeBudget.totalActual == null ? (
-            <div className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
-              Actuals are hidden until transaction categories are mapped to budget lines.
-            </div>
-          ) : null}
 
           {/* Summary row */}
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="bg-secondary/40 rounded-lg p-4">
               <p className="text-xs text-muted-foreground uppercase mb-1">Planned</p>
-              <p className="text-lg font-bold text-foreground tabular-nums">{fmt$(fp.activeBudget.totalPlanned)}</p>
+              <p className="text-lg font-bold text-foreground tabular-nums">{fmt$(budgetActuals.totalBudget)}</p>
             </div>
             <div className="bg-secondary/40 rounded-lg p-4">
               <p className="text-xs text-muted-foreground uppercase mb-1">Actual</p>
               <p className="text-lg font-bold text-foreground tabular-nums">
-                {fp.activeBudget.totalActual != null ? fmt$(fp.activeBudget.totalActual) : "—"}
+                {fmt$(budgetActuals.totalActual)}
               </p>
             </div>
             <div className="bg-secondary/40 rounded-lg p-4">
               <p className="text-xs text-muted-foreground uppercase mb-1">Variance</p>
               <p className={`text-lg font-bold tabular-nums ${
-                fp.activeBudget.totalVariance != null
-                  ? fp.activeBudget.totalVariance > 0
+                budgetActuals.totalVariance > 0
                     ? "text-red-500"
-                    : fp.activeBudget.totalVariance < 0
+                    : budgetActuals.totalVariance < 0
                     ? "text-emerald-500"
                     : "text-foreground"
-                  : "text-muted-foreground"
               }`}>
-                {fp.activeBudget.totalVariance != null ? fmtDelta(fp.activeBudget.totalVariance) : "—"}
+                {fmtDelta(budgetActuals.totalVariance)}
               </p>
             </div>
           </div>
@@ -517,26 +510,24 @@ export function FinanceTab({ data }: FinanceTabProps) {
             <span className="text-xs font-semibold text-muted-foreground uppercase text-right">Variance</span>
             <span className="text-xs font-semibold text-muted-foreground uppercase text-right">Var %</span>
           </div>
-          {fp.activeBudget.lineItems.map((item) => {
-            const overBudget = (item.variancePct ?? 0) > 15;
+          {budgetActuals.items.map((item) => {
+            const overBudget = item.status === "over";
             return (
-              <div key={item.id} className={`grid grid-cols-5 gap-4 py-2.5 ${overBudget ? "bg-red-500/5 -mx-2 px-2 rounded" : ""}`}>
-                <span className="text-sm text-muted-foreground capitalize">{item.category}</span>
-                <span className="text-sm text-foreground text-right tabular-nums">{fmt$(item.plannedAmount)}</span>
+              <div key={item.category} className={`grid grid-cols-5 gap-4 py-2.5 ${overBudget ? "bg-red-500/5 -mx-2 px-2 rounded" : ""}`}>
+                <span className="text-sm text-muted-foreground">{item.category}</span>
+                <span className="text-sm text-foreground text-right tabular-nums">{fmt$(item.budgeted)}</span>
                 <span className="text-sm text-foreground text-right tabular-nums">
-                  {item.actualAmount != null ? fmt$(item.actualAmount) : "—"}
+                  {fmt$(item.actual)}
                 </span>
                 <span className={`text-sm text-right tabular-nums ${
-                  item.variance != null
-                    ? item.variance > 0 ? "text-red-500" : item.variance < 0 ? "text-emerald-500" : "text-muted-foreground"
-                    : "text-muted-foreground"
+                  item.variance > 0 ? "text-red-500" : item.variance < 0 ? "text-emerald-500" : "text-muted-foreground"
                 }`}>
-                  {item.variance != null ? fmtDelta(item.variance) : "—"}
+                  {fmtDelta(item.variance)}
                 </span>
                 <span className={`text-sm text-right tabular-nums ${
                   overBudget ? "text-red-500 font-medium" : "text-muted-foreground"
                 }`}>
-                  {item.variancePct != null ? `${item.variancePct > 0 ? "+" : ""}${item.variancePct.toFixed(1)}%` : "—"}
+                  {item.variancePct > 0 ? "+" : ""}{item.variancePct.toFixed(1)}%
                 </span>
               </div>
             );

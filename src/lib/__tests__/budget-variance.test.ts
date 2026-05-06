@@ -263,6 +263,44 @@ describe("computeBudgetActuals", () => {
       expect(item.status).toBe("on_track");
     }
   });
+
+  it("uses Mercury transaction categories when transaction detail is available", () => {
+    const items = computeBudgetActuals(makeMercury({
+      transactions: [
+        {
+          id: "payroll",
+          postedAt: "2026-01-10T00:00:00.000Z",
+          amount: -500,
+          kind: "outgoingPayment",
+          mercuryCategory: null,
+          description: "Gusto payroll",
+          counterpartyName: "Gusto",
+        },
+        {
+          id: "infra",
+          postedAt: "2026-01-11T00:00:00.000Z",
+          amount: -125,
+          kind: "debitCardTransaction",
+          mercuryCategory: null,
+          description: "Vercel hosting",
+          counterpartyName: "Vercel",
+        },
+        {
+          id: "other",
+          postedAt: "2026-01-12T00:00:00.000Z",
+          amount: -75,
+          kind: "debitCardTransaction",
+          mercuryCategory: null,
+          description: "Unmapped vendor",
+          counterpartyName: "Vendor",
+        },
+      ],
+    }));
+
+    expect(items.find((item) => item.category === "Payroll & Benefits")?.actual).toBe(500);
+    expect(items.find((item) => item.category === "Infrastructure & Hosting")?.actual).toBe(125);
+    expect(items.find((item) => item.category === "Other")?.actual).toBe(75);
+  });
 });
 
 /* ═══════════════════════════════════════════════════════════

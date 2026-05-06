@@ -13,9 +13,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const userId = (session.user as { id: string }).id;
     const monthsParam = request.nextUrl.searchParams.get("months");
-    const monthsBack = monthsParam ? Math.min(Math.max(parseInt(monthsParam, 10) || 12, 1), 24) : 12;
+    const monthsBack = monthsParam ? Math.min(Math.max(parseInt(monthsParam, 10) || 12, 1), 24) : null;
+    const now = new Date();
+    const options =
+      monthsBack == null
+        ? undefined
+        : {
+            startDate: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthsBack, 1)),
+          };
 
-    const history = await buildMonthlyPnLHistory(userId, monthsBack);
+    const history = await buildMonthlyPnLHistory(userId, options);
 
     return NextResponse.json(history, {
       headers: {

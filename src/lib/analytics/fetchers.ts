@@ -12,6 +12,7 @@ import type {
   SalesPerformanceRepMonthRow,
   StripeData,
   MercuryData,
+  MercuryTransactionData,
   AnalyticsTimestamp,
   DealStage,
 } from "./types";
@@ -1630,6 +1631,18 @@ export async function fetchMercuryData(
     amount?: number;
     kind?: string | null;
     mercuryCategory?: string | null;
+    description?: string | null;
+    bankDescription?: string | null;
+    note?: string | null;
+    counterpartyName?: string | null;
+    merchantName?: string | null;
+    externalMemo?: string | null;
+    memo?: string | null;
+    details?: {
+      counterpartyName?: string | null;
+      merchantName?: string | null;
+      description?: string | null;
+    } | null;
   };
 
   const headers: Record<string, string> = {
@@ -1705,12 +1718,37 @@ export async function fetchMercuryData(
       mercuryCategory === "treasurytransfer"
     );
   };
+  const toTransactionData = (tx: MercuryTransaction): MercuryTransactionData => ({
+    id: tx.id ?? "",
+    postedAt: tx.postedAt ?? tx.createdAt ?? tx.timestamp ?? null,
+    amount: tx.amount ?? 0,
+    kind: tx.kind ?? null,
+    mercuryCategory: tx.mercuryCategory ?? null,
+    description:
+      tx.description ??
+      tx.details?.description ??
+      tx.externalMemo ??
+      tx.memo ??
+      null,
+    counterpartyName:
+      tx.counterpartyName ??
+      tx.merchantName ??
+      tx.details?.counterpartyName ??
+      tx.details?.merchantName ??
+      null,
+    bankDescription: tx.bankDescription ?? null,
+    note: tx.note ?? null,
+  });
+
+  const transactions: MercuryTransactionData[] = [];
+
   const addCashFlow = (tx: MercuryTransaction): void => {
     if (!shouldCountCashFlow(tx)) return;
     const amount = tx.amount ?? 0;
     const amt = Math.abs(amount);
     if (amount > 0) inflows += amt;
     else outflows += amt;
+    transactions.push(toTransactionData(tx));
   };
 
   let inflows = 0, outflows = 0;
@@ -1785,6 +1823,7 @@ export async function fetchMercuryData(
       runway: Math.round(runway * 10) / 10,
       burnRate,
     },
+    transactions,
     _meta: makeMeta(),
   };
 }

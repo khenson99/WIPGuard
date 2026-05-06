@@ -229,7 +229,11 @@ async function executeCronSync(input: {
     }
 
     const [analyticsResult, rulesResult, healthResult, pruningResult, retentionResult] = await Promise.allSettled([
-      runAnalyticsRefresh({ userIds, rangePresets: ["7d", "30d"] }),
+      runAnalyticsRefresh({
+        userIds,
+        rangePresets: ["7d", "30d"],
+        includeMonthlyFinancialHistory: true,
+      }),
       runRules({
         mode: "incremental",
         dryRun: false,

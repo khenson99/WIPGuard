@@ -23,7 +23,7 @@ import {
   storeAnalyticsSnapshotFailure,
 } from "@/lib/analytics/snapshots";
 import { buildAnalyticsRouteMeta } from "@/lib/analytics/route-meta";
-import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
+import { buildAnalyticsMetricsLayer, computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { computeKpiDelta } from "@/lib/analytics/kpi-deltas";
 import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
 import {
@@ -690,9 +690,7 @@ async function buildFinancialPlanningData(
       totalActual: null,
       totalVariance: null,
     };
-    const lineItems: BudgetLineItemData[] = mercury?.cashFlow
-      ? budgetDraft.lineItems
-      : computeBudgetActuals(budgetDraft, mercury);
+    const lineItems: BudgetLineItemData[] = computeBudgetActuals(budgetDraft, mercury);
     const summary = computeBudgetSummary(lineItems);
     return {
       id: b.id,
@@ -1593,6 +1591,10 @@ export async function GET(request: Request) {
     }
   }
 
+  const metrics = buildAnalyticsMetricsLayer(result);
+  result.metrics = metrics;
+  result.kpis = metrics.kpis;
+
   if (section === "overview") {
     try {
       const prevToDate = new Date(fromDate.getTime() - 1);
@@ -1621,8 +1623,8 @@ export async function GET(request: Request) {
       ]);
 
       const currentTraffic =
-        result.googleAnalytics || result.ga ? computeAnalyticsKpis(result).traffic : null;
-      const currentFinance = result.stripe ? computeAnalyticsKpis(result).finance : null;
+        result.googleAnalytics || result.ga ? metrics.kpis.traffic : null;
+      const currentFinance = result.stripe ? metrics.kpis.finance : null;
 
       const prevTraffic = prevGa.payload
         ? computeAnalyticsKpis(

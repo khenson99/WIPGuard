@@ -399,9 +399,22 @@ export interface CashFlowMetrics {
   burnRate: number;
 }
 
+export interface MercuryTransactionData {
+  id: string;
+  postedAt: string | null;
+  amount: number;
+  kind: string | null;
+  mercuryCategory: string | null;
+  description: string | null;
+  counterpartyName: string | null;
+  bankDescription?: string | null;
+  note?: string | null;
+}
+
 export interface MercuryData {
   accounts: AccountBalance[];
   cashFlow: CashFlowMetrics;
+  transactions?: MercuryTransactionData[];
   _meta: AnalyticsTimestamp;
 }
 
@@ -1709,6 +1722,46 @@ export interface UnitEconomics {
   grossMarginPct: number;
 }
 
+export interface FinanceBudgetActualMetric {
+  category: string;
+  budgeted: number;
+  actual: number;
+  variance: number;
+  variancePct: number;
+  status: "under" | "on_track" | "over";
+}
+
+export interface FinanceBudgetActualsMetric {
+  budgetId: string;
+  budgetName: string;
+  totalBudget: number;
+  totalActual: number;
+  totalVariance: number;
+  totalVariancePct: number;
+  overspendCategories: string[];
+  items: FinanceBudgetActualMetric[];
+}
+
+export interface AnalyticsKpis {
+  traffic: {
+    bounceRatePct: number;
+    pagesPerSession: number;
+    engagementScore: number;
+    pageDepthScore: number;
+  };
+  finance: {
+    mrr: number;
+    paymentSuccessPct: number;
+  };
+}
+
+export interface AnalyticsMetricsLayer {
+  kpis: AnalyticsKpis;
+  finance: {
+    budgetActuals: FinanceBudgetActualsMetric | null;
+  };
+}
+
 export interface FinancialPlanningData {
   budgets: BudgetData[];
   activeBudget: BudgetData | null;
@@ -1809,18 +1862,8 @@ export interface AnalyticsDashboardData {
   };
   lastFullRefresh: string;
   financialPlanning: FinancialPlanningData | null;
-  kpis?: {
-    traffic: {
-      bounceRatePct: number;
-      pagesPerSession: number;
-      engagementScore: number;
-      pageDepthScore: number;
-    };
-    finance: {
-      mrr: number;
-      paymentSuccessPct: number;
-    };
-  };
+  metrics?: AnalyticsMetricsLayer | null;
+  kpis?: AnalyticsKpis;
   deltas?: AnalyticsKpiDeltas;
   errors: { source: string; message: string }[];
 }

@@ -4,6 +4,7 @@ import { FinanceTab } from "@/components/analytics/finance-tab";
 import { createEmptyAnalyticsDashboardData } from "@/lib/analytics/response-shape";
 import { buildProfitAndLossCore } from "@/lib/analytics/pnl-builder";
 import { buildDefaultScenarios } from "@/lib/analytics/forecast-engine";
+import { buildAnalyticsMetricsLayer } from "@/lib/analytics/kpis";
 import type {
   AnalyticsDashboardData,
   FinancialPlanningData,
@@ -104,6 +105,8 @@ function makePayload(
   data.stripe = opts.stripe !== undefined ? opts.stripe : makeStripe();
   data.mercury = opts.mercury !== undefined ? opts.mercury : makeMercury();
   data.financialPlanning = opts.financialPlanning !== undefined ? opts.financialPlanning : null;
+  data.metrics = buildAnalyticsMetricsLayer(data);
+  data.kpis = data.metrics.kpis;
   return data;
 }
 

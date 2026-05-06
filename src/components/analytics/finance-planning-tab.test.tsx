@@ -2,7 +2,12 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FinancePlanningTab } from "@/components/analytics/finance-planning-tab";
 import { createEmptyAnalyticsDashboardData } from "@/lib/analytics/response-shape";
-import type { AnalyticsDashboardData, StripeData, MercuryData } from "@/lib/analytics/types";
+import type {
+  AnalyticsDashboardData,
+  MercuryData,
+  StripeData,
+} from "@/lib/analytics/types";
+import type { AnalyticsMetricsLayer } from "@/lib/analytics/kpis";
 
 /* ── Mock lucide-react icons as plain function components ── */
 
@@ -161,6 +166,85 @@ describe("FinancePlanningTab", () => {
       render(<FinancePlanningTab data={makePayload()} />);
       expect(screen.getAllByText("Cost of Goods Sold").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("Payroll & Benefits").length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("renders planned and actual values from the canonical metrics layer", () => {
+      const data = makePayload({
+        mercury: makeMercury({
+          transactions: [
+            {
+              id: "stripe-fee",
+              postedAt: "2026-01-15T00:00:00.000Z",
+              amount: -1234,
+              kind: "outgoingPayment",
+              mercuryCategory: null,
+              description: "Stripe fee",
+              counterpartyName: "Stripe",
+            },
+          ],
+        }),
+      }) as AnalyticsDashboardData & { metrics: AnalyticsMetricsLayer };
+      data.metrics = {
+        kpis: {
+          traffic: {
+            bounceRatePct: 0,
+            pagesPerSession: 0,
+            engagementScore: 100,
+            pageDepthScore: 0,
+          },
+          finance: {
+            mrr: 15000,
+            paymentSuccessPct: 98.7,
+          },
+        },
+        finance: {
+          budgetActuals: {
+            budgetId: "budget-1",
+            budgetName: "Baseline Budget",
+            totalBudget: 1000,
+            totalActual: 1234,
+            totalVariance: 234,
+            totalVariancePct: 23.4,
+            overspendCategories: ["Cost of Goods Sold"],
+            items: [
+              {
+                category: "Cost of Goods Sold",
+                budgeted: 1000,
+                actual: 1234,
+                variance: 234,
+                variancePct: 23.4,
+                status: "over",
+              },
+            ],
+          },
+        },
+      };
+      data.financialPlanning = {
+        budgets: [
+          {
+            id: "budget-1",
+            name: "Baseline Budget",
+            period: "monthly",
+            startDate: "2026-01-01T00:00:00.000Z",
+            endDate: "2026-01-31T23:59:59.999Z",
+            lineItems: [],
+            totalPlanned: 1000,
+            totalActual: 1234,
+            totalVariance: 234,
+          },
+        ],
+        activeBudget: null,
+        forecasts: [],
+        goals: [],
+        pnl: null,
+        unitEconomics: null,
+        subscriptionOverview: null,
+      };
+
+      render(<FinancePlanningTab data={data} />);
+
+      expect(screen.getAllByText("Cost of Goods Sold").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("$1.2K").length).toBeGreaterThanOrEqual(1);
     });
   });
 
