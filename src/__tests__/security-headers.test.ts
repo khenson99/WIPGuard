@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
+import { NextRequest } from "next/server";
 
 // We test the next.config.ts headers configuration by importing and invoking it
 describe("Security Headers Configuration", () => {
@@ -130,6 +131,16 @@ describe("Security Headers Configuration", () => {
 });
 
 describe("Middleware", () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  const setNodeEnv = (value: string | undefined) => {
+    (process.env as Record<string, string | undefined>).NODE_ENV = value;
+  };
+
+  afterEach(() => {
+    delete process.env.ENABLE_LEGACY_PRODUCT_APIS;
+    setNodeEnv(originalNodeEnv);
+  });
+
   it("should export a middleware function", async () => {
     const middlewareModule = await import("../middleware");
     expect(typeof middlewareModule.middleware).toBe("function");
@@ -140,5 +151,62 @@ describe("Middleware", () => {
     expect(middlewareModule.config).toBeDefined();
     expect(middlewareModule.config.matcher).toBeDefined();
     expect(Array.isArray(middlewareModule.config.matcher)).toBe(true);
+  });
+
+  it("returns 410 for legacy product APIs when disabled", async () => {
+    process.env.ENABLE_LEGACY_PRODUCT_APIS = "false";
+    const { middleware } = await import("../middleware");
+
+    const response = middleware(
+      new NextRequest("http://localhost:3000/api/tasks?status=ACTIVE")
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(410);
+    expect(response.headers.get("API-Version")).toBe("v1");
+    expect(body).toEqual({
+      error: "Legacy product API disabled",
+      replacement: "/api/analytics",
+      dashboard: "/analytics",
+    });
+  });
+
+  it("returns 410 for versioned legacy product APIs when disabled", async () => {
+    process.env.ENABLE_LEGACY_PRODUCT_APIS = "false";
+    const { middleware } = await import("../middleware");
+
+    const response = middleware(
+      new NextRequest("http://localhost:3000/api/v1/tasks")
+    );
+
+    expect(response.status).toBe(410);
+    expect(response.headers.get("API-Version")).toBe("v1");
+  });
+
+  it("disables legacy product APIs by default in production", async () => {
+    delete process.env.ENABLE_LEGACY_PRODUCT_APIS;
+    setNodeEnv("production");
+    const { middleware } = await import("../middleware");
+
+    const response = middleware(
+      new NextRequest("http://localhost:3000/api/projects")
+    );
+
+    expect(response.status).toBe(410);
+  });
+
+  it("does not block analytics or customer-success APIs", async () => {
+    process.env.ENABLE_LEGACY_PRODUCT_APIS = "false";
+    const { middleware } = await import("../middleware");
+
+    const analyticsResponse = middleware(
+      new NextRequest("http://localhost:3000/api/analytics")
+    );
+    const customerSuccessResponse = middleware(
+      new NextRequest("http://localhost:3000/api/customer-success/accounts/acct_1/tasks")
+    );
+
+    expect(analyticsResponse.status).toBe(200);
+    expect(customerSuccessResponse.status).toBe(200);
   });
 });
