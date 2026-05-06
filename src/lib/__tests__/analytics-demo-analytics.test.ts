@@ -338,15 +338,15 @@ describe("buildDemoAnalyticsData", () => {
     expect(paid.demoNoShow).toBe(1);
     expect(paid.closedLost).toBe(1);
     expect(paid.onboarding).toBe(0); // No Subscription/Closed Won deals
-    expect(paid.churned).toBe(1);
-    expect(paid.notActivated).toBe(1);
+    expect(paid.churned).toBe(0); // Closed Lost is a sales loss, not customer churn
+    expect(paid.notActivated).toBe(0);
   });
 
   it("includes Stripe churn events in churned count", () => {
     const data = baseData();
     data.hubspot = {
       funnel: {
-        totalDeals: 2, closedWon: 1, closedLost: 0, unlikely: 0, churn: 0,
+        totalDeals: 3, closedWon: 1, closedLost: 1, unlikely: 0, churn: 0,
         activeSubscriptions: 1, noShows: 0, demoScheduled: 1, demoFollowUp: 0,
         avgDealSize: 5000, winRate: 100, effectiveWinRate: 100, noShowRate: 0,
         stages: [], dealsBySource: [],
@@ -355,6 +355,7 @@ describe("buildDemoAnalyticsData", () => {
       deals: [
         makeDeal({ dealId: "cus_stripe1", dealName: "Stripe Customer", stageId: "w", stageLabel: "Closed Won", amount: 5000, source: "Organic", ownerId: null, updatedAt: "2026-03-05T00:00:00.000Z", createdAt: "2026-01-01T00:00:00.000Z" }),
         makeDeal({ dealId: "d2", dealName: "Active Deal", stageId: "s", stageLabel: "Subscription", amount: 3000, source: "Organic", ownerId: null, updatedAt: "2026-02-01T00:00:00.000Z", createdAt: "2026-01-10T00:00:00.000Z" }),
+        makeDeal({ dealId: "cus_lost", dealName: "Lost Deal", stageId: "l", stageLabel: "Closed Lost", amount: 2000, source: "Organic", ownerId: null, updatedAt: "2026-02-12T00:00:00.000Z", createdAt: "2026-01-15T00:00:00.000Z" }),
       ],
       _meta: META,
     };
@@ -365,6 +366,7 @@ describe("buildDemoAnalyticsData", () => {
         active: 1, pastDue: 0, canceled: 1, trialing: 0, churnRate: 50,
         recentChurnEvents: [
           { customer: "cus_stripe1", canceledAt: "2026-01-20T00:00:00.000Z", amount: 5000 },
+          { customer: "cus_lost", canceledAt: "2026-01-25T00:00:00.000Z", amount: 2000 },
         ],
       },
       payments: { succeeded: 2, failed: 0, successRate: 100 },
@@ -375,7 +377,7 @@ describe("buildDemoAnalyticsData", () => {
     const demo = buildDemoAnalyticsData(data);
     const organic = demo.journeyPaths.find((p) => p.source === "Organic")!;
 
-    // Stripe churn event matched by dealId → customer ID
+    // Stripe churn event matched by dealId → customer ID, but only for activated customer stages
     expect(organic.churned).toBe(1);
     expect(organic.onboarding).toBe(2); // Both Closed Won and Subscription
     expect(organic.notActivated).toBe(1);
@@ -445,14 +447,24 @@ describe("buildDemoAnalyticsData", () => {
       meetings: [
         makeMeeting({
           id: "meeting-upcoming",
-          title: "Upcoming Demo",
+          title: "Field Fastener & Arda Cards",
           status: "SCHEDULED",
           startAt: "2026-03-15T18:00:00.000Z",
           endAt: "2026-03-15T18:30:00.000Z",
+          notes: "A Sales Engineer will walk you through how Arda can eliminate stockouts and make ordering 10x faster. What are you most interested in learning about Arda?: Let's start the conversation.",
           dealId: "local-upcoming",
           dealName: "Upcoming Deal",
           hubspotDealId: "hs-upcoming",
           attendeeEmails: ["future@example.com"],
+        }),
+        makeMeeting({
+          id: "meeting-internal",
+          title: "Arda Sync",
+          status: "COMPLETED",
+          startAt: "2026-03-12T18:00:00.000Z",
+          endAt: "2026-03-12T18:30:00.000Z",
+          notes: "Internal operating sync.",
+          attendeeEmails: ["team@example.com"],
         }),
         makeMeeting({
           id: "meeting-historical",
@@ -518,6 +530,12 @@ describe("buildDemoAnalyticsData", () => {
       ],
     });
 
+    expect(demo.totalScheduled).toBe(2);
+    expect(demo.totalCompleted).toBe(1);
+    expect(demo.weeklyTrend).toEqual([
+      { week: "2026-03-01", scheduled: 1, completed: 1, noShows: 0 },
+      { week: "2026-03-15", scheduled: 1, completed: 0, noShows: 0 },
+    ]);
     expect(demo.upcomingCount).toBe(2);
     expect(demo.meetingBackedUpcomingCount).toBe(1);
     expect(demo.unscheduledDemoCount).toBe(1);

@@ -537,6 +537,24 @@ describe("GET /api/analytics", () => {
     expect(body.demoAnalytics.totalScheduled).toBeGreaterThan(0);
   });
 
+  it("loads unlinked HubSpot meetings for demo analytics instead of only deal-linked meetings", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { GET } = await import("@/app/api/analytics/route");
+    await GET(new Request("http://localhost/api/analytics?section=demo-analytics"));
+
+    expect(prisma.dealMeeting.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { deal: { organizationId: "org-1" } },
+            { customerRecord: { organizationId: "org-1" } },
+            { dealId: null, customerRecordId: null },
+          ],
+        },
+      }),
+    );
+  });
+
   it("hydrates stripe customer links onto hubspot deals", async () => {
     const { prisma } = await import("@/lib/prisma");
     const { GET } = await import("@/app/api/analytics/route");

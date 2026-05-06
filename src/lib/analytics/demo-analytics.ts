@@ -32,6 +32,12 @@ const DEMO_ANALYSIS_ARTIFACT_TYPES = new Set([
   "demo_coaching_memo",
   "deal_next_step_memo",
 ]);
+const DEMO_MEETING_TEXT_MARKERS = [
+  "sales engineer will walk you through",
+  "what are you most interested in learning about arda",
+  "make ordering 10x faster",
+  "& arda cards",
+];
 
 type HubSpotDeal = NonNullable<NonNullable<AnalyticsDashboardData["hubspot"]>["deals"]>[number];
 
@@ -218,6 +224,23 @@ function findHubSpotDealForMeeting(
   }
 
   return null;
+}
+
+function isDemoMeeting(meeting: DemoMeetingContext, deal: HubSpotDeal | null): boolean {
+  if (deal && DEMO_ENTRY_STAGES.has(deal.stageLabel)) return true;
+
+  const text = [
+    meeting.title,
+    meeting.notes,
+    meeting.dealName,
+    meeting.companyName,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (/\bdemo\b/.test(text)) return true;
+  return DEMO_MEETING_TEXT_MARKERS.some((marker) => text.includes(marker));
 }
 
 function buildDemoRecordFromMeeting(input: {
@@ -462,10 +485,9 @@ function buildConversionFunnel(demos: DemoRecord[]): DemoConversionStep[] {
 }
 
 function buildWeeklyTrend(demos: DemoRecord[]): DemoWeeklyTrend[] {
-  const historical = cohortDemos(demos);
   const byWeek = new Map<string, { scheduled: number; completed: number; noShows: number }>();
 
-  for (const demo of historical) {
+  for (const demo of demos) {
     const date = new Date(demo.scheduledAt);
     const weekStart = new Date(date);
     weekStart.setDate(date.getDate() - date.getDay());
@@ -495,7 +517,7 @@ const DEMO_ENTRY_STAGES = new Set([
   ...POST_DEMO_STAGES,
 ]);
 const ONBOARDED_STAGES = new Set(["Subscription", "Closed Won"]);
-const HUBSPOT_CHURN_STAGES = new Set(["Churn", "Closed Lost"]);
+const HUBSPOT_CHURN_STAGES = new Set(["Churn"]);
 
 type StripeChurnEvent = NonNullable<
   AnalyticsDashboardData["stripe"]
@@ -577,7 +599,8 @@ function buildJourneyPathAnalysis(data: AnalyticsDashboardData): JourneyPathRow[
     const churnedDeals = sourceDeals.flatMap((deal) => {
       const stripeEvent = resolveStripeChurnEvent(deal, stripeChurnLookup);
       const hubspotChurned = HUBSPOT_CHURN_STAGES.has(deal.stageLabel);
-      if (!hubspotChurned && !stripeEvent) return [];
+      const stripeChurned = Boolean(stripeEvent && ONBOARDED_STAGES.has(deal.stageLabel));
+      if (!hubspotChurned && !stripeChurned) return [];
       return [{
         deal,
         churnedAt: stripeEvent?.canceledAt ?? deal.updatedAt ?? null,
@@ -621,9 +644,11 @@ export async function listDemoAnalyticsMeetings(): Promise<DemoMeetingContext[]>
   const organizationId = getRequiredOrganizationId();
   const meetings = await prisma.dealMeeting.findMany({
     where: {
-      deal: {
-        organizationId,
-      },
+      OR: [
+        { deal: { organizationId } },
+        { customerRecord: { organizationId } },
+        { dealId: null, customerRecordId: null },
+      ],
     },
     include: {
       deal: {
@@ -777,13 +802,15 @@ export function buildDemoAnalyticsData(
     deal: findHubSpotDealForMeeting(meeting, dealsByHubspotId, dealsByName),
   }));
 
-  const meetingBackedDemos = meetingPairs.map(({ meeting, deal }) =>
-    buildDemoRecordFromMeeting({
-      now,
-      meeting,
-      deal,
-    }),
-  );
+  const meetingBackedDemos = meetingPairs
+    .filter(({ meeting, deal }) => isDemoMeeting(meeting, deal))
+    .map(({ meeting, deal }) =>
+      buildDemoRecordFromMeeting({
+        now,
+        meeting,
+        deal,
+      }),
+    );
 
   const coveredHubSpotDealIds = new Set(
     meetingPairs
@@ -805,7 +832,7 @@ export function buildDemoAnalyticsData(
     return a.dealName.localeCompare(b.dealName);
   });
 
-  const cohort = aggregateDemos;
+  const cohort = meetingBackedDemos.length > 0 ? meetingBackedDemos : aggregateDemos;
   const historical = historicalAnalysisDemos(demos);
   const totalScheduled = cohort.length;
   const totalCompleted = cohort.filter((demo) => demo.outcome === "completed").length;

@@ -227,7 +227,7 @@ export async function syncDealsFromHubSpot(userId: string): Promise<SyncResult> 
     fetchAllPaginated(accessToken, "deals", "dealname,dealstage,amount,closedate,createdate,hs_analytics_source,hubspot_owner_id,hs_lastmodifieddate,pipeline"),
     fetchAllPaginated(accessToken, "contacts", "firstname,lastname,email,phone,jobtitle"),
     fetchAllPaginated(accessToken, "companies", "name,domain,industry"),
-    fetchAllPaginated(accessToken, "meetings", "hs_meeting_title,hs_meeting_start_time,hs_meeting_end_time,hs_meeting_location,hs_meeting_outcome,hs_meeting_external_url"),
+    fetchAllPaginated(accessToken, "meetings", "hs_meeting_title,hs_meeting_body,hs_meeting_start_time,hs_meeting_end_time,hs_meeting_location,hs_meeting_outcome,hs_meeting_external_url"),
     fetchOwnerMap(accessToken),
   ]);
 
@@ -394,6 +394,7 @@ export async function syncDealsFromHubSpot(userId: string): Promise<SyncResult> 
     const endAt = endTime ? new Date(endTime) : null;
 
     const outcome = hm.properties.hs_meeting_outcome || "";
+    const notes = hm.properties.hs_meeting_body?.trim() || null;
     let status: MeetingStatus = MeetingStatus.SCHEDULED;
     if (outcome === "COMPLETED") status = MeetingStatus.COMPLETED;
     else if (outcome === "CANCELED" || outcome === "CANCELLED") status = MeetingStatus.CANCELED;
@@ -427,6 +428,7 @@ export async function syncDealsFromHubSpot(userId: string): Promise<SyncResult> 
         startAt,
         endAt: endAt && !isNaN(endAt.getTime()) ? endAt : null,
         location: hm.properties.hs_meeting_location || null,
+        notes,
         dealId: localDealId,
         companyId: localCompanyId,
         expectedAttendees: localAttendeeIds.length,
@@ -440,6 +442,7 @@ export async function syncDealsFromHubSpot(userId: string): Promise<SyncResult> 
         startAt,
         endAt: endAt && !isNaN(endAt.getTime()) ? endAt : null,
         location: hm.properties.hs_meeting_location || null,
+        notes,
         dealId: localDealId,
         companyId: localCompanyId,
         expectedAttendees: localAttendeeIds.length,
