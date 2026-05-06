@@ -164,6 +164,70 @@ describe("integrations orchestrator", () => {
     expect(runGoogleCalendarPrepFollowup).toHaveBeenCalledTimes(0);
   });
 
+  it("quarantines legacy task automations when disabled", async () => {
+    const previousFlag = process.env.ENABLE_LEGACY_TASK_AUTOMATIONS;
+    process.env.ENABLE_LEGACY_TASK_AUTOMATIONS = "false";
+
+    try {
+      vi.mocked(resolveIntegrationOrganizationId).mockResolvedValue("org_1");
+      vi.mocked(prisma.integrationRule.findMany).mockResolvedValueOnce([
+        {
+          id: "r1",
+          userId: "user_1",
+          provider: IntegrationProvider.GOOGLE_WORKSPACE,
+          key: "google_calendar_prep_followup",
+          enabled: true,
+          statusOverride: null,
+          config: {},
+          checkpoint: {},
+          lastObservedAt: null,
+          lastRunAt: null,
+          lastError: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        {
+          id: "r2",
+          userId: "user_1",
+          provider: IntegrationProvider.GOOGLE_ADS,
+          key: "google_ads_metrics_pull",
+          enabled: true,
+          statusOverride: null,
+          config: {},
+          checkpoint: {},
+          lastObservedAt: null,
+          lastRunAt: null,
+          lastError: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ]);
+
+      const result = await runRules({
+        mode: "incremental",
+        userIds: ["user_1"],
+        providers: [IntegrationProvider.GOOGLE_WORKSPACE, IntegrationProvider.GOOGLE_ADS],
+        dryRun: false,
+        startedAt: "2026-02-18T00:00:00.000Z",
+      });
+
+      expect(runGoogleCalendarPrepFollowup).not.toHaveBeenCalled();
+      expect(runProviderMetricsRule).toHaveBeenCalledWith({
+        userId: "user_1",
+        ruleKey: "google_ads_metrics_pull",
+        dryRun: false,
+      });
+      expect(result.executedRules).toBe(1);
+      expect(result.skippedLegacyTaskRules).toBe(1);
+    } finally {
+      if (previousFlag === undefined) {
+        delete process.env.ENABLE_LEGACY_TASK_AUTOMATIONS;
+      } else {
+        process.env.ENABLE_LEGACY_TASK_AUTOMATIONS = previousFlag;
+      }
+    }
+  });
+
   it("skips users that do not have an organization context", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(resolveIntegrationOrganizationId).mockResolvedValue(null);
