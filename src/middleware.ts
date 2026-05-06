@@ -8,6 +8,18 @@ import {
   VERSION_SUNSET_DATES,
 } from "@/lib/api/versioning";
 
+const LEGACY_PRODUCT_API_PREFIXES = [
+  "/api/board-settings",
+  "/api/logbook",
+  "/api/priorities",
+  "/api/projects",
+  "/api/sprints",
+  "/api/standup",
+  "/api/tasks",
+  "/api/v1/projects",
+  "/api/v1/tasks",
+] as const;
+
 /**
  * Next.js Middleware
  *
@@ -52,6 +64,9 @@ export function middleware(request: NextRequest) {
       );
     }
 
+    const legacyProductApiResponse = maybeRejectLegacyProductApi(pathname);
+    if (legacyProductApiResponse) return legacyProductApiResponse;
+
     // Add version headers to versioned requests
     const response = NextResponse.next();
     const version = extractVersionFromPath(pathname);
@@ -69,11 +84,51 @@ export function middleware(request: NextRequest) {
     return response;
   }
 
+  const legacyProductApiResponse = maybeRejectLegacyProductApi(pathname);
+  if (legacyProductApiResponse) return legacyProductApiResponse;
+
   // Unversioned API request — add version header indicating current version
   const response = NextResponse.next();
   response.headers.set("API-Version", CURRENT_API_VERSION);
   addSecurityHeaders(response);
   return response;
+}
+
+function maybeRejectLegacyProductApi(pathname: string): NextResponse | null {
+  if (legacyProductApisEnabled()) {
+    return null;
+  }
+
+  const isLegacyProductApi = LEGACY_PRODUCT_API_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+  if (!isLegacyProductApi) {
+    return null;
+  }
+
+  const response = NextResponse.json(
+    {
+      error: "Legacy product API disabled",
+      replacement: "/api/analytics",
+      dashboard: "/analytics",
+    },
+    { status: 410 }
+  );
+  response.headers.set("API-Version", CURRENT_API_VERSION);
+  addSecurityHeaders(response);
+  return response;
+}
+
+function legacyProductApisEnabled(): boolean {
+  const flag = process.env.ENABLE_LEGACY_PRODUCT_APIS?.trim().toLowerCase();
+  if (flag === "1" || flag === "true" || flag === "yes" || flag === "on") {
+    return true;
+  }
+  if (flag === "0" || flag === "false" || flag === "no" || flag === "off") {
+    return false;
+  }
+
+  return process.env.NODE_ENV !== "production";
 }
 
 function maybeRedirectToCanonicalHost(
