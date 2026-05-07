@@ -202,6 +202,9 @@ export function FinanceTab({ data }: FinanceTabProps) {
   const treasuryCash = financeSummary.treasuryCash;
   const runway = financeSummary.runwayMonths;
   const netCashFlow = financeSummary.netCashFlow30d;
+  const inflows30d = financeSummary.inflows30d;
+  const outflows30d = financeSummary.outflows30d;
+  const burnRate = financeSummary.burnRate;
   const successRate = financeSummary.paymentSuccessPct;
   const churnRate = financeSummary.churnRatePct;
   const recentChurns = stripe?.subscriptions?.recentChurnEvents ?? [];
@@ -627,7 +630,7 @@ export function FinanceTab({ data }: FinanceTabProps) {
               <ArrowDownRight className="w-4 h-4 text-green-600" />
             </div>
             <p className="text-2xl font-bold text-foreground">
-              {fmt$(mercury.cashFlow.inflows30d)}
+              {fmt$(inflows30d)}
             </p>
           </div>
 
@@ -639,7 +642,7 @@ export function FinanceTab({ data }: FinanceTabProps) {
               <ArrowUpRight className="w-4 h-4 text-red-600" />
             </div>
             <p className="text-2xl font-bold text-foreground">
-              {fmt$(mercury.cashFlow.outflows30d)}
+              {fmt$(outflows30d)}
             </p>
           </div>
 
@@ -651,7 +654,7 @@ export function FinanceTab({ data }: FinanceTabProps) {
               <TrendingDown className="w-4 h-4 text-orange-600" />
             </div>
             <p className="text-2xl font-bold text-foreground">
-              {fmt$(mercury.cashFlow.burnRate)}
+              {fmt$(burnRate)}
               <span className="text-xs text-muted-foreground ml-2">/month</span>
             </p>
           </div>

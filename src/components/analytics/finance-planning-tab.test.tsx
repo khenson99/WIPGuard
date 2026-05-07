@@ -219,6 +219,8 @@ describe("FinancePlanningTab", () => {
             outflows30d: 0,
             burnRate: 0,
           },
+          stripe: null,
+          mercury: null,
           budgetActuals: {
             budgetId: "budget-1",
             budgetName: "Baseline Budget",

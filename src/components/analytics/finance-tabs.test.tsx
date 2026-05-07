@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import { createEmptyAnalyticsDashboardData } from "@/lib/analytics/response-shape";
 import { FinanceTab } from "@/components/analytics/finance-tab";
 import { FinanceStripeTab } from "@/components/analytics/finance-stripe-tab";
+import { FinanceMercuryTab } from "@/components/analytics/finance-mercury-tab";
 import { FinanceHubSpotTab } from "@/components/analytics/finance-hubspot-tab";
+import { buildAnalyticsMetricsLayer } from "@/lib/analytics/kpis";
 
 function makeEmptyData() {
   return createEmptyAnalyticsDashboardData({
@@ -144,11 +146,43 @@ describe("finance tabs", () => {
         source: "live",
       },
     };
+    data.metrics = buildAnalyticsMetricsLayer(data);
+    data.kpis = data.metrics.kpis;
 
     render(<FinanceStripeTab data={data} />);
 
     expect(screen.getAllByText("4.0%").length).toBeGreaterThan(0);
     expect(screen.getAllByText("98.7%").length).toBeGreaterThan(0);
+  });
+
+  it("uses canonical Mercury metrics in the Mercury finance tab", () => {
+    const data = makeEmptyData();
+    if (data.freshness.mercury) {
+      data.freshness.mercury.lastError = null;
+    }
+    data.mercury = {
+      accounts: [{ accountId: "acc-1", accountName: "Operating", balance: 500000, type: "checking" }],
+      cashFlow: {
+        totalBalance: 500000,
+        inflows30d: 18000,
+        outflows30d: 45000,
+        netCashFlow: -27000,
+        runway: 18.5,
+        burnRate: 27000,
+      },
+      _meta: {
+        fetchedAt: "2026-02-16T00:00:00.000Z",
+        nextRefresh: "2026-02-16T01:00:00.000Z",
+        source: "live",
+      },
+    };
+    data.metrics = buildAnalyticsMetricsLayer(data);
+    data.kpis = data.metrics.kpis;
+    data.metrics.finance.mercury!.inflows30d = 1234;
+
+    render(<FinanceMercuryTab data={data} />);
+
+    expect(screen.getAllByText("$1.2K").length).toBeGreaterThan(0);
   });
 
   it("shows finance-stage hubspot empty state when lifecycle stages are missing", () => {
