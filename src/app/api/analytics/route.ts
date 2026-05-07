@@ -637,7 +637,19 @@ async function buildFinancialPlanningData(
   const mercury = data.mercury as MercuryData | null;
   const hubspot = data.hubspot as HubSpotData | null;
   const subscriptionOverview = buildSubscriptionOverview(data);
-  const totalMrr = subscriptionOverview?.totalMrr ?? stripe?.revenue.mrr ?? 0;
+  const planningMetrics = buildAnalyticsMetricsLayer({
+    ...data,
+    financialPlanning: {
+      budgets: [],
+      activeBudget: null,
+      forecasts: [],
+      goals: [],
+      pnl: null,
+      unitEconomics: null,
+      subscriptionOverview,
+    },
+  });
+  const financeSummary = planningMetrics.finance.summary;
 
   const [dbBudgets, dbGoals, dbForecasts] = await Promise.all([
     prisma.budget.findMany({
@@ -708,13 +720,13 @@ async function buildFinancialPlanningData(
 
   // --- Goals with current progress ---
   const currentMetrics: Record<string, number> = {
-    mrr: totalMrr,
-    arr: totalMrr * 12,
-    runway: mercury?.cashFlow.runway ?? 0,
-    burn_rate: mercury?.cashFlow.burnRate ?? 0,
-    net_cash_flow: mercury?.cashFlow.netCashFlow ?? 0,
-    revenue: stripe?.revenue.totalRevenue30d ?? 0,
-    customer_count: subscriptionOverview?.mergedActiveSubscriptions ?? 0,
+    mrr: financeSummary.mrr,
+    arr: financeSummary.mrr * 12,
+    runway: financeSummary.runwayMonths,
+    burn_rate: financeSummary.burnRate,
+    net_cash_flow: financeSummary.netCashFlow30d,
+    revenue: financeSummary.totalRevenue30d,
+    customer_count: financeSummary.activeSubscriptions,
   };
 
   const goals: FinancialGoalData[] = dbGoals.map((g: { id: string; metric: GoalMetric | string; targetValue: number; deadline: Date; }) => {

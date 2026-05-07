@@ -570,6 +570,42 @@ describe("GET /api/analytics", () => {
     });
   });
 
+  it("uses canonical finance metrics for financial goal progress", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    vi.mocked(prisma.financialGoal.findMany).mockResolvedValueOnce([
+      {
+        id: "goal-mrr",
+        metric: "mrr",
+        targetValue: 20000,
+        deadline: new Date("2027-01-01T00:00:00.000Z"),
+      },
+      {
+        id: "goal-customers",
+        metric: "customer_count",
+        targetValue: 10,
+        deadline: new Date("2027-01-01T00:00:00.000Z"),
+      },
+    ] as never);
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=finance-planning"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.financialPlanning.goals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "goal-mrr",
+          currentValue: 15598,
+        }),
+        expect.objectContaining({
+          id: "goal-customers",
+          currentValue: 2,
+        }),
+      ]),
+    );
+  });
+
   it("returns process analytics domain data", async () => {
     const { GET } = await import("@/app/api/analytics/route");
     const response = await GET(new Request("http://localhost/api/analytics?section=process-analytics"));
