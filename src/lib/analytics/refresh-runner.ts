@@ -479,6 +479,7 @@ async function refreshMonthlyFinancialHistoryForUser(input: {
 export async function runAnalyticsRefresh(input: {
   userIds?: string[];
   rangePresets?: RollingRangePreset[];
+  includeRollingRanges?: boolean;
   includeMonthlyFinancialHistory?: boolean;
 } = {}): Promise<{
   usersProcessed: number;
@@ -486,7 +487,12 @@ export async function runAnalyticsRefresh(input: {
   failureCount: number;
   completedAt: string;
 }> {
-  const rangePresets: RollingRangePreset[] = input.rangePresets ?? ["30d"];
+  const includeRollingRanges = input.includeRollingRanges ?? true;
+  const rangePresets: RollingRangePreset[] = includeRollingRanges
+    ? input.rangePresets && input.rangePresets.length > 0
+      ? input.rangePresets
+      : ["30d"]
+    : [];
 
   const userIds =
     input.userIds && input.userIds.length > 0

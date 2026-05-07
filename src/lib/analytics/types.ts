@@ -1742,6 +1742,28 @@ export interface FinanceBudgetActualsMetric {
   items: FinanceBudgetActualMetric[];
 }
 
+export interface FinanceSummaryMetric {
+  mrr: number;
+  mrrChange: number;
+  totalRevenue30d: number;
+  revenueGrowth: number;
+  activeSubscriptions: number;
+  stripeActiveSubscriptions: number;
+  hubspotActiveSubscriptions: number;
+  pastDueSubscriptions: number;
+  trialingSubscriptions: number;
+  paymentSuccessPct: number;
+  churnRatePct: number;
+  cashBalance: number;
+  bankCash: number | null;
+  treasuryCash: number | null;
+  runwayMonths: number;
+  netCashFlow30d: number;
+  inflows30d: number;
+  outflows30d: number;
+  burnRate: number;
+}
+
 export interface AnalyticsKpis {
   traffic: {
     bounceRatePct: number;
@@ -1758,6 +1780,7 @@ export interface AnalyticsKpis {
 export interface AnalyticsMetricsLayer {
   kpis: AnalyticsKpis;
   finance: {
+    summary: FinanceSummaryMetric;
     budgetActuals: FinanceBudgetActualsMetric | null;
   };
 }

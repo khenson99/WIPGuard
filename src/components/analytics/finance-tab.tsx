@@ -16,7 +16,6 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import type { AnalyticsDashboardData, PnLRow, ForecastScenarioData } from "@/lib/analytics/types";
-import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
 import { fmtDelta, fmtMonths, fmtRatio, runwayColor, ltvCacSeverity } from "@/lib/analytics/finance-utils";
 import { StatCard } from "./stat-card";
 import { RingStat } from "./bar-display";
@@ -160,6 +159,7 @@ export function FinanceTab({ data }: FinanceTabProps) {
   const stripe = data.stripe;
   const mercury = data.mercury;
   const fp = data.financialPlanning;
+  const financeSummary = data.metrics?.finance.summary ?? null;
   const budgetActuals = data.metrics?.finance.budgetActuals ?? null;
   const financeErrors = data.errors
     .filter((entry) => entry.source === "stripe" || entry.source === "mercury")
@@ -179,22 +179,31 @@ export function FinanceTab({ data }: FinanceTabProps) {
     );
   }
 
-  // Extract metrics with fallbacks
-  const subscriptionOverview = fp?.subscriptionOverview ?? null;
-  const mrr = subscriptionOverview?.totalMrr ?? (stripe?.revenue?.mrr ?? 0);
-  const mrrChange = stripe?.revenue?.mrrChange ?? 0;
-  const activeSubs = subscriptionOverview?.mergedActiveSubscriptions ?? (stripe?.subscriptions?.active ?? 0);
-  const stripeSubs = subscriptionOverview?.stripeActiveSubscriptions ?? (stripe?.subscriptions?.active ?? 0);
-  const hubspotSubs = subscriptionOverview?.hubspotActiveSubscriptions ?? 0;
-  const pastDue = stripe?.subscriptions?.pastDue ?? 0;
-  const trialing = stripe?.subscriptions?.trialing ?? 0;
-  const cashBalance = mercury?.cashFlow?.totalBalance ?? 0;
-  const bankCash = mercury?.cashFlow?.bankCash ?? null;
-  const treasuryCash = mercury?.cashFlow?.treasuryCash ?? null;
-  const runway = mercury?.cashFlow?.runway ?? 0;
-  const netCashFlow = mercury?.cashFlow?.netCashFlow ?? 0;
-  const successRate = normalizePercentValue(stripe?.payments?.successRate ?? 0);
-  const churnRate = normalizePercentValue(stripe?.subscriptions?.churnRate ?? 0);
+  if (!financeSummary) {
+    return (
+      <FinanceDataEmptyState
+        title="Finance metrics are unavailable"
+        message="The canonical finance metrics layer was not included in this analytics payload."
+        reasons={[...financeErrors, ...freshnessErrors]}
+      />
+    );
+  }
+
+  // Extract canonical finance metrics from the API-built metrics layer.
+  const mrr = financeSummary.mrr;
+  const mrrChange = financeSummary.mrrChange;
+  const activeSubs = financeSummary.activeSubscriptions;
+  const stripeSubs = financeSummary.stripeActiveSubscriptions;
+  const hubspotSubs = financeSummary.hubspotActiveSubscriptions;
+  const pastDue = financeSummary.pastDueSubscriptions;
+  const trialing = financeSummary.trialingSubscriptions;
+  const cashBalance = financeSummary.cashBalance;
+  const bankCash = financeSummary.bankCash;
+  const treasuryCash = financeSummary.treasuryCash;
+  const runway = financeSummary.runwayMonths;
+  const netCashFlow = financeSummary.netCashFlow30d;
+  const successRate = financeSummary.paymentSuccessPct;
+  const churnRate = financeSummary.churnRatePct;
   const recentChurns = stripe?.subscriptions?.recentChurnEvents ?? [];
 
   return (
