@@ -14,6 +14,11 @@ import type { StripeData, MercuryData, PnLRow } from "./types";
 export interface MonthlyPnLEntry {
   /** ISO month string, e.g. "2026-03" */
   month: string;
+  /** Whether source snapshots were present for this month */
+  sourceCoverage: {
+    stripe: boolean;
+    mercury: boolean;
+  };
   revenue: number;
   cogs: number;
   grossProfit: number;
@@ -183,6 +188,10 @@ function buildMonthEntry(
 
   return {
     month,
+    sourceCoverage: {
+      stripe: stripe !== null,
+      mercury: mercury !== null,
+    },
     revenue,
     cogs: pnlRowValue(pnl.cogs),
     grossProfit,

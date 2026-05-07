@@ -111,7 +111,19 @@ describe("buildMonthlyPnLHistory", () => {
       "2025-03",
     ]);
     expect(history.months[0]?.revenue).toBe(10_000);
+    expect(history.months[0]?.sourceCoverage).toEqual({
+      stripe: true,
+      mercury: false,
+    });
     expect(history.months[1]?.revenue).toBe(0);
+    expect(history.months[1]?.sourceCoverage).toEqual({
+      stripe: false,
+      mercury: false,
+    });
     expect(history.months[2]?.cashBalance).toBe(50_000);
+    expect(history.months[2]?.sourceCoverage).toEqual({
+      stripe: false,
+      mercury: true,
+    });
   });
 });

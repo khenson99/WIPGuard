@@ -30,6 +30,67 @@ describe("computeAnalyticsKpis (finance)", () => {
 });
 
 describe("buildAnalyticsMetricsLayer", () => {
+  it("publishes canonical finance summary metrics", () => {
+    const metrics = buildAnalyticsMetricsLayer({
+      stripe: {
+        revenue: {
+          mrr: 15000,
+          mrrChange: 4.2,
+          totalRevenue30d: 18000,
+          revenueGrowth: 12.5,
+        },
+        subscriptions: {
+          active: 12,
+          pastDue: 2,
+          trialing: 3,
+          churnRate: 0.04,
+        },
+        payments: { successRate: 0.975 },
+      },
+      mercury: {
+        cashFlow: {
+          totalBalance: 500000,
+          bankCash: 320000,
+          treasuryCash: 180000,
+          runway: 18.5,
+          netCashFlow: -27000,
+          inflows30d: 18000,
+          outflows30d: 45000,
+          burnRate: 27000,
+        },
+      },
+      financialPlanning: {
+        subscriptionOverview: {
+          mergedActiveSubscriptions: 18,
+          stripeActiveSubscriptions: 12,
+          hubspotActiveSubscriptions: 6,
+        },
+      },
+    } as unknown as AnalyticsDashboardData);
+
+    expect(metrics.finance.summary).toMatchObject({
+      mrr: 15000,
+      mrrChange: 4.2,
+      totalRevenue30d: 18000,
+      revenueGrowth: 12.5,
+      activeSubscriptions: 18,
+      stripeActiveSubscriptions: 12,
+      hubspotActiveSubscriptions: 6,
+      pastDueSubscriptions: 2,
+      trialingSubscriptions: 3,
+      paymentSuccessPct: 97.5,
+      churnRatePct: 4,
+      cashBalance: 500000,
+      bankCash: 320000,
+      treasuryCash: 180000,
+      runwayMonths: 18.5,
+      netCashFlow30d: -27000,
+      inflows30d: 18000,
+      outflows30d: 45000,
+      burnRate: 27000,
+    });
+  });
+
   it("publishes canonical finance budget planned and actual metrics", () => {
     const activeBudget: BudgetData = {
       id: "budget-1",

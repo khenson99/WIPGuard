@@ -300,6 +300,35 @@ export function FinanceMonthlyHistoryTab() {
         </div>
       </SectionCard>
 
+      <SectionCard title="Data Sources" subtitle="Monthly snapshot coverage">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
+                <th className="pb-2 pr-4 text-left font-medium">Month</th>
+                <th className="pb-2 pr-4 text-left font-medium">Stripe</th>
+                <th className="pb-2 text-left font-medium">Mercury</th>
+              </tr>
+            </thead>
+            <tbody>
+              {months.map((month) => (
+                <tr key={month.month} className="hover:bg-secondary/20">
+                  <td className="py-2 pr-4 font-medium text-foreground">
+                    {formatMonth(month.month)}
+                  </td>
+                  <td className="py-2 pr-4">
+                    <SourceStatusBadge available={month.sourceCoverage.stripe} />
+                  </td>
+                  <td className="py-2">
+                    <SourceStatusBadge available={month.sourceCoverage.mercury} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+
       {/* Refresh */}
       <div className="flex justify-end">
         <button
@@ -311,6 +340,20 @@ export function FinanceMonthlyHistoryTab() {
         </button>
       </div>
     </div>
+  );
+}
+
+function SourceStatusBadge({ available }: { available: boolean }) {
+  return (
+    <span
+      className={
+        available
+          ? "inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600"
+          : "inline-flex rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground"
+      }
+    >
+      {available ? "Available" : "Missing"}
+    </span>
   );
 }
 
