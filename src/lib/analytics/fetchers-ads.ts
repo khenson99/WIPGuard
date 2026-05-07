@@ -777,9 +777,22 @@ async function parseErrorBody(response: Response): Promise<string> {
   return trimmed.slice(0, 500);
 }
 
+function isInvalidMetaInsightsMetricError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("valid insights metric") ||
+    normalized.includes("invalid metric")
+  );
+}
+
 function normalizeBearerToken(value: string): string {
   return value.replace(/^Bearer\s+/i, "").trim();
 }
+
+type MetaPageInsightMetric = {
+  name: string;
+  values?: Array<{ value: string | number }>;
+};
 
 function normalizeMetaAdAccountId(adAccountId: string): string {
   return adAccountId.trim().replace(/^act_/i, "");
@@ -1330,6 +1343,77 @@ export async function fetchMetaAdsData(
 /**
  * Fetch Meta Page Insights data.
  */
+function buildMetaPageInsightsUrl(input: {
+  normalizedPageId: string;
+  metrics: string[];
+  useRange: boolean;
+  since: string | null;
+  until: string | null;
+}): URL {
+  const insightsUrl = new URL(
+    `https://graph.facebook.com/${META_GRAPH_VERSION}/${input.normalizedPageId}/insights`
+  );
+  insightsUrl.searchParams.set("metric", input.metrics.join(","));
+  if (input.useRange) {
+    insightsUrl.searchParams.set("period", "day");
+    insightsUrl.searchParams.set("since", input.since!);
+    insightsUrl.searchParams.set("until", input.until!);
+  } else {
+    insightsUrl.searchParams.set("period", "days_28");
+  }
+  return insightsUrl;
+}
+
+async function fetchMetaPageInsightMetrics(input: {
+  normalizedPageId: string;
+  metrics: string[];
+  useRange: boolean;
+  since: string | null;
+  until: string | null;
+  headers: Record<string, string>;
+}): Promise<MetaPageInsightMetric[]> {
+  const insightsUrl = buildMetaPageInsightsUrl(input);
+  const insightsResponse = await fetch(insightsUrl, { headers: input.headers });
+  if (insightsResponse.ok) {
+    const insightsData = (await safeJson<{
+      data?: MetaPageInsightMetric[];
+    }>(insightsResponse, "Meta Page insights")) as {
+      data?: MetaPageInsightMetric[];
+    };
+    return insightsData.data ?? [];
+  }
+
+  const errorBody = await parseErrorBody(insightsResponse);
+  if (!isInvalidMetaInsightsMetricError(errorBody)) {
+    throw new Error(`Meta Page insights error (${insightsResponse.status}): ${errorBody}`);
+  }
+
+  const validMetrics: MetaPageInsightMetric[] = [];
+  for (const metric of input.metrics) {
+    const metricUrl = buildMetaPageInsightsUrl({
+      ...input,
+      metrics: [metric],
+    });
+    const metricResponse = await fetch(metricUrl, { headers: input.headers });
+    if (metricResponse.ok) {
+      const metricData = (await safeJson<{
+        data?: MetaPageInsightMetric[];
+      }>(metricResponse, `Meta Page insights ${metric}`)) as {
+        data?: MetaPageInsightMetric[];
+      };
+      validMetrics.push(...(metricData.data ?? []));
+      continue;
+    }
+
+    const metricError = await parseErrorBody(metricResponse);
+    if (!isInvalidMetaInsightsMetricError(metricError)) {
+      throw new Error(`Meta Page insights error (${metricResponse.status}): ${metricError}`);
+    }
+  }
+
+  return validMetrics;
+}
+
 export async function fetchMetaPageData(
   accessToken: string,
   pageId: string,
@@ -1378,39 +1462,18 @@ export async function fetchMetaPageData(
   const pageLikes = readNumber(pageData.fan_count);
   const pageFollowers = readNumber(pageData.followers_count);
 
-  const insightsUrl = new URL(
-    `https://graph.facebook.com/${META_GRAPH_VERSION}/${normalizedPageId}/insights`
-  );
-  insightsUrl.searchParams.set("metric", "page_impressions,page_engaged_users");
-  if (useRange) {
-    insightsUrl.searchParams.set("period", "day");
-    insightsUrl.searchParams.set("since", since!);
-    insightsUrl.searchParams.set("until", until!);
-  } else {
-    insightsUrl.searchParams.set("period", "days_28");
-  }
-
-  const insightsResponse = await fetch(insightsUrl, { headers: baseHeaders });
-  if (!insightsResponse.ok) {
-    throw new Error(
-      `Meta Page insights error (${insightsResponse.status}): ${await parseErrorBody(insightsResponse)}`
-    );
-  }
-  const insightsData = (await safeJson<{
-    data?: Array<{
-      name: string;
-      values?: Array<{ value: string | number }>;
-    }>;
-  }>(insightsResponse, "Meta Page insights")) as {
-    data?: Array<{
-      name: string;
-      values?: Array<{ value: string | number }>;
-    }>;
-  };
+  const insightsMetrics = await fetchMetaPageInsightMetrics({
+    normalizedPageId,
+    metrics: ["page_impressions", "page_engaged_users"],
+    useRange,
+    since,
+    until,
+    headers: baseHeaders,
+  });
 
   let postReach30d = 0;
   let postEngagement30d = 0;
-  for (const metric of insightsData.data ?? []) {
+  for (const metric of insightsMetrics) {
     const value = (metric.values ?? []).reduce((sum, item) => sum + readNumber(item.value), 0);
     if (metric.name === "page_impressions") {
       postReach30d = value;

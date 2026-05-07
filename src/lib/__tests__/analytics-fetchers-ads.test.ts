@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchGoogleAdsData,
   fetchMetaAdsData,
+  fetchMetaPageData,
   fetchMetaInstagramData,
   fetchRedditAdsData,
 } from "@/lib/analytics/fetchers-ads";
@@ -189,6 +190,81 @@ describe("analytics ads fetchers", () => {
     await expect(fetchMetaAdsData("123|not-a-user-token", "12345")).rejects.toThrow(
       "looks like an app access token"
     );
+  });
+
+  it("skips invalid optional Meta Page insight metrics without failing the sync", async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ fan_count: 10, followers_count: 15 }))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            error: {
+              message: "(#100) The value must be a valid insights metric",
+            },
+          },
+          400
+        )
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            error: {
+              message: "(#100) The value must be a valid insights metric",
+            },
+          },
+          400
+        )
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              name: "page_engaged_users",
+              values: [{ value: 17 }],
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              message: "Launch update",
+              created_time: "2026-02-18T12:00:00.000Z",
+              insights: {
+                data: [
+                  { name: "post_impressions", values: [{ value: 30 }] },
+                  { name: "post_engaged_users", values: [{ value: 4 }] },
+                ],
+              },
+            },
+          ],
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchMetaPageData("meta-token", "page-1");
+
+    expect(data.pageLikes).toBe(10);
+    expect(data.pageFollowers).toBe(15);
+    expect(data.postReach30d).toBe(0);
+    expect(data.postEngagement30d).toBe(17);
+    expect(data.topPosts).toEqual([
+      {
+        message: "Launch update",
+        reach: 30,
+        engagement: 4,
+        createdAt: "2026-02-18T12:00:00.000Z",
+      },
+    ]);
+
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain(
+      "metric=page_impressions%2Cpage_engaged_users"
+    );
+    expect(String(fetchMock.mock.calls[2]?.[0])).toContain("metric=page_impressions");
+    expect(String(fetchMock.mock.calls[3]?.[0])).toContain("metric=page_engaged_users");
   });
 
   it("uses Reddit v3 report shape and joins campaign metadata", async () => {
