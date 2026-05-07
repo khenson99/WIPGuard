@@ -7,6 +7,7 @@ import type {
   MercuryData,
   ForecastScenarioData,
 } from "@/lib/analytics/types";
+import { buildAnalyticsMetricsLayer } from "@/lib/analytics/kpis";
 
 vi.mock("@/lib/analytics/forecast-engine", async () => {
   const actual = await vi.importActual<typeof import("@/lib/analytics/forecast-engine")>(
@@ -101,6 +102,8 @@ function makePayload(
   });
   data.stripe = opts.stripe !== undefined ? opts.stripe : makeStripe();
   data.mercury = opts.mercury !== undefined ? opts.mercury : makeMercury();
+  data.metrics = buildAnalyticsMetricsLayer(data);
+  data.kpis = data.metrics.kpis;
   return data;
 }
 
@@ -160,6 +163,16 @@ describe("FinanceForecastTab", () => {
     expect(screen.getAllByText("Churn rate").length).toBe(3);
     expect(screen.getAllByText("Monthly burn").length).toBe(3);
     expect(screen.getAllByText("Runway").length).toBe(3);
+  });
+
+  it("uses the canonical finance summary for displayed burn metrics", () => {
+    const data = makePayload();
+    if (!data.metrics) throw new Error("Expected metrics layer");
+    data.metrics.finance.summary.burnRate = 5555;
+
+    render(<FinanceForecastTab data={data} />);
+
+    expect(screen.getAllByText("$5.6K").length).toBeGreaterThanOrEqual(1);
   });
 
   /* ─── Forecast insights ─────────────────────────────── */
