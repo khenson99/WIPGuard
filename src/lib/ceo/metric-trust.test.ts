@@ -50,9 +50,53 @@ describe("CEO metric trust layer", () => {
     expect(trust.warnings.join(" ")).toContain("stripe");
   });
 
+  it("keeps metric trust fresh when an optional source errors but required sources are fresh", () => {
+    const trust = evaluateMetricTrust({
+      asOf: AS_OF,
+      freshnessSlaHours: 24,
+      requiredSourceKeys: ["googleAds", "metaAds"],
+      optionalSourceKeys: ["redditAds"],
+      sources: [
+        {
+          sourceKey: "googleAds",
+          sourceId: "google-ads-snapshot",
+          status: "SUCCESS",
+          capturedAt: "2026-05-01T10:00:00.000Z",
+          expiresAt: "2026-05-01T13:00:00.000Z",
+        },
+        {
+          sourceKey: "metaAds",
+          sourceId: "meta-ads-snapshot",
+          status: "SUCCESS",
+          capturedAt: "2026-05-01T10:00:00.000Z",
+          expiresAt: "2026-05-01T13:00:00.000Z",
+        },
+        {
+          sourceKey: "redditAds",
+          sourceId: "reddit-ads-snapshot",
+          status: "ERROR",
+          capturedAt: "2026-05-01T10:00:00.000Z",
+          expiresAt: "2026-05-01T13:00:00.000Z",
+          lastError: "Request timed out after 10000ms",
+        },
+      ],
+    });
+
+    expect(trust.status).toBe("fresh");
+    expect(trust.confidence).toBe(1);
+    expect(trust.sourceStates.map((state) => state.sourceKey)).toEqual([
+      "googleAds",
+      "metaAds",
+      "redditAds",
+    ]);
+    expect(trust.warnings.join(" ")).toContain("Optional source redditAds errored");
+  });
+
   it("registers default metric definitions across every existing analytics domain", () => {
     const definitions = getDefaultCeoMetricDefinitions();
     const domains = new Set(definitions.map((definition) => definition.domain));
+    const socialPaidSpend = definitions.find((definition) => definition.key === "social.paid_spend");
+    const socialDomainHealth = definitions.find((definition) => definition.key === "domain.social-media.health");
 
     expect(domains).toContain("finance");
     expect(domains).toContain("sales-pipeline");
@@ -62,6 +106,10 @@ describe("CEO metric trust layer", () => {
     expect(domains).toContain("social-media");
     expect(domains).toContain("ceo");
     expect(definitions.every((definition) => definition.sourceDependencies.length > 0)).toBe(true);
+    expect(socialPaidSpend?.sourceDependencies).toEqual(["googleAds", "metaAds"]);
+    expect(socialPaidSpend?.optionalSourceDependencies).toEqual(["redditAds"]);
+    expect(socialDomainHealth?.sourceDependencies).toEqual(["googleAds", "metaAds"]);
+    expect(socialDomainHealth?.optionalSourceDependencies).toEqual(["redditAds"]);
   });
 
   it("builds deterministic markdown, csv, and slide-ready JSON for a report pack", () => {

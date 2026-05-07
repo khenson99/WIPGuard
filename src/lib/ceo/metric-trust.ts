@@ -31,6 +31,7 @@ export interface CeoMetricDefinition {
   unit: CeoMetricUnit;
   calculationVersion: string;
   sourceDependencies: string[];
+  optionalSourceDependencies?: string[];
   freshnessSlaHours: number;
   boardEligible: boolean;
   weeklyEligible: boolean;
@@ -285,7 +286,8 @@ const CORE_METRICS: CeoMetricDefinition[] = [
     ownerAudience: "CEO",
     unit: "currency",
     calculationVersion: CALCULATION_VERSION,
-    sourceDependencies: ["googleAds", "metaAds", "redditAds"],
+    sourceDependencies: ["googleAds", "metaAds"],
+    optionalSourceDependencies: ["redditAds"],
     freshnessSlaHours: 24,
     boardEligible: true,
     weeklyEligible: true,
@@ -309,7 +311,7 @@ function hoursBetween(fromIso: string | null, to: Date): number | null {
 function sourceKeyForPrimary(primaryId: AnalyticsPrimarySectionId): string[] {
   const boardGradeSources: Partial<Record<AnalyticsPrimarySectionId, string[]>> = {
     "website-traffic": ["googleAnalytics", "webflow"],
-    "social-media": ["googleAds", "metaAds", "redditAds"],
+    "social-media": ["googleAds", "metaAds"],
     finance: ["mercury", "stripe", "hubspot"],
     "sales-pipeline": ["hubspot"],
     retention: ["retention"],
@@ -328,20 +330,29 @@ function sourceKeyForPrimary(primaryId: AnalyticsPrimarySectionId): string[] {
   return Array.from(new Set(keys.length > 0 ? keys : [primaryId]));
 }
 
+function optionalSourceKeyForPrimary(primaryId: AnalyticsPrimarySectionId): string[] {
+  if (primaryId === "social-media") return ["redditAds"];
+  return [];
+}
+
 export function getDefaultCeoMetricDefinitions(): CeoMetricDefinition[] {
-  const domainDefinitions = ANALYTICS_PRIMARY_SECTIONS.map((section) => ({
-    key: `domain.${section.id}.health`,
-    label: `${section.label} Health`,
-    domain: section.id,
-    ownerAudience: "CEO" as const,
-    unit: "score" as const,
-    calculationVersion: CALCULATION_VERSION,
-    sourceDependencies: sourceKeyForPrimary(section.id),
-    freshnessSlaHours: section.id === "process-analytics" ? 1 : 24,
-    boardEligible: true,
-    weeklyEligible: true,
-    description: `Trust-weighted health metric for ${section.description.toLowerCase()}`,
-  }));
+  const domainDefinitions = ANALYTICS_PRIMARY_SECTIONS.map((section) => {
+    const optionalSourceDependencies = optionalSourceKeyForPrimary(section.id);
+    return {
+      key: `domain.${section.id}.health`,
+      label: `${section.label} Health`,
+      domain: section.id,
+      ownerAudience: "CEO" as const,
+      unit: "score" as const,
+      calculationVersion: CALCULATION_VERSION,
+      sourceDependencies: sourceKeyForPrimary(section.id),
+      ...(optionalSourceDependencies.length > 0 ? { optionalSourceDependencies } : {}),
+      freshnessSlaHours: section.id === "process-analytics" ? 1 : 24,
+      boardEligible: true,
+      weeklyEligible: true,
+      description: `Trust-weighted health metric for ${section.description.toLowerCase()}`,
+    };
+  });
 
   const subSectionDefinitions = ANALYTICS_SUB_SECTIONS.map((section) => ({
     key: `source.${section.id}.health`,
@@ -376,13 +387,17 @@ export function evaluateMetricTrust(input: {
   asOf: Date;
   freshnessSlaHours: number;
   requiredSourceKeys: string[];
+  optionalSourceKeys?: string[];
   sources: CeoSourceSample[];
 }): CeoMetricTrust {
   const required = Array.from(new Set(input.requiredSourceKeys));
+  const optional = Array.from(new Set(input.optionalSourceKeys ?? [])).filter(
+    (key) => !required.includes(key)
+  );
   const warnings: string[] = [];
   const sourceStates: CeoMetricSourceState[] = [];
 
-  for (const key of required) {
+  for (const key of [...required, ...optional]) {
     const candidates = input.sources
       .filter((source) => source.sourceKey === key)
       .sort((a, b) => {
@@ -412,11 +427,17 @@ export function evaluateMetricTrust(input: {
     });
   }
 
-  const missing = sourceStates.filter((state) => state.status === "MISSING");
-  const errored = sourceStates.filter((state) => state.status === "ERROR");
-  const partial = sourceStates.filter((state) => state.status === "PARTIAL");
-  const successful = sourceStates.filter((state) => state.status === "SUCCESS");
+  const requiredStates = sourceStates.filter((state) => required.includes(state.sourceKey));
+  const optionalStates = sourceStates.filter((state) => optional.includes(state.sourceKey));
+  const missing = requiredStates.filter((state) => state.status === "MISSING");
+  const errored = requiredStates.filter((state) => state.status === "ERROR");
+  const partial = requiredStates.filter((state) => state.status === "PARTIAL");
+  const successful = requiredStates.filter((state) => state.status === "SUCCESS");
   const stale = successful.filter((state) => !state.fresh);
+  const optionalMissing = optionalStates.filter((state) => state.status === "MISSING");
+  const optionalErrored = optionalStates.filter((state) => state.status === "ERROR");
+  const optionalPartial = optionalStates.filter((state) => state.status === "PARTIAL");
+  const optionalStale = optionalStates.filter((state) => state.status === "SUCCESS" && !state.fresh);
 
   for (const state of missing) {
     warnings.push(`Required source ${state.sourceKey} is missing.`);
@@ -431,6 +452,20 @@ export function evaluateMetricTrust(input: {
   }
   for (const state of stale) {
     warnings.push(`Required source ${state.sourceKey} is stale.`);
+  }
+  for (const state of optionalMissing) {
+    warnings.push(`Optional source ${state.sourceKey} is missing.`);
+  }
+  for (const state of optionalErrored) {
+    warnings.push(
+      `Optional source ${state.sourceKey} errored${state.lastError ? `: ${state.lastError}` : "."}`
+    );
+  }
+  for (const state of optionalPartial) {
+    warnings.push(`Optional source ${state.sourceKey} is partial.`);
+  }
+  for (const state of optionalStale) {
+    warnings.push(`Optional source ${state.sourceKey} is stale.`);
   }
 
   let status: CeoMetricTrustStatus = "fresh";
