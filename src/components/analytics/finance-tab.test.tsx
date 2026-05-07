@@ -141,6 +141,20 @@ describe("FinanceTab", () => {
     expect(screen.getByText("Operating")).toBeTruthy();
   });
 
+  it("uses the canonical finance summary for cash-flow mini stats", () => {
+    const data = makePayload();
+    if (!data.metrics) throw new Error("Expected metrics layer");
+    data.metrics.finance.summary.inflows30d = 1234;
+    data.metrics.finance.summary.outflows30d = 5678;
+    data.metrics.finance.summary.burnRate = 9101;
+
+    render(<FinanceTab data={data} />);
+
+    expect(screen.getByText("$1.2K")).toBeTruthy();
+    expect(screen.getByText("$5.7K")).toBeTruthy();
+    expect(screen.getByText("$9.1K")).toBeTruthy();
+  });
+
   it("renders Revenue Trend section when Stripe provides a trend series", () => {
     render(<FinanceTab data={makePayload()} />);
     expect(screen.getByText("Revenue Trend")).toBeTruthy();

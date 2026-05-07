@@ -1764,6 +1764,34 @@ export interface FinanceSummaryMetric {
   burnRate: number;
 }
 
+export interface FinanceStripeMetric {
+  mrr: number;
+  mrrChange: number;
+  totalRevenue30d: number;
+  totalRevenuePrev30d: number;
+  revenueGrowth: number;
+  avgRevenuePerCustomer: number;
+  activeSubscriptions: number;
+  pastDueSubscriptions: number;
+  canceledSubscriptions: number;
+  trialingSubscriptions: number;
+  churnRatePct: number;
+  succeededPayments: number;
+  failedPayments: number;
+  paymentSuccessPct: number;
+}
+
+export interface FinanceMercuryMetric {
+  totalBalance: number;
+  bankCash: number | null;
+  treasuryCash: number | null;
+  runwayMonths: number;
+  netCashFlow30d: number;
+  inflows30d: number;
+  outflows30d: number;
+  burnRate: number;
+}
+
 export interface AnalyticsKpis {
   traffic: {
     bounceRatePct: number;
@@ -1781,6 +1809,8 @@ export interface AnalyticsMetricsLayer {
   kpis: AnalyticsKpis;
   finance: {
     summary: FinanceSummaryMetric;
+    stripe: FinanceStripeMetric | null;
+    mercury: FinanceMercuryMetric | null;
     budgetActuals: FinanceBudgetActualsMetric | null;
   };
 }

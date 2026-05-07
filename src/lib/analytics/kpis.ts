@@ -4,7 +4,9 @@ import type {
   BudgetData,
   FinanceBudgetActualMetric,
   FinanceBudgetActualsMetric,
+  FinanceMercuryMetric,
   FinanceSummaryMetric,
+  FinanceStripeMetric,
 } from "./types";
 import { normalizePercentValue } from "./percentage-utils";
 import { buildSubscriptionMrrBreakdown } from "./subscription-mrr";
@@ -13,7 +15,9 @@ export type {
   AnalyticsMetricsLayer,
   FinanceBudgetActualMetric,
   FinanceBudgetActualsMetric,
+  FinanceMercuryMetric,
   FinanceSummaryMetric,
+  FinanceStripeMetric,
 } from "./types";
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -123,6 +127,48 @@ function buildFinanceSummaryMetric(
   };
 }
 
+function buildFinanceStripeMetric(
+  data: AnalyticsDashboardData,
+): FinanceStripeMetric | null {
+  const stripe = data.stripe;
+  if (!stripe) return null;
+
+  return {
+    mrr: stripe.revenue.mrr,
+    mrrChange: stripe.revenue.mrrChange,
+    totalRevenue30d: stripe.revenue.totalRevenue30d,
+    totalRevenuePrev30d: stripe.revenue.totalRevenuePrev30d,
+    revenueGrowth: stripe.revenue.revenueGrowth,
+    avgRevenuePerCustomer: stripe.revenue.avgRevenuePerCustomer,
+    activeSubscriptions: stripe.subscriptions.active,
+    pastDueSubscriptions: stripe.subscriptions.pastDue,
+    canceledSubscriptions: stripe.subscriptions.canceled,
+    trialingSubscriptions: stripe.subscriptions.trialing,
+    churnRatePct: normalizePercentValue(stripe.subscriptions.churnRate),
+    succeededPayments: stripe.payments.succeeded,
+    failedPayments: stripe.payments.failed,
+    paymentSuccessPct: normalizePercentValue(stripe.payments.successRate),
+  };
+}
+
+function buildFinanceMercuryMetric(
+  data: AnalyticsDashboardData,
+): FinanceMercuryMetric | null {
+  const mercury = data.mercury;
+  if (!mercury) return null;
+
+  return {
+    totalBalance: mercury.cashFlow.totalBalance,
+    bankCash: mercury.cashFlow.bankCash ?? null,
+    treasuryCash: mercury.cashFlow.treasuryCash ?? null,
+    runwayMonths: mercury.cashFlow.runway,
+    netCashFlow30d: mercury.cashFlow.netCashFlow,
+    inflows30d: mercury.cashFlow.inflows30d,
+    outflows30d: mercury.cashFlow.outflows30d,
+    burnRate: mercury.cashFlow.burnRate,
+  };
+}
+
 export function buildAnalyticsMetricsLayer(
   data: AnalyticsDashboardData,
 ): AnalyticsMetricsLayer {
@@ -132,6 +178,8 @@ export function buildAnalyticsMetricsLayer(
     kpis,
     finance: {
       summary: buildFinanceSummaryMetric(data, kpis),
+      stripe: buildFinanceStripeMetric(data),
+      mercury: buildFinanceMercuryMetric(data),
       budgetActuals: buildFinanceBudgetActualsMetric(
         data.financialPlanning?.activeBudget,
       ),
