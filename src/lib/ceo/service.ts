@@ -114,6 +114,15 @@ function latestSnapshotByProvider(snapshots: AnalyticsSnapshotSample[]): Map<str
   return latest;
 }
 
+function sourceKeysForDefinition(definition: CeoMetricDefinition): string[] {
+  return Array.from(
+    new Set([
+      ...definition.sourceDependencies,
+      ...(definition.optionalSourceDependencies ?? []),
+    ])
+  );
+}
+
 function decisionDashboardSourceSample(
   dashboard: Awaited<ReturnType<typeof computeDecisionDashboard>>
 ): CeoSourceSample {
@@ -384,6 +393,7 @@ function healthScoreForDefinition(input: MetricCalculatorInput): MetricCalculati
     asOf: input.asOf,
     freshnessSlaHours: input.definition.freshnessSlaHours,
     requiredSourceKeys: input.definition.sourceDependencies,
+    optionalSourceKeys: input.definition.optionalSourceDependencies,
     sources: input.sourceSamples,
   });
   const scoreByStatus: Record<CeoMetricTrustStatus, number> = {
@@ -570,7 +580,7 @@ export async function loadCeoMetricSnapshot(input: {
   persist?: boolean;
 }): Promise<CeoMetricSnapshotPayload> {
   const definitions = getDefaultCeoMetricDefinitions();
-  const sourceKeys = definitions.flatMap((definition) => definition.sourceDependencies);
+  const sourceKeys = definitions.flatMap(sourceKeysForDefinition);
   const [decisionDashboard, snapshots] = await Promise.all([
     computeDecisionDashboard(),
     loadLatestAnalyticsSnapshots({ userId: input.userId, sourceKeys }),
@@ -621,6 +631,7 @@ export async function loadCeoMetricSnapshot(input: {
       asOf,
       freshnessSlaHours: definition.freshnessSlaHours,
       requiredSourceKeys: definition.sourceDependencies,
+      optionalSourceKeys: definition.optionalSourceDependencies,
       sources: sourceSamples,
     });
     const value = valueForDefinition({

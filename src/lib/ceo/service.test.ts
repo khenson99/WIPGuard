@@ -41,6 +41,18 @@ function snapshot(providerKey: string, payload: unknown) {
   };
 }
 
+function errorSnapshot(providerKey: string, lastError = "Request timed out after 10000ms") {
+  return {
+    id: `${providerKey}-snapshot`,
+    providerKey,
+    status: AnalyticsSnapshotStatus.ERROR,
+    capturedAt: new Date("2026-05-01T11:30:00.000Z"),
+    expiresAt: new Date("2026-05-02T11:30:00.000Z"),
+    lastError,
+    payload: null,
+  };
+}
+
 describe("loadCeoMetricSnapshot", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -159,5 +171,74 @@ describe("loadCeoMetricSnapshot", () => {
       "investor-update",
       "custom-metric-snapshot",
     ]);
+  });
+
+  it("keeps social metrics board-ready when optional Reddit Ads is errored", async () => {
+    vi.mocked(prisma.analyticsSnapshot.findMany).mockResolvedValue([
+      snapshot("mercury", {
+        cashFlow: {
+          bankCash: 23456,
+          treasuryCash: 100000,
+          totalCash: 123456,
+          totalBalance: 123456,
+        },
+      }),
+      snapshot("stripe", {
+        revenue: { mrr: 20000, mrrChange: 1500 },
+        subscriptions: {
+          active: 1,
+          activeCustomerRefs: [{ customerId: "cus_linked", email: "finance@example.com", emailDomain: "example.com" }],
+        },
+      }),
+      snapshot("hubspot", {
+        repScoreboard: [{ totalPipeline: 90000 }, { totalPipeline: 10000 }],
+        subscriptionDeals: [
+          {
+            dealId: "hs-only",
+            dealName: "HubSpot Only",
+            stageLabel: "Subscriptions",
+            amount: 5000,
+            stripeCustomerId: null,
+            primaryContactEmail: "ops@example-subscription.com",
+          },
+        ],
+      }),
+      snapshot("pylon", { openIssues: 7 }),
+      snapshot("googleAnalytics", { sessions30d: 5432 }),
+      snapshot("webflow", { site: "connected" }),
+      snapshot("googleAds", { totalSpend30d: 400 }),
+      snapshot("metaAds", { totalSpend30d: 700 }),
+      errorSnapshot("redditAds"),
+      snapshot("googleWorkspace", { enabledRules: 4 }),
+      snapshot("slack", { enabledRules: 4 }),
+    ] as never);
+
+    const payload = await loadCeoMetricSnapshot({
+      userId: "user-1",
+      organizationId: "org-1",
+      persist: false,
+    });
+
+    const metricByKey = new Map(payload.metrics.map((metric) => [metric.definition.key, metric]));
+    const paidSpend = metricByKey.get("social.paid_spend");
+    const socialHealth = metricByKey.get("domain.social-media.health");
+    const firstFindManyCall = vi.mocked(prisma.analyticsSnapshot.findMany).mock.calls[0]?.[0] as
+      | { where?: { providerKey?: { in?: string[] } } }
+      | undefined;
+    const requestedSources = firstFindManyCall?.where?.providerKey?.in;
+
+    expect(requestedSources).toContain("redditAds");
+    expect(paidSpend?.value).toBe(1100);
+    expect(paidSpend?.trust.status).toBe("fresh");
+    expect(paidSpend?.trust.warnings.join(" ")).toContain("Optional source redditAds errored");
+    expect(paidSpend?.lineage.map((lineage) => lineage.sourceKey)).toEqual([
+      "googleAds",
+      "metaAds",
+      "redditAds",
+    ]);
+    expect(socialHealth?.value).toBe(100);
+    expect(socialHealth?.trust.status).toBe("fresh");
+    expect(socialHealth?.trust.warnings.join(" ")).toContain("Optional source redditAds errored");
+    expect(payload.readiness.status).toBe("board_ready");
   });
 });
