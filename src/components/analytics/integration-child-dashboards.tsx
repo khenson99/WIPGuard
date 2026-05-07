@@ -726,14 +726,18 @@ export function AdsCodaKanbanDashboard({ data }: IntegrationChildDashboardProps)
 
 export function FinanceMercuryDashboard({ data }: IntegrationChildDashboardProps) {
   const mercury = data?.mercury;
+  const mercuryMetrics = data?.metrics?.finance.mercury ?? null;
   const reasons = providerErrors(data, ["mercury"]);
   if (!mercury) {
     return <EmptyProviderState title="Mercury data is unavailable" description="Connect Mercury to inspect cash position and runway." reasons={reasons} />;
   }
-  const bankCash = mercury.cashFlow.bankCash ?? mercury.accounts
+  if (!mercuryMetrics) {
+    return <EmptyProviderState title="Mercury metrics are unavailable" description="The canonical finance metrics layer was not included in this analytics payload." reasons={reasons} />;
+  }
+  const bankCash = mercuryMetrics.bankCash ?? mercury.accounts
     .filter((account) => account.type.toLowerCase() !== "treasury")
     .reduce((sum, account) => sum + account.balance, 0);
-  const treasuryCash = mercury.cashFlow.treasuryCash ?? mercury.accounts
+  const treasuryCash = mercuryMetrics.treasuryCash ?? mercury.accounts
     .filter((account) => account.type.toLowerCase() === "treasury")
     .reduce((sum, account) => sum + account.balance, 0);
 
@@ -741,14 +745,14 @@ export function FinanceMercuryDashboard({ data }: IntegrationChildDashboardProps
     <DashboardShell title="Mercury" subtitle="Cash position, burn profile, and account-level liquidity.">
       <MetricGrid
         metrics={[
-          { label: "Total Balance", value: fmtCurrency(mercury.cashFlow.totalBalance) },
+          { label: "Total Balance", value: fmtCurrency(mercuryMetrics.totalBalance) },
           { label: "Bank Cash", value: fmtCurrency(bankCash) },
           { label: "Treasury Cash", value: fmtCurrency(treasuryCash) },
-          { label: "Inflows (30d)", value: fmtCurrency(mercury.cashFlow.inflows30d) },
-          { label: "Outflows (30d)", value: fmtCurrency(mercury.cashFlow.outflows30d) },
-          { label: "Net Cash Flow", value: fmtCurrency(mercury.cashFlow.netCashFlow) },
-          { label: "Runway", value: `${mercury.cashFlow.runway.toFixed(1)} mo` },
-          { label: "Burn Rate", value: fmtCurrency(mercury.cashFlow.burnRate) },
+          { label: "Inflows (30d)", value: fmtCurrency(mercuryMetrics.inflows30d) },
+          { label: "Outflows (30d)", value: fmtCurrency(mercuryMetrics.outflows30d) },
+          { label: "Net Cash Flow", value: fmtCurrency(mercuryMetrics.netCashFlow30d) },
+          { label: "Runway", value: `${mercuryMetrics.runwayMonths.toFixed(1)} mo` },
+          { label: "Burn Rate", value: fmtCurrency(mercuryMetrics.burnRate) },
         ]}
       />
 
@@ -816,23 +820,27 @@ export function SalesHubSpotDashboard({ data }: IntegrationChildDashboardProps) 
 
 export function SalesStripeDashboard({ data }: IntegrationChildDashboardProps) {
   const stripe = data?.stripe;
+  const stripeMetrics = data?.metrics?.finance.stripe ?? null;
   const reasons = providerErrors(data, ["stripe"]);
   if (!stripe) {
     return <EmptyProviderState title="Stripe sales data is unavailable" description="Connect Stripe to monitor subscription-led sales outcomes." reasons={reasons} />;
+  }
+  if (!stripeMetrics) {
+    return <EmptyProviderState title="Stripe sales metrics are unavailable" description="The canonical finance metrics layer was not included in this analytics payload." reasons={reasons} />;
   }
 
   return (
     <DashboardShell title="Stripe Sales Lens" subtitle="Commercial outcomes from subscription motion and payment behavior.">
       <MetricGrid
         metrics={[
-          { label: "MRR", value: fmtCurrency(stripe.revenue.mrr), subtitle: `${stripe.revenue.mrrChange.toFixed(1)}% MoM` },
-          { label: "Active Subs", value: fmtInt(stripe.subscriptions.active) },
-          { label: "Trialing", value: fmtInt(stripe.subscriptions.trialing) },
-          { label: "Past Due", value: fmtInt(stripe.subscriptions.pastDue) },
-          { label: "Churn Rate", value: fmtRatio(stripe.subscriptions.churnRate) },
-          { label: "Canceled", value: fmtInt(stripe.subscriptions.canceled) },
-          { label: "Payment Success", value: fmtRatio(stripe.payments.successRate) },
-          { label: "Failed Payments", value: fmtInt(stripe.payments.failed) },
+          { label: "MRR", value: fmtCurrency(stripeMetrics.mrr), subtitle: `${stripeMetrics.mrrChange.toFixed(1)}% MoM` },
+          { label: "Active Subs", value: fmtInt(stripeMetrics.activeSubscriptions) },
+          { label: "Trialing", value: fmtInt(stripeMetrics.trialingSubscriptions) },
+          { label: "Past Due", value: fmtInt(stripeMetrics.pastDueSubscriptions) },
+          { label: "Churn Rate", value: fmtPct(stripeMetrics.churnRatePct) },
+          { label: "Canceled", value: fmtInt(stripeMetrics.canceledSubscriptions) },
+          { label: "Payment Success", value: fmtPct(stripeMetrics.paymentSuccessPct) },
+          { label: "Failed Payments", value: fmtInt(stripeMetrics.failedPayments) },
         ]}
       />
 
