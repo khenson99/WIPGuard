@@ -23,7 +23,7 @@ import {
   storeAnalyticsSnapshotFailure,
 } from "@/lib/analytics/snapshots";
 import { buildAnalyticsRouteMeta } from "@/lib/analytics/route-meta";
-import { buildAnalyticsMetricsLayer, computeAnalyticsKpis } from "@/lib/analytics/kpis";
+import { buildAnalyticsMetricsLayer } from "@/lib/analytics/kpis";
 import { computeKpiDelta } from "@/lib/analytics/kpi-deltas";
 import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
 import {
@@ -1627,14 +1627,14 @@ export async function GET(request: Request) {
       const currentFinance = result.stripe ? metrics.kpis.finance : null;
 
       const prevTraffic = prevGa.payload
-        ? computeAnalyticsKpis(
+        ? buildAnalyticsMetricsLayer(
             { googleAnalytics: prevGa.payload } as unknown as AnalyticsDashboardData,
-          ).traffic
+          ).kpis.traffic
         : null;
       const prevFinance = prevStripe.payload
-        ? computeAnalyticsKpis(
+        ? buildAnalyticsMetricsLayer(
             { stripe: prevStripe.payload } as unknown as AnalyticsDashboardData,
-          ).finance
+          ).kpis.finance
         : null;
 
       result.deltas = {

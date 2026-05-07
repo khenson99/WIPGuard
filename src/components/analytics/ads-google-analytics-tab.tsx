@@ -5,7 +5,6 @@ import {
   Clock, Activity,
 } from "lucide-react";
 import type { AnalyticsDashboardData, GATopPage } from "@/lib/analytics/types";
-import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
 import { RingStat } from "@/components/analytics/bar-display";
 import { StatCard } from "@/components/analytics/stat-card";
@@ -63,7 +62,18 @@ export function AdsGoogleAnalyticsTab({ data }: AdsGoogleAnalyticsTabProps) {
     trafficByChannel, topPages, dailyTrend,
   } = ga;
 
-  const kpis = data.metrics?.kpis ?? data.kpis ?? computeAnalyticsKpis(data);
+  const kpis = data.metrics?.kpis ?? data.kpis;
+  if (!kpis) {
+    return (
+      <FinanceDataEmptyState
+        title="Google Analytics metrics are unavailable"
+        message="We could not load the canonical traffic metrics for this range."
+        reasons={reasons}
+        reconnectHref="/settings?tab=integrations"
+      />
+    );
+  }
+
   const bounceRatePct = kpis.traffic.bounceRatePct ?? 0;
   const pagesPerSession = kpis.traffic.pagesPerSession ?? (sessions30d > 0 ? pageviews30d / sessions30d : 0);
   const engagementScore = kpis.traffic.engagementScore ?? Math.round(100 - bounceRatePct);
