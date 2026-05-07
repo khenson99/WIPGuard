@@ -40,9 +40,9 @@ export function StripeDashboard({ data }: StripeDashboardProps) {
     );
   }
 
-  const { revenue, subscriptions, payments, revenueTrend } = stripe;
-  const kpis = data.metrics?.kpis ?? data.kpis;
-  if (!kpis) {
+  const { subscriptions, revenueTrend } = stripe;
+  const stripeMetrics = data.metrics?.finance.stripe ?? null;
+  if (!stripeMetrics) {
     return (
       <div className="flex items-center justify-center py-16">
         <p className="text-muted-foreground">No Stripe metrics available</p>
@@ -50,18 +50,19 @@ export function StripeDashboard({ data }: StripeDashboardProps) {
     );
   }
 
-  const mrr = kpis.finance.mrr ?? revenue.mrr;
-  const paymentSuccessPct = kpis.finance.paymentSuccessPct ?? payments.successRate;
-
   /* ── Subscription health donut ─── */
   const subSegments = [
-    { name: "Active", value: subscriptions.active, color: CHART_PALETTE[2] },
-    { name: "Past Due", value: subscriptions.pastDue, color: CHART_PALETTE[4] },
-    { name: "Trialing", value: subscriptions.trialing, color: CHART_PALETTE[3] },
-    { name: "Canceled", value: subscriptions.canceled, color: CHART_PALETTE[5] },
+    { name: "Active", value: stripeMetrics.activeSubscriptions, color: CHART_PALETTE[2] },
+    { name: "Past Due", value: stripeMetrics.pastDueSubscriptions, color: CHART_PALETTE[4] },
+    { name: "Trialing", value: stripeMetrics.trialingSubscriptions, color: CHART_PALETTE[3] },
+    { name: "Canceled", value: stripeMetrics.canceledSubscriptions, color: CHART_PALETTE[5] },
   ].filter((s) => s.value > 0);
 
-  const totalSubs = subscriptions.active + subscriptions.pastDue + subscriptions.trialing + subscriptions.canceled;
+  const totalSubs =
+    stripeMetrics.activeSubscriptions +
+    stripeMetrics.pastDueSubscriptions +
+    stripeMetrics.trialingSubscriptions +
+    stripeMetrics.canceledSubscriptions;
 
   return (
     <SubDashboardTemplate
@@ -71,28 +72,28 @@ export function StripeDashboard({ data }: StripeDashboardProps) {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             label="MRR"
-            value={fmt$(mrr)}
-            change={revenue.mrrChange !== 0 ? fmt$(revenue.mrrChange) : undefined}
-            changeType={revenue.mrrChange > 0 ? "positive" : revenue.mrrChange < 0 ? "negative" : "neutral"}
+            value={fmt$(stripeMetrics.mrr)}
+            change={stripeMetrics.mrrChange !== 0 ? fmt$(stripeMetrics.mrrChange) : undefined}
+            changeType={stripeMetrics.mrrChange > 0 ? "positive" : stripeMetrics.mrrChange < 0 ? "negative" : "neutral"}
             trend={{
               data: revenueTrend.map((t) => t.revenue),
             }}
           />
           <StatCard
             label="Active Subscriptions"
-            value={subscriptions.active.toLocaleString()}
-            subtitle={subscriptions.pastDue > 0 ? `${subscriptions.pastDue} past due` : undefined}
+            value={stripeMetrics.activeSubscriptions.toLocaleString()}
+            subtitle={stripeMetrics.pastDueSubscriptions > 0 ? `${stripeMetrics.pastDueSubscriptions} past due` : undefined}
           />
           <StatCard
             label="Payment Success"
-            value={fmtPct(paymentSuccessPct)}
-            changeType={paymentSuccessPct >= 95 ? "positive" : "negative"}
-            subtitle={`${payments.succeeded.toLocaleString()} succeeded / ${payments.failed.toLocaleString()} failed`}
+            value={fmtPct(stripeMetrics.paymentSuccessPct)}
+            changeType={stripeMetrics.paymentSuccessPct >= 95 ? "positive" : "negative"}
+            subtitle={`${stripeMetrics.succeededPayments.toLocaleString()} succeeded / ${stripeMetrics.failedPayments.toLocaleString()} failed`}
           />
           <StatCard
             label="Revenue Growth"
-            value={fmtPct(revenue.revenueGrowth)}
-            changeType={revenue.revenueGrowth > 0 ? "positive" : revenue.revenueGrowth < 0 ? "negative" : "neutral"}
+            value={fmtPct(stripeMetrics.revenueGrowth)}
+            changeType={stripeMetrics.revenueGrowth > 0 ? "positive" : stripeMetrics.revenueGrowth < 0 ? "negative" : "neutral"}
           />
         </div>
       }
