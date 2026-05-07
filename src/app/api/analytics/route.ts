@@ -23,7 +23,7 @@ import {
   storeAnalyticsSnapshotFailure,
 } from "@/lib/analytics/snapshots";
 import { buildAnalyticsRouteMeta } from "@/lib/analytics/route-meta";
-import { buildAnalyticsMetricsLayer, computeAnalyticsKpis } from "@/lib/analytics/kpis";
+import { buildAnalyticsMetricsLayer } from "@/lib/analytics/kpis";
 import { computeKpiDelta } from "@/lib/analytics/kpi-deltas";
 import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
 import {
@@ -476,6 +476,7 @@ async function computeProductSuccessData(from: Date, to: Date): Promise<ProductS
 
 function buildRecommendations(data: AnalyticsDashboardData): AnalyticsRecommendation[] {
   const recommendations: AnalyticsRecommendation[] = [];
+  const financeSummary = data.metrics?.finance.summary ?? null;
 
   if ((data.googleAnalytics?.bounceRate ?? 0) > 0.55) {
     recommendations.push({
@@ -499,13 +500,13 @@ function buildRecommendations(data: AnalyticsDashboardData): AnalyticsRecommenda
     });
   }
 
-  if ((data.mercury?.cashFlow?.runway ?? 0) > 0 && (data.mercury?.cashFlow?.runway ?? 0) < 4) {
+  if ((financeSummary?.runwayMonths ?? 0) > 0 && (financeSummary?.runwayMonths ?? 0) < 4) {
     recommendations.push({
       id: "finance-runway",
       section: "finance",
       severity: "critical",
       title: "Cash runway is below 4 months",
-      insight: `Estimated runway is ${(data.mercury?.cashFlow?.runway ?? 0).toFixed(1)} months.`,
+      insight: `Estimated runway is ${(financeSummary?.runwayMonths ?? 0).toFixed(1)} months.`,
       suggestedAction: "Cut non-performing spend and prioritize collections/revenue acceleration this month.",
     });
   }
@@ -1563,9 +1564,6 @@ export async function GET(request: Request) {
       result.visitorFunnel = null;
     }
   }
-  if (domains.has("recommendations")) {
-    result.recommendations = buildRecommendations(result);
-  }
   if (domains.has("distilledInsights")) {
     const { buildDistilledInsights } = await loadInsightBuilders();
     result.distilledInsights = buildDistilledInsights(result);
@@ -1594,6 +1592,10 @@ export async function GET(request: Request) {
   const metrics = buildAnalyticsMetricsLayer(result);
   result.metrics = metrics;
   result.kpis = metrics.kpis;
+
+  if (domains.has("recommendations")) {
+    result.recommendations = buildRecommendations(result);
+  }
 
   if (section === "overview") {
     try {
@@ -1627,14 +1629,14 @@ export async function GET(request: Request) {
       const currentFinance = result.stripe ? metrics.kpis.finance : null;
 
       const prevTraffic = prevGa.payload
-        ? computeAnalyticsKpis(
+        ? buildAnalyticsMetricsLayer(
             { googleAnalytics: prevGa.payload } as unknown as AnalyticsDashboardData,
-          ).traffic
+          ).kpis.traffic
         : null;
       const prevFinance = prevStripe.payload
-        ? computeAnalyticsKpis(
+        ? buildAnalyticsMetricsLayer(
             { stripe: prevStripe.payload } as unknown as AnalyticsDashboardData,
-          ).finance
+          ).kpis.finance
         : null;
 
       result.deltas = {

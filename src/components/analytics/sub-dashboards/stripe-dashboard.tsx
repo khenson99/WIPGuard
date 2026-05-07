@@ -1,7 +1,6 @@
 "use client";
 
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
-import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
 import { useConnectionStatus } from "@/hooks/use-connection-status";
 import { SubDashboardTemplate } from "../sub-dashboard-template";
 import { StatCard } from "../stat-card";
@@ -42,7 +41,15 @@ export function StripeDashboard({ data }: StripeDashboardProps) {
   }
 
   const { revenue, subscriptions, payments, revenueTrend } = stripe;
-  const kpis = data.metrics?.kpis ?? data.kpis ?? computeAnalyticsKpis(data);
+  const kpis = data.metrics?.kpis ?? data.kpis;
+  if (!kpis) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <p className="text-muted-foreground">No Stripe metrics available</p>
+      </div>
+    );
+  }
+
   const mrr = kpis.finance.mrr ?? revenue.mrr;
   const paymentSuccessPct = kpis.finance.paymentSuccessPct ?? payments.successRate;
 

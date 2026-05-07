@@ -77,6 +77,8 @@ describe("analytics monthly financial history refresh", () => {
     vi.mocked(fetchStripeData).mockResolvedValue({ provider: "stripe" } as never);
     vi.mocked(fetchMercuryData).mockResolvedValue({ provider: "mercury" } as never);
     vi.mocked(prisma.analyticsSnapshot.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.task.count).mockResolvedValue(0);
+    vi.mocked(prisma.statusHistory.findMany).mockResolvedValue([]);
     vi.mocked(storeAnalyticsSnapshot).mockResolvedValue(undefined);
   });
 
@@ -89,6 +91,7 @@ describe("analytics monthly financial history refresh", () => {
     await runAnalyticsRefresh({
       userIds: ["user-1"],
       rangePresets: [],
+      includeRollingRanges: false,
       includeMonthlyFinancialHistory: true,
     });
 
@@ -160,6 +163,7 @@ describe("analytics monthly financial history refresh", () => {
     await runAnalyticsRefresh({
       userIds: ["user-1"],
       rangePresets: [],
+      includeRollingRanges: false,
       includeMonthlyFinancialHistory: true,
     });
 
@@ -173,5 +177,23 @@ describe("analytics monthly financial history refresh", () => {
       fromDate: new Date("2025-03-01T00:00:00.000Z"),
       toDate: new Date("2025-03-31T23:59:59.999Z"),
     });
+  });
+
+  it("keeps empty rangePresets compatible with the default rolling refresh", async () => {
+    vi.mocked(getCredentials).mockResolvedValue({} as never);
+
+    await runAnalyticsRefresh({
+      userIds: ["user-1"],
+      rangePresets: [],
+    });
+
+    expect(storeAnalyticsSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-1",
+        providerKey: "product",
+        contextKey: "default",
+        rangePreset: "30d",
+      }),
+    );
   });
 });

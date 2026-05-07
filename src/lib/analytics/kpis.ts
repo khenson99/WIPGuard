@@ -4,6 +4,7 @@ import type {
   BudgetData,
   FinanceBudgetActualMetric,
   FinanceBudgetActualsMetric,
+  FinanceSummaryMetric,
 } from "./types";
 import { normalizePercentValue } from "./percentage-utils";
 import { buildSubscriptionMrrBreakdown } from "./subscription-mrr";
@@ -12,6 +13,7 @@ export type {
   AnalyticsMetricsLayer,
   FinanceBudgetActualMetric,
   FinanceBudgetActualsMetric,
+  FinanceSummaryMetric,
 } from "./types";
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -86,6 +88,41 @@ function buildFinanceBudgetActualsMetric(
   };
 }
 
+function buildFinanceSummaryMetric(
+  data: AnalyticsDashboardData,
+  kpis: AnalyticsMetricsLayer["kpis"],
+): FinanceSummaryMetric {
+  const stripe = data.stripe;
+  const mercury = data.mercury;
+  const subscriptionOverview = data.financialPlanning?.subscriptionOverview ?? null;
+  const stripeActiveSubscriptions = stripe?.subscriptions?.active ?? 0;
+
+  return {
+    mrr: kpis.finance.mrr,
+    mrrChange: stripe?.revenue?.mrrChange ?? 0,
+    totalRevenue30d: stripe?.revenue?.totalRevenue30d ?? 0,
+    revenueGrowth: stripe?.revenue?.revenueGrowth ?? 0,
+    activeSubscriptions:
+      subscriptionOverview?.mergedActiveSubscriptions ?? stripeActiveSubscriptions,
+    stripeActiveSubscriptions:
+      subscriptionOverview?.stripeActiveSubscriptions ?? stripeActiveSubscriptions,
+    hubspotActiveSubscriptions:
+      subscriptionOverview?.hubspotActiveSubscriptions ?? 0,
+    pastDueSubscriptions: stripe?.subscriptions?.pastDue ?? 0,
+    trialingSubscriptions: stripe?.subscriptions?.trialing ?? 0,
+    paymentSuccessPct: kpis.finance.paymentSuccessPct,
+    churnRatePct: normalizePercentValue(stripe?.subscriptions?.churnRate ?? 0),
+    cashBalance: mercury?.cashFlow?.totalBalance ?? 0,
+    bankCash: mercury?.cashFlow?.bankCash ?? null,
+    treasuryCash: mercury?.cashFlow?.treasuryCash ?? null,
+    runwayMonths: mercury?.cashFlow?.runway ?? 0,
+    netCashFlow30d: mercury?.cashFlow?.netCashFlow ?? 0,
+    inflows30d: mercury?.cashFlow?.inflows30d ?? 0,
+    outflows30d: mercury?.cashFlow?.outflows30d ?? 0,
+    burnRate: mercury?.cashFlow?.burnRate ?? 0,
+  };
+}
+
 export function buildAnalyticsMetricsLayer(
   data: AnalyticsDashboardData,
 ): AnalyticsMetricsLayer {
@@ -94,6 +131,7 @@ export function buildAnalyticsMetricsLayer(
   return {
     kpis,
     finance: {
+      summary: buildFinanceSummaryMetric(data, kpis),
       budgetActuals: buildFinanceBudgetActualsMetric(
         data.financialPlanning?.activeBudget,
       ),

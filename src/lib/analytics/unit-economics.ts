@@ -12,6 +12,7 @@ import type {
   HubSpotData,
   UnitEconomics,
 } from "@/lib/analytics/types";
+import { categorizeMercuryTransaction } from "@/lib/analytics/budget-variance";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -33,6 +34,36 @@ const MAX_LTV_MONTHS = 120;
 /** Round to two decimal places. */
 function r2(x: number): number {
   return Math.round(x * 100) / 100;
+}
+
+function spendFromTransactions(
+  mercury: MercuryData | null,
+): { cogs: number; marketing: number } | null {
+  if (!mercury?.transactions || mercury.transactions.length === 0) {
+    return null;
+  }
+
+  let cogs = 0;
+  let marketing = 0;
+
+  for (const tx of mercury.transactions) {
+    if (typeof tx.amount !== "number" || !Number.isFinite(tx.amount) || tx.amount >= 0) {
+      continue;
+    }
+
+    const category = categorizeMercuryTransaction(tx);
+    const amount = Math.abs(tx.amount);
+    if (category === "cogs") {
+      cogs += amount;
+    } else if (category === "marketing") {
+      marketing += amount;
+    }
+  }
+
+  return {
+    cogs,
+    marketing,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -104,7 +135,9 @@ export function computeUnitEconomics(
   // ---------------------------------------------------------------------------
 
   const revenue = stripe?.revenue.totalRevenue30d ?? 0;
-  const cogs = (mercury?.cashFlow.outflows30d ?? 0) * COGS_RATIO;
+  const categorizedSpend = spendFromTransactions(mercury);
+  const totalOutflows = mercury?.cashFlow.outflows30d ?? 0;
+  const cogs = categorizedSpend?.cogs ?? totalOutflows * COGS_RATIO;
   const grossMarginPct =
     revenue === 0 ? 0 : ((revenue - cogs) / revenue) * 100;
 
@@ -112,7 +145,8 @@ export function computeUnitEconomics(
   // 5. CAC — Customer Acquisition Cost
   // ---------------------------------------------------------------------------
 
-  const marketingSpend = (mercury?.cashFlow.outflows30d ?? 0) * MARKETING_SPEND_RATIO;
+  const marketingSpend =
+    categorizedSpend?.marketing ?? totalOutflows * MARKETING_SPEND_RATIO;
 
   let newCustomers = hubspot?.funnel.closedWon ?? 0;
   if (newCustomers <= 0 && stripe) {
