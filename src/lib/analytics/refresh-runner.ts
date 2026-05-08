@@ -14,6 +14,7 @@ import { fetchSemrushData } from "@/lib/analytics/fetchers-semrush";
 import { providerForSnapshotKey } from "@/lib/analytics/provider-health";
 import { snapshotExpiryFromNow, storeAnalyticsSnapshot, storeAnalyticsSnapshotFailure } from "@/lib/analytics/snapshots";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
+import { runWithContextAsync } from "@/lib/request-context";
 import {
   MONTHLY_HISTORY_CONTEXT_KEY,
   MONTHLY_HISTORY_RANGE_PRESET,
@@ -106,44 +107,71 @@ async function loadExistingMonthlyFinancialSnapshotKeys(input: {
   );
 }
 
-async function computeProductSnapshot(userId: string, fromDate: Date, toDate: Date) {
-  const [createdTasksInRange, completedTasksInRange, overdueOpenTasks, contributors] = await Promise.all([
-    prisma.task.count({ where: { createdAt: { gte: fromDate, lte: toDate } } }),
-    prisma.task.count({ where: { completedOn: { gte: fromDate, lte: toDate } } }),
-    prisma.task.count({
-      where: {
-        status: { not: "DONE" },
-        dueDate: { lt: toDate },
-      },
-    }),
-    prisma.statusHistory.findMany({
-      where: {
-        changedAt: { gte: fromDate, lte: toDate },
-        changedBy: { not: null },
-      },
-      distinct: ["changedBy"],
-      select: { changedBy: true },
-    }),
-  ]);
+async function resolveUserOrganizationId(userId: string): Promise<string | null> {
+  return (
+    (
+      await prisma.user.findUnique({
+        where: { id: userId },
+        select: { organizationId: true },
+      })
+    )?.organizationId ?? null
+  );
+}
 
-  const activeContributors = contributors.filter((entry) => Boolean(entry.changedBy)).length;
-  const backlogGrowth = createdTasksInRange - completedTasksInRange;
-  const throughputRate =
-    createdTasksInRange > 0 ? Math.round((completedTasksInRange / createdTasksInRange) * 10000) / 100 : null;
+async function computeProductSnapshot(input: {
+  userId: string;
+  organizationId: string | null;
+  fromDate: Date;
+  toDate: Date;
+}) {
+  const run = async () => {
+    const [createdTasksInRange, completedTasksInRange, overdueOpenTasks, contributors] = await Promise.all([
+      prisma.task.count({ where: { createdAt: { gte: input.fromDate, lte: input.toDate } } }),
+      prisma.task.count({ where: { completedOn: { gte: input.fromDate, lte: input.toDate } } }),
+      prisma.task.count({
+        where: {
+          status: { not: "DONE" },
+          dueDate: { lt: input.toDate },
+        },
+      }),
+      prisma.statusHistory.findMany({
+        where: {
+          changedAt: { gte: input.fromDate, lte: input.toDate },
+          changedBy: { not: null },
+        },
+        distinct: ["changedBy"],
+        select: { changedBy: true },
+      }),
+    ]);
 
-  return {
-    activeContributors,
-    createdTasksInRange,
-    completedTasksInRange,
-    overdueOpenTasks,
-    backlogGrowth,
-    throughputRate,
-    _meta: {
-      fetchedAt: new Date().toISOString(),
-      nextRefresh: snapshotExpiryFromNow(1).toISOString(),
-      source: "live" as const,
-    },
+    const activeContributors = contributors.filter((entry) => Boolean(entry.changedBy)).length;
+    const backlogGrowth = createdTasksInRange - completedTasksInRange;
+    const throughputRate =
+      createdTasksInRange > 0 ? Math.round((completedTasksInRange / createdTasksInRange) * 10000) / 100 : null;
+
+    return {
+      activeContributors,
+      createdTasksInRange,
+      completedTasksInRange,
+      overdueOpenTasks,
+      backlogGrowth,
+      throughputRate,
+      _meta: {
+        fetchedAt: new Date().toISOString(),
+        nextRefresh: snapshotExpiryFromNow(1).toISOString(),
+        source: "live" as const,
+      },
+    };
   };
+
+  if (!input.organizationId) {
+    return run();
+  }
+
+  return runWithContextAsync(
+    { organizationId: input.organizationId, userId: input.userId },
+    run,
+  );
 }
 
 interface ProviderRefreshOutcome {
@@ -186,6 +214,7 @@ async function refreshForUserAndRange(input: {
   const toDate = new Date(`${range.to}T23:59:59.999Z`);
 
   const creds = await getCredentials(input.userId);
+  const organizationId = await resolveUserOrganizationId(input.userId);
   const expiresAt = snapshotExpiryFromNow(1);
 
   const jobs: Array<{ providerKey: string; run: () => Promise<unknown> }> = [];
@@ -304,7 +333,16 @@ async function refreshForUserAndRange(input: {
     });
   }
 
-  jobs.push({ providerKey: "product", run: () => computeProductSnapshot(input.userId, fromDate, toDate) });
+  jobs.push({
+    providerKey: "product",
+    run: () =>
+      computeProductSnapshot({
+        userId: input.userId,
+        organizationId,
+        fromDate,
+        toDate,
+      }),
+  });
 
   jobs.push({
     providerKey: "googleWorkspace",
