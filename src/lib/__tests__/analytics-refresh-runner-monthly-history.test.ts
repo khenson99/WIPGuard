@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runAnalyticsRefresh } from "@/lib/analytics/refresh-runner";
 import { fetchMercuryData, fetchStripeData } from "@/lib/analytics/fetchers";
 import { getCredentials } from "@/lib/analytics/credentials";
+import { fetchIntegrationTelemetryData } from "@/lib/analytics/fetchers-integrations";
 import { storeAnalyticsSnapshot } from "@/lib/analytics/snapshots";
 import { prisma } from "@/lib/prisma";
+import { getRequestContext } from "@/lib/request-context";
 
 vi.mock("@/lib/analytics/credentials", () => ({
   getCredentials: vi.fn(),
@@ -57,6 +59,9 @@ vi.mock("@/lib/prisma", () => ({
     analyticsSnapshot: {
       findMany: vi.fn(),
     },
+    user: {
+      findUnique: vi.fn(),
+    },
     task: {
       count: vi.fn(),
     },
@@ -76,7 +81,9 @@ describe("analytics monthly financial history refresh", () => {
     } as never);
     vi.mocked(fetchStripeData).mockResolvedValue({ provider: "stripe" } as never);
     vi.mocked(fetchMercuryData).mockResolvedValue({ provider: "mercury" } as never);
+    vi.mocked(fetchIntegrationTelemetryData).mockResolvedValue({ provider: "telemetry" } as never);
     vi.mocked(prisma.analyticsSnapshot.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({ organizationId: "org-1" } as never);
     vi.mocked(prisma.task.count).mockResolvedValue(0);
     vi.mocked(prisma.statusHistory.findMany).mockResolvedValue([]);
     vi.mocked(storeAnalyticsSnapshot).mockResolvedValue(undefined);
@@ -193,6 +200,36 @@ describe("analytics monthly financial history refresh", () => {
         providerKey: "product",
         contextKey: "default",
         rangePreset: "30d",
+      }),
+    );
+  });
+
+  it("runs rolling product snapshots inside the user's organization context", async () => {
+    vi.mocked(getCredentials).mockResolvedValue({} as never);
+    vi.mocked(prisma.task.count).mockImplementation(async () => {
+      if (getRequestContext()?.organizationId !== "org-1") {
+        throw new Error("Missing tenant context");
+      }
+      return 0 as never;
+    });
+
+    const result = await runAnalyticsRefresh({
+      userIds: ["user-1"],
+      rangePresets: ["7d"],
+      includeMonthlyFinancialHistory: false,
+    });
+
+    expect(result.failureCount).toBe(0);
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: "user-1" },
+      select: { organizationId: true },
+    });
+    expect(storeAnalyticsSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-1",
+        providerKey: "product",
+        contextKey: "default",
+        rangePreset: "7d",
       }),
     );
   });
