@@ -57,6 +57,8 @@ export interface AnalyticsCredentials {
 
   // Meta (Facebook/Instagram)
   metaAccessToken: string | null;
+  metaAdsAccessToken: string | null;
+  metaPageAccessToken: string | null;
   metaAdAccountId: string | null;
   metaPageId: string | null;
   metaInstagramAccountId: string | null;
@@ -129,10 +131,10 @@ export function hasIntegrationCredential(
           credentials.googleAdsClientSecret
       );
     case IntegrationProvider.META_ADS:
-      return Boolean(credentials.metaAccessToken && credentials.metaAdAccountId);
+      return Boolean(credentials.metaAdsAccessToken && credentials.metaAdAccountId);
     case IntegrationProvider.META_PAGE:
       return Boolean(
-        credentials.metaAccessToken &&
+        credentials.metaPageAccessToken &&
           (credentials.metaPageId || credentials.metaInstagramAccountId)
       );
     case IntegrationProvider.PYLON:
@@ -791,10 +793,13 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     Boolean(envMetaAccessToken) &&
     (!metaAdsConnection || metaAdsConnection.status === IntegrationConnectionStatus.DISCONNECTED) &&
     (!metaPageConnection || metaPageConnection.status === IntegrationConnectionStatus.DISCONNECTED);
-  const metaAccessToken =
-    metaAccessTokenFromAds ??
+  const metaEnvAccessToken = usingMetaEnvFallback ? envMetaAccessToken : null;
+  const metaAdsAccessToken = metaAccessTokenFromAds ?? metaEnvAccessToken;
+  const metaPageAccessToken =
     metaAccessTokenFromPage ??
-    (usingMetaEnvFallback ? envMetaAccessToken : null);
+    metaAccessTokenFromAds ??
+    metaEnvAccessToken;
+  const metaAccessToken = metaAdsAccessToken ?? metaPageAccessToken;
 
 
   const metaAdsMetadata = metaAdsConnection?.metadata ?? null;
@@ -816,7 +821,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
 
   if (
     userId &&
-    metaAccessToken &&
+    (metaAdsAccessToken || metaPageAccessToken) &&
     (!metaAdAccountId || !metaPageId || !metaInstagramAccountId)
   ) {
     const key = `${userId}:meta`;
@@ -833,7 +838,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
         if (!metaAdAccountId) {
           try {
             result.adAccountId = await discoverMetaAdAccountId({
-              accessToken: metaAccessToken,
+              accessToken: metaAdsAccessToken ?? metaPageAccessToken!,
             });
           } catch (error) {
             console.warn("[analytics-credentials] Meta ad account discovery failed:", error);
@@ -843,7 +848,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
         if (!metaPageId || !metaInstagramAccountId) {
           try {
             const discovered = await discoverMetaPageAndInstagram({
-              accessToken: metaAccessToken,
+              accessToken: metaPageAccessToken ?? metaAdsAccessToken!,
             });
             result.pageId = discovered.pageId;
             result.instagramAccountId = discovered.instagramAccountId;
@@ -1023,6 +1028,8 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     googleAdsLoginCustomerId: envOrNull(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID),
 
     metaAccessToken,
+    metaAdsAccessToken,
+    metaPageAccessToken,
     metaAdAccountId,
     metaPageId,
     metaInstagramAccountId,

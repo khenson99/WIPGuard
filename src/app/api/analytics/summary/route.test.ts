@@ -57,6 +57,8 @@ describe("GET /api/analytics/summary", () => {
       googleAdsClientSecret: null,
       googleAdsLoginCustomerId: null,
       metaAccessToken: null,
+      metaAdsAccessToken: null,
+      metaPageAccessToken: null,
       metaAdAccountId: null,
       metaPageId: null,
       metaInstagramAccountId: null,

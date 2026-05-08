@@ -2,6 +2,7 @@ import {
   ANALYTICS_PRIMARY_SECTIONS,
   ANALYTICS_SUB_SECTIONS,
   type AnalyticsPrimarySectionId,
+  type AnalyticsSubSection,
 } from "@/lib/analytics/section-registry";
 
 export type CeoMetricDomain = AnalyticsPrimarySectionId | "ceo";
@@ -335,6 +336,19 @@ function optionalSourceKeyForPrimary(primaryId: AnalyticsPrimarySectionId): stri
   return [];
 }
 
+function sourceKeysForSubSection(section: AnalyticsSubSection): string[] {
+  const financeDerivedSources: Partial<Record<AnalyticsSubSection["dataDomain"], string[]>> = {
+    financePlanning: ["stripe", "mercury", "hubspot"],
+    financeForecast: ["stripe", "mercury"],
+    financePnl: ["stripe", "mercury"],
+    financeUnitEconomics: ["stripe", "mercury", "hubspot"],
+    financeMonthlyHistory: ["stripe", "mercury", "hubspot"],
+    financeAiBrief: ["stripe", "mercury", "hubspot"],
+  };
+
+  return financeDerivedSources[section.dataDomain] ?? [section.dataDomain];
+}
+
 export function getDefaultCeoMetricDefinitions(): CeoMetricDefinition[] {
   const domainDefinitions = ANALYTICS_PRIMARY_SECTIONS.map((section) => {
     const optionalSourceDependencies = optionalSourceKeyForPrimary(section.id);
@@ -361,7 +375,7 @@ export function getDefaultCeoMetricDefinitions(): CeoMetricDefinition[] {
     ownerAudience: "CEO" as const,
     unit: "score" as const,
     calculationVersion: CALCULATION_VERSION,
-    sourceDependencies: [section.dataDomain],
+    sourceDependencies: sourceKeysForSubSection(section),
     freshnessSlaHours: section.parentId === "process-analytics" ? 1 : 24,
     boardEligible: false,
     weeklyEligible: false,

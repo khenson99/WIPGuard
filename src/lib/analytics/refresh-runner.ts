@@ -250,16 +250,16 @@ async function refreshForUserAndRange(input: {
         ),
     });
   }
-  if (creds.metaAccessToken && creds.metaAdAccountId) {
+  if (creds.metaAdsAccessToken && creds.metaAdAccountId) {
     jobs.push({
       providerKey: "metaAds",
-      run: () => fetchMetaAdsData(creds.metaAccessToken!, creds.metaAdAccountId!, { fromDate, toDate }),
+      run: () => fetchMetaAdsData(creds.metaAdsAccessToken!, creds.metaAdAccountId!, { fromDate, toDate }),
     });
   }
-  if (creds.metaAccessToken && creds.metaPageId) {
+  if (creds.metaPageAccessToken && creds.metaPageId) {
     jobs.push({
       providerKey: "metaPage",
-      run: () => fetchMetaPageData(creds.metaAccessToken!, creds.metaPageId!, { fromDate, toDate }),
+      run: () => fetchMetaPageData(creds.metaPageAccessToken!, creds.metaPageId!, { fromDate, toDate }),
     });
   }
   if (creds.redditClientId && creds.redditClientSecret && creds.redditRefreshToken && creds.redditAdAccountId) {

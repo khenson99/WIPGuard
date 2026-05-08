@@ -241,4 +241,55 @@ describe("loadCeoMetricSnapshot", () => {
     expect(socialHealth?.trust.warnings.join(" ")).toContain("Optional source redditAds errored");
     expect(payload.readiness.status).toBe("board_ready");
   });
+
+  it("derives finance forecast health from Stripe and Mercury snapshots", async () => {
+    vi.mocked(prisma.analyticsSnapshot.findMany).mockResolvedValue([
+      snapshot("mercury", {
+        cashFlow: {
+          bankCash: 23456,
+          treasuryCash: 100000,
+          totalCash: 123456,
+          totalBalance: 123456,
+        },
+      }),
+      snapshot("stripe", {
+        revenue: { mrr: 20000, mrrChange: 1500 },
+        subscriptions: {
+          active: 1,
+          activeCustomerRefs: [{ customerId: "cus_linked", email: "finance@example.com", emailDomain: "example.com" }],
+        },
+      }),
+      snapshot("hubspot", {
+        repScoreboard: [{ totalPipeline: 90000 }, { totalPipeline: 10000 }],
+        subscriptionDeals: [],
+      }),
+      snapshot("pylon", { openIssues: 7 }),
+      snapshot("googleAnalytics", { sessions30d: 5432 }),
+      snapshot("webflow", { site: "connected" }),
+      snapshot("googleAds", { totalSpend30d: 400 }),
+      snapshot("metaAds", { totalSpend30d: 700 }),
+      snapshot("googleWorkspace", { enabledRules: 4 }),
+      snapshot("slack", { enabledRules: 4 }),
+    ] as never);
+
+    const payload = await loadCeoMetricSnapshot({
+      userId: "user-1",
+      organizationId: "org-1",
+      persist: false,
+    });
+
+    const firstFindManyCall = vi.mocked(prisma.analyticsSnapshot.findMany).mock.calls[0]?.[0] as
+      | { where?: { providerKey?: { in?: string[] } } }
+      | undefined;
+    const requestedSources = firstFindManyCall?.where?.providerKey?.in ?? [];
+    const metricByKey = new Map(payload.metrics.map((metric) => [metric.definition.key, metric]));
+    const forecastHealth = metricByKey.get("source.finance-forecast.health");
+
+    expect(requestedSources).toContain("stripe");
+    expect(requestedSources).toContain("mercury");
+    expect(requestedSources).not.toContain("financeForecast");
+    expect(forecastHealth?.trust.status).toBe("fresh");
+    expect(forecastHealth?.lineage.map((lineage) => lineage.sourceKey)).toEqual(["stripe", "mercury"]);
+    expect(forecastHealth?.value).toBe(100);
+  });
 });

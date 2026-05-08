@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   getVisitorFunnelPrisma,
@@ -53,5 +55,20 @@ describe("getVisitorFunnelPrisma", () => {
         },
       })
     ).toBeNull();
+  });
+});
+
+describe("visitor funnel Prisma schema", () => {
+  it("declares the models required by the runtime visitor funnel delegates", () => {
+    const schema = readFileSync(join(process.cwd(), "prisma/schema.prisma"), "utf8");
+
+    expect(schema).toContain("model FunnelVisitor");
+    expect(schema).toContain("model FunnelEvent");
+    expect(schema).toContain("model FunnelIdentityLink");
+    expect(schema).toContain("model FunnelEnrichmentSignal");
+    expect(schema).toContain("enum FunnelEventType");
+    expect(schema).toContain("enum FunnelIdentityType");
+    expect(schema).toContain("enum FunnelLinkProvenance");
+    expect(schema).toContain("enum EnrichmentProvider");
   });
 });

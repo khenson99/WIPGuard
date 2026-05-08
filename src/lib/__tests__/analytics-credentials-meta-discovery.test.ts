@@ -20,6 +20,10 @@ const {
   mockDiscoverMetaPageAndInstagram: vi.fn(),
 }));
 
+const { mockGetValidIntegrationAccessToken } = vi.hoisted(() => ({
+  mockGetValidIntegrationAccessToken: vi.fn(),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     integrationConnection: {
@@ -34,6 +38,10 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/lib/integrations/meta-auth", () => ({
   discoverMetaAdAccountId: mockDiscoverMetaAdAccountId,
   discoverMetaPageAndInstagram: mockDiscoverMetaPageAndInstagram,
+}));
+
+vi.mock("@/lib/integrations/token-refresh", () => ({
+  getValidIntegrationAccessToken: mockGetValidIntegrationAccessToken,
 }));
 
 describe("analytics credentials meta discovery gating", () => {
@@ -152,5 +160,55 @@ describe("analytics credentials meta discovery gating", () => {
       })
     );
   });
-});
 
+  it("keeps Meta Page credentials separate from Meta Ads credentials", async () => {
+    mockIntegrationConnectionFindMany.mockResolvedValueOnce([
+      {
+        userId: "user_1",
+        provider: IntegrationProvider.META_ADS,
+        status: IntegrationConnectionStatus.CONNECTED,
+        accessToken: "plainv1.ads",
+        refreshToken: null,
+        tokenType: "Bearer",
+        expiresAt: null,
+        scopes: [],
+        metadata: {
+          adAccountId: "act_123",
+        },
+        connectedAt: new Date("2026-02-20T00:00:00.000Z"),
+        lastSyncedAt: null,
+        lastError: null,
+      },
+      {
+        userId: "user_1",
+        provider: IntegrationProvider.META_PAGE,
+        status: IntegrationConnectionStatus.CONNECTED,
+        accessToken: "plainv1.page",
+        refreshToken: null,
+        tokenType: "Bearer",
+        expiresAt: null,
+        scopes: [],
+        metadata: {
+          pageId: "page_123",
+          instagramAccountId: "ig_123",
+        },
+        connectedAt: new Date("2026-02-20T00:00:00.000Z"),
+        lastSyncedAt: null,
+        lastError: null,
+      },
+    ]);
+    mockGetValidIntegrationAccessToken.mockImplementation(
+      async ({ provider }: { provider: IntegrationProvider }) =>
+        provider === IntegrationProvider.META_ADS ? "ads-token" : "page-token"
+    );
+
+    const { getCredentials } = await import("@/lib/analytics/credentials");
+    const creds = await getCredentials("user_1");
+
+    expect(creds.metaAdsAccessToken).toBe("ads-token");
+    expect(creds.metaPageAccessToken).toBe("page-token");
+    expect(creds.metaAccessToken).toBe("ads-token");
+    expect(creds.metaAdAccountId).toBe("act_123");
+    expect(creds.metaPageId).toBe("page_123");
+  });
+});

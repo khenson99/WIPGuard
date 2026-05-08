@@ -375,27 +375,27 @@ async function fetchProviderPayload(input: {
 
   if (input.ruleKey === META_ADS_METRICS_RULE_KEY) {
     const adAccountId = input.config.metaAdAccountId ?? creds.metaAdAccountId;
-    if (!creds.metaAccessToken || !adAccountId) {
+    if (!creds.metaAdsAccessToken || !adAccountId) {
       throw new Error("Missing Meta Ads credential");
     }
-    return fetchMetaAdsData(creds.metaAccessToken, adAccountId, { fromDate: input.fromDate, toDate: input.toDate });
+    return fetchMetaAdsData(creds.metaAdsAccessToken, adAccountId, { fromDate: input.fromDate, toDate: input.toDate });
   }
 
   if (input.ruleKey === META_PAGE_METRICS_RULE_KEY) {
     const pageId = input.config.metaPageId ?? creds.metaPageId;
-    if (!creds.metaAccessToken || !pageId) {
+    if (!creds.metaPageAccessToken || !pageId) {
       throw new Error("Missing Meta Page credential");
     }
-    return fetchMetaPageData(creds.metaAccessToken, pageId, { fromDate: input.fromDate, toDate: input.toDate });
+    return fetchMetaPageData(creds.metaPageAccessToken, pageId, { fromDate: input.fromDate, toDate: input.toDate });
   }
 
   if (input.ruleKey === META_INSTAGRAM_METRICS_RULE_KEY) {
     const instagramAccountId =
       input.config.metaInstagramAccountId ?? creds.metaInstagramAccountId;
-    if (!creds.metaAccessToken || !instagramAccountId) {
+    if (!creds.metaPageAccessToken || !instagramAccountId) {
       throw new Error("Missing Meta Instagram credential");
     }
-    return fetchMetaInstagramData(creds.metaAccessToken, instagramAccountId, {
+    return fetchMetaInstagramData(creds.metaPageAccessToken, instagramAccountId, {
       pageId: input.config.metaPageId ?? creds.metaPageId ?? undefined,
     });
   }
@@ -420,17 +420,11 @@ async function fetchProviderPayload(input: {
     );
   }
 
-  const params = new URLSearchParams();
-  params.set("range", input.config.rangePreset);
-  const range = parseAnalyticsTimeRange(params);
-  const fromDate = new Date(`${range.from}T00:00:00.000Z`);
-  const toDate = new Date(`${range.to}T23:59:59.999Z`);
-
   if (input.ruleKey === STRIPE_REVENUE_SYNC_RULE_KEY) {
     if (!creds.stripeKey) {
       throw new Error("Missing Stripe credential");
     }
-return fetchStripeData(creds.stripeKey, { fromDate: input.fromDate, toDate: input.toDate });
+    return fetchStripeData(creds.stripeKey, { fromDate: input.fromDate, toDate: input.toDate });
   }
 
   if (input.ruleKey === MERCURY_CASHFLOW_SYNC_RULE_KEY) {
