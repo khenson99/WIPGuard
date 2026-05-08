@@ -112,6 +112,19 @@ describe("CEO metric trust layer", () => {
     expect(socialDomainHealth?.optionalSourceDependencies).toEqual(["redditAds"]);
   });
 
+  it("maps CEO finance projection source health to real provider dependencies", () => {
+    const definitions = getDefaultCeoMetricDefinitions();
+    const forecastHealth = definitions.find((definition) => definition.key === "source.finance-forecast.health");
+    const planningHealth = definitions.find((definition) => definition.key === "source.finance-planning.health");
+    const pnlHealth = definitions.find((definition) => definition.key === "source.finance-pnl.health");
+    const unitEconomicsHealth = definitions.find((definition) => definition.key === "source.finance-unit-economics.health");
+
+    expect(forecastHealth?.sourceDependencies).toEqual(["stripe", "mercury"]);
+    expect(planningHealth?.sourceDependencies).toEqual(["stripe", "mercury", "hubspot"]);
+    expect(pnlHealth?.sourceDependencies).toEqual(["stripe", "mercury"]);
+    expect(unitEconomicsHealth?.sourceDependencies).toEqual(["stripe", "mercury", "hubspot"]);
+  });
+
   it("builds deterministic markdown, csv, and slide-ready JSON for a report pack", () => {
     const definitions = getDefaultCeoMetricDefinitions();
     const packs = buildDefaultCeoReportPacks(definitions);
