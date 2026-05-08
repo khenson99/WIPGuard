@@ -303,7 +303,21 @@ describe("buildDemoAnalyticsData", () => {
         makeDeal({ dealId: "o1", dealName: "Org Prospect", stageId: "p", stageLabel: "Prospect", amount: 0, source: "Organic", ownerId: null, updatedAt: "2026-02-01T00:00:00.000Z", createdAt: "2026-01-01T00:00:00.000Z" }),
         makeDeal({ dealId: "o2", dealName: "Org Demo", stageId: "d", stageLabel: "Demo Scheduled", amount: 3000, source: "Organic", ownerId: null, updatedAt: "2026-02-02T00:00:00.000Z", createdAt: "2026-01-05T00:00:00.000Z" }),
         makeDeal({ dealId: "o3", dealName: "Org Won", stageId: "w", stageLabel: "Closed Won", amount: 5000, source: "Organic", ownerId: null, updatedAt: "2026-02-05T00:00:00.000Z", createdAt: "2026-01-10T00:00:00.000Z" }),
-        makeDeal({ dealId: "o4", dealName: "Org Churn", stageId: "ch", stageLabel: "Churn", amount: 2000, source: "Organic", ownerId: null, updatedAt: "2026-02-10T00:00:00.000Z", createdAt: "2026-01-15T00:00:00.000Z" }),
+        makeDeal({
+          dealId: "o4",
+          dealName: "Org Churn",
+          stageId: "ch",
+          stageLabel: "Churn",
+          amount: 2000,
+          source: "Organic",
+          ownerId: null,
+          updatedAt: "2026-02-10T00:00:00.000Z",
+          createdAt: "2026-01-15T00:00:00.000Z",
+          stageHistory: [
+            { occurredAt: "2026-02-01T00:00:00.000Z", stageId: "w", stageLabel: "Closed Won" },
+            { occurredAt: "2026-02-10T00:00:00.000Z", stageId: "ch", stageLabel: "Churn" },
+          ],
+        }),
         // Paid channel: no-show, demo follow-up → lost
         makeDeal({ dealId: "p1", dealName: "Paid NoShow", stageId: "ns", stageLabel: "No-Show/Reschedule", amount: 1000, source: "Paid", ownerId: null, updatedAt: "2026-02-03T00:00:00.000Z", createdAt: "2026-01-20T00:00:00.000Z" }),
         makeDeal({ dealId: "p2", dealName: "Paid Follow", stageId: "fu", stageLabel: "Demo Follow-Up", amount: 4000, source: "Paid", ownerId: null, updatedAt: "2026-02-04T00:00:00.000Z", createdAt: "2026-01-22T00:00:00.000Z" }),
@@ -324,7 +338,7 @@ describe("buildDemoAnalyticsData", () => {
     expect(organic.demoCompleted).toBe(1); // Closed Won is in POST_DEMO_STAGES
     expect(organic.demoNoShow).toBe(0);
     expect(organic.closedWon).toBe(1);
-    expect(organic.onboarding).toBe(1); // Closed Won = onboarded (Subscription/Closed Won)
+    expect(organic.onboarding).toBe(2); // Closed Won plus the later-churned activated customer
     expect(organic.avgContractValue).toBe(5000);
     expect(organic.churned).toBe(1); // HubSpot "Churn" stage
     expect(organic.churnedPct).toBeGreaterThan(0);
@@ -340,6 +354,109 @@ describe("buildDemoAnalyticsData", () => {
     expect(paid.onboarding).toBe(0); // No Subscription/Closed Won deals
     expect(paid.churned).toBe(0); // Closed Lost is a sales loss, not customer churn
     expect(paid.notActivated).toBe(0);
+  });
+
+  it("uses meeting-backed demo counts for journey paths and excludes unactivated churn", () => {
+    const data = baseData();
+    data.hubspot = {
+      funnel: {
+        totalDeals: 4,
+        closedWon: 1,
+        closedLost: 0,
+        unlikely: 0,
+        churn: 2,
+        activeSubscriptions: 1,
+        noShows: 0,
+        demoScheduled: 0,
+        demoFollowUp: 0,
+        avgDealSize: 5000,
+        winRate: 100,
+        effectiveWinRate: 100,
+        noShowRate: 0,
+        stages: [],
+        dealsBySource: [],
+      },
+      contacts: { totalContacts: 4, recentContacts: 1, bySource: [] },
+      deals: [
+        makeDeal({
+          dealId: "social-lead",
+          dealName: "Social Lead",
+          stageId: "lead",
+          stageLabel: "Prospect",
+          amount: 0,
+          source: "SOCIAL_MEDIA",
+          ownerId: null,
+        }),
+        makeDeal({
+          dealId: "social-won",
+          dealName: "Social Won",
+          stageId: "won",
+          stageLabel: "Closed Won",
+          amount: 5000,
+          source: "SOCIAL_MEDIA",
+          ownerId: null,
+        }),
+        makeDeal({
+          dealId: "social-real-churn",
+          dealName: "Social Real Churn",
+          stageId: "churn",
+          stageLabel: "Churn",
+          amount: 5000,
+          source: "SOCIAL_MEDIA",
+          ownerId: null,
+          updatedAt: "2026-02-20T00:00:00.000Z",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          stageHistory: [
+            { occurredAt: "2026-01-10T00:00:00.000Z", stageId: "won", stageLabel: "Closed Won" },
+            { occurredAt: "2026-02-20T00:00:00.000Z", stageId: "churn", stageLabel: "Churn" },
+          ],
+        }),
+        makeDeal({
+          dealId: "social-false-churn",
+          dealName: "Social False Churn",
+          stageId: "churn",
+          stageLabel: "Churn",
+          amount: 0,
+          source: "SOCIAL_MEDIA",
+          ownerId: null,
+          updatedAt: "2026-02-21T00:00:00.000Z",
+          createdAt: "2026-01-02T00:00:00.000Z",
+        }),
+      ],
+      _meta: META,
+    };
+
+    const demo = buildDemoAnalyticsData(data, {
+      meetings: [
+        makeMeeting({
+          id: "social-demo-1",
+          title: "Social Lead Demo",
+          status: "COMPLETED",
+          startAt: "2026-02-01T18:00:00.000Z",
+          endAt: "2026-02-01T18:45:00.000Z",
+          hubspotDealId: "social-lead",
+          dealName: "Social Lead",
+        }),
+        makeMeeting({
+          id: "social-demo-2",
+          title: "Social Won Demo",
+          status: "NO_SHOW",
+          startAt: "2026-02-02T18:00:00.000Z",
+          endAt: "2026-02-02T18:45:00.000Z",
+          hubspotDealId: "social-won",
+          dealName: "Social Won",
+        }),
+      ],
+    });
+
+    const social = demo.journeyPaths.find((p) => p.source === "SOCIAL_MEDIA")!;
+    expect(social.demosBooked).toBe(2);
+    expect(social.demoCompleted).toBe(1);
+    expect(social.demoNoShow).toBe(1);
+    expect(social.onboarding).toBe(2);
+    expect(social.churned).toBe(1);
+    expect(social.churned).toBeLessThanOrEqual(social.onboarding);
+    expect(social.churned).toBeLessThanOrEqual(social.demosBooked);
   });
 
   it("includes Stripe churn events in churned count", () => {
