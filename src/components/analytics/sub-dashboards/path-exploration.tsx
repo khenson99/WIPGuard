@@ -65,7 +65,7 @@ function formatChannelName(ch: string): string {
   if (ch === "google-analytics") return "Organic Traffic";
   if (ch === "hubspot") return "Sales Pipeline";
   if (ch === "stripe") return "Billing/Trial";
-  if (ch === "coda") return "Kanban App";
+  if (ch === "coda") return "Coda Lead Magnet";
   if (ch === "pylon") return "Support (Pylon)";
   return ch;
 }
@@ -155,7 +155,7 @@ export function PathExploration({ paths, journeys }: PathExplorationProps) {
               <tr className="border-b border-border text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                 <th className="pb-3 pl-4">Top Conversion Paths</th>
                 <th className="pb-3 text-right">Accounts</th>
-                <th className="pb-3 text-right">Kanban Actions</th>
+                <th className="pb-3 text-right">Lead Magnet Actions</th>
                 <th className="pb-3 text-right">Free Trials</th>
                 <th className="pb-3 text-right">Demos</th>
                 <th className="pb-3 pr-4 text-right">Average Value</th>

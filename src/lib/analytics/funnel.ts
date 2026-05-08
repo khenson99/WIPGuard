@@ -142,12 +142,12 @@ function lifecycleStageDefinitions(): StageDefinition[] {
           detail: "Leads that signed up for a demo.",
         },
         {
-          source: "Free Kanban Cards",
+          source: "Coda Lead Magnet",
           domain: "coda",
           contribution:
             data.coda?.totalCards ?? data.codaKanban?.totalCards ?? 0,
           confidence: (data.coda ?? data.codaKanban) ? 0.85 : 0.35,
-          detail: "Users who created a free Kanban card.",
+          detail: "Users who submitted the Coda lead magnet.",
         },
         {
           source: "Free Trials",

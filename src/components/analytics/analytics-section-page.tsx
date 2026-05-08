@@ -26,8 +26,6 @@ const SalesPerformanceView = dynamic(() => import("@/components/analytics/sales-
 const GenericWorkspaceTab = dynamic(() => import("@/components/analytics/generic-workspace-tab").then((m) => m.GenericWorkspaceTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const GenericSlackTab = dynamic(() => import("@/components/analytics/generic-slack-tab").then((m) => m.GenericSlackTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const CsPylonTab = dynamic(() => import("@/components/analytics/cs-pylon-tab").then((m) => m.CsPylonTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
-const CsCodaTab = dynamic(() => import("@/components/analytics/cs-coda-tab").then((m) => m.CsCodaTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
-const CsProductTab = dynamic(() => import("@/components/analytics/cs-product-tab").then((m) => m.CsProductTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const LifecycleFunnelPanel = dynamic(() => import("@/components/analytics/lifecycle-funnel-panel").then((m) => m.LifecycleFunnelPanel), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const AiInsightsPanel = dynamic(() => import("@/components/analytics/ai-insights-panel").then((m) => m.AiInsightsPanel), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const GoogleAnalyticsDashboard = dynamic(() => import("./sub-dashboards/google-analytics-dashboard").then((m) => m.GoogleAnalyticsDashboard), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
@@ -100,8 +98,6 @@ export type AnalyticsChildRenderKind =
   | "ads-semrush"
   | "ads-coda-kanban"
   | "cs-pylon"
-  | "cs-coda"
-  | "cs-product"
   | "cs-google-workspace"
   | "cs-slack"
   | "customerJourneyDrillDown"
@@ -147,8 +143,6 @@ const CHILD_ID_TO_RENDER_KIND = {
   "ads-coda-kanban": "ads-coda-kanban",
   // Customer Success
   "cs-pylon": "cs-pylon",
-  "cs-coda": "cs-coda",
-  "cs-product": "cs-product",
   "cs-google-workspace": "cs-google-workspace",
   "cs-slack": "cs-slack",
   // Customer Journey
@@ -388,8 +382,6 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     if (renderKind === "ads-coda-kanban") return <AdsCodaKanbanTab data={analyticsData} />;
     // Customer Success
     if (renderKind === "cs-pylon") return <CsPylonTab data={analyticsData} />;
-    if (renderKind === "cs-coda") return <CsCodaTab data={analyticsData} />;
-    if (renderKind === "cs-product") return <CsProductTab data={analyticsData} />;
     if (renderKind === "cs-google-workspace") return <GenericWorkspaceTab data={analyticsData} />;
     if (renderKind === "cs-slack") return <GenericSlackTab data={analyticsData} />;
     if (renderKind === "customerJourneyDrillDown") return <CustomerJourneyDrillDown data={analyticsData} />;

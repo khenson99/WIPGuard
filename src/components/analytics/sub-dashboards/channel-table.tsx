@@ -51,7 +51,7 @@ export function ChannelTable({ attribution }: ChannelTableProps) {
               <th className="pb-2">Channel</th>
               <th className="pb-2 text-right">Traffic</th>
               <th className="pb-2 text-right">Cost</th>
-              <th className="pb-2 text-right">Kanban / Trials / Demos</th>
+              <th className="pb-2 text-right">Lead Magnet / Trials / Demos</th>
               <th className="pb-2 text-right">Deals</th>
               <th className="pb-2 text-right">Revenue</th>
               <th className="pb-2 text-right">ROI</th>
