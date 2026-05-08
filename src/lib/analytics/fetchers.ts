@@ -374,6 +374,26 @@ function extractHubSpotStageEvents(deal: HubSpotDealObject): HubSpotStageEvent[]
   return events;
 }
 
+function buildHubSpotStageHistory(
+  deal: HubSpotDealObject,
+  stageLabelById: Map<string, string>,
+): Array<{ occurredAt: string; stageId: string; stageLabel: string }> {
+  const history = (deal.propertiesWithHistory?.dealstage ?? []) as HubSpotStageHistoryEntry[];
+  return history
+    .map((entry) => {
+      const stageId = entry.value ? String(entry.value).trim() : "";
+      const timestamp = parseHubSpotTimestamp(entry.timestamp);
+      if (!stageId || !timestamp) return null;
+      return {
+        occurredAt: new Date(timestamp).toISOString(),
+        stageId,
+        stageLabel: resolveHubSpotStageLabel(stageId, stageLabelById),
+      };
+    })
+    .filter((entry): entry is { occurredAt: string; stageId: string; stageLabel: string } => entry !== null)
+    .sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
+}
+
 type HubSpotOwnerRecord = { id: string; name: string; email: string | null };
 
 async function fetchHubSpotOwners(input: {
@@ -592,6 +612,7 @@ export async function fetchHubSpotData(
       contactIds: [] as string[],
       primaryContactId: null as string | null,
       primaryContactEmail: null as string | null,
+      stageHistory: buildHubSpotStageHistory(deal, mainStageLabelById),
     };
   });
 
@@ -616,6 +637,7 @@ export async function fetchHubSpotData(
       contactIds: [] as string[],
       primaryContactId: null as string | null,
       primaryContactEmail: null as string | null,
+      stageHistory: buildHubSpotStageHistory(deal, stageLabelById),
     };
   });
 
