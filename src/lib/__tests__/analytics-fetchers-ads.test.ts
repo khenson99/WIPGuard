@@ -195,6 +195,11 @@ describe("analytics ads fetchers", () => {
   it("skips invalid optional Meta Page insight metrics without failing the sync", async () => {
     const fetchMock = vi.fn();
     fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [{ id: "page-1", access_token: "page-token" }],
+        })
+      )
       .mockResolvedValueOnce(jsonResponse({ fan_count: 10, followers_count: 15 }))
       .mockResolvedValueOnce(
         jsonResponse(
@@ -234,8 +239,8 @@ describe("analytics ads fetchers", () => {
               created_time: "2026-02-18T12:00:00.000Z",
               insights: {
                 data: [
-                  { name: "post_impressions", values: [{ value: 30 }] },
-                  { name: "post_engaged_users", values: [{ value: 4 }] },
+                  { name: "post_impressions_unique", values: [{ value: 30 }] },
+                  { name: "post_clicks", values: [{ value: 4 }] },
                 ],
               },
             },
@@ -261,10 +266,43 @@ describe("analytics ads fetchers", () => {
     ]);
 
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain(
+      "/page-1"
+    );
+    expect((fetchMock.mock.calls[1]?.[1] as RequestInit).headers).toEqual({
+      Authorization: "Bearer page-token",
+    });
+    expect(String(fetchMock.mock.calls[2]?.[0])).toContain(
       "metric=page_impressions%2Cpage_engaged_users"
     );
-    expect(String(fetchMock.mock.calls[2]?.[0])).toContain("metric=page_impressions");
-    expect(String(fetchMock.mock.calls[3]?.[0])).toContain("metric=page_engaged_users");
+    expect(String(fetchMock.mock.calls[3]?.[0])).toContain("metric=page_impressions");
+    expect(String(fetchMock.mock.calls[4]?.[0])).toContain("metric=page_engaged_users");
+  });
+
+  it("resolves and uses the Meta Page access token for page-owned endpoints", async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [{ id: "page-1", access_token: "page-token" }],
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ fan_count: 10, followers_count: 15 }))
+      .mockResolvedValueOnce(jsonResponse({ data: [] }))
+      .mockResolvedValueOnce(jsonResponse({ data: [] }));
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    await fetchMetaPageData("user-token", "page-1");
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/me/accounts");
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).toEqual({
+      Authorization: "Bearer user-token",
+    });
+    for (const call of fetchMock.mock.calls.slice(1)) {
+      expect((call[1] as RequestInit).headers).toEqual({
+        Authorization: "Bearer page-token",
+      });
+    }
   });
 
   it("uses Reddit v3 report shape and joins campaign metadata", async () => {

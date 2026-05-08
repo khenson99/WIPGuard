@@ -1414,6 +1414,31 @@ async function fetchMetaPageInsightMetrics(input: {
   return validMetrics;
 }
 
+async function resolveMetaPageAccessToken(input: {
+  userAccessToken: string;
+  normalizedPageId: string;
+}): Promise<string> {
+  const accountsUrl = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/me/accounts`);
+  accountsUrl.searchParams.set("fields", "id,access_token");
+  accountsUrl.searchParams.set("limit", "200");
+
+  const response = await fetch(accountsUrl, {
+    headers: { Authorization: `Bearer ${input.userAccessToken}` },
+  });
+  if (!response.ok) {
+    return input.userAccessToken;
+  }
+
+  const payload = (await safeJson<{
+    data?: Array<{ id?: string; access_token?: string }>;
+  }>(response, "Meta Page accounts")) as {
+    data?: Array<{ id?: string; access_token?: string }>;
+  };
+
+  const page = (payload.data ?? []).find((item) => item.id === input.normalizedPageId);
+  return page?.access_token?.trim() || input.userAccessToken;
+}
+
 export async function fetchMetaPageData(
   accessToken: string,
   pageId: string,
@@ -1426,8 +1451,12 @@ export async function fetchMetaPageData(
     );
   }
 
-  const baseHeaders = { Authorization: `Bearer ${token}` };
   const normalizedPageId = pageId.trim();
+  const pageAccessToken = await resolveMetaPageAccessToken({
+    userAccessToken: token,
+    normalizedPageId,
+  });
+  const baseHeaders = { Authorization: `Bearer ${pageAccessToken}` };
 
   const rangeFrom = options?.fromDate ?? null;
   const rangeTo = options?.toDate ?? null;
@@ -1488,7 +1517,7 @@ export async function fetchMetaPageData(
   );
   postsUrl.searchParams.set(
     "fields",
-    "message,insights{metric(post_impressions,post_engaged_users)},created_time"
+    "message,created_time,insights.metric(post_impressions_unique,post_clicks){name,values}"
   );
   postsUrl.searchParams.set("limit", "5");
   if (useRange) {
@@ -1533,10 +1562,10 @@ export async function fetchMetaPageData(
     let engagement = 0;
     for (const metric of post.insights?.data ?? []) {
       const metricValue = readNumber(metric.values?.[0]?.value);
-      if (metric.name === "post_impressions") {
+      if (metric.name === "post_impressions_unique") {
         reach = metricValue;
       }
-      if (metric.name === "post_engaged_users") {
+      if (metric.name === "post_clicks") {
         engagement = metricValue;
       }
     }
