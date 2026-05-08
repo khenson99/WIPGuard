@@ -128,7 +128,6 @@ export function InsightCardFull({
           {showActions ? (
             <div className="shrink-0">
               <InsightCardActions
-                insightId={insight.id}
                 isPinned={isPinned}
                 onTogglePin={onTogglePin!}
                 onDismiss={onDismiss!}

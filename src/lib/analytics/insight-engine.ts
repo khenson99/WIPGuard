@@ -1282,7 +1282,6 @@ function buildCustomerSuccessInsights(data: AnalyticsDashboardData): AiInsight[]
     insights.push({
       id: "ai-cs-throughput-stall",
       section: "customer-success",
-      subsectionId: "cs-product",
       severity: throughputRate < 0.50 ? "critical" : "warning",
       title: "Execution throughput has stalled below target",
       why: `Throughput rate is ${(throughputRate * 100).toFixed(1)}% — below the 70% healthy threshold. Backlog is growing at ${backlogGrowth}/period.`,

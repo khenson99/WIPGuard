@@ -207,8 +207,6 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "sales-google-workspace": ["googleWorkspace"],
   "sales-slack": ["slack"],
   "cs-pylon": ["pylon"],
-  "cs-coda": ["coda", "codaOps"],
-  "cs-product": ["product"],
   "cs-google-workspace": ["googleWorkspace"],
   "cs-slack": ["slack"],
 

@@ -630,7 +630,7 @@ describe("customer success insights", () => {
     const stall = bundle.global.find((i) => i.id === "ai-cs-throughput-stall");
     expect(stall).toBeDefined();
     expect(stall!.severity).toBe("warning");
-    expect(stall!.subsectionId).toBe("cs-product");
+    expect(stall!.subsectionId).toBeUndefined();
   });
 
   it("escalates throughput stall to critical below 50%", () => {

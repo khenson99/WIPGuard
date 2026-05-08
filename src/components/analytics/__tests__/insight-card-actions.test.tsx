@@ -3,7 +3,6 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { InsightCardActions } from "../insight-card-actions";
 
 const baseProps = {
-  insightId: "test-insight",
   isPinned: false,
   onTogglePin: vi.fn(),
   onDismiss: vi.fn(),

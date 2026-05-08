@@ -208,7 +208,7 @@ export const LEGACY_ANALYTICS_ROUTE_REDIRECTS: Record<string, string> = {
   "meta-page": "/analytics/ads-meta-ads",
   "reddit-ads": "/analytics/ads-reddit-ads",
   webflow: "/analytics/ads-webflow",
-  coda: "/analytics/cs-coda",
+  coda: "/analytics/ads-coda-kanban",
   "google-workspace": "/analytics/sales-google-workspace",
   slack: "/analytics/sales-slack",
   semrush: "/analytics/ads-semrush",

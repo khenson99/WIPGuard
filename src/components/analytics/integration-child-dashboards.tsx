@@ -245,20 +245,20 @@ function CodaBoardPanel({
     <DashboardShell title={title} subtitle={subtitle}>
       <MetricGrid
         metrics={[
-          { label: "Total Cards", value: fmtInt(coda.totalCards) },
+          { label: "Total Entries", value: fmtInt(coda.totalCards) },
           { label: "Unique Statuses", value: fmtInt(coda.cardsByStatus.length) },
-          { label: "Recent Cards", value: fmtInt(coda.recentCards.length) },
+          { label: "Recent Entries", value: fmtInt(coda.recentCards.length) },
           {
             label: "Top Status",
             value: coda.cardsByStatus.length ? coda.cardsByStatus[0].status : "—",
-            subtitle: coda.cardsByStatus.length ? `${fmtInt(coda.cardsByStatus[0].count)} cards` : undefined,
+            subtitle: coda.cardsByStatus.length ? `${fmtInt(coda.cardsByStatus[0].count)} entries` : undefined,
           },
         ]}
       />
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <div className="rounded-xl border border-border bg-card p-4">
-          <h3 className="text-sm font-semibold text-foreground">Cards by Status</h3>
+          <h3 className="text-sm font-semibold text-foreground">Entries by Status</h3>
           <div className="mt-2 space-y-2">
             {coda.cardsByStatus.slice(0, 8).map((status) => (
               <div key={status.status} className="flex items-center justify-between rounded-md border border-border/70 bg-background px-3 py-2">
@@ -270,9 +270,9 @@ function CodaBoardPanel({
         </div>
 
         <div className="rounded-xl border border-border bg-card p-4">
-          <h3 className="text-sm font-semibold text-foreground">Recent Cards</h3>
+          <h3 className="text-sm font-semibold text-foreground">Recent Entries</h3>
           {coda.recentCards.length === 0 ? (
-            <p className="mt-2 text-xs text-muted-foreground">No recent card activity.</p>
+            <p className="mt-2 text-xs text-muted-foreground">No recent entry activity.</p>
           ) : (
             <div className="mt-2 space-y-2">
               {coda.recentCards.slice(0, 6).map((card) => (
@@ -293,21 +293,21 @@ function CodaBoardPanel({
         <div className="space-y-3">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div className="rounded-xl border border-border bg-card p-4">
-              <p className="text-xs text-muted-foreground">Cards Created (30d)</p>
+              <p className="text-xs text-muted-foreground">Entries Created (30d)</p>
               <p className="mt-1 text-2xl font-semibold text-foreground">{fmtInt(window30?.totalCards)}</p>
               <p className="text-[11px] text-muted-foreground">
                 {fmtInt(window30?.uniqueCreators)} creators · trend {fmtPct(window30?.trendDeltaPct ?? null)}
               </p>
             </div>
             <div className="rounded-xl border border-border bg-card p-4">
-              <p className="text-xs text-muted-foreground">Cards Created (60d)</p>
+              <p className="text-xs text-muted-foreground">Entries Created (60d)</p>
               <p className="mt-1 text-2xl font-semibold text-foreground">{fmtInt(window60?.totalCards)}</p>
               <p className="text-[11px] text-muted-foreground">
                 {fmtInt(window60?.uniqueCreators)} creators · trend {fmtPct(window60?.trendDeltaPct ?? null)}
               </p>
             </div>
             <div className="rounded-xl border border-border bg-card p-4">
-              <p className="text-xs text-muted-foreground">Cards Created (90d)</p>
+              <p className="text-xs text-muted-foreground">Entries Created (90d)</p>
               <p className="mt-1 text-2xl font-semibold text-foreground">{fmtInt(window90?.totalCards)}</p>
               <p className="text-[11px] text-muted-foreground">
                 {fmtInt(window90?.uniqueCreators)} creators · trend {fmtPct(window90?.trendDeltaPct ?? null)}
@@ -331,7 +331,7 @@ function CodaBoardPanel({
                       <p className="text-[11px] text-muted-foreground">
                         {creator.email ?? "unknown"} · first seen{" "}
                         {creator.firstSeenAt ? new Date(creator.firstSeenAt).toLocaleDateString() : "n/a"} ·{" "}
-                        {fmtInt(creator.cardsCreated)} cards
+                        {fmtInt(creator.cardsCreated)} entries
                       </p>
                     </div>
                   ))}
@@ -366,9 +366,9 @@ function CodaBoardPanel({
 
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <div className="rounded-xl border border-border bg-card p-4">
-              <h3 className="text-sm font-semibold text-foreground">Cards Created per Day (90d)</h3>
+              <h3 className="text-sm font-semibold text-foreground">Entries Created per Day (90d)</h3>
               {recentCardsCreated.length === 0 ? (
-                <p className="mt-2 text-xs text-muted-foreground">No daily card trend yet.</p>
+                <p className="mt-2 text-xs text-muted-foreground">No daily entry trend yet.</p>
               ) : (
                 <div className="mt-3 flex h-24 items-end gap-1">
                   {recentCardsCreated.map((point) => {
@@ -419,7 +419,7 @@ function CodaBoardPanel({
                     <tr className="text-left text-xs text-muted-foreground">
                       <th className="pb-2">Creator</th>
                       <th className="pb-2">Email</th>
-                      <th className="pb-2">30d Cards</th>
+                      <th className="pb-2">30d Entries</th>
                       <th className="pb-2">Active Days</th>
                       <th className="pb-2">Score</th>
                       <th className="pb-2">Funnel</th>
@@ -457,7 +457,7 @@ function CodaBoardPanel({
             <h3 className="text-sm font-semibold text-foreground">Creator Intelligence Diagnostics</h3>
             <p className="mt-2 text-xs text-muted-foreground">
               Mode: {diagnostics?.creatorResolutionMode ?? "auto_detect"} · Unknown creator ratio:{" "}
-              {fmtPct(diagnostics?.unknownCreatorRatio ?? null)} · Unknown cards:{" "}
+              {fmtPct(diagnostics?.unknownCreatorRatio ?? null)} · Unknown entries:{" "}
               {fmtInt(diagnostics?.unknownCardCount)} · HubSpot match errors:{" "}
               {fmtInt(diagnostics?.hubspotMatchingErrors)}
             </p>
@@ -715,8 +715,8 @@ export function AdsSemrushDashboard({ data }: IntegrationChildDashboardProps) {
 export function AdsCodaKanbanDashboard({ data }: IntegrationChildDashboardProps) {
   return (
     <CodaBoardPanel
-      title="Coda Kanban"
-      subtitle="Kanban workflow depth and card status distribution for growth execution."
+      title="Coda Lead Magnet"
+      subtitle="Whitepaper engagement depth and status distribution for growth execution."
       coda={data?.coda ?? null}
       reasons={providerErrors(data, ["coda", "codaOps"])}
       showCreatorIntelligence
@@ -934,7 +934,7 @@ export function CustomerSuccessCodaDashboard({ data }: IntegrationChildDashboard
   return (
     <CodaBoardPanel
       title="Coda"
-      subtitle="Customer success execution board health and card movement signals."
+      subtitle="Customer success execution health and movement signals."
       coda={data?.coda ?? null}
       reasons={providerErrors(data, ["coda", "codaOps"])}
     />
@@ -1005,8 +1005,6 @@ export const INTEGRATION_CHILD_DASHBOARD_REGISTRY: Record<string, (props: Integr
   "sales-google-workspace": SalesGoogleWorkspaceDashboard,
   "sales-slack": SalesSlackDashboard,
   "cs-pylon": CustomerSuccessPylonDashboard,
-  "cs-coda": CustomerSuccessCodaDashboard,
-  "cs-product": CustomerSuccessProductDashboard,
   "cs-google-workspace": CustomerSuccessGoogleWorkspaceDashboard,
   "cs-slack": CustomerSuccessSlackDashboard,
 };

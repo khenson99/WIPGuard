@@ -32,8 +32,8 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
   if (!coda) {
     return (
       <FinanceDataEmptyState
-        title="Coda Kanban data is unavailable"
-        message="We could not load Coda Kanban board data for this range."
+        title="Coda lead magnet data is unavailable"
+        message="We could not load Coda lead magnet download data for this range."
         reasons={reasons}
         reconnectHref="/settings?tab=integrations"
       />
@@ -266,7 +266,7 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
     },
   ];
 
-  // ── Recent cards table ──
+  // ── Recent downloads table ──
   const cardColumns: DataTableColumn<CodaCard>[] = [
     { key: "name", header: "Download", render: (r) => <span className="max-w-[250px] truncate font-medium text-foreground">{r.name}</span> },
     { key: "status", header: "Status", render: (r) => (
@@ -443,7 +443,7 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
         )}
 
         {/* Completion Health */}
-        <SectionCard title="Board Health" subtitle="Completion and progress metrics">
+        <SectionCard title="Lead Magnet Health" subtitle="Completion and progress metrics">
           <div className="flex flex-col items-center gap-4">
             <RingStat
               value={completionRate}
@@ -478,7 +478,7 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
         </SectionCard>
       </div>
 
-      {/* Recent Cards Table */}
+      {/* Recent Downloads Table */}
       {recentCards.length > 0 && (
         <SectionCard title="Recent Downloads" subtitle={`${recentCards.length} most recent download${recentCards.length !== 1 ? "s" : ""}`}>
           <DataTable
