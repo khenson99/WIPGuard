@@ -138,8 +138,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           creds.googleAdsClientId &&
           creds.googleAdsClientSecret
       ),
-      metaAds: Boolean(creds.metaAccessToken && creds.metaAdAccountId),
-      metaPage: Boolean(creds.metaAccessToken && creds.metaPageId),
+      metaAds: Boolean(creds.metaAdsAccessToken && creds.metaAdAccountId),
+      metaPage: Boolean(creds.metaPageAccessToken && creds.metaPageId),
       redditAds: Boolean(
         creds.redditClientId && creds.redditClientSecret && creds.redditRefreshToken && creds.redditAdAccountId
       ),

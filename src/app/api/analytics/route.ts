@@ -1189,42 +1189,42 @@ export async function GET(request: Request) {
           },
         }]
       : []),
-    ...(creds.metaAccessToken && creds.metaAdAccountId
+    ...(creds.metaAdsAccessToken && creds.metaAdAccountId
       ? [{
           key: "metaAds" as const,
           snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchMetaAdsData } = await loadAdsFetchers();
             return fetchMetaAdsData(
-              creds.metaAccessToken!,
+              creds.metaAdsAccessToken!,
               creds.metaAdAccountId!,
               { fromDate, toDate }
             );
           },
         }]
       : []),
-    ...(creds.metaAccessToken && creds.metaPageId
+    ...(creds.metaPageAccessToken && creds.metaPageId
       ? [{
           key: "metaPage" as const,
           snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchMetaPageData } = await loadAdsFetchers();
             return fetchMetaPageData(
-              creds.metaAccessToken!,
+              creds.metaPageAccessToken!,
               creds.metaPageId!,
               { fromDate, toDate }
             );
           },
         }]
       : []),
-    ...(creds.metaAccessToken && creds.metaInstagramAccountId
+    ...(creds.metaPageAccessToken && creds.metaInstagramAccountId
       ? [{
           key: "instagram" as const,
           snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchMetaInstagramData } = await loadAdsFetchers();
             return fetchMetaInstagramData(
-              creds.metaAccessToken!,
+              creds.metaPageAccessToken!,
               creds.metaInstagramAccountId!,
               { pageId: creds.metaPageId ?? undefined },
               fromDate,
