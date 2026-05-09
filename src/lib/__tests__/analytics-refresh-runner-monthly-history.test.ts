@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runAnalyticsRefresh } from "@/lib/analytics/refresh-runner";
 import { fetchMercuryData, fetchStripeData } from "@/lib/analytics/fetchers";
 import { getCredentials } from "@/lib/analytics/credentials";
+import { fetchSemrushData } from "@/lib/analytics/fetchers-semrush";
 import { fetchIntegrationTelemetryData } from "@/lib/analytics/fetchers-integrations";
-import { storeAnalyticsSnapshot } from "@/lib/analytics/snapshots";
+import { storeAnalyticsSnapshot, storeAnalyticsSnapshotFailure } from "@/lib/analytics/snapshots";
 import { prisma } from "@/lib/prisma";
 import { getRequestContext } from "@/lib/request-context";
 
@@ -230,6 +231,33 @@ describe("analytics monthly financial history refresh", () => {
         providerKey: "product",
         contextKey: "default",
         rangePreset: "7d",
+      }),
+    );
+  });
+
+  it("stores SEMrush exhausted API unit errors without counting cron failure", async () => {
+    vi.mocked(getCredentials).mockResolvedValue({
+      semrushApiToken: "semrush-token",
+      semrushDomain: "example.com",
+    } as never);
+    vi.mocked(fetchSemrushData).mockRejectedValue(
+      new Error("SEMrush API error (403): ERROR 403 :: ERROR 132 :: API UNITS BALANCE IS ZERO\n")
+    );
+
+    const result = await runAnalyticsRefresh({
+      userIds: ["user-1"],
+      rangePresets: ["7d"],
+      includeMonthlyFinancialHistory: false,
+    });
+
+    expect(result.failureCount).toBe(0);
+    expect(storeAnalyticsSnapshotFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-1",
+        providerKey: "semrush",
+        contextKey: "default",
+        rangePreset: "7d",
+        error: "SEMrush API error (403): ERROR 403 :: ERROR 132 :: API UNITS BALANCE IS ZERO\n",
       }),
     );
   });
