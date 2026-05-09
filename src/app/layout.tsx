@@ -3,9 +3,9 @@ import "./globals.css";
 import { Providers } from "@/components/layout/providers";
 
 export const metadata: Metadata = {
-  applicationName: "Arda",
-  title: "Arda",
-  description: "Arda's GTM operator platform for daily work management, automations, and analytics",
+  applicationName: "Imladris",
+  title: "Imladris",
+  description: "Imladris is an analytics API meeting place for trusted metrics, source health, reporting, and automation pipelines.",
   manifest: "/manifest.json",
   icons: {
     icon: "/icons/icon-192.png",

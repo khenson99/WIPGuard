@@ -12,6 +12,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
+import { PIPELINES_HOME } from "@/lib/platform/routes";
 
 type WorkflowListItem = {
   id: string;
@@ -65,7 +66,7 @@ function getOperatorLabel(operatorKey: string | null | undefined): string | null
   return OPERATOR_LABELS[operatorKey] ?? operatorKey;
 }
 
-export default function AutomationsPage() {
+function AutomationPipelinesPage() {
   const router = useRouter();
   const [data, setData] = useState<AutomationsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -87,7 +88,7 @@ export default function AutomationsPage() {
       writeSessionCache<AutomationsResponse>(AUTOMATIONS_CACHE_KEY, payload);
     } catch (err) {
       if (!signal?.aborted) {
-        setError("Failed to load workflows");
+        setError("Failed to load automation pipelines");
         console.error(err);
         setData(null);
       }
@@ -162,7 +163,7 @@ export default function AutomationsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: "New Workflow",
+          name: "New Pipeline",
           scope: "PRIVATE",
           graph: {
             nodes: [
@@ -179,11 +180,11 @@ export default function AutomationsPage() {
           },
         }),
       });
-      if (!response.ok) throw new Error("Failed to create workflow");
+      if (!response.ok) throw new Error("Failed to create pipeline");
       const created = (await response.json()) as { id: string };
-      router.push(`/automations/${created.id}`);
+      router.push(`${PIPELINES_HOME}/${created.id}`);
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "Failed to create workflow");
+      setCreateError(err instanceof Error ? err.message : "Failed to create pipeline");
       setIsCreating(false);
     }
   };
@@ -203,11 +204,11 @@ export default function AutomationsPage() {
           graph: template.graph,
         }),
       });
-      if (!response.ok) throw new Error("Failed to create workflow");
+      if (!response.ok) throw new Error("Failed to create pipeline");
       const created = (await response.json()) as { id: string };
-      router.push(`/automations/${created.id}`);
+      router.push(`${PIPELINES_HOME}/${created.id}`);
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "Failed to create workflow");
+      setCreateError(err instanceof Error ? err.message : "Failed to create pipeline");
       setIsCreating(false);
     }
   };
@@ -226,15 +227,15 @@ export default function AutomationsPage() {
     <div className="space-y-6 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">Automations</h1>
+          <h1 className="text-xl font-semibold text-foreground">Automation Pipelines</h1>
           <p className="text-xs text-muted-foreground">
-            Build cross-system workflows, monitor run health, and manage outbound drafts across your connected tools.
+            Monitor ingestion, metric refresh, report generation, approvals, failures, and artifacts across connected tools.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <Link
-            href="/automations/artifacts"
+            href="/pipelines/artifacts"
             className="rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
           >
             Artifact Inbox
@@ -245,7 +246,7 @@ export default function AutomationsPage() {
             className="btn-primary-theme flex items-center gap-1.5 rounded-md px-3 py-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <PlusCircle className="h-4 w-4" />
-            {isCreating ? "Creating..." : "New Workflow"}
+            {isCreating ? "Creating..." : "New Pipeline"}
           </button>
         </div>
         {createError && (
@@ -256,7 +257,7 @@ export default function AutomationsPage() {
         )}
       </div>
 
-      <div role="group" aria-label="Workflow filters" className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-3 py-3">
+      <div role="group" aria-label="Pipeline filters" className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-3 py-3">
         <Filter className="h-4 w-4 text-muted-foreground" />
 
         <select
@@ -327,21 +328,21 @@ export default function AutomationsPage() {
       )}
 
       <section className="space-y-2">
-        <h2 className="text-sm font-semibold text-foreground">Workflows</h2>
+        <h2 className="text-sm font-semibold text-foreground">Pipelines</h2>
         {loading ? (
           <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
-            Loading automations...
+            Loading automation pipelines...
           </div>
         ) : filteredWorkflows.length === 0 ? (
           <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
-            No workflows match current filters.
+            No pipelines match current filters.
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {filteredWorkflows.map((workflow) => (
               <Link
                 key={workflow.id}
-                href={`/automations/${workflow.id}`}
+                href={`${PIPELINES_HOME}/${workflow.id}`}
                 className="rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40"
               >
                 <div className="mb-1 flex items-center gap-2">
@@ -371,9 +372,9 @@ export default function AutomationsPage() {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-sm font-semibold text-foreground">Arda GTM Operators</h2>
+        <h2 className="text-sm font-semibold text-foreground">Pipeline Operators</h2>
         <p className="text-xs text-muted-foreground">
-          Shared starting points for mixed-autonomy operator workflows. Safe internal actions can auto-execute, while external drafts stay in guarded workflow review steps.
+          Shared starting points for mixed-autonomy data and reporting operations. Safe internal actions can auto-execute, while external drafts stay in guarded review steps.
         </p>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {operatorTemplates.map((template) => (
@@ -391,7 +392,7 @@ export default function AutomationsPage() {
                 disabled={isCreating}
                 className="mt-3 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Use Operator Template
+                Use Pipeline Template
               </button>
             </div>
           ))}
@@ -444,9 +445,13 @@ export default function AutomationsPage() {
       <div className="rounded-xl border border-border bg-card p-3 text-xs text-muted-foreground">
         <p className="flex items-center gap-1.5">
           <ShieldCheck className="h-3.5 w-3.5" />
-          Shared workflows are editable by roles defined in workflow role policy.
+          Shared pipelines are editable by roles defined in pipeline policy.
         </p>
       </div>
     </div>
   );
+}
+
+export default function AutomationsPage() {
+  return <AutomationPipelinesPage />;
 }

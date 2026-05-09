@@ -5,6 +5,7 @@ import { getProviders, signIn, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Shield } from "lucide-react";
 import { Suspense, useState, useEffect } from "react";
+import { ANALYTICS_HOME } from "@/lib/platform/routes";
 
 interface DevUser {
   id: string;
@@ -60,7 +61,7 @@ function LoginPageContent() {
 
   useEffect(() => {
     if (status === "authenticated") {
-      router.replace("/dashboard");
+      router.replace(ANALYTICS_HOME);
     }
   }, [router, status]);
 
@@ -127,7 +128,7 @@ function LoginPageContent() {
   const handleDevLogin = async () => {
     if (!selectedEmail) return;
     setLoading(true);
-    await signIn("credentials", { email: selectedEmail, callbackUrl: "/dashboard" });
+    await signIn("credentials", { email: selectedEmail, callbackUrl: ANALYTICS_HOME });
     setLoading(false);
   };
 
@@ -155,11 +156,11 @@ function LoginPageContent() {
               Invite-only access
             </p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
-              WIPGuard
+              Imladris
             </h1>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Sign in to your workspace, orient on the dashboard, then move into
-              daily execution. Access is currently limited to Arda GTM and beta teams.
+              Sign in to inspect trusted metrics, provider health, and reporting
+              workflows. Access is currently limited to internal and beta teams.
             </p>
           </div>
         </div>
@@ -179,7 +180,7 @@ function LoginPageContent() {
         {/* Google OAuth */}
         {googleEnabled && (
           <button
-            onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
+            onClick={() => signIn("google", { callbackUrl: ANALYTICS_HOME })}
             className="flex w-full items-center justify-center gap-3 rounded-lg border border-border bg-secondary px-4 py-3 text-sm font-medium text-foreground transition-colors hover:border-muted-foreground hover:bg-card"
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">

@@ -142,8 +142,8 @@ export const ANALYTICS_DASHBOARD_FUNNEL_GROUPS: AnalyticsDashboardFunnelGroup[] 
     id: "sales",
     label: "Sales",
     path: "/analytics/sales-pipeline",
-    description: "Opportunities, demo follow-up, pipeline movement, and close rates.",
-    primaryIds: ["sales-pipeline"],
+    description: "Opportunities, demo scheduling, demo follow-up, pipeline movement, and close rates.",
+    primaryIds: ["sales-pipeline", "demo-analytics"],
   },
   {
     id: "customer-success",
@@ -163,8 +163,8 @@ export const ANALYTICS_DASHBOARD_FUNNEL_GROUPS: AnalyticsDashboardFunnelGroup[] 
     id: "full-funnel-analytics",
     label: "Full-Funnel Analytics",
     path: "/analytics/customer-journey",
-    description: "Analytics across the entire process, including journey, demo, process, and revenue signals.",
-    primaryIds: ["customer-journey", "demo-analytics", "process-analytics", "finance"],
+    description: "Analytics across the entire process, including journey, process, and revenue signals.",
+    primaryIds: ["customer-journey", "process-analytics", "finance"],
   },
 ];
 
@@ -202,9 +202,9 @@ export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
   { id: "cj-conversion", label: "Conversion Analysis", path: "/analytics/cj-conversion", parentId: "customer-journey", dataDomain: "customerJourney" },
   { id: "cj-acquisition-funnel", label: "Acquisition Funnel", path: "/analytics/cj-acquisition-funnel", parentId: "customer-journey", dataDomain: "visitorFunnel" },
 
-  { id: "demo-scheduling", label: "Scheduling", path: "/analytics/demo-scheduling", parentId: "demo-analytics", dataDomain: "demoAnalytics" },
-  { id: "demo-attribution", label: "Attribution", path: "/analytics/demo-attribution", parentId: "demo-analytics", dataDomain: "demoAnalytics" },
-  { id: "demo-coaching", label: "Coaching", path: "/analytics/demo-coaching", parentId: "demo-analytics", dataDomain: "demoAnalytics" },
+  { id: "demo-scheduling", label: "Demo Scheduling", path: "/analytics/demo-scheduling", parentId: "sales-pipeline", dataDomain: "demoAnalytics" },
+  { id: "demo-attribution", label: "Demo Attribution", path: "/analytics/demo-attribution", parentId: "sales-pipeline", dataDomain: "demoAnalytics" },
+  { id: "demo-coaching", label: "Demo Coaching", path: "/analytics/demo-coaching", parentId: "sales-pipeline", dataDomain: "demoAnalytics" },
 
   { id: "process-bottlenecks", label: "Bottlenecks", path: "/analytics/process-bottlenecks", parentId: "process-analytics", dataDomain: "processAnalytics" },
   { id: "process-velocity", label: "Velocity", path: "/analytics/process-velocity", parentId: "process-analytics", dataDomain: "processAnalytics" },

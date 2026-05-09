@@ -161,7 +161,7 @@ function TelemetryDashboard({
           { label: "Errored Rules", value: fmtInt(telemetry.erroredRules) },
           { label: "Events in Range", value: fmtInt(telemetry.eventsInRange) },
           { label: "Receipts", value: fmtInt(telemetry.receiptsInRange) },
-          { label: "Tasks Created", value: fmtInt(telemetry.tasksCreatedInRange) },
+          { label: "Artifacts Created", value: fmtInt(telemetry.tasksCreatedInRange) },
           { label: "Failures", value: fmtInt(telemetry.failuresInRange) },
           { label: "Failure Ratio", value: fmtPct((telemetry.failuresInRange / Math.max(1, telemetry.eventsInRange)) * 100) },
         ]}
@@ -211,7 +211,7 @@ function TelemetryDashboard({
   );
 }
 
-function CodaBoardPanel({
+function CodaRecordsPanel({
   title,
   subtitle,
   coda,
@@ -245,20 +245,20 @@ function CodaBoardPanel({
     <DashboardShell title={title} subtitle={subtitle}>
       <MetricGrid
         metrics={[
-          { label: "Total Entries", value: fmtInt(coda.totalCards) },
+          { label: "Total Records", value: fmtInt(coda.totalCards) },
           { label: "Unique Statuses", value: fmtInt(coda.cardsByStatus.length) },
-          { label: "Recent Entries", value: fmtInt(coda.recentCards.length) },
+          { label: "Recent Records", value: fmtInt(coda.recentCards.length) },
           {
             label: "Top Status",
             value: coda.cardsByStatus.length ? coda.cardsByStatus[0].status : "—",
-            subtitle: coda.cardsByStatus.length ? `${fmtInt(coda.cardsByStatus[0].count)} entries` : undefined,
+            subtitle: coda.cardsByStatus.length ? `${fmtInt(coda.cardsByStatus[0].count)} records` : undefined,
           },
         ]}
       />
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <div className="rounded-xl border border-border bg-card p-4">
-          <h3 className="text-sm font-semibold text-foreground">Entries by Status</h3>
+          <h3 className="text-sm font-semibold text-foreground">Records by Status</h3>
           <div className="mt-2 space-y-2">
             {coda.cardsByStatus.slice(0, 8).map((status) => (
               <div key={status.status} className="flex items-center justify-between rounded-md border border-border/70 bg-background px-3 py-2">
@@ -270,9 +270,9 @@ function CodaBoardPanel({
         </div>
 
         <div className="rounded-xl border border-border bg-card p-4">
-          <h3 className="text-sm font-semibold text-foreground">Recent Entries</h3>
+          <h3 className="text-sm font-semibold text-foreground">Recent Records</h3>
           {coda.recentCards.length === 0 ? (
-            <p className="mt-2 text-xs text-muted-foreground">No recent entry activity.</p>
+            <p className="mt-2 text-xs text-muted-foreground">No recent record activity.</p>
           ) : (
             <div className="mt-2 space-y-2">
               {coda.recentCards.slice(0, 6).map((card) => (
@@ -293,21 +293,21 @@ function CodaBoardPanel({
         <div className="space-y-3">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div className="rounded-xl border border-border bg-card p-4">
-              <p className="text-xs text-muted-foreground">Entries Created (30d)</p>
+              <p className="text-xs text-muted-foreground">Records Created (30d)</p>
               <p className="mt-1 text-2xl font-semibold text-foreground">{fmtInt(window30?.totalCards)}</p>
               <p className="text-[11px] text-muted-foreground">
                 {fmtInt(window30?.uniqueCreators)} creators · trend {fmtPct(window30?.trendDeltaPct ?? null)}
               </p>
             </div>
             <div className="rounded-xl border border-border bg-card p-4">
-              <p className="text-xs text-muted-foreground">Entries Created (60d)</p>
+              <p className="text-xs text-muted-foreground">Records Created (60d)</p>
               <p className="mt-1 text-2xl font-semibold text-foreground">{fmtInt(window60?.totalCards)}</p>
               <p className="text-[11px] text-muted-foreground">
                 {fmtInt(window60?.uniqueCreators)} creators · trend {fmtPct(window60?.trendDeltaPct ?? null)}
               </p>
             </div>
             <div className="rounded-xl border border-border bg-card p-4">
-              <p className="text-xs text-muted-foreground">Entries Created (90d)</p>
+              <p className="text-xs text-muted-foreground">Records Created (90d)</p>
               <p className="mt-1 text-2xl font-semibold text-foreground">{fmtInt(window90?.totalCards)}</p>
               <p className="text-[11px] text-muted-foreground">
                 {fmtInt(window90?.uniqueCreators)} creators · trend {fmtPct(window90?.trendDeltaPct ?? null)}
@@ -331,7 +331,7 @@ function CodaBoardPanel({
                       <p className="text-[11px] text-muted-foreground">
                         {creator.email ?? "unknown"} · first seen{" "}
                         {creator.firstSeenAt ? new Date(creator.firstSeenAt).toLocaleDateString() : "n/a"} ·{" "}
-                        {fmtInt(creator.cardsCreated)} entries
+                        {fmtInt(creator.cardsCreated)} records
                       </p>
                     </div>
                   ))}
@@ -366,9 +366,9 @@ function CodaBoardPanel({
 
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <div className="rounded-xl border border-border bg-card p-4">
-              <h3 className="text-sm font-semibold text-foreground">Entries Created per Day (90d)</h3>
+              <h3 className="text-sm font-semibold text-foreground">Records Created per Day (90d)</h3>
               {recentCardsCreated.length === 0 ? (
-                <p className="mt-2 text-xs text-muted-foreground">No daily entry trend yet.</p>
+                <p className="mt-2 text-xs text-muted-foreground">No daily record trend yet.</p>
               ) : (
                 <div className="mt-3 flex h-24 items-end gap-1">
                   {recentCardsCreated.map((point) => {
@@ -457,7 +457,7 @@ function CodaBoardPanel({
             <h3 className="text-sm font-semibold text-foreground">Creator Intelligence Diagnostics</h3>
             <p className="mt-2 text-xs text-muted-foreground">
               Mode: {diagnostics?.creatorResolutionMode ?? "auto_detect"} · Unknown creator ratio:{" "}
-              {fmtPct(diagnostics?.unknownCreatorRatio ?? null)} · Unknown entries:{" "}
+              {fmtPct(diagnostics?.unknownCreatorRatio ?? null)} · Unknown records:{" "}
               {fmtInt(diagnostics?.unknownCardCount)} · HubSpot match errors:{" "}
               {fmtInt(diagnostics?.hubspotMatchingErrors)}
             </p>
@@ -714,9 +714,9 @@ export function AdsSemrushDashboard({ data }: IntegrationChildDashboardProps) {
 
 export function AdsCodaKanbanDashboard({ data }: IntegrationChildDashboardProps) {
   return (
-    <CodaBoardPanel
-      title="Coda Lead Magnet"
-      subtitle="Whitepaper engagement depth and status distribution for growth execution."
+    <CodaRecordsPanel
+      title="Coda Campaigns"
+      subtitle="Campaign record depth and status distribution for growth execution."
       coda={data?.coda ?? null}
       reasons={providerErrors(data, ["coda", "codaOps"])}
       showCreatorIntelligence
@@ -932,9 +932,9 @@ export function CustomerSuccessPylonDashboard({ data }: IntegrationChildDashboar
 
 export function CustomerSuccessCodaDashboard({ data }: IntegrationChildDashboardProps) {
   return (
-    <CodaBoardPanel
+    <CodaRecordsPanel
       title="Coda"
-      subtitle="Customer success execution health and movement signals."
+      subtitle="Customer-success execution record health and movement signals."
       coda={data?.coda ?? null}
       reasons={providerErrors(data, ["coda", "codaOps"])}
     />
@@ -953,8 +953,8 @@ export function CustomerSuccessProductDashboard({ data }: IntegrationChildDashbo
       <MetricGrid
         metrics={[
           { label: "Active Contributors", value: fmtInt(product.activeContributors) },
-          { label: "Created Tasks", value: fmtInt(product.createdTasksInRange) },
-          { label: "Completed Tasks", value: fmtInt(product.completedTasksInRange) },
+          { label: "Created Items", value: fmtInt(product.createdTasksInRange) },
+          { label: "Completed Items", value: fmtInt(product.completedTasksInRange) },
           { label: "Overdue Open", value: fmtInt(product.overdueOpenTasks) },
           { label: "Backlog Growth", value: fmtInt(product.backlogGrowth) },
           { label: "Throughput", value: fmtRatio(product.throughputRate) },

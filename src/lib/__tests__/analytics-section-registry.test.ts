@@ -75,7 +75,7 @@ describe("analytics section registry", () => {
     expect(getAnalyticsPrimaryForSection("cs-pylon")?.id).toBe("customer-success");
     expect(getAnalyticsPrimaryForSection("cj-overview")?.id).toBe("customer-journey");
     expect(getAnalyticsPrimaryForSection("cj-conversion")?.id).toBe("customer-journey");
-    expect(getAnalyticsPrimaryForSection("demo-scheduling")?.id).toBe("demo-analytics");
+    expect(getAnalyticsPrimaryForSection("demo-scheduling")?.id).toBe("sales-pipeline");
     expect(getAnalyticsPrimaryForSection("process-bottlenecks")?.id).toBe("process-analytics");
     expect(getAnalyticsPrimaryForSection("missing")).toBeNull();
   });
@@ -85,9 +85,11 @@ describe("analytics section registry", () => {
     expect(getAnalyticsSecondaryForPrimary("social-media").length).toBeGreaterThan(0);
     expect(getAnalyticsSecondaryForPrimary("finance").length).toBeGreaterThan(0);
     expect(getAnalyticsSecondaryForPrimary("sales-pipeline").length).toBeGreaterThan(0);
+    expect(getAnalyticsSecondaryForPrimary("sales-pipeline").map((section) => section.id)).toEqual(
+      expect.arrayContaining(["demo-scheduling", "demo-attribution", "demo-coaching"]),
+    );
     expect(getAnalyticsSecondaryForPrimary("customer-success").length).toBeGreaterThan(0);
     expect(getAnalyticsSecondaryForPrimary("customer-journey").length).toBeGreaterThan(0);
-    expect(getAnalyticsSecondaryForPrimary("demo-analytics").length).toBeGreaterThan(0);
     expect(getAnalyticsSecondaryForPrimary("process-analytics").length).toBeGreaterThan(0);
   });
 });

@@ -119,7 +119,7 @@ export default function AutomationRunsPage() {
           <p className="text-xs text-muted-foreground">Execution traces for this workflow.</p>
         </div>
         <Link
-          href={`/automations/${workflowId}`}
+          href={`/pipelines/${workflowId}`}
           className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
         >
           Back to Builder

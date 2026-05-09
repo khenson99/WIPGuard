@@ -1,7 +1,7 @@
 {
-  "name": "Arda",
-  "short_name": "Arda",
-  "description": "Arda's GTM operator platform for daily work management, automations, and analytics",
+  "name": "Imladris",
+  "short_name": "Imladris",
+  "description": "Imladris is an analytics API meeting place for trusted metrics, source health, reporting, and automation pipelines.",
   "id": "/",
   "start_url": "/",
   "scope": "/",

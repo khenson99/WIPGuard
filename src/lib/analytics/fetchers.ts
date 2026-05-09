@@ -394,6 +394,87 @@ function buildHubSpotStageHistory(
     .sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
 }
 
+type HubSpotDealRecord = NonNullable<HubSpotData["deals"]>[number];
+
+const SUSPICIOUS_EMAIL_DOMAINS = new Set([
+  "10minutemail.com",
+  "example.com",
+  "fakeinbox.com",
+  "guerrillamail.com",
+  "mailinator.com",
+  "sharklasers.com",
+  "temp-mail.org",
+  "test.com",
+  "yopmail.com",
+]);
+
+const SUSPICIOUS_TEXT_PATTERN = /\b(asdf|bot|fake|junk|qwerty|spam|test)\b/i;
+
+function normalizeEmail(value: string | null | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function hasNoHubSpotEngagement(analytics: HubSpotDealRecord["primaryContactAnalytics"]): boolean {
+  if (!analytics) return false;
+  const hasVisits = (analytics.numVisits ?? 0) > 0 || (analytics.numPageViews ?? 0) > 0;
+  const hasAttribution = Boolean(
+    analytics.utmSource ||
+      analytics.utmMedium ||
+      analytics.utmCampaign ||
+      analytics.sourceData1 ||
+      analytics.sourceData2,
+  );
+  return !hasVisits && !hasAttribution;
+}
+
+function isRandomLookingEmailLocalPart(value: string): boolean {
+  if (value.length < 12 || value.length > 32) return false;
+  if (!/^[a-z0-9._+-]+$/.test(value)) return false;
+  const alnum = value.replace(/[^a-z0-9]/g, "");
+  if (alnum.length < 12) return false;
+  const vowels = alnum.match(/[aeiou]/g)?.length ?? 0;
+  const digits = alnum.match(/\d/g)?.length ?? 0;
+  return vowels <= 1 || digits >= Math.ceil(alnum.length * 0.45);
+}
+
+function suspiciousHubSpotLeadReasons(deal: HubSpotDealRecord): string[] {
+  const reasons: string[] = [];
+  const email = normalizeEmail(deal.primaryContactEmail);
+  const [localPart = "", domain = ""] = email.split("@");
+  const source = (deal.source || "").trim().toLowerCase();
+  const dealName = (deal.dealName || "").trim();
+
+  if (email && !email.includes("@")) reasons.push("invalid_email");
+  if (domain && SUSPICIOUS_EMAIL_DOMAINS.has(domain)) reasons.push("disposable_or_test_email_domain");
+  if (localPart && (SUSPICIOUS_TEXT_PATTERN.test(localPart) || isRandomLookingEmailLocalPart(localPart))) {
+    reasons.push("junk_email_local_part");
+  }
+  if (SUSPICIOUS_TEXT_PATTERN.test(dealName)) reasons.push("junk_deal_name");
+  if (!source || source === "unknown" || source === "(none)") reasons.push("missing_source");
+  if (deal.amount <= 0) reasons.push("zero_amount");
+  if (hasNoHubSpotEngagement(deal.primaryContactAnalytics)) reasons.push("no_contact_engagement");
+
+  return reasons;
+}
+
+function isSuspiciousHubSpotLead(deal: HubSpotDealRecord): boolean {
+  const reasons = suspiciousHubSpotLeadReasons(deal);
+  const hasContactSignal = reasons.some((reason) =>
+    reason === "invalid_email" ||
+      reason === "disposable_or_test_email_domain" ||
+      reason === "junk_email_local_part" ||
+      reason === "no_contact_engagement",
+  );
+  const hasJunkIdentitySignal = reasons.some((reason) =>
+    reason === "disposable_or_test_email_domain" ||
+      reason === "junk_email_local_part" ||
+      reason === "junk_deal_name" ||
+      reason === "invalid_email",
+  );
+
+  return hasContactSignal && hasJunkIdentitySignal && reasons.length >= 3;
+}
+
 type HubSpotOwnerRecord = { id: string; name: string; email: string | null };
 
 async function fetchHubSpotOwners(input: {
@@ -528,13 +609,7 @@ export async function fetchHubSpotData(
   const activeSubscriptionPipelineDeals = activeDealsResult.deals.filter((deal) =>
     isHubSpotSubscriptionPipeline(deal.properties?.pipeline ?? null),
   );
-  const dealsFetched = allMainPipelineDeals.length;
-
-  // Aggregate by stage
-  const stageAgg: Record<string, { count: number; value: number }> = {};
-  const sourceAgg: Record<string, { count: number; value: number; closedWon: number; followUpNeeded: number; churned: number }> = {};
-
-  let notActivatedCount = 0;
+  let dealsFetched = allMainPipelineDeals.length;
 
   const shouldLoadOwners =
     useActivityInRange ||
@@ -557,41 +632,7 @@ export async function fetchHubSpotData(
     return ownerNameById.get(trimmed) || `Owner ${trimmed}`;
   };
 
-  for (const deal of activeDeals) {
-    const props = deal.properties || {};
-
-    const stage = props.dealstage || "unknown";
-    const mappedLabel = resolveHubSpotStageLabel(stage, mainStageLabelById);
-    const amount = parseFloat(props.amount) || 0;
-    const source = props.hs_analytics_source || "Unknown";
-
-    if (!stageAgg[stage]) stageAgg[stage] = { count: 0, value: 0 };
-    stageAgg[stage].count++;
-    stageAgg[stage].value += amount;
-
-    if (!sourceAgg[source]) sourceAgg[source] = { count: 0, value: 0, closedWon: 0, followUpNeeded: 0, churned: 0 };
-    sourceAgg[source].count++;
-    sourceAgg[source].value += amount;
-    
-    if (stage === "closedwon") sourceAgg[source].closedWon++;
-    if (mappedLabel === "Demo Follow-Up") sourceAgg[source].followUpNeeded++;
-    if (mappedLabel === "Churn") {
-      sourceAgg[source].churned++;
-      
-      const createdMs = props.createdate ? new Date(props.createdate).getTime() : 0;
-      const updatedMs = props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).getTime() 
-        : props.closedate ? new Date(props.closedate).getTime() 
-        : new Date().getTime();
-      
-      const daysSinceCreation = createdMs > 0 ? (updatedMs - createdMs) / 86_400_000 : Infinity;
-      
-      if (createdMs > 0 && daysSinceCreation <= 60) {
-        notActivatedCount++;
-      }
-    }
-  }
-
-  const deals = allMainPipelineDeals.map((deal) => {
+  let deals = allMainPipelineDeals.map((deal) => {
     const props = deal.properties || {};
     const stageId = props.dealstage || "unknown";
     const ownerId = props.hubspot_owner_id || null;
@@ -641,6 +682,73 @@ export async function fetchHubSpotData(
     };
   });
 
+  // Enrich before aggregation so suspicious contact-backed leads can be removed
+  // from all HubSpot-derived funnel, demo, and churn calculations.
+  try {
+    const dealIdsForContacts = [...deals, ...subscriptionDeals].map((d) => d.dealId).filter(Boolean);
+    const contactAnalytics = await fetchDealContactAnalytics(baseUrl, headers, dealIdsForContacts);
+    for (const deal of [...deals, ...subscriptionDeals]) {
+      const analytics = contactAnalytics.get(deal.dealId);
+      if (analytics) {
+        deal.contactIds = analytics.contactIds;
+        deal.primaryContactId = analytics.primaryContactId;
+        deal.primaryContactEmail = analytics.primaryContactEmail;
+        (deal as Record<string, unknown>).primaryContactAnalytics = analytics.primaryContactAnalytics;
+      }
+    }
+  } catch {
+    // Non-critical — attribution will fall back to deal-level signals only.
+  }
+
+  const suspiciousDealIds = new Set(
+    deals
+      .filter((deal) => isSuspiciousHubSpotLead(deal))
+      .map((deal) => deal.dealId),
+  );
+  const suspiciousLeadExclusions = suspiciousDealIds.size;
+  deals = deals.filter((deal) => !suspiciousDealIds.has(deal.dealId));
+  const metricActiveDeals = activeDeals.filter((deal) => !suspiciousDealIds.has(String(deal.id ?? "")));
+  const metricAllMainPipelineDeals = allMainPipelineDeals.filter((deal) => !suspiciousDealIds.has(String(deal.id ?? "")));
+  dealsFetched = metricAllMainPipelineDeals.length;
+
+  const stageAgg: Record<string, { count: number; value: number }> = {};
+  const sourceAgg: Record<string, { count: number; value: number; closedWon: number; followUpNeeded: number; churned: number }> = {};
+  let notActivatedCount = 0;
+
+  for (const deal of metricActiveDeals) {
+    const props = deal.properties || {};
+
+    const stage = props.dealstage || "unknown";
+    const mappedLabel = resolveHubSpotStageLabel(stage, mainStageLabelById);
+    const amount = parseFloat(props.amount) || 0;
+    const source = props.hs_analytics_source || "Unknown";
+
+    if (!stageAgg[stage]) stageAgg[stage] = { count: 0, value: 0 };
+    stageAgg[stage].count++;
+    stageAgg[stage].value += amount;
+
+    if (!sourceAgg[source]) sourceAgg[source] = { count: 0, value: 0, closedWon: 0, followUpNeeded: 0, churned: 0 };
+    sourceAgg[source].count++;
+    sourceAgg[source].value += amount;
+
+    if (stage === "closedwon") sourceAgg[source].closedWon++;
+    if (mappedLabel === "Demo Follow-Up") sourceAgg[source].followUpNeeded++;
+    if (mappedLabel === "Churn") {
+      sourceAgg[source].churned++;
+
+      const createdMs = props.createdate ? new Date(props.createdate).getTime() : 0;
+      const updatedMs = props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).getTime()
+        : props.closedate ? new Date(props.closedate).getTime()
+        : new Date().getTime();
+
+      const daysSinceCreation = createdMs > 0 ? (updatedMs - createdMs) / 86_400_000 : Infinity;
+
+      if (createdMs > 0 && daysSinceCreation <= 60) {
+        notActivatedCount++;
+      }
+    }
+  }
+
   const STAGE_CLOSED_WON = "closedwon";
   const STAGE_CLOSED_LOST = "closedlost";
   const STAGE_UNLIKELY = "1499784891";
@@ -676,7 +784,7 @@ export async function fetchHubSpotData(
     const eventsInRange: HubSpotStageEvent[] = [];
     const hadWonBeforeChurnInRange = new Set<string>();
 
-    for (const deal of allMainPipelineDeals) {
+    for (const deal of metricAllMainPipelineDeals) {
       const events = extractHubSpotStageEvents(deal);
       if (events.length === 0) continue;
 
@@ -866,23 +974,6 @@ export async function fetchHubSpotData(
     // Non-critical — skip
   }
 
-  // ── Enrich deals with contact analytics for attribution ──
-  try {
-    const dealIdsForContacts = [...deals, ...subscriptionDeals].map((d) => d.dealId).filter(Boolean);
-    const contactAnalytics = await fetchDealContactAnalytics(baseUrl, headers, dealIdsForContacts);
-    for (const deal of [...deals, ...subscriptionDeals]) {
-      const analytics = contactAnalytics.get(deal.dealId);
-      if (analytics) {
-        deal.contactIds = analytics.contactIds;
-        deal.primaryContactId = analytics.primaryContactId;
-        deal.primaryContactEmail = analytics.primaryContactEmail;
-        (deal as Record<string, unknown>).primaryContactAnalytics = analytics.primaryContactAnalytics;
-      }
-    }
-  } catch {
-    // Non-critical — attribution will fall back to deal-level signals only
-  }
-
   const meta = makeMeta("live");
   meta.diagnostics = {
     dealsFetched,
@@ -896,6 +987,7 @@ export async function fetchHubSpotData(
     archivedDealsRaw: archivedDealsResult.deals.length,
     includedPipelineId: HUBSPOT_MAIN_PIPELINE_ID,
     subscriptionPipelineId: HUBSPOT_SUBSCRIPTION_PIPELINE_ID,
+    suspiciousLeadExclusions,
     subscriptionDealsFetched: allSubscriptionPipelineDeals.length,
     subscriptionActiveDealsFetched: activeSubscriptionPipelineDeals.length,
     excludedPipelineIds: pipelineResult.pipelines
@@ -923,6 +1015,7 @@ export async function fetchHubSpotData(
       unlikely,
       churn,
       notActivated: notActivatedCount,
+      excludedSuspiciousLeads: suspiciousLeadExclusions,
       activeSubscriptions: subscriptions,
       noShows,
       demoScheduled,
@@ -935,8 +1028,8 @@ export async function fetchHubSpotData(
       dealsBySource,
     },
     contacts: {
-      totalContacts: recentContacts,
-      recentContacts,
+      totalContacts: Math.max(0, recentContacts - suspiciousLeadExclusions),
+      recentContacts: Math.max(0, recentContacts - suspiciousLeadExclusions),
       bySource: [],
     },
     pipelineDetected: {
@@ -1163,7 +1256,17 @@ export async function fetchHubSpotContacts(
         },
       ],
       sorts: ["createdate"],
-      properties: ["createdate", "hubspot_owner_id", "hs_analytics_source"],
+      properties: [
+        "email",
+        "createdate",
+        "hubspot_owner_id",
+        "hs_analytics_source",
+        "hs_analytics_num_visits",
+        "hs_analytics_num_page_views",
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+      ],
       limit: 100,
       after,
     };
@@ -1186,13 +1289,49 @@ export async function fetchHubSpotContacts(
     for (const contact of results) {
       const props = contact.properties || {};
       const ownerId = props.hubspot_owner_id ? String(props.hubspot_owner_id) : null;
+      const email = props.email ? String(props.email) : null;
+      const rawSource = props.hs_analytics_source ? String(props.hs_analytics_source) : null;
+      const syntheticDeal: HubSpotDealRecord = {
+        dealId: String(contact.id ?? ""),
+        dealName: email?.split("@")[0] || "Untitled contact",
+        stageId: "contact",
+        stageLabel: "Lead",
+        amount: 0,
+        source: rawSource || "Unknown",
+        ownerId,
+        repName: ownerId ? ownerMap[ownerId] || "Unknown" : "Unassigned",
+        updatedAt: null,
+        createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
+        closedAt: null,
+        stripeCustomerId: null,
+        pipelineId: null,
+        contactIds: [String(contact.id ?? "")].filter(Boolean),
+        primaryContactId: String(contact.id ?? "") || null,
+        primaryContactEmail: email,
+        primaryContactAnalytics: {
+          createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
+          source: rawSource,
+          sourceData1: null,
+          sourceData2: null,
+          firstSeenAt: null,
+          lastSeenAt: null,
+          firstUrl: null,
+          lastUrl: null,
+          numVisits: props.hs_analytics_num_visits ? Number(props.hs_analytics_num_visits) : null,
+          numPageViews: props.hs_analytics_num_page_views ? Number(props.hs_analytics_num_page_views) : null,
+          utmSource: props.utm_source || null,
+          utmMedium: props.utm_medium || null,
+          utmCampaign: props.utm_campaign || null,
+        },
+      };
+      if (isSuspiciousHubSpotLead(syntheticDeal)) continue;
 
       out.push({
         contactId: String(contact.id ?? ""),
         createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
         ownerId,
         repName: ownerId ? ownerMap[ownerId] || "Unknown" : "Unassigned",
-        rawSource: props.hs_analytics_source ? String(props.hs_analytics_source) : null,
+        rawSource,
       });
     }
 

@@ -1,6 +1,6 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
-  <title id="title">Arda app icon</title>
-  <desc id="desc">Arda orange app icon with a white geometric A mark.</desc>
+  <title id="title">Imladris app icon</title>
+  <desc id="desc">Imladris orange app icon with a white geometric A mark.</desc>
   <rect width="512" height="512" rx="96" fill="#FC5A29"/>
   <path fill="#FFFFFF" d="M256 88 407 424h-80l-30-72h-82l-30 72h-80L256 88Zm0 152-34 81h68l-34-81Z"/>
   <path fill="#FFFFFF" opacity=".92" d="M160 424h192v-30H160v30Z"/>

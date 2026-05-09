@@ -34,6 +34,7 @@ export function SalesHubspotTab({ data }: SalesHubspotTabProps) {
 
   const funnel = hs.funnel;
   const deals = hs.displayDeals ?? hs.deals ?? [];
+  const excludedSuspiciousLeads = funnel.excludedSuspiciousLeads ?? 0;
 
   /* ── Alerts ──────────────────────────────────────── */
 
@@ -223,6 +224,15 @@ export function SalesHubspotTab({ data }: SalesHubspotTabProps) {
           value={fmtPct(funnel.effectiveWinRate)}
           icon={<Target className="h-4 w-4" />}
         />
+        {excludedSuspiciousLeads > 0 && (
+          <StatCard
+            title="Excluded Leads"
+            value={fmtN(excludedSuspiciousLeads)}
+            subtitle="flagged as suspicious"
+            icon={<AlertTriangle className="h-4 w-4" />}
+            className="border-amber-500/30 bg-amber-500/5"
+          />
+        )}
       </div>
 
       {/* ── Sales Funnel ──────────────────────────── */}

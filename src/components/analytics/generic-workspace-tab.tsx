@@ -46,7 +46,7 @@ export function TelemetryDashboard({
 }) {
   const {
     totalRules, enabledRules, erroredRules,
-    receiptsInRange, tasksCreatedInRange, eventsInRange, failuresInRange,
+    receiptsInRange, tasksCreatedInRange: artifactsCreatedInRange, eventsInRange, failuresInRange,
     trend, topFailureReasons,
   } = telemetry;
 
@@ -114,11 +114,11 @@ export function TelemetryDashboard({
     });
   }
 
-  if (tasksCreatedInRange > 0 && receiptsInRange > 0) {
-    const conversionRate = (tasksCreatedInRange / receiptsInRange) * 100;
+  if (artifactsCreatedInRange > 0 && receiptsInRange > 0) {
+    const conversionRate = (artifactsCreatedInRange / receiptsInRange) * 100;
     insights.push({
       title: "Automation Coverage",
-      insight: `${conversionRate.toFixed(0)}% of receipts triggered downstream automation activity (${tasksCreatedInRange} of ${receiptsInRange}).`,
+      insight: `${conversionRate.toFixed(0)}% of receipts triggered downstream automation activity (${artifactsCreatedInRange} of ${receiptsInRange}).`,
       action: conversionRate < 20
         ? "Low conversion — review rule conditions and ensure proper event mapping."
         : "Healthy automation throughput.",
@@ -172,7 +172,7 @@ export function TelemetryDashboard({
         />
         <StatCard
           title="Automations Triggered"
-          value={fmtN(tasksCreatedInRange)}
+          value={fmtN(artifactsCreatedInRange)}
           icon={<CheckCircle2 className="h-4 w-4" />}
         />
         <StatCard

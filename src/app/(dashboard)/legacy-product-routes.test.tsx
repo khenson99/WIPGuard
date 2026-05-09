@@ -35,7 +35,7 @@ describe("legacy product routes", () => {
     vi.clearAllMocks();
   });
 
-  it.each(routes)("redirects /%s to analytics", async (_name, Page) => {
+  it.each(routes)("redirects /%s to metrics", async (_name, Page) => {
     const { redirect } = await import("next/navigation");
 
     await expect(async () => Page()).rejects.toThrow(`NEXT_REDIRECT:${ANALYTICS_HOME}`);
