@@ -3,8 +3,14 @@ import "./globals.css";
 import { Providers } from "@/components/layout/providers";
 
 export const metadata: Metadata = {
-  title: "WIPGuard",
-  description: "Analytics API meeting place with governed metric trust for revenue teams",
+  applicationName: "Arda",
+  title: "Arda",
+  description: "Arda's GTM operator platform for daily work management, automations, and analytics",
+  manifest: "/manifest.json",
+  icons: {
+    icon: "/icons/icon-192.png",
+    apple: "/icons/icon-192.png",
+  },
 };
 
 export default function RootLayout({

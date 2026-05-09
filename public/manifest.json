@@ -1,16 +1,18 @@
 {
-  "name": "WIPGuard",
-  "short_name": "WIPGuard",
-  "description": "WIP-limited GTM operating system with offline field support",
+  "name": "Arda",
+  "short_name": "Arda",
+  "description": "Arda's GTM operator platform for daily work management, automations, and analytics",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#efefef",
-  "theme_color": "#fc5a29",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FC5A29",
   "orientation": "any",
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "/icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "categories": ["productivity", "business"],
   "prefer_related_applications": false
