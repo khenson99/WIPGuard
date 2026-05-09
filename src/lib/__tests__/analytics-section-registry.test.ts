@@ -65,9 +65,10 @@ describe("analytics section registry", () => {
 
   it("returns the owning primary section for child routes", () => {
     expect(ANALYTICS_SUB_SECTIONS.find((section) => section.id === "ads-coda-kanban")?.label).toBe(
-      "Coda Lead Magnet (Whitepaper)",
+      "Campaigns & Conferences",
     );
     expect(getAnalyticsPrimaryForSection("ads-google-ads")?.id).toBe("social-media");
+    expect(getAnalyticsPrimaryForSection("ads-coda-kanban")?.id).toBe("social-media");
     expect(getAnalyticsPrimaryForSection("ads-google-analytics")?.id).toBe("website-traffic");
     expect(getAnalyticsPrimaryForSection("finance-stripe")?.id).toBe("finance");
     expect(getAnalyticsPrimaryForSection("sales-hubspot")?.id).toBe("sales-pipeline");

@@ -8,12 +8,12 @@ type InsightFilter = "all" | AnalyticsSectionId;
 
 const FILTERS: Array<{ id: InsightFilter; label: string }> = [
   { id: "all", label: "All" },
-  { id: "website-traffic", label: "Web" },
-  { id: "social-media", label: "Social" },
-  { id: "finance", label: "Finance" },
+  { id: "social-media", label: "Top Funnel" },
+  { id: "website-traffic", label: "Website" },
   { id: "sales-pipeline", label: "Sales" },
-  { id: "retention", label: "Retention" },
   { id: "customer-success", label: "CS" },
+  { id: "retention", label: "Retention" },
+  { id: "finance", label: "Revenue" },
 ];
 
 const SEVERITY_RANK: Record<AiInsight["severity"], number> = {

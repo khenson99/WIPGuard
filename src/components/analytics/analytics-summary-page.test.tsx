@@ -49,7 +49,7 @@ describe("AnalyticsSummaryPage", () => {
       primarySections: [
         {
           id: "website-traffic",
-          label: "Website Traffic",
+          label: "Website Conversion",
           description: "desc",
           href: "/analytics/website-traffic",
           status: "connected",
@@ -74,7 +74,7 @@ describe("AnalyticsSummaryPage", () => {
     render(<AnalyticsSummaryPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Analytics Overview")).toBeTruthy();
+      expect(screen.getByText("Funnel Dashboard")).toBeTruthy();
     });
 
     const fetchMock = vi.mocked(fetch);

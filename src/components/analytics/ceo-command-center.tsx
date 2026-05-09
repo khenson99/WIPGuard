@@ -84,16 +84,41 @@ const TRUST_CLASS: Record<TrustStatus, string> = {
 
 const DOMAIN_LABELS: Record<string, string> = {
   ceo: "CEO",
-  finance: "Finance",
+  finance: "Revenue & Finance",
   "sales-pipeline": "Sales",
   retention: "Retention",
   "customer-success": "Customer Success",
-  "website-traffic": "Website",
-  "social-media": "Social",
-  "customer-journey": "Customer Journey",
+  "website-traffic": "Website Conversion",
+  "social-media": "Social Media, Ads & Conferences",
+  "customer-journey": "Full-Funnel Analytics",
   "demo-analytics": "Demo",
   "process-analytics": "Process",
 };
+
+const DOMAIN_ORDER = [
+  "social-media",
+  "website-traffic",
+  "sales-pipeline",
+  "customer-success",
+  "retention",
+  "customer-journey",
+  "demo-analytics",
+  "process-analytics",
+  "finance",
+  "ceo",
+];
+
+const DASHBOARD_METRIC_DOMAINS = new Set([
+  "social-media",
+  "website-traffic",
+  "sales-pipeline",
+  "customer-success",
+  "retention",
+  "customer-journey",
+  "demo-analytics",
+  "process-analytics",
+  "finance",
+]);
 
 function formatMetricValue(metric: CeoMetric): string {
   if (metric.value === null || metric.value === undefined || metric.value === "") return "Unavailable";
@@ -206,13 +231,20 @@ export function CeoCommandCenter() {
   const metricsByDomain = useMemo(() => {
     const groups = new Map<string, CeoMetric[]>();
     for (const metric of resource.data?.metrics ?? []) {
-      if (!metric.definition.key.startsWith("ceo.") && !["finance", "sales-pipeline", "retention", "customer-success", "website-traffic", "social-media"].includes(metric.definition.domain)) {
+      if (!metric.definition.key.startsWith("ceo.") && !DASHBOARD_METRIC_DOMAINS.has(metric.definition.domain)) {
         continue;
       }
       const domain = metric.definition.domain;
       groups.set(domain, [...(groups.get(domain) ?? []), metric]);
     }
-    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
+    return Array.from(groups.entries()).sort(([a], [b]) => {
+      const aIndex = DOMAIN_ORDER.indexOf(a);
+      const bIndex = DOMAIN_ORDER.indexOf(b);
+      if (aIndex !== -1 || bIndex !== -1) {
+        return (aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex) - (bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex);
+      }
+      return a.localeCompare(b);
+    });
   }, [resource.data]);
 
   async function createReport(packSlug: string) {

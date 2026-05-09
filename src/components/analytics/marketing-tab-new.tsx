@@ -357,7 +357,7 @@ export function MarketingTabNew({ data, variant = 'website-traffic' }: Marketing
   const igLosingPatterns = data.instagram?.losingPatterns || [];
   const isWebsiteTraffic = variant === 'website-traffic';
   const companionRoute = isWebsiteTraffic ? '/analytics/social-media' : '/analytics/website-traffic';
-  const companionLabel = isWebsiteTraffic ? 'Social Media' : 'Website Traffic';
+  const companionLabel = isWebsiteTraffic ? 'Social Media, Ads & Conferences' : 'Website Conversion';
   const insightFilter = isWebsiteTraffic ? 'website-traffic' : 'social-media';
   const gaUsers30d = data.googleAnalytics?.users30d || 0;
   const webflowSubmissions = data.webflow?.totalFormSubmissions ?? 0;
@@ -368,12 +368,12 @@ export function MarketingTabNew({ data, variant = 'website-traffic' }: Marketing
       <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border bg-card p-4">
         <div>
           <h2 className="text-lg font-semibold text-foreground">
-            {isWebsiteTraffic ? 'Website Traffic' : 'Social Media'}
+            {isWebsiteTraffic ? 'Website Conversion' : 'Social Media, Ads & Conferences'}
           </h2>
           <p className="text-sm text-muted-foreground">
             {isWebsiteTraffic
-              ? 'Website acquisition, content performance, and onsite conversion health.'
-              : 'Paid and organic social performance across campaigns, pages, and Instagram content.'}
+              ? 'Traffic quality, content performance, and onsite conversion health.'
+              : 'Paid, organic, and event-driven top-of-funnel performance across campaigns, pages, and Instagram content.'}
           </p>
         </div>
         <Link

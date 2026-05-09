@@ -70,8 +70,8 @@ function lifecycleStageDefinitions(): StageDefinition[] {
   return [
     {
       id: "awareness",
-      label: "Awareness",
-      section: "website-traffic",
+      label: "Social Media, Ads & Conferences",
+      section: "social-media",
       rawVolume: (data) =>
         data.googleAnalytics?.users30d ??
         data.googleAnalytics?.sessions30d ??
@@ -116,8 +116,8 @@ function lifecycleStageDefinitions(): StageDefinition[] {
     },
     {
       id: "acquisition",
-      label: "Acquisition",
-      section: "sales-pipeline",
+      label: "Website Conversion",
+      section: "website-traffic",
       rawVolume: (data) =>
         (data.hubspot?.funnel?.demoScheduled ?? 0) +
         (data.coda?.totalCards ?? data.codaKanban?.totalCards ?? 0) +
@@ -160,7 +160,7 @@ function lifecycleStageDefinitions(): StageDefinition[] {
     },
     {
       id: "activation",
-      label: "Activation",
+      label: "Sales",
       section: "sales-pipeline",
       rawVolume: (data) =>
         (data.hubspot?.funnel?.demoFollowUp ?? 0) +
@@ -208,8 +208,8 @@ function lifecycleStageDefinitions(): StageDefinition[] {
     },
     {
       id: "revenue",
-      label: "Revenue",
-      section: "finance",
+      label: "Customer Success",
+      section: "customer-success",
       rawVolume: (data) =>
         (data.hubspot?.funnel?.closedWon ?? 0) +
         (data.stripe?.subscriptions?.active ?? 0),
@@ -248,7 +248,7 @@ function lifecycleStageDefinitions(): StageDefinition[] {
     {
       id: "retention",
       label: "Retention",
-      section: "customer-success",
+      section: "retention",
       rawVolume: (data) =>
         (data.stripe?.subscriptions?.active ?? 0) -
         (data.stripe?.subscriptions?.canceled ?? 0) +
@@ -291,8 +291,8 @@ function lifecycleStageDefinitions(): StageDefinition[] {
     },
     {
       id: "expansion",
-      label: "Expansion",
-      section: "customer-success",
+      label: "Full-Funnel Analytics",
+      section: "customer-journey",
       rawVolume: (data) =>
         (data.hubspot?.funnel?.activeSubscriptions ?? 0) +
         Math.max(0, data.product?.completedTasksInRange ?? 0),

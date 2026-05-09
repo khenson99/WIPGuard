@@ -1,5 +1,5 @@
 import {
-  ANALYTICS_PRIMARY_SECTIONS,
+  ANALYTICS_DASHBOARD_FUNNEL_GROUPS,
   type AnalyticsSubSection,
 } from "@/lib/analytics/section-registry";
 
@@ -38,7 +38,7 @@ export const WORKSPACE_NAV_ITEMS: WorkspaceNavItem[] = [
         href: "/analytics/ceo",
         workspaceId: "analytics",
       },
-      ...ANALYTICS_PRIMARY_SECTIONS.map((section) => ({
+      ...ANALYTICS_DASHBOARD_FUNNEL_GROUPS.map((section) => ({
         id: section.id,
         label: section.label,
         href: section.path,

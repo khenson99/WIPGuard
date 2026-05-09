@@ -184,7 +184,7 @@ describe("LifecycleFunnelPanel", () => {
   it("supports click, hover, and view toggles", () => {
     render(<LifecycleFunnelPanel lifecycle={makeLifecycle()} insights={makeInsights()} sectionFocus="all" />);
 
-    expect(screen.getByText("Customer Lifecycle Funnel")).toBeTruthy();
+    expect(screen.getByText("Full-Funnel Process")).toBeTruthy();
     expect(screen.getByText("Evidence: Awareness")).toBeTruthy();
     expect(screen.getByText("1,000")).toBeTruthy();
 

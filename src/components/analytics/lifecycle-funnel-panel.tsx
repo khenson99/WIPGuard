@@ -77,7 +77,7 @@ export function LifecycleFunnelPanel({ lifecycle, insights = [], sectionFocus = 
     <section className="rounded-xl border border-border bg-card p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold text-foreground">Customer Lifecycle Funnel</h2>
+          <h2 className="text-sm font-semibold text-foreground">Full-Funnel Process</h2>
           <p className="text-xs text-muted-foreground">Click a stage to inspect downstream transitions and related recommendations.</p>
         </div>
         <div className="flex gap-1 rounded-md border border-border p-1">

@@ -433,7 +433,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         <div>
           <h1 className="text-xl font-semibold text-foreground">{title}</h1>
           <p className="text-xs text-muted-foreground">
-            First-class analytics with integration drill-down.
+            Funnel-stage analytics with integration drill-down.
           </p>
           <p className="mt-1 text-[11px] text-muted-foreground">
             Last updated: {resource.lastUpdatedAt ? new Date(resource.lastUpdatedAt).toLocaleString() : "Unknown"}
