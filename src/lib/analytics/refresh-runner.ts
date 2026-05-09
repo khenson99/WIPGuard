@@ -203,6 +203,25 @@ function recordProviderOutcome(
   outcomes.set(provider, current);
 }
 
+function isSemrushApiUnitsExhausted(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("semrush api error") &&
+    normalized.includes("api units balance is zero")
+  );
+}
+
+function shouldCountRefreshFailure(input: {
+  providerKey: string;
+  errorMessage: string;
+}): boolean {
+  if (input.providerKey === "semrush" && isSemrushApiUnitsExhausted(input.errorMessage)) {
+    return false;
+  }
+
+  return true;
+}
+
 async function refreshForUserAndRange(input: {
   userId: string;
   rangePreset: RollingRangePreset;
@@ -417,8 +436,10 @@ async function refreshForUserAndRange(input: {
       refreshed += 1;
       recordProviderOutcome(providerOutcomes, provider, { success: true });
     } catch (error) {
-      failures += 1;
       const message = error instanceof Error ? error.message : "refresh failed";
+      if (shouldCountRefreshFailure({ providerKey: job.providerKey, errorMessage: message })) {
+        failures += 1;
+      }
       await storeAnalyticsSnapshotFailure({
         userId: input.userId,
         providerKey: job.providerKey,
