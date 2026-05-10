@@ -46,9 +46,9 @@ test.describe('Settings', () => {
     });
   }
 
-  test('moves the legacy integrations tab to the integrations page', async ({ page }) => {
+  test('moves the legacy integrations tab to Sources', async ({ page }) => {
     await page.goto('/settings?tab=integrations');
 
-    await expect(page).toHaveURL(/\/integrations(?:[/?#]|$)/i, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/sources(?:[/?#]|$)/i, { timeout: 15_000 });
   });
 });
