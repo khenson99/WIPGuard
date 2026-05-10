@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import { buildRangeQuery } from "@/lib/analytics/time-range";
-import { ANALYTICS_PRIMARY_SECTIONS } from "@/lib/analytics/section-registry";
+import { ANALYTICS_DASHBOARD_FUNNEL_GROUPS } from "@/lib/analytics/section-registry";
 import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-controls";
 import { LifecycleFunnelPanel } from "@/components/analytics/lifecycle-funnel-panel";
 import { AiInsightsPanel } from "@/components/analytics/ai-insights-panel";
@@ -58,6 +58,20 @@ interface SummaryPayload {
   }>;
 }
 
+type SummarySection = SummaryPayload["primarySections"][number];
+type SummarySectionStatus = SummarySection["status"];
+
+interface DashboardFunnelGroupView {
+  id: string;
+  label: string;
+  description: string;
+  path: string;
+  status: SummarySectionStatus;
+  integrationCount: number;
+  connectedCount: number;
+  sections: SummarySection[];
+}
+
 const STATUS_CLASS: Record<string, string> = {
   connected: "text-emerald-600",
   degraded: "text-amber-600",
@@ -85,6 +99,34 @@ function summaryCacheKey(rangeQuery: string): string {
 
 function unique(items: string[]): string[] {
   return Array.from(new Set(items.filter((item) => item.trim().length > 0)));
+}
+
+function aggregateStatus(sections: SummarySection[]): SummarySectionStatus {
+  if (sections.length === 0) return "missing";
+  const statuses = sections.map((section) => section.status);
+  if (statuses.every((status) => status === "connected")) return "connected";
+  if (statuses.some((status) => status === "degraded")) return "degraded";
+  if (statuses.some((status) => status === "connected" || status === "partial")) return "partial";
+  return "missing";
+}
+
+function buildDashboardFunnelGroups(summary: SummaryPayload | null): DashboardFunnelGroupView[] {
+  return ANALYTICS_DASHBOARD_FUNNEL_GROUPS.map((group) => {
+    const sections = group.primaryIds
+      .map((id) => summary?.primarySections.find((section) => section.id === id))
+      .filter((section): section is SummarySection => Boolean(section));
+
+    return {
+      id: group.id,
+      label: group.label,
+      description: group.description,
+      path: group.path,
+      status: aggregateStatus(sections),
+      integrationCount: sections.reduce((sum, section) => sum + section.integrationCount, 0),
+      connectedCount: sections.reduce((sum, section) => sum + section.connectedCount, 0),
+      sections,
+    };
+  });
 }
 
 export function AnalyticsSummaryPage() {
@@ -160,34 +202,42 @@ export function AnalyticsSummaryPage() {
 
   const summary = resource.data?.summary ?? null;
   const overview = resource.data?.overview ?? null;
+  const dashboardGroups = useMemo(() => buildDashboardFunnelGroups(summary), [summary]);
 
   const exportHighlightsCsv = useCallback(() => {
     if (!summary) return;
+    const groups = buildDashboardFunnelGroups(summary);
+    const missingGroups = groups.filter((group) => group.status === "missing").length;
+    const degradedGroups = groups.filter((group) => group.status === "degraded" || group.status === "partial").length;
+    const connectedGroups = groups.filter((group) => group.status === "connected").length;
+    const coverage = groups.length > 0 ? Math.round(((groups.length - missingGroups) / groups.length) * 100) : 0;
     const h = summary.highlights;
     downloadCsv(
       "analytics-highlights.csv",
       ["Metric", "Value"],
       [
-        ["Connected Sections", String(h.connectedSections)],
-        ["Degraded Sections", String(h.degradedSections)],
-        ["Missing Sections", String(h.missingSections)],
+        ["Funnel Coverage (%)", String(coverage)],
+        ["Connected Stages", String(connectedGroups)],
+        ["Degraded Stages", String(degradedGroups)],
+        ["Missing Stages", String(missingGroups)],
         ["Connected Integrations", String(h.connectedIntegrations)],
-        ["Discipline Coverage (%)", String(h.disciplineCoverage)],
       ],
     );
   }, [summary]);
 
   const exportSectionsCsv = useCallback(() => {
     if (!summary) return;
+    const groups = buildDashboardFunnelGroups(summary);
     downloadCsv(
-      "analytics-sections.csv",
-      ["ID", "Label", "Status", "Integration Count", "Connected Count"],
-      summary.primarySections.map((s) => [
-        s.id,
-        s.label,
-        s.status,
-        String(s.integrationCount),
-        String(s.connectedCount),
+      "funnel-dashboard-sections.csv",
+      ["ID", "Label", "Status", "Signals", "Connected Signals", "Included Sections"],
+      groups.map((group) => [
+        group.id,
+        group.label,
+        group.status,
+        String(group.integrationCount),
+        String(group.connectedCount),
+        group.sections.map((section) => section.label).join("; "),
       ]),
     );
   }, [summary]);
@@ -214,17 +264,20 @@ export function AnalyticsSummaryPage() {
     ...(overview?.errors ?? []).map((item) => item.source),
     ...(overview?.meta?.erroredDomains ?? []),
   ]);
-  const connected = summary.primarySections.filter((section) => section.status === "connected").length;
-  const degraded = summary.primarySections.filter((section) => section.status === "degraded").length;
-  const missing = summary.primarySections.filter((section) => section.status === "missing").length;
+  const connected = dashboardGroups.filter((section) => section.status === "connected").length;
+  const degraded = dashboardGroups.filter((section) => section.status === "degraded" || section.status === "partial").length;
+  const missing = dashboardGroups.filter((section) => section.status === "missing").length;
+  const funnelCoverage = dashboardGroups.length > 0
+    ? Math.round(((dashboardGroups.length - missing) / dashboardGroups.length) * 100)
+    : 0;
 
   return (
     <div className="h-full space-y-4 overflow-y-auto p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">Analytics Overview</h1>
+          <h1 className="text-xl font-semibold text-foreground">Funnel Dashboard</h1>
           <p className="text-xs text-muted-foreground">
-            Distilled cross-platform insights across Ads, Finance, Sales, and Customer Success.
+            Social media, ads, conferences, website conversion, sales, customer success, retention, and full-funnel analytics.
           </p>
           <p className="mt-1 text-[11px] text-muted-foreground">
             Last updated: {resource.lastUpdatedAt ? new Date(resource.lastUpdatedAt).toLocaleString() : "Unknown"}
@@ -267,7 +320,7 @@ export function AnalyticsSummaryPage() {
       <div role="region" aria-label="Section status summary" className="rounded-xl border border-border bg-card px-4 py-3">
         <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
           <span>
-            Sections: <span className="font-semibold text-foreground">{connected}</span> connected
+            Funnel stages: <span className="font-semibold text-foreground">{connected}</span> connected
           </span>
           <span>
             <span className="font-semibold text-amber-600">{degraded}</span> degraded
@@ -297,20 +350,20 @@ export function AnalyticsSummaryPage() {
       </div>
       <div role="region" aria-label="Key metrics" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <div className="rounded-xl border border-border bg-card px-4 py-3">
-          <p className="text-xs text-muted-foreground">Discipline Coverage</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{summary.highlights.disciplineCoverage}%</p>
+          <p className="text-xs text-muted-foreground">Funnel Coverage</p>
+          <p className="mt-1 text-2xl font-semibold text-foreground">{funnelCoverage}%</p>
         </div>
         <div className="rounded-xl border border-border bg-card px-4 py-3">
-          <p className="text-xs text-muted-foreground">Connected Sections</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{summary.highlights.connectedSections}</p>
+          <p className="text-xs text-muted-foreground">Connected Stages</p>
+          <p className="mt-1 text-2xl font-semibold text-foreground">{connected}</p>
         </div>
         <div className="rounded-xl border border-border bg-card px-4 py-3">
-          <p className="text-xs text-muted-foreground">Degraded Sections</p>
-          <p className="mt-1 text-2xl font-semibold text-amber-600">{summary.highlights.degradedSections}</p>
+          <p className="text-xs text-muted-foreground">Degraded Stages</p>
+          <p className="mt-1 text-2xl font-semibold text-amber-600">{degraded}</p>
         </div>
         <div className="rounded-xl border border-border bg-card px-4 py-3">
-          <p className="text-xs text-muted-foreground">Missing Sections</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{summary.highlights.missingSections}</p>
+          <p className="text-xs text-muted-foreground">Missing Stages</p>
+          <p className="mt-1 text-2xl font-semibold text-foreground">{missing}</p>
         </div>
         <div className="rounded-xl border border-border bg-card px-4 py-3">
           <p className="text-xs text-muted-foreground">Connected Integrations</p>
@@ -331,7 +384,7 @@ export function AnalyticsSummaryPage() {
       </div>
 
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-foreground">Primary Sections</h2>
+        <h2 className="text-sm font-semibold text-foreground">Dashboard Structure</h2>
         <button
           type="button"
           onClick={exportSectionsCsv}
@@ -342,19 +395,23 @@ export function AnalyticsSummaryPage() {
         </button>
       </div>
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
-        {ANALYTICS_PRIMARY_SECTIONS.map((primary) => {
-          const section = summary.primarySections.find((item) => item.id === primary.id);
+        {dashboardGroups.map((group) => {
+          const section = {
+            status: group.status,
+            connectedCount: group.connectedCount,
+            integrationCount: group.integrationCount,
+          };
           return (
             <Link
-              key={primary.id}
-              href={`${primary.path}${rangeQuery ? `?${rangeQuery}` : ""}`}
-              aria-label={`${primary.label}: ${section?.status ?? "missing"}`}
+              key={group.id}
+              href={`${group.path}${rangeQuery ? `?${rangeQuery}` : ""}`}
+              aria-label={`${group.label}: ${section.status}`}
               className="rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40"
             >
               <div className="flex items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold text-foreground">{primary.label}</h3>
+                <h3 className="text-sm font-semibold text-foreground">{group.label}</h3>
                 {(() => {
-                  const status = section?.status ?? "missing";
+                  const status = section.status;
                   const Icon = STATUS_ICON[status] ?? XCircle;
                   return (
                     <span className={`flex items-center gap-1 text-[11px] uppercase ${STATUS_CLASS[status] ?? "text-muted-foreground"}`}>
@@ -364,17 +421,13 @@ export function AnalyticsSummaryPage() {
                   );
                 })()}
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">{primary.description}</p>
-              {section && (
-                <>
-                  <p className="mt-2 text-[11px] text-muted-foreground">
-                    {section.connectedCount}/{section.integrationCount} integrations connected
-                  </p>
-                  {section.children?.some((child) => child.lastError) ? (
-                    <p className="mt-1 text-[11px] text-amber-600">Some integrations are failing and need attention.</p>
-                  ) : null}
-                </>
-              )}
+              <p className="mt-1 text-xs text-muted-foreground">{group.description}</p>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                {section.connectedCount}/{section.integrationCount} signals connected
+              </p>
+              {group.sections.some((included) => included.children?.some((child) => child.lastError)) ? (
+                <p className="mt-1 text-[11px] text-amber-600">Some integrations are failing and need attention.</p>
+              ) : null}
             </Link>
           );
         })}

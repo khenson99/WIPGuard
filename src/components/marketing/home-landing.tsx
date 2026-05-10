@@ -16,8 +16,8 @@ const metrics = [
     value: "Freshness, lineage, and warnings stay attached to every number",
   },
   {
-    label: "Board packs",
-    value: "Weekly exec, board, investor, and custom snapshots reuse the same facts",
+    label: "Executive packs",
+    value: "Weekly exec, investor, and custom snapshots reuse the same facts",
   },
   {
     label: "Live integrations",
@@ -40,9 +40,9 @@ const painPoints = [
   },
   {
     icon: Cable,
-    title: "Manual board prep",
+    title: "Manual exec prep",
     body:
-      "Weekly meetings and board packets become spreadsheet archaeology when freshness, lineage, and warnings are detached.",
+      "Weekly meetings and investor packets become spreadsheet archaeology when freshness, lineage, and warnings are detached.",
   },
 ];
 
@@ -57,7 +57,7 @@ const operatingModel = [
     step: "02",
     title: "Compute canonical metrics",
     body:
-      "Reusable calculators produce one governed value for dashboards, exports, investor updates, and board materials.",
+      "Reusable calculators produce one governed value for dashboards, exports, investor updates, and executive materials.",
   },
   {
     step: "03",
@@ -76,7 +76,7 @@ const operatingModel = [
 const roleCards = [
   {
     title: "CEO / Founder",
-    body: "Walk into weekly and board conversations with current numbers, visible caveats, and cited sources.",
+    body: "Walk into weekly and investor conversations with current numbers, visible caveats, and cited sources.",
   },
   {
     title: "Marketing",
@@ -98,7 +98,7 @@ export function HomeLanding() {
       <header className="sticky top-0 z-30 border-b border-white/10 bg-black text-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <Link href="/" className="text-lg font-semibold tracking-tight">
-            WIPGuard
+            Imladris
           </Link>
           <div className="flex items-center gap-2 sm:gap-3">
             <Link
@@ -123,7 +123,7 @@ export function HomeLanding() {
           <div className="mx-auto grid max-w-7xl gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:py-24">
             <div className="relative space-y-8">
               <span className="inline-flex rounded-full bg-black px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white">
-                Invite-only for Arda GTM and beta teams
+                Invite-only for internal and beta teams
               </span>
 
               <div className="space-y-5">
@@ -134,9 +134,9 @@ export function HomeLanding() {
                   Make every business metric traceable.
                 </h1>
                 <p className="max-w-2xl text-base leading-7 text-black/65 sm:text-lg">
-                  WIPGuard brings finance, sales, marketing, customer success,
+                  Imladris brings finance, sales, marketing, customer success,
                   and internal execution sources into one governed metric layer
-                  with freshness, lineage, and board-ready exports.
+                  with freshness, lineage, and executive-ready exports.
                 </p>
               </div>
 
@@ -339,7 +339,7 @@ export function HomeLanding() {
                 Access
               </p>
               <h2 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
-                WIPGuard is invite-only right now.
+                Imladris is invite-only right now.
               </h2>
               <p className="mt-4 text-sm leading-7 text-white/65 sm:text-base">
                 Existing team members and beta operators can sign in to their
@@ -351,7 +351,7 @@ export function HomeLanding() {
               href="/login"
               className="inline-flex items-center justify-center gap-2 rounded-full bg-[#fc5a29] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#e64b1c]"
             >
-              Sign in to WIPGuard
+              Sign in to Imladris
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </Link>
           </div>

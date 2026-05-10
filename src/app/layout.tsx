@@ -3,8 +3,14 @@ import "./globals.css";
 import { Providers } from "@/components/layout/providers";
 
 export const metadata: Metadata = {
-  title: "WIPGuard",
-  description: "Analytics API meeting place with governed metric trust for revenue teams",
+  applicationName: "Imladris",
+  title: "Imladris",
+  description: "Imladris is an analytics API meeting place for trusted metrics, source health, reporting, and automation pipelines.",
+  manifest: "/manifest.json",
+  icons: {
+    icon: "/icons/icon-192.png",
+    apple: "/icons/icon-192.png",
+  },
 };
 
 export default function RootLayout({

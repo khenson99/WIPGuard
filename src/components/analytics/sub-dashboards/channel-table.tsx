@@ -22,7 +22,7 @@ export function ChannelTable({ attribution }: ChannelTableProps) {
         name: displayName,
         traffic: attr.traffic ?? null,
         cost: attr.cost ?? null,
-        kanbanCards: attr.kanbanCards,
+        leadMagnetActions: attr.kanbanCards,
         freeTrials: attr.freeTrials,
         demos: attr.demos,
         deals: attr.firstTouchDeals + attr.assistedDeals + attr.lastTouchDeals,
@@ -68,7 +68,7 @@ export function ChannelTable({ attribution }: ChannelTableProps) {
                   {row.cost !== null ? `$${row.cost.toLocaleString()}` : "-"}
                 </td>
                 <td className="py-3 text-right tabular-nums text-muted-foreground">
-                  {row.kanbanCards} / {row.freeTrials} / {row.demos}
+                  {row.leadMagnetActions} / {row.freeTrials} / {row.demos}
                 </td>
                 <td className="py-3 text-right tabular-nums text-muted-foreground">
                   {row.deals}

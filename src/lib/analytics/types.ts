@@ -99,6 +99,7 @@ export interface FunnelMetrics {
   unlikely: number;
   churn: number;
   notActivated?: number;
+  excludedSuspiciousLeads?: number;
   activeSubscriptions: number;
   noShows: number;
   demoScheduled: number;
@@ -1546,6 +1547,7 @@ export interface DemoAnalyticsData {
   totalScheduled: number;
   totalCompleted: number;
   totalNoShows: number;
+  excludedSuspiciousLeads?: number;
   noShowRate: number;
   avgLeadTimeDays: number;
   upcomingCount: number;

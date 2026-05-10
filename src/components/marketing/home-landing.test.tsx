@@ -13,5 +13,6 @@ describe("HomeLanding", () => {
     ).toBeTruthy();
     expect(screen.getAllByRole("link", { name: /access workspace/i }).length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /see the metric layer/i })).toBeTruthy();
+    expect(screen.getByText("Imladris")).toBeTruthy();
   });
 });

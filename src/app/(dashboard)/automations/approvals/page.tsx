@@ -173,19 +173,19 @@ export default function AutomationApprovalsPage() {
         </div>
         <div className="flex items-center gap-2">
           <Link
-            href="/automations/artifacts"
+            href="/pipelines/artifacts"
             className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
           >
             Artifact Inbox
           </Link>
           <Link
-            href="/automations/recommendations"
+            href="/pipelines/recommendations"
             className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
           >
             Suggested Actions
           </Link>
           <Link
-            href="/automations"
+            href="/pipelines"
             className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
           >
             Back to Automations
@@ -253,7 +253,7 @@ export default function AutomationApprovalsPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Link
-                    href={`/automations/${approval.run.workflow.id}`}
+                    href={`/pipelines/${approval.run.workflow.id}`}
                     className="rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
                   >
                     Open

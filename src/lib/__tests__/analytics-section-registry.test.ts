@@ -65,16 +65,17 @@ describe("analytics section registry", () => {
 
   it("returns the owning primary section for child routes", () => {
     expect(ANALYTICS_SUB_SECTIONS.find((section) => section.id === "ads-coda-kanban")?.label).toBe(
-      "Coda Lead Magnet (Whitepaper)",
+      "Campaigns & Conferences",
     );
     expect(getAnalyticsPrimaryForSection("ads-google-ads")?.id).toBe("social-media");
+    expect(getAnalyticsPrimaryForSection("ads-coda-kanban")?.id).toBe("social-media");
     expect(getAnalyticsPrimaryForSection("ads-google-analytics")?.id).toBe("website-traffic");
     expect(getAnalyticsPrimaryForSection("finance-stripe")?.id).toBe("finance");
     expect(getAnalyticsPrimaryForSection("sales-hubspot")?.id).toBe("sales-pipeline");
     expect(getAnalyticsPrimaryForSection("cs-pylon")?.id).toBe("customer-success");
     expect(getAnalyticsPrimaryForSection("cj-overview")?.id).toBe("customer-journey");
     expect(getAnalyticsPrimaryForSection("cj-conversion")?.id).toBe("customer-journey");
-    expect(getAnalyticsPrimaryForSection("demo-scheduling")?.id).toBe("demo-analytics");
+    expect(getAnalyticsPrimaryForSection("demo-scheduling")?.id).toBe("sales-pipeline");
     expect(getAnalyticsPrimaryForSection("process-bottlenecks")?.id).toBe("process-analytics");
     expect(getAnalyticsPrimaryForSection("missing")).toBeNull();
   });
@@ -84,9 +85,11 @@ describe("analytics section registry", () => {
     expect(getAnalyticsSecondaryForPrimary("social-media").length).toBeGreaterThan(0);
     expect(getAnalyticsSecondaryForPrimary("finance").length).toBeGreaterThan(0);
     expect(getAnalyticsSecondaryForPrimary("sales-pipeline").length).toBeGreaterThan(0);
+    expect(getAnalyticsSecondaryForPrimary("sales-pipeline").map((section) => section.id)).toEqual(
+      expect.arrayContaining(["demo-scheduling", "demo-attribution", "demo-coaching"]),
+    );
     expect(getAnalyticsSecondaryForPrimary("customer-success").length).toBeGreaterThan(0);
     expect(getAnalyticsSecondaryForPrimary("customer-journey").length).toBeGreaterThan(0);
-    expect(getAnalyticsSecondaryForPrimary("demo-analytics").length).toBeGreaterThan(0);
     expect(getAnalyticsSecondaryForPrimary("process-analytics").length).toBeGreaterThan(0);
   });
 });

@@ -39,6 +39,8 @@ function createHubSpotFetchMock(input: {
   archivedDeals?: unknown[];
   totalContacts?: number;
   owners?: unknown[];
+  dealContactAssociations?: Record<string, string[]>;
+  contactsById?: Record<string, Record<string, string>>;
 }) {
   return vi.fn(async (url: string, init?: RequestInit) => {
     const parsed = new URL(url);
@@ -63,11 +65,25 @@ function createHubSpotFetchMock(input: {
     }
 
     if (parsed.pathname === "/crm/v4/associations/deal/contact/batch/read") {
-      return jsonResponse({ results: [] });
+      const body = JSON.parse(String(init?.body ?? "{}")) as { inputs?: Array<{ id?: string }> };
+      return jsonResponse({
+        results: (body.inputs ?? []).map((entry) => ({
+          from: { id: entry.id },
+          to: (input.dealContactAssociations?.[String(entry.id ?? "")] ?? []).map((contactId) => ({
+            toObjectId: contactId,
+          })),
+        })),
+      });
     }
 
     if (parsed.pathname === "/crm/v3/objects/contacts/batch/read") {
-      return jsonResponse({ results: [] });
+      const body = JSON.parse(String(init?.body ?? "{}")) as { inputs?: Array<{ id?: string }> };
+      return jsonResponse({
+        results: (body.inputs ?? []).map((entry) => ({
+          id: entry.id,
+          properties: input.contactsById?.[String(entry.id ?? "")] ?? {},
+        })),
+      });
     }
 
     throw new Error(`Unexpected fetch: ${parsed.pathname} ${init?.method ?? "GET"}`);
@@ -211,5 +227,99 @@ describe("analytics hubspot fetcher", () => {
       "deal-recent-c",
       "deal-recent-b",
     ]);
+  });
+
+  it("excludes suspicious contact-backed HubSpot leads from funnel and churn metrics", async () => {
+    const fetchMock = createHubSpotFetchMock({
+      activeDeals: [
+        {
+          id: "clean-demo",
+          properties: {
+            pipeline: "default",
+            dealstage: "presentationscheduled",
+            amount: "5000",
+            dealname: "Acme Expansion",
+            hs_analytics_source: "ORGANIC_SEARCH",
+            hs_lastmodifieddate: "2026-05-08T12:00:00.000Z",
+            createdate: "2026-05-08T12:00:00.000Z",
+          },
+          propertiesWithHistory: {
+            dealstage: [{ value: "presentationscheduled", timestamp: "2026-05-08T12:00:00.000Z" }],
+          },
+        },
+        {
+          id: "junk-demo",
+          properties: {
+            pipeline: "default",
+            dealstage: "presentationscheduled",
+            amount: "0",
+            dealname: "asdf",
+            hs_analytics_source: "Unknown",
+            hs_lastmodifieddate: "2026-05-08T12:10:00.000Z",
+            createdate: "2026-05-08T12:10:00.000Z",
+          },
+          propertiesWithHistory: {
+            dealstage: [{ value: "presentationscheduled", timestamp: "2026-05-08T12:10:00.000Z" }],
+          },
+        },
+        {
+          id: "junk-churn",
+          properties: {
+            pipeline: "default",
+            dealstage: "1499784890",
+            amount: "0",
+            dealname: "test lead",
+            hs_analytics_source: "Unknown",
+            hs_lastmodifieddate: "2026-05-08T12:20:00.000Z",
+            createdate: "2026-05-08T12:20:00.000Z",
+          },
+          propertiesWithHistory: {
+            dealstage: [
+              { value: "closedwon", timestamp: "2026-05-08T12:15:00.000Z" },
+              { value: "1499784890", timestamp: "2026-05-08T12:20:00.000Z" },
+            ],
+          },
+        },
+      ],
+      dealContactAssociations: {
+        "clean-demo": ["contact-clean"],
+        "junk-demo": ["contact-junk-demo"],
+        "junk-churn": ["contact-junk-churn"],
+      },
+      contactsById: {
+        "contact-clean": {
+          email: "buyer@acme.example",
+          createdate: "2026-05-08T12:00:00.000Z",
+          hs_analytics_num_visits: "4",
+          hs_analytics_num_page_views: "9",
+        },
+        "contact-junk-demo": {
+          email: "asdf@mailinator.com",
+          createdate: "2026-05-08T12:10:00.000Z",
+          hs_analytics_num_visits: "0",
+          hs_analytics_num_page_views: "0",
+        },
+        "contact-junk-churn": {
+          email: "test@example.com",
+          createdate: "2026-05-08T12:20:00.000Z",
+          hs_analytics_num_visits: "0",
+          hs_analytics_num_page_views: "0",
+        },
+      },
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchHubSpotData("hs-token", {
+      fromDate: new Date("2026-05-08T00:00:00.000Z"),
+      toDate: new Date("2026-05-08T23:59:59.999Z"),
+    });
+
+    expect(data.funnel.totalDeals).toBe(1);
+    expect(data.funnel.demoScheduled).toBe(1);
+    expect(data.funnel.churn).toBe(0);
+    expect(data.funnel.excludedSuspiciousLeads).toBe(2);
+    expect(data.deals?.map((deal) => deal.dealId)).toEqual(["clean-demo"]);
+    expect(data.displayDeals?.map((deal) => deal.dealId)).toEqual(["clean-demo"]);
+    expect(data._meta.diagnostics?.suspiciousLeadExclusions).toBe(2);
   });
 });

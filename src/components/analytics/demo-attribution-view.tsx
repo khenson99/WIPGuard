@@ -1,6 +1,6 @@
 "use client";
 
-import { TrendingUp, BarChart3, ArrowRight } from "lucide-react";
+import { TrendingUp, BarChart3, ArrowRight, AlertTriangle } from "lucide-react";
 import type { AnalyticsDashboardData, DemoOutcome } from "@/lib/analytics/types";
 import { StatCard } from "./stat-card";
 import { DemoVolumeChart } from "./demo-volume-chart";
@@ -22,6 +22,7 @@ function fmt$(n: number) {
 export function DemoAttributionView({ data }: { data: AnalyticsDashboardData | null }) {
   const demo = data?.demoAnalytics;
   if (!demo || demo.totalScheduled === 0) return <EmptyState />;
+  const excludedSuspiciousLeads = demo.excludedSuspiciousLeads ?? 0;
 
   // Source attribution: best source for conversion
   const bestSource = demo.bySource.reduce<typeof demo.bySource[0] | null>((best, src) => {
@@ -65,6 +66,15 @@ export function DemoAttributionView({ data }: { data: AnalyticsDashboardData | n
           changeType="negative"
           icon={TrendingUp}
         />
+        {excludedSuspiciousLeads > 0 && (
+          <StatCard
+            label="Excluded Leads"
+            value={excludedSuspiciousLeads.toLocaleString()}
+            subtitle="flagged as suspicious"
+            changeType="negative"
+            icon={AlertTriangle}
+          />
+        )}
       </div>
 
       {/* Demo Volume Chart */}

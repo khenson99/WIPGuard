@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Users, CheckCircle2, AlertTriangle, ListTodo,
+  Users, CheckCircle2, AlertTriangle, Box,
   TrendingUp, Clock, BarChart3,
 } from "lucide-react";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
@@ -50,14 +50,14 @@ export function CsCodaTab({ data }: CsCodaTabProps) {
   if (overdue > 10) {
     alerts.push({
       severity: "critical",
-      title: "High overdue task count",
-      description: `${overdue} tasks are overdue. Review priorities and reassign or close stale items.`,
+      title: "High overdue item count",
+      description: `${overdue} items are overdue. Review priorities and reassign or close stale items.`,
     });
   } else if (overdue > 5) {
     alerts.push({
       severity: "warning",
-      title: "Overdue tasks growing",
-      description: `${overdue} overdue tasks detected. Consider a backlog grooming session.`,
+      title: "Overdue items growing",
+      description: `${overdue} overdue items detected. Consider a backlog review session.`,
     });
   }
 
@@ -65,7 +65,7 @@ export function CsCodaTab({ data }: CsCodaTabProps) {
     alerts.push({
       severity: "warning",
       title: "Backlog growing rapidly",
-      description: `Backlog grew ${backlogGrowth.toFixed(0)}% this period — tasks created outpacing completion.`,
+      description: `Backlog grew ${backlogGrowth.toFixed(0)}% this period, with new items outpacing completion.`,
     });
   }
 
@@ -73,7 +73,7 @@ export function CsCodaTab({ data }: CsCodaTabProps) {
     alerts.push({
       severity: "warning",
       title: "Low throughput rate",
-      description: `Throughput is ${(throughput * 100).toFixed(0)}% — team completing less than half of incoming tasks.`,
+      description: `Throughput is ${(throughput * 100).toFixed(0)}%, with the team completing less than half of incoming items.`,
     });
   }
 
@@ -92,7 +92,7 @@ export function CsCodaTab({ data }: CsCodaTabProps) {
   if (overdue > 5) {
     insights.push({
       title: "Overdue Backlog",
-      insight: `${overdue} tasks are past due, signaling scope or capacity issues.`,
+      insight: `${overdue} items are past due, signaling scope or capacity issues.`,
       action: "Run a triage session to close, reassign, or re-scope overdue items.",
       severity: overdue > 10 ? "critical" : "warning",
     });
@@ -102,7 +102,7 @@ export function CsCodaTab({ data }: CsCodaTabProps) {
     insights.push({
       title: "Growing Backlog",
       insight: `Backlog grew ${backlogGrowth.toFixed(0)}% — more work is being created than completed.`,
-      action: "Limit new task intake or increase team capacity to stabilize the backlog.",
+      action: "Limit new intake or increase team capacity to stabilize the backlog.",
       severity: "warning",
     });
   }
@@ -110,14 +110,14 @@ export function CsCodaTab({ data }: CsCodaTabProps) {
   if (completionRate >= 80) {
     insights.push({
       title: "Strong Velocity",
-      insight: `${completionRate.toFixed(0)}% of created tasks were completed this period.`,
+      insight: `${completionRate.toFixed(0)}% of created items were completed this period.`,
       action: "Team is performing well. Consider taking on stretch goals.",
       severity: "info",
     });
   } else if (completionRate < 50 && created > 0) {
     insights.push({
       title: "Low Completion Rate",
-      insight: `Only ${completionRate.toFixed(0)}% of tasks created were completed.`,
+      insight: `Only ${completionRate.toFixed(0)}% of created items were completed.`,
       action: "Investigate blockers — may need process improvements or scope reduction.",
       severity: "warning",
     });
@@ -138,7 +138,7 @@ export function CsCodaTab({ data }: CsCodaTabProps) {
 
   /* ── Ring data for backlog health ─────────────────── */
 
-  const totalTasks = completed + overdue + Math.max(0, created - completed - overdue);
+  const totalItems = completed + overdue + Math.max(0, created - completed - overdue);
   const ringSegments = [
     { label: "Completed", value: completed, color: "#22c55e" },
     { label: "Overdue", value: overdue, color: "#ef4444" },
@@ -160,17 +160,17 @@ export function CsCodaTab({ data }: CsCodaTabProps) {
           icon={<Users className="h-4 w-4" />}
         />
         <StatCard
-          title="Tasks Created"
+          title="Items Created"
           value={fmtN(created)}
-          icon={<ListTodo className="h-4 w-4" />}
+          icon={<Box className="h-4 w-4" />}
         />
         <StatCard
-          title="Tasks Completed"
+          title="Items Completed"
           value={fmtN(completed)}
           icon={<CheckCircle2 className="h-4 w-4" />}
         />
         <StatCard
-          title="Overdue Tasks"
+          title="Overdue Items"
           value={fmtN(overdue)}
           icon={<Clock className="h-4 w-4" />}
           className={overdue > 5 ? "border-red-500/30 bg-red-500/5" : undefined}
@@ -189,7 +189,7 @@ export function CsCodaTab({ data }: CsCodaTabProps) {
       </div>
 
       {/* ── Velocity Comparison ────────────────────── */}
-      <SectionCard title="Task Velocity" subtitle="Created vs completed this period">
+      <SectionCard title="Item Velocity" subtitle="Created vs completed this period">
         <div className="space-y-4">
           {/* Created bar */}
           <div>
@@ -228,12 +228,12 @@ export function CsCodaTab({ data }: CsCodaTabProps) {
       </SectionCard>
 
       {/* ── Backlog Health ─────────────────────────── */}
-      {totalTasks > 0 && (
-        <SectionCard title="Backlog Health" subtitle="Task status distribution">
+      {totalItems > 0 && (
+        <SectionCard title="Backlog Health" subtitle="Item status distribution">
           <div className="flex flex-col items-center gap-6 sm:flex-row sm:justify-around">
             <RingStat
               segments={ringSegments}
-              total={totalTasks}
+              total={totalItems}
               label="Total"
               size={140}
             />
@@ -244,7 +244,7 @@ export function CsCodaTab({ data }: CsCodaTabProps) {
                   <span className="text-muted-foreground">{seg.label}</span>
                   <span className="ml-auto font-medium">{fmtN(seg.value)}</span>
                   <span className="text-muted-foreground">
-                    ({((seg.value / totalTasks) * 100).toFixed(0)}%)
+                    ({((seg.value / totalItems) * 100).toFixed(0)}%)
                   </span>
                 </div>
               ))}
@@ -255,7 +255,7 @@ export function CsCodaTab({ data }: CsCodaTabProps) {
               <div className="flex items-center gap-2 text-sm text-red-400">
                 <AlertTriangle className="h-4 w-4" />
                 <span className="font-medium">
-                  {overdueRatio.toFixed(0)}% of created tasks are overdue
+                  {overdueRatio.toFixed(0)}% of created items are overdue
                 </span>
               </div>
             </div>

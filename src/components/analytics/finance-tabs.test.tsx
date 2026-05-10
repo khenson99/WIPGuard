@@ -228,4 +228,57 @@ describe("finance tabs", () => {
 
     expect(screen.getByText("No finance-stage HubSpot deals found")).toBeTruthy();
   });
+
+  it("shows the HubSpot suspicious lead exclusion count", () => {
+    const data = makeEmptyData();
+    data.hubspot = {
+      funnel: {
+        totalDeals: 4,
+        closedWon: 1,
+        closedLost: 0,
+        unlikely: 0,
+        churn: 0,
+        activeSubscriptions: 0,
+        noShows: 0,
+        demoScheduled: 1,
+        demoFollowUp: 1,
+        avgDealSize: 1200,
+        winRate: 100,
+        effectiveWinRate: 100,
+        noShowRate: 0,
+        excludedSuspiciousLeads: 3,
+        stages: [
+          {
+            stageId: "1955580622",
+            label: "Budgetary Quote Sent",
+            count: 1,
+            value: 1200,
+          },
+          {
+            stageId: "closedwon",
+            label: "Closed Won",
+            count: 1,
+            value: 1200,
+          },
+        ],
+        dealsBySource: [],
+      },
+      contacts: {
+        totalContacts: 10,
+        recentContacts: 3,
+        bySource: [],
+      },
+      _meta: {
+        fetchedAt: "2026-02-16T00:00:00.000Z",
+        nextRefresh: "2026-02-16T01:00:00.000Z",
+        source: "live",
+      },
+    };
+
+    render(<FinanceHubSpotTab data={data} />);
+
+    expect(screen.getByText("Excluded Leads")).toBeTruthy();
+    expect(screen.getByText("3")).toBeTruthy();
+    expect(screen.getByText("flagged as suspicious")).toBeTruthy();
+  });
 });

@@ -2,7 +2,7 @@
 
 import {
   Users, CheckCircle2, AlertTriangle, Box,
-  TrendingUp, Gauge, BarChart3,
+  TrendingUp, Gauge,
 } from "lucide-react";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
@@ -64,7 +64,7 @@ export function CsProductTab({ data }: CsProductTabProps) {
     alerts.push({
       severity: "critical",
       title: "Product backlog overdue",
-      description: `${overdue} product tasks overdue — delivery timelines at risk.`,
+      description: `${overdue} product items overdue, with delivery timelines at risk.`,
     });
   }
 
@@ -99,7 +99,7 @@ export function CsProductTab({ data }: CsProductTabProps) {
   if (throughput !== null && throughput < 0.4) {
     insights.push({
       title: "Delivery Bottleneck",
-      insight: `Throughput at ${(throughput * 100).toFixed(0)}% — product tasks stalling in pipeline.`,
+      insight: `Throughput at ${(throughput * 100).toFixed(0)}%, with product items stalling in pipeline.`,
       action: "Review blocking dependencies and reallocate capacity to unblock delivery.",
       severity: "warning",
     });
@@ -108,7 +108,7 @@ export function CsProductTab({ data }: CsProductTabProps) {
   if (completed > 0 && completionRate > 75) {
     insights.push({
       title: "Strong Delivery",
-      insight: `${completionRate.toFixed(0)}% of product tasks completed this period.`,
+      insight: `${completionRate.toFixed(0)}% of product items completed this period.`,
       action: "Team is delivering effectively. Consider increasing ambition for next cycle.",
       severity: "info",
     });
@@ -117,7 +117,7 @@ export function CsProductTab({ data }: CsProductTabProps) {
   if (overdue > 5) {
     insights.push({
       title: "Overdue Product Work",
-      insight: `${overdue} product tasks past due — may indicate estimation or capacity issues.`,
+      insight: `${overdue} product items past due, which may indicate estimation or capacity issues.`,
       action: "Re-scope overdue items and adjust estimates for future work.",
       severity: overdue > 10 ? "critical" : "warning",
     });
@@ -174,17 +174,17 @@ export function CsProductTab({ data }: CsProductTabProps) {
           className={contributors === 0 ? "border-red-500/30 bg-red-500/5" : undefined}
         />
         <StatCard
-          title="Tasks Created"
+          title="Items Created"
           value={fmtN(created)}
           icon={<Box className="h-4 w-4" />}
         />
         <StatCard
-          title="Tasks Completed"
+          title="Items Completed"
           value={fmtN(completed)}
           icon={<CheckCircle2 className="h-4 w-4" />}
         />
         <StatCard
-          title="Overdue Tasks"
+          title="Overdue Items"
           value={fmtN(overdue)}
           icon={<AlertTriangle className="h-4 w-4" />}
           className={overdue > 5 ? "border-red-500/30 bg-red-500/5" : undefined}
@@ -204,12 +204,12 @@ export function CsProductTab({ data }: CsProductTabProps) {
 
       {/* ── Delivery Pipeline ─────────────────────── */}
       {totalForRing > 0 && (
-        <SectionCard title="Delivery Pipeline" subtitle="Product task status breakdown">
+        <SectionCard title="Delivery Pipeline" subtitle="Product item status breakdown">
           <div className="flex flex-col items-center gap-6 sm:flex-row sm:justify-around">
             <RingStat
               segments={ringSegments}
               total={totalForRing}
-              label="Tasks"
+              label="Items"
               size={140}
             />
             <div className="space-y-2">
@@ -242,7 +242,7 @@ export function CsProductTab({ data }: CsProductTabProps) {
           <div className="border-t border-border pt-2 flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Net change</span>
             <span className={`font-semibold ${created - completed > 0 ? "text-red-400" : "text-green-400"}`}>
-              {created - completed > 0 ? "+" : ""}{fmtN(created - completed)} tasks
+              {created - completed > 0 ? "+" : ""}{fmtN(created - completed)} items
             </span>
           </div>
           <div className="flex items-center justify-between text-sm">

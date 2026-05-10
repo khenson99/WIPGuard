@@ -93,11 +93,11 @@ describe("AiInsightsPanel", () => {
     expect(cards[0].textContent).toContain("Pipeline conversion risk");
     expect(screen.getByText("stale data")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Finance" }));
+    fireEvent.click(screen.getByRole("button", { name: "Revenue" }));
     expect(screen.getByText("Runway stable")).toBeTruthy();
     expect(screen.queryByText("Pipeline conversion risk")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Web" }));
+    fireEvent.click(screen.getByRole("button", { name: "Website" }));
     expect(screen.getByText("Ads efficiency trending down")).toBeTruthy();
     expect(screen.queryByText("Refactor campaign targeting")).toBeNull();
   });

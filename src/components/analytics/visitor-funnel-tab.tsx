@@ -147,8 +147,8 @@ const PROVIDER_SETUP_GUIDES: Record<EnrichmentProvider, ProviderSetupGuide> = {
       "VISITOR_FUNNEL_ENRICH_SECRET (shared fallback)",
     ],
     steps: [
-      "Create a Clay webhook or HTTP action that POSTs row payloads into WIPGuard.",
-      "Prefer an x-webhook-secret header; WIPGuard also accepts bearer auth or token query params.",
+      "Create a Clay webhook or HTTP action that POSTs row payloads into Imladris.",
+      "Prefer an x-webhook-secret header; Imladris also accepts bearer auth or token query params.",
       "Map Clay columns to identity fields like email, companyDomain, companyName, capturedUrl, and occurredAt.",
       "Run Validate sample here after configuring the destination to confirm the payload normalizes cleanly.",
     ],
@@ -160,8 +160,8 @@ const PROVIDER_SETUP_GUIDES: Record<EnrichmentProvider, ProviderSetupGuide> = {
       "VISITOR_FUNNEL_ENRICH_SECRET (shared fallback)",
     ],
     steps: [
-      "Point RB2B's webhook destination at WIPGuard's enrichment endpoint.",
-      "If RB2B cannot send a custom header, append ?token=<secret> to the destination URL and store that same secret in WIPGuard.",
+      "Point RB2B's webhook destination at Imladris's enrichment endpoint.",
+      "If RB2B cannot send a custom header, append ?token=<secret> to the destination URL and store that same secret in Imladris.",
       "RB2B payloads normalize best when Business Email, Company Name, Website, Captured URL, and Seen At are present.",
       "Use Validate sample here to verify the endpoint accepts the expected RB2B field names before sending live traffic.",
     ],

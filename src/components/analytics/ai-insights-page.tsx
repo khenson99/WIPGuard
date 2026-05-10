@@ -40,13 +40,13 @@ const SEVERITY_ORDER: Record<AiInsight["severity"], number> = {
 const PAGE_SIZES = [10, 25, 50] as const;
 
 const SECTION_LABELS: Partial<Record<AnalyticsSectionId, string>> = {
-  "website-traffic": "Website Traffic",
-  "social-media": "Social Media",
-  finance: "Finance",
-  "sales-pipeline": "Sales Pipeline",
+  "website-traffic": "Website Conversion",
+  "social-media": "Social Media, Ads & Conferences",
+  finance: "Revenue & Finance",
+  "sales-pipeline": "Sales",
   retention: "Retention",
   "customer-success": "Customer Success",
-  "customer-journey": "Customer Journey",
+  "customer-journey": "Full-Funnel Analytics",
   "demo-analytics": "Demo Analytics",
   "process-analytics": "Process Analytics",
 };

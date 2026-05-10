@@ -24,6 +24,14 @@ export interface AnalyticsPrimarySection {
   description: string;
 }
 
+export interface AnalyticsDashboardFunnelGroup {
+  id: string;
+  label: string;
+  path: string;
+  description: string;
+  primaryIds: AnalyticsPrimarySectionId[];
+}
+
 export interface AnalyticsSubSection {
   id: string;
   label: string;
@@ -60,34 +68,22 @@ export interface AnalyticsSubSection {
 
 export const ANALYTICS_PRIMARY_SECTIONS: AnalyticsPrimarySection[] = [
   {
-    id: "website-traffic",
-    label: "Website Traffic",
-    path: "/analytics/website-traffic",
-    description: "Site traffic, content performance, and web conversions.",
-  },
-  {
     id: "social-media",
-    label: "Social Media",
+    label: "Social Media, Ads & Conferences",
     path: "/analytics/social-media",
-    description: "Paid and organic social platform performance.",
+    description: "Top-of-funnel demand from paid, organic, and event-driven campaigns.",
   },
   {
-    id: "finance",
-    label: "Finance",
-    path: "/analytics/finance",
-    description: "Revenue, balance, and cash health.",
+    id: "website-traffic",
+    label: "Website Conversion",
+    path: "/analytics/website-traffic",
+    description: "Traffic quality, content performance, and onsite conversion.",
   },
   {
     id: "sales-pipeline",
-    label: "Sales & Pipeline",
+    label: "Sales",
     path: "/analytics/sales-pipeline",
     description: "Pipeline progression and close performance.",
-  },
-  {
-    id: "retention",
-    label: "Retention",
-    path: "/analytics/retention",
-    description: "Tenant-level leading indicators of retention and contraction risk.",
   },
   {
     id: "customer-success",
@@ -96,10 +92,16 @@ export const ANALYTICS_PRIMARY_SECTIONS: AnalyticsPrimarySection[] = [
     description: "Post-sale support and product adoption.",
   },
   {
+    id: "retention",
+    label: "Retention",
+    path: "/analytics/retention",
+    description: "Tenant-level leading indicators of retention and contraction risk.",
+  },
+  {
     id: "customer-journey",
-    label: "Customer Journey",
+    label: "Full-Funnel Analytics",
     path: "/analytics/customer-journey",
-    description: "End-to-end customer touchpoint mapping.",
+    description: "End-to-end analytics across acquisition, conversion, sales, success, and retention.",
   },
   {
     id: "demo-analytics",
@@ -113,6 +115,57 @@ export const ANALYTICS_PRIMARY_SECTIONS: AnalyticsPrimarySection[] = [
     path: "/analytics/process-analytics",
     description: "Pipeline velocity, health, and bottlenecks.",
   },
+  {
+    id: "finance",
+    label: "Revenue & Finance",
+    path: "/analytics/finance",
+    description: "Revenue, balance, and cash health.",
+  },
+];
+
+export const ANALYTICS_DASHBOARD_FUNNEL_GROUPS: AnalyticsDashboardFunnelGroup[] = [
+  {
+    id: "top-of-funnel",
+    label: "Social Media, Ads & Conferences",
+    path: "/analytics/social-media",
+    description: "Demand generation before prospects reach the website.",
+    primaryIds: ["social-media"],
+  },
+  {
+    id: "website-conversion",
+    label: "Website Conversion",
+    path: "/analytics/website-traffic",
+    description: "Traffic, page performance, forms, search, and conversion intent.",
+    primaryIds: ["website-traffic"],
+  },
+  {
+    id: "sales",
+    label: "Sales",
+    path: "/analytics/sales-pipeline",
+    description: "Opportunities, demo scheduling, demo follow-up, pipeline movement, and close rates.",
+    primaryIds: ["sales-pipeline", "demo-analytics"],
+  },
+  {
+    id: "customer-success",
+    label: "Customer Success",
+    path: "/analytics/customer-success",
+    description: "Support load, adoption signals, and account health after close.",
+    primaryIds: ["customer-success"],
+  },
+  {
+    id: "retention",
+    label: "Retention",
+    path: "/analytics/retention",
+    description: "Renewal risk, contraction signals, and tenant retention health.",
+    primaryIds: ["retention"],
+  },
+  {
+    id: "full-funnel-analytics",
+    label: "Full-Funnel Analytics",
+    path: "/analytics/customer-journey",
+    description: "Analytics across the entire process, including journey, process, and revenue signals.",
+    primaryIds: ["customer-journey", "process-analytics", "finance"],
+  },
 ];
 
 export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
@@ -122,7 +175,7 @@ export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
   { id: "ads-reddit-ads", label: "Reddit Ads", path: "/analytics/ads-reddit-ads", parentId: "social-media", dataDomain: "redditAds" },
   { id: "ads-webflow", label: "Webflow", path: "/analytics/ads-webflow", parentId: "website-traffic", dataDomain: "webflow" },
   { id: "ads-semrush", label: "SEMrush", path: "/analytics/ads-semrush", parentId: "website-traffic", dataDomain: "semrush" },
-  { id: "ads-coda-kanban", label: "Coda Lead Magnet (Whitepaper)", path: "/analytics/ads-coda-kanban", parentId: "website-traffic", dataDomain: "coda" },
+  { id: "ads-coda-kanban", label: "Campaigns & Conferences", path: "/analytics/ads-coda-kanban", parentId: "social-media", dataDomain: "coda" },
 
   { id: "finance-mercury", label: "Mercury", path: "/analytics/finance-mercury", parentId: "finance", dataDomain: "mercury" },
   { id: "finance-stripe", label: "Stripe", path: "/analytics/finance-stripe", parentId: "finance", dataDomain: "stripe" },
@@ -149,9 +202,9 @@ export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
   { id: "cj-conversion", label: "Conversion Analysis", path: "/analytics/cj-conversion", parentId: "customer-journey", dataDomain: "customerJourney" },
   { id: "cj-acquisition-funnel", label: "Acquisition Funnel", path: "/analytics/cj-acquisition-funnel", parentId: "customer-journey", dataDomain: "visitorFunnel" },
 
-  { id: "demo-scheduling", label: "Scheduling", path: "/analytics/demo-scheduling", parentId: "demo-analytics", dataDomain: "demoAnalytics" },
-  { id: "demo-attribution", label: "Attribution", path: "/analytics/demo-attribution", parentId: "demo-analytics", dataDomain: "demoAnalytics" },
-  { id: "demo-coaching", label: "Coaching", path: "/analytics/demo-coaching", parentId: "demo-analytics", dataDomain: "demoAnalytics" },
+  { id: "demo-scheduling", label: "Demo Scheduling", path: "/analytics/demo-scheduling", parentId: "sales-pipeline", dataDomain: "demoAnalytics" },
+  { id: "demo-attribution", label: "Demo Attribution", path: "/analytics/demo-attribution", parentId: "sales-pipeline", dataDomain: "demoAnalytics" },
+  { id: "demo-coaching", label: "Demo Coaching", path: "/analytics/demo-coaching", parentId: "sales-pipeline", dataDomain: "demoAnalytics" },
 
   { id: "process-bottlenecks", label: "Bottlenecks", path: "/analytics/process-bottlenecks", parentId: "process-analytics", dataDomain: "processAnalytics" },
   { id: "process-velocity", label: "Velocity", path: "/analytics/process-velocity", parentId: "process-analytics", dataDomain: "processAnalytics" },

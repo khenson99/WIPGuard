@@ -892,6 +892,7 @@ export function buildDemoAnalyticsData(
     totalScheduled,
     totalCompleted,
     totalNoShows,
+    excludedSuspiciousLeads: data.hubspot?.funnel.excludedSuspiciousLeads ?? 0,
     noShowRate,
     avgLeadTimeDays,
     upcomingCount: demos.filter((demo) => demo.isUpcoming).length,

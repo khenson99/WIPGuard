@@ -4,34 +4,40 @@ import { buildNavItems } from "@/components/layout/sidebar-nav-config";
 describe("sidebar workspace navigation", () => {
   const navItems = buildNavItems();
 
-  it("builds the analytics-first workspace pillars", () => {
+  it("builds the API meeting-place workspace pillars", () => {
     expect(navItems.map((item) => item.id)).toEqual([
-      "analytics",
-      "integrations",
-      "deals",
-      "automations",
+      "sources",
+      "metrics",
+      "reports",
+      "pipelines",
+    ]);
+    expect(navItems.map((item) => item.label)).toEqual([
+      "Sources",
+      "Metrics",
+      "Reports",
+      "Automation Pipelines",
     ]);
     expect(navItems.some((item) => item.href === "/dashboard")).toBe(false);
   });
 
-  it("groups analytics and automations as nested workspace entries", () => {
-    const analytics = navItems.find((item) => item.id === "analytics");
-    const automations = navItems.find((item) => item.id === "automations");
+  it("groups metrics and pipelines as nested workspace entries", () => {
+    const metrics = navItems.find((item) => item.id === "metrics");
+    const pipelines = navItems.find((item) => item.id === "pipelines");
 
-    expect(analytics?.children?.some((child) => child.href === "/analytics/ai-insights")).toBe(true);
+    expect(metrics?.children?.some((child) => child.href === "/analytics/ai-insights")).toBe(true);
     expect(
-      automations?.children?.map((child) => child.href)
+      pipelines?.children?.map((child) => child.href)
     ).toEqual([
-      "/automations",
-      "/automations/artifacts",
+      "/pipelines",
+      "/pipelines/artifacts",
     ]);
   });
 
-  it("promotes integrations to a first-class workspace", () => {
-    const integrations = navItems.find((item) => item.id === "integrations");
+  it("promotes sources to a first-class workspace", () => {
+    const sources = navItems.find((item) => item.id === "sources");
 
-    expect(integrations).toBeTruthy();
-    expect(integrations?.href).toBe("/integrations");
-    expect(integrations?.children).toBeUndefined();
+    expect(sources).toBeTruthy();
+    expect(sources?.href).toBe("/sources");
+    expect(sources?.children).toBeUndefined();
   });
 });

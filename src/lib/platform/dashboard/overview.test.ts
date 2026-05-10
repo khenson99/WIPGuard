@@ -97,14 +97,14 @@ describe("loadDashboardOverview", () => {
     });
 
     expect(payload.revenueSummary).toMatchObject({
-      workspaceId: "deals",
+      workspaceId: "sources",
       openDeals: 6,
       pipelineValue: 42500,
       closingThisMonth: 3,
       wonThisQuarter: 2,
     });
     expect(payload.integrationHealth).toMatchObject({
-      workspaceId: "integrations",
+      workspaceId: "sources",
       totalConnections: 3,
       connectedConnections: 1,
       degradedConnections: 1,
@@ -113,7 +113,7 @@ describe("loadDashboardOverview", () => {
       missingConnections: 1,
     });
     expect(payload.automationAttention).toMatchObject({
-      workspaceId: "automations",
+      workspaceId: "pipelines",
       activeWorkflows: 5,
       pendingApprovals: 1,
       pendingRecommendations: 2,
@@ -121,7 +121,7 @@ describe("loadDashboardOverview", () => {
       waitingExternalRuns: 1,
     });
     expect(payload.analyticsFreshness).toMatchObject({
-      workspaceId: "analytics",
+      workspaceId: "metrics",
       healthyDomains: 1,
       errorDomains: 1,
       missingDomains: 1,
