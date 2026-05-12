@@ -484,7 +484,7 @@ export function FinanceTab({ data }: FinanceTabProps) {
         <div className="bg-card border border-border rounded-xl p-6">
           <div className="flex items-center gap-2 mb-6">
             <AlertTriangle className="w-5 h-5 text-muted-foreground" />
-            <h3 className="text-foreground font-semibold">Budget vs Actual</h3>
+            <h3 className="text-foreground font-semibold">Budget vs Estimated Actuals</h3>
             <span className="text-xs text-muted-foreground ml-auto">{budgetActuals.budgetName}</span>
           </div>
 

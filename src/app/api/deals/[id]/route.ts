@@ -121,7 +121,14 @@ export async function PATCH(
       data.amount = body.amount;
     }
 
-  // Stage transition validation
+    if (
+      typeof body.source === "string" &&
+      Object.values(DealSource).includes(body.source as DealSource)
+    ) {
+      data.source = body.source as DealSource;
+    }
+
+    // Stage transition validation
     if (
       typeof body.stage === "string" &&
       Object.values(DealStage).includes(body.stage as DealStage)
@@ -158,19 +165,21 @@ export async function PATCH(
       }
     }
 
-    if (typeof body.companyId === "string") {
+    if (typeof body.companyId === "string" || body.companyId === null) {
       data.companyId = body.companyId;
     }
 
-    if (typeof body.ownerId === "string") {
+    if (typeof body.ownerId === "string" || body.ownerId === null) {
       data.ownerId = body.ownerId;
     }
 
     if (typeof body.expectedCloseDate === "string") {
       data.expectedCloseDate = new Date(body.expectedCloseDate);
+    } else if (body.expectedCloseDate === null) {
+      data.expectedCloseDate = null;
     }
 
-    if (typeof body.notes === "string") {
+    if (typeof body.notes === "string" || body.notes === null) {
       data.notes = body.notes;
     }
 

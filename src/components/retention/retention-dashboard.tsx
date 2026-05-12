@@ -143,6 +143,7 @@ export function RetentionDashboard() {
     search: searchParams?.get("search") ?? "",
   };
   const hasActiveFilters = Object.values(filters).some((value) => value.length > 0);
+  const ardaDataQualityNote = describeArdaDataQuality(summary);
 
   if ((tenants?.length ?? 0) === 0 && !hasActiveFilters) {
     return (

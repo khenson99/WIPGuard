@@ -52,6 +52,13 @@ function sortInsights(items: AiInsight[]): AiInsight[] {
   });
 }
 
+function sanitizeInsightActions<T extends { actions: Array<{ type: string }> }>(items: T[]): T[] {
+  return items.map((item) => ({
+    ...item,
+    actions: item.actions.filter((action) => action.type !== "create_task"),
+  }));
+}
+
 // ── Website Traffic + Social Media ───────────────────────
 
 function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {

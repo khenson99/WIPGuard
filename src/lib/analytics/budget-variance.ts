@@ -261,7 +261,27 @@ function actualsByCategory(
   if (hasTransactionDetail(mercury)) {
     return actualsFromTransactions(mercury, budget);
   }
-  const totalOutflows = mercury.cashFlow.outflows30d * (budget ? estimateOutflowMultiplier(budget) : 1);
+
+  const transactionBreakdown =
+    mercury.cashFlow.observedExpenseBreakdown ?? mercury.cashFlow.expenseBreakdown30d;
+  const transactionBreakdownTotal = transactionBreakdown
+    ? Object.values(transactionBreakdown).reduce((sum, value) => sum + value, 0)
+    : 0;
+  if (transactionBreakdown && transactionBreakdownTotal > 0) {
+    const multiplier = budget
+      ? estimateOutflowMultiplier(budget, mercury.cashFlow.observedPeriodDays ?? 30)
+      : 1;
+    return Object.fromEntries(
+      EXPENSE_CATEGORIES.map((category) => [
+        category,
+        round2((transactionBreakdown[category] ?? 0) * multiplier),
+      ]),
+    ) as Record<ExpenseCategory, number>;
+  }
+
+  const totalOutflows =
+    (mercury.cashFlow.observedOutflowTotal ?? mercury.cashFlow.outflows30d) *
+    (budget ? estimateOutflowMultiplier(budget, mercury.cashFlow.observedPeriodDays ?? 30) : 1);
   return actualsFromRatios(totalOutflows);
 }
 
@@ -290,10 +310,44 @@ function computeBudgetActualsCore(
     }));
   }
 
-  const totals = actualsByCategory(mercury, budget);
+  if (hasTransactionDetail(mercury)) {
+    const totals = actualsFromTransactions(mercury, budget);
+
+    return budget.lineItems.map((item) => {
+      const actualAmount = round2(totals[item.category] ?? 0);
+      const { variance, variancePct } = computeVariance(item.plannedAmount, actualAmount);
+      return {
+        ...item,
+        actualAmount,
+        variance: variance != null ? round2(variance) : null,
+        variancePct: variancePct != null ? round2(variancePct) : null,
+      };
+    });
+  }
+
+  const observedPeriodDays = mercury.cashFlow.observedPeriodDays ?? 30;
+  const observedOutflowTotal = mercury.cashFlow.observedOutflowTotal ?? mercury.cashFlow.outflows30d;
+  const totalOutflows =
+    observedOutflowTotal * estimateOutflowMultiplier(budget, observedPeriodDays);
+  const totalPlanned = budget.lineItems.reduce(
+    (sum, item) => sum + Math.max(item.plannedAmount, 0),
+    0,
+  );
+  const transactionBreakdown =
+    mercury.cashFlow.observedExpenseBreakdown ?? mercury.cashFlow.expenseBreakdown30d;
+  const transactionBreakdownTotal = transactionBreakdown
+    ? Object.values(transactionBreakdown).reduce((sum, value) => sum + value, 0)
+    : 0;
 
   return budget.lineItems.map((item) => {
-    const actualAmount = round2(totals[item.category] ?? 0);
+    const actualAmount = transactionBreakdownTotal > 0
+      ? round2((transactionBreakdown?.[item.category] ?? 0) * estimateOutflowMultiplier(budget, observedPeriodDays))
+      : round2(
+          totalOutflows *
+            (totalPlanned > 0
+              ? Math.max(item.plannedAmount, 0) / totalPlanned
+              : CATEGORY_RATIOS[item.category])
+        );
     const { variance, variancePct } = computeVariance(item.plannedAmount, actualAmount);
     return {
       ...item,

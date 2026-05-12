@@ -159,16 +159,34 @@ export async function fetchPylonIssues(input: {
     let sawNotFound = false;
     let payload: PylonIssue[] | null = null;
     for (const url of endpoints) {
-      const result = await fetchJsonWithTimeout({ url, apiKey: input.apiKey, timeoutMs });
-      if (result.ok) {
-        payload = parseIssueArray(result.payload);
-        break;
+      const endpointPayload: PylonIssue[] = [];
+      let cursor: string | null = null;
+
+      for (let page = 0; page < 100; page += 1) {
+        const pageUrl = new URL(url);
+        if (cursor) pageUrl.searchParams.set("cursor", cursor);
+        const result = await fetchJsonWithTimeout({ url: pageUrl.toString(), apiKey: input.apiKey, timeoutMs });
+        if (!result.ok) {
+          if (result.status === 404) {
+            sawNotFound = true;
+            endpointPayload.length = 0;
+            break;
+          }
+          lastError = { status: result.status, message: result.message };
+          endpointPayload.length = 0;
+          break;
+        }
+
+        endpointPayload.push(...parseIssueArray(result.payload));
+        const pagination = parsePagination(result.payload);
+        if (!pagination.hasNextPage || !pagination.cursor) {
+          payload = endpointPayload;
+          break;
+        }
+        cursor = pagination.cursor;
       }
-      if (result.status === 404) {
-        sawNotFound = true;
-        continue;
-      }
-      lastError = { status: result.status, message: result.message };
+
+      if (payload) break;
     }
 
     if (!payload) {

@@ -300,12 +300,25 @@ export interface CustomerSuccessRetentionSummary {
   firstOrderDate?: string;
   explanation?: string;
   reasonCodes: CustomerSuccessRelationshipReason[];
+  ardaAdoptionCountsSource?: "ARDA_ACTIVITY" | "ARDA_USER_DETAILS" | "NONE";
+  ardaDirectActivityCounts?: {
+    orders: number;
+    cards: number;
+    items: number;
+  };
+  ardaUserDetailsCounts?: {
+    orders: number;
+    cards: number;
+    items: number;
+  };
   coverage: {
     arda: boolean;
     coda: boolean;
     stripe: boolean;
     hubspot: boolean;
     pylon: boolean;
+    ardaActivityCollectionAvailable?: boolean;
+    ardaUserDetailsFallback?: boolean;
     missingSources: string[];
   };
   detailUrl: string;
@@ -346,6 +359,7 @@ export interface CustomerSuccessPortfolioRelationshipSummary {
   retentionStatus?: string;
   primaryLirPassed?: boolean;
   implementationStage?: string;
+  ardaAdoptionCountsSource?: "ARDA_ACTIVITY" | "ARDA_USER_DETAILS" | "NONE";
   missingSources: string[];
 }
 

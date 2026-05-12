@@ -13,6 +13,7 @@ import type {
   UnitEconomics,
 } from "@/lib/analytics/types";
 import { categorizeMercuryTransaction } from "@/lib/analytics/budget-variance";
+import type { ExpenseRatios } from "./pnl-builder";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -170,7 +171,7 @@ export function computeUnitEconomics(
   const revenue = stripe?.revenue.totalRevenue30d ?? 0;
   const categorizedSpend = spendFromTransactions(mercury);
   const totalOutflows = mercury?.cashFlow.outflows30d ?? 0;
-  const cogs = categorizedSpend?.cogs ?? totalOutflows * COGS_RATIO;
+  const cogs = categorizedSpend?.cogs ?? totalOutflows * ratios.cogs;
   const grossMarginPct =
     revenue === 0 ? 0 : ((revenue - cogs) / revenue) * 100;
 
@@ -179,7 +180,7 @@ export function computeUnitEconomics(
   // ---------------------------------------------------------------------------
 
   const marketingSpend =
-    categorizedSpend?.marketing ?? totalOutflows * MARKETING_SPEND_RATIO;
+    categorizedSpend?.marketing ?? totalOutflows * ratios.marketing;
 
   let newCustomers = hubspot?.funnel.closedWon ?? 0;
   if (newCustomers > 0 && Number.isFinite(observedPeriodDays) && observedPeriodDays > 0) {

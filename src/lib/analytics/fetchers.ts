@@ -1812,11 +1812,178 @@ export async function fetchMercuryData(
     merchantName?: string | null;
     externalMemo?: string | null;
     memo?: string | null;
+    categoryData?: {
+      categoryDataName?: string | null;
+    } | null;
     details?: {
       counterpartyName?: string | null;
       merchantName?: string | null;
       description?: string | null;
     } | null;
+  };
+
+  type MercuryPageResponse<T> = {
+    accounts?: T[];
+    transactions?: T[];
+    cursor?: string | number | null;
+    nextCursor?: string | number | null;
+    pagination?: {
+      cursor?: string | number | null;
+      nextCursor?: string | number | null;
+      hasNextPage?: boolean | null;
+      has_next_page?: boolean | null;
+    } | null;
+    paging?: {
+      next?: {
+        cursor?: string | number | null;
+        startAfter?: string | number | null;
+        start_after?: string | number | null;
+      } | null;
+    } | null;
+  };
+
+  const emptyExpenseBreakdown = (): Record<ExpenseCategory, number> => ({
+    cogs: 0,
+    payroll: 0,
+    marketing: 0,
+    infrastructure: 0,
+    ops: 0,
+    other: 0,
+  });
+
+  const MERCURY_CATEGORY_KEYWORDS: Record<ExpenseCategory, string[]> = {
+    cogs: [
+      "cost of goods",
+      "cogs",
+      "hosting",
+      "cloud",
+      "compute",
+      "inference",
+      "api usage",
+      "payment processing",
+      "merchant fee",
+      "processing fee",
+      "aws",
+      "amazon web services",
+      "google cloud",
+      "gcp",
+      "azure",
+      "openai",
+      "anthropic",
+      "pinecone",
+      "twilio",
+      "sendgrid",
+      "resend",
+      "cloudinary",
+    ],
+    payroll: [
+      "payroll",
+      "salary",
+      "wages",
+      "benefits",
+      "contractor",
+      "gusto",
+      "rippling",
+      "deel",
+      "adp",
+      "paychex",
+      "justworks",
+      "trinet",
+      "remote",
+      "oyster",
+    ],
+    marketing: [
+      "marketing",
+      "advertising",
+      "ad spend",
+      "paid search",
+      "paid social",
+      "sponsorship",
+      "google ads",
+      "meta ads",
+      "facebook ads",
+      "linkedin ads",
+      "reddit ads",
+      "tiktok ads",
+      "hubspot",
+      "semrush",
+      "mailchimp",
+      "klaviyo",
+    ],
+    infrastructure: [
+      "software",
+      "saas",
+      "tools",
+      "tooling",
+      "monitoring",
+      "security",
+      "domain",
+      "dns",
+      "vercel",
+      "cloudflare",
+      "github",
+      "gitlab",
+      "notion",
+      "slack",
+      "zoom",
+      "linear",
+      "figma",
+      "datadog",
+      "sentry",
+      "railway",
+      "render",
+      "netlify",
+    ],
+    ops: [
+      "operations",
+      "office",
+      "rent",
+      "travel",
+      "legal",
+      "insurance",
+      "tax",
+      "bank fee",
+      "wire fee",
+      "accounting",
+      "bookkeeping",
+      "admin",
+      "general & administrative",
+      "g&a",
+      "mercury fee",
+    ],
+    other: [],
+  };
+
+  const classifyMercuryExpense = (tx: MercuryTransaction): ExpenseCategory => {
+    const haystack = [
+      tx.categoryData?.categoryDataName ?? tx.mercuryCategory ?? "",
+      tx.counterpartyName ?? tx.details?.counterpartyName ?? "",
+      tx.merchantName ?? tx.details?.merchantName ?? "",
+      tx.description ?? tx.details?.description ?? "",
+      tx.bankDescription ?? "",
+      tx.note ?? "",
+      tx.externalMemo ?? "",
+      tx.memo ?? "",
+    ]
+      .join(" ")
+      .trim()
+      .toLowerCase();
+
+    if (!haystack) return "other";
+
+    for (const mapping of options?.expenseMappings ?? []) {
+      if (haystack.includes(mapping.match.toLowerCase())) {
+        return mapping.category;
+      }
+    }
+
+    for (const category of ["payroll", "marketing", "cogs", "infrastructure", "ops"] as const) {
+      if (MERCURY_CATEGORY_KEYWORDS[category].some((keyword) => haystack.includes(keyword))) {
+        return category;
+      }
+    }
+
+    return "other";
   };
 
   const headers: Record<string, string> = {
@@ -1983,13 +2150,17 @@ export async function fetchMercuryData(
   });
 
   const transactions: MercuryTransactionData[] = [];
+  const expenseBreakdown = emptyExpenseBreakdown();
 
   const addCashFlow = (tx: MercuryTransaction): void => {
     if (!shouldCountCashFlow(tx)) return;
     const amount = tx.amount ?? 0;
     const amt = Math.abs(amount);
     if (amount > 0) inflows += amt;
-    else outflows += amt;
+    else {
+      outflows += amt;
+      expenseBreakdown[classifyMercuryExpense(tx)] += amt;
+    }
     transactions.push(toTransactionData(tx));
   };
 
@@ -2051,6 +2222,14 @@ export async function fetchMercuryData(
 
   const burnRate = Math.max(outflows - inflows, 0);
   const runway = burnRate > 0 ? totalBalance / burnRate : 999;
+  const monthlyExpenseBreakdown: Record<ExpenseCategory, number> = {
+    cogs: observedPeriodDays > 0 ? expenseBreakdown.cogs * (30 / observedPeriodDays) : expenseBreakdown.cogs,
+    payroll: observedPeriodDays > 0 ? expenseBreakdown.payroll * (30 / observedPeriodDays) : expenseBreakdown.payroll,
+    marketing: observedPeriodDays > 0 ? expenseBreakdown.marketing * (30 / observedPeriodDays) : expenseBreakdown.marketing,
+    infrastructure: observedPeriodDays > 0 ? expenseBreakdown.infrastructure * (30 / observedPeriodDays) : expenseBreakdown.infrastructure,
+    ops: observedPeriodDays > 0 ? expenseBreakdown.ops * (30 / observedPeriodDays) : expenseBreakdown.ops,
+    other: observedPeriodDays > 0 ? expenseBreakdown.other * (30 / observedPeriodDays) : expenseBreakdown.other,
+  };
 
   return normalizeMercuryDataPayload({
     accounts,
