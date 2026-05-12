@@ -200,9 +200,9 @@ function lifecycleStageDefinitions(): StageDefinition[] {
         {
           source: "Google Workspace Ops",
           domain: "googleWorkspace",
-          contribution: data.googleWorkspace?.tasksCreatedInRange ?? 0,
+          contribution: data.googleWorkspace?.automationsTriggeredInRange ?? 0,
           confidence: data.googleWorkspace ? 0.74 : 0.3,
-          detail: "Follow-up workflow tasks generated in range.",
+          detail: "Follow-up automations triggered in range.",
         },
       ],
     },
@@ -283,7 +283,7 @@ function lifecycleStageDefinitions(): StageDefinition[] {
         {
           source: "Slack Ops",
           domain: "slack",
-          contribution: data.slack?.tasksCreatedInRange ?? 0,
+          contribution: data.slack?.automationsTriggeredInRange ?? 0,
           confidence: data.slack ? 0.73 : 0.3,
           detail: "Retention-related workflow execution.",
         },
@@ -319,9 +319,9 @@ function lifecycleStageDefinitions(): StageDefinition[] {
         {
           source: "Coda Ops",
           domain: "coda",
-          contribution: data.codaOps?.tasksCreatedInRange ?? 0,
+          contribution: data.codaOps?.automationsTriggeredInRange ?? 0,
           confidence: data.codaOps ? 0.72 : 0.28,
-          detail: "Execution tasks for expansion opportunities.",
+          detail: "Execution automations for expansion opportunities.",
         },
       ],
     },

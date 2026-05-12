@@ -52,6 +52,13 @@ function sortInsights(items: AiInsight[]): AiInsight[] {
   });
 }
 
+function sanitizeInsightActions<T extends { actions: Array<{ type: string }> }>(items: T[]): T[] {
+  return items.map((item) => ({
+    ...item,
+    actions: item.actions.filter((action) => action.type !== "create_task"),
+  }));
+}
+
 // ── Website Traffic + Social Media ───────────────────────
 
 function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
@@ -715,6 +722,9 @@ function buildUnitEconomicsInsights(
     data.stripe,
     data.mercury ?? null,
     data.hubspot ?? null,
+    {
+      observedPeriodDays: data.mercury?.cashFlow.observedPeriodDays ?? data.timeRange?.days ?? 30,
+    },
   );
 
   const insights: AiInsight[] = [];
@@ -1735,7 +1745,9 @@ export function buildAiInsightsBundle(data: AnalyticsDashboardData): AiInsightsB
     ...[buildJourneyInsight(data), buildDemoInsight(data), buildProcessInsight(data)].filter((item): item is AiInsight => item !== null),
   ];
 
-  const global = sortInsights(candidateInsights.length > 0 ? candidateInsights : [buildSteadyStateInsight(data)]).slice(0, 12);
+  const global = sanitizeInsightActions(
+    sortInsights(candidateInsights.length > 0 ? candidateInsights : [buildSteadyStateInsight(data)]).slice(0, 12)
+  );
 
   const bySection = SECTION_ORDER.reduce<AiInsightsBundle["bySection"]>(
     (acc, section) => {

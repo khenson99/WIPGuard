@@ -6,7 +6,10 @@ import { DashboardErrorBanner } from "@/components/dashboard/dashboard-error-ban
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-state";
 import { DashboardStaleBanner } from "@/components/dashboard/dashboard-stale-banner";
 import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
-import type { CustomerSuccessAccountDetail } from "@/lib/customer-success/types";
+import type {
+  CustomerSuccessAccountDetail,
+  CustomerSuccessRetentionSummary,
+} from "@/lib/customer-success/types";
 
 type WorkspaceTab =
   | "overview"
@@ -57,6 +60,19 @@ function formatNumber(value?: number): string {
 function formatPercent(value?: number): string {
   if (value === undefined || value === null) return "—";
   return `${value.toFixed(1)}%`;
+}
+
+function describeArdaCoverage(
+  retention: CustomerSuccessRetentionSummary
+): string | null {
+  if (!retention.coverage.arda) return null;
+  if (retention.ardaAdoptionCountsSource === "ARDA_ACTIVITY") {
+    return `Arda activity records are live (${retention.ardaDirectActivityCounts?.orders ?? 0} orders, ${retention.ardaDirectActivityCounts?.cards ?? 0} cards, ${retention.ardaDirectActivityCounts?.items ?? 0} items).`;
+  }
+  if (retention.ardaAdoptionCountsSource === "ARDA_USER_DETAILS") {
+    return `Arda activity history is unavailable; adoption breadth falls back to User Details (${retention.ardaUserDetailsCounts?.cards ?? 0} cards, ${retention.ardaUserDetailsCounts?.items ?? 0} items).`;
+  }
+  return "Arda tenant metadata is connected, but no activity history is currently available.";
 }
 
 function formatHealthTone(score: number): string {
@@ -187,6 +203,7 @@ export function CustomerSuccessAccountWorkspace({ accountId }: { accountId: stri
   const relationship = detail.relationshipIntelligence;
   const retention = relationship?.retention;
   const coda = relationship?.coda;
+  const ardaCoverageDescription = retention ? describeArdaCoverage(retention) : null;
 
   return (
     <div className="space-y-6">
@@ -338,6 +355,9 @@ export function CustomerSuccessAccountWorkspace({ accountId }: { accountId: stri
 
                 {retention?.explanation ? (
                   <p className="mt-4 text-sm text-muted-foreground">{retention.explanation}</p>
+                ) : null}
+                {ardaCoverageDescription ? (
+                  <p className="mt-2 text-xs text-muted-foreground">{ardaCoverageDescription}</p>
                 ) : null}
 
                 <div className="mt-4 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">

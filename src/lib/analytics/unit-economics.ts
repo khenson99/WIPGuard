@@ -1,10 +1,10 @@
 // Unit-economics engine — pure computation module for SaaS unit economics.
 //
 // Derives LTV, CAC, LTV:CAC ratio, ARPA, payback period, and gross margin
-// from Stripe, Mercury, and HubSpot provider data.  Mercury only exposes
-// aggregate cash-flow figures, so expense-category estimates (COGS, marketing
-// spend) use SaaS-standard ratios applied to total outflows — identical to the
-// approach used in pnl-builder.ts.
+// from Stripe, Mercury, and HubSpot provider data. When Mercury transaction
+// metadata has been classified into category totals, those ratios are used for
+// COGS and marketing spend. Otherwise the module falls back to SaaS-standard
+// ratios, matching pnl-builder.ts.
 
 import type {
   StripeData,
@@ -13,16 +13,19 @@ import type {
   UnitEconomics,
 } from "@/lib/analytics/types";
 import { categorizeMercuryTransaction } from "@/lib/analytics/budget-variance";
+import type { ExpenseRatios } from "./pnl-builder";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Fraction of Mercury outflows attributed to COGS (hosting, infra, etc.) */
-const COGS_RATIO = 0.25;
-
-/** Fraction of Mercury outflows attributed to marketing / sales spend. */
-const MARKETING_SPEND_RATIO = 0.15;
+const DEFAULT_EXPENSE_RATIOS: ExpenseRatios = {
+  cogs: 0.25,
+  payroll: 0.35,
+  marketing: 0.15,
+  infrastructure: 0.10,
+  ops: 0.15,
+};
 
 /** When churn is zero we cap LTV at 10 years worth of ARPA. */
 const MAX_LTV_MONTHS = 120;
@@ -89,7 +92,38 @@ export function computeUnitEconomics(
   stripe: StripeData | null,
   mercury: MercuryData | null,
   hubspot: HubSpotData | null,
+  opts: {
+    ratios?: Partial<ExpenseRatios>;
+    observedPeriodDays?: number;
+  } = {},
 ): UnitEconomicsData {
+  const mercuryBreakdown = mercury?.cashFlow.expenseBreakdown30d;
+  const mercuryBreakdownTotal = mercuryBreakdown
+    ? (mercuryBreakdown.cogs ?? 0) +
+      (mercuryBreakdown.payroll ?? 0) +
+      (mercuryBreakdown.marketing ?? 0) +
+      (mercuryBreakdown.infrastructure ?? 0) +
+      (mercuryBreakdown.ops ?? 0) +
+      (mercuryBreakdown.other ?? 0)
+    : 0;
+  const ratios: ExpenseRatios = {
+    ...DEFAULT_EXPENSE_RATIOS,
+    ...(mercuryBreakdownTotal > 0
+      ? {
+          cogs: (mercuryBreakdown?.cogs ?? 0) / mercuryBreakdownTotal,
+          payroll: (mercuryBreakdown?.payroll ?? 0) / mercuryBreakdownTotal,
+          marketing: (mercuryBreakdown?.marketing ?? 0) / mercuryBreakdownTotal,
+          infrastructure: (mercuryBreakdown?.infrastructure ?? 0) / mercuryBreakdownTotal,
+          ops: ((mercuryBreakdown?.ops ?? 0) + (mercuryBreakdown?.other ?? 0)) / mercuryBreakdownTotal,
+        }
+      : {}),
+    ...opts.ratios,
+  };
+  const observedPeriodDays =
+    opts.observedPeriodDays ??
+    mercury?.cashFlow.observedPeriodDays ??
+    30;
+
   // -- Early exit: nothing to compute ---
   if (!stripe && !mercury && !hubspot) {
     return {
@@ -137,7 +171,7 @@ export function computeUnitEconomics(
   const revenue = stripe?.revenue.totalRevenue30d ?? 0;
   const categorizedSpend = spendFromTransactions(mercury);
   const totalOutflows = mercury?.cashFlow.outflows30d ?? 0;
-  const cogs = categorizedSpend?.cogs ?? totalOutflows * COGS_RATIO;
+  const cogs = categorizedSpend?.cogs ?? totalOutflows * ratios.cogs;
   const grossMarginPct =
     revenue === 0 ? 0 : ((revenue - cogs) / revenue) * 100;
 
@@ -146,9 +180,12 @@ export function computeUnitEconomics(
   // ---------------------------------------------------------------------------
 
   const marketingSpend =
-    categorizedSpend?.marketing ?? totalOutflows * MARKETING_SPEND_RATIO;
+    categorizedSpend?.marketing ?? totalOutflows * ratios.marketing;
 
   let newCustomers = hubspot?.funnel.closedWon ?? 0;
+  if (newCustomers > 0 && Number.isFinite(observedPeriodDays) && observedPeriodDays > 0) {
+    newCustomers = newCustomers * (30 / observedPeriodDays);
+  }
   if (newCustomers <= 0 && stripe) {
     // Approximate new customers from active-sub base and churn rate (the
     // minimum number of new subs needed just to replace churn).

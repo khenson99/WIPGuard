@@ -659,10 +659,10 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           Retry
         </button>
         <button
-          onClick={() => router.push("/projects")}
+          onClick={() => router.push("/dashboard")}
           className="mt-2 text-sm text-muted-foreground hover:text-foreground hover:underline"
         >
-          Back to projects
+          Back to dashboard
         </button>
       </div>
     );
@@ -673,10 +673,10 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
       <div className="py-16 text-center">
         <p className="text-sm text-muted-foreground">Project not found</p>
         <button
-          onClick={() => router.push("/projects")}
+          onClick={() => router.push("/dashboard")}
           className="mt-4 text-sm text-primary hover:underline"
         >
-          Back to projects
+          Back to dashboard
         </button>
       </div>
     );
@@ -699,11 +699,11 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
       {/* Breadcrumb / Back */}
       <div className="flex items-center justify-between">
         <button
-          onClick={() => router.push("/projects")}
+          onClick={() => router.push("/dashboard")}
           className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
-          All Projects
+          Dashboard
         </button>
         {saving && (
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground animate-pulse">

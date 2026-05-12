@@ -207,6 +207,44 @@ describe("FinanceTab", () => {
     expect(screen.getByText("Base Case")).toBeTruthy();
   });
 
+  it("labels budget variance as estimated when Mercury-derived actuals are shown", () => {
+    const data = makePayload({
+      financialPlanning: makeFinancialPlanning({
+        activeBudget: {
+          id: "budget-1",
+          name: "Operating Plan",
+          period: "monthly",
+          startDate: "2026-01-01T00:00:00.000Z",
+          endDate: "2026-02-01T00:00:00.000Z",
+          lineItems: [
+            {
+              id: "line-1",
+              category: "marketing",
+              plannedAmount: 6000,
+              actualAmount: 900,
+              variance: -5100,
+              variancePct: -85,
+            },
+          ],
+          totalPlanned: 6000,
+          totalActual: 900,
+          totalVariance: -5100,
+        },
+        budgets: [],
+      }),
+    });
+
+    render(<FinanceTab data={data} />);
+    expect(screen.getByText("Budget vs Estimated Actuals")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Estimated actuals are derived from aggregate Mercury outflows until transaction categories are mapped to budget lines."
+      )
+    ).toBeTruthy();
+    expect(screen.getAllByText("Est. Actual").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Est. Variance").length).toBeGreaterThanOrEqual(1);
+  });
+
   it("renders Financial Goals when financial planning includes goals", () => {
     const data = makePayload({
       financialPlanning: makeFinancialPlanning({

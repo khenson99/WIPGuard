@@ -1,5 +1,6 @@
 import { AnalyticsSnapshotStatus, IntegrationProvider } from "@/generated/prisma/client";
 import { getCredentials } from "@/lib/analytics/credentials";
+import { normalizeMercuryExpenseMappings } from "@/lib/analytics/mercury-expense-mappings";
 import {
   fetchHubSpotData,
   fetchMercuryData,
@@ -251,9 +252,20 @@ async function refreshForUserAndRange(input: {
     });
   }
   if (creds.mercuryKey) {
+    const mercuryRule = await prisma.integrationRule.findUnique({
+      where: {
+        userId_provider_key: {
+          userId: input.userId,
+          provider: IntegrationProvider.MERCURY,
+          key: MERCURY_CASHFLOW_SYNC_RULE_KEY,
+        },
+      },
+      select: { config: true },
+    });
+    const expenseMappings = normalizeMercuryExpenseMappings(mercuryRule?.config ?? null);
     jobs.push({
       providerKey: "mercury",
-      run: () => fetchMercuryData(creds.mercuryKey!, { fromDate, toDate }),
+      run: () => fetchMercuryData(creds.mercuryKey!, { fromDate, toDate, expenseMappings }),
     });
   }
   const hasGAServiceAccount = Boolean(

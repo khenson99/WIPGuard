@@ -6,6 +6,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { buildProfitAndLoss } from "@/lib/analytics/pnl-builder";
 import { computeUnitEconomics } from "@/lib/analytics/unit-economics";
+import { normalizeMercuryDataPayload } from "@/lib/analytics/mercury-normalization";
+import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import type {
   HubSpotData,
   MercuryData,
@@ -36,19 +38,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = (session.user as { id: string }).id;
+    const userId = resolveIntegrationOwnerUserId((session.user as { id: string }).id);
 
     const [stripe, mercury, hubspot] = await Promise.all([
       loadLatestProviderPayload<StripeData>(userId, "stripe"),
       loadLatestProviderPayload<MercuryData>(userId, "mercury"),
       loadLatestProviderPayload<HubSpotData>(userId, "hubspot"),
     ]);
+    const normalizedMercury = normalizeMercuryDataPayload(mercury);
 
     const timeRange =
       request.nextUrl.searchParams.get("timeRange") ?? "Last 30 days";
 
-    const pnl = buildProfitAndLoss(stripe, mercury, { timeRange });
-    const unitEconomics = computeUnitEconomics(stripe, mercury, hubspot);
+    const pnl = buildProfitAndLoss(stripe, normalizedMercury, { timeRange });
+    const unitEconomics = computeUnitEconomics(stripe, normalizedMercury, hubspot, {
+      observedPeriodDays: normalizedMercury?.cashFlow.observedPeriodDays ?? 30,
+    });
 
     return NextResponse.json(
       { pnl, unitEconomics },

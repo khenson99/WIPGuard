@@ -9,6 +9,46 @@ function jsonResponse(payload: unknown, status = 200): Response {
 }
 
 describe("pylon client", () => {
+  it("follows pagination cursors on the issues endpoint", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/issues")) {
+        if (url.searchParams.get("cursor") === "cursor-2") {
+          return jsonResponse({
+            data: [{ id: "i2" }],
+            pagination: { has_next_page: false, cursor: null },
+          });
+        }
+
+        return jsonResponse({
+          data: [{ id: "i1" }],
+          pagination: { has_next_page: true, cursor: "cursor-2" },
+        });
+      }
+
+      return jsonResponse({ error: "unexpected" }, 500);
+    });
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const issues = await fetchPylonIssues({
+      apiKey: "pylon-key",
+      from: "2026-02-01",
+      to: "2026-02-28",
+      baseUrl: "https://api.example.test",
+      limit: 1,
+      timeoutMs: 2_000,
+    });
+
+    expect(issues).toEqual([{ id: "i1" }, { id: "i2" }]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const firstUrl = new URL(String(fetchMock.mock.calls[0]?.[0]));
+    const secondUrl = new URL(String(fetchMock.mock.calls[1]?.[0]));
+    expect(firstUrl.searchParams.get("cursor")).toBeNull();
+    expect(secondUrl.searchParams.get("cursor")).toBe("cursor-2");
+  });
+
   it("falls back to /conversations when /issues endpoints 404", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));

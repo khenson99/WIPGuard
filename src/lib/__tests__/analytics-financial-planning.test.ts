@@ -73,7 +73,7 @@ describe("financial planning helpers", () => {
       name: "Q1 Budget",
       period: "quarterly",
       startDate: "2026-01-01T00:00:00.000Z",
-      endDate: "2026-04-01T00:00:00.000Z",
+      endDate: "2026-03-31T00:00:00.000Z",
       lineItems: [
         {
           id: "line-1",
@@ -90,7 +90,7 @@ describe("financial planning helpers", () => {
     };
 
     const [item] = computeBudgetActuals(budget, mercuryFixture);
-    const expected = 3000 * 3 * 0.15;
+    const expected = 3000 * 3;
 
     expect(item.actualAmount).toBeCloseTo(expected, 2);
   });

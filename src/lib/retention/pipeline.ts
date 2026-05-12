@@ -140,6 +140,12 @@ interface MonthlyTenantAccumulator {
   itemTouches: number;
   activeCardCount: number;
   activeItemCount: number;
+  ardaOrderRecords: number;
+  ardaCardRecords: number;
+  ardaItemRecords: number;
+  ardaUserDetailsOrderCount: number;
+  ardaUserDetailsCardCount: number;
+  ardaUserDetailsItemCount: number;
   locations: Set<string>;
   workflows: Set<string>;
   ticketsLast30: number;
@@ -1451,6 +1457,12 @@ function initAccumulator(customerRecordId: string, monthStart: Date, monthEnd: D
     itemTouches: 0,
     activeCardCount: 0,
     activeItemCount: 0,
+    ardaOrderRecords: 0,
+    ardaCardRecords: 0,
+    ardaItemRecords: 0,
+    ardaUserDetailsOrderCount: 0,
+    ardaUserDetailsCardCount: 0,
+    ardaUserDetailsItemCount: 0,
     locations: new Set<string>(),
     workflows: new Set<string>(),
     ticketsLast30: 0,
@@ -1473,9 +1485,29 @@ function addActivity(acc: MonthlyTenantAccumulator, occurredAt: Date | null): vo
   acc.activeWeeks.add(weekKey(occurredAt));
 }
 
+function ardaActivityRecordCount(acc: MonthlyTenantAccumulator): number {
+  return acc.ardaOrderRecords + acc.ardaCardRecords + acc.ardaItemRecords;
+}
+
+function ardaUserDetailsFallbackAvailable(acc: MonthlyTenantAccumulator): boolean {
+  return (
+    acc.ardaUserDetailsOrderCount > 0 ||
+    acc.ardaUserDetailsCardCount > 0 ||
+    acc.ardaUserDetailsItemCount > 0
+  );
+}
+
+function ardaAdoptionCountsSource(acc: MonthlyTenantAccumulator): "ARDA_ACTIVITY" | "ARDA_USER_DETAILS" | "NONE" {
+  if (ardaActivityRecordCount(acc) > 0) return "ARDA_ACTIVITY";
+  if (ardaUserDetailsFallbackAvailable(acc)) return "ARDA_USER_DETAILS";
+  return "NONE";
+}
+
 function mergeSourceRecord(acc: MonthlyTenantAccumulator, record: { source: string; objectType: string; occurredAt: Date | null; payload: Record<string, unknown> }): void {
   const payload = record.payload;
-  addActivity(acc, record.occurredAt);
+  if (!(record.source === "ARDA" && record.objectType === "tenant")) {
+    addActivity(acc, record.occurredAt);
+  }
 
   if (record.source === "HUBSPOT") {
     acc.coverage.hubspot = true;
@@ -1528,6 +1560,26 @@ function mergeSourceRecord(acc: MonthlyTenantAccumulator, record: { source: stri
     if (record.objectType === "tenant") {
       acc.goLiveDate = asString(payload.goLiveDate) ?? acc.goLiveDate;
       acc.implementationStage = asString(payload.implementationStage) ?? acc.implementationStage;
+      acc.ardaUserDetailsOrderCount = Math.max(
+        acc.ardaUserDetailsOrderCount,
+        asNumber(payload.userDetailsOrderCount) ?? 0
+      );
+      acc.ardaUserDetailsCardCount = Math.max(
+        acc.ardaUserDetailsCardCount,
+        asNumber(payload.userDetailsCardCount) ?? 0
+      );
+      acc.ardaUserDetailsItemCount = Math.max(
+        acc.ardaUserDetailsItemCount,
+        asNumber(payload.userDetailsItemCount) ?? 0
+      );
+      acc.activeCardCount = Math.max(
+        acc.activeCardCount,
+        asNumber(payload.userDetailsCardCount) ?? 0
+      );
+      acc.activeItemCount = Math.max(
+        acc.activeItemCount,
+        asNumber(payload.userDetailsItemCount) ?? 0
+      );
       if (asNumber(payload.locationsCount)) {
         for (let i = 0; i < Number(payload.locationsCount); i += 1) acc.locations.add(`loc-${i + 1}`);
       }
@@ -1536,6 +1588,7 @@ function mergeSourceRecord(acc: MonthlyTenantAccumulator, record: { source: stri
       }
     }
     if (record.objectType === "order") {
+      acc.ardaOrderRecords += 1;
       acc.orderCount += 1;
       const locationId = asString(payload.locationId);
       if (locationId) acc.locations.add(locationId);
@@ -1547,12 +1600,14 @@ function mergeSourceRecord(acc: MonthlyTenantAccumulator, record: { source: stri
       }
     }
     if (record.objectType === "card") {
+      acc.ardaCardRecords += 1;
       acc.cardTouches += 1;
       if (asBoolean(payload.active)) acc.activeCardCount += 1;
       const locationId = asString(payload.locationId);
       if (locationId) acc.locations.add(locationId);
     }
     if (record.objectType === "item") {
+      acc.ardaItemRecords += 1;
       acc.itemTouches += 1;
       if (asBoolean(payload.active)) acc.activeItemCount += 1;
       const locationId = asString(payload.locationId);
@@ -1696,6 +1751,18 @@ function buildFeaturePayload(
       locationCount: acc.locations.size,
       workflowCount: acc.workflows.size,
       breadthScore: acc.locations.size + acc.workflows.size + (acc.activeCardCount > 0 ? 1 : 0) + (acc.activeItemCount > 0 ? 1 : 0),
+      ardaAdoptionCountsSource: ardaAdoptionCountsSource(acc),
+      ardaActivityCollectionAvailable: ardaActivityRecordCount(acc) > 0,
+      ardaDirectActivityCounts: {
+        orders: acc.ardaOrderRecords,
+        cards: acc.ardaCardRecords,
+        items: acc.ardaItemRecords,
+      },
+      ardaUserDetailsCounts: {
+        orders: acc.ardaUserDetailsOrderCount,
+        cards: acc.ardaUserDetailsCardCount,
+        items: acc.ardaUserDetailsItemCount,
+      },
     },
     support: {
       ticketsLast30: acc.ticketsLast30,
@@ -1734,6 +1801,8 @@ function buildCoverage(acc: MonthlyTenantAccumulator): RetentionCoveragePayload 
   if (!acc.coverage.pylon) missingSources.push("pylon");
   return {
     ...acc.coverage,
+    ardaActivityCollectionAvailable: ardaActivityRecordCount(acc) > 0,
+    ardaUserDetailsFallback: ardaUserDetailsFallbackAvailable(acc),
     missingSources,
   };
 }
@@ -1847,6 +1916,20 @@ function buildReasonCodes(
         code: "partial_coverage",
         label: "Partial source coverage",
         detail: `Missing sources: ${buildCoverage(acc).missingSources.join(", ")}.`,
+        severity: "info",
+        dimension: "data",
+      })
+    );
+  }
+  if (acc.coverage.arda && ardaActivityRecordCount(acc) === 0) {
+    reasons.push(
+      buildReasonCode({
+        code: "arda_activity_unavailable",
+        label: "Arda activity history unavailable",
+        detail:
+          ardaAdoptionCountsSource(acc) === "ARDA_USER_DETAILS"
+            ? "Arda item/card/order history is unavailable, so adoption breadth is currently sourced from User Details snapshot counts."
+            : "Arda tenant metadata is present, but item/card/order history is unavailable for this tenant.",
         severity: "info",
         dimension: "data",
       })

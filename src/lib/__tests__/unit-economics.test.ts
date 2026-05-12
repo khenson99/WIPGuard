@@ -215,6 +215,75 @@ describe("computeUnitEconomics", () => {
     expect(result.magicNumber).toBe(2.13);
   });
 
+  it("respects custom budget-informed expense ratios", () => {
+    const result = computeUnitEconomics(stripe, mercury, hubspot, {
+      ratios: {
+        cogs: 0.1,
+        payroll: 0.2,
+        marketing: 0.5,
+        infrastructure: 0.1,
+        ops: 0.1,
+      },
+    });
+
+    expect(result.cac).toBe(4500);
+    expect(result.grossMarginPct).toBe(62.5);
+    expect(result.magicNumber).toBe(0.64);
+  });
+
+  it("prefers Mercury transaction-derived category breakdown when present", () => {
+    const mercuryWithBreakdown = makeMercury({
+      cashFlow: {
+        totalBalance: 500_000,
+        inflows30d: 12_000,
+        outflows30d: 45_000,
+        netCashFlow: -33_000,
+        runway: 15,
+        burnRate: 45_000,
+        expenseBreakdown30d: {
+          cogs: 5_000,
+          payroll: 10_000,
+          marketing: 15_000,
+          infrastructure: 5_000,
+          ops: 10_000,
+          other: 0,
+        },
+      },
+    });
+
+    const result = computeUnitEconomics(stripe, mercuryWithBreakdown, hubspot);
+
+    expect(result.cac).toBe(3000);
+    expect(result.grossMarginPct).toBe(58.33);
+    expect(result.magicNumber).toBe(0.96);
+  });
+
+  it("normalizes in-range closed won counts to a monthly equivalent", () => {
+    const ninetyDayMercury = makeMercury({
+      cashFlow: {
+        totalBalance: 500_000,
+        inflows30d: 12_000,
+        outflows30d: 45_000,
+        netCashFlow: -33_000,
+        runway: 15,
+        burnRate: 45_000,
+        observedPeriodDays: 90,
+      },
+    });
+    const ninetyDayHubspot = makeHubSpot({
+      funnel: {
+        ...hubspot.funnel,
+        closedWon: 9,
+      },
+    });
+
+    const result = computeUnitEconomics(stripe, ninetyDayMercury, ninetyDayHubspot);
+
+    expect(result.cac).toBe(2250);
+    expect(result.paybackMonths).toBe(180);
+    expect(result.ltvCacRatio).toBe(2.22);
+  });
+
   /* ─── Churn edge cases ──────────────────────────────────── */
 
   it("caps LTV at 10 years when churnRate is zero", () => {

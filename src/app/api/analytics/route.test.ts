@@ -68,6 +68,7 @@ vi.mock("@/lib/prisma", () => ({
     budget: { findMany: vi.fn() },
     financialGoal: { findMany: vi.fn() },
     forecastScenario: { findMany: vi.fn() },
+    integrationRule: { findUnique: vi.fn() },
     dealMeeting: { findMany: vi.fn() },
     automationArtifact: { findMany: vi.fn() },
   },
@@ -311,7 +312,7 @@ const TELEMETRY_DATA = {
   enabledRules: 1,
   erroredRules: 0,
   receiptsInRange: 1,
-  tasksCreatedInRange: 1,
+  automationsTriggeredInRange: 1,
   eventsInRange: 1,
   failuresInRange: 0,
   trend: [],
@@ -340,6 +341,7 @@ describe("GET /api/analytics", () => {
     } as never);
 
     const { getCredentials } = await import("@/lib/analytics/credentials");
+    const { prisma } = await import("@/lib/prisma");
     vi.mocked(getCredentials).mockResolvedValue({
       hubspotToken: "hubspot",
       stripeKey: "stripe",
@@ -390,6 +392,7 @@ describe("GET /api/analytics", () => {
         [IntegrationProvider.PYLON]: freshness(IntegrationProvider.PYLON),
       },
     } as never);
+    vi.mocked(prisma.integrationRule.findUnique).mockResolvedValue(null as never);
 
     const { fetchHubSpotData, fetchMercuryData, fetchStripeData } = await import("@/lib/analytics/fetchers");
     vi.mocked(fetchHubSpotData).mockResolvedValue(HUBSPOT_DATA as never);
@@ -440,7 +443,6 @@ describe("GET /api/analytics", () => {
       error: null,
     } as never);
 
-    const { prisma } = await import("@/lib/prisma");
     vi.mocked(prisma.user.findUnique).mockResolvedValue({
       role: "member",
       organizationId: "org-1",
@@ -527,6 +529,102 @@ describe("GET /api/analytics", () => {
     expect(response.status).toBe(200);
     expect(body.product).toBeTruthy();
     expect(body.errors.some((entry: { source: string; message: string }) => entry.message === "Missing tenant context")).toBe(false);
+  });
+
+  it("normalizes legacy integration telemetry snapshots to automation fields", async () => {
+    const { readLatestSnapshot } = await import("@/lib/analytics/snapshots");
+
+    vi.mocked(readLatestSnapshot).mockImplementation(async (input) => {
+      if (input.providerKey === "googleWorkspace") {
+        return {
+          payload: {
+            provider: "google_workspace",
+            totalRules: 2,
+            enabledRules: 2,
+            erroredRules: 0,
+            receiptsInRange: 4,
+            tasksCreatedInRange: 3,
+            eventsInRange: 4,
+            failuresInRange: 0,
+            trend: [
+              { date: "2026-02-10", receipts: 2, createdTasks: 2, failures: 0 },
+            ],
+            topFailureReasons: [],
+            _meta: META,
+          },
+          capturedAt: "2026-02-10T00:00:00.000Z",
+          expiresAt: "2026-02-10T01:00:00.000Z",
+          needsRefresh: false,
+          stale: false,
+          fromSnapshot: true,
+          status: "SUCCESS",
+          error: null,
+        } as never;
+      }
+
+      return {
+        payload: null,
+        capturedAt: null,
+        expiresAt: null,
+        needsRefresh: false,
+        stale: false,
+        fromSnapshot: false,
+        status: null,
+        error: null,
+      } as never;
+    });
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=sales-google-workspace"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.googleWorkspace.automationsTriggeredInRange).toBe(3);
+    expect(body.googleWorkspace.trend[0].automationsTriggered).toBe(2);
+    expect(body.googleWorkspace.tasksCreatedInRange).toBeUndefined();
+    expect(body.googleWorkspace.trend[0].createdTasks).toBeUndefined();
+  });
+
+  it("passes configured Mercury expense mappings into the live fetch", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { fetchMercuryData } = await import("@/lib/analytics/fetchers");
+
+    vi.mocked(prisma.integrationRule.findUnique).mockResolvedValueOnce({
+      config: {
+        mercuryExpenseMappings: [
+          { match: "google ads", category: "ops" },
+        ],
+      },
+    } as never);
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=finance-mercury"));
+
+    expect(response.status).toBe(200);
+    expect(fetchMercuryData).toHaveBeenCalledWith(
+      "mercury",
+      expect.objectContaining({
+        expenseMappings: [
+          { match: "google ads", category: "ops" },
+        ],
+      }),
+    );
+  });
+
+  it("aliases removed customer-success subsection routes to the parent domain set", async () => {
+    const { fetchGoogleAdsData } = await import("@/lib/analytics/fetchers-ads");
+    const { fetchCodaData } = await import("@/lib/analytics/fetchers-coda");
+    const { fetchPylonData } = await import("@/lib/analytics/fetchers-pylon");
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=cs-coda"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.meta?.section).toBe("cs-coda");
+    expect(fetchCodaData).toHaveBeenCalled();
+    expect(fetchPylonData).toHaveBeenCalled();
+    expect(fetchGoogleAdsData).not.toHaveBeenCalled();
   });
 
   it("returns demo analytics domain data", async () => {
@@ -1217,6 +1315,89 @@ describe("GET /api/analytics", () => {
           error: "Mercury timeout",
         }),
       );
+    } finally {
+      if (previousOwner === undefined) {
+        delete process.env.INTEGRATION_OWNER_USER_ID;
+      } else {
+        process.env.INTEGRATION_OWNER_USER_ID = previousOwner;
+      }
+    }
+  });
+
+  it("normalizes legacy Mercury fallback snapshots with observed-period totals", async () => {
+    const previousOwner = process.env.INTEGRATION_OWNER_USER_ID;
+    process.env.INTEGRATION_OWNER_USER_ID = "owner-mercury";
+
+    const legacyFallbackMercury = {
+      ...MERCURY_DATA,
+      cashFlow: {
+        ...MERCURY_DATA.cashFlow,
+        totalBalance: 12000,
+        inflows30d: 100,
+        outflows30d: 1000,
+        netCashFlow: -900,
+        burnRate: 900,
+        runway: 13.3,
+        observedPeriodDays: 90,
+        expenseBreakdown30d: {
+          cogs: 1000,
+          payroll: 0,
+          marketing: 0,
+          infrastructure: 0,
+          ops: 0,
+          other: 0,
+        },
+      },
+    };
+
+    const { readLatestSnapshot, readLatestSuccessfulSnapshot } =
+      await import("@/lib/analytics/snapshots");
+    const { fetchMercuryData } = await import("@/lib/analytics/fetchers");
+
+    try {
+      vi.mocked(readLatestSnapshot).mockResolvedValueOnce({
+        payload: MERCURY_DATA,
+        capturedAt: "2026-02-10T00:00:00.000Z",
+        expiresAt: "2026-02-10T01:00:00.000Z",
+        needsRefresh: false,
+        stale: false,
+        fromSnapshot: true,
+        status: "SUCCESS",
+        error: null,
+      } as never);
+      vi.mocked(fetchMercuryData).mockRejectedValueOnce(new Error("Mercury timeout"));
+      vi.mocked(readLatestSuccessfulSnapshot).mockResolvedValueOnce({
+        payload: legacyFallbackMercury,
+        capturedAt: "2026-02-10T00:00:00.000Z",
+        expiresAt: "2026-02-10T01:00:00.000Z",
+        needsRefresh: false,
+        stale: true,
+        fromSnapshot: true,
+        status: "SUCCESS",
+        error: null,
+      } as never);
+
+      const { GET } = await import("@/app/api/analytics/route");
+      const response = await GET(
+        new Request("http://localhost/api/analytics?section=finance-mercury")
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.mercury.cashFlow.inflows30d).toBe(33.33);
+      expect(body.mercury.cashFlow.outflows30d).toBe(333.33);
+      expect(body.mercury.cashFlow.netCashFlow).toBe(-300);
+      expect(body.mercury.cashFlow.burnRate).toBe(300);
+      expect(body.mercury.cashFlow.runway).toBe(40);
+      expect(body.mercury.cashFlow.observedOutflowTotal).toBe(1000);
+      expect(body.mercury.cashFlow.observedExpenseBreakdown).toEqual({
+        cogs: 1000,
+        payroll: 0,
+        marketing: 0,
+        infrastructure: 0,
+        ops: 0,
+        other: 0,
+      });
     } finally {
       if (previousOwner === undefined) {
         delete process.env.INTEGRATION_OWNER_USER_ID;

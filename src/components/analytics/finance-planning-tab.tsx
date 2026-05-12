@@ -367,7 +367,7 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
       },
       {
         key: "actual",
-        header: "Actual",
+        header: "Est. Actual",
         align: "right" as const,
         render: (row) => (
           <span className="tabular-nums text-foreground">{fmt$(row.actual)}</span>
@@ -375,7 +375,7 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
       },
       {
         key: "variance",
-        header: "Variance",
+        header: "Est. Variance",
         align: "right" as const,
         render: (row) => (
           <span
@@ -608,7 +608,7 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
           icon={Wallet}
         />
         <StatCard
-          label="Total Actual"
+          label="Est. Actual"
           value={fmt$(budgetSummary.totalActual)}
           change={
             hasBudgetBaseline
@@ -627,7 +627,7 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
           icon={TrendingDown}
         />
         <StatCard
-          label="Variance"
+          label="Est. Variance"
           value={hasBudgetBaseline ? fmtDelta(budgetSummary.totalVariance) : "—"}
           changeType={
             hasBudgetBaseline ? (budgetSummary.totalVariance > 0 ? "negative" : "positive") : "neutral"
@@ -657,7 +657,10 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
       </div>
 
       {/* Budget Variance Table */}
-      <SectionCard title="Budget vs Actual" subtitle="Monthly budget variance by category">
+      <SectionCard title="Budget vs Estimated Actuals" subtitle="Mercury-based budget variance by category">
+        <div className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
+          Estimated actuals are derived from aggregate Mercury outflows until transaction categories are mapped to budget lines.
+        </div>
         <DataTable
           columns={budgetColumns}
           rows={budgetItems}

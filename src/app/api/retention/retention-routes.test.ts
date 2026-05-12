@@ -85,6 +85,16 @@ describe("retention routes", () => {
       billingRiskAccounts: [],
       cohorts: [],
       dataCoverage: [],
+      dataQuality: {
+        arda: {
+          latestSync: null,
+          tenantRecords: 0,
+          activityRecords: 0,
+          tenantsWithUserDetailsBreadth: 0,
+          adoptionBreadthSource: "NONE",
+          note: "No Arda activity history or User Details fallback breadth counts are currently available.",
+        },
+      },
     } as never);
 
     const { GET } = await import("@/app/api/retention/summary/route");

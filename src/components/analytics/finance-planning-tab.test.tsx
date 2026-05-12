@@ -95,8 +95,27 @@ function makeMercury(overrides: Partial<MercuryData> = {}): MercuryData {
   };
 }
 
+function makeFinancialPlanning(
+  overrides: Partial<FinancialPlanningData> = {},
+): FinancialPlanningData {
+  return {
+    budgets: [],
+    activeBudget: null,
+    forecasts: [],
+    goals: [],
+    pnl: null,
+    unitEconomics: null,
+    subscriptionOverview: null,
+    ...overrides,
+  };
+}
+
 function makePayload(
-  opts: { stripe?: StripeData | null; mercury?: MercuryData | null } = {},
+  opts: {
+    stripe?: StripeData | null;
+    mercury?: MercuryData | null;
+    financialPlanning?: FinancialPlanningData | null;
+  } = {},
 ): AnalyticsDashboardData {
   const data = createEmptyAnalyticsDashboardData({
     freshness: {},
@@ -104,6 +123,7 @@ function makePayload(
   });
   data.stripe = opts.stripe !== undefined ? opts.stripe : makeStripe();
   data.mercury = opts.mercury !== undefined ? opts.mercury : makeMercury();
+  data.financialPlanning = opts.financialPlanning !== undefined ? opts.financialPlanning : null;
   return data;
 }
 
@@ -147,9 +167,8 @@ describe("FinancePlanningTab", () => {
     it("shows all four budget stat cards with full data", () => {
       render(<FinancePlanningTab data={makePayload()} />);
       expect(screen.getByText("Total Budget")).toBeTruthy();
-      expect(screen.getByText("Total Actual")).toBeTruthy();
-      // "Variance" appears both as a stat card label and a table column header
-      expect(screen.getAllByText("Variance").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("Est. Actual")).toBeTruthy();
+      expect(screen.getAllByText("Est. Variance").length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText("Overspend Areas")).toBeTruthy();
     });
   });
@@ -157,9 +176,14 @@ describe("FinancePlanningTab", () => {
   /* ─── Budget variance table ──────────────────────────── */
 
   describe("budget variance table", () => {
-    it("renders Budget vs Actual section title", () => {
+    it("renders estimated budget variance section title and disclosure", () => {
       render(<FinancePlanningTab data={makePayload()} />);
-      expect(screen.getByText("Budget vs Actual")).toBeTruthy();
+      expect(screen.getByText("Budget vs Estimated Actuals")).toBeTruthy();
+      expect(
+        screen.getByText(
+          "Estimated actuals are derived from aggregate Mercury outflows until transaction categories are mapped to budget lines."
+        )
+      ).toBeTruthy();
     });
 
     it("displays budget category labels", () => {
@@ -274,9 +298,53 @@ describe("FinancePlanningTab", () => {
   /* ─── Category breakdown ─────────────────────────────── */
 
   describe("category breakdown", () => {
-    it("renders Category Breakdown section", () => {
-      render(<FinancePlanningTab data={makePayload()} />);
-      expect(screen.getByText("Category Breakdown")).toBeTruthy();
+    it("renders Category Breakdown section", async () => {
+      vi.stubGlobal("fetch", vi.fn(async () => ({
+        ok: true,
+        json: async () => [
+          {
+            id: "budget-1",
+            name: "Baseline Budget",
+            period: "MONTHLY",
+            startDate: "2026-01-01T00:00:00.000Z",
+            endDate: "2026-02-01T00:00:00.000Z",
+            lineItems: [
+              { id: "line-1", category: "MARKETING", plannedAmount: 6000 },
+            ],
+          },
+        ],
+      })) as unknown as typeof fetch);
+
+      render(
+        <FinancePlanningTab
+          data={makePayload({
+            financialPlanning: makeFinancialPlanning({
+              activeBudget: {
+                id: "budget-1",
+                name: "Baseline Budget",
+                period: "monthly",
+                startDate: "2026-01-01T00:00:00.000Z",
+                endDate: "2026-02-01T00:00:00.000Z",
+                lineItems: [
+                  {
+                    id: "line-1",
+                    category: "marketing",
+                    plannedAmount: 6000,
+                    actualAmount: 900,
+                    variance: -5100,
+                    variancePct: -85,
+                  },
+                ],
+                totalPlanned: 6000,
+                totalActual: 900,
+                totalVariance: -5100,
+              },
+            }),
+          })}
+        />
+      );
+
+      expect(await screen.findByText("Category Breakdown")).toBeTruthy();
     });
   });
 
@@ -328,8 +396,8 @@ describe("FinancePlanningTab", () => {
       const data = makePayload({ mercury: null });
       render(<FinancePlanningTab data={data} />);
       expect(screen.getByText("Total Budget")).toBeTruthy();
-      expect(screen.getByText("Total Actual")).toBeTruthy();
-      expect(screen.getAllByText("Variance").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("Est. Actual")).toBeTruthy();
+      expect(screen.getAllByText("Est. Variance").length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText("Overspend Areas")).toBeTruthy();
     });
 
@@ -337,8 +405,8 @@ describe("FinancePlanningTab", () => {
       const data = makePayload({ stripe: null });
       render(<FinancePlanningTab data={data} />);
       expect(screen.getByText("Total Budget")).toBeTruthy();
-      expect(screen.getByText("Total Actual")).toBeTruthy();
-      expect(screen.getAllByText("Variance").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("Est. Actual")).toBeTruthy();
+      expect(screen.getAllByText("Est. Variance").length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText("Overspend Areas")).toBeTruthy();
     });
   });

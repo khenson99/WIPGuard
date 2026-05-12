@@ -398,6 +398,17 @@ export interface CashFlowMetrics {
   netCashFlow: number;
   runway: number;
   burnRate: number;
+  observedPeriodDays?: number;
+  observedInflowTotal?: number;
+  observedOutflowTotal?: number;
+  observedNetCashFlow?: number;
+  expenseBreakdown30d?: Record<ExpenseCategory, number>;
+  observedExpenseBreakdown?: Record<ExpenseCategory, number>;
+}
+
+export interface MercuryExpenseMapping {
+  match: string;
+  category: ExpenseCategory;
 }
 
 export interface MercuryTransactionData {
@@ -975,10 +986,10 @@ export interface IntegrationTelemetryData {
   enabledRules: number;
   erroredRules: number;
   receiptsInRange: number;
-  tasksCreatedInRange: number;
+  automationsTriggeredInRange: number;
   eventsInRange: number;
   failuresInRange: number;
-  trend: Array<{ date: string; receipts: number; createdTasks: number; failures: number }>;
+  trend: Array<{ date: string; receipts: number; automationsTriggered: number; failures: number }>;
   topFailureReasons: Array<{ reason: string; count: number }>;
   coverageStatus?: "active" | "stale" | "not_provisioned" | null;
   configuredRules?: string[];

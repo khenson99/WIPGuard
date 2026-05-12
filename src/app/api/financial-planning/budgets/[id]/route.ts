@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { normalizeStoredBudgetEndDate } from "@/lib/analytics/budget-period";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -28,7 +29,14 @@ export async function GET(
       return NextResponse.json({ error: "Budget not found" }, { status: 404 });
     }
 
-    return NextResponse.json(budget);
+    return NextResponse.json({
+      ...budget,
+      endDate: normalizeStoredBudgetEndDate(
+        budget.startDate.toISOString(),
+        budget.endDate.toISOString(),
+        budget.period as "MONTHLY" | "QUARTERLY" | "ANNUAL",
+      ),
+    });
   } catch (error) {
     console.error("GET /api/financial-planning/budgets/[id] error:", error);
     return NextResponse.json(
@@ -78,7 +86,14 @@ export async function PATCH(
         }),
       ]);
 
-      return NextResponse.json(updated);
+      return NextResponse.json({
+        ...updated,
+        endDate: normalizeStoredBudgetEndDate(
+          updated.startDate.toISOString(),
+          updated.endDate.toISOString(),
+          updated.period as "MONTHLY" | "QUARTERLY" | "ANNUAL",
+        ),
+      });
     }
 
     const updated = await prisma.budget.update({
@@ -87,7 +102,14 @@ export async function PATCH(
       include: { lineItems: true },
     });
 
-    return NextResponse.json(updated);
+    return NextResponse.json({
+      ...updated,
+      endDate: normalizeStoredBudgetEndDate(
+        updated.startDate.toISOString(),
+        updated.endDate.toISOString(),
+        updated.period as "MONTHLY" | "QUARTERLY" | "ANNUAL",
+      ),
+    });
   } catch (error) {
     console.error("PATCH /api/financial-planning/budgets/[id] error:", error);
     return NextResponse.json(

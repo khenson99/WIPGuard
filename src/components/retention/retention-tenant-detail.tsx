@@ -26,6 +26,29 @@ function fmtNum(value: number | null | undefined): string {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(value);
 }
 
+function describeTenantArdaCoverage(detail: RetentionTenantDetail): string | null {
+  if (!detail.tenant.coverage.arda) return null;
+  const adoption = detail.tenant.adoptionSummary;
+  const source =
+    typeof adoption.ardaAdoptionCountsSource === "string" ? adoption.ardaAdoptionCountsSource : null;
+  const userDetailsCounts =
+    adoption.ardaUserDetailsCounts && typeof adoption.ardaUserDetailsCounts === "object"
+      ? (adoption.ardaUserDetailsCounts as Record<string, unknown>)
+      : {};
+  const directCounts =
+    adoption.ardaDirectActivityCounts && typeof adoption.ardaDirectActivityCounts === "object"
+      ? (adoption.ardaDirectActivityCounts as Record<string, unknown>)
+      : {};
+
+  if (source === "ARDA_USER_DETAILS") {
+    return `Arda activity history is unavailable; breadth falls back to User Details (${fmtNum(typeof userDetailsCounts.cards === "number" ? userDetailsCounts.cards : null)} cards, ${fmtNum(typeof userDetailsCounts.items === "number" ? userDetailsCounts.items : null)} items).`;
+  }
+  if (source === "ARDA_ACTIVITY") {
+    return `Arda activity is live (${fmtNum(typeof directCounts.orders === "number" ? directCounts.orders : null)} orders, ${fmtNum(typeof directCounts.cards === "number" ? directCounts.cards : null)} cards, ${fmtNum(typeof directCounts.items === "number" ? directCounts.items : null)} items).`;
+  }
+  return "Arda tenant metadata is connected, but no activity history is currently available.";
+}
+
 export function RetentionTenantDetailView({ customerRecordId }: { customerRecordId: string }) {
   const resource = useDashboardResource<RetentionTenantDetail>({
     cacheKey: `retention-tenant:${customerRecordId}`,
@@ -67,6 +90,8 @@ export function RetentionTenantDetailView({ customerRecordId }: { customerRecord
     return <DashboardErrorBanner message="Retention tenant detail is unavailable." />;
   }
 
+  const ardaCoverageDescription = describeTenantArdaCoverage(detail);
+
   return (
     <div className="space-y-4 p-4">
       {resource.stale ? (
@@ -104,6 +129,13 @@ export function RetentionTenantDetailView({ customerRecordId }: { customerRecord
         <MetricCard label="Trend vs prior" value={fmtPct(detail.tenant.trendVsPriorPct)} />
         <MetricCard label="Coverage" value={(detail.tenant.coverage.missingSources as string[]).length > 0 ? `Missing ${(detail.tenant.coverage.missingSources as string[]).join(", ")}` : "All sources present"} />
       </div>
+
+      {ardaCoverageDescription ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+          <p className="font-medium">Arda Data Quality</p>
+          <p className="mt-1">{ardaCoverageDescription}</p>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <section className="rounded-xl border border-border bg-card p-4">

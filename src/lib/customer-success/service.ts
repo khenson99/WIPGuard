@@ -291,6 +291,15 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 function asBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
@@ -567,14 +576,13 @@ export function buildCustomerSuccessHealth(
   const totalMilestones = activePlan?.milestones.length ?? 0;
   const completedMilestones =
     activePlan?.milestones.filter((milestone) => milestone.status === "COMPLETED").length ?? 0;
+  const blockedMilestones =
+    activePlan?.milestones.filter((milestone) => milestone.status === "BLOCKED").length ?? 0;
   const milestoneRatio = totalMilestones > 0 ? completedMilestones / totalMilestones : 0;
   const completedTasks30d = snapshot.tasks.filter(
     (task) => task.completedOn && daysBetween(task.completedOn, now) <= 30
   ).length;
   const openTasks = snapshot.tasks.filter((task) => !isTaskDone(task.status)).length;
-  const overdueTasks = snapshot.tasks.filter(
-    (task) => !isTaskDone(task.status) && task.dueDate && task.dueDate.getTime() < now.getTime()
-  ).length;
   const recentMeetings = snapshot.meetings.filter((meeting) => daysBetween(meeting.startAt, now) <= 30).length;
   const recentNotes = snapshot.notes.filter((note) => daysBetween(note.createdAt, now) <= 30).length;
   const recentOutreach = snapshot.outreach.filter((message) => {
@@ -604,18 +612,23 @@ export function buildCustomerSuccessHealth(
   const adoption = buildComponent({
     score:
       36 +
-      Math.min(completedTasks30d * 8, 24) +
+      Math.min((recentMeetings + recentNotes + recentOutreach) * 5, 24) +
       milestoneRatio * 26 +
       (providers.has(CustomerExternalProvider.CODA) ? 10 : 0) -
-      Math.min(openTasks * 5, 18),
+      Math.min(blockedMilestones * 12, 24),
     weight: HEALTH_WEIGHTS.adoption,
     trend:
-      completedTasks30d > openTasks ? "improving" : openTasks > completedTasks30d + 2 ? "declining" : "stable",
+      blockedMilestones > 0
+        ? "declining"
+        : recentMeetings + recentNotes + recentOutreach >= 3
+          ? "improving"
+          : "stable",
     evidence: [
-      `${completedTasks30d} customer-success tasks completed in the last 30 days`,
+      `${recentMeetings + recentNotes + recentOutreach} customer-success touches in the last 30 days`,
       totalMilestones > 0
         ? `${completedMilestones}/${totalMilestones} plan milestones completed`
         : "No success-plan milestones linked yet",
+      blockedMilestones > 0 ? `${blockedMilestones} plan milestones are blocked` : "No blocked success-plan milestones",
       providers.has(CustomerExternalProvider.CODA) ? "Coda signal available" : "No Coda reference connected",
     ],
     updatedAt: latestActivity ?? snapshot.updatedAt,
@@ -673,18 +686,17 @@ export function buildCustomerSuccessHealth(
       95 -
       criticalAlerts * 24 -
       highAlerts * 12 -
-      supportAlerts * 5 -
-      overdueTasks * 4,
+      supportAlerts * 5,
     weight: HEALTH_WEIGHTS.support,
     trend:
-      criticalAlerts > 0 || overdueTasks > 2
+      criticalAlerts > 0
         ? "declining"
-        : supportAlerts === 0 && overdueTasks === 0
+        : supportAlerts === 0
           ? "improving"
           : "stable",
     evidence: [
       `${openAlerts.length} open alerts, ${criticalAlerts} critical`,
-      `${overdueTasks} overdue customer-success tasks`,
+      `${supportAlerts} support or health alerts in queue`,
       supportAlerts > 0 ? "Support or health alerts need attention" : "Support load is within threshold",
     ],
     updatedAt: latestActivity ?? snapshot.updatedAt,
@@ -794,7 +806,7 @@ export function buildCustomerSuccessHealth(
   const confidenceSignals = [
     snapshot.externalProviders.length > 0,
     snapshot.contacts.length > 0,
-    snapshot.tasks.length > 0,
+    snapshot.plans.length > 0,
     snapshot.outreach.length > 0 || snapshot.notes.length > 0,
     snapshot.alerts.length > 0 || snapshot.primaryDealAmount !== null,
   ];
@@ -1503,6 +1515,8 @@ function buildDerivedCoverage(
     stripe: seen.has("stripe"),
     hubspot: seen.has("hubspot"),
     pylon: seen.has("pylon"),
+    ardaActivityCollectionAvailable: undefined,
+    ardaUserDetailsFallback: undefined,
     missingSources,
   };
 }
@@ -1517,6 +1531,7 @@ function buildPortfolioRelationshipSummary(input: {
   } | null;
 }): CustomerSuccessPortfolioRelationshipSummary {
   const detailData = input.retentionCurrent ? asRecord(input.retentionCurrent.detailData) : {};
+  const adoptionData = asRecord(detailData.adoptionSummary);
   const coverageData =
     input.retentionCurrent?.monthFact ? asRecord(input.retentionCurrent.monthFact.coverageData) : {};
   const coverage = {
@@ -1535,6 +1550,12 @@ function buildPortfolioRelationshipSummary(input: {
     retentionStatus: input.retentionCurrent ? humanizeRetentionStatus(input.retentionCurrent.status) : undefined,
     primaryLirPassed: input.retentionCurrent?.primaryLirPassed ?? undefined,
     implementationStage: asString(detailData.implementationStage) ?? undefined,
+    ardaAdoptionCountsSource:
+      (asString(adoptionData.ardaAdoptionCountsSource) as
+        | "ARDA_ACTIVITY"
+        | "ARDA_USER_DETAILS"
+        | "NONE"
+        | undefined) ?? undefined,
     missingSources: asArray<string>(coverageData.missingSources),
   };
 }
@@ -1587,6 +1608,7 @@ async function buildRelationshipIntelligence(
 
   const latestArdaPayload = latestArdaTenant ? asRecord(latestArdaTenant.payload) : {};
   const retentionDetail = retentionCurrent ? asRecord(retentionCurrent.detailData) : {};
+  const retentionAdoption = asRecord(retentionDetail.adoptionSummary);
   const retentionCoverageRaw =
     retentionCurrent && retentionCurrent.monthFact ? asRecord(retentionCurrent.monthFact.coverageData) : null;
   const coverage =
@@ -1597,6 +1619,8 @@ async function buildRelationshipIntelligence(
           stripe: Boolean(asBoolean(retentionCoverageRaw.stripe)),
           hubspot: Boolean(asBoolean(retentionCoverageRaw.hubspot)),
           pylon: Boolean(asBoolean(retentionCoverageRaw.pylon)),
+          ardaActivityCollectionAvailable: asBoolean(retentionCoverageRaw.ardaActivityCollectionAvailable) ?? undefined,
+          ardaUserDetailsFallback: asBoolean(retentionCoverageRaw.ardaUserDetailsFallback) ?? undefined,
           missingSources: asArray<string>(retentionCoverageRaw.missingSources),
         }
       : buildDerivedCoverage(sourceRows);
@@ -1625,6 +1649,22 @@ async function buildRelationshipIntelligence(
           firstOrderDate: asString(retentionDetail.firstOrderDate) ?? undefined,
           explanation: asString(retentionDetail.explanation) ?? undefined,
           reasonCodes: parseRelationshipReasons(retentionCurrent.reasonCodes),
+          ardaAdoptionCountsSource:
+            asString(retentionAdoption.ardaAdoptionCountsSource) as
+              | "ARDA_ACTIVITY"
+              | "ARDA_USER_DETAILS"
+              | "NONE"
+              | undefined,
+          ardaDirectActivityCounts: {
+            orders: asNumber(asRecord(retentionAdoption.ardaDirectActivityCounts).orders) ?? 0,
+            cards: asNumber(asRecord(retentionAdoption.ardaDirectActivityCounts).cards) ?? 0,
+            items: asNumber(asRecord(retentionAdoption.ardaDirectActivityCounts).items) ?? 0,
+          },
+          ardaUserDetailsCounts: {
+            orders: asNumber(asRecord(retentionAdoption.ardaUserDetailsCounts).orders) ?? 0,
+            cards: asNumber(asRecord(retentionAdoption.ardaUserDetailsCounts).cards) ?? 0,
+            items: asNumber(asRecord(retentionAdoption.ardaUserDetailsCounts).items) ?? 0,
+          },
           coverage,
           detailUrl: `/analytics/retention/${snapshot.id}`,
         }

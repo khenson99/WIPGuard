@@ -191,8 +191,11 @@ function TelemetryDashboard({
           ) : (
             <div className="mt-3 grid grid-cols-7 gap-2">
               {telemetry.trend.slice(-7).map((point) => {
-                const total = point.receipts + point.createdTasks;
-                const maxTotal = Math.max(1, ...telemetry.trend.map((t) => t.receipts + t.createdTasks));
+                const total = point.receipts + point.automationsTriggered;
+                const maxTotal = Math.max(
+                  1,
+                  ...telemetry.trend.map((t) => t.receipts + t.automationsTriggered),
+                );
                 const height = Math.max(8, Math.round((total / maxTotal) * 100));
                 return (
                   <div key={point.date} className="flex flex-col items-center gap-1">

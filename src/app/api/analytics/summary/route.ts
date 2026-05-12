@@ -76,7 +76,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         orderBy: [{ capturedAt: "desc" }],
       }),
     ]);
-    const [retentionTenantCount, latestRetentionRun] = await Promise.all([
+    const [retentionTenantCount, latestRetentionRun, retentionArdaGroups, retentionArdaTenantRecords] = await Promise.all([
       user.organizationId
         ? prisma.retentionTenantCurrent.count({
             where: { organizationId: user.organizationId },
@@ -93,7 +93,54 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             },
           })
         : Promise.resolve(null),
+      user.organizationId
+        ? prisma.retentionSourceRecord.groupBy({
+            by: ["objectType"],
+            where: {
+              organizationId: user.organizationId,
+              source: "ARDA",
+            },
+            _count: {
+              _all: true,
+            },
+          })
+        : Promise.resolve([]),
+      user.organizationId
+        ? prisma.retentionSourceRecord.findMany({
+            where: {
+              organizationId: user.organizationId,
+              source: "ARDA",
+              objectType: "tenant",
+            },
+            select: {
+              payload: true,
+            },
+          })
+        : Promise.resolve([]),
     ]);
+
+    const retentionArdaCounts = new Map(
+      retentionArdaGroups.map((group) => [group.objectType, group._count._all])
+    );
+    const retentionArdaActivityRecords =
+      (retentionArdaCounts.get("order") ?? 0) +
+      (retentionArdaCounts.get("card") ?? 0) +
+      (retentionArdaCounts.get("item") ?? 0);
+    const retentionArdaFallbackTenants = retentionArdaTenantRecords.reduce((count, record) => {
+      const payload =
+        record.payload && typeof record.payload === "object" && !Array.isArray(record.payload)
+          ? (record.payload as Record<string, unknown>)
+          : {};
+      const cards = typeof payload.userDetailsCardCount === "number" ? payload.userDetailsCardCount : 0;
+      const items = typeof payload.userDetailsItemCount === "number" ? payload.userDetailsItemCount : 0;
+      const orders = typeof payload.userDetailsOrderCount === "number" ? payload.userDetailsOrderCount : 0;
+      return cards > 0 || items > 0 || orders > 0 ? count + 1 : count;
+    }, 0);
+    const retentionFallbackOnly =
+      retentionTenantCount > 0 &&
+      (retentionArdaCounts.get("tenant") ?? 0) > 0 &&
+      retentionArdaActivityRecords === 0 &&
+      retentionArdaFallbackTenants > 0;
 
     const now = Date.now();
 
@@ -180,8 +227,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const primarySections = ANALYTICS_PRIMARY_SECTIONS.map((primary) => {
       if (primary.id === "retention") {
+        const latestRetentionErrored = latestRetentionRun?.status === "ERROR";
         const status: SectionStatus =
-          retentionTenantCount > 0 ? "connected" : latestRetentionRun?.status === "ERROR" ? "degraded" : "missing";
+          retentionTenantCount > 0
+            ? retentionFallbackOnly || latestRetentionErrored
+              ? "degraded"
+              : "connected"
+            : latestRetentionErrored
+              ? "degraded"
+              : "missing";
         return {
           id: primary.id,
           label: primary.label,

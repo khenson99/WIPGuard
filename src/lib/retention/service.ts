@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type {
+  RetentionArdaDataQuality,
   RetentionCoveragePayload,
   RetentionLifecyclePhase,
   RetentionReasonCode,
@@ -72,6 +73,19 @@ function compareRowsByRisk(a: RetentionTenantRow, b: RetentionTenantRow): number
   const statusDiff = order.indexOf(a.status) - order.indexOf(b.status);
   if (statusDiff !== 0) return statusDiff;
   return (b.trendVsPriorPct ?? -Infinity) - (a.trendVsPriorPct ?? -Infinity);
+}
+
+function buildArdaDataQualityNote(input: {
+  activityRecords: number;
+  tenantsWithUserDetailsBreadth: number;
+}): string {
+  if (input.activityRecords > 0) {
+    return "Arda direct item/card/order history is available in the retention source records.";
+  }
+  if (input.tenantsWithUserDetailsBreadth > 0) {
+    return "Arda direct item/card/order history is unavailable; current adoption breadth falls back to User Details snapshot counts.";
+  }
+  return "No Arda activity history or User Details fallback breadth counts are currently available.";
 }
 
 function buildExplanation(row: RetentionTenantRow): string {
@@ -227,6 +241,11 @@ export async function getRetentionSummary(
     cohortBuckets.set(monthKey, bucket);
   }
 
+  const [dataCoverage, dataQuality] = await Promise.all([
+    buildCoverage(actor.organizationId),
+    buildDataQuality(actor.organizationId),
+  ]);
+
   return {
     generatedAt: new Date().toISOString(),
     lirDefinition: DEFAULT_RETENTION_LIR_BY_PHASE.MATURE,
@@ -282,31 +301,123 @@ export async function getRetentionSummary(
       lirPassRate: bucket.tenants > 0 ? Math.round((bucket.pass / bucket.tenants) * 1000) / 10 : 0,
       activeAfter180dRate: bucket.tenants > 0 ? Math.round((bucket.active / bucket.tenants) * 1000) / 10 : null,
     })),
-    dataCoverage: await buildCoverage(actor.organizationId),
+    dataCoverage,
+    dataQuality,
   };
 }
 
 async function buildCoverage(organizationId: string): Promise<RetentionSummary["dataCoverage"]> {
-  const [tenantCount, sourceCounts] = await Promise.all([
+  const [tenantCount, sourceRecords] = await Promise.all([
     prisma.retentionTenantCurrent.count({ where: { organizationId } }),
-    prisma.retentionSourceRecord.groupBy({
-      by: ["source"],
+    prisma.retentionSourceRecord.findMany({
       where: {
         organizationId,
         customerRecordId: { not: null },
       },
-      _count: {
+      select: {
+        source: true,
         customerRecordId: true,
+      },
+      distinct: ["source", "customerRecordId"],
+    }),
+  ]);
+
+  const sourceCounts = new Map<string, number>();
+  const seenPairs = new Set<string>();
+  for (const record of sourceRecords) {
+    const dedupeKey = `${record.source}::${record.customerRecordId}`;
+    if (seenPairs.has(dedupeKey)) continue;
+    seenPairs.add(dedupeKey);
+    sourceCounts.set(record.source, (sourceCounts.get(record.source) ?? 0) + 1);
+  }
+
+  return [...sourceCounts.entries()].map(([source, tenantsCovered]) => ({
+    source,
+    tenantsCovered,
+    totalTenants: tenantCount,
+    coveragePct: tenantCount > 0 ? Math.round((tenantsCovered / tenantCount) * 1000) / 10 : 0,
+  }));
+}
+
+async function buildDataQuality(organizationId: string): Promise<RetentionSummary["dataQuality"]> {
+  const [latestArdaSync, ardaGroups, ardaTenantRecords] = await Promise.all([
+    prisma.retentionSyncRun.findFirst({
+      where: {
+        organizationId,
+        source: "ARDA",
+      },
+      orderBy: [{ startedAt: "desc" }],
+      select: {
+        status: true,
+        startedAt: true,
+        completedAt: true,
+        recordCount: true,
+        mappedCount: true,
+        errorCount: true,
+        lastError: true,
+      },
+    }),
+    prisma.retentionSourceRecord.groupBy({
+      by: ["objectType"],
+      where: {
+        organizationId,
+        source: "ARDA",
+      },
+      _count: {
+        _all: true,
+      },
+    }),
+    prisma.retentionSourceRecord.findMany({
+      where: {
+        organizationId,
+        source: "ARDA",
+        objectType: "tenant",
+      },
+      select: {
+        payload: true,
       },
     }),
   ]);
 
-  return sourceCounts.map((entry) => ({
-    source: entry.source,
-    tenantsCovered: entry._count.customerRecordId,
-    totalTenants: tenantCount,
-    coveragePct: tenantCount > 0 ? Math.round((entry._count.customerRecordId / tenantCount) * 1000) / 10 : 0,
-  }));
+  const ardaCounts = new Map(ardaGroups.map((group) => [group.objectType, group._count._all]));
+  const tenantsWithUserDetailsBreadth = ardaTenantRecords.reduce((count, record) => {
+    const payload = asRecord(record.payload);
+    const cards = asNumber(payload.userDetailsCardCount) ?? 0;
+    const items = asNumber(payload.userDetailsItemCount) ?? 0;
+    const orders = asNumber(payload.userDetailsOrderCount) ?? 0;
+    return cards > 0 || items > 0 || orders > 0 ? count + 1 : count;
+  }, 0);
+  const activityRecords =
+    (ardaCounts.get("order") ?? 0) + (ardaCounts.get("card") ?? 0) + (ardaCounts.get("item") ?? 0);
+
+  const arda: RetentionArdaDataQuality = {
+    latestSync: latestArdaSync
+      ? {
+          status: latestArdaSync.status,
+          startedAt: latestArdaSync.startedAt.toISOString(),
+          completedAt: latestArdaSync.completedAt?.toISOString() ?? null,
+          recordCount: latestArdaSync.recordCount,
+          mappedCount: latestArdaSync.mappedCount,
+          errorCount: latestArdaSync.errorCount,
+          lastError: latestArdaSync.lastError,
+        }
+      : null,
+    tenantRecords: ardaCounts.get("tenant") ?? 0,
+    activityRecords,
+    tenantsWithUserDetailsBreadth,
+    adoptionBreadthSource:
+      activityRecords > 0
+        ? "ARDA_ACTIVITY"
+        : tenantsWithUserDetailsBreadth > 0
+          ? "ARDA_USER_DETAILS"
+          : "NONE",
+    note: buildArdaDataQualityNote({
+      activityRecords,
+      tenantsWithUserDetailsBreadth,
+    }),
+  };
+
+  return { arda };
 }
 
 export async function getRetentionTenantDetail(

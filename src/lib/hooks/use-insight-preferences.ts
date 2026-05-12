@@ -18,8 +18,6 @@ interface UseInsightPreferencesReturn {
   togglePin: (id: string) => Promise<void>;
   dismiss: (id: string) => Promise<void>;
   undoDismiss: (id: string) => Promise<void>;
-  createTaskFromInsight: (insight: AiInsight) => Promise<void>;
-  creatingTaskForId: string | null;
   sortAndFilter: (insights: AiInsight[], showDismissed?: boolean) => AiInsight[];
   loading: boolean;
 }
@@ -171,8 +169,6 @@ export function useInsightPreferences(): UseInsightPreferencesReturn {
     togglePin,
     dismiss,
     undoDismiss,
-    createTaskFromInsight,
-    creatingTaskForId,
     sortAndFilter,
     loading,
   };
