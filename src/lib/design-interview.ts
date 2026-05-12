@@ -44,32 +44,32 @@ export const DESIGN_INTERVIEW_PROMPTS: DesignInterviewPrompt[] = [
   {
     id: "problem",
     title: "The Problem",
-    prompt: "What's the core problem Arda is solving, and how do you want people to feel after using it?",
+    prompt: "What's the core problem Imladris is solving, and how do you want people to feel after using it?",
     example:
       "We're solving the morning chaos. Developers start their day scattered across Slack, email, and todos. After using Dawn, they should feel oriented and calm. Like they know exactly what matters today.",
     probes: [
-      "What does the world look like if Arda works perfectly five years from now?",
+      "What does the world look like if Imladris works perfectly five years from now?",
       "What's the one thing users must be able to do effortlessly?",
       "The shop floor worker scanning a card versus the manager setting things up: whose experience matters more?",
-      "What were people doing before Arda? What's the old way you're replacing?",
+      "What were people doing before Imladris? What's the old way you're replacing?",
     ],
   },
   {
     id: "identity",
     title: "The Identity",
     prompt:
-      "Describe Arda's personality like you'd describe a person. What products or objects do you admire that capture what you're going for? What do you explicitly reject?",
+      "Describe Imladris's personality like you'd describe a person. What products or objects do you admire that capture what you're going for? What do you explicitly reject?",
     example:
       "Dawn is like a thoughtful friend who's annoyingly well organized but never judgmental. I admire Linear's speed and Apple Notes' invisibility. I reject anything that feels corporate, cluttered, or like a generic AI chat.",
     probes: [
-      "Give me three words for how it should feel to use Arda.",
-      "What should Arda never feel like? What would make you cringe?",
+      "Give me three words for how it should feel to use Imladris.",
+      "What should Imladris never feel like? What would make you cringe?",
       "The products you admire: what specifically? Speed? Aesthetics? Philosophy?",
       "Are there physical objects, spaces, or non-digital things that capture the feeling?",
     ],
     followupTitle: "Visual Aesthetics",
     followupPrompt:
-      "Now let's talk about how Arda should look, not just feel, but actually look. Think about colors, density, whitespace, typography. Is it bold and industrial? Clean and airy? Dense and information rich like a Bloomberg terminal? Dark mode or light? When you imagine the ideal Arda screen, what do you see?",
+      "Now let's talk about how Imladris should look, not just feel, but actually look. Think about colors, density, whitespace, typography. Is it bold and industrial? Clean and airy? Dense and information rich like a Bloomberg terminal? Dark mode or light? When you imagine the ideal Imladris screen, what do you see?",
     followupProbes: [
       "Show me a website, app, or physical dashboard that looks like what you imagine.",
       "Is it more Apple clean or more McMaster-Carr dense? Or something else entirely?",
@@ -82,47 +82,47 @@ export const DESIGN_INTERVIEW_PROMPTS: DesignInterviewPrompt[] = [
     id: "reality",
     title: "The Reality",
     prompt:
-      "What's working today and what's broken? What do users or people who've seen Arda actually say, both the compliments and the complaints?",
+      "What's working today and what's broken? What do users or people who've seen Imladris actually say, both the compliments and the complaints?",
     example:
       "People love the morning briefing. They say it's the first thing that actually made their mornings feel structured. But the chat feels generic, like every other AI interface. And people can't tell if it's thinking or stuck.",
     probes: [
       "What's the most common complaint or friction point?",
       "What do people love that you didn't expect them to love?",
       "If you could fix one UX problem tomorrow, what would it be?",
-      "Are there things users do that surprise you, using Arda in ways you didn't intend?",
+      "Are there things users do that surprise you, using Imladris in ways you didn't intend?",
     ],
   },
   {
     id: "user",
     title: "The User",
     prompt:
-      "Tell me about the people using Arda. Walk me through their day. What's their environment like? What frustrates them about their current tools?",
+      "Tell me about the people using Imladris. Walk me through their day. What's their environment like? What frustrates them about their current tools?",
     example:
       "Our users are engineering managers at mid-size companies. They're in meetings half the day, context switching constantly. They're frustrated by Jira's complexity. They just want to know what their team shipped this week.",
     probes: [
       "How tech-savvy are they? Would they be comfortable with a complex UI or does it need to be dead simple?",
-      "What's the physical environment like where they use Arda? Desk? Shop floor? Both?",
+      "What's the physical environment like where they use Imladris? Desk? Shop floor? Both?",
       "Are there accessibility constraints you think about? Screen size, lighting, gloves, noise?",
-      "What other tools do they use daily? What does Arda need to play nicely with?",
+      "What other tools do they use daily? What does Imladris need to play nicely with?",
     ],
   },
   {
     id: "voice",
     title: "The Voice",
     prompt:
-      "Show me how Arda talks. If Arda had to send a message for each of these situations, what would it say: a welcome message, an error, a confirmation that something worked, and an empty screen with no data yet?",
+      "Show me how Imladris talks. If Imladris had to send a message for each of these situations, what would it say: a welcome message, an error, a confirmation that something worked, and an empty screen with no data yet?",
     example:
       "Good morning. You've got 3 things on deck today. We say check in, not session. We never say syncing or processing. We say what's actually happening.",
     probes: [
-      "How formal or casual? Would Arda use contractions, emoji, or exclamation marks?",
+      "How formal or casual? Would Imladris use contractions, emoji, or exclamation marks?",
       "When something goes wrong, what's the tone? Clinical, reassuring, apologetic?",
-      "Are there words Arda should never use?",
+      "Are there words Imladris should never use?",
       "Is the voice the same everywhere, management UI and scan flow, or does it change?",
     ],
   },
 ];
 
-export const DESIGN_INTERVIEW_OUTPUT_TEMPLATE = `# Arda - Design Interview
+export const DESIGN_INTERVIEW_OUTPUT_TEMPLATE = `# Imladris - Design Interview
 
 **Date:** [today's date]
 **Interviewee:** [name, role]
@@ -131,10 +131,10 @@ export const DESIGN_INTERVIEW_OUTPUT_TEMPLATE = `# Arda - Design Interview
 
 ## Product
 
-- **One-liner:** [one sentence describing Arda]
+- **One-liner:** [one sentence describing Imladris]
 - **Core job:** [the one thing users must do effortlessly]
 - **Intended feeling:** [how users should feel]
-- **If Arda works perfectly:** [their vision]
+- **If Imladris works perfectly:** [their vision]
 
 ---
 
@@ -146,7 +146,7 @@ export const DESIGN_INTERVIEW_OUTPUT_TEMPLATE = `# Arda - Design Interview
 - [product] - [what specifically they admire]
 
 **Rejections:**
-- [what Arda should never feel like]
+- [what Imladris should never feel like]
 
 ## Visual aesthetics
 
@@ -246,7 +246,7 @@ export function buildDesignInterviewPrompt(input?: {
   });
 
   return [
-    "You are running a design interview for Arda, a lean manufacturing tool that helps small manufacturers manage inventory through physical kanban cards, QR scanning, and automated reordering. The interview captures design intent to generate a company design skill that AI agents will use when building Arda's UI.",
+    "You are running a design interview for Imladris, a lean manufacturing tool that helps small manufacturers manage inventory through physical kanban cards, QR scanning, and automated reordering. The interview captures design intent to generate a company design skill that AI agents will use when building Imladris's UI.",
     "",
     ...(interviewee
       ? [`This session is for: ${interviewee}`, ""]
@@ -266,7 +266,7 @@ export function buildDesignInterviewPrompt(input?: {
     "",
     "## Start by introducing yourself:",
     "",
-    "\"Hi! I'm going to ask you 5 questions about Arda - how it should feel, who it's for, what's working, what's broken, and how it talks. There are no wrong answers. Just tell me what comes to mind. I'll organize everything afterward.\n\nLet's start. What's your name and role at Arda?\"",
+    "\"Hi! I'm going to ask you 5 questions about Imladris - how it should feel, who it's for, what's working, what's broken, and how it talks. There are no wrong answers. Just tell me what comes to mind. I'll organize everything afterward.\n\nLet's start. What's your name and role at Imladris?\"",
     "",
     "[Wait for answer, then proceed with prompts in order.]",
     "",

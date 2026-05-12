@@ -292,14 +292,14 @@ export async function loadDashboardOverview(
   return {
     generatedAt: now.toISOString(),
     revenueSummary: {
-      workspaceId: "deals",
+      workspaceId: "sources",
       openDeals,
       pipelineValue: pipelineAggregate._sum.amount ?? 0,
       closingThisMonth,
       wonThisQuarter,
     },
     integrationHealth: {
-      workspaceId: "integrations",
+      workspaceId: "sources",
       totalConnections: integrationDefinitions.length,
       connectedConnections,
       degradedConnections: errorConnections + staleConnections,
@@ -308,7 +308,7 @@ export async function loadDashboardOverview(
       missingConnections,
     },
     automationAttention: {
-      workspaceId: "automations",
+      workspaceId: "pipelines",
       activeWorkflows,
       pendingApprovals,
       pendingRecommendations,
@@ -316,7 +316,7 @@ export async function loadDashboardOverview(
       waitingExternalRuns,
     },
     analyticsFreshness: {
-      workspaceId: "analytics",
+      workspaceId: "metrics",
       latestSnapshotAt,
       healthyDomains,
       staleDomains,

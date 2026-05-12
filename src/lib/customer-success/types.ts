@@ -195,6 +195,14 @@ export interface CustomerSuccessHealthComponent {
   lastUpdatedAt: string;
 }
 
+export interface CustomerSuccessLeadingIndicator {
+  label: string;
+  score: number;
+  status: CustomerSuccessHealthStatus;
+  value: string;
+  evidence: string[];
+}
+
 export interface CustomerSuccessHealth {
   score: number;
   grade: CustomerSuccessHealthGrade;
@@ -207,6 +215,13 @@ export interface CustomerSuccessHealth {
     relationship: CustomerSuccessHealthComponent;
     support: CustomerSuccessHealthComponent;
     commercial: CustomerSuccessHealthComponent;
+  };
+  leadingIndicators: {
+    recency: CustomerSuccessLeadingIndicator;
+    cadence: CustomerSuccessLeadingIndicator;
+    consistency: CustomerSuccessLeadingIndicator;
+    depth: CustomerSuccessLeadingIndicator;
+    breadth: CustomerSuccessLeadingIndicator;
   };
 }
 
@@ -285,25 +300,12 @@ export interface CustomerSuccessRetentionSummary {
   firstOrderDate?: string;
   explanation?: string;
   reasonCodes: CustomerSuccessRelationshipReason[];
-  ardaAdoptionCountsSource?: "ARDA_ACTIVITY" | "ARDA_USER_DETAILS" | "NONE";
-  ardaDirectActivityCounts?: {
-    orders: number;
-    cards: number;
-    items: number;
-  };
-  ardaUserDetailsCounts?: {
-    orders: number;
-    cards: number;
-    items: number;
-  };
   coverage: {
     arda: boolean;
     coda: boolean;
     stripe: boolean;
     hubspot: boolean;
     pylon: boolean;
-    ardaActivityCollectionAvailable?: boolean;
-    ardaUserDetailsFallback?: boolean;
     missingSources: string[];
   };
   detailUrl: string;
@@ -320,9 +322,22 @@ export interface CustomerSuccessCodaSummary {
   sourceRecordCount: number;
 }
 
+export interface CustomerSuccessArdaSummary {
+  tenantId?: string;
+  configuredTenantId?: string;
+  tenantName?: string;
+  companyName?: string;
+  customerStatus?: string;
+  configuredHealth?: string;
+  implementationStage?: string;
+  sourceRecordCount: number;
+}
+
 export interface CustomerSuccessRelationshipIntelligence {
+  connectedSystems: number;
   providers: CustomerSuccessProviderLink[];
   retention?: CustomerSuccessRetentionSummary;
+  arda?: CustomerSuccessArdaSummary;
   coda?: CustomerSuccessCodaSummary;
 }
 
@@ -331,7 +346,6 @@ export interface CustomerSuccessPortfolioRelationshipSummary {
   retentionStatus?: string;
   primaryLirPassed?: boolean;
   implementationStage?: string;
-  ardaAdoptionCountsSource?: "ARDA_ACTIVITY" | "ARDA_USER_DETAILS" | "NONE";
   missingSources: string[];
 }
 

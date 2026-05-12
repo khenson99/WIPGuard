@@ -128,6 +128,29 @@ function buildDryRunPreview(
   }));
 }
 
+function buildDisabledPreviewRows(signals: VisitorEnrichmentSignalInput[]): Record<string, unknown>[] {
+  return signals.map((signal) => {
+    const metadata = asObject(signal.metadata);
+    return {
+      row_id: trimOrNull(signal.signalKey),
+      email: trimOrNull(signal.email),
+      domain: trimOrNull(signal.domain),
+      full_name: trimOrNull(signal.fullName),
+      company: trimOrNull(signal.companyName),
+      title: trimOrNull(typeof metadata?.title === "string" ? metadata.title : null),
+      website: trimOrNull(typeof metadata?.website === "string" ? metadata.website : null),
+      linkedin_url: trimOrNull(typeof metadata?.linkedinUrl === "string" ? metadata.linkedinUrl : null),
+      captured_url: trimOrNull(typeof metadata?.capturedUrl === "string" ? metadata.capturedUrl : null),
+      referrer: trimOrNull(typeof metadata?.referrer === "string" ? metadata.referrer : null),
+      occurred_at: trimOrNull(signal.occurredAt),
+      confidence:
+        typeof signal.confidence === "number" && Number.isFinite(signal.confidence)
+          ? signal.confidence
+          : null,
+    };
+  });
+}
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ provider: string }> },
@@ -242,11 +265,12 @@ export async function POST(
     if (!funnelPrisma) {
       return NextResponse.json(
         {
-          accepted: 0,
+          accepted: signals.length,
           dryRun: false,
           disabled: true,
           mode,
           provider,
+          rows: buildDisabledPreviewRows(signals),
           received: signals.length,
           stored: 0,
           reason: VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON,

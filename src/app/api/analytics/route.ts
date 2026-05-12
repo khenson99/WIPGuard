@@ -26,8 +26,9 @@ import {
   storeAnalyticsSnapshotFailure,
 } from "@/lib/analytics/snapshots";
 import { buildAnalyticsRouteMeta } from "@/lib/analytics/route-meta";
-import { computeAnalyticsKpis } from "@/lib/analytics/kpis";
+import { buildAnalyticsMetricsLayer } from "@/lib/analytics/kpis";
 import { computeKpiDelta } from "@/lib/analytics/kpi-deltas";
+import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
 import {
   buildVisitorFunnelData,
   parseVisitorFunnelFilters,
@@ -134,15 +135,23 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "distilledInsights",
   ],
   "ai-insights": [...ALL_DOMAINS],
-  "ads-traffic": [
+  "website-traffic": [
     "googleAnalytics",
-    "googleAds",
-    "metaAds",
-    "instagram",
-    "redditAds",
     "webflow",
     "semrush",
     "coda",
+    "lifecycleFunnel",
+    "funnelJourney",
+    "aiInsights",
+    "recommendations",
+    "distilledInsights",
+  ],
+  "social-media": [
+    "googleAds",
+    "metaAds",
+    "metaPage",
+    "instagram",
+    "redditAds",
     "lifecycleFunnel",
     "funnelJourney",
     "aiInsights",
@@ -160,7 +169,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "recommendations",
     "distilledInsights",
   ],
-  "finance-planning": ["stripe", "mercury"],
+  "finance-planning": ["stripe", "mercury", "hubspot"],
   "finance-forecast": ["stripe", "mercury"],
   "finance-pnl": ["stripe", "mercury"],
   "finance-unit-economics": ["stripe", "mercury", "hubspot"],
@@ -530,11 +539,12 @@ async function computeProductSuccessData(from: Date, to: Date): Promise<ProductS
 
 function buildRecommendations(data: AnalyticsDashboardData): AnalyticsRecommendation[] {
   const recommendations: AnalyticsRecommendation[] = [];
+  const financeSummary = data.metrics?.finance.summary ?? null;
 
   if ((data.googleAnalytics?.bounceRate ?? 0) > 0.55) {
     recommendations.push({
       id: "ads-bounce",
-      section: "ads-traffic",
+      section: "website-traffic",
       severity: "warning",
       title: "Reduce high bounce traffic",
       insight: `Bounce rate is ${((data.googleAnalytics?.bounceRate ?? 0) * 100).toFixed(1)}%, indicating weak landing relevance.`,
@@ -553,13 +563,13 @@ function buildRecommendations(data: AnalyticsDashboardData): AnalyticsRecommenda
     });
   }
 
-  if ((data.mercury?.cashFlow?.runway ?? 0) > 0 && (data.mercury?.cashFlow?.runway ?? 0) < 4) {
+  if ((financeSummary?.runwayMonths ?? 0) > 0 && (financeSummary?.runwayMonths ?? 0) < 4) {
     recommendations.push({
       id: "finance-runway",
       section: "finance",
       severity: "critical",
       title: "Cash runway is below 4 months",
-      insight: `Estimated runway is ${(data.mercury?.cashFlow?.runway ?? 0).toFixed(1)} months.`,
+      insight: `Estimated runway is ${(financeSummary?.runwayMonths ?? 0).toFixed(1)} months.`,
       suggestedAction: "Cut non-performing spend and prioritize collections/revenue acceleration this month.",
     });
   }
@@ -660,90 +670,21 @@ function stripePayloadHasSignal(data: StripeData | null | undefined): boolean {
   );
 }
 
-const GENERIC_EMAIL_DOMAINS = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "yahoo.com",
-  "outlook.com",
-  "hotmail.com",
-  "icloud.com",
-  "me.com",
-  "proton.me",
-  "protonmail.com",
-]);
-
-function normalizeEmail(value: string | null | undefined): string | null {
-  const normalized = value?.trim().toLowerCase() ?? "";
-  return normalized.length > 0 ? normalized : null;
-}
-
-function normalizeEmailDomain(value: string | null | undefined): string | null {
-  const email = normalizeEmail(value);
-  if (!email || !email.includes("@")) return null;
-  const [, domain] = email.split("@");
-  const normalized = domain?.trim().toLowerCase() ?? "";
-  if (!normalized || GENERIC_EMAIL_DOMAINS.has(normalized)) {
-    return null;
-  }
-  return normalized;
-}
-
-function normalizeStripeCustomerId(value: string | null | undefined): string | null {
-  const normalized = value?.trim() ?? "";
-  if (!normalized || normalized === "Unknown customer") {
-    return null;
-  }
-  return normalized;
-}
-
 function buildSubscriptionOverview(data: AnalyticsDashboardData): FinancialPlanningData["subscriptionOverview"] {
-  const stripeRefs = data.stripe?.subscriptions.activeCustomerRefs ?? [];
-  const hubspotDeals = (data.hubspot?.deals ?? []).filter(
-    (deal) => deal.stageLabel.trim().toLowerCase() === "subscription",
-  );
-  const stripeActiveSubscriptions = data.stripe?.subscriptions.active ?? stripeRefs.length;
-
-  const stripeCustomerIds = new Set(
-    stripeRefs
-      .map((ref) => normalizeStripeCustomerId(ref.customerId))
-      .filter(Boolean) as string[],
-  );
-  const stripeEmails = new Set(
-    stripeRefs.map((ref) => normalizeEmail(ref.email)).filter(Boolean) as string[],
-  );
-  const stripeDomains = new Set(
-    stripeRefs.map((ref) => ref.emailDomain?.trim().toLowerCase() ?? null).filter(Boolean) as string[],
-  );
-
-  const seenHubspotEntities = new Set<string>();
-  let uniqueHubspotActiveSubscriptions = 0;
-  let hubspotOnlyCount = 0;
-
-  for (const deal of hubspotDeals) {
-    const customerId = normalizeStripeCustomerId(deal.stripeCustomerId);
-    const email = normalizeEmail(deal.primaryContactEmail);
-    const emailDomain = normalizeEmailDomain(deal.primaryContactEmail);
-    const entityKey = customerId
-      ? `customer:${customerId}`
-      : email
-        ? `email:${email}`
-        : `deal:${deal.dealId}`;
-
-    if (seenHubspotEntities.has(entityKey)) continue;
-    seenHubspotEntities.add(entityKey);
-    uniqueHubspotActiveSubscriptions += 1;
-
-    if (customerId && stripeCustomerIds.has(customerId)) continue;
-    if (email && stripeEmails.has(email)) continue;
-    if (emailDomain && stripeDomains.has(emailDomain)) continue;
-
-    hubspotOnlyCount += 1;
-  }
-
+  const breakdown = buildSubscriptionMrrBreakdown({
+    stripe: data.stripe,
+    hubspot: data.hubspot,
+  });
   return {
-    mergedActiveSubscriptions: stripeActiveSubscriptions + hubspotOnlyCount,
-    stripeActiveSubscriptions,
-    hubspotActiveSubscriptions: uniqueHubspotActiveSubscriptions,
+    mergedActiveSubscriptions: breakdown.mergedActiveSubscriptions,
+    stripeActiveSubscriptions: breakdown.stripeActiveSubscriptions,
+    hubspotActiveSubscriptions: breakdown.hubspotActiveSubscriptions,
+    stripeMrr: breakdown.stripeMrr,
+    hubspotSubscriptionMrr: breakdown.hubspotSubscriptionMrr,
+    hubspotOnlySubscriptionMrr: breakdown.hubspotOnlySubscriptionMrr,
+    excludedLinkedHubspotSubscriptionMrr: breakdown.excludedLinkedHubspotSubscriptionMrr,
+    totalMrr: breakdown.totalMrr,
+    totalArr: breakdown.totalArr,
   };
 }
 
@@ -767,6 +708,19 @@ async function buildFinancialPlanningData(
   const mercury = data.mercury as MercuryData | null;
   const hubspot = data.hubspot as HubSpotData | null;
   const subscriptionOverview = buildSubscriptionOverview(data);
+  const planningMetrics = buildAnalyticsMetricsLayer({
+    ...data,
+    financialPlanning: {
+      budgets: [],
+      activeBudget: null,
+      forecasts: [],
+      goals: [],
+      pnl: null,
+      unitEconomics: null,
+      subscriptionOverview,
+    },
+  });
+  const financeSummary = planningMetrics.finance.summary;
 
   const [dbBudgets, dbGoals, dbForecasts] = await Promise.all([
     prisma.budget.findMany({
@@ -916,10 +870,27 @@ async function buildFinancialPlanningData(
   const forecasts = [...defaultForecasts, ...customForecasts];
 
   // --- Budgets with variance ---
-  const budgets: BudgetData[] = budgetDrafts.map((budgetDraft) => {
-    const lineItems: BudgetLineItemData[] = mercury?.cashFlow
-      ? computeBudgetActuals(budgetDraft, mercury)
-      : budgetDraft.lineItems;
+  const budgets: BudgetData[] = dbBudgets.map((b: { id: string; name: string; period: string; startDate: Date; endDate: Date; lineItems: { id: string; category: string; plannedAmount: number; notes: string | null }[] }) => {
+    const budgetDraft = {
+      id: b.id,
+      name: b.name,
+      period: b.period.toLowerCase() as BudgetData["period"],
+      startDate: b.startDate.toISOString(),
+      endDate: b.endDate.toISOString(),
+      lineItems: b.lineItems.map((li: { id: string; category: string; plannedAmount: number; notes: string | null }) => ({
+        id: li.id,
+        category: li.category.toLowerCase() as BudgetLineItemData["category"],
+        plannedAmount: li.plannedAmount,
+        actualAmount: null,
+        variance: null,
+        variancePct: null,
+        notes: li.notes ?? undefined,
+      })),
+      totalPlanned: b.lineItems.reduce((s: number, li: { plannedAmount: number }) => s + li.plannedAmount, 0),
+      totalActual: null,
+      totalVariance: null,
+    };
+    const lineItems: BudgetLineItemData[] = computeBudgetActuals(budgetDraft, mercury);
     const summary = computeBudgetSummary(lineItems);
     return {
       id: budgetDraft.id,
@@ -936,13 +907,13 @@ async function buildFinancialPlanningData(
 
   // --- Goals with current progress ---
   const currentMetrics: Record<string, number> = {
-    mrr: stripe?.revenue.mrr ?? 0,
-    arr: (stripe?.revenue.mrr ?? 0) * 12,
-    runway: mercury?.cashFlow.runway ?? 0,
-    burn_rate: mercury?.cashFlow.burnRate ?? 0,
-    net_cash_flow: mercury?.cashFlow.netCashFlow ?? 0,
-    revenue: stripe?.revenue.totalRevenue30d ?? 0,
-    customer_count: subscriptionOverview?.mergedActiveSubscriptions ?? 0,
+    mrr: financeSummary.mrr,
+    arr: financeSummary.mrr * 12,
+    runway: financeSummary.runwayMonths,
+    burn_rate: financeSummary.burnRate,
+    net_cash_flow: financeSummary.netCashFlow30d,
+    revenue: financeSummary.totalRevenue30d,
+    customer_count: financeSummary.activeSubscriptions,
   };
 
   const goals: FinancialGoalData[] = dbGoals.map((g: { id: string; metric: GoalMetric | string; targetValue: number; deadline: Date; }) => {
@@ -1424,42 +1395,42 @@ export async function GET(request: Request) {
           },
         }]
       : []),
-    ...(creds.metaAccessToken && creds.metaAdAccountId
+    ...(creds.metaAdsAccessToken && creds.metaAdAccountId
       ? [{
           key: "metaAds" as const,
           snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchMetaAdsData } = await loadAdsFetchers();
             return fetchMetaAdsData(
-              creds.metaAccessToken!,
+              creds.metaAdsAccessToken!,
               creds.metaAdAccountId!,
               { fromDate, toDate }
             );
           },
         }]
       : []),
-    ...(creds.metaAccessToken && creds.metaPageId
+    ...(creds.metaPageAccessToken && creds.metaPageId
       ? [{
           key: "metaPage" as const,
           snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchMetaPageData } = await loadAdsFetchers();
             return fetchMetaPageData(
-              creds.metaAccessToken!,
+              creds.metaPageAccessToken!,
               creds.metaPageId!,
               { fromDate, toDate }
             );
           },
         }]
       : []),
-    ...(creds.metaAccessToken && creds.metaInstagramAccountId
+    ...(creds.metaPageAccessToken && creds.metaInstagramAccountId
       ? [{
           key: "instagram" as const,
           snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchMetaInstagramData } = await loadAdsFetchers();
             return fetchMetaInstagramData(
-              creds.metaAccessToken!,
+              creds.metaPageAccessToken!,
               creds.metaInstagramAccountId!,
               { pageId: creds.metaPageId ?? undefined },
               fromDate,
@@ -1814,9 +1785,6 @@ export async function GET(request: Request) {
       result.visitorFunnel = null;
     }
   }
-  if (domains.has("recommendations")) {
-    result.recommendations = buildRecommendations(result);
-  }
   if (domains.has("distilledInsights")) {
     const { buildDistilledInsights } = await loadInsightBuilders();
     result.distilledInsights = buildDistilledInsights(result);
@@ -1832,14 +1800,22 @@ export async function GET(request: Request) {
     result.processAnalytics = buildProcessAnalyticsData(result);
   }
 
-  // Populate financial planning data for finance surfaces that depend on it.
-  if (section === null || FINANCIAL_PLANNING_SECTIONS.has(section)) {
+  // Populate financial planning data when the finance section is requested
+  if (section === "finance" || section === "finance-planning" || section === null) {
     try {
       result.financialPlanning = await buildFinancialPlanningData(userId, result);
     } catch (error) {
       console.error("Failed to build financial planning data:", error);
       // Non-fatal — leave as null
     }
+  }
+
+  const metrics = buildAnalyticsMetricsLayer(result);
+  result.metrics = metrics;
+  result.kpis = metrics.kpis;
+
+  if (domains.has("recommendations")) {
+    result.recommendations = buildRecommendations(result);
   }
 
   if (section === "overview") {
@@ -1870,18 +1846,18 @@ export async function GET(request: Request) {
       ]);
 
       const currentTraffic =
-        result.googleAnalytics || result.ga ? computeAnalyticsKpis(result).traffic : null;
-      const currentFinance = result.stripe ? computeAnalyticsKpis(result).finance : null;
+        result.googleAnalytics || result.ga ? metrics.kpis.traffic : null;
+      const currentFinance = result.stripe ? metrics.kpis.finance : null;
 
       const prevTraffic = prevGa.payload
-        ? computeAnalyticsKpis(
+        ? buildAnalyticsMetricsLayer(
             { googleAnalytics: prevGa.payload } as unknown as AnalyticsDashboardData,
-          ).traffic
+          ).kpis.traffic
         : null;
       const prevFinance = prevStripe.payload
-        ? computeAnalyticsKpis(
+        ? buildAnalyticsMetricsLayer(
             { stripe: prevStripe.payload } as unknown as AnalyticsDashboardData,
-          ).finance
+          ).kpis.finance
         : null;
 
       result.deltas = {

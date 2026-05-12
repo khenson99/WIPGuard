@@ -1,0 +1,101 @@
+{
+  "generatedAt": "2026-03-15T10:49:47.728Z",
+  "organizationId": "org_default_000000000",
+  "candidates": [
+    {
+      "definition": {
+        "id": "onboarding-active-days",
+        "label": "Meaningful activity days",
+        "lifecyclePhase": "ONBOARDING",
+        "metricKey": "daysActiveLast30",
+        "comparator": "gte",
+        "threshold": 6,
+        "windowLabel": "Last 30 days",
+        "description": "Tenant shows repeated operational activity across six or more days in the last 30 days.",
+        "rationale": "Repeated activity is stronger than one-time setup completion."
+      },
+      "coverage": 100,
+      "lift": 102.1,
+      "segmentSpread": 0,
+      "interpretabilityScore": 90,
+      "score": 99.4,
+      "label": "Meaningful activity days (onboarding)"
+    },
+    {
+      "definition": {
+        "id": "mature-active-weeks",
+        "label": "Active weeks trailing 8",
+        "lifecyclePhase": "MATURE",
+        "metricKey": "activeWeeksTrailing8",
+        "comparator": "gte",
+        "threshold": 5,
+        "windowLabel": "Trailing 8 weeks",
+        "description": "Tenant is active in at least five of the last eight weeks.",
+        "rationale": "Habitual weekly operations are usually the clearest signal of embedded workflow value."
+      },
+      "coverage": 100,
+      "lift": 100,
+      "segmentSpread": 0,
+      "interpretabilityScore": 90,
+      "score": 98.5,
+      "label": "Active weeks trailing 8 (mature)"
+    },
+    {
+      "definition": {
+        "id": "mature-orders-cadence",
+        "label": "Monthly order cadence",
+        "lifecyclePhase": "MATURE",
+        "metricKey": "ordersPerMonth",
+        "comparator": "gte",
+        "threshold": 8,
+        "windowLabel": "Current month",
+        "description": "Tenant sustains at least eight order events in the current month.",
+        "rationale": "Order throughput is the most direct signal of recurring operational value for Arda."
+      },
+      "coverage": 100,
+      "lift": 100,
+      "segmentSpread": 0,
+      "interpretabilityScore": 90,
+      "score": 98.5,
+      "label": "Monthly order cadence (mature)"
+    },
+    {
+      "definition": {
+        "id": "mature-recent-baseline",
+        "label": "Recent activity vs baseline",
+        "lifecyclePhase": "MATURE",
+        "metricKey": "recentBaselineRatio",
+        "comparator": "gte",
+        "threshold": 0.7,
+        "windowLabel": "Last 30 vs trailing 90 days",
+        "description": "Current activity stays above 70% of the trailing baseline.",
+        "rationale": "Current-month collapse is more actionable than historical average usage."
+      },
+      "coverage": 4.8,
+      "lift": 100,
+      "segmentSpread": 0,
+      "interpretabilityScore": 75,
+      "score": 72.5,
+      "label": "Recent activity vs baseline (mature)"
+    },
+    {
+      "definition": {
+        "id": "onboarding-first-order",
+        "label": "Time to first order",
+        "lifecyclePhase": "ONBOARDING",
+        "metricKey": "timeToFirstOrderDays",
+        "comparator": "lte",
+        "threshold": 21,
+        "windowLabel": "First 30 days",
+        "description": "Tenant places its first meaningful order within 21 days of go-live.",
+        "rationale": "Early value realization is the cleanest onboarding-stage proxy for future retention."
+      },
+      "coverage": 0,
+      "lift": 0,
+      "segmentSpread": 0,
+      "interpretabilityScore": 90,
+      "score": 28.5,
+      "label": "Time to first order (onboarding)"
+    }
+  ]
+}

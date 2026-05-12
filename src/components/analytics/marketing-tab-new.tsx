@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import React, { useState } from 'react';
 import { AnalyticsDashboardData } from '@/lib/analytics/types';
 import { StatCard } from './stat-card';
@@ -25,6 +26,7 @@ import {
 
 interface MarketingTabNewProps {
   data: AnalyticsDashboardData | null;
+  variant?: 'website-traffic' | 'social-media';
 }
 
 // Helper functions
@@ -83,7 +85,7 @@ function resolveProviderState(input: {
   return { state: 'healthy', error: null };
 }
 
-export function MarketingTabNew({ data }: MarketingTabNewProps) {
+export function MarketingTabNew({ data, variant = 'website-traffic' }: MarketingTabNewProps) {
   const [expandedPlatforms, setExpandedPlatforms] = useState<Record<string, boolean>>({
     googleAds: true,
     metaAds: true,
@@ -343,112 +345,180 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
   const igClicks = data.instagram?.clicks || 0;
   const igReturningVisitors = data.instagram?.returningVisitors || 0;
   const igTopPosts = data.instagram?.topPosts || [];
+  const igTopVideos = data.instagram?.topVideos || [];
+  const igVideosToImprove = data.instagram?.videosToImprove || [];
+  const igMediaTypeBreakdown = data.instagram?.mediaTypeBreakdown;
+  const igCreativeAnalysis = data.instagram?.creativeAnalysis;
+  const igOpportunities = data.instagram?.opportunities || [];
+  const igExperimentPlan = data.instagram?.experimentPlan || [];
+  const igTestBacklog = data.instagram?.testBacklog || [];
+  const igAttributeCorrelations = data.instagram?.attributeCorrelations || [];
+  const igWinningPatterns = data.instagram?.winningPatterns || [];
+  const igLosingPatterns = data.instagram?.losingPatterns || [];
+  const isWebsiteTraffic = variant === 'website-traffic';
+  const companionRoute = isWebsiteTraffic ? '/analytics/social-media' : '/analytics/website-traffic';
+  const companionLabel = isWebsiteTraffic ? 'Social Media, Ads & Conferences' : 'Website Conversion';
+  const insightFilter = isWebsiteTraffic ? 'website-traffic' : 'social-media';
+  const gaUsers30d = data.googleAnalytics?.users30d || 0;
+  const webflowSubmissions = data.webflow?.totalFormSubmissions ?? 0;
+  const semrushOrganicTraffic = data.semrush?.organicTraffic ?? 0;
 
   return (
     <div className="space-y-6">
-      <AiInsightsPanel bundle={data.aiInsights || null} defaultFilter="ads-traffic" />
+      <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border bg-card p-4">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">
+            {isWebsiteTraffic ? 'Website Conversion' : 'Social Media, Ads & Conferences'}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {isWebsiteTraffic
+              ? 'Traffic quality, content performance, and onsite conversion health.'
+              : 'Paid, organic, and event-driven top-of-funnel performance across campaigns, pages, and Instagram content.'}
+          </p>
+        </div>
+        <Link
+          href={companionRoute}
+          className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground hover:bg-secondary/50"
+        >
+          Open {companionLabel}
+        </Link>
+      </div>
+
+      <AiInsightsPanel bundle={data.aiInsights || null} defaultFilter={insightFilter} />
 
       {/* Top KPI Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          label="Sessions (30d)"
-          value={
-            gaStatus.state === 'not_configured'
-              ? "Not configured"
-              : gaStatus.state === 'failing'
-                ? "Configured but failing"
-                : gaStatus.state === 'no_data'
-                  ? "No data"
-                  : fmtNum(sessions30d)
-          }
-          change={gaStatus.state === 'healthy' && sessionsChange != null ? fmtPct(sessionsChange) : undefined}
-          changeType={
-            sessionsChange == null
-              ? 'neutral'
-              : sessionsChange > 0
-                ? 'positive'
-                : 'negative'
-          }
-          subtitle={
-            gaStatus.state === 'failing'
-              ? gaStatus.error || "Google Analytics request failed"
-              : gaStatus.state === 'not_configured'
-                ? "Google Analytics"
-                : gaStatus.state === 'no_data'
-                  ? "No GA data in selected range"
-                  : undefined
-          }
-          icon={TrendingUp}
-        />
-        <StatCard
-          label="Total Ad Spend"
-          value={
-            !paidConfigured
-              ? "Not configured"
-              : paidFailure
-                ? "Configured but failing"
-                : paidHealthy
-                  ? fmtCurrency(totalAdSpend)
-                  : "No data"
-          }
-          subtitle={
-            !paidConfigured
-              ? "Google Ads, Meta Ads, Reddit Ads"
-              : paidFailure
-                ? paidFailure.error || "One or more ad providers failed"
-                : paidHealthy
-                  ? "Google + Meta + Reddit"
-                  : "No ad spend in selected range"
-          }
-          icon={DollarSign}
-        />
-        <StatCard
-          label="Total Conversions"
-          value={
-            !conversionConfigured
-              ? "Not configured"
-              : conversionFailure
-                ? "Configured but failing"
-                : conversionHealthy
-                  ? fmtNum(totalConversions)
-                  : "No data"
-          }
-          subtitle={
-            !conversionConfigured
-              ? "Google Ads, Meta Ads"
-              : conversionFailure
-                ? conversionFailure.error || "Conversion providers failed"
-                : conversionHealthy
-                  ? "Google + Meta"
-                  : "No conversion data in selected range"
-          }
-          icon={MousePointerClick}
-        />
-        <StatCard
-          label="Page Followers"
-          value={
-            metaPageStatus.state === 'not_configured'
-              ? "Not configured"
-              : metaPageStatus.state === 'failing'
-                ? "Configured but failing"
-                : metaPageStatus.state === 'no_data'
-                  ? "No data"
-                  : fmtNum(pageFollowers)
-          }
-          subtitle={
-            metaPageStatus.state === 'failing'
-              ? metaPageStatus.error || "Meta Page request failed"
-              : metaPageStatus.state === 'not_configured'
-                ? "Meta Page"
-                : metaPageStatus.state === 'no_data'
-                  ? "Configured, but no Meta Page signals were returned in this range"
-                  : "Meta Page connected"
-          }
-          icon={Facebook}
-        />
+        {isWebsiteTraffic ? (
+          <>
+            <StatCard
+              label="Sessions (30d)"
+              value={
+                gaStatus.state === 'not_configured'
+                  ? "Not configured"
+                  : gaStatus.state === 'failing'
+                    ? "Configured but failing"
+                    : gaStatus.state === 'no_data'
+                      ? "No data"
+                      : fmtNum(sessions30d)
+              }
+              change={gaStatus.state === 'healthy' && sessionsChange != null ? fmtPct(sessionsChange) : undefined}
+              changeType={
+                sessionsChange == null
+                  ? 'neutral'
+                  : sessionsChange > 0
+                    ? 'positive'
+                    : 'negative'
+              }
+              subtitle={
+                gaStatus.state === 'failing'
+                  ? gaStatus.error || "Google Analytics request failed"
+                  : gaStatus.state === 'not_configured'
+                    ? "Google Analytics"
+                    : gaStatus.state === 'no_data'
+                      ? "No GA data in selected range"
+                      : undefined
+              }
+              icon={TrendingUp}
+            />
+            <StatCard
+              label="Users (30d)"
+              value={gaStatus.state === 'healthy' ? fmtNum(gaUsers30d) : gaStatus.state === 'no_data' ? "No data" : "Not configured"}
+              subtitle="Google Analytics"
+              icon={Globe}
+            />
+            <StatCard
+              label="Organic Traffic"
+              value={semrushStatus.state === 'healthy' ? fmtNum(semrushOrganicTraffic) : semrushStatus.state === 'no_data' ? "No data" : "Not configured"}
+              subtitle={semrushStatus.state === 'failing' ? semrushStatus.error || "SEMrush request failed" : "SEMrush"}
+              icon={Search}
+            />
+            <StatCard
+              label="Form Submissions"
+              value={webflowStatus.state === 'healthy' ? fmtNum(webflowSubmissions) : webflowStatus.state === 'no_data' ? "No data" : "Not configured"}
+              subtitle={webflowStatus.state === 'failing' ? webflowStatus.error || "Webflow request failed" : "Webflow"}
+              icon={Layout}
+            />
+          </>
+        ) : (
+          <>
+            <StatCard
+              label="Total Ad Spend"
+              value={
+                !paidConfigured
+                  ? "Not configured"
+                  : paidFailure
+                    ? "Configured but failing"
+                    : paidHealthy
+                      ? fmtCurrency(totalAdSpend)
+                      : "No data"
+              }
+              subtitle={
+                !paidConfigured
+                  ? "Google Ads, Meta Ads, Reddit Ads"
+                  : paidFailure
+                    ? paidFailure.error || "One or more ad providers failed"
+                    : paidHealthy
+                      ? "Google + Meta + Reddit"
+                      : "No ad spend in selected range"
+              }
+              icon={DollarSign}
+            />
+            <StatCard
+              label="Total Conversions"
+              value={
+                !conversionConfigured
+                  ? "Not configured"
+                  : conversionFailure
+                    ? "Configured but failing"
+                    : conversionHealthy
+                      ? fmtNum(totalConversions)
+                      : "No data"
+              }
+              subtitle={
+                !conversionConfigured
+                  ? "Google Ads, Meta Ads"
+                  : conversionFailure
+                    ? conversionFailure.error || "Conversion providers failed"
+                    : conversionHealthy
+                      ? "Google + Meta"
+                      : "No conversion data in selected range"
+              }
+              icon={MousePointerClick}
+            />
+            <StatCard
+              label="Page Followers"
+              value={
+                metaPageStatus.state === 'not_configured'
+                  ? "Not configured"
+                  : metaPageStatus.state === 'failing'
+                    ? "Configured but failing"
+                    : metaPageStatus.state === 'no_data'
+                      ? "No data"
+                      : fmtNum(pageFollowers)
+              }
+              subtitle={
+                metaPageStatus.state === 'failing'
+                  ? metaPageStatus.error || "Meta Page request failed"
+                  : metaPageStatus.state === 'not_configured'
+                    ? "Meta Page"
+                    : metaPageStatus.state === 'no_data'
+                      ? "Configured, but no Meta Page signals were returned in this range"
+                      : "Meta Page connected"
+              }
+              icon={Facebook}
+            />
+            <StatCard
+              label="Instagram Followers"
+              value={instagramStatus.state === 'healthy' ? fmtNum(igFollowers) : instagramStatus.state === 'no_data' ? "No data" : "Not configured"}
+              subtitle={instagramStatus.state === 'failing' ? instagramStatus.error || "Instagram request failed" : "Instagram"}
+              icon={Instagram}
+            />
+          </>
+        )}
       </div>
 
-      {/* Traffic Section */}
+      {/* Website Traffic Section */}
+      {isWebsiteTraffic ? (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Traffic by Channel */}
         <div className="bg-card border border-border rounded-xl p-6">
@@ -499,9 +569,10 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
           )}
         </div>
       </div>
-      
-      {/* Channel Comparison */}
-      {paidConfigured && paidHealthy ? (
+      ) : null}
+
+      {/* Social Media comparison */}
+      {!isWebsiteTraffic && paidConfigured && paidHealthy ? (
         <div className="bg-card border border-border rounded-xl p-6">
           <h3 className="text-lg font-semibold text-foreground mb-4">Channel Comparison</h3>
           <ChannelTable byPlatform={byPlatform} />
@@ -509,6 +580,7 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
       ) : null}
 
       {/* Ad Performance Section */}
+      {!isWebsiteTraffic ? (
       <div className="space-y-4">
         <h2 className="text-xl font-semibold text-foreground">Ad Performance</h2>
 
@@ -763,8 +835,10 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
           )}
         </div>
       </div>
+      ) : null}
 
-      {/* Social & Web Section */}
+      {/* Social Section */}
+      {!isWebsiteTraffic ? (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Meta Page Insights */}
         <div className="bg-card border border-border rounded-xl p-6">
@@ -879,6 +953,270 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
                 </div>
               </div>
 
+              {igMediaTypeBreakdown && (
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <div className="bg-secondary/40 rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground mb-1">Reels</p>
+                    <p className="text-lg font-semibold text-foreground">{fmtNum(igMediaTypeBreakdown.reel)}</p>
+                  </div>
+                  <div className="bg-secondary/40 rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground mb-1">Videos</p>
+                    <p className="text-lg font-semibold text-foreground">{fmtNum(igMediaTypeBreakdown.video)}</p>
+                  </div>
+                  <div className="bg-secondary/40 rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground mb-1">Images</p>
+                    <p className="text-lg font-semibold text-foreground">{fmtNum(igMediaTypeBreakdown.image)}</p>
+                  </div>
+                  <div className="bg-secondary/40 rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground mb-1">Carousels</p>
+                    <p className="text-lg font-semibold text-foreground">{fmtNum(igMediaTypeBreakdown.carousel)}</p>
+                  </div>
+                  <div className="bg-secondary/40 rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground mb-1">Other</p>
+                    <p className="text-lg font-semibold text-foreground">{fmtNum(igMediaTypeBreakdown.other)}</p>
+                  </div>
+                </div>
+              )}
+
+              {igTopVideos.length > 0 && (
+                <div>
+                  <p className="text-sm font-semibold text-foreground mb-3">Top Videos</p>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Ranked by normalized performance across engagement rate, engagement velocity, and raw engagement in the selected window.
+                  </p>
+                  {igExperimentPlan.length > 0 ? (
+                    <div className="mb-3">
+                      <p className="text-xs font-medium text-foreground mb-2">Experiment Plan</p>
+                      <div className="space-y-2">
+                        {igExperimentPlan.map((item) => (
+                          <div
+                            key={item.key}
+                            className="p-2 bg-secondary/40 rounded text-xs text-muted-foreground"
+                          >
+                            <p className="text-foreground font-medium">
+                              {item.title}
+                              {` · ${item.confidence} confidence`}
+                              {item.sampled ? " · sampled" : ""}
+                            </p>
+                            <p className="mt-1">
+                              {item.brief} {`Expected impact ~${item.estimatedImpactPct.toFixed(0)}% across ${item.supportingVideos} top video${item.supportingVideos === 1 ? "" : "s"}.`}
+                            </p>
+                            {item.exampleVideos.length > 0 ? (
+                              <p className="mt-1">
+                                Examples: {item.exampleVideos.join(" · ")}
+                              </p>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {igOpportunities.length > 0 ? (
+                    <div className="mb-3">
+                      <p className="text-xs font-medium text-foreground mb-2">Underused Opportunities</p>
+                      <div className="space-y-2">
+                        {igOpportunities.map((item) => (
+                          <div
+                            key={item.key}
+                            className="p-2 bg-secondary/40 rounded text-xs text-muted-foreground"
+                          >
+                            {item.label}
+                            {` is only showing up in ${item.adoptionPct.toFixed(0)}% of eligible posts`}
+                            {` (~${item.estimatedImpactPct.toFixed(0)}% upside, ${item.confidence} confidence`}
+                            {item.sampled ? ", sampled" : ""}
+                            )
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {igTestBacklog.length > 0 ? (
+                    <div className="mb-3">
+                      <p className="text-xs font-medium text-foreground mb-2">Recommended Tests</p>
+                      <div className="space-y-2">
+                        {igTestBacklog.map((idea) => (
+                          <div
+                            key={`${idea.action}-${idea.key}`}
+                            className="p-2 bg-secondary/40 rounded text-xs text-muted-foreground"
+                          >
+                            {idea.action === "add" ? "Add" : "Reduce"} {idea.label.toLowerCase()}
+                            {` across ${idea.supportingVideos} top video${idea.supportingVideos === 1 ? "" : "s"}`}
+                            {` (~${idea.estimatedImpactPct.toFixed(0)}% impact, ${idea.confidence} confidence`}
+                            {idea.sampled ? ", sampled" : ""}
+                            )
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {igCreativeAnalysis?.totalVideoCandidates ? (
+                    <p className="text-xs text-muted-foreground mb-3">
+                      AI creative analysis coverage: {fmtNum(igCreativeAnalysis.analyzedVideos)} of{" "}
+                      {fmtNum(igCreativeAnalysis.totalVideoCandidates)} eligible videos
+                      {igCreativeAnalysis.sampled ? " analyzed in this pass." : "."}
+                    </p>
+                  ) : null}
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {igTopVideos.slice(0, 5).map((post, idx) => (
+                      <div key={idx} className="p-2 bg-secondary/40 rounded text-sm">
+                        <p className="text-foreground line-clamp-2">{post.message}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {post.isReel ? "Reel" : post.mediaType} · Score {post.performanceScore.toFixed(2)}x baseline ·{" "}
+                          {fmtNum(post.engagement)} engagement
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {fmtPct(post.engagementRate)} engagement rate · {post.engagementVelocity.toFixed(1)}/day ·{" "}
+                          {post.ageInDays.toFixed(1)} days old
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {post.hasQuestionHook ? "Question hook" : "Statement hook"}
+                          {post.hasCallToAction ? " · CTA" : ""}
+                          {post.hashtagCount > 0 ? ` · ${post.hashtagCount} hashtags` : ""}
+                        </p>
+                        {post.performanceDrivers?.length ? (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Why this is likely working:{" "}
+                            {post.performanceDrivers
+                              .map((driver) => {
+                                const sampledSuffix = driver.sampled ? ", sampled" : "";
+                                return `${driver.label} (+${driver.liftPct.toFixed(0)}%, ${driver.confidence} confidence${sampledSuffix})`;
+                              })
+                              .join(" · ")}
+                          </p>
+                        ) : null}
+                        {post.nextTests?.length ? (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            What to test next:{" "}
+                            {post.nextTests
+                              .map((idea) => {
+                                const actionLabel = idea.action === "add" ? "Add" : "Reduce";
+                                const sampledSuffix = idea.sampled ? ", sampled" : "";
+                                return `${actionLabel} ${idea.label.toLowerCase()} (~${idea.estimatedImpactPct.toFixed(
+                                  0
+                                )}% impact, ${idea.confidence} confidence${sampledSuffix})`;
+                              })
+                              .join(" · ")}
+                          </p>
+                        ) : null}
+                        {post.creativeSummary ? (
+                          <p className="text-xs text-muted-foreground mt-1">{post.creativeSummary}</p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {igVideosToImprove.length > 0 && (
+                <div>
+                  <p className="text-sm font-semibold text-foreground mb-3">Videos To Improve</p>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {igVideosToImprove.map((post, idx) => (
+                      <div key={`${post.id}-${idx}`} className="p-2 bg-secondary/40 rounded text-sm">
+                        <p className="text-foreground line-clamp-2">{post.message}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {post.isReel ? "Reel" : post.mediaType} · Score {post.performanceScore.toFixed(2)}x baseline ·{" "}
+                          {fmtNum(post.engagement)} engagement
+                        </p>
+                        {post.nextTests?.length ? (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Best next tests:{" "}
+                            {post.nextTests
+                              .map((idea) => {
+                                const actionLabel = idea.action === "add" ? "Add" : "Reduce";
+                                const sampledSuffix = idea.sampled ? ", sampled" : "";
+                                return `${actionLabel} ${idea.label.toLowerCase()} (~${idea.estimatedImpactPct.toFixed(
+                                  0
+                                )}% impact, ${idea.confidence} confidence${sampledSuffix})`;
+                              })
+                              .join(" · ")}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {igAttributeCorrelations.length > 0 && (
+                <div>
+                  {igWinningPatterns.length > 0 ? (
+                    <div className="mb-4">
+                      <p className="text-sm font-semibold text-foreground mb-3">Winning Patterns</p>
+                      <div className="space-y-2">
+                        {igWinningPatterns.map((item, idx) => (
+                          <div key={`${item.title}-${idx}`} className="p-3 bg-secondary/40 rounded">
+                            <p className="text-sm font-medium text-foreground">
+                              {item.title}
+                              {item.source === "ai_visual" ? " · AI visual" : ""}
+                              {item.sampled ? " · sampled" : ""}
+                              {` · ${item.confidence} confidence`}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">{item.detail}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {igLosingPatterns.length > 0 ? (
+                    <div className="mb-4">
+                      <p className="text-sm font-semibold text-foreground mb-3">Underperforming Patterns</p>
+                      <div className="space-y-2">
+                        {igLosingPatterns.map((item, idx) => (
+                          <div key={`${item.title}-${idx}`} className="p-3 bg-secondary/40 rounded">
+                            <p className="text-sm font-medium text-foreground">
+                              {item.title}
+                              {item.source === "ai_visual" ? " · AI visual" : ""}
+                              {item.sampled ? " · sampled" : ""}
+                              {` · ${item.confidence} confidence`}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">{item.detail}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <p className="text-sm font-semibold text-foreground mb-3">What’s Correlating With Performance</p>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Correlations use the same normalized Instagram performance score rather than raw lifetime engagement alone.
+                  </p>
+                  {data.instagram?.creativeAnalysis?.sampled ? (
+                    <p className="text-xs text-muted-foreground mb-3">
+                      AI visual signals are based on a top-video sample, not the full Instagram post set.
+                    </p>
+                  ) : null}
+                  <div className="space-y-2">
+                    {igAttributeCorrelations.slice(0, 5).map((item) => (
+                      <div key={item.key} className="p-3 bg-secondary/40 rounded">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">
+                              {item.label}
+                              {item.source === "ai_visual" ? " · AI visual" : ""}
+                              {item.sampled ? " · sampled" : ""}
+                              {` · ${item.confidence} confidence`}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">{item.interpretation}</p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className={`text-sm font-semibold ${item.correlation >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                              r={item.correlation.toFixed(2)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {item.liftPct >= 0 ? "+" : ""}
+                              {item.liftPct.toFixed(0)}%
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {item.sampleSize}/{item.comparisonSampleSize} posts · {item.coveragePct.toFixed(0)}% coverage
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {igTopPosts.length > 0 && (
                 <div>
                   <p className="text-sm font-semibold text-foreground mb-3">Top Posts</p>
@@ -887,7 +1225,7 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
                       <div key={idx} className="p-2 bg-secondary/40 rounded text-sm">
                         <p className="text-foreground line-clamp-2">{post.message}</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {fmtNum(post.reach)} reach · {fmtNum(post.engagement)} engagement
+                          {post.isReel ? "Reel" : post.mediaType} · {fmtNum(post.engagement)} engagement
                         </p>
                       </div>
                     ))}
@@ -898,6 +1236,12 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
           )}
         </div>
 
+      </div>
+      ) : null}
+
+      {/* Website Section */}
+      {isWebsiteTraffic ? (
+      <div className="grid grid-cols-1 gap-6">
         {/* Webflow Site Info */}
         <div className="bg-card border border-border rounded-xl p-6">
           <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
@@ -987,8 +1331,10 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
           )}
         </div>
       </div>
+      ) : null}
 
       {/* -- SEMrush SEO Intelligence -- */}
+      {isWebsiteTraffic ? (
       <div className="mt-6">
         <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
           <Search className="w-5 h-5 text-[#fc5a29]" />
@@ -1080,6 +1426,7 @@ export function MarketingTabNew({ data }: MarketingTabNewProps) {
           </div>
         )}
       </div>
+      ) : null}
     </div>
   );
 }

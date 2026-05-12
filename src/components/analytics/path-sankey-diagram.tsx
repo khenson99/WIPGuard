@@ -15,7 +15,7 @@ const STAGE_COLORS: Record<string, string> = {
   "Organic Traffic": "hsl(145, 60%, 45%)",
   "Sales Pipeline": "hsl(45, 80%, 52%)",
   "Billing/Trial": "hsl(270, 60%, 60%)",
-  "Kanban App": "hsl(330, 65%, 58%)",
+  "Lead Magnet": "hsl(330, 65%, 58%)",
   "Support (Pylon)": "hsl(190, 65%, 50%)",
 };
 

@@ -276,6 +276,43 @@ describe("customer success service", () => {
     expect(health.components.relationship.weight).toBeGreaterThan(0);
     expect(health.components.support.weight).toBeGreaterThan(0);
     expect(health.components.commercial.weight).toBeGreaterThan(0);
+    expect(health.leadingIndicators.recency.value).toContain("since touch");
+    expect(health.leadingIndicators.depth.score).toBeGreaterThan(0);
+    expect(health.leadingIndicators.breadth.score).toBeGreaterThan(0);
+  });
+
+  it("penalizes recency when only internal activity changed recently", () => {
+    const staleTouches = accountFixture({
+      id: "acct-stale-touch",
+      name: "Stale Touches",
+      notes: [],
+      meetings: [],
+      outreach: [],
+      updatedAt: new Date("2026-03-07T00:00:00.000Z"),
+      tasks: [
+        {
+          id: "stale-task",
+          title: "Internal follow-up",
+          status: "ACTIVE",
+          priority: "P1",
+          dueDate: new Date("2026-03-12T00:00:00.000Z"),
+          createdAt: new Date("2026-03-06T00:00:00.000Z"),
+          updatedAt: new Date("2026-03-07T00:00:00.000Z"),
+          completedOn: null,
+        },
+      ],
+    });
+
+    const activeTouches = accountFixture({
+      id: "acct-active-touch",
+      name: "Active Touches",
+    });
+
+    const staleHealth = buildCustomerSuccessHealth(staleTouches, NOW);
+    const activeHealth = buildCustomerSuccessHealth(activeTouches, NOW);
+
+    expect(staleHealth.leadingIndicators.recency.score).toBeLessThan(activeHealth.leadingIndicators.recency.score);
+    expect(staleHealth.leadingIndicators.recency.value).toBe("No recent touch");
   });
 
   it("verifies alert severity and SLA ordering", () => {

@@ -12,6 +12,7 @@ import type {
   SalesPerformanceRepMonthRow,
   StripeData,
   MercuryData,
+  MercuryTransactionData,
   AnalyticsTimestamp,
   DealStage,
   ExpenseCategory,
@@ -168,6 +169,10 @@ function buildFallbackPipelines(): HubSpotPipeline[] {
 function isMainHubSpotPipeline(pipelineId: string | null | undefined): boolean {
   const normalized = pipelineId?.trim();
   return !normalized || normalized === HUBSPOT_MAIN_PIPELINE_ID;
+}
+
+function isHubSpotSubscriptionPipeline(pipelineId: string | null | undefined): boolean {
+  return pipelineId?.trim() === HUBSPOT_SUBSCRIPTION_PIPELINE_ID;
 }
 
 function compareHubSpotDealsByRecency(
@@ -379,6 +384,107 @@ function extractHubSpotStageEvents(deal: HubSpotDealObject): HubSpotStageEvent[]
   return events;
 }
 
+function buildHubSpotStageHistory(
+  deal: HubSpotDealObject,
+  stageLabelById: Map<string, string>,
+): Array<{ occurredAt: string; stageId: string; stageLabel: string }> {
+  const history = (deal.propertiesWithHistory?.dealstage ?? []) as HubSpotStageHistoryEntry[];
+  return history
+    .map((entry) => {
+      const stageId = entry.value ? String(entry.value).trim() : "";
+      const timestamp = parseHubSpotTimestamp(entry.timestamp);
+      if (!stageId || !timestamp) return null;
+      return {
+        occurredAt: new Date(timestamp).toISOString(),
+        stageId,
+        stageLabel: resolveHubSpotStageLabel(stageId, stageLabelById),
+      };
+    })
+    .filter((entry): entry is { occurredAt: string; stageId: string; stageLabel: string } => entry !== null)
+    .sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
+}
+
+type HubSpotDealRecord = NonNullable<HubSpotData["deals"]>[number];
+
+const SUSPICIOUS_EMAIL_DOMAINS = new Set([
+  "10minutemail.com",
+  "example.com",
+  "fakeinbox.com",
+  "guerrillamail.com",
+  "mailinator.com",
+  "sharklasers.com",
+  "temp-mail.org",
+  "test.com",
+  "yopmail.com",
+]);
+
+const SUSPICIOUS_TEXT_PATTERN = /\b(asdf|bot|fake|junk|qwerty|spam|test)\b/i;
+
+function normalizeEmail(value: string | null | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function hasNoHubSpotEngagement(analytics: HubSpotDealRecord["primaryContactAnalytics"]): boolean {
+  if (!analytics) return false;
+  const hasVisits = (analytics.numVisits ?? 0) > 0 || (analytics.numPageViews ?? 0) > 0;
+  const hasAttribution = Boolean(
+    analytics.utmSource ||
+      analytics.utmMedium ||
+      analytics.utmCampaign ||
+      analytics.sourceData1 ||
+      analytics.sourceData2,
+  );
+  return !hasVisits && !hasAttribution;
+}
+
+function isRandomLookingEmailLocalPart(value: string): boolean {
+  if (value.length < 12 || value.length > 32) return false;
+  if (!/^[a-z0-9._+-]+$/.test(value)) return false;
+  const alnum = value.replace(/[^a-z0-9]/g, "");
+  if (alnum.length < 12) return false;
+  const vowels = alnum.match(/[aeiou]/g)?.length ?? 0;
+  const digits = alnum.match(/\d/g)?.length ?? 0;
+  return vowels <= 1 || digits >= Math.ceil(alnum.length * 0.45);
+}
+
+function suspiciousHubSpotLeadReasons(deal: HubSpotDealRecord): string[] {
+  const reasons: string[] = [];
+  const email = normalizeEmail(deal.primaryContactEmail);
+  const [localPart = "", domain = ""] = email.split("@");
+  const source = (deal.source || "").trim().toLowerCase();
+  const dealName = (deal.dealName || "").trim();
+
+  if (email && !email.includes("@")) reasons.push("invalid_email");
+  if (domain && SUSPICIOUS_EMAIL_DOMAINS.has(domain)) reasons.push("disposable_or_test_email_domain");
+  if (localPart && (SUSPICIOUS_TEXT_PATTERN.test(localPart) || isRandomLookingEmailLocalPart(localPart))) {
+    reasons.push("junk_email_local_part");
+  }
+  if (SUSPICIOUS_TEXT_PATTERN.test(dealName)) reasons.push("junk_deal_name");
+  if (!source || source === "unknown" || source === "(none)") reasons.push("missing_source");
+  if (deal.amount <= 0) reasons.push("zero_amount");
+  if (hasNoHubSpotEngagement(deal.primaryContactAnalytics)) reasons.push("no_contact_engagement");
+
+  return reasons;
+}
+
+function isSuspiciousHubSpotLead(deal: HubSpotDealRecord): boolean {
+  const reasons = suspiciousHubSpotLeadReasons(deal);
+  const hasContactSignal = reasons.some((reason) =>
+    reason === "invalid_email" ||
+      reason === "disposable_or_test_email_domain" ||
+      reason === "junk_email_local_part" ||
+      reason === "no_contact_engagement",
+  );
+  const hasJunkIdentitySignal = reasons.some((reason) =>
+    reason === "disposable_or_test_email_domain" ||
+      reason === "junk_email_local_part" ||
+      reason === "junk_deal_name" ||
+      reason === "invalid_email",
+  );
+
+  return hasContactSignal && hasJunkIdentitySignal && reasons.length >= 3;
+}
+
 type HubSpotOwnerRecord = { id: string; name: string; email: string | null };
 
 async function fetchHubSpotOwners(input: {
@@ -486,6 +592,11 @@ export async function fetchHubSpotData(
 
   const mainPipeline = pipelineResult.pipelines.find((pipeline) => pipeline.id === HUBSPOT_MAIN_PIPELINE_ID) ?? null;
   const stageLabelById = new Map(
+    pipelineResult.pipelines.flatMap((pipeline) =>
+      pipeline.stages.map((stage) => [stage.id, stage.label] as const),
+    ),
+  );
+  const mainStageLabelById = new Map(
     (mainPipeline?.stages ?? []).map((stage) => [stage.id, stage.label]),
   );
 
@@ -499,16 +610,16 @@ export async function fetchHubSpotData(
   const allMainPipelineDeals = allDeals.filter((deal) =>
     isMainHubSpotPipeline(deal.properties?.pipeline ?? null),
   );
+  const allSubscriptionPipelineDeals = allDeals.filter((deal) =>
+    isHubSpotSubscriptionPipeline(deal.properties?.pipeline ?? null),
+  );
   const activeDeals = activeDealsResult.deals.filter((deal) =>
     isMainHubSpotPipeline(deal.properties?.pipeline ?? null),
   );
-  const dealsFetched = allMainPipelineDeals.length;
-
-  // Aggregate by stage
-  const stageAgg: Record<string, { count: number; value: number }> = {};
-  const sourceAgg: Record<string, { count: number; value: number; closedWon: number; followUpNeeded: number; churned: number }> = {};
-
-  let notActivatedCount = 0;
+  const activeSubscriptionPipelineDeals = activeDealsResult.deals.filter((deal) =>
+    isHubSpotSubscriptionPipeline(deal.properties?.pipeline ?? null),
+  );
+  let dealsFetched = allMainPipelineDeals.length;
 
   const shouldLoadOwners =
     useActivityInRange ||
@@ -531,47 +642,38 @@ export async function fetchHubSpotData(
     return ownerNameById.get(trimmed) || `Owner ${trimmed}`;
   };
 
-  for (const deal of activeDeals) {
-    const props = deal.properties || {};
-
-    const stage = props.dealstage || "unknown";
-    const mappedLabel = resolveHubSpotStageLabel(stage, stageLabelById);
-    const amount = parseFloat(props.amount) || 0;
-    const source = props.hs_analytics_source || "Unknown";
-
-    if (!stageAgg[stage]) stageAgg[stage] = { count: 0, value: 0 };
-    stageAgg[stage].count++;
-    stageAgg[stage].value += amount;
-
-    if (!sourceAgg[source]) sourceAgg[source] = { count: 0, value: 0, closedWon: 0, followUpNeeded: 0, churned: 0 };
-    sourceAgg[source].count++;
-    sourceAgg[source].value += amount;
-    
-    if (stage === "closedwon") sourceAgg[source].closedWon++;
-    if (mappedLabel === "Demo Follow-Up") sourceAgg[source].followUpNeeded++;
-    if (mappedLabel === "Churn") {
-      sourceAgg[source].churned++;
-      
-      const createdMs = props.createdate ? new Date(props.createdate).getTime() : 0;
-      const updatedMs = props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).getTime() 
-        : props.closedate ? new Date(props.closedate).getTime() 
-        : new Date().getTime();
-      
-      const daysSinceCreation = createdMs > 0 ? (updatedMs - createdMs) / 86_400_000 : Infinity;
-      
-      if (createdMs > 0 && daysSinceCreation <= 60) {
-        notActivatedCount++;
-      }
-    }
-  }
-
-  const deals = allMainPipelineDeals.map((deal) => {
+  let deals = allMainPipelineDeals.map((deal) => {
     const props = deal.properties || {};
     const stageId = props.dealstage || "unknown";
     const ownerId = props.hubspot_owner_id || null;
     return {
       dealId: String((deal as { id?: string }).id ?? ""),
       dealName: props.dealname || "Untitled deal",
+      stageId,
+      stageLabel: resolveHubSpotStageLabel(stageId, mainStageLabelById),
+      amount: parseFloat(props.amount) || 0,
+      source: props.hs_analytics_source || "Unknown",
+      ownerId,
+      repName: resolveOwnerName(ownerId),
+      updatedAt: props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).toISOString() : null,
+      createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
+      closedAt: props.closedate ? new Date(props.closedate).toISOString() : null,
+      stripeCustomerId: props.stripe_customer_id || props.stripe_customer || null,
+      pipelineId: props.pipeline || null,
+      contactIds: [] as string[],
+      primaryContactId: null as string | null,
+      primaryContactEmail: null as string | null,
+      stageHistory: buildHubSpotStageHistory(deal, mainStageLabelById),
+    };
+  });
+
+  const subscriptionDeals = activeSubscriptionPipelineDeals.map((deal) => {
+    const props = deal.properties || {};
+    const stageId = props.dealstage || "unknown";
+    const ownerId = props.hubspot_owner_id || null;
+    return {
+      dealId: String((deal as { id?: string }).id ?? ""),
+      dealName: props.dealname || "Untitled subscription",
       stageId,
       stageLabel: resolveHubSpotStageLabel(stageId, stageLabelById),
       amount: parseFloat(props.amount) || 0,
@@ -586,8 +688,76 @@ export async function fetchHubSpotData(
       contactIds: [] as string[],
       primaryContactId: null as string | null,
       primaryContactEmail: null as string | null,
+      stageHistory: buildHubSpotStageHistory(deal, stageLabelById),
     };
   });
+
+  // Enrich before aggregation so suspicious contact-backed leads can be removed
+  // from all HubSpot-derived funnel, demo, and churn calculations.
+  try {
+    const dealIdsForContacts = [...deals, ...subscriptionDeals].map((d) => d.dealId).filter(Boolean);
+    const contactAnalytics = await fetchDealContactAnalytics(baseUrl, headers, dealIdsForContacts);
+    for (const deal of [...deals, ...subscriptionDeals]) {
+      const analytics = contactAnalytics.get(deal.dealId);
+      if (analytics) {
+        deal.contactIds = analytics.contactIds;
+        deal.primaryContactId = analytics.primaryContactId;
+        deal.primaryContactEmail = analytics.primaryContactEmail;
+        (deal as Record<string, unknown>).primaryContactAnalytics = analytics.primaryContactAnalytics;
+      }
+    }
+  } catch {
+    // Non-critical — attribution will fall back to deal-level signals only.
+  }
+
+  const suspiciousDealIds = new Set(
+    deals
+      .filter((deal) => isSuspiciousHubSpotLead(deal))
+      .map((deal) => deal.dealId),
+  );
+  const suspiciousLeadExclusions = suspiciousDealIds.size;
+  deals = deals.filter((deal) => !suspiciousDealIds.has(deal.dealId));
+  const metricActiveDeals = activeDeals.filter((deal) => !suspiciousDealIds.has(String(deal.id ?? "")));
+  const metricAllMainPipelineDeals = allMainPipelineDeals.filter((deal) => !suspiciousDealIds.has(String(deal.id ?? "")));
+  dealsFetched = metricAllMainPipelineDeals.length;
+
+  const stageAgg: Record<string, { count: number; value: number }> = {};
+  const sourceAgg: Record<string, { count: number; value: number; closedWon: number; followUpNeeded: number; churned: number }> = {};
+  let notActivatedCount = 0;
+
+  for (const deal of metricActiveDeals) {
+    const props = deal.properties || {};
+
+    const stage = props.dealstage || "unknown";
+    const mappedLabel = resolveHubSpotStageLabel(stage, mainStageLabelById);
+    const amount = parseFloat(props.amount) || 0;
+    const source = props.hs_analytics_source || "Unknown";
+
+    if (!stageAgg[stage]) stageAgg[stage] = { count: 0, value: 0 };
+    stageAgg[stage].count++;
+    stageAgg[stage].value += amount;
+
+    if (!sourceAgg[source]) sourceAgg[source] = { count: 0, value: 0, closedWon: 0, followUpNeeded: 0, churned: 0 };
+    sourceAgg[source].count++;
+    sourceAgg[source].value += amount;
+
+    if (stage === "closedwon") sourceAgg[source].closedWon++;
+    if (mappedLabel === "Demo Follow-Up") sourceAgg[source].followUpNeeded++;
+    if (mappedLabel === "Churn") {
+      sourceAgg[source].churned++;
+
+      const createdMs = props.createdate ? new Date(props.createdate).getTime() : 0;
+      const updatedMs = props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).getTime()
+        : props.closedate ? new Date(props.closedate).getTime()
+        : new Date().getTime();
+
+      const daysSinceCreation = createdMs > 0 ? (updatedMs - createdMs) / 86_400_000 : Infinity;
+
+      if (createdMs > 0 && daysSinceCreation <= 60) {
+        notActivatedCount++;
+      }
+    }
+  }
 
   const STAGE_CLOSED_WON = "closedwon";
   const STAGE_CLOSED_LOST = "closedlost";
@@ -608,10 +778,7 @@ export async function fetchHubSpotData(
   let closedLost = stageAgg[STAGE_CLOSED_LOST]?.count || 0;
   let unlikely = stageAgg[STAGE_UNLIKELY]?.count || 0;
   let churn = stageAgg[STAGE_CHURN]?.count || 0;
-  let subscriptions = allMainPipelineDeals.filter((deal) => {
-    const label = resolveHubSpotStageLabel(deal.properties?.dealstage || "", stageLabelById).toLowerCase();
-    return label === "subscription";
-  }).length;
+  let subscriptions = activeSubscriptionPipelineDeals.length;
   let noShows = stageAgg[STAGE_NO_SHOW]?.count || 0;
   let demoScheduled = stageAgg[STAGE_DEMO_SCHEDULED]?.count || 0;
   let demoFollowUp = stageAgg[STAGE_DEMO_FOLLOW_UP]?.count || 0;
@@ -627,7 +794,7 @@ export async function fetchHubSpotData(
     const eventsInRange: HubSpotStageEvent[] = [];
     const hadWonBeforeChurnInRange = new Set<string>();
 
-    for (const deal of allMainPipelineDeals) {
+    for (const deal of metricAllMainPipelineDeals) {
       const events = extractHubSpotStageEvents(deal);
       if (events.length === 0) continue;
 
@@ -662,10 +829,7 @@ export async function fetchHubSpotData(
     closedLost = stageEntryAgg[STAGE_CLOSED_LOST]?.count || 0;
     unlikely = stageEntryAgg[STAGE_UNLIKELY]?.count || 0;
     churn = stageEntryAgg[STAGE_CHURN]?.count || 0;
-    subscriptions = eventsInRange.filter((event) => {
-      const label = resolveHubSpotStageLabel(event.toStage, stageLabelById).toLowerCase();
-      return label === "subscription";
-    }).length;
+    subscriptions = activeSubscriptionPipelineDeals.length;
     noShows = stageEntryAgg[STAGE_NO_SHOW]?.count || 0;
     demoScheduled = stageEntryAgg[STAGE_DEMO_SCHEDULED]?.count || 0;
     demoFollowUp = stageEntryAgg[STAGE_DEMO_FOLLOW_UP]?.count || 0;
@@ -786,6 +950,7 @@ export async function fetchHubSpotData(
   }
 
   deals.sort(compareHubSpotDealsByRecency);
+  subscriptionDeals.sort(compareHubSpotDealsByRecency);
 
   let displayDeals = [...deals];
   if (useActivityInRange && rangeFrom && rangeTo) {
@@ -819,23 +984,6 @@ export async function fetchHubSpotData(
     // Non-critical — skip
   }
 
-  // ── Enrich deals with contact analytics for attribution ──
-  try {
-    const dealIdsForContacts = deals.map((d) => d.dealId).filter(Boolean);
-    const contactAnalytics = await fetchDealContactAnalytics(baseUrl, headers, dealIdsForContacts);
-    for (const deal of deals) {
-      const analytics = contactAnalytics.get(deal.dealId);
-      if (analytics) {
-        deal.contactIds = analytics.contactIds;
-        deal.primaryContactId = analytics.primaryContactId;
-        deal.primaryContactEmail = analytics.primaryContactEmail;
-        (deal as Record<string, unknown>).primaryContactAnalytics = analytics.primaryContactAnalytics;
-      }
-    }
-  } catch {
-    // Non-critical — attribution will fall back to deal-level signals only
-  }
-
   const meta = makeMeta("live");
   meta.diagnostics = {
     dealsFetched,
@@ -848,8 +996,14 @@ export async function fetchHubSpotData(
     activeDealsRaw: activeDealsResult.deals.length,
     archivedDealsRaw: archivedDealsResult.deals.length,
     includedPipelineId: HUBSPOT_MAIN_PIPELINE_ID,
-    excludedPipelineIds: [HUBSPOT_SUBSCRIPTION_PIPELINE_ID],
-    excludedDeals: allDeals.length - allMainPipelineDeals.length,
+    subscriptionPipelineId: HUBSPOT_SUBSCRIPTION_PIPELINE_ID,
+    suspiciousLeadExclusions,
+    subscriptionDealsFetched: allSubscriptionPipelineDeals.length,
+    subscriptionActiveDealsFetched: activeSubscriptionPipelineDeals.length,
+    excludedPipelineIds: pipelineResult.pipelines
+      .map((pipeline) => pipeline.id)
+      .filter((pipelineId) => pipelineId !== HUBSPOT_MAIN_PIPELINE_ID && pipelineId !== HUBSPOT_SUBSCRIPTION_PIPELINE_ID),
+    excludedDeals: allDeals.length - allMainPipelineDeals.length - allSubscriptionPipelineDeals.length,
     lastAfter: {
       active: activeDealsResult.lastAfter,
       archived: archivedDealsResult.lastAfter,
@@ -871,6 +1025,7 @@ export async function fetchHubSpotData(
       unlikely,
       churn,
       notActivated: notActivatedCount,
+      excludedSuspiciousLeads: suspiciousLeadExclusions,
       activeSubscriptions: subscriptions,
       noShows,
       demoScheduled,
@@ -883,13 +1038,17 @@ export async function fetchHubSpotData(
       dealsBySource,
     },
     contacts: {
-      totalContacts: recentContacts,
-      recentContacts,
+      totalContacts: Math.max(0, recentContacts - suspiciousLeadExclusions),
+      recentContacts: Math.max(0, recentContacts - suspiciousLeadExclusions),
       bySource: [],
     },
     pipelineDetected: {
       pipelineId: HUBSPOT_MAIN_PIPELINE_ID,
       dealCount: deals.length,
+    },
+    subscriptionPipelineDetected: {
+      pipelineId: HUBSPOT_SUBSCRIPTION_PIPELINE_ID,
+      dealCount: subscriptionDeals.length,
     },
     pipelineStageLabelsSource: pipelineResult.source,
     pipelineStages: (mainPipeline?.stages ?? []).map((stage) => ({
@@ -898,6 +1057,7 @@ export async function fetchHubSpotData(
     })),
     repScoreboard,
     deals,
+    subscriptionDeals,
     displayDeals,
     _meta: meta,
   };
@@ -1106,7 +1266,17 @@ export async function fetchHubSpotContacts(
         },
       ],
       sorts: ["createdate"],
-      properties: ["createdate", "hubspot_owner_id", "hs_analytics_source"],
+      properties: [
+        "email",
+        "createdate",
+        "hubspot_owner_id",
+        "hs_analytics_source",
+        "hs_analytics_num_visits",
+        "hs_analytics_num_page_views",
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+      ],
       limit: 100,
       after,
     };
@@ -1129,13 +1299,49 @@ export async function fetchHubSpotContacts(
     for (const contact of results) {
       const props = contact.properties || {};
       const ownerId = props.hubspot_owner_id ? String(props.hubspot_owner_id) : null;
+      const email = props.email ? String(props.email) : null;
+      const rawSource = props.hs_analytics_source ? String(props.hs_analytics_source) : null;
+      const syntheticDeal: HubSpotDealRecord = {
+        dealId: String(contact.id ?? ""),
+        dealName: email?.split("@")[0] || "Untitled contact",
+        stageId: "contact",
+        stageLabel: "Lead",
+        amount: 0,
+        source: rawSource || "Unknown",
+        ownerId,
+        repName: ownerId ? ownerMap[ownerId] || "Unknown" : "Unassigned",
+        updatedAt: null,
+        createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
+        closedAt: null,
+        stripeCustomerId: null,
+        pipelineId: null,
+        contactIds: [String(contact.id ?? "")].filter(Boolean),
+        primaryContactId: String(contact.id ?? "") || null,
+        primaryContactEmail: email,
+        primaryContactAnalytics: {
+          createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
+          source: rawSource,
+          sourceData1: null,
+          sourceData2: null,
+          firstSeenAt: null,
+          lastSeenAt: null,
+          firstUrl: null,
+          lastUrl: null,
+          numVisits: props.hs_analytics_num_visits ? Number(props.hs_analytics_num_visits) : null,
+          numPageViews: props.hs_analytics_num_page_views ? Number(props.hs_analytics_num_page_views) : null,
+          utmSource: props.utm_source || null,
+          utmMedium: props.utm_medium || null,
+          utmCampaign: props.utm_campaign || null,
+        },
+      };
+      if (isSuspiciousHubSpotLead(syntheticDeal)) continue;
 
       out.push({
         contactId: String(contact.id ?? ""),
         createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
         ownerId,
         repName: ownerId ? ownerMap[ownerId] || "Unknown" : "Unassigned",
-        rawSource: props.hs_analytics_source ? String(props.hs_analytics_source) : null,
+        rawSource,
       });
     }
 
@@ -1585,7 +1791,9 @@ export async function fetchMercuryData(
     id?: string;
     name?: string;
     currentBalance?: number;
+    availableBalance?: number;
     type?: string;
+    status?: string;
   };
 
   type MercuryTransaction = {
@@ -1595,204 +1803,20 @@ export async function fetchMercuryData(
     timestamp?: string;
     status?: string;
     amount?: number;
-    counterpartyName?: string | null;
+    kind?: string | null;
+    mercuryCategory?: string | null;
+    description?: string | null;
     bankDescription?: string | null;
     note?: string | null;
+    counterpartyName?: string | null;
+    merchantName?: string | null;
     externalMemo?: string | null;
-    mercuryCategory?: string | null;
-    categoryData?: {
-      categoryDataId?: string | null;
-      categoryDataName?: string | null;
+    memo?: string | null;
+    details?: {
+      counterpartyName?: string | null;
+      merchantName?: string | null;
+      description?: string | null;
     } | null;
-  };
-
-  type MercuryPageResponse<T> = {
-    accounts?: T[];
-    transactions?: T[];
-    cursor?: string | number | null;
-    nextCursor?: string | number | null;
-    pagination?: {
-      cursor?: string | number | null;
-      nextCursor?: string | number | null;
-      hasNextPage?: boolean | null;
-      has_next_page?: boolean | null;
-    } | null;
-    paging?: {
-      next?: {
-        cursor?: string | number | null;
-        startAfter?: string | number | null;
-        start_after?: string | number | null;
-      } | null;
-    } | null;
-  };
-
-  const emptyExpenseBreakdown = (): Record<ExpenseCategory, number> => ({
-    cogs: 0,
-    payroll: 0,
-    marketing: 0,
-    infrastructure: 0,
-    ops: 0,
-    other: 0,
-  });
-
-  const MERCURY_CATEGORY_KEYWORDS: Record<ExpenseCategory, string[]> = {
-    cogs: [
-      "cost of goods",
-      "cogs",
-      "hosting",
-      "cloud",
-      "compute",
-      "inference",
-      "api usage",
-      "payment processing",
-      "merchant fee",
-      "processing fee",
-      "aws",
-      "amazon web services",
-      "google cloud",
-      "gcp",
-      "azure",
-      "openai",
-      "anthropic",
-      "pinecone",
-      "twilio",
-      "sendgrid",
-      "resend",
-      "cloudinary",
-    ],
-    payroll: [
-      "payroll",
-      "salary",
-      "wages",
-      "benefits",
-      "contractor",
-      "gusto",
-      "rippling",
-      "deel",
-      "adp",
-      "paychex",
-      "justworks",
-      "trinet",
-      "remote",
-      "oyster",
-    ],
-    marketing: [
-      "marketing",
-      "advertising",
-      "ad spend",
-      "paid search",
-      "paid social",
-      "sponsorship",
-      "google ads",
-      "meta ads",
-      "facebook ads",
-      "linkedin ads",
-      "reddit ads",
-      "tiktok ads",
-      "hubspot",
-      "semrush",
-      "mailchimp",
-      "klaviyo",
-    ],
-    infrastructure: [
-      "software",
-      "saas",
-      "tools",
-      "tooling",
-      "monitoring",
-      "security",
-      "domain",
-      "dns",
-      "vercel",
-      "cloudflare",
-      "github",
-      "gitlab",
-      "notion",
-      "slack",
-      "zoom",
-      "linear",
-      "figma",
-      "datadog",
-      "sentry",
-      "railway",
-      "render",
-      "netlify",
-    ],
-    ops: [
-      "operations",
-      "office",
-      "rent",
-      "travel",
-      "legal",
-      "insurance",
-      "tax",
-      "bank fee",
-      "wire fee",
-      "accounting",
-      "bookkeeping",
-      "admin",
-      "general & administrative",
-      "g&a",
-      "mercury fee",
-    ],
-    other: [],
-  };
-
-  const classifyMercuryExpense = (tx: MercuryTransaction): ExpenseCategory => {
-    const categoryLabel = tx.categoryData?.categoryDataName ?? tx.mercuryCategory ?? "";
-    const haystack = [
-      categoryLabel,
-      tx.counterpartyName ?? "",
-      tx.bankDescription ?? "",
-      tx.note ?? "",
-      tx.externalMemo ?? "",
-    ]
-      .join(" ")
-      .trim()
-      .toLowerCase();
-
-    if (!haystack) return "other";
-
-    for (const mapping of options?.expenseMappings ?? []) {
-      if (haystack.includes(mapping.match.toLowerCase())) {
-        return mapping.category;
-      }
-    }
-
-    for (const category of ["payroll", "marketing", "cogs", "infrastructure", "ops"] as const) {
-      if (MERCURY_CATEGORY_KEYWORDS[category].some((keyword) => haystack.includes(keyword))) {
-        return category;
-      }
-    }
-
-    return "other";
-  };
-
-  const hasExcludedStatus = (status: string): boolean => {
-    const normalized = status.trim().toLowerCase();
-    if (!normalized) return false;
-
-    return [
-      "cancel",
-      "reject",
-      "fail",
-      "return",
-      "reverse",
-      "void",
-      "pendingapproval",
-      "pending_approval",
-      "pending approval",
-    ].some((pattern) => normalized.includes(pattern));
-  };
-
-  const shouldCountTransaction = (tx: MercuryTransaction): boolean => {
-    const amount = tx.amount ?? 0;
-    if (!Number.isFinite(amount) || amount === 0) return false;
-
-    const status = tx.status ?? "";
-    if (!status.trim()) return true;
-
-    return !hasExcludedStatus(status);
   };
 
   const headers: Record<string, string> = {
@@ -1879,7 +1903,34 @@ export async function fetchMercuryData(
     type: account.type ?? "checking",
   }));
 
-  const totalBalance = accounts.reduce((s: number, a: { balance: number }) => s + a.balance, 0);
+  try {
+    const treasuryRes = await fetch(`${baseUrl}/treasury?limit=1000`, { headers });
+    if (treasuryRes.ok) {
+      const treasuryData = await safeJson<{ accounts?: MercuryAccount[] }>(treasuryRes, "mercury treasury");
+      const treasuryAccounts = (treasuryData.accounts ?? [])
+        .filter((account) => account.status !== "deleted" && account.status !== "archived")
+        .map((account, index) => ({
+          accountId: account.id ?? `treasury-${index}`,
+          accountName: account.name ?? `Mercury Treasury${index > 0 ? ` ${index + 1}` : ""}`,
+          balance: account.currentBalance ?? 0,
+          type: "treasury",
+        }));
+      accounts.push(...treasuryAccounts);
+    }
+  } catch {
+    // Older Mercury tokens/accounts may not expose Treasury. Keep bank cash available.
+  }
+
+  const isTreasuryAccount = (account: { type?: string | null }): boolean =>
+    (account.type ?? "").toLowerCase() === "treasury";
+  const bankCash = accounts
+    .filter((account) => !isTreasuryAccount(account))
+    .reduce((sum: number, account: { balance: number }) => sum + account.balance, 0);
+  const treasuryCash = accounts
+    .filter(isTreasuryAccount)
+    .reduce((sum: number, account: { balance: number }) => sum + account.balance, 0);
+  const totalCash = bankCash + treasuryCash;
+  const totalBalance = totalCash;
 
   // Fetch recent transactions for cash flow
   const rangeFrom = options?.fromDate ?? null;
@@ -1897,59 +1948,120 @@ export async function fetchMercuryData(
     ? inclusiveUtcDaySpan(rangeFrom, rangeTo)
     : 30;
 
-  let inflows = 0, outflows = 0;
-  const expenseBreakdown = emptyExpenseBreakdown();
-  for (const account of accounts) {
-    const transactions = await fetchMercuryPages<MercuryTransaction>(
-      `/account/${account.accountId}/transactions`,
-      (body) => body?.transactions ?? [],
-      {
-        start: startKey,
-        limit: String(MERCURY_PAGE_LIMIT),
-      },
-      "transactions",
+  const endKey = (useRange ? rangeTo! : new Date()).toISOString().split("T")[0];
+  const shouldCountCashFlow = (tx: MercuryTransaction): boolean => {
+    if (tx.status !== "sent") return false;
+    if (typeof tx.amount !== "number" || !Number.isFinite(tx.amount) || tx.amount === 0) return false;
+    const kind = (tx.kind ?? "").toLowerCase();
+    const mercuryCategory = (tx.mercuryCategory ?? "").toLowerCase();
+    return !(
+      kind === "internaltransfer" ||
+      kind === "treasurytransfer" ||
+      mercuryCategory === "treasurytransfer"
     );
-    for (const tx of transactions) {
-      if (useRange && rangeTo) {
-        const postedAt = tx.postedAt || tx.createdAt || tx.timestamp || "";
-        if (postedAt) {
-          const postedMs = Date.parse(postedAt);
-          if (Number.isFinite(postedMs) && postedMs > rangeTo.getTime()) continue;
-        }
-      }
-      if (!shouldCountTransaction(tx)) continue;
+  };
+  const toTransactionData = (tx: MercuryTransaction): MercuryTransactionData => ({
+    id: tx.id ?? "",
+    postedAt: tx.postedAt ?? tx.createdAt ?? tx.timestamp ?? null,
+    amount: tx.amount ?? 0,
+    kind: tx.kind ?? null,
+    mercuryCategory: tx.mercuryCategory ?? null,
+    description:
+      tx.description ??
+      tx.details?.description ??
+      tx.externalMemo ??
+      tx.memo ??
+      null,
+    counterpartyName:
+      tx.counterpartyName ??
+      tx.merchantName ??
+      tx.details?.counterpartyName ??
+      tx.details?.merchantName ??
+      null,
+    bankDescription: tx.bankDescription ?? null,
+    note: tx.note ?? null,
+  });
 
-      const amount = tx.amount ?? 0;
-      const amt = Math.abs(amount);
-      if (amount > 0) inflows += amt;
-      else {
-        outflows += amt;
-        expenseBreakdown[classifyMercuryExpense(tx)] += amt;
+  const transactions: MercuryTransactionData[] = [];
+
+  const addCashFlow = (tx: MercuryTransaction): void => {
+    if (!shouldCountCashFlow(tx)) return;
+    const amount = tx.amount ?? 0;
+    const amt = Math.abs(amount);
+    if (amount > 0) inflows += amt;
+    else outflows += amt;
+    transactions.push(toTransactionData(tx));
+  };
+
+  let inflows = 0, outflows = 0;
+  let usedGlobalTransactions = false;
+  try {
+    let startAfter: string | null = null;
+    for (let page = 0; page < 10; page += 1) {
+      const params = new URLSearchParams({
+        postedStart: startKey,
+        postedEnd: endKey,
+        status: "sent",
+        limit: "1000",
+        order: "desc",
+      });
+      if (startAfter) params.set("start_after", startAfter);
+      const txRes = await fetch(`${baseUrl}/transactions?${params.toString()}`, { headers });
+      if (!txRes.ok) break;
+      usedGlobalTransactions = true;
+      const txData = await safeJson<{ transactions?: MercuryTransaction[] }>(txRes, "mercury transactions");
+      const txs = txData.transactions ?? [];
+      for (const tx of txs) addCashFlow(tx);
+      if (txs.length < 1000) break;
+      const lastId = txs[txs.length - 1]?.id;
+      if (!lastId || lastId === startAfter) break;
+      startAfter = lastId;
+    }
+  } catch {
+    usedGlobalTransactions = false;
+    inflows = 0;
+    outflows = 0;
+  }
+
+  const bankAccounts = accounts.filter((account) => !isTreasuryAccount(account));
+  if (!usedGlobalTransactions) {
+    for (const account of bankAccounts) {
+      try {
+        const txRes = await fetch(
+          `${baseUrl}/account/${account.accountId}/transactions?start=${startKey}&limit=500`,
+          { headers }
+        );
+        if (!txRes.ok) continue;
+        const txData = await safeJson<{ transactions?: MercuryTransaction[] }>(txRes, "mercury transactions");
+        for (const tx of txData.transactions ?? []) {
+          if (useRange && rangeTo) {
+            const postedAt = tx.postedAt || tx.createdAt || tx.timestamp || "";
+            if (postedAt) {
+              const postedMs = Date.parse(postedAt);
+              if (Number.isFinite(postedMs) && postedMs > rangeTo.getTime()) continue;
+            }
+          }
+          addCashFlow(tx);
+        }
+      } catch {
+        // Skip account on error
       }
     }
   }
 
-  const monthlyInflows = observedPeriodDays > 0 ? inflows * (30 / observedPeriodDays) : inflows;
-  const monthlyOutflows = observedPeriodDays > 0 ? outflows * (30 / observedPeriodDays) : outflows;
-  const monthlyNetCashFlow = monthlyInflows - monthlyOutflows;
-  const burnRate = Math.max(monthlyOutflows - monthlyInflows, 0);
+  const burnRate = Math.max(outflows - inflows, 0);
   const runway = burnRate > 0 ? totalBalance / burnRate : 999;
-  const monthlyExpenseBreakdown: Record<ExpenseCategory, number> = {
-    cogs: observedPeriodDays > 0 ? expenseBreakdown.cogs * (30 / observedPeriodDays) : expenseBreakdown.cogs,
-    payroll: observedPeriodDays > 0 ? expenseBreakdown.payroll * (30 / observedPeriodDays) : expenseBreakdown.payroll,
-    marketing: observedPeriodDays > 0 ? expenseBreakdown.marketing * (30 / observedPeriodDays) : expenseBreakdown.marketing,
-    infrastructure: observedPeriodDays > 0 ? expenseBreakdown.infrastructure * (30 / observedPeriodDays) : expenseBreakdown.infrastructure,
-    ops: observedPeriodDays > 0 ? expenseBreakdown.ops * (30 / observedPeriodDays) : expenseBreakdown.ops,
-    other: observedPeriodDays > 0 ? expenseBreakdown.other * (30 / observedPeriodDays) : expenseBreakdown.other,
-  };
 
   return normalizeMercuryDataPayload({
     accounts,
     cashFlow: {
       totalBalance,
-      inflows30d: Math.round(monthlyInflows * 100) / 100,
-      outflows30d: Math.round(monthlyOutflows * 100) / 100,
-      netCashFlow: Math.round(monthlyNetCashFlow * 100) / 100,
+      bankCash,
+      treasuryCash,
+      totalCash,
+      inflows30d: inflows,
+      outflows30d: outflows,
+      netCashFlow: inflows - outflows,
       runway: Math.round(runway * 10) / 10,
       burnRate: Math.round(burnRate * 100) / 100,
       observedPeriodDays,
@@ -1959,6 +2071,7 @@ export async function fetchMercuryData(
       expenseBreakdown30d: monthlyExpenseBreakdown,
       observedExpenseBreakdown: expenseBreakdown,
     },
+    transactions,
     _meta: makeMeta(),
   })!;
 }

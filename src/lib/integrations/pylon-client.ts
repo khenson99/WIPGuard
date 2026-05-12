@@ -18,6 +18,51 @@ function asString(value: unknown): string | null {
   return null;
 }
 
+function normalizePylonTimestamp(value: string, boundary: "start" | "end"): string {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return trimmed;
+  if (trimmed.includes("T")) return trimmed;
+  return boundary === "start"
+    ? `${trimmed}T00:00:00.000Z`
+    : `${trimmed}T23:59:59.999Z`;
+}
+
+function splitPylonDateRange(input: {
+  from: string;
+  to: string;
+  maxWindowDays?: number;
+}): Array<{ from: string; to: string }> {
+  const maxWindowDays = input.maxWindowDays ?? 30;
+  const normalizedFrom = normalizePylonTimestamp(input.from, "start");
+  const normalizedTo = normalizePylonTimestamp(input.to, "end");
+  const start = new Date(normalizedFrom);
+  const end = new Date(normalizedTo);
+
+  if (
+    !Number.isFinite(start.getTime()) ||
+    !Number.isFinite(end.getTime()) ||
+    end.getTime() < start.getTime() ||
+    maxWindowDays <= 0
+  ) {
+    return [{ from: normalizedFrom, to: normalizedTo }];
+  }
+
+  const maxWindowMs = maxWindowDays * 24 * 60 * 60 * 1000;
+  const windows: Array<{ from: string; to: string }> = [];
+  let cursor = start.getTime();
+
+  while (cursor <= end.getTime()) {
+    const windowEnd = Math.min(end.getTime(), cursor + maxWindowMs - 1);
+    windows.push({
+      from: new Date(cursor).toISOString(),
+      to: new Date(windowEnd).toISOString(),
+    });
+    cursor = windowEnd + 1;
+  }
+
+  return windows;
+}
+
 function parseIssueArray(payload: unknown): PylonIssue[] {
   const record = asRecord(payload);
   if (!record) return [];
@@ -92,69 +137,61 @@ export async function fetchPylonIssues(input: {
   const baseUrl = input.baseUrl || "https://api.usepylon.com";
   const limit = input.limit ?? 200;
   const timeoutMs = input.timeoutMs ?? 10_000;
-  const maxPages = 20;
+  const issuesById = new Map<string, PylonIssue>();
+  const issuesWithoutId: PylonIssue[] = [];
 
-  function buildQuery(cursor?: string): string {
+  for (const window of splitPylonDateRange({ from: input.from, to: input.to })) {
     const query = new URLSearchParams({
       limit: String(limit),
-      start_time: input.from,
-      end_time: input.to,
+      start_time: window.from,
+      end_time: window.to,
     });
-    if (cursor) {
-      query.set("cursor", cursor);
-    }
-    return query.toString();
-  }
 
-  const endpoints = [
-    `${baseUrl}/issues`,
-    `${baseUrl}/v1/issues`,
-    // Some Pylon tenants expose the issues collection under conversations.
-    `${baseUrl}/conversations`,
-    `${baseUrl}/v1/conversations`,
-  ];
+    const endpoints = [
+      `${baseUrl}/issues?${query.toString()}`,
+      `${baseUrl}/v1/issues?${query.toString()}`,
+      // Some Pylon tenants expose the issues collection under conversations.
+      `${baseUrl}/conversations?${query.toString()}`,
+      `${baseUrl}/v1/conversations?${query.toString()}`,
+    ];
 
-  let lastError: { status: number; message: string } | null = null;
-  for (const endpoint of endpoints) {
-    const issues: PylonIssue[] = [];
-    let cursor: string | null = null;
-    let pageCount = 0;
-
-    while (pageCount < maxPages) {
-      const result = await fetchJsonWithTimeout({
-        url: `${endpoint}?${buildQuery(cursor ?? undefined)}`,
-        apiKey: input.apiKey,
-        timeoutMs,
-      });
-      pageCount += 1;
-
-      if (!result.ok) {
-        if (issues.length > 0) {
-          throw new Error(result.message);
-        }
-        lastError = { status: result.status, message: result.message };
+    let lastError: { status: number; message: string } | null = null;
+    let sawNotFound = false;
+    let payload: PylonIssue[] | null = null;
+    for (const url of endpoints) {
+      const result = await fetchJsonWithTimeout({ url, apiKey: input.apiKey, timeoutMs });
+      if (result.ok) {
+        payload = parseIssueArray(result.payload);
         break;
       }
-
-      issues.push(...parseIssueArray(result.payload));
-      const pagination = parsePagination(result.payload);
-      if (!pagination.hasNextPage || !pagination.cursor) {
-        return issues;
+      if (result.status === 404) {
+        sawNotFound = true;
+        continue;
       }
-
-      cursor = pagination.cursor;
+      lastError = { status: result.status, message: result.message };
     }
 
-    if (issues.length > 0) {
-      throw new Error("Pylon pagination exceeded the maximum page limit");
+    if (!payload) {
+      if (sawNotFound && !lastError) {
+        continue;
+      }
+      if (lastError) {
+        throw new Error(lastError.message);
+      }
+      throw new Error("Pylon request failed");
+    }
+
+    for (const issue of payload) {
+      const issueId = getPylonIssueId(issue);
+      if (issueId) {
+        issuesById.set(issueId, issue);
+      } else {
+        issuesWithoutId.push(issue);
+      }
     }
   }
 
-  if (lastError) {
-    throw new Error(lastError.message);
-  }
-
-  throw new Error("Pylon request failed");
+  return [...issuesById.values(), ...issuesWithoutId];
 }
 
 export function getPylonIssueId(issue: PylonIssue): string | null {
@@ -215,3 +252,8 @@ export function getPylonIssueUrl(issue: PylonIssue): string | null {
     asString(issue.html_url)
   );
 }
+
+export const __test__ = {
+  normalizePylonTimestamp,
+  splitPylonDateRange,
+};

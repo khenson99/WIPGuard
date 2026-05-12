@@ -16,11 +16,11 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import type { AnalyticsDashboardData, PnLRow, ForecastScenarioData } from "@/lib/analytics/types";
-import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
 import { fmtDelta, fmtMonths, fmtRatio, runwayColor, ltvCacSeverity } from "@/lib/analytics/finance-utils";
 import { StatCard } from "./stat-card";
 import { RingStat } from "./bar-display";
 import { FinanceDataEmptyState } from "./finance-empty-state";
+import { ExecutiveAiBrief } from "./executive-ai-brief";
 
 interface FinanceTabProps {
   data: AnalyticsDashboardData | null;
@@ -159,6 +159,8 @@ export function FinanceTab({ data }: FinanceTabProps) {
   const stripe = data.stripe;
   const mercury = data.mercury;
   const fp = data.financialPlanning;
+  const financeSummary = data.metrics?.finance.summary ?? null;
+  const budgetActuals = data.metrics?.finance.budgetActuals ?? null;
   const financeErrors = data.errors
     .filter((entry) => entry.source === "stripe" || entry.source === "mercury")
     .map((entry) => `${entry.source}: ${entry.message}`);
@@ -177,20 +179,34 @@ export function FinanceTab({ data }: FinanceTabProps) {
     );
   }
 
-  // Extract metrics with fallbacks
-  const mrr = stripe?.revenue?.mrr ?? 0;
-  const mrrChange = stripe?.revenue?.mrrChange ?? 0;
-  const subscriptionOverview = fp?.subscriptionOverview ?? null;
-  const activeSubs = subscriptionOverview?.mergedActiveSubscriptions ?? (stripe?.subscriptions?.active ?? 0);
-  const stripeSubs = subscriptionOverview?.stripeActiveSubscriptions ?? (stripe?.subscriptions?.active ?? 0);
-  const hubspotSubs = subscriptionOverview?.hubspotActiveSubscriptions ?? 0;
-  const pastDue = stripe?.subscriptions?.pastDue ?? 0;
-  const trialing = stripe?.subscriptions?.trialing ?? 0;
-  const cashBalance = mercury?.cashFlow?.totalBalance ?? 0;
-  const runway = mercury?.cashFlow?.runway ?? 0;
-  const netCashFlow = mercury?.cashFlow?.netCashFlow ?? 0;
-  const successRate = normalizePercentValue(stripe?.payments?.successRate ?? 0);
-  const churnRate = normalizePercentValue(stripe?.subscriptions?.churnRate ?? 0);
+  if (!financeSummary) {
+    return (
+      <FinanceDataEmptyState
+        title="Finance metrics are unavailable"
+        message="The canonical finance metrics layer was not included in this analytics payload."
+        reasons={[...financeErrors, ...freshnessErrors]}
+      />
+    );
+  }
+
+  // Extract canonical finance metrics from the API-built metrics layer.
+  const mrr = financeSummary.mrr;
+  const mrrChange = financeSummary.mrrChange;
+  const activeSubs = financeSummary.activeSubscriptions;
+  const stripeSubs = financeSummary.stripeActiveSubscriptions;
+  const hubspotSubs = financeSummary.hubspotActiveSubscriptions;
+  const pastDue = financeSummary.pastDueSubscriptions;
+  const trialing = financeSummary.trialingSubscriptions;
+  const cashBalance = financeSummary.cashBalance;
+  const bankCash = financeSummary.bankCash;
+  const treasuryCash = financeSummary.treasuryCash;
+  const runway = financeSummary.runwayMonths;
+  const netCashFlow = financeSummary.netCashFlow30d;
+  const inflows30d = financeSummary.inflows30d;
+  const outflows30d = financeSummary.outflows30d;
+  const burnRate = financeSummary.burnRate;
+  const successRate = financeSummary.paymentSuccessPct;
+  const churnRate = financeSummary.churnRatePct;
   const recentChurns = stripe?.subscriptions?.recentChurnEvents ?? [];
 
   return (
@@ -215,7 +231,12 @@ export function FinanceTab({ data }: FinanceTabProps) {
         <StatCard
           label="Cash Balance"
           value={fmt$(cashBalance)}
-          subtitle={runway > 0 ? `${runway.toFixed(1)} months runway` : undefined}
+          subtitle={[
+            bankCash !== null && treasuryCash !== null
+              ? `${fmt$(bankCash)} bank · ${fmt$(treasuryCash)} Treasury`
+              : null,
+            runway > 0 ? `${runway.toFixed(1)} months runway` : null,
+          ].filter(Boolean).join(" · ") || undefined}
           icon={Wallet}
         />
         <StatCard
@@ -225,6 +246,11 @@ export function FinanceTab({ data }: FinanceTabProps) {
           icon={TrendingDown}
         />
       </div>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* AI EXECUTIVE BRIEF                                        */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <ExecutiveAiBrief />
 
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* UNIT ECONOMICS                                            */}
@@ -454,12 +480,12 @@ export function FinanceTab({ data }: FinanceTabProps) {
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* BUDGET VARIANCE                                           */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      {fp?.activeBudget && (
+      {budgetActuals && (
         <div className="bg-card border border-border rounded-xl p-6">
           <div className="flex items-center gap-2 mb-6">
             <AlertTriangle className="w-5 h-5 text-muted-foreground" />
-            <h3 className="text-foreground font-semibold">Budget vs Estimated Actuals</h3>
-            <span className="text-xs text-muted-foreground ml-auto">{fp.activeBudget.name}</span>
+            <h3 className="text-foreground font-semibold">Budget vs Actual</h3>
+            <span className="text-xs text-muted-foreground ml-auto">{budgetActuals.budgetName}</span>
           </div>
 
           <div className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
@@ -470,26 +496,24 @@ export function FinanceTab({ data }: FinanceTabProps) {
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="bg-secondary/40 rounded-lg p-4">
               <p className="text-xs text-muted-foreground uppercase mb-1">Planned</p>
-              <p className="text-lg font-bold text-foreground tabular-nums">{fmt$(fp.activeBudget.totalPlanned)}</p>
+              <p className="text-lg font-bold text-foreground tabular-nums">{fmt$(budgetActuals.totalBudget)}</p>
             </div>
             <div className="bg-secondary/40 rounded-lg p-4">
               <p className="text-xs text-muted-foreground uppercase mb-1">Est. Actual</p>
               <p className="text-lg font-bold text-foreground tabular-nums">
-                {fp.activeBudget.totalActual != null ? fmt$(fp.activeBudget.totalActual) : "—"}
+                {fmt$(budgetActuals.totalActual)}
               </p>
             </div>
             <div className="bg-secondary/40 rounded-lg p-4">
               <p className="text-xs text-muted-foreground uppercase mb-1">Est. Variance</p>
               <p className={`text-lg font-bold tabular-nums ${
-                fp.activeBudget.totalVariance != null
-                  ? fp.activeBudget.totalVariance > 0
+                budgetActuals.totalVariance > 0
                     ? "text-red-500"
-                    : fp.activeBudget.totalVariance < 0
+                    : budgetActuals.totalVariance < 0
                     ? "text-emerald-500"
                     : "text-foreground"
-                  : "text-muted-foreground"
               }`}>
-                {fp.activeBudget.totalVariance != null ? fmtDelta(fp.activeBudget.totalVariance) : "—"}
+                {fmtDelta(budgetActuals.totalVariance)}
               </p>
             </div>
           </div>
@@ -502,26 +526,24 @@ export function FinanceTab({ data }: FinanceTabProps) {
             <span className="text-xs font-semibold text-muted-foreground uppercase text-right">Est. Variance</span>
             <span className="text-xs font-semibold text-muted-foreground uppercase text-right">Var %</span>
           </div>
-          {fp.activeBudget.lineItems.map((item) => {
-            const overBudget = (item.variancePct ?? 0) > 15;
+          {budgetActuals.items.map((item) => {
+            const overBudget = item.status === "over";
             return (
-              <div key={item.id} className={`grid grid-cols-5 gap-4 py-2.5 ${overBudget ? "bg-red-500/5 -mx-2 px-2 rounded" : ""}`}>
-                <span className="text-sm text-muted-foreground capitalize">{item.category}</span>
-                <span className="text-sm text-foreground text-right tabular-nums">{fmt$(item.plannedAmount)}</span>
+              <div key={item.category} className={`grid grid-cols-5 gap-4 py-2.5 ${overBudget ? "bg-red-500/5 -mx-2 px-2 rounded" : ""}`}>
+                <span className="text-sm text-muted-foreground">{item.category}</span>
+                <span className="text-sm text-foreground text-right tabular-nums">{fmt$(item.budgeted)}</span>
                 <span className="text-sm text-foreground text-right tabular-nums">
-                  {item.actualAmount != null ? fmt$(item.actualAmount) : "—"}
+                  {fmt$(item.actual)}
                 </span>
                 <span className={`text-sm text-right tabular-nums ${
-                  item.variance != null
-                    ? item.variance > 0 ? "text-red-500" : item.variance < 0 ? "text-emerald-500" : "text-muted-foreground"
-                    : "text-muted-foreground"
+                  item.variance > 0 ? "text-red-500" : item.variance < 0 ? "text-emerald-500" : "text-muted-foreground"
                 }`}>
-                  {item.variance != null ? fmtDelta(item.variance) : "—"}
+                  {fmtDelta(item.variance)}
                 </span>
                 <span className={`text-sm text-right tabular-nums ${
                   overBudget ? "text-red-500 font-medium" : "text-muted-foreground"
                 }`}>
-                  {item.variancePct != null ? `${item.variancePct > 0 ? "+" : ""}${item.variancePct.toFixed(1)}%` : "—"}
+                  {item.variancePct > 0 ? "+" : ""}{item.variancePct.toFixed(1)}%
                 </span>
               </div>
             );
@@ -612,7 +634,7 @@ export function FinanceTab({ data }: FinanceTabProps) {
               <ArrowDownRight className="w-4 h-4 text-green-600" />
             </div>
             <p className="text-2xl font-bold text-foreground">
-              {fmt$(mercury.cashFlow.inflows30d)}
+              {fmt$(inflows30d)}
             </p>
           </div>
 
@@ -624,7 +646,7 @@ export function FinanceTab({ data }: FinanceTabProps) {
               <ArrowUpRight className="w-4 h-4 text-red-600" />
             </div>
             <p className="text-2xl font-bold text-foreground">
-              {fmt$(mercury.cashFlow.outflows30d)}
+              {fmt$(outflows30d)}
             </p>
           </div>
 
@@ -636,7 +658,7 @@ export function FinanceTab({ data }: FinanceTabProps) {
               <TrendingDown className="w-4 h-4 text-orange-600" />
             </div>
             <p className="text-2xl font-bold text-foreground">
-              {fmt$(mercury.cashFlow.burnRate)}
+              {fmt$(burnRate)}
               <span className="text-xs text-muted-foreground ml-2">/month</span>
             </p>
           </div>

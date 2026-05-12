@@ -72,7 +72,7 @@ const STAGE_LABELS: Record<VisitorFunnelStageId, string> = {
   visitors: "Visitors",
   identified: "Identified",
   demo_booked: "Demo Booked",
-  kanban_card_created: "Kanban Card Created",
+  kanban_card_created: "Lead Magnet Submitted",
   trial_started: "Trial Started",
   paid_customer: "Paid Customer",
 };

@@ -64,6 +64,43 @@ function buildDetail(overrides: Partial<CustomerSuccessAccountDetail> = {}): Cus
           lastUpdatedAt: "2026-03-09T10:00:00.000Z",
         },
       },
+      leadingIndicators: {
+        recency: {
+          label: "Activity recency",
+          score: 76,
+          status: "watch",
+          value: "5d since touch",
+          evidence: ["Customer touch landed this week"],
+        },
+        cadence: {
+          label: "Touch cadence",
+          score: 72,
+          status: "watch",
+          value: "3 touches / 30d",
+          evidence: ["Follow-up rhythm is acceptable"],
+        },
+        consistency: {
+          label: "Touch consistency",
+          score: 81,
+          status: "healthy",
+          value: "3/3 months active",
+          evidence: ["Touch pattern stayed consistent"],
+        },
+        depth: {
+          label: "Execution depth",
+          score: 74,
+          status: "watch",
+          value: "2/3 milestones done",
+          evidence: ["Success plan is progressing"],
+        },
+        breadth: {
+          label: "Relationship breadth",
+          score: 84,
+          status: "healthy",
+          value: "2/2 stakeholders covered",
+          evidence: ["Champion + admin both covered"],
+        },
+      },
     },
     alerts: [],
     timeline: [
@@ -102,6 +139,7 @@ function buildDetail(overrides: Partial<CustomerSuccessAccountDetail> = {}): Cus
       expansionPotential: "medium",
     },
     relationshipIntelligence: {
+      connectedSystems: 2,
       providers: [
         {
           provider: "CODA",
@@ -135,28 +173,25 @@ function buildDetail(overrides: Partial<CustomerSuccessAccountDetail> = {}): Cus
             dimension: "usage",
           },
         ],
-        ardaAdoptionCountsSource: "ARDA_USER_DETAILS",
-        ardaDirectActivityCounts: {
-          orders: 0,
-          cards: 0,
-          items: 0,
-        },
-        ardaUserDetailsCounts: {
-          orders: 0,
-          cards: 12,
-          items: 10,
-        },
         coverage: {
           arda: true,
           coda: true,
           stripe: true,
           hubspot: true,
           pylon: false,
-          ardaActivityCollectionAvailable: false,
-          ardaUserDetailsFallback: true,
           missingSources: ["pylon"],
         },
         detailUrl: "/analytics/retention/acct_1",
+      },
+      arda: {
+        tenantId: "tenant-123",
+        configuredTenantId: "tenant-123",
+        tenantName: "Acme Co",
+        companyName: "Acme Co",
+        customerStatus: "Won",
+        configuredHealth: "Yellow",
+        implementationStage: "LIVE",
+        sourceRecordCount: 24,
       },
       coda: {
         customerStatus: "Won",
@@ -223,7 +258,7 @@ describe("CustomerSuccessAccountWorkspace", () => {
     render(<CustomerSuccessAccountWorkspace accountId="acct_1" />);
 
     await waitFor(() => {
-      expect(screen.getByText("Acme Co")).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "Acme Co" })).toBeTruthy();
     });
     expect(
       screen.getByText("Arda activity history is unavailable; adoption breadth falls back to User Details (12 cards, 10 items).")
@@ -250,6 +285,355 @@ describe("CustomerSuccessAccountWorkspace", () => {
     );
   });
 
+  it("creates a linked task and refreshes the task list", async () => {
+    let getCount = 0;
+    const initialDetail = buildDetail();
+    const refreshedDetail = buildDetail({
+      tasks: [
+        {
+          id: "task_1",
+          title: "Call champion about rollout",
+          status: "ACTIVE",
+          priority: "P1",
+          dueDate: "2026-03-12T00:00:00.000Z",
+        },
+      ],
+    });
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/customer-success/accounts/acct_1" && (!init?.method || init.method === "GET")) {
+        getCount += 1;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => (getCount === 1 ? initialDetail : refreshedDetail),
+        } as Response;
+      }
+
+      if (url === "/api/customer-success/accounts/acct_1/tasks" && init?.method === "POST") {
+        return {
+          ok: true,
+          status: 201,
+          json: async () => ({ id: "task_1" }),
+        } as Response;
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CustomerSuccessAccountWorkspace accountId="acct_1" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Acme Co" })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Tasks" }));
+    fireEvent.change(screen.getByPlaceholderText("Task title"), {
+      target: { value: "Call champion about rollout" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Optional notes or handoff context"), {
+      target: { value: "Confirm blocker owners" },
+    });
+    fireEvent.change(screen.getByDisplayValue("P2"), {
+      target: { value: "P1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create Task" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Linked task created.")).toBeTruthy();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Call champion about rollout")).toBeTruthy();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/customer-success/accounts/acct_1/tasks",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("resolves an alert and refreshes the attention queue", async () => {
+    let getCount = 0;
+    const initialDetail = buildDetail({
+      alerts: [
+        {
+          id: "alert_1",
+          accountId: "acct_1",
+          title: "Renewal risk rising",
+          category: "risk",
+          severity: "high",
+          status: "open",
+          slaStatus: "at_risk",
+          source: "commercial",
+          evidence: ["Renewal in 30 days"],
+          suggestedAction: "Confirm champion and rollout plan",
+          createdAt: "2026-03-09T10:00:00.000Z",
+          updatedAt: "2026-03-10T08:00:00.000Z",
+        },
+      ],
+    });
+    const refreshedDetail = buildDetail({
+      alerts: [
+        {
+          id: "alert_1",
+          accountId: "acct_1",
+          title: "Renewal risk rising",
+          category: "risk",
+          severity: "high",
+          status: "resolved",
+          slaStatus: "on_track",
+          source: "commercial",
+          evidence: ["Champion confirmed"],
+          suggestedAction: "Continue weekly check-ins",
+          createdAt: "2026-03-09T10:00:00.000Z",
+          updatedAt: "2026-03-10T09:00:00.000Z",
+        },
+      ],
+    });
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/customer-success/accounts/acct_1" && (!init?.method || init.method === "GET")) {
+        getCount += 1;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => (getCount === 1 ? initialDetail : refreshedDetail),
+        } as Response;
+      }
+
+      if (url === "/api/customer-success/accounts/acct_1/alerts/alert_1/status" && init?.method === "POST") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: "alert_1" }),
+        } as Response;
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CustomerSuccessAccountWorkspace accountId="acct_1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Renewal risk rising")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Resolve" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Alert resolved.")).toBeTruthy();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/High • Resolved • On Track/)).toBeTruthy();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/customer-success/accounts/acct_1/alerts/alert_1/status",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("dismisses an alert and refreshes the attention queue", async () => {
+    let getCount = 0;
+    const initialDetail = buildDetail({
+      alerts: [
+        {
+          id: "alert_1",
+          accountId: "acct_1",
+          title: "Relationship gap detected",
+          category: "risk",
+          severity: "medium",
+          status: "open",
+          slaStatus: "at_risk",
+          source: "relationship",
+          evidence: ["No exec touch in 45 days"],
+          suggestedAction: "Rebuild sponsor alignment",
+          createdAt: "2026-03-09T10:00:00.000Z",
+          updatedAt: "2026-03-10T08:00:00.000Z",
+        },
+      ],
+    });
+    const refreshedDetail = buildDetail({
+      alerts: [
+        {
+          id: "alert_1",
+          accountId: "acct_1",
+          title: "Relationship gap detected",
+          category: "risk",
+          severity: "medium",
+          status: "dismissed",
+          slaStatus: "on_track",
+          source: "relationship",
+          evidence: ["False positive after manual review"],
+          suggestedAction: "No follow-up needed",
+          createdAt: "2026-03-09T10:00:00.000Z",
+          updatedAt: "2026-03-10T09:00:00.000Z",
+        },
+      ],
+    });
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/customer-success/accounts/acct_1" && (!init?.method || init.method === "GET")) {
+        getCount += 1;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => (getCount === 1 ? initialDetail : refreshedDetail),
+        } as Response;
+      }
+
+      if (url === "/api/customer-success/accounts/acct_1/alerts/alert_1/status" && init?.method === "POST") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: "alert_1" }),
+        } as Response;
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CustomerSuccessAccountWorkspace accountId="acct_1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Relationship gap detected")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Alert dismissed.")).toBeTruthy();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Medium • Dismissed • On Track/)).toBeTruthy();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/customer-success/accounts/acct_1/alerts/alert_1/status",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("marks an alert in progress and refreshes the attention queue", async () => {
+    let getCount = 0;
+    const initialDetail = buildDetail({
+      alerts: [
+        {
+          id: "alert_1",
+          accountId: "acct_1",
+          title: "Implementation plan stalled",
+          category: "risk",
+          severity: "medium",
+          status: "open",
+          slaStatus: "at_risk",
+          source: "workflow",
+          evidence: ["Milestone completion slipped"],
+          suggestedAction: "Coordinate unblock with implementation lead",
+          createdAt: "2026-03-09T10:00:00.000Z",
+          updatedAt: "2026-03-10T08:00:00.000Z",
+        },
+      ],
+    });
+    const refreshedDetail = buildDetail({
+      alerts: [
+        {
+          id: "alert_1",
+          accountId: "acct_1",
+          title: "Implementation plan stalled",
+          category: "risk",
+          severity: "medium",
+          status: "in_progress",
+          slaStatus: "on_track",
+          source: "workflow",
+          evidence: ["Owner assigned and recovery plan in motion"],
+          suggestedAction: "Track weekly until the milestone is back on plan",
+          createdAt: "2026-03-09T10:00:00.000Z",
+          updatedAt: "2026-03-10T09:00:00.000Z",
+        },
+      ],
+    });
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/customer-success/accounts/acct_1" && (!init?.method || init.method === "GET")) {
+        getCount += 1;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => (getCount === 1 ? initialDetail : refreshedDetail),
+        } as Response;
+      }
+
+      if (url === "/api/customer-success/accounts/acct_1/alerts/alert_1/status" && init?.method === "POST") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: "alert_1" }),
+        } as Response;
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CustomerSuccessAccountWorkspace accountId="acct_1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Implementation plan stalled")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark In Progress" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Alert moved to in progress.")).toBeTruthy();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Medium • In Progress • On Track/)).toBeTruthy();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/customer-success/accounts/acct_1/alerts/alert_1/status",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("renders retention leading indicators in the health view", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => buildDetail(),
+      }))
+    );
+
+    render(<CustomerSuccessAccountWorkspace accountId="acct_1" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Acme Co" })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Health Details" }));
+
+    expect(screen.getByText("Retention Leading Indicators")).toBeTruthy();
+    expect(screen.getByText("Activity recency")).toBeTruthy();
+    expect(screen.getByText("5d since touch")).toBeTruthy();
+  });
+
   it("renders relationship intelligence from Coda and retention overlays", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({
       ok: true,
@@ -263,7 +647,8 @@ describe("CustomerSuccessAccountWorkspace", () => {
       expect(screen.getByText("Relationship Intelligence")).toBeTruthy();
     });
 
-    expect(screen.getByText("Unified provider links, Coda account metadata, and current retention posture.")).toBeTruthy();
+    expect(screen.getByText("Unified provider links, Arda and Coda account metadata, and current retention posture.")).toBeTruthy();
+    expect(screen.getByText("Arda")).toBeTruthy();
     expect(screen.getByText("Main Coda Doc")).toBeTruthy();
     expect(screen.getByText("Low recent activity")).toBeTruthy();
     expect(screen.getByText(/Customer Success and Implementation/)).toBeTruthy();

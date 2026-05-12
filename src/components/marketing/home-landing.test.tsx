@@ -8,10 +8,11 @@ describe("HomeLanding", () => {
 
     expect(
       screen.getByRole("heading", {
-        name: /stop starting\. start finishing revenue work\./i,
+        name: /make every business metric traceable\./i,
       })
     ).toBeTruthy();
     expect(screen.getAllByRole("link", { name: /access workspace/i }).length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: /see the flow/i })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /see the metric layer/i })).toBeTruthy();
+    expect(screen.getByText("Imladris")).toBeTruthy();
   });
 });

@@ -30,6 +30,7 @@ import type {
   CustomerSuccessEvent,
   CustomerSuccessHealth,
   CustomerSuccessHealthComponent,
+  CustomerSuccessLeadingIndicator,
   CustomerSuccessPortfolio,
   CustomerSuccessPortfolioRelationshipSummary,
   CustomerSuccessProviderLink,
@@ -290,15 +291,6 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
-function asNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim().length > 0) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
 function asBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
@@ -436,13 +428,12 @@ function providerSet(snapshot: CustomerSuccessAccountSnapshot): Set<CustomerExte
   return new Set(snapshot.externalProviders);
 }
 
-function getLatestTouch(snapshot: CustomerSuccessAccountSnapshot): Date | null {
+function getLatestActivity(snapshot: CustomerSuccessAccountSnapshot): Date | null {
   const candidates = [
     snapshot.updatedAt,
     ...snapshot.notes.map((note) => note.createdAt),
     ...snapshot.meetings.map((meeting) => meeting.startAt),
-    ...snapshot.outreach
-      .map((message) => message.sentAt ?? message.createdAt),
+    ...snapshot.outreach.map((message) => message.sentAt ?? message.createdAt),
     ...snapshot.tasks.map((task) => task.completedOn ?? task.updatedAt),
     ...snapshot.alerts.map((alert) => alert.updatedAt),
   ];
@@ -452,6 +443,19 @@ function getLatestTouch(snapshot: CustomerSuccessAccountSnapshot): Date | null {
   return candidates.reduce((latest, current) =>
     current.getTime() > latest.getTime() ? current : latest
   );
+}
+
+function getCustomerTouchDates(snapshot: CustomerSuccessAccountSnapshot): Date[] {
+  return [
+    ...snapshot.notes.map((note) => note.createdAt),
+    ...snapshot.meetings.map((meeting) => meeting.startAt),
+    ...snapshot.outreach.map((message) => message.sentAt ?? message.createdAt),
+  ].sort((a, b) => a.getTime() - b.getTime());
+}
+
+function getLatestCustomerTouch(snapshot: CustomerSuccessAccountSnapshot): Date | null {
+  const touchDates = getCustomerTouchDates(snapshot);
+  return touchDates[touchDates.length - 1] ?? null;
 }
 
 function buildStakeholders(
@@ -521,13 +525,41 @@ function buildComponent(input: {
   };
 }
 
+function buildLeadingIndicator(input: {
+  label: string;
+  score: number;
+  value: string;
+  evidence: string[];
+}): CustomerSuccessLeadingIndicator {
+  const score = clamp(round(input.score));
+  return {
+    label: input.label,
+    score,
+    status: mapScoreToStatus(score),
+    value: input.value,
+    evidence: input.evidence,
+  };
+}
+
+function maxGapInDays(dates: Date[], now: Date): number {
+  if (dates.length === 0) return 90;
+
+  let maxGap = daysBetween(dates[dates.length - 1], now);
+  for (let index = 1; index < dates.length; index += 1) {
+    maxGap = Math.max(maxGap, daysBetween(dates[index - 1], dates[index]));
+  }
+  return maxGap;
+}
+
 export function buildCustomerSuccessHealth(
   snapshot: CustomerSuccessAccountSnapshot,
   now: Date = new Date()
 ): CustomerSuccessHealth {
   const providers = providerSet(snapshot);
-  const latestTouch = getLatestTouch(snapshot);
-  const daysSinceTouch = latestTouch ? daysBetween(latestTouch, now) : 90;
+  const latestActivity = getLatestActivity(snapshot);
+  const touchDates = getCustomerTouchDates(snapshot);
+  const latestCustomerTouch = getLatestCustomerTouch(snapshot);
+  const daysSinceTouch = latestCustomerTouch ? daysBetween(latestCustomerTouch, now) : 90;
   const activePlan =
     snapshot.plans.find((plan) => plan.status === CustomerSuccessPlanStatus.ACTIVE) ??
     snapshot.plans[0] ??
@@ -542,8 +574,12 @@ export function buildCustomerSuccessHealth(
     const touchedAt = message.sentAt ?? message.createdAt;
     return daysBetween(touchedAt, now) <= 30;
   }).length;
-  const blockedMilestones =
-    activePlan?.milestones.filter((milestone) => milestone.status === "BLOCKED").length ?? 0;
+  const recentTouches30d = touchDates.filter((date) => daysBetween(date, now) <= 30);
+  const recentTouches90d = touchDates.filter((date) => daysBetween(date, now) <= 90);
+  const coveredTouchWindows90d = new Set(
+    recentTouches90d.map((date) => Math.min(2, Math.floor(daysBetween(date, now) / 30)))
+  ).size;
+  const maxTouchGapDays = maxGapInDays(recentTouches90d, now);
   const stakeholders = buildStakeholders(snapshot, now);
   const coveredStakeholders = stakeholders.filter((stakeholder) => stakeholder.coverageStatus === "covered").length;
   const hasChampion = stakeholders.some((stakeholder) =>
@@ -580,7 +616,7 @@ export function buildCustomerSuccessHealth(
       blockedMilestones > 0 ? `${blockedMilestones} plan milestones are blocked` : "No blocked success-plan milestones",
       providers.has(CustomerExternalProvider.CODA) ? "Coda signal available" : "No Coda reference connected",
     ],
-    updatedAt: latestTouch ?? snapshot.updatedAt,
+    updatedAt: latestActivity ?? snapshot.updatedAt,
   });
 
   const engagement = buildComponent({
@@ -598,13 +634,13 @@ export function buildCustomerSuccessHealth(
           ? "declining"
           : "stable",
     evidence: [
-      latestTouch ? `Last customer touch ${daysSinceTouch} days ago` : "No recent customer touch found",
+      latestCustomerTouch ? `Last customer touch ${daysSinceTouch} days ago` : "No recent customer touch found",
       `${recentMeetings} meetings, ${recentNotes} notes, ${recentOutreach} outreach messages in the last 30 days`,
       providers.has(CustomerExternalProvider.SLACK) || providers.has(CustomerExternalProvider.GOOGLE_WORKSPACE)
         ? "Workspace collaboration signals available"
         : "Workspace collaboration signals missing",
     ],
-    updatedAt: latestTouch ?? snapshot.updatedAt,
+    updatedAt: latestCustomerTouch ?? latestActivity ?? snapshot.updatedAt,
   });
 
   const relationship = buildComponent({
@@ -627,7 +663,7 @@ export function buildCustomerSuccessHealth(
       snapshot.ownerName ? `Customer owner: ${snapshot.ownerName}` : "No owner assigned",
       hasChampion ? "Champion-level stakeholder present" : "Champion coverage missing",
     ],
-    updatedAt: latestTouch ?? snapshot.updatedAt,
+    updatedAt: latestCustomerTouch ?? latestActivity ?? snapshot.updatedAt,
   });
 
   const support = buildComponent({
@@ -648,7 +684,7 @@ export function buildCustomerSuccessHealth(
       `${supportAlerts} support or health alerts in queue`,
       supportAlerts > 0 ? "Support or health alerts need attention" : "Support load is within threshold",
     ],
-    updatedAt: latestTouch ?? snapshot.updatedAt,
+    updatedAt: latestActivity ?? snapshot.updatedAt,
   });
 
   const commercial = buildComponent({
@@ -672,8 +708,78 @@ export function buildCustomerSuccessHealth(
       renewalDays === null ? "Renewal date unavailable" : `Renewal in ${renewalDays} days`,
       snapshot.expansionPotential ? `Expansion potential ${snapshot.expansionPotential}` : "Expansion potential not scored",
     ],
-    updatedAt: latestTouch ?? snapshot.updatedAt,
+    updatedAt: latestActivity ?? snapshot.updatedAt,
   });
+
+  const leadingIndicators = {
+    recency: buildLeadingIndicator({
+      label: "Activity recency",
+      score: 100 - Math.min(daysSinceTouch * 3.5, 88),
+      value: latestCustomerTouch ? `${daysSinceTouch}d since touch` : "No recent touch",
+      evidence: [
+        latestCustomerTouch ? `Most recent meeting, note, or outreach was ${daysSinceTouch} days ago` : "No meeting, note, or outreach found",
+        latestActivity && !latestCustomerTouch ? "Recent internal work exists, but no customer-facing touch was detected" : "Customer-facing touch signals are available",
+      ],
+    }),
+    cadence: buildLeadingIndicator({
+      label: "Touch cadence",
+      score:
+        22 +
+        Math.min(recentTouches30d.length * 16, 48) +
+        Math.min(recentMeetings * 8, 16) +
+        Math.min(recentOutreach * 6, 12),
+      value: `${recentTouches30d.length} touches / 30d`,
+      evidence: [
+        `${recentMeetings} meetings, ${recentNotes} notes, ${recentOutreach} outreach messages in the last 30 days`,
+        recentTouches30d.length >= 4 ? "Healthy follow-up rhythm this month" : "Follow-up rhythm is still light this month",
+      ],
+    }),
+    consistency: buildLeadingIndicator({
+      label: "Touch consistency",
+      score:
+        18 +
+        coveredTouchWindows90d * 20 +
+        Math.min(recentTouches90d.length * 5, 20) -
+        Math.min(Math.max(maxTouchGapDays - 14, 0) * 1.5, 26),
+      value: `${coveredTouchWindows90d}/3 months active`,
+      evidence: [
+        `${recentTouches90d.length} customer touches recorded in the last 90 days`,
+        maxTouchGapDays > 21 ? `Largest gap between touches is ${maxTouchGapDays} days` : "Touch gaps stayed within a 3-week window",
+      ],
+    }),
+    depth: buildLeadingIndicator({
+      label: "Execution depth",
+      score:
+        26 +
+        milestoneRatio * 36 +
+        Math.min(completedTasks30d * 10, 24) +
+        (activePlan ? 8 : 0) +
+        (providers.has(CustomerExternalProvider.CODA) ? 6 : 0) -
+        Math.min(openTasks * 4, 20),
+      value:
+        totalMilestones > 0
+          ? `${completedMilestones}/${totalMilestones} milestones done`
+          : `${completedTasks30d} tasks done / 30d`,
+      evidence: [
+        activePlan ? `Active success plan: ${activePlan.name}` : "No active success plan linked",
+        `${completedTasks30d} tasks completed and ${openTasks} open tasks in the last/current 30-day window`,
+      ],
+    }),
+    breadth: buildLeadingIndicator({
+      label: "Relationship breadth",
+      score:
+        24 +
+        Math.min(stakeholders.length * 8, 24) +
+        Math.min(coveredStakeholders * 10, 30) +
+        (hasChampion ? 10 : 0) +
+        (coveredStakeholders >= 2 ? 8 : 0),
+      value: `${coveredStakeholders}/${stakeholders.length || 0} stakeholders covered`,
+      evidence: [
+        `${stakeholders.length} stakeholders mapped, ${coveredStakeholders} touched in the last 30 days`,
+        hasChampion ? "Champion-level contact is present" : "Champion-level contact is missing",
+      ],
+    }),
+  } satisfies CustomerSuccessHealth["leadingIndicators"];
 
   const score =
     adoption.weightedScore +
@@ -705,7 +811,7 @@ export function buildCustomerSuccessHealth(
     grade: mapScoreToGrade(roundedScore),
     trend: mapTrendScore(trendValue),
     confidence,
-    updatedAt: (latestTouch ?? snapshot.updatedAt).toISOString(),
+    updatedAt: (latestActivity ?? snapshot.updatedAt).toISOString(),
     components: {
       adoption,
       engagement,
@@ -713,6 +819,7 @@ export function buildCustomerSuccessHealth(
       support,
       commercial,
     },
+    leadingIndicators,
   };
 }
 
@@ -731,6 +838,25 @@ function alertPriority(alert: CustomerSuccessAlert): number {
   }[alert.slaStatus];
 
   return severityRank * 10 + slaRank;
+}
+
+function pickLeadingIndicatorAction(health: CustomerSuccessHealth): string {
+  const weakestIndicator = Object.entries(health.leadingIndicators).sort(([, left], [, right]) => left.score - right.score)[0]?.[0];
+
+  switch (weakestIndicator) {
+    case "recency":
+      return "Re-establish direct customer contact this week.";
+    case "cadence":
+      return "Increase touch cadence over the next 30 days.";
+    case "consistency":
+      return "Set a steadier 30/60/90-day follow-up rhythm.";
+    case "depth":
+      return "Advance the success plan and close open execution items.";
+    case "breadth":
+      return "Expand coverage beyond the current champion.";
+    default:
+      return "Review account workspace";
+  }
 }
 
 function buildAlert(snapshot: CustomerSuccessAccountSnapshot, alert: CustomerSuccessAccountSnapshot["alerts"][number]): CustomerSuccessAlert {
@@ -917,10 +1043,88 @@ function buildProviderLinks(snapshot: CustomerSuccessAccountSnapshot): CustomerS
     }));
 }
 
+function mergeProviderLinks(
+  baseLinks: CustomerSuccessProviderLink[],
+  derivedLinks: CustomerSuccessProviderLink[]
+): CustomerSuccessProviderLink[] {
+  const merged = new Map<string, CustomerSuccessProviderLink>();
+
+  for (const link of [...baseLinks, ...derivedLinks]) {
+    merged.set(
+      `${link.provider}:${link.externalObjectType}:${link.externalId}`,
+      link
+    );
+  }
+
+  return [...merged.values()].sort((left, right) => {
+    if (left.provider !== right.provider) return left.provider.localeCompare(right.provider);
+    if (left.externalObjectType !== right.externalObjectType) {
+      return left.externalObjectType.localeCompare(right.externalObjectType);
+    }
+    return left.externalId.localeCompare(right.externalId);
+  });
+}
+
+function buildDerivedCodaProviderLinks(latestArdaPayload: Record<string, unknown>): CustomerSuccessProviderLink[] {
+  const links: CustomerSuccessProviderLink[] = [];
+
+  const mainDocId = asString(latestArdaPayload.mainCodaDocId);
+  if (mainDocId) {
+    links.push({
+      provider: CustomerExternalProvider.CODA,
+      externalObjectType: "doc",
+      externalId: mainDocId,
+      label: "Customer Success and Implementation",
+      isPrimary: true,
+      url: `https://coda.io/d/_d${encodeURIComponent(mainDocId)}`,
+    });
+  }
+
+  const orderArchiveDocumentId = asString(latestArdaPayload.orderArchiveDocumentId);
+  if (orderArchiveDocumentId) {
+    links.push({
+      provider: CustomerExternalProvider.CODA,
+      externalObjectType: "order_archive_doc",
+      externalId: orderArchiveDocumentId,
+      label: "Master Order Archive",
+      isPrimary: !mainDocId,
+      url: `https://coda.io/d/_d${encodeURIComponent(orderArchiveDocumentId)}`,
+    });
+  }
+
+  return links;
+}
+
+function countConnectedSystems(input: {
+  providers: Iterable<CustomerExternalProvider>;
+  coverage?: {
+    arda?: boolean;
+    coda?: boolean;
+    stripe?: boolean;
+    hubspot?: boolean;
+    pylon?: boolean;
+  } | null;
+}): number {
+  const systems = new Set<string>();
+
+  for (const provider of input.providers) {
+    systems.add(provider.toLowerCase());
+  }
+
+  if (input.coverage?.arda) systems.add("arda");
+  if (input.coverage?.coda) systems.add("coda");
+  if (input.coverage?.stripe) systems.add("stripe");
+  if (input.coverage?.hubspot) systems.add("hubspot");
+  if (input.coverage?.pylon) systems.add("pylon");
+
+  return systems.size;
+}
+
 export function buildCustomerSuccessAccountDetailFromSnapshot(
   snapshot: CustomerSuccessAccountSnapshot,
   now: Date = new Date()
 ): CustomerSuccessAccountDetail {
+  const providerLinks = buildProviderLinks(snapshot);
   const health = buildCustomerSuccessHealth(snapshot, now);
   const timeline = buildEvents(snapshot);
   const stakeholders = buildStakeholders(snapshot, now);
@@ -967,7 +1171,8 @@ export function buildCustomerSuccessAccountDetailFromSnapshot(
       expansionPotential: snapshot.expansionPotential ?? undefined,
     },
     relationshipIntelligence: {
-      providers: buildProviderLinks(snapshot),
+      connectedSystems: countConnectedSystems({ providers: providerLinks.map((provider) => provider.provider) }),
+      providers: providerLinks,
     },
   };
 }
@@ -975,12 +1180,12 @@ export function buildCustomerSuccessAccountDetailFromSnapshot(
 export function buildCustomerSuccessPortfolioFromSnapshots(
   snapshots: CustomerSuccessAccountSnapshot[],
   now: Date = new Date(),
-  relationshipMap: Map<string, Omit<CustomerSuccessPortfolioRelationshipSummary, "connectedSystems">> = new Map()
+  relationshipMap: Map<string, CustomerSuccessPortfolioRelationshipSummary> = new Map()
 ): CustomerSuccessPortfolio {
   const generatedAt = now.toISOString();
   const accounts = snapshots.map((snapshot) => {
     const health = buildCustomerSuccessHealth(snapshot, now);
-    const lastActivityAt = getLatestTouch(snapshot)?.toISOString();
+    const lastActivityAt = getLatestActivity(snapshot)?.toISOString();
     const openAlertCount = snapshot.alerts.filter((alert) => isAlertOpen(alert.status)).length;
     const activeUsers30d = buildStakeholders(snapshot, now).filter(
       (stakeholder) => stakeholder.coverageStatus === "covered"
@@ -999,7 +1204,9 @@ export function buildCustomerSuccessPortfolioFromSnapshots(
       renewalDate: snapshot.renewalDate?.toISOString(),
       openAlertCount,
       relationship: {
-        connectedSystems: snapshot.externalRefs.length,
+        connectedSystems:
+          relationship?.connectedSystems ??
+          countConnectedSystems({ providers: snapshot.externalProviders }),
         retentionStatus: relationship?.retentionStatus,
         primaryLirPassed: relationship?.primaryLirPassed,
         implementationStage: relationship?.implementationStage,
@@ -1043,9 +1250,8 @@ export function buildCustomerSuccessPortfolioFromSnapshots(
       relationship: account.relationship,
       nextAction:
         alerts.find((alert) => alert.accountId === account.accountId && alert.status !== "resolved")?.suggestedAction ??
-        pickRecommendedTemplates(
-          snapshots.find((snapshot) => snapshot.id === account.accountId) ?? snapshots[0]
-        )[0],
+        pickLeadingIndicatorAction(account.health) ??
+        pickRecommendedTemplates(snapshots.find((snapshot) => snapshot.id === account.accountId) ?? snapshots[0])[0],
     }));
 
   const avgHealthScore =
@@ -1294,14 +1500,12 @@ function buildDerivedCoverage(
     stripe: seen.has("stripe"),
     hubspot: seen.has("hubspot"),
     pylon: seen.has("pylon"),
-    ardaActivityCollectionAvailable: undefined,
-    ardaUserDetailsFallback: undefined,
     missingSources,
   };
 }
 
 function buildPortfolioRelationshipSummary(input: {
-  connectedSystems: number;
+  providers?: Iterable<CustomerExternalProvider>;
   retentionCurrent?: {
     status: string;
     primaryLirPassed: boolean;
@@ -1310,21 +1514,24 @@ function buildPortfolioRelationshipSummary(input: {
   } | null;
 }): CustomerSuccessPortfolioRelationshipSummary {
   const detailData = input.retentionCurrent ? asRecord(input.retentionCurrent.detailData) : {};
-  const adoptionData = asRecord(detailData.adoptionSummary);
   const coverageData =
     input.retentionCurrent?.monthFact ? asRecord(input.retentionCurrent.monthFact.coverageData) : {};
+  const coverage = {
+    arda: asBoolean(coverageData.arda) ?? false,
+    coda: asBoolean(coverageData.coda) ?? false,
+    stripe: asBoolean(coverageData.stripe) ?? false,
+    hubspot: asBoolean(coverageData.hubspot) ?? false,
+    pylon: asBoolean(coverageData.pylon) ?? false,
+  };
 
   return {
-    connectedSystems: input.connectedSystems,
+    connectedSystems: countConnectedSystems({
+      providers: input.providers ?? [],
+      coverage,
+    }),
     retentionStatus: input.retentionCurrent ? humanizeRetentionStatus(input.retentionCurrent.status) : undefined,
     primaryLirPassed: input.retentionCurrent?.primaryLirPassed ?? undefined,
     implementationStage: asString(detailData.implementationStage) ?? undefined,
-    ardaAdoptionCountsSource:
-      (asString(adoptionData.ardaAdoptionCountsSource) as
-        | "ARDA_ACTIVITY"
-        | "ARDA_USER_DETAILS"
-        | "NONE"
-        | undefined) ?? undefined,
     missingSources: asArray<string>(coverageData.missingSources),
   };
 }
@@ -1368,6 +1575,7 @@ async function buildRelationshipIntelligence(
 
   const providers = buildProviderLinks(snapshot);
   const latestArdaTenant = sourceRows.find((row) => row.source === "ARDA" && row.objectType === "tenant") ?? null;
+  const ardaRows = sourceRows.filter((row) => row.source === "ARDA");
   const codaOrderRows = sourceRows.filter((row) => row.source === "CODA");
   const latestCodaOrder = codaOrderRows
     .map((row) => row.occurredAt ?? row.sourceUpdatedAt)
@@ -1376,7 +1584,6 @@ async function buildRelationshipIntelligence(
 
   const latestArdaPayload = latestArdaTenant ? asRecord(latestArdaTenant.payload) : {};
   const retentionDetail = retentionCurrent ? asRecord(retentionCurrent.detailData) : {};
-  const retentionAdoption = asRecord(retentionDetail.adoptionSummary);
   const retentionCoverageRaw =
     retentionCurrent && retentionCurrent.monthFact ? asRecord(retentionCurrent.monthFact.coverageData) : null;
   const coverage =
@@ -1387,14 +1594,18 @@ async function buildRelationshipIntelligence(
           stripe: Boolean(asBoolean(retentionCoverageRaw.stripe)),
           hubspot: Boolean(asBoolean(retentionCoverageRaw.hubspot)),
           pylon: Boolean(asBoolean(retentionCoverageRaw.pylon)),
-          ardaActivityCollectionAvailable: asBoolean(retentionCoverageRaw.ardaActivityCollectionAvailable) ?? undefined,
-          ardaUserDetailsFallback: asBoolean(retentionCoverageRaw.ardaUserDetailsFallback) ?? undefined,
           missingSources: asArray<string>(retentionCoverageRaw.missingSources),
         }
       : buildDerivedCoverage(sourceRows);
+  const mergedProviderLinks = mergeProviderLinks(providers, buildDerivedCodaProviderLinks(latestArdaPayload));
+  const connectedSystems = countConnectedSystems({
+    providers: mergedProviderLinks.map((provider) => provider.provider),
+    coverage,
+  });
 
   return {
-    providers,
+    connectedSystems,
+    providers: mergedProviderLinks,
     retention: retentionCurrent
       ? {
           status: humanizeRetentionStatus(retentionCurrent.status),
@@ -1411,26 +1622,23 @@ async function buildRelationshipIntelligence(
           firstOrderDate: asString(retentionDetail.firstOrderDate) ?? undefined,
           explanation: asString(retentionDetail.explanation) ?? undefined,
           reasonCodes: parseRelationshipReasons(retentionCurrent.reasonCodes),
-          ardaAdoptionCountsSource:
-            asString(retentionAdoption.ardaAdoptionCountsSource) as
-              | "ARDA_ACTIVITY"
-              | "ARDA_USER_DETAILS"
-              | "NONE"
-              | undefined,
-          ardaDirectActivityCounts: {
-            orders: asNumber(asRecord(retentionAdoption.ardaDirectActivityCounts).orders) ?? 0,
-            cards: asNumber(asRecord(retentionAdoption.ardaDirectActivityCounts).cards) ?? 0,
-            items: asNumber(asRecord(retentionAdoption.ardaDirectActivityCounts).items) ?? 0,
-          },
-          ardaUserDetailsCounts: {
-            orders: asNumber(asRecord(retentionAdoption.ardaUserDetailsCounts).orders) ?? 0,
-            cards: asNumber(asRecord(retentionAdoption.ardaUserDetailsCounts).cards) ?? 0,
-            items: asNumber(asRecord(retentionAdoption.ardaUserDetailsCounts).items) ?? 0,
-          },
           coverage,
           detailUrl: `/analytics/retention/${snapshot.id}`,
         }
       : undefined,
+    arda:
+      latestArdaTenant || ardaRows.length > 0
+        ? {
+            tenantId: asString(latestArdaPayload.ardaTenantId) ?? undefined,
+            configuredTenantId: asString(latestArdaPayload.configuredTenantId) ?? undefined,
+            tenantName: asString(latestArdaPayload.tenantName) ?? undefined,
+            companyName: asString(latestArdaPayload.companyName) ?? undefined,
+            customerStatus: asString(latestArdaPayload.customerStatus) ?? undefined,
+            configuredHealth: asString(latestArdaPayload.health) ?? undefined,
+            implementationStage: asString(latestArdaPayload.implementationStage) ?? undefined,
+            sourceRecordCount: ardaRows.length,
+          }
+        : undefined,
     coda:
       latestArdaTenant || codaOrderRows.length > 0
         ? {
@@ -1480,19 +1688,14 @@ export async function getCustomerSuccessPortfolio(
     ])
   );
 
-  const relationshipMap = new Map<string, Omit<CustomerSuccessPortfolioRelationshipSummary, "connectedSystems">>();
+  const relationshipMap = new Map<string, CustomerSuccessPortfolioRelationshipSummary>();
   retentionCurrents.forEach((current) => {
     const summary = buildPortfolioRelationshipSummary({
-      connectedSystems: 0,
+      providers:
+        snapshots.find((snapshot) => snapshot.id === current.customerRecordId)?.externalProviders ?? [],
       retentionCurrent: current,
     });
-    relationshipMap.set(current.customerRecordId, {
-      retentionStatus: summary.retentionStatus,
-      primaryLirPassed: summary.primaryLirPassed,
-      implementationStage: summary.implementationStage,
-      ardaAdoptionCountsSource: summary.ardaAdoptionCountsSource,
-      missingSources: summary.missingSources,
-    });
+    relationshipMap.set(current.customerRecordId, summary);
   });
 
   const portfolio = buildCustomerSuccessPortfolioFromSnapshots(snapshots, new Date(), relationshipMap);

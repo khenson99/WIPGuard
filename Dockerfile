@@ -51,8 +51,8 @@ RUN mkdir -p /app/.next/cache && chown -R nextjs:nodejs /app/.next
 COPY --from=builder /app/migrate.cjs ./migrate.cjs
 # Copy ops scripts used by runbooks (e.g. OAuth scope backfills)
 COPY --from=builder /app/scripts/backfill-google-oauth-scope-aliases.cjs ./scripts/backfill-google-oauth-scope-aliases.cjs
-# Copy entrypoint script
-COPY docker-entrypoint.sh ./docker-entrypoint.sh
+# Copy entrypoint script from the already materialized build context.
+COPY --from=builder /app/docker-entrypoint.sh ./docker-entrypoint.sh
 # Verify migrate.cjs exists
 RUN ls -la /app/migrate.cjs /app/docker-entrypoint.sh
 
@@ -61,6 +61,6 @@ USER nextjs
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:3000/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:3000/api/health/live').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
 
 ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]

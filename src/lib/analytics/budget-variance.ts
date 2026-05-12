@@ -1,9 +1,6 @@
-// Budget-vs-actual variance analysis — computes actuals or estimated actuals
-// per budget line item from Mercury cash-flow data.
-//
-// When Mercury transaction metadata has been classified into category totals,
-// line items use that direct category breakdown. Otherwise the module falls
-// back to planned budget mix and then legacy SaaS-standard ratios.
+// Budget-vs-actual variance analysis — computes actuals per budget line item
+// using Mercury transactions when available, with aggregate outflow ratios as a
+// fallback for older snapshots.
 //
 // This module is pure computation — no database calls, no side effects.
 
@@ -12,6 +9,7 @@ import type {
   BudgetLineItemData,
   ExpenseCategory,
   MercuryData,
+  MercuryTransactionData,
 } from "@/lib/analytics/types";
 import { computeVariance } from "@/lib/analytics/finance-utils";
 
@@ -27,6 +25,107 @@ const CATEGORY_RATIOS: Record<ExpenseCategory, number> = {
   infrastructure: 0.10,
   ops: 0.15,
   other: 0, // "other" is a catch-all not covered by standard ratios
+};
+
+const EXPENSE_CATEGORIES: ExpenseCategory[] = [
+  "cogs",
+  "payroll",
+  "marketing",
+  "infrastructure",
+  "ops",
+  "other",
+];
+
+const CATEGORY_KEYWORDS: Record<ExpenseCategory, string[]> = {
+  payroll: [
+    "payroll",
+    "salary",
+    "wage",
+    "gusto",
+    "rippling",
+    "adp",
+    "justworks",
+    "deel",
+    "remote.com",
+    "benefit",
+    "health insurance",
+    "dental",
+    "workers comp",
+    "payroll tax",
+  ],
+  marketing: [
+    "marketing",
+    "advertising",
+    "google ads",
+    "adwords",
+    "facebook ads",
+    "meta ads",
+    "linkedin ads",
+    "reddit ads",
+    "tiktok ads",
+    "x ads",
+    "twitter ads",
+    "semrush",
+    "sponsorship",
+    "conference booth",
+    "campaign",
+  ],
+  infrastructure: [
+    "aws",
+    "amazon web services",
+    "google cloud",
+    "gcp",
+    "azure",
+    "vercel",
+    "railway",
+    "render",
+    "cloudflare",
+    "datadog",
+    "sentry",
+    "supabase",
+    "neon",
+    "planetscale",
+    "github",
+    "twilio",
+    "domain",
+    "dns",
+  ],
+  cogs: [
+    "stripe fee",
+    "payment processing",
+    "processor fee",
+    "fulfillment",
+    "hosting usage",
+    "openai api",
+    "anthropic",
+    "pinecone",
+    "replicate",
+    "customer support",
+    "support seat",
+  ],
+  ops: [
+    "rent",
+    "office",
+    "legal",
+    "attorney",
+    "accounting",
+    "bookkeeping",
+    "insurance",
+    "tax",
+    "bank fee",
+    "mercury fee",
+    "travel",
+    "airline",
+    "hotel",
+    "meal",
+    "restaurant",
+    "notion",
+    "slack",
+    "zoom",
+    "google workspace",
+    "quickbooks",
+  ],
+  other: [],
 };
 
 // ---------------------------------------------------------------------------
@@ -73,21 +172,107 @@ function estimateOutflowMultiplier(
   return Math.max(days / baselineDays, 0);
 }
 
+function txSearchText(tx: MercuryTransactionData): string {
+  return [
+    tx.mercuryCategory,
+    tx.kind,
+    tx.description,
+    tx.counterpartyName,
+    tx.bankDescription,
+    tx.note,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function transactionInBudgetRange(
+  tx: MercuryTransactionData,
+  budget: BudgetData | null,
+): boolean {
+  if (!budget || !tx.postedAt) return true;
+  const postedAt = Date.parse(tx.postedAt);
+  const start = Date.parse(budget.startDate);
+  const end = Date.parse(budget.endDate);
+  if (!Number.isFinite(postedAt) || !Number.isFinite(start) || !Number.isFinite(end)) {
+    return true;
+  }
+  return postedAt >= start && postedAt <= end;
+}
+
+export function categorizeMercuryTransaction(
+  tx: MercuryTransactionData,
+): ExpenseCategory {
+  const text = txSearchText(tx);
+  for (const category of EXPENSE_CATEGORIES) {
+    if (category === "other") continue;
+    if (CATEGORY_KEYWORDS[category].some((keyword) => text.includes(keyword))) {
+      return category;
+    }
+  }
+  return "other";
+}
+
+function hasTransactionDetail(mercury: MercuryData | null): boolean {
+  return Boolean(mercury?.transactions && mercury.transactions.length > 0);
+}
+
+function actualsFromTransactions(
+  mercury: MercuryData,
+  budget: BudgetData | null,
+): Record<ExpenseCategory, number> {
+  const totals = Object.fromEntries(
+    EXPENSE_CATEGORIES.map((category) => [category, 0]),
+  ) as Record<ExpenseCategory, number>;
+
+  for (const tx of mercury.transactions ?? []) {
+    if (typeof tx.amount !== "number" || !Number.isFinite(tx.amount) || tx.amount >= 0) {
+      continue;
+    }
+    if (!transactionInBudgetRange(tx, budget)) continue;
+    const category = categorizeMercuryTransaction(tx);
+    totals[category] = round2(totals[category] + Math.abs(tx.amount));
+  }
+
+  return totals;
+}
+
+function actualsFromRatios(totalOutflows: number): Record<ExpenseCategory, number> {
+  const totals = Object.fromEntries(
+    EXPENSE_CATEGORIES.map((category) => [category, 0]),
+  ) as Record<ExpenseCategory, number>;
+  let knownCategoryActualsSum = 0;
+
+  for (const category of EXPENSE_CATEGORIES) {
+    if (category === "other") continue;
+    const actualAmount = round2(totalOutflows * CATEGORY_RATIOS[category]);
+    totals[category] = actualAmount;
+    knownCategoryActualsSum += actualAmount;
+  }
+
+  totals.other = round2(Math.max(totalOutflows - knownCategoryActualsSum, 0));
+  return totals;
+}
+
+function actualsByCategory(
+  mercury: MercuryData,
+  budget: BudgetData | null,
+): Record<ExpenseCategory, number> {
+  if (hasTransactionDetail(mercury)) {
+    return actualsFromTransactions(mercury, budget);
+  }
+  const totalOutflows = mercury.cashFlow.outflows30d * (budget ? estimateOutflowMultiplier(budget) : 1);
+  return actualsFromRatios(totalOutflows);
+}
+
 // ---------------------------------------------------------------------------
 // computeBudgetActuals
 // ---------------------------------------------------------------------------
 
 /**
- * Estimate actual amounts for each budget line item using Mercury expense data.
- *
- * Preference order:
- * 1. Classified Mercury transaction totals per category.
- * 2. Planned budget mix applied to observed total outflows scaled from the
- *    Mercury period to the budget period.
- * 3. Legacy SaaS-standard category ratios.
- *
- * Planned-share allocation is derived from:
- *   `observedOutflowTotal * outflowMultiplier * plannedAmount / totalPlanned`
+ * Compute actual amounts for each budget line item from Mercury transactions
+ * when snapshots include them. Older snapshots fall back to Mercury's total
+ * outflows and the SaaS-standard category ratios.
  *
  * When `mercury` is null (disconnected / unavailable), all actuals fields
  * are returned as null.
@@ -105,28 +290,10 @@ function computeBudgetActualsCore(
     }));
   }
 
-  const observedPeriodDays = mercury.cashFlow.observedPeriodDays ?? 30;
-  const observedOutflowTotal = mercury.cashFlow.observedOutflowTotal ?? mercury.cashFlow.outflows30d;
-  const totalOutflows =
-    observedOutflowTotal * estimateOutflowMultiplier(budget, observedPeriodDays);
-  const totalPlanned = budget.lineItems.reduce(
-    (sum, item) => sum + Math.max(item.plannedAmount, 0),
-    0,
-  );
-  const transactionBreakdown =
-    mercury.cashFlow.observedExpenseBreakdown ?? mercury.cashFlow.expenseBreakdown30d;
-  const transactionBreakdownTotal = transactionBreakdown
-    ? Object.values(transactionBreakdown).reduce((sum, value) => sum + value, 0)
-    : 0;
+  const totals = actualsByCategory(mercury, budget);
 
   return budget.lineItems.map((item) => {
-    const actualAmount = transactionBreakdownTotal > 0
-      ? round2((transactionBreakdown?.[item.category] ?? 0) * estimateOutflowMultiplier(budget, observedPeriodDays))
-      : round2(
-          totalOutflows * (totalPlanned > 0
-            ? Math.max(item.plannedAmount, 0) / totalPlanned
-            : CATEGORY_RATIOS[item.category])
-        );
+    const actualAmount = round2(totals[item.category] ?? 0);
     const { variance, variancePct } = computeVariance(item.plannedAmount, actualAmount);
     return {
       ...item,
@@ -231,6 +398,15 @@ export const EXPENSE_LABEL_RATIOS: Record<string, number> = {
   "General & Administrative": 0.15,
 };
 
+const LABEL_TO_CATEGORY: Record<string, ExpenseCategory> = {
+  "Cost of Goods Sold": "cogs",
+  "Payroll & Benefits": "payroll",
+  "Sales & Marketing": "marketing",
+  "Infrastructure & Hosting": "infrastructure",
+  "General & Administrative": "ops",
+  Other: "other",
+};
+
 const DEFAULT_LABELS = Object.keys(EXPENSE_LABEL_RATIOS);
 
 /** Determine status from variancePct using a 10% threshold. */
@@ -245,7 +421,9 @@ function toBudgetActualItems(
   mercury: MercuryData | null,
   budgetAmounts?: Record<string, number>,
 ): BudgetActualItem[] {
-  const totalOutflows = mercury?.cashFlow.outflows30d ?? 0;
+  const totals = mercury
+    ? actualsByCategory(mercury, null)
+    : actualsFromRatios(0);
 
   // When explicit budgets are provided, treat them as overrides. We still emit
   // the default label set so partially-specified budgets fall back to derived
@@ -255,11 +433,13 @@ function toBudgetActualItems(
         ...DEFAULT_LABELS,
         ...Object.keys(budgetAmounts).filter((label) => !DEFAULT_LABELS.includes(label)),
       ]
-    : DEFAULT_LABELS;
+    : hasTransactionDetail(mercury) && totals.other > 0
+      ? [...DEFAULT_LABELS, "Other"]
+      : DEFAULT_LABELS;
 
   const items: BudgetActualItem[] = labels.map((label) => {
-    const ratio = EXPENSE_LABEL_RATIOS[label] ?? 0;
-    const actual = round2(totalOutflows * ratio);
+    const category = LABEL_TO_CATEGORY[label] ?? "other";
+    const actual = round2(totals[category] ?? 0);
     const planned = budgetAmounts?.[label] ?? round2(actual * 1.1);
     const variance = round2(actual - planned);
     const variancePct = planned === 0 ? (actual === 0 ? 0 : 100) : round2((variance / planned) * 100);

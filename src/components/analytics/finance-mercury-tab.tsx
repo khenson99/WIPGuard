@@ -55,9 +55,37 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
     );
   }
 
-  const { accounts, cashFlow } = mercury;
+  const { accounts } = mercury;
+  const mercuryMetrics = data.metrics?.finance.mercury ?? null;
 
-  if (accounts.length === 0 && cashFlow.totalBalance === 0) {
+  if (!mercuryMetrics) {
+    return (
+      <FinanceDataEmptyState
+        title="Mercury finance metrics are unavailable"
+        message="The canonical finance metrics layer was not included in this analytics payload."
+        reasons={reasons}
+        reconnectHref="/settings?tab=integrations"
+      />
+    );
+  }
+
+  const totalBalance = mercuryMetrics.totalBalance;
+  const bankCash = mercuryMetrics.bankCash ?? accounts
+    .filter((account) => account.type.toLowerCase() !== "treasury")
+    .reduce((sum, account) => sum + account.balance, 0);
+  const treasuryCash = mercuryMetrics.treasuryCash ?? accounts
+    .filter((account) => account.type.toLowerCase() === "treasury")
+    .reduce((sum, account) => sum + account.balance, 0);
+  const runway = mercuryMetrics.runwayMonths;
+  const netCashFlow = mercuryMetrics.netCashFlow30d;
+  const inflows = mercuryMetrics.inflows30d;
+  const outflows = mercuryMetrics.outflows30d;
+  const burnRate = mercuryMetrics.burnRate;
+  const totalBalanceSubtitle = treasuryCash > 0
+    ? `${fmt$(bankCash)} bank · ${fmt$(treasuryCash)} Treasury`
+    : undefined;
+
+  if (accounts.length === 0 && totalBalance === 0) {
     return (
       <FinanceDataEmptyState
         title="No Mercury account data found"
@@ -70,54 +98,54 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
 
   // ── Alerts ──
   const alerts: { severity: "critical" | "warning" | "info"; title: string; description: string }[] = [];
-  if (cashFlow.runway > 0 && cashFlow.runway < 6) {
+  if (runway > 0 && runway < 6) {
     alerts.push({
       severity: "critical",
-      title: `Runway at ${fmtRunway(cashFlow.runway)}`,
+      title: `Runway at ${fmtRunway(runway)}`,
       description: "Less than 6 months of runway remaining. Urgently review net burn, cut non-essential spend, and accelerate revenue.",
     });
-  } else if (cashFlow.runway > 0 && cashFlow.runway < 12) {
+  } else if (runway > 0 && runway < 12) {
     alerts.push({
       severity: "warning",
-      title: `Runway at ${fmtRunway(cashFlow.runway)}`,
+      title: `Runway at ${fmtRunway(runway)}`,
       description: "Less than 12 months of runway. Monitor net burn closely and consider fundraising timeline.",
     });
   }
-  if (cashFlow.netCashFlow < 0) {
+  if (netCashFlow < 0) {
     alerts.push({
       severity: "warning",
-      title: `Negative cash flow: ${fmt$(Math.abs(cashFlow.netCashFlow))}`,
+      title: `Negative cash flow: ${fmt$(Math.abs(netCashFlow))}`,
       description: "Outflows exceed inflows over the last 30 days. Review large expenses and ensure revenue collection is on track.",
     });
   }
-  if (cashFlow.burnRate > cashFlow.inflows30d && cashFlow.inflows30d > 0) {
+  if (burnRate > inflows && inflows > 0) {
     alerts.push({
       severity: "warning",
       title: "Burn rate exceeds inflows",
-      description: `Monthly burn of ${fmt$(cashFlow.burnRate)} exceeds ${fmt$(cashFlow.inflows30d)} in inflows. Operating at a deficit.`,
+      description: `Monthly burn of ${fmt$(burnRate)} exceeds ${fmt$(inflows)} in inflows. Operating at a deficit.`,
     });
   }
 
   // ── Insights ──
   const insights: { title: string; insight: string; action?: string; severity: "critical" | "warning" | "info" | "success" }[] = [];
-  if (cashFlow.netCashFlow > 0) {
+  if (netCashFlow > 0) {
     insights.push({
       title: "Positive Cash Flow",
-      insight: `Net positive cash flow of ${fmt$(cashFlow.netCashFlow)} over the last 30 days. Inflows are outpacing outflows.`,
+      insight: `Net positive cash flow of ${fmt$(netCashFlow)} over the last 30 days. Inflows are outpacing outflows.`,
       severity: "success",
     });
   }
-  if (cashFlow.runway >= 12) {
+  if (runway >= 12) {
     insights.push({
       title: "Healthy Runway",
-      insight: `${fmtRunway(cashFlow.runway)} of runway at current burn rate. Comfortable buffer for operations.`,
+      insight: `${fmtRunway(runway)} of runway at current burn rate. Comfortable buffer for operations.`,
       severity: "success",
     });
   }
   if (accounts.length > 1) {
     const maxAccount = accounts.reduce((a, b) => (a.balance > b.balance ? a : b));
-    const concentration = cashFlow.totalBalance > 0
-      ? (maxAccount.balance / cashFlow.totalBalance) * 100
+    const concentration = totalBalance > 0
+      ? (maxAccount.balance / totalBalance) * 100
       : 0;
     if (concentration > 80) {
       insights.push({
@@ -128,8 +156,8 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
       });
     }
   }
-  if (cashFlow.burnRate > 0 && cashFlow.inflows30d > 0) {
-    const efficiency = (cashFlow.inflows30d / cashFlow.burnRate) * 100;
+  if (burnRate > 0 && inflows > 0) {
+    const efficiency = (inflows / burnRate) * 100;
     insights.push({
       title: "Burn Efficiency",
       insight: `Inflows cover ${efficiency.toFixed(0)}% of net burn. ${efficiency >= 100 ? "Self-sustaining at current rates." : "Relying on reserves to cover the gap."}`,
@@ -138,7 +166,7 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
   }
 
   // ── Cash flow ratios ──
-  const maxFlow = Math.max(cashFlow.inflows30d, cashFlow.outflows30d, 1);
+  const maxFlow = Math.max(inflows, outflows, 1);
 
   return (
     <div className="space-y-6">
@@ -157,38 +185,39 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
         <StatCard
           label="Total Balance"
-          value={fmt$(cashFlow.totalBalance)}
+          value={fmt$(totalBalance)}
+          subtitle={totalBalanceSubtitle}
           icon={Landmark}
         />
         <StatCard
           label="Net Cash Flow"
-          value={fmt$(cashFlow.netCashFlow)}
-          changeType={cashFlow.netCashFlow >= 0 ? "positive" : "negative"}
+          value={fmt$(netCashFlow)}
+          changeType={netCashFlow >= 0 ? "positive" : "negative"}
           subtitle="Last 30 days"
-          icon={cashFlow.netCashFlow >= 0 ? TrendingUp : TrendingDown}
+          icon={netCashFlow >= 0 ? TrendingUp : TrendingDown}
         />
         <StatCard
           label="Inflows (30d)"
-          value={fmt$(cashFlow.inflows30d)}
+          value={fmt$(inflows)}
           icon={ArrowDownRight}
         />
         <StatCard
           label="Outflows (30d)"
-          value={fmt$(cashFlow.outflows30d)}
+          value={fmt$(outflows)}
           icon={ArrowUpRight}
         />
         <StatCard
           label="Net Burn"
-          value={fmt$(cashFlow.burnRate)}
+          value={fmt$(burnRate)}
           subtitle="Monthly"
           icon={AlertTriangle}
-          iconColor={cashFlow.burnRate > cashFlow.inflows30d ? "text-red-500" : "text-primary"}
+          iconColor={burnRate > inflows ? "text-red-500" : "text-primary"}
         />
         <StatCard
           label="Runway"
-          value={cashFlow.runway > 0 ? fmtRunway(cashFlow.runway) : "∞"}
+          value={runway > 0 ? fmtRunway(runway) : "∞"}
           icon={Wallet}
-          iconColor={cashFlow.runway > 0 ? runwayColor(cashFlow.runway) : "text-emerald-500"}
+          iconColor={runway > 0 ? runwayColor(runway) : "text-emerald-500"}
         />
       </div>
 
@@ -203,13 +232,13 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
                 <div
                   className="flex h-full items-center rounded-md px-3 transition-all duration-500"
                   style={{
-                    width: `${Math.max((cashFlow.inflows30d / maxFlow) * 100, 8)}%`,
+                    width: `${Math.max((inflows / maxFlow) * 100, 8)}%`,
                     backgroundColor: "#22c55e",
                     minWidth: "60px",
                   }}
                 >
                   <span className="text-xs font-bold text-white drop-shadow">
-                    {fmt$(cashFlow.inflows30d)}
+                    {fmt$(inflows)}
                   </span>
                 </div>
               </div>
@@ -223,13 +252,13 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
                 <div
                   className="flex h-full items-center rounded-md px-3 transition-all duration-500"
                   style={{
-                    width: `${Math.max((cashFlow.outflows30d / maxFlow) * 100, 8)}%`,
+                    width: `${Math.max((outflows / maxFlow) * 100, 8)}%`,
                     backgroundColor: "#ef4444",
                     minWidth: "60px",
                   }}
                 >
                   <span className="text-xs font-bold text-white drop-shadow">
-                    {fmt$(cashFlow.outflows30d)}
+                    {fmt$(outflows)}
                   </span>
                 </div>
               </div>
@@ -243,13 +272,13 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
                 <div
                   className="flex h-full items-center rounded-md px-3 transition-all duration-500"
                   style={{
-                    width: `${Math.max((Math.abs(cashFlow.netCashFlow) / maxFlow) * 100, 8)}%`,
-                    backgroundColor: cashFlow.netCashFlow >= 0 ? "#22c55e" : "#ef4444",
+                    width: `${Math.max((Math.abs(netCashFlow) / maxFlow) * 100, 8)}%`,
+                    backgroundColor: netCashFlow >= 0 ? "#22c55e" : "#ef4444",
                     minWidth: "60px",
                   }}
                 >
                   <span className="text-xs font-bold text-white drop-shadow">
-                    {cashFlow.netCashFlow >= 0 ? "+" : "−"}{fmt$(Math.abs(cashFlow.netCashFlow))}
+                    {netCashFlow >= 0 ? "+" : "−"}{fmt$(Math.abs(netCashFlow))}
                   </span>
                 </div>
               </div>
@@ -264,18 +293,18 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
         <SectionCard title="Runway Projection" subtitle="Months remaining at the current net burn rate">
           <div className="flex flex-col items-center gap-4">
             <RingStat
-              value={Math.min(cashFlow.runway, 24)}
+              value={Math.min(runway, 24)}
               max={24}
               label="Runway"
-              color={runwayBgColor(cashFlow.runway)}
+              color={runwayBgColor(runway)}
               size={110}
             />
             <div className="text-center">
-              <p className={`text-2xl font-bold tabular-nums ${runwayColor(cashFlow.runway)}`}>
-                {cashFlow.runway > 0 ? fmtRunway(cashFlow.runway) : "Sustainable"}
+              <p className={`text-2xl font-bold tabular-nums ${runwayColor(runway)}`}>
+                {runway > 0 ? fmtRunway(runway) : "Sustainable"}
               </p>
               <p className="text-xs text-muted-foreground">
-                at {fmt$(cashFlow.burnRate)}/month net burn
+                at {fmt$(burnRate)}/month net burn
               </p>
             </div>
             {/* Runway scale */}
@@ -291,8 +320,8 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
                 <div
                   className="h-full rounded-full transition-all"
                   style={{
-                    width: `${Math.min((cashFlow.runway / 24) * 100, 100)}%`,
-                    backgroundColor: runwayBgColor(cashFlow.runway),
+                    width: `${Math.min((runway / 24) * 100, 100)}%`,
+                    backgroundColor: runwayBgColor(runway),
                   }}
                 />
               </div>
@@ -307,8 +336,8 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
               {accounts
                 .sort((a, b) => b.balance - a.balance)
                 .map((account) => {
-                  const share = cashFlow.totalBalance > 0
-                    ? (account.balance / cashFlow.totalBalance) * 100
+                  const share = totalBalance > 0
+                    ? (account.balance / totalBalance) * 100
                     : 0;
                   return (
                     <div key={account.accountId} className="rounded-lg bg-secondary/40 p-3">
@@ -333,8 +362,13 @@ export function FinanceMercuryTab({ data }: FinanceMercuryTabProps) {
                 })}
               {/* Total row */}
               <div className="flex items-center justify-between border-t border-border pt-3">
-                <span className="text-sm font-semibold text-foreground">Total Balance</span>
-                <span className="text-lg font-bold tabular-nums text-foreground">{fmt$(cashFlow.totalBalance)}</span>
+                <div>
+                  <span className="text-sm font-semibold text-foreground">Total Balance</span>
+                  {totalBalanceSubtitle ? (
+                    <p className="text-[11px] text-muted-foreground">{totalBalanceSubtitle}</p>
+                  ) : null}
+                </div>
+                <span className="text-lg font-bold tabular-nums text-foreground">{fmt$(totalBalance)}</span>
               </div>
             </div>
           ) : (

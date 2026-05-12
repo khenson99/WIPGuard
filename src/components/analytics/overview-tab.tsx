@@ -7,7 +7,6 @@ import {
   Globe, Megaphone,
 } from "lucide-react";
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
-import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
 import { StatCard } from "./stat-card";
 import { BarDisplay, RingStat } from "./bar-display";
 
@@ -36,10 +35,8 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
 
   const { hubspot, stripe, mercury, googleAnalytics, googleAds, metaAds } = data;
   const funnel = hubspot?.funnel;
-  const revenue = stripe?.revenue;
-  const subs = stripe?.subscriptions;
-  const cash = mercury?.cashFlow;
   const ga = googleAnalytics;
+  const financeSummary = data.metrics?.finance.summary ?? null;
 
   // Compute total ad spend across platforms
   const totalAdSpend =
@@ -52,9 +49,9 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label="Monthly Recurring Revenue"
-          value={revenue ? fmt$(revenue.mrr) : "—"}
-          change={revenue ? `${revenue.revenueGrowth >= 0 ? "+" : ""}${revenue.revenueGrowth.toFixed(1)}% vs prev 30d` : undefined}
-          changeType={revenue && revenue.revenueGrowth >= 0 ? "positive" : "negative"}
+          value={financeSummary ? fmt$(financeSummary.mrr) : "—"}
+          change={financeSummary ? `${financeSummary.revenueGrowth >= 0 ? "+" : ""}${financeSummary.revenueGrowth.toFixed(1)}% vs prev 30d` : undefined}
+          changeType={financeSummary && financeSummary.revenueGrowth >= 0 ? "positive" : "negative"}
           icon={DollarSign}
         />
         <StatCard
@@ -72,9 +69,20 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
         />
         <StatCard
           label="Cash Balance"
-          value={cash ? fmt$(cash.totalBalance) : "—"}
-          change={cash ? `${cash.runway.toFixed(1)} months runway` : undefined}
-          changeType={cash && cash.runway > 6 ? "positive" : cash && cash.runway > 3 ? "neutral" : "negative"}
+          value={financeSummary ? fmt$(financeSummary.cashBalance) : "—"}
+          change={financeSummary ? `${financeSummary.runwayMonths.toFixed(1)} months runway` : undefined}
+          subtitle={
+            financeSummary && financeSummary.bankCash !== null && financeSummary.treasuryCash !== null
+              ? `${fmt$(financeSummary.bankCash)} bank · ${fmt$(financeSummary.treasuryCash)} Treasury`
+              : undefined
+          }
+          changeType={
+            financeSummary && financeSummary.runwayMonths > 6
+              ? "positive"
+              : financeSummary && financeSummary.runwayMonths > 3
+                ? "neutral"
+                : "negative"
+          }
           icon={Wallet}
         />
       </div>
@@ -83,8 +91,12 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label="Active Subscriptions"
-          value={subs ? subs.active.toLocaleString() : "—"}
-          subtitle={subs ? `${subs.pastDue} past due · ${subs.trialing} trialing` : undefined}
+          value={financeSummary ? financeSummary.activeSubscriptions.toLocaleString() : "—"}
+          subtitle={
+            financeSummary
+              ? `${financeSummary.pastDueSubscriptions} past due · ${financeSummary.trialingSubscriptions} trialing`
+              : undefined
+          }
           icon={CreditCard}
         />
         <StatCard
@@ -119,22 +131,22 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
           <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
             <MiniStat
               label="Revenue (30d)"
-              value={revenue ? fmt$(revenue.totalRevenue30d) : "—"}
+              value={financeSummary ? fmt$(financeSummary.totalRevenue30d) : "—"}
               icon={<ArrowUpRight className="h-3.5 w-3.5 text-emerald-500" />}
             />
             <MiniStat
               label="Inflows (30d)"
-              value={cash ? fmt$(cash.inflows30d) : "—"}
+              value={financeSummary ? fmt$(financeSummary.inflows30d) : "—"}
               icon={<ArrowUpRight className="h-3.5 w-3.5 text-emerald-500" />}
             />
             <MiniStat
               label="Outflows (30d)"
-              value={cash ? fmt$(cash.outflows30d) : "—"}
+              value={financeSummary ? fmt$(financeSummary.outflows30d) : "—"}
               icon={<ArrowDownRight className="h-3.5 w-3.5 text-red-500" />}
             />
             <MiniStat
               label="Net Cash Flow"
-              value={cash ? fmt$(cash.netCashFlow) : "—"}
+              value={financeSummary ? fmt$(financeSummary.netCashFlow30d) : "—"}
               icon={<Activity className="h-3.5 w-3.5 text-primary" />}
             />
           </div>
@@ -181,7 +193,7 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Payment Success</span>
                   <span className="font-medium tabular-nums text-emerald-500">
-                    {stripe ? fmtPct(normalizePercentValue(stripe.payments.successRate)) : "—"}
+                    {financeSummary ? fmtPct(financeSummary.paymentSuccessPct) : "—"}
                   </span>
                 </div>
               </div>

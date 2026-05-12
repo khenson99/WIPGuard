@@ -21,7 +21,7 @@ export function RalphBoardView({
               Ralph Board
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Dedicated rollout board for Arda GTM operators. This view is pinned to the{" "}
+              Dedicated rollout board for pipeline operators. This view is pinned to the{" "}
               <span className="font-medium text-foreground">{projectName}</span> project.
             </p>
           </div>

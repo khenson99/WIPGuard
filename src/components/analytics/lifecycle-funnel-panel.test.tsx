@@ -14,7 +14,7 @@ function makeLifecycle(): LifecycleFunnelData {
         conversionFromPrevious: null,
         trendDeltaPct: 10,
         confidence: 0.91,
-        section: "ads-traffic",
+        section: "website-traffic",
         evidence: [
           {
             source: "Google Analytics",
@@ -33,7 +33,7 @@ function makeLifecycle(): LifecycleFunnelData {
         conversionFromPrevious: 50,
         trendDeltaPct: 7,
         confidence: 0.85,
-        section: "ads-traffic",
+        section: "website-traffic",
         evidence: [
           {
             source: "Google Ads",
@@ -155,7 +155,7 @@ function makeInsights(): AiInsight[] {
   return [
     {
       id: "ai-ads",
-      section: "ads-traffic",
+      section: "website-traffic",
       severity: "warning",
       title: "Improve paid traffic quality",
       why: "Bounce rising.",
@@ -184,7 +184,7 @@ describe("LifecycleFunnelPanel", () => {
   it("supports click, hover, and view toggles", () => {
     render(<LifecycleFunnelPanel lifecycle={makeLifecycle()} insights={makeInsights()} sectionFocus="all" />);
 
-    expect(screen.getByText("Customer Lifecycle Funnel")).toBeTruthy();
+    expect(screen.getByText("Full-Funnel Process")).toBeTruthy();
     expect(screen.getByText("Evidence: Awareness")).toBeTruthy();
     expect(screen.getByText("1,000")).toBeTruthy();
 

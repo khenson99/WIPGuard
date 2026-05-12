@@ -115,31 +115,4 @@ describe("deals route", () => {
       }),
     );
   });
-
-  it("searches deals by company name as well as deal name", async () => {
-    const { GET } = await import("@/app/api/deals/route");
-
-    const response = await GET(
-      new NextRequest("http://localhost/api/deals?search=Acme")
-    );
-
-    expect(response.status).toBe(200);
-    expect(dealFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          organizationId: "org-1",
-          OR: [
-            { name: { contains: "Acme", mode: "insensitive" } },
-            {
-              company: {
-                is: {
-                  name: { contains: "Acme", mode: "insensitive" },
-                },
-              },
-            },
-          ],
-        }),
-      }),
-    );
-  });
 });

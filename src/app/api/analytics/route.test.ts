@@ -124,6 +124,24 @@ const HUBSPOT_DATA = {
       updatedAt: "2026-02-11T00:00:00.000Z",
     },
   ],
+  subscriptionDeals: [
+    {
+      dealId: "deal-subscription",
+      dealName: "Zaybra Subscription",
+      stageId: "2239936224",
+      stageLabel: "Subscriptions",
+      amount: 3598,
+      source: "HubSpot",
+      ownerId: "owner-3",
+      updatedAt: "2026-02-12T00:00:00.000Z",
+      createdAt: "2026-02-01T00:00:00.000Z",
+      stripeCustomerId: null,
+      pipelineId: "1390107368",
+      contactIds: [],
+      primaryContactId: null,
+      primaryContactEmail: "ops@example-subscription.com",
+    },
+  ],
   _meta: META,
 };
 
@@ -143,6 +161,9 @@ const STRIPE_DATA = {
     trialing: 2,
     churnRate: 0.02,
     recentChurnEvents: [],
+    activeCustomerRefs: [
+      { customerId: "cus_123", email: "billing@example.com", emailDomain: "example.com" },
+    ],
   },
   payments: {
     succeeded: 100,
@@ -169,6 +190,7 @@ const ZERO_STRIPE_DATA = {
     trialing: 0,
     churnRate: 0,
     recentChurnEvents: [],
+    activeCustomerRefs: [],
   },
   payments: {
     succeeded: 0,
@@ -334,6 +356,8 @@ describe("GET /api/analytics", () => {
       googleAdsClientSecret: "ads-secret",
       googleAdsLoginCustomerId: null,
       metaAccessToken: "meta-token",
+      metaAdsAccessToken: "meta-token",
+      metaPageAccessToken: "meta-token",
       metaAdAccountId: "meta-ad",
       metaPageId: "meta-page",
       metaInstagramAccountId: null,
@@ -613,6 +637,24 @@ describe("GET /api/analytics", () => {
     expect(body.demoAnalytics.totalScheduled).toBeGreaterThan(0);
   });
 
+  it("loads unlinked HubSpot meetings for demo analytics instead of only deal-linked meetings", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { GET } = await import("@/app/api/analytics/route");
+    await GET(new Request("http://localhost/api/analytics?section=demo-analytics"));
+
+    expect(prisma.dealMeeting.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { deal: { organizationId: "org-1" } },
+            { customerRecord: { organizationId: "org-1" } },
+            { dealId: null, customerRecordId: null },
+          ],
+        },
+      }),
+    );
+  });
+
   it("hydrates stripe customer links onto hubspot deals", async () => {
     const { prisma } = await import("@/lib/prisma");
     const { GET } = await import("@/app/api/analytics/route");
@@ -626,124 +668,40 @@ describe("GET /api/analytics", () => {
     });
   });
 
-  it("dedupes hubspot subscription deals when building merged subscription counts", async () => {
-    const { fetchHubSpotData, fetchStripeData } = await import("@/lib/analytics/fetchers");
-
-    vi.mocked(fetchStripeData).mockResolvedValueOnce({
-      ...STRIPE_DATA,
-      subscriptions: {
-        ...STRIPE_DATA.subscriptions,
-        active: 2,
-        activeCustomerRefs: [
-          { customerId: "cus_123", email: "owner@acme.com", emailDomain: "acme.com" },
-          { customerId: "cus_456", email: "finance@beta.com", emailDomain: "beta.com" },
-        ],
-      },
-    } as never);
-
-    vi.mocked(fetchHubSpotData).mockResolvedValueOnce({
-      ...HUBSPOT_DATA,
-      funnel: {
-        ...HUBSPOT_DATA.funnel,
-        activeSubscriptions: 4,
-      },
-      deals: [
-        {
-          dealId: "subscription-1",
-          dealName: "Acme Renewal",
-          stageId: "subscription",
-          stageLabel: "Subscription",
-          amount: 5000,
-          source: "Organic",
-          ownerId: "owner-1",
-          updatedAt: "2026-02-10T00:00:00.000Z",
-          stripeCustomerId: "cus_123",
-          primaryContactEmail: "owner@acme.com",
-        },
-        {
-          dealId: "subscription-2",
-          dealName: "Acme Renewal Duplicate",
-          stageId: "subscription",
-          stageLabel: "Subscription",
-          amount: 5000,
-          source: "Organic",
-          ownerId: "owner-1",
-          updatedAt: "2026-02-11T00:00:00.000Z",
-          stripeCustomerId: "cus_123",
-          primaryContactEmail: "owner@acme.com",
-        },
-        {
-          dealId: "subscription-3",
-          dealName: "Gamma Corp",
-          stageId: "subscription",
-          stageLabel: "Subscription",
-          amount: 3000,
-          source: "Paid",
-          ownerId: "owner-2",
-          updatedAt: "2026-02-12T00:00:00.000Z",
-          primaryContactEmail: "ops@gamma.io",
-        },
-        {
-          dealId: "subscription-4",
-          dealName: "Gamma Corp Duplicate",
-          stageId: "subscription",
-          stageLabel: "Subscription",
-          amount: 3000,
-          source: "Paid",
-          ownerId: "owner-2",
-          updatedAt: "2026-02-13T00:00:00.000Z",
-          primaryContactEmail: "ops@gamma.io",
-        },
-        {
-          dealId: "subscription-5",
-          dealName: "Beta Expansion",
-          stageId: "subscription",
-          stageLabel: "Subscription",
-          amount: 3500,
-          source: "Referral",
-          ownerId: "owner-3",
-          updatedAt: "2026-02-14T00:00:00.000Z",
-          primaryContactEmail: "ceo@beta.com",
-        },
-      ],
-    } as never);
-
+  it("builds finance-planning subscription overview from HubSpot subscription pipeline deals", async () => {
     const { GET } = await import("@/app/api/analytics/route");
-    const response = await GET(new Request("http://localhost/api/analytics?section=finance"));
+    const response = await GET(new Request("http://localhost/api/analytics?section=finance-planning"));
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(body.hubspot.subscriptionDeals).toHaveLength(1);
     expect(body.financialPlanning.subscriptionOverview).toEqual({
-      mergedActiveSubscriptions: 3,
-      stripeActiveSubscriptions: 2,
-      hubspotActiveSubscriptions: 3,
+      mergedActiveSubscriptions: 2,
+      stripeActiveSubscriptions: 20,
+      hubspotActiveSubscriptions: 1,
+      stripeMrr: 12000,
+      hubspotSubscriptionMrr: 3598,
+      hubspotOnlySubscriptionMrr: 3598,
+      excludedLinkedHubspotSubscriptionMrr: 0,
+      totalMrr: 15598,
+      totalArr: 187176,
     });
   });
 
-  it("hydrates budget actuals from Mercury when a finance budget exists", async () => {
+  it("uses canonical finance metrics for financial goal progress", async () => {
     const { prisma } = await import("@/lib/prisma");
-
-    vi.mocked(prisma.budget.findMany).mockResolvedValueOnce([
+    vi.mocked(prisma.financialGoal.findMany).mockResolvedValueOnce([
       {
-        id: "budget-1",
-        name: "February Budget",
-        period: "MONTHLY",
-        startDate: new Date("2026-02-01T00:00:00.000Z"),
-        endDate: new Date("2026-02-28T00:00:00.000Z"),
-        lineItems: [
-          {
-            id: "line-1",
-            category: "MARKETING",
-            plannedAmount: 6000,
-            notes: null,
-          },
-          {
-            id: "line-2",
-            category: "OPS",
-            plannedAmount: 4000,
-            notes: null,
-          },
-        ],
+        id: "goal-mrr",
+        metric: "mrr",
+        targetValue: 20000,
+        deadline: new Date("2027-01-01T00:00:00.000Z"),
+      },
+      {
+        id: "goal-customers",
+        metric: "customer_count",
+        targetValue: 10,
+        deadline: new Date("2027-01-01T00:00:00.000Z"),
       },
     ] as never);
 
@@ -752,193 +710,15 @@ describe("GET /api/analytics", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.financialPlanning.activeBudget.totalActual).toBe(5600);
-    expect(body.financialPlanning.activeBudget.totalVariance).toBe(-4400);
-    expect(body.financialPlanning.activeBudget.lineItems).toEqual(
+    expect(body.financialPlanning.goals).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "line-1",
-          category: "marketing",
-          actualAmount: 3360,
-          variance: -2640,
-          variancePct: -44,
+          id: "goal-mrr",
+          currentValue: 15598,
         }),
         expect.objectContaining({
-          id: "line-2",
-          category: "ops",
-          actualAmount: 2240,
-          variance: -1760,
-          variancePct: -44,
-        }),
-      ]),
-    );
-  });
-
-  it("scales budget actuals from Mercury transaction breakdowns to the budget period", async () => {
-    const { prisma } = await import("@/lib/prisma");
-    const { fetchMercuryData } = await import("@/lib/analytics/fetchers");
-
-    vi.mocked(fetchMercuryData).mockResolvedValueOnce({
-      ...MERCURY_DATA,
-      cashFlow: {
-        ...MERCURY_DATA.cashFlow,
-        observedPeriodDays: 90,
-        expenseBreakdown30d: {
-          cogs: 0,
-          payroll: 0,
-          marketing: 900,
-          infrastructure: 0,
-          ops: 0,
-          other: 0,
-        },
-      },
-    } as never);
-
-    vi.mocked(prisma.budget.findMany).mockResolvedValueOnce([
-      {
-        id: "budget-1",
-        name: "April Budget",
-        period: "MONTHLY",
-        startDate: new Date("2026-04-01T00:00:00.000Z"),
-        endDate: new Date("2026-04-30T00:00:00.000Z"),
-        lineItems: [
-          {
-            id: "line-1",
-            category: "MARKETING",
-            plannedAmount: 1000,
-            notes: null,
-          },
-        ],
-      },
-    ] as never);
-
-    const { GET } = await import("@/app/api/analytics/route");
-    const response = await GET(new Request("http://localhost/api/analytics?section=finance-planning"));
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.financialPlanning.activeBudget.totalActual).toBe(300);
-    expect(body.financialPlanning.activeBudget.totalVariance).toBe(-700);
-    expect(body.financialPlanning.activeBudget.lineItems).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "line-1",
-          category: "marketing",
-          actualAmount: 300,
-          variance: -700,
-          variancePct: -70,
-        }),
-      ]),
-    );
-  });
-
-  it("uses the active budget mix to attribute Mercury expenses in pnl and unit economics", async () => {
-    const { prisma } = await import("@/lib/prisma");
-
-    vi.mocked(prisma.budget.findMany).mockResolvedValueOnce([
-      {
-        id: "budget-1",
-        name: "Growth Budget",
-        period: "MONTHLY",
-        startDate: new Date("2026-02-01T00:00:00.000Z"),
-        endDate: new Date("2026-02-28T00:00:00.000Z"),
-        lineItems: [
-          {
-            id: "line-1",
-            category: "MARKETING",
-            plannedAmount: 9000,
-            notes: null,
-          },
-          {
-            id: "line-2",
-            category: "COGS",
-            plannedAmount: 1000,
-            notes: null,
-          },
-        ],
-      },
-    ] as never);
-
-    const { GET } = await import("@/app/api/analytics/route");
-    const response = await GET(new Request("http://localhost/api/analytics?section=finance-planning"));
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.financialPlanning.unitEconomics.cac).toBe(5400);
-    expect(body.financialPlanning.unitEconomics.grossMarginPct).toBe(96);
-    expect(body.financialPlanning.pnl.operatingExpenses).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          label: "Marketing & Sales",
-          currentPeriod: 5400,
-        }),
-        expect.objectContaining({
-          label: "General & Administrative",
-          currentPeriod: 0,
-        }),
-      ]),
-    );
-  });
-
-  it("prefers Mercury transaction breakdown over budget mix for pnl and unit economics", async () => {
-    const { prisma } = await import("@/lib/prisma");
-    const { fetchMercuryData } = await import("@/lib/analytics/fetchers");
-
-    vi.mocked(fetchMercuryData).mockResolvedValueOnce({
-      ...MERCURY_DATA,
-      cashFlow: {
-        ...MERCURY_DATA.cashFlow,
-        expenseBreakdown30d: {
-          cogs: 3000,
-          payroll: 0,
-          marketing: 600,
-          infrastructure: 0,
-          ops: 2400,
-          other: 0,
-        },
-      },
-    } as never);
-
-    vi.mocked(prisma.budget.findMany).mockResolvedValueOnce([
-      {
-        id: "budget-1",
-        name: "Growth Budget",
-        period: "MONTHLY",
-        startDate: new Date("2026-02-01T00:00:00.000Z"),
-        endDate: new Date("2026-02-28T00:00:00.000Z"),
-        lineItems: [
-          {
-            id: "line-1",
-            category: "MARKETING",
-            plannedAmount: 9000,
-            notes: null,
-          },
-          {
-            id: "line-2",
-            category: "COGS",
-            plannedAmount: 1000,
-            notes: null,
-          },
-        ],
-      },
-    ] as never);
-
-    const { GET } = await import("@/app/api/analytics/route");
-    const response = await GET(new Request("http://localhost/api/analytics?section=finance-planning"));
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.financialPlanning.unitEconomics.cac).toBe(600);
-    expect(body.financialPlanning.unitEconomics.grossMarginPct).toBe(80);
-    expect(body.financialPlanning.pnl.operatingExpenses).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          label: "Marketing & Sales",
-          currentPeriod: 600,
-        }),
-        expect.objectContaining({
-          label: "General & Administrative",
-          currentPeriod: 2400,
+          id: "goal-customers",
+          currentValue: 2,
         }),
       ]),
     );
@@ -1007,6 +787,8 @@ describe("GET /api/analytics", () => {
         googleAdsClientSecret: "ads-secret",
         googleAdsLoginCustomerId: null,
         metaAccessToken: "meta-token",
+        metaAdsAccessToken: "meta-token",
+        metaPageAccessToken: "meta-token",
         metaAdAccountId: "meta-ad",
         metaPageId: "meta-page",
         metaInstagramAccountId: null,
@@ -1094,6 +876,8 @@ describe("GET /api/analytics", () => {
       googleAdsClientSecret: null,
       googleAdsLoginCustomerId: null,
       metaAccessToken: null,
+      metaAdsAccessToken: null,
+      metaPageAccessToken: null,
       metaAdAccountId: null,
       metaPageId: null,
       metaInstagramAccountId: null,
@@ -1199,6 +983,8 @@ describe("GET /api/analytics", () => {
           googleAdsClientSecret: null,
           googleAdsLoginCustomerId: null,
           metaAccessToken: null,
+          metaAdsAccessToken: null,
+          metaPageAccessToken: null,
           metaAdAccountId: null,
           metaPageId: null,
           metaInstagramAccountId: null,
@@ -1250,6 +1036,8 @@ describe("GET /api/analytics", () => {
         googleAdsClientSecret: "ads-secret",
         googleAdsLoginCustomerId: null,
         metaAccessToken: "meta-token",
+        metaAdsAccessToken: "meta-token",
+        metaPageAccessToken: "meta-token",
         metaAdAccountId: "meta-ad",
         metaPageId: "meta-page",
         metaInstagramAccountId: null,

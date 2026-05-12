@@ -30,11 +30,13 @@ function baseData(): AnalyticsDashboardData {
     visitorFunnel: null,
     recommendations: [],
     distilledInsights: [],
+    metrics: null,
     aiInsights: {
       generatedAt: "2026-01-01T00:00:00.000Z",
       global: [],
       bySection: {
-        "ads-traffic": [],
+        "website-traffic": [],
+        "social-media": [],
         finance: [],
         "sales-pipeline": [],
         retention: [],
@@ -227,7 +229,7 @@ describe("analytics AI insights bundle", () => {
   });
 });
 
-// ── Ads & Traffic insights ──────────────────────────────
+// ── Website traffic + social media insights ─────────────
 
 describe("ads insights", () => {
   it("fires bounce rate alarm when above 55%", () => {
@@ -278,7 +280,7 @@ describe("ads insights", () => {
     const bundle = buildAiInsightsBundle(data);
     const convInsight = bundle.global.find((i) => i.id === "ai-ads-click-conv");
     expect(convInsight).toBeDefined();
-    expect(convInsight!.section).toBe("ads-traffic");
+    expect(convInsight!.section).toBe("social-media");
   });
 
   it("fires declining sessions alert when >15% drop", () => {
@@ -327,7 +329,8 @@ describe("ads insights", () => {
   it("does not fire ads insights when no ads data present", () => {
     const data = baseData();
     const bundle = buildAiInsightsBundle(data);
-    expect(bundle.bySection["ads-traffic"].length).toBe(0);
+    expect(bundle.bySection["website-traffic"].length).toBe(0);
+    expect(bundle.bySection["social-media"].length).toBe(0);
   });
 });
 
@@ -628,7 +631,7 @@ describe("customer success insights", () => {
     const stall = bundle.global.find((i) => i.id === "ai-cs-throughput-stall");
     expect(stall).toBeDefined();
     expect(stall!.severity).toBe("warning");
-    expect(stall!.subsectionId).toBe("customer-success");
+    expect(stall!.subsectionId).toBeUndefined();
   });
 
   it("escalates throughput stall to critical below 50%", () => {

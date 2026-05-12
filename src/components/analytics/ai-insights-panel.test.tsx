@@ -9,7 +9,7 @@ function makeBundle(): AiInsightsBundle {
     global: [
       {
         id: "warn-ads",
-        section: "ads-traffic",
+        section: "website-traffic",
         severity: "warning",
         title: "Ads efficiency trending down",
         why: "Cost per conversion rising.",
@@ -61,7 +61,8 @@ function makeBundle(): AiInsightsBundle {
       },
     ],
     bySection: {
-      "ads-traffic": [],
+      "website-traffic": [],
+      "social-media": [],
       finance: [],
       "sales-pipeline": [],
       retention: [],
@@ -76,7 +77,7 @@ function makeBundle(): AiInsightsBundle {
 describe("AiInsightsPanel", () => {
   it("sorts by severity/confidence, supports filters, and shows stale badge", () => {
     const bundle = makeBundle();
-    bundle.bySection["ads-traffic"] = [bundle.global[0]];
+    bundle.bySection["website-traffic"] = [bundle.global[0]];
     bundle.bySection.finance = [bundle.global[2]];
     bundle.bySection["sales-pipeline"] = [bundle.global[1]];
     bundle.bySection.retention = [];
@@ -92,18 +93,18 @@ describe("AiInsightsPanel", () => {
     expect(cards[0].textContent).toContain("Pipeline conversion risk");
     expect(screen.getByText("stale data")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Finance" }));
+    fireEvent.click(screen.getByRole("button", { name: "Revenue" }));
     expect(screen.getByText("Runway stable")).toBeTruthy();
     expect(screen.queryByText("Pipeline conversion risk")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Ads" }));
+    fireEvent.click(screen.getByRole("button", { name: "Website" }));
     expect(screen.getByText("Ads efficiency trending down")).toBeTruthy();
     expect(screen.queryByText("Refactor campaign targeting")).toBeNull();
   });
 
   it("resets filter when defaultFilter prop changes", () => {
     const bundle = makeBundle();
-    bundle.bySection["ads-traffic"] = [bundle.global[0]];
+    bundle.bySection["website-traffic"] = [bundle.global[0]];
     bundle.bySection.finance = [bundle.global[2]];
     bundle.bySection["sales-pipeline"] = [bundle.global[1]];
     bundle.bySection.retention = [];

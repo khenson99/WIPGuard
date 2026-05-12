@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Target, Wallet, AlertTriangle, TrendingDown } from "lucide-react";
-import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import type {
+  AnalyticsDashboardData,
+  FinanceBudgetActualMetric,
+  FinanceBudgetActualsMetric,
+} from "@/lib/analytics/types";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
 import { StatCard } from "@/components/analytics/stat-card";
 import { BarDisplay } from "@/components/analytics/bar-display";
@@ -15,10 +19,6 @@ import {
   AlertBanner,
   type DataTableColumn,
 } from "./dashboard-primitives";
-import {
-  computeBudgetSummary,
-  type BudgetActualItem,
-} from "@/lib/analytics/budget-variance";
 import {
   defaultDateRange,
   endDateForPeriod,
@@ -57,6 +57,16 @@ const CATEGORY_CONFIG: Array<{ key: BudgetCategoryApi; label: string }> = [
   { key: "OTHER", label: "Other" },
 ];
 
+const EMPTY_BUDGET_METRIC: FinanceBudgetActualsMetric = {
+  budgetId: "",
+  budgetName: "",
+  totalBudget: 0,
+  totalActual: 0,
+  totalVariance: 0,
+  totalVariancePct: 0,
+  overspendCategories: [],
+  items: [],
+};
 
 function emptyAmounts(): Record<BudgetCategoryApi, string> {
   return {
@@ -192,40 +202,15 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
     seedFormFromBudget,
   ]);
 
-  const activeBudgetWithActuals = useMemo(() => {
-    if (!activeBudget) return data?.financialPlanning?.activeBudget ?? null;
-    const serverBudget = data?.financialPlanning?.budgets.find((budget) => budget.id === activeBudget.id);
-    return serverBudget ?? data?.financialPlanning?.activeBudget ?? null;
-  }, [activeBudget, data?.financialPlanning]);
-
   /* ── Computed data ────────────────────────────────── */
 
-  const budgetItems = useMemo(
-    () =>
-      (activeBudgetWithActuals?.lineItems ?? []).map((item) => ({
-        category: item.category,
-        budgeted: item.plannedAmount,
-        actual: item.actualAmount ?? 0,
-        variance: item.variance ?? 0,
-        variancePct: item.variancePct ?? 0,
-        status:
-          item.variance == null || item.variancePct == null
-            ? "on_track"
-            : item.variance > 0
-              ? "over"
-              : item.variance < 0
-                ? "under"
-                : "on_track",
-      })) satisfies BudgetActualItem[],
-    [activeBudgetWithActuals],
-  );
+  const budgetSummary =
+    data?.metrics?.finance.budgetActuals ?? EMPTY_BUDGET_METRIC;
+  const budgetItems = budgetSummary.items;
 
-  const budgetSummary = useMemo(
-    () => computeBudgetSummary(budgetItems),
-    [budgetItems],
+  const hasBudgetBaseline = Boolean(
+    budgetSummary.budgetId || (activeBudget && activeBudget.lineItems?.length),
   );
-
-  const hasBudgetBaseline = Boolean(activeBudget && activeBudget.lineItems?.length);
 
   const goals = useMemo<FinancialGoal[]>(
     () => (data ? computeFinancialGoals(data) : []),
@@ -363,7 +348,7 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
 
   /* ── Budget variance table columns ────────────────── */
 
-  const budgetColumns: DataTableColumn<BudgetActualItem>[] = useMemo(
+  const budgetColumns: DataTableColumn<FinanceBudgetActualMetric>[] = useMemo(
     () => [
       {
         key: "category",
@@ -684,17 +669,21 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
       </SectionCard>
 
       {/* Budget Category Breakdown */}
-      {budgetItems.length > 0 && (
-        <SectionCard title="Category Breakdown" subtitle="Estimated spend by category">
-          <BarDisplay items={barItems} formatValue={fmt$} />
-          <div className="mt-4">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Budget Allocation
-            </p>
-            <BarDisplay items={barBudgetItems} formatValue={fmt$} />
-          </div>
-        </SectionCard>
-      )}
+      <SectionCard title="Category Breakdown" subtitle="Actual spending by category">
+        {budgetItems.length > 0 ? (
+          <>
+            <BarDisplay items={barItems} formatValue={fmt$} />
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Budget Allocation
+              </p>
+              <BarDisplay items={barBudgetItems} formatValue={fmt$} />
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">No category breakdown available until a budget baseline is configured.</p>
+        )}
+      </SectionCard>
 
       {/* Goals Tracker */}
       {goals.length > 0 && (

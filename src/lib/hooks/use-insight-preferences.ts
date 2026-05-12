@@ -36,6 +36,7 @@ async function setPreference(insightId: string, status: InsightStatus): Promise<
 export function useInsightPreferences(): UseInsightPreferencesReturn {
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [creatingTaskForId, setCreatingTaskForId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Load preferences from API on mount
@@ -137,6 +138,28 @@ export function useInsightPreferences(): UseInsightPreferencesReturn {
     },
     [pinnedIds, dismissedIds]
   );
+
+  const createTaskFromInsight = useCallback(async (insight: AiInsight) => {
+    const taskAction = insight.actions.find((action) => action.type === "create_task");
+    if (!taskAction) {
+      throw new Error("No create_task action available for insight");
+    }
+
+    setCreatingTaskForId(insight.id);
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(taskAction.payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create task (${response.status})`);
+      }
+    } finally {
+      setCreatingTaskForId((current) => (current === insight.id ? null : current));
+    }
+  }, []);
 
   return {
     pinnedIds,

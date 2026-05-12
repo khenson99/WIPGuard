@@ -32,6 +32,12 @@ const DEMO_ANALYSIS_ARTIFACT_TYPES = new Set([
   "demo_coaching_memo",
   "deal_next_step_memo",
 ]);
+const DEMO_MEETING_TEXT_MARKERS = [
+  "sales engineer will walk you through",
+  "what are you most interested in learning about arda",
+  "make ordering 10x faster",
+  "& arda cards",
+];
 
 type HubSpotDeal = NonNullable<NonNullable<AnalyticsDashboardData["hubspot"]>["deals"]>[number];
 
@@ -218,6 +224,23 @@ function findHubSpotDealForMeeting(
   }
 
   return null;
+}
+
+function isDemoMeeting(meeting: DemoMeetingContext, deal: HubSpotDeal | null): boolean {
+  if (deal && DEMO_ENTRY_STAGES.has(deal.stageLabel)) return true;
+
+  const text = [
+    meeting.title,
+    meeting.notes,
+    meeting.dealName,
+    meeting.companyName,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (/\bdemo\b/.test(text)) return true;
+  return DEMO_MEETING_TEXT_MARKERS.some((marker) => text.includes(marker));
 }
 
 function buildDemoRecordFromMeeting(input: {
@@ -462,10 +485,9 @@ function buildConversionFunnel(demos: DemoRecord[]): DemoConversionStep[] {
 }
 
 function buildWeeklyTrend(demos: DemoRecord[]): DemoWeeklyTrend[] {
-  const historical = cohortDemos(demos);
   const byWeek = new Map<string, { scheduled: number; completed: number; noShows: number }>();
 
-  for (const demo of historical) {
+  for (const demo of demos) {
     const date = new Date(demo.scheduledAt);
     const weekStart = new Date(date);
     weekStart.setDate(date.getDate() - date.getDay());
@@ -495,7 +517,7 @@ const DEMO_ENTRY_STAGES = new Set([
   ...POST_DEMO_STAGES,
 ]);
 const ONBOARDED_STAGES = new Set(["Subscription", "Closed Won"]);
-const HUBSPOT_CHURN_STAGES = new Set(["Churn", "Closed Lost"]);
+const HUBSPOT_CHURN_STAGES = new Set(["Churn"]);
 
 type StripeChurnEvent = NonNullable<
   AnalyticsDashboardData["stripe"]
@@ -534,10 +556,35 @@ function pct(num: number, denom: number): number {
   return denom > 0 ? Math.round((num / denom) * 1000) / 10 : 0;
 }
 
-function buildJourneyPathAnalysis(data: AnalyticsDashboardData): JourneyPathRow[] {
+function hasActivatedEvidence(deal: HubSpotDeal): boolean {
+  if (ONBOARDED_STAGES.has(deal.stageLabel)) return true;
+  if (deal.stageHistory?.some((stage) => ONBOARDED_STAGES.has(stage.stageLabel))) return true;
+  return Boolean(deal.stripeCustomerId?.trim());
+}
+
+function buildDemoStatsBySource(demos: DemoRecord[]): Map<string, { booked: number; completed: number; noShow: number }> {
+  const stats = new Map<string, { booked: number; completed: number; noShow: number }>();
+  for (const demo of demos) {
+    const source = demo.source || "Unknown";
+    const entry = stats.get(source) ?? { booked: 0, completed: 0, noShow: 0 };
+    entry.booked += 1;
+    if (demo.outcome === "completed") entry.completed += 1;
+    if (demo.outcome === "no-show") entry.noShow += 1;
+    stats.set(source, entry);
+  }
+  return stats;
+}
+
+function buildJourneyPathAnalysis(
+  data: AnalyticsDashboardData,
+  input?: { demoCohort?: DemoRecord[] },
+): JourneyPathRow[] {
   const deals = data.hubspot?.deals ?? [];
   const stripeChurnEvents = data.stripe?.subscriptions?.recentChurnEvents ?? [];
   const stripeChurnLookup = buildStripeChurnLookup(stripeChurnEvents);
+  const demoStatsBySource = input?.demoCohort?.length
+    ? buildDemoStatsBySource(input.demoCohort)
+    : null;
 
   const bySource = new Map<string, typeof deals>();
   for (const deal of deals) {
@@ -546,14 +593,24 @@ function buildJourneyPathAnalysis(data: AnalyticsDashboardData): JourneyPathRow[
     group.push(deal);
     bySource.set(source, group);
   }
+  for (const source of demoStatsBySource?.keys() ?? []) {
+    if (!bySource.has(source)) bySource.set(source, []);
+  }
 
   const rows: JourneyPathRow[] = [];
 
   for (const [source, sourceDeals] of bySource) {
     const totalLeads = sourceDeals.length;
-    const demosBooked = sourceDeals.filter((d) => DEMO_ENTRY_STAGES.has(d.stageLabel)).length;
-    const demoCompleted = sourceDeals.filter((d) => POST_DEMO_STAGES.includes(d.stageLabel)).length;
-    const demoNoShow = sourceDeals.filter((d) => d.stageLabel === "No-Show/Reschedule").length;
+    const demoStats = demoStatsBySource?.get(source) ?? null;
+    const demosBooked = demoStats
+      ? demoStats.booked
+      : sourceDeals.filter((d) => DEMO_ENTRY_STAGES.has(d.stageLabel)).length;
+    const demoCompleted = demoStats
+      ? demoStats.completed
+      : sourceDeals.filter((d) => POST_DEMO_STAGES.includes(d.stageLabel)).length;
+    const demoNoShow = demoStats
+      ? demoStats.noShow
+      : sourceDeals.filter((d) => d.stageLabel === "No-Show/Reschedule").length;
 
     const terminalDeals = sourceDeals.filter((d) => TERMINAL_STAGES.has(d.stageLabel) && d.updatedAt);
     let avgDaysToDecision: number | null = null;
@@ -568,7 +625,8 @@ function buildJourneyPathAnalysis(data: AnalyticsDashboardData): JourneyPathRow[
     const wonDeals = sourceDeals.filter((d) => d.stageLabel === "Closed Won");
     const closedWon = wonDeals.length;
     const closedLost = sourceDeals.filter((d) => d.stageLabel === "Closed Lost").length;
-    const onboarding = sourceDeals.filter((d) => ONBOARDED_STAGES.has(d.stageLabel)).length;
+    const activatedDeals = sourceDeals.filter(hasActivatedEvidence);
+    const onboarding = activatedDeals.length;
     const wonWithValue = wonDeals.filter((d) => d.amount > 0);
     const avgContractValue = wonWithValue.length > 0
       ? Math.round(wonWithValue.reduce((sum, deal) => sum + deal.amount, 0) / wonWithValue.length)
@@ -576,8 +634,10 @@ function buildJourneyPathAnalysis(data: AnalyticsDashboardData): JourneyPathRow[
 
     const churnedDeals = sourceDeals.flatMap((deal) => {
       const stripeEvent = resolveStripeChurnEvent(deal, stripeChurnLookup);
-      const hubspotChurned = HUBSPOT_CHURN_STAGES.has(deal.stageLabel);
-      if (!hubspotChurned && !stripeEvent) return [];
+      const activated = hasActivatedEvidence(deal);
+      const hubspotChurned = HUBSPOT_CHURN_STAGES.has(deal.stageLabel) && activated;
+      const stripeChurned = Boolean(stripeEvent && activated);
+      if (!hubspotChurned && !stripeChurned) return [];
       return [{
         deal,
         churnedAt: stripeEvent?.canceledAt ?? deal.updatedAt ?? null,
@@ -608,7 +668,7 @@ function buildJourneyPathAnalysis(data: AnalyticsDashboardData): JourneyPathRow[
       onboardingPct: pct(onboarding, closedWon),
       avgContractValue,
       churned: churnedDeals.length,
-      churnedPct: pct(churnedDeals.length, closedWon),
+      churnedPct: pct(churnedDeals.length, onboarding),
       notActivated: notActivatedDeals.length,
       notActivatedPct: pct(notActivatedDeals.length, closedWon),
     });
@@ -621,9 +681,11 @@ export async function listDemoAnalyticsMeetings(): Promise<DemoMeetingContext[]>
   const organizationId = getRequiredOrganizationId();
   const meetings = await prisma.dealMeeting.findMany({
     where: {
-      deal: {
-        organizationId,
-      },
+      OR: [
+        { deal: { organizationId } },
+        { customerRecord: { organizationId } },
+        { dealId: null, customerRecordId: null },
+      ],
     },
     include: {
       deal: {
@@ -777,13 +839,15 @@ export function buildDemoAnalyticsData(
     deal: findHubSpotDealForMeeting(meeting, dealsByHubspotId, dealsByName),
   }));
 
-  const meetingBackedDemos = meetingPairs.map(({ meeting, deal }) =>
-    buildDemoRecordFromMeeting({
-      now,
-      meeting,
-      deal,
-    }),
-  );
+  const meetingBackedDemos = meetingPairs
+    .filter(({ meeting, deal }) => isDemoMeeting(meeting, deal))
+    .map(({ meeting, deal }) =>
+      buildDemoRecordFromMeeting({
+        now,
+        meeting,
+        deal,
+      }),
+    );
 
   const coveredHubSpotDealIds = new Set(
     meetingPairs
@@ -792,8 +856,12 @@ export function buildDemoAnalyticsData(
   );
 
   const hubSpotFallbacks = deals
-    .filter((deal) => deal.stageLabel === "Demo Scheduled" && !coveredHubSpotDealIds.has(deal.dealId))
-    .map((deal) => buildUnscheduledFallbackRecord({ deal }));
+    .filter((deal) => DEMO_ENTRY_STAGES.has(deal.stageLabel) && !coveredHubSpotDealIds.has(deal.dealId))
+    .map((deal) => (
+      deal.stageLabel === "Demo Scheduled"
+        ? buildUnscheduledFallbackRecord({ deal })
+        : buildDealAggregateRecord({ now, deal })
+    ));
 
   const demos = [...meetingBackedDemos, ...hubSpotFallbacks].sort((a, b) => {
     const timeDiff = new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
@@ -801,7 +869,7 @@ export function buildDemoAnalyticsData(
     return a.dealName.localeCompare(b.dealName);
   });
 
-  const cohort = aggregateDemos;
+  const cohort = meetingBackedDemos.length > 0 ? meetingBackedDemos : aggregateDemos;
   const historical = historicalAnalysisDemos(demos);
   const totalScheduled = cohort.length;
   const totalCompleted = cohort.filter((demo) => demo.outcome === "completed").length;
@@ -824,6 +892,7 @@ export function buildDemoAnalyticsData(
     totalScheduled,
     totalCompleted,
     totalNoShows,
+    excludedSuspiciousLeads: data.hubspot?.funnel.excludedSuspiciousLeads ?? 0,
     noShowRate,
     avgLeadTimeDays,
     upcomingCount: demos.filter((demo) => demo.isUpcoming).length,
@@ -849,6 +918,6 @@ export function buildDemoAnalyticsData(
     byOutcome: buildOutcomeBreakdown(cohort),
     conversionFunnel: buildConversionFunnel(cohort),
     weeklyTrend: buildWeeklyTrend(cohort),
-    journeyPaths: buildJourneyPathAnalysis(data),
+    journeyPaths: buildJourneyPathAnalysis(data, { demoCohort: cohort }),
   };
 }

@@ -1,4 +1,8 @@
-import { Prisma, RetentionTenantStatus as PrismaRetentionTenantStatus } from "@/generated/prisma/client";
+import {
+  CustomerExternalProvider,
+  Prisma,
+  RetentionTenantStatus as PrismaRetentionTenantStatus,
+} from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   DEFAULT_RETENTION_LIR_BY_PHASE,
@@ -31,12 +35,13 @@ import {
   getPylonIssueTags,
 } from "@/lib/integrations/pylon-client";
 import {
-  discoverArdaOidcSubjectsByTenant,
+  ardaTenantResolutionKey,
   discoverArdaTenantIdsFromUserDetails,
   extractArdaTenantIdsFromResult,
   normalizeArdaTenantLookupKey,
 } from "@/lib/retention/arda-tenant-resolution";
 import { normalizeCodaMasterOrderArchiveRow } from "@/lib/retention/coda-normalization";
+import { runWithContextAsync } from "@/lib/request-context";
 
 interface SourceSeedRecord {
   source: "ARDA" | "CODA" | "STRIPE" | "HUBSPOT" | "PYLON";
@@ -77,19 +82,16 @@ interface ArdaTenantConfig {
   configuredTenantId: string;
   tenantName: string;
   companyName: string;
-  customerName: string | null;
-  oidcSubject: string | null;
-  userDetailsCounts: {
-    items: number;
-    cards: number;
-    orders: number;
-  } | null;
   customerStatus: string | null;
   health: string | null;
   mainCodaDocId: string | null;
   orderArchiveDocumentId: string | null;
   churned: boolean;
   resultTenantIds: string[];
+}
+
+interface MaterializedArdaTenantConfig extends ArdaTenantConfig {
+  tenantIdResolved: boolean;
 }
 
 interface ArdaEntityRecord {
@@ -102,6 +104,16 @@ interface ArdaEntityRecord {
 interface ArdaPageResult {
   results?: ArdaEntityRecord[];
   nextPage?: string | null;
+}
+
+interface DerivedExternalRefSeed {
+  customerRecordId: string;
+  provider: CustomerExternalProvider;
+  externalObjectType: string;
+  externalId: string;
+  label: string | null;
+  isPrimary: boolean;
+  metadata: Record<string, unknown>;
 }
 
 interface MonthlyTenantAccumulator {
@@ -342,15 +354,6 @@ function ardaRecordId(record: ArdaEntityRecord): string | null {
   );
 }
 
-function ardaTenantLabel(config: Pick<ArdaTenantConfig, "configuredTenantId" | "companyName" | "tenantId">): string {
-  return `${config.companyName} [${config.configuredTenantId} -> ${config.tenantId}]`;
-}
-
-function ardaRequestTimeoutMs(): number {
-  const raw = asNumber(process.env.ARDA_API_TIMEOUT_MS);
-  return raw && raw > 0 ? raw : 20_000;
-}
-
 function buildArdaAuthHeaderCandidates(token: string): Array<Record<string, string>> {
   const trimmed = token.trim();
   if (!trimmed) return [];
@@ -405,6 +408,12 @@ async function fetchCodaApiRows(
     if (pageToken) url.searchParams.set("pageToken", pageToken);
     const response = await fetch(url, { headers, cache: "no-store" });
     if (!response.ok) {
+      if (response.status === 404) {
+        console.warn(
+          `[retention] skipping missing Coda source doc=${docId} table=${tableId} (${response.status} ${response.statusText})`
+        );
+        return rows;
+      }
       throw new Error(
         `Coda request failed for doc ${docId} table ${tableId}: ${response.status} ${response.statusText}`
       );
@@ -415,96 +424,17 @@ async function fetchCodaApiRows(
     if (!pageToken) break;
   }
 
-  if (pageToken) {
-    throw new Error(
-      `Coda request exceeded page limit for doc ${docId} table ${tableId}; increase the configured limit to avoid partial results`
-    );
-  }
-
   return rows;
-}
-
-interface ParsedArdaUserDetailsRow {
-  email: string | null;
-  tenantId: string | null;
-  oidcSubject: string | null;
-  counts: { items: number; cards: number; orders: number } | null;
-}
-
-function extractArdaUserDetailsCounts(summary: string | null): { items: number; cards: number; orders: number } | null {
-  const summaryMatch = summary?.match(/Items:\s*(\d+),\s*Cards:\s*(\d+),\s*Orders:\s*(\d+)/i);
-  return summaryMatch
-    ? {
-        items: Number(summaryMatch[1]),
-        cards: Number(summaryMatch[2]),
-        orders: Number(summaryMatch[3]),
-      }
-    : null;
-}
-
-function readFirstString(record: Record<string, unknown>, candidates: readonly string[]): string | null {
-  for (const candidate of candidates) {
-    const value = asString(record[candidate]);
-    if (value) return value;
-  }
-  return null;
-}
-
-function positiveEnvInt(name: string, fallback: number): number {
-  const parsed = asNumber(process.env[name]);
-  return parsed && parsed > 0 ? Math.floor(parsed) : fallback;
-}
-
-function parseArdaUserDetailsRow(
-  row: CodaApiRow,
-  candidateKeys?: {
-    email?: string[];
-    tenantId?: string[];
-    oidcSubject?: string[];
-    summary?: string[];
-  }
-): ParsedArdaUserDetailsRow {
-  const values = asRecord(row.values);
-  const email = readFirstString(values, candidateKeys?.email ?? [
-    process.env.ARDA_USER_DETAILS_EMAIL_KEY?.trim() || "c-qNAXS3SO0E",
-    "Email",
-    "email",
-    "Email Address",
-  ]);
-  const tenantId = readFirstString(values, candidateKeys?.tenantId ?? [
-    process.env.ARDA_USER_DETAILS_TENANT_ID_KEY?.trim() || "c-WEBsoGYauT",
-    "tenantId",
-    "Tenant ID",
-    "Tenant Id",
-  ]);
-  const oidcSubject = readFirstString(values, candidateKeys?.oidcSubject ?? [
-    process.env.ARDA_USER_DETAILS_OIDC_SUBJECT_KEY?.trim() || "c-N0x4hFU6Uo",
-    "oidcSubject",
-    "OIDC Subject",
-    "OIDC subject",
-  ]);
-  const summary = readFirstString(values, candidateKeys?.summary ?? [
-    process.env.ARDA_USER_DETAILS_SUMMARY_KEY?.trim() || "c-yoAdpl41FS",
-    "Summary",
-    "summary",
-    "User Details Summary",
-  ]);
-
-  return {
-    email,
-    tenantId,
-    oidcSubject,
-    counts: extractArdaUserDetailsCounts(summary),
-  };
 }
 
 function normalizeArdaTenantConfigRow(row: CodaApiRow): ArdaTenantConfig | null {
   const values = asRecord(row.values);
-  const tenantId = asString(values.tenantId);
-  const customerName =
-    asString(asRecord(values.Customer).name) ?? asString(values.Customer);
-  const companyName = asString(values.CompanyName) ?? customerName;
-  if (!tenantId || !companyName) return null;
+  const tenantId = asString(values.tenantId) ?? "";
+  const companyName =
+    asString(values.CompanyName) ??
+    asString(asRecord(values.Customer).name) ??
+    asString(values.Customer);
+  if (!companyName) return null;
 
   const loweredTenantId = tenantId.toLowerCase();
   if (loweredTenantId === "deleted" || loweredTenantId === "not found") return null;
@@ -518,9 +448,6 @@ function normalizeArdaTenantConfigRow(row: CodaApiRow): ArdaTenantConfig | null 
     configuredTenantId: tenantId,
     tenantName: companyName,
     companyName,
-    customerName,
-    oidcSubject: null,
-    userDetailsCounts: null,
     customerStatus,
     health: asString(values.Health),
     mainCodaDocId: asString(values.mainCodaDocId) ?? asString(values["ActiveMainDoc ID"]),
@@ -534,89 +461,32 @@ async function discoverArdaTenantIdsByConfig(
   docId: string,
   token: string,
   configs: ArdaTenantConfig[]
-): Promise<{
-  tenantIdsByConfig: Map<string, string[]>;
-  oidcSubjectByTenant: Map<string, string>;
-  userDetailsCountsByTenant: Map<string, { items: number; cards: number; orders: number }>;
-}> {
+): Promise<Map<string, string[]>> {
   const userDetailsTableId =
     process.env.ARDA_USER_DETAILS_TABLE_ID?.trim() ??
     "grid-sync-22507-RowDataObject-dynamic-76fe62dd30b7a8c4df850cd9ee639fcfdf09c9067d2e7472911d2a718e7e2f1f";
   try {
-    const pageLimit = positiveEnvInt("ARDA_USER_DETAILS_PAGE_LIMIT", 50);
-    const rowsById = await fetchCodaApiRows(docId, userDetailsTableId, token, pageLimit, false);
-    let userDetailsRows = rowsById.map((row) => parseArdaUserDetailsRow(row));
-    const hasViableIdRows = userDetailsRows.some((row) => row.email || row.tenantId || row.oidcSubject);
-
-    if (!hasViableIdRows) {
-      const rowsByName = await fetchCodaApiRows(docId, userDetailsTableId, token, pageLimit, true);
-      userDetailsRows = rowsByName.map((row) =>
-        parseArdaUserDetailsRow(row, {
-          email: [
-            process.env.ARDA_USER_DETAILS_EMAIL_KEY?.trim() || "",
-            "Email",
-            "email",
-            "Email Address",
-          ].filter(Boolean),
-          tenantId: [
-            process.env.ARDA_USER_DETAILS_TENANT_ID_KEY?.trim() || "",
-            "tenantId",
-            "Tenant ID",
-            "Tenant Id",
-          ].filter(Boolean),
-          oidcSubject: [
-            process.env.ARDA_USER_DETAILS_OIDC_SUBJECT_KEY?.trim() || "",
-            "oidcSubject",
-            "OIDC Subject",
-            "OIDC subject",
-          ].filter(Boolean),
-          summary: [
-            process.env.ARDA_USER_DETAILS_SUMMARY_KEY?.trim() || "",
-            "Summary",
-            "summary",
-            "User Details Summary",
-          ].filter(Boolean),
-        })
-      );
-    }
-
-    const userDetailsCountsByTenant = new Map<string, { items: number; cards: number; orders: number }>();
-    for (const row of userDetailsRows) {
-      if (!isUuid(row.tenantId)) continue;
-      const counts = row.counts;
-      if (!counts) continue;
-      const existing = userDetailsCountsByTenant.get(row.tenantId);
-      if (
-        !existing ||
-        counts.items + counts.cards + counts.orders >
-          existing.items + existing.cards + existing.orders
-      ) {
-        userDetailsCountsByTenant.set(row.tenantId, counts);
-      }
-    }
-    return {
-      tenantIdsByConfig: discoverArdaTenantIdsFromUserDetails(
+    const rows = await fetchCodaApiRows(docId, userDetailsTableId, token, 5, false);
+    return discoverArdaTenantIdsFromUserDetails(
       configs.map((config) => ({
         configuredTenantId: config.configuredTenantId,
         companyName: config.companyName,
-        customerName: config.customerName,
       })),
-      userDetailsRows
-      ),
-      oidcSubjectByTenant: discoverArdaOidcSubjectsByTenant(userDetailsRows),
-      userDetailsCountsByTenant,
-    };
+      rows.map((row) => {
+        const values = asRecord(row.values);
+        return {
+          email: asString(values["c-qNAXS3SO0E"]),
+          tenantId: asString(values["c-WEBsoGYauT"]),
+        };
+      })
+    );
   } catch (error) {
     console.warn(
       `[retention] Unable to derive Arda tenant UUIDs from User Details: ${
         error instanceof Error ? error.message : String(error)
       }`
     );
-    return {
-      tenantIdsByConfig: new Map(),
-      oidcSubjectByTenant: new Map(),
-      userDetailsCountsByTenant: new Map(),
-    };
+    return new Map();
   }
 }
 
@@ -625,62 +495,91 @@ function resolveArdaTenantIds(
   discoveredTenantIdsByConfig: Map<string, string[]>
 ): string[] {
   if (isUuid(config.tenantId)) return [config.tenantId];
+  if (config.resultTenantIds.length > 0) return config.resultTenantIds;
 
-  for (const candidate of [config.companyName, config.customerName, config.tenantName]) {
-    const normalizedCompanyName = normalizeArdaCustomerName(candidate);
-    if (!normalizedCompanyName) continue;
+  const normalizedCompanyName =
+    normalizeArdaCustomerName(config.companyName) ?? normalizeArdaCustomerName(config.tenantName);
+  if (normalizedCompanyName) {
     const manualTenantIds = ARDA_CUSTOMER_TENANT_IDS[normalizedCompanyName];
     if (manualTenantIds?.length) return manualTenantIds;
   }
 
-  const discovered =
+  return (
     discoveredTenantIdsByConfig.get(
-      normalizeArdaTenantLookupKey(config.configuredTenantId)
-    ) ?? [];
-  if (discovered.length > 0) return discovered;
-
-  return config.resultTenantIds;
+      ardaTenantResolutionKey({
+        configuredTenantId: config.configuredTenantId,
+        companyName: config.companyName,
+      })
+    ) ??
+    []
+  );
 }
 
-async function loadArdaTenantConfigs(): Promise<ArdaTenantConfig[]> {
-  const token = process.env.CODA_API_TOKEN?.trim();
-  const docId = process.env.ARDA_TENANT_CONFIG_CODA_DOC_ID?.trim() || "oRkoolViAM";
-  const tableId = process.env.ARDA_TENANT_CONFIG_TABLE_ID?.trim() || "grid-5Kc9QNP-nT";
-  if (!token) return [];
-
-  const pageLimit = positiveEnvInt("ARDA_TENANT_CONFIG_PAGE_LIMIT", 10);
-  const rows = await fetchCodaApiRows(docId, tableId, token, pageLimit);
-  const configs = rows
-    .map(normalizeArdaTenantConfigRow)
-    .filter((config): config is ArdaTenantConfig => config !== null);
-  const {
-    tenantIdsByConfig: discoveredTenantIdsByConfig,
-    oidcSubjectByTenant,
-    userDetailsCountsByTenant,
-  } =
-    await discoverArdaTenantIdsByConfig(
-    docId,
-    token,
-    configs
+function fallbackArdaTenantExternalId(config: ArdaTenantConfig): string {
+  return (
+    config.configuredTenantId ||
+    normalizeArdaTenantLookupKey(
+      normalizeArdaCustomerName(config.companyName) ??
+        normalizeArdaCustomerName(config.tenantName) ??
+        config.companyName
+    ) ||
+    crypto.randomUUID()
   );
-  const resolved: ArdaTenantConfig[] = [];
+}
+
+function materializeArdaTenantConfigs(
+  configs: ArdaTenantConfig[],
+  discoveredTenantIdsByConfig: Map<string, string[]>
+): MaterializedArdaTenantConfig[] {
+  const materialized: MaterializedArdaTenantConfig[] = [];
   const unresolved: string[] = [];
 
   for (const config of configs) {
     const tenantIds = resolveArdaTenantIds(config, discoveredTenantIdsByConfig);
     if (tenantIds.length === 0) {
       unresolved.push(config.companyName);
+      materialized.push({
+        ...config,
+        tenantId: fallbackArdaTenantExternalId(config),
+        tenantIdResolved: false,
+      });
       continue;
     }
+
     for (const tenantId of tenantIds) {
-      resolved.push({
+      materialized.push({
         ...config,
         tenantId,
-        oidcSubject: oidcSubjectByTenant.get(tenantId) ?? null,
-        userDetailsCounts: userDetailsCountsByTenant.get(tenantId) ?? null,
+        tenantIdResolved: true,
       });
     }
   }
+
+  if (unresolved.length > 0) {
+    console.warn(
+      `[retention] Keeping ${unresolved.length} Arda tenant configs without UUID resolution as metadata-only rows`,
+      unresolved.slice(0, 10)
+    );
+  }
+
+  return materialized;
+}
+
+async function loadArdaTenantConfigs(): Promise<MaterializedArdaTenantConfig[]> {
+  const token = process.env.CODA_API_TOKEN?.trim();
+  const docId = process.env.ARDA_TENANT_CONFIG_CODA_DOC_ID?.trim() || "oRkoolViAM";
+  const tableId = process.env.ARDA_TENANT_CONFIG_TABLE_ID?.trim() || "grid-5Kc9QNP-nT";
+  if (!token) return [];
+
+  const rows = await fetchCodaApiRows(docId, tableId, token, 5);
+  const configs = rows
+    .map(normalizeArdaTenantConfigRow)
+    .filter((config): config is ArdaTenantConfig => config !== null);
+  const discoveredTenantIdsByConfig = await discoverArdaTenantIdsByConfig(
+    docId,
+    token,
+    configs
+  );
 
   if (discoveredTenantIdsByConfig.size > 0) {
     console.info(
@@ -688,18 +587,7 @@ async function loadArdaTenantConfigs(): Promise<ArdaTenantConfig[]> {
     );
   }
 
-  if (unresolved.length > 0) {
-    console.warn(
-      `[retention] Skipping ${unresolved.length} Arda tenant configs without UUID resolution`,
-      unresolved.slice(0, 10)
-    );
-  }
-
-  console.info(
-    `[retention] Resolved ${resolved.length} Arda tenant config rows from ${configs.length} active configs`
-  );
-
-  return resolved;
+  return materializeArdaTenantConfigs(configs, discoveredTenantIdsByConfig);
 }
 
 async function fetchArdaPage(
@@ -722,7 +610,6 @@ async function fetchArdaPage(
         ...sharedHeaders,
         ...authHeaders,
       },
-      signal: init.signal ?? AbortSignal.timeout(ardaRequestTimeoutMs()),
       cache: "no-store",
     });
     if (response.status !== 401) return response;
@@ -736,34 +623,26 @@ async function fetchArdaPage(
 async function queryArdaCollection(
   endpoint: string,
   tenantId: string,
-  asOfMs: number,
-  oidcSubject: string | null = null
+  asOfMs: number
 ): Promise<ArdaEntityRecord[]> {
   const baseUrl = process.env.ARDA_API_BASE_URL?.trim();
   if (!baseUrl) return [];
 
-  const sharedHeaders: Record<string, string> = {
+  const sharedHeaders = {
     Accept: "application/json",
     "Content-Type": "application/json",
     "X-Author": process.env.ARDA_API_AUTHOR?.trim() || "WIPGuard-retention-sync",
     "X-Tenant-Id": tenantId,
   };
-  if (oidcSubject) {
-    sharedHeaders["X-oidc-subject"] = oidcSubject;
-  }
 
   const allResults: ArdaEntityRecord[] = [];
   const queryString = `effectiveasof=${asOfMs}&recordedasof=${asOfMs}`;
-  const queryBody =
-    endpoint === "order/order"
-      ? { filter: true, paginate: { index: 0, size: 250 } }
-      : {};
 
   const first = await fetchArdaPage(
     `${baseUrl.replace(/\/$/, "")}/v1/${endpoint}/query?${queryString}`,
     {
       method: "POST",
-      body: JSON.stringify(queryBody),
+      body: JSON.stringify({}),
     },
     sharedHeaders
   );
@@ -783,26 +662,13 @@ async function queryArdaCollection(
   let pageCount = 0;
   while (nextPage && pageCount < 100) {
     pageCount += 1;
-    const response =
-      endpoint === "order/order"
-        ? await fetchArdaPage(
-            `${baseUrl.replace(/\/$/, "")}/v1/${endpoint}/query?${queryString}`,
-            {
-              method: "POST",
-              body: JSON.stringify({
-                ...queryBody,
-                pageToken: nextPage,
-              }),
-            },
-            sharedHeaders
-          )
-        : await fetchArdaPage(
-            `${baseUrl.replace(/\/$/, "")}/v1/${endpoint}/query/${encodeURIComponent(nextPage)}?${queryString}`,
-            {
-              method: "GET",
-            },
-            sharedHeaders
-          );
+    const response = await fetchArdaPage(
+      `${baseUrl.replace(/\/$/, "")}/v1/${endpoint}/query/${encodeURIComponent(nextPage)}?${queryString}`,
+      {
+        method: "GET",
+      },
+      sharedHeaders
+    );
     if (!response.ok) {
       throw new Error(`Arda pagination failed for ${endpoint}: ${response.status} ${response.statusText}`);
     }
@@ -1053,6 +919,116 @@ async function upsertSourceRecords(
   return { mappedCount, windowStart, windowEnd };
 }
 
+function buildDerivedCodaExternalRefsFromSourceRecords(
+  records: Array<{
+    customerRecordId: string;
+    source: string;
+    objectType: string;
+    payload: Record<string, unknown>;
+  }>
+): DerivedExternalRefSeed[] {
+  const latestArdaTenantByCustomer = new Map<string, Record<string, unknown>>();
+  for (const record of records) {
+    if (record.source !== "ARDA" || record.objectType !== "tenant") continue;
+    if (!latestArdaTenantByCustomer.has(record.customerRecordId)) {
+      latestArdaTenantByCustomer.set(record.customerRecordId, record.payload);
+    }
+  }
+
+  const refs = new Map<string, DerivedExternalRefSeed>();
+  for (const [customerRecordId, payload] of latestArdaTenantByCustomer.entries()) {
+    const mainDocId = asString(payload.mainCodaDocId);
+    if (mainDocId) {
+      refs.set(`${customerRecordId}:CODA:doc:${mainDocId}`, {
+        customerRecordId,
+        provider: CustomerExternalProvider.CODA,
+        externalObjectType: "doc",
+        externalId: mainDocId,
+        label: "Customer Success and Implementation",
+        isPrimary: true,
+        metadata: {
+          docUrl: `https://coda.io/d/_d${encodeURIComponent(mainDocId)}`,
+          source: "retention_arda_tenant",
+        },
+      });
+    }
+
+    const orderArchiveDocumentId = asString(payload.orderArchiveDocumentId);
+    if (orderArchiveDocumentId) {
+      refs.set(`${customerRecordId}:CODA:order_archive_doc:${orderArchiveDocumentId}`, {
+        customerRecordId,
+        provider: CustomerExternalProvider.CODA,
+        externalObjectType: "order_archive_doc",
+        externalId: orderArchiveDocumentId,
+        label: "Master Order Archive",
+        isPrimary: !mainDocId,
+        metadata: {
+          docUrl: `https://coda.io/d/_d${encodeURIComponent(orderArchiveDocumentId)}`,
+          source: "retention_arda_tenant",
+        },
+      });
+    }
+  }
+
+  return [...refs.values()];
+}
+
+async function syncDerivedCustomerExternalRefs(actor: RetentionActor): Promise<void> {
+  const sourceRecords = await prisma.retentionSourceRecord.findMany({
+    where: {
+      organizationId: actor.organizationId,
+      customerRecordId: { not: null },
+      source: "ARDA",
+      objectType: "tenant",
+    },
+    orderBy: [{ sourceUpdatedAt: "desc" }, { createdAt: "desc" }],
+    select: {
+      customerRecordId: true,
+      source: true,
+      objectType: true,
+      payload: true,
+    },
+  });
+
+  const derivedRefs = buildDerivedCodaExternalRefsFromSourceRecords(
+    sourceRecords.map((record) => ({
+      customerRecordId: record.customerRecordId!,
+      source: record.source,
+      objectType: record.objectType,
+      payload: asRecord(record.payload),
+    }))
+  );
+
+  for (const ref of derivedRefs) {
+    await prisma.customerRecordExternalRef.upsert({
+      where: {
+        customerRecordId_provider_externalObjectType_externalId: {
+          customerRecordId: ref.customerRecordId,
+          provider: ref.provider,
+          externalObjectType: ref.externalObjectType,
+          externalId: ref.externalId,
+        },
+      },
+      create: {
+        customerRecordId: ref.customerRecordId,
+        organizationId: actor.organizationId,
+        provider: ref.provider,
+        externalObjectType: ref.externalObjectType,
+        externalId: ref.externalId,
+        label: ref.label,
+        isPrimary: ref.isPrimary,
+        metadata: ref.metadata as Prisma.InputJsonValue,
+      },
+      update: {
+        organizationId: actor.organizationId,
+        label: ref.label,
+        isPrimary: ref.isPrimary,
+        metadata: ref.metadata as Prisma.InputJsonValue,
+      },
+    });
+  }
+}
+
 async function loadHubSpotSourceRecords(actor: RetentionActor): Promise<SourceSeedRecord[]> {
   const [hasDealCompany, hasDeal] = await Promise.all([tableExists("DealCompany"), tableExists("Deal")]);
 
@@ -1199,8 +1175,7 @@ async function loadCodaSourceRecords(): Promise<SourceSeedRecord[]> {
     "grid-GPpAfsGmqQ";
   if (!token || !docId || !tableId) return [];
 
-  const pageLimit = positiveEnvInt("CODA_MASTER_ORDER_ARCHIVE_PAGE_LIMIT", 20);
-  const sourceRows = await fetchCodaApiRows(docId, tableId, token, pageLimit);
+  const sourceRows = await fetchCodaApiRows(docId, tableId, token, 10);
   const rows: SourceSeedRecord[] = [];
   for (const row of sourceRows) {
     const normalizedRow = normalizeCodaMasterOrderArchiveRow(row);
@@ -1274,16 +1249,15 @@ async function loadArdaSourceRecords(): Promise<SourceSeedRecord[]> {
   const rows: SourceSeedRecord[] = [];
 
   for (const config of tenantConfigs) {
-    const tenantRowsStart = rows.length;
-    const tenantLabel = ardaTenantLabel(config);
+    const hasResolvedTenantId = isUuid(config.tenantId) && config.tenantIdResolved;
     rows.push({
       source: "ARDA",
       objectType: "tenant",
       externalId: config.tenantId,
       tenantKey: config.tenantId,
-      occurredAt: new Date(asOfMs).toISOString(),
+      occurredAt: null,
       sourceCreatedAt: null,
-      sourceUpdatedAt: new Date(asOfMs).toISOString(),
+      sourceUpdatedAt: null,
       payload: {
         ardaTenantId: config.tenantId,
         configuredTenantId: config.configuredTenantId,
@@ -1291,12 +1265,9 @@ async function loadArdaSourceRecords(): Promise<SourceSeedRecord[]> {
         companyName: config.companyName,
         customerStatus: config.customerStatus,
         health: config.health,
+        tenantIdResolved: hasResolvedTenantId,
         mainCodaDocId: config.mainCodaDocId,
         orderArchiveDocumentId: config.orderArchiveDocumentId,
-        oidcSubject: config.oidcSubject,
-        userDetailsItemCount: config.userDetailsCounts?.items ?? null,
-        userDetailsCardCount: config.userDetailsCounts?.cards ?? null,
-        userDetailsOrderCount: config.userDetailsCounts?.orders ?? null,
         implementationStage:
           config.customerStatus && config.customerStatus.toLowerCase().includes("freemium")
             ? "TRIAL"
@@ -1304,19 +1275,15 @@ async function loadArdaSourceRecords(): Promise<SourceSeedRecord[]> {
       },
     });
 
-    const [orders, cards, items] = await Promise.all([
-      queryArdaCollection("order/order", config.tenantId, asOfMs, config.oidcSubject),
-      queryArdaCollection("kanban/kanban-card", config.tenantId, asOfMs, config.oidcSubject),
-      queryArdaCollection("item/item", config.tenantId, asOfMs, config.oidcSubject),
-    ]);
+    if (!hasResolvedTenantId) {
+      continue;
+    }
 
-    console.info(
-      `[retention] Arda collections for ${tenantLabel}: orders=${orders.length}, cards=${cards.length}, items=${items.length}, userDetails=${
-        config.userDetailsCounts
-          ? `${config.userDetailsCounts.items}/${config.userDetailsCounts.cards}/${config.userDetailsCounts.orders}`
-          : "n/a"
-      }`
-    );
+    const [orders, cards, items] = await Promise.all([
+      queryArdaCollection("order/order", config.tenantId, asOfMs),
+      queryArdaCollection("kanban/kanban-card", config.tenantId, asOfMs),
+      queryArdaCollection("item/item", config.tenantId, asOfMs),
+    ]);
 
     for (const record of orders) {
       const payload = ardaPayload(record);
@@ -1390,15 +1357,7 @@ async function loadArdaSourceRecords(): Promise<SourceSeedRecord[]> {
         },
       });
     }
-
-    console.info(
-      `[retention] Built ${rows.length - tenantRowsStart} Arda source rows for ${tenantLabel}`
-    );
   }
-
-  console.info(
-    `[retention] Built ${rows.length} Arda source rows across ${tenantConfigs.length} resolved tenant configs`
-  );
 
   return rows;
 }
@@ -1436,26 +1395,34 @@ async function syncSource(
 }
 
 export async function syncRetentionSources(actor: RetentionActor): Promise<void> {
-  const sources: Array<[SourceSeedRecord["source"], () => Promise<SourceSeedRecord[]>]> = [
-    ["HUBSPOT", () => loadHubSpotSourceRecords(actor)],
-    ["STRIPE", loadStripeSourceRecords],
-    ["PYLON", loadPylonSourceRecords],
-    ["CODA", loadCodaSourceRecords],
-    ["ARDA", loadArdaSourceRecords],
-  ];
-  const failures: string[] = [];
+  return runWithContextAsync({ organizationId: actor.organizationId, userId: actor.id }, async () => {
+    const sources: Array<[SourceSeedRecord["source"], () => Promise<SourceSeedRecord[]>]> = [
+      ["HUBSPOT", () => loadHubSpotSourceRecords(actor)],
+      ["STRIPE", loadStripeSourceRecords],
+      ["PYLON", loadPylonSourceRecords],
+      ["CODA", loadCodaSourceRecords],
+      ["ARDA", loadArdaSourceRecords],
+    ];
+    const failures: string[] = [];
 
-  for (const [source, loader] of sources) {
-    try {
-      await syncSource(actor, source, loader);
-    } catch (error) {
-      failures.push(`${source}: ${error instanceof Error ? error.message : String(error)}`);
+    for (const [source, loader] of sources) {
+      try {
+        await syncSource(actor, source, loader);
+      } catch (error) {
+        failures.push(`${source}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
-  }
 
-  if (failures.length > 0) {
-    throw new Error(`Retention source sync failed: ${failures.join("; ")}`);
-  }
+    try {
+      await syncDerivedCustomerExternalRefs(actor);
+    } catch (error) {
+      failures.push(`DERIVED_EXTERNAL_REFS: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    if (failures.length > 0) {
+      console.warn(`[retention] continuing after partial source sync failures: ${failures.join("; ")}`);
+    }
+  });
 }
 
 function initAccumulator(customerRecordId: string, monthStart: Date, monthEnd: Date, customerName: string): MonthlyTenantAccumulator {
@@ -2001,96 +1968,98 @@ function buildCurrentDetailPayload(
 }
 
 export async function buildRetentionDataset(actor: RetentionActor): Promise<void> {
-  const rows = await loadSourceRecordsForDataset(actor);
-  const accumulators = new Map<string, MonthlyTenantAccumulator>();
+  return runWithContextAsync({ organizationId: actor.organizationId, userId: actor.id }, async () => {
+    const rows = await loadSourceRecordsForDataset(actor);
+    const accumulators = new Map<string, MonthlyTenantAccumulator>();
 
-  for (const row of rows) {
-    const occurredAt = row.occurredAt;
-    if (!occurredAt) continue;
-    const { monthStart, monthEnd } = monthBounds(occurredAt);
-    const key = `${row.customerRecordId}:${monthKey(monthStart)}`;
-    const current = accumulators.get(key) ?? initAccumulator(row.customerRecordId, monthStart, monthEnd, row.customerName);
-    mergeSourceRecord(current, {
-      source: row.source,
-      objectType: row.objectType,
-      occurredAt,
-      payload: row.payload,
-    });
-    accumulators.set(key, current);
-  }
-
-  const groupedByCustomer = new Map<string, MonthlyTenantAccumulator[]>();
-  for (const acc of accumulators.values()) {
-    const list = groupedByCustomer.get(acc.customerRecordId) ?? [];
-    list.push(acc);
-    groupedByCustomer.set(acc.customerRecordId, list);
-  }
-
-  await prisma.retentionTenantMonth.deleteMany({
-    where: { organizationId: actor.organizationId },
-  });
-
-  for (const [customerRecordId, months] of groupedByCustomer.entries()) {
-    months.sort((a, b) => a.monthStart.getTime() - b.monthStart.getTime());
-    for (let index = 0; index < months.length; index += 1) {
-      const current = months[index];
-      const trailing = dedupeTrailingMonths(months.slice(0, index), 3);
-      const history = months.slice(0, index);
-      const lifecycleStartDate = deriveLifecycleStartDate(current, history);
-      const onboardingStartDate = deriveOnboardingStartDate(current, history);
-      const future = months.slice(index + 1);
-      const featurePayload = buildFeaturePayload(current, trailing, lifecycleStartDate, onboardingStartDate);
-      const outcomePayload = buildOutcomePayload(current, future, featurePayload);
-      const coveragePayload = buildCoverage(current);
-      const lifecyclePhase = determineLifecyclePhase({
-        ...current,
-        goLiveDate: lifecycleStartDate,
+    for (const row of rows) {
+      const occurredAt = row.occurredAt;
+      if (!occurredAt) continue;
+      const { monthStart, monthEnd } = monthBounds(occurredAt);
+      const key = `${row.customerRecordId}:${monthKey(monthStart)}`;
+      const current = accumulators.get(key) ?? initAccumulator(row.customerRecordId, monthStart, monthEnd, row.customerName);
+      mergeSourceRecord(current, {
+        source: row.source,
+        objectType: row.objectType,
+        occurredAt,
+        payload: row.payload,
       });
-      const candidateMetrics = asRecord(featurePayload.candidateMetrics);
-      const primaryDefinition = selectLirDefinition(lifecyclePhase, candidateMetrics);
-      const primaryValue = asNumber(candidateMetrics[primaryDefinition.metricKey]);
-      const reasons = buildReasonCodes(current, featurePayload, outcomePayload, primaryDefinition, primaryValue);
-      const status = classifyRetentionStatus({
-        lifecyclePhase,
-        primaryLirDefinition: primaryDefinition,
-        primaryLirValue: primaryValue,
-        supportRisk: outcomePayload.supportDistress,
-        billingRisk: current.delinquent || current.failedPayments > 0,
-        onboardingRisk:
-          lifecyclePhase === "ONBOARDING" &&
-          (!current.firstOrderDate || (asNumber(candidateMetrics.timeToFirstOrderDays) ?? 999) > 21),
-        usageCollapse: outcomePayload.usageCollapse,
-        reasonCodes: reasons,
-      });
-
-      await prisma.retentionTenantMonth.create({
-        data: {
-          organizationId: actor.organizationId,
-          customerRecordId,
-          monthStart: current.monthStart,
-          monthEnd: current.monthEnd,
-          lifecyclePhase,
-          status: retentionStatusToDb(status) as PrismaRetentionTenantStatus,
-          featureVersion: RETENTION_FEATURE_VERSION,
-          primaryLirPassed: evaluateLir(primaryDefinition, primaryValue),
-          primaryLirLabel: primaryDefinition.label,
-          primaryLirValue: primaryValue,
-          primaryLirThreshold: primaryDefinition.threshold,
-          primaryLirScore:
-            primaryValue !== null && primaryDefinition.threshold > 0
-              ? Number((primaryValue / primaryDefinition.threshold).toFixed(3))
-              : null,
-          reasonCodes: reasons as unknown as Prisma.InputJsonValue,
-          featureData: featurePayload as unknown as Prisma.InputJsonValue,
-          outcomeData: {
-            ...outcomePayload,
-            primaryLirPassed: evaluateLir(primaryDefinition, primaryValue),
-          } as unknown as Prisma.InputJsonValue,
-          coverageData: coveragePayload as unknown as Prisma.InputJsonValue,
-        },
-      });
+      accumulators.set(key, current);
     }
-  }
+
+    const groupedByCustomer = new Map<string, MonthlyTenantAccumulator[]>();
+    for (const acc of accumulators.values()) {
+      const list = groupedByCustomer.get(acc.customerRecordId) ?? [];
+      list.push(acc);
+      groupedByCustomer.set(acc.customerRecordId, list);
+    }
+
+    await prisma.retentionTenantMonth.deleteMany({
+      where: { organizationId: actor.organizationId },
+    });
+
+    for (const [customerRecordId, months] of groupedByCustomer.entries()) {
+      months.sort((a, b) => a.monthStart.getTime() - b.monthStart.getTime());
+      for (let index = 0; index < months.length; index += 1) {
+        const current = months[index];
+        const trailing = dedupeTrailingMonths(months.slice(0, index), 3);
+        const history = months.slice(0, index);
+        const lifecycleStartDate = deriveLifecycleStartDate(current, history);
+        const onboardingStartDate = deriveOnboardingStartDate(current, history);
+        const future = months.slice(index + 1);
+        const featurePayload = buildFeaturePayload(current, trailing, lifecycleStartDate, onboardingStartDate);
+        const outcomePayload = buildOutcomePayload(current, future, featurePayload);
+        const coveragePayload = buildCoverage(current);
+        const lifecyclePhase = determineLifecyclePhase({
+          ...current,
+          goLiveDate: lifecycleStartDate,
+        });
+        const candidateMetrics = asRecord(featurePayload.candidateMetrics);
+        const primaryDefinition = selectLirDefinition(lifecyclePhase, candidateMetrics);
+        const primaryValue = asNumber(candidateMetrics[primaryDefinition.metricKey]);
+        const reasons = buildReasonCodes(current, featurePayload, outcomePayload, primaryDefinition, primaryValue);
+        const status = classifyRetentionStatus({
+          lifecyclePhase,
+          primaryLirDefinition: primaryDefinition,
+          primaryLirValue: primaryValue,
+          supportRisk: outcomePayload.supportDistress,
+          billingRisk: current.delinquent || current.failedPayments > 0,
+          onboardingRisk:
+            lifecyclePhase === "ONBOARDING" &&
+            (!current.firstOrderDate || (asNumber(candidateMetrics.timeToFirstOrderDays) ?? 999) > 21),
+          usageCollapse: outcomePayload.usageCollapse,
+          reasonCodes: reasons,
+        });
+
+        await prisma.retentionTenantMonth.create({
+          data: {
+            organizationId: actor.organizationId,
+            customerRecordId,
+            monthStart: current.monthStart,
+            monthEnd: current.monthEnd,
+            lifecyclePhase,
+            status: retentionStatusToDb(status) as PrismaRetentionTenantStatus,
+            featureVersion: RETENTION_FEATURE_VERSION,
+            primaryLirPassed: evaluateLir(primaryDefinition, primaryValue),
+            primaryLirLabel: primaryDefinition.label,
+            primaryLirValue: primaryValue,
+            primaryLirThreshold: primaryDefinition.threshold,
+            primaryLirScore:
+              primaryValue !== null && primaryDefinition.threshold > 0
+                ? Number((primaryValue / primaryDefinition.threshold).toFixed(3))
+                : null,
+            reasonCodes: reasons as unknown as Prisma.InputJsonValue,
+            featureData: featurePayload as unknown as Prisma.InputJsonValue,
+            outcomeData: {
+              ...outcomePayload,
+              primaryLirPassed: evaluateLir(primaryDefinition, primaryValue),
+            } as unknown as Prisma.InputJsonValue,
+            coverageData: coveragePayload as unknown as Prisma.InputJsonValue,
+          },
+        });
+      }
+    }
+  });
 }
 
 function candidateScore(candidate: RetentionAnalysisCandidateResult): number {
@@ -2158,91 +2127,93 @@ export async function runRetentionAnalysis(actor: RetentionActor): Promise<Reten
 }
 
 export async function materializeRetentionCurrent(actor: RetentionActor): Promise<void> {
-  const months = await prisma.retentionTenantMonth.findMany({
-    where: { organizationId: actor.organizationId },
-    orderBy: [{ customerRecordId: "asc" }, { monthStart: "desc" }],
-  });
+  return runWithContextAsync({ organizationId: actor.organizationId, userId: actor.id }, async () => {
+    const months = await prisma.retentionTenantMonth.findMany({
+      where: { organizationId: actor.organizationId },
+      orderBy: [{ customerRecordId: "asc" }, { monthStart: "desc" }],
+    });
 
-  const latestByCustomer = new Map<string, typeof months[number]>();
-  for (const month of months) {
-    if (!latestByCustomer.has(month.customerRecordId)) {
-      latestByCustomer.set(month.customerRecordId, month);
+    const latestByCustomer = new Map<string, typeof months[number]>();
+    for (const month of months) {
+      if (!latestByCustomer.has(month.customerRecordId)) {
+        latestByCustomer.set(month.customerRecordId, month);
+      }
     }
-  }
 
-  await prisma.retentionTenantCurrent.deleteMany({
-    where: { organizationId: actor.organizationId },
+    await prisma.retentionTenantCurrent.deleteMany({
+      where: { organizationId: actor.organizationId },
+    });
+
+    for (const month of latestByCustomer.values()) {
+      const customer = await prisma.customerRecord.findUnique({
+        where: { id: month.customerRecordId },
+        select: { name: true },
+      });
+      const features = asRecord(month.featureData);
+      const usage = asRecord(features.usage);
+      const commercial = asRecord(features.commercial);
+      const support = asRecord(features.support);
+      const billing = asRecord(features.billing);
+      const coverage = asRecord(month.coverageData) as unknown as RetentionCoveragePayload;
+      const reasons = asReasonCodes(month.reasonCodes);
+      const detailPayload = buildCurrentDetailPayload(
+        features as unknown as RetentionFeaturePayload,
+        coverage,
+        month.status ?? "WATCH",
+        reasons
+      );
+
+      const candidateMetrics = asRecord(features.candidateMetrics);
+      const lifecyclePhase = month.lifecyclePhase as RetentionLifecyclePhase;
+      const primaryDefinition = selectLirDefinition(lifecyclePhase, candidateMetrics);
+      const ageDays =
+        detailPayload.goLiveDate
+          ? Math.round((month.monthEnd.getTime() - new Date(detailPayload.goLiveDate).getTime()) / (24 * 60 * 60 * 1000))
+          : null;
+
+      await prisma.retentionTenantCurrent.create({
+        data: {
+          organizationId: actor.organizationId,
+          customerRecordId: month.customerRecordId,
+          monthFactId: month.id,
+          lifecyclePhase,
+          status: (month.status ?? PrismaRetentionTenantStatus.WATCH) as PrismaRetentionTenantStatus,
+          primaryLirPassed: month.primaryLirPassed,
+          primaryLirLabel: month.primaryLirLabel ?? primaryDefinition.label,
+          primaryLirValue: month.primaryLirValue,
+          primaryLirThreshold: month.primaryLirThreshold,
+          currentMonthActivity: asNumber(usage.currentMonthActivity),
+          activityTrendPct: asNumber(candidateMetrics.recentBaselineRatio) !== null ? Number((((asNumber(candidateMetrics.recentBaselineRatio) ?? 1) - 1) * 100).toFixed(1)) : null,
+          supportRisk: (asNumber(support.urgentTickets) ?? 0) > 0 || (asNumber(support.unresolvedTickets) ?? 0) >= 5,
+          billingRisk: Boolean(asBoolean(billing.delinquent)) || (asNumber(billing.failedPayments) ?? 0) > 0,
+          onboardingRisk: lifecyclePhase === "ONBOARDING" && !month.primaryLirPassed,
+          icp: Boolean(asBoolean(asRecord(features.overlays).icp)),
+          ownerName: asString(commercial.ownerName),
+          segment: asString(commercial.segment),
+          plan: asString(commercial.plan),
+          ageBucket: ageDays === null ? null : ageDays <= 30 ? "0-30d" : ageDays <= 90 ? "31-90d" : ageDays <= 180 ? "91-180d" : "180d+",
+          summaryData: {
+            customerName: customer?.name ?? "Unknown Tenant",
+          } as Prisma.InputJsonValue,
+          detailData: detailPayload as unknown as Prisma.InputJsonValue,
+          reasonCodes: reasons as unknown as Prisma.InputJsonValue,
+          lastMaterializedAt: new Date(),
+        },
+      });
+    }
   });
-
-  for (const month of latestByCustomer.values()) {
-    const customer = await prisma.customerRecord.findUnique({
-      where: { id: month.customerRecordId },
-      select: { name: true },
-    });
-    const features = asRecord(month.featureData);
-    const usage = asRecord(features.usage);
-    const commercial = asRecord(features.commercial);
-    const support = asRecord(features.support);
-    const billing = asRecord(features.billing);
-    const coverage = asRecord(month.coverageData) as unknown as RetentionCoveragePayload;
-    const reasons = asReasonCodes(month.reasonCodes);
-    const detailPayload = buildCurrentDetailPayload(
-      features as unknown as RetentionFeaturePayload,
-      coverage,
-      month.status ?? "WATCH",
-      reasons
-    );
-
-    const candidateMetrics = asRecord(features.candidateMetrics);
-    const lifecyclePhase = month.lifecyclePhase as RetentionLifecyclePhase;
-    const primaryDefinition = selectLirDefinition(lifecyclePhase, candidateMetrics);
-    const ageDays =
-      detailPayload.goLiveDate
-        ? Math.round((month.monthEnd.getTime() - new Date(detailPayload.goLiveDate).getTime()) / (24 * 60 * 60 * 1000))
-        : null;
-
-    await prisma.retentionTenantCurrent.create({
-      data: {
-        organizationId: actor.organizationId,
-        customerRecordId: month.customerRecordId,
-        monthFactId: month.id,
-        lifecyclePhase,
-        status: (month.status ?? PrismaRetentionTenantStatus.WATCH) as PrismaRetentionTenantStatus,
-        primaryLirPassed: month.primaryLirPassed,
-        primaryLirLabel: month.primaryLirLabel ?? primaryDefinition.label,
-        primaryLirValue: month.primaryLirValue,
-        primaryLirThreshold: month.primaryLirThreshold,
-        currentMonthActivity: asNumber(usage.currentMonthActivity),
-        activityTrendPct: asNumber(candidateMetrics.recentBaselineRatio) !== null ? Number((((asNumber(candidateMetrics.recentBaselineRatio) ?? 1) - 1) * 100).toFixed(1)) : null,
-        supportRisk: (asNumber(support.urgentTickets) ?? 0) > 0 || (asNumber(support.unresolvedTickets) ?? 0) >= 5,
-        billingRisk: Boolean(asBoolean(billing.delinquent)) || (asNumber(billing.failedPayments) ?? 0) > 0,
-        onboardingRisk: lifecyclePhase === "ONBOARDING" && !month.primaryLirPassed,
-        icp: Boolean(asBoolean(asRecord(features.overlays).icp)),
-        ownerName: asString(commercial.ownerName),
-        segment: asString(commercial.segment),
-        plan: asString(commercial.plan),
-        ageBucket: ageDays === null ? null : ageDays <= 30 ? "0-30d" : ageDays <= 90 ? "31-90d" : ageDays <= 180 ? "91-180d" : "180d+",
-        summaryData: {
-          customerName: customer?.name ?? "Unknown Tenant",
-        } as Prisma.InputJsonValue,
-        detailData: detailPayload as unknown as Prisma.InputJsonValue,
-        reasonCodes: reasons as unknown as Prisma.InputJsonValue,
-        lastMaterializedAt: new Date(),
-      },
-    });
-  }
 }
 
 export const __test__ = {
   ardaCreatedTimestamp,
   ardaObservedTimestamp,
   ardaOccurredAt,
-  ardaAdoptionCountsSource,
+  buildDerivedCodaExternalRefsFromSourceRecords,
+  fallbackArdaTenantExternalId,
+  materializeArdaTenantConfigs,
+  normalizeArdaTenantConfigRow,
   deriveLifecycleStartDate,
   deriveOnboardingStartDate,
   computeActiveWeeksTrailing8,
-  parseArdaUserDetailsRow,
-  resolveArdaTenantIds,
-  queryArdaCollection,
-  loadCodaSourceRecords,
+  fetchCodaApiRows,
 };

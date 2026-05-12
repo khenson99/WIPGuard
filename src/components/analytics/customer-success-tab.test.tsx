@@ -1,225 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  makeAnalyticsData,
+  makePortfolio,
+} from "@/components/analytics/__tests__/customer-success-test-helpers";
 import { CustomerSuccessTab } from "@/components/analytics/customer-success-tab";
-import type { AnalyticsDashboardData } from "@/lib/analytics/types";
-import type { CustomerSuccessPortfolio } from "@/lib/customer-success/types";
-
-function makeHealth(score: number, grade: "A" | "B" | "C" | "D" | "F" = "B") {
-  return {
-    score,
-    grade,
-    trend: "stable" as const,
-    confidence: 82,
-    updatedAt: "2026-03-10T00:00:00.000Z",
-    components: {
-      adoption: {
-        score,
-        weight: 0.24,
-        weightedScore: score * 0.24,
-        trend: "stable" as const,
-        status: "watch" as const,
-        evidence: ["Usage stable"],
-        lastUpdatedAt: "2026-03-10T00:00:00.000Z",
-      },
-      engagement: {
-        score,
-        weight: 0.22,
-        weightedScore: score * 0.22,
-        trend: "stable" as const,
-        status: "watch" as const,
-        evidence: ["Meetings steady"],
-        lastUpdatedAt: "2026-03-10T00:00:00.000Z",
-      },
-      relationship: {
-        score,
-        weight: 0.2,
-        weightedScore: score * 0.2,
-        trend: "stable" as const,
-        status: "healthy" as const,
-        evidence: ["Champion engaged"],
-        lastUpdatedAt: "2026-03-10T00:00:00.000Z",
-      },
-      support: {
-        score,
-        weight: 0.2,
-        weightedScore: score * 0.2,
-        trend: "stable" as const,
-        status: "watch" as const,
-        evidence: ["Queue manageable"],
-        lastUpdatedAt: "2026-03-10T00:00:00.000Z",
-      },
-      commercial: {
-        score,
-        weight: 0.14,
-        weightedScore: score * 0.14,
-        trend: "stable" as const,
-        status: "healthy" as const,
-        evidence: ["Renewal tracked"],
-        lastUpdatedAt: "2026-03-10T00:00:00.000Z",
-      },
-    },
-  };
-}
-
-function makePortfolio(): CustomerSuccessPortfolio {
-  return {
-    generatedAt: "2026-03-10T08:00:00.000Z",
-    summary: {
-      totalAccounts: 12,
-      avgHealthScore: 74,
-      atRiskAccounts: 3,
-      openAlerts: 6,
-    },
-    relationshipOps: {
-      lastCompletedAt: "2026-03-10T09:30:00.000Z",
-      sources: [
-        {
-          source: "CODA",
-          status: "SUCCESS",
-          completedAt: "2026-03-10T09:30:00.000Z",
-          recordCount: 120,
-          mappedCount: 110,
-          errorCount: 0,
-        },
-        {
-          source: "PYLON",
-          status: "PARTIAL",
-          completedAt: "2026-03-10T09:28:00.000Z",
-          recordCount: 15,
-          mappedCount: 10,
-          errorCount: 2,
-          lastError: "2 issue rows failed",
-        },
-      ],
-    },
-    healthDistribution: [
-      { label: "A", count: 2 },
-      { label: "B", count: 4 },
-      { label: "C", count: 3 },
-      { label: "D", count: 2 },
-      { label: "F", count: 1 },
-    ],
-    attentionAccounts: [
-      {
-        accountId: "acct_1",
-        name: "Acme Co",
-        ownerName: "Casey",
-        health: makeHealth(58, "D"),
-        openAlertCount: 2,
-        lifecycleStage: "AT_RISK",
-        relationship: {
-          connectedSystems: 3,
-          retentionStatus: "At Risk",
-          primaryLirPassed: false,
-          implementationStage: "LIVE",
-          ardaAdoptionCountsSource: "ARDA_USER_DETAILS",
-          missingSources: ["pylon"],
-        },
-        nextAction: "Schedule exec check-in",
-      },
-    ],
-    alerts: [
-      {
-        id: "alert_1",
-        accountId: "acct_1",
-        title: "Renewal risk rising",
-        category: "risk",
-        severity: "high",
-        status: "open",
-        slaStatus: "at_risk",
-        source: "commercial",
-        evidence: ["Renewal in 45 days"],
-        suggestedAction: "Confirm champion and rollout plan",
-        createdAt: "2026-03-09T10:00:00.000Z",
-        updatedAt: "2026-03-10T08:00:00.000Z",
-      },
-    ],
-    recentActivity: [
-      {
-        id: "event_1",
-        accountId: "acct_1",
-        type: "relationship",
-        title: "QBR completed",
-        description: "Exec sponsor joined the call",
-        occurredAt: "2026-03-09T12:00:00.000Z",
-      },
-    ],
-    accounts: [
-      {
-        accountId: "acct_1",
-        name: "Acme Co",
-        segment: "Mid-market",
-        tier: "Growth",
-        ownerName: "Casey",
-        health: makeHealth(58, "D"),
-        lastActivityAt: "2026-03-09T12:00:00.000Z",
-        renewalDate: "2026-04-20T00:00:00.000Z",
-        openAlertCount: 2,
-        relationship: {
-          connectedSystems: 3,
-          retentionStatus: "At Risk",
-          primaryLirPassed: false,
-          implementationStage: "LIVE",
-          ardaAdoptionCountsSource: "ARDA_USER_DETAILS",
-          missingSources: ["pylon"],
-        },
-      },
-      {
-        accountId: "acct_2",
-        name: "No Coda Co",
-        segment: "SMB",
-        tier: "Starter",
-        ownerName: "Morgan",
-        health: makeHealth(66, "D"),
-        lastActivityAt: "2026-03-08T12:00:00.000Z",
-        renewalDate: "2026-05-20T00:00:00.000Z",
-        openAlertCount: 1,
-        relationship: {
-          connectedSystems: 1,
-          retentionStatus: "Watch",
-          primaryLirPassed: false,
-          implementationStage: "BLOCKED",
-          ardaAdoptionCountsSource: "NONE",
-          missingSources: ["coda", "pylon"],
-        },
-      },
-    ],
-  };
-}
-
-function makeAnalyticsData(): AnalyticsDashboardData {
-  return {
-    freshness: {
-      google_workspace: { status: "CONNECTED", stale: false },
-      slack: { status: "CONNECTED", stale: true },
-      coda: { status: "CONNECTED", stale: false },
-    },
-    pylon: {
-      openConversations: 28,
-      urgentConversations: 18,
-      waitingOnTeam: 12,
-      avgFirstResponseMinutes: 180,
-    },
-    coda: {
-      totalCards: 42,
-    },
-    slack: {
-      enabledRules: 2,
-      totalRules: 2,
-      trend: [{ date: "2026-03-08", automationsTriggered: 2, receipts: 3 }],
-    },
-    googleWorkspace: {
-      enabledRules: 1,
-      totalRules: 1,
-      trend: [{ date: "2026-03-08", automationsTriggered: 1, receipts: 1 }],
-    },
-    codaOps: {
-      enabledRules: 3,
-      totalRules: 3,
-      trend: [{ date: "2026-03-08", automationsTriggered: 4, receipts: 2 }],
-    },
-  } as unknown as AnalyticsDashboardData;
-}
 
 describe("CustomerSuccessTab", () => {
   beforeEach(() => {
@@ -253,24 +38,66 @@ describe("CustomerSuccessTab", () => {
     expect(screen.getByText("Renewal risk rising")).toBeTruthy();
     expect(screen.getByText("QBR completed")).toBeTruthy();
     expect(screen.getByText("Integration Delivery Status")).toBeTruthy();
-    expect(screen.getByText("Customer Ops Activity (7 buckets)")).toBeTruthy();
     expect(screen.getByText("Accounts With Coda")).toBeTruthy();
-    expect(screen.getByText("Relationship Freshness")).toBeTruthy();
-    expect(screen.getByText("Relationship Coverage")).toBeTruthy();
-    expect(screen.getByText("Missing Coda Accounts")).toBeTruthy();
-    expect(screen.getByText("LIR Fail Queue")).toBeTruthy();
-    expect(screen.getByText("Arda Fallback Mode")).toBeTruthy();
-    expect(screen.getAllByText("No Coda Co").length).toBeGreaterThan(0);
-    expect(screen.getByText("coda success")).toBeTruthy();
-    expect(screen.getByText("pylon partial")).toBeTruthy();
     expect(screen.getAllByText("At Risk").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Arda fallback").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Missing pylon/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Missing coda/).length).toBeGreaterThan(0);
     expect(screen.getByText("Connected but stale")).toBeTruthy();
+    expect(screen.getByText("Leading Indicator Pressure")).toBeTruthy();
+    expect(screen.getByText("Accounts with indicator scores below 65 across the portfolio.")).toBeTruthy();
+    expect(screen.getAllByText("account below threshold")).toHaveLength(5);
+    expect(screen.getByText("Primary Signal")).toBeTruthy();
+    expect(screen.getAllByText("Activity recency").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("7d since touch").length).toBeGreaterThan(0);
     expect(screen.getByText("Rebalance urgent queue ownership")).toBeTruthy();
-    expect(screen.getByText("Clear the waiting-on-team queue")).toBeTruthy();
-    expect(screen.getByText("Tighten first-response coverage")).toBeTruthy();
+    expect(screen.getByText("Throttle backlog inflow")).toBeTruthy();
+    expect(screen.getByText("Review overdue task assignments")).toBeTruthy();
+
+    const table = screen.getByRole("table");
+    const dataRows = within(table).getAllByRole("row").slice(1);
+    expect(dataRows[0]?.textContent).toContain("Acme Co");
+
+    fireEvent.change(screen.getByLabelText("Sort portfolio accounts"), {
+      target: { value: "alerts" },
+    });
+
+    const alertSortedRows = within(table).getAllByRole("row").slice(1);
+    expect(alertSortedRows[0]?.textContent).toContain("Beacon Ltd");
+
+    fireEvent.click(screen.getByLabelText("Only risky signals"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Showing 1 account with weakest leading indicator below 65.")).toBeTruthy();
+    });
+
+    const filteredRows = within(table).getAllByRole("row").slice(1);
+    expect(filteredRows).toHaveLength(1);
+    expect(filteredRows[0]?.textContent).toContain("Acme Co");
+
+    fireEvent.click(screen.getByRole("button", { name: /Activity recency/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Indicator filter: Activity recency.")).toBeTruthy();
+    });
+
+    const indicatorFilteredRows = within(table).getAllByRole("row").slice(1);
+    expect(indicatorFilteredRows).toHaveLength(1);
+    expect(indicatorFilteredRows[0]?.textContent).toContain("Acme Co");
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Indicator filter: Activity recency.")).toBeNull();
+    });
+
+    expect((screen.getByLabelText("Sort portfolio accounts") as HTMLSelectElement).value).toBe("primary-signal");
+    expect((screen.getByLabelText("Only risky signals") as HTMLInputElement).checked).toBe(false);
+    expect(window.sessionStorage.getItem("customer-success:portfolio:sort")).toBe("primary-signal");
+    expect(window.sessionStorage.getItem("customer-success:portfolio:weak-signal-only")).toBe("false");
+    expect(window.sessionStorage.getItem("customer-success:portfolio:indicator-filter")).toBeNull();
+
+    const resetRows = within(table).getAllByRole("row").slice(1);
+    expect(resetRows).toHaveLength(2);
+    expect(resetRows[0]?.textContent).toContain("Acme Co");
   });
 
   it("shows the portfolio-only fallback when integration analytics are unavailable", async () => {
@@ -297,50 +124,41 @@ describe("CustomerSuccessTab", () => {
     expect(screen.getAllByText("Not provisioned").length).toBeGreaterThan(0);
   });
 
-  it("runs the relationship sync action and refreshes the portfolio", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url === "/api/customer-success/portfolio") {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => makePortfolio(),
-        } as Response;
-      }
+  it("persists portfolio sort and weak-signal filter in session storage", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => makePortfolio(),
+      }))
+    );
 
-      if (url === "/api/retention/sync" && init?.method === "POST") {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            ok: true,
-            completed: ["sync_sources", "build_dataset", "materialize"],
-          }),
-        } as Response;
-      }
+    const view = render(<CustomerSuccessTab data={makeAnalyticsData()} />);
 
-      throw new Error(`Unexpected fetch: ${url}`);
+    await waitFor(() => {
+      expect(screen.getByText("Portfolio Accounts")).toBeTruthy();
     });
 
-    vi.stubGlobal("fetch", fetchMock);
+    fireEvent.change(screen.getByLabelText("Sort portfolio accounts"), {
+      target: { value: "alerts" },
+    });
+    fireEvent.click(screen.getByLabelText("Only risky signals"));
+    fireEvent.click(screen.getByRole("button", { name: /Activity recency/i }));
 
+    expect(window.sessionStorage.getItem("customer-success:portfolio:sort")).toBe("alerts");
+    expect(window.sessionStorage.getItem("customer-success:portfolio:weak-signal-only")).toBe("true");
+    expect(window.sessionStorage.getItem("customer-success:portfolio:indicator-filter")).toBe("recency");
+
+    view.unmount();
     render(<CustomerSuccessTab data={makeAnalyticsData()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Customer Relationship Portfolio")).toBeTruthy();
+      expect(screen.getByText("Showing 1 account with weakest leading indicator below 65.")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Sync relationship data" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Relationship data synced: sync_sources, build_dataset, materialize")).toBeTruthy();
-    });
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/retention/sync",
-      expect.objectContaining({
-        method: "POST",
-      })
-    );
+    expect((screen.getByLabelText("Sort portfolio accounts") as HTMLSelectElement).value).toBe("alerts");
+    expect((screen.getByLabelText("Only risky signals") as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByText("Indicator filter: Activity recency.")).toBeTruthy();
   });
 });

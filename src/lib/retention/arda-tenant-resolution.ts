@@ -1,13 +1,11 @@
 export interface ArdaTenantResolutionConfig {
   configuredTenantId: string;
   companyName: string;
-  customerName?: string | null;
 }
 
 export interface ArdaTenantUserDetailsRow {
   email: string | null;
   tenantId: string | null;
-  oidcSubject?: string | null;
 }
 
 const UUID_PATTERN =
@@ -43,6 +41,13 @@ export function normalizeArdaTenantLookupKey(value: string | null): string {
     .replace(/[^a-z0-9]+/g, "");
 }
 
+export function ardaTenantResolutionKey(config: ArdaTenantResolutionConfig): string {
+  return (
+    normalizeArdaTenantLookupKey(config.configuredTenantId) ||
+    normalizeArdaTenantLookupKey(config.companyName)
+  );
+}
+
 function simplifyArdaIdentifier(value: string | null): string {
   return normalizeArdaTenantLookupKey(value).replace(
     /(llc|inc|ltd|company|co|mfg|manufacturing|systems|group|services)$/,
@@ -67,24 +72,20 @@ function domainRootFromEmail(email: string | null): string | null {
 }
 
 function scoreConfigMatch(root: string, config: ArdaTenantResolutionConfig): number {
-  const exactIdentifiers = [
-    normalizeArdaTenantLookupKey(config.configuredTenantId),
-    normalizeArdaTenantLookupKey(config.companyName),
-    normalizeArdaTenantLookupKey(config.customerName ?? null),
-  ].filter(Boolean);
-  const simplifiedIdentifiers = [
-    simplifyArdaIdentifier(config.configuredTenantId),
-    simplifyArdaIdentifier(config.companyName),
-    simplifyArdaIdentifier(config.customerName ?? null),
-  ].filter(Boolean);
+  const companyNorm = normalizeArdaTenantLookupKey(config.companyName);
+  const slugNorm = normalizeArdaTenantLookupKey(config.configuredTenantId);
+  const companySimple = simplifyArdaIdentifier(config.companyName);
+  const slugSimple = simplifyArdaIdentifier(config.configuredTenantId);
 
   let score = 0;
-  if (exactIdentifiers.includes(root)) score += 100;
-  if (simplifiedIdentifiers.includes(root)) score += 90;
-  if (exactIdentifiers.some((identifier) => identifier.includes(root))) score += 40;
-  if (exactIdentifiers.some((identifier) => root.includes(identifier))) score += 40;
-  if (simplifiedIdentifiers.some((identifier) => identifier.includes(root))) score += 20;
-  if (simplifiedIdentifiers.some((identifier) => root.includes(identifier))) score += 20;
+  if (root === slugNorm || root === companyNorm) score += 100;
+  if (root === slugSimple || root === companySimple) score += 90;
+  if (root && slugNorm.includes(root)) score += 40;
+  if (root && root.includes(slugNorm)) score += 40;
+  if (root && companyNorm.includes(root)) score += 30;
+  if (root && root.includes(companyNorm)) score += 30;
+  if (root && slugSimple && slugSimple.includes(root)) score += 20;
+  if (root && companySimple && companySimple.includes(root)) score += 20;
   return score;
 }
 
@@ -98,6 +99,10 @@ function parseEmbeddedJson(value: string): unknown {
 
 function collectResultTenantIds(value: unknown, acc: Set<string>): void {
   if (typeof value === "string") {
+    if (isUuid(value)) {
+      acc.add(value);
+      return;
+    }
     const maybeJson = parseEmbeddedJson(value);
     if (maybeJson !== value) collectResultTenantIds(maybeJson, acc);
     return;
@@ -111,12 +116,7 @@ function collectResultTenantIds(value: unknown, acc: Set<string>): void {
   const record = asRecord(value);
   for (const [key, child] of Object.entries(record)) {
     const loweredKey = key.toLowerCase();
-    if (
-      loweredKey === "tenantid" ||
-      loweredKey === "tenant_id" ||
-      loweredKey === "tenantuuid" ||
-      loweredKey === "tenant_uuid"
-    ) {
+    if (loweredKey === "tenantid" || loweredKey === "eid") {
       const candidate = asString(child);
       if (isUuid(candidate)) acc.add(candidate);
     }
@@ -168,7 +168,8 @@ export function discoverArdaTenantIdsFromUserDetails(
     if (!best || best.score < 90) continue;
     if (second && second.score >= best.score) continue;
 
-    const key = normalizeArdaTenantLookupKey(best.config.configuredTenantId);
+    const key = ardaTenantResolutionKey(best.config);
+    if (!key) continue;
     const bucket = discovered.get(key) ?? new Set<string>();
     bucket.add(tenantUuid);
     discovered.set(key, bucket);
@@ -177,21 +178,4 @@ export function discoverArdaTenantIdsFromUserDetails(
   return new Map(
     [...discovered.entries()].map(([key, tenantIds]) => [key, [...tenantIds]])
   );
-}
-
-export function discoverArdaOidcSubjectsByTenant(
-  userDetailsRows: ArdaTenantUserDetailsRow[]
-): Map<string, string> {
-  const subjects = new Map<string, string>();
-
-  for (const row of userDetailsRows) {
-    if (!isUuid(row.tenantId)) continue;
-    const subject = asString(row.oidcSubject);
-    if (!subject) continue;
-    if (!subjects.has(row.tenantId)) {
-      subjects.set(row.tenantId, subject);
-    }
-  }
-
-  return subjects;
 }

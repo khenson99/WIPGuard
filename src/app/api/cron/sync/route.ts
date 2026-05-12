@@ -15,9 +15,11 @@ import { runRules } from "@/lib/integrations/orchestrator";
 import {
   bestEffortMigrateConnectionsToOwner,
   bestEffortMigrateRulesToOwner,
+  ensureIntegrationOwnerOrganizationId,
 } from "@/lib/integrations/ownership";
 import { runIntegrationHealthChecks } from "@/lib/integrations/health-checks";
 import { prisma } from "@/lib/prisma";
+import { materializeRetentionCurrent } from "@/lib/retention/pipeline";
 
 function isAuthorized(request: NextRequest): boolean {
   const expected = process.env.CRON_SYNC_SECRET?.trim() || process.env.INTEGRATION_SYNC_SECRET?.trim();
@@ -39,6 +41,49 @@ function parseRetentionDays(): number {
 function shouldWaitForCompletion(request: NextRequest): boolean {
   const wait = new URL(request.url).searchParams.get("wait")?.trim().toLowerCase();
   return wait === "1" || wait === "true";
+}
+
+async function runRetentionMaterialization(input: {
+  ownerUserId: string | null;
+  userIds: string[];
+}): Promise<{
+  attempted: number;
+  materialized: number;
+  skipped: Array<{ userId: string; reason: string }>;
+}> {
+  const actorsByOrganizationId = new Map<string, { id: string; organizationId: string }>();
+  const skipped: Array<{ userId: string; reason: string }> = [];
+
+  for (const userId of input.userIds) {
+    const organizationId =
+      input.ownerUserId === userId
+        ? await ensureIntegrationOwnerOrganizationId(userId)
+        : (
+            await prisma.user.findUnique({
+              where: { id: userId },
+              select: { organizationId: true },
+            })
+          )?.organizationId;
+
+    if (!organizationId) {
+      skipped.push({ userId, reason: "Missing organizationId" });
+      continue;
+    }
+
+    if (!actorsByOrganizationId.has(organizationId)) {
+      actorsByOrganizationId.set(organizationId, { id: userId, organizationId });
+    }
+  }
+
+  for (const actor of actorsByOrganizationId.values()) {
+    await materializeRetentionCurrent(actor);
+  }
+
+  return {
+    attempted: input.userIds.length,
+    materialized: actorsByOrganizationId.size,
+    skipped,
+  };
 }
 
 async function executeCronSync(input: {
@@ -183,8 +228,12 @@ async function executeCronSync(input: {
       visitorFunnelEnrichmentStatus = [];
     }
 
-    const [analyticsResult, rulesResult, healthResult, pruningResult] = await Promise.allSettled([
-      runAnalyticsRefresh({ userIds, rangePresets: ["7d", "30d"] }),
+    const [analyticsResult, rulesResult, healthResult, pruningResult, retentionResult] = await Promise.allSettled([
+      runAnalyticsRefresh({
+        userIds,
+        rangePresets: ["7d", "30d"],
+        includeMonthlyFinancialHistory: true,
+      }),
       runRules({
         mode: "incremental",
         dryRun: false,
@@ -194,9 +243,16 @@ async function executeCronSync(input: {
       // Health checks run per-user; run for all discovered users.
       Promise.all(userIds.map((uid) => runIntegrationHealthChecks({ userId: uid }))),
       pruneAnalyticsSnapshots({ olderThanDays: parseRetentionDays() }),
+      runRetentionMaterialization({ ownerUserId, userIds }),
     ]);
 
-    const settled = { analytics: null as unknown, rules: null as unknown, health: null as unknown, pruning: null as unknown };
+    const settled = {
+      analytics: null as unknown,
+      rules: null as unknown,
+      health: null as unknown,
+      pruning: null as unknown,
+      retention: null as unknown,
+    };
 
     if (analyticsResult.status === "fulfilled") {
       settled.analytics = analyticsResult.value;
@@ -225,6 +281,13 @@ async function executeCronSync(input: {
       const msg = pruningResult.reason instanceof Error ? pruningResult.reason.message : String(pruningResult.reason);
       failures.push(`pruning: ${msg}`);
       console.error("POST /api/cron/sync pruning failed:", pruningResult.reason);
+    }
+    if (retentionResult.status === "fulfilled") {
+      settled.retention = retentionResult.value;
+    } else {
+      const msg = retentionResult.reason instanceof Error ? retentionResult.reason.message : String(retentionResult.reason);
+      failures.push(`retention: ${msg}`);
+      console.error("POST /api/cron/sync retention materialization failed:", retentionResult.reason);
     }
 
     return {

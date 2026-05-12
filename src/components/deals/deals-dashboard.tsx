@@ -134,6 +134,7 @@ export function DealsDashboard() {
   const [createOpen, setCreateOpen] = useState(false);
   const [meetingOpen, setMeetingOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const resource = useDashboardResource<DealListItem[]>({
     cacheKey: CACHE_KEY,
@@ -154,7 +155,7 @@ export function DealsDashboard() {
             : `Deals request failed (${res.status})`;
         throw new Error(errorMessage);
       }
-      return normalizeDealList(payload);
+      return Array.isArray(payload) ? (payload as DealListItem[]) : EMPTY_DEALS;
     },
   });
 
@@ -185,6 +186,14 @@ export function DealsDashboard() {
     });
   }, [deals, query, stageFilter, ownerFilter, minAmount, maxAmount]);
 
+  const hasActiveFilters = Boolean(
+    stageFilter ||
+      ownerFilter ||
+      query.trim() ||
+      minAmount.trim() ||
+      maxAmount.trim()
+  );
+
   const pipelineColumns = useMemo(() => {
     return OPEN_STAGES.map((stage) => ({
       stage,
@@ -195,12 +204,16 @@ export function DealsDashboard() {
 
   const syncFromHubSpot = async () => {
     setSyncing(true);
+    setSyncError(null);
     try {
       const res = await fetch("/api/deals/sync", { method: "POST" });
-      if (!res.ok) throw new Error("Sync failed");
+      const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) {
+        throw new Error(payload?.error || "Sync failed");
+      }
       await resource.refresh();
-    } catch {
-      // Non-fatal, refresh will show updated state
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : "Sync failed");
     } finally {
       setSyncing(false);
     }
@@ -315,6 +328,7 @@ export function DealsDashboard() {
       )}
 
       {resource.error && <DashboardErrorBanner message={resource.error} onRetry={resource.refresh} />}
+      {syncError ? <DashboardErrorBanner message={syncError} onRetry={syncFromHubSpot} /> : null}
 
       {/* Filters + View Toggle */}
       <div className="flex flex-wrap items-center gap-3">
@@ -393,12 +407,21 @@ export function DealsDashboard() {
       {viewMode === "pipeline" && (
         <>
           {filtered.length === 0 ? (
-            <DashboardEmptyState
-              title="No deals match filters"
-              message="Try adjusting filters or create a new deal."
-              actionLabel="New Deal"
-              onAction={() => setCreateOpen(true)}
-            />
+            deals.length === 0 && !hasActiveFilters ? (
+              <DashboardEmptyState
+                title="No deals loaded yet"
+                message="Create a deal manually or pull your current pipeline in from HubSpot."
+                actionLabel={syncing ? "Syncing..." : "Sync from HubSpot"}
+                onAction={syncFromHubSpot}
+              />
+            ) : (
+              <DashboardEmptyState
+                title="No deals match filters"
+                message="Try adjusting filters or create a new deal."
+                actionLabel="New Deal"
+                onAction={() => setCreateOpen(true)}
+              />
+            )
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {pipelineColumns.map((col) => (

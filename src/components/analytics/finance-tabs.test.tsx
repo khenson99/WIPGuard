@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import { createEmptyAnalyticsDashboardData } from "@/lib/analytics/response-shape";
 import { FinanceTab } from "@/components/analytics/finance-tab";
 import { FinanceStripeTab } from "@/components/analytics/finance-stripe-tab";
+import { FinanceMercuryTab } from "@/components/analytics/finance-mercury-tab";
 import { FinanceHubSpotTab } from "@/components/analytics/finance-hubspot-tab";
+import { buildAnalyticsMetricsLayer } from "@/lib/analytics/kpis";
 
 function makeEmptyData() {
   return createEmptyAnalyticsDashboardData({
@@ -144,11 +146,43 @@ describe("finance tabs", () => {
         source: "live",
       },
     };
+    data.metrics = buildAnalyticsMetricsLayer(data);
+    data.kpis = data.metrics.kpis;
 
     render(<FinanceStripeTab data={data} />);
 
     expect(screen.getAllByText("4.0%").length).toBeGreaterThan(0);
     expect(screen.getAllByText("98.7%").length).toBeGreaterThan(0);
+  });
+
+  it("uses canonical Mercury metrics in the Mercury finance tab", () => {
+    const data = makeEmptyData();
+    if (data.freshness.mercury) {
+      data.freshness.mercury.lastError = null;
+    }
+    data.mercury = {
+      accounts: [{ accountId: "acc-1", accountName: "Operating", balance: 500000, type: "checking" }],
+      cashFlow: {
+        totalBalance: 500000,
+        inflows30d: 18000,
+        outflows30d: 45000,
+        netCashFlow: -27000,
+        runway: 18.5,
+        burnRate: 27000,
+      },
+      _meta: {
+        fetchedAt: "2026-02-16T00:00:00.000Z",
+        nextRefresh: "2026-02-16T01:00:00.000Z",
+        source: "live",
+      },
+    };
+    data.metrics = buildAnalyticsMetricsLayer(data);
+    data.kpis = data.metrics.kpis;
+    data.metrics.finance.mercury!.inflows30d = 1234;
+
+    render(<FinanceMercuryTab data={data} />);
+
+    expect(screen.getAllByText("$1.2K").length).toBeGreaterThan(0);
   });
 
   it("shows finance-stage hubspot empty state when lifecycle stages are missing", () => {
@@ -193,5 +227,58 @@ describe("finance tabs", () => {
     render(<FinanceHubSpotTab data={data} />);
 
     expect(screen.getByText("No finance-stage HubSpot deals found")).toBeTruthy();
+  });
+
+  it("shows the HubSpot suspicious lead exclusion count", () => {
+    const data = makeEmptyData();
+    data.hubspot = {
+      funnel: {
+        totalDeals: 4,
+        closedWon: 1,
+        closedLost: 0,
+        unlikely: 0,
+        churn: 0,
+        activeSubscriptions: 0,
+        noShows: 0,
+        demoScheduled: 1,
+        demoFollowUp: 1,
+        avgDealSize: 1200,
+        winRate: 100,
+        effectiveWinRate: 100,
+        noShowRate: 0,
+        excludedSuspiciousLeads: 3,
+        stages: [
+          {
+            stageId: "1955580622",
+            label: "Budgetary Quote Sent",
+            count: 1,
+            value: 1200,
+          },
+          {
+            stageId: "closedwon",
+            label: "Closed Won",
+            count: 1,
+            value: 1200,
+          },
+        ],
+        dealsBySource: [],
+      },
+      contacts: {
+        totalContacts: 10,
+        recentContacts: 3,
+        bySource: [],
+      },
+      _meta: {
+        fetchedAt: "2026-02-16T00:00:00.000Z",
+        nextRefresh: "2026-02-16T01:00:00.000Z",
+        source: "live",
+      },
+    };
+
+    render(<FinanceHubSpotTab data={data} />);
+
+    expect(screen.getByText("Excluded Leads")).toBeTruthy();
+    expect(screen.getByText("3")).toBeTruthy();
+    expect(screen.getByText("flagged as suspicious")).toBeTruthy();
   });
 });
