@@ -802,8 +802,8 @@ export async function fetchCodaData(
   const funnel = {
     stages: [
       { key: "submissions" as const, label: "Submissions", count: submissions },
-      { key: "cardsCreated" as const, label: "Cards Created", count: cardsInRange.length },
-      { key: "cardsCompleted" as const, label: "Cards Completed", count: cardsCompleted },
+      { key: "cardsCreated" as const, label: "Downloads Started", count: cardsInRange.length },
+      { key: "cardsCompleted" as const, label: "Downloads Completed", count: cardsCompleted },
     ],
     conversions: [
       {

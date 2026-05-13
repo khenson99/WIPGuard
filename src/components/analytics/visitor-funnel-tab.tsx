@@ -64,7 +64,7 @@ const STAGE_LABELS: Record<string, string> = {
   visitors: "Visitors",
   identified: "Identified",
   demo_booked: "Demo Booked",
-  kanban_card_created: "Kanban Card Created",
+  kanban_card_created: "Lead Magnet Submitted",
   trial_started: "Trials Started",
   paid_customer: "Paid Customers",
 };
@@ -147,8 +147,8 @@ const PROVIDER_SETUP_GUIDES: Record<EnrichmentProvider, ProviderSetupGuide> = {
       "VISITOR_FUNNEL_ENRICH_SECRET (shared fallback)",
     ],
     steps: [
-      "Create a Clay webhook or HTTP action that POSTs row payloads into WIPGuard.",
-      "Prefer an x-webhook-secret header; WIPGuard also accepts bearer auth or token query params.",
+      "Create a Clay webhook or HTTP action that POSTs row payloads into Imladris.",
+      "Prefer an x-webhook-secret header; Imladris also accepts bearer auth or token query params.",
       "Map Clay columns to identity fields like email, companyDomain, companyName, capturedUrl, and occurredAt.",
       "Run Validate sample here after configuring the destination to confirm the payload normalizes cleanly.",
     ],
@@ -160,8 +160,8 @@ const PROVIDER_SETUP_GUIDES: Record<EnrichmentProvider, ProviderSetupGuide> = {
       "VISITOR_FUNNEL_ENRICH_SECRET (shared fallback)",
     ],
     steps: [
-      "Point RB2B's webhook destination at WIPGuard's enrichment endpoint.",
-      "If RB2B cannot send a custom header, append ?token=<secret> to the destination URL and store that same secret in WIPGuard.",
+      "Point RB2B's webhook destination at Imladris's enrichment endpoint.",
+      "If RB2B cannot send a custom header, append ?token=<secret> to the destination URL and store that same secret in Imladris.",
       "RB2B payloads normalize best when Business Email, Company Name, Website, Captured URL, and Seen At are present.",
       "Use Validate sample here to verify the endpoint accepts the expected RB2B field names before sending live traffic.",
     ],
@@ -434,7 +434,7 @@ export function VisitorFunnelTab({ data }: { data: AnalyticsDashboardData | null
           <div>
             <h3 className="text-sm font-semibold text-foreground">Anonymous Visit to Customer Funnel</h3>
             <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-              First-party visit cohorts joined to de-anonymization, demo, kanban, trial, and paid conversion milestones.
+              First-party visit cohorts joined to de-anonymization, demo, lead magnet, trial, and paid conversion milestones.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -567,7 +567,7 @@ export function VisitorFunnelTab({ data }: { data: AnalyticsDashboardData | null
                   <th className="pb-2 pr-4 font-medium">Visitors</th>
                   <th className="pb-2 pr-4 font-medium">Identified</th>
                   <th className="pb-2 pr-4 font-medium">Demo</th>
-                  <th className="pb-2 pr-4 font-medium">Kanban</th>
+                  <th className="pb-2 pr-4 font-medium">Lead Magnet</th>
                   <th className="pb-2 pr-4 font-medium">Trial</th>
                   <th className="pb-2 font-medium">Paid</th>
                 </tr>
@@ -882,7 +882,7 @@ export function VisitorFunnelTab({ data }: { data: AnalyticsDashboardData | null
                   <p className="font-medium text-foreground">Milestones</p>
                   <div className="mt-2 space-y-1 text-muted-foreground">
                     <div>Demo: {formatMilestone(record, "demo_booked")}</div>
-                    <div>Kanban: {formatMilestone(record, "kanban_card_created")}</div>
+                    <div>Lead magnet: {formatMilestone(record, "kanban_card_created")}</div>
                     <div>Trial: {formatMilestone(record, "trial_started")}</div>
                     <div>Paid: {formatMilestone(record, "paid_customer")}</div>
                   </div>
@@ -951,7 +951,7 @@ function BreakdownCard({
               <p className="text-xs text-muted-foreground">{row.visitors.toLocaleString()} visitors</p>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Identified {row.identified} · Demo {row.demoBooked} · Kanban {row.kanbanCards} · Trial {row.trialsStarted} · Paid {row.paidCustomers}
+              Identified {row.identified} · Demo {row.demoBooked} · Lead magnet {row.kanbanCards} · Trial {row.trialsStarted} · Paid {row.paidCustomers}
             </p>
           </div>
         ))}

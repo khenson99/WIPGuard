@@ -171,7 +171,7 @@ function telemetryTouchpoints(
     timestamp: new Date().toISOString(),
     channel,
     type: "engagement",
-    detail: `${telemetry.receiptsInRange} integration events`,
+    detail: `${telemetry.receiptsInRange} integration events, ${telemetry.automationsTriggeredInRange} automations triggered`,
     value: null,
   }];
 }

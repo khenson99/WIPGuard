@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
-import type { AnalyticsDashboardData, AnalyticsSectionId } from "@/lib/analytics/types";
+import type {
+  AnalyticsDashboardData,
+  AnalyticsMetricsLayer,
+  AnalyticsSectionId,
+} from "@/lib/analytics/types";
+import { buildAnalyticsMetricsLayer } from "@/lib/analytics/kpis";
 
 // ── Metric Definition Registry ──
 
@@ -10,30 +15,41 @@ interface MetricDefinition {
   extract: (data: AnalyticsDashboardData) => number | null;
 }
 
+const computedMetricsCache = new WeakMap<AnalyticsDashboardData, AnalyticsMetricsLayer>();
+
+function getCanonicalMetrics(data: AnalyticsDashboardData): AnalyticsMetricsLayer {
+  if (data.metrics) return data.metrics;
+  const cached = computedMetricsCache.get(data);
+  if (cached) return cached;
+  const metrics = buildAnalyticsMetricsLayer(data);
+  computedMetricsCache.set(data, metrics);
+  return metrics;
+}
+
 const METRIC_REGISTRY: MetricDefinition[] = [
-  // Ads & Traffic
-  { key: "ga.sessions30d", section: "ads-traffic", label: "Sessions (30d)", extract: (d) => d.googleAnalytics?.sessions30d ?? null },
-  { key: "ga.bounceRate", section: "ads-traffic", label: "Bounce Rate", extract: (d) => d.googleAnalytics?.bounceRate ?? null },
-  { key: "ga.users30d", section: "ads-traffic", label: "Users (30d)", extract: (d) => d.googleAnalytics?.users30d ?? null },
-  { key: "ga.pageviews30d", section: "ads-traffic", label: "Pageviews (30d)", extract: (d) => d.googleAnalytics?.pageviews30d ?? null },
-  { key: "ga.avgSessionDuration", section: "ads-traffic", label: "Avg Session Duration", extract: (d) => d.googleAnalytics?.avgSessionDuration ?? null },
-  { key: "googleAds.spend", section: "ads-traffic", label: "Google Ads Spend", extract: (d) => d.googleAds?.totalSpend30d ?? null },
-  { key: "googleAds.clicks", section: "ads-traffic", label: "Google Ads Clicks", extract: (d) => d.googleAds?.totalClicks ?? null },
-  { key: "googleAds.conversions", section: "ads-traffic", label: "Google Ads Conversions", extract: (d) => d.googleAds?.totalConversions ?? null },
-  { key: "googleAds.roas", section: "ads-traffic", label: "Google Ads ROAS", extract: (d) => d.googleAds?.roas ?? null },
-  { key: "metaAds.spend", section: "ads-traffic", label: "Meta Ads Spend", extract: (d) => d.metaAds?.totalSpend30d ?? null },
-  { key: "metaAds.clicks", section: "ads-traffic", label: "Meta Ads Clicks", extract: (d) => d.metaAds?.totalClicks ?? null },
+  // Website traffic + social media
+  { key: "ga.sessions30d", section: "website-traffic", label: "Sessions (30d)", extract: (d) => d.googleAnalytics?.sessions30d ?? null },
+  { key: "ga.bounceRate", section: "website-traffic", label: "Bounce Rate", extract: (d) => d.googleAnalytics?.bounceRate ?? null },
+  { key: "ga.users30d", section: "website-traffic", label: "Users (30d)", extract: (d) => d.googleAnalytics?.users30d ?? null },
+  { key: "ga.pageviews30d", section: "website-traffic", label: "Pageviews (30d)", extract: (d) => d.googleAnalytics?.pageviews30d ?? null },
+  { key: "ga.avgSessionDuration", section: "website-traffic", label: "Avg Session Duration", extract: (d) => d.googleAnalytics?.avgSessionDuration ?? null },
+  { key: "googleAds.spend", section: "social-media", label: "Google Ads Spend", extract: (d) => d.googleAds?.totalSpend30d ?? null },
+  { key: "googleAds.clicks", section: "social-media", label: "Google Ads Clicks", extract: (d) => d.googleAds?.totalClicks ?? null },
+  { key: "googleAds.conversions", section: "social-media", label: "Google Ads Conversions", extract: (d) => d.googleAds?.totalConversions ?? null },
+  { key: "googleAds.roas", section: "social-media", label: "Google Ads ROAS", extract: (d) => d.googleAds?.roas ?? null },
+  { key: "metaAds.spend", section: "social-media", label: "Meta Ads Spend", extract: (d) => d.metaAds?.totalSpend30d ?? null },
+  { key: "metaAds.clicks", section: "social-media", label: "Meta Ads Clicks", extract: (d) => d.metaAds?.totalClicks ?? null },
 
   // Finance
-  { key: "stripe.mrr", section: "finance", label: "MRR", extract: (d) => d.stripe?.revenue?.mrr ?? null },
-  { key: "stripe.revenue30d", section: "finance", label: "Revenue (30d)", extract: (d) => d.stripe?.revenue?.totalRevenue30d ?? null },
-  { key: "stripe.revenueGrowth", section: "finance", label: "Revenue Growth %", extract: (d) => d.stripe?.revenue?.revenueGrowth ?? null },
-  { key: "stripe.churnRate", section: "finance", label: "Churn Rate", extract: (d) => d.stripe?.subscriptions?.churnRate ?? null },
-  { key: "stripe.activeSubscriptions", section: "finance", label: "Active Subscriptions", extract: (d) => d.stripe?.subscriptions?.active ?? null },
-  { key: "mercury.runway", section: "finance", label: "Runway (months)", extract: (d) => d.mercury?.cashFlow?.runway ?? null },
-  { key: "mercury.burnRate", section: "finance", label: "Burn Rate", extract: (d) => d.mercury?.cashFlow?.burnRate ?? null },
-  { key: "mercury.totalBalance", section: "finance", label: "Total Balance", extract: (d) => d.mercury?.cashFlow?.totalBalance ?? null },
-  { key: "mercury.netCashFlow", section: "finance", label: "Net Cash Flow", extract: (d) => d.mercury?.cashFlow?.netCashFlow ?? null },
+  { key: "stripe.mrr", section: "finance", label: "MRR", extract: (d) => getCanonicalMetrics(d).finance.summary.mrr },
+  { key: "stripe.revenue30d", section: "finance", label: "Revenue (30d)", extract: (d) => getCanonicalMetrics(d).finance.summary.totalRevenue30d },
+  { key: "stripe.revenueGrowth", section: "finance", label: "Revenue Growth %", extract: (d) => getCanonicalMetrics(d).finance.summary.revenueGrowth },
+  { key: "stripe.churnRate", section: "finance", label: "Churn Rate", extract: (d) => getCanonicalMetrics(d).finance.summary.churnRatePct },
+  { key: "stripe.activeSubscriptions", section: "finance", label: "Active Subscriptions", extract: (d) => getCanonicalMetrics(d).finance.summary.activeSubscriptions },
+  { key: "mercury.runway", section: "finance", label: "Runway (months)", extract: (d) => getCanonicalMetrics(d).finance.summary.runwayMonths },
+  { key: "mercury.burnRate", section: "finance", label: "Burn Rate", extract: (d) => getCanonicalMetrics(d).finance.summary.burnRate },
+  { key: "mercury.totalBalance", section: "finance", label: "Total Balance", extract: (d) => getCanonicalMetrics(d).finance.summary.cashBalance },
+  { key: "mercury.netCashFlow", section: "finance", label: "Net Cash Flow", extract: (d) => getCanonicalMetrics(d).finance.summary.netCashFlow30d },
 
   // Sales & Pipeline
   { key: "hubspot.totalDeals", section: "sales-pipeline", label: "Total Deals", extract: (d) => d.hubspot?.funnel?.totalDeals ?? null },

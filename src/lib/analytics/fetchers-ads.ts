@@ -5,9 +5,13 @@ import {
   MetaAdsData,
   MetaPageData,
   InstagramData,
+  InstagramTopPost,
+  InstagramAttributeCorrelation,
   RedditAdsData,
   AnalyticsTimestamp,
 } from "./types";
+import { pearsonCorrelation } from "./stats";
+import { enrichInstagramVideoCreatives } from "./instagram-creative-analysis";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -67,6 +71,660 @@ function sumInsightSeries(
   const series = metrics?.find((metric) => metric.name === metricName);
   if (!series) return 0;
   return (series.values ?? []).reduce((sum, item) => sum + readInsightValue(item.value), 0);
+}
+
+function readString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function countMatches(input: string, pattern: RegExp): number {
+  const matches = input.match(pattern);
+  return matches ? matches.length : 0;
+}
+
+async function withFallback<T>(
+  promise: Promise<T>,
+  fallback: T,
+  timeoutMs: number
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timeoutId = setTimeout(() => resolve(fallback), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } catch {
+    return fallback;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
+function toPostedTimeBucket(input: string): InstagramTopPost["postedTimeBucket"] {
+  const date = new Date(input);
+  const hour = Number.isNaN(date.getTime()) ? 0 : date.getUTCHours();
+  if (hour >= 5 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 17) return "afternoon";
+  if (hour >= 17 && hour < 22) return "evening";
+  return "overnight";
+}
+
+function roundTo(value: number, decimals: number): number {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
+}
+
+function median(values: number[]): number {
+  const filtered = values.filter((value) => Number.isFinite(value) && value > 0).sort((a, b) => a - b);
+  if (filtered.length === 0) return 1;
+  const middle = Math.floor(filtered.length / 2);
+  if (filtered.length % 2 === 0) {
+    return (filtered[middle - 1] + filtered[middle]) / 2;
+  }
+  return filtered[middle];
+}
+
+function daysSinceTimestamp(input: string, referenceDate: Date): number {
+  const createdAt = new Date(input);
+  if (Number.isNaN(createdAt.getTime())) return 0;
+  const diffMs = referenceDate.getTime() - createdAt.getTime();
+  if (!Number.isFinite(diffMs) || diffMs <= 0) return 0;
+  return diffMs / (24 * 60 * 60 * 1000);
+}
+
+function buildInstagramTopPost(input: {
+  id: string;
+  caption: string;
+  timestamp: string;
+  likes: number;
+  comments: number;
+  mediaType: string;
+  mediaProductType: string | null;
+  permalink: string | null;
+  thumbnailUrl: string | null;
+  followersCount: number;
+}): InstagramTopPost {
+  const caption = input.caption.trim();
+  const engagement = input.likes + input.comments;
+  const mediaType = input.mediaType.toUpperCase();
+  const mediaProductType = input.mediaProductType?.toUpperCase() ?? null;
+  const isReel = mediaProductType === "REELS";
+  const isCarousel = mediaType === "CAROUSEL_ALBUM";
+  const isVideo = isReel || mediaType === "VIDEO";
+  const captionLength = caption.length;
+  const hashtagCount = countMatches(caption, /(^|\s)#[^\s#]+/g);
+  const mentionCount = countMatches(caption, /(^|\s)@[^\s@]+/g);
+  const emojiCount = countMatches(caption, /\p{Extended_Pictographic}/gu);
+  const hasQuestionHook = /\?/.test(caption.slice(0, 120));
+  const hasCallToAction = /\b(comment|dm|message|reply|share|follow|save|watch|learn more|shop|book|schedule|click|link in bio)\b/i.test(
+    caption
+  );
+
+  return {
+    id: input.id,
+    message: caption,
+    reach: engagement,
+    engagement,
+    createdAt: input.timestamp,
+    mediaType,
+    mediaProductType,
+    permalink: input.permalink,
+    thumbnailUrl: input.thumbnailUrl,
+    likeCount: input.likes,
+    commentCount: input.comments,
+    performanceScore: engagement,
+    engagementRate:
+      input.followersCount > 0 ? (engagement / input.followersCount) * 100 : 0,
+    ageInDays: 0,
+    engagementVelocity: 0,
+    captionLength,
+    hashtagCount,
+    mentionCount,
+    emojiCount,
+    hasQuestionHook,
+    hasCallToAction,
+    postedTimeBucket: toPostedTimeBucket(input.timestamp),
+    isVideo,
+    isReel,
+    isCarousel,
+  };
+}
+
+function scoreInstagramPosts(
+  posts: InstagramTopPost[],
+  referenceDate: Date
+): InstagramTopPost[] {
+  if (posts.length === 0) return [];
+
+  const withDerivedMetrics = posts.map((post) => {
+    const ageInDays = roundTo(daysSinceTimestamp(post.createdAt, referenceDate), 1);
+    const effectiveAgeDays = Math.max(ageInDays, 3);
+    const engagementVelocity = roundTo(post.engagement / effectiveAgeDays, 2);
+    const engagementRateVelocity = post.engagementRate / effectiveAgeDays;
+
+    return {
+      post,
+      ageInDays,
+      engagementVelocity,
+      engagementRateVelocity,
+    };
+  });
+
+  const engagementMedian = median(withDerivedMetrics.map(({ post }) => post.engagement));
+  const velocityMedian = median(
+    withDerivedMetrics.map(({ engagementVelocity }) => engagementVelocity)
+  );
+  const engagementRateVelocityMedian = median(
+    withDerivedMetrics.map(({ engagementRateVelocity }) => engagementRateVelocity)
+  );
+
+  return withDerivedMetrics.map(
+    ({ post, ageInDays, engagementVelocity, engagementRateVelocity }) => ({
+      ...post,
+      ageInDays,
+      engagementVelocity,
+      performanceScore: roundTo(
+        (post.engagement / engagementMedian) * 0.2 +
+          (engagementVelocity / velocityMedian) * 0.35 +
+          (engagementRateVelocity / engagementRateVelocityMedian) * 0.45,
+        3
+      ),
+    })
+  );
+}
+
+function scoreInstagramCorrelationConfidence(input: {
+  totalPosts: number;
+  eligiblePosts: number;
+  trueCount: number;
+  falseCount: number;
+  correlation: number;
+  sampled: boolean;
+}): Pick<InstagramAttributeCorrelation, "coveragePct" | "confidenceScore" | "confidence"> {
+  const coveragePct =
+    input.totalPosts > 0 ? roundTo((input.eligiblePosts / input.totalPosts) * 100, 0) : 0;
+  const coverageScore = Math.min(input.eligiblePosts / Math.max(input.totalPosts, 1), 1);
+  const balanceScore =
+    input.trueCount > 0 && input.falseCount > 0
+      ? Math.min(input.trueCount, input.falseCount) / Math.max(input.trueCount, input.falseCount)
+      : 0;
+  const sampleDepthScore = Math.min(Math.min(input.trueCount, input.falseCount) / 3, 1);
+  const strengthScore = Math.min(Math.abs(input.correlation) / 0.4, 1);
+  const sampledScore = input.sampled ? 0.55 : 1;
+  const confidenceScore = roundTo(
+    (coverageScore * 0.3 +
+      balanceScore * 0.2 +
+      sampleDepthScore * 0.2 +
+      strengthScore * 0.2 +
+      sampledScore * 0.1) *
+      100,
+    0
+  );
+
+  return {
+    coveragePct,
+    confidenceScore,
+    confidence:
+      confidenceScore >= 75 ? "high" : confidenceScore >= 55 ? "medium" : "low",
+  };
+}
+
+function getInstagramAttributeDefs(): Array<{
+  key: string;
+  label: string;
+  source: InstagramAttributeCorrelation["source"];
+  test: (post: InstagramTopPost) => boolean | null;
+}> {
+  return [
+    { key: "isReel", label: "Reels", source: "metadata", test: (post) => post.isReel },
+    { key: "isVideo", label: "Video posts", source: "metadata", test: (post) => post.isVideo },
+    { key: "isCarousel", label: "Carousels", source: "metadata", test: (post) => post.isCarousel },
+    {
+      key: "shortCaption",
+      label: "Short captions (<= 80 chars)",
+      source: "metadata",
+      test: (post) => post.captionLength > 0 && post.captionLength <= 80,
+    },
+    {
+      key: "longCaption",
+      label: "Long captions (>= 220 chars)",
+      source: "metadata",
+      test: (post) => post.captionLength >= 220,
+    },
+    {
+      key: "hasHashtags",
+      label: "Hashtags",
+      source: "metadata",
+      test: (post) => post.hashtagCount > 0,
+    },
+    {
+      key: "hasMentions",
+      label: "Mentions",
+      source: "metadata",
+      test: (post) => post.mentionCount > 0,
+    },
+    {
+      key: "hasQuestionHook",
+      label: "Question-led hooks",
+      source: "metadata",
+      test: (post) => post.hasQuestionHook,
+    },
+    {
+      key: "hasCallToAction",
+      label: "Clear CTA language",
+      source: "metadata",
+      test: (post) => post.hasCallToAction,
+    },
+    {
+      key: "morningPost",
+      label: "Morning publish window",
+      source: "metadata",
+      test: (post) => post.postedTimeBucket === "morning",
+    },
+    {
+      key: "eveningPost",
+      label: "Evening publish window",
+      source: "metadata",
+      test: (post) => post.postedTimeBucket === "evening",
+    },
+    {
+      key: "hasPersonVisible",
+      label: "Person visible in creative",
+      source: "ai_visual",
+      test: (post) => post.hasPersonVisible ?? null,
+    },
+    {
+      key: "hasTextOverlayVisible",
+      label: "Visible text overlay",
+      source: "ai_visual",
+      test: (post) => post.hasTextOverlayVisible ?? null,
+    },
+    {
+      key: "looksLikeShopFloor",
+      label: "Shop-floor visual",
+      source: "ai_visual",
+      test: (post) => post.looksLikeShopFloor ?? null,
+    },
+    {
+      key: "looksLikeProductDemo",
+      label: "Product demo visual",
+      source: "ai_visual",
+      test: (post) => post.looksLikeProductDemo ?? null,
+    },
+    {
+      key: "looksEducational",
+      label: "Educational creative",
+      source: "ai_visual",
+      test: (post) => post.looksEducational ?? null,
+    },
+    {
+      key: "looksPromotional",
+      label: "Promotional creative",
+      source: "ai_visual",
+      test: (post) => post.looksPromotional ?? null,
+    },
+  ];
+}
+
+function buildInstagramAttributeCorrelations(
+  posts: InstagramTopPost[],
+  creativeAnalysis: {
+    analyzedVideos: number;
+    totalVideoCandidates: number;
+    sampled: boolean;
+  }
+): InstagramAttributeCorrelation[] {
+  if (posts.length < 3) return [];
+
+  const attributeDefs = getInstagramAttributeDefs();
+
+  return attributeDefs
+    .map((attribute) => {
+      const eligiblePosts = posts.filter((post) => attribute.test(post) !== null);
+      if (eligiblePosts.length < 4) return null;
+
+      const performance = eligiblePosts.map((post) => post.performanceScore);
+      const flags = eligiblePosts.map((post) => (attribute.test(post) ? 1 : 0));
+      const trueScores = eligiblePosts
+        .filter((post) => attribute.test(post) === true)
+        .map((post) => post.performanceScore);
+      const falseScores = eligiblePosts
+        .filter((post) => attribute.test(post) === false)
+        .map((post) => post.performanceScore);
+      if (trueScores.length < 2 || falseScores.length < 2) return null;
+
+      const trueAvgEngagement =
+        trueScores.reduce((sum, value) => sum + value, 0) / trueScores.length;
+      const falseAvgEngagement =
+        falseScores.reduce((sum, value) => sum + value, 0) / falseScores.length;
+      const liftPct =
+        falseAvgEngagement > 0
+          ? ((trueAvgEngagement - falseAvgEngagement) / falseAvgEngagement) * 100
+          : 0;
+      const correlation = pearsonCorrelation(flags, performance);
+      const direction = correlation >= 0 ? "higher" : "lower";
+      const liftAbs = Math.abs(liftPct);
+      const sampled = attribute.source === "ai_visual" && creativeAnalysis.sampled;
+      const confidence = scoreInstagramCorrelationConfidence({
+        totalPosts: posts.length,
+        eligiblePosts: eligiblePosts.length,
+        trueCount: trueScores.length,
+        falseCount: falseScores.length,
+        correlation,
+        sampled,
+      });
+
+      return {
+        key: attribute.key,
+        label: attribute.label,
+        source: attribute.source,
+        correlation,
+        sampleSize: trueScores.length,
+        comparisonSampleSize: falseScores.length,
+        eligiblePostCount: eligiblePosts.length,
+        coveragePct: confidence.coveragePct,
+        trueAvgEngagement,
+        falseAvgEngagement,
+        liftPct,
+        sampled,
+        confidence: confidence.confidence,
+        confidenceScore: confidence.confidenceScore,
+        interpretation:
+          liftAbs >= 1
+            ? `${attribute.label} correlate with ${direction} normalized performance (${liftPct >= 0 ? "+" : ""}${liftPct.toFixed(
+                0
+              )}% vs. posts without that attribute).`
+            : `${attribute.label} show only a small normalized-performance difference vs. posts without that attribute.`,
+      } satisfies InstagramAttributeCorrelation;
+    })
+    .filter((item): item is InstagramAttributeCorrelation => item !== null)
+    .sort((left, right) => {
+      if (right.confidenceScore !== left.confidenceScore) {
+        return right.confidenceScore - left.confidenceScore;
+      }
+      return Math.abs(right.correlation) - Math.abs(left.correlation);
+    });
+}
+
+function buildInstagramPerformanceDrivers(
+  posts: InstagramTopPost[],
+  correlations: InstagramAttributeCorrelation[]
+): InstagramTopPost[] {
+  const attributeDefs = new Map(
+    getInstagramAttributeDefs().map((attribute) => [attribute.key, attribute])
+  );
+  const positiveSignals = correlations
+    .filter((item) => item.correlation > 0 && item.confidence !== "low")
+    .sort((left, right) => {
+      if (right.confidenceScore !== left.confidenceScore) {
+        return right.confidenceScore - left.confidenceScore;
+      }
+      if (Math.abs(right.correlation) !== Math.abs(left.correlation)) {
+        return Math.abs(right.correlation) - Math.abs(left.correlation);
+      }
+      return right.liftPct - left.liftPct;
+    });
+
+  return posts.map((post) => {
+    const performanceDrivers = positiveSignals
+      .filter((item) => attributeDefs.get(item.key)?.test(post) === true)
+      .slice(0, 3)
+      .map((item) => ({
+        key: item.key,
+        label: item.label,
+        source: item.source,
+        sampled: item.sampled,
+        confidence: item.confidence,
+        liftPct: item.liftPct,
+      }));
+
+    return performanceDrivers.length > 0 ? { ...post, performanceDrivers } : post;
+  });
+}
+
+function buildInstagramOptimizationIdeas(
+  posts: InstagramTopPost[],
+  correlations: InstagramAttributeCorrelation[]
+): InstagramTopPost[] {
+  const attributeDefs = new Map(
+    getInstagramAttributeDefs().map((attribute) => [attribute.key, attribute])
+  );
+  const actionableSignals = correlations.filter((item) => item.confidence !== "low");
+
+  return posts.map((post) => {
+    const nextTests = actionableSignals
+      .filter((item) => {
+        const state = attributeDefs.get(item.key)?.test(post);
+        if (state === null || state === undefined) return false;
+        if (item.correlation > 0) return state === false;
+        if (item.correlation < 0) return state === true;
+        return false;
+      })
+      .sort((left, right) => {
+        if (right.confidenceScore !== left.confidenceScore) {
+          return right.confidenceScore - left.confidenceScore;
+        }
+        if (Math.abs(right.correlation) !== Math.abs(left.correlation)) {
+          return Math.abs(right.correlation) - Math.abs(left.correlation);
+        }
+        return Math.abs(right.liftPct) - Math.abs(left.liftPct);
+      })
+      .slice(0, 2)
+      .map((item) => ({
+        key: item.key,
+        label: item.label,
+        action: (item.correlation > 0 ? "add" : "reduce") as "add" | "reduce",
+        source: item.source,
+        sampled: item.sampled,
+        confidence: item.confidence,
+        estimatedImpactPct: Math.abs(item.liftPct),
+      }));
+
+    return nextTests.length > 0 ? { ...post, nextTests } : post;
+  });
+}
+
+function buildInstagramTestBacklog(
+  posts: InstagramTopPost[]
+): NonNullable<InstagramData["testBacklog"]> {
+  const summary = new Map<
+    string,
+    {
+      key: string;
+      label: string;
+      action: "add" | "reduce";
+      source: "metadata" | "ai_visual";
+      sampled: boolean;
+      confidence: "low" | "medium" | "high";
+      estimatedImpactPct: number;
+      supportingVideos: number;
+    }
+  >();
+
+  for (const post of posts) {
+    for (const idea of post.nextTests ?? []) {
+      const id = `${idea.action}:${idea.key}`;
+      const existing = summary.get(id);
+      if (existing) {
+        existing.supportingVideos += 1;
+        existing.estimatedImpactPct = roundTo(
+          (existing.estimatedImpactPct + idea.estimatedImpactPct) / 2,
+          0
+        );
+        if (
+          (idea.confidence === "high" && existing.confidence !== "high") ||
+          (idea.confidence === "medium" && existing.confidence === "low")
+        ) {
+          existing.confidence = idea.confidence;
+        }
+        existing.sampled = existing.sampled || idea.sampled;
+      } else {
+        summary.set(id, {
+          ...idea,
+          supportingVideos: 1,
+        });
+      }
+    }
+  }
+
+  return Array.from(summary.values())
+    .sort((left, right) => {
+      if (right.supportingVideos !== left.supportingVideos) {
+        return right.supportingVideos - left.supportingVideos;
+      }
+      const confidenceOrder = { high: 3, medium: 2, low: 1 };
+      if (confidenceOrder[right.confidence] !== confidenceOrder[left.confidence]) {
+        return confidenceOrder[right.confidence] - confidenceOrder[left.confidence];
+      }
+      return right.estimatedImpactPct - left.estimatedImpactPct;
+    })
+    .slice(0, 3);
+}
+
+function buildInstagramExperimentPlan(
+  posts: InstagramTopPost[],
+  testBacklog: NonNullable<InstagramData["testBacklog"]>
+): NonNullable<InstagramData["experimentPlan"]> {
+  return testBacklog.slice(0, 3).map((idea) => {
+    const exampleVideos = posts
+      .filter((post) =>
+        post.nextTests?.some((test) => test.key === idea.key && test.action === idea.action)
+      )
+      .slice(0, 2)
+      .map((post) => {
+        const normalized = post.message.trim();
+        return normalized.length > 60 ? `${normalized.slice(0, 60).trimEnd()}...` : normalized;
+      });
+
+    return {
+      key: `${idea.action}:${idea.key}`,
+      title: `${idea.action === "add" ? "Test adding" : "Test reducing"} ${idea.label.toLowerCase()}`,
+      brief:
+        idea.action === "add"
+          ? `Create follow-up variants that introduce ${idea.label.toLowerCase()} in otherwise similar videos.`
+          : `Create follow-up variants that reduce ${idea.label.toLowerCase()} while keeping the core hook similar.`,
+      action: idea.action,
+      source: idea.source,
+      sampled: idea.sampled,
+      confidence: idea.confidence,
+      estimatedImpactPct: idea.estimatedImpactPct,
+      supportingVideos: idea.supportingVideos,
+      exampleVideos,
+    };
+  });
+}
+
+function buildInstagramVideosToImprove(
+  posts: InstagramTopPost[]
+): NonNullable<InstagramData["videosToImprove"]> {
+  return posts
+    .filter((post) => post.isVideo && (post.nextTests?.length ?? 0) > 0)
+    .sort((left, right) => {
+      if (left.performanceScore !== right.performanceScore) {
+        return left.performanceScore - right.performanceScore;
+      }
+      return right.createdAt.localeCompare(left.createdAt);
+    })
+    .slice(0, 3);
+}
+
+function buildInstagramOpportunities(
+  correlations: InstagramAttributeCorrelation[]
+): NonNullable<InstagramData["opportunities"]> {
+  return correlations
+    .filter(
+      (item) =>
+        item.correlation > 0 &&
+        item.confidence !== "low" &&
+        item.eligiblePostCount > 0 &&
+        item.sampleSize > 0
+    )
+    .map((item) => ({
+      key: item.key,
+      label: item.label,
+      source: item.source,
+      sampled: item.sampled,
+      confidence: item.confidence,
+      estimatedImpactPct: Math.abs(item.liftPct),
+      adoptionPct: roundTo((item.sampleSize / item.eligiblePostCount) * 100, 0),
+    }))
+    .filter((item) => item.adoptionPct <= 50)
+    .sort((left, right) => {
+      if (left.adoptionPct !== right.adoptionPct) {
+        return left.adoptionPct - right.adoptionPct;
+      }
+      const confidenceOrder = { high: 3, medium: 2, low: 1 };
+      if (confidenceOrder[right.confidence] !== confidenceOrder[left.confidence]) {
+        return confidenceOrder[right.confidence] - confidenceOrder[left.confidence];
+      }
+      return right.estimatedImpactPct - left.estimatedImpactPct;
+    })
+    .slice(0, 3);
+}
+
+function buildInstagramWinningPatterns(
+  correlations: InstagramAttributeCorrelation[]
+): InstagramData["winningPatterns"] {
+  const strongest = correlations
+    .filter(
+      (item) => item.correlation > 0 && item.sampleSize >= 2 && item.confidence !== "low"
+    )
+    .sort((left, right) => {
+      if (right.confidenceScore !== left.confidenceScore) {
+        return right.confidenceScore - left.confidenceScore;
+      }
+      if (Math.abs(right.correlation) !== Math.abs(left.correlation)) {
+        return Math.abs(right.correlation) - Math.abs(left.correlation);
+      }
+      return right.liftPct - left.liftPct;
+    })
+    .slice(0, 3);
+
+  return strongest.map((item) => ({
+    title: item.label,
+    detail:
+      item.liftPct >= 1
+        ? `${item.label} are associated with ${item.liftPct.toFixed(0)}% stronger normalized performance on average (${item.confidence} confidence).`
+        : `${item.label} show a modest positive normalized-performance signal (${item.confidence} confidence).`,
+    source: item.source,
+    sampled: item.sampled,
+    confidence: item.confidence,
+  }));
+}
+
+function buildInstagramLosingPatterns(
+  correlations: InstagramAttributeCorrelation[]
+): InstagramData["losingPatterns"] {
+  const weakest = correlations
+    .filter(
+      (item) => item.correlation < 0 && item.sampleSize >= 2 && item.confidence !== "low"
+    )
+    .sort((left, right) => {
+      if (right.confidenceScore !== left.confidenceScore) {
+        return right.confidenceScore - left.confidenceScore;
+      }
+      if (Math.abs(right.correlation) !== Math.abs(left.correlation)) {
+        return Math.abs(right.correlation) - Math.abs(left.correlation);
+      }
+      return left.liftPct - right.liftPct;
+    })
+    .slice(0, 3);
+
+  return weakest.map((item) => ({
+    title: item.label,
+    detail:
+      item.liftPct <= -1
+        ? `${item.label} are associated with ${Math.abs(item.liftPct).toFixed(0)}% weaker normalized performance on average (${item.confidence} confidence).`
+        : `${item.label} show a modest negative normalized-performance signal (${item.confidence} confidence).`,
+    source: item.source,
+    sampled: item.sampled,
+    confidence: item.confidence,
+  }));
 }
 
 function extractApiErrorMessage(payload: unknown): string | null {
@@ -142,9 +800,22 @@ async function parseErrorBody(response: Response): Promise<string> {
   return trimmed.slice(0, 500);
 }
 
+function isInvalidMetaInsightsMetricError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("valid insights metric") ||
+    normalized.includes("invalid metric")
+  );
+}
+
 function normalizeBearerToken(value: string): string {
   return value.replace(/^Bearer\s+/i, "").trim();
 }
+
+type MetaPageInsightMetric = {
+  name: string;
+  values?: Array<{ value: string | number }>;
+};
 
 function normalizeMetaAdAccountId(adAccountId: string): string {
   return adAccountId.trim().replace(/^act_/i, "");
@@ -695,6 +1366,122 @@ export async function fetchMetaAdsData(
 /**
  * Fetch Meta Page Insights data.
  */
+function buildMetaPageInsightsUrl(input: {
+  normalizedPageId: string;
+  metrics: string[];
+  useRange: boolean;
+  since: string | null;
+  until: string | null;
+}): URL {
+  const insightsUrl = new URL(
+    `https://graph.facebook.com/${META_GRAPH_VERSION}/${input.normalizedPageId}/insights`
+  );
+  insightsUrl.searchParams.set("metric", input.metrics.join(","));
+  if (input.useRange) {
+    insightsUrl.searchParams.set("period", "day");
+    insightsUrl.searchParams.set("since", input.since!);
+    insightsUrl.searchParams.set("until", input.until!);
+  } else {
+    insightsUrl.searchParams.set("period", "days_28");
+  }
+  return insightsUrl;
+}
+
+async function fetchMetaPageInsightMetrics(input: {
+  normalizedPageId: string;
+  metrics: string[];
+  useRange: boolean;
+  since: string | null;
+  until: string | null;
+  headers: Record<string, string>;
+}): Promise<MetaPageInsightMetric[]> {
+  const insightsUrl = buildMetaPageInsightsUrl(input);
+  const insightsResponse = await fetch(insightsUrl, { headers: input.headers });
+  if (insightsResponse.ok) {
+    const insightsData = (await safeJson<{
+      data?: MetaPageInsightMetric[];
+    }>(insightsResponse, "Meta Page insights")) as {
+      data?: MetaPageInsightMetric[];
+    };
+    return insightsData.data ?? [];
+  }
+
+  const errorBody = await parseErrorBody(insightsResponse);
+  if (!isInvalidMetaInsightsMetricError(errorBody)) {
+    throw new Error(`Meta Page insights error (${insightsResponse.status}): ${errorBody}`);
+  }
+
+  const requiredPageMetrics = input.metrics.filter(
+    (metric) => metric === "page_impressions" || metric === "page_engaged_users"
+  );
+  if (requiredPageMetrics.length > 0 && requiredPageMetrics.length < input.metrics.length) {
+    const fallbackUrl = buildMetaPageInsightsUrl({
+      ...input,
+      metrics: requiredPageMetrics,
+    });
+    const fallbackResponse = await fetch(fallbackUrl, { headers: input.headers });
+    if (fallbackResponse.ok) {
+      const fallbackData = (await safeJson<{
+        data?: MetaPageInsightMetric[];
+      }>(fallbackResponse, "Meta Page insights fallback")) as {
+        data?: MetaPageInsightMetric[];
+      };
+      return fallbackData.data ?? [];
+    }
+  }
+
+  const validMetrics: MetaPageInsightMetric[] = [];
+  for (const metric of input.metrics) {
+    const metricUrl = buildMetaPageInsightsUrl({
+      ...input,
+      metrics: [metric],
+    });
+    const metricResponse = await fetch(metricUrl, { headers: input.headers });
+    if (!metricResponse) continue;
+    if (metricResponse.ok) {
+      const metricData = (await safeJson<{
+        data?: MetaPageInsightMetric[];
+      }>(metricResponse, `Meta Page insights ${metric}`)) as {
+        data?: MetaPageInsightMetric[];
+      };
+      validMetrics.push(...(metricData.data ?? []));
+      continue;
+    }
+
+    const metricError = await parseErrorBody(metricResponse);
+    if (!isInvalidMetaInsightsMetricError(metricError)) {
+      throw new Error(`Meta Page insights error (${metricResponse.status}): ${metricError}`);
+    }
+  }
+
+  return validMetrics;
+}
+
+async function resolveMetaPageAccessToken(input: {
+  userAccessToken: string;
+  normalizedPageId: string;
+}): Promise<string> {
+  const accountsUrl = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/me/accounts`);
+  accountsUrl.searchParams.set("fields", "id,access_token");
+  accountsUrl.searchParams.set("limit", "200");
+
+  const response = await fetch(accountsUrl, {
+    headers: { Authorization: `Bearer ${input.userAccessToken}` },
+  });
+  if (!response.ok) {
+    return input.userAccessToken;
+  }
+
+  const payload = (await safeJson<{
+    data?: Array<{ id?: string; access_token?: string }>;
+  }>(response, "Meta Page accounts")) as {
+    data?: Array<{ id?: string; access_token?: string }>;
+  };
+
+  const page = (payload.data ?? []).find((item) => item.id === input.normalizedPageId);
+  return page?.access_token?.trim() || input.userAccessToken;
+}
+
 export async function fetchMetaPageData(
   accessToken: string,
   pageId: string,
@@ -707,8 +1494,12 @@ export async function fetchMetaPageData(
     );
   }
 
-  const baseHeaders = { Authorization: `Bearer ${token}` };
   const normalizedPageId = pageId.trim();
+  const pageAccessToken = await resolveMetaPageAccessToken({
+    userAccessToken: token,
+    normalizedPageId,
+  });
+  const baseHeaders = { Authorization: `Bearer ${pageAccessToken}` };
 
   const rangeFrom = options?.fromDate ?? null;
   const rangeTo = options?.toDate ?? null;
@@ -743,54 +1534,14 @@ export async function fetchMetaPageData(
   const pageLikes = readNumber(pageData.fan_count);
   const pageFollowers = readNumber(pageData.followers_count);
 
-  const fetchPageInsights = async (
-    metrics: string
-  ): Promise<Array<{ name: string; values?: Array<{ value: unknown }> }>> => {
-    const insightsUrl = new URL(
-      `https://graph.facebook.com/${META_GRAPH_VERSION}/${normalizedPageId}/insights`
-    );
-    insightsUrl.searchParams.set("metric", metrics);
-    if (useRange) {
-      insightsUrl.searchParams.set("period", "day");
-      insightsUrl.searchParams.set("since", since!);
-      insightsUrl.searchParams.set("until", until!);
-    } else {
-      insightsUrl.searchParams.set("period", "days_28");
-    }
-
-    const insightsResponse = await fetch(insightsUrl, { headers: baseHeaders });
-    if (!insightsResponse.ok) {
-      throw new Error(
-        `Meta Page insights error (${insightsResponse.status}): ${await parseErrorBody(insightsResponse)}`
-      );
-    }
-    const insightsData = (await safeJson<{
-      data?: Array<{
-        name: string;
-        values?: Array<{ value: unknown }>;
-      }>;
-    }>(insightsResponse, "Meta Page insights")) as {
-      data?: Array<{
-        name: string;
-        values?: Array<{ value: unknown }>;
-      }>;
-    };
-
-    return insightsData.data ?? [];
-  };
-
-  let pageInsightMetrics: Array<{ name: string; values?: Array<{ value: unknown }> }>;
-  try {
-    pageInsightMetrics = await fetchPageInsights(
-      "page_impressions,page_engaged_users,page_views_total,page_total_actions"
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!message.includes("Meta Page insights error (400)")) {
-      throw error;
-    }
-    pageInsightMetrics = await fetchPageInsights("page_impressions,page_engaged_users");
-  }
+  const pageInsightMetrics = await fetchMetaPageInsightMetrics({
+    normalizedPageId,
+    metrics: ["page_impressions", "page_engaged_users", "page_views_total", "page_total_actions"],
+    useRange,
+    since,
+    until,
+    headers: baseHeaders,
+  });
 
   const postReach30d = sumInsightSeries(pageInsightMetrics, "page_impressions");
   const postEngagement30d = sumInsightSeries(pageInsightMetrics, "page_engaged_users");
@@ -802,7 +1553,7 @@ export async function fetchMetaPageData(
   );
   postsUrl.searchParams.set(
     "fields",
-    "message,insights{metric(post_impressions,post_engaged_users)},created_time"
+    "message,created_time,insights.metric(post_impressions_unique,post_clicks){name,values}"
   );
   postsUrl.searchParams.set("limit", "5");
   if (useRange) {
@@ -847,10 +1598,10 @@ export async function fetchMetaPageData(
     let engagement = 0;
     for (const metric of post.insights?.data ?? []) {
       const metricValue = readNumber(metric.values?.[0]?.value);
-      if (metric.name === "post_impressions") {
+      if (metric.name === "post_impressions_unique") {
         reach = metricValue;
       }
-      if (metric.name === "post_engaged_users") {
+      if (metric.name === "post_clicks") {
         engagement = metricValue;
       }
     }
@@ -1025,7 +1776,10 @@ export async function fetchMetaInstagramData(
   const mediaUrl = new URL(
     `https://graph.facebook.com/${META_GRAPH_VERSION}/${resolvedProfile.id}/media`
   );
-  mediaUrl.searchParams.set("fields", "id,caption,timestamp,like_count,comments_count");
+  mediaUrl.searchParams.set(
+    "fields",
+    "id,caption,timestamp,like_count,comments_count,media_type,media_product_type,permalink,thumbnail_url"
+  );
   
   const fromTime = Math.floor((from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).getTime() / 1000);
   const toTime = Math.floor((to || new Date()).getTime() / 1000);
@@ -1048,6 +1802,10 @@ export async function fetchMetaInstagramData(
       timestamp?: string;
       like_count?: string | number;
       comments_count?: string | number;
+      media_type?: string;
+      media_product_type?: string;
+      permalink?: string;
+      thumbnail_url?: string;
     }>;
   }>(mediaResponse, "Instagram media")) as {
     data?: Array<{
@@ -1056,25 +1814,98 @@ export async function fetchMetaInstagramData(
       timestamp?: string;
       like_count?: string | number;
       comments_count?: string | number;
+      media_type?: string;
+      media_product_type?: string;
+      permalink?: string;
+      thumbnail_url?: string;
     }>;
   };
 
-  const media = (mediaData.data ?? []).map((item) => ({
-    id: item.id ?? "",
-    caption: item.caption ?? "",
-    timestamp: item.timestamp ?? "",
-    likes: readNumber(item.like_count),
-    comments: readNumber(item.comments_count),
-  }));
+  const media = scoreInstagramPosts(
+    (mediaData.data ?? [])
+    .map((item) =>
+      buildInstagramTopPost({
+        id: item.id ?? "",
+        caption: item.caption ?? "",
+        timestamp: item.timestamp ?? "",
+        likes: readNumber(item.like_count),
+        comments: readNumber(item.comments_count),
+        mediaType: readString(item.media_type) ?? "UNKNOWN",
+        mediaProductType: readString(item.media_product_type),
+        permalink: readString(item.permalink),
+        thumbnailUrl: readString(item.thumbnail_url),
+        followersCount: resolvedProfile.followersCount,
+      })
+    ),
+    to ?? new Date()
+  )
+    .sort((left, right) => {
+      if (right.performanceScore !== left.performanceScore) {
+        return right.performanceScore - left.performanceScore;
+      }
+      return right.createdAt.localeCompare(left.createdAt);
+    });
 
-  const engagement30d = media.reduce((sum, item) => sum + item.likes + item.comments, 0);
+  const emptyCreativeAnalysis = {
+    results: new Map(),
+    analyzedCount: 0,
+    totalCandidates: media.filter((post) => post.isVideo && post.thumbnailUrl).length,
+    sampled: false,
+  };
+  const creativeAnalysisResult = await withFallback(
+    enrichInstagramVideoCreatives(media, { limit: 6, concurrency: 2 }),
+    emptyCreativeAnalysis,
+    1500
+  );
+  const enrichedMedia = media.map((post) => {
+    const creative = creativeAnalysisResult.results.get(post.id);
+    return creative ? { ...post, ...creative } : post;
+  });
 
-  const topPosts = media.slice(0, 5).map((m) => ({
-    message: m.caption,
-    reach: m.likes + m.comments, // Using engagements as proxy reach if reach isn't pulled via insights
-    engagement: m.likes + m.comments,
-    createdAt: m.timestamp,
-  }));
+  const engagement30d = enrichedMedia.reduce((sum, item) => sum + item.engagement, 0);
+  const mediaTypeBreakdown = enrichedMedia.reduce(
+    (summary, item) => {
+      if (item.isReel) {
+        summary.reel += 1;
+      } else if (item.isCarousel) {
+        summary.carousel += 1;
+      } else if (item.isVideo) {
+        summary.video += 1;
+      } else if (item.mediaType === "IMAGE") {
+        summary.image += 1;
+      } else {
+        summary.other += 1;
+      }
+      return summary;
+    },
+    { image: 0, video: 0, reel: 0, carousel: 0, other: 0 }
+  );
+  const creativeAnalysis = {
+    analyzedVideos: creativeAnalysisResult.analyzedCount,
+    totalVideoCandidates: creativeAnalysisResult.totalCandidates,
+    sampled: creativeAnalysisResult.sampled,
+  };
+  const attributeCorrelations = buildInstagramAttributeCorrelations(
+    enrichedMedia,
+    creativeAnalysis
+  );
+  const explainedMedia = buildInstagramOptimizationIdeas(
+    buildInstagramPerformanceDrivers(
+      enrichedMedia,
+      attributeCorrelations
+    ),
+    attributeCorrelations
+  );
+  const winningPatterns = buildInstagramWinningPatterns(attributeCorrelations);
+  const losingPatterns = buildInstagramLosingPatterns(attributeCorrelations);
+  const topPosts = explainedMedia.slice(0, 5);
+  const topVideos = explainedMedia
+    .filter((item) => item.isVideo)
+    .slice(0, 5);
+  const videosToImprove = buildInstagramVideosToImprove(explainedMedia);
+  const opportunities = buildInstagramOpportunities(attributeCorrelations);
+  const testBacklog = buildInstagramTestBacklog(topVideos);
+  const experimentPlan = buildInstagramExperimentPlan(topVideos, testBacklog);
 
   const fetchInstagramInsights = async (
     metrics: string
@@ -1088,6 +1919,7 @@ export async function fetchMetaInstagramData(
     insightsUrl.searchParams.set("until", toTime.toString());
 
     const insightsResponse = await fetch(insightsUrl, { headers: baseHeaders });
+    if (!insightsResponse) return [];
     if (!insightsResponse.ok) {
       throw new Error(
         `Meta Instagram insights error (${insightsResponse.status}): ${await parseErrorBody(insightsResponse)}`
@@ -1132,6 +1964,16 @@ export async function fetchMetaInstagramData(
     clicks,
     returningVisitors: 0,
     topPosts,
+    topVideos,
+    videosToImprove,
+    mediaTypeBreakdown,
+    creativeAnalysis,
+    opportunities,
+    experimentPlan,
+    testBacklog,
+    attributeCorrelations,
+    winningPatterns,
+    losingPatterns,
     _meta: makeMeta("live"),
   };
 }

@@ -70,8 +70,8 @@ function lifecycleStageDefinitions(): StageDefinition[] {
   return [
     {
       id: "awareness",
-      label: "Awareness",
-      section: "ads-traffic",
+      label: "Social Media, Ads & Conferences",
+      section: "social-media",
       rawVolume: (data) =>
         data.googleAnalytics?.users30d ??
         data.googleAnalytics?.sessions30d ??
@@ -116,8 +116,8 @@ function lifecycleStageDefinitions(): StageDefinition[] {
     },
     {
       id: "acquisition",
-      label: "Acquisition",
-      section: "sales-pipeline",
+      label: "Website Conversion",
+      section: "website-traffic",
       rawVolume: (data) =>
         (data.hubspot?.funnel?.demoScheduled ?? 0) +
         (data.coda?.totalCards ?? data.codaKanban?.totalCards ?? 0) +
@@ -142,12 +142,12 @@ function lifecycleStageDefinitions(): StageDefinition[] {
           detail: "Leads that signed up for a demo.",
         },
         {
-          source: "Free Kanban Cards",
+          source: "Coda Lead Magnet",
           domain: "coda",
           contribution:
             data.coda?.totalCards ?? data.codaKanban?.totalCards ?? 0,
           confidence: (data.coda ?? data.codaKanban) ? 0.85 : 0.35,
-          detail: "Users who created a free Kanban card.",
+          detail: "Users who submitted the Coda lead magnet.",
         },
         {
           source: "Free Trials",
@@ -160,7 +160,7 @@ function lifecycleStageDefinitions(): StageDefinition[] {
     },
     {
       id: "activation",
-      label: "Activation",
+      label: "Sales",
       section: "sales-pipeline",
       rawVolume: (data) =>
         (data.hubspot?.funnel?.demoFollowUp ?? 0) +
@@ -200,16 +200,16 @@ function lifecycleStageDefinitions(): StageDefinition[] {
         {
           source: "Google Workspace Receipts",
           domain: "googleWorkspace",
-          contribution: data.googleWorkspace?.receiptsInRange ?? 0,
+          contribution: data.googleWorkspace?.automationsTriggeredInRange ?? 0,
           confidence: data.googleWorkspace ? 0.74 : 0.3,
-          detail: "Workspace automation receipts associated with post-demo follow-up.",
+          detail: "Follow-up automations triggered in range.",
         },
       ],
     },
     {
       id: "revenue",
-      label: "Revenue",
-      section: "finance",
+      label: "Customer Success",
+      section: "customer-success",
       rawVolume: (data) =>
         (data.hubspot?.funnel?.closedWon ?? 0) +
         (data.stripe?.subscriptions?.active ?? 0),
@@ -248,7 +248,7 @@ function lifecycleStageDefinitions(): StageDefinition[] {
     {
       id: "retention",
       label: "Retention",
-      section: "customer-success",
+      section: "retention",
       rawVolume: (data) =>
         (data.stripe?.subscriptions?.active ?? 0) -
         (data.stripe?.subscriptions?.canceled ?? 0) +
@@ -283,7 +283,7 @@ function lifecycleStageDefinitions(): StageDefinition[] {
         {
           source: "Slack Receipts",
           domain: "slack",
-          contribution: data.slack?.receiptsInRange ?? 0,
+          contribution: data.slack?.automationsTriggeredInRange ?? 0,
           confidence: data.slack ? 0.73 : 0.3,
           detail: "Retention-related workflow events observed in Slack automation receipts.",
         },
@@ -291,8 +291,8 @@ function lifecycleStageDefinitions(): StageDefinition[] {
     },
     {
       id: "expansion",
-      label: "Expansion",
-      section: "customer-success",
+      label: "Full-Funnel Analytics",
+      section: "customer-journey",
       rawVolume: (data) =>
         Math.max(
           data.hubspot?.funnel?.activeSubscriptions ?? 0,
@@ -322,11 +322,11 @@ function lifecycleStageDefinitions(): StageDefinition[] {
           detail: "Recurring customer base available for upsell and expansion.",
         },
         {
-          source: "Pylon Resolved",
-          domain: "pylon",
-          contribution: data.pylon?.resolvedInRange ?? 0,
-          confidence: data.pylon ? 0.72 : 0.28,
-          detail: "Resolved customer conversations that can precede expansion opportunities.",
+          source: "Coda Ops",
+          domain: "coda",
+          contribution: data.codaOps?.automationsTriggeredInRange ?? 0,
+          confidence: data.codaOps ? 0.72 : 0.28,
+          detail: "Execution automations for expansion opportunities.",
         },
       ],
     },

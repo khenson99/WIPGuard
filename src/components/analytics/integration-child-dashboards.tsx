@@ -6,6 +6,8 @@ import type {
   CodaKanbanData,
   IntegrationTelemetryData,
 } from "@/lib/analytics/types";
+import { ExecutiveAiBrief } from "@/components/analytics/executive-ai-brief";
+import { FinanceMonthlyHistoryTab } from "@/components/analytics/finance-monthly-history-tab";
 import { FinanceStripeTab } from "@/components/analytics/finance-stripe-tab";
 import { FinanceHubSpotTab } from "@/components/analytics/finance-hubspot-tab";
 import { SalesFunnelTab } from "@/components/analytics/sales-funnel-tab";
@@ -159,6 +161,7 @@ function TelemetryDashboard({
           { label: "Errored Rules", value: fmtInt(telemetry.erroredRules) },
           { label: "Events in Range", value: fmtInt(telemetry.eventsInRange) },
           { label: "Receipts", value: fmtInt(telemetry.receiptsInRange) },
+          { label: "Artifacts Created", value: fmtInt(telemetry.tasksCreatedInRange) },
           { label: "Failures", value: fmtInt(telemetry.failuresInRange) },
           { label: "Failure Ratio", value: fmtPct((telemetry.failuresInRange / Math.max(1, telemetry.eventsInRange)) * 100) },
         ]}
@@ -188,8 +191,11 @@ function TelemetryDashboard({
           ) : (
             <div className="mt-3 grid grid-cols-7 gap-2">
               {telemetry.trend.slice(-7).map((point) => {
-                const total = point.receipts;
-                const maxTotal = Math.max(1, ...telemetry.trend.map((t) => t.receipts));
+                const total = point.receipts + point.automationsTriggered;
+                const maxTotal = Math.max(
+                  1,
+                  ...telemetry.trend.map((t) => t.receipts + t.automationsTriggered),
+                );
                 const height = Math.max(8, Math.round((total / maxTotal) * 100));
                 return (
                   <div key={point.date} className="flex flex-col items-center gap-1">
@@ -208,7 +214,7 @@ function TelemetryDashboard({
   );
 }
 
-function CodaBoardPanel({
+function CodaRecordsPanel({
   title,
   subtitle,
   coda,
@@ -242,20 +248,20 @@ function CodaBoardPanel({
     <DashboardShell title={title} subtitle={subtitle}>
       <MetricGrid
         metrics={[
-          { label: "Total Cards", value: fmtInt(coda.totalCards) },
+          { label: "Total Records", value: fmtInt(coda.totalCards) },
           { label: "Unique Statuses", value: fmtInt(coda.cardsByStatus.length) },
-          { label: "Recent Cards", value: fmtInt(coda.recentCards.length) },
+          { label: "Recent Records", value: fmtInt(coda.recentCards.length) },
           {
             label: "Top Status",
             value: coda.cardsByStatus.length ? coda.cardsByStatus[0].status : "—",
-            subtitle: coda.cardsByStatus.length ? `${fmtInt(coda.cardsByStatus[0].count)} cards` : undefined,
+            subtitle: coda.cardsByStatus.length ? `${fmtInt(coda.cardsByStatus[0].count)} records` : undefined,
           },
         ]}
       />
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <div className="rounded-xl border border-border bg-card p-4">
-          <h3 className="text-sm font-semibold text-foreground">Cards by Status</h3>
+          <h3 className="text-sm font-semibold text-foreground">Records by Status</h3>
           <div className="mt-2 space-y-2">
             {coda.cardsByStatus.slice(0, 8).map((status) => (
               <div key={status.status} className="flex items-center justify-between rounded-md border border-border/70 bg-background px-3 py-2">
@@ -267,9 +273,9 @@ function CodaBoardPanel({
         </div>
 
         <div className="rounded-xl border border-border bg-card p-4">
-          <h3 className="text-sm font-semibold text-foreground">Recent Cards</h3>
+          <h3 className="text-sm font-semibold text-foreground">Recent Records</h3>
           {coda.recentCards.length === 0 ? (
-            <p className="mt-2 text-xs text-muted-foreground">No recent card activity.</p>
+            <p className="mt-2 text-xs text-muted-foreground">No recent record activity.</p>
           ) : (
             <div className="mt-2 space-y-2">
               {coda.recentCards.slice(0, 6).map((card) => (
@@ -290,21 +296,21 @@ function CodaBoardPanel({
         <div className="space-y-3">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div className="rounded-xl border border-border bg-card p-4">
-              <p className="text-xs text-muted-foreground">Cards Created (30d)</p>
+              <p className="text-xs text-muted-foreground">Records Created (30d)</p>
               <p className="mt-1 text-2xl font-semibold text-foreground">{fmtInt(window30?.totalCards)}</p>
               <p className="text-[11px] text-muted-foreground">
                 {fmtInt(window30?.uniqueCreators)} creators · trend {fmtPct(window30?.trendDeltaPct ?? null)}
               </p>
             </div>
             <div className="rounded-xl border border-border bg-card p-4">
-              <p className="text-xs text-muted-foreground">Cards Created (60d)</p>
+              <p className="text-xs text-muted-foreground">Records Created (60d)</p>
               <p className="mt-1 text-2xl font-semibold text-foreground">{fmtInt(window60?.totalCards)}</p>
               <p className="text-[11px] text-muted-foreground">
                 {fmtInt(window60?.uniqueCreators)} creators · trend {fmtPct(window60?.trendDeltaPct ?? null)}
               </p>
             </div>
             <div className="rounded-xl border border-border bg-card p-4">
-              <p className="text-xs text-muted-foreground">Cards Created (90d)</p>
+              <p className="text-xs text-muted-foreground">Records Created (90d)</p>
               <p className="mt-1 text-2xl font-semibold text-foreground">{fmtInt(window90?.totalCards)}</p>
               <p className="text-[11px] text-muted-foreground">
                 {fmtInt(window90?.uniqueCreators)} creators · trend {fmtPct(window90?.trendDeltaPct ?? null)}
@@ -328,7 +334,7 @@ function CodaBoardPanel({
                       <p className="text-[11px] text-muted-foreground">
                         {creator.email ?? "unknown"} · first seen{" "}
                         {creator.firstSeenAt ? new Date(creator.firstSeenAt).toLocaleDateString() : "n/a"} ·{" "}
-                        {fmtInt(creator.cardsCreated)} cards
+                        {fmtInt(creator.cardsCreated)} records
                       </p>
                     </div>
                   ))}
@@ -363,9 +369,9 @@ function CodaBoardPanel({
 
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <div className="rounded-xl border border-border bg-card p-4">
-              <h3 className="text-sm font-semibold text-foreground">Cards Created per Day (90d)</h3>
+              <h3 className="text-sm font-semibold text-foreground">Records Created per Day (90d)</h3>
               {recentCardsCreated.length === 0 ? (
-                <p className="mt-2 text-xs text-muted-foreground">No daily card trend yet.</p>
+                <p className="mt-2 text-xs text-muted-foreground">No daily record trend yet.</p>
               ) : (
                 <div className="mt-3 flex h-24 items-end gap-1">
                   {recentCardsCreated.map((point) => {
@@ -416,7 +422,7 @@ function CodaBoardPanel({
                     <tr className="text-left text-xs text-muted-foreground">
                       <th className="pb-2">Creator</th>
                       <th className="pb-2">Email</th>
-                      <th className="pb-2">30d Cards</th>
+                      <th className="pb-2">30d Entries</th>
                       <th className="pb-2">Active Days</th>
                       <th className="pb-2">Score</th>
                       <th className="pb-2">Funnel</th>
@@ -454,7 +460,7 @@ function CodaBoardPanel({
             <h3 className="text-sm font-semibold text-foreground">Creator Intelligence Diagnostics</h3>
             <p className="mt-2 text-xs text-muted-foreground">
               Mode: {diagnostics?.creatorResolutionMode ?? "auto_detect"} · Unknown creator ratio:{" "}
-              {fmtPct(diagnostics?.unknownCreatorRatio ?? null)} · Unknown cards:{" "}
+              {fmtPct(diagnostics?.unknownCreatorRatio ?? null)} · Unknown records:{" "}
               {fmtInt(diagnostics?.unknownCardCount)} · HubSpot match errors:{" "}
               {fmtInt(diagnostics?.hubspotMatchingErrors)}
             </p>
@@ -711,9 +717,9 @@ export function AdsSemrushDashboard({ data }: IntegrationChildDashboardProps) {
 
 export function AdsCodaKanbanDashboard({ data }: IntegrationChildDashboardProps) {
   return (
-    <CodaBoardPanel
-      title="Coda Kanban"
-      subtitle="Kanban workflow depth and card status distribution for growth execution."
+    <CodaRecordsPanel
+      title="Coda Campaigns"
+      subtitle="Campaign record depth and status distribution for growth execution."
       coda={data?.coda ?? null}
       reasons={providerErrors(data, ["coda", "codaOps"])}
       showCreatorIntelligence
@@ -723,21 +729,33 @@ export function AdsCodaKanbanDashboard({ data }: IntegrationChildDashboardProps)
 
 export function FinanceMercuryDashboard({ data }: IntegrationChildDashboardProps) {
   const mercury = data?.mercury;
+  const mercuryMetrics = data?.metrics?.finance.mercury ?? null;
   const reasons = providerErrors(data, ["mercury"]);
   if (!mercury) {
     return <EmptyProviderState title="Mercury data is unavailable" description="Connect Mercury to inspect cash position and runway." reasons={reasons} />;
   }
+  if (!mercuryMetrics) {
+    return <EmptyProviderState title="Mercury metrics are unavailable" description="The canonical finance metrics layer was not included in this analytics payload." reasons={reasons} />;
+  }
+  const bankCash = mercuryMetrics.bankCash ?? mercury.accounts
+    .filter((account) => account.type.toLowerCase() !== "treasury")
+    .reduce((sum, account) => sum + account.balance, 0);
+  const treasuryCash = mercuryMetrics.treasuryCash ?? mercury.accounts
+    .filter((account) => account.type.toLowerCase() === "treasury")
+    .reduce((sum, account) => sum + account.balance, 0);
 
   return (
     <DashboardShell title="Mercury" subtitle="Cash position, burn profile, and account-level liquidity.">
       <MetricGrid
         metrics={[
-          { label: "Total Balance", value: fmtCurrency(mercury.cashFlow.totalBalance) },
-          { label: "Inflows (30d)", value: fmtCurrency(mercury.cashFlow.inflows30d) },
-          { label: "Outflows (30d)", value: fmtCurrency(mercury.cashFlow.outflows30d) },
-          { label: "Net Cash Flow", value: fmtCurrency(mercury.cashFlow.netCashFlow) },
-          { label: "Runway", value: `${mercury.cashFlow.runway.toFixed(1)} mo` },
-          { label: "Burn Rate", value: fmtCurrency(mercury.cashFlow.burnRate) },
+          { label: "Total Balance", value: fmtCurrency(mercuryMetrics.totalBalance) },
+          { label: "Bank Cash", value: fmtCurrency(bankCash) },
+          { label: "Treasury Cash", value: fmtCurrency(treasuryCash) },
+          { label: "Inflows (30d)", value: fmtCurrency(mercuryMetrics.inflows30d) },
+          { label: "Outflows (30d)", value: fmtCurrency(mercuryMetrics.outflows30d) },
+          { label: "Net Cash Flow", value: fmtCurrency(mercuryMetrics.netCashFlow30d) },
+          { label: "Runway", value: `${mercuryMetrics.runwayMonths.toFixed(1)} mo` },
+          { label: "Burn Rate", value: fmtCurrency(mercuryMetrics.burnRate) },
         ]}
       />
 
@@ -779,6 +797,22 @@ export function FinanceHubSpotDashboard({ data }: IntegrationChildDashboardProps
   );
 }
 
+export function FinanceMonthlyHistoryDashboard() {
+  return (
+    <DashboardShell title="Monthly History" subtitle="Month-over-month P&L trends, cash movement, and operating snapshots.">
+      <FinanceMonthlyHistoryTab />
+    </DashboardShell>
+  );
+}
+
+export function FinanceAiBriefDashboard() {
+  return (
+    <DashboardShell title="AI Executive Brief" subtitle="AI-generated summary of recent financial trends, risks, and recommended actions.">
+      <ExecutiveAiBrief />
+    </DashboardShell>
+  );
+}
+
 export function SalesHubSpotDashboard({ data }: IntegrationChildDashboardProps) {
   return (
     <DashboardShell title="HubSpot Pipeline" subtitle="Stage conversion, bottlenecks, and source quality for sales execution.">
@@ -789,23 +823,27 @@ export function SalesHubSpotDashboard({ data }: IntegrationChildDashboardProps) 
 
 export function SalesStripeDashboard({ data }: IntegrationChildDashboardProps) {
   const stripe = data?.stripe;
+  const stripeMetrics = data?.metrics?.finance.stripe ?? null;
   const reasons = providerErrors(data, ["stripe"]);
   if (!stripe) {
     return <EmptyProviderState title="Stripe sales data is unavailable" description="Connect Stripe to monitor subscription-led sales outcomes." reasons={reasons} />;
+  }
+  if (!stripeMetrics) {
+    return <EmptyProviderState title="Stripe sales metrics are unavailable" description="The canonical finance metrics layer was not included in this analytics payload." reasons={reasons} />;
   }
 
   return (
     <DashboardShell title="Stripe Sales Lens" subtitle="Commercial outcomes from subscription motion and payment behavior.">
       <MetricGrid
         metrics={[
-          { label: "MRR", value: fmtCurrency(stripe.revenue.mrr), subtitle: `${stripe.revenue.mrrChange.toFixed(1)}% MoM` },
-          { label: "Active Subs", value: fmtInt(stripe.subscriptions.active) },
-          { label: "Trialing", value: fmtInt(stripe.subscriptions.trialing) },
-          { label: "Past Due", value: fmtInt(stripe.subscriptions.pastDue) },
-          { label: "Churn Rate", value: fmtRatio(stripe.subscriptions.churnRate) },
-          { label: "Canceled", value: fmtInt(stripe.subscriptions.canceled) },
-          { label: "Payment Success", value: fmtRatio(stripe.payments.successRate) },
-          { label: "Failed Payments", value: fmtInt(stripe.payments.failed) },
+          { label: "MRR", value: fmtCurrency(stripeMetrics.mrr), subtitle: `${stripeMetrics.mrrChange.toFixed(1)}% MoM` },
+          { label: "Active Subs", value: fmtInt(stripeMetrics.activeSubscriptions) },
+          { label: "Trialing", value: fmtInt(stripeMetrics.trialingSubscriptions) },
+          { label: "Past Due", value: fmtInt(stripeMetrics.pastDueSubscriptions) },
+          { label: "Churn Rate", value: fmtPct(stripeMetrics.churnRatePct) },
+          { label: "Canceled", value: fmtInt(stripeMetrics.canceledSubscriptions) },
+          { label: "Payment Success", value: fmtPct(stripeMetrics.paymentSuccessPct) },
+          { label: "Failed Payments", value: fmtInt(stripeMetrics.failedPayments) },
         ]}
       />
 
@@ -897,12 +935,35 @@ export function CustomerSuccessPylonDashboard({ data }: IntegrationChildDashboar
 
 export function CustomerSuccessCodaDashboard({ data }: IntegrationChildDashboardProps) {
   return (
-    <CodaBoardPanel
+    <CodaRecordsPanel
       title="Coda"
-      subtitle="Customer success execution board health and card movement signals."
+      subtitle="Customer-success execution record health and movement signals."
       coda={data?.coda ?? null}
       reasons={providerErrors(data, ["coda", "codaOps"])}
     />
+  );
+}
+
+export function CustomerSuccessProductDashboard({ data }: IntegrationChildDashboardProps) {
+  const product = data?.product;
+  const reasons = providerErrors(data, ["product"]);
+  if (!product) {
+    return <EmptyProviderState title="Product data is unavailable" description="Product execution metrics are unavailable for this range." reasons={reasons} />;
+  }
+
+  return (
+    <DashboardShell title="Product" subtitle="Execution throughput and backlog health for customer-success commitments.">
+      <MetricGrid
+        metrics={[
+          { label: "Active Contributors", value: fmtInt(product.activeContributors) },
+          { label: "Created Items", value: fmtInt(product.createdTasksInRange) },
+          { label: "Completed Items", value: fmtInt(product.completedTasksInRange) },
+          { label: "Overdue Open", value: fmtInt(product.overdueOpenTasks) },
+          { label: "Backlog Growth", value: fmtInt(product.backlogGrowth) },
+          { label: "Throughput", value: fmtRatio(product.throughputRate) },
+        ]}
+      />
+    </DashboardShell>
   );
 }
 
@@ -939,6 +1000,8 @@ export const INTEGRATION_CHILD_DASHBOARD_REGISTRY: Record<string, (props: Integr
   "finance-mercury": FinanceMercuryDashboard,
   "finance-stripe": FinanceStripeDashboard,
   "finance-hubspot": FinanceHubSpotDashboard,
+  "finance-monthly-history": FinanceMonthlyHistoryDashboard,
+  "finance-ai-brief": FinanceAiBriefDashboard,
   "sales-hubspot": SalesHubSpotDashboard,
   "sales-stripe": SalesStripeDashboard,
   "sales-performance": SalesPerformanceDashboard,

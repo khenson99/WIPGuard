@@ -29,13 +29,16 @@ function toDateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-function toSeries(from: Date, to: Date): Array<{ date: string; receipts: number; failures: number }> {
-  const result: Array<{ date: string; receipts: number; failures: number }> = [];
+function toSeries(
+  from: Date,
+  to: Date,
+): Array<{ date: string; receipts: number; automationsTriggered: number; failures: number }> {
+  const result: Array<{ date: string; receipts: number; automationsTriggered: number; failures: number }> = [];
   const cursor = new Date(`${toDateKey(from)}T00:00:00.000Z`);
   const end = new Date(`${toDateKey(to)}T00:00:00.000Z`);
 
   while (cursor <= end) {
-    result.push({ date: toDateKey(cursor), receipts: 0, failures: 0 });
+    result.push({ date: toDateKey(cursor), receipts: 0, automationsTriggered: 0, failures: 0 });
     cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
 
@@ -111,6 +114,9 @@ export async function fetchIntegrationTelemetryData(input: {
     const bucket = index.get(key);
     if (!bucket) continue;
     bucket.receipts += 1;
+    if (receipt.taskId) {
+      bucket.automationsTriggered += 1;
+    }
   }
 
   const topFailureCounter = new Map<string, number>();
@@ -134,6 +140,7 @@ export async function fetchIntegrationTelemetryData(input: {
     enabledRules: rules.filter((rule) => rule.enabled).length,
     erroredRules: rules.filter((rule) => Boolean(rule.lastError)).length,
     receiptsInRange: receipts.length,
+    automationsTriggeredInRange: receipts.filter((receipt) => Boolean(receipt.taskId)).length,
     eventsInRange: outboxEvents.length,
     failuresInRange: trend.reduce((sum, item) => sum + item.failures, 0),
     trend,

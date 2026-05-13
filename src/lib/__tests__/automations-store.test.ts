@@ -322,8 +322,11 @@ describe("automation store", () => {
       recommendations: [
         expect.objectContaining({
           id: "rec_1",
-          recommendationType: "task",
-          title: "Create task",
+          recommendationType: "crm_followup",
+          title: "Create CRM follow-up",
+          actionType: "create_hubspot_task",
+          actionPayload: { priority: "P1" },
+          priority: "P1",
           dueAt: "2026-03-08T12:00:00.000Z",
         }),
       ],

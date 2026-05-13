@@ -12,7 +12,8 @@ import { buildProfitAndLoss } from "./pnl-builder";
 import { computeUnitEconomics } from "./unit-economics";
 
 const SECTION_ORDER: AnalyticsSectionId[] = [
-  "ads-traffic",
+  "website-traffic",
+  "social-media",
   "finance",
   "sales-pipeline",
   "customer-success",
@@ -51,7 +52,14 @@ function sortInsights(items: AiInsight[]): AiInsight[] {
   });
 }
 
-// ── Ads & Traffic ────────────────────────────────────────
+function sanitizeInsightActions<T extends { actions: Array<{ type: string }> }>(items: T[]): T[] {
+  return items.map((item) => ({
+    ...item,
+    actions: item.actions.filter((action) => action.type !== "create_task"),
+  }));
+}
+
+// ── Website Traffic + Social Media ───────────────────────
 
 function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
   const insights: AiInsight[] = [];
@@ -75,7 +83,7 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
   if (bounce > 0.55) {
     insights.push({
       id: "ai-ads-bounce-rate",
-      section: "ads-traffic",
+      section: "website-traffic",
       subsectionId: "ads-google-analytics",
       severity: bounce > 0.65 ? "critical" : "warning",
       title: "High bounce rate signals landing page mismatch",
@@ -102,7 +110,7 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
   if (totalClicks > 100 && clickToConv < 0.02) {
     insights.push({
       id: "ai-ads-click-conv",
-      section: "ads-traffic",
+      section: "social-media",
       severity: clickToConv < 0.015 ? "critical" : "warning",
       title: "Click-to-conversion rate below efficient threshold",
       why: `Across all paid channels: ${(clickToConv * 100).toFixed(2)}% conversion rate on ${totalClicks.toLocaleString()} clicks.`,
@@ -133,7 +141,7 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
     const dropPct = ((sessionsPrev - sessionsCurrent) / sessionsPrev * 100).toFixed(1);
     insights.push({
       id: "ai-ads-session-decline",
-      section: "ads-traffic",
+      section: "website-traffic",
       subsectionId: "ads-google-analytics",
       severity: sessionsCurrent < sessionsPrev * 0.7 ? "critical" : "warning",
       title: "Session volume declining period-over-period",
@@ -170,7 +178,7 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
     const cheapCPA = gCPA > mCPA ? mCPA : gCPA;
     insights.push({
       id: "ai-ads-cpa-disparity",
-      section: "ads-traffic",
+      section: "social-media",
       severity: "warning",
       title: `${expensive} CPA is ${(expCPA / cheapCPA).toFixed(1)}x higher than ${cheap}`,
       why: `${expensive} CPA: $${expCPA.toFixed(0)} vs ${cheap} CPA: $${cheapCPA.toFixed(0)}. Budget reallocation could improve overall efficiency.`,
@@ -206,7 +214,7 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
   if (organicTraffic > 100 && organicTraffic < sessionsCurrent * 0.1) {
     insights.push({
       id: "ai-ads-seo-underperforming",
-      section: "ads-traffic",
+      section: "website-traffic",
       severity: "warning",
       title: "Organic search heavily underperforming relative to overall traffic",
       why: `Organic traffic is only ${toPct(organicTraffic / sessionsCurrent)} of total sessions (${organicTraffic} out of ${sessionsCurrent}). High paid dependency.`,
@@ -228,7 +236,7 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
   } else if (organicKw > 0 && paidKw > organicKw * 2) {
     insights.push({
       id: "ai-ads-paid-heavy",
-      section: "ads-traffic",
+      section: "website-traffic",
       severity: "warning",
       title: "Over-reliance on Paid Keywords vs Organic",
       why: `Bidding on ${paidKw} keywords but only ranking organically for ${organicKw}. Missing opportunity to capture free traffic for proven terms.`,
@@ -255,7 +263,7 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
   if (sessionsCurrent > 500 && submissions === 0 && pages > 0) {
     insights.push({
       id: "ai-ads-webflow-zero-conv",
-      section: "ads-traffic",
+      section: "website-traffic",
       severity: "critical",
       title: "0 form submissions despite meaningful traffic",
       why: `The site generated ${sessionsCurrent} sessions but recorded 0 form submissions in Webflow.`,
@@ -428,6 +436,12 @@ function buildFinanceInsights(data: AnalyticsDashboardData): AiInsight[] {
 
   // 10. Revenue vs. forecast gap
   insights.push(...buildRevenueVsForecastInsights(data, financeStale));
+
+  // 11. Expense growth outpacing revenue growth
+  insights.push(...buildExpenseRevenueGrowthDivergenceInsights(data, financeStale));
+
+  // 12. Multi-month revenue trend pattern detection
+  insights.push(...buildRevenueTrendPatternInsights(data, financeStale));
 
   return insights;
 }
@@ -616,6 +630,9 @@ function buildUnitEconomicsInsights(
     data.stripe,
     data.mercury ?? null,
     data.hubspot ?? null,
+    {
+      observedPeriodDays: data.mercury?.cashFlow.observedPeriodDays ?? data.timeRange?.days ?? 30,
+    },
   );
 
   const insights: AiInsight[] = [];
@@ -775,6 +792,175 @@ function buildRevenueVsForecastInsights(
   ];
 }
 
+// ── Expense vs Revenue Growth Divergence ────────────────
+
+function buildExpenseRevenueGrowthDivergenceInsights(
+  data: AnalyticsDashboardData,
+  stale: boolean,
+): AiInsight[] {
+  const revenueGrowth = data.stripe?.revenue?.revenueGrowth ?? 0;
+  const outflows = data.mercury?.cashFlow?.outflows30d ?? 0;
+  const revenue = data.stripe?.revenue?.totalRevenue30d ?? 0;
+
+  // If expenses are growing faster than revenue (expense ratio worsening)
+  // We detect this when burn rate exceeds 80% of revenue while revenue growth is below 10%
+  if (revenue > 0 && outflows > 0 && outflows > revenue * 0.8 && revenueGrowth < 10) {
+    const expenseRatio = (outflows / revenue) * 100;
+    return [
+      {
+        id: "ai-finance-expense-revenue-divergence",
+        section: "finance" as const,
+        subsectionId: "finance-pnl",
+        severity: expenseRatio > 100 ? ("critical" as const) : ("warning" as const),
+        title: "Expenses growing faster than revenue",
+        why: `Expense-to-revenue ratio is ${expenseRatio.toFixed(0)}% with revenue growth at only ${revenueGrowth.toFixed(1)}%. Operating expenses of $${outflows.toLocaleString()} are ${expenseRatio > 100 ? "exceeding" : "approaching"} revenue of $${revenue.toLocaleString()}.`,
+        confidence: clampConfidence(0.83),
+        expectedImpact: "Correcting the divergence by 10% extends runway and improves path to profitability.",
+        stale,
+        evidence: [
+          {
+            source: "Stripe + Mercury",
+            domain: "stripe" as const,
+            metric: "Expense/Revenue Ratio",
+            value: `${expenseRatio.toFixed(0)}%`,
+            delta: `Revenue growth: ${revenueGrowth.toFixed(1)}%`,
+          },
+        ],
+        actions: [
+          {
+            type: "create_task",
+            label: "Conduct expense audit and identify reduction targets",
+            payload: {
+              title: "Expense-to-revenue ratio audit",
+              priority: "P1",
+              status: "QUEUED",
+            },
+          },
+        ],
+      },
+    ];
+  }
+
+  return [];
+}
+
+// ── Revenue Trend Pattern Detection ─────────────────────
+
+function buildRevenueTrendPatternInsights(
+  data: AnalyticsDashboardData,
+  stale: boolean,
+): AiInsight[] {
+  const trend = data.stripe?.revenueTrend ?? [];
+  if (trend.length < 3) return [];
+
+  const insights: AiInsight[] = [];
+  const values = trend.map((t) => t.revenue);
+
+  // Detect consecutive decline (3+ months)
+  let consecutiveDeclines = 0;
+  for (let i = 1; i < values.length; i++) {
+    if (values[i] < values[i - 1]) {
+      consecutiveDeclines++;
+    } else {
+      consecutiveDeclines = 0;
+    }
+  }
+
+  if (consecutiveDeclines >= 3) {
+    const firstDecline = values[values.length - consecutiveDeclines - 1];
+    const latest = values[values.length - 1];
+    const totalDrop = firstDecline > 0 ? ((firstDecline - latest) / firstDecline * 100).toFixed(1) : "N/A";
+
+    insights.push({
+      id: "ai-finance-consecutive-revenue-decline",
+      section: "finance" as const,
+      subsectionId: "finance-stripe",
+      severity: consecutiveDeclines >= 4 ? ("critical" as const) : ("warning" as const),
+      title: `Revenue declining for ${consecutiveDeclines} consecutive months`,
+      why: `Revenue has declined each month for ${consecutiveDeclines} months, a total drop of ${totalDrop}%. This pattern suggests a structural issue rather than seasonal variation.`,
+      confidence: clampConfidence(0.88),
+      expectedImpact: "Identifying and addressing the root cause (churn, pricing, acquisition) is critical to stabilize MRR.",
+      stale,
+      evidence: [
+        {
+          source: "Stripe",
+          domain: "stripe" as const,
+          metric: "Revenue Trend",
+          value: `${consecutiveDeclines}-month decline`,
+          delta: `-${totalDrop}% total`,
+          trendValues: values,
+        },
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: "Investigate revenue decline root cause",
+          payload: {
+            title: "Multi-month revenue decline investigation",
+            priority: "P0",
+            status: "WORKING_ON_TODAY",
+          },
+        },
+      ],
+    });
+  }
+
+  // Detect accelerating growth (3+ months of increasing MoM growth rate)
+  if (values.length >= 4) {
+    const growthRates: number[] = [];
+    for (let i = 1; i < values.length; i++) {
+      growthRates.push(values[i - 1] > 0 ? ((values[i] - values[i - 1]) / values[i - 1]) * 100 : 0);
+    }
+
+    let accelerating = 0;
+    for (let i = 1; i < growthRates.length; i++) {
+      if (growthRates[i] > growthRates[i - 1] && growthRates[i] > 0) {
+        accelerating++;
+      } else {
+        accelerating = 0;
+      }
+    }
+
+    if (accelerating >= 3) {
+      const latestGrowth = growthRates[growthRates.length - 1];
+      insights.push({
+        id: "ai-finance-accelerating-growth",
+        section: "finance" as const,
+        subsectionId: "finance-stripe",
+        severity: "info" as const,
+        title: "Revenue growth accelerating — consider scaling investment",
+        why: `MoM revenue growth has accelerated for ${accelerating} consecutive months, reaching ${latestGrowth.toFixed(1)}%. This signals strong product-market fit momentum.`,
+        confidence: clampConfidence(0.80),
+        expectedImpact: "Scaling acquisition spend during acceleration can compound growth before the inflection point.",
+        stale,
+        evidence: [
+          {
+            source: "Stripe",
+            domain: "stripe" as const,
+            metric: "MoM Growth Rate",
+            value: `${latestGrowth.toFixed(1)}%`,
+            delta: `Accelerating for ${accelerating} months`,
+            trendValues: values,
+          },
+        ],
+        actions: [
+          {
+            type: "create_task",
+            label: "Evaluate scaling acquisition spend",
+            payload: {
+              title: "Growth acceleration opportunity assessment",
+              priority: "P1",
+              status: "QUEUED",
+            },
+          },
+        ],
+      });
+    }
+  }
+
+  return insights;
+}
+
 // ── Sales & Pipeline ─────────────────────────────────────
 
 function buildSalesInsights(data: AnalyticsDashboardData): AiInsight[] {
@@ -911,6 +1097,8 @@ function buildSalesInsights(data: AnalyticsDashboardData): AiInsight[] {
 function buildCustomerSuccessInsights(data: AnalyticsDashboardData): AiInsight[] {
   const insights: AiInsight[] = [];
   const urgent = data.pylon?.urgentConversations ?? 0;
+  const backlogGrowth = data.product?.backlogGrowth ?? 0;
+  const throughputRate = data.product?.throughputRate ?? 0;
   const csStale = data.staleDomains.includes("pylon") || data.staleDomains.includes("slack");
 
   // 1. Escalation pressure
@@ -944,6 +1132,36 @@ function buildCustomerSuccessInsights(data: AnalyticsDashboardData): AiInsight[]
     });
   }
 
+  // 2. Throughput stall warning
+  if (throughputRate > 0 && throughputRate < 0.70) {
+    insights.push({
+      id: "ai-cs-throughput-stall",
+      section: "customer-success",
+      severity: throughputRate < 0.50 ? "critical" : "warning",
+      title: "Execution throughput has stalled below target",
+      why: `Throughput rate is ${(throughputRate * 100).toFixed(1)}% — below the 70% healthy threshold. Backlog is growing at ${backlogGrowth}/period.`,
+      confidence: clampConfidence(0.81),
+      expectedImpact: "Restoring throughput above 70% prevents backlog snowball and customer frustration.",
+      stale: csStale,
+      evidence: [
+        {
+          source: "Product Signals",
+          domain: "product",
+          metric: "Throughput Rate",
+          value: `${(throughputRate * 100).toFixed(1)}%`,
+          delta: `Backlog growth: ${backlogGrowth}`,
+        },
+      ],
+      actions: [
+        {
+          type: "create_task",
+          label: "Identify throughput blockers",
+          payload: { title: "Execution throughput recovery plan", priority: "P1", status: "QUEUED" },
+        },
+      ],
+    });
+  }
+
   return insights;
 }
 
@@ -959,7 +1177,7 @@ function buildCrossdomainInsights(data: AnalyticsDashboardData): AiInsight[] {
   if (totalAdSpend > 1000 && pipelineValue > 0 && closedWonValue < totalAdSpend * 0.5) {
     insights.push({
       id: "ai-xd-spend-vs-pipeline",
-      section: "ads-traffic",
+      section: "social-media",
       severity: closedWonValue < totalAdSpend * 0.25 ? "critical" : "warning",
       title: "Ad spend not translating to pipeline value",
       why: `$${totalAdSpend.toLocaleString()} ad spend but only $${closedWonValue.toLocaleString()} closed won — pipeline ROI is ${pipelineValue > 0 ? (closedWonValue / totalAdSpend * 100).toFixed(0) : 0}%.`,
@@ -1275,9 +1493,9 @@ export function buildAiInsightsBundle(data: AnalyticsDashboardData): AiInsightsB
     ...[buildJourneyInsight(data), buildDemoInsight(data), buildProcessInsight(data)].filter((item): item is AiInsight => item !== null),
   ];
 
-  const global = sortInsights(
-    candidateInsights.length > 0 ? candidateInsights : [buildSteadyStateInsight(data)],
-  ).slice(0, 12);
+  const global = sanitizeInsightActions(
+    sortInsights(candidateInsights.length > 0 ? candidateInsights : [buildSteadyStateInsight(data)]).slice(0, 12)
+  );
 
   const bySection = SECTION_ORDER.reduce<AiInsightsBundle["bySection"]>(
     (acc, section) => {
@@ -1285,7 +1503,8 @@ export function buildAiInsightsBundle(data: AnalyticsDashboardData): AiInsightsB
       return acc;
     },
     {
-      "ads-traffic": [],
+      "website-traffic": [],
+      "social-media": [],
       finance: [],
       "sales-pipeline": [],
       retention: [],

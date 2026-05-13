@@ -140,10 +140,148 @@ describe("computeUnitEconomics", () => {
     expect(result.grossMarginPct).toBe(6.25);
   });
 
+  it("uses categorized Mercury transactions for COGS and marketing when available", () => {
+    const mercuryWithTransactions = makeMercury({
+      cashFlow: {
+        totalBalance: 500_000,
+        inflows30d: 20_000,
+        outflows30d: 464_400,
+        netCashFlow: -444_400,
+        runway: 1.1,
+        burnRate: 444_400,
+      },
+      transactions: [
+        {
+          id: "payroll",
+          postedAt: "2026-01-05T00:00:00.000Z",
+          amount: -300_000,
+          kind: "outgoingPayment",
+          mercuryCategory: null,
+          description: "Gusto payroll",
+          counterpartyName: "Gusto",
+        },
+        {
+          id: "ads",
+          postedAt: "2026-01-06T00:00:00.000Z",
+          amount: -7_000,
+          kind: "debitCardTransaction",
+          mercuryCategory: null,
+          description: "LinkedIn Ads",
+          counterpartyName: "LinkedIn",
+        },
+        {
+          id: "delivery",
+          postedAt: "2026-01-07T00:00:00.000Z",
+          amount: -1_000,
+          kind: "debitCardTransaction",
+          mercuryCategory: null,
+          description: "OpenAI API usage",
+          counterpartyName: "OpenAI",
+        },
+      ],
+    });
+    const result = computeUnitEconomics(
+      makeStripe({
+        revenue: {
+          mrr: 10_000,
+          mrrChange: 0,
+          totalRevenue30d: 20_000,
+          totalRevenuePrev30d: 18_000,
+          revenueGrowth: 11.1,
+          avgRevenuePerCustomer: 500,
+        },
+        subscriptions: {
+          active: 20,
+          pastDue: 0,
+          canceled: 1,
+          trialing: 0,
+          churnRate: 5,
+          recentChurnEvents: [],
+        },
+      }),
+      mercuryWithTransactions,
+      makeHubSpot({ funnel: { ...hubspot.funnel, closedWon: 2 } }),
+    );
+
+    expect(result.cac).toBe(3500);
+    expect(result.grossMarginPct).toBe(95);
+    expect(result.paybackMonths).toBe(7.37);
+    expect(result.ltvCacRatio).toBe(2.86);
+  });
+
   it("computes magicNumber from mrrChange and marketingSpend", () => {
     const result = computeUnitEconomics(stripe, mercury, hubspot);
     // (1200 * 12) / 6750 = 2.13
     expect(result.magicNumber).toBe(2.13);
+  });
+
+  it("respects custom budget-informed expense ratios", () => {
+    const result = computeUnitEconomics(stripe, mercury, hubspot, {
+      ratios: {
+        cogs: 0.1,
+        payroll: 0.2,
+        marketing: 0.5,
+        infrastructure: 0.1,
+        ops: 0.1,
+      },
+    });
+
+    expect(result.cac).toBe(4500);
+    expect(result.grossMarginPct).toBe(62.5);
+    expect(result.magicNumber).toBe(0.64);
+  });
+
+  it("prefers Mercury transaction-derived category breakdown when present", () => {
+    const mercuryWithBreakdown = makeMercury({
+      cashFlow: {
+        totalBalance: 500_000,
+        inflows30d: 12_000,
+        outflows30d: 45_000,
+        netCashFlow: -33_000,
+        runway: 15,
+        burnRate: 45_000,
+        expenseBreakdown30d: {
+          cogs: 5_000,
+          payroll: 10_000,
+          marketing: 15_000,
+          infrastructure: 5_000,
+          ops: 10_000,
+          other: 0,
+        },
+      },
+    });
+
+    const result = computeUnitEconomics(stripe, mercuryWithBreakdown, hubspot);
+
+    expect(result.cac).toBe(3000);
+    expect(result.grossMarginPct).toBe(58.33);
+    expect(result.magicNumber).toBe(0.96);
+  });
+
+  it("normalizes in-range closed won counts to a monthly equivalent", () => {
+    const ninetyDayMercury = makeMercury({
+      cashFlow: {
+        totalBalance: 500_000,
+        inflows30d: 12_000,
+        outflows30d: 45_000,
+        netCashFlow: -33_000,
+        runway: 15,
+        burnRate: 45_000,
+        observedPeriodDays: 90,
+      },
+    });
+    const ninetyDayHubspot = makeHubSpot({
+      funnel: {
+        ...hubspot.funnel,
+        closedWon: 9,
+      },
+    });
+
+    const result = computeUnitEconomics(stripe, ninetyDayMercury, ninetyDayHubspot);
+
+    expect(result.cac).toBe(2250);
+    expect(result.paybackMonths).toBe(180);
+    expect(result.ltvCacRatio).toBe(2.22);
   });
 
   /* ─── Churn edge cases ──────────────────────────────────── */

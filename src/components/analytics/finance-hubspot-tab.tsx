@@ -65,6 +65,7 @@ export function FinanceHubSpotTab({ data }: FinanceHubSpotTabProps) {
   }
 
   const { funnel, deals } = hubspot;
+  const excludedSuspiciousLeads = funnel.excludedSuspiciousLeads ?? 0;
   const stages = orderedFinanceStages(funnel.stages);
   const maxStageCount = Math.max(...stages.map((s) => s.count), 1);
   const totalPipelineValue = stages.reduce((sum, s) => sum + s.value, 0);
@@ -231,6 +232,16 @@ export function FinanceHubSpotTab({ data }: FinanceHubSpotTabProps) {
           icon={AlertTriangle}
           iconColor={funnel.churn > 10 ? "text-red-500" : "text-primary"}
         />
+        {excludedSuspiciousLeads > 0 && (
+          <StatCard
+            label="Excluded Leads"
+            value={excludedSuspiciousLeads.toLocaleString()}
+            subtitle="flagged as suspicious"
+            icon={AlertTriangle}
+            iconColor="text-amber-500"
+            className="border-amber-500/30 bg-amber-500/5"
+          />
+        )}
         <StatCard
           label="Pipeline Value"
           value={fmt$(totalPipelineValue)}

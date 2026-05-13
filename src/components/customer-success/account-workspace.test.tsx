@@ -138,6 +138,7 @@ function buildDetail(overrides: Partial<CustomerSuccessAccountDetail> = {}): Cus
       expansionPotential: "medium",
     },
     relationshipIntelligence: {
+      connectedSystems: 2,
       providers: [
         {
           provider: "CODA",
@@ -171,15 +172,38 @@ function buildDetail(overrides: Partial<CustomerSuccessAccountDetail> = {}): Cus
             dimension: "usage",
           },
         ],
+        ardaAdoptionCountsSource: "ARDA_USER_DETAILS",
+        ardaDirectActivityCounts: {
+          orders: 0,
+          cards: 0,
+          items: 0,
+        },
+        ardaUserDetailsCounts: {
+          orders: 0,
+          cards: 12,
+          items: 10,
+        },
         coverage: {
           arda: true,
           coda: true,
           stripe: true,
           hubspot: true,
           pylon: false,
+          ardaActivityCollectionAvailable: false,
+          ardaUserDetailsFallback: true,
           missingSources: ["pylon"],
         },
         detailUrl: "/analytics/retention/acct_1",
+      },
+      arda: {
+        tenantId: "tenant-123",
+        configuredTenantId: "tenant-123",
+        tenantName: "Acme Co",
+        companyName: "Acme Co",
+        customerStatus: "Won",
+        configuredHealth: "Yellow",
+        implementationStage: "LIVE",
+        sourceRecordCount: 24,
       },
       coda: {
         customerStatus: "Won",
@@ -246,8 +270,11 @@ describe("CustomerSuccessAccountWorkspace", () => {
     render(<CustomerSuccessAccountWorkspace accountId="acct_1" />);
 
     await waitFor(() => {
-      expect(screen.getByText("Acme Co")).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "Acme Co" })).toBeTruthy();
     });
+    expect(
+      screen.getByText("Arda activity history is unavailable; adoption breadth falls back to User Details (12 cards, 10 items).")
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Timeline" }));
     fireEvent.change(screen.getByPlaceholderText("Optional title"), { target: { value: "Weekly review" } });
@@ -452,7 +479,7 @@ describe("CustomerSuccessAccountWorkspace", () => {
           severity: "medium",
           status: "open",
           slaStatus: "at_risk",
-          source: "implementation",
+          source: "workflow",
           evidence: ["Milestone completion slipped"],
           suggestedAction: "Coordinate unblock with implementation lead",
           createdAt: "2026-03-09T10:00:00.000Z",
@@ -470,7 +497,7 @@ describe("CustomerSuccessAccountWorkspace", () => {
           severity: "medium",
           status: "in_progress",
           slaStatus: "on_track",
-          source: "implementation",
+          source: "workflow",
           evidence: ["Owner assigned and recovery plan in motion"],
           suggestedAction: "Track weekly until the milestone is back on plan",
           createdAt: "2026-03-09T10:00:00.000Z",
@@ -538,7 +565,7 @@ describe("CustomerSuccessAccountWorkspace", () => {
     render(<CustomerSuccessAccountWorkspace accountId="acct_1" />);
 
     await waitFor(() => {
-      expect(screen.getByText("Acme Co")).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "Acme Co" })).toBeTruthy();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Health Details" }));
@@ -561,7 +588,8 @@ describe("CustomerSuccessAccountWorkspace", () => {
       expect(screen.getByText("Relationship Intelligence")).toBeTruthy();
     });
 
-    expect(screen.getByText("Unified provider links, Coda account metadata, and current retention posture.")).toBeTruthy();
+    expect(screen.getByText("Unified provider links, Arda and Coda account metadata, and current retention posture.")).toBeTruthy();
+    expect(screen.getByText("Arda")).toBeTruthy();
     expect(screen.getByText("Main Coda Doc")).toBeTruthy();
     expect(screen.getByText("Low recent activity")).toBeTruthy();
     expect(screen.getByText(/Customer Success and Implementation/)).toBeTruthy();

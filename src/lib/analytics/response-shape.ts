@@ -5,7 +5,8 @@ export function createEmptyAiInsightsBundle(generatedAt: string = new Date().toI
     generatedAt,
     global: [],
     bySection: {
-      "ads-traffic": [],
+      "website-traffic": [],
+      "social-media": [],
       finance: [],
       "sales-pipeline": [],
       retention: [],
@@ -57,6 +58,7 @@ export function createEmptyAnalyticsDashboardData(input: {
     timeRange: input.timeRange,
     lastFullRefresh: input.lastFullRefresh ?? new Date().toISOString(),
     financialPlanning: null,
+    metrics: null,
     errors: [],
   };
 }

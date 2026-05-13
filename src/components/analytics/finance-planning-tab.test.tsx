@@ -2,7 +2,12 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FinancePlanningTab } from "@/components/analytics/finance-planning-tab";
 import { createEmptyAnalyticsDashboardData } from "@/lib/analytics/response-shape";
-import type { AnalyticsDashboardData, StripeData, MercuryData } from "@/lib/analytics/types";
+import type {
+  AnalyticsDashboardData,
+  MercuryData,
+  StripeData,
+} from "@/lib/analytics/types";
+import type { AnalyticsMetricsLayer } from "@/lib/analytics/kpis";
 
 /* ── Mock lucide-react icons as plain function components ── */
 
@@ -90,8 +95,27 @@ function makeMercury(overrides: Partial<MercuryData> = {}): MercuryData {
   };
 }
 
+function makeFinancialPlanning(
+  overrides: Partial<FinancialPlanningData> = {},
+): FinancialPlanningData {
+  return {
+    budgets: [],
+    activeBudget: null,
+    forecasts: [],
+    goals: [],
+    pnl: null,
+    unitEconomics: null,
+    subscriptionOverview: null,
+    ...overrides,
+  };
+}
+
 function makePayload(
-  opts: { stripe?: StripeData | null; mercury?: MercuryData | null } = {},
+  opts: {
+    stripe?: StripeData | null;
+    mercury?: MercuryData | null;
+    financialPlanning?: FinancialPlanningData | null;
+  } = {},
 ): AnalyticsDashboardData {
   const data = createEmptyAnalyticsDashboardData({
     freshness: {},
@@ -99,6 +123,7 @@ function makePayload(
   });
   data.stripe = opts.stripe !== undefined ? opts.stripe : makeStripe();
   data.mercury = opts.mercury !== undefined ? opts.mercury : makeMercury();
+  data.financialPlanning = opts.financialPlanning !== undefined ? opts.financialPlanning : null;
   return data;
 }
 
@@ -142,9 +167,8 @@ describe("FinancePlanningTab", () => {
     it("shows all four budget stat cards with full data", () => {
       render(<FinancePlanningTab data={makePayload()} />);
       expect(screen.getByText("Total Budget")).toBeTruthy();
-      expect(screen.getByText("Total Actual")).toBeTruthy();
-      // "Variance" appears both as a stat card label and a table column header
-      expect(screen.getAllByText("Variance").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("Est. Actual")).toBeTruthy();
+      expect(screen.getAllByText("Est. Variance").length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText("Overspend Areas")).toBeTruthy();
     });
   });
@@ -152,9 +176,14 @@ describe("FinancePlanningTab", () => {
   /* ─── Budget variance table ──────────────────────────── */
 
   describe("budget variance table", () => {
-    it("renders Budget vs Actual section title", () => {
+    it("renders estimated budget variance section title and disclosure", () => {
       render(<FinancePlanningTab data={makePayload()} />);
-      expect(screen.getByText("Budget vs Actual")).toBeTruthy();
+      expect(screen.getByText("Budget vs Estimated Actuals")).toBeTruthy();
+      expect(
+        screen.getByText(
+          "Estimated actuals are derived from aggregate Mercury outflows until transaction categories are mapped to budget lines."
+        )
+      ).toBeTruthy();
     });
 
     it("displays budget category labels", () => {
@@ -162,13 +191,81 @@ describe("FinancePlanningTab", () => {
       expect(screen.getAllByText("Cost of Goods Sold").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("Payroll & Benefits").length).toBeGreaterThanOrEqual(1);
     });
-  });
 
-  /* ─── Category breakdown ─────────────────────────────── */
-
-  describe("category breakdown", () => {
-    it("renders Category Breakdown section", () => {
-      const data = makePayload();
+    it("renders planned and actual values from the canonical metrics layer", () => {
+      const data = makePayload({
+        mercury: makeMercury({
+          transactions: [
+            {
+              id: "stripe-fee",
+              postedAt: "2026-01-15T00:00:00.000Z",
+              amount: -1234,
+              kind: "outgoingPayment",
+              mercuryCategory: null,
+              description: "Stripe fee",
+              counterpartyName: "Stripe",
+            },
+          ],
+        }),
+      }) as AnalyticsDashboardData & { metrics: AnalyticsMetricsLayer };
+      data.metrics = {
+        kpis: {
+          traffic: {
+            bounceRatePct: 0,
+            pagesPerSession: 0,
+            engagementScore: 100,
+            pageDepthScore: 0,
+          },
+          finance: {
+            mrr: 15000,
+            paymentSuccessPct: 98.7,
+          },
+        },
+        finance: {
+          summary: {
+            mrr: 15000,
+            mrrChange: 0,
+            totalRevenue30d: 0,
+            revenueGrowth: 0,
+            activeSubscriptions: 0,
+            stripeActiveSubscriptions: 0,
+            hubspotActiveSubscriptions: 0,
+            pastDueSubscriptions: 0,
+            trialingSubscriptions: 0,
+            paymentSuccessPct: 98.7,
+            churnRatePct: 0,
+            cashBalance: 0,
+            bankCash: null,
+            treasuryCash: null,
+            runwayMonths: 0,
+            netCashFlow30d: 0,
+            inflows30d: 0,
+            outflows30d: 0,
+            burnRate: 0,
+          },
+          stripe: null,
+          mercury: null,
+          budgetActuals: {
+            budgetId: "budget-1",
+            budgetName: "Baseline Budget",
+            totalBudget: 1000,
+            totalActual: 1234,
+            totalVariance: 234,
+            totalVariancePct: 23.4,
+            overspendCategories: ["Cost of Goods Sold"],
+            items: [
+              {
+                category: "Cost of Goods Sold",
+                budgeted: 1000,
+                actual: 1234,
+                variance: 234,
+                variancePct: 23.4,
+                status: "over",
+              },
+            ],
+          },
+        },
+      };
       data.financialPlanning = {
         budgets: [
           {
@@ -176,42 +273,14 @@ describe("FinancePlanningTab", () => {
             name: "Baseline Budget",
             period: "monthly",
             startDate: "2026-01-01T00:00:00.000Z",
-            endDate: "2026-01-31T00:00:00.000Z",
-            lineItems: [
-              {
-                id: "line-1",
-                category: "cogs",
-                plannedAmount: 10000,
-                actualAmount: 9000,
-                variance: -1000,
-                variancePct: -10,
-              },
-            ],
-            totalPlanned: 10000,
-            totalActual: 9000,
-            totalVariance: -1000,
+            endDate: "2026-01-31T23:59:59.999Z",
+            lineItems: [],
+            totalPlanned: 1000,
+            totalActual: 1234,
+            totalVariance: 234,
           },
         ],
-        activeBudget: {
-          id: "budget-1",
-          name: "Baseline Budget",
-          period: "monthly",
-          startDate: "2026-01-01T00:00:00.000Z",
-          endDate: "2026-01-31T00:00:00.000Z",
-          lineItems: [
-            {
-              id: "line-1",
-              category: "cogs",
-              plannedAmount: 10000,
-              actualAmount: 9000,
-              variance: -1000,
-              variancePct: -10,
-            },
-          ],
-          totalPlanned: 10000,
-          totalActual: 9000,
-          totalVariance: -1000,
-        },
+        activeBudget: null,
         forecasts: [],
         goals: [],
         pnl: null,
@@ -220,7 +289,62 @@ describe("FinancePlanningTab", () => {
       };
 
       render(<FinancePlanningTab data={data} />);
-      expect(screen.getByText("Category Breakdown")).toBeTruthy();
+
+      expect(screen.getAllByText("Cost of Goods Sold").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("$1.2K").length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  /* ─── Category breakdown ─────────────────────────────── */
+
+  describe("category breakdown", () => {
+    it("renders Category Breakdown section", async () => {
+      vi.stubGlobal("fetch", vi.fn(async () => ({
+        ok: true,
+        json: async () => [
+          {
+            id: "budget-1",
+            name: "Baseline Budget",
+            period: "MONTHLY",
+            startDate: "2026-01-01T00:00:00.000Z",
+            endDate: "2026-02-01T00:00:00.000Z",
+            lineItems: [
+              { id: "line-1", category: "MARKETING", plannedAmount: 6000 },
+            ],
+          },
+        ],
+      })) as unknown as typeof fetch);
+
+      render(
+        <FinancePlanningTab
+          data={makePayload({
+            financialPlanning: makeFinancialPlanning({
+              activeBudget: {
+                id: "budget-1",
+                name: "Baseline Budget",
+                period: "monthly",
+                startDate: "2026-01-01T00:00:00.000Z",
+                endDate: "2026-02-01T00:00:00.000Z",
+                lineItems: [
+                  {
+                    id: "line-1",
+                    category: "marketing",
+                    plannedAmount: 6000,
+                    actualAmount: 900,
+                    variance: -5100,
+                    variancePct: -85,
+                  },
+                ],
+                totalPlanned: 6000,
+                totalActual: 900,
+                totalVariance: -5100,
+              },
+            }),
+          })}
+        />
+      );
+
+      expect(await screen.findByText("Category Breakdown")).toBeTruthy();
     });
   });
 
@@ -335,8 +459,8 @@ describe("FinancePlanningTab", () => {
       const data = makePayload({ mercury: null });
       render(<FinancePlanningTab data={data} />);
       expect(screen.getByText("Total Budget")).toBeTruthy();
-      expect(screen.getByText("Total Actual")).toBeTruthy();
-      expect(screen.getAllByText("Variance").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("Est. Actual")).toBeTruthy();
+      expect(screen.getAllByText("Est. Variance").length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText("Overspend Areas")).toBeTruthy();
     });
 
@@ -344,8 +468,8 @@ describe("FinancePlanningTab", () => {
       const data = makePayload({ stripe: null });
       render(<FinancePlanningTab data={data} />);
       expect(screen.getByText("Total Budget")).toBeTruthy();
-      expect(screen.getByText("Total Actual")).toBeTruthy();
-      expect(screen.getAllByText("Variance").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("Est. Actual")).toBeTruthy();
+      expect(screen.getAllByText("Est. Variance").length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText("Overspend Areas")).toBeTruthy();
     });
   });

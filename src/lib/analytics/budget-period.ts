@@ -28,15 +28,47 @@ function addMonthsClampedUtc(date: Date, months: number): Date {
   return new Date(Date.UTC(targetYear, targetMonth, targetDay));
 }
 
+function monthsForPeriod(period: BudgetPeriod): number {
+  return period === "MONTHLY" ? 1 : period === "QUARTERLY" ? 3 : 12;
+}
+
+export function exclusiveEndDateForPeriod(startDate: string, period: BudgetPeriod): string {
+  const parsed = parseDateInput(startDate);
+  if (!parsed) return "";
+  return formatDateInput(addMonthsClampedUtc(parsed, monthsForPeriod(period)));
+}
+
 export function endDateForPeriod(startDate: string, period: BudgetPeriod): string {
   const parsed = parseDateInput(startDate);
   if (!parsed) return "";
 
-  const months = period === "MONTHLY" ? 1 : period === "QUARTERLY" ? 3 : 12;
-  const nextPeriodStart = addMonthsClampedUtc(parsed, months);
+  const nextPeriodStart = addMonthsClampedUtc(parsed, monthsForPeriod(period));
   const end = new Date(nextPeriodStart);
   end.setUTCDate(end.getUTCDate() - 1);
   return formatDateInput(end);
+}
+
+export function normalizeStoredBudgetEndDate(
+  startDateIso: string,
+  endDateIso: string,
+  period: BudgetPeriod,
+): string {
+  const startDate = startDateIso.slice(0, 10);
+  const endDate = new Date(endDateIso);
+  if (Number.isNaN(endDate.getTime())) return endDateIso;
+
+  const isMidnightUtc =
+    endDate.getUTCHours() === 0 &&
+    endDate.getUTCMinutes() === 0 &&
+    endDate.getUTCSeconds() === 0 &&
+    endDate.getUTCMilliseconds() === 0;
+  if (!isMidnightUtc) return endDateIso;
+
+  const legacyExclusiveEnd = exclusiveEndDateForPeriod(startDate, period);
+  if (!legacyExclusiveEnd) return endDateIso;
+  if (endDateIso.slice(0, 10) !== legacyExclusiveEnd) return endDateIso;
+
+  return `${endDateForPeriod(startDate, period)}T00:00:00.000Z`;
 }
 
 export function defaultDateRange(period: BudgetPeriod): { start: string; end: string } {

@@ -17,6 +17,9 @@ vi.mock("@/lib/integrations/ownership", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     analyticsSnapshot: { findMany: vi.fn() },
+    retentionTenantCurrent: { count: vi.fn() },
+    retentionSyncRun: { findFirst: vi.fn() },
+    retentionSourceRecord: { groupBy: vi.fn(), findMany: vi.fn() },
   },
 }));
 
@@ -40,7 +43,7 @@ describe("GET /api/analytics/summary", () => {
     const { prisma } = await import("@/lib/prisma");
 
     vi.mocked(auth).mockResolvedValue({
-      user: { id: "user-1", email: "viewer@example.com" },
+      user: { id: "user-1", email: "viewer@example.com", organizationId: "org_1" },
     } as never);
 
     vi.mocked(getCredentials).mockResolvedValue({
@@ -57,6 +60,8 @@ describe("GET /api/analytics/summary", () => {
       googleAdsClientSecret: null,
       googleAdsLoginCustomerId: null,
       metaAccessToken: null,
+      metaAdsAccessToken: null,
+      metaPageAccessToken: null,
       metaAdAccountId: null,
       metaPageId: null,
       metaInstagramAccountId: null,
@@ -101,6 +106,10 @@ describe("GET /api/analytics/summary", () => {
         lastError: null,
       },
     ] as never);
+    vi.mocked(prisma.retentionTenantCurrent.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.retentionSyncRun.findFirst).mockResolvedValue(null as never);
+    vi.mocked(prisma.retentionSourceRecord.groupBy).mockResolvedValue([] as never);
+    vi.mocked(prisma.retentionSourceRecord.findMany).mockResolvedValue([] as never);
   });
 
   it("uses the integration owner for credentials and snapshot health", async () => {
@@ -123,5 +132,58 @@ describe("GET /api/analytics/summary", () => {
       }),
     );
     expect(body.primarySections.some((section: { status: string }) => section.status !== "missing")).toBe(true);
+  });
+
+  it("marks retention as degraded when Arda is fallback-only", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { GET } = await import("@/app/api/analytics/summary/route");
+
+    vi.mocked(prisma.retentionTenantCurrent.count).mockResolvedValue(5 as never);
+    vi.mocked(prisma.retentionSyncRun.findFirst).mockResolvedValue({
+      startedAt: new Date("2026-03-16T01:00:03.635Z"),
+      lastError: null,
+      status: "SUCCESS",
+    } as never);
+    vi.mocked(prisma.retentionSourceRecord.groupBy).mockResolvedValue([
+      {
+        objectType: "tenant",
+        _count: { _all: 18 },
+      },
+    ] as never);
+    vi.mocked(prisma.retentionSourceRecord.findMany).mockResolvedValue([
+      {
+        payload: {
+          userDetailsCardCount: 103,
+          userDetailsItemCount: 102,
+          userDetailsOrderCount: 0,
+        },
+      },
+    ] as never);
+
+    const response = await GET(new NextRequest("http://localhost/api/analytics/summary?range=30d"));
+    const body = await response.json();
+    const retention = body.primarySections.find((section: { id: string }) => section.id === "retention");
+
+    expect(response.status).toBe(200);
+    expect(retention.status).toBe("degraded");
+  });
+
+  it("marks retention as degraded when the latest sync errored even if tenant rows exist", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { GET } = await import("@/app/api/analytics/summary/route");
+
+    vi.mocked(prisma.retentionTenantCurrent.count).mockResolvedValue(5 as never);
+    vi.mocked(prisma.retentionSyncRun.findFirst).mockResolvedValue({
+      startedAt: new Date("2026-03-16T01:00:03.635Z"),
+      lastError: "Arda sync failed",
+      status: "ERROR",
+    } as never);
+
+    const response = await GET(new NextRequest("http://localhost/api/analytics/summary?range=30d"));
+    const body = await response.json();
+    const retention = body.primarySections.find((section: { id: string }) => section.id === "retention");
+
+    expect(response.status).toBe(200);
+    expect(retention.status).toBe("degraded");
   });
 });

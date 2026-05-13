@@ -20,6 +20,20 @@ function fmtNum(value: number | null | undefined): string {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(value);
 }
 
+function describeArdaDataQuality(summary: RetentionSummary): string | null {
+  const arda = summary.dataQuality.arda;
+  if (arda.adoptionBreadthSource === "ARDA_USER_DETAILS") {
+    return `Arda activity history is unavailable. Breadth is currently derived from User Details for ${fmtNum(arda.tenantsWithUserDetailsBreadth)} tenants.`;
+  }
+  if (arda.adoptionBreadthSource === "ARDA_ACTIVITY") {
+    return `Arda activity history is live with ${fmtNum(arda.activityRecords)} direct activity records.`;
+  }
+  if (arda.tenantRecords > 0) {
+    return "Arda tenant metadata is connected, but no activity history is currently available.";
+  }
+  return null;
+}
+
 function statusClass(status: RetentionTenantRow["status"]): string {
   switch (status) {
     case "Healthy":
@@ -142,6 +156,7 @@ export function RetentionDashboard() {
     search: searchParams?.get("search") ?? "",
   };
   const hasActiveFilters = Object.values(filters).some((value) => value.length > 0);
+  const ardaDataQualityNote = describeArdaDataQuality(summary);
 
   if ((tenants?.length ?? 0) === 0 && summary.totals.tenants === 0 && !hasActiveFilters && !tenantsError) {
     return (
@@ -201,6 +216,13 @@ export function RetentionDashboard() {
           {resource.refreshing ? "Refreshing..." : "Refresh"}
         </button>
       </div>
+
+      {ardaDataQualityNote ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+          <p className="font-medium">Arda Data Quality</p>
+          <p className="mt-1">{ardaDataQualityNote}</p>
+        </div>
+      ) : null}
 
       <form action={pathname ?? undefined} className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-2 xl:grid-cols-4">
         <input
@@ -525,6 +547,16 @@ export function RetentionDashboard() {
                   No source coverage diagnostics are available yet.
                 </p>
               ) : null}
+            </div>
+            <div className="mt-3 rounded-lg border border-border bg-background px-3 py-3">
+              <p className="text-sm font-medium text-foreground">Arda activity mode</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {summary.dataQuality.arda.adoptionBreadthSource === "ARDA_USER_DETAILS"
+                  ? `Fallback to User Details (${fmtNum(summary.dataQuality.arda.tenantsWithUserDetailsBreadth)} tenants with breadth counts)`
+                  : summary.dataQuality.arda.adoptionBreadthSource === "ARDA_ACTIVITY"
+                    ? `Direct activity available (${fmtNum(summary.dataQuality.arda.activityRecords)} activity records)`
+                    : "No Arda activity or fallback breadth counts available"}
+              </p>
             </div>
           </section>
         </div>

@@ -1,0 +1,161 @@
+type StripeCustomerRef = {
+  customerId?: string | null;
+  email?: string | null;
+  emailDomain?: string | null;
+};
+
+type StripeLike = {
+  revenue?: {
+    mrr?: number | null;
+    mrrChange?: number | null;
+  } | null;
+  subscriptions?: {
+    active?: number | null;
+    activeCustomerRefs?: StripeCustomerRef[] | null;
+  } | null;
+} | null | undefined;
+
+type HubSpotSubscriptionDealLike = {
+  dealId?: string | null;
+  dealName?: string | null;
+  stageLabel?: string | null;
+  amount?: number | string | null;
+  stripeCustomerId?: string | null;
+  primaryContactEmail?: string | null;
+};
+
+type HubSpotLike = {
+  subscriptionDeals?: HubSpotSubscriptionDealLike[] | null;
+  deals?: HubSpotSubscriptionDealLike[] | null;
+} | null | undefined;
+
+const GENERIC_EMAIL_DOMAINS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "yahoo.com",
+  "outlook.com",
+  "hotmail.com",
+  "icloud.com",
+  "me.com",
+  "proton.me",
+  "protonmail.com",
+]);
+
+function normalizeLookup(value: string | null | undefined): string | null {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeEmailDomain(value: string | null | undefined): string | null {
+  const email = normalizeLookup(value);
+  if (!email || !email.includes("@")) return null;
+  const [, domain] = email.split("@");
+  const normalized = normalizeLookup(domain);
+  if (!normalized || GENERIC_EMAIL_DOMAINS.has(normalized)) return null;
+  return normalized;
+}
+
+function toNumber(value: number | string | null | undefined): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function asStripeLike(value: unknown): StripeLike {
+  return typeof value === "object" && value !== null ? (value as StripeLike) : null;
+}
+
+function asHubSpotLike(value: unknown): HubSpotLike {
+  return typeof value === "object" && value !== null ? (value as HubSpotLike) : null;
+}
+
+function getHubSpotSubscriptionDeals(hubspot: HubSpotLike): HubSpotSubscriptionDealLike[] {
+  if (Array.isArray(hubspot?.subscriptionDeals)) return hubspot.subscriptionDeals;
+  return (hubspot?.deals ?? []).filter(
+    (deal) => deal.stageLabel?.trim().toLowerCase() === "subscription",
+  );
+}
+
+export type SubscriptionMrrBreakdown = {
+  stripeMrr: number;
+  stripeMrrChange: number | null;
+  hubspotSubscriptionMrr: number;
+  hubspotOnlySubscriptionMrr: number;
+  excludedLinkedHubspotSubscriptionMrr: number;
+  totalMrr: number;
+  totalArr: number;
+  stripeActiveSubscriptions: number;
+  hubspotActiveSubscriptions: number;
+  hubspotOnlyActiveSubscriptions: number;
+  mergedActiveSubscriptions: number;
+};
+
+export function buildSubscriptionMrrBreakdown(input: {
+  stripe: unknown;
+  hubspot: unknown;
+}): SubscriptionMrrBreakdown {
+  const stripe = asStripeLike(input.stripe);
+  const hubspot = asHubSpotLike(input.hubspot);
+  const stripeRefs = stripe?.subscriptions?.activeCustomerRefs ?? [];
+  const hubspotDeals = getHubSpotSubscriptionDeals(hubspot);
+
+  const stripeCustomerIds = new Set(
+    stripeRefs
+      .map((ref) => ref.customerId?.trim() ?? "")
+      .filter((customerId) => customerId.length > 0 && customerId !== "Unknown customer"),
+  );
+  const stripeEmails = new Set(
+    stripeRefs.map((ref) => normalizeLookup(ref.email)).filter(Boolean) as string[],
+  );
+  const stripeDomains = new Set(
+    stripeRefs.map((ref) => normalizeLookup(ref.emailDomain)).filter(Boolean) as string[],
+  );
+
+  let hubspotOnlyActiveSubscriptions = 0;
+  let hubspotOnlySubscriptionMrr = 0;
+  let excludedLinkedHubspotSubscriptionMrr = 0;
+  let hubspotSubscriptionMrr = 0;
+
+  for (const deal of hubspotDeals) {
+    const amount = Math.max(0, toNumber(deal.amount));
+    const customerId = deal.stripeCustomerId?.trim() || null;
+    const email = normalizeLookup(deal.primaryContactEmail);
+    const emailDomain = normalizeEmailDomain(deal.primaryContactEmail);
+    const linkedToStripe =
+      Boolean(customerId && stripeCustomerIds.has(customerId)) ||
+      Boolean(email && stripeEmails.has(email)) ||
+      Boolean(emailDomain && stripeDomains.has(emailDomain));
+
+    hubspotSubscriptionMrr += amount;
+    if (linkedToStripe) {
+      excludedLinkedHubspotSubscriptionMrr += amount;
+      continue;
+    }
+
+    hubspotOnlyActiveSubscriptions += 1;
+    hubspotOnlySubscriptionMrr += amount;
+  }
+
+  const stripeMrr = Math.max(0, toNumber(stripe?.revenue?.mrr));
+  const totalMrr = stripeMrr + hubspotOnlySubscriptionMrr;
+
+  return {
+    stripeMrr,
+    stripeMrrChange:
+      stripe?.revenue?.mrrChange === null || stripe?.revenue?.mrrChange === undefined
+        ? null
+        : toNumber(stripe.revenue.mrrChange),
+    hubspotSubscriptionMrr,
+    hubspotOnlySubscriptionMrr,
+    excludedLinkedHubspotSubscriptionMrr,
+    totalMrr,
+    totalArr: totalMrr * 12,
+    stripeActiveSubscriptions: stripe?.subscriptions?.active ?? stripeRefs.length,
+    hubspotActiveSubscriptions: hubspotDeals.length,
+    hubspotOnlyActiveSubscriptions,
+    mergedActiveSubscriptions: stripeRefs.length + hubspotOnlyActiveSubscriptions,
+  };
+}

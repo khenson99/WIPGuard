@@ -4,31 +4,35 @@ import { useCallback, useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Settings as SettingsIcon } from "lucide-react";
 import { clsx } from "clsx";
-import { PrioritiesTab } from "@/components/settings/priorities-tab";
 import { TeamTab } from "@/components/settings/team-tab";
-import { DepartmentsTab } from "@/components/settings/departments-tab";
 import { OperationsTab } from "@/components/settings/operations-tab";
-import { DesignInterviewTab } from "@/components/settings/design-interview-tab";
 
 const TABS = [
-  { id: "departments", label: "Departments" },
-  { id: "priorities", label: "Company Priorities" },
-  { id: "design-interview", label: "Design Interview" },
   { id: "team", label: "Team" },
   { id: "operations", label: "Operations" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
 
+const LEGACY_SETTINGS_TABS = new Set([
+  "board",
+  "sprints",
+  "projects",
+  "departments",
+  "priorities",
+  "design-interview",
+]);
+
 export default function SettingsPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const tabParam = searchParams?.get("tab");
+  const isLegacySettingsTab = tabParam ? LEGACY_SETTINGS_TABS.has(tabParam) : false;
   const activeTab: TabId =
     tabParam && TABS.some((candidate) => candidate.id === tabParam)
       ? (tabParam as TabId)
-      : "departments";
+      : "team";
 
   useEffect(() => {
     if (
@@ -52,6 +56,15 @@ export default function SettingsPage() {
     const basePath = pathname || "/settings";
     router.replace(`${basePath}?${params.toString()}`, { scroll: false });
   }, [pathname, router, searchParams, tabParam]);
+
+  useEffect(() => {
+    if (!isLegacySettingsTab) return;
+
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    params.set("tab", "team");
+    const basePath = pathname || "/settings";
+    router.replace(`${basePath}?${params.toString()}`, { scroll: false });
+  }, [isLegacySettingsTab, pathname, router, searchParams]);
 
   const handleTabChange = useCallback((tabId: TabId) => {
     const params = new URLSearchParams(searchParams?.toString() ?? "");
@@ -86,7 +99,7 @@ export default function SettingsPage() {
     [activeTab, handleTabChange],
   );
 
-  if (tabParam === "integrations") {
+  if (tabParam === "integrations" || isLegacySettingsTab) {
     return null;
   }
 
@@ -98,7 +111,7 @@ export default function SettingsPage() {
           Settings
         </h1>
         <p className="text-xs text-muted-foreground">
-          Configure platform defaults, team setup, and operating guardrails.
+          Configure team access and analytics operating guardrails.
         </p>
       </div>
 
@@ -127,9 +140,6 @@ export default function SettingsPage() {
 
       {/* Tab content */}
       <div role="tabpanel" id={`tabpanel-${activeTab}`} aria-labelledby={`tab-${activeTab}`} className="flex-1 overflow-auto px-6 py-5">
-        {activeTab === "departments" && <DepartmentsTab />}
-        {activeTab === "priorities" && <PrioritiesTab />}
-        {activeTab === "design-interview" && <DesignInterviewTab />}
         {activeTab === "team" && <TeamTab />}
         {activeTab === "operations" && <OperationsTab />}
       </div>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ardaTenantResolutionKey,
   discoverArdaTenantIdsFromUserDetails,
   extractArdaTenantIdsFromResult,
   normalizeArdaTenantLookupKey,
@@ -85,5 +86,30 @@ describe("arda tenant resolution helpers", () => {
     );
 
     expect(discovered.size).toBe(0);
+  });
+
+  it("falls back to company-name lookup keys when configured tenant ids are blank", () => {
+    const config = {
+      configuredTenantId: "",
+      companyName: "SmartCon Solutions",
+    };
+
+    const discovered = discoverArdaTenantIdsFromUserDetails(
+      [config],
+      [
+        {
+          email: "blord@smartconsolutions.com",
+          tenantId: "e24408eb-69b3-477d-9090-97e314113996",
+        },
+      ]
+    );
+
+    expect(ardaTenantResolutionKey(config)).toBe(
+      normalizeArdaTenantLookupKey("SmartCon Solutions")
+    );
+    expect(
+      discovered.get(normalizeArdaTenantLookupKey("SmartCon Solutions"))
+    ).toEqual(["e24408eb-69b3-477d-9090-97e314113996"]);
+    expect(discovered.has("")).toBe(false);
   });
 });

@@ -32,8 +32,8 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
   if (!coda) {
     return (
       <FinanceDataEmptyState
-        title="Coda Kanban data is unavailable"
-        message="We could not load Coda Kanban board data for this range."
+        title="Coda campaign data is unavailable"
+        message="We could not load Coda campaign records for this range."
         reasons={reasons}
         reconnectHref="/settings?tab=integrations"
       />
@@ -103,15 +103,15 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
   }
   if (inProgressCount > 0 && inProgressCount <= 5) {
     insights.push({
-      title: "Focused WIP",
-      insight: `${inProgressCount} download${inProgressCount !== 1 ? "s" : ""} in progress — a manageable work-in-progress limit.`,
+      title: "Focused Processing",
+      insight: `${inProgressCount} download${inProgressCount !== 1 ? "s" : ""} in progress, which keeps the processing queue manageable.`,
       severity: "success",
     });
   } else if (inProgressCount > 10) {
     insights.push({
-      title: "High WIP Count",
-      insight: `${inProgressCount} downloads in progress simultaneously. Consider reducing WIP to improve throughput and focus.`,
-      action: "Prioritize and move lower-priority items back to backlog.",
+      title: "High Processing Queue",
+      insight: `${inProgressCount} downloads are in progress simultaneously. Consider narrowing the active queue to improve throughput and focus.`,
+      action: "Prioritize active records and defer lower-priority items.",
       severity: "warning",
     });
   }
@@ -266,7 +266,7 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
     },
   ];
 
-  // ── Recent cards table ──
+  // ── Recent records table ──
   const cardColumns: DataTableColumn<CodaCard>[] = [
     { key: "name", header: "Download", render: (r) => <span className="max-w-[250px] truncate font-medium text-foreground">{r.name}</span> },
     { key: "status", header: "Status", render: (r) => (
@@ -443,7 +443,7 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
         )}
 
         {/* Completion Health */}
-        <SectionCard title="Board Health" subtitle="Completion and progress metrics">
+        <SectionCard title="Processing Health" subtitle="Completion and progress metrics">
           <div className="flex flex-col items-center gap-4">
             <RingStat
               value={completionRate}
@@ -478,7 +478,7 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
         </SectionCard>
       </div>
 
-      {/* Recent Cards Table */}
+      {/* Recent Records Table */}
       {recentCards.length > 0 && (
         <SectionCard title="Recent Downloads" subtitle={`${recentCards.length} most recent download${recentCards.length !== 1 ? "s" : ""}`}>
           <DataTable

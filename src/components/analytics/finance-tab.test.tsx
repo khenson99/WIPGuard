@@ -4,6 +4,7 @@ import { FinanceTab } from "@/components/analytics/finance-tab";
 import { createEmptyAnalyticsDashboardData } from "@/lib/analytics/response-shape";
 import { buildProfitAndLossCore } from "@/lib/analytics/pnl-builder";
 import { buildDefaultScenarios } from "@/lib/analytics/forecast-engine";
+import { buildAnalyticsMetricsLayer } from "@/lib/analytics/kpis";
 import type {
   AnalyticsDashboardData,
   FinancialPlanningData,
@@ -104,6 +105,8 @@ function makePayload(
   data.stripe = opts.stripe !== undefined ? opts.stripe : makeStripe();
   data.mercury = opts.mercury !== undefined ? opts.mercury : makeMercury();
   data.financialPlanning = opts.financialPlanning !== undefined ? opts.financialPlanning : null;
+  data.metrics = buildAnalyticsMetricsLayer(data);
+  data.kpis = data.metrics.kpis;
   return data;
 }
 
@@ -136,6 +139,20 @@ describe("FinanceTab", () => {
     expect(screen.getByText("Subscription Health")).toBeTruthy();
     expect(screen.getByText("Bank Accounts")).toBeTruthy();
     expect(screen.getByText("Operating")).toBeTruthy();
+  });
+
+  it("uses the canonical finance summary for cash-flow mini stats", () => {
+    const data = makePayload();
+    if (!data.metrics) throw new Error("Expected metrics layer");
+    data.metrics.finance.summary.inflows30d = 1234;
+    data.metrics.finance.summary.outflows30d = 5678;
+    data.metrics.finance.summary.burnRate = 9101;
+
+    render(<FinanceTab data={data} />);
+
+    expect(screen.getByText("$1.2K")).toBeTruthy();
+    expect(screen.getByText("$5.7K")).toBeTruthy();
+    expect(screen.getByText("$9.1K")).toBeTruthy();
   });
 
   it("renders Revenue Trend section when Stripe provides a trend series", () => {
@@ -188,6 +205,44 @@ describe("FinanceTab", () => {
     render(<FinanceTab data={data} />);
     expect(screen.getByText("Forecast Scenarios")).toBeTruthy();
     expect(screen.getByText("Base Case")).toBeTruthy();
+  });
+
+  it("labels budget variance as estimated when Mercury-derived actuals are shown", () => {
+    const data = makePayload({
+      financialPlanning: makeFinancialPlanning({
+        activeBudget: {
+          id: "budget-1",
+          name: "Operating Plan",
+          period: "monthly",
+          startDate: "2026-01-01T00:00:00.000Z",
+          endDate: "2026-02-01T00:00:00.000Z",
+          lineItems: [
+            {
+              id: "line-1",
+              category: "marketing",
+              plannedAmount: 6000,
+              actualAmount: 900,
+              variance: -5100,
+              variancePct: -85,
+            },
+          ],
+          totalPlanned: 6000,
+          totalActual: 900,
+          totalVariance: -5100,
+        },
+        budgets: [],
+      }),
+    });
+
+    render(<FinanceTab data={data} />);
+    expect(screen.getByText("Budget vs Estimated Actuals")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Estimated actuals are derived from aggregate Mercury outflows until transaction categories are mapped to budget lines."
+      )
+    ).toBeTruthy();
+    expect(screen.getAllByText("Est. Actual").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Est. Variance").length).toBeGreaterThanOrEqual(1);
   });
 
   it("renders Financial Goals when financial planning includes goals", () => {

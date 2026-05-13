@@ -38,6 +38,9 @@ model Organization {
   retentionSourceRecords          RetentionSourceRecord[]
   retentionTenantMonths           RetentionTenantMonth[]
   retentionTenantCurrents         RetentionTenantCurrent[]
+  ceoMetricValueSnapshots         CeoMetricValueSnapshot[]
+  ceoReportPacks                  CeoReportPack[]
+  ceoReportRuns                   CeoReportRun[]
 }
 
 // ============================================================
@@ -111,6 +114,10 @@ model User {
 
   submissionEvents   SubmissionEvent[]
   insightPreferences InsightPreference[]
+  funnelIdentityLinks FunnelIdentityLink[]
+  ceoMetricValueSnapshots CeoMetricValueSnapshot[]
+  ceoReportPacks          CeoReportPack[]
+  ceoReportRuns           CeoReportRun[]
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
@@ -975,6 +982,185 @@ model MetricHistory {
   @@index([userId, metricKey, periodEnd(sort: Desc)])
   @@index([userId, section, periodEnd(sort: Desc)])
   @@index([capturedAt])
+}
+
+// ============================================================
+// CEO METRIC TRUST LAYER
+// ============================================================
+
+enum CeoMetricUnit {
+  COUNT
+  CURRENCY
+  DAYS
+  PERCENT
+  RATIO
+  SCORE
+  TEXT
+}
+
+enum CeoMetricTrustStatus {
+  FRESH
+  STALE
+  PARTIAL
+  MISSING
+  ERROR
+  CONFLICTED
+}
+
+enum CeoReportCadence {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  AD_HOC
+}
+
+enum CeoReportAudience {
+  CEO
+  BOARD
+  TEAM
+  INVESTOR
+}
+
+model CeoMetricDefinition {
+  id                 String        @id @default(cuid())
+  key                String        @unique
+  label              String
+  domain             String
+  ownerAudience      CeoReportAudience
+  unit               CeoMetricUnit
+  calculationVersion String
+  sourceDependencies String[]
+  freshnessSlaHours  Int
+  boardEligible      Boolean       @default(false)
+  weeklyEligible     Boolean       @default(false)
+  description        String        @db.Text
+
+  valueSnapshots CeoMetricValueSnapshot[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([domain])
+  @@index([boardEligible])
+  @@index([weeklyEligible])
+}
+
+model CeoMetricValueSnapshot {
+  id           String              @id @default(cuid())
+  metricKey    String
+  definitionId String?
+  definition   CeoMetricDefinition? @relation(fields: [definitionId], references: [id], onDelete: SetNull)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  periodStart DateTime
+  periodEnd   DateTime
+  value       Json
+  priorValue  Json?
+  delta       Float?
+  asOf        DateTime
+  computedAt  DateTime
+
+  trustStatus CeoMetricTrustStatus
+  confidence  Float
+  warnings    String[]
+  sourceState Json
+
+  lineage CeoMetricSourceLineage[]
+
+  createdAt DateTime @default(now())
+
+  @@index([metricKey, periodEnd(sort: Desc)])
+  @@index([userId, periodEnd(sort: Desc)])
+  @@index([organizationId, periodEnd(sort: Desc)])
+  @@index([trustStatus])
+}
+
+model CeoMetricSourceLineage {
+  id              String                 @id @default(cuid())
+  valueSnapshotId String
+  valueSnapshot   CeoMetricValueSnapshot @relation(fields: [valueSnapshotId], references: [id], onDelete: Cascade)
+
+  sourceKey  String
+  sourceType String
+  sourceId   String?
+  capturedAt DateTime?
+  metadata   Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([valueSnapshotId])
+  @@index([sourceKey, capturedAt])
+}
+
+model CeoReportPack {
+  id          String            @id @default(cuid())
+  slug        String
+  name        String
+  description String            @db.Text
+  cadence     CeoReportCadence
+  audience    CeoReportAudience
+  metricKeys  String[]
+  isDefault   Boolean           @default(false)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  sections CeoReportSection[]
+  runs     CeoReportRun[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, userId, slug])
+  @@index([isDefault])
+}
+
+model CeoReportSection {
+  id     String        @id @default(cuid())
+  packId String
+  pack   CeoReportPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+
+  title      String
+  position   Int
+  metricKeys String[]
+
+  @@index([packId, position])
+}
+
+model CeoReportRun {
+  id       String         @id @default(cuid())
+  packId   String?
+  pack     CeoReportPack? @relation(fields: [packId], references: [id], onDelete: SetNull)
+  packSlug String
+  packName String
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  generatedAt        DateTime @default(now())
+  metricPayload      Json
+  deterministicNotes String[]
+  markdown           String   @db.Text
+  csv                String   @db.Text
+  slideJson          Json
+  aiDraft            String?  @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([packSlug, generatedAt(sort: Desc)])
+  @@index([userId, generatedAt(sort: Desc)])
+  @@index([organizationId, generatedAt(sort: Desc)])
 }
 
 enum InsightFeedbackAction {
@@ -2402,6 +2588,137 @@ model SubmissionEvent {
   @@index([createdAt])
   @@index([userId])
   @@index([type, createdAt])
+}
+
+enum FunnelEventType {
+  PAGE_VIEW
+  SESSION_STARTED
+  AUTH_COMPLETED
+  DEMO_BOOKED
+  KANBAN_CARD_CREATED
+  TRIAL_STARTED
+  PAID_CUSTOMER
+}
+
+enum FunnelIdentityType {
+  EMAIL
+  USER_ID
+  HUBSPOT_CONTACT_ID
+  HUBSPOT_DEAL_ID
+  STRIPE_CUSTOMER_ID
+  CODA_EMAIL
+}
+
+enum FunnelLinkProvenance {
+  EXACT
+  INFERRED
+  BACKFILLED
+}
+
+enum EnrichmentProvider {
+  UNIFY
+  CLAY
+  RB2B
+}
+
+model FunnelVisitor {
+  id                    String                    @id @default(cuid())
+  anonymousId           String                    @unique
+  siteHost              String?
+  firstTouchSource      String?
+  firstTouchChannel     String?
+  firstTouchCampaign    String?
+  firstTouchReferrer    String?
+  firstTouchLandingPath String?
+  firstTouchLandingUrl  String?
+  lastTouchSource       String?
+  lastTouchChannel      String?
+  lastTouchCampaign     String?
+  lastTouchReferrer     String?
+  lastTouchPath         String?
+  lastTouchUrl          String?
+  firstSeenAt           DateTime
+  lastSeenAt            DateTime
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  events                FunnelEvent[]
+  identityLinks         FunnelIdentityLink[]
+  enrichmentSignals     FunnelEnrichmentSignal[]
+
+  @@index([firstSeenAt])
+  @@index([lastSeenAt])
+  @@index([firstTouchChannel, firstSeenAt])
+  @@index([firstTouchSource, firstSeenAt])
+  @@index([firstTouchCampaign, firstSeenAt])
+  @@index([siteHost, firstSeenAt])
+}
+
+model FunnelEvent {
+  id         String          @id @default(cuid())
+  visitorId  String
+  visitor    FunnelVisitor   @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  eventType  FunnelEventType
+  occurredAt DateTime
+  source     String?
+  channel    String?
+  campaign   String?
+  path       String?
+  url        String?
+  referrer   String?
+  dedupeKey  String?         @unique
+  metadata   Json            @default("{}")
+  createdAt  DateTime        @default(now())
+
+  @@index([visitorId, occurredAt])
+  @@index([eventType, occurredAt])
+  @@index([channel, occurredAt])
+}
+
+model FunnelIdentityLink {
+  id            String                @id @default(cuid())
+  visitorId     String
+  visitor       FunnelVisitor         @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  identityType  FunnelIdentityType
+  identityValue String
+  provider      String
+  provenance    FunnelLinkProvenance  @default(EXACT)
+  confidence    Float                 @default(1)
+  metadata      Json?
+  userId        String?
+  user          User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@unique([visitorId, identityType, identityValue])
+  @@index([identityType, identityValue])
+  @@index([userId])
+  @@index([provider, provenance])
+}
+
+model FunnelEnrichmentSignal {
+  id          String             @id @default(cuid())
+  provider    EnrichmentProvider
+  signalKey   String
+  visitorId   String?
+  visitor     FunnelVisitor?     @relation(fields: [visitorId], references: [id], onDelete: SetNull)
+  anonymousId String?
+  email       String?
+  domain      String?
+  fullName    String?
+  companyName String?
+  confidence  Float              @default(0)
+  occurredAt  DateTime?
+  accepted    Boolean            @default(false)
+  metadata    Json               @default("{}")
+  payload     Json
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@unique([provider, signalKey])
+  @@index([visitorId])
+  @@index([email])
+  @@index([domain])
+  @@index([accepted, createdAt])
 }
 
 // ============================================================

@@ -99,6 +99,7 @@ export interface FunnelMetrics {
   unlikely: number;
   churn: number;
   notActivated?: number;
+  excludedSuspiciousLeads?: number;
   activeSubscriptions: number;
   noShows: number;
   demoScheduled: number;
@@ -123,9 +124,44 @@ export interface HubSpotData {
   contacts: ContactMetrics;
   repScoreboard?: HubSpotRepScoreboardRow[];
   pipelineDetected?: { pipelineId: string; dealCount: number };
+  subscriptionPipelineDetected?: { pipelineId: string; dealCount: number };
   pipelineStageLabelsSource?: "api" | "fallback";
   pipelineStages?: Array<{ stageId: string; label: string }>;
   deals?: Array<{
+    dealId: string;
+    dealName: string;
+    stageId: string;
+    stageLabel: string;
+    amount: number;
+    source: string;
+    ownerId: string | null;
+    repName?: string;
+    updatedAt: string | null;
+    createdAt: string | null;
+    closedAt?: string | null;
+    stripeCustomerId?: string | null;
+    pipelineId: string | null;
+    contactIds: string[];
+    primaryContactId: string | null;
+    primaryContactEmail: string | null;
+    primaryContactAnalytics?: {
+      createdAt?: string | null;
+      source: string | null;
+      sourceData1: string | null;
+      sourceData2: string | null;
+      firstSeenAt: string | null;
+      lastSeenAt: string | null;
+      firstUrl: string | null;
+      lastUrl: string | null;
+      numVisits: number | null;
+      numPageViews: number | null;
+      utmSource: string | null;
+      utmMedium: string | null;
+      utmCampaign: string | null;
+    };
+    stageHistory?: Array<{ occurredAt: string; stageId: string; stageLabel: string }>;
+  }>;
+  subscriptionDeals?: Array<{
     dealId: string;
     dealName: string;
     stageId: string;
@@ -354,16 +390,43 @@ export interface AccountBalance {
 
 export interface CashFlowMetrics {
   totalBalance: number;
+  bankCash?: number;
+  treasuryCash?: number;
+  totalCash?: number;
   inflows30d: number;
   outflows30d: number;
   netCashFlow: number;
   runway: number;
   burnRate: number;
+  observedPeriodDays?: number;
+  observedInflowTotal?: number;
+  observedOutflowTotal?: number;
+  observedNetCashFlow?: number;
+  expenseBreakdown30d?: Record<ExpenseCategory, number>;
+  observedExpenseBreakdown?: Record<ExpenseCategory, number>;
+}
+
+export interface MercuryExpenseMapping {
+  match: string;
+  category: ExpenseCategory;
+}
+
+export interface MercuryTransactionData {
+  id: string;
+  postedAt: string | null;
+  amount: number;
+  kind: string | null;
+  mercuryCategory: string | null;
+  description: string | null;
+  counterpartyName: string | null;
+  bankDescription?: string | null;
+  note?: string | null;
 }
 
 export interface MercuryData {
   accounts: AccountBalance[];
   cashFlow: CashFlowMetrics;
+  transactions?: MercuryTransactionData[];
   _meta: AnalyticsTimestamp;
 }
 
@@ -463,6 +526,76 @@ export interface MetaPageData {
 // INSTAGRAM PAGE TYPES
 // ══════════════════════════════════════════════════════════
 
+export interface InstagramTopPost {
+  id: string;
+  message: string;
+  reach: number;
+  engagement: number;
+  createdAt: string;
+  mediaType: string;
+  mediaProductType: string | null;
+  permalink: string | null;
+  thumbnailUrl: string | null;
+  likeCount: number;
+  commentCount: number;
+  performanceScore: number;
+  engagementRate: number;
+  ageInDays: number;
+  engagementVelocity: number;
+  captionLength: number;
+  hashtagCount: number;
+  mentionCount: number;
+  emojiCount: number;
+  hasQuestionHook: boolean;
+  hasCallToAction: boolean;
+  postedTimeBucket: "morning" | "afternoon" | "evening" | "overnight";
+  isVideo: boolean;
+  isReel: boolean;
+  isCarousel: boolean;
+  creativeSummary?: string | null;
+  hasPersonVisible?: boolean | null;
+  hasTextOverlayVisible?: boolean | null;
+  looksLikeShopFloor?: boolean | null;
+  looksLikeProductDemo?: boolean | null;
+  looksEducational?: boolean | null;
+  looksPromotional?: boolean | null;
+  performanceDrivers?: Array<{
+    key: string;
+    label: string;
+    source: "metadata" | "ai_visual";
+    sampled: boolean;
+    confidence: "low" | "medium" | "high";
+    liftPct: number;
+  }>;
+  nextTests?: Array<{
+    key: string;
+    label: string;
+    action: "add" | "reduce";
+    source: "metadata" | "ai_visual";
+    sampled: boolean;
+    confidence: "low" | "medium" | "high";
+    estimatedImpactPct: number;
+  }>;
+}
+
+export interface InstagramAttributeCorrelation {
+  key: string;
+  label: string;
+  source: "metadata" | "ai_visual";
+  correlation: number;
+  sampleSize: number;
+  comparisonSampleSize: number;
+  eligiblePostCount: number;
+  coveragePct: number;
+  trueAvgEngagement: number;
+  falseAvgEngagement: number;
+  liftPct: number;
+  sampled: boolean;
+  confidence: "low" | "medium" | "high";
+  confidenceScore: number;
+  interpretation: string;
+}
+
 export interface InstagramData {
   followers: number;
   reach30d: number;
@@ -471,7 +604,67 @@ export interface InstagramData {
   bounceRate: number;
   clicks: number;
   returningVisitors: number;
-  topPosts: { message: string; reach: number; engagement: number; createdAt: string }[];
+  topPosts: InstagramTopPost[];
+  topVideos?: InstagramTopPost[];
+  videosToImprove?: InstagramTopPost[];
+  mediaTypeBreakdown?: {
+    image: number;
+    video: number;
+    reel: number;
+    carousel: number;
+    other: number;
+  };
+  creativeAnalysis?: {
+    analyzedVideos: number;
+    totalVideoCandidates: number;
+    sampled: boolean;
+  };
+  opportunities?: Array<{
+    key: string;
+    label: string;
+    source: "metadata" | "ai_visual";
+    sampled: boolean;
+    confidence: "low" | "medium" | "high";
+    estimatedImpactPct: number;
+    adoptionPct: number;
+  }>;
+  experimentPlan?: Array<{
+    key: string;
+    title: string;
+    brief: string;
+    action: "add" | "reduce";
+    source: "metadata" | "ai_visual";
+    sampled: boolean;
+    confidence: "low" | "medium" | "high";
+    estimatedImpactPct: number;
+    supportingVideos: number;
+    exampleVideos: string[];
+  }>;
+  testBacklog?: Array<{
+    key: string;
+    label: string;
+    action: "add" | "reduce";
+    source: "metadata" | "ai_visual";
+    sampled: boolean;
+    confidence: "low" | "medium" | "high";
+    estimatedImpactPct: number;
+    supportingVideos: number;
+  }>;
+  attributeCorrelations?: InstagramAttributeCorrelation[];
+  winningPatterns?: Array<{
+    title: string;
+    detail: string;
+    source: "metadata" | "ai_visual";
+    sampled: boolean;
+    confidence: "low" | "medium" | "high";
+  }>;
+  losingPatterns?: Array<{
+    title: string;
+    detail: string;
+    source: "metadata" | "ai_visual";
+    sampled: boolean;
+    confidence: "low" | "medium" | "high";
+  }>;
   _meta: AnalyticsTimestamp;
 }
 
@@ -793,9 +986,10 @@ export interface IntegrationTelemetryData {
   enabledRules: number;
   erroredRules: number;
   receiptsInRange: number;
+  automationsTriggeredInRange: number;
   eventsInRange: number;
   failuresInRange: number;
-  trend: Array<{ date: string; receipts: number; failures: number }>;
+  trend: Array<{ date: string; receipts: number; automationsTriggered: number; failures: number }>;
   topFailureReasons: Array<{ reason: string; count: number }>;
   coverageStatus?: "active" | "stale" | "not_provisioned" | null;
   configuredRules?: string[];
@@ -854,7 +1048,8 @@ export interface CrossFunnelData {
 }
 
 export type AnalyticsSectionId =
-  | "ads-traffic"
+  | "website-traffic"
+  | "social-media"
   | "finance"
   | "sales-pipeline"
   | "retention"
@@ -1362,6 +1557,7 @@ export interface DemoAnalyticsData {
   totalScheduled: number;
   totalCompleted: number;
   totalNoShows: number;
+  excludedSuspiciousLeads?: number;
   noShowRate: number;
   avgLeadTimeDays: number;
   upcomingCount: number;
@@ -1538,6 +1734,99 @@ export interface UnitEconomics {
   grossMarginPct: number;
 }
 
+export interface FinanceBudgetActualMetric {
+  category: string;
+  budgeted: number;
+  actual: number | null;
+  variance: number | null;
+  variancePct: number | null;
+  status: "under" | "on_track" | "over";
+}
+
+export interface FinanceBudgetActualsMetric {
+  budgetId: string;
+  budgetName: string;
+  totalBudget: number;
+  totalActual: number | null;
+  totalVariance: number | null;
+  totalVariancePct: number | null;
+  overspendCategories: string[];
+  items: FinanceBudgetActualMetric[];
+}
+
+export interface FinanceSummaryMetric {
+  mrr: number;
+  mrrChange: number;
+  totalRevenue30d: number;
+  revenueGrowth: number;
+  activeSubscriptions: number;
+  stripeActiveSubscriptions: number;
+  hubspotActiveSubscriptions: number;
+  pastDueSubscriptions: number;
+  trialingSubscriptions: number;
+  paymentSuccessPct: number;
+  churnRatePct: number;
+  cashBalance: number;
+  bankCash: number | null;
+  treasuryCash: number | null;
+  runwayMonths: number;
+  netCashFlow30d: number;
+  inflows30d: number;
+  outflows30d: number;
+  burnRate: number;
+}
+
+export interface FinanceStripeMetric {
+  mrr: number;
+  mrrChange: number;
+  totalRevenue30d: number;
+  totalRevenuePrev30d: number;
+  revenueGrowth: number;
+  avgRevenuePerCustomer: number;
+  activeSubscriptions: number;
+  pastDueSubscriptions: number;
+  canceledSubscriptions: number;
+  trialingSubscriptions: number;
+  churnRatePct: number;
+  succeededPayments: number;
+  failedPayments: number;
+  paymentSuccessPct: number;
+}
+
+export interface FinanceMercuryMetric {
+  totalBalance: number;
+  bankCash: number | null;
+  treasuryCash: number | null;
+  runwayMonths: number;
+  netCashFlow30d: number;
+  inflows30d: number;
+  outflows30d: number;
+  burnRate: number;
+}
+
+export interface AnalyticsKpis {
+  traffic: {
+    bounceRatePct: number;
+    pagesPerSession: number;
+    engagementScore: number;
+    pageDepthScore: number;
+  };
+  finance: {
+    mrr: number;
+    paymentSuccessPct: number;
+  };
+}
+
+export interface AnalyticsMetricsLayer {
+  kpis: AnalyticsKpis;
+  finance: {
+    summary: FinanceSummaryMetric;
+    stripe: FinanceStripeMetric | null;
+    mercury: FinanceMercuryMetric | null;
+    budgetActuals: FinanceBudgetActualsMetric | null;
+  };
+}
+
 export interface FinancialPlanningData {
   budgets: BudgetData[];
   activeBudget: BudgetData | null;
@@ -1549,6 +1838,12 @@ export interface FinancialPlanningData {
     mergedActiveSubscriptions: number;
     stripeActiveSubscriptions: number;
     hubspotActiveSubscriptions: number;
+    stripeMrr: number;
+    hubspotSubscriptionMrr: number;
+    hubspotOnlySubscriptionMrr: number;
+    excludedLinkedHubspotSubscriptionMrr: number;
+    totalMrr: number;
+    totalArr: number;
   } | null;
 }
 
@@ -1632,18 +1927,8 @@ export interface AnalyticsDashboardData {
   };
   lastFullRefresh: string;
   financialPlanning: FinancialPlanningData | null;
-  kpis?: {
-    traffic: {
-      bounceRatePct: number;
-      pagesPerSession: number;
-      engagementScore: number;
-      pageDepthScore: number;
-    };
-    finance: {
-      mrr: number;
-      paymentSuccessPct: number;
-    };
-  };
+  metrics?: AnalyticsMetricsLayer | null;
+  kpis?: AnalyticsKpis;
   deltas?: AnalyticsKpiDeltas;
   errors: { source: string; message: string }[];
 }
@@ -1688,5 +1973,5 @@ export const ANALYTICS_TABS: TabConfig[] = [
   { id: "overview", label: "Overview", description: "Key metrics at a glance" },
   { id: "sales", label: "Sales & Pipeline", description: "HubSpot deals & conversions" },
   { id: "finance", label: "Revenue & Finance", description: "Stripe MRR & Mercury cash" },
-  { id: "marketing", label: "Ads & Traffic", description: "Google Analytics, Ads, Meta & Reddit" },
+  { id: "marketing", label: "Website Traffic", description: "Legacy alias that redirects to website traffic analytics" },
 ];

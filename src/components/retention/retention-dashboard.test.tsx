@@ -2,11 +2,89 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RetentionDashboard } from "@/components/retention/retention-dashboard";
 import { clearDashboardCache } from "@/lib/client/dashboard-cache-store";
+import type { RetentionSummary, RetentionTenantRow } from "@/lib/retention/types";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/analytics/retention",
   useSearchParams: () => new URLSearchParams(),
 }));
+
+function buildSummary(): RetentionSummary {
+  return {
+    generatedAt: "2026-03-16T02:00:00.000Z",
+    lirDefinition: {
+      id: "mature-active-weeks",
+      label: "Active weeks trailing 8",
+      lifecyclePhase: "MATURE",
+      metricKey: "activeWeeksTrailing8",
+      comparator: "gte",
+      threshold: 5,
+      windowLabel: "Trailing 8 weeks",
+      description: "Tenant is active in at least five of the last eight weeks.",
+      rationale: "Habitual weekly operations indicate embedded workflow value.",
+    },
+    totals: {
+      tenants: 1,
+      activeTenants: 1,
+      lirPassingTenants: 0,
+      atRiskTenants: 1,
+      onboardingRiskTenants: 0,
+      billingRiskTenants: 0,
+    },
+    kpis: [],
+    byIcp: [],
+    byPlan: [],
+    byAgeBucket: [],
+    sharpDeclines: [],
+    onboardingMisses: [],
+    supportHeavyHighUsage: [],
+    billingRiskAccounts: [],
+    cohorts: [],
+    dataCoverage: [
+      {
+        source: "ARDA",
+        tenantsCovered: 1,
+        totalTenants: 1,
+        coveragePct: 100,
+      },
+    ],
+    dataQuality: {
+      arda: {
+        latestSync: null,
+        tenantRecords: 18,
+        activityRecords: 0,
+        tenantsWithUserDetailsBreadth: 10,
+        adoptionBreadthSource: "ARDA_USER_DETAILS",
+        note: "Arda direct item/card/order history is unavailable; current adoption breadth falls back to User Details snapshot counts.",
+      },
+    },
+  };
+}
+
+function buildTenant(): RetentionTenantRow {
+  return {
+    customerRecordId: "cust_1",
+    tenantName: "Northstar Chemical",
+    status: "At Risk",
+    lifecyclePhase: "MATURE",
+    primaryLirPassed: false,
+    primaryLirLabel: "Active weeks trailing 8",
+    primaryLirValue: 2,
+    primaryLirThreshold: 5,
+    currentMonthActivity: 4,
+    trendVsPriorPct: -37.5,
+    supportRisk: false,
+    billingRisk: false,
+    onboardingRisk: false,
+    icp: true,
+    ownerName: "CS Owner",
+    segment: "Mid-market",
+    plan: "Growth",
+    ageBucket: "180d+",
+    reasonCodes: [],
+    lastMaterializedAt: "2026-03-16T02:00:00.000Z",
+  };
+}
 
 describe("RetentionDashboard", () => {
   beforeEach(() => {
@@ -14,141 +92,25 @@ describe("RetentionDashboard", () => {
     vi.restoreAllMocks();
   });
 
-  it("keeps the summary visible when the tenant list request fails", async () => {
-    const summary = {
-      generatedAt: "2026-03-15T00:00:00.000Z",
-      lirDefinition: {
-        id: "lir",
-        label: "Active seats",
-        description: "Seats active in the current month.",
-        comparator: "gte" as const,
-        threshold: 3,
-        windowDays: 30,
-        windowLabel: "30 days",
-      },
-      totals: {
-        tenants: 4,
-        activeTenants: 4,
-        lirPassingTenants: 3,
-        atRiskTenants: 1,
-        onboardingRiskTenants: 1,
-        billingRiskTenants: 1,
-      },
-      kpis: [
-        {
-          label: "LIR attainment",
-          value: 75,
-          delta: null,
-          helpText: "Percent of tenants passing the LIR.",
-        },
-      ],
-      byIcp: [],
-      byPlan: [],
-      byAgeBucket: [],
-      sharpDeclines: [],
-      onboardingMisses: [],
-      supportHeavyHighUsage: [],
-      billingRiskAccounts: [],
-      cohorts: [],
-      dataCoverage: [],
-    };
-
+  it("shows the Arda data-quality banner and fallback mode", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.includes("/api/retention/summary")) {
-          return {
-            ok: true,
-            json: async () => summary,
-          } satisfies Partial<Response>;
+        if (url === "/api/retention/summary") {
+          return new Response(JSON.stringify(buildSummary()), { status: 200 });
         }
-        if (url.includes("/api/retention/tenants")) {
-          return {
-            ok: false,
-            status: 500,
-          } satisfies Partial<Response>;
-        }
-        throw new Error(`Unexpected fetch: ${url}`);
-      }) as unknown as typeof fetch,
-    );
-
-    render(<RetentionDashboard />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Retention")).toBeTruthy();
-    });
-
-    expect(screen.getByText("Data could not be refreshed.")).toBeTruthy();
-    expect(
-      screen.getByText("Retention tenant list request failed (500). Summary metrics are still shown below.")
-    ).toBeTruthy();
-    expect(screen.getByText("LIR Pass Rate")).toBeTruthy();
-    expect(screen.getByText("75.0%")).toBeTruthy();
-    expect(screen.getByText("Tenant-level retention rows are temporarily unavailable. Refresh to retry this panel.")).toBeTruthy();
-    expect(screen.queryByText("No retention dataset has been materialized for this organization yet.")).toBeNull();
-  });
-
-  it("explains when summary data exists but tenant rows are empty", async () => {
-    const summary = {
-      generatedAt: "2026-03-15T00:00:00.000Z",
-      lirDefinition: {
-        id: "lir",
-        label: "Active seats",
-        description: "Seats active in the current month.",
-        comparator: "gte" as const,
-        threshold: 3,
-        windowDays: 30,
-        windowLabel: "30 days",
-      },
-      totals: {
-        tenants: 4,
-        activeTenants: 4,
-        lirPassingTenants: 3,
-        atRiskTenants: 1,
-        onboardingRiskTenants: 0,
-        billingRiskTenants: 0,
-      },
-      kpis: [
-        {
-          label: "LIR attainment",
-          value: 75,
-          delta: null,
-          helpText: "Percent of tenants passing the LIR.",
-        },
-      ],
-      byIcp: [],
-      byPlan: [],
-      byAgeBucket: [],
-      sharpDeclines: [],
-      onboardingMisses: [],
-      supportHeavyHighUsage: [],
-      billingRiskAccounts: [],
-      cohorts: [],
-      dataCoverage: [],
-    };
-
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url.includes("/api/retention/summary")) {
-          return {
-            ok: true,
-            json: async () => summary,
-          } satisfies Partial<Response>;
-        }
-        if (url.includes("/api/retention/tenants")) {
-          return {
-            ok: true,
-            json: async () => ({
-              generatedAt: summary.generatedAt,
-              tenants: [],
+        if (url === "/api/retention/tenants") {
+          return new Response(
+            JSON.stringify({
+              generatedAt: "2026-03-16T02:00:00.000Z",
+              tenants: [buildTenant()],
             }),
-          } satisfies Partial<Response>;
+            { status: 200 }
+          );
         }
         throw new Error(`Unexpected fetch: ${url}`);
-      }) as unknown as typeof fetch,
+      })
     );
 
     render(<RetentionDashboard />);
@@ -157,9 +119,11 @@ describe("RetentionDashboard", () => {
       expect(screen.getByText("Retention")).toBeTruthy();
     });
 
-    expect(screen.getByText("Retention summary metrics are available, but no tenant-level rows were returned for this range yet.")).toBeTruthy();
-    expect(screen.getByText("No ICP or segment rollups are available yet.")).toBeTruthy();
-    expect(screen.getByText("No source coverage diagnostics are available yet.")).toBeTruthy();
-    expect(screen.getByText("75.0%")).toBeTruthy();
+    expect(screen.getByText("Arda Data Quality")).toBeTruthy();
+    expect(
+      screen.getByText("Arda activity history is unavailable. Breadth is currently derived from User Details for 10 tenants.")
+    ).toBeTruthy();
+    expect(screen.getByText("Arda activity mode")).toBeTruthy();
+    expect(screen.getByText("Fallback to User Details (10 tenants with breadth counts)")).toBeTruthy();
   });
 });

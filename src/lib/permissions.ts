@@ -104,24 +104,24 @@ export function workspaceIdForPermissionAction(
     case "priority.write":
     case "policy.write":
     case "policy.override":
-      return "dashboard";
+      return "metrics";
     case "conference.write":
     case "deals.read":
     case "deals.write":
-      return "deals";
+      return "sources";
     case "analytics.read":
     case "analytics.write":
-      return "analytics";
+      return "metrics";
     case "integration.read":
     case "integration.manage":
-      return "integrations";
+      return "sources";
     case "automation.write":
     case "automation.approve":
-      return "automations";
+      return "pipelines";
     case "team.invite":
     case "team.role.write":
     case "profile.write":
-      return "dashboard";
+      return "metrics";
     default:
       return null;
   }

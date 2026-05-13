@@ -3,7 +3,6 @@
 import { Pin, X } from "lucide-react";
 
 interface InsightCardActionsProps {
-  insightId: string;
   isPinned: boolean;
   onTogglePin: () => void;
   onDismiss: () => void;

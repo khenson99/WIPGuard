@@ -11,17 +11,17 @@ vi.mock("next/navigation", () => ({
 }));
 
 const BASE_ITEM: NavItem = {
-  id: "analytics",
-  href: "/analytics",
-  label: "Analytics",
-  workspaceId: "analytics",
+  id: "metrics",
+  href: "/metrics",
+  label: "Metrics",
+  workspaceId: "metrics",
   icon: Megaphone,
   children: [
     {
       id: "analytics-ai-insights",
       href: "/analytics/ai-insights",
       label: "AI Insights",
-      workspaceId: "analytics",
+      workspaceId: "metrics",
     },
   ],
 };
@@ -35,7 +35,7 @@ describe("SidebarNavGroup", () => {
   it("defaults to collapsed when no stored preference exists", () => {
     render(<SidebarNavGroup item={BASE_ITEM} />);
 
-    expect(screen.getByRole("button", { name: "Expand Analytics" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Expand Metrics" })).toBeTruthy();
   });
 
   it("respects stored collapsed preference", () => {
@@ -49,7 +49,7 @@ describe("SidebarNavGroup", () => {
 
     render(<SidebarNavGroup item={BASE_ITEM} />);
 
-    expect(screen.getByRole("button", { name: "Expand Analytics" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Expand Metrics" })).toBeTruthy();
   });
 
   it("forces expanded state when a child route is active", () => {
@@ -64,7 +64,7 @@ describe("SidebarNavGroup", () => {
 
     render(<SidebarNavGroup item={BASE_ITEM} />);
 
-    expect(screen.getByRole("button", { name: "Collapse Analytics" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Collapse Metrics" })).toBeTruthy();
   });
 
   it("treats legacy empty-array preference as no preference and collapses", () => {
@@ -72,7 +72,7 @@ describe("SidebarNavGroup", () => {
 
     render(<SidebarNavGroup item={BASE_ITEM} />);
 
-    expect(screen.getByRole("button", { name: "Expand Analytics" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Expand Metrics" })).toBeTruthy();
   });
 
   it("supports explicit collapse-all preference in new storage format", () => {
@@ -86,6 +86,6 @@ describe("SidebarNavGroup", () => {
 
     render(<SidebarNavGroup item={BASE_ITEM} />);
 
-    expect(screen.getByRole("button", { name: "Expand Analytics" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Expand Metrics" })).toBeTruthy();
   });
 });

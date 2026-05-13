@@ -1,4 +1,8 @@
-import { Prisma, RetentionTenantStatus as PrismaRetentionTenantStatus } from "@/generated/prisma/client";
+import {
+  CustomerExternalProvider,
+  Prisma,
+  RetentionTenantStatus as PrismaRetentionTenantStatus,
+} from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   DEFAULT_RETENTION_LIR_BY_PHASE,
@@ -31,6 +35,7 @@ import {
   getPylonIssueTags,
 } from "@/lib/integrations/pylon-client";
 import {
+  ardaTenantResolutionKey,
   discoverArdaTenantIdsFromUserDetails,
   extractArdaTenantIdsFromResult,
   normalizeArdaTenantLookupKey,
@@ -86,6 +91,10 @@ interface ArdaTenantConfig {
   resultTenantIds: string[];
 }
 
+interface MaterializedArdaTenantConfig extends ArdaTenantConfig {
+  tenantIdResolved: boolean;
+}
+
 interface ArdaEntityRecord {
   rId?: string;
   asOf?: Record<string, unknown>;
@@ -96,6 +105,16 @@ interface ArdaEntityRecord {
 interface ArdaPageResult {
   results?: ArdaEntityRecord[];
   nextPage?: string | null;
+}
+
+interface DerivedExternalRefSeed {
+  customerRecordId: string;
+  provider: CustomerExternalProvider;
+  externalObjectType: string;
+  externalId: string;
+  label: string | null;
+  isPrimary: boolean;
+  metadata: Record<string, unknown>;
 }
 
 interface MonthlyTenantAccumulator {
@@ -122,6 +141,12 @@ interface MonthlyTenantAccumulator {
   itemTouches: number;
   activeCardCount: number;
   activeItemCount: number;
+  ardaOrderRecords: number;
+  ardaCardRecords: number;
+  ardaItemRecords: number;
+  ardaUserDetailsOrderCount: number;
+  ardaUserDetailsCardCount: number;
+  ardaUserDetailsItemCount: number;
   locations: Set<string>;
   workflows: Set<string>;
   ticketsLast30: number;
@@ -405,11 +430,16 @@ async function fetchCodaApiRows(
 
 function normalizeArdaTenantConfigRow(row: CodaApiRow): ArdaTenantConfig | null {
   const values = asRecord(row.values);
-  const tenantId = asString(values.tenantId);
+  const tenantId = asString(values.tenantId) ?? "";
   const customerName =
-    asString(asRecord(values.Customer).name) ?? asString(values.Customer);
-  const companyName = asString(values.CompanyName) ?? customerName;
-  if (!tenantId || !companyName) return null;
+    asString(asRecord(values.Customer).name) ??
+    asString(values.Customer) ??
+    asString(values.CustomerName) ??
+    null;
+  const companyName =
+    asString(values.CompanyName) ??
+    customerName;
+  if (!companyName) return null;
 
   const loweredTenantId = tenantId.toLowerCase();
   if (loweredTenantId === "deleted" || loweredTenantId === "not found") return null;
@@ -483,13 +513,66 @@ function resolveArdaTenantIds(
 
   return (
     discoveredTenantIdsByConfig.get(
-      normalizeArdaTenantLookupKey(config.configuredTenantId)
+      ardaTenantResolutionKey({
+        configuredTenantId: config.configuredTenantId,
+        companyName: config.companyName,
+      })
     ) ??
     []
   );
 }
 
-async function loadArdaTenantConfigs(): Promise<ArdaTenantConfig[]> {
+function fallbackArdaTenantExternalId(config: ArdaTenantConfig): string {
+  return (
+    config.configuredTenantId ||
+    normalizeArdaTenantLookupKey(
+      normalizeArdaCustomerName(config.companyName) ??
+        normalizeArdaCustomerName(config.tenantName) ??
+        config.companyName
+    ) ||
+    crypto.randomUUID()
+  );
+}
+
+function materializeArdaTenantConfigs(
+  configs: ArdaTenantConfig[],
+  discoveredTenantIdsByConfig: Map<string, string[]>
+): MaterializedArdaTenantConfig[] {
+  const materialized: MaterializedArdaTenantConfig[] = [];
+  const unresolved: string[] = [];
+
+  for (const config of configs) {
+    const tenantIds = resolveArdaTenantIds(config, discoveredTenantIdsByConfig);
+    if (tenantIds.length === 0) {
+      unresolved.push(config.companyName);
+      materialized.push({
+        ...config,
+        tenantId: fallbackArdaTenantExternalId(config),
+        tenantIdResolved: false,
+      });
+      continue;
+    }
+
+    for (const tenantId of tenantIds) {
+      materialized.push({
+        ...config,
+        tenantId,
+        tenantIdResolved: true,
+      });
+    }
+  }
+
+  if (unresolved.length > 0) {
+    console.warn(
+      `[retention] Keeping ${unresolved.length} Arda tenant configs without UUID resolution as metadata-only rows`,
+      unresolved.slice(0, 10)
+    );
+  }
+
+  return materialized;
+}
+
+async function loadArdaTenantConfigs(): Promise<MaterializedArdaTenantConfig[]> {
   const token = process.env.CODA_API_TOKEN?.trim();
   const docId = process.env.ARDA_TENANT_CONFIG_CODA_DOC_ID?.trim() || "oRkoolViAM";
   const tableId = process.env.ARDA_TENANT_CONFIG_TABLE_ID?.trim() || "grid-5Kc9QNP-nT";
@@ -504,22 +587,6 @@ async function loadArdaTenantConfigs(): Promise<ArdaTenantConfig[]> {
     token,
     configs
   );
-  const resolved: ArdaTenantConfig[] = [];
-  const unresolved: string[] = [];
-
-  for (const config of configs) {
-    const tenantIds = resolveArdaTenantIds(config, discoveredTenantIdsByConfig);
-    if (tenantIds.length === 0) {
-      unresolved.push(config.companyName);
-      continue;
-    }
-    for (const tenantId of tenantIds) {
-      resolved.push({
-        ...config,
-        tenantId,
-      });
-    }
-  }
 
   if (discoveredTenantIdsByConfig.size > 0) {
     console.info(
@@ -527,14 +594,7 @@ async function loadArdaTenantConfigs(): Promise<ArdaTenantConfig[]> {
     );
   }
 
-  if (unresolved.length > 0) {
-    console.warn(
-      `[retention] Skipping ${unresolved.length} Arda tenant configs without UUID resolution`,
-      unresolved.slice(0, 10)
-    );
-  }
-
-  return resolved;
+  return materializeArdaTenantConfigs(configs, discoveredTenantIdsByConfig);
 }
 
 async function fetchArdaPage(
@@ -866,6 +926,116 @@ async function upsertSourceRecords(
   return { mappedCount, windowStart, windowEnd };
 }
 
+function buildDerivedCodaExternalRefsFromSourceRecords(
+  records: Array<{
+    customerRecordId: string;
+    source: string;
+    objectType: string;
+    payload: Record<string, unknown>;
+  }>
+): DerivedExternalRefSeed[] {
+  const latestArdaTenantByCustomer = new Map<string, Record<string, unknown>>();
+  for (const record of records) {
+    if (record.source !== "ARDA" || record.objectType !== "tenant") continue;
+    if (!latestArdaTenantByCustomer.has(record.customerRecordId)) {
+      latestArdaTenantByCustomer.set(record.customerRecordId, record.payload);
+    }
+  }
+
+  const refs = new Map<string, DerivedExternalRefSeed>();
+  for (const [customerRecordId, payload] of latestArdaTenantByCustomer.entries()) {
+    const mainDocId = asString(payload.mainCodaDocId);
+    if (mainDocId) {
+      refs.set(`${customerRecordId}:CODA:doc:${mainDocId}`, {
+        customerRecordId,
+        provider: CustomerExternalProvider.CODA,
+        externalObjectType: "doc",
+        externalId: mainDocId,
+        label: "Customer Success and Implementation",
+        isPrimary: true,
+        metadata: {
+          docUrl: `https://coda.io/d/_d${encodeURIComponent(mainDocId)}`,
+          source: "retention_arda_tenant",
+        },
+      });
+    }
+
+    const orderArchiveDocumentId = asString(payload.orderArchiveDocumentId);
+    if (orderArchiveDocumentId) {
+      refs.set(`${customerRecordId}:CODA:order_archive_doc:${orderArchiveDocumentId}`, {
+        customerRecordId,
+        provider: CustomerExternalProvider.CODA,
+        externalObjectType: "order_archive_doc",
+        externalId: orderArchiveDocumentId,
+        label: "Master Order Archive",
+        isPrimary: !mainDocId,
+        metadata: {
+          docUrl: `https://coda.io/d/_d${encodeURIComponent(orderArchiveDocumentId)}`,
+          source: "retention_arda_tenant",
+        },
+      });
+    }
+  }
+
+  return [...refs.values()];
+}
+
+async function syncDerivedCustomerExternalRefs(actor: RetentionActor): Promise<void> {
+  const sourceRecords = await prisma.retentionSourceRecord.findMany({
+    where: {
+      organizationId: actor.organizationId,
+      customerRecordId: { not: null },
+      source: "ARDA",
+      objectType: "tenant",
+    },
+    orderBy: [{ sourceUpdatedAt: "desc" }, { createdAt: "desc" }],
+    select: {
+      customerRecordId: true,
+      source: true,
+      objectType: true,
+      payload: true,
+    },
+  });
+
+  const derivedRefs = buildDerivedCodaExternalRefsFromSourceRecords(
+    sourceRecords.map((record) => ({
+      customerRecordId: record.customerRecordId!,
+      source: record.source,
+      objectType: record.objectType,
+      payload: asRecord(record.payload),
+    }))
+  );
+
+  for (const ref of derivedRefs) {
+    await prisma.customerRecordExternalRef.upsert({
+      where: {
+        customerRecordId_provider_externalObjectType_externalId: {
+          customerRecordId: ref.customerRecordId,
+          provider: ref.provider,
+          externalObjectType: ref.externalObjectType,
+          externalId: ref.externalId,
+        },
+      },
+      create: {
+        customerRecordId: ref.customerRecordId,
+        organizationId: actor.organizationId,
+        provider: ref.provider,
+        externalObjectType: ref.externalObjectType,
+        externalId: ref.externalId,
+        label: ref.label,
+        isPrimary: ref.isPrimary,
+        metadata: ref.metadata as Prisma.InputJsonValue,
+      },
+      update: {
+        organizationId: actor.organizationId,
+        label: ref.label,
+        isPrimary: ref.isPrimary,
+        metadata: ref.metadata as Prisma.InputJsonValue,
+      },
+    });
+  }
+}
+
 async function loadHubSpotSourceRecords(actor: RetentionActor): Promise<SourceSeedRecord[]> {
   const [hasDealCompany, hasDeal] = await Promise.all([tableExists("DealCompany"), tableExists("Deal")]);
 
@@ -1086,6 +1256,7 @@ async function loadArdaSourceRecords(): Promise<SourceSeedRecord[]> {
   const rows: SourceSeedRecord[] = [];
 
   for (const config of tenantConfigs) {
+    const hasResolvedTenantId = isUuid(config.tenantId) && config.tenantIdResolved;
     rows.push({
       source: "ARDA",
       objectType: "tenant",
@@ -1101,6 +1272,7 @@ async function loadArdaSourceRecords(): Promise<SourceSeedRecord[]> {
         companyName: config.companyName,
         customerStatus: config.customerStatus,
         health: config.health,
+        tenantIdResolved: hasResolvedTenantId,
         mainCodaDocId: config.mainCodaDocId,
         orderArchiveDocumentId: config.orderArchiveDocumentId,
         implementationStage:
@@ -1109,6 +1281,10 @@ async function loadArdaSourceRecords(): Promise<SourceSeedRecord[]> {
             : "LIVE",
       },
     });
+
+    if (!hasResolvedTenantId) {
+      continue;
+    }
 
     const [orders, cards, items] = await Promise.all([
       queryArdaCollection("order/order", config.tenantId, asOfMs),
@@ -1244,6 +1420,12 @@ export async function syncRetentionSources(actor: RetentionActor): Promise<void>
       }
     }
 
+    try {
+      await syncDerivedCustomerExternalRefs(actor);
+    } catch (error) {
+      failures.push(`DERIVED_EXTERNAL_REFS: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
     if (failures.length > 0) {
       console.warn(`[retention] continuing after partial source sync failures: ${failures.join("; ")}`);
     }
@@ -1282,6 +1464,12 @@ function initAccumulator(customerRecordId: string, monthStart: Date, monthEnd: D
     itemTouches: 0,
     activeCardCount: 0,
     activeItemCount: 0,
+    ardaOrderRecords: 0,
+    ardaCardRecords: 0,
+    ardaItemRecords: 0,
+    ardaUserDetailsOrderCount: 0,
+    ardaUserDetailsCardCount: 0,
+    ardaUserDetailsItemCount: 0,
     locations: new Set<string>(),
     workflows: new Set<string>(),
     ticketsLast30: 0,
@@ -1304,9 +1492,29 @@ function addActivity(acc: MonthlyTenantAccumulator, occurredAt: Date | null): vo
   acc.activeWeeks.add(weekKey(occurredAt));
 }
 
+function ardaActivityRecordCount(acc: MonthlyTenantAccumulator): number {
+  return acc.ardaOrderRecords + acc.ardaCardRecords + acc.ardaItemRecords;
+}
+
+function ardaUserDetailsFallbackAvailable(acc: MonthlyTenantAccumulator): boolean {
+  return (
+    acc.ardaUserDetailsOrderCount > 0 ||
+    acc.ardaUserDetailsCardCount > 0 ||
+    acc.ardaUserDetailsItemCount > 0
+  );
+}
+
+function ardaAdoptionCountsSource(acc: MonthlyTenantAccumulator): "ARDA_ACTIVITY" | "ARDA_USER_DETAILS" | "NONE" {
+  if (ardaActivityRecordCount(acc) > 0) return "ARDA_ACTIVITY";
+  if (ardaUserDetailsFallbackAvailable(acc)) return "ARDA_USER_DETAILS";
+  return "NONE";
+}
+
 function mergeSourceRecord(acc: MonthlyTenantAccumulator, record: { source: string; objectType: string; occurredAt: Date | null; payload: Record<string, unknown> }): void {
   const payload = record.payload;
-  addActivity(acc, record.occurredAt);
+  if (!(record.source === "ARDA" && record.objectType === "tenant")) {
+    addActivity(acc, record.occurredAt);
+  }
 
   if (record.source === "HUBSPOT") {
     acc.coverage.hubspot = true;
@@ -1359,6 +1567,26 @@ function mergeSourceRecord(acc: MonthlyTenantAccumulator, record: { source: stri
     if (record.objectType === "tenant") {
       acc.goLiveDate = asString(payload.goLiveDate) ?? acc.goLiveDate;
       acc.implementationStage = asString(payload.implementationStage) ?? acc.implementationStage;
+      acc.ardaUserDetailsOrderCount = Math.max(
+        acc.ardaUserDetailsOrderCount,
+        asNumber(payload.userDetailsOrderCount) ?? 0
+      );
+      acc.ardaUserDetailsCardCount = Math.max(
+        acc.ardaUserDetailsCardCount,
+        asNumber(payload.userDetailsCardCount) ?? 0
+      );
+      acc.ardaUserDetailsItemCount = Math.max(
+        acc.ardaUserDetailsItemCount,
+        asNumber(payload.userDetailsItemCount) ?? 0
+      );
+      acc.activeCardCount = Math.max(
+        acc.activeCardCount,
+        asNumber(payload.userDetailsCardCount) ?? 0
+      );
+      acc.activeItemCount = Math.max(
+        acc.activeItemCount,
+        asNumber(payload.userDetailsItemCount) ?? 0
+      );
       if (asNumber(payload.locationsCount)) {
         for (let i = 0; i < Number(payload.locationsCount); i += 1) acc.locations.add(`loc-${i + 1}`);
       }
@@ -1367,6 +1595,7 @@ function mergeSourceRecord(acc: MonthlyTenantAccumulator, record: { source: stri
       }
     }
     if (record.objectType === "order") {
+      acc.ardaOrderRecords += 1;
       acc.orderCount += 1;
       const locationId = asString(payload.locationId);
       if (locationId) acc.locations.add(locationId);
@@ -1378,12 +1607,14 @@ function mergeSourceRecord(acc: MonthlyTenantAccumulator, record: { source: stri
       }
     }
     if (record.objectType === "card") {
+      acc.ardaCardRecords += 1;
       acc.cardTouches += 1;
       if (asBoolean(payload.active)) acc.activeCardCount += 1;
       const locationId = asString(payload.locationId);
       if (locationId) acc.locations.add(locationId);
     }
     if (record.objectType === "item") {
+      acc.ardaItemRecords += 1;
       acc.itemTouches += 1;
       if (asBoolean(payload.active)) acc.activeItemCount += 1;
       const locationId = asString(payload.locationId);
@@ -1527,6 +1758,18 @@ function buildFeaturePayload(
       locationCount: acc.locations.size,
       workflowCount: acc.workflows.size,
       breadthScore: acc.locations.size + acc.workflows.size + (acc.activeCardCount > 0 ? 1 : 0) + (acc.activeItemCount > 0 ? 1 : 0),
+      ardaAdoptionCountsSource: ardaAdoptionCountsSource(acc),
+      ardaActivityCollectionAvailable: ardaActivityRecordCount(acc) > 0,
+      ardaDirectActivityCounts: {
+        orders: acc.ardaOrderRecords,
+        cards: acc.ardaCardRecords,
+        items: acc.ardaItemRecords,
+      },
+      ardaUserDetailsCounts: {
+        orders: acc.ardaUserDetailsOrderCount,
+        cards: acc.ardaUserDetailsCardCount,
+        items: acc.ardaUserDetailsItemCount,
+      },
     },
     support: {
       ticketsLast30: acc.ticketsLast30,
@@ -1565,6 +1808,8 @@ function buildCoverage(acc: MonthlyTenantAccumulator): RetentionCoveragePayload 
   if (!acc.coverage.pylon) missingSources.push("pylon");
   return {
     ...acc.coverage,
+    ardaActivityCollectionAvailable: ardaActivityRecordCount(acc) > 0,
+    ardaUserDetailsFallback: ardaUserDetailsFallbackAvailable(acc),
     missingSources,
   };
 }
@@ -1678,6 +1923,20 @@ function buildReasonCodes(
         code: "partial_coverage",
         label: "Partial source coverage",
         detail: `Missing sources: ${buildCoverage(acc).missingSources.join(", ")}.`,
+        severity: "info",
+        dimension: "data",
+      })
+    );
+  }
+  if (acc.coverage.arda && ardaActivityRecordCount(acc) === 0) {
+    reasons.push(
+      buildReasonCode({
+        code: "arda_activity_unavailable",
+        label: "Arda activity history unavailable",
+        detail:
+          ardaAdoptionCountsSource(acc) === "ARDA_USER_DETAILS"
+            ? "Arda item/card/order history is unavailable, so adoption breadth is currently sourced from User Details snapshot counts."
+            : "Arda tenant metadata is present, but item/card/order history is unavailable for this tenant.",
         severity: "info",
         dimension: "data",
       })
@@ -1956,6 +2215,10 @@ export const __test__ = {
   ardaCreatedTimestamp,
   ardaObservedTimestamp,
   ardaOccurredAt,
+  buildDerivedCodaExternalRefsFromSourceRecords,
+  fallbackArdaTenantExternalId,
+  materializeArdaTenantConfigs,
+  normalizeArdaTenantConfigRow,
   deriveLifecycleStartDate,
   deriveOnboardingStartDate,
   computeActiveWeeksTrailing8,

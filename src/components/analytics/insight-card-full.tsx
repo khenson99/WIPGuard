@@ -32,14 +32,16 @@ const SEVERITY_CONFIG = {
 
 function formatSectionLabel(section: AiInsight["section"]): string {
   switch (section) {
-    case "ads-traffic":
-      return "Ads & Traffic";
+    case "website-traffic":
+      return "Website Conversion";
+    case "social-media":
+      return "Social Media, Ads & Conferences";
     case "sales-pipeline":
-      return "Sales Pipeline";
+      return "Sales";
     case "customer-success":
       return "Customer Success";
     case "customer-journey":
-      return "Customer Journey";
+      return "Full-Funnel Analytics";
     case "demo-analytics":
       return "Demo Analytics";
     case "process-analytics":
@@ -126,7 +128,6 @@ export function InsightCardFull({
           {showActions ? (
             <div className="shrink-0">
               <InsightCardActions
-                insightId={insight.id}
                 isPinned={isPinned}
                 onTogglePin={onTogglePin!}
                 onDismiss={onDismiss!}

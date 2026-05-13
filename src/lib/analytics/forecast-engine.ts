@@ -129,7 +129,14 @@ export function buildForecastScenario(
     forecastMonths,
   );
 
-  const initialNetBurn = Math.max(monthlyExpenses - effectiveMrr, 0);
+  const baseBurnRate = mercury?.cashFlow?.burnRate ?? Math.max(baseExpenses - currentMrr, 0);
+  const initialNetBurn = Math.max(
+    baseBurnRate +
+      assumptions.burnRateDelta +
+      assumptions.additionalMonthlyExpense -
+      assumptions.additionalMonthlyRevenue,
+    0
+  );
   const runwayMonths = projectRunway(cashBalance, initialNetBurn, 0);
 
   return {

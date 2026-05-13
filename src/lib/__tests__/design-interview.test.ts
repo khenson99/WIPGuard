@@ -21,7 +21,7 @@ describe("design interview prompt builder", () => {
   it("includes the structured markdown template", () => {
     const prompt = buildDesignInterviewPrompt();
 
-    expect(prompt).toContain("# Arda - Design Interview");
+    expect(prompt).toContain("# Imladris - Design Interview");
     expect(prompt).toContain(DESIGN_INTERVIEW_OUTPUT_TEMPLATE);
   });
 
@@ -35,7 +35,7 @@ describe("design interview prompt builder", () => {
 
     expect(prompt).toContain("## Prompt 2: The Identity");
     expect(prompt).toContain("Then ask specifically about Visual Aesthetics:");
-    expect(prompt).toContain("Now let's talk about how Arda should look");
+    expect(prompt).toContain("Now let's talk about how Imladris should look");
   });
 
   it("personalizes the generated prompt with the session interviewee", () => {

@@ -14,6 +14,24 @@ describe("retention reporting", () => {
         unresolvedBuckets: 1,
         sourcesImpacted: 1,
       },
+      dataQuality: {
+        arda: {
+          latestSync: {
+            status: "SUCCESS",
+            startedAt: "2026-03-13T12:00:00.000Z",
+            completedAt: "2026-03-13T12:05:00.000Z",
+            recordCount: 18,
+            mappedCount: 8,
+            errorCount: 0,
+            lastError: null,
+          },
+          tenantRecords: 18,
+          activityRecords: 0,
+          tenantsWithUserDetailsBreadth: 5,
+          adoptionBreadthSource: "ARDA_USER_DETAILS",
+          note: "Arda direct item/card/order history is unavailable; current adoption breadth falls back to User Details snapshot counts.",
+        },
+      },
       buckets: [
         {
           source: "CODA",
@@ -41,6 +59,8 @@ describe("retention reporting", () => {
     expect(markdown).toContain("row_1");
     expect(markdown).toContain("tenantKey=tenant_1");
     expect(markdown).toContain("domain=arda.example");
+    expect(markdown).toContain("ARDA adoption breadth source: ARDA_USER_DETAILS");
+    expect(markdown).toContain("ARDA activity records: 0");
   });
 
   it("renders an empty-state report when there are no unresolved records", () => {
@@ -51,6 +71,16 @@ describe("retention reporting", () => {
         unresolvedRecords: 0,
         unresolvedBuckets: 0,
         sourcesImpacted: 0,
+      },
+      dataQuality: {
+        arda: {
+          latestSync: null,
+          tenantRecords: 0,
+          activityRecords: 0,
+          tenantsWithUserDetailsBreadth: 0,
+          adoptionBreadthSource: "NONE",
+          note: "No Arda activity history or User Details fallback breadth counts are currently available.",
+        },
       },
       buckets: [],
     };

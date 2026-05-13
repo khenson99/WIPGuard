@@ -93,7 +93,7 @@ describe("AnalyticsSectionPage", () => {
     });
     payload.meta = {
       servedAt: "2026-01-30T00:00:00.000Z",
-      section: "ads-traffic",
+      section: "website-traffic",
       forceRefresh: false,
       isPartial: true,
       staleDomains: ["metaPage"],
@@ -113,10 +113,10 @@ describe("AnalyticsSectionPage", () => {
       }))
     );
 
-    render(<AnalyticsSectionPage sectionId="ads-traffic" />);
+    render(<AnalyticsSectionPage sectionId="website-traffic" />);
 
     await waitFor(() => {
-      expect(screen.getByText("Ads & Traffic")).toBeTruthy();
+      expect(screen.getAllByText("Website Conversion").length).toBeGreaterThan(0);
     });
 
     expect(screen.queryByText(/Showing cached data for stale providers:/)).toBeNull();

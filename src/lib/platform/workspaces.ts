@@ -1,14 +1,13 @@
 import {
-  ANALYTICS_PRIMARY_SECTIONS,
+  ANALYTICS_DASHBOARD_FUNNEL_GROUPS,
   type AnalyticsSubSection,
 } from "@/lib/analytics/section-registry";
 
 export type WorkspaceId =
-  | "dashboard"
-  | "deals"
-  | "analytics"
-  | "integrations"
-  | "automations";
+  | "sources"
+  | "metrics"
+  | "reports"
+  | "pipelines";
 
 export interface WorkspaceNavChildItem {
   id: string;
@@ -28,74 +27,60 @@ export interface WorkspaceNavItem {
 
 export const WORKSPACE_NAV_ITEMS: WorkspaceNavItem[] = [
   {
-    id: "dashboard",
-    label: "Dashboard",
-    href: "/dashboard",
-    description: "Cross-platform GTM operating view.",
+    id: "sources",
+    label: "Sources",
+    href: "/sources",
+    description: "Provider health, sync state, freshness, errors, and source lineage.",
   },
   {
-    id: "deals",
-    label: "Deals",
-    href: "/deals",
-    description: "Pipeline execution and revenue context.",
+    id: "metrics",
+    label: "Metrics",
+    href: "/metrics",
+    description: "Canonical metric definitions, computed values, trust, and lineage.",
     children: [
       {
-        id: "deals-dashboard",
-        label: "Pipeline View",
-        href: "/deals",
-        workspaceId: "deals",
+        id: "metric-catalog",
+        label: "Metric Catalog",
+        href: "/metrics",
+        workspaceId: "metrics",
       },
-      {
-        id: "deals-analytics",
-        label: "Deal Analytics",
-        href: "/deals/analytics",
-        workspaceId: "deals",
-      },
-    ],
-  },
-  {
-    id: "analytics",
-    label: "Analytics",
-    href: "/analytics",
-    description: "Performance, customer journey, and operational intelligence.",
-    children: [
-      ...ANALYTICS_PRIMARY_SECTIONS.map((section) => ({
+      ...ANALYTICS_DASHBOARD_FUNNEL_GROUPS.map((section) => ({
         id: section.id,
         label: section.label,
         href: section.path,
-        workspaceId: "analytics" as const,
+        workspaceId: "metrics" as const,
       })),
       {
         id: "ai-insights",
         label: "AI Insights",
         href: "/analytics/ai-insights",
-        workspaceId: "analytics",
+        workspaceId: "metrics",
       },
     ],
   },
   {
-    id: "integrations",
-    label: "Integrations",
-    href: "/integrations",
-    description: "Connections, sync health, and provider operations.",
+    id: "reports",
+    label: "Reports",
+    href: "/reports",
+    description: "Generated report packs, readiness, exports, and trust warnings.",
   },
   {
-    id: "automations",
-    label: "Automations",
-    href: "/automations",
-    description: "Workflow orchestration, monitoring, and artifacts.",
+    id: "pipelines",
+    label: "Automation Pipelines",
+    href: "/pipelines",
+    description: "Ingestion, metric refresh, report generation, approvals, failures, and artifacts.",
     children: [
       {
-        id: "automations-home",
-        label: "Automation Center",
-        href: "/automations",
-        workspaceId: "automations",
+        id: "pipeline-center",
+        label: "Pipeline Center",
+        href: "/pipelines",
+        workspaceId: "pipelines",
       },
       {
-        id: "automations-artifacts",
+        id: "pipeline-artifacts",
         label: "Artifacts",
-        href: "/automations/artifacts",
-        workspaceId: "automations",
+        href: "/pipelines/artifacts",
+        workspaceId: "pipelines",
       },
     ],
   },

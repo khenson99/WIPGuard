@@ -11,20 +11,8 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => mockSearchParams,
 }));
 
-vi.mock("@/components/settings/priorities-tab", () => ({
-  PrioritiesTab: () => <div>Priorities</div>,
-}));
-
-vi.mock("@/components/settings/design-interview-tab", () => ({
-  DesignInterviewTab: () => <div>Design Interview</div>,
-}));
-
 vi.mock("@/components/settings/team-tab", () => ({
   TeamTab: () => <div>Team</div>,
-}));
-
-vi.mock("@/components/settings/departments-tab", () => ({
-  DepartmentsTab: () => <div>Departments</div>,
 }));
 
 vi.mock("@/components/settings/operations-tab", () => ({
@@ -37,15 +25,18 @@ describe("SettingsPage", () => {
     replace.mockReset();
   });
 
-  it("renders settings tabs without an integrations tab", () => {
+  it("renders only analytics-era settings tabs", () => {
     const { queryByRole } = render(<SettingsPage />);
 
-    expect(queryByRole("tabpanel")?.textContent).toContain("Departments");
-    expect(queryByRole("tab", { name: "Design Interview" })).toBeTruthy();
+    expect(queryByRole("tab", { name: "Team" })).toBeTruthy();
+    expect(queryByRole("tab", { name: "Operations" })).toBeTruthy();
     expect(queryByRole("tab", { name: "Integrations" })).toBeNull();
     expect(queryByRole("tab", { name: "Board & WIP Limits" })).toBeNull();
     expect(queryByRole("tab", { name: "Sprints" })).toBeNull();
     expect(queryByRole("tab", { name: "Projects" })).toBeNull();
+    expect(queryByRole("tab", { name: "Departments" })).toBeNull();
+    expect(queryByRole("tab", { name: "Company Priorities" })).toBeNull();
+    expect(queryByRole("tab", { name: "Design Interview" })).toBeNull();
   });
 
   it("redirects legacy integrations tab links into the integrations workspace", async () => {
@@ -61,23 +52,16 @@ describe("SettingsPage", () => {
     });
   });
 
-  it("redirects legacy work-management tabs to departments", async () => {
-    mockSearchParams = new URLSearchParams("tab=board");
+  it("redirects legacy task-management tabs to team settings", async () => {
+    mockSearchParams = new URLSearchParams("tab=board&source=old-link");
 
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(replace).toHaveBeenCalledWith("/settings?tab=departments", { scroll: false });
-    });
-  });
-
-  it("redirects legacy sprint and project tabs to departments", async () => {
-    mockSearchParams = new URLSearchParams("tab=sprints");
-
-    render(<SettingsPage />);
-
-    await waitFor(() => {
-      expect(replace).toHaveBeenCalledWith("/settings?tab=departments", { scroll: false });
+      expect(replace).toHaveBeenCalledWith(
+        "/settings?tab=team&source=old-link",
+        { scroll: false },
+      );
     });
   });
 });

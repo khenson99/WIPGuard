@@ -99,4 +99,141 @@ describe("retention pipeline helpers", () => {
 
     await expect(__test__.fetchCodaApiRows("doc123", "table123", "token123", 1)).resolves.toEqual([]);
   });
+
+  it("derives persisted Coda external refs from latest Arda tenant metadata", () => {
+    expect(
+      __test__.buildDerivedCodaExternalRefsFromSourceRecords([
+        {
+          customerRecordId: "customer_1",
+          source: "ARDA",
+          objectType: "tenant",
+          payload: {
+            mainCodaDocId: "VYLC2rzPN_",
+            orderArchiveDocumentId: "cgSn33D4N9",
+          },
+        },
+      ])
+    ).toEqual([
+      {
+        customerRecordId: "customer_1",
+        provider: "CODA",
+        externalObjectType: "doc",
+        externalId: "VYLC2rzPN_",
+        label: "Customer Success and Implementation",
+        isPrimary: true,
+        metadata: {
+          docUrl: "https://coda.io/d/_dVYLC2rzPN_",
+          source: "retention_arda_tenant",
+        },
+      },
+      {
+        customerRecordId: "customer_1",
+        provider: "CODA",
+        externalObjectType: "order_archive_doc",
+        externalId: "cgSn33D4N9",
+        label: "Master Order Archive",
+        isPrimary: false,
+        metadata: {
+          docUrl: "https://coda.io/d/_dcgSn33D4N9",
+          source: "retention_arda_tenant",
+        },
+      },
+    ]);
+  });
+
+  it("keeps Arda tenant configs with a company name even when tenantId is blank", () => {
+    expect(
+      __test__.normalizeArdaTenantConfigRow({
+        values: {
+          tenantId: "",
+          CompanyName: "Lights Out Manufacturing",
+          "Customer status": "Live",
+          mainCodaDocId: "fphF1v7jCB",
+          orderArchiveDocumentId: "cgSn33D4N9",
+        },
+      })
+    ).toEqual({
+      tenantId: "",
+      configuredTenantId: "",
+      tenantName: "Lights Out Manufacturing",
+      companyName: "Lights Out Manufacturing",
+      customerName: null,
+      customerStatus: "Live",
+      health: null,
+      mainCodaDocId: "fphF1v7jCB",
+      orderArchiveDocumentId: "cgSn33D4N9",
+      churned: false,
+      resultTenantIds: [],
+    });
+  });
+
+  it("keeps unresolved Arda tenant configs as metadata-only rows", () => {
+    expect(
+      __test__.materializeArdaTenantConfigs(
+        [
+          {
+            tenantId: "",
+            configuredTenantId: "",
+            tenantName: "Lights Out Manufacturing",
+            companyName: "Lights Out Manufacturing",
+            customerStatus: "Live",
+            health: "Healthy",
+            mainCodaDocId: "fphF1v7jCB",
+            orderArchiveDocumentId: "cgSn33D4N9",
+            churned: false,
+            resultTenantIds: [],
+          },
+        ],
+        new Map()
+      )
+    ).toEqual([
+      {
+        tenantId: "baa1f883-ecfa-4912-b5be-d5784d8b96a4",
+        configuredTenantId: "",
+        tenantName: "Lights Out Manufacturing",
+        companyName: "Lights Out Manufacturing",
+        customerStatus: "Live",
+        health: "Healthy",
+        mainCodaDocId: "fphF1v7jCB",
+        orderArchiveDocumentId: "cgSn33D4N9",
+        churned: false,
+        resultTenantIds: [],
+        tenantIdResolved: true,
+      },
+    ]);
+
+    expect(
+      __test__.materializeArdaTenantConfigs(
+        [
+          {
+            tenantId: "",
+            configuredTenantId: "",
+            tenantName: "Unknown Shop",
+            companyName: "Unknown Shop",
+            customerStatus: "Live",
+            health: null,
+            mainCodaDocId: "doc_unknown",
+            orderArchiveDocumentId: null,
+            churned: false,
+            resultTenantIds: [],
+          },
+        ],
+        new Map()
+      )
+    ).toEqual([
+      {
+        tenantId: "unknownshop",
+        configuredTenantId: "",
+        tenantName: "Unknown Shop",
+        companyName: "Unknown Shop",
+        customerStatus: "Live",
+        health: null,
+        mainCodaDocId: "doc_unknown",
+        orderArchiveDocumentId: null,
+        churned: false,
+        resultTenantIds: [],
+        tenantIdResolved: false,
+      },
+    ]);
+  });
 });

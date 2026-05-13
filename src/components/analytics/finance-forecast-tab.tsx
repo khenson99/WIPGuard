@@ -46,10 +46,13 @@ function cashZeroDate(scenario: ForecastScenarioData): string | null {
   return null;
 }
 
-function monthlyBurn(scenario: ForecastScenarioData): number {
-  const firstMonth = scenario.months[0];
-  if (!firstMonth) return 0;
-  return Math.max(firstMonth.projectedExpenses - firstMonth.projectedRevenue, 0);
+function monthlyBurn(scenario: ForecastScenarioData, baseBurn: number): number {
+  return (
+    baseBurn +
+    scenario.assumptions.burnRateDelta +
+    scenario.assumptions.additionalMonthlyExpense -
+    scenario.assumptions.additionalMonthlyRevenue
+  );
 }
 
 function scenarioValueAtMonth(scenario: ForecastScenarioData, month: number): number {
@@ -81,6 +84,7 @@ export function FinanceForecastTab({
   data: AnalyticsDashboardData | null;
 }) {
   const hasFinanceData = Boolean(data?.stripe || data?.mercury);
+  const financeSummary = data?.metrics?.finance.summary ?? null;
 
   const scenarios = useMemo(
     () => (data ? buildDefaultScenarios(data.stripe ?? null, data.mercury ?? null) : []),
@@ -122,18 +126,27 @@ export function FinanceForecastTab({
     return <FinanceDataEmptyState />;
   }
 
+  if (!financeSummary) {
+    return (
+      <FinanceDataEmptyState
+        title="Finance metrics are unavailable"
+        message="The canonical finance metrics layer was not included in this analytics payload."
+      />
+    );
+  }
+
   if (scenarios.length === 0) return null;
 
   // Derive current MRR for insight comparison
-  const currentMrr = data?.stripe?.revenue?.mrr ?? 0;
+  const currentMrr = financeSummary.mrr;
 
   // Worst and base scenarios
   const baseScenario = scenarios.find((s) => s.id === "default-base") ?? scenarios[0];
   const optimisticScenario = scenarios.find((s) => s.id === "default-optimistic") ?? scenarios[0];
   const worstScenario = pickWorstScenario(scenarios);
 
-  const baseGrowthRate = (data?.stripe?.revenue?.revenueGrowth ?? 0) / 100;
-  const baseChurnRate = (data?.stripe?.subscriptions?.churnRate ?? 0) / 100;
+  const baseGrowthRate = financeSummary.revenueGrowth / 100;
+  const baseChurnRate = financeSummary.churnRatePct / 100;
 
   // ── Alerts ──────────────────────────────────────────
   const alerts: {
@@ -283,7 +296,7 @@ export function FinanceForecastTab({
       <SectionCard title="Scenario Details" subtitle="Assumptions and outcomes per scenario">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {scenarios.map((s, i) => {
-            const burn = monthlyBurn(s);
+            const burn = monthlyBurn(s, financeSummary.burnRate);
             const zeroDate = cashZeroDate(s);
             const rwColor = runwayColor(s.runwayMonths ?? 0);
 

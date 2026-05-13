@@ -247,7 +247,7 @@ export default function AutomationBuilderPage() {
           </div>
           <div className="flex items-center gap-2">
             <Link
-              href={`/automations/${workflowId}/runs`}
+              href={`/pipelines/${workflowId}/runs`}
               className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
             >
               Run History
@@ -561,7 +561,7 @@ export default function AutomationBuilderPage() {
             <p>Scope: {workflow.scope}</p>
             <p>Graph Version: {workflow.graphVersion}</p>
             <button
-              onClick={() => router.push("/automations")}
+              onClick={() => router.push("/pipelines")}
               className="mt-2 rounded border border-border px-2 py-1 hover:text-foreground"
             >
               Back to automations

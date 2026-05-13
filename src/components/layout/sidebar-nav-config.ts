@@ -1,11 +1,4 @@
-import {
-  Activity,
-  Cable,
-  LayoutDashboard,
-  Bot,
-  Handshake,
-  type LucideIcon,
-} from "lucide-react";
+import { BarChart3, Cable, FileText, Workflow, type LucideIcon } from "lucide-react";
 import { WORKSPACE_NAV_ITEMS, type WorkspaceId } from "@/lib/platform/workspaces";
 
 export interface NavChildItem {
@@ -26,11 +19,10 @@ export interface NavItem {
 }
 
 const WORKSPACE_ICONS: Record<WorkspaceId, LucideIcon> = {
-  dashboard: LayoutDashboard,
-  deals: Handshake,
-  analytics: Activity,
-  integrations: Cable,
-  automations: Bot,
+  sources: Cable,
+  metrics: BarChart3,
+  reports: FileText,
+  pipelines: Workflow,
 };
 
 export function buildNavItems(): NavItem[] {

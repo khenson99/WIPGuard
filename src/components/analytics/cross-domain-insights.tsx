@@ -3,12 +3,13 @@
 import type { AnalyticsSectionId, CrossDomainInsights } from "@/lib/analytics/types";
 
 const SECTION_LABELS: Record<AnalyticsSectionId, string> = {
-  "ads-traffic": "Ads & Traffic",
-  finance: "Finance",
-  "sales-pipeline": "Sales & Pipeline",
+  "website-traffic": "Website Conversion",
+  "social-media": "Social Media, Ads & Conferences",
+  finance: "Revenue & Finance",
+  "sales-pipeline": "Sales",
   retention: "Retention",
   "customer-success": "Customer Success",
-  "customer-journey": "Customer Journey",
+  "customer-journey": "Full-Funnel Analytics",
   "demo-analytics": "Demo Analytics",
   "process-analytics": "Process Analytics",
 };
@@ -34,7 +35,7 @@ export function CrossDomainInsightsPanel({ data }: CrossDomainInsightsPanelProps
     );
   }
 
-  const sections: AnalyticsSectionId[] = ["ads-traffic", "finance", "sales-pipeline", "customer-success"];
+  const sections: AnalyticsSectionId[] = ["social-media", "website-traffic", "sales-pipeline", "customer-success"];
 
   return (
     <section className="rounded-xl border border-border bg-card p-4 space-y-4">

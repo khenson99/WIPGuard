@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Static palette for Recharts — matches Arda design system.
+ * Static palette for Recharts - matches the Imladris design system.
  * Brand orange first, then blue, emerald, violet, amber, pink.
  */
 export const CHART_PALETTE = [

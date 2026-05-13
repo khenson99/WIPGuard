@@ -14,7 +14,6 @@ import { RingStat } from "@/components/analytics/bar-display";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
 import {
   computeUnitEconomics,
-  type UnitEconomicsData,
 } from "@/lib/analytics/unit-economics";
 import { fmtRatio, ltvCacSeverity } from "@/lib/analytics/finance-utils";
 
@@ -51,6 +50,9 @@ export function FinanceUnitEconomicsTab({
         data?.stripe ?? null,
         data?.mercury ?? null,
         data?.hubspot ?? null,
+        {
+          observedPeriodDays: data?.mercury?.cashFlow.observedPeriodDays ?? data?.timeRange?.days ?? 30,
+        },
       ),
     [data],
   );

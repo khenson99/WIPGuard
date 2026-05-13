@@ -1,43 +1,24 @@
 /**
- * E2E Tests: Sprint Management (Settings → Sprints tab)
+ * E2E Tests: Retired sprint settings
  *
- * Covers:
- * - Sprints tab loads
- * - Create a sprint (date-based label)
- * - Toggle active sprint
+ * Sprint management is no longer part of the primary product surface. The
+ * legacy settings entry point should route users back to the supported Team tab.
  */
-import { test, expect } from '@playwright/test';
-import { SprintPage } from './helpers/pages';
+import { expect, test } from '@playwright/test';
 
-test.describe('Sprint Management', () => {
-  let sprintPage: SprintPage;
+test.describe('Retired sprint settings', () => {
+  test('redirects the legacy sprints tab to Team settings', async ({ page }) => {
+    await page.goto('/settings?tab=sprints');
 
-  test.beforeEach(async ({ page }) => {
-    sprintPage = new SprintPage(page);
+    await expect(page).toHaveURL(/\/settings\?tab=team/i, { timeout: 15_000 });
+    await expect(page.getByRole('tab', { name: /^team$/i })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByText(/sprint management|create sprint|new sprint/i)).toHaveCount(0);
   });
 
-  test('should load the sprints page', async ({ page }) => {
-    await sprintPage.goto();
+  test('keeps users authenticated while retiring sprint UI', async ({ page }) => {
+    await page.goto('/settings?tab=sprints');
 
-    // Verify page loaded (not redirected to login)
     await expect(page).not.toHaveURL(/\/login/i);
-
-    await expect(page.getByText(/sprint management/i)).toBeVisible();
-  });
-
-  test('should create a new sprint', async ({ page }) => {
-    await sprintPage.goto();
-    const createdLabel = await sprintPage.createSprint('ignored');
-
-    // Verify the sprint appears on the page
-    await expect(page.getByText(createdLabel).first()).toBeVisible({ timeout: 10_000 });
-  });
-
-  test('should mark created sprint as active', async ({ page }) => {
-    await sprintPage.goto();
-    const createdLabel = await sprintPage.createSprint('ignored');
-
-    await expect(page.getByText(createdLabel).first()).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole('button', { name: /deactivate sprint/i })).toBeVisible();
+    await expect(page.locator('[data-testid="authenticated-layout"], nav').first()).toBeVisible();
   });
 });

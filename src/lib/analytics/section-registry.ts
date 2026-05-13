@@ -1,5 +1,6 @@
 export type AnalyticsPrimarySectionId =
-  | "ads-traffic"
+  | "website-traffic"
+  | "social-media"
   | "finance"
   | "sales-pipeline"
   | "retention"
@@ -8,11 +9,27 @@ export type AnalyticsPrimarySectionId =
   | "demo-analytics"
   | "process-analytics";
 
+export type FinanceDataDomain =
+  | "financePlanning"
+  | "financeForecast"
+  | "financePnl"
+  | "financeUnitEconomics"
+  | "financeMonthlyHistory"
+  | "financeAiBrief";
+
 export interface AnalyticsPrimarySection {
   id: AnalyticsPrimarySectionId;
   label: string;
   path: string;
   description: string;
+}
+
+export interface AnalyticsDashboardFunnelGroup {
+  id: string;
+  label: string;
+  path: string;
+  description: string;
+  primaryIds: AnalyticsPrimarySectionId[];
 }
 
 export interface AnalyticsSubSection {
@@ -44,33 +61,29 @@ export interface AnalyticsSubSection {
     | "financePlanning"
     | "financeForecast"
     | "financePnl"
-    | "financeUnitEconomics";
+    | "financeUnitEconomics"
+    | "financeMonthlyHistory"
+    | "financeAiBrief";
 }
 
 export const ANALYTICS_PRIMARY_SECTIONS: AnalyticsPrimarySection[] = [
   {
-    id: "ads-traffic",
-    label: "Ads & Traffic",
-    path: "/analytics/ads-traffic",
-    description: "Campaigns, traffic, and content performance.",
+    id: "social-media",
+    label: "Social Media, Ads & Conferences",
+    path: "/analytics/social-media",
+    description: "Top-of-funnel demand from paid, organic, and event-driven campaigns.",
   },
   {
-    id: "finance",
-    label: "Finance",
-    path: "/analytics/finance",
-    description: "Revenue, balance, and cash health.",
+    id: "website-traffic",
+    label: "Website Conversion",
+    path: "/analytics/website-traffic",
+    description: "Traffic quality, content performance, and onsite conversion.",
   },
   {
     id: "sales-pipeline",
-    label: "Sales & Pipeline",
+    label: "Sales",
     path: "/analytics/sales-pipeline",
     description: "Pipeline progression and close performance.",
-  },
-  {
-    id: "retention",
-    label: "Retention",
-    path: "/analytics/retention",
-    description: "Tenant-level leading indicators of retention and contraction risk.",
   },
   {
     id: "customer-success",
@@ -79,10 +92,16 @@ export const ANALYTICS_PRIMARY_SECTIONS: AnalyticsPrimarySection[] = [
     description: "Post-sale support and product adoption.",
   },
   {
+    id: "retention",
+    label: "Retention",
+    path: "/analytics/retention",
+    description: "Tenant-level leading indicators of retention and contraction risk.",
+  },
+  {
     id: "customer-journey",
-    label: "Customer Journey",
+    label: "Full-Funnel Analytics",
     path: "/analytics/customer-journey",
-    description: "End-to-end customer touchpoint mapping.",
+    description: "End-to-end analytics across acquisition, conversion, sales, success, and retention.",
   },
   {
     id: "demo-analytics",
@@ -96,16 +115,67 @@ export const ANALYTICS_PRIMARY_SECTIONS: AnalyticsPrimarySection[] = [
     path: "/analytics/process-analytics",
     description: "Pipeline velocity, health, and bottlenecks.",
   },
+  {
+    id: "finance",
+    label: "Revenue & Finance",
+    path: "/analytics/finance",
+    description: "Revenue, balance, and cash health.",
+  },
+];
+
+export const ANALYTICS_DASHBOARD_FUNNEL_GROUPS: AnalyticsDashboardFunnelGroup[] = [
+  {
+    id: "top-of-funnel",
+    label: "Social Media, Ads & Conferences",
+    path: "/analytics/social-media",
+    description: "Demand generation before prospects reach the website.",
+    primaryIds: ["social-media"],
+  },
+  {
+    id: "website-conversion",
+    label: "Website Conversion",
+    path: "/analytics/website-traffic",
+    description: "Traffic, page performance, forms, search, and conversion intent.",
+    primaryIds: ["website-traffic"],
+  },
+  {
+    id: "sales",
+    label: "Sales",
+    path: "/analytics/sales-pipeline",
+    description: "Opportunities, demo scheduling, demo follow-up, pipeline movement, and close rates.",
+    primaryIds: ["sales-pipeline", "demo-analytics"],
+  },
+  {
+    id: "customer-success",
+    label: "Customer Success",
+    path: "/analytics/customer-success",
+    description: "Support load, adoption signals, and account health after close.",
+    primaryIds: ["customer-success"],
+  },
+  {
+    id: "retention",
+    label: "Retention",
+    path: "/analytics/retention",
+    description: "Renewal risk, contraction signals, and tenant retention health.",
+    primaryIds: ["retention"],
+  },
+  {
+    id: "full-funnel-analytics",
+    label: "Full-Funnel Analytics",
+    path: "/analytics/customer-journey",
+    description: "Analytics across the entire process, including journey, process, and revenue signals.",
+    primaryIds: ["customer-journey", "process-analytics", "finance"],
+  },
 ];
 
 export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
-  { id: "ads-google-analytics", label: "Google Analytics", path: "/analytics/ads-google-analytics", parentId: "ads-traffic", dataDomain: "googleAnalytics" },
-  { id: "ads-google-ads", label: "Google Ads", path: "/analytics/ads-google-ads", parentId: "ads-traffic", dataDomain: "googleAds" },
-  { id: "ads-meta-ads", label: "Meta Ads", path: "/analytics/ads-meta-ads", parentId: "ads-traffic", dataDomain: "metaAds" },
-  { id: "ads-reddit-ads", label: "Reddit Ads", path: "/analytics/ads-reddit-ads", parentId: "ads-traffic", dataDomain: "redditAds" },
-  { id: "ads-webflow", label: "Webflow", path: "/analytics/ads-webflow", parentId: "ads-traffic", dataDomain: "webflow" },
-  { id: "ads-semrush", label: "SEMrush", path: "/analytics/ads-semrush", parentId: "ads-traffic", dataDomain: "semrush" },
-  { id: "ads-coda-kanban", label: "Free Kanban Generator (Whitepaper)", path: "/analytics/ads-coda-kanban", parentId: "ads-traffic", dataDomain: "coda" },
+  { id: "ads-google-analytics", label: "Google Analytics", path: "/analytics/ads-google-analytics", parentId: "website-traffic", dataDomain: "googleAnalytics" },
+  { id: "ads-google-ads", label: "Google Ads", path: "/analytics/ads-google-ads", parentId: "social-media", dataDomain: "googleAds" },
+  { id: "ads-meta-ads", label: "Meta Ads", path: "/analytics/ads-meta-ads", parentId: "social-media", dataDomain: "metaAds" },
+  { id: "ads-reddit-ads", label: "Reddit Ads", path: "/analytics/ads-reddit-ads", parentId: "social-media", dataDomain: "redditAds" },
+  { id: "ads-webflow", label: "Webflow", path: "/analytics/ads-webflow", parentId: "website-traffic", dataDomain: "webflow" },
+  { id: "ads-semrush", label: "SEMrush", path: "/analytics/ads-semrush", parentId: "website-traffic", dataDomain: "semrush" },
+  { id: "ads-coda-kanban", label: "Campaigns & Conferences", path: "/analytics/ads-coda-kanban", parentId: "social-media", dataDomain: "coda" },
 
   { id: "finance-mercury", label: "Mercury", path: "/analytics/finance-mercury", parentId: "finance", dataDomain: "mercury" },
   { id: "finance-stripe", label: "Stripe", path: "/analytics/finance-stripe", parentId: "finance", dataDomain: "stripe" },
@@ -114,6 +184,8 @@ export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
   { id: "finance-forecast", label: "Forecasts", path: "/analytics/finance-forecast", parentId: "finance", dataDomain: "financeForecast" },
   { id: "finance-pnl", label: "P&L", path: "/analytics/finance-pnl", parentId: "finance", dataDomain: "financePnl" },
   { id: "finance-unit-economics", label: "Unit Economics", path: "/analytics/finance-unit-economics", parentId: "finance", dataDomain: "financeUnitEconomics" },
+  { id: "finance-monthly-history", label: "Monthly History", path: "/analytics/finance-monthly-history", parentId: "finance", dataDomain: "financeMonthlyHistory" },
+  { id: "finance-ai-brief", label: "AI Executive Brief", path: "/analytics/finance-ai-brief", parentId: "finance", dataDomain: "financeAiBrief" },
 
   { id: "sales-hubspot", label: "HubSpot", path: "/analytics/sales-hubspot", parentId: "sales-pipeline", dataDomain: "hubspot" },
   { id: "sales-stripe", label: "Stripe", path: "/analytics/sales-stripe", parentId: "sales-pipeline", dataDomain: "stripe" },
@@ -130,9 +202,9 @@ export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
   { id: "cj-conversion", label: "Conversion Analysis", path: "/analytics/cj-conversion", parentId: "customer-journey", dataDomain: "customerJourney" },
   { id: "cj-acquisition-funnel", label: "Acquisition Funnel", path: "/analytics/cj-acquisition-funnel", parentId: "customer-journey", dataDomain: "visitorFunnel" },
 
-  { id: "demo-scheduling", label: "Scheduling", path: "/analytics/demo-scheduling", parentId: "demo-analytics", dataDomain: "demoAnalytics" },
-  { id: "demo-attribution", label: "Attribution", path: "/analytics/demo-attribution", parentId: "demo-analytics", dataDomain: "demoAnalytics" },
-  { id: "demo-coaching", label: "Coaching", path: "/analytics/demo-coaching", parentId: "demo-analytics", dataDomain: "demoAnalytics" },
+  { id: "demo-scheduling", label: "Demo Scheduling", path: "/analytics/demo-scheduling", parentId: "sales-pipeline", dataDomain: "demoAnalytics" },
+  { id: "demo-attribution", label: "Demo Attribution", path: "/analytics/demo-attribution", parentId: "sales-pipeline", dataDomain: "demoAnalytics" },
+  { id: "demo-coaching", label: "Demo Coaching", path: "/analytics/demo-coaching", parentId: "sales-pipeline", dataDomain: "demoAnalytics" },
 
   { id: "process-bottlenecks", label: "Bottlenecks", path: "/analytics/process-bottlenecks", parentId: "process-analytics", dataDomain: "processAnalytics" },
   { id: "process-velocity", label: "Velocity", path: "/analytics/process-velocity", parentId: "process-analytics", dataDomain: "processAnalytics" },
@@ -166,7 +238,8 @@ export const LEGACY_ANALYTICS_TAB_REDIRECTS: Record<string, string> = {
   overview: "/analytics",
   sales: "/analytics/sales-pipeline",
   finance: "/analytics/finance",
-  marketing: "/analytics/ads-traffic",
+  marketing: "/analytics/website-traffic",
+  tasks: "/analytics/customer-success",
   journey: "/analytics/customer-journey",
   demos: "/analytics/demo-analytics",
   process: "/analytics/process-analytics",
@@ -176,7 +249,9 @@ export const LEGACY_ANALYTICS_ROUTE_REDIRECTS: Record<string, string> = {
   overview: "/analytics",
   sales: "/analytics/sales-pipeline",
   finance: "/analytics/finance",
-  marketing: "/analytics/ads-traffic",
+  marketing: "/analytics/website-traffic",
+  "ads-traffic": "/analytics/website-traffic",
+  tasks: "/analytics/customer-success",
   hubspot: "/analytics/sales-hubspot",
   stripe: "/analytics/finance-stripe",
   mercury: "/analytics/finance-mercury",
@@ -205,4 +280,6 @@ export const LEGACY_ANALYTICS_ROUTE_REDIRECTS: Record<string, string> = {
   "finance-forecast": "/analytics/finance-forecast",
   "finance-pnl": "/analytics/finance-pnl",
   "finance-unit-economics": "/analytics/finance-unit-economics",
+  "finance-monthly-history": "/analytics/finance-monthly-history",
+  "finance-ai-brief": "/analytics/finance-ai-brief",
 };

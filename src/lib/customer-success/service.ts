@@ -272,6 +272,15 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 function asBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
@@ -371,10 +380,6 @@ function isAlertOpen(status: string): boolean {
 
 function isHighSeverity(severity: string): boolean {
   return severity === CustomerSuccessAlertSeverity.HIGH || severity === CustomerSuccessAlertSeverity.CRITICAL;
-}
-
-function isTaskDone(status: string): boolean {
-  return status === TaskStatus.DONE;
 }
 
 function stakeholderRole(contact: { title: string | null }): string {
@@ -531,6 +536,8 @@ export function buildCustomerSuccessHealth(
   const totalMilestones = activePlan?.milestones.length ?? 0;
   const completedMilestones =
     activePlan?.milestones.filter((milestone) => milestone.status === "COMPLETED").length ?? 0;
+  const blockedMilestones =
+    activePlan?.milestones.filter((milestone) => milestone.status === "BLOCKED").length ?? 0;
   const milestoneRatio = totalMilestones > 0 ? completedMilestones / totalMilestones : 0;
   const recentMeetings = snapshot.meetings.filter((meeting) => daysBetween(meeting.startAt, now) <= 30).length;
   const recentNotes = snapshot.notes.filter((note) => daysBetween(note.createdAt, now) <= 30).length;
@@ -544,8 +551,6 @@ export function buildCustomerSuccessHealth(
     recentTouches90d.map((date) => Math.min(2, Math.floor(daysBetween(date, now) / 30)))
   ).size;
   const maxTouchGapDays = maxGapInDays(recentTouches90d, now);
-  const blockedMilestones =
-    activePlan?.milestones.filter((milestone) => milestone.status === "BLOCKED").length ?? 0;
   const stakeholders = buildStakeholders(snapshot, now);
   const coveredStakeholders = stakeholders.filter((stakeholder) => stakeholder.coverageStatus === "covered").length;
   const hasChampion = stakeholders.some((stakeholder) =>
@@ -983,10 +988,88 @@ function buildProviderLinks(snapshot: CustomerSuccessAccountSnapshot): CustomerS
     }));
 }
 
+function mergeProviderLinks(
+  baseLinks: CustomerSuccessProviderLink[],
+  derivedLinks: CustomerSuccessProviderLink[]
+): CustomerSuccessProviderLink[] {
+  const merged = new Map<string, CustomerSuccessProviderLink>();
+
+  for (const link of [...baseLinks, ...derivedLinks]) {
+    merged.set(
+      `${link.provider}:${link.externalObjectType}:${link.externalId}`,
+      link
+    );
+  }
+
+  return [...merged.values()].sort((left, right) => {
+    if (left.provider !== right.provider) return left.provider.localeCompare(right.provider);
+    if (left.externalObjectType !== right.externalObjectType) {
+      return left.externalObjectType.localeCompare(right.externalObjectType);
+    }
+    return left.externalId.localeCompare(right.externalId);
+  });
+}
+
+function buildDerivedCodaProviderLinks(latestArdaPayload: Record<string, unknown>): CustomerSuccessProviderLink[] {
+  const links: CustomerSuccessProviderLink[] = [];
+
+  const mainDocId = asString(latestArdaPayload.mainCodaDocId);
+  if (mainDocId) {
+    links.push({
+      provider: CustomerExternalProvider.CODA,
+      externalObjectType: "doc",
+      externalId: mainDocId,
+      label: "Customer Success and Implementation",
+      isPrimary: true,
+      url: `https://coda.io/d/_d${encodeURIComponent(mainDocId)}`,
+    });
+  }
+
+  const orderArchiveDocumentId = asString(latestArdaPayload.orderArchiveDocumentId);
+  if (orderArchiveDocumentId) {
+    links.push({
+      provider: CustomerExternalProvider.CODA,
+      externalObjectType: "order_archive_doc",
+      externalId: orderArchiveDocumentId,
+      label: "Master Order Archive",
+      isPrimary: !mainDocId,
+      url: `https://coda.io/d/_d${encodeURIComponent(orderArchiveDocumentId)}`,
+    });
+  }
+
+  return links;
+}
+
+function countConnectedSystems(input: {
+  providers: Iterable<CustomerExternalProvider>;
+  coverage?: {
+    arda?: boolean;
+    coda?: boolean;
+    stripe?: boolean;
+    hubspot?: boolean;
+    pylon?: boolean;
+  } | null;
+}): number {
+  const systems = new Set<string>();
+
+  for (const provider of input.providers) {
+    systems.add(provider.toLowerCase());
+  }
+
+  if (input.coverage?.arda) systems.add("arda");
+  if (input.coverage?.coda) systems.add("coda");
+  if (input.coverage?.stripe) systems.add("stripe");
+  if (input.coverage?.hubspot) systems.add("hubspot");
+  if (input.coverage?.pylon) systems.add("pylon");
+
+  return systems.size;
+}
+
 export function buildCustomerSuccessAccountDetailFromSnapshot(
   snapshot: CustomerSuccessAccountSnapshot,
   now: Date = new Date()
 ): CustomerSuccessAccountDetail {
+  const providerLinks = buildProviderLinks(snapshot);
   const health = buildCustomerSuccessHealth(snapshot, now);
   const timeline = buildEvents(snapshot);
   const stakeholders = buildStakeholders(snapshot, now);
@@ -1032,7 +1115,8 @@ export function buildCustomerSuccessAccountDetailFromSnapshot(
       expansionPotential: snapshot.expansionPotential ?? undefined,
     },
     relationshipIntelligence: {
-      providers: buildProviderLinks(snapshot),
+      connectedSystems: countConnectedSystems({ providers: providerLinks.map((provider) => provider.provider) }),
+      providers: providerLinks,
     },
   };
 }
@@ -1040,7 +1124,7 @@ export function buildCustomerSuccessAccountDetailFromSnapshot(
 export function buildCustomerSuccessPortfolioFromSnapshots(
   snapshots: CustomerSuccessAccountSnapshot[],
   now: Date = new Date(),
-  relationshipMap: Map<string, Omit<CustomerSuccessPortfolioRelationshipSummary, "connectedSystems">> = new Map()
+  relationshipMap: Map<string, CustomerSuccessPortfolioRelationshipSummary> = new Map()
 ): CustomerSuccessPortfolio {
   const generatedAt = now.toISOString();
   const accounts = snapshots.map((snapshot) => {
@@ -1064,7 +1148,9 @@ export function buildCustomerSuccessPortfolioFromSnapshots(
       renewalDate: snapshot.renewalDate?.toISOString(),
       openAlertCount,
       relationship: {
-        connectedSystems: snapshot.externalRefs.length,
+        connectedSystems:
+          relationship?.connectedSystems ??
+          countConnectedSystems({ providers: snapshot.externalProviders }),
         retentionStatus: relationship?.retentionStatus,
         primaryLirPassed: relationship?.primaryLirPassed,
         implementationStage: relationship?.implementationStage,
@@ -1348,12 +1434,14 @@ function buildDerivedCoverage(
     stripe: seen.has("stripe"),
     hubspot: seen.has("hubspot"),
     pylon: seen.has("pylon"),
+    ardaActivityCollectionAvailable: undefined,
+    ardaUserDetailsFallback: undefined,
     missingSources,
   };
 }
 
 function buildPortfolioRelationshipSummary(input: {
-  connectedSystems: number;
+  providers?: Iterable<CustomerExternalProvider>;
   retentionCurrent?: {
     status: string;
     primaryLirPassed: boolean;
@@ -1362,14 +1450,31 @@ function buildPortfolioRelationshipSummary(input: {
   } | null;
 }): CustomerSuccessPortfolioRelationshipSummary {
   const detailData = input.retentionCurrent ? asRecord(input.retentionCurrent.detailData) : {};
+  const adoptionData = asRecord(detailData.adoptionSummary);
   const coverageData =
     input.retentionCurrent?.monthFact ? asRecord(input.retentionCurrent.monthFact.coverageData) : {};
+  const coverage = {
+    arda: asBoolean(coverageData.arda) ?? false,
+    coda: asBoolean(coverageData.coda) ?? false,
+    stripe: asBoolean(coverageData.stripe) ?? false,
+    hubspot: asBoolean(coverageData.hubspot) ?? false,
+    pylon: asBoolean(coverageData.pylon) ?? false,
+  };
 
   return {
-    connectedSystems: input.connectedSystems,
+    connectedSystems: countConnectedSystems({
+      providers: input.providers ?? [],
+      coverage,
+    }),
     retentionStatus: input.retentionCurrent ? humanizeRetentionStatus(input.retentionCurrent.status) : undefined,
     primaryLirPassed: input.retentionCurrent?.primaryLirPassed ?? undefined,
     implementationStage: asString(detailData.implementationStage) ?? undefined,
+    ardaAdoptionCountsSource:
+      (asString(adoptionData.ardaAdoptionCountsSource) as
+        | "ARDA_ACTIVITY"
+        | "ARDA_USER_DETAILS"
+        | "NONE"
+        | undefined) ?? undefined,
     missingSources: asArray<string>(coverageData.missingSources),
   };
 }
@@ -1413,6 +1518,7 @@ async function buildRelationshipIntelligence(
 
   const providers = buildProviderLinks(snapshot);
   const latestArdaTenant = sourceRows.find((row) => row.source === "ARDA" && row.objectType === "tenant") ?? null;
+  const ardaRows = sourceRows.filter((row) => row.source === "ARDA");
   const codaOrderRows = sourceRows.filter((row) => row.source === "CODA");
   const latestCodaOrder = codaOrderRows
     .map((row) => row.occurredAt ?? row.sourceUpdatedAt)
@@ -1421,6 +1527,7 @@ async function buildRelationshipIntelligence(
 
   const latestArdaPayload = latestArdaTenant ? asRecord(latestArdaTenant.payload) : {};
   const retentionDetail = retentionCurrent ? asRecord(retentionCurrent.detailData) : {};
+  const retentionAdoption = asRecord(retentionDetail.adoptionSummary);
   const retentionCoverageRaw =
     retentionCurrent && retentionCurrent.monthFact ? asRecord(retentionCurrent.monthFact.coverageData) : null;
   const coverage =
@@ -1431,12 +1538,20 @@ async function buildRelationshipIntelligence(
           stripe: Boolean(asBoolean(retentionCoverageRaw.stripe)),
           hubspot: Boolean(asBoolean(retentionCoverageRaw.hubspot)),
           pylon: Boolean(asBoolean(retentionCoverageRaw.pylon)),
+          ardaActivityCollectionAvailable: asBoolean(retentionCoverageRaw.ardaActivityCollectionAvailable) ?? undefined,
+          ardaUserDetailsFallback: asBoolean(retentionCoverageRaw.ardaUserDetailsFallback) ?? undefined,
           missingSources: asArray<string>(retentionCoverageRaw.missingSources),
         }
       : buildDerivedCoverage(sourceRows);
+  const mergedProviderLinks = mergeProviderLinks(providers, buildDerivedCodaProviderLinks(latestArdaPayload));
+  const connectedSystems = countConnectedSystems({
+    providers: mergedProviderLinks.map((provider) => provider.provider),
+    coverage,
+  });
 
   return {
-    providers,
+    connectedSystems,
+    providers: mergedProviderLinks,
     retention: retentionCurrent
       ? {
           status: humanizeRetentionStatus(retentionCurrent.status),
@@ -1453,10 +1568,39 @@ async function buildRelationshipIntelligence(
           firstOrderDate: asString(retentionDetail.firstOrderDate) ?? undefined,
           explanation: asString(retentionDetail.explanation) ?? undefined,
           reasonCodes: parseRelationshipReasons(retentionCurrent.reasonCodes),
+          ardaAdoptionCountsSource:
+            asString(retentionAdoption.ardaAdoptionCountsSource) as
+              | "ARDA_ACTIVITY"
+              | "ARDA_USER_DETAILS"
+              | "NONE"
+              | undefined,
+          ardaDirectActivityCounts: {
+            orders: asNumber(asRecord(retentionAdoption.ardaDirectActivityCounts).orders) ?? 0,
+            cards: asNumber(asRecord(retentionAdoption.ardaDirectActivityCounts).cards) ?? 0,
+            items: asNumber(asRecord(retentionAdoption.ardaDirectActivityCounts).items) ?? 0,
+          },
+          ardaUserDetailsCounts: {
+            orders: asNumber(asRecord(retentionAdoption.ardaUserDetailsCounts).orders) ?? 0,
+            cards: asNumber(asRecord(retentionAdoption.ardaUserDetailsCounts).cards) ?? 0,
+            items: asNumber(asRecord(retentionAdoption.ardaUserDetailsCounts).items) ?? 0,
+          },
           coverage,
           detailUrl: `/analytics/retention/${snapshot.id}`,
         }
       : undefined,
+    arda:
+      latestArdaTenant || ardaRows.length > 0
+        ? {
+            tenantId: asString(latestArdaPayload.ardaTenantId) ?? undefined,
+            configuredTenantId: asString(latestArdaPayload.configuredTenantId) ?? undefined,
+            tenantName: asString(latestArdaPayload.tenantName) ?? undefined,
+            companyName: asString(latestArdaPayload.companyName) ?? undefined,
+            customerStatus: asString(latestArdaPayload.customerStatus) ?? undefined,
+            configuredHealth: asString(latestArdaPayload.health) ?? undefined,
+            implementationStage: asString(latestArdaPayload.implementationStage) ?? undefined,
+            sourceRecordCount: ardaRows.length,
+          }
+        : undefined,
     coda:
       latestArdaTenant || codaOrderRows.length > 0
         ? {
@@ -1506,18 +1650,14 @@ export async function getCustomerSuccessPortfolio(
     ])
   );
 
-  const relationshipMap = new Map<string, Omit<CustomerSuccessPortfolioRelationshipSummary, "connectedSystems">>();
+  const relationshipMap = new Map<string, CustomerSuccessPortfolioRelationshipSummary>();
   retentionCurrents.forEach((current) => {
     const summary = buildPortfolioRelationshipSummary({
-      connectedSystems: 0,
+      providers:
+        snapshots.find((snapshot) => snapshot.id === current.customerRecordId)?.externalProviders ?? [],
       retentionCurrent: current,
     });
-    relationshipMap.set(current.customerRecordId, {
-      retentionStatus: summary.retentionStatus,
-      primaryLirPassed: summary.primaryLirPassed,
-      implementationStage: summary.implementationStage,
-      missingSources: summary.missingSources,
-    });
+    relationshipMap.set(current.customerRecordId, summary);
   });
 
   const portfolio = buildCustomerSuccessPortfolioFromSnapshots(snapshots, new Date(), relationshipMap);

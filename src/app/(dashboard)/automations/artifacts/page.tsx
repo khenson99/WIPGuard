@@ -162,13 +162,13 @@ export default function AutomationArtifactsPage() {
         </div>
         <div className="flex items-center gap-2">
           <Link
-            href="/automations/recommendations"
+            href="/pipelines/recommendations"
             className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
           >
             Recommendations
           </Link>
           <Link
-            href="/automations"
+            href="/pipelines"
             className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
           >
             Back to Automations
@@ -269,7 +269,7 @@ export default function AutomationArtifactsPage() {
 
                   <div className="flex items-center gap-2">
                     <Link
-                      href={`/automations/${artifact.workflow.id}`}
+                      href={`/pipelines/${artifact.workflow.id}`}
                       className="rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
                     >
                       Open Workflow

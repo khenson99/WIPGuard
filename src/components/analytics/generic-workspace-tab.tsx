@@ -46,7 +46,7 @@ export function TelemetryDashboard({
 }) {
   const {
     totalRules, enabledRules, erroredRules,
-    receiptsInRange, eventsInRange, failuresInRange,
+    receiptsInRange, tasksCreatedInRange: artifactsCreatedInRange, eventsInRange, failuresInRange,
     trend, topFailureReasons,
   } = telemetry;
 
@@ -114,6 +114,18 @@ export function TelemetryDashboard({
     });
   }
 
+  if (artifactsCreatedInRange > 0 && receiptsInRange > 0) {
+    const conversionRate = (artifactsCreatedInRange / receiptsInRange) * 100;
+    insights.push({
+      title: "Automation Coverage",
+      insight: `${conversionRate.toFixed(0)}% of receipts triggered downstream automation activity (${artifactsCreatedInRange} of ${receiptsInRange}).`,
+      action: conversionRate < 20
+        ? "Low conversion — review rule conditions and ensure proper event mapping."
+        : "Healthy automation throughput.",
+      severity: conversionRate < 20 ? "warning" : "info",
+    });
+  }
+
   if (failuresInRange === 0 && eventsInRange > 0) {
     insights.push({
       title: "Zero Failures",
@@ -157,6 +169,11 @@ export function TelemetryDashboard({
           title="Receipts"
           value={fmtN(receiptsInRange)}
           icon={<Zap className="h-4 w-4" />}
+        />
+        <StatCard
+          title="Automations Triggered"
+          value={fmtN(artifactsCreatedInRange)}
+          icon={<CheckCircle2 className="h-4 w-4" />}
         />
         <StatCard
           title="Failures"

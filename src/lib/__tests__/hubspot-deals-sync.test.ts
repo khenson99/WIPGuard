@@ -149,10 +149,26 @@ describe("HubSpot local deal sync", () => {
 
       if (
         parsed.pathname === "/crm/v3/objects/contacts" ||
-        parsed.pathname === "/crm/v3/objects/companies" ||
-        parsed.pathname === "/crm/v3/objects/meetings"
+        parsed.pathname === "/crm/v3/objects/companies"
       ) {
         return jsonResponse({ results: [] });
+      }
+
+      if (parsed.pathname === "/crm/v3/objects/meetings") {
+        return jsonResponse({
+          results: [
+            {
+              id: "meeting-demo",
+              properties: {
+                hs_meeting_title: "Field Fastener & Arda Cards",
+                hs_meeting_body: "A Sales Engineer will walk you through how Arda can eliminate stockouts and make ordering 10x faster.",
+                hs_meeting_start_time: "2026-03-04T15:00:00.000Z",
+                hs_meeting_end_time: "2026-03-04T15:45:00.000Z",
+                hs_meeting_outcome: "COMPLETED",
+              },
+            },
+          ],
+        });
       }
 
       if (parsed.pathname === "/crm/v3/owners") {
@@ -171,7 +187,18 @@ describe("HubSpot local deal sync", () => {
     const result = await syncDealsFromHubSpot("user-1");
 
     expect(result.deals).toBe(3);
+    expect(result.meetings).toBe(1);
     expect(vi.mocked(prisma.deal.upsert).mock.calls).toHaveLength(3);
+    expect(vi.mocked(prisma.dealMeeting.upsert).mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          notes: "A Sales Engineer will walk you through how Arda can eliminate stockouts and make ordering 10x faster.",
+        }),
+        update: expect.objectContaining({
+          notes: "A Sales Engineer will walk you through how Arda can eliminate stockouts and make ordering 10x faster.",
+        }),
+      }),
+    );
     expect(
       vi.mocked(prisma.deal.upsert).mock.calls.map((call) => call[0].create.stage),
     ).toEqual([

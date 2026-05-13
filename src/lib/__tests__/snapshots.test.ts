@@ -1,11 +1,16 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { storeAnalyticsSnapshot, storeAnalyticsSnapshotFailure } from "@/lib/analytics/snapshots";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import {
+  pruneAnalyticsSnapshots,
+  storeAnalyticsSnapshot,
+  storeAnalyticsSnapshotFailure,
+} from "@/lib/analytics/snapshots";
 import { prisma } from "@/lib/prisma";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     analyticsSnapshot: {
       upsert: vi.fn(),
+      deleteMany: vi.fn(),
     },
   },
 }));
@@ -13,6 +18,10 @@ vi.mock("@/lib/prisma", () => ({
 describe("analytics snapshots", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("upserts SUCCESS snapshots by composite key", async () => {
@@ -72,5 +81,23 @@ describe("analytics snapshots", () => {
       })
     );
   });
-});
 
+  it("prunes old rolling snapshots without deleting monthly financial history", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-04-15T00:00:00.000Z"));
+    vi.mocked(prisma.analyticsSnapshot.deleteMany).mockResolvedValueOnce({ count: 3 } as never);
+
+    const result = await pruneAnalyticsSnapshots({ olderThanDays: 30 });
+
+    expect(result.deleted).toBe(3);
+    expect(prisma.analyticsSnapshot.deleteMany).toHaveBeenCalledWith({
+      where: {
+        capturedAt: { lt: new Date("2025-03-16T00:00:00.000Z") },
+        NOT: {
+          contextKey: "financial-planning",
+          rangePreset: "monthly",
+        },
+      },
+    });
+  });
+});

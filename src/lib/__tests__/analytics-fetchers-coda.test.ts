@@ -384,8 +384,8 @@ describe("coda analytics fetcher", () => {
 
     expect(data.funnel?.stages).toEqual([
       { key: "submissions", label: "Submissions", count: 4 },
-      { key: "cardsCreated", label: "Cards Created", count: 5 },
-      { key: "cardsCompleted", label: "Cards Completed", count: 2 },
+      { key: "cardsCreated", label: "Downloads Started", count: 5 },
+      { key: "cardsCompleted", label: "Downloads Completed", count: 2 },
     ]);
     expect(data.funnel?.conversions).toEqual([
       { from: "submissions", to: "cardsCreated", ratePct: 125 },

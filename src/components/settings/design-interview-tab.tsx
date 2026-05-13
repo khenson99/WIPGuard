@@ -177,7 +177,7 @@ export function DesignInterviewTab() {
                 Design Research Ops
               </span>
               <div>
-                <h2 className="text-xl font-semibold">Arda Design Interview</h2>
+                <h2 className="text-xl font-semibold">Imladris Design Interview</h2>
                 <p className="mt-1 text-sm text-white/75">
                   Run the self-interview as a repeatable workflow: prep the interviewer,
                   copy the AI prompt, collect the raw transcript, and turn it into the
@@ -489,7 +489,7 @@ export function DesignInterviewTab() {
                   Prompt Launch Pad
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Keep the AI conversation outside WIPGuard, but use this as the source of truth
+                  Keep the AI conversation outside Imladris, but use this as the source of truth
                   for the prompt and workflow.
                 </p>
 

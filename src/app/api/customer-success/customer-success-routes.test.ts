@@ -20,6 +20,8 @@ vi.mock("@/lib/customer-success/service", () => {
     CustomerSuccessServiceError,
     getCustomerSuccessPortfolio: vi.fn(),
     getCustomerSuccessAccountDetail: vi.fn(),
+    getCustomerSuccessAlertFeed: vi.fn(),
+    getCustomerSuccessActivityFeed: vi.fn(),
     createCustomerSuccessNote: vi.fn(),
     createCustomerSuccessPlan: vi.fn(),
     createCustomerSuccessOutreachDraft: vi.fn(),
@@ -84,6 +86,57 @@ describe("customer-success mutation routes", () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({ error: "Unauthorized" });
+  });
+
+  it("passes through auth failures for alert feed reads", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessAlertFeed } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    });
+
+    const { GET } = await import("@/app/api/customer-success/alerts/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/alerts"));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
+    expect(getCustomerSuccessAlertFeed).not.toHaveBeenCalled();
+  });
+
+  it("passes through auth failures for activity feed reads", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessActivityFeed } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    });
+
+    const { GET } = await import("@/app/api/customer-success/activity/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/activity"));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: "Unauthorized" });
+    expect(getCustomerSuccessActivityFeed).not.toHaveBeenCalled();
+  });
+
+  it("passes through auth failures for account detail reads", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessAccountDetail } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    });
+
+    const { GET } = await import("@/app/api/customer-success/accounts/[accountId]/route");
+    const response = await GET(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1"),
+      accountContext()
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
+    expect(getCustomerSuccessAccountDetail).not.toHaveBeenCalled();
   });
 
   it("passes through auth failures for alert updates", async () => {
@@ -151,6 +204,64 @@ describe("customer-success mutation routes", () => {
     expect(createCustomerSuccessPlan).not.toHaveBeenCalled();
   });
 
+  it("passes through auth failures for outreach draft creation", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessOutreachDraft } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    });
+
+    const { POST } = await import(
+      "@/app/api/customer-success/accounts/[accountId]/outreach/drafts/route"
+    );
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/drafts", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "owner@example.com",
+          body: "Checking in on renewal risk.",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: "Unauthorized" });
+    expect(createCustomerSuccessOutreachDraft).not.toHaveBeenCalled();
+  });
+
+  it("passes through auth failures for outreach sends", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { sendCustomerSuccessOutreach } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    });
+
+    const { POST } = await import(
+      "@/app/api/customer-success/accounts/[accountId]/outreach/send/route"
+    );
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/send", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "owner@example.com",
+          body: "Following up on onboarding blockers.",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
+    expect(sendCustomerSuccessOutreach).not.toHaveBeenCalled();
+  });
+
   it("returns the customer-success portfolio for authenticated actors", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { getCustomerSuccessPortfolio } = await import("@/lib/customer-success/service");
@@ -178,6 +289,126 @@ describe("customer-success mutation routes", () => {
 
     expect(response.status).toBe(200);
     expect(getCustomerSuccessPortfolio).toHaveBeenCalledWith(ACTOR);
+  });
+
+  it("returns 500s for unexpected portfolio read failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessPortfolio } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessPortfolio).mockRejectedValue(new Error("Portfolio store unavailable"));
+
+    const { GET } = await import("@/app/api/customer-success/portfolio/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/portfolio"));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Portfolio store unavailable" });
+  });
+
+  it("returns fallback 500s for non-error portfolio read failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessPortfolio } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessPortfolio).mockRejectedValue("portfolio failure");
+
+    const { GET } = await import("@/app/api/customer-success/portfolio/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/portfolio"));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Failed to load customer success portfolio" });
+  });
+
+  it("returns the customer-success alert feed for authenticated actors", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessAlertFeed } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessAlertFeed).mockResolvedValue({
+      generatedAt: "2026-03-10T08:00:00.000Z",
+      alerts: [{ id: "alert_1", accountId: "acct_1", severity: "HIGH", title: "Engagement dropped" }],
+    } as never);
+
+    const { GET } = await import("@/app/api/customer-success/alerts/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/alerts"));
+
+    expect(response.status).toBe(200);
+    expect(getCustomerSuccessAlertFeed).toHaveBeenCalledWith(ACTOR);
+  });
+
+  it("returns the customer-success activity feed for authenticated actors", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessActivityFeed } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessActivityFeed).mockResolvedValue({
+      generatedAt: "2026-03-10T08:00:00.000Z",
+      items: [
+        { id: "activity_1", accountId: "acct_1", type: "NOTE_CREATED", title: "Renewal follow-up captured" },
+      ],
+    } as never);
+
+    const { GET } = await import("@/app/api/customer-success/activity/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/activity"));
+
+    expect(response.status).toBe(200);
+    expect(getCustomerSuccessActivityFeed).toHaveBeenCalledWith(ACTOR);
+  });
+
+  it("returns 500s for unexpected alert feed failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessAlertFeed } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessAlertFeed).mockRejectedValue(new Error("Alert store unavailable"));
+
+    const { GET } = await import("@/app/api/customer-success/alerts/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/alerts"));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Alert store unavailable" });
+  });
+
+  it("returns 500s for unexpected activity feed failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessActivityFeed } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessActivityFeed).mockRejectedValue(new Error("Activity store unavailable"));
+
+    const { GET } = await import("@/app/api/customer-success/activity/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/activity"));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Activity store unavailable" });
+  });
+
+  it("returns fallback 500s for non-error alert feed failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessAlertFeed } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessAlertFeed).mockRejectedValue("alert failure");
+
+    const { GET } = await import("@/app/api/customer-success/alerts/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/alerts"));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Failed to load customer success alerts" });
+  });
+
+  it("returns fallback 500s for non-error activity feed failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessActivityFeed } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessActivityFeed).mockRejectedValue("activity failure");
+
+    const { GET } = await import("@/app/api/customer-success/activity/route");
+    const response = await GET(new NextRequest("http://localhost/api/customer-success/activity"));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Failed to load customer success activity" });
   });
 
   it("maps note requests into createCustomerSuccessNote", async () => {
@@ -257,6 +488,73 @@ describe("customer-success mutation routes", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({ error: "Account id is required" });
     expect(createCustomerSuccessNote).not.toHaveBeenCalled();
+  });
+
+  it("maps customer-success service errors for note creation", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessNote, CustomerSuccessServiceError } = await import(
+      "@/lib/customer-success/service"
+    );
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(createCustomerSuccessNote).mockRejectedValue(
+      new CustomerSuccessServiceError("Note visibility is invalid", 400)
+    );
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/notes/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/notes", {
+        method: "POST",
+        body: JSON.stringify({ body: "Capture renewal risk and stakeholder changes" }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Note visibility is invalid" });
+  });
+
+  it("returns 500s for unexpected note creation failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessNote } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(createCustomerSuccessNote).mockRejectedValue(new Error("Note store unavailable"));
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/notes/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/notes", {
+        method: "POST",
+        body: JSON.stringify({ body: "Capture renewal risk and stakeholder changes" }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Note store unavailable" });
+  });
+
+  it("returns generic 500s for non-error note creation failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessNote } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(createCustomerSuccessNote).mockRejectedValue("note-store-down");
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/notes/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/notes", {
+        method: "POST",
+        body: JSON.stringify({ body: "Capture renewal risk and stakeholder changes" }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Failed to create customer success note" });
   });
 
   it("filters blank milestone titles before creating success plans", async () => {
@@ -501,6 +799,97 @@ describe("customer-success mutation routes", () => {
     expect(getCustomerSuccessAccountDetail).toHaveBeenCalledWith(ACTOR, "acct_1");
   });
 
+  it("rejects account detail reads when account id is missing", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessAccountDetail } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+
+    const { GET } = await import("@/app/api/customer-success/accounts/[accountId]/route");
+    const response = await GET(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1"),
+      accountContext("")
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Account id is required" });
+    expect(getCustomerSuccessAccountDetail).not.toHaveBeenCalled();
+  });
+
+  it("returns 500s for unexpected account detail failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessAccountDetail } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessAccountDetail).mockRejectedValue(new Error("Account store unavailable"));
+
+    const { GET } = await import("@/app/api/customer-success/accounts/[accountId]/route");
+    const response = await GET(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1"),
+      accountContext()
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Account store unavailable" });
+  });
+
+  it("returns fallback 500s for non-error account detail failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { getCustomerSuccessAccountDetail } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(getCustomerSuccessAccountDetail).mockRejectedValue("account failure");
+
+    const { GET } = await import("@/app/api/customer-success/accounts/[accountId]/route");
+    const response = await GET(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1"),
+      accountContext()
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Failed to load customer success account" });
+  });
+
+  it("maps outreach draft requests into createCustomerSuccessOutreachDraft", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessOutreachDraft } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(createCustomerSuccessOutreachDraft).mockResolvedValue({ id: "draft_1" } as never);
+
+    const { POST } = await import(
+      "@/app/api/customer-success/accounts/[accountId]/outreach/drafts/route"
+    );
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/drafts", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "ops@example.com",
+          recipientName: "Pat",
+          templateKey: "renewal-recovery",
+          subject: "Recovery plan draft",
+          body: "Drafting the next step plan.",
+          metadata: { source: "workspace" },
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(201);
+    expect(createCustomerSuccessOutreachDraft).toHaveBeenCalledWith(ACTOR, {
+      accountId: "acct_1",
+      channel: "EMAIL",
+      recipientAddress: "ops@example.com",
+      recipientName: "Pat",
+      templateKey: "renewal-recovery",
+      subject: "Recovery plan draft",
+      body: "Drafting the next step plan.",
+      metadata: { source: "workspace" },
+    });
+  });
+
   it("validates required outreach draft fields", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { createCustomerSuccessOutreachDraft } = await import("@/lib/customer-success/service");
@@ -522,6 +911,33 @@ describe("customer-success mutation routes", () => {
     await expect(response.json()).resolves.toEqual({
       error: "channel, recipientAddress, and body are required",
     });
+  });
+
+  it("rejects outreach draft creation when account id is missing", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessOutreachDraft } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+
+    const { POST } = await import(
+      "@/app/api/customer-success/accounts/[accountId]/outreach/drafts/route"
+    );
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/drafts", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "ops@example.com",
+          body: "Sharing the latest recovery plan.",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext("")
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Account id is required" });
+    expect(createCustomerSuccessOutreachDraft).not.toHaveBeenCalled();
   });
 
   it("maps outreach send requests into sendCustomerSuccessOutreach", async () => {
@@ -560,6 +976,218 @@ describe("customer-success mutation routes", () => {
       body: "Here is the recovery plan.",
       metadata: { source: "cs-workspace" },
     });
+  });
+
+  it("validates required outreach send fields", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { sendCustomerSuccessOutreach } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/outreach/send/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/send", {
+        method: "POST",
+        body: JSON.stringify({ recipientAddress: "ops@example.com" }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(400);
+    expect(sendCustomerSuccessOutreach).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({
+      error: "channel, recipientAddress, and body are required",
+    });
+  });
+
+  it("rejects outreach sends when account id is missing", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { sendCustomerSuccessOutreach } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/outreach/send/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/send", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "champion@example.com",
+          body: "Checking in on implementation milestones.",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext("")
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Account id is required" });
+    expect(sendCustomerSuccessOutreach).not.toHaveBeenCalled();
+  });
+
+  it("maps customer-success service errors for outreach draft creation", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessOutreachDraft, CustomerSuccessServiceError } = await import(
+      "@/lib/customer-success/service"
+    );
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(createCustomerSuccessOutreachDraft).mockRejectedValue(
+      new CustomerSuccessServiceError("Outreach template is invalid", 400)
+    );
+
+    const { POST } = await import(
+      "@/app/api/customer-success/accounts/[accountId]/outreach/drafts/route"
+    );
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/drafts", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "ops@example.com",
+          body: "Sharing a follow-up draft.",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Outreach template is invalid" });
+  });
+
+  it("maps customer-success service errors for outreach sends", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { sendCustomerSuccessOutreach, CustomerSuccessServiceError } = await import(
+      "@/lib/customer-success/service"
+    );
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(sendCustomerSuccessOutreach).mockRejectedValue(
+      new CustomerSuccessServiceError("Recipient address is invalid", 400)
+    );
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/outreach/send/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/send", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "ops@example.com",
+          body: "Sharing the implementation follow-up.",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Recipient address is invalid" });
+  });
+
+  it("returns 500s for unexpected outreach draft creation failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessOutreachDraft } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(createCustomerSuccessOutreachDraft).mockRejectedValue(new Error("Draft store unavailable"));
+
+    const { POST } = await import(
+      "@/app/api/customer-success/accounts/[accountId]/outreach/drafts/route"
+    );
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/drafts", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "ops@example.com",
+          body: "Sharing a follow-up draft.",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Draft store unavailable" });
+  });
+
+  it("returns 500s for unexpected outreach send failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { sendCustomerSuccessOutreach } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(sendCustomerSuccessOutreach).mockRejectedValue(new Error("Message queue unavailable"));
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/outreach/send/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/send", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "ops@example.com",
+          body: "Sending the implementation follow-up.",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Message queue unavailable" });
+  });
+
+  it("returns fallback 500s for non-error outreach draft creation failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { createCustomerSuccessOutreachDraft } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(createCustomerSuccessOutreachDraft).mockRejectedValue("draft failure");
+
+    const { POST } = await import(
+      "@/app/api/customer-success/accounts/[accountId]/outreach/drafts/route"
+    );
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/drafts", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "ops@example.com",
+          body: "Sharing a follow-up draft.",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Failed to create outreach draft" });
+  });
+
+  it("returns fallback 500s for non-error outreach send failures", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { sendCustomerSuccessOutreach } = await import("@/lib/customer-success/service");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(sendCustomerSuccessOutreach).mockRejectedValue("send failure");
+
+    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/outreach/send/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/outreach/send", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: "EMAIL",
+          recipientAddress: "ops@example.com",
+          body: "Sending the implementation follow-up.",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+      accountContext()
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Failed to queue outreach send" });
   });
 
   it("maps customer-success service errors for alert updates", async () => {

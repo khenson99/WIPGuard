@@ -589,9 +589,9 @@ export function IntegrationsTab() {
   return (
     <div className="max-w-6xl space-y-4">
       <div>
-        <h2 className="text-base font-semibold text-foreground">Integrations</h2>
+        <h2 className="text-base font-semibold text-foreground">Sources</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          Full integration operations live here: connection health, rule configuration, and remediation actions.
+          Provider operations live here: connection health, source freshness, rule configuration, and remediation actions.
         </p>
       </div>
 

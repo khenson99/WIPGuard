@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Target, Wallet, AlertTriangle, TrendingDown } from "lucide-react";
-import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import type {
+  AnalyticsDashboardData,
+  FinanceBudgetActualMetric,
+  FinanceBudgetActualsMetric,
+} from "@/lib/analytics/types";
 import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-state";
 import { StatCard } from "@/components/analytics/stat-card";
 import { BarDisplay } from "@/components/analytics/bar-display";
@@ -16,9 +20,6 @@ import {
   type DataTableColumn,
 } from "./dashboard-primitives";
 import {
-  computeBudgetSummary,
-} from "@/lib/analytics/budget-variance";
-import {
   defaultDateRange,
   endDateForPeriod,
   type BudgetPeriod,
@@ -28,6 +29,7 @@ import { computeFinancialGoals, type FinancialGoal } from "@/lib/analytics/finan
 
 type BudgetPeriodApi = BudgetPeriod;
 type BudgetCategoryApi = "COGS" | "PAYROLL" | "MARKETING" | "INFRASTRUCTURE" | "OPS" | "OTHER";
+type BudgetDataWithActuals = NonNullable<NonNullable<AnalyticsDashboardData["financialPlanning"]>["activeBudget"]>;
 
 type BudgetLineItemApi = {
   id: string;
@@ -56,6 +58,61 @@ const CATEGORY_CONFIG: Array<{ key: BudgetCategoryApi; label: string }> = [
   { key: "OTHER", label: "Other" },
 ];
 
+const EMPTY_BUDGET_METRIC: FinanceBudgetActualsMetric = {
+  budgetId: "",
+  budgetName: "",
+  totalBudget: 0,
+  totalActual: 0,
+  totalVariance: 0,
+  totalVariancePct: 0,
+  overspendCategories: [],
+  items: [],
+};
+
+function normalizeBudgetCategory(value: string): string {
+  const normalized = value.trim().toUpperCase();
+  return CATEGORY_CONFIG.find((category) => category.key === normalized)?.label ?? value;
+}
+
+function budgetStatus(variance: number | null): FinanceBudgetActualMetric["status"] {
+  if (variance == null) return "on_track";
+  if (variance > 0) return "over";
+  if (variance < 0) return "under";
+  return "on_track";
+}
+
+function buildBudgetActualsFromBudget(budget: BudgetDataWithActuals | null | undefined): FinanceBudgetActualsMetric | null {
+  if (!budget || budget.lineItems.length === 0) return null;
+
+  const items = budget.lineItems.map((item) => ({
+    category: normalizeBudgetCategory(item.category),
+    budgeted: item.plannedAmount,
+    actual: item.actualAmount,
+    variance: item.variance,
+    variancePct: item.variancePct,
+    status: budgetStatus(item.variance),
+  }));
+  const totalBudget = budget.totalPlanned ?? items.reduce((sum, item) => sum + item.budgeted, 0);
+  const totalActual =
+    budget.totalActual ?? (items.every((item) => item.actual != null) ? items.reduce((sum, item) => sum + (item.actual ?? 0), 0) : null);
+  const totalVariance =
+    budget.totalVariance ?? (totalActual != null ? totalActual - totalBudget : null);
+  const totalVariancePct =
+    totalVariance != null && totalBudget > 0 ? (totalVariance / totalBudget) * 100 : null;
+
+  return {
+    budgetId: budget.id,
+    budgetName: budget.name,
+    totalBudget,
+    totalActual,
+    totalVariance,
+    totalVariancePct,
+    overspendCategories: items
+      .filter((item) => item.actual != null && item.status === "over")
+      .map((item) => item.category),
+    items,
+  };
+}
 
 function emptyAmounts(): Record<BudgetCategoryApi, string> {
   return {
@@ -107,15 +164,6 @@ interface FinancePlanningTabProps {
   data: AnalyticsDashboardData | null;
 }
 
-type BudgetVarianceRow = {
-  category: string;
-  budgeted: number;
-  actual: number | null;
-  variance: number | null;
-  variancePct: number | null;
-  status: "under" | "on_track" | "over";
-};
-
 export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
   const [budgets, setBudgets] = useState<BudgetApi[]>([]);
   const [budgetsLoading, setBudgetsLoading] = useState(true);
@@ -158,6 +206,14 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
   }, [hasFinanceData, loadBudgets]);
 
   const activeBudget = budgets[0] ?? null;
+  const activeBudgetWithActuals = useMemo(() => {
+    if (!activeBudget) return data?.financialPlanning?.activeBudget ?? null;
+    return (
+      data?.financialPlanning?.budgets.find((budget) => budget.id === activeBudget.id) ??
+      data?.financialPlanning?.activeBudget ??
+      null
+    );
+  }, [activeBudget, data?.financialPlanning]);
 
   const seedFormDefaults = useCallback((period: BudgetPeriodApi = "MONTHLY") => {
     const range = defaultDateRange(period);
@@ -200,74 +256,17 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
     seedFormFromBudget,
   ]);
 
-  const activeBudgetWithActuals = useMemo(() => {
-    if (!activeBudget) return data?.financialPlanning?.activeBudget ?? null;
-    const serverBudget = data?.financialPlanning?.budgets.find((budget) => budget.id === activeBudget.id);
-    return serverBudget ?? data?.financialPlanning?.activeBudget ?? null;
-  }, [activeBudget, data?.financialPlanning]);
-
   /* ── Computed data ────────────────────────────────── */
 
-  const budgetItems = useMemo(
-    () =>
-      (activeBudgetWithActuals?.lineItems ?? []).map((item) => ({
-        category: item.category,
-        budgeted: item.plannedAmount,
-        actual: item.actualAmount,
-        variance: item.variance,
-        variancePct: item.variancePct,
-        status:
-          item.variance == null || item.variancePct == null
-            ? "on_track"
-            : item.variance > 0
-              ? "over"
-              : item.variance < 0
-                ? "under"
-                : "on_track",
-      })) satisfies BudgetVarianceRow[],
-    [activeBudgetWithActuals],
+  const budgetSummary =
+    data?.metrics?.finance.budgetActuals ??
+    buildBudgetActualsFromBudget(activeBudgetWithActuals) ??
+    EMPTY_BUDGET_METRIC;
+  const budgetItems = budgetSummary.items;
+
+  const hasBudgetBaseline = Boolean(
+    budgetSummary.budgetId || (activeBudget && activeBudget.lineItems?.length),
   );
-
-  const budgetSummary = useMemo(() => {
-    const totalBudget =
-      activeBudgetWithActuals?.totalPlanned ??
-      budgetItems.reduce((sum, item) => sum + item.budgeted, 0);
-    const hasActuals = budgetItems.length > 0 && budgetItems.every((item) => item.actual != null);
-
-    if (!hasActuals) {
-      return {
-        totalBudget,
-        totalActual: null,
-        totalVariance: null,
-        totalVariancePct: null,
-        overspendCategories: [] as string[],
-      };
-    }
-
-    const summary = computeBudgetSummary(
-      budgetItems.map((item) => ({
-        category: item.category,
-        budgeted: item.budgeted,
-        actual: item.actual ?? 0,
-        variance: item.variance ?? 0,
-        variancePct: item.variancePct ?? 0,
-        status: item.status,
-      })),
-    );
-
-    return {
-      totalBudget: activeBudgetWithActuals?.totalPlanned ?? summary.totalBudget,
-      totalActual: activeBudgetWithActuals?.totalActual ?? summary.totalActual,
-      totalVariance: activeBudgetWithActuals?.totalVariance ?? summary.totalVariance,
-      totalVariancePct:
-        activeBudgetWithActuals?.totalVariance != null && totalBudget > 0
-          ? (activeBudgetWithActuals.totalVariance / totalBudget) * 100
-          : summary.totalVariancePct,
-      overspendCategories: summary.overspendCategories,
-    };
-  }, [activeBudgetWithActuals, budgetItems]);
-
-  const hasBudgetBaseline = Boolean(activeBudgetWithActuals && activeBudgetWithActuals.lineItems?.length);
   const hasBudgetVarianceData = budgetSummary.totalActual != null;
 
   const goals = useMemo<FinancialGoal[]>(
@@ -349,9 +348,11 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
 
     // Info: budget surplus
     if (hasBudgetBaseline && budgetSummary.totalVariance != null && budgetSummary.totalVariance < 0) {
+      const variancePct =
+        budgetSummary.totalVariancePct != null ? fmtPct(Math.abs(budgetSummary.totalVariancePct)) : "n/a";
       items.push({
         title: "Under Budget Overall",
-        insight: `Total spending is ${fmt$(Math.abs(budgetSummary.totalVariance))} under budget (${fmtPct(Math.abs(budgetSummary.totalVariancePct))}). Consider reallocating surplus to growth areas.`,
+        insight: `Total spending is ${fmt$(Math.abs(budgetSummary.totalVariance))} under budget (${variancePct}). Consider reallocating surplus to growth areas.`,
         severity: "info",
       });
     }
@@ -414,7 +415,7 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
 
   /* ── Budget variance table columns ────────────────── */
 
-  const budgetColumns: DataTableColumn<BudgetVarianceRow>[] = useMemo(
+  const budgetColumns: DataTableColumn<FinanceBudgetActualMetric>[] = useMemo(
     () => [
       {
         key: "category",
@@ -433,7 +434,7 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
       },
       {
         key: "actual",
-        header: "Actual",
+        header: "Est. Actual",
         align: "right" as const,
         render: (row) => (
           <span className="tabular-nums text-foreground">
@@ -443,7 +444,7 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
       },
       {
         key: "variance",
-        header: "Variance",
+        header: "Est. Variance",
         align: "right" as const,
         render: (row) => row.variance != null ? (
           <span
@@ -685,7 +686,7 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
           icon={Wallet}
         />
         <StatCard
-          label="Total Actual"
+          label="Est. Actual"
           value={budgetSummary.totalActual != null ? fmt$(budgetSummary.totalActual) : "—"}
           change={
             hasBudgetBaseline && budgetSummary.totalVariancePct != null
@@ -704,7 +705,7 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
           icon={TrendingDown}
         />
         <StatCard
-          label="Variance"
+          label="Est. Variance"
           value={hasBudgetBaseline && budgetSummary.totalVariance != null ? fmtDelta(budgetSummary.totalVariance) : "—"}
           changeType={
             hasBudgetBaseline && budgetSummary.totalVariance != null
@@ -740,7 +741,10 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
       </div>
 
       {/* Budget Variance Table */}
-      <SectionCard title="Budget vs Actual" subtitle="Monthly budget variance by category">
+      <SectionCard title="Budget vs Estimated Actuals" subtitle="Mercury-based budget variance by category">
+        <div className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
+          Estimated actuals are derived from aggregate Mercury outflows until transaction categories are mapped to budget lines.
+        </div>
         <DataTable
           columns={budgetColumns}
           rows={budgetItems}

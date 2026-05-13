@@ -6,7 +6,10 @@ import { DashboardErrorBanner } from "@/components/dashboard/dashboard-error-ban
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-state";
 import { DashboardStaleBanner } from "@/components/dashboard/dashboard-stale-banner";
 import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
-import type { CustomerSuccessAccountDetail } from "@/lib/customer-success/types";
+import type {
+  CustomerSuccessAccountDetail,
+  CustomerSuccessRetentionSummary,
+} from "@/lib/customer-success/types";
 
 type WorkspaceTab =
   | "overview"
@@ -52,6 +55,19 @@ function formatNumber(value?: number): string {
 function formatPercent(value?: number): string {
   if (value === undefined || value === null) return "—";
   return `${value.toFixed(1)}%`;
+}
+
+function describeArdaCoverage(
+  retention: CustomerSuccessRetentionSummary
+): string | null {
+  if (!retention.coverage.arda) return null;
+  if (retention.ardaAdoptionCountsSource === "ARDA_ACTIVITY") {
+    return `Arda activity records are live (${retention.ardaDirectActivityCounts?.orders ?? 0} orders, ${retention.ardaDirectActivityCounts?.cards ?? 0} cards, ${retention.ardaDirectActivityCounts?.items ?? 0} items).`;
+  }
+  if (retention.ardaAdoptionCountsSource === "ARDA_USER_DETAILS") {
+    return `Arda activity history is unavailable; adoption breadth falls back to User Details (${retention.ardaUserDetailsCounts?.cards ?? 0} cards, ${retention.ardaUserDetailsCounts?.items ?? 0} items).`;
+  }
+  return "Arda tenant metadata is connected, but no activity history is currently available.";
 }
 
 function formatHealthTone(score: number): string {
@@ -176,6 +192,7 @@ export function CustomerSuccessAccountWorkspace({ accountId }: { accountId: stri
   const relationship = detail.relationshipIntelligence;
   const retention = relationship?.retention;
   const coda = relationship?.coda;
+  const ardaCoverageDescription = retention ? describeArdaCoverage(retention) : null;
 
   return (
     <div className="space-y-6">
@@ -280,7 +297,7 @@ export function CustomerSuccessAccountWorkspace({ accountId }: { accountId: stri
               </div>
               <div className="rounded-xl border border-border bg-background p-4">
                 <p className="text-xs text-muted-foreground">Connected Systems</p>
-                <p className="mt-1 text-sm font-medium text-foreground">{relationship?.providers.length ?? 0}</p>
+                <p className="mt-1 text-sm font-medium text-foreground">{relationship?.connectedSystems ?? relationship?.providers.length ?? 0}</p>
               </div>
               <div className="rounded-xl border border-border bg-background p-4">
                 <p className="text-xs text-muted-foreground">Primary LIR</p>
@@ -296,7 +313,7 @@ export function CustomerSuccessAccountWorkspace({ accountId }: { accountId: stri
                   <div>
                     <h3 className="text-sm font-semibold text-foreground">Relationship Intelligence</h3>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Unified provider links, Coda account metadata, and current retention posture.
+                      Unified provider links, Arda and Coda account metadata, and current retention posture.
                     </p>
                   </div>
                   {retention ? (
@@ -327,6 +344,9 @@ export function CustomerSuccessAccountWorkspace({ accountId }: { accountId: stri
 
                 {retention?.explanation ? (
                   <p className="mt-4 text-sm text-muted-foreground">{retention.explanation}</p>
+                ) : null}
+                {ardaCoverageDescription ? (
+                  <p className="mt-2 text-xs text-muted-foreground">{ardaCoverageDescription}</p>
                 ) : null}
 
                 <div className="mt-4 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
@@ -387,6 +407,19 @@ export function CustomerSuccessAccountWorkspace({ accountId }: { accountId: stri
                               </a>
                             ) : null}
                           </div>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {relationship.arda ? (
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Arda</h4>
+                        <div className="mt-2 space-y-2 text-sm">
+                          <p className="text-muted-foreground">Tenant: <span className="text-foreground">{relationship.arda.tenantName || relationship.arda.companyName || "—"}</span></p>
+                          <p className="text-muted-foreground">Configured Tenant ID: <span className="text-foreground">{relationship.arda.configuredTenantId || relationship.arda.tenantId || "—"}</span></p>
+                          <p className="text-muted-foreground">Customer Status: <span className="text-foreground">{relationship.arda.customerStatus || "—"}</span></p>
+                          <p className="text-muted-foreground">Configured Health: <span className="text-foreground">{relationship.arda.configuredHealth || "—"}</span></p>
+                          <p className="text-muted-foreground">Source Records: <span className="text-foreground">{formatNumber(relationship.arda.sourceRecordCount)}</span></p>
                         </div>
                       </div>
                     ) : null}
