@@ -36,8 +36,8 @@ export const VERSION_SUNSET_DATES: Partial<Record<ApiVersion, string>> = {
  * Returns the version string if found, or the current default version.
  *
  * @example
- * extractVersionFromPath("/api/v1/tasks") // "v1"
- * extractVersionFromPath("/api/tasks") // CURRENT_API_VERSION
+ * extractVersionFromPath("/api/v1/deals") // "v1"
+ * extractVersionFromPath("/api/analytics") // CURRENT_API_VERSION
  */
 export function extractVersionFromPath(pathname: string): ApiVersion {
   const versionMatch = pathname.match(/\/api\/(v\d+)\//);
@@ -95,7 +95,7 @@ export function addVersionHeaders(
  *
  * @example
  * export async function GET(request: Request) {
- *   const data = await fetchTasks();
+ *   const data = await fetchDeals();
  *   return versionedResponse(data, "v1");
  * }
  */
@@ -125,7 +125,7 @@ export function versionedErrorResponse(
  * Used for route aliasing.
  *
  * @example
- * resolveVersionedPath("/api/tasks") // "/api/v1/tasks"
+ * resolveVersionedPath("/api/analytics") // "/api/v1/analytics"
  */
 export function resolveVersionedPath(path: string): string {
   // Already versioned

@@ -5,6 +5,7 @@ import {
   makePortfolio,
 } from "@/components/analytics/__tests__/customer-success-test-helpers";
 import { CustomerSuccessTab } from "@/components/analytics/customer-success-tab";
+import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 
 describe("CustomerSuccessTab", () => {
   beforeEach(() => {
@@ -38,7 +39,8 @@ describe("CustomerSuccessTab", () => {
     expect(screen.getByText("Renewal risk rising")).toBeTruthy();
     expect(screen.getByText("QBR completed")).toBeTruthy();
     expect(screen.getByText("Integration Delivery Status")).toBeTruthy();
-    expect(screen.getByText("Accounts With Coda")).toBeTruthy();
+    expect(screen.getByText("Pylon")).toBeTruthy();
+    expect(screen.getAllByText("Accounts With Coda").length).toBeGreaterThan(0);
     expect(screen.getAllByText("At Risk").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Missing pylon/).length).toBeGreaterThan(0);
     expect(screen.getByText("Connected but stale")).toBeTruthy();
@@ -49,8 +51,8 @@ describe("CustomerSuccessTab", () => {
     expect(screen.getAllByText("Activity recency").length).toBeGreaterThan(0);
     expect(screen.getAllByText("7d since touch").length).toBeGreaterThan(0);
     expect(screen.getByText("Rebalance urgent queue ownership")).toBeTruthy();
-    expect(screen.getByText("Throttle backlog inflow")).toBeTruthy();
-    expect(screen.getByText("Review overdue task assignments")).toBeTruthy();
+    expect(screen.getByText("Clear the waiting-on-team queue")).toBeTruthy();
+    expect(screen.getByText("Tighten first-response coverage")).toBeTruthy();
 
     const table = screen.getByRole("table");
     const dataRows = within(table).getAllByRole("row").slice(1);
@@ -160,5 +162,32 @@ describe("CustomerSuccessTab", () => {
     expect((screen.getByLabelText("Sort portfolio accounts") as HTMLSelectElement).value).toBe("alerts");
     expect((screen.getByLabelText("Only risky signals") as HTMLInputElement).checked).toBe(true);
     expect(screen.getByText("Indicator filter: Activity recency.")).toBeTruthy();
+  });
+
+  it("keeps the pylon state visible when connected but no payload is returned", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => makePortfolio(),
+      }))
+    );
+
+    const data = makeAnalyticsData();
+    data.pylon = null as unknown as AnalyticsDashboardData["pylon"];
+    data.freshness.pylon = {
+      status: "CONNECTED",
+      stale: false,
+    };
+
+    render(<CustomerSuccessTab data={data} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Portfolio Accounts")).toBeTruthy();
+    });
+
+    expect(screen.getAllByText("Connected but no data").length).toBeGreaterThan(0);
+    expect(screen.getByText("Conversation telemetry unavailable for the selected range")).toBeTruthy();
   });
 });

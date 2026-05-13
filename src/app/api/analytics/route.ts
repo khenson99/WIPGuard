@@ -47,7 +47,6 @@ import type {
   GoalMetric,
   GoalStatus,
   IntegrationTelemetryData,
-  ProductSuccessData,
   StripeData,
   MercuryData,
   MercuryExpenseMapping,
@@ -72,7 +71,6 @@ type DomainKey =
   | "coda"
   | "semrush"
   | "pylon"
-  | "product"
   | "googleWorkspace"
   | "slack"
   | "hubspotOps"
@@ -102,7 +100,6 @@ const ALL_DOMAINS: DomainKey[] = [
   "coda",
   "semrush",
   "pylon",
-  "product",
   "googleWorkspace",
   "slack",
   "hubspotOps",
@@ -125,7 +122,6 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "stripe",
     "mercury",
     "pylon",
-    "product",
     "googleWorkspace",
     "slack",
     "lifecycleFunnel",
@@ -188,7 +184,6 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "customer-success": [
     "pylon",
     "coda",
-    "product",
     "googleWorkspace",
     "slack",
     "codaOps",
@@ -497,46 +492,6 @@ async function hydrateStripeCustomerLinks(
   });
 }
 
-async function computeProductSuccessData(from: Date, to: Date): Promise<ProductSuccessData> {
-  const [createdTasksInRange, completedTasksInRange, overdueOpenTasks, contributors] = await Promise.all([
-    prisma.task.count({ where: { createdAt: { gte: from, lte: to } } }),
-    prisma.task.count({ where: { completedOn: { gte: from, lte: to } } }),
-    prisma.task.count({
-      where: {
-        status: { not: "DONE" },
-        dueDate: { lt: to },
-      },
-    }),
-    prisma.statusHistory.findMany({
-      where: {
-        changedAt: { gte: from, lte: to },
-        changedBy: { not: null },
-      },
-      distinct: ["changedBy"],
-      select: { changedBy: true },
-    }),
-  ]);
-
-  const activeContributors = contributors.filter((entry) => Boolean(entry.changedBy)).length;
-  const backlogGrowth = createdTasksInRange - completedTasksInRange;
-  const throughputRate =
-    createdTasksInRange > 0 ? Math.round((completedTasksInRange / createdTasksInRange) * 10000) / 100 : null;
-
-  return {
-    activeContributors,
-    createdTasksInRange,
-    completedTasksInRange,
-    overdueOpenTasks,
-    backlogGrowth,
-    throughputRate,
-    _meta: {
-      fetchedAt: new Date().toISOString(),
-      nextRefresh: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-      source: "live",
-    },
-  };
-}
-
 function buildRecommendations(data: AnalyticsDashboardData): AnalyticsRecommendation[] {
   const recommendations: AnalyticsRecommendation[] = [];
   const financeSummary = data.metrics?.finance.summary ?? null;
@@ -571,17 +526,6 @@ function buildRecommendations(data: AnalyticsDashboardData): AnalyticsRecommenda
       title: "Cash runway is below 4 months",
       insight: `Estimated runway is ${(financeSummary?.runwayMonths ?? 0).toFixed(1)} months.`,
       suggestedAction: "Cut non-performing spend and prioritize collections/revenue acceleration this month.",
-    });
-  }
-
-  if ((data.product?.backlogGrowth ?? 0) > 0) {
-    recommendations.push({
-      id: "cs-backlog",
-      section: "customer-success",
-      severity: "warning",
-      title: "Execution backlog is growing",
-      insight: `Backlog grew by ${data.product?.backlogGrowth ?? 0} items in the selected range.`,
-      suggestedAction: "Enable queue-throttling automations and rebalance owner load across active contributors.",
     });
   }
 
@@ -625,14 +569,6 @@ const LIVE_FIRST_FINANCE_SECTIONS = new Set([
   "finance-mercury",
   "finance-stripe",
   "finance-hubspot",
-  "finance-planning",
-  "finance-forecast",
-  "finance-pnl",
-  "finance-unit-economics",
-]);
-
-const FINANCIAL_PLANNING_SECTIONS = new Set([
-  "finance",
   "finance-planning",
   "finance-forecast",
   "finance-pnl",
@@ -696,7 +632,7 @@ async function buildFinancialPlanningData(
     { buildProfitAndLossCore: buildProfitAndLoss },
     { computeUnitEconomics },
     { buildDefaultScenarios, buildForecastScenario },
-    { computeBudgetActuals, computeBudgetSummary },
+    { computeBudgetSummary },
   ] = await Promise.all([
     loadPnlBuilder(),
     loadUnitEconomicsBuilder(),
@@ -1512,11 +1448,6 @@ export async function GET(request: Request) {
           },
         }]
       : []),
-    {
-      key: "product" as const,
-      snapshotUserId: userId,
-      fn: () => computeProductSuccessData(fromDate, toDate),
-    },
     {
       key: "googleWorkspace" as const,
       snapshotUserId: integrationUserId,

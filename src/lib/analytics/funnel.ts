@@ -198,7 +198,7 @@ function lifecycleStageDefinitions(): StageDefinition[] {
           detail: "Active returning Kanban users evaluated for opportunities.",
         },
         {
-          source: "Google Workspace Ops",
+          source: "Google Workspace Receipts",
           domain: "googleWorkspace",
           contribution: data.googleWorkspace?.automationsTriggeredInRange ?? 0,
           confidence: data.googleWorkspace ? 0.74 : 0.3,
@@ -281,11 +281,11 @@ function lifecycleStageDefinitions(): StageDefinition[] {
           detail: "Resolved customer conversations.",
         },
         {
-          source: "Slack Ops",
+          source: "Slack Receipts",
           domain: "slack",
           contribution: data.slack?.automationsTriggeredInRange ?? 0,
           confidence: data.slack ? 0.73 : 0.3,
-          detail: "Retention-related workflow execution.",
+          detail: "Retention-related workflow events observed in Slack automation receipts.",
         },
       ],
     },
@@ -294,12 +294,17 @@ function lifecycleStageDefinitions(): StageDefinition[] {
       label: "Full-Funnel Analytics",
       section: "customer-journey",
       rawVolume: (data) =>
-        (data.hubspot?.funnel?.activeSubscriptions ?? 0) +
-        Math.max(0, data.product?.completedTasksInRange ?? 0),
+        Math.max(
+          data.hubspot?.funnel?.activeSubscriptions ?? 0,
+          data.stripe?.subscriptions?.active ?? 0,
+        ),
       trendDelta: (data) => {
-        const throughput = data.product?.throughputRate ?? 0;
-        const prev = Math.max(1, throughput - 5);
-        return toTrendDelta(throughput, prev);
+        const current = Math.max(
+          data.hubspot?.funnel?.activeSubscriptions ?? 0,
+          data.stripe?.subscriptions?.active ?? 0,
+        );
+        const previous = Math.max(1, current - (data.stripe?.subscriptions?.trialing ?? 0));
+        return toTrendDelta(current, previous);
       },
       evidence: (data) => [
         {
@@ -310,11 +315,11 @@ function lifecycleStageDefinitions(): StageDefinition[] {
           detail: "Active base available for expansion.",
         },
         {
-          source: "Product Throughput",
-          domain: "product",
-          contribution: data.product?.completedTasksInRange ?? 0,
-          confidence: data.product ? 0.78 : 0.3,
-          detail: "Feature/ops throughput enabling expansion.",
+          source: "Stripe Active Subscriptions",
+          domain: "stripe",
+          contribution: data.stripe?.subscriptions?.active ?? 0,
+          confidence: data.stripe ? 0.78 : 0.3,
+          detail: "Recurring customer base available for upsell and expansion.",
         },
         {
           source: "Coda Ops",

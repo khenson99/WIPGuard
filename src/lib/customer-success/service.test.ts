@@ -107,28 +107,6 @@ function accountFixture(
         channel: "EMAIL",
       },
     ],
-    tasks: overrides.tasks ?? [
-      {
-        id: `${overrides.id}-task-1`,
-        title: "Review onboarding checklist",
-        status: "DONE",
-        priority: "P1",
-        dueDate: new Date("2026-03-02T00:00:00.000Z"),
-        createdAt: new Date("2026-02-20T00:00:00.000Z"),
-        updatedAt: new Date("2026-03-02T00:00:00.000Z"),
-        completedOn: new Date("2026-03-02T00:00:00.000Z"),
-      },
-      {
-        id: `${overrides.id}-task-2`,
-        title: "Ship exec summary",
-        status: "ACTIVE",
-        priority: "P1",
-        dueDate: new Date("2026-03-15T00:00:00.000Z"),
-        createdAt: new Date("2026-03-01T00:00:00.000Z"),
-        updatedAt: new Date("2026-03-05T00:00:00.000Z"),
-        completedOn: null,
-      },
-    ],
     meetings: overrides.meetings ?? [
       {
         id: `${overrides.id}-meeting-1`,
@@ -172,18 +150,6 @@ describe("customer success service", () => {
           resolvedAt: null,
           suggestedAction: "Create a recovery plan and reschedule kickoff.",
           evidence: ["Kickoff milestone overdue", "No champion response in 10 days"],
-        },
-      ],
-      tasks: [
-        {
-          id: "stalled-task-1",
-          title: "Reschedule kickoff",
-          status: "ACTIVE",
-          priority: "P0",
-          dueDate: new Date("2026-03-01T00:00:00.000Z"),
-          createdAt: new Date("2026-02-20T00:00:00.000Z"),
-          updatedAt: new Date("2026-03-06T00:00:00.000Z"),
-          completedOn: null,
         },
       ],
       outreach: [],
@@ -231,7 +197,6 @@ describe("customer success service", () => {
       meetings: [],
       alerts: [],
       plans: [],
-      tasks: [],
       primaryDealAmount: null,
       renewalDate: null,
       paymentStatus: null,
@@ -386,7 +351,6 @@ describe("customer success service", () => {
     expect(detail.accountId).toBe("acct-partial-detail");
     expect(detail.health.score).toBeGreaterThanOrEqual(0);
     expect(detail.stakeholders).toEqual([]);
-    expect(detail.tasks).toEqual([]);
     expect(detail.successPlan.milestones).toEqual([]);
     expect(detail.outreach.recentMessages).toEqual([]);
   });

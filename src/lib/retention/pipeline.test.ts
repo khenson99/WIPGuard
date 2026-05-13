@@ -157,6 +157,7 @@ describe("retention pipeline helpers", () => {
       configuredTenantId: "",
       tenantName: "Lights Out Manufacturing",
       companyName: "Lights Out Manufacturing",
+      customerName: null,
       customerStatus: "Live",
       health: null,
       mainCodaDocId: "fphF1v7jCB",

@@ -14,11 +14,7 @@ export async function GET() {
       current: CURRENT_API_VERSION,
       supported: Object.values(API_VERSIONS),
       deprecated: VERSION_SUNSET_DATES,
-      endpoints: [
-        "/api/v1/tasks",
-        "/api/v1/projects",
-        "/api/v1/deals",
-      ],
+      endpoints: ["/api/v1/deals"],
       documentation: "See docs/API_VERSIONING.md for versioning policy",
     },
     {

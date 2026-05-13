@@ -123,7 +123,6 @@ function buildDetail(overrides: Partial<CustomerSuccessAccountDetail> = {}): Cus
         lastTouchAt: "2026-03-08T10:00:00.000Z",
       },
     ],
-    tasks: [],
     successPlan: {
       templateKey: "adoption",
       milestones: [],
@@ -294,77 +293,6 @@ describe("CustomerSuccessAccountWorkspace", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/customer-success/accounts/acct_1/notes",
-      expect.objectContaining({ method: "POST" })
-    );
-  });
-
-  it("creates a linked task and refreshes the task list", async () => {
-    let getCount = 0;
-    const initialDetail = buildDetail();
-    const refreshedDetail = buildDetail({
-      tasks: [
-        {
-          id: "task_1",
-          title: "Call champion about rollout",
-          status: "ACTIVE",
-          priority: "P1",
-          dueDate: "2026-03-12T00:00:00.000Z",
-        },
-      ],
-    });
-
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url === "/api/customer-success/accounts/acct_1" && (!init?.method || init.method === "GET")) {
-        getCount += 1;
-        return {
-          ok: true,
-          status: 200,
-          json: async () => (getCount === 1 ? initialDetail : refreshedDetail),
-        } as Response;
-      }
-
-      if (url === "/api/customer-success/accounts/acct_1/tasks" && init?.method === "POST") {
-        return {
-          ok: true,
-          status: 201,
-          json: async () => ({ id: "task_1" }),
-        } as Response;
-      }
-
-      throw new Error(`Unexpected fetch: ${url}`);
-    });
-
-    vi.stubGlobal("fetch", fetchMock);
-
-    render(<CustomerSuccessAccountWorkspace accountId="acct_1" />);
-
-    await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Acme Co" })).toBeTruthy();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Tasks" }));
-    fireEvent.change(screen.getByPlaceholderText("Task title"), {
-      target: { value: "Call champion about rollout" },
-    });
-    fireEvent.change(screen.getByPlaceholderText("Optional notes or handoff context"), {
-      target: { value: "Confirm blocker owners" },
-    });
-    fireEvent.change(screen.getByDisplayValue("P2"), {
-      target: { value: "P1" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Create Task" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Linked task created.")).toBeTruthy();
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Call champion about rollout")).toBeTruthy();
-    });
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/customer-success/accounts/acct_1/tasks",
       expect.objectContaining({ method: "POST" })
     );
   });

@@ -102,7 +102,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     slug: "hubspot",
     provider: IntegrationProvider.HUBSPOT,
     name: "HubSpot",
-    description: "Sync deal stage and lifecycle updates with task transitions.",
+    description: "Sync deal stage, lifecycle, and CRM context across revenue workflows.",
     capabilities: ["Deals", "Contacts"],
     authType: "oauth",
     oauth: {
@@ -130,8 +130,8 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     provider: IntegrationProvider.SLACK,
     name: "Slack",
     description:
-      "Post flow updates to channels and capture tasks from conversations.",
-    capabilities: ["Notifications", "Task capture"],
+      "Post workflow updates to channels and keep team communication in sync.",
+    capabilities: ["Notifications", "Channel updates"],
     authType: "oauth",
     oauth: {
       authorizationEndpoint: "https://slack.com/oauth/v2/authorize",

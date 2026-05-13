@@ -209,7 +209,7 @@ export function TelemetryDashboard({
 
       {/* ── Activity Trend ─────────────────────────── */}
       {trend.length > 0 && (
-        <SectionCard title="Activity Trend" subtitle="Daily automation receipts captured">
+        <SectionCard title="Activity Trend" subtitle="Daily automation receipts">
           <div className="flex items-end gap-1" style={{ height: 120 }}>
             {trend.map((t, i) => (
               <div key={i} className="flex flex-1 flex-col items-center gap-0.5">

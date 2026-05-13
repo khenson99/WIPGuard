@@ -1,26 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IntegrationProvider } from "@/generated/prisma/client";
 import { runRules } from "@/lib/integrations/orchestrator";
-import { runGmailCapture } from "@/lib/integrations/google-gmail-capture";
-import { runGoogleDriveCommentEscalation } from "@/lib/integrations/google-drive-comment-escalation";
-import { runGoogleDriveTranscriptCapture } from "@/lib/integrations/google-drive-transcript-capture";
-import { runGoogleCalendarPrepFollowup } from "@/lib/integrations/google-calendar-followup";
 import { resolveIntegrationOrganizationId } from "@/lib/integrations/ownership";
 import { runProviderMetricsRule } from "@/lib/integrations/provider-metrics-sync";
 import { prisma } from "@/lib/prisma";
 
-vi.mock("@/lib/integrations/google-gmail-capture", () => ({
-  runGmailCapture: vi.fn(),
-}));
-vi.mock("@/lib/integrations/google-drive-comment-escalation", () => ({
-  runGoogleDriveCommentEscalation: vi.fn(),
-}));
-vi.mock("@/lib/integrations/google-drive-transcript-capture", () => ({
-  runGoogleDriveTranscriptCapture: vi.fn(),
-}));
-vi.mock("@/lib/integrations/google-calendar-followup", () => ({
-  runGoogleCalendarPrepFollowup: vi.fn(),
-}));
 vi.mock("@/lib/integrations/provider-metrics-sync", async () => {
   const actual = await vi.importActual<object>(
     "@/lib/integrations/provider-metrics-sync"
@@ -55,8 +39,8 @@ describe("integrations orchestrator", () => {
       {
         id: "r1",
         userId: "user_1",
-        provider: IntegrationProvider.GOOGLE_WORKSPACE,
-        key: "gmail_commitment_capture",
+        provider: IntegrationProvider.GOOGLE_ADS,
+        key: "google_ads_metrics_pull",
         enabled: true,
         statusOverride: null,
         config: {},
@@ -70,8 +54,8 @@ describe("integrations orchestrator", () => {
       {
         id: "r2",
         userId: "user_1",
-        provider: IntegrationProvider.GOOGLE_ADS,
-        key: "google_ads_metrics_pull",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        key: "legacy_workflow_rule",
         enabled: true,
         statusOverride: null,
         config: {},
@@ -101,12 +85,11 @@ describe("integrations orchestrator", () => {
         providers: [IntegrationProvider.GOOGLE_WORKSPACE, IntegrationProvider.GOOGLE_ADS],
         userIds: ["user_1"],
         pageBudget: 3,
-        executedRules: 2,
+        executedRules: 1,
       })
     );
     expect(result.finishedAt).toEqual(expect.any(String));
 
-    expect(runGmailCapture).toHaveBeenCalledWith({ userId: "user_1", dryRun: true });
     expect(runProviderMetricsRule).toHaveBeenCalledWith({
       userId: "user_1",
       ruleKey: "google_ads_metrics_pull",
@@ -114,14 +97,14 @@ describe("integrations orchestrator", () => {
     });
   });
 
-  it("respects pageBudget", async () => {
+  it("skips retired workflow rules when enforcing pageBudget", async () => {
     vi.mocked(resolveIntegrationOrganizationId).mockResolvedValue("org_1");
     vi.mocked(prisma.integrationRule.findMany).mockResolvedValueOnce([
       {
         id: "r1",
         userId: "user_1",
         provider: IntegrationProvider.GOOGLE_WORKSPACE,
-        key: "gmail_commitment_capture",
+        key: "legacy_workflow_rule",
         enabled: true,
         statusOverride: null,
         config: {},
@@ -135,8 +118,8 @@ describe("integrations orchestrator", () => {
       {
         id: "r3",
         userId: "user_1",
-        provider: IntegrationProvider.GOOGLE_WORKSPACE,
-        key: "google_drive_transcript_capture",
+        provider: IntegrationProvider.GOOGLE_ADS,
+        key: "google_ads_metrics_pull",
         enabled: true,
         statusOverride: null,
         config: {},
@@ -158,10 +141,12 @@ describe("integrations orchestrator", () => {
       startedAt: "2026-02-18T00:00:00.000Z",
     });
 
-    expect(runGmailCapture).toHaveBeenCalledTimes(1);
-    expect(runGoogleDriveTranscriptCapture).toHaveBeenCalledTimes(0);
-    expect(runGoogleDriveCommentEscalation).toHaveBeenCalledTimes(0);
-    expect(runGoogleCalendarPrepFollowup).toHaveBeenCalledTimes(0);
+    expect(runProviderMetricsRule).toHaveBeenCalledTimes(1);
+    expect(runProviderMetricsRule).toHaveBeenCalledWith({
+      userId: "user_1",
+      ruleKey: "google_ads_metrics_pull",
+      dryRun: false,
+    });
   });
 
   it("quarantines legacy task automations when disabled", async () => {
@@ -211,7 +196,6 @@ describe("integrations orchestrator", () => {
         startedAt: "2026-02-18T00:00:00.000Z",
       });
 
-      expect(runGoogleCalendarPrepFollowup).not.toHaveBeenCalled();
       expect(runProviderMetricsRule).toHaveBeenCalledWith({
         userId: "user_1",
         ruleKey: "google_ads_metrics_pull",

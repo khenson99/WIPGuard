@@ -17,19 +17,14 @@ describe("permissions", () => {
     expect(can("admin", "analytics.write")).toBe(true);
   });
 
-  it("blocks observer task transitions and policy mutations", () => {
-    expect(can("observer", "task.read")).toBe(false);
-    expect(can("observer", "task.transition")).toBe(false);
-    expect(can("observer", "task.write")).toBe(false);
+  it("blocks observer delivery and policy mutations", () => {
     expect(can("observer", "deals.read")).toBe(false);
     expect(can("observer", "analytics.read")).toBe(false);
     expect(can("observer", "analytics.write")).toBe(false);
     expect(can("observer", "policy.write")).toBe(false);
   });
 
-  it("allows members to mutate delivery flow but not privileged controls", () => {
-    expect(can("member", "task.read")).toBe(true);
-    expect(can("member", "task.transition")).toBe(true);
+  it("allows members to use active workspaces but not privileged controls", () => {
     expect(can("member", "project.read")).toBe(true);
     expect(can("member", "deals.read")).toBe(true);
     expect(can("member", "hierarchy.read")).toBe(true);

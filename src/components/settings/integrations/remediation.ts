@@ -1,8 +1,4 @@
-import type {
-  HubSpotDiagnosticsResponse,
-  IntegrationItem,
-  RuleLoadState,
-} from "@/components/settings/integrations/types";
+import type { IntegrationItem, RuleLoadState } from "@/components/settings/integrations/types";
 
 export interface RemediationStep {
   id: string;
@@ -19,9 +15,8 @@ export function credentialSourceLabel(source: IntegrationItem["credentialSource"
 export function buildRemediationSteps(input: {
   item: IntegrationItem;
   rules: RuleLoadState[];
-  hubspotDiagnostics?: HubSpotDiagnosticsResponse | null;
 }): RemediationStep[] {
-  const { item, rules, hubspotDiagnostics } = input;
+  const { item, rules } = input;
   const steps: RemediationStep[] = [];
 
   const rulesWithErrors = rules
@@ -96,15 +91,6 @@ export function buildRemediationSteps(input: {
             : `Disconnect and reconnect to re-authorize with the correct permissions. Missing: ${missing}`,
       });
     }
-  }
-
-  if (item.slug === "hubspot" && (hubspotDiagnostics?.mappingValidation?.length ?? 0) > 0) {
-    steps.push({
-      id: "hubspot-mapping",
-      title: "HubSpot mapping validation failed",
-      detail:
-        "Fix Task<->Deal stage mappings in the Bidirectional Sync form and run Drift Report to verify.",
-    });
   }
 
   if (item.slug === "coda" && item.connected && !item.docId) {

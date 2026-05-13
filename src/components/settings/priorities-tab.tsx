@@ -139,8 +139,7 @@ export function PrioritiesTab() {
             Company Priorities
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Define your company-level priorities. Projects and tasks are
-            organized under these priorities.
+            Define your company-level priorities and the operating focus they represent.
           </p>
         </div>
         <button

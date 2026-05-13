@@ -29,6 +29,7 @@ import { computeFinancialGoals, type FinancialGoal } from "@/lib/analytics/finan
 
 type BudgetPeriodApi = BudgetPeriod;
 type BudgetCategoryApi = "COGS" | "PAYROLL" | "MARKETING" | "INFRASTRUCTURE" | "OPS" | "OTHER";
+type BudgetDataWithActuals = NonNullable<NonNullable<AnalyticsDashboardData["financialPlanning"]>["activeBudget"]>;
 
 type BudgetLineItemApi = {
   id: string;
@@ -67,6 +68,51 @@ const EMPTY_BUDGET_METRIC: FinanceBudgetActualsMetric = {
   overspendCategories: [],
   items: [],
 };
+
+function normalizeBudgetCategory(value: string): string {
+  const normalized = value.trim().toUpperCase();
+  return CATEGORY_CONFIG.find((category) => category.key === normalized)?.label ?? value;
+}
+
+function budgetStatus(variance: number | null): FinanceBudgetActualMetric["status"] {
+  if (variance == null) return "on_track";
+  if (variance > 0) return "over";
+  if (variance < 0) return "under";
+  return "on_track";
+}
+
+function buildBudgetActualsFromBudget(budget: BudgetDataWithActuals | null | undefined): FinanceBudgetActualsMetric | null {
+  if (!budget || budget.lineItems.length === 0) return null;
+
+  const items = budget.lineItems.map((item) => ({
+    category: normalizeBudgetCategory(item.category),
+    budgeted: item.plannedAmount,
+    actual: item.actualAmount,
+    variance: item.variance,
+    variancePct: item.variancePct,
+    status: budgetStatus(item.variance),
+  }));
+  const totalBudget = budget.totalPlanned ?? items.reduce((sum, item) => sum + item.budgeted, 0);
+  const totalActual =
+    budget.totalActual ?? (items.every((item) => item.actual != null) ? items.reduce((sum, item) => sum + (item.actual ?? 0), 0) : null);
+  const totalVariance =
+    budget.totalVariance ?? (totalActual != null ? totalActual - totalBudget : null);
+  const totalVariancePct =
+    totalVariance != null && totalBudget > 0 ? (totalVariance / totalBudget) * 100 : null;
+
+  return {
+    budgetId: budget.id,
+    budgetName: budget.name,
+    totalBudget,
+    totalActual,
+    totalVariance,
+    totalVariancePct,
+    overspendCategories: items
+      .filter((item) => item.actual != null && item.status === "over")
+      .map((item) => item.category),
+    items,
+  };
+}
 
 function emptyAmounts(): Record<BudgetCategoryApi, string> {
   return {
@@ -160,6 +206,14 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
   }, [hasFinanceData, loadBudgets]);
 
   const activeBudget = budgets[0] ?? null;
+  const activeBudgetWithActuals = useMemo(() => {
+    if (!activeBudget) return data?.financialPlanning?.activeBudget ?? null;
+    return (
+      data?.financialPlanning?.budgets.find((budget) => budget.id === activeBudget.id) ??
+      data?.financialPlanning?.activeBudget ??
+      null
+    );
+  }, [activeBudget, data?.financialPlanning]);
 
   const seedFormDefaults = useCallback((period: BudgetPeriodApi = "MONTHLY") => {
     const range = defaultDateRange(period);
@@ -205,12 +259,15 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
   /* ── Computed data ────────────────────────────────── */
 
   const budgetSummary =
-    data?.metrics?.finance.budgetActuals ?? EMPTY_BUDGET_METRIC;
+    data?.metrics?.finance.budgetActuals ??
+    buildBudgetActualsFromBudget(activeBudgetWithActuals) ??
+    EMPTY_BUDGET_METRIC;
   const budgetItems = budgetSummary.items;
 
   const hasBudgetBaseline = Boolean(
     budgetSummary.budgetId || (activeBudget && activeBudget.lineItems?.length),
   );
+  const hasBudgetVarianceData = budgetSummary.totalActual != null;
 
   const goals = useMemo<FinancialGoal[]>(
     () => (data ? computeFinancialGoals(data) : []),
@@ -230,7 +287,15 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
       });
     }
 
-    if (hasBudgetBaseline && budgetSummary.overspendCategories.length > 0) {
+    if (hasBudgetBaseline && !hasBudgetVarianceData) {
+      items.push({
+        severity: "info",
+        title: "Actual spend by category unavailable",
+        description: "Budget variance is hidden until category-level spend attribution is available.",
+      });
+    }
+
+    if (hasBudgetBaseline && hasBudgetVarianceData && budgetSummary.overspendCategories.length > 0) {
       items.push({
         severity: "warning",
         title: `${budgetSummary.overspendCategories.length} categor${budgetSummary.overspendCategories.length === 1 ? "y" : "ies"} over budget`,
@@ -239,7 +304,7 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
     }
 
     return items;
-  }, [budgetSummary.overspendCategories, hasBudgetBaseline]);
+  }, [budgetSummary.overspendCategories, hasBudgetBaseline, hasBudgetVarianceData]);
 
   /* ── Insights ─────────────────────────────────────── */
 
@@ -247,9 +312,9 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
     const items: { title: string; insight: string; action?: string; severity: "critical" | "warning" | "info" | "success" }[] = [];
 
     // Critical: any category overspending > 20%
-    if (hasBudgetBaseline) {
+    if (hasBudgetBaseline && hasBudgetVarianceData) {
       const heavyOverspend = budgetItems.filter(
-        (b) => b.variancePct > 20 && b.status === "over",
+        (b) => (b.variancePct ?? 0) > 20 && b.status === "over",
       );
       if (heavyOverspend.length > 0) {
         items.push({
@@ -282,16 +347,18 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
     }
 
     // Info: budget surplus
-    if (hasBudgetBaseline && budgetSummary.totalVariance < 0) {
+    if (hasBudgetBaseline && budgetSummary.totalVariance != null && budgetSummary.totalVariance < 0) {
+      const variancePct =
+        budgetSummary.totalVariancePct != null ? fmtPct(Math.abs(budgetSummary.totalVariancePct)) : "n/a";
       items.push({
         title: "Under Budget Overall",
-        insight: `Total spending is ${fmt$(Math.abs(budgetSummary.totalVariance))} under budget (${fmtPct(Math.abs(budgetSummary.totalVariancePct))}). Consider reallocating surplus to growth areas.`,
+        insight: `Total spending is ${fmt$(Math.abs(budgetSummary.totalVariance))} under budget (${variancePct}). Consider reallocating surplus to growth areas.`,
         severity: "info",
       });
     }
 
     return items;
-  }, [budgetItems, budgetSummary, goals, hasBudgetBaseline]);
+  }, [budgetItems, budgetSummary, goals, hasBudgetBaseline, hasBudgetVarianceData]);
 
   const plannedTotal = useMemo(() => {
     return CATEGORY_CONFIG.reduce((sum, category) => sum + toNumber(formAmounts[category.key]), 0);
@@ -370,14 +437,16 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
         header: "Est. Actual",
         align: "right" as const,
         render: (row) => (
-          <span className="tabular-nums text-foreground">{fmt$(row.actual)}</span>
+          <span className="tabular-nums text-foreground">
+            {row.actual != null ? fmt$(row.actual) : "—"}
+          </span>
         ),
       },
       {
         key: "variance",
         header: "Est. Variance",
         align: "right" as const,
-        render: (row) => (
+        render: (row) => row.variance != null ? (
           <span
             className={`tabular-nums font-medium ${
               row.variance > 0 ? "text-red-500" : row.variance < 0 ? "text-emerald-500" : "text-muted-foreground"
@@ -385,13 +454,20 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
           >
             {fmtDelta(row.variance)}
           </span>
+        ) : (
+          <span className="tabular-nums text-muted-foreground">—</span>
         ),
       },
       {
         key: "status",
         header: "Status",
         align: "center" as const,
-        render: (row) => <StatusBadge status={row.status} />,
+        render: (row) =>
+          row.actual != null ? (
+            <StatusBadge status={row.status} />
+          ) : (
+            <span className="text-xs text-muted-foreground">Unavailable</span>
+          ),
       },
     ],
     [],
@@ -401,9 +477,11 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
 
   const barItems = useMemo(
     () =>
-      budgetItems.map((item) => ({
+      budgetItems
+        .filter((item) => item.actual != null)
+        .map((item) => ({
         label: `${item.category} (actual)`,
-        value: item.actual,
+        value: item.actual ?? 0,
         color:
           item.status === "over"
             ? "#ef4444"
@@ -609,14 +687,14 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
         />
         <StatCard
           label="Est. Actual"
-          value={fmt$(budgetSummary.totalActual)}
+          value={budgetSummary.totalActual != null ? fmt$(budgetSummary.totalActual) : "—"}
           change={
-            hasBudgetBaseline
+            hasBudgetBaseline && budgetSummary.totalVariancePct != null
               ? `${budgetSummary.totalVariancePct >= 0 ? "+" : ""}${fmtPct(budgetSummary.totalVariancePct)} vs budget`
               : undefined
           }
           changeType={
-            hasBudgetBaseline
+            hasBudgetBaseline && budgetSummary.totalVariancePct != null
               ? budgetSummary.totalVariancePct > 5
                 ? "negative"
                 : budgetSummary.totalVariancePct < -5
@@ -628,13 +706,15 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
         />
         <StatCard
           label="Est. Variance"
-          value={hasBudgetBaseline ? fmtDelta(budgetSummary.totalVariance) : "—"}
+          value={hasBudgetBaseline && budgetSummary.totalVariance != null ? fmtDelta(budgetSummary.totalVariance) : "—"}
           changeType={
-            hasBudgetBaseline ? (budgetSummary.totalVariance > 0 ? "negative" : "positive") : "neutral"
+            hasBudgetBaseline && budgetSummary.totalVariance != null
+              ? (budgetSummary.totalVariance > 0 ? "negative" : "positive")
+              : "neutral"
           }
           icon={AlertTriangle}
           iconColor={
-            hasBudgetBaseline
+            hasBudgetBaseline && budgetSummary.totalVariance != null
               ? budgetSummary.totalVariance > 0
                 ? "text-red-500"
                 : "text-emerald-500"
@@ -643,11 +723,15 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
         />
         <StatCard
           label="Overspend Areas"
-          value={hasBudgetBaseline ? budgetSummary.overspendCategories.length.toString() : "—"}
-          changeType={hasBudgetBaseline ? (budgetSummary.overspendCategories.length > 0 ? "negative" : "positive") : "neutral"}
+          value={hasBudgetBaseline && hasBudgetVarianceData ? budgetSummary.overspendCategories.length.toString() : "—"}
+          changeType={
+            hasBudgetBaseline && hasBudgetVarianceData
+              ? (budgetSummary.overspendCategories.length > 0 ? "negative" : "positive")
+              : "neutral"
+          }
           icon={Target}
           iconColor={
-            hasBudgetBaseline
+            hasBudgetBaseline && hasBudgetVarianceData
               ? budgetSummary.overspendCategories.length > 0
                 ? "text-red-500"
                 : "text-primary"
@@ -669,21 +753,17 @@ export function FinancePlanningTab({ data }: FinancePlanningTabProps) {
       </SectionCard>
 
       {/* Budget Category Breakdown */}
-      <SectionCard title="Category Breakdown" subtitle="Actual spending by category">
-        {budgetItems.length > 0 ? (
-          <>
-            <BarDisplay items={barItems} formatValue={fmt$} />
-            <div className="mt-4">
-              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Budget Allocation
-              </p>
-              <BarDisplay items={barBudgetItems} formatValue={fmt$} />
-            </div>
-          </>
-        ) : (
-          <p className="text-sm text-muted-foreground">No category breakdown available until a budget baseline is configured.</p>
-        )}
-      </SectionCard>
+      {barItems.length > 0 && (
+        <SectionCard title="Category Breakdown" subtitle="Actual spending by category">
+          <BarDisplay items={barItems} formatValue={fmt$} />
+          <div className="mt-4">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Budget Allocation
+            </p>
+            <BarDisplay items={barBudgetItems} formatValue={fmt$} />
+          </div>
+        </SectionCard>
+      )}
 
       {/* Goals Tracker */}
       {goals.length > 0 && (

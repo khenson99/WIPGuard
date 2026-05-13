@@ -335,6 +335,15 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
 
   const analyticsData = resource.data?.analyticsData ?? null;
   const relevantStaleDomains = staleDomainsForSection(sectionId, analyticsData?.staleDomains ?? []);
+  const relevantErroredDomains = useMemo(() => {
+    const errored = new Set(analyticsData?.meta?.erroredDomains ?? []);
+    return relevantStaleDomains.filter((domain) => errored.has(domain));
+  }, [analyticsData?.meta?.erroredDomains, relevantStaleDomains]);
+  const relevantFallbackDomains = useMemo(() => {
+    if (relevantErroredDomains.length === 0) return relevantStaleDomains;
+    const errored = new Set(relevantErroredDomains);
+    return relevantStaleDomains.filter((domain) => !errored.has(domain));
+  }, [relevantErroredDomains, relevantStaleDomains]);
   const title = child?.label ?? primary?.label ?? "Analytics";
 
   const primaryContent = useMemo(() => {
@@ -452,14 +461,14 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
         </div>
       </div>
 
-      {!resource.error && (resource.stale || relevantStaleDomains.length > 0) && (
+      {!resource.error && (resource.stale || relevantFallbackDomains.length > 0) && (
         <DashboardStaleBanner
           lastUpdatedAt={resource.lastUpdatedAt}
           onRefresh={resource.refresh}
           refreshing={resource.refreshing}
           label={
-            relevantStaleDomains.length > 0
-              ? `Showing cached data for stale providers: ${relevantStaleDomains.join(", ")}.`
+            relevantFallbackDomains.length > 0
+              ? `Showing cached data for stale providers: ${relevantFallbackDomains.join(", ")}.`
               : undefined
           }
         />

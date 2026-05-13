@@ -12,6 +12,7 @@ import {
   type WorkflowGraph,
   validateWorkflowGraph,
 } from "@/lib/automations/graph";
+import { workflowGraphContainsRetiredActions } from "@/lib/automations/retired-actions";
 
 export interface WorkflowRolePolicy {
   editRoles: AppRole[];
@@ -177,6 +178,10 @@ export function validateAndNormalizeGraph(input: unknown): {
   const result = validateWorkflowGraph(input);
   if (!result.valid) {
     throw new Error(result.errors.join(" | "));
+  }
+
+  if (workflowGraphContainsRetiredActions(result.graph)) {
+    throw new Error("Task-oriented workflow actions have been retired with the Work section.");
   }
 
   return {

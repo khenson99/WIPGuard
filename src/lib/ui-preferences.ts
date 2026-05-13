@@ -8,12 +8,6 @@ export interface DashboardPreferenceConfig {
   recommendationMode: "urgency" | "due_date";
 }
 
-export interface TasksPreferenceConfig {
-  defaultLayout: "kanban" | "table" | "split";
-  density: "standard" | "dense" | "triage";
-  showMetadata: boolean;
-}
-
 export interface ProjectsPreferenceConfig {
   defaultLayout: "grid" | "swimlane" | "list";
   showMetrics: string[];
@@ -35,12 +29,6 @@ export const DEFAULT_DASHBOARD_CONFIG: DashboardPreferenceConfig = {
   hiddenWidgets: [],
   timeHorizonDays: 7,
   recommendationMode: "urgency",
-};
-
-export const DEFAULT_TASKS_CONFIG: TasksPreferenceConfig = {
-  defaultLayout: "kanban",
-  density: "standard",
-  showMetadata: true,
 };
 
 export const DEFAULT_PROJECTS_CONFIG: ProjectsPreferenceConfig = {
@@ -81,24 +69,6 @@ export function normalizeDashboardConfig(input: unknown): DashboardPreferenceCon
   };
 }
 
-export function normalizeTasksConfig(input: unknown): TasksPreferenceConfig {
-  const record = parseRecord(input) ?? {};
-  return {
-    defaultLayout:
-      record.defaultLayout === "table" || record.defaultLayout === "split"
-        ? record.defaultLayout
-        : DEFAULT_TASKS_CONFIG.defaultLayout,
-    density:
-      record.density === "dense" || record.density === "triage"
-        ? record.density
-        : DEFAULT_TASKS_CONFIG.density,
-    showMetadata:
-      typeof record.showMetadata === "boolean"
-        ? record.showMetadata
-        : DEFAULT_TASKS_CONFIG.showMetadata,
-  };
-}
-
 export function normalizeProjectsConfig(input: unknown): ProjectsPreferenceConfig {
   const record = parseRecord(input) ?? {};
   return {
@@ -131,7 +101,6 @@ export async function getOrCreateUserUiPreference(userId: string) {
     data: {
       userId,
       dashboardConfig: DEFAULT_DASHBOARD_CONFIG as unknown as Prisma.InputJsonValue,
-      tasksConfig: DEFAULT_TASKS_CONFIG as unknown as Prisma.InputJsonValue,
       projectsConfig: DEFAULT_PROJECTS_CONFIG as unknown as Prisma.InputJsonValue,
       analyticsConfig: DEFAULT_ANALYTICS_CONFIG as unknown as Prisma.InputJsonValue,
     },

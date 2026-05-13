@@ -63,9 +63,6 @@ const METRIC_REGISTRY: MetricDefinition[] = [
   { key: "pylon.urgentConversations", section: "customer-success", label: "Urgent Conversations", extract: (d) => d.pylon?.urgentConversations ?? null },
   { key: "pylon.openConversations", section: "customer-success", label: "Open Conversations", extract: (d) => d.pylon?.openConversations ?? null },
   { key: "pylon.resolvedInRange", section: "customer-success", label: "Resolved In Range", extract: (d) => d.pylon?.resolvedInRange ?? null },
-  { key: "product.backlogGrowth", section: "customer-success", label: "Backlog Growth", extract: (d) => d.product?.backlogGrowth ?? null },
-  { key: "product.throughputRate", section: "customer-success", label: "Throughput Rate", extract: (d) => d.product?.throughputRate ?? null },
-  { key: "product.overdueOpenTasks", section: "customer-success", label: "Overdue Tasks", extract: (d) => d.product?.overdueOpenTasks ?? null },
 ];
 
 export function getMetricRegistry(): MetricDefinition[] {

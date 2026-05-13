@@ -63,9 +63,7 @@ export type RuleFieldType =
   | "string-list"
   | "enum"
   | "enum-list"
-  | "task-status-map"
   | "string-status-map"
-  | "stage-checklist-map"
   | "signal-template-map"
   | "status-message-map";
 
@@ -86,10 +84,10 @@ export interface RuleDescriptor {
   title: string;
   ruleKey: string;
   endpoint: string;
-  runAction: "sync" | "capture" | null;
+  runAction: "sync" | null;
   supportsDryRun: boolean;
   supportsStatusOverride: boolean;
-  editorType: "generic" | "thread-capture" | "channel-routing";
+  editorType: "generic" | "channel-routing";
   fields: RuleFieldDefinition[];
 }
 
@@ -100,40 +98,4 @@ export interface RuleLoadState {
   error: string | null;
   message: string | null;
   rule: RuleRuntimeState | null;
-}
-
-export interface HubSpotDiagnosticsResponse {
-  rule: RuleRuntimeState;
-  connection: {
-    status: string;
-    lastSyncedAt: string | null;
-    lastError: string | null;
-  } | null;
-  mappingValidation: string[];
-  recentReceipts: Array<{
-    id: string;
-    direction: string;
-    dealId: string;
-    taskId: string | null;
-    createdAt: string;
-  }>;
-}
-
-export interface HubSpotDriftReport {
-  scannedDeals: number;
-  scannedTasks: number;
-  drifts: Array<{
-    dealId: string;
-    taskId: string | null;
-    kind: string;
-    detail: string;
-  }>;
-  summary: {
-    missingLocalTasks: number;
-    missingHubSpotDeals: number;
-    unmappedDealStages: number;
-    unmappedTaskStatuses: number;
-    statusMismatches: number;
-  };
-  generatedAt: string;
 }

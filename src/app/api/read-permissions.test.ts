@@ -59,78 +59,27 @@ describe("collection read permissions", () => {
     expect(prisma.deal.findMany).not.toHaveBeenCalled();
   });
 
-  it("blocks GET /api/tasks when read permission is denied", async () => {
+  it("returns 410 for retired GET /api/projects", async () => {
     const { enforcePermission } = await import("@/lib/permissions");
     const { prisma } = await import("@/lib/prisma");
-
-    vi.mocked(enforcePermission).mockResolvedValue({
-      role: "observer",
-      deniedResponse: NextResponse.json(
-        { error: "Forbidden: insufficient permissions" },
-        { status: 403 }
-      ),
-    } as never);
-
-    const { GET } = await import("@/app/api/tasks/route");
-    const response = await GET(new NextRequest("http://localhost/api/tasks"));
-
-    expect(response.status).toBe(403);
-    expect(enforcePermission).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: "task.read",
-        userId: "user-1",
-      })
-    );
-    expect(prisma.task.findMany).not.toHaveBeenCalled();
-  });
-
-  it("blocks GET /api/projects when read permission is denied", async () => {
-    const { enforcePermission } = await import("@/lib/permissions");
-    const { prisma } = await import("@/lib/prisma");
-
-    vi.mocked(enforcePermission).mockResolvedValue({
-      role: "observer",
-      deniedResponse: NextResponse.json(
-        { error: "Forbidden: insufficient permissions" },
-        { status: 403 }
-      ),
-    } as never);
 
     const { GET } = await import("@/app/api/projects/route");
     const response = await GET(new NextRequest("http://localhost/api/projects"));
 
-    expect(response.status).toBe(403);
-    expect(enforcePermission).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: "project.read",
-        userId: "user-1",
-      })
-    );
+    expect(response.status).toBe(410);
+    expect(enforcePermission).not.toHaveBeenCalled();
     expect(prisma.project.findMany).not.toHaveBeenCalled();
   });
 
-  it("blocks GET /api/hierarchy when read permission is denied", async () => {
+  it("returns 410 for retired GET /api/hierarchy", async () => {
     const { enforcePermission } = await import("@/lib/permissions");
     const { prisma } = await import("@/lib/prisma");
-
-    vi.mocked(enforcePermission).mockResolvedValue({
-      role: "observer",
-      deniedResponse: NextResponse.json(
-        { error: "Forbidden: insufficient permissions" },
-        { status: 403 }
-      ),
-    } as never);
 
     const { GET } = await import("@/app/api/hierarchy/route");
     const response = await GET(new NextRequest("http://localhost/api/hierarchy"));
 
-    expect(response.status).toBe(403);
-    expect(enforcePermission).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: "hierarchy.read",
-        userId: "user-1",
-      })
-    );
+    expect(response.status).toBe(410);
+    expect(enforcePermission).not.toHaveBeenCalled();
     expect(prisma.companyPriority.findMany).not.toHaveBeenCalled();
     expect(prisma.project.findMany).not.toHaveBeenCalled();
     expect(prisma.task.findMany).not.toHaveBeenCalled();

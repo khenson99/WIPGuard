@@ -53,14 +53,15 @@ describe("analytics section registry", () => {
   it("redirects removed customer-success ops routes to the parent dashboard", () => {
     expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS.tasks).toBe("/analytics/customer-success");
     expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS.coda).toBe("/analytics/ads-coda-kanban");
-    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["decision-dashboard"]).toBe("/analytics/customer-success");
-    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["flow-metrics"]).toBe("/analytics/customer-success");
-    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["flow-risk"]).toBe("/analytics/customer-success");
-    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS.observability).toBe("/analytics/customer-success");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["decision-dashboard"]).toBe("/analytics/process-analytics");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["flow-metrics"]).toBe("/analytics/process-analytics");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["flow-risk"]).toBe("/analytics/process-analytics");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS.observability).toBe("/analytics/process-analytics");
     expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-decision-dashboard"]).toBe("/analytics/customer-success");
     expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-flow-metrics"]).toBe("/analytics/customer-success");
     expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-flow-risk"]).toBe("/analytics/customer-success");
     expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-observability"]).toBe("/analytics/customer-success");
+    expect("cs-product" in LEGACY_ANALYTICS_ROUTE_REDIRECTS).toBe(false);
   });
 
   it("returns the owning primary section for child routes", () => {

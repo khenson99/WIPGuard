@@ -37,6 +37,17 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
   const funnel = hubspot?.funnel;
   const ga = googleAnalytics;
   const financeSummary = data.metrics?.finance.summary ?? null;
+  const subscriptionOverview = data.financialPlanning?.subscriptionOverview ?? null;
+  const activeSubscriptions =
+    financeSummary?.activeSubscriptions ??
+    subscriptionOverview?.mergedActiveSubscriptions ??
+    stripe?.subscriptions.active ??
+    null;
+  const subscriptionSubtitle = subscriptionOverview
+    ? `${subscriptionOverview.stripeActiveSubscriptions} Stripe · ${subscriptionOverview.hubspotActiveSubscriptions} HubSpot · ${stripe?.subscriptions.pastDue ?? 0} past due · ${stripe?.subscriptions.trialing ?? 0} trialing`
+    : financeSummary
+      ? `${financeSummary.pastDueSubscriptions} past due · ${financeSummary.trialingSubscriptions} trialing`
+      : undefined;
 
   // Compute total ad spend across platforms
   const totalAdSpend =
@@ -91,12 +102,8 @@ export function OverviewTab({ data }: { data: AnalyticsDashboardData | null }) {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label="Active Subscriptions"
-          value={financeSummary ? financeSummary.activeSubscriptions.toLocaleString() : "—"}
-          subtitle={
-            financeSummary
-              ? `${financeSummary.pastDueSubscriptions} past due · ${financeSummary.trialingSubscriptions} trialing`
-              : undefined
-          }
+          value={activeSubscriptions != null ? activeSubscriptions.toLocaleString() : "—"}
+          subtitle={subscriptionSubtitle}
           icon={CreditCard}
         />
         <StatCard

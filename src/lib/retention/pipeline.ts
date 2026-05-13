@@ -82,6 +82,7 @@ interface ArdaTenantConfig {
   configuredTenantId: string;
   tenantName: string;
   companyName: string;
+  customerName: string | null;
   customerStatus: string | null;
   health: string | null;
   mainCodaDocId: string | null;
@@ -430,10 +431,14 @@ async function fetchCodaApiRows(
 function normalizeArdaTenantConfigRow(row: CodaApiRow): ArdaTenantConfig | null {
   const values = asRecord(row.values);
   const tenantId = asString(values.tenantId) ?? "";
+  const customerName =
+    asString(asRecord(values.Customer).name) ??
+    asString(values.Customer) ??
+    asString(values.CustomerName) ??
+    null;
   const companyName =
     asString(values.CompanyName) ??
-    asString(asRecord(values.Customer).name) ??
-    asString(values.Customer);
+    customerName;
   if (!companyName) return null;
 
   const loweredTenantId = tenantId.toLowerCase();
@@ -448,6 +453,7 @@ function normalizeArdaTenantConfigRow(row: CodaApiRow): ArdaTenantConfig | null 
     configuredTenantId: tenantId,
     tenantName: companyName,
     companyName,
+    customerName,
     customerStatus,
     health: asString(values.Health),
     mainCodaDocId: asString(values.mainCodaDocId) ?? asString(values["ActiveMainDoc ID"]),
@@ -471,6 +477,7 @@ async function discoverArdaTenantIdsByConfig(
       configs.map((config) => ({
         configuredTenantId: config.configuredTenantId,
         companyName: config.companyName,
+        customerName: config.customerName,
       })),
       rows.map((row) => {
         const values = asRecord(row.values);
@@ -497,9 +504,9 @@ function resolveArdaTenantIds(
   if (isUuid(config.tenantId)) return [config.tenantId];
   if (config.resultTenantIds.length > 0) return config.resultTenantIds;
 
-  const normalizedCompanyName =
-    normalizeArdaCustomerName(config.companyName) ?? normalizeArdaCustomerName(config.tenantName);
-  if (normalizedCompanyName) {
+  for (const candidate of [config.companyName, config.customerName, config.tenantName]) {
+    const normalizedCompanyName = normalizeArdaCustomerName(candidate);
+    if (!normalizedCompanyName) continue;
     const manualTenantIds = ARDA_CUSTOMER_TENANT_IDS[normalizedCompanyName];
     if (manualTenantIds?.length) return manualTenantIds;
   }

@@ -50,6 +50,29 @@ function readNumber(value: unknown): number {
   return 0;
 }
 
+function readInsightValue(value: unknown): number {
+  if (typeof value === "number" || typeof value === "string") {
+    return readNumber(value);
+  }
+
+  const record = asRecord(value);
+  if (!record) return 0;
+
+  return Object.values(record).reduce((sum, entry) => sum + readNumber(entry), 0);
+}
+
+function sumInsightSeries(
+  metrics: Array<{
+    name: string;
+    values?: Array<{ value: unknown }>;
+  }> | undefined,
+  metricName: string
+): number {
+  const series = metrics?.find((metric) => metric.name === metricName);
+  if (!series) return 0;
+  return (series.values ?? []).reduce((sum, item) => sum + readInsightValue(item.value), 0);
+}
+
 function readString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -1388,6 +1411,25 @@ async function fetchMetaPageInsightMetrics(input: {
     throw new Error(`Meta Page insights error (${insightsResponse.status}): ${errorBody}`);
   }
 
+  const requiredPageMetrics = input.metrics.filter(
+    (metric) => metric === "page_impressions" || metric === "page_engaged_users"
+  );
+  if (requiredPageMetrics.length > 0 && requiredPageMetrics.length < input.metrics.length) {
+    const fallbackUrl = buildMetaPageInsightsUrl({
+      ...input,
+      metrics: requiredPageMetrics,
+    });
+    const fallbackResponse = await fetch(fallbackUrl, { headers: input.headers });
+    if (fallbackResponse.ok) {
+      const fallbackData = (await safeJson<{
+        data?: MetaPageInsightMetric[];
+      }>(fallbackResponse, "Meta Page insights fallback")) as {
+        data?: MetaPageInsightMetric[];
+      };
+      return fallbackData.data ?? [];
+    }
+  }
+
   const validMetrics: MetaPageInsightMetric[] = [];
   for (const metric of input.metrics) {
     const metricUrl = buildMetaPageInsightsUrl({
@@ -1395,6 +1437,7 @@ async function fetchMetaPageInsightMetrics(input: {
       metrics: [metric],
     });
     const metricResponse = await fetch(metricUrl, { headers: input.headers });
+    if (!metricResponse) continue;
     if (metricResponse.ok) {
       const metricData = (await safeJson<{
         data?: MetaPageInsightMetric[];
@@ -1491,26 +1534,19 @@ export async function fetchMetaPageData(
   const pageLikes = readNumber(pageData.fan_count);
   const pageFollowers = readNumber(pageData.followers_count);
 
-  const insightsMetrics = await fetchMetaPageInsightMetrics({
+  const pageInsightMetrics = await fetchMetaPageInsightMetrics({
     normalizedPageId,
-    metrics: ["page_impressions", "page_engaged_users"],
+    metrics: ["page_impressions", "page_engaged_users", "page_views_total", "page_total_actions"],
     useRange,
     since,
     until,
     headers: baseHeaders,
   });
 
-  let postReach30d = 0;
-  let postEngagement30d = 0;
-  for (const metric of insightsMetrics) {
-    const value = (metric.values ?? []).reduce((sum, item) => sum + readNumber(item.value), 0);
-    if (metric.name === "page_impressions") {
-      postReach30d = value;
-    }
-    if (metric.name === "page_engaged_users") {
-      postEngagement30d = value;
-    }
-  }
+  const postReach30d = sumInsightSeries(pageInsightMetrics, "page_impressions");
+  const postEngagement30d = sumInsightSeries(pageInsightMetrics, "page_engaged_users");
+  const traffic = sumInsightSeries(pageInsightMetrics, "page_views_total");
+  const clicks = sumInsightSeries(pageInsightMetrics, "page_total_actions");
 
   const postsUrl = new URL(
     `https://graph.facebook.com/${META_GRAPH_VERSION}/${normalizedPageId}/posts`
@@ -1583,9 +1619,9 @@ export async function fetchMetaPageData(
     pageFollowers,
     postReach30d,
     postEngagement30d,
-    traffic: 0,
+    traffic,
     bounceRate: 0,
-    clicks: 0,
+    clicks,
     returningVisitors: 0,
     topPosts,
     _meta: makeMeta("live"),
@@ -1871,13 +1907,61 @@ export async function fetchMetaInstagramData(
   const testBacklog = buildInstagramTestBacklog(topVideos);
   const experimentPlan = buildInstagramExperimentPlan(topVideos, testBacklog);
 
+  const fetchInstagramInsights = async (
+    metrics: string
+  ): Promise<Array<{ name: string; values?: Array<{ value: unknown }> }>> => {
+    const insightsUrl = new URL(
+      `https://graph.facebook.com/${META_GRAPH_VERSION}/${resolvedProfile.id}/insights`
+    );
+    insightsUrl.searchParams.set("metric", metrics);
+    insightsUrl.searchParams.set("period", "day");
+    insightsUrl.searchParams.set("since", fromTime.toString());
+    insightsUrl.searchParams.set("until", toTime.toString());
+
+    const insightsResponse = await fetch(insightsUrl, { headers: baseHeaders });
+    if (!insightsResponse) return [];
+    if (!insightsResponse.ok) {
+      throw new Error(
+        `Meta Instagram insights error (${insightsResponse.status}): ${await parseErrorBody(insightsResponse)}`
+      );
+    }
+
+    const insightsData = (await safeJson<{
+      data?: Array<{
+        name: string;
+        values?: Array<{ value: unknown }>;
+      }>;
+    }>(insightsResponse, "Instagram insights")) as {
+      data?: Array<{
+        name: string;
+        values?: Array<{ value: unknown }>;
+      }>;
+    };
+
+    return insightsData.data ?? [];
+  };
+
+  let instagramInsightMetrics: Array<{ name: string; values?: Array<{ value: unknown }> }> = [];
+  try {
+    instagramInsightMetrics = await fetchInstagramInsights("reach,profile_views,website_clicks");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("Meta Instagram insights error (400)")) {
+      throw error;
+    }
+  }
+
+  const reach30d = sumInsightSeries(instagramInsightMetrics, "reach");
+  const traffic = sumInsightSeries(instagramInsightMetrics, "profile_views");
+  const clicks = sumInsightSeries(instagramInsightMetrics, "website_clicks");
+
   return {
     followers: resolvedProfile.followersCount,
-    reach30d: engagement30d, // Using engagements as proxy for reach30d
+    reach30d: reach30d > 0 ? reach30d : engagement30d,
     engagement30d,
-    traffic: 0,
+    traffic,
     bounceRate: 0,
-    clicks: 0,
+    clicks,
     returningVisitors: 0,
     topPosts,
     topVideos,

@@ -71,18 +71,19 @@ function isMissingCredentialError(message: string | undefined): boolean {
 function resolveProviderState(input: {
   payload: unknown;
   hasSignal: boolean;
+  connected?: boolean;
   error?: string;
 }): { state: ProviderHealthState; error: string | null } {
+  if (input.payload && input.hasSignal) {
+    return { state: 'healthy', error: null };
+  }
   if (input.error && !isMissingCredentialError(input.error)) {
     return { state: 'failing', error: input.error };
   }
-  if (!input.payload) {
-    return { state: 'not_configured', error: null };
-  }
-  if (!input.hasSignal) {
+  if (input.payload || input.connected) {
     return { state: 'no_data', error: null };
   }
-  return { state: 'healthy', error: null };
+  return { state: 'not_configured', error: null };
 }
 
 export function MarketingTabNew({ data, variant = 'website-traffic' }: MarketingTabNewProps) {
@@ -199,36 +200,43 @@ export function MarketingTabNew({ data, variant = 'website-traffic' }: Marketing
   const gaStatus = resolveProviderState({
     payload: ga,
     hasSignal: hasGASignal,
+    connected: data.freshness.googleAnalytics?.status === 'CONNECTED',
     error: errorBySource.get('googleAnalytics'),
   });
   const googleAdsStatus = resolveProviderState({
     payload: googleAds,
     hasSignal: hasGoogleAdsSignal,
+    connected: data.freshness.googleAds?.status === 'CONNECTED',
     error: errorBySource.get('googleAds'),
   });
   const metaAdsStatus = resolveProviderState({
     payload: metaAds,
     hasSignal: hasMetaAdsSignal,
+    connected: data.freshness.metaAds?.status === 'CONNECTED',
     error: errorBySource.get('metaAds'),
   });
   const redditAdsStatus = resolveProviderState({
     payload: redditAds,
     hasSignal: hasRedditAdsSignal,
+    connected: data.freshness.redditAds?.status === 'CONNECTED',
     error: errorBySource.get('redditAds'),
   });
   const metaPageStatus = resolveProviderState({
     payload: metaPage,
     hasSignal: hasMetaPageSignal,
+    connected: data.freshness.metaPage?.status === 'CONNECTED',
     error: errorBySource.get('metaPage'),
   });
   const instagramStatus = resolveProviderState({
     payload: instagram,
     hasSignal: hasInstagramSignal,
+    connected: data.freshness.instagram?.status === 'CONNECTED',
     error: errorBySource.get('instagram'),
   });
   const webflowStatus = resolveProviderState({
     payload: webflow,
     hasSignal: hasWebflowSignal,
+    connected: data.freshness.webflow?.status === 'CONNECTED',
     error: errorBySource.get('webflow'),
   });
   const semrushHasSignal = Boolean(
@@ -242,6 +250,7 @@ export function MarketingTabNew({ data, variant = 'website-traffic' }: Marketing
   const semrushStatus = resolveProviderState({
     payload: semrush,
     hasSignal: semrushHasSignal,
+    connected: data.freshness.semrush?.status === 'CONNECTED',
     error: errorBySource.get('semrush'),
   });
 
@@ -270,7 +279,10 @@ export function MarketingTabNew({ data, variant = 'website-traffic' }: Marketing
   const redditConversions = data.redditAds?.totalConversions || 0;
   const totalConversions = googleConversions + metaConversions + redditConversions;
 
-  const pageFollowers = data.metaPage?.pageFollowers || 0;
+  const pageFollowers =
+    data.metaPage?.pageFollowers && data.metaPage.pageFollowers > 0
+      ? data.metaPage.pageFollowers
+      : data.metaPage?.pageLikes || 0;
 
   // Compute byPlatform data
   const byPlatform: Record<string, { impressions: number; clicks: number; cost: number; conversions: number; ctr: number; costPerConversion: number }> = {};
@@ -327,7 +339,10 @@ export function MarketingTabNew({ data, variant = 'website-traffic' }: Marketing
 
   // Meta page data
   const metaPageLikes = data.metaPage?.pageLikes || 0;
-  const metaPageFollowers = data.metaPage?.pageFollowers || 0;
+  const metaPageFollowers =
+    data.metaPage?.pageFollowers && data.metaPage.pageFollowers > 0
+      ? data.metaPage.pageFollowers
+      : data.metaPage?.pageLikes || 0;
   const metaPostReach = data.metaPage?.postReach30d || 0;
   const metaPostEngagement = data.metaPage?.postEngagement30d || 0;
   const metaTraffic = data.metaPage?.traffic || 0;

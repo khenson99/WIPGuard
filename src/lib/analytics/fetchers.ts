@@ -1798,6 +1798,7 @@ export async function fetchMercuryData(
 
   type MercuryTransaction = {
     id?: string;
+    accountId?: string;
     postedAt?: string;
     createdAt?: string;
     timestamp?: string;
@@ -1992,6 +1993,74 @@ export async function fetchMercuryData(
   };
   const baseUrl = "https://api.mercury.com/api/v1";
 
+  function transactionDateKey(tx: MercuryTransaction): string | null {
+    const timestamp = tx.postedAt || tx.createdAt || tx.timestamp || "";
+    if (!timestamp) return null;
+    const parsed = Date.parse(timestamp);
+    if (!Number.isFinite(parsed)) return null;
+    return new Date(parsed).toISOString().split("T")[0] ?? null;
+  }
+
+  function textSuggestsInternalTransfer(tx: MercuryTransaction): boolean {
+    const fields = [
+      tx.bankDescription,
+      tx.counterpartyName,
+      tx.counterpartyNickname,
+      tx.mercuryCategory,
+    ]
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .map((value) => value.trim().toLowerCase());
+
+    return fields.some((value) =>
+      value.includes("internal transfer") ||
+      value.includes("between your mercury accounts") ||
+      value.includes("between your accounts")
+    );
+  }
+
+  function filterInternalTransferPairs(transactions: MercuryLedgerTransaction[]): MercuryLedgerTransaction[] {
+    const grouped = new Map<string, MercuryLedgerTransaction[]>();
+
+    for (const tx of transactions) {
+      const amount = tx.amount ?? 0;
+      const dateKey = transactionDateKey(tx);
+      if (!dateKey || !Number.isFinite(amount) || amount === 0) continue;
+      const key = `${dateKey}:${Math.abs(amount)}`;
+      const bucket = grouped.get(key) ?? [];
+      bucket.push(tx);
+      grouped.set(key, bucket);
+    }
+
+    const excludedIds = new Set<string>();
+    const excludedRefs = new Set<MercuryLedgerTransaction>();
+
+    for (const bucket of grouped.values()) {
+      const negatives = bucket.filter((tx) => (tx.amount ?? 0) < 0);
+      const positives = bucket.filter((tx) => (tx.amount ?? 0) > 0);
+      if (negatives.length === 0 || positives.length === 0) continue;
+
+      const hinted = bucket.some(textSuggestsInternalTransfer);
+      if (!hinted && (negatives.length !== 1 || positives.length !== 1)) {
+        continue;
+      }
+
+      const availablePositives = [...positives];
+      for (const debit of negatives) {
+        const matchIndex = availablePositives.findIndex((credit) => credit.accountId !== debit.accountId);
+        if (matchIndex === -1) continue;
+        const [credit] = availablePositives.splice(matchIndex, 1);
+        if (debit.id) excludedIds.add(debit.id); else excludedRefs.add(debit);
+        if (credit.id) excludedIds.add(credit.id); else excludedRefs.add(credit);
+      }
+    }
+
+    return transactions.filter((tx) => {
+      if (tx.id && excludedIds.has(tx.id)) return false;
+      if (!tx.id && excludedRefs.has(tx)) return false;
+      return true;
+    });
+  }
+
   function readMercuryNextCursor<T extends { id?: string }>(
     body: MercuryPageResponse<T> | null,
     batch: T[],
@@ -2150,21 +2219,15 @@ export async function fetchMercuryData(
   });
 
   const transactions: MercuryTransactionData[] = [];
+  const ledgerTransactions: MercuryTransaction[] = [];
   const expenseBreakdown = emptyExpenseBreakdown();
 
   const addCashFlow = (tx: MercuryTransaction): void => {
     if (!shouldCountCashFlow(tx)) return;
-    const amount = tx.amount ?? 0;
-    const amt = Math.abs(amount);
-    if (amount > 0) inflows += amt;
-    else {
-      outflows += amt;
-      expenseBreakdown[classifyMercuryExpense(tx)] += amt;
-    }
+    ledgerTransactions.push(tx);
     transactions.push(toTransactionData(tx));
   };
 
-  let inflows = 0, outflows = 0;
   let usedGlobalTransactions = false;
   try {
     let startAfter: string | null = null;
@@ -2220,6 +2283,17 @@ export async function fetchMercuryData(
     }
   }
 
+  const externalTransactions = filterInternalTransferPairs(ledgerTransactions);
+  let inflows = 0, outflows = 0;
+  for (const tx of externalTransactions) {
+    const amount = tx.amount ?? 0;
+    const amt = Math.abs(amount);
+    if (amount > 0) inflows += amt;
+    else {
+      outflows += amt;
+      expenseBreakdown[classifyMercuryExpense(tx)] += amt;
+    }
+  }
   const burnRate = Math.max(outflows - inflows, 0);
   const runway = burnRate > 0 ? totalBalance / burnRate : 999;
   const monthlyExpenseBreakdown: Record<ExpenseCategory, number> = {

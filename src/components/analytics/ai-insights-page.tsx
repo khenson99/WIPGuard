@@ -38,15 +38,6 @@ const SEVERITY_ORDER: Record<AiInsight["severity"], number> = {
 };
 
 const PAGE_SIZES = [10, 25, 50] as const;
-const SECTION_FILTERS: Array<{ id: SectionFilter; label: string }> = [
-  { id: "all", label: "All" },
-  { id: "ads-traffic", label: "Ads" },
-  { id: "finance", label: "Finance" },
-  { id: "sales-pipeline", label: "Sales" },
-  { id: "customer-success", label: "CS" },
-];
-const SEVERITY_FILTERS: SeverityFilter[] = ["all", "critical", "warning", "info"];
-const SORT_MODES: SortMode[] = ["severity", "confidence"];
 
 const SECTION_LABELS: Partial<Record<AnalyticsSectionId, string>> = {
   "website-traffic": "Website Conversion",

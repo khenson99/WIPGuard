@@ -180,7 +180,10 @@ export function InsightCardFull({
                     </thead>
                     <tbody>
                       {insight.evidence.map((evidence, index) => (
-                        <tr key={`${evidence.source}-${evidence.metric}-${index}`} className="border-b border-border/30 last:border-0">
+                        <tr
+                          key={`${evidence.source}-${evidence.metric}-${index}`}
+                          className="border-b border-border/30 last:border-0"
+                        >
                           <td className="py-2 text-foreground">{evidence.source}</td>
                           <td className="py-2 text-muted-foreground">{evidence.metric}</td>
                           <td className="py-2 text-right text-muted-foreground">

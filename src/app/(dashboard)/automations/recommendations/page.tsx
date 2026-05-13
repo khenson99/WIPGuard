@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { canExecuteRecommendationAction } from "@/lib/automations/execution-policy";
+import { RETIRED_AUTOMATION_ACTION_TYPES } from "@/lib/automations/retired-actions";
 import { readSessionCache, writeSessionCache } from "@/lib/client/session-cache";
 
 interface RecommendationItem {
@@ -51,6 +52,24 @@ interface RecommendationItem {
 
 const AUTOMATION_RECOMMENDATIONS_CACHE_KEY =
   "dashboard:automations:recommendations:v1";
+const RETIRED_ACTION_TYPES = new Set(RETIRED_AUTOMATION_ACTION_TYPES);
+
+function formatActionLabel(actionType: string): string {
+  const labels: Record<string, string> = {
+    create_gmail_draft: "Create Gmail Draft",
+    create_calendar_draft: "Create Calendar Draft",
+    update_hubspot: "Update HubSpot",
+    create_hubspot_task: "Create HubSpot Follow-Up",
+    create_github_issue: "Create GitHub Issue",
+    post_slack_digest: "Post Slack Digest",
+    execute_recommendation: "Execute Recommendation",
+  };
+
+  return labels[actionType] ??
+    actionType
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+}
 
 export default function AutomationRecommendationsPage() {
   const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
@@ -142,6 +161,14 @@ export default function AutomationRecommendationsPage() {
 
   const filteredRecommendations = useMemo(() => {
     return recommendations.filter((recommendation) => {
+      if (
+        RETIRED_ACTION_TYPES.has(
+          recommendation.actionType as (typeof RETIRED_AUTOMATION_ACTION_TYPES)[number]
+        )
+      ) {
+        return false;
+      }
+
       if (statusFilter !== "all" && recommendation.status !== statusFilter) {
         return false;
       }
@@ -165,10 +192,10 @@ export default function AutomationRecommendationsPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-foreground">
-            Suggested Actions
+            Recommendations
           </h1>
           <p className="text-xs text-muted-foreground">
-            Review suggested actions, approve gated changes, and execute safe workflow updates.
+            Review workflow recommendations, approve gated changes, and execute safe automation updates.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -182,7 +209,7 @@ export default function AutomationRecommendationsPage() {
             href="/pipelines/approvals"
             className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
           >
-            Review Queue
+            Approvals
           </Link>
           <Link
             href="/pipelines"
@@ -204,7 +231,8 @@ export default function AutomationRecommendationsPage() {
           type="text"
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder="Search suggested actions..."
+          placeholder="Search recommendations..."
+          aria-label="Search recommendations"
           className="rounded-md border border-border bg-secondary px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground"
         />
         <select
@@ -267,7 +295,7 @@ export default function AutomationRecommendationsPage() {
                     </p>
                   )}
                   <p className="text-[11px] text-muted-foreground">
-                    Action: {recommendation.actionType}
+                    Action: {formatActionLabel(recommendation.actionType)}
                     {recommendation.requiresApproval ? " · review required" : ""}
                   </p>
                   {recommendation.executionError && (

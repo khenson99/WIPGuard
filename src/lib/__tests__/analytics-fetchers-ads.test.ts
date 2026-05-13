@@ -129,6 +129,16 @@ describe("analytics ads fetchers", () => {
       )
       .mockResolvedValueOnce(
         jsonResponse({
+          data: [],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
           data: [
             {
               name: "Meta Campaign",
@@ -223,12 +233,27 @@ describe("analytics ads fetchers", () => {
       )
       .mockResolvedValueOnce(
         jsonResponse({
+          data: [],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
           data: [
             {
               name: "page_engaged_users",
               values: [{ value: 17 }],
             },
           ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [],
         })
       )
       .mockResolvedValueOnce(
@@ -272,10 +297,11 @@ describe("analytics ads fetchers", () => {
       Authorization: "Bearer page-token",
     });
     expect(String(fetchMock.mock.calls[2]?.[0])).toContain(
-      "metric=page_impressions%2Cpage_engaged_users"
+      "metric=page_impressions%2Cpage_engaged_users%2Cpage_views_total%2Cpage_total_actions"
     );
-    expect(String(fetchMock.mock.calls[3]?.[0])).toContain("metric=page_impressions");
-    expect(String(fetchMock.mock.calls[4]?.[0])).toContain("metric=page_engaged_users");
+    expect(String(fetchMock.mock.calls[3]?.[0])).toContain("metric=page_impressions%2Cpage_engaged_users");
+    expect(String(fetchMock.mock.calls[4]?.[0])).toContain("metric=page_impressions");
+    expect(String(fetchMock.mock.calls[5]?.[0])).toContain("metric=page_engaged_users");
   });
 
   it("resolves and uses the Meta Page access token for page-owned endpoints", async () => {
@@ -645,6 +671,15 @@ describe("analytics ads fetchers", () => {
             },
           ],
         })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            { name: "reach", values: [{ value: 250 }] },
+            { name: "profile_views", values: [{ value: 31 }] },
+            { name: "website_clicks", values: [{ value: 7 }] },
+          ],
+        })
       );
 
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
@@ -703,7 +738,7 @@ describe("analytics ads fetchers", () => {
           (item.confidence === "low" || item.confidence === "medium" || item.confidence === "high")
       )
     ).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
 
     const mediaUrl = String(fetchMock.mock.calls[2]?.[0] ?? "");
     expect(mediaUrl).toContain("/ig_123/media");
@@ -799,6 +834,15 @@ describe("analytics ads fetchers", () => {
             },
           ],
         })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            { name: "reach", values: [{ value: 90 }] },
+            { name: "profile_views", values: [{ value: 14 }] },
+            { name: "website_clicks", values: [{ value: 3 }] },
+          ],
+        })
       );
 
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
@@ -812,7 +856,10 @@ describe("analytics ads fetchers", () => {
     );
 
     expect(data.followers).toBe(321);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(data.reach30d).toBe(90);
+    expect(data.traffic).toBe(14);
+    expect(data.clicks).toBe(3);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
 
     const firstUrl = String(fetchMock.mock.calls[0]?.[0] ?? "");
     expect(firstUrl).toContain("/page_1");

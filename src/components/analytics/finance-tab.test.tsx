@@ -266,6 +266,23 @@ describe("FinanceTab", () => {
     expect(screen.getByText("In Progress")).toBeTruthy();
   });
 
+  it("prefers the merged subscription overview for the headline KPI", () => {
+    const data = makePayload({
+      financialPlanning: makeFinancialPlanning({
+        subscriptionOverview: {
+          mergedActiveSubscriptions: 148,
+          stripeActiveSubscriptions: 155,
+          hubspotActiveSubscriptions: 151,
+        },
+      }),
+    });
+
+    render(<FinanceTab data={data} />);
+
+    expect(screen.getByText("148")).toBeTruthy();
+    expect(screen.getByText("155 Stripe · 151 HubSpot · 5 past due · 12 trialing")).toBeTruthy();
+  });
+
   it("renders with only Stripe data (no Mercury)", () => {
     render(<FinanceTab data={makePayload({ mercury: null })} />);
     expect(screen.getByText("Monthly Recurring Revenue")).toBeTruthy();

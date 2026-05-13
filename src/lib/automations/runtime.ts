@@ -4,13 +4,16 @@ import {
 import {
   IntegrationProvider,
   Prisma,
-  TaskStatus,
   WorkflowApprovalStatus,
   WorkflowEventStatus,
   WorkflowRunStatus,
   WorkflowStepStatus,
 } from "@/generated/prisma/client";
 import { executeAutomationAction } from "@/lib/automations/actions";
+import {
+  isRetiredAutomationActionType,
+  RETIRED_AUTOMATION_ACTION_MESSAGE,
+} from "@/lib/automations/retired-actions";
 import { prisma } from "@/lib/prisma";
 import {
   evaluateConditionExpression,
@@ -64,26 +67,6 @@ function toNullableJsonValue(
     return Prisma.DbNull;
   }
   return value as unknown as Prisma.InputJsonValue;
-}
-
-function resolveTaskStatus(input: unknown, fallback: TaskStatus = TaskStatus.QUEUED): TaskStatus {
-  const value = typeof input === "string" ? input.trim().toUpperCase() : "";
-  switch (value) {
-    case "BACKLOG":
-      return TaskStatus.BACKLOG;
-    case "QUEUED":
-      return TaskStatus.QUEUED;
-    case "WORKING_ON_TODAY":
-      return TaskStatus.WORKING_ON_TODAY;
-    case "ACTIVE":
-      return TaskStatus.ACTIVE;
-    case "NOT_DONE":
-      return TaskStatus.NOT_DONE;
-    case "DONE":
-      return TaskStatus.DONE;
-    default:
-      return fallback;
-  }
 }
 
 function resolvePath(path: string, context: Record<string, unknown>): unknown {
@@ -268,149 +251,13 @@ async function executeActionNode(input: {
   const config = asRecord(input.node.config) ?? {};
   const actionType = typeof config.actionType === "string" ? config.actionType : "noop";
 
-  if (actionType === "create_task") {
-    const title =
-      renderMaybeTemplate(config.titleTemplate, input.context) ||
-      renderMaybeTemplate(config.title, input.context) ||
-      `Automation task from ${input.node.label}`;
-    const notes = renderMaybeTemplate(config.notesTemplate, input.context);
-    const status = resolveTaskStatus(config.status, TaskStatus.QUEUED);
-    const priorityRaw =
-      renderMaybeTemplate(config.priority, input.context) ||
-      (typeof config.priority === "string" ? config.priority : "P2");
-
-    const priority =
-      priorityRaw === "P0" || priorityRaw === "P1" || priorityRaw === "P2" || priorityRaw === "P3"
-        ? priorityRaw
-        : "P2";
-
-    const projectId = renderMaybeTemplate(config.projectId, input.context);
-    const responsibleId = renderMaybeTemplate(config.responsibleId, input.context);
-
-    const task = await prisma.task.create({
-      data: {
-        title,
-        notes,
-        status,
-        priority,
-        projectId,
-        metadata: {
-          integration: {
-            provider: (input.context.trigger as Record<string, unknown>)?.provider ?? null,
-            externalId: (input.context.trigger as Record<string, unknown>)?.externalId ?? null,
-            ruleId: input.runId,
-            sourceUrl: (input.context.trigger as Record<string, unknown>)?.sourceUrl ?? null,
-            lastObservedAt: new Date().toISOString(),
-          },
-          automation: {
-            runId: input.runId,
-            nodeKey: input.node.key,
-            actionType,
-          },
-        } as Prisma.JsonObject,
-        ...(responsibleId
-          ? {
-              responsible: {
-                connect: [{ id: responsibleId }],
-              },
-            }
-          : {}),
-      },
-      select: { id: true, title: true, status: true, priority: true },
-    });
-
+  if (isRetiredAutomationActionType(actionType)) {
     return {
       output: {
         actionType,
-        taskId: task.id,
-        title: task.title,
-        status: task.status,
-        priority: task.priority,
-      },
-    };
-  }
-
-  if (actionType === "update_task") {
-    const taskId =
-      renderMaybeTemplate(config.taskId, input.context) ||
-      (typeof config.taskIdPath === "string"
-        ? String(resolvePath(config.taskIdPath, input.context) ?? "")
-        : "");
-
-    if (!taskId) {
-      throw new Error("update_task action requires taskId or taskIdPath");
-    }
-
-    const title = renderMaybeTemplate(config.titleTemplate, input.context);
-    const notes = renderMaybeTemplate(config.notesTemplate, input.context);
-    const status = resolveTaskStatus(config.status, TaskStatus.QUEUED);
-
-    const task = await prisma.task.update({
-      where: { id: taskId },
-      data: {
-        ...(title ? { title } : {}),
-        ...(notes ? { notes } : {}),
-        ...(config.status ? { status } : {}),
-      },
-      select: { id: true, title: true, status: true },
-    });
-
-    return {
-      output: {
-        actionType,
-        taskId: task.id,
-        status,
-      },
-    };
-  }
-
-  if (actionType === "create_checklist_tasks") {
-    const checklist = Array.isArray(config.checklist)
-      ? config.checklist
-          .map((item) => (typeof item === "string" ? item.trim() : ""))
-          .filter(Boolean)
-      : [];
-
-    if (checklist.length === 0) {
-      return { output: { actionType, created: 0 } };
-    }
-
-    const parentTitle =
-      renderMaybeTemplate(config.titleTemplate, input.context) ||
-      renderMaybeTemplate(config.title, input.context) ||
-      `Checklist from ${input.node.label}`;
-
-    const parent = await prisma.task.create({
-      data: {
-        title: parentTitle,
-        status: TaskStatus.QUEUED,
-        priority: "P2",
-        metadata: {
-          automation: {
-            runId: input.runId,
-            nodeKey: input.node.key,
-            actionType,
-          },
-        },
-      },
-      select: { id: true },
-    });
-
-    await prisma.task.createMany({
-      data: checklist.map((item, index) => ({
-        title: item,
-        status: TaskStatus.BACKLOG,
-        priority: "P2",
-        parentId: parent.id,
-        columnOrder: index,
-      })),
-    });
-
-    return {
-      output: {
-        actionType,
-        parentTaskId: parent.id,
-        created: checklist.length,
+        skipped: true,
+        reason: "retired_workflow_action",
+        detail: RETIRED_AUTOMATION_ACTION_MESSAGE,
       },
     };
   }
@@ -434,75 +281,6 @@ async function executeActionNode(input: {
     });
 
     return { output: { actionType, queued: true } };
-  }
-
-  if (actionType === "logbook_entry") {
-    const taskId =
-      renderMaybeTemplate(config.taskId, input.context) ||
-      (typeof config.taskIdPath === "string"
-        ? String(resolvePath(config.taskIdPath, input.context) ?? "")
-        : "");
-
-    if (!taskId) {
-      return {
-        output: {
-          actionType,
-          skipped: true,
-          reason: "missing_task_id",
-        },
-      };
-    }
-
-    const task = await prisma.task.findUnique({
-      where: { id: taskId },
-      select: {
-        id: true,
-        title: true,
-        notes: true,
-        status: true,
-        priority: true,
-        completedOn: true,
-        project: { select: { name: true } },
-        sprint: { select: { name: true } },
-      },
-    });
-
-    if (!task) {
-      return {
-        output: {
-          actionType,
-          skipped: true,
-          reason: "task_not_found",
-        },
-      };
-    }
-
-    await prisma.logbookEntry.create({
-      data: {
-        taskId: task.id,
-        taskTitle: task.title,
-        taskNotes: task.notes,
-        projectName: task.project?.name ?? null,
-        sprintName: task.sprint?.name ?? null,
-        priority: task.priority,
-        status: task.status,
-        completedOn: task.completedOn ?? new Date(),
-        metadata: {
-          automation: {
-            runId: input.runId,
-            nodeKey: input.node.key,
-          },
-        },
-      },
-    });
-
-    return {
-      output: {
-        actionType,
-        logged: true,
-        taskId: task.id,
-      },
-    };
   }
 
   if (

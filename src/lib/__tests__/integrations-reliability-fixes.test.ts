@@ -146,7 +146,7 @@ describe("orchestrator structured error logging", () => {
             .mockResolvedValueOnce([
               {
                 id: "rule_1",
-                key: "slack_status_thread_sync",
+                key: "legacy_workflow_rule",
                 provider: "SLACK",
                 enabled: true,
                 userId: "user_1",
@@ -161,11 +161,6 @@ describe("orchestrator structured error logging", () => {
       resolveIntegrationOrganizationId: vi.fn(async () => "org_1"),
     }));
 
-    vi.doMock("@/lib/integrations/slack-status-sync", () => ({
-      runSlackStatusSync: vi.fn().mockRejectedValue(new Error("Slack token expired")),
-    }));
-
-    // Mock all other imports to prevent errors
     vi.doMock("@/lib/integrations/provider-metrics-sync", () => ({
       GOOGLE_ADS_METRICS_RULE_KEY: "google_ads_metrics",
       META_ADS_METRICS_RULE_KEY: "meta_ads_metrics",
@@ -178,40 +173,6 @@ describe("orchestrator structured error logging", () => {
       runProviderMetricsRule: vi.fn(),
     }));
 
-    vi.doMock("@/lib/integrations/slack-unanswered-requests", () => ({
-      runSlackUnansweredDetector: vi.fn(),
-    }));
-    vi.doMock("@/lib/integrations/google-gmail-capture", () => ({
-      runGmailCapture: vi.fn(),
-    }));
-    vi.doMock("@/lib/integrations/google-drive-comment-escalation", () => ({
-      runGoogleDriveCommentEscalation: vi.fn(),
-    }));
-    vi.doMock("@/lib/integrations/google-calendar-followup", () => ({
-      runGoogleCalendarPrepFollowup: vi.fn(),
-    }));
-    vi.doMock("@/lib/integrations/hubspot-stage-checklist", () => ({
-      runHubSpotStageChecklist: vi.fn(),
-    }));
-    vi.doMock("@/lib/integrations/hubspot-risk-intervention", () => ({
-      runHubSpotRiskIntervention: vi.fn(),
-    }));
-    vi.doMock("@/lib/integrations/hubspot-customer-signals", () => ({
-      runHubSpotCustomerSignalAutomation: vi.fn(),
-    }));
-    vi.doMock("@/lib/integrations/hubspot-bidirectional-sync", () => ({
-      runHubSpotBidirectionalSync: vi.fn(),
-    }));
-    vi.doMock("@/lib/integrations/coda-row-sync", () => ({
-      runCodaRowSync: vi.fn(),
-    }));
-    vi.doMock("@/lib/integrations/coda-dependency-gates", () => ({
-      runCodaDependencyGateAutomation: vi.fn(),
-    }));
-    vi.doMock("@/lib/integrations/coda-decision-actions", () => ({
-      runCodaDecisionActionConverter: vi.fn(),
-    }));
-
     const { runRules } = await import("@/lib/integrations/orchestrator");
     const result = await runRules({
       mode: "incremental",
@@ -221,18 +182,12 @@ describe("orchestrator structured error logging", () => {
     });
 
     // Orchestrator should continue (not throw)
-    expect(result.executedRules).toBe(1);
+    expect(result.executedRules).toBe(0);
 
-    // And should have logged the error with structured details
-    expect(errorSpy).toHaveBeenCalledWith(
+    // Retired workflow rules should now be skipped entirely.
+    expect(errorSpy).not.toHaveBeenCalledWith(
       "integration.orchestrator.rule_failed",
-      expect.objectContaining({
-        ruleId: "rule_1",
-        ruleKey: "slack_status_thread_sync",
-        provider: "SLACK",
-        userId: "user_1",
-        error: "Slack token expired",
-      })
+      expect.anything()
     );
 
     errorSpy.mockRestore();

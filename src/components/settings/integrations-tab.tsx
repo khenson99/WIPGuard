@@ -4,11 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ShieldAlert } from "lucide-react";
 import { ProviderCard } from "@/components/settings/integrations/provider-card";
-import { descriptorsForProvider, RULE_DESCRIPTORS } from "@/components/settings/integrations/rule-descriptors";
+import { RULE_DESCRIPTORS, descriptorsForProvider } from "@/components/settings/integrations/rule-descriptors";
 import { buildRemediationSteps } from "@/components/settings/integrations/remediation";
 import type {
-  HubSpotDiagnosticsResponse,
-  HubSpotDriftReport,
   IntegrationItem,
   RuleLoadState,
   RuleRuntimeState,
@@ -116,27 +114,12 @@ export function IntegrationsTab() {
   const [ruleStates, setRuleStates] = useState<Record<string, RuleLoadState>>(createInitialRuleStates);
   const [expandedProviderSlug, setExpandedProviderSlug] = useState<string | null>(null);
 
-  const [hubspotDiagnostics, setHubspotDiagnostics] = useState<{
-    loading: boolean;
-    error: string | null;
-    data: HubSpotDiagnosticsResponse | null;
-    driftLoading: boolean;
-    driftReport: HubSpotDriftReport | null;
-  }>({
-    loading: false,
-    error: null,
-    data: null,
-    driftLoading: false,
-    driftReport: null,
-  });
-
   const descriptorById = useMemo(
     () => new Map(RULE_DESCRIPTORS.map((descriptor) => [descriptor.id, descriptor])),
     []
   );
 
   const loadedProvidersRef = useRef<Set<string>>(new Set());
-  const loadedHubspotDiagnosticsRef = useRef(false);
   const didUserToggleProviderRef = useRef(false);
 
   const setRuleState = useCallback(
@@ -228,63 +211,6 @@ export function IntegrationsTab() {
     [loadRule]
   );
 
-  const reloadHubspotDiagnostics = useCallback(async () => {
-    setHubspotDiagnostics((prev) => ({ ...prev, loading: true, error: null }));
-    try {
-      const response = await fetch("/api/integrations/hubspot/sync", { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(await parseErrorMessage(response, "Failed to load HubSpot diagnostics"));
-      }
-
-      const payload = (await response.json()) as HubSpotDiagnosticsResponse;
-      setHubspotDiagnostics((prev) => ({
-        ...prev,
-        loading: false,
-        error: null,
-        data: payload,
-      }));
-    } catch (diagnosticsError) {
-      setHubspotDiagnostics((prev) => ({
-        ...prev,
-        loading: false,
-        error:
-          diagnosticsError instanceof Error
-            ? diagnosticsError.message
-            : "Failed to load HubSpot diagnostics",
-      }));
-    }
-  }, []);
-
-  const runHubspotDriftReport = useCallback(async () => {
-    setHubspotDiagnostics((prev) => ({ ...prev, driftLoading: true, error: null }));
-    try {
-      const response = await fetch("/api/integrations/hubspot/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "drift_report" }),
-      });
-      if (!response.ok) {
-        throw new Error(await parseErrorMessage(response, "Failed to run HubSpot drift report"));
-      }
-
-      const payload = (await response.json().catch(() => null)) as
-        | { report?: HubSpotDriftReport }
-        | null;
-      setHubspotDiagnostics((prev) => ({
-        ...prev,
-        driftLoading: false,
-        driftReport: payload?.report ?? null,
-      }));
-    } catch (driftError) {
-      setHubspotDiagnostics((prev) => ({
-        ...prev,
-        driftLoading: false,
-        error:
-          driftError instanceof Error ? driftError.message : "Failed to run HubSpot drift report",
-      }));
-    }
-  }, []);
-
   useEffect(() => {
     void fetchIntegrations();
   }, [fetchIntegrations]);
@@ -303,11 +229,7 @@ export function IntegrationsTab() {
       }
     }
 
-    if (items.some((item) => item.slug === "hubspot") && !loadedHubspotDiagnosticsRef.current) {
-      loadedHubspotDiagnosticsRef.current = true;
-      void reloadHubspotDiagnostics();
-    }
-  }, [items, loadRulesForProvider, reloadHubspotDiagnostics]);
+  }, [items, loadRulesForProvider]);
 
   useEffect(() => {
     if (items.length === 0 || didUserToggleProviderRef.current) {
@@ -552,9 +474,6 @@ export function IntegrationsTab() {
         if (descriptor.runAction === "sync") {
           body.dryRun = payload?.dryRun === true;
         }
-        if (descriptor.runAction === "capture") {
-          body.payload = payload?.payload;
-        }
 
         const response = await fetch(descriptor.endpoint, {
           method: "POST",
@@ -699,7 +618,6 @@ export function IntegrationsTab() {
           const remediationSteps = buildRemediationSteps({
             item,
             rules: providerRuleStates,
-            hubspotDiagnostics: item.slug === "hubspot" ? hubspotDiagnostics.data : null,
           });
 
           return (
@@ -735,9 +653,6 @@ export function IntegrationsTab() {
               onRuleRun={runRule}
               onChannelRoutingAddPolicy={addChannelRoutingPolicy}
               onChannelRoutingRemovePolicy={removeChannelRoutingPolicy}
-              hubspotDiagnostics={hubspotDiagnostics}
-              onReloadHubspotDiagnostics={reloadHubspotDiagnostics}
-              onRunHubspotDrift={runHubspotDriftReport}
             />
           );
         })}

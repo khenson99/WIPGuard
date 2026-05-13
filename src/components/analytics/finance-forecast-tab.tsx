@@ -233,9 +233,9 @@ export function FinanceForecastTab({
       {/* ── Alerts ─────────────────────────────────────── */}
       {alerts.length > 0 && (
         <div className="space-y-2">
-          {alerts.map((a, i) => (
+          {alerts.map((a) => (
             <AlertBanner
-              key={i}
+              key={`${a.severity}:${a.title}`}
               severity={a.severity}
               title={a.title}
               description={a.description}

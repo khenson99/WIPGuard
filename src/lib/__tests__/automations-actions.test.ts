@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { TaskStatus } from "@/generated/prisma/client";
+import {
+  RETIRED_AUTOMATION_ACTION_MESSAGE,
+  RETIRED_AUTOMATION_ACTION_TYPES,
+} from "@/lib/automations/retired-actions";
 import { executeAutomationAction } from "@/lib/automations/actions";
 import { fetchJsonWithResilience } from "@/lib/integrations/http-client";
 import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
 import { prisma } from "@/lib/prisma";
-import { getNextColumnOrder } from "@/lib/task-order";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -16,10 +18,6 @@ vi.mock("@/lib/prisma", () => ({
       update: vi.fn(),
     },
   },
-}));
-
-vi.mock("@/lib/task-order", () => ({
-  getNextColumnOrder: vi.fn(),
 }));
 
 vi.mock("@/lib/integrations/token-refresh", () => ({
@@ -36,6 +34,9 @@ vi.mock("@/lib/integrations/slack-notifications", () => ({
 }));
 
 describe("automation actions", () => {
+  const retiredCreateActionType = RETIRED_AUTOMATION_ACTION_TYPES[0];
+  const retiredUpdateActionType = RETIRED_AUTOMATION_ACTION_TYPES[1];
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(prisma.workflowRun.findUnique).mockResolvedValue({
@@ -46,16 +47,10 @@ describe("automation actions", () => {
     } as never);
   });
 
-  it("creates tasks using prisma-aware column ordering", async () => {
-    vi.mocked(getNextColumnOrder).mockResolvedValue(4);
-    vi.mocked(prisma.task.create).mockResolvedValue({
-      id: "task_1",
-      title: "Follow up",
-    } as never);
-
+  it("skips retired workflow creation actions", async () => {
     const result = await executeAutomationAction({
       runId: "run_1",
-      actionType: "create_task",
+      actionType: retiredCreateActionType,
       actionPayload: {
         title: "Follow up",
         status: "active",
@@ -63,38 +58,18 @@ describe("automation actions", () => {
       },
     });
 
-    expect(getNextColumnOrder).toHaveBeenCalledWith(prisma, TaskStatus.ACTIVE);
-    expect(prisma.task.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        title: "Follow up",
-        status: TaskStatus.ACTIVE,
-        columnOrder: 4,
-        accountable: {
-          connect: [{ id: "user_1" }],
-        },
-        responsible: {
-          connect: [{ id: "user_2" }],
-        },
-      }),
-      select: { id: true, title: true },
-    });
+    expect(prisma.task.create).not.toHaveBeenCalled();
     expect(result).toEqual({
-      actionType: "create_task",
-      status: "executed",
-      targetId: "task_1",
-      detail: "Follow up",
+      actionType: retiredCreateActionType,
+      status: "skipped",
+      detail: RETIRED_AUTOMATION_ACTION_MESSAGE,
     });
   });
 
-  it("updates tasks with only normalized fields", async () => {
-    vi.mocked(prisma.task.update).mockResolvedValue({
-      id: "task_2",
-      title: "Renamed",
-    } as never);
-
+  it("skips retired workflow update actions", async () => {
     const result = await executeAutomationAction({
       runId: "run_1",
-      actionType: "update_task",
+      actionType: retiredUpdateActionType,
       actionPayload: {
         taskId: "task_2",
         title: " Renamed ",
@@ -103,19 +78,11 @@ describe("automation actions", () => {
       },
     });
 
-    expect(prisma.task.update).toHaveBeenCalledWith({
-      where: { id: "task_2" },
-      data: {
-        title: "Renamed",
-        status: TaskStatus.DONE,
-      },
-      select: { id: true, title: true },
-    });
+    expect(prisma.task.update).not.toHaveBeenCalled();
     expect(result).toEqual({
-      actionType: "update_task",
-      status: "executed",
-      targetId: "task_2",
-      detail: "Renamed",
+      actionType: retiredUpdateActionType,
+      status: "skipped",
+      detail: RETIRED_AUTOMATION_ACTION_MESSAGE,
     });
   });
 

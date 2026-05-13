@@ -35,13 +35,27 @@ export default function SettingsPage() {
       : "team";
 
   useEffect(() => {
-    if (tabParam !== "integrations") return;
+    if (
+      tabParam !== "integrations" &&
+      tabParam !== "board" &&
+      tabParam !== "sprints" &&
+      tabParam !== "projects"
+    ) {
+      return;
+    }
 
     const params = new URLSearchParams(searchParams?.toString() ?? "");
-    params.delete("tab");
-    const suffix = params.toString();
-    router.replace(`/integrations${suffix ? `?${suffix}` : ""}`, { scroll: false });
-  }, [router, searchParams, tabParam]);
+    if (tabParam === "integrations") {
+      params.delete("tab");
+      const suffix = params.toString();
+      router.replace(`/integrations${suffix ? `?${suffix}` : ""}`, { scroll: false });
+      return;
+    }
+
+    params.set("tab", "departments");
+    const basePath = pathname || "/settings";
+    router.replace(`${basePath}?${params.toString()}`, { scroll: false });
+  }, [pathname, router, searchParams, tabParam]);
 
   useEffect(() => {
     if (!isLegacySettingsTab) return;

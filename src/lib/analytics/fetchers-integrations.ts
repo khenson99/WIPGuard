@@ -83,7 +83,6 @@ export async function fetchIntegrationTelemetryData(input: {
         },
       },
       select: {
-        taskId: true,
         lastObservedAt: true,
         metadata: true,
       },

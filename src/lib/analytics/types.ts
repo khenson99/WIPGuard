@@ -1127,7 +1127,6 @@ export interface AnalyticsRecommendation {
 }
 
 export type InsightActionType =
-  | "create_task"
   | "assign_owner"
   | "create_automation_from_template"
   | "open_integration_followup";
@@ -1738,9 +1737,9 @@ export interface UnitEconomics {
 export interface FinanceBudgetActualMetric {
   category: string;
   budgeted: number;
-  actual: number;
-  variance: number;
-  variancePct: number;
+  actual: number | null;
+  variance: number | null;
+  variancePct: number | null;
   status: "under" | "on_track" | "over";
 }
 
@@ -1748,9 +1747,9 @@ export interface FinanceBudgetActualsMetric {
   budgetId: string;
   budgetName: string;
   totalBudget: number;
-  totalActual: number;
-  totalVariance: number;
-  totalVariancePct: number;
+  totalActual: number | null;
+  totalVariance: number | null;
+  totalVariancePct: number | null;
   overspendCategories: string[];
   items: FinanceBudgetActualMetric[];
 }

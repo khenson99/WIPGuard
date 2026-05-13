@@ -1,9 +1,12 @@
-import { IntegrationProvider, TaskStatus, type Prisma } from "@/generated/prisma/client";
+import { IntegrationProvider } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { sendSlackDirectMessage } from "@/lib/integrations/slack-notifications";
 import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
 import { fetchJsonWithResilience, fetchWithResilience } from "@/lib/integrations/http-client";
-import { getNextColumnOrder } from "@/lib/task-order";
+import {
+  isRetiredAutomationActionType,
+  RETIRED_AUTOMATION_ACTION_MESSAGE,
+} from "@/lib/automations/retired-actions";
 
 export interface AutomationActionExecutionResult {
   actionType: string;
@@ -29,24 +32,6 @@ function asStringArray(value: unknown): string[] {
   return value
     .map((item) => asString(item))
     .filter((item): item is string => Boolean(item));
-}
-
-function resolveTaskStatus(input: string | null | undefined): TaskStatus {
-  switch (input?.toUpperCase()) {
-    case "BACKLOG":
-      return TaskStatus.BACKLOG;
-    case "WORKING_ON_TODAY":
-      return TaskStatus.WORKING_ON_TODAY;
-    case "ACTIVE":
-      return TaskStatus.ACTIVE;
-    case "NOT_DONE":
-      return TaskStatus.NOT_DONE;
-    case "DONE":
-      return TaskStatus.DONE;
-    case "QUEUED":
-    default:
-      return TaskStatus.QUEUED;
-  }
 }
 
 function base64UrlEncode(input: string): string {
@@ -194,88 +179,11 @@ async function resolveAutomationActor(runId: string): Promise<string> {
   return actorUserId;
 }
 
-async function createTaskFromAction(runId: string, payload: Record<string, unknown>) {
-  const actorUserId = await resolveAutomationActor(runId);
-  const title = asString(payload.title) ?? "Automation task";
-  const notes = asString(payload.notes);
-  const priority = asString(payload.priority) ?? "P2";
-  const projectId = asString(payload.projectId);
-  const responsibleId = asString(payload.responsibleId);
-  const status = resolveTaskStatus(asString(payload.status));
-  const columnOrder = await getNextColumnOrder(prisma, status);
-
-  const task = await prisma.task.create({
-    data: {
-      title,
-      notes,
-      priority: priority === "P0" || priority === "P1" || priority === "P2" || priority === "P3" ? priority : "P2",
-      status,
-      projectId,
-      columnOrder,
-      metadata: {
-        automation: {
-          runId,
-          actionType: "create_task",
-        },
-      } as Prisma.JsonObject,
-      ...(responsibleId
-        ? {
-            responsible: {
-              connect: [{ id: responsibleId }],
-            },
-          }
-        : {}),
-      accountable: {
-        connect: [{ id: actorUserId }],
-      },
-    },
-    select: { id: true, title: true },
-  });
-
+function retiredTaskActionResult(actionType: string) {
   return {
-    actionType: "create_task",
-    status: "executed" as const,
-    targetId: task.id,
-    detail: task.title,
-  };
-}
-
-async function updateTaskFromAction(payload: Record<string, unknown>) {
-  const taskId = asString(payload.taskId);
-  if (!taskId) {
-    return {
-      actionType: "update_task",
-      status: "skipped" as const,
-      detail: "taskId missing",
-    };
-  }
-
-  const title = asString(payload.title);
-  const notes = asString(payload.notes);
-  const status = asString(payload.status);
-  const data: Prisma.TaskUpdateInput = {};
-
-  if (title) {
-    data.title = title;
-  }
-  if (notes) {
-    data.notes = notes;
-  }
-  if (status) {
-    data.status = resolveTaskStatus(status);
-  }
-
-  const task = await prisma.task.update({
-    where: { id: taskId },
-    data,
-    select: { id: true, title: true },
-  });
-
-  return {
-    actionType: "update_task",
-    status: "executed" as const,
-    targetId: task.id,
-    detail: task.title,
+    actionType,
+    status: "skipped" as const,
+    detail: RETIRED_AUTOMATION_ACTION_MESSAGE,
   };
 }
 
@@ -671,11 +579,11 @@ export async function executeAutomationAction(input: {
 }): Promise<AutomationActionExecutionResult> {
   const payload = input.actionPayload ?? {};
 
+  if (isRetiredAutomationActionType(input.actionType)) {
+    return retiredTaskActionResult(input.actionType);
+  }
+
   switch (input.actionType) {
-    case "create_task":
-      return createTaskFromAction(input.runId, payload);
-    case "update_task":
-      return updateTaskFromAction(payload);
     case "create_gmail_draft":
       return createGmailDraftAction(input.runId, payload);
     case "send_gmail_message":

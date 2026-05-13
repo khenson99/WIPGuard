@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-state";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { DashboardErrorBanner } from "@/components/dashboard/dashboard-error-banner";
+import { DashboardStaleBanner } from "@/components/dashboard/dashboard-stale-banner";
+import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
 import {
   SectionCard,
   DataTable,
@@ -95,6 +97,15 @@ interface AnalyticsData {
   staleDeals: StaleDeal[];
 }
 
+const CACHE_KEY = "dashboard:deals-analytics:v1";
+
+class DealsSetupRequiredError extends Error {
+  constructor(message: string = DEALS_SCHEMA_MISSING_MESSAGE) {
+    super(message);
+    this.name = "DealsSetupRequiredError";
+  }
+}
+
 const STAGE_COLORS: Record<string, string> = {
   LEAD: "#94a3b8",
   QUALIFIED: "#3b82f6",
@@ -105,77 +116,61 @@ const STAGE_COLORS: Record<string, string> = {
 };
 
 export function DealsAnalytics() {
-  const router = useRouter();
-  const [data, setData] = useState<AnalyticsData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [setupRequired, setSetupRequired] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/deals/analytics")
-      .then(async (r): Promise<AnalyticsData> => {
-        const payload = (await r.json().catch(() => null)) as unknown;
-        if (!r.ok) {
-          if (r.status === 503 && isDealsSchemaMissingPayload(payload)) {
-            setSetupRequired(true);
-            throw new Error(payload.error);
-          }
-          const errorMessage =
-            payload && typeof payload === "object" && typeof (payload as { error?: unknown }).error === "string"
-              ? (payload as { error: string }).error
-              : `Analytics failed (${r.status})`;
-          throw new Error(errorMessage);
+  const resource = useDashboardResource<AnalyticsData>({
+    cacheKey: CACHE_KEY,
+    deps: [],
+    load: async ({ signal, refresh }) => {
+      const response = await fetch("/api/deals/analytics", {
+        signal,
+        cache: refresh ? "no-store" : "default",
+      });
+      const payload = (await response.json().catch(() => null)) as unknown;
+      if (!response.ok) {
+        if (response.status === 503 && isDealsSchemaMissingPayload(payload)) {
+          throw new DealsSetupRequiredError(payload.error);
         }
-        setSetupRequired(false);
-        return payload as AnalyticsData;
-      })
-      .then((payload) => {
-        setData(payload);
-        setError(null);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load analytics"))
-      .finally(() => setLoading(false));
-  }, []);
+        const errorMessage =
+          payload && typeof payload === "object" && typeof (payload as { error?: unknown }).error === "string"
+            ? (payload as { error: string }).error
+            : `Analytics failed (${response.status})`;
+        throw new Error(errorMessage);
+      }
+      return payload as AnalyticsData;
+    },
+  });
 
-  if (loading) return <DashboardLoadingState message="Loading analytics..." className="h-[50vh]" />;
+  const data = resource.data;
+  const setupRequired = resource.error === DEALS_SCHEMA_MISSING_MESSAGE;
+
+  const headerActions = useMemo(
+    () => (
+      <>
+        {resource.stale ? (
+          <DashboardStaleBanner
+            lastUpdatedAt={resource.lastUpdatedAt}
+            onRefresh={resource.refresh}
+            refreshing={resource.refreshing}
+            label="Showing cached deal analytics while refresh retries."
+          />
+        ) : null}
+
+        {resource.error && resource.data ? (
+          <DashboardErrorBanner message={resource.error} onRetry={resource.refresh} />
+        ) : null}
+      </>
+    ),
+    [resource.data, resource.error, resource.lastUpdatedAt, resource.refresh, resource.refreshing, resource.stale],
+  );
+
+  if (resource.loading && !data) return <DashboardLoadingState message="Loading analytics..." className="h-[50vh]" />;
   if (!data) {
     return (
       <DashboardEmptyState
         title={setupRequired ? "Deals setup required" : "Analytics unavailable"}
-        message={error ?? (setupRequired ? DEALS_SCHEMA_MISSING_MESSAGE : "No analytics data available.")}
+        message={resource.error ?? (setupRequired ? DEALS_SCHEMA_MISSING_MESSAGE : "No analytics data available.")}
+        actionLabel="Refresh now"
+        onAction={resource.refresh}
       />
-    );
-  }
-
-  const hasAnalyticsData =
-    data.pipeline.totalDeals > 0 ||
-    data.closeRate.won > 0 ||
-    data.closeRate.lost > 0 ||
-    data.meetings.total > 0 ||
-    data.sourceAttribution.some((entry) => entry.count > 0) ||
-    data.staleDeals.length > 0 ||
-    data.velocity.trend.length > 0 ||
-    data.closeRate.trend.length > 0;
-
-  if (!hasAnalyticsData) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <Link href="/deals" className="icon-btn-muted rounded-md p-2" aria-label="Back to deals">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-          <div>
-            <h1 className="text-xl font-bold text-foreground">Deals Analytics</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Pipeline health, velocity, and performance metrics.</p>
-          </div>
-        </div>
-        <DashboardEmptyState
-          title="No deals to analyze yet"
-          message="Load pipeline data first by creating a deal or syncing your current pipeline from HubSpot."
-          actionLabel="Open Pipeline View"
-          onAction={() => router.push("/deals")}
-        />
-      </div>
     );
   }
 
@@ -276,6 +271,8 @@ export function DealsAnalytics() {
           <p className="mt-1 text-sm text-muted-foreground">Pipeline health, velocity, and performance metrics.</p>
         </div>
       </div>
+
+      {headerActions}
 
       {/* KPI Row */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

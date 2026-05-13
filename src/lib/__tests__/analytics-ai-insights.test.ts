@@ -644,6 +644,7 @@ describe("customer success insights", () => {
     };
     const bundle = buildAiInsightsBundle(data);
     const stall = bundle.global.find((i) => i.id === "ai-cs-throughput-stall");
+    expect(stall).toBeDefined();
     expect(stall!.severity).toBe("critical");
   });
 });

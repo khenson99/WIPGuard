@@ -96,6 +96,31 @@ function normalizeEmail(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function canonicalizeEmailIdentity(value: string | null | undefined): string | null {
+  const normalized = normalizeEmail(value);
+  if (!normalized) return null;
+  const atIndex = normalized.indexOf("@");
+  if (atIndex <= 0 || atIndex === normalized.length - 1) {
+    return normalized;
+  }
+
+  let local = normalized.slice(0, atIndex);
+  let domain = normalized.slice(atIndex + 1);
+
+  const plusIndex = local.indexOf("+");
+  if (plusIndex >= 0) {
+    local = local.slice(0, plusIndex);
+  }
+  if (domain === "googlemail.com") {
+    domain = "gmail.com";
+  }
+  if (domain === "gmail.com") {
+    local = local.replace(/\./g, "");
+  }
+
+  return local.length > 0 ? `${local}@${domain}` : normalized;
+}
+
 function parseIso(value: string | undefined): string | null {
   if (!value) return null;
   const parsed = Date.parse(value);
@@ -607,7 +632,7 @@ export async function fetchCodaData(
   const creatorFirstSeenCards = cards.filter((card) => card.creator !== "Unknown");
   const byCreatorFirstSeen = new Map<string, EnrichedCard>();
   for (const card of creatorFirstSeenCards) {
-    const key = `${card.creator.toLowerCase()}::${card.creatorEmail ?? "unknown"}`;
+    const key = `${card.creator.toLowerCase()}::${canonicalizeEmailIdentity(card.creatorEmail) ?? card.creatorEmail ?? "unknown"}`;
     const existing = byCreatorFirstSeen.get(key);
     if (!existing || ((card.createdAtIso ?? "") < (existing.createdAtIso ?? ""))) {
       byCreatorFirstSeen.set(key, card);
@@ -630,7 +655,7 @@ export async function fetchCodaData(
     const day = toDayKey(card.createdAtIso);
     if (!day) continue;
     downloadsByDay.set(day, (downloadsByDay.get(day) ?? 0) + 1);
-    const email = normalizeEmail(card.creatorEmail);
+    const email = canonicalizeEmailIdentity(card.creatorEmail);
     if (!email) continue;
     const existing = downloadersByDay.get(day) ?? new Set<string>();
     existing.add(email);
@@ -658,11 +683,12 @@ export async function fetchCodaData(
 
   for (const card of cards) {
     const email = normalizeEmail(card.creatorEmail);
-    if (!email) continue;
-    const key = `${card.creator.toLowerCase()}::${email}`;
+    const emailIdentity = canonicalizeEmailIdentity(card.creatorEmail) ?? email;
+    if (!emailIdentity) continue;
+    const key = `${card.creator.toLowerCase()}::${emailIdentity}`;
     const existing = creatorsByKey.get(key) ?? {
       creator: card.creator,
-      email,
+      email: email ?? emailIdentity,
       cards30d: 0,
       cardsPrevious30d: 0,
       activeDays30d: new Set<string>(),
@@ -712,8 +738,9 @@ export async function fetchCodaData(
 
   for (const card of cardsInRange) {
     const email = normalizeEmail(card.creatorEmail);
-    if (!email) continue;
-    const existing = submitterAgg.get(email) ?? {
+    const emailIdentity = canonicalizeEmailIdentity(card.creatorEmail) ?? email;
+    if (!emailIdentity || !email) continue;
+    const existing = submitterAgg.get(emailIdentity) ?? {
       creator: card.creator,
       email,
       cardsCreated: 0,
@@ -733,7 +760,7 @@ export async function fetchCodaData(
       existing.creator = card.creator;
     }
 
-    submitterAgg.set(email, existing);
+    submitterAgg.set(emailIdentity, existing);
   }
 
   const submitterEntries = [...submitterAgg.values()]
@@ -743,7 +770,10 @@ export async function fetchCodaData(
     });
 
   const submissions = submitterEntries.length;
-  const recentSubmitterLimit = Math.max(1, options.maxRecentSubmitters ?? 25);
+  const recentSubmitterLimit =
+    typeof options.maxRecentSubmitters === "number"
+      ? Math.max(1, options.maxRecentSubmitters)
+      : submitterEntries.length;
   const recentSubmitters = submitterEntries
     .slice(0, recentSubmitterLimit)
     .map((entry) => ({
@@ -811,7 +841,7 @@ export async function fetchCodaData(
         for (const card of cards) {
           if (!isWithinRange(card.createdAtIso, prevStart, prevEnd)) continue;
           downloadsPrev += 1;
-          const email = normalizeEmail(card.creatorEmail);
+          const email = canonicalizeEmailIdentity(card.creatorEmail);
           if (email) previousSubmitters.add(email);
         }
         const downloadersPrev = previousSubmitters.size;

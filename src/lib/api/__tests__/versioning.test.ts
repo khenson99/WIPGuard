@@ -14,7 +14,7 @@ import { NextResponse } from "next/server";
 describe("API Versioning", () => {
   describe("extractVersionFromPath", () => {
     it("extracts v1 from versioned path", () => {
-      expect(extractVersionFromPath("/api/v1/tasks")).toBe("v1");
+      expect(extractVersionFromPath("/api/v1/deals")).toBe("v1");
     });
 
     it("extracts v1 from nested versioned path", () => {
@@ -22,11 +22,11 @@ describe("API Versioning", () => {
     });
 
     it("returns current version for unversioned path", () => {
-      expect(extractVersionFromPath("/api/tasks")).toBe(CURRENT_API_VERSION);
+      expect(extractVersionFromPath("/api/deals")).toBe(CURRENT_API_VERSION);
     });
 
     it("returns current version for unsupported version", () => {
-      expect(extractVersionFromPath("/api/v99/tasks")).toBe(CURRENT_API_VERSION);
+      expect(extractVersionFromPath("/api/v99/deals")).toBe(CURRENT_API_VERSION);
     });
 
     it("returns current version for root api path", () => {
@@ -56,11 +56,11 @@ describe("API Versioning", () => {
 
   describe("resolveVersionedPath", () => {
     it("adds version to unversioned path", () => {
-      expect(resolveVersionedPath("/api/tasks")).toBe("/api/v1/tasks");
+      expect(resolveVersionedPath("/api/deals")).toBe("/api/v1/deals");
     });
 
     it("leaves versioned path unchanged", () => {
-      expect(resolveVersionedPath("/api/v1/tasks")).toBe("/api/v1/tasks");
+      expect(resolveVersionedPath("/api/v1/deals")).toBe("/api/v1/deals");
     });
 
     it("handles nested paths", () => {

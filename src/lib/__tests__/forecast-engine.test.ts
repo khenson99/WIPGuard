@@ -100,7 +100,7 @@ describe("projectRunway", () => {
 });
 
 describe("buildForecastScenario", () => {
-  it("builds scenario using assumptions and net expenses", () => {
+  it("builds scenario using assumptions and keeps added revenue out of expenses", () => {
     const stripe = makeStripe();
     const mercury = makeMercury();
     const assumptions: ForecastAssumptions = {
@@ -115,8 +115,9 @@ describe("buildForecastScenario", () => {
     expect(scenario.assumptions).toEqual(assumptions);
     expect(scenario.months).toHaveLength(2);
 
-    const monthlyExpenses = 45_000 + 2_000 + 1_000 - 3_000;
+    const monthlyExpenses = 45_000 + 2_000 + 1_000;
     expect(scenario.months[0].projectedExpenses).toBeCloseTo(monthlyExpenses, 2);
+    expect(scenario.months[0].projectedRevenue).toBeGreaterThan(10_000);
   });
 
   it("handles null stripe or mercury", () => {

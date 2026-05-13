@@ -1,10 +1,13 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OperatorDashboard } from "@/components/dashboard/operator-dashboard";
+import { clearDashboardCache } from "@/lib/client/dashboard-cache-store";
 
 describe("OperatorDashboard", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    window.sessionStorage.clear();
+    clearDashboardCache();
   });
 
   it("renders platform overview cards from the overview API", async () => {
@@ -62,5 +65,31 @@ describe("OperatorDashboard", () => {
     expect(screen.getByText("5 active workflows running")).toBeTruthy();
     expect(screen.getByText("5 healthy analytics domains")).toBeTruthy();
     expect(screen.queryByText("My Work")).toBeNull();
+  });
+
+  it("renders a specific setup state when organization context is missing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            error: "Organization context required for dashboard overview",
+          }),
+          { status: 403, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+
+    render(<OperatorDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Organization Context Required")).toBeTruthy();
+    });
+
+    expect(
+      screen.getByText(
+        "Dashboard overview needs an organization context before it can load operator metrics."
+      )
+    ).toBeTruthy();
   });
 });

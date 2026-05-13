@@ -506,29 +506,23 @@ describe("GET /api/analytics", () => {
     expect(body.aiInsights).toBeTruthy();
   });
 
-  it("runs customer-success product analytics inside tenant context", async () => {
+  it("omits removed customer-success product analytics", async () => {
     const { getServerSession } = await import("next-auth");
     const { prisma } = await import("@/lib/prisma");
-    const { getRequestContext } = await import("@/lib/request-context");
 
     vi.mocked(getServerSession).mockResolvedValue({
       user: { id: "user-1", email: "user@example.com" },
     } as never);
 
-    vi.mocked(prisma.task.count).mockImplementation(async () => {
-      if (getRequestContext()?.organizationId !== "org-1") {
-        throw new Error("Missing tenant context");
-      }
-      return 0 as never;
-    });
+    vi.mocked(prisma.task.count).mockResolvedValue(0 as never);
 
     const { GET } = await import("@/app/api/analytics/route");
     const response = await GET(new Request("http://localhost/api/analytics?section=customer-success"));
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.product).toBeTruthy();
-    expect(body.errors.some((entry: { source: string; message: string }) => entry.message === "Missing tenant context")).toBe(false);
+    expect(body.product).toBeNull();
+    expect(prisma.task.count).not.toHaveBeenCalled();
   });
 
   it("normalizes legacy integration telemetry snapshots to automation fields", async () => {
@@ -1099,9 +1093,9 @@ describe("GET /api/analytics", () => {
       ).toBe(true);
       expect(
         vi.mocked(readLatestSnapshot).mock.calls.some(
-          ([input]) => input.userId === "user-1" && input.providerKey === "product"
+          ([input]) => input.providerKey === "product"
         )
-      ).toBe(true);
+      ).toBe(false);
 
       expect(
         vi.mocked(storeAnalyticsSnapshot).mock.calls.some(
@@ -1110,9 +1104,9 @@ describe("GET /api/analytics", () => {
       ).toBe(true);
       expect(
         vi.mocked(storeAnalyticsSnapshot).mock.calls.some(
-          ([input]) => input.userId === "user-1" && input.providerKey === "product"
+          ([input]) => input.providerKey === "product"
         )
-      ).toBe(true);
+      ).toBe(false);
 
       expect(vi.mocked(fetchIntegrationTelemetryData).mock.calls.length).toBeGreaterThan(0);
       expect(
