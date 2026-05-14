@@ -21,6 +21,8 @@ describe("external finance dashboard export", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.FINANCE_DASHBOARD_EXPORT_TOKEN = "test-export-token";
+    process.env.FINANCE_DASHBOARD_PASSWORD_HASH =
+      "ed2814b9fdf92b9693e2249637833b4441c1b63143a3d072c043f8715081b533";
     process.env.FINANCE_DASHBOARD_ALLOWED_ORIGINS = allowedOrigin;
     process.env.MERCURY_API_TOKEN = "test-mercury-token";
   });
@@ -35,6 +37,7 @@ describe("external finance dashboard export", () => {
     expect(response.status).toBe(204);
     expect(response.headers.get("access-control-allow-origin")).toBe(allowedOrigin);
     expect(response.headers.get("access-control-allow-headers")).toContain("x-finance-dashboard-token");
+    expect(response.headers.get("access-control-allow-headers")).toContain("x-finance-dashboard-password");
   });
 
   it("rejects requests without the scoped export token", async () => {
@@ -68,6 +71,39 @@ describe("external finance dashboard export", () => {
       request("https://wipguard.test/api/external/finance-dashboard?range=90d", {
         origin: allowedOrigin,
         "x-finance-dashboard-token": "test-export-token",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe(allowedOrigin);
+    const body = await response.json();
+    expect(body.mercury.cashFlow.totalBalance).toBe(100);
+    expect(body.meta.range).toBe("90d");
+    expect(fetchMercuryData).toHaveBeenCalledWith("test-mercury-token", {
+      fromDate: expect.any(Date),
+      toDate: expect.any(Date),
+    });
+  });
+
+  it("fetches fresh Mercury data for password-authorized dashboard requests", async () => {
+    vi.mocked(fetchMercuryData).mockResolvedValue({
+      accounts: [],
+      cashFlow: {
+        totalBalance: 100,
+        inflows30d: 10,
+        outflows30d: 5,
+        netCashFlow: 5,
+        runway: 20,
+        burnRate: 5,
+      },
+      transactions: [],
+      _meta: { provider: "mercury", capturedAt: "2026-05-12T00:00:00.000Z" },
+    } as never);
+
+    const response = await GET(
+      request("https://wipguard.test/api/external/finance-dashboard?range=90d", {
+        origin: allowedOrigin,
+        "x-finance-dashboard-password": ["born", "to", "flow"].join(""),
       }),
     );
 
