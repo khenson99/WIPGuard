@@ -43,6 +43,8 @@ describe("analytics credentials owner fallback", () => {
 
   afterEach(() => {
     delete process.env.INTEGRATION_OWNER_USER_ID;
+    delete process.env.SEMRUSH_API_TOKEN;
+    delete process.env.SEMRUSH_DOMAIN;
   });
 
   it("fills a missing Stripe provider from another connected user when the owner has other rows", async () => {
@@ -168,6 +170,77 @@ describe("analytics credentials owner fallback", () => {
         source: "connection",
         status: IntegrationConnectionStatus.CONNECTED,
         lastError: null,
+      })
+    );
+  });
+
+  it("uses a saved SEMrush token and domain from the integration connection", async () => {
+    mockIntegrationConnectionFindMany
+      .mockResolvedValueOnce([
+        {
+          userId: "owner_1",
+          provider: IntegrationProvider.SEMRUSH,
+          status: IntegrationConnectionStatus.CONNECTED,
+          accessToken: "plainv1.semrush-token",
+          refreshToken: null,
+          tokenType: "Bearer",
+          expiresAt: null,
+          scopes: [],
+          metadata: { domain: "example.com" },
+          connectedAt: new Date("2026-03-03T00:00:00.000Z"),
+          lastSyncedAt: new Date("2026-03-03T01:00:00.000Z"),
+          lastError: null,
+        },
+      ])
+      .mockResolvedValueOnce([]);
+
+    const { getCredentials, hasIntegrationCredential } = await import("@/lib/analytics/credentials");
+    const creds = await getCredentials("owner_1");
+
+    expect(creds.semrushApiToken).toBe("semrush-token");
+    expect(creds.semrushDomain).toBe("example.com");
+    expect(hasIntegrationCredential(IntegrationProvider.SEMRUSH, creds)).toBe(true);
+    expect(creds.freshness[IntegrationProvider.SEMRUSH]).toEqual(
+      expect.objectContaining({
+        provider: IntegrationProvider.SEMRUSH,
+        source: "connection",
+        status: IntegrationConnectionStatus.CONNECTED,
+      })
+    );
+  });
+
+  it("requires both SEMrush token and domain for env fallback credentials", async () => {
+    mockIntegrationConnectionFindMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    process.env.SEMRUSH_API_TOKEN = "env-semrush-token";
+
+    const { getCredentials, hasIntegrationCredential } = await import("@/lib/analytics/credentials");
+    const withoutDomain = await getCredentials("owner_1");
+
+    expect(withoutDomain.semrushApiToken).toBe("env-semrush-token");
+    expect(withoutDomain.semrushDomain).toBeNull();
+    expect(hasIntegrationCredential(IntegrationProvider.SEMRUSH, withoutDomain)).toBe(false);
+    expect(withoutDomain.freshness[IntegrationProvider.SEMRUSH]).toEqual(
+      expect.objectContaining({
+        provider: IntegrationProvider.SEMRUSH,
+        source: "none",
+      })
+    );
+
+    mockIntegrationConnectionFindMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    process.env.SEMRUSH_DOMAIN = "example.com";
+
+    const withDomain = await getCredentials("owner_1");
+    expect(withDomain.semrushApiToken).toBe("env-semrush-token");
+    expect(withDomain.semrushDomain).toBe("example.com");
+    expect(hasIntegrationCredential(IntegrationProvider.SEMRUSH, withDomain)).toBe(true);
+    expect(withDomain.freshness[IntegrationProvider.SEMRUSH]).toEqual(
+      expect.objectContaining({
+        provider: IntegrationProvider.SEMRUSH,
+        source: "env",
       })
     );
   });
