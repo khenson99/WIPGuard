@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { timingSafeEqual } from "crypto";
+import { createHash, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { fetchMercuryData } from "@/lib/analytics/fetchers";
 
@@ -33,7 +33,8 @@ function corsHeaders(request: NextRequest): HeadersInit {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "authorization, content-type, x-finance-dashboard-token",
+    "Access-Control-Allow-Headers":
+      "authorization, content-type, x-finance-dashboard-token, x-finance-dashboard-password",
     Vary: "Origin",
   };
 }
@@ -72,11 +73,30 @@ function readToken(request: NextRequest): string {
   return scheme?.toLowerCase() === "bearer" && token ? token.trim() : "";
 }
 
-function isAuthorized(request: NextRequest): boolean {
+function readPassword(request: NextRequest): string {
+  return request.headers.get("x-finance-dashboard-password")?.trim() || "";
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function isExportTokenAuthorized(request: NextRequest): boolean {
   const expected = process.env.FINANCE_DASHBOARD_EXPORT_TOKEN?.trim();
   if (!expected) return false;
   const provided = readToken(request);
   return Boolean(provided && timingSafeTokenEquals(provided, expected));
+}
+
+function isPasswordAuthorized(request: NextRequest): boolean {
+  const expected = process.env.FINANCE_DASHBOARD_PASSWORD_HASH?.trim();
+  if (!expected) return false;
+  const provided = readPassword(request);
+  return Boolean(provided && timingSafeTokenEquals(sha256(provided), expected));
+}
+
+function isAuthorized(request: NextRequest): boolean {
+  return isExportTokenAuthorized(request) || isPasswordAuthorized(request);
 }
 
 function parseRange(request: NextRequest): RangePreset {
