@@ -125,6 +125,11 @@ export function ProviderCard({
   onCodaTokenChange,
   onCodaDocChange,
   onConnectCoda,
+  semrushToken,
+  semrushDomain,
+  onSemrushTokenChange,
+  onSemrushDomainChange,
+  onConnectSemrush,
   pylonToken,
   pylonBaseUrl,
   onPylonTokenChange,
@@ -420,6 +425,63 @@ export function ProviderCard({
                 ) : null}
               </div>
               <p className="mt-1 text-xs text-muted-foreground">Current doc: {item.docId || "Not configured"}</p>
+            </div>
+          ) : null}
+
+          {item.slug === "semrush" ? (
+            <div className="rounded-lg border border-border p-3">
+              <p className="text-sm font-medium text-foreground">SEMrush Connection</p>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  SEMrush Target Domain
+                  <input
+                    type="text"
+                    value={semrushDomain ?? ""}
+                    onChange={(event) => onSemrushDomainChange?.(event.target.value)}
+                    placeholder="example.com"
+                    className="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  SEMrush API Token (optional if already saved)
+                  <input
+                    type="password"
+                    value={semrushToken ?? ""}
+                    onChange={(event) => onSemrushTokenChange?.(event.target.value)}
+                    placeholder="SEMrush API token"
+                    className="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                  />
+                </label>
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={onConnectSemrush}
+                  disabled={!onConnectSemrush || loadingProviderAction === "semrush"}
+                  className="btn-primary-theme rounded-md px-3 py-1.5 text-xs disabled:opacity-60"
+                >
+                  {loadingProviderAction === "semrush" ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Saving...
+                    </span>
+                  ) : item.connected ? (
+                    "Save SEMrush Settings"
+                  ) : (
+                    "Connect SEMrush"
+                  )}
+                </button>
+                {canDisconnectStoredConnection ? (
+                  <button
+                    type="button"
+                    onClick={() => onDisconnect(item.slug)}
+                    disabled={loadingProviderAction === item.slug}
+                    className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-60"
+                  >
+                    Disconnect
+                  </button>
+                ) : null}
+              </div>
             </div>
           ) : null}
 

@@ -266,4 +266,59 @@ describe("IntegrationsTab", () => {
     expect(screen.queryByText("Disconnect")).toBeNull();
     expect(screen.getByText("Managed by server environment")).toBeTruthy();
   });
+
+  it("renders SEMrush saved-settings inputs and posts token plus domain", async () => {
+    mockIntegrationsFetch({
+      items: [
+        {
+          slug: "semrush",
+          provider: "SEMRUSH",
+          name: "SEMrush",
+          description: "SEMrush integration",
+          capabilities: ["Organic Search"],
+          authType: "token",
+          configured: true,
+          missingEnv: [],
+          connected: false,
+          status: "DISCONNECTED",
+          accountLabel: null,
+          connectedAt: null,
+          lastSyncedAt: null,
+          lastError: null,
+          credentialSource: "none",
+          syncHealth: "missing",
+          syncHealthReason: "No integration credentials found.",
+          lastSnapshotAt: null,
+          lastSnapshotStatus: null,
+        },
+      ],
+    });
+
+    render(<IntegrationsTab />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Toggle SEMrush").getAttribute("aria-expanded")).toBe("true");
+    });
+
+    fireEvent.change(screen.getByLabelText("SEMrush Target Domain"), {
+      target: { value: "example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("SEMrush API Token (optional if already saved)"), {
+      target: { value: "semrush-token" },
+    });
+    fireEvent.click(screen.getByText("Connect SEMrush"));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/integrations/semrush/token",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            token: "semrush-token",
+            domain: "example.com",
+          }),
+        })
+      );
+    });
+  });
 });

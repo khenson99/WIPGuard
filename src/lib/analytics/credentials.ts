@@ -140,7 +140,7 @@ export function hasIntegrationCredential(
     case IntegrationProvider.PYLON:
       return hasValue(credentials.pylonApiKey);
     case IntegrationProvider.SEMRUSH:
-      return hasValue(credentials.semrushApiToken);
+      return hasValue(credentials.semrushApiToken) && hasValue(credentials.semrushDomain);
     default:
       return false;
   }
@@ -670,6 +670,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
   const googleAdsConnection = byProvider.get(IntegrationProvider.GOOGLE_ADS) ?? null;
   const metaAdsConnection = byProvider.get(IntegrationProvider.META_ADS) ?? null;
   const metaPageConnection = byProvider.get(IntegrationProvider.META_PAGE) ?? null;
+  const semrushConnection = byProvider.get(IntegrationProvider.SEMRUSH) ?? null;
   const pylonConnection = byProvider.get(IntegrationProvider.PYLON) ?? null;
 
   const envHubspot = envOrNull(process.env.HUBSPOT_ACCESS_TOKEN);
@@ -679,6 +680,8 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
   const envMercury = envOrNull(process.env.MERCURY_API_TOKEN);
   const envWebflowToken = envOrNull(process.env.WEBFLOW_API_TOKEN);
   const envWebflowSiteId = envOrNull(process.env.WEBFLOW_SITE_ID);
+  const envSemrushApiToken = envOrNull(getIntegrationEnvValue("SEMRUSH_API_TOKEN"));
+  const envSemrushDomain = envOrNull(process.env.SEMRUSH_DOMAIN);
   const envPylonApiKey = envOrNull(process.env.PYLON_API_KEY);
   const envPylonBaseUrl = envOrNull(process.env.PYLON_API_BASE_URL);
   const envMetaAccessToken = envOrNull(process.env.META_ACCESS_TOKEN);
@@ -930,6 +933,18 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
 
   const pylonBaseUrl =
     metadataString(pylonConnection?.metadata, "baseUrl") ?? envPylonBaseUrl;
+
+  const semrushApiToken =
+    semrushConnection && semrushConnection.status !== IntegrationConnectionStatus.DISCONNECTED
+      ? unprotectIntegrationSecret(semrushConnection.accessToken)
+      : envSemrushApiToken;
+  const semrushDomain =
+    metadataString(semrushConnection?.metadata, "domain") ?? envSemrushDomain;
+  const usingSemrushEnvFallback =
+    hasValue(envSemrushApiToken) &&
+    hasValue(envSemrushDomain) &&
+    (!semrushConnection || semrushConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+
   const freshness: Record<IntegrationProvider, ProviderFreshnessSnapshot> = {
     [IntegrationProvider.GOOGLE_WORKSPACE]: buildFreshness(
       IntegrationProvider.GOOGLE_WORKSPACE,
@@ -989,8 +1004,8 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     ),
     [IntegrationProvider.SEMRUSH]: buildFreshness(
       IntegrationProvider.SEMRUSH,
-      null,
-      Boolean(getIntegrationEnvValue("SEMRUSH_API_TOKEN"))
+      semrushConnection,
+      usingSemrushEnvFallback
     ),
     [IntegrationProvider.GOOGLE_SEARCH_CONSOLE]: defaultFreshnessSnapshot(
       IntegrationProvider.GOOGLE_SEARCH_CONSOLE
@@ -1040,8 +1055,8 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     redditAdAccountId: envOrNull(process.env.REDDIT_AD_ACCOUNT_ID),
     redditUserAgent: envOrNull(process.env.REDDIT_USER_AGENT),
 
-    semrushApiToken: envOrNull(getIntegrationEnvValue("SEMRUSH_API_TOKEN")),
-    semrushDomain: envOrNull(process.env.SEMRUSH_DOMAIN),
+    semrushApiToken,
+    semrushDomain,
 
     webflowApiToken,
     webflowSiteId,

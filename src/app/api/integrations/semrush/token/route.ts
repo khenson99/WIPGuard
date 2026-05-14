@@ -13,7 +13,7 @@ import {
   resolveIntegrationOwnerUserId,
 } from "@/lib/integrations/ownership";
 import { compactErrorMessage } from "@/lib/integrations/oauth";
-import { protectIntegrationSecret } from "@/lib/integrations/token-crypto";
+import { protectIntegrationSecret, unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
 import { enforcePermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { getAuthenticatedUser } from "@/lib/session-user";
@@ -21,6 +21,23 @@ import { getAuthenticatedUser } from "@/lib/session-user";
 interface ConnectSemrushBody {
   token?: string;
   domain?: string;
+}
+
+function asMetadataObject(metadata: unknown): Prisma.InputJsonObject {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return {};
+  }
+  return metadata as Prisma.InputJsonObject;
+}
+
+function readPersistedDomain(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+  const candidate = (metadata as Record<string, unknown>).domain;
+  return typeof candidate === "string" && candidate.trim().length > 0
+    ? candidate.trim()
+    : null;
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -50,8 +67,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const organizationId = sessionUser.organizationId ?? null;
     await ensureIntegrationOwnerOrganizationId(ownerUserId, organizationId);
     const body = (await request.json().catch(() => ({}))) as ConnectSemrushBody;
-    const token = body.token?.trim() || getIntegrationEnvValue("SEMRUSH_API_TOKEN");
-    const domain = body.domain?.trim() || process.env.SEMRUSH_DOMAIN?.trim();
+    const existing = await prisma.integrationConnection.findUnique({
+      where: {
+        userId_provider: {
+          userId: ownerUserId,
+          provider: IntegrationProvider.SEMRUSH,
+        },
+      },
+      select: {
+        accessToken: true,
+        metadata: true,
+      },
+    });
+    const existingToken = existing?.accessToken
+      ? unprotectIntegrationSecret(existing.accessToken)
+      : null;
+    const token =
+      body.token?.trim() ||
+      existingToken?.trim() ||
+      getIntegrationEnvValue("SEMRUSH_API_TOKEN");
+    const domain =
+      body.domain?.trim() ||
+      readPersistedDomain(existing?.metadata ?? null) ||
+      process.env.SEMRUSH_DOMAIN?.trim();
 
     if (!token) {
       return NextResponse.json(
@@ -71,6 +109,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const metadata: Prisma.InputJsonObject = {
+      ...asMetadataObject(existing?.metadata ?? null),
       authType: "api_token",
       connectedByUserId: session.user.id,
       domain,
