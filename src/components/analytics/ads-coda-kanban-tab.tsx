@@ -9,6 +9,7 @@ import { FinanceDataEmptyState } from "@/components/analytics/finance-empty-stat
 import { RingStat } from "@/components/analytics/bar-display";
 import { StatCard } from "@/components/analytics/stat-card";
 import { AreaTrend } from "@/components/charts";
+import { KanbanBounceBenchmark } from "@/components/analytics/kanban-bounce-benchmark";
 import {
   fmt$, fmtN, timeAgo,
   AlertBanner, DataTable, InsightCard,
@@ -21,6 +22,9 @@ interface AdsCodaKanbanTabProps {
 
 export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
   const coda = data?.coda ?? data?.codaKanban;
+  // GA-derived bounce-rate benchmark is independent of Coda — render it even
+  // when Coda is missing so we don't blank the whole tab on a Coda outage.
+  const kanbanBounce = data?.googleAnalytics?.kanbanBounceComparison ?? null;
   const reasons = [
     ...(data?.errors ?? [])
       .filter((entry) => entry.source === "coda" || entry.source === "codaKanban")
@@ -31,12 +35,15 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
 
   if (!coda) {
     return (
-      <FinanceDataEmptyState
-        title="Coda campaign data is unavailable"
-        message="We could not load Coda campaign records for this range."
-        reasons={reasons}
-        reconnectHref="/settings?tab=integrations"
-      />
+      <div className="space-y-6">
+        {kanbanBounce && <KanbanBounceBenchmark comparison={kanbanBounce} />}
+        <FinanceDataEmptyState
+          title="Coda campaign data is unavailable"
+          message="We could not load Coda campaign records for this range."
+          reasons={reasons}
+          reconnectHref="/settings?tab=integrations"
+        />
+      </div>
     );
   }
 
@@ -322,6 +329,11 @@ export function AdsCodaKanbanTab({ data }: AdsCodaKanbanTabProps) {
           <StatCard label="Unknown-email downloads" value={fmtN(unknownEmailCards)} icon={AlertCircle} />
         </div>
       </SectionCard>
+
+      {/* Bounce Rate Benchmark — GA4-derived, frames the whitepaper landing
+          page against the rest of the site so the operator sees whether
+          downloader engagement is healthy before drilling into Coda counts. */}
+      {kanbanBounce && <KanbanBounceBenchmark comparison={kanbanBounce} />}
 
       {/* Trend */}
       {coda.trends?.downloadsDaily?.length ? (

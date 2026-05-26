@@ -13,6 +13,7 @@ import {
   WebflowContentFreshness,
   AnalyticsTimestamp,
 } from "./types";
+import { computeKanbanBounceComparison } from "./kanban-bounce-comparison";
 
 type GAReportValue = { value?: string };
 type GAReportRow = { dimensionValues?: GAReportValue[]; metricValues?: GAReportValue[] };
@@ -181,7 +182,13 @@ export async function fetchGAData(
     : [{ startDate: "60daysAgo", endDate: "31daysAgo" }];
 
   // Run all requests in parallel
-  const [current30d, previous30d, trafficAndTrend, topPagesRaw] = await Promise.all([
+  const [
+    current30d,
+    previous30d,
+    trafficAndTrend,
+    topPagesRaw,
+    topPagesPrevRaw,
+  ] = await Promise.all([
     // Request 1: Current 30d metrics
     fetch(apiUrl, {
       method: "POST",
@@ -241,7 +248,9 @@ export async function fetchGAData(
       return await safeJson<GAReportResponse>(r, "GA report (traffic)");
     }),
 
-    // Request 4: Top pages
+    // Request 4: Top pages (current 30d) — now includes sessions + bounceRate
+    // so we can compute per-page engagement and benchmark specific landing
+    // pages (e.g. the Free Kanban Generator whitepaper) against the site.
     fetch(apiUrl, {
       method: "POST",
       headers,
@@ -251,8 +260,10 @@ export async function fetchGAData(
         metrics: [
           { name: "screenPageViews" },
           { name: "averageSessionDuration" },
+          { name: "sessions" },
+          { name: "bounceRate" },
         ],
-        limit: 10,
+        limit: 25,
         orderBys: [
           {
             metric: { metricName: "screenPageViews" },
@@ -263,6 +274,33 @@ export async function fetchGAData(
     }).then(async (r) => {
       if (!r.ok) throw new Error(`GA4 report (top pages) failed (${r.status})`);
       return await safeJson<GAReportResponse>(r, "GA report (top pages)");
+    }),
+
+    // Request 5: Top pages (previous 30d) — enables period-over-period
+    // bounce-rate deltas for individual landing pages.
+    fetch(apiUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        dateRanges: previousRange,
+        dimensions: [{ name: "pagePath" }],
+        metrics: [
+          { name: "screenPageViews" },
+          { name: "averageSessionDuration" },
+          { name: "sessions" },
+          { name: "bounceRate" },
+        ],
+        limit: 25,
+        orderBys: [
+          {
+            metric: { metricName: "screenPageViews" },
+            desc: true,
+          },
+        ],
+      }),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`GA4 report (top pages prev) failed (${r.status})`);
+      return await safeJson<GAReportResponse>(r, "GA report (top pages prev)");
     }),
   ]);
 
@@ -279,6 +317,7 @@ export async function fetchGAData(
   const sessionsPrev30d = parseInt(previous30dRow[0]?.value || "0");
   const usersPrev30d = parseInt(previous30dRow[1]?.value || "0");
   const pageviewsPrev30d = parseInt(previous30dRow[2]?.value || "0");
+  const bounceRatePrev30d = parseFloat(previous30dRow[3]?.value || "0");
 
   // Parse traffic by channel
   const trafficByChannelMap: Record<string, GATrafficChannel> = {};
@@ -319,15 +358,31 @@ export async function fetchGAData(
     sessions,
   }));
 
-  // Parse top pages
-  const topPages: GATopPage[] = (topPagesRaw.rows || []).map((row: GAReportRow) => {
+  // Parse top pages (current 30d)
+  // Metric order matches Request 4: [screenPageViews, averageSessionDuration, sessions, bounceRate]
+  const parseTopPagesRow = (row: GAReportRow): GATopPage => {
     const dimensionValues = row.dimensionValues ?? [];
     const metricValues = row.metricValues ?? [];
     return {
       path: dimensionValues[0]?.value || "/",
       pageviews: parseInt(metricValues[0]?.value || "0"),
       avgDuration: parseFloat(metricValues[1]?.value || "0"),
+      sessions: parseInt(metricValues[2]?.value || "0"),
+      bounceRate: parseFloat(metricValues[3]?.value || "0"),
     };
+  };
+
+  const topPages: GATopPage[] = (topPagesRaw.rows || []).map(parseTopPagesRow);
+  const topPagesPrev30d: GATopPage[] = (topPagesPrevRaw.rows || []).map(parseTopPagesRow);
+
+  // Compute the Kanban whitepaper bounce-rate benchmark up-front so consumers
+  // (overview KPI tile, Kanban dashboard tab) get a stable shape and don't
+  // recompute it on every render.
+  const kanbanBounceComparison = computeKanbanBounceComparison({
+    siteBounceRate: bounceRate,
+    siteBounceRatePrev: bounceRatePrev30d,
+    topPages,
+    topPagesPrev: topPagesPrev30d,
   });
 
   return {
@@ -338,10 +393,13 @@ export async function fetchGAData(
     pageviews30d,
     pageviewsPrev30d,
     bounceRate,
+    bounceRatePrev30d,
     avgSessionDuration,
     trafficByChannel,
     topPages,
+    topPagesPrev30d,
     dailyTrend,
+    kanbanBounceComparison,
     _meta: makeMeta("live"),
   };
 }

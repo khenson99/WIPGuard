@@ -29,6 +29,7 @@ export type IntegrationProviderKey =
   | "googleAds"
   | "metaAds"
   | "metaPage"
+  | "instagram"
   | "semrush"
   | "pylon"
   | "product"
@@ -445,6 +446,38 @@ export interface GATopPage {
   path: string;
   pageviews: number;
   avgDuration: number;
+  /** GA4 bounce rate for this page as a fraction (0–1). 0 when unavailable. */
+  bounceRate: number;
+  /** Sessions for this page in the current range. 0 when unavailable. */
+  sessions: number;
+}
+
+/**
+ * Result of comparing the Free Kanban Generator landing page(s) against
+ * peer pages and the site-wide bounce rate. All bounce values are
+ * normalized to a 0–1 fraction.
+ */
+export interface KanbanBounceComparison {
+  /** Matched Kanban landing-page paths (e.g. /kanban-template). */
+  matchedPaths: string[];
+  /** Sessions-weighted bounce rate across all matched Kanban pages, 0–1. */
+  kanbanBounceRate: number;
+  /** Total sessions across the matched Kanban pages. */
+  kanbanSessions: number;
+  /** Site-wide bounce rate, 0–1. */
+  siteBounceRate: number;
+  /** Kanban bounce minus site bounce, in percentage points (positive = Kanban is worse). */
+  deltaVsSitePts: number;
+  /** Period-over-period delta in percentage points (current 30d minus prior 30d). null when unavailable. */
+  periodDeltaPts: number | null;
+  /** Rank of the matched Kanban page among the top-N pages by bounce, 1-indexed (1 = best/lowest bounce). */
+  rankAmongPeers: number | null;
+  /** Total peer pages considered in the ranking. */
+  peerCount: number;
+  /** Top-N peer pages sorted ascending by bounce rate (excludes matched Kanban paths). */
+  peerPages: Array<{ path: string; bounceRate: number; sessions: number }>;
+  /** Plain-English verdict: "better", "worse", or "comparable" vs site average. */
+  verdict: "better" | "worse" | "comparable";
 }
 
 export interface GAData {
@@ -455,10 +488,16 @@ export interface GAData {
   pageviews30d: number;
   pageviewsPrev30d: number;
   bounceRate: number;
+  /** Site-wide bounce rate for the previous 30-day window, 0–1. 0 when unavailable. */
+  bounceRatePrev30d?: number;
   avgSessionDuration: number;
   trafficByChannel: GATrafficChannel[];
   topPages: GATopPage[];
+  /** Per-page bounce/sessions for the previous 30-day window. Used for period-over-period deltas. */
+  topPagesPrev30d?: GATopPage[];
   dailyTrend: { date: string; sessions: number }[];
+  /** Pre-computed Kanban whitepaper bounce-rate comparison. null when no Kanban pages match. */
+  kanbanBounceComparison?: KanbanBounceComparison | null;
   _meta: AnalyticsTimestamp;
 }
 

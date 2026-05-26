@@ -22,11 +22,130 @@ import {
   Award,
   Link2,
   Instagram,
+  ArrowRight,
+  TrendingDown,
+  Minus,
 } from 'lucide-react';
 
 interface MarketingTabNewProps {
   data: AnalyticsDashboardData | null;
   variant?: 'website-traffic' | 'social-media';
+}
+
+/**
+ * Single click-through KPI tile that highlights how the Free Kanban Generator
+ * whitepaper landing page is performing on bounce rate vs. the site average.
+ *
+ * Sits at the top of the website-traffic overview so the operator catches
+ * engagement issues on the highest-volume marketing asset before drilling
+ * into channel-by-channel detail.
+ */
+function KanbanBounceSpotlight({
+  comparison,
+}: {
+  comparison: NonNullable<AnalyticsDashboardData['googleAnalytics']>['kanbanBounceComparison'];
+}) {
+  if (!comparison) return null;
+  const {
+    kanbanBounceRate,
+    siteBounceRate,
+    deltaVsSitePts,
+    periodDeltaPts,
+    verdict,
+    matchedPaths,
+    kanbanSessions,
+  } = comparison;
+
+  const fmtPctFrac = (frac: number) => `${(frac * 100).toFixed(1)}%`;
+  const fmtPts = (pts: number) =>
+    `${pts >= 0 ? '+' : ''}${pts.toFixed(1)}pt${Math.abs(pts) === 1 ? '' : 's'}`;
+
+  const Icon = verdict === 'better' ? TrendingDown : verdict === 'worse' ? TrendingUp : Minus;
+  const accentClass =
+    verdict === 'better'
+      ? 'border-emerald-500/40 bg-emerald-500/5'
+      : verdict === 'worse'
+        ? 'border-red-500/40 bg-red-500/5'
+        : 'border-border bg-card';
+  const iconClass =
+    verdict === 'better'
+      ? 'text-emerald-500'
+      : verdict === 'worse'
+        ? 'text-red-500'
+        : 'text-muted-foreground';
+  const headline =
+    verdict === 'better'
+      ? 'Kanban whitepaper outperforming site'
+      : verdict === 'worse'
+        ? 'Kanban whitepaper bouncing harder than site'
+        : 'Kanban whitepaper on par with site';
+  const matchedSummary =
+    matchedPaths.length === 1
+      ? matchedPaths[0]
+      : `${matchedPaths.length} Kanban paths`;
+
+  return (
+    <Link
+      href="/analytics/ads-coda-kanban"
+      className={`flex flex-wrap items-center gap-4 rounded-xl border p-4 transition-colors hover:bg-secondary/30 ${accentClass}`}
+      data-testid="kanban-bounce-spotlight"
+    >
+      <div className={`rounded-lg bg-background/60 p-2 ${iconClass}`}>
+        <Icon className="h-5 w-5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-foreground">{headline}</p>
+        <p className="text-xs text-muted-foreground">
+          {matchedSummary} • {kanbanSessions.toLocaleString()} sessions
+        </p>
+      </div>
+      <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+        <div className="text-right">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            Bounce
+          </p>
+          <p className="text-xl font-bold tabular-nums text-foreground">
+            {fmtPctFrac(kanbanBounceRate)}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            vs Site ({fmtPctFrac(siteBounceRate)})
+          </p>
+          <p
+            className={`text-sm font-semibold tabular-nums ${
+              deltaVsSitePts < 0
+                ? 'text-emerald-500'
+                : deltaVsSitePts > 0
+                  ? 'text-red-500'
+                  : 'text-muted-foreground'
+            }`}
+          >
+            {fmtPts(deltaVsSitePts)}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            vs Prior 30d
+          </p>
+          <p
+            className={`text-sm font-semibold tabular-nums ${
+              typeof periodDeltaPts !== 'number'
+                ? 'text-muted-foreground'
+                : periodDeltaPts < 0
+                  ? 'text-emerald-500'
+                  : periodDeltaPts > 0
+                    ? 'text-red-500'
+                    : 'text-muted-foreground'
+            }`}
+          >
+            {typeof periodDeltaPts === 'number' ? fmtPts(periodDeltaPts) : '—'}
+          </p>
+        </div>
+      </div>
+      <ArrowRight className="h-4 w-4 text-muted-foreground" />
+    </Link>
+  );
 }
 
 // Helper functions
@@ -400,6 +519,14 @@ export function MarketingTabNew({ data, variant = 'website-traffic' }: Marketing
       </div>
 
       <AiInsightsPanel bundle={data.aiInsights || null} defaultFilter={insightFilter} />
+
+      {/* Kanban Generator bounce-rate spotlight (website-traffic only).
+          Single click-through tile so the operator immediately sees whether
+          the whitepaper landing page is over- or under-performing site avg,
+          then can drill into /analytics/ads-coda-kanban for the full breakdown. */}
+      {isWebsiteTraffic && data.googleAnalytics?.kanbanBounceComparison ? (
+        <KanbanBounceSpotlight comparison={data.googleAnalytics.kanbanBounceComparison} />
+      ) : null}
 
       {/* Top KPI Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
