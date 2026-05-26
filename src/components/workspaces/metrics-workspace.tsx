@@ -27,6 +27,12 @@ const MODEL: WorkspacePageModel = {
       label: "Open endpoint",
     },
     {
+      title: "Kanban engagement benchmark",
+      description: "Google Analytics can attach googleAnalytics.kanbanBounceComparison to compare Free Kanban Generator engagement against site and peer pages.",
+      href: "/api/analytics",
+      label: "Open analytics payload",
+    },
+    {
       title: "Legacy analytics fetchers",
       description: "Provider fetchers remain in the service layer as inputs, but the product surface now promotes only governed metrics.",
     },

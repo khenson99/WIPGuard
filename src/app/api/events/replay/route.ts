@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { replayEvents } from "@/lib/events/idempotency";
+import { replayOutboxEvents } from "@/lib/outbox-worker";
 
 interface ReplayRequestBody {
   eventIds?: string[];
@@ -51,15 +51,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       limit = body.limit;
     }
 
-    const result = await replayEvents(prisma, {
+    const replayed = await replayOutboxEvents(prisma, {
       eventIds,
       statuses,
       limit,
     });
 
     return NextResponse.json({
-      replayed: result.replayed,
-      eventIds: result.eventIds,
+      action: "replay",
+      replayed,
+      eventIds: eventIds.length ? eventIds : null,
       statuses: statuses.length ? statuses : ["FAILED", "DEAD_LETTER"],
       limit: limit ?? 100,
       replayedAt: new Date().toISOString(),

@@ -30,6 +30,7 @@ describe("google analytics fetcher", () => {
       }
 
       const body = JSON.parse(String(init?.body ?? "{}")) as {
+        dateRanges?: Array<{ startDate?: string; endDate?: string }>;
         dimensions?: Array<{ name?: string }>;
         limit?: number;
         offset?: number;
@@ -96,14 +97,25 @@ describe("google analytics fetcher", () => {
       .filter(([url]) => String(url).includes("analyticsdata.googleapis.com"))
       .map(([, init]) =>
         JSON.parse(String(init?.body ?? "{}")) as {
+          dateRanges?: Array<{ startDate?: string; endDate?: string }>;
           dimensions?: Array<{ name?: string }>;
           limit?: number;
           offset?: number;
         },
       )
       .filter((body) => body.dimensions?.some((dimension) => dimension.name === "pagePath"));
+    const currentTopPageRequests = topPageRequests.filter(
+      (body) => body.dateRanges?.[0]?.startDate === "2026-05-01",
+    );
+    const previousTopPageRequests = topPageRequests.filter(
+      (body) => body.dateRanges?.[0]?.startDate === "2026-03-29",
+    );
 
-    expect(topPageRequests).toEqual([
+    expect(currentTopPageRequests).toEqual([
+      expect.objectContaining({ limit: 100, offset: 0 }),
+      expect.objectContaining({ limit: 100, offset: 100 }),
+    ]);
+    expect(previousTopPageRequests).toEqual([
       expect.objectContaining({ limit: 100, offset: 0 }),
       expect.objectContaining({ limit: 100, offset: 100 }),
     ]);
@@ -112,12 +124,17 @@ describe("google analytics fetcher", () => {
       path: "/page-1",
       pageviews: 1000,
       avgDuration: 30,
+      sessions: 0,
+      bounceRate: 0,
     });
     expect(data.topPages.at(-1)).toEqual({
       path: "/page-101",
       pageviews: 1,
       avgDuration: 5,
+      sessions: 0,
+      bounceRate: 0,
     });
+    expect(data.topPagesPrev30d).toHaveLength(101);
   });
 
   it("keeps GA4 aggregates finite when provider metric values are malformed", async () => {
@@ -192,7 +209,9 @@ describe("google analytics fetcher", () => {
       { channel: "Direct", sessions: 15, users: 0, pageviews: 30 },
     ]);
     expect(data.dailyTrend).toEqual([{ date: "2026-06-01", sessions: 15 }]);
-    expect(data.topPages).toEqual([{ path: "/analytics", pageviews: 0, avgDuration: 0 }]);
+    expect(data.topPages).toEqual([
+      { path: "/analytics", pageviews: 0, avgDuration: 0, sessions: 0, bounceRate: 0 },
+    ]);
   });
 
   it("bypasses fetch cache for GA4 token and report requests", async () => {
@@ -259,7 +278,7 @@ describe("google analytics fetcher", () => {
     expect(tokenCall?.[1]).toEqual(expect.objectContaining({
       cache: "no-store",
     }));
-    expect(reportCalls).toHaveLength(4);
+    expect(reportCalls).toHaveLength(5);
     expect(reportCalls.every(([, init]) => init?.cache === "no-store")).toBe(true);
   });
 
@@ -271,6 +290,7 @@ describe("google analytics fetcher", () => {
       }
 
       const body = JSON.parse(String(init?.body ?? "{}")) as {
+        dateRanges?: Array<{ startDate?: string; endDate?: string }>;
         dimensions?: Array<{ name?: string }>;
         limit?: number;
         offset?: number;
@@ -324,18 +344,28 @@ describe("google analytics fetcher", () => {
       .filter(([url]) => String(url).includes("analyticsdata.googleapis.com"))
       .map(([, init]) =>
         JSON.parse(String(init?.body ?? "{}")) as {
+          dateRanges?: Array<{ startDate?: string; endDate?: string }>;
           dimensions?: Array<{ name?: string }>;
           offset?: number;
         },
       )
       .filter((body) => body.dimensions?.some((dimension) => dimension.name === "pagePath"));
+    const currentTopPageRequests = topPageRequests.filter(
+      (body) => body.dateRanges?.[0]?.startDate === "2026-05-01",
+    );
+    const previousTopPageRequests = topPageRequests.filter(
+      (body) => body.dateRanges?.[0]?.startDate === "2026-03-29",
+    );
 
-    expect(topPageRequests).toHaveLength(100);
-    expect(topPageRequests.at(-1)?.offset).toBe(9_900);
+    expect(currentTopPageRequests).toHaveLength(100);
+    expect(currentTopPageRequests.at(-1)?.offset).toBe(9_900);
+    expect(previousTopPageRequests).toHaveLength(100);
+    expect(previousTopPageRequests.at(-1)?.offset).toBe(9_900);
     expect(data.topPages).toHaveLength(10_000);
+    expect(data.topPagesPrev30d).toHaveLength(10_000);
     expect(data._meta).toEqual(expect.objectContaining({
       truncated: true,
-      truncatedResources: ["topPages"],
+      truncatedResources: ["topPages", "topPagesPrev30d"],
     }));
   });
 });
