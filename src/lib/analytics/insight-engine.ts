@@ -1254,7 +1254,7 @@ function buildCustomerSuccessInsights(data: AnalyticsDashboardData): AiInsight[]
   const insights: AiInsight[] = [];
   const urgent = data.pylon?.urgentConversations ?? 0;
   const deliveryBalance = data.product?.deliveryBalance ?? 0;
-  const deliveryRate = data.product?.deliveryRate ?? 0;
+  const deliveryRatePct = normalizePercentValue(data.product?.deliveryRate ?? 0);
   const csStale = data.staleDomains.includes("pylon") || data.staleDomains.includes("codaOps") || data.staleDomains.includes("slack");
 
   // 1. Escalation pressure
@@ -1265,7 +1265,7 @@ function buildCustomerSuccessInsights(data: AnalyticsDashboardData): AiInsight[]
       subsectionId: "cs-pylon",
       severity: urgent > 20 || deliveryBalance > 10 ? "critical" : "warning",
       title: "Customer-success execution pressure is rising",
-      why: `Urgent conversations: ${urgent}; backlog growth: ${deliveryBalance}; throughput: ${deliveryRate?.toFixed(1) ?? "n/a"}%.`,
+      why: `Urgent conversations: ${urgent}; backlog growth: ${deliveryBalance}; throughput: ${deliveryRatePct.toFixed(1)}%.`,
       confidence: clampConfidence(0.83),
       expectedImpact: "Rebalancing support and execution queues should reduce urgent backlog and churn precursors.",
       stale: csStale,
@@ -1282,7 +1282,7 @@ function buildCustomerSuccessInsights(data: AnalyticsDashboardData): AiInsight[]
           domain: "product",
           metric: "Backlog Growth",
           value: String(deliveryBalance),
-          delta: `${deliveryRate?.toFixed(1) ?? "n/a"}% throughput`,
+          delta: `${deliveryRatePct.toFixed(1)}% throughput`,
         },
       ],
       actions: [
@@ -1301,13 +1301,13 @@ function buildCustomerSuccessInsights(data: AnalyticsDashboardData): AiInsight[]
   }
 
   // 2. Throughput stall warning
-  if (deliveryRate > 0 && deliveryRate < 0.70) {
+  if (deliveryRatePct > 0 && deliveryRatePct < 70) {
     insights.push({
       id: "ai-cs-throughput-stall",
       section: "customer-success",
-      severity: deliveryRate < 0.50 ? "critical" : "warning",
+      severity: deliveryRatePct < 50 ? "critical" : "warning",
       title: "Execution throughput has stalled below target",
-      why: `Throughput rate is ${(deliveryRate * 100).toFixed(1)}% — below the 70% healthy threshold. Backlog is growing at ${deliveryBalance}/period.`,
+      why: `Throughput rate is ${deliveryRatePct.toFixed(1)}% — below the 70% healthy threshold. Backlog is growing at ${deliveryBalance}/period.`,
       confidence: clampConfidence(0.81),
       expectedImpact: "Restoring throughput above 70% prevents backlog snowball and customer frustration.",
       stale: csStale,
@@ -1316,7 +1316,7 @@ function buildCustomerSuccessInsights(data: AnalyticsDashboardData): AiInsight[]
           source: "Product Signals",
           domain: "product",
           metric: "Throughput Rate",
-          value: `${(deliveryRate * 100).toFixed(1)}%`,
+          value: `${deliveryRatePct.toFixed(1)}%`,
           delta: `Backlog growth: ${deliveryBalance}`,
         },
       ],
@@ -1504,15 +1504,15 @@ function buildCrossdomainInsights(data: AnalyticsDashboardData): AiInsight[] {
   // 5. Product delivery risk vs Runway
   const runwayNew = data.mercury?.cashFlow?.runway ?? 0;
   const deliveryBalance = data.product?.deliveryBalance ?? 0;
-  const deliveryRate = data.product?.deliveryRate ?? 0;
+  const deliveryRatePct = normalizePercentValue(data.product?.deliveryRate ?? 0);
 
-  if (runwayNew > 0 && runwayNew < 6 && deliveryBalance > 10 && deliveryRate < 0.5) {
+  if (runwayNew > 0 && runwayNew < 6 && deliveryBalance > 10 && deliveryRatePct < 50) {
     insights.push({
       id: "ai-xd-runway-vs-product",
       section: "finance",
       severity: runwayNew < 4 ? "critical" : "warning",
       title: "Product delivery stalled while runway is critically low",
-      why: `Runway is ${runwayNew.toFixed(1)} months but product throughput is only ${(deliveryRate * 100).toFixed(0)}% with a growing backlog. Risk of missing key milestones before next fundraise.`,
+      why: `Runway is ${runwayNew.toFixed(1)} months but product throughput is only ${deliveryRatePct.toFixed(0)}% with a growing backlog. Risk of missing key milestones before next fundraise.`,
       confidence: clampConfidence(0.85),
       expectedImpact: "Scoping down near-term roadmap to strictly revenue-unlocking features extends runway.",
       stale: data.staleDomains.includes("mercury") || data.staleDomains.includes("codaOps"),
@@ -1529,7 +1529,7 @@ function buildCrossdomainInsights(data: AnalyticsDashboardData): AiInsight[] {
           source: "Product Signals",
           domain: "product",
           metric: "Throughput",
-          value: `${(deliveryRate * 100).toFixed(0)}%`,
+          value: `${deliveryRatePct.toFixed(0)}%`,
           delta: `${deliveryBalance} tickets added`,
         }
       ],

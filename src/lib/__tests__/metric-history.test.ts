@@ -15,6 +15,12 @@ function websiteTrafficExtractors() {
   );
 }
 
+function customerSuccessExtractors() {
+  return Object.fromEntries(
+    getMetricsBySection("customer-success").map((metric) => [metric.key, metric.extract]),
+  );
+}
+
 describe("metric history finance extraction", () => {
   it("uses canonical finance summary metrics when they are present", () => {
     const data = {
@@ -90,5 +96,22 @@ describe("metric history finance extraction", () => {
     const extract = websiteTrafficExtractors();
 
     expect(extract["ga.bounceRate"]?.(data)).toBe(42);
+  });
+
+  it("normalizes ratio-style product delivery rate before extracting history", () => {
+    const data = {
+      product: {
+        activeContributors: 5,
+        mergedPullRequestsInRange: 10,
+        completedLinearIssuesInRange: 8,
+        cycleTimeRiskSignals: 2,
+        deliveryBalance: 2,
+        deliveryRate: 0.8,
+      },
+    } as unknown as AnalyticsDashboardData;
+
+    const extract = customerSuccessExtractors();
+
+    expect(extract["product.deliveryRate"]?.(data)).toBe(80);
   });
 });

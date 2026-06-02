@@ -913,6 +913,8 @@ describe("customer success insights", () => {
     const escalation = bundle.global.find((i) => i.id === "ai-cs-escalation-risk");
     expect(escalation).toBeDefined();
     expect(escalation!.subsectionId).toBe("cs-pylon");
+    expect(escalation!.why).toContain("throughput: 80.0%");
+    expect(escalation!.evidence[1]?.delta).toBe("80.0% throughput");
   });
 
   it("fires throughput stall when deliveryRate < 70%", () => {
@@ -930,6 +932,21 @@ describe("customer success insights", () => {
     expect(stall!.subsectionId).toBeUndefined();
   });
 
+  it("fires throughput stall for percent-point deliveryRate values below 70%", () => {
+    const data = baseData();
+    data.product = {
+      activeContributors: 3, mergedPullRequestsInRange: 15,
+      completedLinearIssuesInRange: 6, cycleTimeRiskSignals: 9,
+      deliveryBalance: 9, deliveryRate: 55,
+      _meta: META,
+    };
+    const bundle = buildAiInsightsBundle(data);
+    const stall = bundle.global.find((i) => i.id === "ai-cs-throughput-stall");
+    expect(stall).toBeDefined();
+    expect(stall!.severity).toBe("warning");
+    expect(stall!.evidence[0]?.value).toBe("55.0%");
+  });
+
   it("escalates throughput stall to critical below 50%", () => {
     const data = baseData();
     data.product = {
@@ -942,6 +959,21 @@ describe("customer success insights", () => {
     const stall = bundle.global.find((i) => i.id === "ai-cs-throughput-stall");
     expect(stall).toBeDefined();
     expect(stall!.severity).toBe("critical");
+  });
+
+  it("escalates throughput stall for percent-point deliveryRate values below 50%", () => {
+    const data = baseData();
+    data.product = {
+      activeContributors: 3, mergedPullRequestsInRange: 15,
+      completedLinearIssuesInRange: 4, cycleTimeRiskSignals: 11,
+      deliveryBalance: 11, deliveryRate: 40,
+      _meta: META,
+    };
+    const bundle = buildAiInsightsBundle(data);
+    const stall = bundle.global.find((i) => i.id === "ai-cs-throughput-stall");
+    expect(stall).toBeDefined();
+    expect(stall!.severity).toBe("critical");
+    expect(stall!.evidence[0]?.value).toBe("40.0%");
   });
 });
 

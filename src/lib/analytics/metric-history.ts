@@ -65,7 +65,7 @@ const METRIC_REGISTRY: MetricDefinition[] = [
   { key: "pylon.openConversations", section: "customer-success", label: "Open Conversations", extract: (d) => d.pylon?.openConversations ?? null },
   { key: "pylon.resolvedInRange", section: "customer-success", label: "Resolved In Range", extract: (d) => d.pylon?.resolvedInRange ?? null },
   { key: "product.deliveryBalance", section: "customer-success", label: "Delivery Balance", extract: (d) => d.product?.deliveryBalance ?? null },
-  { key: "product.deliveryRate", section: "customer-success", label: "Delivery Rate", extract: (d) => d.product?.deliveryRate ?? null },
+  { key: "product.deliveryRate", section: "customer-success", label: "Delivery Rate", extract: (d) => d.product?.deliveryRate == null ? null : normalizePercentValue(d.product.deliveryRate) },
   { key: "product.cycleTimeRiskSignals", section: "customer-success", label: "Cycle-time Risk Signals", extract: (d) => d.product?.cycleTimeRiskSignals ?? null },
 ];
 
