@@ -266,7 +266,24 @@ function numberFrom(value: unknown): number | null {
 
 function currencyFrom(records: RawSourceRecordRow[]): string {
   for (const record of records) {
-    const currency = asRecord(record.payload).currency;
+    const payload = asRecord(record.payload);
+    const properties = nestedRecord(payload.properties);
+    const summary = nestedRecord(payload.summary);
+    const metrics = nestedRecord(payload.metrics);
+    const currency =
+      payload.currency ??
+      payload.currencyCode ??
+      payload.currency_code ??
+      properties.currency ??
+      properties.currencyCode ??
+      properties.currency_code ??
+      properties.hs_currency ??
+      summary.currency ??
+      summary.currencyCode ??
+      summary.currency_code ??
+      metrics.currency ??
+      metrics.currencyCode ??
+      metrics.currency_code;
     if (typeof currency === "string" && currency.trim()) {
       return currency.toUpperCase();
     }
