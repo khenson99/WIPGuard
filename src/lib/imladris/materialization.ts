@@ -1220,11 +1220,18 @@ function computeMarketingPipelineEfficiency(records: RawSourceRecordRow[]) {
   const googleSearchConsoleRecords = records.filter(
     (record) => record.provider === IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
   );
-  const searchClickCount = googleSearchConsoleRecords.reduce(
+  const googleSearchConsoleSummaryRecords = googleSearchConsoleRecords.filter(
+    (record) => record.objectType === "snapshot",
+  );
+  const googleSearchConsoleTrafficRecords =
+    googleSearchConsoleSummaryRecords.length > 0
+      ? googleSearchConsoleSummaryRecords
+      : googleSearchConsoleRecords;
+  const searchClickCount = googleSearchConsoleTrafficRecords.reduce(
     (sum, record) => sum + searchClicks(record),
     0,
   );
-  const searchImpressionCount = googleSearchConsoleRecords.reduce(
+  const searchImpressionCount = googleSearchConsoleTrafficRecords.reduce(
     (sum, record) => sum + searchImpressions(record),
     0,
   );

@@ -1179,6 +1179,71 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("uses Google Search Console snapshot totals instead of double-counting dimension rows", async () => {
+    const prisma = createMarketingPrismaMock();
+    const baseRecords = await prisma.imladrisRawSourceRecord.findMany();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValue([
+      {
+        id: "raw_gsc_snapshot",
+        provider: IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
+        objectType: "snapshot",
+        externalId: "googleSearchConsole:snapshot",
+        occurredAt: new Date("2026-05-11T11:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-11T11:00:00.000Z"),
+        payload: {
+          clicks: 120,
+          impressions: 2400,
+        },
+      },
+      ...baseRecords,
+      {
+        id: "raw_gsc_page_1",
+        provider: IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
+        objectType: "top_page",
+        externalId: "gsc_page_1",
+        occurredAt: new Date("2026-05-11T13:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-11T13:00:00.000Z"),
+        payload: {
+          page: "https://example.com/pricing",
+          clicks: 80,
+          impressions: 1600,
+        },
+      },
+    ] as never);
+
+    const periodEnd = new Date("2026-05-29T00:00:00.000Z");
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd,
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      searchClicks: 120,
+      searchImpressions: 2400,
+    });
+    expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          value: expect.objectContaining({
+            searchClicks: 120,
+            searchImpressions: 2400,
+          }),
+        }),
+        update: expect.objectContaining({
+          value: expect.objectContaining({
+            searchClicks: 120,
+            searchImpressions: 2400,
+          }),
+        }),
+      }),
+    );
+  });
+
   it("normalizes Google Ads costMicros before calculating marketing pipeline efficiency", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
