@@ -64,6 +64,7 @@ function makeBundle(): AiInsightsBundle {
       "website-traffic": [],
       "social-media": [],
       finance: [],
+      revenue: [],
       "sales-pipeline": [],
       retention: [],
       "customer-success": [],

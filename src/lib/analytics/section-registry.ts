@@ -2,6 +2,7 @@ export type AnalyticsPrimarySectionId =
   | "website-traffic"
   | "social-media"
   | "finance"
+  | "revenue"
   | "sales-pipeline"
   | "retention"
   | "customer-success"
@@ -80,6 +81,12 @@ export const ANALYTICS_PRIMARY_SECTIONS: AnalyticsPrimarySection[] = [
     description: "Traffic quality, content performance, and onsite conversion.",
   },
   {
+    id: "revenue",
+    label: "Revenue",
+    path: "/analytics/revenue",
+    description: "Investor-ready revenue, subscriptions, pipeline, and cash metrics.",
+  },
+  {
     id: "sales-pipeline",
     label: "Sales",
     path: "/analytics/sales-pipeline",
@@ -137,6 +144,13 @@ export const ANALYTICS_DASHBOARD_FUNNEL_GROUPS: AnalyticsDashboardFunnelGroup[] 
     path: "/analytics/website-traffic",
     description: "Traffic, page performance, forms, search, and conversion intent.",
     primaryIds: ["website-traffic"],
+  },
+  {
+    id: "revenue",
+    label: "Revenue",
+    path: "/analytics/revenue",
+    description: "ARR, subscriptions, revenue collection, cash, and investor pipeline metrics.",
+    primaryIds: ["revenue"],
   },
   {
     id: "sales",

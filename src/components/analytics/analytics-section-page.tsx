@@ -8,6 +8,7 @@ import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-co
 
 const MarketingTabNew = dynamic(() => import("@/components/analytics/marketing-tab-new").then((m) => m.MarketingTabNew), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const FinanceTab = dynamic(() => import("@/components/analytics/finance-tab").then((m) => m.FinanceTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const RevenueDashboard = dynamic(() => import("@/components/analytics/revenue-dashboard").then((m) => m.RevenueDashboard), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const FinanceStripeTab = dynamic(() => import("@/components/analytics/finance-stripe-tab").then((m) => m.FinanceStripeTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const FinanceHubSpotTab = dynamic(() => import("@/components/analytics/finance-hubspot-tab").then((m) => m.FinanceHubSpotTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const FinanceMercuryTab = dynamic(() => import("@/components/analytics/finance-mercury-tab").then((m) => m.FinanceMercuryTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
@@ -350,6 +351,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     if (sectionId === "website-traffic") return <MarketingTabNew data={analyticsData} variant="website-traffic" />;
     if (sectionId === "social-media") return <MarketingTabNew data={analyticsData} variant="social-media" />;
     if (sectionId === "finance") return <FinanceTab data={analyticsData} />;
+    if (sectionId === "revenue") return <RevenueDashboard data={analyticsData} />;
     if (sectionId === "sales-pipeline") return <SalesFunnelTab data={analyticsData} />;
     if (sectionId === "customer-success") return <CustomerSuccessTab data={analyticsData} />;
     if (sectionId === "customer-journey") return <CustomerJourneyTab data={analyticsData} />;

@@ -6,6 +6,7 @@ const SECTION_LABELS: Record<AnalyticsSectionId, string> = {
   "website-traffic": "Website Conversion",
   "social-media": "Social Media, Ads & Conferences",
   finance: "Revenue & Finance",
+  revenue: "Revenue",
   "sales-pipeline": "Sales",
   retention: "Retention",
   "customer-success": "Customer Success",

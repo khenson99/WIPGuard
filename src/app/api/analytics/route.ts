@@ -29,6 +29,7 @@ import { buildAnalyticsRouteMeta } from "@/lib/analytics/route-meta";
 import { buildAnalyticsMetricsLayer } from "@/lib/analytics/kpis";
 import { computeKpiDelta } from "@/lib/analytics/kpi-deltas";
 import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
+import { buildRevenueDashboardData } from "@/lib/analytics/revenue-dashboard";
 import {
   buildVisitorFunnelData,
   parseVisitorFunnelFilters,
@@ -165,6 +166,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "recommendations",
     "distilledInsights",
   ],
+  revenue: ["hubspot", "stripe", "mercury", "demoAnalytics", "salesPerformance"],
   "finance-planning": ["stripe", "mercury", "hubspot"],
   "finance-forecast": ["stripe", "mercury"],
   "finance-pnl": ["stripe", "mercury"],
@@ -1744,6 +1746,9 @@ export async function GET(request: Request) {
   const metrics = buildAnalyticsMetricsLayer(result);
   result.metrics = metrics;
   result.kpis = metrics.kpis;
+  if (section === "revenue") {
+    result.revenueDashboard = buildRevenueDashboardData(result);
+  }
 
   if (domains.has("recommendations")) {
     result.recommendations = buildRecommendations(result);

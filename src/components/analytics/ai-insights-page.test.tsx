@@ -30,6 +30,7 @@ function writeCachedOverviewData(globalCount: number) {
       "website-traffic": [],
       "social-media": [],
       finance: [],
+      revenue: [],
       "sales-pipeline": [],
       retention: [],
       "customer-success": [],

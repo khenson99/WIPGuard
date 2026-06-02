@@ -1051,6 +1051,7 @@ export type AnalyticsSectionId =
   | "website-traffic"
   | "social-media"
   | "finance"
+  | "revenue"
   | "sales-pipeline"
   | "retention"
   | "customer-success"
@@ -1848,6 +1849,88 @@ export interface FinancialPlanningData {
 }
 
 // ══════════════════════════════════════════════════════════
+// REVENUE DASHBOARD
+// ══════════════════════════════════════════════════════════
+
+export interface RevenueDashboardSummary {
+  activeSubscriptions: number;
+  stripeActiveSubscriptions: number;
+  hubspotActiveSubscriptions: number;
+  hubspotOnlyActiveSubscriptions: number;
+  mrr: number;
+  arr: number;
+  stripeMrr: number;
+  hubspotSubscriptionMrr: number;
+  hubspotOnlySubscriptionMrr: number;
+  excludedLinkedHubspotSubscriptionMrr: number;
+  cashBalance: number;
+  bankCash: number | null;
+  treasuryCash: number | null;
+  runwayMonths: number;
+  burnRate: number;
+  netCashFlow30d: number;
+  inflows30d: number;
+  outflows30d: number;
+  paymentSuccessPct: number;
+  churnRatePct: number;
+}
+
+export interface RevenueDashboardWeeklyPoint {
+  week: string;
+  demosScheduled: number;
+  demosCompleted: number;
+  demoNoShows: number;
+  customersWon: number;
+  stripeRevenueCollected: number;
+  hubspotBookedRevenue: number;
+  mercuryInflows: number;
+  mercuryOutflows: number;
+  mercuryNetCashFlow: number;
+}
+
+export interface RevenueDashboardPipelineMetrics {
+  openPipelineValue: number;
+  openPipelineCount: number;
+  qualifiedPipelineValue: number;
+  qualifiedPipelineCount: number;
+  stageBreakdown: DealStage[];
+  sourceBreakdown: DealsBySource[];
+  repScoreboard: HubSpotRepScoreboardRow[];
+  winRate: number;
+  effectiveWinRate: number;
+  noShowRate: number;
+  avgDealSize: number;
+  demoFollowUpCount: number;
+  bookedValue: number;
+  realizedValue30d: number;
+  bookedToRealizedRatio30d: number | null;
+}
+
+export interface RevenueDashboardTrustSource {
+  key: "hubspot" | "stripe" | "mercury";
+  label: string;
+  status: ProviderFreshness["status"];
+  stale: boolean;
+  source: ProviderFreshness["source"] | "none";
+  lastSyncedAt: string | null;
+  lastSnapshotAt: string | null;
+  lastError: string | null;
+  fetchedAt: string | null;
+  truncated: boolean;
+  truncatedResources: string[];
+}
+
+export interface RevenueDashboardData {
+  summary: RevenueDashboardSummary;
+  weekly: RevenueDashboardWeeklyPoint[];
+  pipeline: RevenueDashboardPipelineMetrics;
+  trust: {
+    sources: RevenueDashboardTrustSource[];
+    warnings: string[];
+  };
+}
+
+// ══════════════════════════════════════════════════════════
 // COMBINED DASHBOARD
 // ══════════════════════════════════════════════════════════
 
@@ -1905,6 +1988,7 @@ export interface AnalyticsDashboardData {
   visitorFunnel: VisitorFunnelData | null;
   demoAnalytics: DemoAnalyticsData | null;
   processAnalytics: ProcessAnalyticsData | null;
+  revenueDashboard?: RevenueDashboardData | null;
   recommendations: AnalyticsRecommendation[];
   distilledInsights: DistilledInsight[];
   aiInsights: AiInsightsBundle;

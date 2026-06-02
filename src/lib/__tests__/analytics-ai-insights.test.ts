@@ -38,6 +38,7 @@ function baseData(): AnalyticsDashboardData {
         "website-traffic": [],
         "social-media": [],
         finance: [],
+        revenue: [],
         "sales-pipeline": [],
         retention: [],
         "customer-success": [],
