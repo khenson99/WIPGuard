@@ -1274,6 +1274,50 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("normalizes HubSpot deal stages before calculating qualified sales pipeline", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_formatted_qualified_deal",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_formatted_qualified",
+            occurredAt: new Date("2026-05-20T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+            payload: {
+              id: "deal_formatted_qualified",
+              amount: 50_000,
+              dealstage: " qualified ",
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_formatted_stage", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisSalesMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      amount: 50_000,
+      qualifiedDealCount: 1,
+    });
+  });
+
   it("materializes marketing pipeline efficiency from acquisition and pipeline raw records", async () => {
     const prisma = createMarketingPrismaMock();
     const periodStart = new Date("2026-05-01T00:00:00.000Z");

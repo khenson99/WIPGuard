@@ -980,7 +980,9 @@ function isQualifiedPipelineDeal(record: RawSourceRecordRow): boolean {
     return false;
   }
   const payload = asRecord(record.payload);
-  const stage = String(payload.dealstage ?? payload.stage ?? "").toLowerCase();
+  const stage = String(payload.dealstage ?? payload.stage ?? "")
+    .trim()
+    .toLowerCase();
   if (["closedlost", "closed_lost", "lost", "appointmentscheduled"].includes(stage)) {
     return false;
   }
