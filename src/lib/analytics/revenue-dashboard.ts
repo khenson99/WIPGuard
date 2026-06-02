@@ -36,7 +36,7 @@ function roundMoney(value: number): number {
 }
 
 function normalizeStageLabelKey(value: string): string {
-  return value.trim().toLowerCase();
+  return value.trim().toLowerCase().replace(/[\s_-]+/g, "");
 }
 
 function normalizeStageLabel(value: string | null | undefined): string {
