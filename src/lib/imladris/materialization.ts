@@ -1478,12 +1478,36 @@ function searchImpressions(record: RawSourceRecordRow): number {
 function isIdentifiedVisitor(record: RawSourceRecordRow): boolean {
   if (record.provider !== IntegrationProvider.UNIFY) return false;
   const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
+  const payloadAccount = nestedRecord(payload.account);
+  const payloadCompany = nestedRecord(payload.company);
+  const propertiesAccount = nestedRecord(properties.account);
+  const propertiesCompany = nestedRecord(properties.company);
+  const identified = payload.identified ?? properties.identified;
+  if (identified !== null && identified !== undefined) return Boolean(identified);
   return Boolean(
-    payload.identified ??
-      payload.companyId ??
+    payload.companyId ??
       payload.company_id ??
       payload.accountId ??
-      payload.domain,
+      payload.account_id ??
+      payload.companyDomain ??
+      payload.company_domain ??
+      payload.domain ??
+      properties.companyId ??
+      properties.company_id ??
+      properties.accountId ??
+      properties.account_id ??
+      properties.companyDomain ??
+      properties.company_domain ??
+      properties.domain ??
+      payloadAccount.id ??
+      payloadAccount.domain ??
+      payloadCompany.id ??
+      payloadCompany.domain ??
+      propertiesAccount.id ??
+      propertiesAccount.domain ??
+      propertiesCompany.id ??
+      propertiesCompany.domain,
   );
 }
 

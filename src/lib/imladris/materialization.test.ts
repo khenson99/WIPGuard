@@ -2583,6 +2583,48 @@ describe("Imladris canonical materialization", () => {
     );
   });
 
+  it("reads nested Unify visitor identity fields before calculating identified visitors", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_unify_nested_visitor",
+            provider: IntegrationProvider.UNIFY,
+            objectType: "visitor",
+            externalId: "visitor_nested",
+            occurredAt: new Date("2026-05-12T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-12T00:00:00.000Z"),
+            payload: {
+              properties: {
+                companyId: "acct_nested",
+              },
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_nested_unify", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      identifiedVisitors: 1,
+    });
+  });
+
   it("uses synced ad snapshot spend instead of double-counting campaign rows", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
