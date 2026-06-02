@@ -236,8 +236,21 @@ describe("buildDefaultScenarios", () => {
     const scenarios = buildDefaultScenarios(makeStripe(), makeMercury());
     const [base, optimistic, conservative] = scenarios;
     expect(base.assumptions.revenueGrowthRate).toBe(0);
-    expect(optimistic.assumptions.revenueGrowthRate).toBe(50);
-    expect(conservative.assumptions.revenueGrowthRate).toBe(-30);
+    expect(optimistic.assumptions.revenueGrowthRate).toBeCloseTo(5, 5);
+    expect(conservative.assumptions.revenueGrowthRate).toBeCloseTo(-3, 5);
+  });
+
+  it("scales default growth and churn assumptions from current rates", () => {
+    const scenarios = buildDefaultScenarios(makeStripe(), makeMercury(), 1);
+    const [base, optimistic, conservative] = scenarios;
+
+    expect(base.months[0].projectedMrr).toBeCloseTo(10_560, 2);
+    expect(optimistic.assumptions.revenueGrowthRate).toBeCloseTo(5, 5);
+    expect(optimistic.assumptions.churnRateDelta).toBeCloseTo(-0.8, 5);
+    expect(optimistic.months[0].projectedMrr).toBeCloseTo(11_132, 2);
+    expect(conservative.assumptions.revenueGrowthRate).toBeCloseTo(-3, 5);
+    expect(conservative.assumptions.churnRateDelta).toBeCloseTo(1, 5);
+    expect(conservative.months[0].projectedMrr).toBeCloseTo(10_165, 2);
   });
 
   it("builds defaults from canonical MRR when HubSpot-only subscriptions exist", () => {

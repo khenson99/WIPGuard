@@ -172,6 +172,8 @@ export function buildDefaultScenarios(
   hubspot: HubSpotData | null = null,
 ): ForecastScenarioData[] {
   const baseBurn = mercury?.cashFlow?.outflows30d ?? 0;
+  const baseGrowthPct = normalizePercentValue(stripe?.revenue?.revenueGrowth ?? 0);
+  const baseChurnPct = normalizePercentValue(stripe?.subscriptions?.churnRate ?? 0);
 
   const base: ForecastAssumptions = {
     revenueGrowthRate: 0,
@@ -182,16 +184,16 @@ export function buildDefaultScenarios(
   };
 
   const optimistic: ForecastAssumptions = {
-    revenueGrowthRate: 50, // +50% on top of current growth rate
-    churnRateDelta: -20,   // reduce churn by 20 percentage points
+    revenueGrowthRate: baseGrowthPct * 0.5,
+    churnRateDelta: -baseChurnPct * 0.2,
     burnRateDelta: 0,
     additionalMonthlyExpense: 0,
     additionalMonthlyRevenue: 0,
   };
 
   const conservative: ForecastAssumptions = {
-    revenueGrowthRate: -30,          // -30% off current growth rate
-    churnRateDelta: 25,              // increase churn by 25 pp
+    revenueGrowthRate: -baseGrowthPct * 0.3,
+    churnRateDelta: baseChurnPct * 0.25,
     burnRateDelta: baseBurn * 0.15,  // +15% burn increase
     additionalMonthlyExpense: 0,
     additionalMonthlyRevenue: 0,
