@@ -1031,6 +1031,12 @@ describe("GET /api/analytics", () => {
         deadline: new Date("2027-01-01T00:00:00.000Z"),
       },
       {
+        id: "goal-arr",
+        metric: "arr",
+        targetValue: 240000,
+        deadline: new Date("2027-01-01T00:00:00.000Z"),
+      },
+      {
         id: "goal-customers",
         metric: "customer_count",
         targetValue: 10,
@@ -1048,6 +1054,10 @@ describe("GET /api/analytics", () => {
         expect.objectContaining({
           id: "goal-mrr",
           currentValue: 12299.83,
+        }),
+        expect.objectContaining({
+          id: "goal-arr",
+          currentValue: 147598,
         }),
         expect.objectContaining({
           id: "goal-customers",

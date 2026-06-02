@@ -758,7 +758,7 @@ async function buildFinancialPlanningData(
   // --- Goals with current progress ---
   const currentMetrics: Record<string, number> = {
     mrr: financeSummary.mrr,
-    arr: financeSummary.mrr * 12,
+    arr: subscriptionOverview?.totalArr ?? financeSummary.mrr * 12,
     runway: financeSummary.runwayMonths,
     burn_rate: financeSummary.burnRate,
     net_cash_flow: financeSummary.netCashFlow30d,
