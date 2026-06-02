@@ -1722,6 +1722,21 @@ describe("Imladris canonical materialization", () => {
               currency: "USD",
             },
           },
+          {
+            id: "raw_mercury_snapshot_with_account_balances",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "snapshot",
+            externalId: "mercury:snapshot:with-account-balances",
+            occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T00:02:00.000Z"),
+            payload: {
+              cashFlow: {
+                totalBalance: 350_000,
+              },
+              currency: "USD",
+            },
+          },
         ]),
       },
       imladrisCanonicalMetricValue: {
@@ -1745,6 +1760,66 @@ describe("Imladris canonical materialization", () => {
       cashBalance: 350_000,
       netBurn: 100_000,
       months: 3.5,
+    });
+  });
+
+  it("uses Mercury snapshot cash totals when account balances are absent", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_mercury_snapshot_cash_flow",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "snapshot",
+            externalId: "mercury:snapshot:2026-05",
+            occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+            payload: {
+              cashFlow: {
+                totalBalance: 480_000,
+                bankCash: 180_000,
+                treasuryCash: 300_000,
+              },
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_mercury_snapshot_outflow",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "transaction",
+            externalId: "txn_snapshot_outflow",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              amount: -120_000,
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "finance.cash_runway_months")?.value).toMatchObject({
+      cashBalance: 480_000,
+      netBurn: 120_000,
+      months: 4,
     });
   });
 

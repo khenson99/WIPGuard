@@ -664,6 +664,58 @@ function balanceAmount(record: RawSourceRecordRow): number | null {
   );
 }
 
+function mercurySnapshotCashBalance(record: RawSourceRecordRow): number | null {
+  const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
+  const cashFlow = nestedRecord(payload.cashFlow ?? payload.cash_flow ?? properties.cashFlow ?? properties.cash_flow);
+  const summary = nestedRecord(payload.summary);
+  const metrics = nestedRecord(payload.metrics);
+  const directTotal = numberFrom(
+    cashFlow.totalBalance ??
+      cashFlow.total_balance ??
+      cashFlow.totalCash ??
+      cashFlow.total_cash ??
+      payload.totalBalance ??
+      payload.total_balance ??
+      payload.totalCash ??
+      payload.total_cash ??
+      properties.totalBalance ??
+      properties.total_balance ??
+      properties.totalCash ??
+      properties.total_cash ??
+      summary.totalBalance ??
+      summary.total_balance ??
+      summary.totalCash ??
+      summary.total_cash ??
+      metrics.totalBalance ??
+      metrics.total_balance ??
+      metrics.totalCash ??
+      metrics.total_cash,
+  );
+  if (directTotal !== null) return directTotal;
+
+  const bankCash = numberFrom(
+    cashFlow.bankCash ??
+      cashFlow.bank_cash ??
+      payload.bankCash ??
+      payload.bank_cash ??
+      properties.bankCash ??
+      properties.bank_cash,
+  );
+  const treasuryCash = numberFrom(
+    cashFlow.treasuryCash ??
+      cashFlow.treasury_cash ??
+      payload.treasuryCash ??
+      payload.treasury_cash ??
+      properties.treasuryCash ??
+      properties.treasury_cash,
+  );
+
+  return bankCash !== null || treasuryCash !== null
+    ? (bankCash ?? 0) + (treasuryCash ?? 0)
+    : null;
+}
+
 function stripeMrrAmount(record: RawSourceRecordRow): number | null {
   const payload = asRecord(record.payload);
   if (isInactiveStripeSubscription(record)) return null;
@@ -930,16 +982,22 @@ function computeFinanceValues(records: RawSourceRecordRow[]) {
   const mrr = computeMrrBreakdown(records);
   const cashInflow = mercuryCashInflow + stripeMrr;
   const netBurn = Math.max(0, cashOutflow - cashInflow);
+  const mercuryBalanceAmounts = records
+    .filter(
+      (record) =>
+        record.provider === IntegrationProvider.MERCURY &&
+        ["account_balance", "balance"].includes(record.objectType),
+    )
+    .map(balanceAmount)
+    .filter((amount): amount is number => typeof amount === "number");
+  const snapshotCashBalances = records
+    .filter((record) => record.provider === IntegrationProvider.MERCURY)
+    .map(mercurySnapshotCashBalance)
+    .filter((amount): amount is number => typeof amount === "number");
   const cashBalance =
-    records
-      .filter(
-        (record) =>
-          record.provider === IntegrationProvider.MERCURY &&
-          ["account_balance", "balance"].includes(record.objectType),
-      )
-      .map(balanceAmount)
-      .filter((amount): amount is number => typeof amount === "number")
-      .reduce((sum, amount) => sum + amount, 0);
+    mercuryBalanceAmounts.length > 0
+      ? mercuryBalanceAmounts.reduce((sum, amount) => sum + amount, 0)
+      : snapshotCashBalances.at(-1) ?? 0;
   const currency = currencyFrom(records);
 
   return {
