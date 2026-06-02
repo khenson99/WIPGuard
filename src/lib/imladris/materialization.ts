@@ -582,7 +582,7 @@ function stripeMrrAmount(record: RawSourceRecordRow): number | null {
   const status = payload.status;
   if (
     typeof status === "string" &&
-    ["canceled", "cancelled", "incomplete_expired", "unpaid"].includes(status.toLowerCase())
+    ["canceled", "cancelled", "incomplete_expired", "unpaid"].includes(status.trim().toLowerCase())
   ) {
     return null;
   }
