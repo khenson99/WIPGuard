@@ -71,6 +71,20 @@ function spendFromTransactions(
   };
 }
 
+function netNewMrrFromPercentChange(currentMrr: number, mrrChangePct: number): number {
+  if (!Number.isFinite(currentMrr) || !Number.isFinite(mrrChangePct) || currentMrr <= 0) {
+    return 0;
+  }
+
+  const changeRatio = normalizePercentValue(mrrChangePct) / 100;
+  if (changeRatio <= -1) {
+    return -currentMrr;
+  }
+
+  const previousMrr = currentMrr / (1 + changeRatio);
+  return currentMrr - previousMrr;
+}
+
 // ---------------------------------------------------------------------------
 // Extended type used by finance-unit-economics-tab
 // ---------------------------------------------------------------------------
@@ -228,7 +242,9 @@ export function computeUnitEconomics(
   //    Without historical snapshots we approximate using 30-day figures.
   // ---------------------------------------------------------------------------
 
-  const netNewArr = stripe ? stripe.revenue.mrrChange * 12 : 0;
+  const netNewArr = stripe
+    ? netNewMrrFromPercentChange(stripe.revenue.mrr, stripe.revenue.mrrChange) * 12
+    : 0;
   const magicNumber: number | null =
     marketingSpend > 0 ? r2(netNewArr / marketingSpend) : null;
 

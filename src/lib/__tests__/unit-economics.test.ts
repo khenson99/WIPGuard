@@ -14,7 +14,7 @@ function makeStripe(overrides: Partial<StripeData> = {}): StripeData {
   return {
     revenue: {
       mrr: 10_000,
-      mrrChange: 1200,
+      mrrChange: 12,
       totalRevenue30d: 12_000,
       totalRevenuePrev30d: 10_800,
       revenueGrowth: 10,
@@ -260,10 +260,26 @@ describe("computeUnitEconomics", () => {
     expect(result.ltvCacRatio).toBe(2.86);
   });
 
-  it("computes magicNumber from mrrChange and marketingSpend", () => {
+  it("computes magicNumber from mrrChange percent and marketingSpend", () => {
     const result = computeUnitEconomics(stripe, mercury, hubspot);
-    // (1200 * 12) / 6750 = 2.13
-    expect(result.magicNumber).toBe(2.13);
+    // Current MRR is 12% above prior MRR, so net-new ARR is 12 * (10000 - 10000 / 1.12).
+    expect(result.magicNumber).toBe(1.9);
+  });
+
+  it("interprets mrrChange as a percent when computing magic number", () => {
+    const result = computeUnitEconomics(
+      makeStripe({
+        revenue: {
+          ...stripe.revenue,
+          mrr: 10_000,
+          mrrChange: 10,
+        },
+      }),
+      mercury,
+      hubspot,
+    );
+
+    expect(result.magicNumber).toBe(1.62);
   });
 
   it("respects custom budget-informed expense ratios", () => {
@@ -279,7 +295,7 @@ describe("computeUnitEconomics", () => {
 
     expect(result.cac).toBe(4500);
     expect(result.grossMarginPct).toBe(62.5);
-    expect(result.magicNumber).toBe(0.64);
+    expect(result.magicNumber).toBe(0.57);
   });
 
   it("prefers Mercury transaction-derived category breakdown when present", () => {
@@ -306,7 +322,7 @@ describe("computeUnitEconomics", () => {
 
     expect(result.cac).toBe(3000);
     expect(result.grossMarginPct).toBe(58.33);
-    expect(result.magicNumber).toBe(0.96);
+    expect(result.magicNumber).toBe(0.86);
   });
 
   it("normalizes in-range closed won counts to a monthly equivalent", () => {
