@@ -171,6 +171,28 @@ describe("Middleware", () => {
     });
   });
 
+  it("redirects retired task product routes to metrics", async () => {
+    const { middleware } = await import("../middleware");
+
+    const response = middleware(
+      new NextRequest("http://localhost:3000/tasks?view=mine")
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("http://localhost:3000/metrics");
+  });
+
+  it("redirects retired local deals routes to sources", async () => {
+    const { middleware } = await import("../middleware");
+
+    const response = middleware(
+      new NextRequest("http://localhost:3000/deals/new?source=local")
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("http://localhost:3000/sources");
+  });
+
   it("returns 410 for versioned legacy product APIs when disabled", async () => {
     process.env.ENABLE_LEGACY_PRODUCT_APIS = "false";
     const { middleware } = await import("../middleware");
