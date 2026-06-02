@@ -250,6 +250,27 @@ function createFinancePrismaMock() {
   };
 }
 
+function createEmptyFinancePrismaMock() {
+  return {
+    imladrisRawSourceRecord: {
+      findMany: vi.fn(async () => []),
+    },
+    imladrisCanonicalMetricValue: {
+      upsert: vi.fn(async ({ create }) => {
+        const metricKey = String(create.metricKey);
+        return {
+          id: `metric_${metricKey.replaceAll(".", "_")}`,
+          ...create,
+        };
+      }),
+    },
+    imladrisMetricLineage: {
+      deleteMany: vi.fn(async () => ({ count: 0 })),
+      createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+    },
+  };
+}
+
 function createSalesPrismaMock() {
   return {
     imladrisRawSourceRecord: {
@@ -879,6 +900,35 @@ describe("Imladris canonical materialization", () => {
         }),
       ]),
     });
+  });
+
+  it("sets missing finance metrics to zero confidence when no source records exist", async () => {
+    const prisma = createEmptyFinancePrismaMock();
+    const periodStart = new Date("2026-05-01T00:00:00.000Z");
+    const periodEnd = new Date("2026-05-29T00:00:00.000Z");
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart,
+      periodEnd,
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.map((result) => result.status)).toEqual(["MISSING", "MISSING", "MISSING"]);
+    expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledTimes(3);
+    for (const call of prisma.imladrisCanonicalMetricValue.upsert.mock.calls) {
+      expect(call[0].create).toMatchObject({
+        status: "MISSING",
+        confidence: 0,
+        warnings: ["No Mercury, Stripe, or HubSpot raw records were available for finance materialization."],
+      });
+      expect(call[0].update).toMatchObject({
+        status: "MISSING",
+        confidence: 0,
+      });
+    }
+    expect(prisma.imladrisMetricLineage.createMany).not.toHaveBeenCalled();
   });
 
   it("materializes qualified sales pipeline from HubSpot and collaboration raw records", async () => {

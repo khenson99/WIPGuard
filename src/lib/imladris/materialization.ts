@@ -221,6 +221,7 @@ function computeDeliveryHealth(records: RawSourceRecordRow[]) {
 }
 
 function confidenceFor(records: RawSourceRecordRow[]): number {
+  if (records.length === 0) return 0;
   const providerCount = new Set(records.map((record) => record.provider)).size;
   return Math.min(0.95, Number((0.55 + providerCount * 0.12).toFixed(2)));
 }
