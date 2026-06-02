@@ -6,7 +6,7 @@ import {
   EXPENSE_LABEL_RATIOS,
 } from "@/lib/analytics/budget-variance";
 import type { BudgetActualItem } from "@/lib/analytics/budget-variance";
-import type { MercuryData } from "@/lib/analytics/types";
+import type { BudgetData, MercuryData } from "@/lib/analytics/types";
 
 /* ─── Fixtures ────────────────────────────────────────────── */
 
@@ -300,6 +300,47 @@ describe("computeBudgetActuals", () => {
     expect(items.find((item) => item.category === "Payroll & Benefits")?.actual).toBe(500);
     expect(items.find((item) => item.category === "Infrastructure & Hosting")?.actual).toBe(125);
     expect(items.find((item) => item.category === "Other")?.actual).toBe(75);
+  });
+
+  it("includes transactions posted during the budget end date", () => {
+    const budget: BudgetData = {
+      id: "budget-jan",
+      name: "January Budget",
+      period: "monthly",
+      startDate: "2026-01-01T00:00:00.000Z",
+      endDate: "2026-01-31T00:00:00.000Z",
+      totalPlanned: 1000,
+      totalActual: null,
+      totalVariance: null,
+      lineItems: [
+        {
+          id: "line-marketing",
+          category: "marketing",
+          plannedAmount: 1000,
+          actualAmount: null,
+          variance: null,
+          variancePct: null,
+        },
+      ],
+    };
+    const mercury = makeMercury({
+      transactions: [
+        {
+          id: "jan-end-google-ads",
+          postedAt: "2026-01-31T18:30:00.000Z",
+          amount: -250,
+          kind: "debitCardTransaction",
+          mercuryCategory: null,
+          description: "Google Ads",
+          counterpartyName: "Google",
+        },
+      ],
+    });
+
+    const items = computeBudgetActuals(budget, mercury);
+
+    expect(items[0].actualAmount).toBe(250);
+    expect(items[0].variance).toBe(-750);
   });
 });
 

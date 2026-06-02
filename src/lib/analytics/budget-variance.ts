@@ -148,19 +148,7 @@ function estimateOutflowMultiplier(
     return 1;
   }
 
-  // Budget records are typically stored from date-only form inputs, which land
-  // in the database as midnight UTC timestamps. Treat an end date at exactly
-  // 00:00 UTC as an inclusive calendar boundary so a Jan 1 -> Jan 31 budget
-  // spans 31 days instead of 30.
-  const normalizedEnd = new Date(end.getTime());
-  if (
-    normalizedEnd.getUTCHours() === 0 &&
-    normalizedEnd.getUTCMinutes() === 0 &&
-    normalizedEnd.getUTCSeconds() === 0 &&
-    normalizedEnd.getUTCMilliseconds() === 0
-  ) {
-    normalizedEnd.setUTCDate(normalizedEnd.getUTCDate() + 1);
-  }
+  const normalizedEnd = normalizeBudgetEndDate(end);
 
   const ms = normalizedEnd.getTime() - start.getTime();
   if (ms <= 0) return 1;
@@ -170,6 +158,23 @@ function estimateOutflowMultiplier(
     ? observedPeriodDays
     : 30;
   return Math.max(days / baselineDays, 0);
+}
+
+function normalizeBudgetEndDate(end: Date): Date {
+  // Budget records are typically stored from date-only form inputs, which land
+  // in the database as midnight UTC timestamps. Treat an end date at exactly
+  // 00:00 UTC as an inclusive calendar boundary so a Jan 1 -> Jan 31 budget
+  // includes transactions posted throughout Jan 31.
+  const normalizedEnd = new Date(end.getTime());
+  if (
+    normalizedEnd.getUTCHours() === 0 &&
+    normalizedEnd.getUTCMinutes() === 0 &&
+    normalizedEnd.getUTCSeconds() === 0 &&
+    normalizedEnd.getUTCMilliseconds() === 0
+  ) {
+    normalizedEnd.setUTCDate(normalizedEnd.getUTCDate() + 1);
+  }
+  return normalizedEnd;
 }
 
 function txSearchText(tx: MercuryTransactionData): string {
@@ -193,11 +198,11 @@ function transactionInBudgetRange(
   if (!budget || !tx.postedAt) return true;
   const postedAt = Date.parse(tx.postedAt);
   const start = Date.parse(budget.startDate);
-  const end = Date.parse(budget.endDate);
+  const end = normalizeBudgetEndDate(new Date(budget.endDate)).getTime();
   if (!Number.isFinite(postedAt) || !Number.isFinite(start) || !Number.isFinite(end)) {
     return true;
   }
-  return postedAt >= start && postedAt <= end;
+  return postedAt >= start && postedAt < end;
 }
 
 export function categorizeMercuryTransaction(
