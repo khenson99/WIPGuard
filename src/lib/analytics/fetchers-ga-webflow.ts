@@ -312,8 +312,8 @@ export async function fetchGAData(
           {
             metric: { metricName: "screenPageViews" },
             desc: true,
-            },
-          ],
+          },
+        ],
       },
       "top pages",
     ),
@@ -333,8 +333,8 @@ export async function fetchGAData(
           {
             metric: { metricName: "screenPageViews" },
             desc: true,
-            },
-          ],
+          },
+        ],
       },
       "top pages previous",
     ),
