@@ -410,6 +410,14 @@ function normalizeLookupKey(value: string | null | undefined): string {
   return value?.trim().toLowerCase() ?? "";
 }
 
+function normalizeStageMetricKey(value: string | null | undefined): string {
+  return value?.trim().toLowerCase().replace(/[\s_-]+/g, "") ?? "";
+}
+
+export function isClosedWonStageLabel(value: string | null | undefined): boolean {
+  return normalizeStageMetricKey(value) === "closedwon";
+}
+
 async function hydrateStripeCustomerLinks(
   userId: string,
   data: AnalyticsDashboardData
@@ -1881,7 +1889,7 @@ export async function GET(request: Request) {
         to: toDate,
         filters: parseVisitorFunnelFilters(url.searchParams),
         closedWonCount: (result.hubspot?.deals ?? []).filter(
-          (deal) => deal.stageLabel.trim().toLowerCase() === "closed won",
+          (deal) => isClosedWonStageLabel(deal.stageLabel),
         ).length,
         includeOperationalMetadata:
           ((session.user as { role?: string } | undefined)?.role ?? null) === "admin",

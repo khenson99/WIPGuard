@@ -764,6 +764,15 @@ describe("GET /api/analytics", () => {
     expect(body.demoAnalytics.totalScheduled).toBeGreaterThan(0);
   });
 
+  it("normalizes closed-won stage labels for visitor funnel secondary metrics", async () => {
+    const { isClosedWonStageLabel } = await import("@/app/api/analytics/route");
+
+    expect(isClosedWonStageLabel("Closed Won")).toBe(true);
+    expect(isClosedWonStageLabel(" closed_won ")).toBe(true);
+    expect(isClosedWonStageLabel("closed-won")).toBe(true);
+    expect(isClosedWonStageLabel("Demo Scheduled")).toBe(false);
+  });
+
   it("returns revenue dashboard data from revenue sources only", async () => {
     const { fetchHubSpotData, fetchMercuryData, fetchStripeData } = await import("@/lib/analytics/fetchers");
     const { fetchGoogleAdsData } = await import("@/lib/analytics/fetchers-ads");
