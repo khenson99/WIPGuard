@@ -29,6 +29,7 @@ import { buildAnalyticsMetricsLayer } from "@/lib/analytics/kpis";
 import { computeKpiDelta } from "@/lib/analytics/kpi-deltas";
 import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
 import { buildRevenueDashboardData } from "@/lib/analytics/revenue-dashboard";
+import { isClosedWonStageLabel } from "@/lib/analytics/stage-labels";
 import { ingestImladrisRawRecords } from "@/lib/imladris/ingestion";
 import { buildImladrisRawRecordsFromPayload } from "@/lib/imladris/raw-records";
 import { buildImladrisMetrics } from "@/lib/imladris/service";
@@ -408,14 +409,6 @@ async function withRetry<T>(
 
 function normalizeLookupKey(value: string | null | undefined): string {
   return value?.trim().toLowerCase() ?? "";
-}
-
-function normalizeStageMetricKey(value: string | null | undefined): string {
-  return value?.trim().toLowerCase().replace(/[\s_-]+/g, "") ?? "";
-}
-
-export function isClosedWonStageLabel(value: string | null | undefined): boolean {
-  return normalizeStageMetricKey(value) === "closedwon";
 }
 
 async function hydrateStripeCustomerLinks(

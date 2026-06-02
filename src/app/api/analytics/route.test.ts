@@ -765,7 +765,7 @@ describe("GET /api/analytics", () => {
   });
 
   it("normalizes closed-won stage labels for visitor funnel secondary metrics", async () => {
-    const { isClosedWonStageLabel } = await import("@/app/api/analytics/route");
+    const { isClosedWonStageLabel } = await import("@/lib/analytics/stage-labels");
 
     expect(isClosedWonStageLabel("Closed Won")).toBe(true);
     expect(isClosedWonStageLabel(" closed_won ")).toBe(true);
