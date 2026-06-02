@@ -834,8 +834,8 @@ function buildStripeRefs(records: RawSourceRecordRow[]) {
   const stripeRecords = records.filter(
     (record) =>
       record.provider === IntegrationProvider.STRIPE &&
-      record.objectType === "subscription" &&
-      !isInactiveStripeSubscription(record),
+      (record.objectType === "active_customer_ref" ||
+        (record.objectType === "subscription" && !isInactiveStripeSubscription(record))),
   );
   return {
     customerIds: new Set(

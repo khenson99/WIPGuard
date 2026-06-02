@@ -1293,6 +1293,88 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("excludes HubSpot recurring revenue linked by Stripe active customer references", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_revenue_summary",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "revenue_summary",
+            externalId: "stripe:revenue_summary:2026-05",
+            occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+            payload: {
+              mrr: 42_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_stripe_active_customer_ref",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "active_customer_ref",
+            externalId: "stripe:active_customer_ref:cus_123",
+            occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+            payload: {
+              customerId: "cus_123",
+              email: "finance@example.com",
+              emailDomain: "example.com",
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_hubspot_linked_subscription_deal",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_linked_subscription",
+            occurredAt: new Date("2026-05-12T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-12T00:00:00.000Z"),
+            payload: {
+              amount: 12_000,
+              dealstage: "closedwon",
+              recurringRevenue: true,
+              stripeCustomerId: "cus_123",
+              primaryContactEmail: "finance@example.com",
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 42_000,
+      arr: 504_000,
+      stripeMrr: 42_000,
+      stripeArr: 504_000,
+      hubspotSubscriptionMrr: 1_000,
+      hubspotSubscriptionArr: 12_000,
+      hubspotOnlySubscriptionMrr: 0,
+      hubspotOnlySubscriptionArr: 0,
+      excludedLinkedHubspotSubscriptionMrr: 1_000,
+      excludedLinkedHubspotSubscriptionArr: 12_000,
+    });
+  });
+
   it("parses formatted currency strings before finance materialization", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
