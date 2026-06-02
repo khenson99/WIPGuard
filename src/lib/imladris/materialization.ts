@@ -1541,7 +1541,10 @@ function isLowUsage(record: RawSourceRecordRow): boolean {
 
   const payload = asRecord(record.payload);
   const activeUsers = numberFrom(
-    payload.activeUsers ?? payload.active_users ?? payload.weeklyActiveUsers,
+    payload.activeUsers ??
+      payload.active_users ??
+      payload.weeklyActiveUsers ??
+      payload.weekly_active_users,
   );
   const daysSinceLastActive = numberFrom(
     payload.daysSinceLastActive ??
