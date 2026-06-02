@@ -719,25 +719,41 @@ function hubspotRecurringRevenue(record: RawSourceRecordRow): {
   arr: number;
 } | null {
   const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
   const stage = normalizeStageKey(
     payload.dealstage ??
       payload.stage ??
       payload.stageLabel ??
       payload.stage_label ??
       payload.stageId ??
-      payload.stage_id,
+      payload.stage_id ??
+      properties.dealstage ??
+      properties.stage ??
+      properties.stageLabel ??
+      properties.stage_label ??
+      properties.stageId ??
+      properties.stage_id,
   );
   if (stage && !["closedwon", "won"].includes(stage)) {
     return null;
   }
-  const recurringFlag = payload.recurringRevenue ?? payload.recurring_revenue;
+  const recurringFlag =
+    payload.recurringRevenue ??
+    payload.recurring_revenue ??
+    properties.recurringRevenue ??
+    properties.recurring_revenue;
   if (recurringFlag === false) return null;
   const explicitMrr = numberFrom(
     payload.monthlyRecurringRevenue ??
       payload.monthly_recurring_revenue ??
       payload.mrr ??
       payload.amountMonthly ??
-      payload.amount_monthly,
+      payload.amount_monthly ??
+      properties.monthlyRecurringRevenue ??
+      properties.monthly_recurring_revenue ??
+      properties.mrr ??
+      properties.amountMonthly ??
+      properties.amount_monthly,
   );
   if (explicitMrr !== null) {
     const mrr = Math.max(0, explicitMrr);
@@ -749,7 +765,13 @@ function hubspotRecurringRevenue(record: RawSourceRecordRow): {
       payload.annualRecurringRevenue ??
       payload.annual_recurring_revenue ??
       payload.arr ??
-      payload.amount,
+      payload.amount ??
+      properties.recurringRevenueAmount ??
+      properties.recurring_revenue_amount ??
+      properties.annualRecurringRevenue ??
+      properties.annual_recurring_revenue ??
+      properties.arr ??
+      properties.amount,
   );
   if (annualValue === null) return null;
   const arr = Math.max(0, annualValue);
