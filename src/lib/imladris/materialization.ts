@@ -1417,14 +1417,27 @@ function semrushOrganicTraffic(records: RawSourceRecordRow[]): number {
 
 function webflowFormSubmissionCount(records: RawSourceRecordRow[]): number {
   const webflowRecords = records.filter((record) => record.provider === IntegrationProvider.WEBFLOW);
-  const snapshotTotal = webflowRecords
+  const snapshotCounts = webflowRecords
     .filter((record) => record.objectType === "snapshot")
-    .reduce((sum, record) => {
+    .map((record) => {
       const payload = asRecord(record.payload);
-      return sum + (numberFrom(payload.totalFormSubmissions) ?? 0);
-    }, 0);
-  if (snapshotTotal > 0) {
-    return snapshotTotal;
+      const properties = nestedRecord(payload.properties);
+      const summary = nestedRecord(payload.summary);
+      const metrics = nestedRecord(payload.metrics);
+      return numberFrom(
+        payload.totalFormSubmissions ??
+          payload.total_form_submissions ??
+          properties.totalFormSubmissions ??
+          properties.total_form_submissions ??
+          summary.totalFormSubmissions ??
+          summary.total_form_submissions ??
+          metrics.totalFormSubmissions ??
+          metrics.total_form_submissions,
+      );
+    })
+    .filter((count): count is number => typeof count === "number");
+  if (snapshotCounts.length > 0) {
+    return snapshotCounts.reduce((sum, count) => sum + count, 0);
   }
 
   return webflowRecords
