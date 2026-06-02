@@ -111,6 +111,20 @@ describe("computeUnitEconomics", () => {
     expect(result.ltv).toBe(5000);
   });
 
+  it("normalizes ratio-style churn values before calculating LTV and CAC", () => {
+    const ratioChurnStripe = makeStripe({
+      subscriptions: {
+        ...stripe.subscriptions,
+        churnRate: 0.04,
+      },
+    });
+
+    const result = computeUnitEconomics(ratioChurnStripe, mercury, null);
+
+    expect(result.ltv).toBe(5000);
+    expect(result.cac).toBe(3375);
+  });
+
   it("computes CAC = marketingSpend / newCustomers", () => {
     // marketingSpend = 45000 * 0.15 = 6750
     // newCustomers = hubspot.closedWon = 5

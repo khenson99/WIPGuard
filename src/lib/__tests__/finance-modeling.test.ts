@@ -142,6 +142,26 @@ describe("projectMrr", () => {
     expect(result[1].mrr).toBeCloseTo(10_600, 0);
   });
 
+  it("normalizes ratio-style churn values before projecting MRR", () => {
+    const data = makeData({
+      stripe: {
+        subscriptions: {
+          active: 50,
+          pastDue: 2,
+          canceled: 3,
+          trialing: 5,
+          churnRate: 0.04,
+          recentChurnEvents: [],
+        },
+      },
+    });
+
+    const result = projectMrr(data, 1);
+
+    expect(result[1].churnedMrr).toBeCloseTo(400, 0);
+    expect(result[1].mrr).toBeCloseTo(10_600, 0);
+  });
+
   it("compounds over multiple months", () => {
     const data = makeData();
     const result = projectMrr(data, 3);
@@ -374,6 +394,21 @@ describe("computeFinancialGoals", () => {
     expect(churnGoal!.current).toBeCloseTo(7, 5); // 7%
   });
 
+  it("normalizes ratio-style churn values before generating churn goals", () => {
+    const data = makeData({
+      stripe: {
+        revenue: { mrr: 10000, mrrChange: 0, totalRevenue30d: 10000, totalRevenuePrev30d: 10000, revenueGrowth: 10, avgRevenuePerCustomer: 200 },
+        subscriptions: { active: 50, pastDue: 2, canceled: 3, trialing: 5, churnRate: 0.07, recentChurnEvents: [] },
+      },
+    });
+
+    const goals = computeFinancialGoals(data);
+    const churnGoal = goals.find((g) => g.id === "churn-target");
+
+    expect(churnGoal).toBeDefined();
+    expect(churnGoal!.current).toBeCloseTo(7, 5);
+  });
+
   it("does NOT generate churn goal when churn <= 5%", () => {
     // Default fixture has churnRate=4 → 4% → <= 5%, so no churn goal
     const goals = computeFinancialGoals(makeData());
@@ -385,6 +420,18 @@ describe("computeFinancialGoals", () => {
     const payGoal = goals.find((g) => g.id === "payment-success");
     expect(payGoal).toBeDefined();
     expect(payGoal!.target).toBe(98);
+    expect(payGoal!.current).toBe(96);
+  });
+
+  it("normalizes ratio-style payment success values before generating goals", () => {
+    const goals = computeFinancialGoals(makeData({
+      stripe: {
+        payments: { succeeded: 48, failed: 2, successRate: 0.96 },
+      },
+    }));
+    const payGoal = goals.find((g) => g.id === "payment-success");
+
+    expect(payGoal).toBeDefined();
     expect(payGoal!.current).toBe(96);
   });
 
@@ -438,6 +485,29 @@ describe("runSensitivityAnalysis", () => {
     const churnResult = results.find((r) => r.parameter === "Churn Rate")!;
     expect(churnResult.impactOnMrr12m).toBeGreaterThan(0);
     expect(churnResult.adjustedValue).toBeLessThan(churnResult.baseValue);
+  });
+
+  it("normalizes ratio-style churn values before sensitivity analysis", () => {
+    const results = runSensitivityAnalysis(makeData({
+      stripe: {
+        subscriptions: {
+          active: 50,
+          pastDue: 2,
+          canceled: 3,
+          trialing: 5,
+          churnRate: 0.04,
+          recentChurnEvents: [],
+        },
+      },
+    }), {
+      churnDelta: -0.02,
+      growthDelta: 0,
+      burnDelta: 0,
+    });
+
+    const churnResult = results.find((r) => r.parameter === "Churn Rate")!;
+    expect(churnResult.baseValue).toBe(4);
+    expect(churnResult.adjustedValue).toBe(2);
   });
 
   it("increasing growth increases 12-month MRR", () => {
@@ -524,6 +594,29 @@ describe("scoreFinancialHealth", () => {
     expect(components).toHaveLength(5);
     const labels = components.map((c) => c.label).sort();
     expect(labels).toEqual(["Churn", "MRR Growth", "Payment Success", "Pipeline Coverage", "Runway"].sort());
+  });
+
+  it("normalizes ratio-style churn and payment success before health scoring", () => {
+    const { components } = scoreFinancialHealth(makeData({
+      stripe: {
+        subscriptions: {
+          active: 50,
+          pastDue: 2,
+          canceled: 3,
+          trialing: 5,
+          churnRate: 0.04,
+          recentChurnEvents: [],
+        },
+        payments: { succeeded: 48, failed: 2, successRate: 0.96 },
+      },
+    }));
+
+    const churn = components.find((c) => c.label === "Churn")!;
+    const payment = components.find((c) => c.label === "Payment Success")!;
+    expect(churn.detail).toBe("4.0% monthly");
+    expect(churn.score).toBe(65);
+    expect(payment.detail).toBe("96.0%");
+    expect(payment.score).toBe(65);
   });
 
   it("component weights sum to 1.0", () => {

@@ -21,7 +21,7 @@ const meta = {
   source: "cached" as const,
 };
 
-function makeStripe(revenue: number): StripeData {
+function makeStripe(revenue: number, overrides: Partial<StripeData> = {}): StripeData {
   return {
     revenue: {
       mrr: revenue / 10,
@@ -46,6 +46,7 @@ function makeStripe(revenue: number): StripeData {
     },
     revenueTrend: [],
     _meta: meta,
+    ...overrides,
   };
 }
 
@@ -125,5 +126,30 @@ describe("buildMonthlyPnLHistory", () => {
       stripe: false,
       mercury: true,
     });
+  });
+
+  it("normalizes ratio-style Stripe churn in historical monthly entries", async () => {
+    vi.mocked(prisma.analyticsSnapshot.findMany).mockResolvedValue([
+      {
+        providerKey: "stripe",
+        payload: makeStripe(10_000, {
+          subscriptions: {
+            active: 10,
+            pastDue: 0,
+            canceled: 0,
+            trialing: 0,
+            churnRate: 0.04,
+            recentChurnEvents: [],
+          },
+        }),
+        fromDate: new Date("2025-01-01T00:00:00.000Z"),
+        toDate: new Date("2025-01-31T23:59:59.999Z"),
+        capturedAt: new Date("2025-03-15T00:00:00.000Z"),
+      },
+    ] as never);
+
+    const history = await buildMonthlyPnLHistory("user-1");
+
+    expect(history.months[0]?.churnRate).toBe(4);
   });
 });

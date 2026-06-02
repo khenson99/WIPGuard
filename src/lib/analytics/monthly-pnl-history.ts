@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { AnalyticsSnapshotStatus } from "@/generated/prisma/client";
 import { buildProfitAndLossCore } from "./pnl-builder";
 import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
+import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
 import type { StripeData, MercuryData, PnLRow } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -210,7 +211,7 @@ function buildMonthEntry(
     burnRate: mercury?.cashFlow?.burnRate ?? null,
     mrr: stripe?.revenue?.mrr ?? null,
     activeSubscriptions: stripe?.subscriptions?.active ?? null,
-    churnRate: stripe?.subscriptions?.churnRate ?? null,
+    churnRate: stripe ? normalizePercentValue(stripe.subscriptions.churnRate) : null,
   };
 }
 

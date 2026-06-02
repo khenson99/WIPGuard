@@ -120,6 +120,23 @@ describe("buildForecastScenario", () => {
     expect(scenario.months[0].projectedRevenue).toBeGreaterThan(10_000);
   });
 
+  it("normalizes ratio-style churn values before projecting scenario revenue", () => {
+    const stripe = makeStripe({
+      subscriptions: {
+        active: 50,
+        pastDue: 2,
+        canceled: 3,
+        trialing: 5,
+        churnRate: 0.04,
+        recentChurnEvents: [],
+      },
+    });
+
+    const scenario = buildForecastScenario(stripe, makeMercury(), DEFAULT_ASSUMPTIONS, { months: 1 });
+
+    expect(scenario.months[0].projectedMrr).toBeCloseTo(10_560, 2);
+  });
+
   it("handles null stripe or mercury", () => {
     const scenario = buildForecastScenario(null, null, DEFAULT_ASSUMPTIONS, { months: 1 });
     expect(scenario.months).toHaveLength(1);

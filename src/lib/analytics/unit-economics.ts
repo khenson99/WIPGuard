@@ -13,6 +13,7 @@ import type {
   UnitEconomics,
 } from "@/lib/analytics/types";
 import { categorizeMercuryTransaction } from "@/lib/analytics/budget-variance";
+import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
 import type { ExpenseRatios } from "./pnl-builder";
 
 // ---------------------------------------------------------------------------
@@ -155,7 +156,9 @@ export function computeUnitEconomics(
   // 2. Monthly churn rate (decimal)
   // ---------------------------------------------------------------------------
 
-  const monthlyChurnRate = stripe ? stripe.subscriptions.churnRate / 100 : 0;
+  const monthlyChurnRate = stripe
+    ? normalizePercentValue(stripe.subscriptions.churnRate) / 100
+    : 0;
 
   // ---------------------------------------------------------------------------
   // 3. LTV — Lifetime Value

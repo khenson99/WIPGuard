@@ -9,6 +9,7 @@ import type {
   StripeData,
   MercuryData,
 } from "@/lib/analytics/types";
+import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -19,6 +20,10 @@ function monthLabel(offset: number): string {
   d.setDate(1);
   d.setMonth(d.getMonth() + offset);
   return d.toISOString().slice(0, 7); // YYYY-MM
+}
+
+function percentRate(value: number | null | undefined): number {
+  return normalizePercentValue(value) / 100;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,7 +108,7 @@ export function buildForecastScenario(
 ): ForecastScenarioData {
   const currentMrr = stripe?.revenue?.mrr ?? 0;
   const baseGrowthRate = (stripe?.revenue?.revenueGrowth ?? 0) / 100;
-  const baseChurnRate = (stripe?.subscriptions?.churnRate ?? 0) / 100;
+  const baseChurnRate = percentRate(stripe?.subscriptions?.churnRate);
   const cashBalance = mercury?.cashFlow?.totalBalance ?? 0;
   const baseExpenses = mercury?.cashFlow?.outflows30d ?? 0;
 

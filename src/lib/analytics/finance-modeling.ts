@@ -4,6 +4,7 @@
 // All computations derive from the existing AnalyticsDashboardData type.
 
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
+import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
 
 /* ═══════════════════════════════════════════════════════════
    TYPES
@@ -116,6 +117,10 @@ function clamp(val: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, val));
 }
 
+function percentRate(value: number | null | undefined): number {
+  return normalizePercentValue(value) / 100;
+}
+
 /* ═══════════════════════════════════════════════════════════
    1. MRR PROJECTIONS
    ═══════════════════════════════════════════════════════════ */
@@ -128,7 +133,7 @@ export function projectMrr(
   // revenueGrowth is a percentage value (e.g. 12.5 for 12.5%)
   const monthlyGrowthRate = (data.stripe?.revenue?.revenueGrowth ?? 0) / 100;
   // churnRate is also a percentage (e.g. 5.2 for 5.2%)
-  const monthlyChurnRate = (data.stripe?.subscriptions?.churnRate ?? 0) / 100;
+  const monthlyChurnRate = percentRate(data.stripe?.subscriptions?.churnRate);
 
   const projections: MrrProjection[] = [];
   let mrr = currentMrr;
@@ -235,12 +240,12 @@ export function computeFinancialGoals(
   const goals: FinancialGoal[] = [];
   const mrr = data.stripe?.revenue?.mrr ?? 0;
   const growthRate = (data.stripe?.revenue?.revenueGrowth ?? 0) / 100;
-  const churnRate = (data.stripe?.subscriptions?.churnRate ?? 0) / 100;
+  const churnRate = percentRate(data.stripe?.subscriptions?.churnRate);
   const runway = data.mercury?.cashFlow?.runway ?? 0;
   const burnRate = data.mercury?.cashFlow?.burnRate ?? 0;
   const totalBalance = data.mercury?.cashFlow?.totalBalance ?? 0;
   const avgRevenuePerCustomer = data.stripe?.revenue?.avgRevenuePerCustomer ?? 0;
-  const paymentSuccessRate = data.stripe?.payments?.successRate ?? 0;
+  const paymentSuccessRate = normalizePercentValue(data.stripe?.payments?.successRate);
 
   // Goal 1: MRR Milestone
   if (mrr > 0) {
@@ -361,7 +366,7 @@ export function runSensitivityAnalysis(
   const results: SensitivityResult[] = [];
   const currentMrr = data.stripe?.revenue?.mrr ?? 0;
   const growthRate = (data.stripe?.revenue?.revenueGrowth ?? 0) / 100;
-  const churnRate = (data.stripe?.subscriptions?.churnRate ?? 0) / 100;
+  const churnRate = percentRate(data.stripe?.subscriptions?.churnRate);
   const burnRate = data.mercury?.cashFlow?.burnRate ?? 0;
   const totalBalance = data.mercury?.cashFlow?.totalBalance ?? 0;
 
@@ -488,8 +493,8 @@ export function scoreFinancialHealth(
 ): FinanceHealthScore {
   const runway = data.mercury?.cashFlow?.runway ?? 0;
   const growthRate = (data.stripe?.revenue?.revenueGrowth ?? 0) / 100;
-  const churnRate = (data.stripe?.subscriptions?.churnRate ?? 0) / 100;
-  const paymentSuccess = data.stripe?.payments?.successRate ?? 0;
+  const churnRate = percentRate(data.stripe?.subscriptions?.churnRate);
+  const paymentSuccess = normalizePercentValue(data.stripe?.payments?.successRate);
 
   const components: HealthComponent[] = [
     {
