@@ -18,6 +18,7 @@ type StripeLike = {
 type HubSpotSubscriptionDealLike = {
   dealId?: string | null;
   dealName?: string | null;
+  stageId?: string | null;
   stageLabel?: string | null;
   amount?: number | string | null;
   stripeCustomerId?: string | null;
@@ -43,6 +44,11 @@ const GENERIC_EMAIL_DOMAINS = new Set([
 
 function normalizeLookup(value: string | null | undefined): string | null {
   const normalized = value?.trim().toLowerCase() ?? "";
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeStageKey(value: string | null | undefined): string | null {
+  const normalized = value?.trim().toLowerCase().replace(/[\s_-]+/g, "") ?? "";
   return normalized.length > 0 ? normalized : null;
 }
 
@@ -80,12 +86,10 @@ function asHubSpotLike(value: unknown): HubSpotLike {
 
 function getHubSpotSubscriptionDeals(hubspot: HubSpotLike): HubSpotSubscriptionDealLike[] {
   if (Array.isArray(hubspot?.subscriptionDeals)) return hubspot.subscriptionDeals;
-  return (hubspot?.deals ?? []).filter(
-    (deal) => {
-      const stageLabel = deal.stageLabel?.trim().toLowerCase();
-      return stageLabel === "subscription" || stageLabel === "subscriptions";
-    },
-  );
+  return (hubspot?.deals ?? []).filter((deal) => {
+    const stageKeys = [normalizeStageKey(deal.stageLabel), normalizeStageKey(deal.stageId)];
+    return stageKeys.some((stageKey) => stageKey === "subscription" || stageKey === "subscriptions");
+  });
 }
 
 export type SubscriptionMrrBreakdown = {
