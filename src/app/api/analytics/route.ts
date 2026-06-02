@@ -8,6 +8,7 @@ import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import { runWithContextAsync } from "@/lib/request-context";
 import { getAuthenticatedUser } from "@/lib/session-user";
 import { getCredentials } from "@/lib/analytics/credentials";
+import { normalizeMercuryExpenseMappings } from "@/lib/analytics/mercury-expense-mappings";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
 import { computeProgressPct } from "@/lib/analytics/finance-utils";
 import { createEmptyAnalyticsDashboardData, patchFreshnessWithStale } from "@/lib/analytics/response-shape";
@@ -36,6 +37,7 @@ import {
   syncVisitorFunnelArtifacts,
 } from "@/lib/analytics/visitor-funnel";
 import { getVisitorFunnelPrisma } from "@/lib/analytics/visitor-funnel-availability";
+import { MERCURY_CASHFLOW_SYNC_RULE_KEY } from "@/lib/integrations/provider-metrics-sync";
 import type {
   AnalyticsDashboardData,
   AnalyticsRecommendation,
@@ -1367,7 +1369,18 @@ export async function GET(request: Request) {
           snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchMercuryData } = await loadCoreAnalyticsFetchers();
-            return fetchMercuryData(creds.mercuryKey!, { fromDate, toDate });
+            const mercuryRule = await prisma.integrationRule.findUnique({
+              where: {
+                userId_provider_key: {
+                  userId: integrationUserId,
+                  provider: IntegrationProvider.MERCURY,
+                  key: MERCURY_CASHFLOW_SYNC_RULE_KEY,
+                },
+              },
+              select: { config: true },
+            });
+            const expenseMappings = normalizeMercuryExpenseMappings(mercuryRule?.config ?? null);
+            return fetchMercuryData(creds.mercuryKey!, { fromDate, toDate, expenseMappings });
           },
         }]
       : []),

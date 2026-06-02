@@ -13,19 +13,14 @@ const eslintConfig = defineConfig([
     "build/**",
     ".claude/**",
     ".worktrees/**",
+    "src/generated/**",
     "next-env.d.ts",
     // Deployment helper script intentionally uses CommonJS.
     "migrate.cjs",
     // Ops script intentionally uses CommonJS.
     "scripts/backfill-google-oauth-scope-aliases.cjs",
-    // One-off ops/debug scripts (CommonJS / loose typing).
-    "test-pg-pylon.cjs",
-    "get-pg-errors.cjs",
-    "check-meta.cjs",
-    "debug-pylon-pg.cjs",
-    "merge_deals.js",
-    "list_deals.js",
-    "delete_deals.js",
+    // Ops script intentionally uses CommonJS.
+    "scripts/ops/hubspot/merge-deals.js",
     "scripts/test-meta-api.js",
   ]),
 ]);

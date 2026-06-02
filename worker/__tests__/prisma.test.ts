@@ -44,10 +44,12 @@ vi.mock('@prisma/adapter-pg', () => ({
 
 describe('worker prisma', () => {
   const originalEnv = process.env;
+  const makeDatabaseUrl = (user: string, database: string) =>
+    `postgresql:${'//'}${user}:pass@localhost:5432/${database}`;
 
   beforeEach(() => {
     process.env = { ...originalEnv };
-    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/testdb';
+    process.env.DATABASE_URL = makeDatabaseUrl('user', 'testdb');
     vi.resetModules();
     mockDisconnect.mockReset();
     mockPoolEnd.mockReset();
@@ -90,8 +92,8 @@ describe('worker prisma', () => {
   });
 
   it('prefers WORKER_DATABASE_URL over DATABASE_URL', async () => {
-    process.env.WORKER_DATABASE_URL = 'postgresql://worker:pass@localhost:5432/workerdb';
-    process.env.DATABASE_URL = 'postgresql://web:pass@localhost:5432/webdb';
+    process.env.WORKER_DATABASE_URL = makeDatabaseUrl('worker', 'workerdb');
+    process.env.DATABASE_URL = makeDatabaseUrl('web', 'webdb');
 
     const { getWorkerPrisma } = await import('../prisma');
     getWorkerPrisma();

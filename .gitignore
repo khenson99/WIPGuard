@@ -14,6 +14,7 @@
 /coverage
 /playwright-report/
 /test-results/
+/.playwright-mcp/
 /tests/e2e/.auth/*
 !/tests/e2e/.auth/.gitkeep
 
@@ -29,10 +30,14 @@
 *.pem
 
 # debug
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+/refresh-logs*.txt
+/rlogs.txt
+/ts_errors*.log
 
 # env files (can opt-in for committing if needed)
 .env*
@@ -47,13 +52,19 @@ next-env.d.ts
 /src/generated/prisma
 
 # Ralph Team Loop — ephemeral task files
+.ralph-team/agents/
 .ralph-team/current-tasks/
+.ralph-team/progress.txt
+.ralph-team/team-state*.json
 
 # Ralph/Codex agent artifacts
 .ralph-team/logs/
 agents/
 scripts/ralph-team-v2/
-firebase-debug.log
+
+# Local generated artifacts
+/output/
+/arda-*.png
 
 # Local AI agent worktrees
 .worktrees/

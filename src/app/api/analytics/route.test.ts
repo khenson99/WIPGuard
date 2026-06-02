@@ -88,6 +88,7 @@ vi.mock("@/lib/prisma", () => ({
     budget: { findMany: vi.fn() },
     financialGoal: { findMany: vi.fn() },
     forecastScenario: { findMany: vi.fn() },
+    integrationRule: { findUnique: vi.fn() },
     dealMeeting: { findMany: vi.fn() },
     automationArtifact: { findMany: vi.fn() },
   },
@@ -587,6 +588,7 @@ describe("GET /api/analytics", () => {
     vi.mocked(prisma.budget.findMany).mockResolvedValue([] as never);
     vi.mocked(prisma.financialGoal.findMany).mockResolvedValue([] as never);
     vi.mocked(prisma.forecastScenario.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.integrationRule.findUnique).mockResolvedValue(null as never);
     vi.mocked(prisma.dealMeeting.findMany).mockResolvedValue([] as never);
     vi.mocked(prisma.automationArtifact.findMany).mockResolvedValue([] as never);
   });
@@ -765,7 +767,27 @@ describe("GET /api/analytics", () => {
   it("returns revenue dashboard data from revenue sources only", async () => {
     const { fetchHubSpotData, fetchMercuryData, fetchStripeData } = await import("@/lib/analytics/fetchers");
     const { fetchGoogleAdsData } = await import("@/lib/analytics/fetchers-ads");
+    const { readLatestSnapshot } = await import("@/lib/analytics/snapshots");
+    const { prisma } = await import("@/lib/prisma");
     const { GET } = await import("@/app/api/analytics/route");
+    vi.mocked(readLatestSnapshot).mockResolvedValue({
+      payload: { fromSnapshot: true, _meta: META },
+      capturedAt: "2026-02-10T00:00:00.000Z",
+      expiresAt: "2026-02-10T01:00:00.000Z",
+      needsRefresh: false,
+      stale: false,
+      fromSnapshot: true,
+      status: "SUCCESS",
+      error: null,
+    } as never);
+    vi.mocked(prisma.integrationRule.findUnique).mockResolvedValueOnce({
+      config: {
+        mercuryExpenseMappings: [
+          { match: "founder payroll", category: "ops" },
+          { match: "ignore me", category: "not-real" },
+        ],
+      },
+    } as never);
 
     const response = await GET(new Request("http://localhost/api/analytics?section=revenue"));
     const body = await response.json();
@@ -773,8 +795,22 @@ describe("GET /api/analytics", () => {
     expect(response.status).toBe(200);
     expect(fetchHubSpotData).toHaveBeenCalled();
     expect(fetchStripeData).toHaveBeenCalled();
-    expect(fetchMercuryData).toHaveBeenCalled();
+    expect(fetchMercuryData).toHaveBeenCalledWith("mercury", {
+      fromDate: expect.any(Date),
+      toDate: expect.any(Date),
+      expenseMappings: [{ match: "founder payroll", category: "ops" }],
+    });
     expect(fetchGoogleAdsData).not.toHaveBeenCalled();
+    expect(prisma.integrationRule.findUnique).toHaveBeenCalledWith({
+      where: {
+        userId_provider_key: {
+          userId: "user-1",
+          provider: IntegrationProvider.MERCURY,
+          key: "mercury_cashflow_sync",
+        },
+      },
+      select: { config: true },
+    });
     expect(body.revenueDashboard?.summary.arr).toBe(187176);
     expect(body.revenueDashboard?.trust.sources.map((source: { key: string }) => source.key)).toEqual([
       "hubspot",

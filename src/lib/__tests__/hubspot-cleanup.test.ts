@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import mergeDealsModule from "../../../merge_deals.js";
+import mergeDealsModule from "../../../scripts/ops/hubspot/merge-deals.js";
 
 const {
   MAIN_PIPELINE_ID,

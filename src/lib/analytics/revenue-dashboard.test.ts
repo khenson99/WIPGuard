@@ -446,4 +446,49 @@ describe("buildRevenueDashboardData", () => {
       expect.arrayContaining(["Stripe data is unavailable.", "Mercury data is unavailable."]),
     );
   });
+
+  it("builds weekly Mercury rows from the filtered transaction list that backs cash flow totals", () => {
+    const mercury = makeMercury();
+    mercury.cashFlow = {
+      ...mercury.cashFlow,
+      inflows30d: 2500,
+      outflows30d: 1500,
+      netCashFlow: 1000,
+      burnRate: 0,
+    };
+    mercury.transactions = [
+      {
+        id: "customer-wire",
+        postedAt: "2026-02-04T12:00:00.000Z",
+        amount: 2500,
+        kind: "incomingDomesticWire",
+        mercuryCategory: null,
+        description: "Customer wire",
+        counterpartyName: "Acme",
+      },
+      {
+        id: "vendor-payment",
+        postedAt: "2026-02-04T15:00:00.000Z",
+        amount: -1500,
+        kind: "outgoingPayment",
+        mercuryCategory: null,
+        description: "Vendor",
+        counterpartyName: "Vendor",
+      },
+    ];
+
+    const result = buildRevenueDashboardData(makeData({ mercury }));
+    const mercuryNetFromWeekly = result.weekly.reduce(
+      (sum, point) => sum + point.mercuryNetCashFlow,
+      0,
+    );
+
+    expect(result.summary.netCashFlow30d).toBe(1000);
+    expect(mercuryNetFromWeekly).toBe(1000);
+    expect(result.weekly.find((point) => point.week === "2026-02-02")).toMatchObject({
+      mercuryInflows: 2500,
+      mercuryOutflows: 1500,
+      mercuryNetCashFlow: 1000,
+    });
+  });
 });

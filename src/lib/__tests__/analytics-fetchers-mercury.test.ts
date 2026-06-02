@@ -194,6 +194,107 @@ describe("Mercury analytics fetcher", () => {
     ]);
   });
 
+  it("excludes internal account-transfer pairs from cash flow and exposed transactions while applying expense mappings", async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          accounts: [
+            {
+              id: "checking-1",
+              name: "Mercury Checking",
+              currentBalance: "10,000",
+              type: "mercury",
+            },
+            {
+              id: "savings-1",
+              name: "Mercury Savings",
+              currentBalance: "15,000",
+              type: "mercury",
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ accounts: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          transactions: [
+            {
+              id: "internal-out",
+              accountId: "checking-1",
+              status: "sent",
+              kind: "outgoingPayment",
+              postedAt: "2026-04-12T12:00:00.000Z",
+              amount: -5_000,
+              bankDescription: "Internal transfer",
+            },
+            {
+              id: "internal-in",
+              accountId: "savings-1",
+              status: "sent",
+              kind: "incomingDomesticWire",
+              postedAt: "2026-04-12T12:30:00.000Z",
+              amount: 5_000,
+              bankDescription: "Internal transfer",
+            },
+            {
+              id: "customer-wire",
+              accountId: "checking-1",
+              status: "sent",
+              kind: "incomingDomesticWire",
+              postedAt: "2026-04-13T12:00:00.000Z",
+              amount: 2_500,
+              counterpartyName: "Acme",
+            },
+            {
+              id: "mapped-expense",
+              accountId: "checking-1",
+              status: "sent",
+              kind: "outgoingPayment",
+              postedAt: "2026-04-14T12:00:00.000Z",
+              amount: -1_200,
+              description: "Founder payroll reimbursement",
+              counterpartyName: "Founders Inc",
+            },
+            {
+              id: "keyword-expense",
+              accountId: "checking-1",
+              status: "sent",
+              kind: "debitCardTransaction",
+              postedAt: "2026-04-15T12:00:00.000Z",
+              amount: -300,
+              bankDescription: "Vercel",
+            },
+          ],
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchMercuryData("token", {
+      fromDate: new Date("2026-04-01T00:00:00.000Z"),
+      toDate: new Date("2026-04-30T23:59:59.999Z"),
+      expenseMappings: [{ match: "founder payroll", category: "ops" }],
+    });
+
+    expect(data.cashFlow.inflows30d).toBe(2_500);
+    expect(data.cashFlow.outflows30d).toBe(1_500);
+    expect(data.cashFlow.netCashFlow).toBe(1_000);
+    expect(data.cashFlow.observedExpenseBreakdown).toMatchObject({
+      ops: 1_200,
+      infrastructure: 300,
+    });
+    expect(data.cashFlow.expenseBreakdown30d).toMatchObject({
+      ops: 1_200,
+      infrastructure: 300,
+    });
+    expect(data.transactions?.map((transaction) => transaction.id)).toEqual([
+      "customer-wire",
+      "mapped-expense",
+      "keyword-expense",
+    ]);
+  });
+
   it("falls back to account transactions when the global transactions endpoint is unavailable", async () => {
     const fetchMock = vi.fn();
     fetchMock

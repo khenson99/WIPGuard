@@ -2219,6 +2219,7 @@ export async function fetchMercuryData(
 
   type MercuryTransaction = {
     id?: string;
+    accountId?: string;
     postedAt?: string;
     createdAt?: string;
     timestamp?: string;
@@ -2230,6 +2231,7 @@ export async function fetchMercuryData(
     bankDescription?: string | null;
     note?: string | null;
     counterpartyName?: string | null;
+    counterpartyNickname?: string | null;
     merchantName?: string | null;
     externalMemo?: string | null;
     memo?: string | null;
@@ -2384,6 +2386,73 @@ export async function fetchMercuryData(
 
     return "other";
   };
+  const transactionDateKey = (tx: MercuryTransaction): string | null => {
+    const timestamp = tx.postedAt || tx.createdAt || tx.timestamp || "";
+    if (!timestamp) return null;
+    const parsed = Date.parse(timestamp);
+    if (!Number.isFinite(parsed)) return null;
+    return new Date(parsed).toISOString().split("T")[0] ?? null;
+  };
+  const textSuggestsInternalTransfer = (tx: MercuryTransaction): boolean => {
+    const fields = [
+      tx.bankDescription,
+      tx.counterpartyName,
+      tx.counterpartyNickname,
+      tx.mercuryCategory,
+      tx.description,
+      tx.note,
+    ]
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .map((value) => value.trim().toLowerCase());
+
+    return fields.some((value) =>
+      value.includes("internal transfer") ||
+      value.includes("between your mercury accounts") ||
+      value.includes("between your accounts")
+    );
+  };
+  const filterInternalTransferPairs = (ledgerTransactions: MercuryTransaction[]): MercuryTransaction[] => {
+    const grouped = new Map<string, MercuryTransaction[]>();
+
+    for (const tx of ledgerTransactions) {
+      const amount = readMercuryNumber(tx.amount);
+      const dateKey = transactionDateKey(tx);
+      if (!dateKey || !Number.isFinite(amount) || amount === 0) continue;
+      const key = `${dateKey}:${Math.abs(amount)}`;
+      const bucket = grouped.get(key) ?? [];
+      bucket.push(tx);
+      grouped.set(key, bucket);
+    }
+
+    const excludedIds = new Set<string>();
+    const excludedRefs = new Set<MercuryTransaction>();
+
+    for (const bucket of grouped.values()) {
+      const negatives = bucket.filter((tx) => readMercuryNumber(tx.amount) < 0);
+      const positives = bucket.filter((tx) => readMercuryNumber(tx.amount) > 0);
+      if (negatives.length === 0 || positives.length === 0) continue;
+
+      const hinted = bucket.some(textSuggestsInternalTransfer);
+      if (!hinted && (negatives.length !== 1 || positives.length !== 1)) continue;
+
+      const availablePositives = [...positives];
+      for (const debit of negatives) {
+        const matchIndex = availablePositives.findIndex((credit) => credit.accountId !== debit.accountId);
+        if (matchIndex === -1) continue;
+        const [credit] = availablePositives.splice(matchIndex, 1);
+        if (debit.id) excludedIds.add(debit.id);
+        else excludedRefs.add(debit);
+        if (credit.id) excludedIds.add(credit.id);
+        else excludedRefs.add(credit);
+      }
+    }
+
+    return ledgerTransactions.filter((tx) => {
+      if (tx.id && excludedIds.has(tx.id)) return false;
+      if (!tx.id && excludedRefs.has(tx)) return false;
+      return true;
+    });
+  };
 
   const fetchMercuryAccounts = async (): Promise<{
     accounts: MercuryAccount[];
@@ -2492,10 +2561,22 @@ export async function fetchMercuryData(
     if (readMercuryNumber(tx.amount) === 0) return false;
     const kind = (tx.kind ?? "").toLowerCase();
     const mercuryCategory = (tx.mercuryCategory ?? "").toLowerCase();
+    const description = [
+      tx.bankDescription,
+      tx.description,
+      tx.details?.description,
+      tx.externalMemo,
+      tx.memo,
+      tx.note,
+    ]
+      .filter((value): value is string => typeof value === "string")
+      .join(" ")
+      .toLowerCase();
     return !(
       kind === "internaltransfer" ||
       kind === "treasurytransfer" ||
-      mercuryCategory === "treasurytransfer"
+      mercuryCategory === "treasurytransfer" ||
+      description.includes("internal transfer between your mercury accounts")
     );
   };
   const toTransactionData = (tx: MercuryTransaction): MercuryTransactionData => ({
@@ -2520,19 +2601,11 @@ export async function fetchMercuryData(
     note: tx.note ?? null,
   });
 
-  const transactions: MercuryTransactionData[] = [];
-  const expenseBreakdown30d = emptyExpenseBreakdown();
+  const ledgerTransactions: MercuryTransaction[] = [];
 
   const addCashFlow = (tx: MercuryTransaction): void => {
     if (!shouldCountCashFlow(tx)) return;
-    const amount = readMercuryNumber(tx.amount);
-    const amt = Math.abs(amount);
-    if (amount > 0) inflows += amt;
-    else {
-      outflows += amt;
-      expenseBreakdown30d[classifyMercuryExpense(tx)] += amt;
-    }
-    transactions.push(toTransactionData(tx));
+    ledgerTransactions.push(tx);
   };
 
   let inflows = 0, outflows = 0;
@@ -2573,8 +2646,7 @@ export async function fetchMercuryData(
     }
   } catch {
     usedGlobalTransactions = false;
-    inflows = 0;
-    outflows = 0;
+    ledgerTransactions.length = 0;
   }
 
   const bankAccounts = accounts.filter((account) => !isTreasuryAccount(account));
@@ -2624,6 +2696,27 @@ export async function fetchMercuryData(
     }
   }
 
+  const externalTransactions = filterInternalTransferPairs(ledgerTransactions);
+  const observedExpenseBreakdown = emptyExpenseBreakdown();
+  const monthlyExpenseBreakdown = emptyExpenseBreakdown();
+  const expenseScale = observedPeriodDays > 0 ? 30 / observedPeriodDays : 1;
+  const transactions = externalTransactions.map(toTransactionData);
+
+  for (const tx of externalTransactions) {
+    const amount = readMercuryNumber(tx.amount);
+    const amt = Math.abs(amount);
+    if (amount > 0) {
+      inflows += amt;
+    } else {
+      outflows += amt;
+      observedExpenseBreakdown[classifyMercuryExpense(tx)] += amt;
+    }
+  }
+
+  for (const category of Object.keys(monthlyExpenseBreakdown) as ExpenseCategory[]) {
+    monthlyExpenseBreakdown[category] = Math.round(observedExpenseBreakdown[category] * expenseScale * 100) / 100;
+  }
+
   const burnRate = Math.max(outflows - inflows, 0);
   const runway = burnRate > 0 ? totalBalance / burnRate : 999;
   const truncatedResources = [
@@ -2658,8 +2751,8 @@ export async function fetchMercuryData(
       observedInflowTotal: inflows,
       observedOutflowTotal: outflows,
       observedNetCashFlow: inflows - outflows,
-      expenseBreakdown30d,
-      observedExpenseBreakdown: expenseBreakdown30d,
+      expenseBreakdown30d: monthlyExpenseBreakdown,
+      observedExpenseBreakdown,
     },
     transactions,
     _meta: meta,
