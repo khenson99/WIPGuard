@@ -706,6 +706,25 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("queries raw records through the same scope key used by ingestion", async () => {
+    const prisma = createPrismaMock();
+
+    await materializeImladrisDevelopmentMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        scopeKey: "org:org_1",
+      }),
+      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
+    });
+  });
+
   it("normalizes Linear completion states before calculating delivery health", async () => {
     const prisma = {
       imladrisRawSourceRecord: {

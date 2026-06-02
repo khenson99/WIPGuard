@@ -339,6 +339,12 @@ function normalizeEmailDomain(value: unknown): string | null {
   return normalized;
 }
 
+function scopeKeyForContext(context: ImladrisActorContext): string {
+  if (context.organizationId) return `org:${context.organizationId}`;
+  if (context.userId) return `user:${context.userId}`;
+  return "global";
+}
+
 function providerWindowWhere(input: {
   providers: IntegrationProvider[];
   context: ImladrisActorContext;
@@ -349,6 +355,7 @@ function providerWindowWhere(input: {
     provider: {
       in: input.providers,
     },
+    scopeKey: scopeKeyForContext(input.context),
     OR: [
       { userId: input.context.userId },
       ...(input.context.organizationId
