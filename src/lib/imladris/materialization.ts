@@ -1041,13 +1041,20 @@ function isQualifiedPipelineDeal(record: RawSourceRecordRow): boolean {
     return false;
   }
   const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
   const stage = normalizeStageKey(
     payload.dealstage ??
       payload.stage ??
       payload.stageLabel ??
       payload.stage_label ??
       payload.stageId ??
-      payload.stage_id,
+      payload.stage_id ??
+      properties.dealstage ??
+      properties.stage ??
+      properties.stageLabel ??
+      properties.stage_label ??
+      properties.stageId ??
+      properties.stage_id,
   );
   if (TERMINAL_DEAL_STAGE_KEYS.has(stage) || stage === "appointmentscheduled") {
     return false;
@@ -1064,17 +1071,26 @@ function isQualifiedPipelineDeal(record: RawSourceRecordRow): boolean {
 }
 
 function dealAmount(record: RawSourceRecordRow): number {
-  return numberFrom(asRecord(record.payload).amount) ?? 0;
+  const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
+  return numberFrom(payload.amount ?? properties.amount) ?? 0;
 }
 
 function dealIdFromRecord(record: RawSourceRecordRow): string | null {
   const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
   const id =
     payload.dealId ??
     payload.deal_id ??
     payload.hubspotDealId ??
     payload.hubspot_deal_id ??
-    payload.id;
+    payload.id ??
+    properties.dealId ??
+    properties.deal_id ??
+    properties.hubspotDealId ??
+    properties.hubspot_deal_id ??
+    properties.hs_object_id ??
+    properties.id;
   return normalizeIdentifier(id) ?? normalizeIdentifier(record.externalId);
 }
 
