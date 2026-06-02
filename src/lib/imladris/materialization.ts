@@ -1541,17 +1541,26 @@ function isLowUsage(record: RawSourceRecordRow): boolean {
   if (record.provider !== IntegrationProvider.POSTHOG) return false;
 
   const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
   const activeUsers = numberFrom(
     payload.activeUsers ??
       payload.active_users ??
       payload.weeklyActiveUsers ??
-      payload.weekly_active_users,
+      payload.weekly_active_users ??
+      properties.activeUsers ??
+      properties.active_users ??
+      properties.weeklyActiveUsers ??
+      properties.weekly_active_users,
   );
   const daysSinceLastActive = numberFrom(
     payload.daysSinceLastActive ??
       payload.days_since_last_active ??
       payload.inactiveDays ??
-      payload.inactive_days,
+      payload.inactive_days ??
+      properties.daysSinceLastActive ??
+      properties.days_since_last_active ??
+      properties.inactiveDays ??
+      properties.inactive_days,
   );
 
   return (
