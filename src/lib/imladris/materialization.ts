@@ -1353,11 +1353,12 @@ function accountIdFromPayload(record: RawSourceRecordRow): string | null {
 }
 
 function isClosedStatus(status: unknown): boolean {
+  if (typeof status !== "string") return false;
+
+  const normalizedStatus = status.trim().toLowerCase();
   return (
-    typeof status === "string" &&
-    ["closed", "resolved", "done", "complete", "completed", "cancelled", "canceled"].includes(
-      status.toLowerCase(),
-    )
+    normalizedStatus.length > 0 &&
+    ["closed", "resolved", "done", "complete", "completed", "cancelled", "canceled"].includes(normalizedStatus)
   );
 }
 
