@@ -434,8 +434,11 @@ function activationAccountId(record: RawSourceRecordRow): string | null {
     properties.companyId ??
     properties.company_id ??
     properties.accountId ??
+    properties.account_id ??
     payload.accountId ??
+    payload.account_id ??
     payload.companyId ??
+    payload.company_id ??
     payload.distinct_id;
   return normalizeIdentifier(id);
 }
