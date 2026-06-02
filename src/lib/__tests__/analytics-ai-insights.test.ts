@@ -788,6 +788,31 @@ describe("finance insights", () => {
     expect(mrr!.evidence[0].trendValues).toEqual([19500, 18000]);
   });
 
+  it("normalizes ratio-style MRR decline before alerting", () => {
+    const data = baseData();
+    data.stripe = {
+      revenue: {
+        mrr: 18000, mrrChange: -0.07,
+        totalRevenue30d: 18000, totalRevenuePrev30d: 19500,
+        revenueGrowth: -7.7, avgRevenuePerCustomer: 450,
+      },
+      subscriptions: {
+        active: 40, pastDue: 1, canceled: 3, trialing: 2,
+        churnRate: 0.06, recentChurnEvents: [],
+      },
+      payments: { succeeded: 100, failed: 5, successRate: 0.95 },
+      revenueTrend: [],
+      _meta: META,
+    };
+
+    const bundle = buildAiInsightsBundle(data);
+    const mrr = bundle.global.find((i) => i.id === "ai-finance-mrr-decline");
+
+    expect(mrr).toBeDefined();
+    expect(mrr!.why).toContain("MRR changed -7.0%");
+    expect(mrr!.evidence[0].value).toBe("-7.0%");
+  });
+
   it("uses canonical MRR in MRR decline insight copy", () => {
     const data = baseData();
     data.stripe = {

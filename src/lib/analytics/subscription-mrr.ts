@@ -1,3 +1,5 @@
+import { normalizePercentValue } from "./percentage-utils";
+
 type StripeCustomerRef = {
   customerId?: string | null;
   email?: string | null;
@@ -164,7 +166,7 @@ export function buildSubscriptionMrrBreakdown(input: {
     stripeMrrChange:
       stripe?.revenue?.mrrChange === null || stripe?.revenue?.mrrChange === undefined
         ? null
-        : toNumber(stripe.revenue.mrrChange),
+        : normalizePercentValue(toNumber(stripe.revenue.mrrChange)),
     hubspotSubscriptionMrr: roundMoney(hubspotSubscriptionArr / 12),
     hubspotOnlySubscriptionMrr: roundMoney(hubspotOnlySubscriptionArr / 12),
     excludedLinkedHubspotSubscriptionMrr: roundMoney(excludedLinkedHubspotSubscriptionArr / 12),

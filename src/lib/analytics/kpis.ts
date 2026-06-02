@@ -112,7 +112,7 @@ function buildFinanceSummaryMetric(
 
   return {
     mrr: kpis.finance.mrr,
-    mrrChange: stripe?.revenue?.mrrChange ?? 0,
+    mrrChange: normalizePercentValue(stripe?.revenue?.mrrChange ?? 0),
     totalRevenue30d: stripe?.revenue?.totalRevenue30d ?? 0,
     revenueGrowth: normalizePercentValue(stripe?.revenue?.revenueGrowth ?? 0),
     activeSubscriptions:
@@ -146,7 +146,7 @@ function buildFinanceStripeMetric(
 
   return {
     mrr: stripe.revenue.mrr,
-    mrrChange: stripe.revenue.mrrChange,
+    mrrChange: normalizePercentValue(stripe.revenue.mrrChange),
     totalRevenue30d: stripe.revenue.totalRevenue30d,
     totalRevenuePrev30d: stripe.revenue.totalRevenuePrev30d,
     revenueGrowth: normalizePercentValue(stripe.revenue.revenueGrowth),

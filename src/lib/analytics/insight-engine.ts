@@ -357,7 +357,7 @@ function buildFinanceInsights(data: AnalyticsDashboardData): AiInsight[] {
   const burnRate = data.mercury?.cashFlow?.burnRate ?? 0;
   const churnRate = normalizePercentValue(data.stripe?.subscriptions?.churnRate ?? 0);
   const paymentSuccessRate = normalizePercentValue(data.stripe?.payments?.successRate ?? 1);
-  const mrrChange = data.stripe?.revenue?.mrrChange ?? 0;
+  const mrrChange = normalizePercentValue(data.stripe?.revenue?.mrrChange ?? 0);
   const currentMrr = canonicalMrr(data);
   const revenueTrend = data.stripe?.revenueTrend ?? [];
   const revenueTrendValues = revenueTrend.map((t) => t.revenue);

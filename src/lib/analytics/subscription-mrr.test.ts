@@ -97,6 +97,21 @@ describe("buildSubscriptionMrrBreakdown", () => {
     expect(breakdown.mergedActiveSubscriptions).toBe(13);
   });
 
+  it("normalizes ratio-form Stripe MRR change", () => {
+    const breakdown = buildSubscriptionMrrBreakdown({
+      stripe: {
+        revenue: { mrr: 12000, mrrChange: 0.042 },
+        subscriptions: {
+          active: 12,
+          activeCustomerRefs: [],
+        },
+      },
+      hubspot: null,
+    });
+
+    expect(breakdown.stripeMrrChange).toBe(4.2);
+  });
+
   it("treats plural HubSpot Subscriptions stage deals as subscription revenue fallback", () => {
     const breakdown = buildSubscriptionMrrBreakdown({
       stripe: {

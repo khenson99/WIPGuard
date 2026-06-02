@@ -230,6 +230,32 @@ describe("buildAnalyticsMetricsLayer", () => {
     });
   });
 
+  it("normalizes ratio-form MRR change before publishing finance metrics", () => {
+    const metrics = buildAnalyticsMetricsLayer({
+      stripe: {
+        revenue: {
+          mrr: 15000,
+          mrrChange: 0.042,
+          totalRevenue30d: 18000,
+          totalRevenuePrev30d: 16000,
+          revenueGrowth: 12.5,
+          avgRevenuePerCustomer: 1250,
+        },
+        subscriptions: {
+          active: 12,
+          pastDue: 2,
+          canceled: 1,
+          trialing: 3,
+          churnRate: 0.04,
+        },
+        payments: { succeeded: 39, failed: 1, successRate: 0.975 },
+      },
+    } as unknown as AnalyticsDashboardData);
+
+    expect(metrics.finance.summary.mrrChange).toBe(4.2);
+    expect(metrics.finance.stripe?.mrrChange).toBe(4.2);
+  });
+
   it("publishes canonical finance budget planned and actual metrics", () => {
     const activeBudget: BudgetData = {
       id: "budget-1",
