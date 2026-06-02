@@ -1270,6 +1270,52 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("excludes inactive Stripe subscriptions with display statuses from canonical MRR", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_incomplete_expired_display_status",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_incomplete_expired_display_status",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              status: " incomplete expired ",
+              customerId: "cus_incomplete_expired",
+              monthlyRecurringRevenue: 30_000,
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 0,
+      arr: 0,
+      stripeMrr: 0,
+      stripeArr: 0,
+    });
+  });
+
   it("keeps HubSpot recurring revenue when the matching Stripe subscription is inactive", async () => {
     const prisma = {
       imladrisRawSourceRecord: {

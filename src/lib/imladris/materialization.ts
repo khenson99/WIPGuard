@@ -17,7 +17,7 @@ const CUSTOMER_SUCCESS_RETENTION_RISK_CALCULATION_VERSION =
 const INACTIVE_STRIPE_SUBSCRIPTION_STATUSES = new Set([
   "canceled",
   "cancelled",
-  "incomplete_expired",
+  "incompleteexpired",
   "unpaid",
 ]);
 const TERMINAL_DEAL_STAGE_KEYS = new Set([
@@ -619,7 +619,7 @@ function stripeMrrAmount(record: RawSourceRecordRow): number | null {
 function isInactiveStripeSubscription(record: RawSourceRecordRow): boolean {
   const payload = asRecord(record.payload);
   const status = payload.status;
-  return typeof status === "string" && INACTIVE_STRIPE_SUBSCRIPTION_STATUSES.has(status.trim().toLowerCase());
+  return INACTIVE_STRIPE_SUBSCRIPTION_STATUSES.has(normalizeStageKey(status));
 }
 
 function stripeCustomerId(record: RawSourceRecordRow): string | null {
