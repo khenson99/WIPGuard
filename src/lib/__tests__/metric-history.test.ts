@@ -9,6 +9,12 @@ function financeExtractors() {
   );
 }
 
+function websiteTrafficExtractors() {
+  return Object.fromEntries(
+    getMetricsBySection("website-traffic").map((metric) => [metric.key, metric.extract]),
+  );
+}
+
 describe("metric history finance extraction", () => {
   it("uses canonical finance summary metrics when they are present", () => {
     const data = {
@@ -68,5 +74,21 @@ describe("metric history finance extraction", () => {
     expect(extract["stripe.activeSubscriptions"]?.(data)).toBe(40);
     expect(extract["mercury.totalBalance"]?.(data)).toBe(500000);
     expect(extract["mercury.netCashFlow"]?.(data)).toBe(-27000);
+  });
+
+  it("normalizes ratio-style GA bounce rate before extracting history", () => {
+    const data = {
+      googleAnalytics: {
+        sessions30d: 1000,
+        users30d: 750,
+        pageviews30d: 2400,
+        bounceRate: 0.42,
+        avgSessionDuration: 120,
+      },
+    } as unknown as AnalyticsDashboardData;
+
+    const extract = websiteTrafficExtractors();
+
+    expect(extract["ga.bounceRate"]?.(data)).toBe(42);
   });
 });

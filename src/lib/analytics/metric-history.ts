@@ -5,6 +5,7 @@ import type {
   AnalyticsSectionId,
 } from "@/lib/analytics/types";
 import { buildAnalyticsMetricsLayer } from "@/lib/analytics/kpis";
+import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
 
 // ── Metric Definition Registry ──
 
@@ -29,7 +30,7 @@ function getCanonicalMetrics(data: AnalyticsDashboardData): AnalyticsMetricsLaye
 const METRIC_REGISTRY: MetricDefinition[] = [
   // Website traffic + social media
   { key: "ga.sessions30d", section: "website-traffic", label: "Sessions (30d)", extract: (d) => d.googleAnalytics?.sessions30d ?? null },
-  { key: "ga.bounceRate", section: "website-traffic", label: "Bounce Rate", extract: (d) => d.googleAnalytics?.bounceRate ?? null },
+  { key: "ga.bounceRate", section: "website-traffic", label: "Bounce Rate", extract: (d) => d.googleAnalytics ? normalizePercentValue(d.googleAnalytics.bounceRate) : null },
   { key: "ga.users30d", section: "website-traffic", label: "Users (30d)", extract: (d) => d.googleAnalytics?.users30d ?? null },
   { key: "ga.pageviews30d", section: "website-traffic", label: "Pageviews (30d)", extract: (d) => d.googleAnalytics?.pageviews30d ?? null },
   { key: "ga.avgSessionDuration", section: "website-traffic", label: "Avg Session Duration", extract: (d) => d.googleAnalytics?.avgSessionDuration ?? null },
