@@ -297,13 +297,20 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
       data.webflow?.formSubmissions?.reduce((sum, form) => sum + form.count, 0) ??
       0)
     : null;
-  const hubspotFormSubmissions =
-    data.hubspot?.collectedForms?.totalFormSubmissions ??
-    data.hubspot?.funnel?.collectedFormSubmissions ??
-    0;
+  const hubspotCollectedFormsAvailable =
+    data.hubspot?._meta?.diagnostics?.collectedFormsAvailable !== false;
+  const hubspotFormSubmissions = data.hubspot
+    ? hubspotCollectedFormsAvailable
+      ? (
+          data.hubspot.collectedForms?.totalFormSubmissions ??
+          data.hubspot.funnel?.collectedFormSubmissions ??
+          0
+        )
+      : null
+    : null;
   const submissions =
-    (webflowSubmissions ?? 0) + hubspotFormSubmissions;
-  const formSubmissionsKnown = webflowSubmissions !== null || hubspotFormSubmissions > 0;
+    (webflowSubmissions ?? 0) + (hubspotFormSubmissions ?? 0);
+  const formSubmissionsKnown = webflowSubmissions !== null || hubspotFormSubmissions !== null;
   const pages = data.webflow?.totalPages ?? 0;
   if (formSubmissionsKnown && sessionsCurrent > 500 && submissions === 0 && pages > 0) {
     insights.push({

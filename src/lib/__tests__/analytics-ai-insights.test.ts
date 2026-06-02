@@ -390,6 +390,94 @@ describe("analytics AI insights bundle", () => {
     expect(bundle.global.some((insight) => insight.id === "ai-ads-webflow-zero-conv")).toBe(false);
   });
 
+  it("ignores unavailable HubSpot collected-form fallbacks when checking zero-form conversion", () => {
+    const data = baseData();
+    data.googleAnalytics = {
+      sessions30d: 800,
+      sessionsPrev30d: 700,
+      users30d: 500,
+      usersPrev30d: 450,
+      pageviews30d: 1200,
+      pageviewsPrev30d: 1000,
+      bounceRate: 0.5,
+      avgSessionDuration: 60,
+      trafficByChannel: [],
+      topPages: [],
+      dailyTrend: [],
+      _meta: META,
+    };
+    data.webflow = {
+      siteName: "WIPGuard",
+      lastPublished: "2026-05-20T00:00:00.000Z",
+      totalPages: 5,
+      totalCollections: 0,
+      formSubmissions: [],
+      customDomains: [],
+      publishedPages: 5,
+      draftPages: 0,
+      archivedPages: 0,
+      pages: [],
+      seoAudit: {
+        totalPages: 5,
+        pagesWithSeoTitle: 5,
+        pagesWithSeoDescription: 5,
+        pagesWithOgImage: 5,
+        seoScore: 100,
+      },
+      contentFreshness: {
+        updatedLast7d: 0,
+        updatedLast30d: 0,
+        updatedLast90d: 0,
+        staleOver90d: 0,
+      },
+      recentlyUpdatedPages: [],
+      collections: [],
+      totalCmsItems: 0,
+      emptyCollections: 0,
+      formTrend: [],
+      totalFormSubmissions: 0,
+      _meta: META,
+    };
+    data.hubspot = {
+      funnel: {
+        totalDeals: 0,
+        closedWon: 0,
+        closedLost: 0,
+        unlikely: 0,
+        churn: 0,
+        activeSubscriptions: 0,
+        noShows: 0,
+        demoScheduled: 0,
+        demoFollowUp: 0,
+        collectedFormSubmissions: 5,
+        leadMagnetSubmissions: 3,
+        contactRequestSubmissions: 2,
+        avgDealSize: 0,
+        winRate: 0,
+        effectiveWinRate: 0,
+        noShowRate: 0,
+        stages: [],
+        dealsBySource: [],
+      },
+      contacts: {
+        totalContacts: 0,
+        recentContacts: 0,
+        bySource: [],
+      },
+      _meta: {
+        ...META,
+        diagnostics: {
+          collectedFormsAvailable: false,
+          collectedFormsError: "HubSpot collected forms request failed (403)",
+        },
+      },
+    };
+
+    const bundle = buildAiInsightsBundle(data);
+
+    expect(bundle.global.some((insight) => insight.id === "ai-ads-webflow-zero-conv")).toBe(true);
+  });
+
   it("creates distilled insights from AI insights for compatibility", () => {
     const data = baseData();
     const distilled = buildDistilledInsights(data);
