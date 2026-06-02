@@ -19,8 +19,8 @@ const BASE_ITEM: NavItem = {
   children: [
     {
       id: "analytics-ai-insights",
-      href: "/analytics/ai-insights",
-      label: "AI Insights",
+      href: "/pipelines/artifacts",
+      label: "Artifacts",
       workspaceId: "metrics",
     },
   ],
@@ -60,7 +60,7 @@ describe("SidebarNavGroup", () => {
         explicit: true,
       })
     );
-    mockPathname = "/analytics/ai-insights";
+    mockPathname = "/pipelines/artifacts";
 
     render(<SidebarNavGroup item={BASE_ITEM} />);
 

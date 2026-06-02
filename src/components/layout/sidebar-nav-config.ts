@@ -37,7 +37,6 @@ export function buildNavItems(): NavItem[] {
       href: child.href,
       label: child.label,
       workspaceId: child.workspaceId,
-      dataDomain: child.dataDomain,
     })),
   }));
 }

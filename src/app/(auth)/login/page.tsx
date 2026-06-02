@@ -5,7 +5,7 @@ import { getProviders, signIn, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Shield } from "lucide-react";
 import { Suspense, useState, useEffect } from "react";
-import { ANALYTICS_HOME } from "@/lib/platform/routes";
+import { METRICS_HOME } from "@/lib/platform/routes";
 
 interface DevUser {
   id: string;
@@ -61,7 +61,7 @@ function LoginPageContent() {
 
   useEffect(() => {
     if (status === "authenticated") {
-      router.replace(ANALYTICS_HOME);
+      router.replace(METRICS_HOME);
     }
   }, [router, status]);
 
@@ -128,7 +128,7 @@ function LoginPageContent() {
   const handleDevLogin = async () => {
     if (!selectedEmail) return;
     setLoading(true);
-    await signIn("credentials", { email: selectedEmail, callbackUrl: ANALYTICS_HOME });
+    await signIn("credentials", { email: selectedEmail, callbackUrl: METRICS_HOME });
     setLoading(false);
   };
 
@@ -180,7 +180,7 @@ function LoginPageContent() {
         {/* Google OAuth */}
         {googleEnabled && (
           <button
-            onClick={() => signIn("google", { callbackUrl: ANALYTICS_HOME })}
+            onClick={() => signIn("google", { callbackUrl: METRICS_HOME })}
             className="flex w-full items-center justify-center gap-3 rounded-lg border border-border bg-secondary px-4 py-3 text-sm font-medium text-foreground transition-colors hover:border-muted-foreground hover:bg-card"
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">

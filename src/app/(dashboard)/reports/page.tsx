@@ -1,5 +1,5 @@
-import { ReportsPage } from "@/components/reports/reports-page";
+import { ReportsWorkspace } from "@/components/workspaces/reports-workspace";
 
 export default function ReportsRoutePage() {
-  return <ReportsPage />;
+  return <ReportsWorkspace />;
 }

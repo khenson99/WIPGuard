@@ -1,5 +1,5 @@
-import { IntegrationsWorkspace } from "@/components/integrations/integrations-workspace";
+import { SourcesWorkspace } from "@/components/workspaces/sources-workspace";
 
 export default function SourcesPage() {
-  return <IntegrationsWorkspace />;
+  return <SourcesWorkspace />;
 }

@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import AnalyticsPage from "@/app/(dashboard)/analytics/page";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import IntegrationsPage from "@/app/(dashboard)/integrations/page";
-import DealsPage from "@/app/(dashboard)/deals/page";
-import DealsAnalyticsPage from "@/app/(dashboard)/deals/analytics/page";
-import { METRICS_HOME, SOURCES_HOME } from "@/lib/platform/routes";
+import { SOURCES_HOME } from "@/lib/platform/routes";
 
 vi.mock("next/navigation", () => ({
   redirect: vi.fn((target: string) => {
@@ -16,13 +15,6 @@ describe("API meeting-place compatibility routes", () => {
     vi.clearAllMocks();
   });
 
-  it("redirects /analytics to /metrics", async () => {
-    const { redirect } = await import("next/navigation");
-
-    expect(() => AnalyticsPage()).toThrow(`NEXT_REDIRECT:${METRICS_HOME}`);
-    expect(redirect).toHaveBeenCalledWith(METRICS_HOME);
-  });
-
   it("redirects /integrations to /sources", async () => {
     const { redirect } = await import("next/navigation");
 
@@ -30,12 +22,9 @@ describe("API meeting-place compatibility routes", () => {
     expect(redirect).toHaveBeenCalledWith(SOURCES_HOME);
   });
 
-  it("redirects deal surfaces to source or metric context", async () => {
-    const { redirect } = await import("next/navigation");
-
-    expect(() => DealsPage()).toThrow(`NEXT_REDIRECT:${SOURCES_HOME}`);
-    expect(() => DealsAnalyticsPage()).toThrow(`NEXT_REDIRECT:${METRICS_HOME}`);
-    expect(redirect).toHaveBeenCalledWith(SOURCES_HOME);
-    expect(redirect).toHaveBeenCalledWith(METRICS_HOME);
+  it("removes legacy analytics and deal page surfaces", () => {
+    expect(existsSync(join(process.cwd(), "src/app/(dashboard)/analytics/page.tsx"))).toBe(false);
+    expect(existsSync(join(process.cwd(), "src/app/(dashboard)/deals/page.tsx"))).toBe(false);
+    expect(existsSync(join(process.cwd(), "src/app/(dashboard)/deals/analytics/page.tsx"))).toBe(false);
   });
 });

@@ -20,17 +20,9 @@ describe("sidebar workspace navigation", () => {
     expect(navItems.some((item) => item.href === "/dashboard")).toBe(false);
   });
 
-  it("groups metrics and pipelines as nested workspace entries", () => {
-    const metrics = navItems.find((item) => item.id === "metrics");
-    const pipelines = navItems.find((item) => item.id === "pipelines");
-
-    expect(metrics?.children?.some((child) => child.href === "/analytics/ai-insights")).toBe(true);
-    expect(
-      pipelines?.children?.map((child) => child.href)
-    ).toEqual([
-      "/pipelines",
-      "/pipelines/artifacts",
-    ]);
+  it("keeps workspace navigation flat after the product reset", () => {
+    expect(navItems.flatMap((item) => item.children ?? [])).toEqual([]);
+    expect(navItems.some((item) => item.href.startsWith("/analytics"))).toBe(false);
   });
 
   it("promotes sources to a first-class workspace", () => {

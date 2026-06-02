@@ -111,6 +111,9 @@ describe("retired task/WIP implementation modules", () => {
     ];
 
     for (const modulePath of productionFiles) {
+      if (!existsSync(join(process.cwd(), modulePath))) {
+        continue;
+      }
       const contents = readFileSync(join(process.cwd(), modulePath), "utf8");
       for (const forbidden of forbiddenPatterns) {
         expect(contents.includes(forbidden), `${modulePath} contains ${forbidden}`).toBe(false);

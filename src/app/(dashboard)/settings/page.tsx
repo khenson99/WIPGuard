@@ -111,7 +111,7 @@ export default function SettingsPage() {
           Settings
         </h1>
         <p className="text-xs text-muted-foreground">
-          Configure team access and analytics operating guardrails.
+          Configure team access and operating guardrails.
         </p>
       </div>
 

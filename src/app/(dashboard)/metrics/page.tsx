@@ -1,5 +1,5 @@
-import { MetricsCatalogPage } from "@/components/metrics/metrics-catalog-page";
+import { MetricsWorkspace } from "@/components/workspaces/metrics-workspace";
 
 export default function MetricsPage() {
-  return <MetricsCatalogPage />;
+  return <MetricsWorkspace />;
 }

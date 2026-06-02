@@ -1,7 +1,5 @@
 // Shared computation helpers for financial planning features.
-// UI formatters (fmt$, fmtPct, pctChange, etc.) live in
-// @/components/analytics/dashboard-primitives — this module is
-// for pure computation logic that runs on both server and client.
+// This module contains pure computation logic that runs on both server and client.
 
 /** Default SaaS expense category ratios (sum to 1.0). */
 export const DEFAULT_EXPENSE_RATIOS: Record<string, number> = {

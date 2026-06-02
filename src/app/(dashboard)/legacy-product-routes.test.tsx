@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import DashboardPage from "@/app/(dashboard)/dashboard/page";
-import { ANALYTICS_HOME } from "@/lib/platform/routes";
+import { METRICS_HOME } from "@/lib/platform/routes";
 
 vi.mock("next/navigation", () => ({
   redirect: vi.fn((target: string) => {
@@ -34,8 +34,8 @@ describe("legacy product routes", () => {
   it.each(redirectRoutes)("redirects /%s to metrics", async (_name, Page) => {
     const { redirect } = await import("next/navigation");
 
-    await expect(async () => Page()).rejects.toThrow(`NEXT_REDIRECT:${ANALYTICS_HOME}`);
-    expect(redirect).toHaveBeenCalledWith(ANALYTICS_HOME);
+    await expect(async () => Page()).rejects.toThrow(`NEXT_REDIRECT:${METRICS_HOME}`);
+    expect(redirect).toHaveBeenCalledWith(METRICS_HOME);
   });
 
   it.each(retiredRoutes)("does not ship a visible /%s page", (route) => {

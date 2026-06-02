@@ -1,5 +1,6 @@
-import { redirectToAnalyticsHome } from "@/app/(dashboard)/legacy-analytics-redirect";
+import { redirect } from "next/navigation";
+import { METRICS_HOME } from "@/lib/platform/routes";
 
 export default function DashboardPage() {
-  redirectToAnalyticsHome();
+  redirect(METRICS_HOME);
 }
