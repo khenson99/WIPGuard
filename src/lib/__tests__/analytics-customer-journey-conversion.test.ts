@@ -108,6 +108,26 @@ describe("customer journey conversion helpers", () => {
       expect(rows[0].avgDaysInStage).toBe(15);
       expect(rows[0].revenueAtRisk).toBe(9000);
     });
+
+    it("normalizes known current stages before computing stage conversions", () => {
+      const rows = buildStageConversions([
+        journey({ currentStage: " lead ", touchpoints: [tp("hubspot")], value: 1000 }),
+        journey({ currentStage: " demo scheduled ", touchpoints: [tp("hubspot")], value: 3000 }),
+        journey({ currentStage: " closed won ", touchpoints: [tp("hubspot")], value: 5000 }),
+      ]);
+
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toMatchObject({
+        fromStage: "Lead",
+        toStage: "Demo Scheduled",
+        conversionRate: 100,
+      });
+      expect(rows[1]).toMatchObject({
+        fromStage: "Demo Scheduled",
+        toStage: "Closed Won",
+        conversionRate: 100,
+      });
+    });
   });
 
   describe("buildSourceConversions", () => {
@@ -140,6 +160,19 @@ describe("customer journey conversion helpers", () => {
       expect(rows[0].source).toBe("Stripe");
       expect(rows[0].converted).toBe(2);
       expect(rows[0].totalRevenue).toBe(3000);
+      expect(rows[0].conversionRate).toBeCloseTo(66.7, 0);
+    });
+
+    it("normalizes close stages before computing source conversions", () => {
+      const rows = buildSourceConversions([
+        journey({ currentStage: " closed won ", touchpoints: [tp("google-ads")], value: 5000 }),
+        journey({ currentStage: " subscription ", touchpoints: [tp("google-ads")], value: 2000 }),
+        journey({ currentStage: " lead ", touchpoints: [tp("google-ads")], value: 1000 }),
+      ]);
+
+      expect(rows[0].source).toBe("Google Ads");
+      expect(rows[0].converted).toBe(2);
+      expect(rows[0].totalRevenue).toBe(7000);
       expect(rows[0].conversionRate).toBeCloseTo(66.7, 0);
     });
 
@@ -217,6 +250,19 @@ describe("customer journey conversion helpers", () => {
       ]));
 
       const hs = rows.find((row) => row.path === "hubspot");
+      expect(hs?.avgValue).toBe(5000);
+    });
+
+    it("normalizes close stages before computing path conversions", () => {
+      const rows = buildPathConversions(journeyData([
+        journey({ currentStage: " closed won ", touchpoints: [tp("hubspot")], value: 6000 }),
+        journey({ currentStage: " active ", touchpoints: [tp("hubspot")], value: 4000 }),
+        journey({ currentStage: " lead ", touchpoints: [tp("hubspot")], value: 1000 }),
+      ]));
+
+      const hs = rows.find((row) => row.path === "hubspot");
+      expect(hs?.convertedCount).toBe(2);
+      expect(hs?.conversionRate).toBeCloseTo(66.7, 0);
       expect(hs?.avgValue).toBe(5000);
     });
   });

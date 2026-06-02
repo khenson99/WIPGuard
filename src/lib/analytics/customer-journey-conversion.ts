@@ -53,6 +53,9 @@ export const CANONICAL_STAGE_ORDER = [
 const STAGE_RANK = new Map<string, number>(
   CANONICAL_STAGE_ORDER.map((stage, idx) => [stage, idx]),
 );
+const CANONICAL_STAGE_BY_KEY = new Map(
+  CANONICAL_STAGE_ORDER.map((stage) => [normalizeStageKey(stage), stage]),
+);
 
 export const CHANNEL_LABELS: Record<TouchpointChannel, string> = {
   hubspot: "HubSpot",
@@ -104,8 +107,17 @@ export function pct(numerator: number, denominator: number): number {
   return denominator > 0 ? Math.round((numerator / denominator) * 1000) / 10 : 0;
 }
 
+function normalizeStageKey(stage: string): string {
+  return stage.trim().toLowerCase();
+}
+
+function normalizeStage(stage: string): string {
+  const trimmed = stage.trim();
+  return CANONICAL_STAGE_BY_KEY.get(normalizeStageKey(trimmed)) ?? trimmed;
+}
+
 function rankStage(stage: string, fallbackOrder: Map<string, number>): number {
-  const known = STAGE_RANK.get(stage);
+  const known = STAGE_RANK.get(normalizeStage(stage));
   if (known !== undefined) return known;
   return CANONICAL_STAGE_ORDER.length + (fallbackOrder.get(stage) ?? Number.MAX_SAFE_INTEGER);
 }
@@ -115,7 +127,7 @@ export function buildStageConversions(journeys: CustomerJourneyRecord[]): StageC
   const stageCounts = new Map<string, { count: number; totalDays: number; totalValue: number }>();
 
   for (const journey of journeys) {
-    const stage = journey.currentStage;
+    const stage = normalizeStage(journey.currentStage);
     if (!fallbackOrder.has(stage)) fallbackOrder.set(stage, fallbackOrder.size);
     const entry = stageCounts.get(stage) ?? { count: 0, totalDays: 0, totalValue: 0 };
     entry.count += 1;
@@ -171,7 +183,7 @@ export function buildSourceConversions(
     entry.total += 1;
     entry.totalDays += journey.daysInPipeline;
 
-    if (CLOSE_STAGES.has(journey.currentStage)) {
+    if (CLOSE_STAGES.has(normalizeStage(journey.currentStage))) {
       entry.converted += 1;
       entry.revenue += journey.value;
     }
@@ -219,7 +231,7 @@ export function buildPathConversions(journey: CustomerJourneyData): PathConversi
     entry.count += 1;
     entry.totalDays += record.daysInPipeline;
 
-    if (CLOSE_STAGES.has(record.currentStage)) {
+    if (CLOSE_STAGES.has(normalizeStage(record.currentStage))) {
       entry.converted += 1;
       entry.totalValue += record.value;
     }
