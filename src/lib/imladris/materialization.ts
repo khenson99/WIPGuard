@@ -1014,13 +1014,16 @@ function dealIdFromRecord(record: RawSourceRecordRow): string | null {
 
 function linkedDealId(record: RawSourceRecordRow): string | null {
   const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
   const id =
     payload.dealId ??
     payload.deal_id ??
     payload.hubspotDealId ??
     payload.hubspot_deal_id ??
-    nestedRecord(payload.properties).dealId ??
-    nestedRecord(payload.properties).hubspotDealId;
+    properties.dealId ??
+    properties.deal_id ??
+    properties.hubspotDealId ??
+    properties.hubspot_deal_id;
   return normalizeIdentifier(id);
 }
 

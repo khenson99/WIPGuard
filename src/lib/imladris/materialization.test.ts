@@ -1375,6 +1375,65 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("reads nested snake_case deal identifiers before calculating sales collaboration coverage", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_qualified_deal_nested_link",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_nested_link",
+            occurredAt: new Date("2026-05-20T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+            payload: {
+              id: "deal_nested_link",
+              amount: 50_000,
+              dealstage: "qualified",
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_slack_touch_nested_snake_case_deal_id",
+            provider: IntegrationProvider.SLACK,
+            objectType: "thread",
+            externalId: "thread_nested_snake_case_deal_id",
+            occurredAt: new Date("2026-05-21T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-21T00:00:00.000Z"),
+            payload: {
+              properties: {
+                deal_id: "deal_nested_link",
+              },
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_nested_deal_id", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisSalesMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      qualifiedDealCount: 1,
+      collaborationTouchCount: 1,
+      collaborationCoverage: 1,
+    });
+  });
+
   it("materializes marketing pipeline efficiency from acquisition and pipeline raw records", async () => {
     const prisma = createMarketingPrismaMock();
     const periodStart = new Date("2026-05-01T00:00:00.000Z");
