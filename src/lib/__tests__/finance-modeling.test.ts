@@ -512,6 +512,20 @@ describe("computeFinancialGoals", () => {
     expect(arpcGoal!.current).toBe(200);
   });
 
+  it("uses canonical MRR and merged subscriptions for ARPC growth goals", () => {
+    const goals = computeFinancialGoals(makeData({
+      hubspot: {
+        subscriptionDeals: [subscriptionDeal(12_000)],
+      },
+    }));
+
+    const arpcGoal = goals.find((g) => g.id === "arpc-growth");
+
+    expect(arpcGoal).toBeDefined();
+    expect(arpcGoal!.current).toBeCloseTo(215.69, 2);
+    expect(arpcGoal!.target).toBeCloseTo(269.61, 2);
+  });
+
   it("handles all-null data gracefully (no goals generated)", () => {
     const data = makeData({ stripe: null, mercury: null, hubspot: null });
     const goals = computeFinancialGoals(data);

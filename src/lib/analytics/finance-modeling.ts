@@ -129,6 +129,17 @@ function canonicalMrr(data: AnalyticsDashboardData): number {
   }).totalMrr;
 }
 
+function canonicalAverageRevenuePerCustomer(data: AnalyticsDashboardData): number {
+  const breakdown = buildSubscriptionMrrBreakdown({
+    stripe: data.stripe,
+    hubspot: data.hubspot,
+  });
+  if (breakdown.mergedActiveSubscriptions > 0) {
+    return breakdown.totalMrr / breakdown.mergedActiveSubscriptions;
+  }
+  return data.stripe?.revenue?.avgRevenuePerCustomer ?? 0;
+}
+
 /* ═══════════════════════════════════════════════════════════
    1. MRR PROJECTIONS
    ═══════════════════════════════════════════════════════════ */
@@ -251,7 +262,7 @@ export function computeFinancialGoals(
   const runway = data.mercury?.cashFlow?.runway ?? 0;
   const burnRate = data.mercury?.cashFlow?.burnRate ?? 0;
   const totalBalance = data.mercury?.cashFlow?.totalBalance ?? 0;
-  const avgRevenuePerCustomer = data.stripe?.revenue?.avgRevenuePerCustomer ?? 0;
+  const avgRevenuePerCustomer = canonicalAverageRevenuePerCustomer(data);
   const paymentSuccessRate = normalizePercentValue(data.stripe?.payments?.successRate);
 
   // Goal 1: MRR Milestone
