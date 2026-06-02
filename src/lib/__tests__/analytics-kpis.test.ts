@@ -120,6 +120,92 @@ describe("buildAnalyticsMetricsLayer", () => {
     });
   });
 
+  it("keeps canonical MRR and active subscription counts on the same merged subscription basis", () => {
+    const metrics = buildAnalyticsMetricsLayer({
+      stripe: {
+        revenue: {
+          mrr: 15000,
+          mrrChange: 4.2,
+          totalRevenue30d: 18000,
+          totalRevenuePrev30d: 16000,
+          revenueGrowth: 12.5,
+          avgRevenuePerCustomer: 1250,
+        },
+        subscriptions: {
+          active: 12,
+          pastDue: 2,
+          canceled: 1,
+          trialing: 3,
+          churnRate: 0.04,
+        },
+        payments: { succeeded: 39, failed: 1, successRate: 0.975 },
+      },
+      hubspot: {
+        funnel: {
+          totalDeals: 2,
+          closedWon: 0,
+          closedLost: 0,
+          unlikely: 0,
+          churn: 0,
+          activeSubscriptions: 2,
+          noShows: 0,
+          demoScheduled: 0,
+          demoFollowUp: 0,
+          avgDealSize: 0,
+          winRate: 0,
+          effectiveWinRate: 0,
+          noShowRate: 0,
+          stages: [],
+          dealsBySource: [],
+        },
+        contacts: { totalContacts: 0, recentContacts: 0, bySource: [] },
+        subscriptionDeals: [
+          {
+            dealId: "hubspot-only-1",
+            dealName: "HubSpot only 1",
+            stageId: "subscriptions",
+            stageLabel: "Subscriptions",
+            amount: 12000,
+            source: "Referral",
+            ownerId: null,
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            closedAt: "2026-01-01T00:00:00.000Z",
+            stripeCustomerId: null,
+            pipelineId: "subscription-pipeline",
+            contactIds: [],
+            primaryContactId: null,
+            primaryContactEmail: "buyer-1@example.com",
+          },
+          {
+            dealId: "hubspot-only-2",
+            dealName: "HubSpot only 2",
+            stageId: "subscriptions",
+            stageLabel: "Subscriptions",
+            amount: 24000,
+            source: "Referral",
+            ownerId: null,
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            closedAt: "2026-01-01T00:00:00.000Z",
+            stripeCustomerId: null,
+            pipelineId: "subscription-pipeline",
+            contactIds: [],
+            primaryContactId: null,
+            primaryContactEmail: "buyer-2@example.com",
+          },
+        ],
+      },
+    } as unknown as AnalyticsDashboardData);
+
+    expect(metrics.finance.summary).toMatchObject({
+      mrr: 18000,
+      activeSubscriptions: 14,
+      stripeActiveSubscriptions: 12,
+      hubspotActiveSubscriptions: 2,
+    });
+  });
+
   it("publishes canonical finance budget planned and actual metrics", () => {
     const activeBudget: BudgetData = {
       id: "budget-1",

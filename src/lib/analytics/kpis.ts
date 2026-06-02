@@ -99,7 +99,11 @@ function buildFinanceSummaryMetric(
   const stripe = data.stripe;
   const mercury = data.mercury;
   const subscriptionOverview = data.financialPlanning?.subscriptionOverview ?? null;
-  const stripeActiveSubscriptions = stripe?.subscriptions?.active ?? 0;
+  const subscriptionBreakdown = buildSubscriptionMrrBreakdown({
+    stripe,
+    hubspot: data.hubspot,
+  });
+  const stripeActiveSubscriptions = subscriptionBreakdown.stripeActiveSubscriptions;
 
   return {
     mrr: kpis.finance.mrr,
@@ -107,11 +111,13 @@ function buildFinanceSummaryMetric(
     totalRevenue30d: stripe?.revenue?.totalRevenue30d ?? 0,
     revenueGrowth: normalizePercentValue(stripe?.revenue?.revenueGrowth ?? 0),
     activeSubscriptions:
-      subscriptionOverview?.mergedActiveSubscriptions ?? stripeActiveSubscriptions,
+      subscriptionOverview?.mergedActiveSubscriptions ??
+      subscriptionBreakdown.mergedActiveSubscriptions,
     stripeActiveSubscriptions:
       subscriptionOverview?.stripeActiveSubscriptions ?? stripeActiveSubscriptions,
     hubspotActiveSubscriptions:
-      subscriptionOverview?.hubspotActiveSubscriptions ?? 0,
+      subscriptionOverview?.hubspotActiveSubscriptions ??
+      subscriptionBreakdown.hubspotOnlyActiveSubscriptions,
     pastDueSubscriptions: stripe?.subscriptions?.pastDue ?? 0,
     trialingSubscriptions: stripe?.subscriptions?.trialing ?? 0,
     paymentSuccessPct: kpis.finance.paymentSuccessPct,
