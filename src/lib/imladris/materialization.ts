@@ -1712,12 +1712,32 @@ function isEscalation(record: RawSourceRecordRow): boolean {
   if (record.provider !== IntegrationProvider.SLACK) return false;
 
   const payload = asRecord(record.payload);
-  const type = String(payload.type ?? payload.kind ?? payload.category ?? "").toLowerCase();
-  const tags = Array.isArray(payload.tags) ? payload.tags.map(String) : [];
+  const properties = nestedRecord(payload.properties);
+  const type = String(
+    payload.type ??
+      payload.kind ??
+      payload.category ??
+      properties.type ??
+      properties.kind ??
+      properties.category ??
+      "",
+  ).toLowerCase();
+  const rawTags = Array.isArray(payload.tags)
+    ? payload.tags
+    : Array.isArray(properties.tags)
+      ? properties.tags
+      : [];
+  const tags = rawTags.map(String);
 
   return (
-    !isClosedStatus(payload.status ?? payload.state) &&
+    !isClosedStatus(
+      payload.status ??
+        payload.state ??
+        properties.status ??
+        properties.state,
+    ) &&
     (payload.escalation === true ||
+      properties.escalation === true ||
       type.includes("escalation") ||
       tags.some((tag) => tag.toLowerCase().includes("escalation")))
   );

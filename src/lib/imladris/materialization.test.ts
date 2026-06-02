@@ -3333,6 +3333,41 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("reads nested Slack escalation fields before calculating customer-success risk", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_slack_nested_escalation",
+        provider: IntegrationProvider.SLACK,
+        objectType: "thread",
+        externalId: "thread_nested_escalation",
+        occurredAt: new Date("2026-05-18T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-18T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          properties: {
+            type: "customer_escalation",
+            status: "open",
+          },
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      atRiskAccounts: 1,
+      escalations: 1,
+    });
+  });
+
   it("normalizes closed support statuses before calculating customer-success risk", async () => {
     const prisma = createCustomerSuccessPrismaMock();
     prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
