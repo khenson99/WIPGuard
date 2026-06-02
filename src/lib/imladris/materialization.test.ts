@@ -2266,6 +2266,66 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("reads nested HubSpot marketing deal fields before calculating pipeline efficiency", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_google_ads_nested_marketing_deal",
+            provider: IntegrationProvider.GOOGLE_ADS,
+            objectType: "campaign_metric",
+            externalId: "gads_nested_marketing_deal",
+            occurredAt: new Date("2026-05-08T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-08T00:00:00.000Z"),
+            payload: {
+              spend: 10_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_hubspot_nested_marketing_deal",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_nested_marketing",
+            occurredAt: new Date("2026-05-14T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-14T00:00:00.000Z"),
+            payload: {
+              properties: {
+                amount: "50000",
+                dealstage: "qualified",
+                originalSource: "paid search",
+              },
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_nested_deal", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      acquisitionSpend: 10_000,
+      qualifiedPipeline: 50_000,
+      ratio: 5,
+    });
+  });
+
   it("normalizes HubSpot deal stages before excluding closed marketing pipeline", async () => {
     const prisma = {
       imladrisRawSourceRecord: {

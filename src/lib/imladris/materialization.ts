@@ -1273,19 +1273,32 @@ function isMarketingPipelineDeal(record: RawSourceRecordRow): boolean {
     return false;
   }
   const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
   const stage = normalizeStageKey(
     payload.dealstage ??
       payload.stage ??
       payload.stageLabel ??
       payload.stage_label ??
       payload.stageId ??
-      payload.stage_id,
+      payload.stage_id ??
+      properties.dealstage ??
+      properties.stage ??
+      properties.stageLabel ??
+      properties.stage_label ??
+      properties.stageId ??
+      properties.stage_id,
   );
   if (TERMINAL_DEAL_STAGE_KEYS.has(stage) || stage === "appointmentscheduled") {
     return false;
   }
   const source = String(
-    payload.originalSource ?? payload.original_source ?? payload.source ?? "",
+    payload.originalSource ??
+      payload.original_source ??
+      payload.source ??
+      properties.originalSource ??
+      properties.original_source ??
+      properties.source ??
+      "",
   ).toLowerCase();
   return (
     source.includes("paid") ||
