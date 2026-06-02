@@ -12,6 +12,7 @@ import type {
   LifecycleTransition,
 } from "@/lib/analytics/types";
 import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
+import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
 
 const SALES_STAGE_ORDER = [
   "Prospect",
@@ -84,6 +85,18 @@ function hubspotCollectedFormSubmissionCount(data: AnalyticsDashboardData): numb
     data.hubspot?.collectedForms?.totalFormSubmissions ??
     data.hubspot?.funnel?.collectedFormSubmissions ??
     0
+  );
+}
+
+function retainedSubscriptionCount(data: AnalyticsDashboardData): number {
+  const subscriptionBreakdown = buildSubscriptionMrrBreakdown({
+    stripe: data.stripe,
+    hubspot: data.hubspot,
+  });
+  return Math.max(
+    0,
+    subscriptionBreakdown.mergedActiveSubscriptions -
+      (data.stripe?.subscriptions?.canceled ?? 0),
   );
 }
 
@@ -293,8 +306,7 @@ function lifecycleStageDefinitions(): StageDefinition[] {
       label: "Retention",
       section: "retention",
       rawVolume: (data) =>
-        (data.stripe?.subscriptions?.active ?? 0) -
-        (data.stripe?.subscriptions?.canceled ?? 0) +
+        retainedSubscriptionCount(data) +
         (data.pylon?.resolvedInRange ?? 0),
       trendDelta: (data) => {
         const current = data.pylon?.resolvedInRange ?? 0;
@@ -306,15 +318,11 @@ function lifecycleStageDefinitions(): StageDefinition[] {
       },
       evidence: (data) => [
         {
-          source: "Stripe Retained Subscriptions",
+          source: "Retained Subscriptions",
           domain: "stripe",
-          contribution: Math.max(
-            0,
-            (data.stripe?.subscriptions?.active ?? 0) -
-              (data.stripe?.subscriptions?.canceled ?? 0),
-          ),
-          confidence: data.stripe ? 0.91 : 0.35,
-          detail: "Active less canceled subscriptions in range.",
+          contribution: retainedSubscriptionCount(data),
+          confidence: data.stripe || data.hubspot ? 0.91 : 0.35,
+          detail: "Canonical active subscriptions less canceled subscriptions in range.",
         },
         {
           source: "Pylon Resolved",

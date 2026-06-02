@@ -266,6 +266,117 @@ describe("analytics lifecycle funnel", () => {
     expect(expansion?.trendDeltaPct).toBe(6.7);
   });
 
+  it("uses canonical merged subscriptions for lifecycle retention volume", () => {
+    const data = baseData();
+    data.stripe = {
+      revenue: {
+        mrr: 10000,
+        mrrChange: 0,
+        totalRevenue30d: 10000,
+        totalRevenuePrev30d: 10000,
+        revenueGrowth: 0,
+        avgRevenuePerCustomer: 1000,
+      },
+      subscriptions: {
+        active: 10,
+        pastDue: 0,
+        canceled: 2,
+        trialing: 0,
+        churnRate: 0,
+        activeCustomerRefs: [
+          {
+            customerId: "cus_linked",
+            email: "linked@example.com",
+            emailDomain: "example.com",
+          },
+        ],
+        recentChurnEvents: [],
+      },
+      payments: {
+        succeeded: 10,
+        failed: 0,
+        successRate: 1,
+      },
+      revenueTrend: [],
+      _meta: { fetchedAt: "2026-01-30", nextRefresh: "2026-01-30", source: "live" },
+    };
+    data.hubspot = {
+      funnel: {
+        totalDeals: 2,
+        closedWon: 0,
+        closedLost: 0,
+        unlikely: 0,
+        churn: 0,
+        activeSubscriptions: 2,
+        noShows: 0,
+        demoScheduled: 0,
+        demoFollowUp: 0,
+        avgDealSize: 0,
+        winRate: 0,
+        effectiveWinRate: 0,
+        noShowRate: 0,
+        stages: [],
+        dealsBySource: [],
+      },
+      contacts: {
+        totalContacts: 0,
+        recentContacts: 0,
+        bySource: [],
+      },
+      subscriptionDeals: [
+        {
+          dealId: "linked-subscription",
+          dealName: "Linked subscription",
+          stageId: "subscriptions",
+          stageLabel: "Subscriptions",
+          amount: 12000,
+          source: "Referral",
+          ownerId: null,
+          updatedAt: "2026-01-01T00:00:00.000Z",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          closedAt: "2026-01-01T00:00:00.000Z",
+          stripeCustomerId: "cus_linked",
+          pipelineId: "subscription-pipeline",
+          contactIds: [],
+          primaryContactId: null,
+          primaryContactEmail: "linked@example.com",
+        },
+        {
+          dealId: "hubspot-only-subscription",
+          dealName: "HubSpot only subscription",
+          stageId: "subscriptions",
+          stageLabel: "Subscriptions",
+          amount: 24000,
+          source: "Referral",
+          ownerId: null,
+          updatedAt: "2026-01-01T00:00:00.000Z",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          closedAt: "2026-01-01T00:00:00.000Z",
+          stripeCustomerId: null,
+          pipelineId: "subscription-pipeline",
+          contactIds: [],
+          primaryContactId: null,
+          primaryContactEmail: "buyer@example.org",
+        },
+      ],
+      _meta: { fetchedAt: "2026-01-30", nextRefresh: "2026-01-30", source: "live" },
+    };
+
+    const lifecycle = buildLifecycleFunnelData(data);
+    const retention = lifecycle.stages.find((stage) => stage.id === "retention");
+
+    expect(retention?.volume).toBe(9);
+    expect(retention?.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "Retained Subscriptions",
+          domain: "stripe",
+          contribution: 9,
+        }),
+      ]),
+    );
+  });
+
   it("counts HubSpot collected forms as website conversion acquisition evidence", () => {
     const data = baseData();
     data.hubspot = {
