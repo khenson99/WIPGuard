@@ -1109,13 +1109,16 @@ export async function materializeImladrisSalesMetrics(
 
 function spendAmount(record: RawSourceRecordRow): number {
   const payload = asRecord(record.payload);
+  const costMicros = numberFrom(payload.costMicros ?? payload.cost_micros);
+  if (costMicros !== null) {
+    return costMicros / 1_000_000;
+  }
   return (
     numberFrom(
       payload.spend ??
         payload.amountSpent ??
         payload.amount_spent ??
-        payload.cost ??
-        payload.costMicros,
+        payload.cost,
     ) ?? 0
   );
 }
