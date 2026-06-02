@@ -206,4 +206,115 @@ describe("collectVisitorEvent", () => {
       }),
     );
   });
+
+  it("normalizes HubSpot deal stages before syncing demo milestones", async () => {
+    const visitorRecord = {
+      id: "visitor-1",
+      anonymousId: "anon-1",
+      siteHost: null,
+      firstTouchSource: "hubspot",
+      firstTouchChannel: "direct",
+      firstTouchCampaign: null,
+      firstTouchReferrer: null,
+      firstTouchLandingPath: null,
+      firstTouchLandingUrl: null,
+      lastTouchSource: "hubspot",
+      lastTouchChannel: "direct",
+      lastTouchCampaign: null,
+      lastTouchReferrer: null,
+      lastTouchPath: null,
+      lastTouchUrl: null,
+      firstSeenAt: new Date("2026-05-21T10:00:00.000Z"),
+      lastSeenAt: new Date("2026-05-21T10:00:00.000Z"),
+      createdAt: new Date("2026-05-21T10:00:00.000Z"),
+      updatedAt: new Date("2026-05-21T10:00:00.000Z"),
+    };
+
+    const prisma = {
+      funnelVisitor: {
+        upsert: vi.fn(async ({ create }: { create: typeof visitorRecord }) => ({
+          ...visitorRecord,
+          ...create,
+        })),
+        update: vi.fn(async ({ data }: { data: Partial<typeof visitorRecord> }) => ({
+          ...visitorRecord,
+          ...data,
+        })),
+        findMany: vi.fn(async () => []),
+      },
+      funnelIdentityLink: {
+        findFirst: vi.fn(async () => null),
+        upsert: vi.fn(async () => ({})),
+      },
+      funnelEvent: {
+        upsert: vi.fn(async () => ({})),
+        create: vi.fn(async () => ({})),
+      },
+    } as const;
+
+    await syncVisitorFunnelArtifacts({
+      prisma: prisma as never,
+      stripeKey: null,
+      from: new Date("2026-05-21T00:00:00.000Z"),
+      to: new Date("2026-05-21T23:59:59.999Z"),
+      analyticsData: {
+        hubspot: {
+          funnel: {
+            totalDeals: 1,
+            closedWon: 1,
+            closedLost: 0,
+            unlikely: 0,
+            churn: 0,
+            activeSubscriptions: 0,
+            noShows: 0,
+            demoScheduled: 0,
+            demoFollowUp: 0,
+            avgDealSize: 5000,
+            winRate: 100,
+            effectiveWinRate: 100,
+            noShowRate: 0,
+            stages: [],
+            dealsBySource: [],
+          },
+          contacts: {
+            totalContacts: 1,
+            recentContacts: 1,
+            bySource: [],
+          },
+          deals: [
+            {
+              dealId: "deal-formatted-won",
+              dealName: "Formatted Won",
+              stageId: "closedwon",
+              stageLabel: " closed won ",
+              amount: 5000,
+              source: "HubSpot",
+              ownerId: null,
+              updatedAt: "2026-05-21T12:00:00.000Z",
+              createdAt: "2026-05-21T10:00:00.000Z",
+              closedAt: "2026-05-21T12:00:00.000Z",
+              stripeCustomerId: null,
+              pipelineId: "default",
+              contactIds: ["contact-1"],
+              primaryContactId: "contact-1",
+              primaryContactEmail: "buyer@example.com",
+            },
+          ],
+          _meta: { fetchedAt: "2026-05-21", nextRefresh: "2026-05-21", source: "live" },
+        },
+      } as never,
+    });
+
+    expect(prisma.funnelEvent.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          eventType: FunnelEventType.DEMO_BOOKED,
+          dedupeKey: "demo_booked:deal-formatted-won",
+          metadata: expect.objectContaining({
+            stageLabel: "Closed Won",
+          }),
+        }),
+      }),
+    );
+  });
 });

@@ -92,6 +92,9 @@ const DEMO_STAGES = new Set([
   "Closed Won",
   "Active",
 ]);
+const CANONICAL_DEMO_STAGE_BY_KEY = new Map(
+  [...DEMO_STAGES].map((stage) => [normalizeStageKey(stage), stage]),
+);
 
 const EMAIL_IDENTITY_TYPES = new Set<FunnelIdentityType>([
   FunnelIdentityType.EMAIL,
@@ -181,6 +184,15 @@ export interface VisitorRecordsPage {
 function trimOrNull(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeStageKey(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function normalizeDemoStage(value: string | null | undefined): string {
+  const trimmed = value?.trim() ?? "";
+  return CANONICAL_DEMO_STAGE_BY_KEY.get(normalizeStageKey(trimmed)) ?? trimmed;
 }
 
 function normalizeEmail(value: string | null | undefined): string | null {
@@ -843,10 +855,11 @@ async function syncHubSpotMilestones(
       identities,
     });
 
+    const dealStageLabel = normalizeDemoStage(deal.stageLabel);
     const demoStage = deal.stageHistory?.find((stage) =>
-      stage.stageLabel.trim().toLowerCase() === "demo scheduled",
+      normalizeDemoStage(stage.stageLabel) === "Demo Scheduled",
     );
-    if (DEMO_STAGES.has(deal.stageLabel) || demoStage) {
+    if (DEMO_STAGES.has(dealStageLabel) || demoStage) {
       const occurredAt =
         safeOptionalDate(demoStage?.occurredAt) ??
         safeOptionalDate(deal.updatedAt) ??
@@ -864,7 +877,7 @@ async function syncHubSpotMilestones(
         metadata: {
           dealId: deal.dealId,
           dealName: deal.dealName,
-          stageLabel: deal.stageLabel,
+          stageLabel: dealStageLabel,
         },
       });
     }
