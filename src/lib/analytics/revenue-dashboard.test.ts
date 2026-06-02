@@ -471,6 +471,66 @@ describe("buildRevenueDashboardData", () => {
     expect(result.pipeline.noShowRate).toBe(25);
   });
 
+  it("normalizes HubSpot deal stage labels for weekly revenue and pipeline classification", () => {
+    const hubspot = makeHubSpot();
+    hubspot.deals?.push(
+      {
+        dealId: "formatted-won",
+        dealName: "Formatted Won",
+        stageId: "closedwon",
+        stageLabel: " closed won ",
+        amount: 7000,
+        source: "Referral",
+        ownerId: "owner-3",
+        repName: "Cora",
+        updatedAt: "2026-02-18T12:00:00.000Z",
+        createdAt: "2026-02-05T00:00:00.000Z",
+        closedAt: null,
+        stripeCustomerId: null,
+        pipelineId: "default",
+        contactIds: [],
+        primaryContactId: null,
+        primaryContactEmail: "buyer@formatted.example",
+        stageHistory: [
+          {
+            occurredAt: "2026-02-18T12:00:00.000Z",
+            stageId: "closedwon",
+            stageLabel: " closed won ",
+          },
+        ],
+      },
+      {
+        dealId: "formatted-demo",
+        dealName: "Formatted Demo",
+        stageId: "presentationscheduled",
+        stageLabel: " demo scheduled ",
+        amount: 8000,
+        source: "Referral",
+        ownerId: "owner-3",
+        repName: "Cora",
+        updatedAt: "2026-02-19T12:00:00.000Z",
+        createdAt: "2026-02-06T00:00:00.000Z",
+        closedAt: null,
+        stripeCustomerId: null,
+        pipelineId: "default",
+        contactIds: [],
+        primaryContactId: null,
+        primaryContactEmail: "demo@formatted.example",
+      },
+    );
+
+    const result = buildRevenueDashboardData(makeData({ hubspot }));
+
+    expect(result.pipeline.openPipelineValue).toBe(20000);
+    expect(result.pipeline.openPipelineCount).toBe(2);
+    expect(result.pipeline.qualifiedPipelineValue).toBe(20000);
+    expect(result.pipeline.qualifiedPipelineCount).toBe(2);
+    expect(result.weekly.find((point) => point.week === "2026-02-16")).toMatchObject({
+      customersWon: 1,
+      hubspotBookedRevenue: 7000,
+    });
+  });
+
   it("builds weekly Mercury rows from the filtered transaction list that backs cash flow totals", () => {
     const mercury = makeMercury();
     mercury.cashFlow = {

@@ -27,9 +27,21 @@ const QUALIFIED_STAGE_LABELS = new Set([
   "Freemium",
   "Interested in a pilot",
 ]);
+const CANONICAL_STAGE_LABEL_BY_KEY = new Map(
+  [...TERMINAL_STAGE_LABELS, ...QUALIFIED_STAGE_LABELS].map((label) => [normalizeStageLabelKey(label), label])
+);
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function normalizeStageLabelKey(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function normalizeStageLabel(value: string | null | undefined): string {
+  const trimmed = value?.trim() ?? "";
+  return CANONICAL_STAGE_LABEL_BY_KEY.get(normalizeStageLabelKey(trimmed)) ?? trimmed;
 }
 
 function parseDate(value: string | null | undefined): Date | null {
@@ -77,13 +89,15 @@ function closedWonDate(deal: HubSpotDeal): Date | null {
   if (explicitClose) return explicitClose;
 
   const stageHistoryClose = deal.stageHistory
-    ?.filter((stage) => stage.stageLabel === "Closed Won")
+    ?.filter((stage) => normalizeStageLabel(stage.stageLabel) === "Closed Won")
     .map((stage) => parseDate(stage.occurredAt))
     .filter((date): date is Date => Boolean(date))
     .sort((a, b) => b.getTime() - a.getTime())[0];
   if (stageHistoryClose) return stageHistoryClose;
 
-  return deal.stageLabel === "Closed Won" ? parseDate(deal.updatedAt ?? deal.createdAt ?? null) : null;
+  return normalizeStageLabel(deal.stageLabel) === "Closed Won"
+    ? parseDate(deal.updatedAt ?? deal.createdAt ?? null)
+    : null;
 }
 
 function addDemoWeeklyTrend(
@@ -164,11 +178,11 @@ function buildWeekly(data: AnalyticsDashboardData): RevenueDashboardWeeklyPoint[
 }
 
 function isOpenPipelineDeal(deal: HubSpotDeal): boolean {
-  return !TERMINAL_STAGE_LABELS.has(deal.stageLabel);
+  return !TERMINAL_STAGE_LABELS.has(normalizeStageLabel(deal.stageLabel));
 }
 
 function isQualifiedPipelineDeal(deal: HubSpotDeal): boolean {
-  return isOpenPipelineDeal(deal) && QUALIFIED_STAGE_LABELS.has(deal.stageLabel);
+  return isOpenPipelineDeal(deal) && QUALIFIED_STAGE_LABELS.has(normalizeStageLabel(deal.stageLabel));
 }
 
 function buildSalesPerformanceTotals(pack: SalesPerformancePack | null): {
