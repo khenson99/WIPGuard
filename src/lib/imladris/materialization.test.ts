@@ -1394,6 +1394,65 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("materializes HubSpot subscriptionDeals raw rows as canonical MRR", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_subscription_deal_row",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "subscription_deal",
+            externalId: "hubspot:subscription_deal:sub_deal_1",
+            occurredAt: new Date("2026-05-12T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-12T00:00:00.000Z"),
+            payload: {
+              dealId: "sub_deal_1",
+              amount: 24_000,
+              dealstage: "closedwon",
+              recurringRevenue: true,
+              primaryContactEmail: "buyer@example.com",
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 2_000,
+      arr: 24_000,
+      hubspotSubscriptionMrr: 2_000,
+      hubspotSubscriptionArr: 24_000,
+      hubspotOnlySubscriptionMrr: 2_000,
+      hubspotOnlySubscriptionArr: 24_000,
+    });
+    expect(prisma.imladrisMetricLineage.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          rawRecordId: "raw_hubspot_subscription_deal_row",
+          sourceKey: "hubspot",
+          sourceType: "subscription_deal",
+        }),
+      ]),
+    });
+  });
+
   it("parses formatted currency strings before finance materialization", async () => {
     const prisma = {
       imladrisRawSourceRecord: {

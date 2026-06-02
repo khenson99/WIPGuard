@@ -872,7 +872,12 @@ function computeMrrBreakdown(records: RawSourceRecordRow[]) {
   let excludedLinkedHubspotSubscriptionArr = 0;
 
   for (const record of records) {
-    if (record.provider !== IntegrationProvider.HUBSPOT || record.objectType !== "deal") continue;
+    if (
+      record.provider !== IntegrationProvider.HUBSPOT ||
+      !["deal", "subscription_deal"].includes(record.objectType)
+    ) {
+      continue;
+    }
     const recurringRevenue = hubspotRecurringRevenue(record);
     if (!recurringRevenue) continue;
 
