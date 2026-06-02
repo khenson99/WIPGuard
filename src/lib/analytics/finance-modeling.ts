@@ -214,16 +214,16 @@ export function buildRunwayScenarios(
     let cash = totalBalance;
     let runway = 0;
     let zeroDate: string | null = null;
+    const netBurn = monthlyBurn - monthlyInflow;
 
     for (let i = 0; i <= months; i++) {
       projectedCash.push({ month: i, cash: Math.max(cash, 0) });
 
-      if (i > 0 && cash < 0 && !zeroDate) {
+      if (i > 0 && cash <= 0 && netBurn > 0 && !zeroDate) {
         zeroDate = addMonths(new Date(), i).toISOString().slice(0, 10);
-        runway = i;
+        runway = totalBalance > 0 ? totalBalance / netBurn : 0;
       }
 
-      const netBurn = monthlyBurn - monthlyInflow;
       cash -= netBurn;
     }
 

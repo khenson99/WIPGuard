@@ -348,6 +348,30 @@ describe("buildRunwayScenarios", () => {
     expect(expected.zeroDate).not.toBeNull();
   });
 
+  it("reports exact cash depletion in the month it reaches zero", () => {
+    const data = makeData({
+      mercury: {
+        accounts: [{ accountId: "a1", accountName: "Operating", balance: 100, type: "checking" }],
+        cashFlow: {
+          totalBalance: 100,
+          inflows30d: 0,
+          outflows30d: 100,
+          netCashFlow: -100,
+          runway: 1,
+          burnRate: 100,
+        },
+      },
+    });
+
+    const expected = buildRunwayScenarios(data, 3).find(
+      (scenario) => scenario.label === "Expected",
+    );
+
+    expect(expected?.runway).toBe(1);
+    expect(expected?.zeroDate).not.toBeNull();
+    expect(expected?.projectedCash.map((point) => point.cash)).toEqual([100, 0, 0, 0]);
+  });
+
   it("sets runway = 999 when inflows exceed burn (infinite runway)", () => {
     const data = makeData({
       mercury: {
