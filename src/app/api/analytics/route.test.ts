@@ -858,6 +858,73 @@ describe("GET /api/analytics", () => {
     expect(noShowRecommendation).toBeDefined();
   });
 
+  it("uses previous HubSpot subscription revenue in overview MRR deltas", async () => {
+    const { readLatestSuccessfulSnapshot } = await import("@/lib/analytics/snapshots");
+    vi.mocked(readLatestSuccessfulSnapshot).mockImplementation(
+      async (input: { providerKey: string }) => {
+        if (input.providerKey === "stripe") {
+          return {
+            payload: {
+              ...STRIPE_DATA,
+              revenue: {
+                ...STRIPE_DATA.revenue,
+                mrr: 10000,
+              },
+            },
+            capturedAt: "2026-01-10T00:00:00.000Z",
+            expiresAt: "2026-01-10T01:00:00.000Z",
+            needsRefresh: false,
+            stale: false,
+            fromSnapshot: true,
+            status: "SUCCESS",
+            error: null,
+          } as never;
+        }
+        if (input.providerKey === "hubspot") {
+          return {
+            payload: {
+              ...HUBSPOT_DATA,
+              subscriptionDeals: [
+                {
+                  ...HUBSPOT_DATA.subscriptionDeals[0],
+                  dealId: "previous-hubspot-only-subscription",
+                  amount: 24000,
+                  primaryContactEmail: "previous@example-subscription.com",
+                },
+              ],
+            },
+            capturedAt: "2026-01-10T00:00:00.000Z",
+            expiresAt: "2026-01-10T01:00:00.000Z",
+            needsRefresh: false,
+            stale: false,
+            fromSnapshot: true,
+            status: "SUCCESS",
+            error: null,
+          } as never;
+        }
+        return {
+          payload: null,
+          capturedAt: null,
+          expiresAt: null,
+          needsRefresh: false,
+          stale: false,
+          fromSnapshot: false,
+          status: null,
+          error: null,
+        } as never;
+      },
+    );
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=overview"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.deltas.finance.mrr.previous).toBe(12000);
+    expect(body.deltas.finance.mrr.current).toBe(12299.83);
+    expect(body.deltas.finance.mrr.delta).toBeCloseTo(299.83, 2);
+  });
+
   it("loads unlinked HubSpot meetings for demo analytics instead of only deal-linked meetings", async () => {
     const { prisma } = await import("@/lib/prisma");
     const { GET } = await import("@/app/api/analytics/route");

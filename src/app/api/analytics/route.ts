@@ -1935,10 +1935,18 @@ export async function GET(request: Request) {
       );
       prevFromDate.setUTCHours(0, 0, 0, 0);
 
-      const [prevStripe, prevGa] = await Promise.all([
+      const [prevStripe, prevHubSpot, prevGa] = await Promise.all([
         readLatestSuccessfulSnapshot<StripeData>({
           userId: integrationUserId,
           providerKey: "stripe",
+          contextKey: "default",
+          rangePreset: range.preset,
+          fromDate: prevFromDate,
+          toDate: prevToDate,
+        }),
+        readLatestSuccessfulSnapshot<HubSpotData>({
+          userId: integrationUserId,
+          providerKey: "hubspot",
           contextKey: "default",
           rangePreset: range.preset,
           fromDate: prevFromDate,
@@ -1965,7 +1973,10 @@ export async function GET(request: Request) {
         : null;
       const prevFinance = prevStripe.payload
         ? buildAnalyticsMetricsLayer(
-            { stripe: prevStripe.payload } as unknown as AnalyticsDashboardData,
+            {
+              stripe: prevStripe.payload,
+              hubspot: prevHubSpot.payload ?? null,
+            } as unknown as AnalyticsDashboardData,
           ).kpis.finance
         : null;
 
