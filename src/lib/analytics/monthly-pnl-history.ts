@@ -6,7 +6,8 @@ import { AnalyticsSnapshotStatus } from "@/generated/prisma/client";
 import { buildProfitAndLossCore } from "./pnl-builder";
 import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
-import type { StripeData, MercuryData, PnLRow } from "./types";
+import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
+import type { StripeData, MercuryData, HubSpotData, PnLRow } from "./types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -19,6 +20,7 @@ export interface MonthlyPnLEntry {
   sourceCoverage: {
     stripe: boolean;
     mercury: boolean;
+    hubspot: boolean;
   };
   revenue: number;
   cogs: number;
@@ -38,9 +40,9 @@ export interface MonthlyPnLEntry {
   cashBalance: number | null;
   /** Mercury burn rate at snapshot time */
   burnRate: number | null;
-  /** Stripe MRR at snapshot time */
+  /** Canonical Stripe plus HubSpot MRR at snapshot time */
   mrr: number | null;
-  /** Stripe active subscriptions at snapshot time */
+  /** Canonical Stripe plus HubSpot active subscriptions at snapshot time */
   activeSubscriptions: number | null;
   /** Stripe churn rate at snapshot time */
   churnRate: number | null;
@@ -67,6 +69,7 @@ interface MonthlySnapshot {
   month: string;
   stripe: StripeData | null;
   mercury: MercuryData | null;
+  hubspot: HubSpotData | null;
 }
 
 export const MONTHLY_HISTORY_START_DATE = new Date(Date.UTC(2025, 0, 1));
@@ -107,7 +110,7 @@ async function loadMonthlySnapshots(
   const snapshots = await prisma.analyticsSnapshot.findMany({
     where: {
       userId,
-      providerKey: { in: ["stripe", "mercury"] },
+      providerKey: { in: ["stripe", "mercury", "hubspot"] },
       contextKey: MONTHLY_HISTORY_CONTEXT_KEY,
       rangePreset: MONTHLY_HISTORY_RANGE_PRESET,
       status: AnalyticsSnapshotStatus.SUCCESS,
@@ -123,7 +126,10 @@ async function loadMonthlySnapshots(
   });
 
   // Group by month, taking the latest snapshot per provider per month
-  const monthMap = new Map<string, { stripe: StripeData | null; mercury: MercuryData | null }>();
+  const monthMap = new Map<
+    string,
+    { stripe: StripeData | null; mercury: MercuryData | null; hubspot: HubSpotData | null }
+  >();
   let latestSnapshotMonth: Date | null = null;
 
   for (const snap of snapshots) {
@@ -137,7 +143,7 @@ async function loadMonthlySnapshots(
     }
     const month = monthKeyUtc(snap.fromDate);
     if (!monthMap.has(month)) {
-      monthMap.set(month, { stripe: null, mercury: null });
+      monthMap.set(month, { stripe: null, mercury: null, hubspot: null });
     }
     const entry = monthMap.get(month)!;
     // Only take the first (latest due to desc ordering) per provider per month
@@ -146,6 +152,9 @@ async function loadMonthlySnapshots(
     }
     if (snap.providerKey === "mercury" && !entry.mercury) {
       entry.mercury = snap.payload as MercuryData | null;
+    }
+    if (snap.providerKey === "hubspot" && !entry.hubspot) {
+      entry.hubspot = snap.payload as HubSpotData | null;
     }
   }
 
@@ -157,6 +166,7 @@ async function loadMonthlySnapshots(
     month,
     stripe: monthMap.get(month)?.stripe ?? null,
     mercury: monthMap.get(month)?.mercury ?? null,
+    hubspot: monthMap.get(month)?.hubspot ?? null,
   }));
 }
 
@@ -172,8 +182,11 @@ function buildMonthEntry(
   month: string,
   stripe: StripeData | null,
   mercury: MercuryData | null,
+  hubspot: HubSpotData | null,
 ): MonthlyPnLEntry {
   const pnl = buildProfitAndLossCore(stripe, mercury);
+  const subscriptionBreakdown =
+    stripe || hubspot ? buildSubscriptionMrrBreakdown({ stripe, hubspot }) : null;
 
   const revenue = pnlRowValue(pnl.revenue);
   const grossProfit = pnlRowValue(pnl.grossProfit);
@@ -192,6 +205,7 @@ function buildMonthEntry(
     sourceCoverage: {
       stripe: stripe !== null,
       mercury: mercury !== null,
+      hubspot: hubspot !== null,
     },
     revenue,
     cogs: pnlRowValue(pnl.cogs),
@@ -209,8 +223,8 @@ function buildMonthEntry(
     netIncome: pnlRowValue(pnl.netIncome),
     cashBalance: mercury?.cashFlow?.totalBalance ?? null,
     burnRate: mercury?.cashFlow?.burnRate ?? null,
-    mrr: stripe?.revenue?.mrr ?? null,
-    activeSubscriptions: stripe?.subscriptions?.active ?? null,
+    mrr: subscriptionBreakdown?.totalMrr ?? null,
+    activeSubscriptions: subscriptionBreakdown?.mergedActiveSubscriptions ?? null,
     churnRate: stripe ? normalizePercentValue(stripe.subscriptions.churnRate) : null,
   };
 }
@@ -237,7 +251,7 @@ export async function buildMonthlyPnLHistory(
   const snapshots = await loadMonthlySnapshots(userId, startDate, endDate);
 
   const months = snapshots.map((s) =>
-    buildMonthEntry(s.month, s.stripe, s.mercury),
+    buildMonthEntry(s.month, s.stripe, s.mercury, s.hubspot),
   );
 
   let latestMoM: MonthlyPnLHistory["latestMoM"] = null;
