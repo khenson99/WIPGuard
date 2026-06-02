@@ -976,6 +976,42 @@ describe("GET /api/analytics", () => {
     });
   });
 
+  it("excludes Stripe-linked HubSpot subscriptions from finance-planning active counts", async () => {
+    const { fetchHubSpotData } = await import("@/lib/analytics/fetchers");
+    vi.mocked(fetchHubSpotData).mockResolvedValueOnce({
+      ...HUBSPOT_DATA,
+      funnel: {
+        ...HUBSPOT_DATA.funnel,
+        activeSubscriptions: 2,
+      },
+      subscriptionDeals: [
+        ...HUBSPOT_DATA.subscriptionDeals,
+        {
+          ...HUBSPOT_DATA.subscriptionDeals[0],
+          dealId: "deal-subscription-linked",
+          dealName: "Linked Stripe subscription",
+          stripeCustomerId: "cus_123",
+          primaryContactEmail: "billing@example.com",
+        },
+      ],
+    } as never);
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=finance-planning"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.financialPlanning.subscriptionOverview).toMatchObject({
+      mergedActiveSubscriptions: 21,
+      stripeActiveSubscriptions: 20,
+      hubspotActiveSubscriptions: 1,
+      hubspotSubscriptionMrr: 599.67,
+      hubspotOnlySubscriptionMrr: 299.83,
+      excludedLinkedHubspotSubscriptionMrr: 299.83,
+      totalMrr: 12299.83,
+    });
+  });
+
   it("uses canonical finance metrics for financial goal progress", async () => {
     const { prisma } = await import("@/lib/prisma");
     vi.mocked(prisma.financialGoal.findMany).mockResolvedValueOnce([

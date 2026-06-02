@@ -636,7 +636,7 @@ function buildSubscriptionOverview(data: AnalyticsDashboardData): FinancialPlann
   return {
     mergedActiveSubscriptions: breakdown.mergedActiveSubscriptions,
     stripeActiveSubscriptions: breakdown.stripeActiveSubscriptions,
-    hubspotActiveSubscriptions: breakdown.hubspotActiveSubscriptions,
+    hubspotActiveSubscriptions: breakdown.hubspotOnlyActiveSubscriptions,
     stripeMrr: breakdown.stripeMrr,
     hubspotSubscriptionMrr: breakdown.hubspotSubscriptionMrr,
     hubspotOnlySubscriptionMrr: breakdown.hubspotOnlySubscriptionMrr,
