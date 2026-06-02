@@ -14,6 +14,17 @@ const CONTEXT = {
   organizationId: "org_1",
 };
 
+type RawSourceRecordFixture = {
+  id: string;
+  provider: IntegrationProvider;
+  objectType: string;
+  externalId: string;
+  occurredAt: Date;
+  sourceCreatedAt: Date | null;
+  sourceUpdatedAt: Date | null;
+  payload: Record<string, unknown>;
+};
+
 function createPrismaMock() {
   return {
     imladrisRawSourceRecord: {
@@ -501,7 +512,7 @@ function createMarketingPrismaMock() {
 function createCustomerSuccessPrismaMock() {
   return {
     imladrisRawSourceRecord: {
-      findMany: vi.fn(async () => [
+      findMany: vi.fn(async (): Promise<RawSourceRecordFixture[]> => [
         {
           id: "raw_pylon_issue_1",
           provider: IntegrationProvider.PYLON,
@@ -2431,6 +2442,40 @@ describe("Imladris canonical materialization", () => {
       atRiskAccounts: 1,
       accountsWithBillingRisk: 1,
       lowUsageAccounts: 1,
+    });
+  });
+
+  it("reads nested account identifiers before calculating customer-success risk", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_stripe_subscription_nested_customer",
+        provider: IntegrationProvider.STRIPE,
+        objectType: "subscription",
+        externalId: "sub_nested_customer",
+        occurredAt: new Date("2026-05-24T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-24T00:00:00.000Z"),
+        payload: {
+          customer: {
+            id: "acct_1",
+          },
+          status: "past_due",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      atRiskAccounts: 1,
+      accountsWithBillingRisk: 1,
     });
   });
 

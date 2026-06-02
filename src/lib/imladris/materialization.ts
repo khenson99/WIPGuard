@@ -1377,6 +1377,12 @@ export async function materializeImladrisMarketingMetrics(
 function accountIdFromPayload(record: RawSourceRecordRow): string | null {
   const payload = asRecord(record.payload);
   const properties = nestedRecord(payload.properties);
+  const payloadAccount = nestedRecord(payload.account);
+  const payloadCompany = nestedRecord(payload.company);
+  const payloadCustomer = nestedRecord(payload.customer);
+  const propertiesAccount = nestedRecord(properties.account);
+  const propertiesCompany = nestedRecord(properties.company);
+  const propertiesCustomer = nestedRecord(properties.customer);
   const id =
     payload.accountId ??
     payload.account_id ??
@@ -1393,7 +1399,17 @@ function accountIdFromPayload(record: RawSourceRecordRow): string | null {
     properties.customerId ??
     properties.customer_id ??
     properties.stripeCustomerId ??
-    properties.stripe_customer_id;
+    properties.stripe_customer_id ??
+    payloadAccount.id ??
+    payloadCompany.id ??
+    payloadCustomer.id ??
+    payloadCustomer.stripeCustomerId ??
+    payloadCustomer.stripe_customer_id ??
+    propertiesAccount.id ??
+    propertiesCompany.id ??
+    propertiesCustomer.id ??
+    propertiesCustomer.stripeCustomerId ??
+    propertiesCustomer.stripe_customer_id;
 
   if (typeof id !== "string") return null;
 
