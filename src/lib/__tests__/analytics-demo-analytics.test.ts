@@ -146,6 +146,91 @@ describe("buildDemoAnalyticsData", () => {
     expect(demo.conversionFunnel.length).toBeGreaterThan(0);
   });
 
+  it("normalizes HubSpot stage labels before building demo funnel metrics", () => {
+    const data = baseData();
+    data.hubspot = {
+      funnel: {
+        totalDeals: 4,
+        closedWon: 1,
+        closedLost: 0,
+        unlikely: 0,
+        churn: 0,
+        activeSubscriptions: 0,
+        noShows: 1,
+        demoScheduled: 4,
+        demoFollowUp: 1,
+        avgDealSize: 3000,
+        winRate: 100,
+        effectiveWinRate: 100,
+        noShowRate: 25,
+        stages: [],
+        dealsBySource: [],
+      },
+      contacts: { totalContacts: 0, recentContacts: 0, bySource: [] },
+      deals: [
+        makeDeal({
+          dealId: "formatted-demo",
+          dealName: "Formatted Demo",
+          stageId: "demo",
+          stageLabel: " demo scheduled ",
+          amount: 1000,
+          source: "Organic",
+          ownerId: null,
+          updatedAt: "2026-02-10T00:00:00.000Z",
+          createdAt: "2026-01-10T00:00:00.000Z",
+        }),
+        makeDeal({
+          dealId: "formatted-noshow",
+          dealName: "Formatted No Show",
+          stageId: "noshow",
+          stageLabel: "NO-SHOW/RESCHEDULE",
+          amount: 1000,
+          source: "Organic",
+          ownerId: null,
+          updatedAt: "2026-02-11T00:00:00.000Z",
+          createdAt: "2026-01-11T00:00:00.000Z",
+        }),
+        makeDeal({
+          dealId: "formatted-follow",
+          dealName: "Formatted Follow",
+          stageId: "follow",
+          stageLabel: " demo follow-up ",
+          amount: 1000,
+          source: "Organic",
+          ownerId: null,
+          updatedAt: "2026-02-12T00:00:00.000Z",
+          createdAt: "2026-01-12T00:00:00.000Z",
+        }),
+        makeDeal({
+          dealId: "formatted-won",
+          dealName: "Formatted Won",
+          stageId: "won",
+          stageLabel: " closed won ",
+          amount: 1000,
+          source: "Organic",
+          ownerId: null,
+          updatedAt: "2026-02-13T00:00:00.000Z",
+          createdAt: "2026-01-13T00:00:00.000Z",
+        }),
+      ],
+      _meta: META,
+    };
+
+    const demo = buildDemoAnalyticsData(data);
+
+    expect(demo.totalScheduled).toBe(4);
+    expect(demo.totalCompleted).toBe(2);
+    expect(demo.totalNoShows).toBe(1);
+    expect(demo.noShowRate).toBe(25);
+    expect(demo.unscheduledDemoCount).toBe(1);
+    expect(demo.conversionFunnel).toEqual([
+      { label: "Demo Scheduled", count: 4, conversionFromPrevious: null },
+      { label: "Demo Completed", count: 2, conversionFromPrevious: 50 },
+      { label: "Follow-Up Sent", count: 2, conversionFromPrevious: 100 },
+      { label: "Closed Won", count: 1, conversionFromPrevious: 25 },
+    ]);
+  });
+
   it("derives funnel counts from the full demo cohort instead of current HubSpot stage totals", () => {
     const data = baseData();
     const scheduledDeals = Array.from({ length: 5 }, (_, index) => makeDeal({

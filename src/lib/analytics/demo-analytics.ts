@@ -38,6 +38,16 @@ const DEMO_MEETING_TEXT_MARKERS = [
   "make ordering 10x faster",
   "& arda cards",
 ];
+const CANONICAL_STAGE_LABEL_BY_KEY = new Map(
+  [
+    "Demo Scheduled",
+    "No-Show/Reschedule",
+    ...POST_DEMO_STAGES,
+    "Closed Lost",
+    "Unlikely",
+    "Churn",
+  ].map((label) => [normalizeKey(label), label])
+);
 
 type HubSpotDeal = NonNullable<NonNullable<AnalyticsDashboardData["hubspot"]>["deals"]>[number];
 
@@ -91,6 +101,23 @@ export interface DemoMeetingContext {
 
 function normalizeKey(value: string | null | undefined): string {
   return value?.trim().toLowerCase() ?? "";
+}
+
+function normalizeStageLabel(value: string | null | undefined): string {
+  const trimmed = value?.trim() ?? "";
+  return CANONICAL_STAGE_LABEL_BY_KEY.get(normalizeKey(trimmed)) ?? trimmed;
+}
+
+function stageLabelIs(value: string | null | undefined, expected: string): boolean {
+  return normalizeStageLabel(value) === expected;
+}
+
+function isPostDemoStage(value: string | null | undefined): boolean {
+  return POST_DEMO_STAGES.includes(normalizeStageLabel(value));
+}
+
+function isDemoEntryStage(value: string | null | undefined): boolean {
+  return DEMO_ENTRY_STAGES.has(normalizeStageLabel(value));
 }
 
 function uniqueStrings(value: unknown): string[] {
@@ -149,9 +176,9 @@ function deriveOutcome(input: {
     return "completed";
   }
 
-  const stageLabel = input.deal?.stageLabel ?? null;
+  const stageLabel = normalizeStageLabel(input.deal?.stageLabel);
   if (stageLabel === "No-Show/Reschedule") return "no-show";
-  if (stageLabel && POST_DEMO_STAGES.includes(stageLabel)) return "completed";
+  if (isPostDemoStage(stageLabel)) return "completed";
   if (stageLabel === "Demo Scheduled") {
     const daysSinceScheduled = Math.round(
       (input.now.getTime() - new Date(input.scheduledAt).getTime()) / 86_400_000,
@@ -227,7 +254,7 @@ function findHubSpotDealForMeeting(
 }
 
 function isDemoMeeting(meeting: DemoMeetingContext, deal: HubSpotDeal | null): boolean {
-  if (deal && DEMO_ENTRY_STAGES.has(deal.stageLabel)) return true;
+  if (deal && isDemoEntryStage(deal.stageLabel)) return true;
 
   const text = [
     meeting.title,
@@ -279,9 +306,9 @@ function buildDemoRecordFromMeeting(input: {
     isUnscheduledFallback: false,
     source: input.deal?.source || "Unknown",
     outcome,
-    followUpSent: Boolean(input.deal?.stageLabel && POST_DEMO_STAGES.includes(input.deal.stageLabel)),
+    followUpSent: isPostDemoStage(input.deal?.stageLabel),
     daysToNextStage: deriveDaysToNextStage(input.meeting, input.deal),
-    resultingStage: input.deal?.stageLabel ?? null,
+    resultingStage: input.deal ? normalizeStageLabel(input.deal.stageLabel) : null,
     transcriptStatus: deriveTranscriptStatus(input.meeting),
     transcriptMatchConfidence: input.meeting.transcriptMatchConfidence,
     transcriptSourceUrl: transcriptSource?.sourceUrl ?? input.meeting.googleDriveFileUrl,
@@ -304,7 +331,7 @@ function buildDemoRecordFromMeeting(input: {
 function buildUnscheduledFallbackRecord(input: {
   deal: HubSpotDeal;
 }): DemoRecord {
-  const stageLabel = input.deal.stageLabel;
+  const stageLabel = normalizeStageLabel(input.deal.stageLabel);
   const isUnscheduledFallback = stageLabel === "Demo Scheduled";
   const scheduledAt = input.deal.updatedAt ?? input.deal.createdAt ?? new Date().toISOString();
   const outcome: DemoOutcome =
@@ -328,9 +355,9 @@ function buildUnscheduledFallbackRecord(input: {
     isUnscheduledFallback,
     source: input.deal.source || "Unknown",
     outcome,
-    followUpSent: Boolean(stageLabel && POST_DEMO_STAGES.includes(stageLabel)),
+    followUpSent: isPostDemoStage(stageLabel),
     daysToNextStage: null,
-    resultingStage: input.deal.stageLabel,
+    resultingStage: stageLabel,
     transcriptStatus: "missing",
     transcriptMatchConfidence: null,
     transcriptSourceUrl: null,
@@ -358,7 +385,7 @@ function buildDealAggregateRecord(input: {
     input.deal.updatedAt ??
     input.deal.createdAt ??
     input.now.toISOString();
-  const stageLabel = input.deal.stageLabel ?? null;
+  const stageLabel = normalizeStageLabel(input.deal.stageLabel);
   const outcome: DemoOutcome =
     stageLabel === "No-Show/Reschedule"
       ? "no-show"
@@ -382,9 +409,9 @@ function buildDealAggregateRecord(input: {
     isUnscheduledFallback: false,
     source: input.deal.source || "Unknown",
     outcome,
-    followUpSent: Boolean(stageLabel && POST_DEMO_STAGES.includes(stageLabel)),
+    followUpSent: isPostDemoStage(stageLabel),
     daysToNextStage: null,
-    resultingStage: stageLabel,
+    resultingStage: stageLabel || null,
     transcriptStatus: "missing",
     transcriptMatchConfidence: null,
     transcriptSourceUrl: null,
@@ -458,7 +485,7 @@ function buildConversionFunnel(demos: DemoRecord[]): DemoConversionStep[] {
 
   const completedCount = historical.filter((d) => d.outcome === "completed").length;
   const followUpCount = historical.filter((d) => d.followUpSent).length;
-  const closedWonCount = historical.filter((d) => d.resultingStage === "Closed Won").length;
+  const closedWonCount = historical.filter((d) => stageLabelIs(d.resultingStage, "Closed Won")).length;
 
   const steps: DemoConversionStep[] = [
     { label: "Demo Scheduled", count: scheduledCount, conversionFromPrevious: null },
@@ -557,8 +584,8 @@ function pct(num: number, denom: number): number {
 }
 
 function hasActivatedEvidence(deal: HubSpotDeal): boolean {
-  if (ONBOARDED_STAGES.has(deal.stageLabel)) return true;
-  if (deal.stageHistory?.some((stage) => ONBOARDED_STAGES.has(stage.stageLabel))) return true;
+  if (ONBOARDED_STAGES.has(normalizeStageLabel(deal.stageLabel))) return true;
+  if (deal.stageHistory?.some((stage) => ONBOARDED_STAGES.has(normalizeStageLabel(stage.stageLabel)))) return true;
   return Boolean(deal.stripeCustomerId?.trim());
 }
 
@@ -604,15 +631,15 @@ function buildJourneyPathAnalysis(
     const demoStats = demoStatsBySource?.get(source) ?? null;
     const demosBooked = demoStats
       ? demoStats.booked
-      : sourceDeals.filter((d) => DEMO_ENTRY_STAGES.has(d.stageLabel)).length;
+      : sourceDeals.filter((d) => isDemoEntryStage(d.stageLabel)).length;
     const demoCompleted = demoStats
       ? demoStats.completed
-      : sourceDeals.filter((d) => POST_DEMO_STAGES.includes(d.stageLabel)).length;
+      : sourceDeals.filter((d) => isPostDemoStage(d.stageLabel)).length;
     const demoNoShow = demoStats
       ? demoStats.noShow
-      : sourceDeals.filter((d) => d.stageLabel === "No-Show/Reschedule").length;
+      : sourceDeals.filter((d) => stageLabelIs(d.stageLabel, "No-Show/Reschedule")).length;
 
-    const terminalDeals = sourceDeals.filter((d) => TERMINAL_STAGES.has(d.stageLabel) && d.updatedAt);
+    const terminalDeals = sourceDeals.filter((d) => TERMINAL_STAGES.has(normalizeStageLabel(d.stageLabel)) && d.updatedAt);
     let avgDaysToDecision: number | null = null;
     if (terminalDeals.length > 0) {
       const totalDays = terminalDeals.reduce((sum, d) => {
@@ -622,9 +649,9 @@ function buildJourneyPathAnalysis(
       avgDaysToDecision = Math.round((totalDays / terminalDeals.length) * 10) / 10;
     }
 
-    const wonDeals = sourceDeals.filter((d) => d.stageLabel === "Closed Won");
+    const wonDeals = sourceDeals.filter((d) => stageLabelIs(d.stageLabel, "Closed Won"));
     const closedWon = wonDeals.length;
-    const closedLost = sourceDeals.filter((d) => d.stageLabel === "Closed Lost").length;
+    const closedLost = sourceDeals.filter((d) => stageLabelIs(d.stageLabel, "Closed Lost")).length;
     const activatedDeals = sourceDeals.filter(hasActivatedEvidence);
     const onboarding = activatedDeals.length;
     const wonWithValue = wonDeals.filter((d) => d.amount > 0);
@@ -635,7 +662,7 @@ function buildJourneyPathAnalysis(
     const churnedDeals = sourceDeals.flatMap((deal) => {
       const stripeEvent = resolveStripeChurnEvent(deal, stripeChurnLookup);
       const activated = hasActivatedEvidence(deal);
-      const hubspotChurned = HUBSPOT_CHURN_STAGES.has(deal.stageLabel) && activated;
+      const hubspotChurned = HUBSPOT_CHURN_STAGES.has(normalizeStageLabel(deal.stageLabel)) && activated;
       const stripeChurned = Boolean(stripeEvent && activated);
       if (!hubspotChurned && !stripeChurned) return [];
       return [{
@@ -831,7 +858,7 @@ export function buildDemoAnalyticsData(
   const dealsByHubspotId = new Map(deals.map((deal) => [deal.dealId, deal] as const));
   const dealsByName = new Map(deals.map((deal) => [normalizeKey(deal.dealName), deal] as const));
   const aggregateDemos = deals
-    .filter((deal) => DEMO_ENTRY_STAGES.has(deal.stageLabel))
+    .filter((deal) => isDemoEntryStage(deal.stageLabel))
     .map((deal) => buildDealAggregateRecord({ now, deal }));
 
   const meetingPairs = meetings.map((meeting) => ({
@@ -856,9 +883,9 @@ export function buildDemoAnalyticsData(
   );
 
   const hubSpotFallbacks = deals
-    .filter((deal) => DEMO_ENTRY_STAGES.has(deal.stageLabel) && !coveredHubSpotDealIds.has(deal.dealId))
+    .filter((deal) => isDemoEntryStage(deal.stageLabel) && !coveredHubSpotDealIds.has(deal.dealId))
     .map((deal) => (
-      deal.stageLabel === "Demo Scheduled"
+      stageLabelIs(deal.stageLabel, "Demo Scheduled")
         ? buildUnscheduledFallbackRecord({ deal })
         : buildDealAggregateRecord({ now, deal })
     ));
