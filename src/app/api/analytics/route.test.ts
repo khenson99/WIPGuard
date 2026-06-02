@@ -858,7 +858,7 @@ describe("GET /api/analytics", () => {
     expect(response.status).toBe(200);
     expect(body.hubspot.subscriptionDeals).toHaveLength(1);
     expect(body.financialPlanning.subscriptionOverview).toEqual({
-      mergedActiveSubscriptions: 2,
+      mergedActiveSubscriptions: 21,
       stripeActiveSubscriptions: 20,
       hubspotActiveSubscriptions: 1,
       stripeMrr: 12000,
@@ -900,7 +900,7 @@ describe("GET /api/analytics", () => {
         }),
         expect.objectContaining({
           id: "goal-customers",
-          currentValue: 2,
+          currentValue: 21,
         }),
       ]),
     );

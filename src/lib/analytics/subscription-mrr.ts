@@ -148,6 +148,7 @@ export function buildSubscriptionMrrBreakdown(input: {
   const stripeArr = stripeMrr * 12;
   const totalArr = roundMoney(stripeArr + hubspotOnlySubscriptionArr);
   const totalMrr = roundMoney(totalArr / 12);
+  const stripeActiveSubscriptions = stripe?.subscriptions?.active ?? stripeRefs.length;
 
   return {
     stripeMrr,
@@ -160,9 +161,9 @@ export function buildSubscriptionMrrBreakdown(input: {
     excludedLinkedHubspotSubscriptionMrr: roundMoney(excludedLinkedHubspotSubscriptionArr / 12),
     totalMrr,
     totalArr,
-    stripeActiveSubscriptions: stripe?.subscriptions?.active ?? stripeRefs.length,
+    stripeActiveSubscriptions,
     hubspotActiveSubscriptions: hubspotDeals.length,
     hubspotOnlyActiveSubscriptions,
-    mergedActiveSubscriptions: stripeRefs.length + hubspotOnlyActiveSubscriptions,
+    mergedActiveSubscriptions: stripeActiveSubscriptions + hubspotOnlyActiveSubscriptions,
   };
 }
