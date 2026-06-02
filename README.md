@@ -1,6 +1,15 @@
 # Imladris
 
-Imladris is Arda's operating-metrics platform: a meeting place for provider data, canonical analytics, automation recommendations, and department dashboards.
+Imladris is Arda's operating-metrics platform: a governed layer for provider data, canonical metrics, trusted reports, and automation evidence.
+
+The visible product has been reset around four workspaces:
+
+- **Sources**: provider connections, sync health, freshness, errors, and raw source lineage.
+- **Metrics**: canonical metric definitions, computed values, trust state, confidence, warnings, and source lineage.
+- **Reports**: CEO, investor, weekly, and custom report packs generated from the same trusted metric values.
+- **Automation Pipelines**: ingestion, metric refresh, report generation, AI artifacts, recommendations, approvals, failures, and replay.
+
+The previous WIPGuard taskboard, Kanban, deal, conference, retention, and sprawling analytics UI surfaces have been removed from the primary app. The reset intentionally preserves the valuable backend plumbing: auth, organizations, provider OAuth, integration APIs, provider clients/fetchers, Imladris raw/canonical metric services, CEO metric/report APIs, automation runtime APIs, Prisma models, workers, and provider-focused tests.
 
 ## Local development
 
