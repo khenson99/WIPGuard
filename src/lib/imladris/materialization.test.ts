@@ -1161,6 +1161,74 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("keeps HubSpot recurring revenue when the matching Stripe subscription is inactive", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_canceled_link",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_canceled_link",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              status: " canceled ",
+              customerId: "cus_canceled",
+              customerEmail: "billing@inactive.example",
+              monthlyRecurringRevenue: 30_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_hubspot_deal_matching_inactive_stripe",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_matching_inactive_stripe",
+            occurredAt: new Date("2026-05-12T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-12T00:00:00.000Z"),
+            payload: {
+              amount: 12_000,
+              dealstage: "closedwon",
+              recurringRevenue: true,
+              stripeCustomerId: "cus_canceled",
+              primaryContactEmail: "billing@inactive.example",
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 1_000,
+      arr: 12_000,
+      stripeMrr: 0,
+      stripeArr: 0,
+      hubspotOnlySubscriptionMrr: 1_000,
+      hubspotOnlySubscriptionArr: 12_000,
+      excludedLinkedHubspotSubscriptionMrr: 0,
+      excludedLinkedHubspotSubscriptionArr: 0,
+    });
+  });
+
   it("normalizes HubSpot subscription deal stages before canonical MRR calculation", async () => {
     const prisma = {
       imladrisRawSourceRecord: {

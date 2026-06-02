@@ -14,6 +14,12 @@ const MARKETING_PIPELINE_EFFICIENCY_CALCULATION_VERSION =
   "marketing-pipeline-efficiency-v1";
 const CUSTOMER_SUCCESS_RETENTION_RISK_CALCULATION_VERSION =
   "customer-success-retention-risk-v1";
+const INACTIVE_STRIPE_SUBSCRIPTION_STATUSES = new Set([
+  "canceled",
+  "cancelled",
+  "incomplete_expired",
+  "unpaid",
+]);
 
 interface ImladrisActorContext {
   userId: string | null;
@@ -582,13 +588,7 @@ function balanceAmount(record: RawSourceRecordRow): number | null {
 
 function stripeMrrAmount(record: RawSourceRecordRow): number | null {
   const payload = asRecord(record.payload);
-  const status = payload.status;
-  if (
-    typeof status === "string" &&
-    ["canceled", "cancelled", "incomplete_expired", "unpaid"].includes(status.trim().toLowerCase())
-  ) {
-    return null;
-  }
+  if (isInactiveStripeSubscription(record)) return null;
   return numberFrom(
     payload.monthlyRecurringRevenue ??
       payload.monthly_recurring_revenue ??
@@ -596,6 +596,12 @@ function stripeMrrAmount(record: RawSourceRecordRow): number | null {
       payload.amountMonthly ??
       payload.amount_monthly,
   );
+}
+
+function isInactiveStripeSubscription(record: RawSourceRecordRow): boolean {
+  const payload = asRecord(record.payload);
+  const status = payload.status;
+  return typeof status === "string" && INACTIVE_STRIPE_SUBSCRIPTION_STATUSES.has(status.trim().toLowerCase());
 }
 
 function stripeCustomerId(record: RawSourceRecordRow): string | null {
@@ -726,7 +732,12 @@ function hubspotRecurringRevenue(record: RawSourceRecordRow): {
 }
 
 function buildStripeRefs(records: RawSourceRecordRow[]) {
-  const stripeRecords = records.filter((record) => record.provider === IntegrationProvider.STRIPE);
+  const stripeRecords = records.filter(
+    (record) =>
+      record.provider === IntegrationProvider.STRIPE &&
+      record.objectType === "subscription" &&
+      !isInactiveStripeSubscription(record),
+  );
   return {
     customerIds: new Set(
       stripeRecords.map(stripeCustomerId).filter((value): value is string => Boolean(value)),
