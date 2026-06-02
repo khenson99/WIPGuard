@@ -231,6 +231,79 @@ describe("buildDemoAnalyticsData", () => {
     ]);
   });
 
+  it("normalizes HubSpot stage punctuation before building demo funnel metrics", () => {
+    const data = baseData();
+    data.hubspot = {
+      funnel: {
+        totalDeals: 3,
+        closedWon: 1,
+        closedLost: 0,
+        unlikely: 0,
+        churn: 0,
+        activeSubscriptions: 0,
+        noShows: 1,
+        demoScheduled: 3,
+        demoFollowUp: 1,
+        avgDealSize: 3000,
+        winRate: 100,
+        effectiveWinRate: 100,
+        noShowRate: 33.3,
+        stages: [],
+        dealsBySource: [],
+      },
+      contacts: { totalContacts: 0, recentContacts: 0, bySource: [] },
+      deals: [
+        makeDeal({
+          dealId: "punctuated-demo",
+          dealName: "Punctuated Demo",
+          stageId: "demo-scheduled",
+          stageLabel: "demo-scheduled",
+          amount: 1000,
+          source: "Organic",
+          ownerId: null,
+          updatedAt: "2026-02-10T00:00:00.000Z",
+          createdAt: "2026-01-10T00:00:00.000Z",
+        }),
+        makeDeal({
+          dealId: "punctuated-follow",
+          dealName: "Punctuated Follow",
+          stageId: "demo_follow_up",
+          stageLabel: "demo_follow_up",
+          amount: 1000,
+          source: "Organic",
+          ownerId: null,
+          updatedAt: "2026-02-11T00:00:00.000Z",
+          createdAt: "2026-01-11T00:00:00.000Z",
+        }),
+        makeDeal({
+          dealId: "punctuated-won",
+          dealName: "Punctuated Won",
+          stageId: "closed_won",
+          stageLabel: "closed_won",
+          amount: 1000,
+          source: "Organic",
+          ownerId: null,
+          updatedAt: "2026-02-12T00:00:00.000Z",
+          createdAt: "2026-01-12T00:00:00.000Z",
+        }),
+      ],
+      _meta: META,
+    };
+
+    const demo = buildDemoAnalyticsData(data);
+
+    expect(demo.totalScheduled).toBe(3);
+    expect(demo.totalCompleted).toBe(2);
+    expect(demo.totalNoShows).toBe(0);
+    expect(demo.unscheduledDemoCount).toBe(1);
+    expect(demo.conversionFunnel).toEqual([
+      { label: "Demo Scheduled", count: 3, conversionFromPrevious: null },
+      { label: "Demo Completed", count: 2, conversionFromPrevious: 66.7 },
+      { label: "Follow-Up Sent", count: 2, conversionFromPrevious: 100 },
+      { label: "Closed Won", count: 1, conversionFromPrevious: 33.3 },
+    ]);
+  });
+
   it("derives funnel counts from the full demo cohort instead of current HubSpot stage totals", () => {
     const data = baseData();
     const scheduledDeals = Array.from({ length: 5 }, (_, index) => makeDeal({

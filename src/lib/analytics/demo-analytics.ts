@@ -46,7 +46,7 @@ const CANONICAL_STAGE_LABEL_BY_KEY = new Map(
     "Closed Lost",
     "Unlikely",
     "Churn",
-  ].map((label) => [normalizeKey(label), label])
+  ].map((label) => [normalizeStageKey(label), label])
 );
 
 type HubSpotDeal = NonNullable<NonNullable<AnalyticsDashboardData["hubspot"]>["deals"]>[number];
@@ -103,9 +103,13 @@ function normalizeKey(value: string | null | undefined): string {
   return value?.trim().toLowerCase() ?? "";
 }
 
+function normalizeStageKey(value: string | null | undefined): string {
+  return value?.trim().toLowerCase().replace(/[\s_-]+/g, "") ?? "";
+}
+
 function normalizeStageLabel(value: string | null | undefined): string {
   const trimmed = value?.trim() ?? "";
-  return CANONICAL_STAGE_LABEL_BY_KEY.get(normalizeKey(trimmed)) ?? trimmed;
+  return CANONICAL_STAGE_LABEL_BY_KEY.get(normalizeStageKey(trimmed)) ?? trimmed;
 }
 
 function stageLabelIs(value: string | null | undefined, expected: string): boolean {
