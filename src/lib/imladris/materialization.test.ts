@@ -1659,4 +1659,36 @@ describe("Imladris canonical materialization", () => {
       openSupportIssues: 0,
     });
   });
+
+  it("normalizes Stripe billing statuses before calculating customer-success risk", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_stripe_subscription_formatted_billing_risk",
+        provider: IntegrationProvider.STRIPE,
+        objectType: "subscription",
+        externalId: "sub_formatted_billing_risk",
+        occurredAt: new Date("2026-05-24T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-24T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          status: " past_due ",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      atRiskAccounts: 1,
+      accountsWithBillingRisk: 1,
+    });
+  });
 });
