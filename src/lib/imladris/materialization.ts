@@ -288,6 +288,12 @@ function normalizeIdentifier(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function normalizeStageKey(value: unknown): string {
+  return typeof value === "string"
+    ? value.trim().toLowerCase().replace(/[\s_-]+/g, "")
+    : "";
+}
+
 function normalizeEmailDomain(value: unknown): string | null {
   const email = normalizeLookup(value);
   if (!email || !email.includes("@")) return null;
@@ -706,8 +712,8 @@ function hubspotRecurringRevenue(record: RawSourceRecordRow): {
   arr: number;
 } | null {
   const payload = asRecord(record.payload);
-  const stage = payload.dealstage ?? payload.stage;
-  if (typeof stage === "string" && !["closedwon", "closed_won", "won"].includes(stage.trim().toLowerCase())) {
+  const stage = normalizeStageKey(payload.dealstage ?? payload.stage);
+  if (stage && !["closedwon", "won"].includes(stage)) {
     return null;
   }
   const recurringFlag = payload.recurringRevenue ?? payload.recurring_revenue;
@@ -999,16 +1005,14 @@ function isQualifiedPipelineDeal(record: RawSourceRecordRow): boolean {
     return false;
   }
   const payload = asRecord(record.payload);
-  const stage = String(payload.dealstage ?? payload.stage ?? "")
-    .trim()
-    .toLowerCase();
-  if (["closedlost", "closed_lost", "lost", "appointmentscheduled"].includes(stage)) {
+  const stage = normalizeStageKey(payload.dealstage ?? payload.stage);
+  if (["closedlost", "lost", "appointmentscheduled"].includes(stage)) {
     return false;
   }
   return [
     "qualified",
     "salesqualifiedlead",
-    "sales_qualified",
+    "salesqualified",
     "proposal",
     "contractsent",
     "negotiation",
@@ -1210,10 +1214,8 @@ function isMarketingPipelineDeal(record: RawSourceRecordRow): boolean {
     return false;
   }
   const payload = asRecord(record.payload);
-  const stage = String(payload.dealstage ?? payload.stage ?? "")
-    .trim()
-    .toLowerCase();
-  if (["closedlost", "closed_lost", "lost", "appointmentscheduled"].includes(stage)) {
+  const stage = normalizeStageKey(payload.dealstage ?? payload.stage);
+  if (["closedlost", "lost", "appointmentscheduled"].includes(stage)) {
     return false;
   }
   const source = String(
