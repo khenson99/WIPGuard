@@ -142,6 +142,82 @@ describe("buildProcessAnalyticsData", () => {
       ]),
     );
   });
+
+  it("normalizes terminal stage labels for velocity, throughput, and leakage metrics", () => {
+    const data = baseData();
+    const recentDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+
+    data.hubspot = {
+      funnel: {
+        totalDeals: 2,
+        closedWon: 0,
+        closedLost: 1,
+        unlikely: 0,
+        churn: 0,
+        activeSubscriptions: 0,
+        noShows: 0,
+        demoScheduled: 0,
+        demoFollowUp: 0,
+        avgDealSize: 3000,
+        winRate: 0,
+        effectiveWinRate: 0,
+        noShowRate: 0,
+        stages: [
+          { stageId: "lead", label: "Lead", count: 1, value: 1000 },
+          { stageId: "closedlost", label: " closed lost ", count: 1, value: 5000 },
+        ],
+        dealsBySource: [{ source: "Organic", count: 2, value: 6000 }],
+      },
+      contacts: { totalContacts: 0, recentContacts: 0, bySource: [] },
+      deals: [
+        {
+          dealId: "open-deal",
+          dealName: "Open Deal",
+          stageId: "lead",
+          stageLabel: "Lead",
+          amount: 1000,
+          source: "Organic",
+          ownerId: "owner-1",
+          createdAt: recentDate,
+          updatedAt: recentDate,
+          pipelineId: null,
+          contactIds: [],
+          primaryContactId: null,
+          primaryContactEmail: null,
+        },
+        {
+          dealId: "lost-deal",
+          dealName: "Lost Deal",
+          stageId: "closedlost",
+          stageLabel: " closed lost ",
+          amount: 5000,
+          source: "Organic",
+          ownerId: "owner-1",
+          createdAt: recentDate,
+          updatedAt: recentDate,
+          pipelineId: null,
+          contactIds: [],
+          primaryContactId: null,
+          primaryContactEmail: null,
+        },
+      ],
+      _meta: META,
+    };
+
+    const process = buildProcessAnalyticsData(data);
+
+    expect(process.stageVelocity.map((stage) => stage.stageLabel)).toEqual(["Lead"]);
+    expect(process.throughput).toHaveLength(1);
+    expect(process.throughput[0]).toMatchObject({ entered: 1, exited: 1, netChange: 0 });
+    expect(process.leakagePoints).toEqual([
+      expect.objectContaining({
+        stage: "Closed Lost",
+        lostCount: 1,
+        lostValue: 5000,
+        pctOfTotal: 50,
+      }),
+    ]);
+  });
 });
 
 describe("buildSalesPerformancePack", () => {

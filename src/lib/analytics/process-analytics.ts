@@ -17,6 +17,19 @@ const PIPELINE_STAGES = [
 ] as const;
 
 const TERMINAL_STAGES = new Set(["Closed Won", "Closed Lost", "Unlikely", "Churn", "Ping Later", "On Hold"]);
+const LEAKAGE_STAGES = ["Closed Lost", "Unlikely", "Churn", "No-Show/Reschedule", "Ping Later", "On Hold"];
+const CANONICAL_STAGE_LABEL_BY_KEY = new Map(
+  [...PIPELINE_STAGES, ...TERMINAL_STAGES, ...LEAKAGE_STAGES].map((label) => [normalizeStageLabelKey(label), label])
+);
+
+function normalizeStageLabelKey(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function normalizeStageLabel(value: string | null | undefined): string {
+  const trimmed = value?.trim() ?? "";
+  return CANONICAL_STAGE_LABEL_BY_KEY.get(normalizeStageLabelKey(trimmed)) ?? trimmed;
+}
 
 function percentile(values: number[], p: number): number {
   if (values.length === 0) return 0;
@@ -36,16 +49,17 @@ function buildStageVelocity(data: AnalyticsDashboardData): StageVelocity[] {
   if (deals.length === 0) return [];
 
   return stages
-    .filter((stage) => !TERMINAL_STAGES.has(stage.label))
+    .filter((stage) => !TERMINAL_STAGES.has(normalizeStageLabel(stage.label)))
     .map((stage) => {
-      const stageDeals = deals.filter((d) => d.stageLabel === stage.label);
+      const stageLabel = normalizeStageLabel(stage.label);
+      const stageDeals = deals.filter((d) => normalizeStageLabel(d.stageLabel) === stageLabel);
       const dayValues = stageDeals
         .filter((d) => d.updatedAt)
         .map((d) => Math.max(1, Math.round((Date.now() - new Date(d.updatedAt!).getTime()) / 86_400_000)));
 
       return {
         stageId: stage.stageId,
-        stageLabel: stage.label,
+        stageLabel,
         avgDays: dayValues.length > 0 ? Math.round((dayValues.reduce((a, b) => a + b, 0) / dayValues.length) * 10) / 10 : 0,
         medianDays: median(dayValues),
         p90Days: percentile(dayValues, 90),
@@ -91,7 +105,7 @@ function buildBottlenecks(velocity: StageVelocity[]): ProcessBottleneck[] {
 
 function buildConversionByStage(data: AnalyticsDashboardData): StageConversion[] {
   const stages = data.hubspot?.funnel?.stages ?? [];
-  const stageMap = new Map(stages.map((s) => [s.label, s]));
+  const stageMap = new Map(stages.map((s) => [normalizeStageLabel(s.label), s]));
   const conversions: StageConversion[] = [];
 
   for (let i = 0; i < PIPELINE_STAGES.length - 1; i++) {
@@ -100,8 +114,8 @@ function buildConversionByStage(data: AnalyticsDashboardData): StageConversion[]
     if (!from || !to || from.count === 0) continue;
 
     conversions.push({
-      fromStage: from.label,
-      toStage: to.label,
+      fromStage: normalizeStageLabel(from.label),
+      toStage: normalizeStageLabel(to.label),
       conversionRate: Math.round((to.count / from.count) * 1000) / 10,
       avgDays: 0, // Approximated from velocity
       dealCount: from.count,
@@ -176,7 +190,7 @@ function buildThroughput(data: AnalyticsDashboardData): WeeklyThroughput[] {
     const weekKey = weekStart.toISOString().slice(0, 10);
 
     const entry = byWeek.get(weekKey) ?? { entered: 0, exited: 0 };
-    if (TERMINAL_STAGES.has(deal.stageLabel)) {
+    if (TERMINAL_STAGES.has(normalizeStageLabel(deal.stageLabel))) {
       entry.exited += 1;
     } else {
       entry.entered += 1;
@@ -197,10 +211,9 @@ function buildThroughput(data: AnalyticsDashboardData): WeeklyThroughput[] {
 function buildLeakagePoints(data: AnalyticsDashboardData): LeakagePoint[] {
   const stages = data.hubspot?.funnel?.stages ?? [];
   const totalDeals = data.hubspot?.funnel?.totalDeals ?? 0;
-  const leakageStages = ["Closed Lost", "Unlikely", "Churn", "No-Show/Reschedule", "Ping Later", "On Hold"];
-  const stageMap = new Map(stages.map((s) => [s.label, s]));
+  const stageMap = new Map(stages.map((s) => [normalizeStageLabel(s.label), s]));
 
-  return leakageStages
+  return LEAKAGE_STAGES
     .map((label) => {
       const stage = stageMap.get(label);
       if (!stage || stage.count === 0) return null;
