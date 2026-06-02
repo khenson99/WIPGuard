@@ -182,6 +182,23 @@ describe("buildForecastScenario", () => {
     expect(scenario.months[0].projectedMrr).toBeCloseTo(10_560, 2);
   });
 
+  it("normalizes ratio-style revenue growth values before projecting scenario revenue", () => {
+    const stripe = makeStripe({
+      revenue: {
+        mrr: 10_000,
+        mrrChange: 1200,
+        totalRevenue30d: 12_000,
+        totalRevenuePrev30d: 10_800,
+        revenueGrowth: 0.10,
+        avgRevenuePerCustomer: 200,
+      },
+    });
+
+    const scenario = buildForecastScenario(stripe, makeMercury(), DEFAULT_ASSUMPTIONS, { months: 1 });
+
+    expect(scenario.months[0].projectedMrr).toBeCloseTo(10_560, 2);
+  });
+
   it("uses canonical MRR including HubSpot-only annual subscriptions", () => {
     const hubspot = makeHubSpot({
       subscriptionDeals: [subscriptionDeal(12_000)],

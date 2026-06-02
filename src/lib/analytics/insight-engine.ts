@@ -342,7 +342,7 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
 function buildFinanceInsights(data: AnalyticsDashboardData): AiInsight[] {
   const insights: AiInsight[] = [];
   const runway = data.mercury?.cashFlow?.runway ?? 0;
-  const revenueGrowth = data.stripe?.revenue?.revenueGrowth ?? 0;
+  const revenueGrowth = normalizePercentValue(data.stripe?.revenue?.revenueGrowth ?? 0);
   const burnRate = data.mercury?.cashFlow?.burnRate ?? 0;
   const churnRate = normalizePercentValue(data.stripe?.subscriptions?.churnRate ?? 0);
   const paymentSuccessRate = normalizePercentValue(data.stripe?.payments?.successRate ?? 1);
@@ -827,7 +827,7 @@ function buildBurnRateTrendInsights(
   stale: boolean,
 ): AiInsight[] {
   const burnRate = data.mercury?.cashFlow?.burnRate ?? 0;
-  const revenueGrowth = data.stripe?.revenue?.revenueGrowth ?? 0;
+  const revenueGrowth = normalizePercentValue(data.stripe?.revenue?.revenueGrowth ?? 0);
   const mrr = canonicalMrr(data);
 
   if (burnRate <= 0 || mrr <= 0) return [];
@@ -939,7 +939,7 @@ function buildExpenseRevenueGrowthDivergenceInsights(
   data: AnalyticsDashboardData,
   stale: boolean,
 ): AiInsight[] {
-  const revenueGrowth = data.stripe?.revenue?.revenueGrowth ?? 0;
+  const revenueGrowth = normalizePercentValue(data.stripe?.revenue?.revenueGrowth ?? 0);
   const outflows = data.mercury?.cashFlow?.outflows30d ?? 0;
   const revenue = data.stripe?.revenue?.totalRevenue30d ?? 0;
 
@@ -1380,7 +1380,7 @@ function buildCrossdomainInsights(data: AnalyticsDashboardData): AiInsight[] {
   }
 
   // 2. Revenue growing but urgent support conversations also rising
-  const revenueGrowth = data.stripe?.revenue?.revenueGrowth ?? 0;
+  const revenueGrowth = normalizePercentValue(data.stripe?.revenue?.revenueGrowth ?? 0);
   const urgentConversations = data.pylon?.urgentConversations ?? 0;
   if (revenueGrowth > 5 && urgentConversations > 15) {
     insights.push({

@@ -182,6 +182,26 @@ describe("projectMrr", () => {
     expect(result[1].mrr).toBeCloseTo(10_600, 0);
   });
 
+  it("normalizes ratio-style revenue growth values before projecting MRR", () => {
+    const data = makeData({
+      stripe: {
+        revenue: {
+          mrr: 10_000,
+          mrrChange: 1200,
+          totalRevenue30d: 12_000,
+          totalRevenuePrev30d: 10_800,
+          revenueGrowth: 0.10,
+          avgRevenuePerCustomer: 200,
+        },
+      },
+    });
+
+    const result = projectMrr(data, 1);
+
+    expect(result[1].newMrr).toBeCloseTo(1000, 0);
+    expect(result[1].mrr).toBeCloseTo(10_600, 0);
+  });
+
   it("uses canonical MRR including HubSpot-only annual subscriptions", () => {
     const data = makeData({
       hubspot: {
@@ -588,6 +608,29 @@ describe("runSensitivityAnalysis", () => {
     expect(growthResult.impactOnMrr12m).toBeGreaterThan(0);
   });
 
+  it("normalizes ratio-style revenue growth values before sensitivity analysis", () => {
+    const results = runSensitivityAnalysis(makeData({
+      stripe: {
+        revenue: {
+          mrr: 10_000,
+          mrrChange: 1200,
+          totalRevenue30d: 12_000,
+          totalRevenuePrev30d: 10_800,
+          revenueGrowth: 0.10,
+          avgRevenuePerCustomer: 200,
+        },
+      },
+    }), {
+      churnDelta: 0,
+      growthDelta: 0.05,
+      burnDelta: 0,
+    });
+
+    const growthResult = results.find((r) => r.parameter === "Growth Rate")!;
+    expect(growthResult.baseValue).toBe(10);
+    expect(growthResult.adjustedValue).toBeCloseTo(15, 5);
+  });
+
   it("reducing burn increases runway", () => {
     const results = runSensitivityAnalysis(makeData(), {
       churnDelta: 0,
@@ -686,6 +729,26 @@ describe("scoreFinancialHealth", () => {
     expect(payment.detail).toBe("96.0%");
     expect(payment.score).toBe(65);
   });
+
+  it("normalizes ratio-style revenue growth before health scoring", () => {
+    const { components } = scoreFinancialHealth(makeData({
+      stripe: {
+        revenue: {
+          mrr: 10_000,
+          mrrChange: 1200,
+          totalRevenue30d: 12_000,
+          totalRevenuePrev30d: 10_800,
+          revenueGrowth: 0.10,
+          avgRevenuePerCustomer: 200,
+        },
+      },
+    }));
+
+    const growth = components.find((c) => c.label === "MRR Growth")!;
+    expect(growth.detail).toBe("10.0% monthly");
+    expect(growth.score).toBe(75);
+  });
+
 
   it("uses canonical MRR for pipeline coverage scoring", () => {
     const { components } = scoreFinancialHealth(makeData({

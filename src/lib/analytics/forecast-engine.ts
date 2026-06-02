@@ -113,7 +113,7 @@ export function buildForecastScenario(
   opts: { id?: string; name?: string; months?: number; hubspot?: HubSpotData | null } = {},
 ): ForecastScenarioData {
   const currentMrr = canonicalMrr(stripe, opts.hubspot);
-  const baseGrowthRate = (stripe?.revenue?.revenueGrowth ?? 0) / 100;
+  const baseGrowthRate = percentRate(stripe?.revenue?.revenueGrowth);
   const baseChurnRate = percentRate(stripe?.subscriptions?.churnRate);
   const cashBalance = mercury?.cashFlow?.totalBalance ?? 0;
   const baseExpenses = mercury?.cashFlow?.outflows30d ?? 0;

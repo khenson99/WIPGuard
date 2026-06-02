@@ -77,9 +77,39 @@ describe("metric history finance extraction", () => {
     const extract = financeExtractors();
 
     expect(extract["stripe.churnRate"]?.(data)).toBe(4);
+    expect(extract["stripe.revenueGrowth"]?.(data)).toBe(9.1);
     expect(extract["stripe.activeSubscriptions"]?.(data)).toBe(40);
     expect(extract["mercury.totalBalance"]?.(data)).toBe(500000);
     expect(extract["mercury.netCashFlow"]?.(data)).toBe(-27000);
+  });
+
+  it("normalizes ratio-style revenue growth before extracting history", () => {
+    const data = {
+      stripe: {
+        revenue: {
+          mrr: 10000,
+          mrrChange: 500,
+          totalRevenue30d: 12000,
+          totalRevenuePrev30d: 11000,
+          revenueGrowth: 0.091,
+          avgRevenuePerCustomer: 250,
+        },
+        subscriptions: {
+          active: 40,
+          pastDue: 2,
+          canceled: 1,
+          trialing: 3,
+          churnRate: 0.04,
+          recentChurnEvents: [],
+        },
+        payments: { succeeded: 79, failed: 1, successRate: 0.987 },
+        revenueTrend: [],
+      },
+    } as unknown as AnalyticsDashboardData;
+
+    const extract = financeExtractors();
+
+    expect(extract["stripe.revenueGrowth"]?.(data)).toBe(9.1);
   });
 
   it("normalizes ratio-style GA bounce rate before extracting history", () => {

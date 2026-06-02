@@ -1039,6 +1039,37 @@ describe("cross-domain insights", () => {
     expect(growthVsSupport!.section).toBe("customer-success");
   });
 
+  it("normalizes ratio-style revenue growth before cross-domain thresholding", () => {
+    const data = baseData();
+    data.stripe = {
+      revenue: {
+        mrr: 25000, mrrChange: 8,
+        totalRevenue30d: 27000, totalRevenuePrev30d: 24000,
+        revenueGrowth: 0.125, avgRevenuePerCustomer: 600,
+      },
+      subscriptions: {
+        active: 42, pastDue: 1, canceled: 1, trialing: 3,
+        churnRate: 0.02, recentChurnEvents: [],
+      },
+      payments: { succeeded: 100, failed: 3, successRate: 0.97 },
+      revenueTrend: [],
+      _meta: META,
+    };
+    data.pylon = {
+      openConversations: 35, urgentConversations: 20,
+      waitingOnTeam: 15, resolvedInRange: 25,
+      avgFirstResponseMinutes: 60, csat: 3.8,
+      _meta: META,
+    };
+
+    const bundle = buildAiInsightsBundle(data);
+    const growthVsSupport = bundle.global.find((i) => i.id === "ai-xd-growth-vs-support");
+
+    expect(growthVsSupport).toBeDefined();
+    expect(growthVsSupport!.why).toContain("Revenue growing 12.5%");
+    expect(growthVsSupport!.evidence[0]?.value).toBe("12.5%");
+  });
+
   it("fires low runway + small deal size", () => {
     const data = baseData();
     data.mercury = {
