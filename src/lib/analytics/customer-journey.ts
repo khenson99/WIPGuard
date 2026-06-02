@@ -10,6 +10,7 @@ import type {
   TouchpointSummary,
 } from "@/lib/analytics/types";
 import { CANONICAL_STAGE_ORDER } from "@/lib/analytics/customer-journey-conversion";
+import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
 
 // ── HubSpot source → synthetic channel mapping ──
 
@@ -62,13 +63,17 @@ function stripeTouchpoints(data: AnalyticsDashboardData): Touchpoint[] {
       value: -evt.amount,
     });
   }
-  if (data.stripe?.subscriptions?.active) {
+  const subscriptionBreakdown = buildSubscriptionMrrBreakdown({
+    stripe: data.stripe,
+    hubspot: data.hubspot,
+  });
+  if (subscriptionBreakdown.mergedActiveSubscriptions > 0) {
     touchpoints.push({
       timestamp: new Date().toISOString(),
       channel: "stripe",
       type: "conversion",
-      detail: `${data.stripe.subscriptions.active} active subscriptions`,
-      value: data.stripe.revenue?.mrr ?? null,
+      detail: `${subscriptionBreakdown.mergedActiveSubscriptions} active subscriptions`,
+      value: subscriptionBreakdown.totalMrr,
     });
   }
   return touchpoints;
@@ -270,6 +275,7 @@ function buildJourneys(data: AnalyticsDashboardData): CustomerJourneyRecord[] {
       (tp) =>
         tp.detail.includes(deal.dealName) ||
         tp.channel === "hubspot" ||
+        (tp.channel === "stripe" && tp.type === "conversion") ||
         tp.channel === "webflow" ||
         tp.type === "first-touch"
     );

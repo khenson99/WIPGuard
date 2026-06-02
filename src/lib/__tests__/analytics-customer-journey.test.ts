@@ -103,6 +103,114 @@ describe("buildCustomerJourneyData", () => {
     expect(journey.avgTouchpoints).toBeGreaterThan(0);
   });
 
+  it("includes canonical subscription conversion touchpoints in journeys", () => {
+    const data = baseData();
+    data.hubspot = {
+      funnel: {
+        ...MINIMAL_FUNNEL,
+        totalDeals: 1,
+        activeSubscriptions: 2,
+      },
+      contacts: MINIMAL_CONTACTS,
+      deals: [
+        deal({
+          dealId: "deal-subscription",
+          dealName: "Subscription Buyer",
+          stageId: "closed-won",
+          stageLabel: "Closed Won",
+          amount: 5000,
+          source: "Organic",
+        }),
+      ],
+      subscriptionDeals: [
+        {
+          dealId: "linked-subscription",
+          dealName: "Linked subscription",
+          stageId: "subscriptions",
+          stageLabel: "Subscriptions",
+          amount: 12000,
+          source: "Referral",
+          ownerId: null,
+          updatedAt: "2026-02-10T00:00:00.000Z",
+          createdAt: "2026-02-01T00:00:00.000Z",
+          closedAt: "2026-02-10T00:00:00.000Z",
+          stripeCustomerId: "cus_linked",
+          pipelineId: "subscription-pipeline",
+          contactIds: [],
+          primaryContactId: null,
+          primaryContactEmail: "linked@example.com",
+        },
+        {
+          dealId: "hubspot-only-subscription",
+          dealName: "HubSpot only subscription",
+          stageId: "subscriptions",
+          stageLabel: "Subscriptions",
+          amount: 24000,
+          source: "Referral",
+          ownerId: null,
+          updatedAt: "2026-02-10T00:00:00.000Z",
+          createdAt: "2026-02-01T00:00:00.000Z",
+          closedAt: "2026-02-10T00:00:00.000Z",
+          stripeCustomerId: null,
+          pipelineId: "subscription-pipeline",
+          contactIds: [],
+          primaryContactId: null,
+          primaryContactEmail: "buyer@example.org",
+        },
+      ],
+      _meta: META,
+    };
+    data.stripe = {
+      revenue: {
+        mrr: 12000,
+        mrrChange: 0,
+        totalRevenue30d: 12000,
+        totalRevenuePrev30d: 12000,
+        revenueGrowth: 0,
+        avgRevenuePerCustomer: 600,
+      },
+      subscriptions: {
+        active: 20,
+        pastDue: 0,
+        canceled: 0,
+        trialing: 0,
+        churnRate: 0,
+        activeCustomerRefs: [
+          {
+            customerId: "cus_linked",
+            email: "linked@example.com",
+            emailDomain: "example.com",
+          },
+        ],
+        recentChurnEvents: [],
+      },
+      payments: { succeeded: 20, failed: 0, successRate: 1 },
+      revenueTrend: [],
+      _meta: META,
+    };
+
+    const journey = buildCustomerJourneyData(data);
+
+    expect(journey.journeys[0].touchpoints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: "stripe",
+          type: "conversion",
+          detail: "21 active subscriptions",
+          value: 14000,
+        }),
+      ]),
+    );
+    expect(journey.touchpointSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: "stripe",
+          conversionCount: 1,
+        }),
+      ]),
+    );
+  });
+
   it("populates stageOrder from pipeline stages", () => {
     const data = baseData();
     data.hubspot = {
