@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CANONICAL_DEPARTMENTS,
+  IMLADRIS_METRIC_DEFINITIONS,
   REQUIRED_IMLADRIS_PROVIDERS,
   getImladrisDashboardDefinition,
 } from "@/lib/imladris/catalog";
@@ -69,5 +70,14 @@ describe("Imladris catalog", () => {
     expect(marketing?.sourceKeys).toContain("reddit");
     expect(marketing?.sourceKeys).toContain("coda");
     expect(marketing?.sourceKeys).toContain("webflow");
+  });
+
+  it("declares units that match canonical metric values", () => {
+    expect(
+      IMLADRIS_METRIC_DEFINITIONS.find((metric) => metric.key === "finance.cash_runway_months")?.unit,
+    ).toBe("months");
+    expect(
+      IMLADRIS_METRIC_DEFINITIONS.find((metric) => metric.key === "product.activation_rate")?.unit,
+    ).toBe("percent");
   });
 });

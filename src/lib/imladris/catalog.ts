@@ -40,7 +40,7 @@ export interface ImladrisMetricDefinition {
   key: string;
   label: string;
   department: ImladrisDepartment | "operating";
-  unit: "currency" | "count" | "days" | "percent" | "score" | "ratio";
+  unit: "currency" | "count" | "days" | "months" | "percent" | "score" | "ratio";
   sourceKeys: ImladrisProviderKey[];
   description: string;
 }
@@ -199,7 +199,7 @@ export const IMLADRIS_METRIC_DEFINITIONS: ImladrisMetricDefinition[] = [
     key: "finance.cash_runway_months",
     label: "Cash Runway",
     department: "finance",
-    unit: "days",
+    unit: "months",
     sourceKeys: ["mercury", "stripe"],
     description: "Estimated months of runway from canonical cash and burn facts.",
   },

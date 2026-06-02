@@ -692,7 +692,7 @@ describe("Imladris canonical materialization", () => {
       status: "READY",
       rawRecordCount: 3,
       value: {
-        rate: 0.5,
+        rate: 50,
         activatedAccounts: 1,
         eligibleAccounts: 2,
       },
@@ -722,7 +722,7 @@ describe("Imladris canonical materialization", () => {
         unit: "percent",
         status: "READY",
         value: {
-          rate: 0.5,
+          rate: 50,
           activatedAccounts: 1,
           eligibleAccounts: 2,
         },
@@ -730,7 +730,7 @@ describe("Imladris canonical materialization", () => {
       update: expect.objectContaining({
         status: "READY",
         value: {
-          rate: 0.5,
+          rate: 50,
           activatedAccounts: 1,
           eligibleAccounts: 2,
         },
@@ -836,7 +836,7 @@ describe("Imladris canonical materialization", () => {
         create: expect.objectContaining({
           metricKey: "finance.cash_runway_months",
           department: "finance",
-          unit: "days",
+          unit: "months",
           status: "READY",
         }),
       }),

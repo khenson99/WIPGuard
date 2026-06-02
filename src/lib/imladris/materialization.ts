@@ -465,7 +465,7 @@ function computeActivationRate(records: RawSourceRecordRow[]) {
   const activatedAccounts = activatedAccountIds.size;
 
   return {
-    rate: eligibleAccounts === 0 ? 0 : activatedAccounts / eligibleAccounts,
+    rate: eligibleAccounts === 0 ? 0 : roundRatio((activatedAccounts / eligibleAccounts) * 100),
     activatedAccounts,
     eligibleAccounts,
   };
@@ -920,7 +920,7 @@ export async function materializeImladrisFinanceMetrics(
     {
       metricKey: "finance.cash_runway_months",
       department: "finance",
-      unit: "days",
+      unit: "months",
       value: values.runway,
       calculationVersion: FINANCE_CASH_RUNWAY_CALCULATION_VERSION,
     },
