@@ -13,6 +13,7 @@ import {
   WebflowContentFreshness,
   AnalyticsTimestamp,
 } from "./types";
+import { computeKanbanBounceComparison } from "./kanban-bounce-comparison";
 
 type GAReportValue = { value?: string };
 type GAReportRow = { dimensionValues?: GAReportValue[]; metricValues?: GAReportValue[] };
@@ -248,7 +249,7 @@ export async function fetchGAData(
   };
 
   // Run all requests in parallel
-  const [current30d, previous30d, trafficAndTrend, topPageResult] = await Promise.all([
+  const [current30d, previous30d, trafficAndTrend, topPageResult, topPagesPrevious] = await Promise.all([
     // Request 1: Current 30d metrics
     fetchReport(
       {
@@ -304,6 +305,8 @@ export async function fetchGAData(
         metrics: [
           { name: "screenPageViews" },
           { name: "averageSessionDuration" },
+          { name: "sessions" },
+          { name: "bounceRate" },
         ],
         orderBys: [
           {
@@ -313,6 +316,28 @@ export async function fetchGAData(
         ],
       },
       "top pages",
+    ),
+
+    // Request 5: Previous-period top pages used for landing-page bounce deltas.
+    fetchReport(
+      {
+        dateRanges: previousRange,
+        dimensions: [{ name: "pagePath" }],
+        metrics: [
+          { name: "screenPageViews" },
+          { name: "averageSessionDuration" },
+          { name: "sessions" },
+          { name: "bounceRate" },
+        ],
+        limit: 100,
+        orderBys: [
+          {
+            metric: { metricName: "screenPageViews" },
+            desc: true,
+          },
+        ],
+      },
+      "top pages previous",
     ),
   ]);
   const topPageRows = topPageResult.rows;
@@ -330,6 +355,7 @@ export async function fetchGAData(
   const sessionsPrev30d = readMetricInt(previous30dRow[0]?.value);
   const usersPrev30d = readMetricInt(previous30dRow[1]?.value);
   const pageviewsPrev30d = readMetricInt(previous30dRow[2]?.value);
+  const bounceRatePrev30d = readMetricFloat(previous30dRow[3]?.value);
 
   // Parse traffic by channel
   const trafficByChannelMap: Record<string, GATrafficChannel> = {};
@@ -371,14 +397,24 @@ export async function fetchGAData(
   }));
 
   // Parse top pages
-  const topPages: GATopPage[] = topPageRows.map((row: GAReportRow) => {
+  const parseTopPage = (row: GAReportRow): GATopPage => {
     const dimensionValues = row.dimensionValues ?? [];
     const metricValues = row.metricValues ?? [];
     return {
       path: dimensionValues[0]?.value || "/",
       pageviews: readMetricInt(metricValues[0]?.value),
       avgDuration: readMetricFloat(metricValues[1]?.value),
+      sessions: readMetricInt(metricValues[2]?.value),
+      bounceRate: readMetricFloat(metricValues[3]?.value),
     };
+  };
+
+  const topPages: GATopPage[] = topPageRows.map(parseTopPage);
+  const topPagesPrev30d: GATopPage[] = (topPagesPrevious.rows ?? []).map(parseTopPage);
+  const kanbanBounceComparison = computeKanbanBounceComparison({
+    siteBounceRate: bounceRate,
+    topPages,
+    topPagesPrev: topPagesPrev30d,
   });
 
   const truncatedResources = [
@@ -396,9 +432,12 @@ export async function fetchGAData(
     pageviews30d,
     pageviewsPrev30d,
     bounceRate,
+    bounceRatePrev30d,
     avgSessionDuration,
     trafficByChannel,
     topPages,
+    topPagesPrev30d,
+    kanbanBounceComparison,
     dailyTrend,
     _meta: meta,
   };

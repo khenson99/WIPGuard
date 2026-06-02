@@ -103,20 +103,28 @@ describe("google analytics fetcher", () => {
       )
       .filter((body) => body.dimensions?.some((dimension) => dimension.name === "pagePath"));
 
-    expect(topPageRequests).toEqual([
-      expect.objectContaining({ limit: 100, offset: 0 }),
-      expect.objectContaining({ limit: 100, offset: 100 }),
-    ]);
+    expect(topPageRequests).toHaveLength(3);
+    expect(topPageRequests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ limit: 100, offset: 0 }),
+        expect.objectContaining({ limit: 100, offset: 100 }),
+        expect.objectContaining({ limit: 100 }),
+      ])
+    );
     expect(data.topPages).toHaveLength(101);
     expect(data.topPages[0]).toEqual({
       path: "/page-1",
       pageviews: 1000,
       avgDuration: 30,
+      sessions: 0,
+      bounceRate: 0,
     });
     expect(data.topPages.at(-1)).toEqual({
       path: "/page-101",
       pageviews: 1,
       avgDuration: 5,
+      sessions: 0,
+      bounceRate: 0,
     });
   });
 
@@ -192,7 +200,9 @@ describe("google analytics fetcher", () => {
       { channel: "Direct", sessions: 15, users: 0, pageviews: 30 },
     ]);
     expect(data.dailyTrend).toEqual([{ date: "2026-06-01", sessions: 15 }]);
-    expect(data.topPages).toEqual([{ path: "/analytics", pageviews: 0, avgDuration: 0 }]);
+    expect(data.topPages).toEqual([
+      { path: "/analytics", pageviews: 0, avgDuration: 0, sessions: 0, bounceRate: 0 },
+    ]);
   });
 
   it("bypasses fetch cache for GA4 token and report requests", async () => {
@@ -259,7 +269,7 @@ describe("google analytics fetcher", () => {
     expect(tokenCall?.[1]).toEqual(expect.objectContaining({
       cache: "no-store",
     }));
-    expect(reportCalls).toHaveLength(4);
+    expect(reportCalls).toHaveLength(5);
     expect(reportCalls.every(([, init]) => init?.cache === "no-store")).toBe(true);
   });
 
@@ -330,8 +340,11 @@ describe("google analytics fetcher", () => {
       )
       .filter((body) => body.dimensions?.some((dimension) => dimension.name === "pagePath"));
 
-    expect(topPageRequests).toHaveLength(100);
-    expect(topPageRequests.at(-1)?.offset).toBe(9_900);
+    const currentPageOffsets = topPageRequests
+      .map((request) => request.offset)
+      .filter((offset): offset is number => typeof offset === "number");
+    expect(topPageRequests).toHaveLength(101);
+    expect(Math.max(...currentPageOffsets)).toBe(9_900);
     expect(data.topPages).toHaveLength(10_000);
     expect(data._meta).toEqual(expect.objectContaining({
       truncated: true,

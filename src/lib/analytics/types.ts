@@ -488,6 +488,25 @@ export interface GATopPage {
   path: string;
   pageviews: number;
   avgDuration: number;
+  sessions?: number;
+  bounceRate?: number;
+}
+
+export interface KanbanBounceComparison {
+  matchedPaths: string[];
+  kanbanBounceRate: number;
+  kanbanSessions: number;
+  siteBounceRate: number;
+  deltaVsSitePts: number;
+  periodDeltaPts: number | null;
+  rankAmongPeers: number | null;
+  peerCount: number;
+  peerPages: Array<{
+    path: string;
+    bounceRate: number;
+    sessions: number;
+  }>;
+  verdict: "better" | "worse" | "comparable";
 }
 
 export interface GAData {
@@ -498,9 +517,12 @@ export interface GAData {
   pageviews30d: number;
   pageviewsPrev30d: number;
   bounceRate: number;
+  bounceRatePrev30d?: number;
   avgSessionDuration: number;
   trafficByChannel: GATrafficChannel[];
   topPages: GATopPage[];
+  topPagesPrev30d?: GATopPage[];
+  kanbanBounceComparison?: KanbanBounceComparison | null;
   dailyTrend: { date: string; sessions: number }[];
   _meta: AnalyticsTimestamp;
 }
