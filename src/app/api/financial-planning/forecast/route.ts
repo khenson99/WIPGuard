@@ -10,6 +10,7 @@ import {
 import type {
   StripeData,
   MercuryData,
+  HubSpotData,
   ForecastAssumptions,
 } from "@/lib/analytics/types";
 
@@ -39,7 +40,7 @@ function toForecastAssumptions(value: unknown): ForecastAssumptions {
 
 async function loadFinancialData(
   userId: string,
-): Promise<{ stripe: StripeData | null; mercury: MercuryData | null }> {
+): Promise<{ stripe: StripeData | null; mercury: MercuryData | null; hubspot: HubSpotData | null }> {
   const snapshot = await prisma.analyticsSnapshot.findFirst({
     where: { userId },
     orderBy: { capturedAt: "desc" },
@@ -52,8 +53,9 @@ async function loadFinancialData(
       : null;
   const stripe = (dashboardData?.stripe as StripeData | null) ?? null;
   const mercury = (dashboardData?.mercury as MercuryData | null) ?? null;
+  const hubspot = (dashboardData?.hubspot as HubSpotData | null) ?? null;
 
-  return { stripe, mercury };
+  return { stripe, mercury, hubspot };
 }
 
 export async function GET(): Promise<NextResponse> {
@@ -65,19 +67,19 @@ export async function GET(): Promise<NextResponse> {
 
     const userId = (session.user as { id: string }).id;
 
-    const [{ stripe, mercury }, savedScenarios] = await Promise.all([
+    const [{ stripe, mercury, hubspot }, savedScenarios] = await Promise.all([
       loadFinancialData(userId),
       prisma.forecastScenario.findMany({ where: { userId } }),
     ]);
 
-    const defaults = buildDefaultScenarios(stripe, mercury);
+    const defaults = buildDefaultScenarios(stripe, mercury, 18, hubspot);
 
     const custom = savedScenarios.map((scenario) =>
       buildForecastScenario(
         stripe,
         mercury,
         toForecastAssumptions(scenario.assumptions),
-        { id: scenario.id, name: scenario.name },
+        { id: scenario.id, name: scenario.name, hubspot },
       ),
     );
 
@@ -124,13 +126,13 @@ export async function POST(
       },
     });
 
-    const { stripe, mercury } = await loadFinancialData(userId);
+    const { stripe, mercury, hubspot } = await loadFinancialData(userId);
 
     const result = buildForecastScenario(
       stripe,
       mercury,
       toForecastAssumptions(scenario.assumptions),
-      { id: scenario.id, name: scenario.name },
+      { id: scenario.id, name: scenario.name, hubspot },
     );
 
     return NextResponse.json(result, { status: 201 });

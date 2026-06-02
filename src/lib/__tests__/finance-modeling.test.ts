@@ -99,6 +99,26 @@ function makeHubSpot(overrides: Partial<HubSpotData> = {}): HubSpotData {
   };
 }
 
+function subscriptionDeal(amount: number): NonNullable<HubSpotData["subscriptionDeals"]>[number] {
+  return {
+    dealId: `sub-${amount}`,
+    dealName: `Subscription ${amount}`,
+    stageId: "subscriptions",
+    stageLabel: "Subscriptions",
+    amount,
+    source: "Referral",
+    ownerId: null,
+    updatedAt: "2026-01-10T00:00:00Z",
+    createdAt: "2026-01-01T00:00:00Z",
+    closedAt: "2026-01-10T00:00:00Z",
+    stripeCustomerId: null,
+    pipelineId: "subscription-pipeline",
+    contactIds: [],
+    primaryContactId: null,
+    primaryContactEmail: "buyer@example.com",
+  };
+}
+
 function makeData(opts?: {
   stripe?: Partial<StripeData> | null;
   mercury?: Partial<MercuryData> | null;
@@ -160,6 +180,21 @@ describe("projectMrr", () => {
 
     expect(result[1].churnedMrr).toBeCloseTo(400, 0);
     expect(result[1].mrr).toBeCloseTo(10_600, 0);
+  });
+
+  it("uses canonical MRR including HubSpot-only annual subscriptions", () => {
+    const data = makeData({
+      hubspot: {
+        subscriptionDeals: [subscriptionDeal(12_000)],
+      },
+    });
+
+    const result = projectMrr(data, 1);
+
+    expect(result[0].mrr).toBe(11_000);
+    expect(result[1].newMrr).toBeCloseTo(1_100, 0);
+    expect(result[1].churnedMrr).toBeCloseTo(440, 0);
+    expect(result[1].mrr).toBeCloseTo(11_660, 0);
   });
 
   it("compounds over multiple months", () => {
@@ -340,6 +375,20 @@ describe("computeFinancialGoals", () => {
     expect(mrrGoal!.unit).toBe("currency");
   });
 
+  it("uses canonical MRR for financial goals", () => {
+    const goals = computeFinancialGoals(makeData({
+      hubspot: {
+        subscriptionDeals: [subscriptionDeal(180_000)],
+      },
+    }));
+
+    const mrrGoal = goals.find((g) => g.id === "mrr-milestone");
+
+    expect(mrrGoal).toBeDefined();
+    expect(mrrGoal!.current).toBe(25_000);
+    expect(mrrGoal!.target).toBe(50_000);
+  });
+
   it("MRR goal is on track when net growth is positive", () => {
     const goals = computeFinancialGoals(makeData()); // growth=10%, churn=4% → net=6%
     const mrrGoal = goals.find((g) => g.id === "mrr-milestone");
@@ -487,6 +536,25 @@ describe("runSensitivityAnalysis", () => {
     expect(churnResult.adjustedValue).toBeLessThan(churnResult.baseValue);
   });
 
+  it("uses canonical MRR for sensitivity MRR impact", () => {
+    const results = runSensitivityAnalysis(makeData({
+      hubspot: {
+        subscriptionDeals: [subscriptionDeal(12_000)],
+      },
+    }), {
+      churnDelta: -0.02,
+      growthDelta: 0,
+      burnDelta: 0,
+    });
+
+    const churnResult = results.find((r) => r.parameter === "Churn Rate")!;
+    const expectedImpact =
+      11_000 * Math.pow(1.1 * 0.98, 12) -
+      11_000 * Math.pow(1.1 * 0.96, 12);
+
+    expect(churnResult.impactOnMrr12m).toBeCloseTo(expectedImpact, 5);
+  });
+
   it("normalizes ratio-style churn values before sensitivity analysis", () => {
     const results = runSensitivityAnalysis(makeData({
       stripe: {
@@ -617,6 +685,24 @@ describe("scoreFinancialHealth", () => {
     expect(churn.score).toBe(65);
     expect(payment.detail).toBe("96.0%");
     expect(payment.score).toBe(65);
+  });
+
+  it("uses canonical MRR for pipeline coverage scoring", () => {
+    const { components } = scoreFinancialHealth(makeData({
+      hubspot: {
+        funnel: {
+          ...makeHubSpot().funnel,
+          stages: [
+            { stageId: "s1", label: "Discovery", count: 3, value: 150_000 },
+          ],
+        },
+        subscriptionDeals: [subscriptionDeal(180_000)],
+      },
+    }));
+
+    const pipelineCoverage = components.find((c) => c.label === "Pipeline Coverage")!;
+
+    expect(pipelineCoverage.score).toBe(35);
   });
 
   it("component weights sum to 1.0", () => {

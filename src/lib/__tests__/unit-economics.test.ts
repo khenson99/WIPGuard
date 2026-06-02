@@ -93,6 +93,26 @@ function makeHubSpot(overrides: Partial<HubSpotData> = {}): HubSpotData {
   };
 }
 
+function subscriptionDeal(amount: number): NonNullable<HubSpotData["subscriptionDeals"]>[number] {
+  return {
+    dealId: `sub-${amount}`,
+    dealName: `Subscription ${amount}`,
+    stageId: "subscriptions",
+    stageLabel: "Subscriptions",
+    amount,
+    source: "Referral",
+    ownerId: null,
+    updatedAt: "2026-01-10T00:00:00Z",
+    createdAt: "2026-01-01T00:00:00Z",
+    closedAt: "2026-01-10T00:00:00Z",
+    stripeCustomerId: null,
+    pipelineId: "subscription-pipeline",
+    contactIds: [],
+    primaryContactId: null,
+    primaryContactEmail: "buyer@example.com",
+  };
+}
+
 /* ─── Tests ───────────────────────────────────────────────── */
 
 describe("computeUnitEconomics", () => {
@@ -103,6 +123,23 @@ describe("computeUnitEconomics", () => {
   it("computes ARPA from stripe avgRevenuePerCustomer", () => {
     const result = computeUnitEconomics(stripe, mercury, hubspot);
     expect(result.arpa).toBe(200);
+  });
+
+  it("uses canonical MRR and merged subscriptions for fallback ARPA", () => {
+    const stripeWithoutArpc = makeStripe({
+      revenue: {
+        ...stripe.revenue,
+        avgRevenuePerCustomer: 0,
+      },
+    });
+    const hubspotWithSubscriptions = makeHubSpot({
+      subscriptionDeals: [subscriptionDeal(12_000), subscriptionDeal(12_000)],
+    });
+
+    const result = computeUnitEconomics(stripeWithoutArpc, mercury, hubspotWithSubscriptions);
+
+    expect(result.arpa).toBe(230.77);
+    expect(result.avgRevenuePerAccount).toBe(230.77);
   });
 
   it("computes LTV = ARPA / churnDecimal", () => {

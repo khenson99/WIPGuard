@@ -5,7 +5,7 @@ import {
   buildForecastScenario,
   buildDefaultScenarios,
 } from "@/lib/analytics/forecast-engine";
-import type { StripeData, MercuryData, ForecastAssumptions } from "@/lib/analytics/types";
+import type { StripeData, MercuryData, ForecastAssumptions, HubSpotData } from "@/lib/analytics/types";
 
 const META = { fetchedAt: "2026-01-15T00:00:00Z", nextRefresh: "2026-01-15T01:00:00Z", source: "live" as const };
 
@@ -51,6 +51,51 @@ function makeMercury(overrides: Partial<MercuryData> = {}): MercuryData {
     },
     _meta: META,
     ...overrides,
+  };
+}
+
+function makeHubSpot(overrides: Partial<HubSpotData> = {}): HubSpotData {
+  return {
+    funnel: {
+      totalDeals: 0,
+      closedWon: 0,
+      closedLost: 0,
+      unlikely: 0,
+      churn: 0,
+      activeSubscriptions: 0,
+      noShows: 0,
+      demoScheduled: 0,
+      demoFollowUp: 0,
+      avgDealSize: 0,
+      winRate: 0,
+      effectiveWinRate: 0,
+      noShowRate: 0,
+      stages: [],
+      dealsBySource: [],
+    },
+    contacts: { totalContacts: 0, recentContacts: 0, bySource: [] },
+    _meta: META,
+    ...overrides,
+  };
+}
+
+function subscriptionDeal(amount: number): NonNullable<HubSpotData["subscriptionDeals"]>[number] {
+  return {
+    dealId: `sub-${amount}`,
+    dealName: `Subscription ${amount}`,
+    stageId: "subscriptions",
+    stageLabel: "Subscriptions",
+    amount,
+    source: "Referral",
+    ownerId: null,
+    updatedAt: "2026-01-10T00:00:00Z",
+    createdAt: "2026-01-01T00:00:00Z",
+    closedAt: "2026-01-10T00:00:00Z",
+    stripeCustomerId: null,
+    pipelineId: "subscription-pipeline",
+    contactIds: [],
+    primaryContactId: null,
+    primaryContactEmail: "buyer@example.com",
   };
 }
 
@@ -137,6 +182,21 @@ describe("buildForecastScenario", () => {
     expect(scenario.months[0].projectedMrr).toBeCloseTo(10_560, 2);
   });
 
+  it("uses canonical MRR including HubSpot-only annual subscriptions", () => {
+    const hubspot = makeHubSpot({
+      subscriptionDeals: [subscriptionDeal(12_000)],
+    });
+
+    const scenario = buildForecastScenario(
+      makeStripe(),
+      makeMercury(),
+      DEFAULT_ASSUMPTIONS,
+      { months: 1, hubspot },
+    );
+
+    expect(scenario.months[0].projectedMrr).toBeCloseTo(11_616, 2);
+  });
+
   it("handles null stripe or mercury", () => {
     const scenario = buildForecastScenario(null, null, DEFAULT_ASSUMPTIONS, { months: 1 });
     expect(scenario.months).toHaveLength(1);
@@ -161,5 +221,16 @@ describe("buildDefaultScenarios", () => {
     expect(base.assumptions.revenueGrowthRate).toBe(0);
     expect(optimistic.assumptions.revenueGrowthRate).toBe(50);
     expect(conservative.assumptions.revenueGrowthRate).toBe(-30);
+  });
+
+  it("builds defaults from canonical MRR when HubSpot-only subscriptions exist", () => {
+    const scenarios = buildDefaultScenarios(
+      makeStripe(),
+      makeMercury(),
+      1,
+      makeHubSpot({ subscriptionDeals: [subscriptionDeal(12_000)] }),
+    );
+
+    expect(scenarios[0].months[0].projectedMrr).toBeCloseTo(11_616, 2);
   });
 });

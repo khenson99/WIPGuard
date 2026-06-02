@@ -5,6 +5,7 @@
 
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
+import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
 
 /* ═══════════════════════════════════════════════════════════
    TYPES
@@ -121,6 +122,13 @@ function percentRate(value: number | null | undefined): number {
   return normalizePercentValue(value) / 100;
 }
 
+function canonicalMrr(data: AnalyticsDashboardData): number {
+  return buildSubscriptionMrrBreakdown({
+    stripe: data.stripe,
+    hubspot: data.hubspot,
+  }).totalMrr;
+}
+
 /* ═══════════════════════════════════════════════════════════
    1. MRR PROJECTIONS
    ═══════════════════════════════════════════════════════════ */
@@ -129,7 +137,7 @@ export function projectMrr(
   data: AnalyticsDashboardData,
   months: number = 12,
 ): MrrProjection[] {
-  const currentMrr = data.stripe?.revenue?.mrr ?? 0;
+  const currentMrr = canonicalMrr(data);
   // revenueGrowth is a percentage value (e.g. 12.5 for 12.5%)
   const monthlyGrowthRate = (data.stripe?.revenue?.revenueGrowth ?? 0) / 100;
   // churnRate is also a percentage (e.g. 5.2 for 5.2%)
@@ -238,7 +246,7 @@ export function computeFinancialGoals(
   data: AnalyticsDashboardData,
 ): FinancialGoal[] {
   const goals: FinancialGoal[] = [];
-  const mrr = data.stripe?.revenue?.mrr ?? 0;
+  const mrr = canonicalMrr(data);
   const growthRate = (data.stripe?.revenue?.revenueGrowth ?? 0) / 100;
   const churnRate = percentRate(data.stripe?.subscriptions?.churnRate);
   const runway = data.mercury?.cashFlow?.runway ?? 0;
@@ -364,7 +372,7 @@ export function runSensitivityAnalysis(
   adjustments: SensitivityAdjustment = { churnDelta: -0.02, growthDelta: 0.05, burnDelta: -0.1 },
 ): SensitivityResult[] {
   const results: SensitivityResult[] = [];
-  const currentMrr = data.stripe?.revenue?.mrr ?? 0;
+  const currentMrr = canonicalMrr(data);
   const growthRate = (data.stripe?.revenue?.revenueGrowth ?? 0) / 100;
   const churnRate = percentRate(data.stripe?.subscriptions?.churnRate);
   const burnRate = data.mercury?.cashFlow?.burnRate ?? 0;
@@ -475,7 +483,7 @@ function scorePaymentSuccess(rate: number): number {
 function scorePipelineCoverage(data: AnalyticsDashboardData): number {
   const pipeline = data.hubspot?.funnel;
   if (!pipeline) return 50; // Neutral if no data
-  const mrr = data.stripe?.revenue?.mrr ?? 0;
+  const mrr = canonicalMrr(data);
   if (mrr === 0) return 50;
   // Pipeline value vs annual MRR
   const annualMrr = mrr * 12;

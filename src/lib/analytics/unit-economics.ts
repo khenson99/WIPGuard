@@ -14,6 +14,7 @@ import type {
 } from "@/lib/analytics/types";
 import { categorizeMercuryTransaction } from "@/lib/analytics/budget-variance";
 import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
+import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
 import type { ExpenseRatios } from "./pnl-builder";
 
 // ---------------------------------------------------------------------------
@@ -143,14 +144,10 @@ export function computeUnitEconomics(
   // 1. ARPA — Average Revenue Per Account
   // ---------------------------------------------------------------------------
 
-  let arpa = 0;
-  if (stripe) {
-    arpa =
-      stripe.revenue.avgRevenuePerCustomer ||
-      (stripe.subscriptions.active > 0
-        ? stripe.revenue.mrr / stripe.subscriptions.active
-        : 0);
-  }
+  const subscriptionBreakdown = buildSubscriptionMrrBreakdown({ stripe, hubspot });
+  const arpa = subscriptionBreakdown.mergedActiveSubscriptions > 0
+    ? subscriptionBreakdown.totalMrr / subscriptionBreakdown.mergedActiveSubscriptions
+    : 0;
 
   // ---------------------------------------------------------------------------
   // 2. Monthly churn rate (decimal)

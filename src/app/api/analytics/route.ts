@@ -699,13 +699,13 @@ async function buildFinancialPlanningData(
   const unitEconomics = computeUnitEconomics(stripe, mercury, hubspot);
 
   // --- Forecasts: defaults + custom saved scenarios ---
-  const defaultForecasts = buildDefaultScenarios(stripe, mercury);
+  const defaultForecasts = buildDefaultScenarios(stripe, mercury, 18, hubspot);
   const customForecasts: ForecastScenarioData[] = dbForecasts.map((s: { id: string; name: string; assumptions: unknown }) =>
     buildForecastScenario(
       stripe,
       mercury,
       isForecastAssumptions(s.assumptions) ? s.assumptions : DEFAULT_ASSUMPTIONS,
-      { id: s.id, name: s.name },
+      { id: s.id, name: s.name, hubspot },
     ),
   );
   const forecasts = [...defaultForecasts, ...customForecasts];

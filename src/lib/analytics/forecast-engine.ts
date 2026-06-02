@@ -8,8 +8,10 @@ import type {
   ForecastScenarioData,
   StripeData,
   MercuryData,
+  HubSpotData,
 } from "@/lib/analytics/types";
 import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
+import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -24,6 +26,10 @@ function monthLabel(offset: number): string {
 
 function percentRate(value: number | null | undefined): number {
   return normalizePercentValue(value) / 100;
+}
+
+function canonicalMrr(stripe: StripeData | null, hubspot: HubSpotData | null | undefined): number {
+  return buildSubscriptionMrrBreakdown({ stripe, hubspot }).totalMrr;
 }
 
 // ---------------------------------------------------------------------------
@@ -104,9 +110,9 @@ export function buildForecastScenario(
   stripe: StripeData | null,
   mercury: MercuryData | null,
   assumptions: ForecastAssumptions,
-  opts: { id?: string; name?: string; months?: number } = {},
+  opts: { id?: string; name?: string; months?: number; hubspot?: HubSpotData | null } = {},
 ): ForecastScenarioData {
-  const currentMrr = stripe?.revenue?.mrr ?? 0;
+  const currentMrr = canonicalMrr(stripe, opts.hubspot);
   const baseGrowthRate = (stripe?.revenue?.revenueGrowth ?? 0) / 100;
   const baseChurnRate = percentRate(stripe?.subscriptions?.churnRate);
   const cashBalance = mercury?.cashFlow?.totalBalance ?? 0;
@@ -163,6 +169,7 @@ export function buildDefaultScenarios(
   stripe: StripeData | null,
   mercury: MercuryData | null,
   months: number = 18,
+  hubspot: HubSpotData | null = null,
 ): ForecastScenarioData[] {
   const baseBurn = mercury?.cashFlow?.outflows30d ?? 0;
 
@@ -195,16 +202,19 @@ export function buildDefaultScenarios(
       id: "default-base",
       name: "Base Case",
       months,
+      hubspot,
     }),
     buildForecastScenario(stripe, mercury, optimistic, {
       id: "default-optimistic",
       name: "Optimistic",
       months,
+      hubspot,
     }),
     buildForecastScenario(stripe, mercury, conservative, {
       id: "default-conservative",
       name: "Conservative",
       months,
+      hubspot,
     }),
   ];
 }

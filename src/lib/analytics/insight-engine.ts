@@ -575,7 +575,7 @@ function buildRunwayForecastInsights(
   ): AiInsight[] {
     if (!data.stripe && !data.mercury) return [];
 
-    const scenarios = buildDefaultScenarios(data.stripe ?? null, data.mercury ?? null);
+    const scenarios = buildDefaultScenarios(data.stripe ?? null, data.mercury ?? null, 18, data.hubspot ?? null);
     const conservative = scenarios.find((s) => s.id === "default-conservative");
     const base = scenarios.find((s) => s.id === "default-base");
 
@@ -875,7 +875,7 @@ function buildRevenueVsForecastInsights(
   ): AiInsight[] {
     if (!data.stripe) return [];
 
-    const scenarios = buildDefaultScenarios(data.stripe ?? null, data.mercury ?? null);
+    const scenarios = buildDefaultScenarios(data.stripe ?? null, data.mercury ?? null, 18, data.hubspot ?? null);
     const base = scenarios.find((s) => s.id === "default-base");
     if (!base || base.months.length < 1) return [];
 
