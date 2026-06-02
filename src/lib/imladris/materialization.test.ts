@@ -1391,6 +1391,71 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("reads nested Mercury finance fields before materialization", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_mercury_balance_nested",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "account_balance",
+            externalId: "balance_nested",
+            occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+            payload: {
+              properties: {
+                availableBalance: "$240,000.00",
+              },
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_mercury_txn_nested_outflow",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "transaction",
+            externalId: "txn_nested_outflow",
+            occurredAt: new Date("2026-05-05T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-05T00:00:00.000Z"),
+            payload: {
+              properties: {
+                amount: "-$120,000.00",
+              },
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "finance.net_burn")?.value).toMatchObject({
+      amount: 120_000,
+      cashOutflow: 120_000,
+      cashInflow: 0,
+    });
+    expect(results.find((result) => result.metricKey === "finance.cash_runway_months")?.value).toMatchObject({
+      months: 2,
+      cashBalance: 240_000,
+      netBurn: 120_000,
+    });
+  });
+
   it("excludes inactive Stripe subscriptions with formatted statuses from canonical MRR", async () => {
     const prisma = {
       imladrisRawSourceRecord: {

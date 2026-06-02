@@ -604,22 +604,33 @@ export async function materializeImladrisProductActivationMetric(
 
 function transactionAmount(record: RawSourceRecordRow): number | null {
   const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
   return numberFrom(
     payload.amount ??
       payload.netAmount ??
       payload.net_amount ??
-      payload.value,
+      payload.value ??
+      properties.amount ??
+      properties.netAmount ??
+      properties.net_amount ??
+      properties.value,
   );
 }
 
 function balanceAmount(record: RawSourceRecordRow): number | null {
   const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
   return numberFrom(
     payload.availableBalance ??
       payload.available_balance ??
       payload.currentBalance ??
       payload.current_balance ??
-      payload.balance,
+      payload.balance ??
+      properties.availableBalance ??
+      properties.available_balance ??
+      properties.currentBalance ??
+      properties.current_balance ??
+      properties.balance,
   );
 }
 
