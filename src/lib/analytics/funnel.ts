@@ -100,6 +100,13 @@ function retainedSubscriptionCount(data: AnalyticsDashboardData): number {
   );
 }
 
+function activeSubscriptionCount(data: AnalyticsDashboardData): number {
+  return buildSubscriptionMrrBreakdown({
+    stripe: data.stripe,
+    hubspot: data.hubspot,
+  }).mergedActiveSubscriptions;
+}
+
 function lifecycleStageDefinitions(): StageDefinition[] {
   return [
     {
@@ -268,7 +275,7 @@ function lifecycleStageDefinitions(): StageDefinition[] {
       section: "customer-success",
       rawVolume: (data) =>
         (data.hubspot?.funnel?.closedWon ?? 0) +
-        (data.stripe?.subscriptions?.active ?? 0),
+        activeSubscriptionCount(data),
       trendDelta: (data) =>
         toTrendDelta(
           data.stripe?.revenue?.totalRevenue30d ?? 0,
@@ -283,11 +290,11 @@ function lifecycleStageDefinitions(): StageDefinition[] {
           detail: "Won opportunities in selected range.",
         },
         {
-          source: "Stripe Active Subscriptions",
+          source: "Active Subscriptions",
           domain: "stripe",
-          contribution: data.stripe?.subscriptions?.active ?? 0,
-          confidence: data.stripe ? 0.93 : 0.35,
-          detail: "Active recurring revenue accounts.",
+          contribution: activeSubscriptionCount(data),
+          confidence: data.stripe || data.hubspot ? 0.93 : 0.35,
+          detail: "Canonical active recurring revenue accounts.",
         },
         {
           source: "Mercury Net Cash",
@@ -345,7 +352,7 @@ function lifecycleStageDefinitions(): StageDefinition[] {
       label: "Full-Funnel Analytics",
       section: "customer-journey",
       rawVolume: (data) =>
-        (data.hubspot?.funnel?.activeSubscriptions ?? 0) +
+        activeSubscriptionCount(data) +
         Math.max(0, data.product?.completedLinearIssuesInRange ?? 0),
       trendDelta: (data) => {
         const throughput = normalizePercentValue(data.product?.deliveryRate);
@@ -354,11 +361,11 @@ function lifecycleStageDefinitions(): StageDefinition[] {
       },
       evidence: (data) => [
         {
-          source: "HubSpot Active Subscriptions",
-          domain: "hubspot",
-          contribution: data.hubspot?.funnel?.activeSubscriptions ?? 0,
-          confidence: data.hubspot ? 0.8 : 0.3,
-          detail: "Active base available for expansion.",
+          source: "Active Subscriptions",
+          domain: "stripe",
+          contribution: activeSubscriptionCount(data),
+          confidence: data.stripe || data.hubspot ? 0.8 : 0.3,
+          detail: "Canonical active base available for expansion.",
         },
         {
           source: "Development Delivery",

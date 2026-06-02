@@ -266,7 +266,7 @@ describe("analytics lifecycle funnel", () => {
     expect(expansion?.trendDeltaPct).toBe(6.7);
   });
 
-  it("uses canonical merged subscriptions for lifecycle retention volume", () => {
+  it("uses canonical merged subscriptions for lifecycle subscription volumes", () => {
     const data = baseData();
     data.stripe = {
       revenue: {
@@ -363,8 +363,20 @@ describe("analytics lifecycle funnel", () => {
     };
 
     const lifecycle = buildLifecycleFunnelData(data);
+    const revenue = lifecycle.stages.find((stage) => stage.id === "revenue");
     const retention = lifecycle.stages.find((stage) => stage.id === "retention");
+    const expansion = lifecycle.stages.find((stage) => stage.id === "expansion");
 
+    expect(revenue?.volume).toBe(11);
+    expect(revenue?.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "Active Subscriptions",
+          domain: "stripe",
+          contribution: 11,
+        }),
+      ]),
+    );
     expect(retention?.volume).toBe(9);
     expect(retention?.evidence).toEqual(
       expect.arrayContaining([
@@ -372,6 +384,16 @@ describe("analytics lifecycle funnel", () => {
           source: "Retained Subscriptions",
           domain: "stripe",
           contribution: 9,
+        }),
+      ]),
+    );
+    expect(expansion?.volume).toBe(11);
+    expect(expansion?.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "Active Subscriptions",
+          domain: "stripe",
+          contribution: 11,
         }),
       ]),
     );
