@@ -11,12 +11,15 @@
 
 ## Investigation (5-15 minutes)
 1. Query integration rules for the affected provider and identify stale `lastRunAt`.
-2. Inspect recent dead-letter events matching `integration.<provider>`.
+2. Call `/api/events` and inspect `recentDeadLetters` plus `failuresByEventType` for the affected provider.
 3. Validate provider credentials and OAuth refresh behavior.
 
 ## Mitigation
 1. Re-authenticate affected integrations if token errors persist.
-2. Replay failed/dead-letter outbox events via `/api/events` with `action: replay`.
+2. Replay failed/dead-letter outbox events with `POST /api/events/replay`:
+   ```json
+   { "statuses": ["FAILED", "DEAD_LETTER"], "limit": 50 }
+   ```
 3. Run provider sync endpoint in dry-run mode, then execute live sync.
 
 ## Verification

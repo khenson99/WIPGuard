@@ -7,7 +7,7 @@
 ## Immediate Triage (0-5 minutes)
 1. Confirm user-facing symptoms: stale board cards, delayed status updates.
 2. Check Operations tab for proxy SLO status and outbox lag trend.
-3. Check server logs for websocket transport/connectivity warnings.
+3. Call `/api/events` and confirm whether lag or failed/dead-letter counts are driving the proxy breach.
 
 ## Investigation (5-15 minutes)
 1. Validate socket server health and active transport fallback behavior.

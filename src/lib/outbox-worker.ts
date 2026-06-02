@@ -26,6 +26,13 @@ export interface ReplayOptions {
   now?: Date;
 }
 
+export interface DeadLetterOptions {
+  eventIds: string[];
+  reason?: string;
+  statuses?: Array<"PENDING" | "FAILED">;
+  now?: Date;
+}
+
 export interface OutboxOperationalMetrics {
   counts: {
     pending: number;
@@ -264,6 +271,42 @@ export async function replayOutboxEvents(
       failedAt: null,
       error: null,
       lastAttemptAt: null,
+    },
+  });
+
+  return result.count;
+}
+
+export async function deadLetterOutboxEvents(
+  db: OutboxClient,
+  options: DeadLetterOptions
+): Promise<number> {
+  const eventIds = Array.from(new Set(options.eventIds.filter(Boolean)));
+  if (!eventIds.length) {
+    return 0;
+  }
+
+  const now = options.now ?? new Date();
+  const statuses: OutboxEventStatus[] = options.statuses?.length
+    ? options.statuses
+    : ["PENDING", "FAILED"];
+  const reason =
+    typeof options.reason === "string" && options.reason.trim().length > 0
+      ? options.reason.trim()
+      : "Manually moved to dead letter";
+
+  const result = await db.outboxEvent.updateMany({
+    where: {
+      id: { in: eventIds },
+      status: { in: statuses },
+    },
+    data: {
+      status: "DEAD_LETTER",
+      nextAttemptAt: now,
+      failedAt: now,
+      lastAttemptAt: now,
+      dispatchedAt: null,
+      error: reason,
     },
   });
 

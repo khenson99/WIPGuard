@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   computeRetryDelayMs,
+  deadLetterOutboxEvents,
   dispatchOutboxBatch,
   getOutboxOperationalMetrics,
   markOutboxEventFailure,
@@ -125,6 +126,38 @@ describe("outbox-worker", () => {
       orderBy: [{ failedAt: "desc" }, { createdAt: "desc" }],
       take: 2,
       select: { id: true },
+    });
+  });
+
+  it("manually dead-letters retryable events with a reason", async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 2 });
+    const db = {
+      outboxEvent: {
+        updateMany,
+      },
+    } as never;
+    const now = new Date("2026-02-15T00:00:00.000Z");
+
+    const deadLettered = await deadLetterOutboxEvents(db, {
+      eventIds: ["evt_1", "evt_2", "evt_1"],
+      reason: "manual queue unblock",
+      now,
+    });
+
+    expect(deadLettered).toBe(2);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ["evt_1", "evt_2"] },
+        status: { in: ["PENDING", "FAILED"] },
+      },
+      data: {
+        status: "DEAD_LETTER",
+        nextAttemptAt: now,
+        failedAt: now,
+        lastAttemptAt: now,
+        dispatchedAt: null,
+        error: "manual queue unblock",
+      },
     });
   });
 

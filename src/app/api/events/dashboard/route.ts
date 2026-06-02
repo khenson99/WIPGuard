@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { collectOutboxMetrics } from "@/lib/events/event-metrics";
+import { getOutboxOperationalMetrics } from "@/lib/outbox-worker";
 
 /**
  * GET /api/events/dashboard
@@ -19,7 +19,7 @@ export async function GET(): Promise<NextResponse> {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const metrics = await collectOutboxMetrics(prisma);
+    const metrics = await getOutboxOperationalMetrics(prisma);
 
     return NextResponse.json({
       generatedAt: new Date().toISOString(),
