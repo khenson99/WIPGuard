@@ -1415,4 +1415,66 @@ describe("Imladris canonical materialization", () => {
       ]),
     });
   });
+
+  it("normalizes account identifiers before de-duping customer-success risk accounts", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_pylon_issue_spaced_account",
+        provider: IntegrationProvider.PYLON,
+        objectType: "conversation",
+        externalId: "conv_spaced_account",
+        occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+        payload: {
+          accountId: " acct_1 ",
+          status: "open",
+          priority: "high",
+          sentiment: "negative",
+        },
+      },
+      {
+        id: "raw_posthog_usage_matching_account",
+        provider: IntegrationProvider.POSTHOG,
+        objectType: "account_usage",
+        externalId: "usage_matching_account",
+        occurredAt: new Date("2026-05-17T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-17T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          activeUsers: 1,
+          daysSinceLastActive: 21,
+        },
+      },
+      {
+        id: "raw_stripe_subscription_matching_account",
+        provider: IntegrationProvider.STRIPE,
+        objectType: "subscription",
+        externalId: "sub_matching_account",
+        occurredAt: new Date("2026-05-24T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-24T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          status: "past_due",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      atRiskAccounts: 1,
+      accountsWithBillingRisk: 1,
+      lowUsageAccounts: 1,
+    });
+  });
 });

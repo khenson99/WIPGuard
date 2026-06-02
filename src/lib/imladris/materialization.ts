@@ -1340,7 +1340,10 @@ function accountIdFromPayload(record: RawSourceRecordRow): string | null {
     properties.stripeCustomerId ??
     properties.stripe_customer_id;
 
-  return typeof id === "string" && id.trim() ? id : null;
+  if (typeof id !== "string") return null;
+
+  const normalizedId = id.trim();
+  return normalizedId.length > 0 ? normalizedId : null;
 }
 
 function isClosedStatus(status: unknown): boolean {
