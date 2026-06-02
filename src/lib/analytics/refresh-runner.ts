@@ -1,4 +1,8 @@
-import { AnalyticsSnapshotStatus, IntegrationProvider } from "@/generated/prisma/client";
+import {
+  AnalyticsSnapshotStatus,
+  IntegrationConnectionStatus,
+  IntegrationProvider,
+} from "@/generated/prisma/client";
 import { getCredentials } from "@/lib/analytics/credentials";
 import { normalizeMercuryExpenseMappings } from "@/lib/analytics/mercury-expense-mappings";
 import {
@@ -6,9 +10,21 @@ import {
   fetchMercuryData,
   fetchStripeData,
 } from "@/lib/analytics/fetchers";
-import { fetchGoogleAdsData, fetchMetaAdsData, fetchMetaPageData, fetchRedditAdsData } from "@/lib/analytics/fetchers-ads";
+import {
+  fetchGoogleAdsData,
+  fetchMetaAdsData,
+  fetchMetaInstagramData,
+  fetchMetaPageData,
+  fetchRedditAdsData,
+} from "@/lib/analytics/fetchers-ads";
+import {
+  fetchGitHubData,
+  fetchLinearData,
+  fetchPostHogData,
+} from "@/lib/analytics/fetchers-development";
 import { fetchCodaData } from "@/lib/analytics/fetchers-coda";
 import { fetchGAData, fetchWebflowData } from "@/lib/analytics/fetchers-ga-webflow";
+import { fetchGoogleSearchConsoleData } from "@/lib/analytics/fetchers-google-search-console";
 import { fetchIntegrationTelemetryData } from "@/lib/analytics/fetchers-integrations";
 import { fetchPylonData } from "@/lib/analytics/fetchers-pylon";
 import { fetchSemrushData } from "@/lib/analytics/fetchers-semrush";
@@ -16,11 +32,16 @@ import { providerForSnapshotKey } from "@/lib/analytics/provider-health";
 import { snapshotExpiryFromNow, storeAnalyticsSnapshot, storeAnalyticsSnapshotFailure } from "@/lib/analytics/snapshots";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
 import { runWithContextAsync } from "@/lib/request-context";
+import { REQUIRED_IMLADRIS_PROVIDERS } from "@/lib/imladris/catalog";
+import { ingestImladrisRawRecords } from "@/lib/imladris/ingestion";
+import { buildImladrisRawRecordsFromPayload } from "@/lib/imladris/raw-records";
+import { MERCURY_CASHFLOW_SYNC_RULE_KEY } from "@/lib/integrations/provider-metrics-sync";
 import {
   MONTHLY_HISTORY_CONTEXT_KEY,
   MONTHLY_HISTORY_RANGE_PRESET,
   MONTHLY_HISTORY_START_DATE,
 } from "@/lib/analytics/monthly-pnl-history";
+import { buildImladrisMetrics } from "@/lib/imladris/service";
 import { prisma } from "@/lib/prisma";
 
 type RollingRangePreset = "7d" | "30d" | "90d";
@@ -45,12 +66,111 @@ function timeoutMsForRefreshJob(providerKey: string): number {
   return 10_000;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function assertRefreshPayloadComplete(providerKey: string, payload: unknown): void {
+  const meta = isRecord(payload) && isRecord(payload._meta) ? payload._meta : null;
+  if (meta?.truncated === true) {
+    throw new Error(
+      `Provider payload for ${providerKey} is truncated; refusing to persist partial analytics refresh data`
+    );
+  }
+}
+
+function numericErrorField(error: unknown, field: string): number | null {
+  if (!error || typeof error !== "object") return null;
+  const value = (error as Record<string, unknown>)[field];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function isAuthRefreshError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("unauthorized") ||
+    message.includes("forbidden") ||
+    message.includes("token") ||
+    message.includes("credential") ||
+    message.includes("auth")
+  );
+}
+
+function isRetryableRefreshError(error: unknown): boolean {
+  if (isAuthRefreshError(error)) return false;
+
+  const status =
+    numericErrorField(error, "status") ??
+    numericErrorField(error, "statusCode") ??
+    numericErrorField(error, "code");
+  if (status === 429 || (status !== null && status >= 500 && status < 600)) {
+    return true;
+  }
+
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("429") ||
+    message.includes("500") ||
+    message.includes("502") ||
+    message.includes("503") ||
+    message.includes("504") ||
+    message.includes("rate limit") ||
+    message.includes("temporarily") ||
+    message.includes("timed out") ||
+    message.includes("timeout") ||
+    message.includes("network") ||
+    message.includes("econnreset") ||
+    message.includes("etimedout")
+  );
+}
+
+function analyticsRefreshRetryBaseMs(): number {
+  const raw =
+    process.env.ANALYTICS_REFRESH_RETRY_BASE_MS ??
+    process.env.PROVIDER_SYNC_RETRY_BASE_MS ??
+    (process.env.NODE_ENV === "test" ? "0" : "250");
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 250;
+}
+
+async function waitForRefreshRetry(attempt: number): Promise<void> {
+  const delayMs = analyticsRefreshRetryBaseMs() * 2 ** (attempt - 1);
+  if (delayMs <= 0) return;
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+async function runRefreshJobWithRetry(input: {
+  providerKey: string;
+  run: () => Promise<unknown>;
+}): Promise<unknown> {
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await timeout(input.run(), timeoutMsForRefreshJob(input.providerKey));
+    } catch (error) {
+      if (attempt === maxAttempts || !isRetryableRefreshError(error)) {
+        throw error;
+      }
+      await waitForRefreshRetry(attempt);
+    }
+  }
+
+  throw new Error("analytics refresh failed");
+}
+
 function startOfUtcMonth(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
 }
 
 function endOfUtcMonth(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+}
+
+function toDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
 }
 
 function addUtcMonths(date: Date, months: number): Date {
@@ -96,7 +216,7 @@ async function loadExistingMonthlyFinancialSnapshotKeys(input: {
       providerKey: true,
       fromDate: true,
     },
-  });
+  }) as Array<{ providerKey: string; fromDate: Date }>;
 
   return new Set(
     snapshots.map((snapshot) =>
@@ -109,14 +229,94 @@ async function loadExistingMonthlyFinancialSnapshotKeys(input: {
 }
 
 async function resolveUserOrganizationId(userId: string): Promise<string | null> {
-  return (
-    (
-      await prisma.user.findUnique({
-        where: { id: userId },
-        select: { organizationId: true },
-      })
-    )?.organizationId ?? null
-  );
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { organizationId: true },
+  }) as { organizationId: string | null } | null;
+
+  return user?.organizationId ?? null;
+}
+
+async function resolveRefreshUserIds(inputUserIds: string[] | undefined): Promise<string[]> {
+  if (inputUserIds && inputUserIds.length > 0) {
+    return inputUserIds;
+  }
+
+  const connections = await prisma.integrationConnection.findMany({
+    distinct: ["userId"],
+    select: { userId: true },
+  }) as Array<{ userId: string }>;
+
+  return connections.map((entry) => entry.userId);
+}
+
+const IMLADRIS_SNAPSHOT_KEYS = new Set(
+  REQUIRED_IMLADRIS_PROVIDERS.flatMap((provider) => provider.snapshotKeys)
+);
+
+function shouldPersistImladrisRawSnapshot(providerKey: string): boolean {
+  return IMLADRIS_SNAPSHOT_KEYS.has(providerKey);
+}
+
+async function persistImladrisRawSnapshot(input: {
+  userId: string;
+  organizationId: string | null;
+  provider: IntegrationProvider | null;
+  providerKey: string;
+  payload: unknown;
+  contextKey: string;
+  rangePreset: string;
+  from: string;
+  to: string;
+  fromDate: Date;
+  toDate: Date;
+  mode: "incremental" | "historical";
+  capturedAt: Date;
+}): Promise<void> {
+  if (!input.provider || !shouldPersistImladrisRawSnapshot(input.providerKey)) {
+    return;
+  }
+
+  const rawRecords = buildImladrisRawRecordsFromPayload({
+    provider: input.provider,
+    snapshotKey: input.providerKey,
+    payload: input.payload,
+    from: input.from,
+    to: input.to,
+    capturedAt: input.capturedAt,
+  });
+  const result = await ingestImladrisRawRecords({
+    prisma,
+    provider: input.provider,
+    context: {
+      userId: input.userId,
+      organizationId: input.organizationId,
+    },
+    records: rawRecords,
+    mode: input.mode,
+    windowStart: input.fromDate,
+    windowEnd: input.toDate,
+    checkpoint: {
+      providerKey: input.providerKey,
+      contextKey: input.contextKey,
+      rangePreset: input.rangePreset,
+      from: input.from,
+      to: input.to,
+    },
+    now: input.capturedAt,
+  });
+
+  if (result.status === "ERROR") {
+    throw new Error(
+      `Imladris raw ingestion failed for ${input.providerKey}: ${result.acceptedCount}/${result.recordCount} records accepted.`,
+    );
+  }
+
+  if (result.status === "PARTIAL") {
+    throw new Error(
+      `Imladris raw ingestion partially succeeded for ${input.providerKey}: ${result.acceptedCount}/${result.recordCount} records accepted.`,
+    );
+  }
 }
 
 async function computeProductSnapshot(input: {
@@ -126,41 +326,43 @@ async function computeProductSnapshot(input: {
   toDate: Date;
 }) {
   const run = async () => {
-    const [createdTasksInRange, completedTasksInRange, overdueOpenTasks, contributors] = await Promise.all([
-      prisma.task.count({ where: { createdAt: { gte: input.fromDate, lte: input.toDate } } }),
-      prisma.task.count({ where: { completedOn: { gte: input.fromDate, lte: input.toDate } } }),
-      prisma.task.count({
-        where: {
-          status: { not: "DONE" },
-          dueDate: { lt: input.toDate },
-        },
-      }),
-      prisma.statusHistory.findMany({
-        where: {
-          changedAt: { gte: input.fromDate, lte: input.toDate },
-          changedBy: { not: null },
-        },
-        distinct: ["changedBy"],
-        select: { changedBy: true },
-      }),
-    ]);
-
-    const activeContributors = contributors.filter((entry) => Boolean(entry.changedBy)).length;
-    const backlogGrowth = createdTasksInRange - completedTasksInRange;
-    const throughputRate =
-      createdTasksInRange > 0 ? Math.round((completedTasksInRange / createdTasksInRange) * 10000) / 100 : null;
+    const metrics = await buildImladrisMetrics({
+      prisma,
+      context: {
+        userId: input.userId,
+        organizationId: input.organizationId,
+      },
+    });
+    const deliveryHealth = metrics.find((metric) => metric.key === "development.delivery_health");
+    const value =
+      deliveryHealth?.value && typeof deliveryHealth.value === "object"
+        ? (deliveryHealth.value as Record<string, unknown>)
+        : {};
+    const completedLinearIssuesInRange =
+      typeof value.completedLinearIssues === "number" ? value.completedLinearIssues : 0;
+    const mergedPullRequestsInRange =
+      typeof value.mergedPullRequests === "number" ? value.mergedPullRequests : 0;
+    const activeContributors =
+      typeof value.productEvents === "number" ? value.productEvents : 0;
+    const cycleTimeRiskSignals =
+      typeof value.averageLinearCycleTimeDays === "number" && value.averageLinearCycleTimeDays > 14
+        ? 1
+        : 0;
+    const deliveryBalance = mergedPullRequestsInRange - completedLinearIssuesInRange;
+    const deliveryRate =
+      mergedPullRequestsInRange > 0 ? Math.round((completedLinearIssuesInRange / mergedPullRequestsInRange) * 10000) / 100 : null;
 
     return {
       activeContributors,
-      createdTasksInRange,
-      completedTasksInRange,
-      overdueOpenTasks,
-      backlogGrowth,
-      throughputRate,
+      mergedPullRequestsInRange,
+      completedLinearIssuesInRange,
+      cycleTimeRiskSignals,
+      deliveryBalance,
+      deliveryRate,
       _meta: {
         fetchedAt: new Date().toISOString(),
         nextRefresh: snapshotExpiryFromNow(1).toISOString(),
-        source: "live" as const,
+        source: "imladris" as const,
       },
     };
   };
@@ -204,6 +406,95 @@ function recordProviderOutcome(
   outcomes.set(provider, current);
 }
 
+async function persistProviderRefreshOutcomes(input: {
+  userId: string;
+  outcomes: Map<IntegrationProvider, ProviderRefreshOutcome>;
+  syncedAt: Date;
+}): Promise<void> {
+  for (const [provider, outcome] of input.outcomes.entries()) {
+    if (outcome.succeeded) {
+      const data = {
+        status: IntegrationConnectionStatus.CONNECTED,
+        lastSyncedAt: input.syncedAt,
+        lastError: outcome.failed ? outcome.lastError ?? "refresh failed" : null,
+      };
+      try {
+        const updateResult = await prisma.integrationConnection.updateMany({
+          where: {
+            userId: input.userId,
+            provider,
+          },
+          data,
+        });
+        if (updateResult?.count === 0) {
+          await prisma.integrationConnection.upsert({
+            where: {
+              userId_provider: {
+                userId: input.userId,
+                provider,
+              },
+            },
+            update: data,
+            create: {
+              userId: input.userId,
+              provider,
+              ...data,
+            },
+          });
+        }
+      } catch (error) {
+        console.error("analytics_refresh.connection_status_persist_failed", {
+          userId: input.userId,
+          provider,
+          intendedStatus: IntegrationConnectionStatus.CONNECTED,
+          persistenceError: error instanceof Error ? error.message : String(error),
+        });
+      }
+      continue;
+    }
+
+    if (outcome.failed) {
+      const data = {
+        status: IntegrationConnectionStatus.ERROR,
+        lastError: outcome.lastError ?? "refresh failed",
+      };
+      try {
+        const updateResult = await prisma.integrationConnection.updateMany({
+          where: {
+            userId: input.userId,
+            provider,
+          },
+          data,
+        });
+        if (updateResult?.count === 0) {
+          await prisma.integrationConnection.upsert({
+            where: {
+              userId_provider: {
+                userId: input.userId,
+                provider,
+              },
+            },
+            update: data,
+            create: {
+              userId: input.userId,
+              provider,
+              ...data,
+            },
+          });
+        }
+      } catch (error) {
+        console.error("analytics_refresh.connection_status_persist_failed", {
+          userId: input.userId,
+          provider,
+          intendedStatus: IntegrationConnectionStatus.ERROR,
+          originalError: outcome.lastError,
+          persistenceError: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+}
+
 function isSemrushApiUnitsExhausted(message: string): boolean {
   const normalized = message.toLowerCase();
   return (
@@ -223,6 +514,29 @@ function shouldCountRefreshFailure(input: {
   return true;
 }
 
+async function storeRefreshFailureSnapshot(input: {
+  userId: string;
+  providerKey: string;
+  contextKey: string;
+  rangePreset: string;
+  fromDate: Date;
+  toDate: Date;
+  error: string;
+  expiresAt: Date;
+}): Promise<void> {
+  await Promise.resolve(storeAnalyticsSnapshotFailure(input)).catch((failureError) => {
+    console.error("analytics_refresh.failure_snapshot_failed", {
+      userId: input.userId,
+      providerKey: input.providerKey,
+      contextKey: input.contextKey,
+      rangePreset: input.rangePreset,
+      originalError: input.error,
+      failureSnapshotError:
+        failureError instanceof Error ? failureError.message : String(failureError),
+    });
+  });
+}
+
 async function refreshForUserAndRange(input: {
   userId: string;
   rangePreset: RollingRangePreset;
@@ -237,7 +551,11 @@ async function refreshForUserAndRange(input: {
   const organizationId = await resolveUserOrganizationId(input.userId);
   const expiresAt = snapshotExpiryFromNow(1);
 
-  const jobs: Array<{ providerKey: string; run: () => Promise<unknown> }> = [];
+  const jobs: Array<{
+    providerKey: string;
+    run: () => Promise<unknown>;
+    tracksConnectionFreshness?: boolean;
+  }> = [];
 
   if (creds.hubspotToken) {
     jobs.push({
@@ -290,6 +608,26 @@ async function refreshForUserAndRange(input: {
     });
   }
   if (
+    creds.searchConsoleSiteUrl &&
+    (creds.searchConsoleAccessToken || hasGAServiceAccount || hasGAOAuth)
+  ) {
+    jobs.push({
+      providerKey: "googleSearchConsole",
+      run: () =>
+        fetchGoogleSearchConsoleData({
+          accessToken: creds.searchConsoleAccessToken,
+          siteUrl: creds.searchConsoleSiteUrl!,
+          clientEmail: creds.gaClientEmail,
+          privateKey: creds.gaPrivateKey,
+          refreshToken: process.env.GA_REFRESH_TOKEN?.trim() || null,
+          googleClientId: process.env.GOOGLE_CLIENT_ID?.trim() || null,
+          googleClientSecret: process.env.GOOGLE_CLIENT_SECRET?.trim() || null,
+          fromDate,
+          toDate,
+        }),
+    });
+  }
+  if (
     creds.googleAdsDevToken &&
     creds.googleAdsCustomerId &&
     creds.googleAdsRefreshToken &&
@@ -322,6 +660,19 @@ async function refreshForUserAndRange(input: {
       run: () => fetchMetaPageData(creds.metaPageAccessToken!, creds.metaPageId!, { fromDate, toDate }),
     });
   }
+  if (creds.metaPageAccessToken && creds.metaInstagramAccountId) {
+    jobs.push({
+      providerKey: "instagram",
+      run: () =>
+        fetchMetaInstagramData(
+          creds.metaPageAccessToken!,
+          creds.metaInstagramAccountId!,
+          { pageId: creds.metaPageId ?? undefined },
+          fromDate,
+          toDate,
+        ),
+    });
+  }
   if (creds.redditClientId && creds.redditClientSecret && creds.redditRefreshToken && creds.redditAdAccountId) {
     jobs.push({
       providerKey: "redditAds",
@@ -337,18 +688,31 @@ async function refreshForUserAndRange(input: {
     });
   }
   if (creds.webflowApiToken && creds.webflowSiteId) {
-    jobs.push({ providerKey: "webflow", run: () => fetchWebflowData(creds.webflowApiToken!, creds.webflowSiteId!) });
-  }
-  if (creds.codaApiToken && creds.codaDocId) {
     jobs.push({
-      providerKey: "coda",
-      run: () => fetchCodaData(creds.codaApiToken!, creds.codaDocId!, { fromDate, toDate }),
+      providerKey: "webflow",
+      run: () =>
+        fetchWebflowData(
+          creds.webflowApiToken!,
+          creds.webflowSiteId!,
+          fromDate,
+          toDate,
+        ),
     });
   }
   if (creds.semrushApiToken && creds.semrushDomain) {
     jobs.push({
       providerKey: "semrush",
       run: () => fetchSemrushData(creds.semrushApiToken!, creds.semrushDomain!),
+    });
+  }
+  if (creds.codaApiToken && creds.codaDocId) {
+    jobs.push({
+      providerKey: "coda",
+      run: () =>
+        fetchCodaData(creds.codaApiToken!, creds.codaDocId!, {
+          fromDate,
+          toDate,
+        }),
     });
   }
   if (creds.pylonApiKey) {
@@ -363,9 +727,47 @@ async function refreshForUserAndRange(input: {
         }),
     });
   }
+  if (creds.posthogApiKey && creds.posthogProjectId) {
+    jobs.push({
+      providerKey: "posthog",
+      run: () =>
+        fetchPostHogData({
+          apiKey: creds.posthogApiKey!,
+          projectId: creds.posthogProjectId!,
+          host: creds.posthogHost,
+          fromDate,
+          toDate,
+        }),
+    });
+  }
+  if (creds.linearApiKey) {
+    jobs.push({
+      providerKey: "linear",
+      run: () =>
+        fetchLinearData({
+          apiKey: creds.linearApiKey!,
+          fromDate,
+          toDate,
+        }),
+    });
+  }
+  if (creds.githubToken && creds.githubOwner && creds.githubRepo) {
+    jobs.push({
+      providerKey: "github",
+      run: () =>
+        fetchGitHubData({
+          token: creds.githubToken!,
+          owner: creds.githubOwner!,
+          repo: creds.githubRepo!,
+          fromDate,
+          toDate,
+        }),
+    });
+  }
 
   jobs.push({
     providerKey: "product",
+    tracksConnectionFreshness: false,
     run: () =>
       computeProductSnapshot({
         userId: input.userId,
@@ -377,6 +779,7 @@ async function refreshForUserAndRange(input: {
 
   jobs.push({
     providerKey: "googleWorkspace",
+    tracksConnectionFreshness: false,
     run: () =>
       fetchIntegrationTelemetryData({
         userId: input.userId,
@@ -387,6 +790,7 @@ async function refreshForUserAndRange(input: {
   });
   jobs.push({
     providerKey: "hubspotOps",
+    tracksConnectionFreshness: false,
     run: () =>
       fetchIntegrationTelemetryData({
         userId: input.userId,
@@ -396,17 +800,8 @@ async function refreshForUserAndRange(input: {
       }),
   });
   jobs.push({
-    providerKey: "slack",
-    run: () =>
-      fetchIntegrationTelemetryData({
-        userId: input.userId,
-        provider: IntegrationProvider.SLACK,
-        from: fromDate,
-        to: toDate,
-      }),
-  });
-  jobs.push({
     providerKey: "codaOps",
+    tracksConnectionFreshness: false,
     run: () =>
       fetchIntegrationTelemetryData({
         userId: input.userId,
@@ -416,7 +811,19 @@ async function refreshForUserAndRange(input: {
       }),
   });
   jobs.push({
+    providerKey: "slack",
+    tracksConnectionFreshness: false,
+    run: () =>
+      fetchIntegrationTelemetryData({
+        userId: input.userId,
+        provider: IntegrationProvider.SLACK,
+        from: fromDate,
+        to: toDate,
+      }),
+  });
+  jobs.push({
     providerKey: "redditOps",
+    tracksConnectionFreshness: false,
     run: () =>
       fetchIntegrationTelemetryData({
         userId: input.userId,
@@ -434,7 +841,24 @@ async function refreshForUserAndRange(input: {
     const provider = providerForSnapshotKey(job.providerKey);
 
     try {
-      const payload = await timeout(job.run(), timeoutMsForRefreshJob(job.providerKey));
+      const payload = await runRefreshJobWithRetry(job);
+      assertRefreshPayloadComplete(job.providerKey, payload);
+      const capturedAt = new Date();
+      await persistImladrisRawSnapshot({
+        userId: input.userId,
+        organizationId,
+        provider,
+        providerKey: job.providerKey,
+        payload,
+        contextKey: "default",
+        rangePreset: range.preset,
+        from: range.from,
+        to: range.to,
+        fromDate,
+        toDate,
+        mode: "incremental",
+        capturedAt,
+      });
       await storeAnalyticsSnapshot({
         userId: input.userId,
         providerKey: job.providerKey,
@@ -446,13 +870,15 @@ async function refreshForUserAndRange(input: {
         expiresAt,
       });
       refreshed += 1;
-      recordProviderOutcome(providerOutcomes, provider, { success: true });
+      if (job.tracksConnectionFreshness !== false) {
+        recordProviderOutcome(providerOutcomes, provider, { success: true });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "refresh failed";
       if (shouldCountRefreshFailure({ providerKey: job.providerKey, errorMessage: message })) {
         failures += 1;
       }
-      await storeAnalyticsSnapshotFailure({
+      await storeRefreshFailureSnapshot({
         userId: input.userId,
         providerKey: job.providerKey,
         contextKey: "default",
@@ -462,7 +888,9 @@ async function refreshForUserAndRange(input: {
         error: message,
         expiresAt,
       });
-      recordProviderOutcome(providerOutcomes, provider, { success: false, error: message });
+      if (job.tracksConnectionFreshness !== false) {
+        recordProviderOutcome(providerOutcomes, provider, { success: false, error: message });
+      }
     }
   }
 
@@ -473,6 +901,7 @@ async function refreshMonthlyFinancialHistoryForUser(input: {
   userId: string;
 }): Promise<{ refreshed: number; failures: number; providerOutcomes: Map<IntegrationProvider, ProviderRefreshOutcome> }> {
   const creds = await getCredentials(input.userId);
+  const organizationId = await resolveUserOrganizationId(input.userId);
   const expiresAt = snapshotExpiryFromNow(24);
   const periods = buildMonthlyHistoryPeriods();
   const currentMonthStart = startOfUtcMonth(new Date());
@@ -513,7 +942,24 @@ async function refreshMonthlyFinancialHistoryForUser(input: {
     for (const job of jobs) {
       const provider = providerForSnapshotKey(job.providerKey);
       try {
-        const payload = await timeout(job.run(), timeoutMsForRefreshJob(job.providerKey));
+        const payload = await runRefreshJobWithRetry(job);
+        assertRefreshPayloadComplete(job.providerKey, payload);
+        const capturedAt = new Date();
+        await persistImladrisRawSnapshot({
+          userId: input.userId,
+          organizationId,
+          provider,
+          providerKey: job.providerKey,
+          payload,
+          contextKey: MONTHLY_HISTORY_CONTEXT_KEY,
+          rangePreset: MONTHLY_HISTORY_RANGE_PRESET,
+          from: toDateKey(period.fromDate),
+          to: toDateKey(period.toDate),
+          fromDate: period.fromDate,
+          toDate: period.toDate,
+          mode: "historical",
+          capturedAt,
+        });
         await storeAnalyticsSnapshot({
           userId: input.userId,
           providerKey: job.providerKey,
@@ -529,7 +975,7 @@ async function refreshMonthlyFinancialHistoryForUser(input: {
       } catch (error) {
         failures += 1;
         const message = error instanceof Error ? error.message : "monthly refresh failed";
-        await storeAnalyticsSnapshotFailure({
+        await storeRefreshFailureSnapshot({
           userId: input.userId,
           providerKey: job.providerKey,
           contextKey: MONTHLY_HISTORY_CONTEXT_KEY,
@@ -565,15 +1011,7 @@ export async function runAnalyticsRefresh(input: {
       : ["30d"]
     : [];
 
-  const userIds =
-    input.userIds && input.userIds.length > 0
-      ? input.userIds
-      : (
-          await prisma.integrationConnection.findMany({
-            distinct: ["userId"],
-            select: { userId: true },
-          })
-        ).map((entry) => entry.userId);
+  const userIds = await resolveRefreshUserIds(input.userIds);
 
   let refreshCount = 0;
   let failureCount = 0;
@@ -621,10 +1059,11 @@ export async function runAnalyticsRefresh(input: {
       }
     }
 
-    // Analytics refresh failures are surfaced via AnalyticsSnapshot status/error.
-    // Avoid overwriting connection-level state (status/lastError/lastSyncedAt),
-    // which is reserved for credential/auth health and rule execution.
-    void providerOutcomes;
+    await persistProviderRefreshOutcomes({
+      userId,
+      outcomes: providerOutcomes,
+      syncedAt: new Date(),
+    });
   }
 
   return {

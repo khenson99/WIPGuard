@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ShieldAlert } from "lucide-react";
 import { ProviderCard } from "@/components/settings/integrations/provider-card";
-import { RULE_DESCRIPTORS, descriptorsForProvider } from "@/components/settings/integrations/rule-descriptors";
+import { descriptorsForProvider, RULE_DESCRIPTORS } from "@/components/settings/integrations/rule-descriptors";
 import { buildRemediationSteps } from "@/components/settings/integrations/remediation";
 import type {
   IntegrationItem,
@@ -33,10 +33,6 @@ function normalizeRule(raw: unknown): RuleRuntimeState {
     id: String(input.id ?? ""),
     key: String(input.key ?? ""),
     enabled: input.enabled === true,
-    statusOverride:
-      input.statusOverride === "QUEUED" || input.statusOverride === "ACTIVE" || input.statusOverride === "NOT_DONE"
-        ? input.statusOverride
-        : null,
     config: asRecord(input.config),
     checkpoint: asRecord(input.checkpoint),
     lastObservedAt: typeof input.lastObservedAt === "string" ? input.lastObservedAt : null,
@@ -410,7 +406,6 @@ export function IntegrationsTab() {
       ruleId: string,
       payload: {
         enabled?: boolean;
-        statusOverride?: "QUEUED" | "ACTIVE" | "NOT_DONE" | null;
         config: Record<string, unknown>;
       }
     ) => {
@@ -425,9 +420,6 @@ export function IntegrationsTab() {
           enabled: payload.enabled,
           config: payload.config,
         };
-        if (descriptor.supportsStatusOverride) {
-          body.statusOverride = payload.statusOverride ?? null;
-        }
 
         const response = await fetch(descriptor.endpoint, {
           method: "POST",
@@ -461,7 +453,7 @@ export function IntegrationsTab() {
   );
 
   const runRule = useCallback(
-    async (ruleId: string, payload?: { dryRun?: boolean; payload?: Record<string, unknown> }) => {
+    async (ruleId: string, payload?: { dryRun?: boolean }) => {
       const descriptor = descriptorById.get(ruleId);
       if (!descriptor || !descriptor.runAction) {
         return;
@@ -474,7 +466,6 @@ export function IntegrationsTab() {
         if (descriptor.runAction === "sync") {
           body.dryRun = payload?.dryRun === true;
         }
-
         const response = await fetch(descriptor.endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

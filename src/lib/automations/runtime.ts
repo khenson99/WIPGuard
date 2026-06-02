@@ -10,10 +10,6 @@ import {
   WorkflowStepStatus,
 } from "@/generated/prisma/client";
 import { executeAutomationAction } from "@/lib/automations/actions";
-import {
-  isRetiredAutomationActionType,
-  RETIRED_AUTOMATION_ACTION_MESSAGE,
-} from "@/lib/automations/retired-actions";
 import { prisma } from "@/lib/prisma";
 import {
   evaluateConditionExpression,
@@ -32,6 +28,10 @@ import {
   unwrapAutomationOpenAiWebhookEvent,
 } from "@/lib/automations/openai";
 import { executeApprovedRecommendationsForRun } from "@/lib/automations/recommendations";
+import {
+  isRetiredAutomationActionType,
+  RETIRED_AUTOMATION_ACTION_MESSAGE,
+} from "@/lib/automations/retired-actions";
 import { normalizeWorkflowRolePolicy } from "@/lib/automations/service";
 import {
   buildRunExecutionContext,
@@ -251,17 +251,6 @@ async function executeActionNode(input: {
   const config = asRecord(input.node.config) ?? {};
   const actionType = typeof config.actionType === "string" ? config.actionType : "noop";
 
-  if (isRetiredAutomationActionType(actionType)) {
-    return {
-      output: {
-        actionType,
-        skipped: true,
-        reason: "retired_workflow_action",
-        detail: RETIRED_AUTOMATION_ACTION_MESSAGE,
-      },
-    };
-  }
-
   if (actionType === "slack_notify") {
     const message =
       renderMaybeTemplate(config.messageTemplate, input.context) ||
@@ -281,6 +270,17 @@ async function executeActionNode(input: {
     });
 
     return { output: { actionType, queued: true } };
+  }
+
+  if (isRetiredAutomationActionType(actionType)) {
+    return {
+      output: {
+        actionType,
+        skipped: true,
+        reason: "retired_workflow_action",
+        detail: RETIRED_AUTOMATION_ACTION_MESSAGE,
+      },
+    };
   }
 
   if (
@@ -324,7 +324,6 @@ async function executeActionNode(input: {
     actionType === "send_gmail_message" ||
     actionType === "create_calendar_draft" ||
     actionType === "update_hubspot" ||
-    actionType === "create_hubspot_task" ||
     actionType === "create_github_issue" ||
     actionType === "post_slack_digest"
   ) {

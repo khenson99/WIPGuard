@@ -11,6 +11,7 @@ function baseData(): AnalyticsDashboardData {
     stripe: null,
     mercury: null,
     googleAnalytics: null,
+    googleSearchConsole: null,
     googleAds: null,
     metaAds: null,
     metaPage: null,
@@ -44,6 +45,7 @@ function baseData(): AnalyticsDashboardData {
         "customer-journey": [],
         "demo-analytics": [],
         "process-analytics": [],
+        revenue: [],
       },
     },
     freshness: {},
@@ -113,7 +115,7 @@ describe("analytics AI insights bundle", () => {
     expect(bundle.bySection.finance.length).toBeGreaterThan(0);
     expect(bundle.global.some((item) => item.stale)).toBe(true);
     expect(bundle.global.every((item) => item.evidence.length > 0)).toBe(true);
-    expect(bundle.global.every((item) => item.actions.every((action) => action.type !== "create_task"))).toBe(true);
+    expect(bundle.global.every((item) => item.actions.every((action) => (action.type as string) !== "create_task"))).toBe(true);
   });
 
   it("caps insights at 12 globally", () => {
@@ -186,9 +188,9 @@ describe("analytics AI insights bundle", () => {
       _meta: META,
     };
     data.product = {
-      activeContributors: 3, createdTasksInRange: 20,
-      completedTasksInRange: 8, overdueOpenTasks: 12,
-      backlogGrowth: 12, throughputRate: 0.40,
+      activeContributors: 3, mergedPullRequestsInRange: 20,
+      completedLinearIssuesInRange: 8, cycleTimeRiskSignals: 12,
+      deliveryBalance: 12, deliveryRate: 0.40,
       _meta: META,
     };
 
@@ -196,12 +198,161 @@ describe("analytics AI insights bundle", () => {
     expect(bundle.global.length).toBeLessThanOrEqual(12);
   });
 
+  it("does not raise zero-form warning when HubSpot collected forms have submissions", () => {
+    const data = baseData();
+    data.googleAnalytics = {
+      sessions30d: 800,
+      sessionsPrev30d: 700,
+      users30d: 500,
+      usersPrev30d: 450,
+      pageviews30d: 1200,
+      pageviewsPrev30d: 1000,
+      bounceRate: 0.5,
+      avgSessionDuration: 60,
+      trafficByChannel: [],
+      topPages: [],
+      dailyTrend: [],
+      _meta: META,
+    };
+    data.webflow = {
+      siteName: "WIPGuard",
+      lastPublished: "2026-05-20T00:00:00.000Z",
+      totalPages: 5,
+      totalCollections: 0,
+      formSubmissions: [],
+      customDomains: [],
+      publishedPages: 5,
+      draftPages: 0,
+      archivedPages: 0,
+      pages: [],
+      seoAudit: {
+        totalPages: 5,
+        pagesWithSeoTitle: 5,
+        pagesWithSeoDescription: 5,
+        pagesWithOgImage: 5,
+        seoScore: 100,
+      },
+      contentFreshness: {
+        updatedLast7d: 0,
+        updatedLast30d: 0,
+        updatedLast90d: 0,
+        staleOver90d: 0,
+      },
+      recentlyUpdatedPages: [],
+      collections: [],
+      totalCmsItems: 0,
+      emptyCollections: 0,
+      formTrend: [],
+      totalFormSubmissions: 0,
+      _meta: META,
+    };
+    data.hubspot = {
+      funnel: {
+        totalDeals: 0,
+        closedWon: 0,
+        closedLost: 0,
+        unlikely: 0,
+        churn: 0,
+        activeSubscriptions: 0,
+        noShows: 0,
+        demoScheduled: 0,
+        demoFollowUp: 0,
+        collectedFormSubmissions: 1,
+        leadMagnetSubmissions: 1,
+        contactRequestSubmissions: 0,
+        avgDealSize: 0,
+        winRate: 0,
+        effectiveWinRate: 0,
+        noShowRate: 0,
+        stages: [],
+        dealsBySource: [],
+      },
+      contacts: {
+        totalContacts: 0,
+        recentContacts: 0,
+        bySource: [],
+      },
+      collectedForms: {
+        formSubmissions: [{ formName: "Kanban Generator", count: 1, funnelCategory: "lead_magnet" }],
+        submissions: [],
+        totalFormSubmissions: 1,
+        leadMagnetSubmissions: 1,
+        contactRequestSubmissions: 0,
+      },
+      _meta: META,
+    };
+
+    const bundle = buildAiInsightsBundle(data);
+
+    expect(bundle.global.some((insight) => insight.id === "ai-ads-webflow-zero-conv")).toBe(false);
+  });
+
+  it("does not raise zero-form warning when Webflow form submissions are unavailable", () => {
+    const data = baseData();
+    data.googleAnalytics = {
+      sessions30d: 800,
+      sessionsPrev30d: 700,
+      users30d: 500,
+      usersPrev30d: 450,
+      pageviews30d: 1200,
+      pageviewsPrev30d: 1000,
+      bounceRate: 0.5,
+      avgSessionDuration: 60,
+      trafficByChannel: [],
+      topPages: [],
+      dailyTrend: [],
+      _meta: META,
+    };
+    data.webflow = {
+      siteName: "WIPGuard",
+      lastPublished: "2026-05-20T00:00:00.000Z",
+      totalPages: 5,
+      totalCollections: 0,
+      formSubmissions: [],
+      customDomains: [],
+      publishedPages: 5,
+      draftPages: 0,
+      archivedPages: 0,
+      pages: [],
+      seoAudit: {
+        totalPages: 5,
+        pagesWithSeoTitle: 5,
+        pagesWithSeoDescription: 5,
+        pagesWithOgImage: 5,
+        seoScore: 100,
+      },
+      contentFreshness: {
+        updatedLast7d: 0,
+        updatedLast30d: 0,
+        updatedLast90d: 0,
+        staleOver90d: 0,
+      },
+      recentlyUpdatedPages: [],
+      collections: [],
+      totalCmsItems: 0,
+      emptyCollections: 0,
+      formTrend: [],
+      totalFormSubmissions: 0,
+      _meta: {
+        ...META,
+        diagnostics: {
+          formSubmissionsAvailable: false,
+          formSubmissionsError: "Webflow formSubmissions request failed (403): missing scope forms:read",
+        },
+      },
+    };
+
+    const bundle = buildAiInsightsBundle(data);
+
+    expect(bundle.global.some((insight) => insight.id === "ai-ads-webflow-zero-conv")).toBe(false);
+  });
+
   it("creates distilled insights from AI insights for compatibility", () => {
     const data = baseData();
     const distilled = buildDistilledInsights(data);
     expect(distilled.length).toBe(1);
     expect(distilled[0].title).toContain("No critical");
-    expect(distilled[0].actions.every((action) => action.type !== "create_task")).toBe(true);
+    expect(distilled[0].actions.every((action) => (action.type as string) !== "create_task")).toBe(true);
   });
 
   it("returns steady-state insight when all data is null", () => {
@@ -608,9 +759,9 @@ describe("customer success insights", () => {
       _meta: META,
     };
     data.product = {
-      activeContributors: 5, createdTasksInRange: 10,
-      completedTasksInRange: 8, overdueOpenTasks: 2,
-      backlogGrowth: 2, throughputRate: 0.80,
+      activeContributors: 5, mergedPullRequestsInRange: 10,
+      completedLinearIssuesInRange: 8, cycleTimeRiskSignals: 2,
+      deliveryBalance: 2, deliveryRate: 0.80,
       _meta: META,
     };
     const bundle = buildAiInsightsBundle(data);
@@ -619,12 +770,12 @@ describe("customer success insights", () => {
     expect(escalation!.subsectionId).toBe("cs-pylon");
   });
 
-  it("fires throughput stall when throughputRate < 70%", () => {
+  it("fires throughput stall when deliveryRate < 70%", () => {
     const data = baseData();
     data.product = {
-      activeContributors: 3, createdTasksInRange: 15,
-      completedTasksInRange: 6, overdueOpenTasks: 9,
-      backlogGrowth: 9, throughputRate: 0.55,
+      activeContributors: 3, mergedPullRequestsInRange: 15,
+      completedLinearIssuesInRange: 6, cycleTimeRiskSignals: 9,
+      deliveryBalance: 9, deliveryRate: 0.55,
       _meta: META,
     };
     const bundle = buildAiInsightsBundle(data);
@@ -637,9 +788,9 @@ describe("customer success insights", () => {
   it("escalates throughput stall to critical below 50%", () => {
     const data = baseData();
     data.product = {
-      activeContributors: 3, createdTasksInRange: 15,
-      completedTasksInRange: 4, overdueOpenTasks: 11,
-      backlogGrowth: 11, throughputRate: 0.40,
+      activeContributors: 3, mergedPullRequestsInRange: 15,
+      completedLinearIssuesInRange: 4, cycleTimeRiskSignals: 11,
+      deliveryBalance: 11, deliveryRate: 0.40,
       _meta: META,
     };
     const bundle = buildAiInsightsBundle(data);

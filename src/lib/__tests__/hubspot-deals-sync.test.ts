@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DealStage, IntegrationConnectionStatus, IntegrationProvider } from "@/generated/prisma/client";
+import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
 import { prisma } from "@/lib/prisma";
 import { mapHubSpotStageToDealStage, syncDealsFromHubSpot } from "@/lib/deals/hubspot-sync";
 
@@ -38,6 +39,10 @@ vi.mock("@/lib/integrations/token-crypto", () => ({
   ),
 }));
 
+vi.mock("@/lib/integrations/token-refresh", () => ({
+  getValidIntegrationAccessToken: vi.fn(),
+}));
+
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
     status,
@@ -48,6 +53,7 @@ function jsonResponse(payload: unknown, status = 200): Response {
 describe("HubSpot local deal sync", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.mocked(getValidIntegrationAccessToken).mockResolvedValue("hs-token");
 
     vi.mocked(prisma.integrationConnection.findUnique).mockResolvedValue({
       id: "conn-1",
@@ -186,6 +192,11 @@ describe("HubSpot local deal sync", () => {
 
     const result = await syncDealsFromHubSpot("user-1");
 
+    expect(getValidIntegrationAccessToken).toHaveBeenCalledWith({
+      userId: "user-1",
+      provider: IntegrationProvider.HUBSPOT,
+    });
+    expect(prisma.integrationConnection.update).not.toHaveBeenCalled();
     expect(result.deals).toBe(3);
     expect(result.meetings).toBe(1);
     expect(vi.mocked(prisma.deal.upsert).mock.calls).toHaveLength(3);

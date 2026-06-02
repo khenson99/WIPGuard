@@ -1,5 +1,4 @@
 import { AnalyticsSnapshotStatus, Prisma, RetentionTenantStatus } from "@/generated/prisma/client";
-import { computeDecisionDashboard } from "@/lib/analytics/decision-dashboard";
 import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
 import { prisma } from "@/lib/prisma";
 import {
@@ -54,7 +53,6 @@ type AnalyticsSnapshotSample = {
 
 type MetricCalculatorInput = {
   definition: CeoMetricDefinition;
-  decisionDashboard: Awaited<ReturnType<typeof computeDecisionDashboard>>;
   latestSnapshots: Map<string, AnalyticsSnapshotSample>;
   retentionMetric: RetentionMetricSource;
   sourceSamples: CeoSourceSample[];
@@ -121,19 +119,6 @@ function sourceKeysForDefinition(definition: CeoMetricDefinition): string[] {
       ...(definition.optionalSourceDependencies ?? []),
     ])
   );
-}
-
-function decisionDashboardSourceSample(
-  dashboard: Awaited<ReturnType<typeof computeDecisionDashboard>>
-): CeoSourceSample {
-  const capturedAt = new Date(dashboard.asOf);
-  return {
-    sourceKey: "wipguard",
-    sourceId: "decision-dashboard",
-    status: "SUCCESS",
-    capturedAt,
-    expiresAt: new Date(capturedAt.getTime() + 60 * 60 * 1000),
-  };
 }
 
 function getPathNumber(payload: unknown, path: string[]): number | null {
@@ -278,18 +263,8 @@ function derivedSourceSample(input: {
 }
 
 const CEO_METRIC_CALCULATORS: Record<string, CeoMetricCalculator> = {
-  "ceo.flow_reliability_score": ({ decisionDashboard }) => ({
-    value: decisionDashboard.northStar.flowReliabilityScore,
-    priorValue: null,
-    delta: null,
-  }),
-  "ceo.throughput_30d": ({ decisionDashboard }) => ({
-    value: decisionDashboard.northStar.throughput30d,
-    priorValue: null,
-    delta: decisionDashboard.northStar.throughputTrendPct,
-  }),
-  "ceo.overdue_open_tasks": ({ decisionDashboard }) => ({
-    value: decisionDashboard.supportingMetrics.overdueOpenTasks,
+  "development.delivery_health": ({ latestSnapshots }) => ({
+    value: ["linear", "github", "posthog"].every((key) => latestSnapshots.has(key)) ? 100 : null,
     priorValue: null,
     delta: null,
   }),
@@ -581,19 +556,15 @@ export async function loadCeoMetricSnapshot(input: {
 }): Promise<CeoMetricSnapshotPayload> {
   const definitions = getDefaultCeoMetricDefinitions();
   const sourceKeys = definitions.flatMap(sourceKeysForDefinition);
-  const [decisionDashboard, snapshots] = await Promise.all([
-    computeDecisionDashboard(),
-    loadLatestAnalyticsSnapshots({ userId: input.userId, sourceKeys }),
-  ]);
+  const snapshots = await loadLatestAnalyticsSnapshots({ userId: input.userId, sourceKeys });
   const latestSnapshots = latestSnapshotByProvider(snapshots);
-  const asOf = new Date(decisionDashboard.asOf);
+  const asOf = new Date();
   const snapshotSourceSamples = snapshots.map(sourceSampleFromSnapshot);
   const retentionMetric = await loadRetentionMetricSource({
     organizationId: input.organizationId ?? null,
     asOf,
   });
   const sourceSamples = [
-    decisionDashboardSourceSample(decisionDashboard),
     ...snapshotSourceSamples,
     derivedSourceSample({
       sourceKey: "customerJourney",
@@ -636,7 +607,6 @@ export async function loadCeoMetricSnapshot(input: {
     });
     const value = valueForDefinition({
       definition,
-      decisionDashboard,
       latestSnapshots,
       retentionMetric,
       sourceSamples,

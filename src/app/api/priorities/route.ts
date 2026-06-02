@@ -2,7 +2,6 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { invalidateHierarchy } from "@/lib/hierarchy-cache";
 import { prisma } from "@/lib/prisma";
 import { enforcePermission } from "@/lib/permissions";
 import { getAuthenticatedUser } from "@/lib/session-user";
@@ -27,7 +26,6 @@ export async function GET(): Promise<NextResponse> {
         accountable: { select: USER_SELECT },
         consulted: { select: USER_SELECT },
         informed: { select: USER_SELECT },
-        _count: { select: { projects: true } },
       },
       orderBy: { priority: "asc" },
     });
@@ -95,11 +93,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         accountable: { select: USER_SELECT },
         consulted: { select: USER_SELECT },
         informed: { select: USER_SELECT },
-        _count: { select: { projects: true } },
       },
     });
-
-    invalidateHierarchy(user.id);
 
     return NextResponse.json(companyPriority, { status: 201 });
   } catch (error) {

@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
-import { IntegrationProvider } from "@/generated/prisma/client";
+import { IntegrationConnectionStatus, IntegrationProvider } from "@/generated/prisma/client";
 
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(),
@@ -36,8 +36,19 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 describe("POST /api/integrations/coda/token", () => {
+  const originalCodaApiToken = process.env.CODA_API_TOKEN;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    delete process.env.CODA_API_TOKEN;
+  });
+
+  afterEach(() => {
+    if (originalCodaApiToken === undefined) {
+      delete process.env.CODA_API_TOKEN;
+    } else {
+      process.env.CODA_API_TOKEN = originalCodaApiToken;
+    }
   });
 
   it("accepts docUrl and persists normalized docId", async () => {
@@ -192,6 +203,69 @@ describe("POST /api/integrations/coda/token", () => {
         },
       })
     );
+  });
+
+  it("persists docId-only updates when the existing Coda connection row disappears", async () => {
+    const { auth } = await import("@/lib/auth");
+    const { ensureIntegrationOwnerOrganizationId } = await import("@/lib/integrations/ownership");
+    const { enforcePermission } = await import("@/lib/permissions");
+    const { verifyCodaApiToken } = await import("@/lib/integrations/oauth");
+    const { prisma } = await import("@/lib/prisma");
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: "user-race", organizationId: "org-race" },
+    } as never);
+    vi.mocked(ensureIntegrationOwnerOrganizationId).mockResolvedValue("org-race");
+    vi.mocked(enforcePermission).mockResolvedValue({ deniedResponse: null } as never);
+    vi.mocked(prisma.integrationConnection.findUnique).mockResolvedValue({
+      metadata: { authType: "api_token", docId: "dOldDoc123" },
+    } as never);
+    vi.mocked(prisma.integrationConnection.update).mockRejectedValue(
+      Object.assign(new Error("Record to update not found."), { code: "P2025" })
+    );
+    vi.mocked(prisma.integrationConnection.upsert).mockResolvedValue({} as never);
+
+    const { POST } = await import("@/app/api/integrations/coda/token/route");
+    const request = new Request("http://localhost/api/integrations/coda/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        docId: "dRaceDoc456",
+      }),
+    }) as unknown as NextRequest;
+
+    const response = await POST(request);
+    const body = (await response.json()) as { ok: boolean; docId: string | null };
+
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.docId).toBe("dRaceDoc456");
+    expect(verifyCodaApiToken).not.toHaveBeenCalled();
+    expect(prisma.integrationConnection.upsert).toHaveBeenCalledWith({
+      where: {
+        userId_provider: {
+          userId: "user-race",
+          provider: IntegrationProvider.CODA,
+        },
+      },
+      create: {
+        userId: "user-race",
+        provider: IntegrationProvider.CODA,
+        status: IntegrationConnectionStatus.ERROR,
+        lastError: "Coda token is required to reconnect this doc sync.",
+        metadata: {
+          authType: "api_token",
+          docId: "dRaceDoc456",
+        },
+        organizationId: "org-race",
+      },
+      update: {
+        metadata: {
+          authType: "api_token",
+          docId: "dRaceDoc456",
+        },
+      },
+    });
   });
 
   it("still requires token when no connection exists", async () => {

@@ -25,7 +25,7 @@ function makeBundle(): AiInsightsBundle {
             delta: "+12%",
           },
         ],
-        actions: [{ type: "assign_owner", label: "Assign demand gen owner", payload: {} }],
+        actions: [{ type: "create_recommendation", label: "Review campaign targeting", payload: {} }],
       },
       {
         id: "critical-sales",
@@ -70,6 +70,7 @@ function makeBundle(): AiInsightsBundle {
       "customer-journey": [],
       "demo-analytics": [],
       "process-analytics": [],
+      revenue: [],
     },
   };
 }
@@ -99,7 +100,7 @@ describe("AiInsightsPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Website" }));
     expect(screen.getByText("Ads efficiency trending down")).toBeTruthy();
-    expect(screen.getByText("Assign demand gen owner")).toBeTruthy();
+    expect(screen.queryByText("Refactor campaign targeting")).toBeNull();
   });
 
   it("resets filter when defaultFilter prop changes", () => {

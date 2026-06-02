@@ -20,6 +20,11 @@ function relationshipTone(status?: string): string {
   return "text-muted-foreground";
 }
 
+function formatDays(value: number | null | undefined, formatNumber: (value: number | null | undefined) => string): string {
+  if (value === undefined || value === null) return "—";
+  return `${formatNumber(value)}d`;
+}
+
 export function PortfolioSummaryCards(props: {
   accountsWithCoda: number;
   avgHealthScore: number;
@@ -358,6 +363,9 @@ export function PortfolioAccountsTable(props: {
               <th className="pb-2 font-medium">Owner</th>
               <th className="pb-2 font-medium">Health</th>
               <th className="pb-2 font-medium">Retention</th>
+              <th className="pb-2 font-medium">Orders</th>
+              <th className="pb-2 font-medium">Items</th>
+              <th className="pb-2 font-medium">Thresholds</th>
               <th className="pb-2 font-medium">Systems</th>
               <th className="pb-2 font-medium">Primary Signal</th>
               <th className="pb-2 font-medium">Alerts</th>
@@ -368,6 +376,7 @@ export function PortfolioAccountsTable(props: {
           <tbody>
             {filteredAccounts.map((account) => {
               const primarySignal = weakestLeadingIndicator(account.health);
+              const productMetrics = account.relationship?.productMetrics;
 
               return (
                 <tr key={account.accountId} className="border-b border-border/50 last:border-0">
@@ -395,6 +404,24 @@ export function PortfolioAccountsTable(props: {
                     ) : null}
                   </td>
                   <td className="py-3 text-muted-foreground">
+                    {formatNumber(productMetrics?.totalOrders)}
+                    <div className="text-xs text-muted-foreground">
+                      10 in {formatDays(productMetrics?.daysTo10Orders, formatNumber)}
+                    </div>
+                  </td>
+                  <td className="py-3 text-muted-foreground">
+                    {formatNumber(productMetrics?.totalItems)}
+                    <div className="text-xs text-muted-foreground">
+                      {formatNumber(productMetrics?.uniqueItemsOrdered)} ordered
+                    </div>
+                  </td>
+                  <td className="py-3 text-muted-foreground">
+                    25 items
+                    <div className="text-xs text-muted-foreground">
+                      {formatDays(productMetrics?.daysTo25Items, formatNumber)}
+                    </div>
+                  </td>
+                  <td className="py-3 text-muted-foreground">
                     {formatNumber(account.relationship?.connectedSystems)}
                     {account.relationship?.missingSources.length ? (
                       <div className="text-xs text-[var(--warning)]">
@@ -414,7 +441,7 @@ export function PortfolioAccountsTable(props: {
             })}
             {filteredAccounts.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-6 text-center text-sm text-muted-foreground">
+                <td colSpan={12} className="py-6 text-center text-sm text-muted-foreground">
                   No accounts match the current leading-indicator filter.
                 </td>
               </tr>

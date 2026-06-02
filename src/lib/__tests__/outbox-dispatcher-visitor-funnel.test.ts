@@ -53,8 +53,8 @@ describe("dispatchOutboxEvent visitor funnel alert routing", () => {
       userId: "owner-1",
       payload: {
         type: "ops_alert",
-        taskId: "unify:stale",
-        taskTitle: "UNIFY enrichment is stale",
+        alertId: "unify:stale",
+        title: "UNIFY enrichment is stale",
         channelId: "COPS",
         context: {
           bucketStart: "2026-03-08T00:00:00.000Z",

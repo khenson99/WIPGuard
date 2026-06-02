@@ -3,10 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { sendSlackDirectMessage } from "@/lib/integrations/slack-notifications";
 import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
 import { fetchJsonWithResilience, fetchWithResilience } from "@/lib/integrations/http-client";
-import {
-  isRetiredAutomationActionType,
-  RETIRED_AUTOMATION_ACTION_MESSAGE,
-} from "@/lib/automations/retired-actions";
 
 export interface AutomationActionExecutionResult {
   actionType: string;
@@ -42,71 +38,11 @@ function base64UrlEncode(input: string): string {
     .replace(/=+$/g, "");
 }
 
-function normalizeIsoTimestamp(value: unknown): string | null {
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value.toISOString();
-  }
-
-  if (typeof value === "number" && Number.isFinite(value)) {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-  }
-
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const normalized = value.trim();
-  if (!normalized) {
-    return null;
-  }
-
-  const parsed = new Date(normalized);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-}
-
-function normalizeHubSpotTaskStatus(value: unknown): "COMPLETED" | "NOT_STARTED" | "WAITING" {
-  const normalized = asString(value)?.toUpperCase();
-  if (normalized === "COMPLETED") return "COMPLETED";
-  if (normalized === "WAITING") return "WAITING";
-  return "NOT_STARTED";
-}
-
-function normalizeHubSpotTaskPriority(value: unknown): "LOW" | "MEDIUM" | "HIGH" {
-  const normalized = asString(value)?.toUpperCase();
-  if (normalized === "LOW" || normalized === "MEDIUM" || normalized === "HIGH") {
-    return normalized;
-  }
-
-  if (normalized === "P0" || normalized === "P1") {
-    return "HIGH";
-  }
-
-  if (normalized === "P3") {
-    return "LOW";
-  }
-
-  return "MEDIUM";
-}
-
-function normalizeHubSpotTaskType(value: unknown): "TODO" | "CALL" | "EMAIL" {
-  const normalized = asString(value)?.toUpperCase();
-  if (normalized === "CALL" || normalized === "EMAIL") {
-    return normalized;
-  }
-  return "TODO";
-}
-
 const HUBSPOT_ASSOCIATION_TYPES = {
   note: {
     company: 190,
     contact: 202,
     deal: 214,
-  },
-  task: {
-    company: 192,
-    contact: 204,
-    deal: 216,
   },
 } as const;
 
@@ -177,14 +113,6 @@ async function resolveAutomationActor(runId: string): Promise<string> {
     throw new Error("Unable to resolve workflow actor");
   }
   return actorUserId;
-}
-
-function retiredTaskActionResult(actionType: string) {
-  return {
-    actionType,
-    status: "skipped" as const,
-    detail: RETIRED_AUTOMATION_ACTION_MESSAGE,
-  };
 }
 
 async function getGoogleToken(userId: string): Promise<string> {
@@ -417,73 +345,10 @@ async function updateHubSpotAction(runId: string, payload: Record<string, unknow
   };
 }
 
-async function createHubSpotTaskAction(
-  runId: string,
-  payload: Record<string, unknown>
-) {
-  const userId = await resolveAutomationActor(runId);
-  const token = await getValidIntegrationAccessToken({
-    userId,
-    provider: IntegrationProvider.HUBSPOT,
-  });
-  const title = asString(payload.title) ?? "Follow up";
-  const body = asString(payload.body) ?? asString(payload.noteBody);
-  const dueAt =
-    normalizeIsoTimestamp(payload.dueAt) ??
-    normalizeIsoTimestamp(payload.timestamp) ??
-    normalizeIsoTimestamp(payload.dueDate);
-  const reminderAt =
-    normalizeIsoTimestamp(payload.reminderAt) ??
-    normalizeIsoTimestamp(payload.reminderTimestamp);
-  const ownerId = asString(payload.ownerId) ?? asString(payload.hubspotOwnerId);
-  const associations = buildHubSpotAssociations(payload, "task");
-
-  if (!dueAt) {
-    return {
-      actionType: "create_hubspot_task",
-      status: "skipped" as const,
-      detail: "dueAt missing",
-    };
-  }
-
-  const response = await fetchJsonWithResilience<{ id?: string }>({
-    url: "https://api.hubapi.com/crm/v3/objects/tasks",
-    init: {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        properties: {
-          hs_task_subject: title,
-          hs_task_body: body ?? "",
-          hs_task_status: normalizeHubSpotTaskStatus(payload.status),
-          hs_task_priority: normalizeHubSpotTaskPriority(payload.priority),
-          hs_task_type: normalizeHubSpotTaskType(payload.taskType),
-          hs_timestamp: dueAt,
-          ...(ownerId ? { hubspot_owner_id: ownerId } : {}),
-          ...(reminderAt ? { hs_task_reminders: [new Date(reminderAt).getTime()] } : {}),
-        },
-        ...(associations.length > 0 ? { associations } : {}),
-      }),
-    },
-    timeoutMs: 12_000,
-    maxAttempts: 3,
-  });
-
-  return {
-    actionType: "create_hubspot_task",
-    status: "executed" as const,
-    targetId: response.id ?? null,
-    detail: title,
-  };
-}
-
 async function createGitHubIssueAction(payload: Record<string, unknown>) {
   const token = process.env.GITHUB_TOKEN?.trim();
   const owner = process.env.GITHUB_REPO_OWNER?.trim() ?? "khenson99";
-  const repo = process.env.GITHUB_REPO_NAME?.trim() ?? "WIPGuard";
+  const repo = process.env.GITHUB_REPO_NAME?.trim() ?? "Imladris";
 
   if (!token) {
     return {
@@ -579,10 +444,6 @@ export async function executeAutomationAction(input: {
 }): Promise<AutomationActionExecutionResult> {
   const payload = input.actionPayload ?? {};
 
-  if (isRetiredAutomationActionType(input.actionType)) {
-    return retiredTaskActionResult(input.actionType);
-  }
-
   switch (input.actionType) {
     case "create_gmail_draft":
       return createGmailDraftAction(input.runId, payload);
@@ -592,8 +453,6 @@ export async function executeAutomationAction(input: {
       return createCalendarDraftAction(input.runId, payload);
     case "update_hubspot":
       return updateHubSpotAction(input.runId, payload);
-    case "create_hubspot_task":
-      return createHubSpotTaskAction(input.runId, payload);
     case "create_github_issue":
       return createGitHubIssueAction(payload);
     case "post_slack_digest":

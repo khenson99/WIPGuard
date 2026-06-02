@@ -8,6 +8,7 @@ import { AnalyticsTimeRangeControls } from "@/components/analytics/time-range-co
 
 const MarketingTabNew = dynamic(() => import("@/components/analytics/marketing-tab-new").then((m) => m.MarketingTabNew), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const FinanceTab = dynamic(() => import("@/components/analytics/finance-tab").then((m) => m.FinanceTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
+const RevenueDashboard = dynamic(() => import("@/components/analytics/revenue-dashboard").then((m) => m.RevenueDashboard), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const FinanceStripeTab = dynamic(() => import("@/components/analytics/finance-stripe-tab").then((m) => m.FinanceStripeTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const FinanceHubSpotTab = dynamic(() => import("@/components/analytics/finance-hubspot-tab").then((m) => m.FinanceHubSpotTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const FinanceMercuryTab = dynamic(() => import("@/components/analytics/finance-mercury-tab").then((m) => m.FinanceMercuryTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
@@ -19,7 +20,6 @@ const AdsMetaAdsTab = dynamic(() => import("@/components/analytics/ads-meta-ads-
 const AdsRedditAdsTab = dynamic(() => import("@/components/analytics/ads-reddit-ads-tab").then((m) => m.AdsRedditAdsTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const AdsWebflowTab = dynamic(() => import("@/components/analytics/ads-webflow-tab").then((m) => m.AdsWebflowTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const AdsSemrushTab = dynamic(() => import("@/components/analytics/ads-semrush-tab").then((m) => m.AdsSemrushTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
-const AdsCodaKanbanTab = dynamic(() => import("@/components/analytics/ads-coda-kanban-tab").then((m) => m.AdsCodaKanbanTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const SalesHubspotTab = dynamic(() => import("@/components/analytics/sales-hubspot-tab").then((m) => m.SalesHubspotTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const SalesStripeTab = dynamic(() => import("@/components/analytics/sales-stripe-tab").then((m) => m.SalesStripeTab), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
 const SalesPerformanceView = dynamic(() => import("@/components/analytics/sales-performance-view").then((m) => m.SalesPerformanceView), { loading: () => <DashboardLoadingState message="Loading section..." className="h-48" /> });
@@ -96,7 +96,6 @@ export type AnalyticsChildRenderKind =
   | "ads-reddit-ads"
   | "ads-webflow"
   | "ads-semrush"
-  | "ads-coda-kanban"
   | "cs-pylon"
   | "cs-google-workspace"
   | "cs-slack"
@@ -140,7 +139,6 @@ const CHILD_ID_TO_RENDER_KIND = {
   "ads-reddit-ads": "ads-reddit-ads",
   "ads-webflow": "ads-webflow",
   "ads-semrush": "ads-semrush",
-  "ads-coda-kanban": "ads-coda-kanban",
   // Customer Success
   "cs-pylon": "cs-pylon",
   "cs-google-workspace": "cs-google-workspace",
@@ -349,6 +347,7 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
   const primaryContent = useMemo(() => {
     if (sectionId === "website-traffic") return <MarketingTabNew data={analyticsData} variant="website-traffic" />;
     if (sectionId === "social-media") return <MarketingTabNew data={analyticsData} variant="social-media" />;
+    if (sectionId === "revenue") return <RevenueDashboard data={analyticsData} />;
     if (sectionId === "finance") return <FinanceTab data={analyticsData} />;
     if (sectionId === "sales-pipeline") return <SalesFunnelTab data={analyticsData} />;
     if (sectionId === "customer-success") return <CustomerSuccessTab data={analyticsData} />;
@@ -388,7 +387,6 @@ export function AnalyticsSectionPage({ sectionId }: AnalyticsSectionPageProps) {
     if (renderKind === "ads-reddit-ads") return <AdsRedditAdsTab data={analyticsData} />;
     if (renderKind === "ads-webflow") return <AdsWebflowTab data={analyticsData} />;
     if (renderKind === "ads-semrush") return <AdsSemrushTab data={analyticsData} />;
-    if (renderKind === "ads-coda-kanban") return <AdsCodaKanbanTab data={analyticsData} />;
     // Customer Success
     if (renderKind === "cs-pylon") return <CsPylonTab data={analyticsData} />;
     if (renderKind === "cs-google-workspace") return <GenericWorkspaceTab data={analyticsData} />;

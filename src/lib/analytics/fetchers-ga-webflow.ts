@@ -16,7 +16,8 @@ import {
 
 type GAReportValue = { value?: string };
 type GAReportRow = { dimensionValues?: GAReportValue[]; metricValues?: GAReportValue[] };
-type GAReportResponse = { rows?: GAReportRow[] };
+type GAReportResponse = { rows?: GAReportRow[]; rowCount?: number };
+type GAPaginatedReportResult = { rows: GAReportRow[]; truncated: boolean };
 
 function makeMeta(source: "live" | "cached" = "live"): AnalyticsTimestamp {
   const now = new Date();
@@ -25,6 +26,23 @@ function makeMeta(source: "live" | "cached" = "live"): AnalyticsTimestamp {
     nextRefresh: new Date(now.getTime() + 60 * 60 * 1000).toISOString(),
     source,
   };
+}
+
+function readFiniteMetric(value: string | undefined, mode: "int" | "float"): number {
+  if (!value?.trim()) return 0;
+  const normalized = value.trim().replace(/,/g, "");
+  const parsed = mode === "int"
+    ? Number.parseInt(normalized, 10)
+    : Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function readMetricInt(value: string | undefined): number {
+  return readFiniteMetric(value, "int");
+}
+
+function readMetricFloat(value: string | undefined): number {
+  return readFiniteMetric(value, "float");
 }
 
 /**
@@ -47,6 +65,7 @@ async function getGAAccessToken(opts: {
     const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      cache: "no-store",
       body: new URLSearchParams({
         grant_type: "refresh_token",
         refresh_token: opts.refreshToken,
@@ -104,6 +123,7 @@ async function getGAAccessToken(opts: {
     const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      cache: "no-store",
       body: new URLSearchParams({
         grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
         assertion: jwt,
@@ -180,13 +200,58 @@ export async function fetchGAData(
       ]
     : [{ startDate: "60daysAgo", endDate: "31daysAgo" }];
 
-  // Run all requests in parallel
-  const [current30d, previous30d, trafficAndTrend, topPagesRaw] = await Promise.all([
-    // Request 1: Current 30d metrics
-    fetch(apiUrl, {
+  const fetchReport = async (
+    body: Record<string, unknown>,
+    label: string,
+  ): Promise<GAReportResponse> => {
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers,
-      body: JSON.stringify({
+      cache: "no-store",
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error(`GA4 report (${label}) failed (${response.status})`);
+    return await safeJson<GAReportResponse>(response, `GA report (${label})`);
+  };
+
+  const fetchReportPages = async (
+    body: Record<string, unknown>,
+    label: string,
+    pageSize = 100,
+  ): Promise<GAPaginatedReportResult> => {
+    const rows: GAReportRow[] = [];
+    let truncated = false;
+
+    for (let page = 0; page < 100; page += 1) {
+      const offset = page * pageSize;
+      const response = await fetchReport(
+        {
+          ...body,
+          limit: pageSize,
+          offset,
+        },
+        label,
+      );
+      const pageRows = response.rows ?? [];
+      rows.push(...pageRows);
+
+      const rowCount = typeof response.rowCount === "number" ? response.rowCount : null;
+      if (page === 99 && rowCount !== null && offset + pageRows.length < rowCount) {
+        truncated = true;
+        break;
+      }
+      if (rowCount !== null && offset + pageRows.length >= rowCount) break;
+      if (pageRows.length < pageSize) break;
+    }
+
+    return { rows, truncated };
+  };
+
+  // Run all requests in parallel
+  const [current30d, previous30d, trafficAndTrend, topPageResult] = await Promise.all([
+    // Request 1: Current 30d metrics
+    fetchReport(
+      {
         dateRanges: currentRange,
         metrics: [
           { name: "sessions" },
@@ -195,17 +260,13 @@ export async function fetchGAData(
           { name: "bounceRate" },
           { name: "averageSessionDuration" },
         ],
-      }),
-    }).then(async (r) => {
-      if (!r.ok) throw new Error(`GA4 report (current) failed (${r.status})`);
-      return await safeJson<GAReportResponse>(r, "GA report (current)");
-    }),
+      },
+      "current",
+    ),
 
     // Request 2: Previous 30d metrics
-    fetch(apiUrl, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
+    fetchReport(
+      {
         dateRanges: previousRange,
         metrics: [
           { name: "sessions" },
@@ -214,17 +275,13 @@ export async function fetchGAData(
           { name: "bounceRate" },
           { name: "averageSessionDuration" },
         ],
-      }),
-    }).then(async (r) => {
-      if (!r.ok) throw new Error(`GA4 report (previous) failed (${r.status})`);
-      return await safeJson<GAReportResponse>(r, "GA report (previous)");
-    }),
+      },
+      "previous",
+    ),
 
     // Request 3: Traffic by channel + daily trend
-    fetch(apiUrl, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
+    fetchReport(
+      {
         dateRanges: currentRange,
         dimensions: [
           { name: "sessionDefaultChannelGroup" },
@@ -235,50 +292,44 @@ export async function fetchGAData(
           { name: "totalUsers" },
           { name: "screenPageViews" },
         ],
-      }),
-    }).then(async (r) => {
-      if (!r.ok) throw new Error(`GA4 report (traffic) failed (${r.status})`);
-      return await safeJson<GAReportResponse>(r, "GA report (traffic)");
-    }),
+      },
+      "traffic",
+    ),
 
     // Request 4: Top pages
-    fetch(apiUrl, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
+    fetchReportPages(
+      {
         dateRanges: currentRange,
         dimensions: [{ name: "pagePath" }],
         metrics: [
           { name: "screenPageViews" },
           { name: "averageSessionDuration" },
         ],
-        limit: 10,
         orderBys: [
           {
             metric: { metricName: "screenPageViews" },
             desc: true,
           },
         ],
-      }),
-    }).then(async (r) => {
-      if (!r.ok) throw new Error(`GA4 report (top pages) failed (${r.status})`);
-      return await safeJson<GAReportResponse>(r, "GA report (top pages)");
-    }),
+      },
+      "top pages",
+    ),
   ]);
+  const topPageRows = topPageResult.rows;
 
   // Parse current 30d metrics
   const current30dRow = current30d.rows?.[0]?.metricValues || [];
-  const sessions30d = parseInt(current30dRow[0]?.value || "0");
-  const users30d = parseInt(current30dRow[1]?.value || "0");
-  const pageviews30d = parseInt(current30dRow[2]?.value || "0");
-  const bounceRate = parseFloat(current30dRow[3]?.value || "0");
-  const avgSessionDuration = parseFloat(current30dRow[4]?.value || "0");
+  const sessions30d = readMetricInt(current30dRow[0]?.value);
+  const users30d = readMetricInt(current30dRow[1]?.value);
+  const pageviews30d = readMetricInt(current30dRow[2]?.value);
+  const bounceRate = readMetricFloat(current30dRow[3]?.value);
+  const avgSessionDuration = readMetricFloat(current30dRow[4]?.value);
 
   // Parse previous 30d metrics
   const previous30dRow = previous30d.rows?.[0]?.metricValues || [];
-  const sessionsPrev30d = parseInt(previous30dRow[0]?.value || "0");
-  const usersPrev30d = parseInt(previous30dRow[1]?.value || "0");
-  const pageviewsPrev30d = parseInt(previous30dRow[2]?.value || "0");
+  const sessionsPrev30d = readMetricInt(previous30dRow[0]?.value);
+  const usersPrev30d = readMetricInt(previous30dRow[1]?.value);
+  const pageviewsPrev30d = readMetricInt(previous30dRow[2]?.value);
 
   // Parse traffic by channel
   const trafficByChannelMap: Record<string, GATrafficChannel> = {};
@@ -289,9 +340,9 @@ export async function fetchGAData(
       const metricValues = row.metricValues ?? [];
       const channel = dimensionValues[0]?.value || "Unknown";
       const date = dimensionValues[1]?.value || "";
-      const sessions = parseInt(metricValues[0]?.value || "0");
-      const users = parseInt(metricValues[1]?.value || "0");
-      const pageviews = parseInt(metricValues[2]?.value || "0");
+      const sessions = readMetricInt(metricValues[0]?.value);
+      const users = readMetricInt(metricValues[1]?.value);
+      const pageviews = readMetricInt(metricValues[2]?.value);
 
       // Aggregate by channel
       if (!trafficByChannelMap[channel]) {
@@ -320,15 +371,22 @@ export async function fetchGAData(
   }));
 
   // Parse top pages
-  const topPages: GATopPage[] = (topPagesRaw.rows || []).map((row: GAReportRow) => {
+  const topPages: GATopPage[] = topPageRows.map((row: GAReportRow) => {
     const dimensionValues = row.dimensionValues ?? [];
     const metricValues = row.metricValues ?? [];
     return {
       path: dimensionValues[0]?.value || "/",
-      pageviews: parseInt(metricValues[0]?.value || "0"),
-      avgDuration: parseFloat(metricValues[1]?.value || "0"),
+      pageviews: readMetricInt(metricValues[0]?.value),
+      avgDuration: readMetricFloat(metricValues[1]?.value),
     };
   });
+
+  const truncatedResources = [
+    ...(topPageResult.truncated ? ["topPages"] : []),
+  ];
+  const meta = makeMeta("live");
+  meta.truncated = truncatedResources.length > 0;
+  meta.truncatedResources = truncatedResources;
 
   return {
     sessions30d,
@@ -342,7 +400,7 @@ export async function fetchGAData(
     trafficByChannel,
     topPages,
     dailyTrend,
-    _meta: makeMeta("live"),
+    _meta: meta,
   };
 }
 
@@ -392,26 +450,67 @@ export async function fetchWebflowData(
       : {};
 
   const asArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
+  const readNumber = (value: unknown): number => {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim()) {
+      const normalized = value.trim().replace(/[$,%\s]/g, "");
+      if (!normalized) return 0;
+      const parsed = Number(normalized);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+  };
+  const pagedItems = async (path: string, keys: string[]): Promise<{ items: unknown[]; truncated: boolean }> => {
+    const items: unknown[] = [];
+    const limit = 100;
+    let truncated = false;
 
-  const [siteRes, pagesRes, collectionsRes] = await Promise.all([
-    fetch(`${baseUrl}/sites/${siteId}`, { headers }),
-    fetch(`${baseUrl}/sites/${siteId}/pages`, { headers }),
-    fetch(`${baseUrl}/sites/${siteId}/collections`, { headers }),
+    for (let page = 0; page < 100; page += 1) {
+      const url = new URL(`${baseUrl}${path}`);
+      url.searchParams.set("limit", String(limit));
+      url.searchParams.set("offset", String(page * limit));
+
+      const response = await fetch(url.toString(), { headers, cache: "no-store" });
+      if (!response.ok) {
+        throw await errorFromResponse(response, `Webflow ${keys[0] ?? "list"} request failed`);
+      }
+
+      const payload = requireObject(await parseJson(response));
+      const pageItems =
+        keys.map((key) => asArray(payload[key])).find((candidate) => candidate.length > 0) ?? [];
+      items.push(...pageItems);
+
+      const pagination = requireObject(payload.pagination);
+      const total = readNumber(pagination.total);
+      const responseLimit = readNumber(pagination.limit) || limit;
+      const offset = readNumber(pagination.offset);
+      if (total > 0) {
+        if (page === 99 && offset + responseLimit < total) {
+          truncated = true;
+          break;
+        }
+        if (offset + responseLimit >= total) break;
+      } else if (pageItems.length < limit) {
+        break;
+      }
+    }
+
+    return { items, truncated };
+  };
+
+  const [siteRes, pageResult, collectionResult] = await Promise.all([
+    fetch(`${baseUrl}/sites/${siteId}`, { headers, cache: "no-store" }),
+    pagedItems(`/sites/${siteId}/pages`, ["items", "pages"]),
+    pagedItems(`/sites/${siteId}/collections`, ["items", "collections"]),
   ]);
+  const rawPages = pageResult.items;
+  const rawCollections = collectionResult.items;
 
   if (!siteRes.ok) {
     throw await errorFromResponse(siteRes, "Webflow site request failed");
   }
-  if (!pagesRes.ok) {
-    throw await errorFromResponse(pagesRes, "Webflow pages request failed");
-  }
-  if (!collectionsRes.ok) {
-    throw await errorFromResponse(collectionsRes, "Webflow collections request failed");
-  }
 
   const siteResponse = requireObject(await parseJson(siteRes));
-  const pagesResponse = requireObject(await parseJson(pagesRes));
-  const collectionsResponse = requireObject(await parseJson(collectionsRes));
 
   const siteName = String(siteResponse.displayName || siteResponse.name || "");
   const lastPublished = String(
@@ -426,13 +525,6 @@ export async function fetchWebflowData(
     }
     return "";
   }).filter(Boolean);
-
-  const rawPages = asArray(pagesResponse.items).length
-    ? asArray(pagesResponse.items)
-    : asArray(pagesResponse.pages);
-  const rawCollections = asArray(collectionsResponse.items).length
-    ? asArray(collectionsResponse.items)
-    : asArray(collectionsResponse.collections);
 
   // ── Parse page details ──
   const now = Date.now();
@@ -511,7 +603,7 @@ export async function fetchWebflowData(
       id: String(c.id || c._id || ""),
       displayName: String(c.displayName || c.name || c.slug || ""),
       slug: String(c.slug || ""),
-      itemCount: typeof c.itemCount === "number" ? c.itemCount : 0,
+      itemCount: readNumber(c.itemCount),
       createdOn: strOrNull(c.createdOn),
     };
   });
@@ -521,57 +613,71 @@ export async function fetchWebflowData(
   // ── Form submissions + trend ──
   let formSubmissions: WebflowFormEntry[] = [];
   let formTrend: WebflowFormTrendEntry[] = [];
+  let formSubmissionsTruncated = false;
+  let formSubmissionsAvailable = true;
+  let formSubmissionsError: string | null = null;
   try {
-    const formsRes = await fetch(`${baseUrl}/sites/${siteId}/form_submissions`, {
-      headers,
+    const formSubmissionResult = await pagedItems(`/sites/${siteId}/form_submissions`, [
+      "items",
+      "formSubmissions",
+    ]);
+    const items = formSubmissionResult.items;
+    formSubmissionsTruncated = formSubmissionResult.truncated;
+
+    const formMap: Record<string, number> = {};
+    const trendMap: Record<string, number> = {};
+    items.forEach((submission) => {
+      const row = requireObject(submission);
+
+      // Filter by date if createdOn is available and bounds exist
+      let createdDate: Date | null = null;
+      if (row.createdOn) {
+        const d = new Date(String(row.createdOn));
+        if (!isNaN(d.getTime())) createdDate = d;
+      }
+
+      if (from && to && createdDate) {
+        if (createdDate < from || createdDate > to) {
+          return; // Skip submission outside range
+        }
+      }
+
+      const formName = String(row.formName || row.formId || "Unknown");
+      formMap[formName] = (formMap[formName] || 0) + 1;
+
+      // Bucket by day for trend
+      if (createdDate) {
+        const dayKey = createdDate.toISOString().split("T")[0];
+        trendMap[dayKey] = (trendMap[dayKey] || 0) + 1;
+      }
     });
-    if (formsRes.ok) {
-      const formsResponse = requireObject(await parseJson(formsRes));
-      const items = asArray(formsResponse.items).length
-        ? asArray(formsResponse.items)
-        : asArray(formsResponse.formSubmissions);
-
-      const formMap: Record<string, number> = {};
-      const trendMap: Record<string, number> = {};
-      items.forEach((submission) => {
-        const row = requireObject(submission);
-
-        // Filter by date if createdOn is available and bounds exist
-        let createdDate: Date | null = null;
-        if (row.createdOn) {
-          const d = new Date(String(row.createdOn));
-          if (!isNaN(d.getTime())) createdDate = d;
-        }
-
-        if (from && to && createdDate) {
-          if (createdDate < from || createdDate > to) {
-            return; // Skip submission outside range
-          }
-        }
-
-        const formName = String(row.formName || row.formId || "Unknown");
-        formMap[formName] = (formMap[formName] || 0) + 1;
-
-        // Bucket by day for trend
-        if (createdDate) {
-          const dayKey = createdDate.toISOString().split("T")[0];
-          trendMap[dayKey] = (trendMap[dayKey] || 0) + 1;
-        }
-      });
-      formSubmissions = Object.entries(formMap).map(([formName, count]) => ({
-        formName,
-        count,
-      }));
-      formTrend = Object.entries(trendMap)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([date, submissions]) => ({ date, submissions }));
-    }
-  } catch {
+    formSubmissions = Object.entries(formMap).map(([formName, count]) => ({
+      formName,
+      count,
+    }));
+    formTrend = Object.entries(trendMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, submissions]) => ({ date, submissions }));
+  } catch (error) {
     formSubmissions = [];
     formTrend = [];
+    formSubmissionsAvailable = false;
+    formSubmissionsError = error instanceof Error ? error.message : String(error);
   }
 
   const totalFormSubmissions = formSubmissions.reduce((sum, f) => sum + f.count, 0);
+  const truncatedResources = [
+    ...(pageResult.truncated ? ["pages"] : []),
+    ...(collectionResult.truncated ? ["collections"] : []),
+    ...(formSubmissionsTruncated ? ["formSubmissions"] : []),
+  ];
+  const meta = makeMeta("live");
+  meta.truncated = truncatedResources.length > 0;
+  meta.truncatedResources = truncatedResources;
+  meta.diagnostics = {
+    formSubmissionsAvailable,
+    ...(formSubmissionsError ? { formSubmissionsError } : {}),
+  };
 
   return {
     siteName,
@@ -596,6 +702,6 @@ export async function fetchWebflowData(
     formTrend,
     totalFormSubmissions,
 
-    _meta: makeMeta("live"),
+    _meta: meta,
   };
 }

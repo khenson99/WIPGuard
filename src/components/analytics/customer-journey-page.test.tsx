@@ -21,12 +21,12 @@ function makeData() {
     users30d: 700,
     usersPrev30d: 650,
     pageviews30d: 3000,
+    pageviewsPrev30d: 2800,
     avgSessionDuration: 120,
     bounceRate: 42,
     topPages: [],
     trafficByChannel: [],
-    conversions: [],
-    events: [],
+    dailyTrend: [],
     _meta: {
       fetchedAt: "2026-01-30T00:00:00.000Z",
       nextRefresh: "2026-01-30T01:00:00.000Z",
@@ -79,7 +79,7 @@ function makeData() {
       canceled: 1,
       trialing: 2,
       churnRate: 0.03,
-      recentChurnEvents: [{ customerId: "c1", customerName: "Acme", date: "2026-01-20", revenueImpact: 1000 }],
+      recentChurnEvents: [{ customer: "Acme", canceledAt: "2026-01-20", amount: 1000 }],
     },
     payments: { succeeded: 30, failed: 1, successRate: 0.97 },
     revenueTrend: [],
@@ -93,13 +93,10 @@ function makeData() {
   data.pylon = {
     openConversations: 14,
     urgentConversations: 6,
-    closedConversations: 40,
+    waitingOnTeam: 2,
     resolvedInRange: 32,
     avgFirstResponseMinutes: 18,
-    avgResolutionHours: 6,
     csat: 92,
-    topIssueCategories: [],
-    recentAccounts: [],
     _meta: {
       fetchedAt: "2026-01-30T00:00:00.000Z",
       nextRefresh: "2026-01-30T01:00:00.000Z",
@@ -109,12 +106,40 @@ function makeData() {
 
   data.lifecycleFunnel = {
     stages: [
-      { id: "awareness", label: "Awareness", volume: 1000, conversionRate: 100 },
-      { id: "acquisition", label: "Acquisition", volume: 90, conversionRate: 9 },
-      { id: "retention", label: "Retention", volume: 7, conversionRate: 70 },
+      {
+        id: "awareness",
+        label: "Awareness",
+        volume: 1000,
+        conversionFromPrevious: null,
+        trendDeltaPct: null,
+        confidence: 1,
+        section: "website-traffic",
+        evidence: [],
+      },
+      {
+        id: "acquisition",
+        label: "Acquisition",
+        volume: 90,
+        conversionFromPrevious: 9,
+        trendDeltaPct: null,
+        confidence: 1,
+        section: "sales-pipeline",
+        evidence: [],
+      },
+      {
+        id: "retention",
+        label: "Retention",
+        volume: 7,
+        conversionFromPrevious: 70,
+        trendDeltaPct: null,
+        confidence: 1,
+        section: "retention",
+        evidence: [],
+      },
     ],
     transitions: [],
-    topLeaks: [],
+    generatedAt: "2026-01-30T00:00:00.000Z",
+    narrative: [],
   };
 
   data.financialPlanning = {
@@ -128,6 +153,12 @@ function makeData() {
       mergedActiveSubscriptions: 8,
       stripeActiveSubscriptions: 8,
       hubspotActiveSubscriptions: 7,
+      stripeMrr: 25000,
+      hubspotSubscriptionMrr: 24000,
+      hubspotOnlySubscriptionMrr: 0,
+      excludedLinkedHubspotSubscriptionMrr: 0,
+      totalMrr: 25000,
+      totalArr: 300000,
     },
   };
 

@@ -141,6 +141,293 @@ describe("webflow fetcher", () => {
     ]);
   });
 
+  it("preserves Webflow collection item counts when they arrive as formatted strings", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+
+      if (url.pathname === "/v2/sites/site-id") {
+        return jsonResponse({
+          displayName: "Arda Site",
+          lastPublishedOn: "2026-02-01T00:00:00.000Z",
+          customDomains: [],
+        });
+      }
+
+      if (url.pathname === "/v2/sites/site-id/pages") {
+        return jsonResponse({ pages: [], pagination: { total: 0, offset: 0, limit: 100 } });
+      }
+
+      if (url.pathname === "/v2/sites/site-id/collections") {
+        return jsonResponse({
+          collections: [
+            { id: "c1", displayName: "Blog Posts", slug: "blog-posts", itemCount: "1,200" },
+            { id: "c2", displayName: "Customers", slug: "customers", itemCount: "25" },
+            { id: "c3", displayName: "Empty", slug: "empty", itemCount: "0" },
+            { id: "c4", displayName: "Unknown", slug: "unknown", itemCount: "not-a-number" },
+          ],
+          pagination: { total: 4, offset: 0, limit: 100 },
+        });
+      }
+
+      if (url.pathname === "/v2/sites/site-id/form_submissions") {
+        return jsonResponse({ formSubmissions: [], pagination: { total: 0, offset: 0, limit: 100 } });
+      }
+
+      throw new Error(`Unexpected Webflow request: ${url.pathname}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchWebflowData("token", "site-id");
+
+    expect(data.collections.map((collection) => collection.itemCount)).toEqual([
+      1200,
+      25,
+      0,
+      0,
+    ]);
+    expect(data.totalCmsItems).toBe(1225);
+    expect(data.emptyCollections).toBe(2);
+  });
+
+  it("bypasses fetch cache for Webflow site, page, collection, and form requests", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      void init;
+      const url = new URL(String(input));
+
+      if (url.pathname === "/v2/sites/site-id") {
+        return jsonResponse({
+          displayName: "Arda Site",
+          lastPublishedOn: "2026-02-01T00:00:00.000Z",
+          customDomains: [],
+        });
+      }
+
+      if (url.pathname === "/v2/sites/site-id/pages") {
+        return jsonResponse({ pages: [], pagination: { total: 0, offset: 0, limit: 100 } });
+      }
+
+      if (url.pathname === "/v2/sites/site-id/collections") {
+        return jsonResponse({ collections: [], pagination: { total: 0, offset: 0, limit: 100 } });
+      }
+
+      if (url.pathname === "/v2/sites/site-id/form_submissions") {
+        return jsonResponse({ formSubmissions: [], pagination: { total: 0, offset: 0, limit: 100 } });
+      }
+
+      throw new Error(`Unexpected Webflow request: ${url.pathname}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    await fetchWebflowData("token", "site-id");
+
+    const providerCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).startsWith("https://api.webflow.com/v2/"),
+    );
+
+    expect(providerCalls).toHaveLength(4);
+    expect(providerCalls.every(([, init]) => init?.cache === "no-store")).toBe(true);
+  });
+
+  it("paginates Webflow pages and form submissions before computing operating metrics", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const offset = url.searchParams.get("offset") ?? "0";
+
+      if (url.pathname === "/v2/sites/site-id") {
+        return jsonResponse({
+          displayName: "Arda Site",
+          lastPublishedOn: "2026-02-01T00:00:00.000Z",
+          customDomains: [],
+        });
+      }
+
+      if (url.pathname === "/v2/sites/site-id/pages") {
+        if (offset === "100") {
+          return jsonResponse({
+            pages: [
+              {
+                id: "p2",
+                title: "Pricing",
+                slug: "pricing",
+                updatedOn: "2026-02-12T00:00:00.000Z",
+                seo: { title: "Pricing | Arda", description: "Pricing details" },
+                openGraph: {},
+              },
+            ],
+            pagination: { total: 101, offset: 100, limit: 100 },
+          });
+        }
+
+        return jsonResponse({
+          pages: [
+            {
+              id: "p1",
+              title: "Home",
+              slug: "home",
+              updatedOn: "2026-02-11T00:00:00.000Z",
+              seo: { title: "Home | Arda", description: "Welcome" },
+              openGraph: {},
+            },
+          ],
+          pagination: { total: 101, offset: 0, limit: 100 },
+        });
+      }
+
+      if (url.pathname === "/v2/sites/site-id/collections") {
+        return jsonResponse({ collections: [], pagination: { total: 0, offset: 0, limit: 100 } });
+      }
+
+      if (url.pathname === "/v2/sites/site-id/form_submissions") {
+        if (offset === "100") {
+          return jsonResponse({
+            formSubmissions: [
+              { formId: "f2", formName: "Demo", createdOn: "2026-02-16T10:00:00.000Z" },
+            ],
+            pagination: { total: 101, offset: 100, limit: 100 },
+          });
+        }
+
+        return jsonResponse({
+          formSubmissions: [
+            { formId: "f1", formName: "Contact", createdOn: "2026-02-15T10:00:00.000Z" },
+          ],
+          pagination: { total: 101, offset: 0, limit: 100 },
+        });
+      }
+
+      throw new Error(`Unexpected Webflow request: ${url.pathname}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchWebflowData("token", "site-id", new Date("2026-02-01T00:00:00.000Z"), new Date("2026-02-28T23:59:59.999Z"));
+    const urls = fetchMock.mock.calls.map(([url]) => new URL(String(url)));
+    const pageRequests = urls.filter((url) => url.pathname === "/v2/sites/site-id/pages");
+    const formRequests = urls.filter((url) => url.pathname === "/v2/sites/site-id/form_submissions");
+
+    expect(pageRequests).toHaveLength(2);
+    expect(pageRequests[1]?.searchParams.get("offset")).toBe("100");
+    expect(formRequests).toHaveLength(2);
+    expect(formRequests[1]?.searchParams.get("offset")).toBe("100");
+    expect(data.pages.map((page) => page.id)).toEqual(["p1", "p2"]);
+    expect(data.totalPages).toBe(2);
+    expect(data.formSubmissions).toEqual([
+      { formName: "Contact", count: 1 },
+      { formName: "Demo", count: 1 },
+    ]);
+    expect(data.totalFormSubmissions).toBe(2);
+  });
+
+  it("marks Webflow form submissions unavailable when that endpoint fails", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+
+      if (url.pathname === "/v2/sites/site-id") {
+        return jsonResponse({
+          displayName: "Arda Site",
+          lastPublishedOn: "2026-02-01T00:00:00.000Z",
+          customDomains: [],
+        });
+      }
+
+      if (url.pathname === "/v2/sites/site-id/pages") {
+        return jsonResponse({
+          pages: [
+            {
+              id: "p1",
+              title: "Home",
+              slug: "home",
+              updatedOn: "2026-02-11T00:00:00.000Z",
+              seo: { title: "Home | Arda", description: "Welcome" },
+              openGraph: {},
+            },
+          ],
+          pagination: { total: 1, offset: 0, limit: 100 },
+        });
+      }
+
+      if (url.pathname === "/v2/sites/site-id/collections") {
+        return jsonResponse({ collections: [], pagination: { total: 0, offset: 0, limit: 100 } });
+      }
+
+      if (url.pathname === "/v2/sites/site-id/form_submissions") {
+        return jsonResponse({ message: "OAuthForbidden: missing scope forms:read" }, 403);
+      }
+
+      throw new Error(`Unexpected Webflow request: ${url.pathname}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchWebflowData("token", "site-id");
+
+    expect(data.pages).toHaveLength(1);
+    expect(data.formSubmissions).toEqual([]);
+    expect(data.totalFormSubmissions).toBe(0);
+    expect(data._meta.diagnostics).toEqual(expect.objectContaining({
+      formSubmissionsAvailable: false,
+      formSubmissionsError: expect.stringContaining("missing scope forms:read"),
+    }));
+  });
+
+  it("marks Webflow payloads truncated when page pagination exceeds the page cap", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const offset = Number(url.searchParams.get("offset") ?? "0");
+
+      if (url.pathname === "/v2/sites/site-id") {
+        return jsonResponse({
+          displayName: "Arda Site",
+          lastPublishedOn: "2026-02-01T00:00:00.000Z",
+          customDomains: [],
+        });
+      }
+
+      if (url.pathname === "/v2/sites/site-id/pages") {
+        return jsonResponse({
+          pages: [
+            {
+              id: `page-${offset}`,
+              title: `Page ${offset}`,
+              slug: `page-${offset}`,
+              updatedOn: "2026-02-11T00:00:00.000Z",
+              seo: {},
+              openGraph: {},
+            },
+          ],
+          pagination: { total: 10_001, offset, limit: 100 },
+        });
+      }
+
+      if (url.pathname === "/v2/sites/site-id/collections") {
+        return jsonResponse({ collections: [], pagination: { total: 0, offset: 0, limit: 100 } });
+      }
+
+      if (url.pathname === "/v2/sites/site-id/form_submissions") {
+        return jsonResponse({ formSubmissions: [], pagination: { total: 0, offset: 0, limit: 100 } });
+      }
+
+      throw new Error(`Unexpected Webflow request: ${url.pathname}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchWebflowData("token", "site-id");
+    const pageRequests = fetchMock.mock.calls
+      .map(([url]) => new URL(String(url)))
+      .filter((url) => url.pathname === "/v2/sites/site-id/pages");
+
+    expect(pageRequests).toHaveLength(100);
+    expect(pageRequests.at(-1)?.searchParams.get("offset")).toBe("9900");
+    expect(data.pages).toHaveLength(100);
+    expect(data._meta).toEqual(expect.objectContaining({
+      truncated: true,
+      truncatedResources: ["pages"],
+    }));
+  });
+
   it("computes SEO audit score correctly", async () => {
     const fetchMock = vi.fn();
     fetchMock

@@ -2,14 +2,14 @@
  * Slack Channel Routing Policies
  *
  * Routes Slack notifications to the appropriate channel based on:
- *  1. Project-specific channel mapping
- *  2. Priority-based channel mapping (P0 -> #urgent, P1 -> #important, etc.)
- *  3. Notification type routing (blocked -> #incidents, etc.)
+ *  1. Metric-specific channel mapping
+ *  2. Severity-based channel mapping (critical -> #urgent, warning -> #important, etc.)
+ *  3. Notification type routing (alert -> #incidents, etc.)
  *  4. Default fallback channel
  *
  * Policies are evaluated in priority order:
- *  1. Exact project match
- *  2. Priority match
+ *  1. Exact metric match
+ *  2. Severity match
  *  3. Notification type match
  *  4. Default channel
  *
@@ -309,7 +309,6 @@ export async function getOrCreateChannelRoutingRule(userId: string): Promise<Int
       provider: IntegrationProvider.SLACK,
       key: SLACK_CHANNEL_ROUTING_RULE_KEY,
       enabled: true,
-      statusOverride: null,
       config: defaultChannelRoutingConfig() as unknown as Prisma.InputJsonValue,
       checkpoint: {} as unknown as Prisma.InputJsonValue,
     },

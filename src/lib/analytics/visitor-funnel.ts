@@ -58,6 +58,9 @@ type FunnelVisitorWhereInput = Record<string, unknown>;
 type HubSpotDeal = NonNullable<
   NonNullable<AnalyticsDashboardData["hubspot"]>["deals"]
 >[number];
+type HubSpotCollectedFormSubmission = NonNullable<
+  NonNullable<AnalyticsDashboardData["hubspot"]>["collectedForms"]
+>["submissions"][number];
 
 const STAGE_ORDER: VisitorFunnelStageId[] = [
   "visitors",
@@ -925,6 +928,80 @@ async function syncCodaMilestones(
   }
 }
 
+async function syncHubSpotCollectedFormMilestones(
+  prisma: FunnelPrismaClient,
+  data: AnalyticsDashboardData,
+): Promise<void> {
+  const submissions = data.hubspot?.collectedForms?.submissions ?? [];
+  for (const submission of submissions) {
+    if (submission.funnelCategory === "other") continue;
+    const email = normalizeEmail(submission.email);
+    if (!email) continue;
+
+    const occurredAt = safeOptionalDate(submission.submittedAt) ?? new Date();
+    const channel =
+      submission.funnelCategory === "lead_magnet"
+        ? "lead-magnet"
+        : "contact-request";
+    const visitor = await ensureVisitorForKnownIdentity(prisma, {
+      occurredAt,
+      attribution: {
+        source: "hubspot",
+        channel,
+        campaign: null,
+        referrer: null,
+        path: trimOrNull(submission.pageUrl),
+        url: trimOrNull(submission.pageUrl),
+        siteHost: hostFromUrl(submission.pageUrl),
+      },
+      identities: [
+        {
+          type: FunnelIdentityType.EMAIL,
+          value: email,
+          provider: "hubspot",
+          provenance: FunnelLinkProvenance.BACKFILLED,
+          confidence: 0.9,
+          metadata: {
+            formGuid: submission.formGuid,
+            formName: submission.formName,
+            funnelCategory: submission.funnelCategory,
+          },
+        },
+      ],
+    });
+
+    await createFunnelEventIfMissing(prisma, {
+      visitorId: visitor.id,
+      eventType: hubSpotCollectedFormEventType(submission),
+      occurredAt,
+      source: visitor.firstTouchSource ?? "hubspot",
+      channel: visitor.firstTouchChannel ?? channel,
+      campaign: visitor.firstTouchCampaign,
+      path: submission.pageUrl,
+      url: submission.pageUrl,
+      dedupeKey: hubSpotCollectedFormDedupeKey(submission),
+      metadata: {
+        formGuid: submission.formGuid,
+        formName: submission.formName,
+        funnelCategory: submission.funnelCategory,
+        email,
+      },
+    });
+  }
+}
+
+function hubSpotCollectedFormEventType(submission: HubSpotCollectedFormSubmission): FunnelEventType {
+  if (submission.funnelCategory === "lead_magnet") {
+    return FunnelEventType.KANBAN_CARD_CREATED;
+  }
+  return FunnelEventType.DEMO_BOOKED;
+}
+
+function hubSpotCollectedFormDedupeKey(submission: HubSpotCollectedFormSubmission): string {
+  const occurredAtMs = safeOptionalDate(submission.submittedAt)?.getTime() ?? 0;
+  return `hubspot_form:${submission.funnelCategory}:${submission.formGuid}:${occurredAtMs}:${normalizeEmail(submission.email) ?? submission.id}`;
+}
+
 async function fetchStripeStatusByCustomerId(
   apiKey: string,
   customerId: string,
@@ -1669,6 +1746,7 @@ export async function syncVisitorFunnelArtifacts(input: {
   to: Date;
 }): Promise<void> {
   await syncHubSpotMilestones(input.prisma, input.analyticsData);
+  await syncHubSpotCollectedFormMilestones(input.prisma, input.analyticsData);
   await syncCodaMilestones(input.prisma, input.analyticsData);
   await syncStripeMilestones(input.prisma, input.stripeKey, input.from, input.to);
 }

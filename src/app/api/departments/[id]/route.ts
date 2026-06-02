@@ -18,7 +18,7 @@ export async function PATCH(
 
     const permission = await enforcePermission({
       userId: session.user.id,
-      action: "project.write",
+      action: "department.write",
       request,
       targetType: "department",
       targetId: id,
@@ -35,7 +35,6 @@ export async function PATCH(
     const department = await prisma.department.update({
       where: { id },
       data,
-      include: { _count: { select: { projects: true } } },
     });
 
     return NextResponse.json(department);
@@ -61,25 +60,13 @@ export async function DELETE(
 
     const permission = await enforcePermission({
       userId: session.user.id,
-      action: "project.write",
+      action: "department.write",
       request,
       targetType: "department",
       targetId: id,
     });
     if (permission.deniedResponse) {
       return permission.deniedResponse;
-    }
-
-    // Check if any projects are linked
-    const projectCount = await prisma.project.count({
-      where: { departmentId: id },
-    });
-
-    if (projectCount > 0) {
-      return NextResponse.json(
-        { error: `Cannot delete: ${projectCount} project(s) still linked` },
-        { status: 409 },
-      );
     }
 
     await prisma.department.delete({ where: { id } });

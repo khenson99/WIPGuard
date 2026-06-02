@@ -1,22 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import TasksPage from "@/app/(dashboard)/tasks/page";
-import { ANALYTICS_HOME } from "@/lib/platform/routes";
-
-vi.mock("next/navigation", () => ({
-  redirect: vi.fn((target: string) => {
-    throw new Error(`NEXT_REDIRECT:${target}`);
-  }),
-}));
+import { describe, expect, it } from "vitest";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
 describe("TasksPage", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("redirects legacy task traffic to analytics", async () => {
-    const { redirect } = await import("next/navigation");
-
-    await expect(async () => TasksPage()).rejects.toThrow(`NEXT_REDIRECT:${ANALYTICS_HOME}`);
-    expect(redirect).toHaveBeenCalledWith(ANALYTICS_HOME);
+  it("does not ship a visible task page route", () => {
+    expect(existsSync(join(process.cwd(), "src/app/(dashboard)/tasks/page.tsx"))).toBe(false);
   });
 });

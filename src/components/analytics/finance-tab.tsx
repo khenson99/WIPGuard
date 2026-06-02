@@ -44,6 +44,14 @@ function fmt$(n: number): string {
   return `${sign}$${abs.toFixed(0)}`;
 }
 
+function fmtNullableMoney(value: number | null): string {
+  return value == null ? "—" : fmt$(value);
+}
+
+function fmtNullableDelta(value: number | null): string {
+  return value == null ? "—" : fmtDelta(value);
+}
+
 /**
  * Format number as percentage
  * @example fmtPct(0.856) => "85.6%"
@@ -504,19 +512,19 @@ export function FinanceTab({ data }: FinanceTabProps) {
             <div className="bg-secondary/40 rounded-lg p-4">
               <p className="text-xs text-muted-foreground uppercase mb-1">Est. Actual</p>
               <p className="text-lg font-bold text-foreground tabular-nums">
-                {fmt$(budgetActuals.totalActual)}
+                {fmtNullableMoney(budgetActuals.totalActual)}
               </p>
             </div>
             <div className="bg-secondary/40 rounded-lg p-4">
               <p className="text-xs text-muted-foreground uppercase mb-1">Est. Variance</p>
               <p className={`text-lg font-bold tabular-nums ${
-                budgetActuals.totalVariance > 0
+                (budgetActuals.totalVariance ?? 0) > 0
                     ? "text-red-500"
-                    : budgetActuals.totalVariance < 0
+                    : (budgetActuals.totalVariance ?? 0) < 0
                     ? "text-emerald-500"
                     : "text-foreground"
               }`}>
-                {fmtDelta(budgetActuals.totalVariance)}
+                {fmtNullableDelta(budgetActuals.totalVariance)}
               </p>
             </div>
           </div>
@@ -536,17 +544,17 @@ export function FinanceTab({ data }: FinanceTabProps) {
                 <span className="text-sm text-muted-foreground">{item.category}</span>
                 <span className="text-sm text-foreground text-right tabular-nums">{fmt$(item.budgeted)}</span>
                 <span className="text-sm text-foreground text-right tabular-nums">
-                  {fmt$(item.actual)}
+                  {fmtNullableMoney(item.actual)}
                 </span>
                 <span className={`text-sm text-right tabular-nums ${
-                  item.variance > 0 ? "text-red-500" : item.variance < 0 ? "text-emerald-500" : "text-muted-foreground"
+                  (item.variance ?? 0) > 0 ? "text-red-500" : (item.variance ?? 0) < 0 ? "text-emerald-500" : "text-muted-foreground"
                 }`}>
-                  {fmtDelta(item.variance)}
+                  {fmtNullableDelta(item.variance)}
                 </span>
                 <span className={`text-sm text-right tabular-nums ${
                   overBudget ? "text-red-500 font-medium" : "text-muted-foreground"
                 }`}>
-                  {item.variancePct > 0 ? "+" : ""}{item.variancePct.toFixed(1)}%
+                  {item.variancePct == null ? "—" : `${item.variancePct > 0 ? "+" : ""}${item.variancePct.toFixed(1)}%`}
                 </span>
               </div>
             );

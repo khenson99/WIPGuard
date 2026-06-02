@@ -23,6 +23,14 @@ describe('workerConfig', () => {
     expect(workerConfig.syncIntervalMs).toBe(300000);
     expect(workerConfig.runOnce).toBe(false);
     expect(workerConfig.logLevel).toBe('info');
+    expect(workerConfig.modules.hubspot).toBe(false);
+    expect(workerConfig.modules.slack).toBe(false);
+    expect(workerConfig.modules.coda).toBe(false);
+    expect(workerConfig.modules.google).toBe(false);
+    expect(workerConfig.modules.providerRules).toBe(true);
+    expect(workerConfig.modules.visitorFunnelEnrichment).toBe(true);
+    expect(workerConfig.modules.analytics).toBe(true);
+    expect(workerConfig.modules.healthChecks).toBe(true);
   });
 
   it('reads custom values from environment', async () => {
@@ -45,17 +53,46 @@ describe('workerConfig', () => {
     expect(workerConfig.logLevel).toBe('debug');
   });
 
-  it('allows disabling individual sync modules', async () => {
-    process.env.WORKER_SYNC_HUBSPOT = 'false';
-    process.env.WORKER_SYNC_SLACK = 'false';
+  it('falls back to safe defaults for invalid numeric values and zero continuous interval', async () => {
+    process.env.WORKER_DB_POOL_SIZE = 'not-a-number';
+    process.env.WORKER_DB_TIMEOUT = '-1';
+    process.env.WORKER_HEALTH_PORT = '-1';
+    process.env.WORKER_SYNC_TIMEOUT = 'NaN';
+    process.env.WORKER_SYNC_INTERVAL = '0';
 
     const { workerConfig } = await import('../config');
 
-    expect(workerConfig.modules.hubspot).toBe(false);
-    expect(workerConfig.modules.slack).toBe(false);
-    expect(workerConfig.modules.coda).toBe(true);
-    expect(workerConfig.modules.google).toBe(true);
+    expect(workerConfig.databasePoolSize).toBe(5);
+    expect(workerConfig.databaseTimeout).toBe(30000);
+    expect(workerConfig.healthCheckPort).toBe(8081);
+    expect(workerConfig.syncTimeoutMs).toBe(300000);
+    expect(workerConfig.syncIntervalMs).toBe(300000);
+    expect(workerConfig.runOnce).toBe(false);
+  });
+
+  it('allows enabling provider-specific modules and disabling wired sync modules', async () => {
+    process.env.WORKER_SYNC_HUBSPOT = 'true';
+    process.env.WORKER_SYNC_SLACK = 'true';
+    process.env.WORKER_SYNC_PROVIDER_RULES = 'false';
+    process.env.WORKER_SYNC_VISITOR_FUNNEL_ENRICHMENT = 'false';
+
+    const { workerConfig } = await import('../config');
+
+    expect(workerConfig.modules.hubspot).toBe(true);
+    expect(workerConfig.modules.slack).toBe(true);
+    expect(workerConfig.modules.coda).toBe(false);
+    expect(workerConfig.modules.google).toBe(false);
+    expect(workerConfig.modules.providerRules).toBe(false);
+    expect(workerConfig.modules.visitorFunnelEnrichment).toBe(false);
     expect(workerConfig.modules.analytics).toBe(true);
     expect(workerConfig.modules.healthChecks).toBe(true);
+  });
+
+  it('ignores stale Coda worker flags because task-migration sync is retired', async () => {
+    process.env.WORKER_SYNC_CODA = 'true';
+
+    const { workerConfig } = await import('../config');
+
+    expect(workerConfig.modules.coda).toBe(false);
   });
 });

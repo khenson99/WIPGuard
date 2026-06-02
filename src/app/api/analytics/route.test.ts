@@ -27,6 +27,10 @@ vi.mock("@/lib/analytics/fetchers-ga-webflow", () => ({
   fetchWebflowData: vi.fn(),
 }));
 
+vi.mock("@/lib/analytics/fetchers-google-search-console", () => ({
+  fetchGoogleSearchConsoleData: vi.fn(),
+}));
+
 vi.mock("@/lib/analytics/fetchers-ads", () => ({
   fetchGoogleAdsData: vi.fn(),
   fetchMetaAdsData: vi.fn(),
@@ -46,6 +50,12 @@ vi.mock("@/lib/analytics/fetchers-pylon", () => ({
   fetchPylonData: vi.fn(),
 }));
 
+vi.mock("@/lib/analytics/fetchers-development", () => ({
+  fetchPostHogData: vi.fn(),
+  fetchLinearData: vi.fn(),
+  fetchGitHubData: vi.fn(),
+}));
+
 vi.mock("@/lib/analytics/fetchers-integrations", () => ({
   fetchIntegrationTelemetryData: vi.fn(),
 }));
@@ -58,17 +68,26 @@ vi.mock("@/lib/analytics/snapshots", () => ({
   snapshotExpiryFromNow: vi.fn(() => new Date("2026-02-10T00:00:00.000Z")),
 }));
 
+vi.mock("@/lib/imladris/ingestion", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/imladris/ingestion")>();
+  return {
+    ...actual,
+    ingestImladrisRawRecords: vi.fn(),
+  };
+});
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     user: { findUnique: vi.fn() },
     securityAuditEvent: { create: vi.fn() },
-    task: { count: vi.fn() },
-    statusHistory: { findMany: vi.fn() },
+    integrationConnection: { findMany: vi.fn() },
+    analyticsSnapshot: { findMany: vi.fn() },
+    imladrisSourceSyncRun: { findMany: vi.fn() },
+    imladrisCanonicalMetricValue: { findMany: vi.fn() },
     stripeCustomerLink: { findMany: vi.fn() },
     budget: { findMany: vi.fn() },
     financialGoal: { findMany: vi.fn() },
     forecastScenario: { findMany: vi.fn() },
-    integrationRule: { findUnique: vi.fn() },
     dealMeeting: { findMany: vi.fn() },
     automationArtifact: { findMany: vi.fn() },
   },
@@ -281,6 +300,38 @@ const CODA_DATA = {
   _meta: META,
 };
 
+const GOOGLE_SEARCH_CONSOLE_DATA = {
+  siteUrl: "https://example.com/",
+  clicks: 42,
+  impressions: 1200,
+  ctr: 0.035,
+  position: 8.4,
+  queryCount: 1,
+  pageCount: 1,
+  dailyTrend: [],
+  topQueries: [
+    {
+      query: "wipguard analytics",
+      clicks: 25,
+      impressions: 400,
+      ctr: 0.0625,
+      position: 3.2,
+    },
+  ],
+  topPages: [
+    {
+      page: "https://example.com/",
+      clicks: 42,
+      impressions: 1200,
+      ctr: 0.035,
+      position: 8.4,
+    },
+  ],
+  devices: [],
+  countries: [],
+  _meta: META,
+};
+
 const SEMRUSH_DATA = {
   domain: "example.com",
   authorityScore: 10,
@@ -306,13 +357,56 @@ const PYLON_DATA = {
   _meta: META,
 };
 
+const POSTHOG_DATA = {
+  events: [
+    {
+      id: "evt_1",
+      event: "activation_completed",
+      timestamp: "2026-02-10T12:00:00.000Z",
+      properties: { accountId: "acct_1" },
+    },
+  ],
+  eventCount: 1,
+  _meta: META,
+};
+
+const LINEAR_DATA = {
+  issues: [
+    {
+      id: "lin_1",
+      identifier: "WIP-1",
+      title: "Persist integration telemetry",
+      updatedAt: "2026-02-10T12:00:00.000Z",
+      completedAt: "2026-02-10T13:00:00.000Z",
+      state: { type: "completed" },
+    },
+  ],
+  issueCount: 1,
+  _meta: META,
+};
+
+const GITHUB_DATA = {
+  pullRequests: [
+    {
+      id: 42,
+      number: 7,
+      title: "Harden sync",
+      updated_at: "2026-02-10T12:00:00.000Z",
+      merged_at: "2026-02-10T13:00:00.000Z",
+      merged: true,
+    },
+  ],
+  pullRequestCount: 1,
+  _meta: META,
+};
+
 const TELEMETRY_DATA = {
   provider: "slack",
   totalRules: 1,
   enabledRules: 1,
   erroredRules: 0,
   receiptsInRange: 1,
-  automationsTriggeredInRange: 1,
+  artifactsCreatedInRange: 1,
   eventsInRange: 1,
   failuresInRange: 0,
   trend: [],
@@ -341,7 +435,6 @@ describe("GET /api/analytics", () => {
     } as never);
 
     const { getCredentials } = await import("@/lib/analytics/credentials");
-    const { prisma } = await import("@/lib/prisma");
     vi.mocked(getCredentials).mockResolvedValue({
       hubspotToken: "hubspot",
       stripeKey: "stripe",
@@ -349,6 +442,8 @@ describe("GET /api/analytics", () => {
       gaPropertyId: "ga-prop",
       gaClientEmail: "ga@example.com",
       gaPrivateKey: "ga-key",
+      searchConsoleAccessToken: "gsc-token",
+      searchConsoleSiteUrl: "https://example.com/",
       googleAdsDevToken: "ads-dev",
       googleAdsCustomerId: "ads-customer",
       googleAdsRefreshToken: "ads-refresh",
@@ -373,6 +468,13 @@ describe("GET /api/analytics", () => {
       codaApiToken: "coda-token",
       codaDocId: "coda-doc",
       pylonApiKey: "pylon-token",
+      posthogApiKey: "posthog-token",
+      posthogProjectId: "posthog-project",
+      posthogHost: "https://posthog.example.com",
+      linearApiKey: "linear-token",
+      githubToken: "github-token",
+      githubOwner: "wipguard",
+      githubRepo: "app",
       googleWorkspaceAccessToken: "workspace-token",
       slackAccessToken: "slack-token",
       freshness: {
@@ -382,6 +484,7 @@ describe("GET /api/analytics", () => {
         [IntegrationProvider.CODA]: freshness(IntegrationProvider.CODA),
         [IntegrationProvider.REDDIT]: freshness(IntegrationProvider.REDDIT),
         [IntegrationProvider.GOOGLE_ANALYTICS]: freshness(IntegrationProvider.GOOGLE_ANALYTICS),
+        [IntegrationProvider.GOOGLE_SEARCH_CONSOLE]: freshness(IntegrationProvider.GOOGLE_SEARCH_CONSOLE),
         [IntegrationProvider.STRIPE]: freshness(IntegrationProvider.STRIPE),
         [IntegrationProvider.MERCURY]: freshness(IntegrationProvider.MERCURY),
         [IntegrationProvider.WEBFLOW]: freshness(IntegrationProvider.WEBFLOW),
@@ -390,9 +493,11 @@ describe("GET /api/analytics", () => {
         [IntegrationProvider.META_PAGE]: freshness(IntegrationProvider.META_PAGE),
         [IntegrationProvider.SEMRUSH]: freshness(IntegrationProvider.SEMRUSH),
         [IntegrationProvider.PYLON]: freshness(IntegrationProvider.PYLON),
+        [IntegrationProvider.POSTHOG]: freshness(IntegrationProvider.POSTHOG),
+        [IntegrationProvider.LINEAR]: freshness(IntegrationProvider.LINEAR),
+        [IntegrationProvider.GITHUB]: freshness(IntegrationProvider.GITHUB),
       },
     } as never);
-    vi.mocked(prisma.integrationRule.findUnique).mockResolvedValue(null as never);
 
     const { fetchHubSpotData, fetchMercuryData, fetchStripeData } = await import("@/lib/analytics/fetchers");
     vi.mocked(fetchHubSpotData).mockResolvedValue(HUBSPOT_DATA as never);
@@ -402,6 +507,9 @@ describe("GET /api/analytics", () => {
     const { fetchGAData, fetchWebflowData } = await import("@/lib/analytics/fetchers-ga-webflow");
     vi.mocked(fetchGAData).mockResolvedValue(GA_DATA as never);
     vi.mocked(fetchWebflowData).mockResolvedValue(WEBFLOW_DATA as never);
+
+    const { fetchGoogleSearchConsoleData } = await import("@/lib/analytics/fetchers-google-search-console");
+    vi.mocked(fetchGoogleSearchConsoleData).mockResolvedValue(GOOGLE_SEARCH_CONSOLE_DATA as never);
 
     const { fetchGoogleAdsData, fetchMetaAdsData, fetchMetaPageData, fetchRedditAdsData } = await import("@/lib/analytics/fetchers-ads");
     vi.mocked(fetchGoogleAdsData).mockResolvedValue(GOOGLE_ADS_DATA as never);
@@ -417,6 +525,11 @@ describe("GET /api/analytics", () => {
 
     const { fetchPylonData } = await import("@/lib/analytics/fetchers-pylon");
     vi.mocked(fetchPylonData).mockResolvedValue(PYLON_DATA as never);
+
+    const { fetchPostHogData, fetchLinearData, fetchGitHubData } = await import("@/lib/analytics/fetchers-development");
+    vi.mocked(fetchPostHogData).mockResolvedValue(POSTHOG_DATA as never);
+    vi.mocked(fetchLinearData).mockResolvedValue(LINEAR_DATA as never);
+    vi.mocked(fetchGitHubData).mockResolvedValue(GITHUB_DATA as never);
 
     const { fetchIntegrationTelemetryData } = await import("@/lib/analytics/fetchers-integrations");
     vi.mocked(fetchIntegrationTelemetryData).mockResolvedValue(TELEMETRY_DATA as never);
@@ -443,13 +556,25 @@ describe("GET /api/analytics", () => {
       error: null,
     } as never);
 
+    const { ingestImladrisRawRecords } = await import("@/lib/imladris/ingestion");
+    vi.mocked(ingestImladrisRawRecords).mockResolvedValue({
+      syncRunId: "raw-route-1",
+      status: "SUCCESS",
+      recordCount: 2,
+      acceptedCount: 2,
+      errorCount: 0,
+    });
+
+    const { prisma } = await import("@/lib/prisma");
     vi.mocked(prisma.user.findUnique).mockResolvedValue({
       role: "member",
       organizationId: "org-1",
     } as never);
     vi.mocked(prisma.securityAuditEvent.create).mockResolvedValue({} as never);
-    vi.mocked(prisma.task.count).mockResolvedValue(0 as never);
-    vi.mocked(prisma.statusHistory.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.integrationConnection.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.analyticsSnapshot.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.imladrisSourceSyncRun.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.imladrisCanonicalMetricValue.findMany).mockResolvedValue([] as never);
     vi.mocked(prisma.stripeCustomerLink.findMany).mockResolvedValue([
       {
         id: "link-1",
@@ -491,7 +616,11 @@ describe("GET /api/analytics", () => {
 
   it("treats ai-insights as a full-domain analytics request", async () => {
     const { fetchGoogleAdsData, fetchMetaAdsData, fetchRedditAdsData } = await import("@/lib/analytics/fetchers-ads");
+    const { fetchCodaData } = await import("@/lib/analytics/fetchers-coda");
+    const { fetchPostHogData, fetchLinearData, fetchGitHubData } = await import("@/lib/analytics/fetchers-development");
     const { fetchWebflowData } = await import("@/lib/analytics/fetchers-ga-webflow");
+    const { fetchGoogleSearchConsoleData } = await import("@/lib/analytics/fetchers-google-search-console");
+    const { ingestImladrisRawRecords } = await import("@/lib/imladris/ingestion");
     const { GET } = await import("@/app/api/analytics/route");
     const response = await GET(new Request("http://localhost/api/analytics?section=ai-insights&refresh=true"));
     const body = await response.json();
@@ -501,124 +630,126 @@ describe("GET /api/analytics", () => {
     expect(fetchMetaAdsData).toHaveBeenCalled();
     expect(fetchRedditAdsData).toHaveBeenCalled();
     expect(fetchWebflowData).toHaveBeenCalled();
+    expect(fetchCodaData).toHaveBeenCalledWith("coda-token", "coda-doc", {
+      fromDate: expect.any(Date),
+      toDate: expect.any(Date),
+    });
+    expect(fetchGoogleSearchConsoleData).toHaveBeenCalledWith(expect.objectContaining({
+      accessToken: "gsc-token",
+      siteUrl: "https://example.com/",
+      fromDate: expect.any(Date),
+      toDate: expect.any(Date),
+    }));
+    expect(fetchPostHogData).toHaveBeenCalledWith(expect.objectContaining({
+      apiKey: "posthog-token",
+      projectId: "posthog-project",
+      host: "https://posthog.example.com",
+      fromDate: expect.any(Date),
+      toDate: expect.any(Date),
+    }));
+    expect(fetchLinearData).toHaveBeenCalledWith(expect.objectContaining({
+      apiKey: "linear-token",
+      fromDate: expect.any(Date),
+      toDate: expect.any(Date),
+    }));
+    expect(fetchGitHubData).toHaveBeenCalledWith(expect.objectContaining({
+      token: "github-token",
+      owner: "wipguard",
+      repo: "app",
+      fromDate: expect.any(Date),
+      toDate: expect.any(Date),
+    }));
+    expect(ingestImladrisRawRecords).toHaveBeenCalledWith(expect.objectContaining({
+      provider: IntegrationProvider.CODA,
+      checkpoint: expect.objectContaining({
+        providerKey: "coda",
+        source: "analytics-route",
+      }),
+    }));
+    expect(ingestImladrisRawRecords).toHaveBeenCalledWith(expect.objectContaining({
+      provider: IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
+      checkpoint: expect.objectContaining({
+        providerKey: "googleSearchConsole",
+        source: "analytics-route",
+      }),
+    }));
+    expect(ingestImladrisRawRecords).toHaveBeenCalledWith(expect.objectContaining({
+      provider: IntegrationProvider.POSTHOG,
+      checkpoint: expect.objectContaining({
+        providerKey: "posthog",
+        source: "analytics-route",
+      }),
+    }));
+    expect(ingestImladrisRawRecords).toHaveBeenCalledWith(expect.objectContaining({
+      provider: IntegrationProvider.LINEAR,
+      checkpoint: expect.objectContaining({
+        providerKey: "linear",
+        source: "analytics-route",
+      }),
+    }));
+    expect(ingestImladrisRawRecords).toHaveBeenCalledWith(expect.objectContaining({
+      provider: IntegrationProvider.GITHUB,
+      checkpoint: expect.objectContaining({
+        providerKey: "github",
+        source: "analytics-route",
+      }),
+    }));
+    expect(body.coda).toEqual(CODA_DATA);
+    expect(body.googleSearchConsole).toEqual(GOOGLE_SEARCH_CONSOLE_DATA);
+    expect(body.posthog).toEqual(POSTHOG_DATA);
+    expect(body.linear).toEqual(LINEAR_DATA);
+    expect(body.github).toEqual(GITHUB_DATA);
     expect(body.meta?.section).toBe("ai-insights");
     expect(body.meta?.forceRefresh).toBe(true);
     expect(body.aiInsights).toBeTruthy();
   });
 
-  it("omits removed customer-success product analytics", async () => {
+  it("runs customer-success product analytics inside tenant context", async () => {
     const { getServerSession } = await import("next-auth");
     const { prisma } = await import("@/lib/prisma");
+    const { getRequestContext } = await import("@/lib/request-context");
 
     vi.mocked(getServerSession).mockResolvedValue({
       user: { id: "user-1", email: "user@example.com" },
     } as never);
 
-    vi.mocked(prisma.task.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.imladrisCanonicalMetricValue.findMany).mockImplementation((async () => {
+      if (getRequestContext()?.organizationId !== "org-1") {
+        throw new Error("Missing tenant context");
+      }
+      return [] as never;
+    }) as never);
 
     const { GET } = await import("@/app/api/analytics/route");
     const response = await GET(new Request("http://localhost/api/analytics?section=customer-success"));
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.product).toBeNull();
-    expect(prisma.task.count).not.toHaveBeenCalled();
+    expect(body.product).toBeTruthy();
+    expect(body.errors.some((entry: { source: string; message: string }) => entry.message === "Missing tenant context")).toBe(false);
   });
 
-  it("normalizes legacy integration telemetry snapshots to automation fields", async () => {
-    const { readLatestSnapshot } = await import("@/lib/analytics/snapshots");
-
-    vi.mocked(readLatestSnapshot).mockImplementation(async (input) => {
-      if (input.providerKey === "googleWorkspace") {
-        return {
-          payload: {
-            provider: "google_workspace",
-            totalRules: 2,
-            enabledRules: 2,
-            erroredRules: 0,
-            receiptsInRange: 4,
-            tasksCreatedInRange: 3,
-            eventsInRange: 4,
-            failuresInRange: 0,
-            trend: [
-              { date: "2026-02-10", receipts: 2, createdTasks: 2, failures: 0 },
-            ],
-            topFailureReasons: [],
-            _meta: META,
-          },
-          capturedAt: "2026-02-10T00:00:00.000Z",
-          expiresAt: "2026-02-10T01:00:00.000Z",
-          needsRefresh: false,
-          stale: false,
-          fromSnapshot: true,
-          status: "SUCCESS",
-          error: null,
-        } as never;
-      }
-
-      return {
-        payload: null,
-        capturedAt: null,
-        expiresAt: null,
-        needsRefresh: false,
-        stale: false,
-        fromSnapshot: false,
-        status: null,
-        error: null,
-      } as never;
-    });
-
-    const { GET } = await import("@/app/api/analytics/route");
-    const response = await GET(new Request("http://localhost/api/analytics?section=sales-google-workspace"));
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.googleWorkspace.automationsTriggeredInRange).toBe(3);
-    expect(body.googleWorkspace.trend[0].automationsTriggered).toBe(2);
-    expect(body.googleWorkspace.tasksCreatedInRange).toBeUndefined();
-    expect(body.googleWorkspace.trend[0].createdTasks).toBeUndefined();
-  });
-
-  it("passes configured Mercury expense mappings into the live fetch", async () => {
-    const { prisma } = await import("@/lib/prisma");
-    const { fetchMercuryData } = await import("@/lib/analytics/fetchers");
-
-    vi.mocked(prisma.integrationRule.findUnique).mockResolvedValueOnce({
-      config: {
-        mercuryExpenseMappings: [
-          { match: "google ads", category: "ops" },
-        ],
-      },
-    } as never);
-
-    const { GET } = await import("@/app/api/analytics/route");
-    const response = await GET(new Request("http://localhost/api/analytics?section=finance-mercury"));
-
-    expect(response.status).toBe(200);
-    expect(fetchMercuryData).toHaveBeenCalledWith(
-      "mercury",
-      expect.objectContaining({
-        expenseMappings: [
-          { match: "google ads", category: "ops" },
-        ],
-      }),
-    );
-  });
-
-  it("aliases removed customer-success subsection routes to the parent domain set", async () => {
-    const { fetchGoogleAdsData } = await import("@/lib/analytics/fetchers-ads");
+  it("returns Coda operational telemetry for the customer-success Coda section", async () => {
     const { fetchCodaData } = await import("@/lib/analytics/fetchers-coda");
-    const { fetchPylonData } = await import("@/lib/analytics/fetchers-pylon");
-
+    const { fetchIntegrationTelemetryData } = await import("@/lib/analytics/fetchers-integrations");
     const { GET } = await import("@/app/api/analytics/route");
-    const response = await GET(new Request("http://localhost/api/analytics?section=cs-coda"));
+
+    const response = await GET(new Request("http://localhost/api/analytics?section=cs-coda&refresh=true"));
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.meta?.section).toBe("cs-coda");
-    expect(fetchCodaData).toHaveBeenCalled();
-    expect(fetchPylonData).toHaveBeenCalled();
-    expect(fetchGoogleAdsData).not.toHaveBeenCalled();
+    expect(fetchCodaData).toHaveBeenCalledWith("coda-token", "coda-doc", {
+      fromDate: expect.any(Date),
+      toDate: expect.any(Date),
+    });
+    expect(fetchIntegrationTelemetryData).toHaveBeenCalledWith(expect.objectContaining({
+      userId: "user-1",
+      provider: IntegrationProvider.CODA,
+      from: expect.any(Date),
+      to: expect.any(Date),
+    }));
+    expect(body.coda).toEqual(CODA_DATA);
+    expect(body.codaOps).toEqual(TELEMETRY_DATA);
   });
 
   it("returns demo analytics domain data", async () => {
@@ -629,6 +760,27 @@ describe("GET /api/analytics", () => {
     expect(response.status).toBe(200);
     expect(body.demoAnalytics).toBeTruthy();
     expect(body.demoAnalytics.totalScheduled).toBeGreaterThan(0);
+  });
+
+  it("returns revenue dashboard data from revenue sources only", async () => {
+    const { fetchHubSpotData, fetchMercuryData, fetchStripeData } = await import("@/lib/analytics/fetchers");
+    const { fetchGoogleAdsData } = await import("@/lib/analytics/fetchers-ads");
+    const { GET } = await import("@/app/api/analytics/route");
+
+    const response = await GET(new Request("http://localhost/api/analytics?section=revenue"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(fetchHubSpotData).toHaveBeenCalled();
+    expect(fetchStripeData).toHaveBeenCalled();
+    expect(fetchMercuryData).toHaveBeenCalled();
+    expect(fetchGoogleAdsData).not.toHaveBeenCalled();
+    expect(body.revenueDashboard?.summary.arr).toBe(187176);
+    expect(body.revenueDashboard?.trust.sources.map((source: { key: string }) => source.key)).toEqual([
+      "hubspot",
+      "stripe",
+      "mercury",
+    ]);
   });
 
   it("loads unlinked HubSpot meetings for demo analytics instead of only deal-linked meetings", async () => {
@@ -952,6 +1104,53 @@ describe("GET /api/analytics", () => {
     }
   });
 
+  it("persists live analytics fetches into Imladris raw records before storing snapshots", async () => {
+    const previousOwner = process.env.INTEGRATION_OWNER_USER_ID;
+    process.env.INTEGRATION_OWNER_USER_ID = "owner-mercury";
+
+    const { storeAnalyticsSnapshot } = await import("@/lib/analytics/snapshots");
+    const { ingestImladrisRawRecords } = await import("@/lib/imladris/ingestion");
+
+    try {
+      const { GET } = await import("@/app/api/analytics/route");
+      const response = await GET(
+        new Request("http://localhost/api/analytics?section=finance-mercury")
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.mercury).toEqual(MERCURY_DATA);
+      expect(ingestImladrisRawRecords).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: IntegrationProvider.MERCURY,
+          context: {
+            userId: "owner-mercury",
+            organizationId: "org-1",
+          },
+          mode: "analytics-route",
+          windowStart: expect.any(Date),
+          windowEnd: expect.any(Date),
+          checkpoint: {
+            providerKey: "mercury",
+            source: "analytics-route",
+            rangePreset: "30d",
+          },
+        }),
+      );
+      expect(
+        vi.mocked(ingestImladrisRawRecords).mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        vi.mocked(storeAnalyticsSnapshot).mock.invocationCallOrder[0],
+      );
+    } finally {
+      if (previousOwner === undefined) {
+        delete process.env.INTEGRATION_OWNER_USER_ID;
+      } else {
+        process.env.INTEGRATION_OWNER_USER_ID = previousOwner;
+      }
+    }
+  });
+
   it("resolves integration credentials, snapshots, and telemetry through the shared owner", async () => {
     const previousOwner = process.env.INTEGRATION_OWNER_USER_ID;
     process.env.INTEGRATION_OWNER_USER_ID = "owner-1";
@@ -1093,9 +1292,9 @@ describe("GET /api/analytics", () => {
       ).toBe(true);
       expect(
         vi.mocked(readLatestSnapshot).mock.calls.some(
-          ([input]) => input.providerKey === "product"
+          ([input]) => input.userId === "user-1" && input.providerKey === "product"
         )
-      ).toBe(false);
+      ).toBe(true);
 
       expect(
         vi.mocked(storeAnalyticsSnapshot).mock.calls.some(
@@ -1104,9 +1303,9 @@ describe("GET /api/analytics", () => {
       ).toBe(true);
       expect(
         vi.mocked(storeAnalyticsSnapshot).mock.calls.some(
-          ([input]) => input.providerKey === "product"
+          ([input]) => input.userId === "user-1" && input.providerKey === "product"
         )
-      ).toBe(false);
+      ).toBe(true);
 
       expect(vi.mocked(fetchIntegrationTelemetryData).mock.calls.length).toBeGreaterThan(0);
       expect(
@@ -1318,34 +1517,37 @@ describe("GET /api/analytics", () => {
     }
   });
 
-  it("normalizes legacy Mercury fallback snapshots with observed-period totals", async () => {
+  it("refuses to store truncated live finance payloads and falls back to the last successful snapshot", async () => {
     const previousOwner = process.env.INTEGRATION_OWNER_USER_ID;
     process.env.INTEGRATION_OWNER_USER_ID = "owner-mercury";
 
-    const legacyFallbackMercury = {
+    const truncatedMercury = {
       ...MERCURY_DATA,
       cashFlow: {
         ...MERCURY_DATA.cashFlow,
-        totalBalance: 12000,
-        inflows30d: 100,
-        outflows30d: 1000,
-        netCashFlow: -900,
-        burnRate: 900,
-        runway: 13.3,
-        observedPeriodDays: 90,
-        expenseBreakdown30d: {
-          cogs: 1000,
-          payroll: 0,
-          marketing: 0,
-          infrastructure: 0,
-          ops: 0,
-          other: 0,
-        },
+        totalBalance: 999999,
+      },
+      _meta: {
+        ...META,
+        truncated: true,
+        truncatedResources: ["accounts"],
+      },
+    };
+    const fallbackMercury = {
+      ...MERCURY_DATA,
+      cashFlow: {
+        ...MERCURY_DATA.cashFlow,
+        totalBalance: 250000,
+        runway: 250,
       },
     };
 
-    const { readLatestSnapshot, readLatestSuccessfulSnapshot } =
-      await import("@/lib/analytics/snapshots");
+    const {
+      readLatestSnapshot,
+      readLatestSuccessfulSnapshot,
+      storeAnalyticsSnapshot,
+      storeAnalyticsSnapshotFailure,
+    } = await import("@/lib/analytics/snapshots");
     const { fetchMercuryData } = await import("@/lib/analytics/fetchers");
 
     try {
@@ -1359,9 +1561,9 @@ describe("GET /api/analytics", () => {
         status: "SUCCESS",
         error: null,
       } as never);
-      vi.mocked(fetchMercuryData).mockRejectedValueOnce(new Error("Mercury timeout"));
+      vi.mocked(fetchMercuryData).mockResolvedValueOnce(truncatedMercury as never);
       vi.mocked(readLatestSuccessfulSnapshot).mockResolvedValueOnce({
-        payload: legacyFallbackMercury,
+        payload: fallbackMercury,
         capturedAt: "2026-02-10T00:00:00.000Z",
         expiresAt: "2026-02-10T01:00:00.000Z",
         needsRefresh: false,
@@ -1378,20 +1580,29 @@ describe("GET /api/analytics", () => {
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body.mercury.cashFlow.inflows30d).toBe(33.33);
-      expect(body.mercury.cashFlow.outflows30d).toBe(333.33);
-      expect(body.mercury.cashFlow.netCashFlow).toBe(-300);
-      expect(body.mercury.cashFlow.burnRate).toBe(300);
-      expect(body.mercury.cashFlow.runway).toBe(40);
-      expect(body.mercury.cashFlow.observedOutflowTotal).toBe(1000);
-      expect(body.mercury.cashFlow.observedExpenseBreakdown).toEqual({
-        cogs: 1000,
-        payroll: 0,
-        marketing: 0,
-        infrastructure: 0,
-        ops: 0,
-        other: 0,
-      });
+      expect(body.mercury.cashFlow.totalBalance).toBe(250000);
+      expect(body.staleDomains).toContain("mercury");
+      expect(body.errors).toContainEqual(
+        expect.objectContaining({
+          source: "mercury",
+          message:
+            "Provider payload for mercury is truncated; refusing to persist partial analytics route data",
+        }),
+      );
+      expect(storeAnalyticsSnapshot).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          providerKey: "mercury",
+          payload: truncatedMercury,
+        }),
+      );
+      expect(storeAnalyticsSnapshotFailure).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: "owner-mercury",
+          providerKey: "mercury",
+          error:
+            "Provider payload for mercury is truncated; refusing to persist partial analytics route data",
+        }),
+      );
     } finally {
       if (previousOwner === undefined) {
         delete process.env.INTEGRATION_OWNER_USER_ID;

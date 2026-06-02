@@ -19,9 +19,12 @@ export type IntegrationSlug =
   | "meta-ads"
   | "meta-page"
   | "pylon"
+  | "posthog"
+  | "linear"
+  | "github"
+  | "unify"
   | "semrush"
-  | "google-search-console"
-  | "wipguard";
+  | "google-search-console";
 export type IntegrationAuthType = "oauth" | "token";
 
 interface OAuthSettings {
@@ -102,7 +105,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     slug: "hubspot",
     provider: IntegrationProvider.HUBSPOT,
     name: "HubSpot",
-    description: "Sync deal stage, lifecycle, and CRM context across revenue workflows.",
+    description: "Sync CRM deal, company, contact, and lifecycle signals into Imladris.",
     capabilities: ["Deals", "Contacts"],
     authType: "oauth",
     oauth: {
@@ -130,8 +133,8 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     provider: IntegrationProvider.SLACK,
     name: "Slack",
     description:
-      "Post workflow updates to channels and keep team communication in sync.",
-    capabilities: ["Notifications", "Channel updates"],
+      "Post operating alerts to channels and capture collaboration telemetry.",
+    capabilities: ["Operating alerts", "Collaboration telemetry"],
     authType: "oauth",
     oauth: {
       authorizationEndpoint: "https://slack.com/oauth/v2/authorize",
@@ -146,7 +149,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     slug: "stripe",
     provider: IntegrationProvider.STRIPE,
     name: "Stripe",
-    description: "Connect Stripe account data and payment signals into WIPGuard.",
+    description: "Connect Stripe account data and payment signals into Imladris.",
     capabilities: ["Revenue", "Payments", "Subscriptions"],
     authType: "oauth",
     oauth: {
@@ -180,7 +183,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     slug: "webflow",
     provider: IntegrationProvider.WEBFLOW,
     name: "Webflow",
-    description: "Connect Webflow sites and content signals into WIPGuard.",
+    description: "Connect Webflow sites and content signals into Imladris.",
     capabilities: ["Sites", "Pages", "CMS", "Forms"],
     authType: "oauth",
     oauth: {
@@ -200,16 +203,15 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     slug: "coda",
     provider: IntegrationProvider.CODA,
     name: "Coda",
-    description:
-      "Attach docs and migrate legacy Coda workflows using a Coda API token.",
-    capabilities: ["Docs", "Rows", "Coda migration"],
+    description: "Attach docs and source data using a Coda API token.",
+    capabilities: ["Docs", "Rows"],
     authType: "token",
   },
   {
     slug: "reddit",
     provider: IntegrationProvider.REDDIT,
     name: "Reddit",
-    description: "Capture Reddit threads and community signals in WIPGuard.",
+    description: "Capture Reddit threads and community signals in Imladris.",
     capabilities: ["Thread capture", "Community monitoring"],
     authType: "oauth",
     oauth: {
@@ -228,7 +230,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     slug: "google-analytics",
     provider: IntegrationProvider.GOOGLE_ANALYTICS,
     name: "Google Analytics",
-    description: "Connect GA4 traffic and engagement analytics into WIPGuard.",
+    description: "Connect GA4 traffic and engagement analytics into Imladris.",
     capabilities: ["Sessions", "Channels", "Top pages"],
     authType: "token",
   },
@@ -236,7 +238,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     slug: "google-search-console",
     provider: IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
     name: "Google Search Console",
-    description: "Connect search performance, indexing, and query telemetry into WIPGuard.",
+    description: "Connect search performance, indexing, and query telemetry into Imladris.",
     capabilities: ["Queries", "Pages", "CTR", "Coverage"],
     authType: "token",
   },
@@ -244,7 +246,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     slug: "google-ads",
     provider: IntegrationProvider.GOOGLE_ADS,
     name: "Google Ads",
-    description: "Connect Google Ads campaign and spend data into WIPGuard.",
+    description: "Connect Google Ads campaign and spend data into Imladris.",
     capabilities: ["Campaigns", "Ad spend", "Performance metrics"],
     authType: "oauth",
     oauth: {
@@ -267,7 +269,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     slug: "meta-ads",
     provider: IntegrationProvider.META_ADS,
     name: "Meta Ads",
-    description: "Connect Meta (Facebook/Instagram) ad account data into WIPGuard.",
+    description: "Connect Meta (Facebook/Instagram) ad account data into Imladris.",
     capabilities: ["Ad campaigns", "Ad spend", "Performance metrics"],
     authType: "oauth",
     oauth: {
@@ -290,7 +292,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     slug: "meta-page",
     provider: IntegrationProvider.META_PAGE,
     name: "Meta Page",
-    description: "Connect Meta Page insights and engagement data into WIPGuard.",
+    description: "Connect Meta Page insights and engagement data into Imladris.",
     capabilities: ["Page insights", "Post engagement"],
     authType: "oauth",
     oauth: {
@@ -317,19 +319,43 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     authType: "token",
   },
   {
-    slug: "semrush",
-    provider: IntegrationProvider.SEMRUSH,
-    name: "SEMrush",
-    description: "Connect SEMrush SEO metrics and keyword ranks into WIPGuard.",
-    capabilities: ["Organic Search", "Paid Traffic", "Authority"],
+    slug: "posthog",
+    provider: IntegrationProvider.POSTHOG,
+    name: "PostHog",
+    description: "Connect product analytics events and activation telemetry.",
+    capabilities: ["Product events", "Activation", "Retention cohorts"],
     authType: "token",
   },
   {
-    slug: "wipguard",
-    provider: IntegrationProvider.WIPGUARD,
-    name: "WIPGuard",
-    description: "Use internal WIPGuard workflow and backlog data as an automation source.",
-    capabilities: ["Tasks", "Projects", "Workflow telemetry"],
+    slug: "linear",
+    provider: IntegrationProvider.LINEAR,
+    name: "Linear",
+    description: "Connect engineering issue flow and delivery telemetry.",
+    capabilities: ["Issues", "Cycles", "Delivery health"],
+    authType: "token",
+  },
+  {
+    slug: "github",
+    provider: IntegrationProvider.GITHUB,
+    name: "GitHub",
+    description: "Connect pull request, commit, review, and release telemetry.",
+    capabilities: ["Pull requests", "Reviews", "Releases"],
+    authType: "token",
+  },
+  {
+    slug: "unify",
+    provider: IntegrationProvider.UNIFY,
+    name: "Unify",
+    description: "Connect website visitor enrichment and account identification signals.",
+    capabilities: ["Visitor enrichment", "Account identification"],
+    authType: "token",
+  },
+  {
+    slug: "semrush",
+    provider: IntegrationProvider.SEMRUSH,
+    name: "SEMrush",
+    description: "Connect SEMrush SEO metrics and keyword ranks into Imladris.",
+    capabilities: ["Organic Search", "Paid Traffic", "Authority"],
     authType: "token",
   },
 ] as const;
@@ -351,6 +377,8 @@ export function getIntegrationBySlug(
   }
   return PROVIDER_LOOKUP.get(resolved.provider) ?? null;
 }
+
+export const getIntegrationDefinition = getIntegrationBySlug;
 
 export function getIntegrationByProvider(
   provider: IntegrationProvider

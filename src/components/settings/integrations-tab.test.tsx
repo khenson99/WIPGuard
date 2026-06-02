@@ -26,12 +26,7 @@ function mockIntegrationsFetch(options: FetchMockOptions): void {
         } as Response;
       }
 
-      if (
-        url.endsWith("/api/integrations/slack/status-sync") ||
-        url.endsWith("/api/integrations/slack/unanswered-requests") ||
-        url.endsWith("/api/integrations/slack/thread-capture") ||
-        url.endsWith("/api/integrations/slack/channel-routing")
-      ) {
+      if (url.endsWith("/api/integrations/slack/channel-routing")) {
         const suffix = url.split("/").pop() || "";
         const lastError = slackRuleErrors[suffix] ?? null;
 
@@ -42,35 +37,12 @@ function mockIntegrationsFetch(options: FetchMockOptions): void {
               id: `rule-${suffix}`,
               key: `slack_${suffix}`,
               enabled: true,
-              statusOverride: "QUEUED",
-              config:
-                suffix === "channel-routing"
-                  ? { defaultChannelId: "C123", fallbackToDm: true, policies: [] }
-                  : {},
+              config: { defaultChannelId: "C123", fallbackToDm: true, policies: [] },
               checkpoint: {},
               lastObservedAt: null,
               lastRunAt: null,
               lastError,
             },
-          }),
-        } as Response;
-      }
-
-      if (url.endsWith("/api/integrations/hubspot/sync")) {
-        if (init?.method === "POST") {
-          return {
-            ok: true,
-            json: async () => ({ report: { scannedDeals: 0, scannedTasks: 0, drifts: [], summary: {}, generatedAt: "2026-02-18T00:00:00.000Z" } }),
-          } as Response;
-        }
-
-        return {
-          ok: true,
-          json: async () => ({
-            rule: { id: "hubspot", key: "hubspot", enabled: true, config: {}, checkpoint: {}, lastObservedAt: null, lastRunAt: null, lastError: null },
-            connection: { status: "CONNECTED", lastSyncedAt: null, lastError: null },
-            mappingValidation: [],
-            recentReceipts: [],
           }),
         } as Response;
       }
@@ -142,7 +114,7 @@ describe("IntegrationsTab", () => {
       expect(screen.getByLabelText("Toggle Webflow").getAttribute("aria-expanded")).toBe("true");
     });
     expect(screen.getByLabelText("Toggle Slack").getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByText("Slack Status Thread Sync")).toBeNull();
+    expect(screen.queryByText("Slack Channel Routing")).toBeNull();
 
     fireEvent.click(screen.getByLabelText("Toggle Slack"));
 
@@ -154,15 +126,13 @@ describe("IntegrationsTab", () => {
     await waitFor(() => {
       expect(screen.getByText("Slack Channel Routing")).toBeTruthy();
     });
-    expect(screen.queryByText("Save Config")).toBeNull();
+    expect(screen.queryByText("Save")).toBeNull();
 
     fireEvent.click(screen.getByText("Slack Channel Routing"));
 
     await waitFor(() => {
       expect(screen.getByText("Default Channel ID")).toBeTruthy();
     });
-
-    expect(screen.getByText("Save Config")).toBeTruthy();
 
     fireEvent.click(screen.getByLabelText("Toggle Webflow"));
 
@@ -175,7 +145,7 @@ describe("IntegrationsTab", () => {
     });
   });
 
-  it("shows the first failing visible rule once the provider is expanded", async () => {
+  it("auto-opens the first failing rule when provider is expanded by default", async () => {
     mockIntegrationsFetch({
       items: [
         {
@@ -208,15 +178,13 @@ describe("IntegrationsTab", () => {
     render(<IntegrationsTab />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Toggle Slack")).toBeTruthy();
+      expect(screen.getByLabelText("Toggle Slack").getAttribute("aria-expanded")).toBe("true");
     });
-
-    fireEvent.click(screen.getByLabelText("Toggle Slack"));
 
     await waitFor(() => {
-      expect(screen.getAllByText("Slack Channel Routing").length).toBeGreaterThan(0);
+      expect(screen.getByText("upstream failure")).toBeTruthy();
     });
-    expect(screen.getByText("Error")).toBeTruthy();
+    expect(screen.getByText("Save")).toBeTruthy();
   });
 
   it("renders env-managed oauth integrations without connect or disconnect actions", async () => {

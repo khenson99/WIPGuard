@@ -7,7 +7,8 @@ export type AnalyticsPrimarySectionId =
   | "customer-success"
   | "customer-journey"
   | "demo-analytics"
-  | "process-analytics";
+  | "process-analytics"
+  | "revenue";
 
 export type FinanceDataDomain =
   | "financePlanning"
@@ -116,6 +117,12 @@ export const ANALYTICS_PRIMARY_SECTIONS: AnalyticsPrimarySection[] = [
     description: "Pipeline velocity, health, and bottlenecks.",
   },
   {
+    id: "revenue",
+    label: "Revenue",
+    path: "/analytics/revenue",
+    description: "Investor-ready revenue, pipeline, subscription, and cash metrics.",
+  },
+  {
     id: "finance",
     label: "Revenue & Finance",
     path: "/analytics/finance",
@@ -166,6 +173,13 @@ export const ANALYTICS_DASHBOARD_FUNNEL_GROUPS: AnalyticsDashboardFunnelGroup[] 
     description: "Analytics across the entire process, including journey, process, and revenue signals.",
     primaryIds: ["customer-journey", "process-analytics", "finance"],
   },
+  {
+    id: "revenue",
+    label: "Revenue",
+    path: "/analytics/revenue",
+    description: "Investor revenue metrics from subscriptions, sales pipeline, demos, and cash systems.",
+    primaryIds: ["revenue"],
+  },
 ];
 
 export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
@@ -175,8 +189,6 @@ export const ANALYTICS_SUB_SECTIONS: AnalyticsSubSection[] = [
   { id: "ads-reddit-ads", label: "Reddit Ads", path: "/analytics/ads-reddit-ads", parentId: "social-media", dataDomain: "redditAds" },
   { id: "ads-webflow", label: "Webflow", path: "/analytics/ads-webflow", parentId: "website-traffic", dataDomain: "webflow" },
   { id: "ads-semrush", label: "SEMrush", path: "/analytics/ads-semrush", parentId: "website-traffic", dataDomain: "semrush" },
-  { id: "ads-coda-kanban", label: "Campaigns & Conferences", path: "/analytics/ads-coda-kanban", parentId: "social-media", dataDomain: "coda" },
-
   { id: "finance-mercury", label: "Mercury", path: "/analytics/finance-mercury", parentId: "finance", dataDomain: "mercury" },
   { id: "finance-stripe", label: "Stripe", path: "/analytics/finance-stripe", parentId: "finance", dataDomain: "stripe" },
   { id: "finance-hubspot", label: "HubSpot", path: "/analytics/finance-hubspot", parentId: "finance", dataDomain: "hubspot" },
@@ -261,14 +273,14 @@ export const LEGACY_ANALYTICS_ROUTE_REDIRECTS: Record<string, string> = {
   "meta-page": "/analytics/ads-meta-ads",
   "reddit-ads": "/analytics/ads-reddit-ads",
   webflow: "/analytics/ads-webflow",
-  coda: "/analytics/ads-coda-kanban",
+  coda: "/analytics/social-media",
   "google-workspace": "/analytics/sales-google-workspace",
   slack: "/analytics/sales-slack",
   semrush: "/analytics/ads-semrush",
-  "decision-dashboard": "/analytics/process-analytics",
-  "flow-metrics": "/analytics/process-analytics",
-  "flow-risk": "/analytics/process-analytics",
-  observability: "/analytics/process-analytics",
+  "decision-dashboard": "/analytics/customer-success",
+  "flow-metrics": "/analytics/customer-success",
+  "flow-risk": "/analytics/customer-success",
+  observability: "/analytics/customer-success",
   "cs-decision-dashboard": "/analytics/customer-success",
   "cs-flow-metrics": "/analytics/customer-success",
   "cs-flow-risk": "/analytics/customer-success",

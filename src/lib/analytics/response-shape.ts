@@ -14,6 +14,7 @@ export function createEmptyAiInsightsBundle(generatedAt: string = new Date().toI
       "customer-journey": [],
       "demo-analytics": [],
       "process-analytics": [],
+      revenue: [],
     },
   };
 }
@@ -29,6 +30,7 @@ export function createEmptyAnalyticsDashboardData(input: {
     stripe: null,
     mercury: null,
     googleAnalytics: null,
+    googleSearchConsole: null,
     googleAds: null,
     metaAds: null,
     metaPage: null,
@@ -38,6 +40,9 @@ export function createEmptyAnalyticsDashboardData(input: {
     coda: null,
     semrush: null,
     pylon: null,
+    posthog: null,
+    linear: null,
+    github: null,
     product: null,
     googleWorkspace: null,
     slack: null,
@@ -58,6 +63,7 @@ export function createEmptyAnalyticsDashboardData(input: {
     timeRange: input.timeRange,
     lastFullRefresh: input.lastFullRefresh ?? new Date().toISOString(),
     financialPlanning: null,
+    revenueDashboard: null,
     metrics: null,
     errors: [],
   };

@@ -7,8 +7,6 @@ describe('cache-keys', () => {
       expect(CACHE_TTL.COMPANY_PRIORITIES).toBe(300);
       expect(CACHE_TTL.DEPARTMENTS).toBe(120);
       expect(CACHE_TTL.TEAM_MEMBERS).toBe(120);
-      expect(CACHE_TTL.PROJECTS).toBe(60);
-      expect(CACHE_TTL.WIP_POLICIES).toBe(300);
       expect(CACHE_TTL.INTEGRATION_STATUS).toBe(60);
       expect(CACHE_TTL.ANALYTICS).toBe(120);
       expect(CACHE_TTL.USER_SESSION).toBe(300);
@@ -19,7 +17,6 @@ describe('cache-keys', () => {
     const companyId = 'comp-123';
     const departmentId = 'dept-456';
     const memberId = 'member-789';
-    const projectId = 'proj-abc';
     const userId = 'user-def';
 
     it('should generate correct company priority keys', () => {
@@ -49,21 +46,6 @@ describe('cache-keys', () => {
       );
       expect(cacheKeys.teamMember(companyId, memberId)).toBe(
         'company:comp-123:team-members:member-789'
-      );
-    });
-
-    it('should generate correct project keys', () => {
-      expect(cacheKeys.projects(companyId)).toBe(
-        'company:comp-123:projects'
-      );
-      expect(cacheKeys.project(companyId, projectId)).toBe(
-        'company:comp-123:projects:proj-abc'
-      );
-    });
-
-    it('should generate correct WIP policy keys', () => {
-      expect(cacheKeys.wipPolicies(companyId)).toBe(
-        'company:comp-123:wip-policies'
       );
     });
 

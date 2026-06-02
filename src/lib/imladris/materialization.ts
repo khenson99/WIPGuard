@@ -1,0 +1,1338 @@
+import {
+  ImladrisMetricStatus,
+  IntegrationProvider,
+} from "@/generated/prisma/client";
+import type { PrismaClientType } from "@/lib/prisma";
+
+const DEVELOPMENT_CALCULATION_VERSION = "development-delivery-health-v1";
+const PRODUCT_ACTIVATION_CALCULATION_VERSION = "product-activation-rate-v1";
+const FINANCE_NET_BURN_CALCULATION_VERSION = "finance-net-burn-v1";
+const FINANCE_CASH_RUNWAY_CALCULATION_VERSION = "finance-cash-runway-v1";
+const REVENUE_MRR_CALCULATION_VERSION = "revenue-mrr-v1";
+const SALES_QUALIFIED_PIPELINE_CALCULATION_VERSION = "sales-qualified-pipeline-v1";
+const MARKETING_PIPELINE_EFFICIENCY_CALCULATION_VERSION =
+  "marketing-pipeline-efficiency-v1";
+const CUSTOMER_SUCCESS_RETENTION_RISK_CALCULATION_VERSION =
+  "customer-success-retention-risk-v1";
+
+interface ImladrisActorContext {
+  userId: string | null;
+  organizationId: string | null;
+}
+
+interface RawSourceRecordRow {
+  id: string;
+  provider: IntegrationProvider;
+  objectType: string;
+  externalId: string;
+  occurredAt: Date | string | null;
+  sourceCreatedAt: Date | string | null;
+  sourceUpdatedAt: Date | string | null;
+  payload: unknown;
+}
+
+interface MaterializeDevelopmentMetricsInput {
+  prisma: PrismaClientType;
+  context: ImladrisActorContext;
+  periodStart: Date;
+  periodEnd: Date;
+  now?: Date;
+}
+
+export interface MaterializedImladrisMetricResult {
+  metricKey: string;
+  metricValueId: string;
+  status: keyof typeof ImladrisMetricStatus;
+  rawRecordCount: number;
+  value: Record<string, unknown>;
+}
+
+type RawSourceRecordDelegate = {
+  findMany(args: Record<string, unknown>): Promise<RawSourceRecordRow[]>;
+};
+
+type CanonicalMetricDelegate = {
+  upsert(args: {
+    where: Record<string, unknown>;
+    create: Record<string, unknown>;
+    update: Record<string, unknown>;
+  }): Promise<{ id: string }>;
+};
+
+type MetricLineageDelegate = {
+  deleteMany(args: { where: { metricValueId: string } }): Promise<unknown>;
+  createMany(args: { data: Array<Record<string, unknown>> }): Promise<unknown>;
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function nestedRecord(value: unknown): Record<string, unknown> {
+  return asRecord(value);
+}
+
+function dateFrom(value: unknown): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function daysBetween(start: Date | null, end: Date | null): number | null {
+  if (!start || !end) return null;
+  return Math.max(0, (end.getTime() - start.getTime()) / 86_400_000);
+}
+
+function isCompletedLinearIssue(record: RawSourceRecordRow): boolean {
+  const payload = asRecord(record.payload);
+  const state = payload.state;
+  if (typeof state === "string") {
+    return ["done", "completed", "complete"].includes(state.toLowerCase());
+  }
+  const stateType = nestedRecord(state).type;
+  if (typeof stateType === "string" && stateType.toLowerCase() === "completed") {
+    return true;
+  }
+  return Boolean(payload.completedAt ?? payload.completed_at);
+}
+
+function linearCycleTimeDays(record: RawSourceRecordRow): number | null {
+  const payload = asRecord(record.payload);
+  return daysBetween(
+    dateFrom(payload.createdAt ?? payload.created_at ?? record.sourceCreatedAt),
+    dateFrom(payload.completedAt ?? payload.completed_at ?? record.occurredAt ?? record.sourceUpdatedAt),
+  );
+}
+
+function isMergedPullRequest(record: RawSourceRecordRow): boolean {
+  const payload = asRecord(record.payload);
+  return payload.merged === true || Boolean(payload.mergedAt ?? payload.merged_at);
+}
+
+function sourceKeyForProvider(
+  provider: IntegrationProvider,
+):
+  | "hubspot"
+  | "stripe"
+  | "pylon"
+  | "mercury"
+  | "linear"
+  | "github"
+  | "posthog"
+  | "googleWorkspace"
+  | "slack"
+  | "googleAnalytics"
+  | "googleSearchConsole"
+  | "googleAds"
+  | "metaAds"
+  | "reddit"
+  | "semrush"
+  | "coda"
+  | "webflow"
+  | "unify" {
+  switch (provider) {
+    case IntegrationProvider.HUBSPOT:
+      return "hubspot";
+    case IntegrationProvider.STRIPE:
+      return "stripe";
+    case IntegrationProvider.PYLON:
+      return "pylon";
+    case IntegrationProvider.MERCURY:
+      return "mercury";
+    case IntegrationProvider.LINEAR:
+      return "linear";
+    case IntegrationProvider.GITHUB:
+      return "github";
+    case IntegrationProvider.GOOGLE_WORKSPACE:
+      return "googleWorkspace";
+    case IntegrationProvider.SLACK:
+      return "slack";
+    case IntegrationProvider.GOOGLE_ANALYTICS:
+      return "googleAnalytics";
+    case IntegrationProvider.GOOGLE_SEARCH_CONSOLE:
+      return "googleSearchConsole";
+    case IntegrationProvider.GOOGLE_ADS:
+      return "googleAds";
+    case IntegrationProvider.META_ADS:
+    case IntegrationProvider.META_PAGE:
+      return "metaAds";
+    case IntegrationProvider.REDDIT:
+      return "reddit";
+    case IntegrationProvider.SEMRUSH:
+      return "semrush";
+    case IntegrationProvider.CODA:
+      return "coda";
+    case IntegrationProvider.WEBFLOW:
+      return "webflow";
+    case IntegrationProvider.UNIFY:
+      return "unify";
+    default:
+      return "posthog";
+  }
+}
+
+function average(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function computeDeliveryHealth(records: RawSourceRecordRow[]) {
+  const linearIssues = records.filter(
+    (record) => record.provider === IntegrationProvider.LINEAR && record.objectType === "issue",
+  );
+  const completedLinearIssues = linearIssues.filter(isCompletedLinearIssue);
+  const mergedPullRequests = records.filter(
+    (record) =>
+      record.provider === IntegrationProvider.GITHUB &&
+      record.objectType === "pull_request" &&
+      isMergedPullRequest(record),
+  );
+  const productEvents = records.filter(
+    (record) => record.provider === IntegrationProvider.POSTHOG && record.objectType === "event",
+  );
+  const cycleTimes = completedLinearIssues
+    .map(linearCycleTimeDays)
+    .filter((value): value is number => typeof value === "number");
+  const averageLinearCycleTimeDays = average(cycleTimes);
+
+  const score = Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round(
+        45 +
+          Math.min(25, completedLinearIssues.length * 5) +
+          Math.min(20, mergedPullRequests.length * 5) +
+          Math.min(10, productEvents.length * 2) -
+          (averageLinearCycleTimeDays ? Math.max(0, averageLinearCycleTimeDays - 7) : 0),
+      ),
+    ),
+  );
+
+  return {
+    score,
+    completedLinearIssues: completedLinearIssues.length,
+    mergedPullRequests: mergedPullRequests.length,
+    productEvents: productEvents.length,
+    averageLinearCycleTimeDays,
+  };
+}
+
+function confidenceFor(records: RawSourceRecordRow[]): number {
+  const providerCount = new Set(records.map((record) => record.provider)).size;
+  return Math.min(0.95, Number((0.55 + providerCount * 0.12).toFixed(2)));
+}
+
+function numberFrom(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function currencyFrom(records: RawSourceRecordRow[]): string {
+  for (const record of records) {
+    const currency = asRecord(record.payload).currency;
+    if (typeof currency === "string" && currency.trim()) {
+      return currency.toUpperCase();
+    }
+  }
+  return "USD";
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function roundRatio(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function providerWindowWhere(input: {
+  providers: IntegrationProvider[];
+  context: ImladrisActorContext;
+  periodStart: Date;
+  periodEnd: Date;
+}) {
+  return {
+    provider: {
+      in: input.providers,
+    },
+    OR: [
+      { userId: input.context.userId },
+      ...(input.context.organizationId
+        ? [{ organizationId: input.context.organizationId }]
+        : []),
+    ],
+    AND: [
+      {
+        OR: [
+          { occurredAt: { gte: input.periodStart, lte: input.periodEnd } },
+          { sourceUpdatedAt: { gte: input.periodStart, lte: input.periodEnd } },
+        ],
+      },
+    ],
+  };
+}
+
+async function replaceLineage(input: {
+  metricLineage: MetricLineageDelegate;
+  metricValueId: string;
+  records: RawSourceRecordRow[];
+  calculationVersion: string;
+}) {
+  await input.metricLineage.deleteMany({
+    where: { metricValueId: input.metricValueId },
+  });
+  if (input.records.length === 0) return;
+  await input.metricLineage.createMany({
+    data: input.records.map((record) => ({
+      metricValueId: input.metricValueId,
+      rawRecordId: record.id,
+      sourceKey: sourceKeyForProvider(record.provider),
+      sourceType: record.objectType,
+      sourceId: record.externalId,
+      capturedAt: dateFrom(record.occurredAt ?? record.sourceUpdatedAt),
+      metadata: {
+        provider: record.provider,
+        calculationVersion: input.calculationVersion,
+      },
+    })),
+  });
+}
+
+export async function materializeImladrisDevelopmentMetrics(
+  input: MaterializeDevelopmentMetricsInput,
+): Promise<MaterializedImladrisMetricResult> {
+  const rawRecords = input.prisma.imladrisRawSourceRecord as RawSourceRecordDelegate;
+  const canonicalMetrics = input.prisma
+    .imladrisCanonicalMetricValue as CanonicalMetricDelegate;
+  const metricLineage = input.prisma.imladrisMetricLineage as MetricLineageDelegate;
+
+  const records = await rawRecords.findMany({
+    where: providerWindowWhere({
+      providers: [
+        IntegrationProvider.LINEAR,
+        IntegrationProvider.GITHUB,
+        IntegrationProvider.POSTHOG,
+      ],
+      context: input.context,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+    }),
+    orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
+  });
+
+  const value = computeDeliveryHealth(records);
+  const status =
+    records.length > 0 ? ImladrisMetricStatus.READY : ImladrisMetricStatus.MISSING;
+  const warnings =
+    records.length > 0
+      ? []
+      : ["No Linear, GitHub, or PostHog raw records were available for this period."];
+  const metricValue = await canonicalMetrics.upsert({
+    where: {
+      organizationId_userId_metricKey_periodEnd_calculationVersion: {
+        organizationId: input.context.organizationId,
+        userId: input.context.userId,
+        metricKey: "development.delivery_health",
+        periodEnd: input.periodEnd,
+        calculationVersion: DEVELOPMENT_CALCULATION_VERSION,
+      },
+    },
+    create: {
+      metricKey: "development.delivery_health",
+      department: "development",
+      unit: "score",
+      value,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+      status,
+      confidence: confidenceFor(records),
+      warnings,
+      calculationVersion: DEVELOPMENT_CALCULATION_VERSION,
+      computedAt: input.now ?? new Date(),
+      userId: input.context.userId,
+      organizationId: input.context.organizationId,
+    },
+    update: {
+      value,
+      periodStart: input.periodStart,
+      status,
+      confidence: confidenceFor(records),
+      warnings,
+      computedAt: input.now ?? new Date(),
+    },
+  });
+
+  await replaceLineage({
+    metricLineage,
+    metricValueId: metricValue.id,
+    records,
+    calculationVersion: DEVELOPMENT_CALCULATION_VERSION,
+  });
+
+  return {
+    metricKey: "development.delivery_health",
+    metricValueId: metricValue.id,
+    status,
+    rawRecordCount: records.length,
+    value,
+  };
+}
+
+function hubspotAccountId(record: RawSourceRecordRow): string | null {
+  if (!["company", "account", "contact"].includes(record.objectType)) return null;
+  const payload = asRecord(record.payload);
+  const id = payload.companyId ?? payload.company_id ?? payload.accountId ?? payload.id;
+  return typeof id === "string" && id.trim() ? id : record.externalId;
+}
+
+function activationAccountId(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
+  const id =
+    properties.hubspotCompanyId ??
+    properties.companyId ??
+    properties.company_id ??
+    properties.accountId ??
+    payload.accountId ??
+    payload.companyId ??
+    payload.distinct_id;
+  return typeof id === "string" && id.trim() ? id : null;
+}
+
+function isActivationEvent(record: RawSourceRecordRow): boolean {
+  if (record.provider !== IntegrationProvider.POSTHOG || record.objectType !== "event") {
+    return false;
+  }
+  const eventName = asRecord(record.payload).event;
+  return (
+    typeof eventName === "string" &&
+    ["activation_completed", "activated", "account_activated"].includes(
+      eventName.toLowerCase(),
+    )
+  );
+}
+
+function computeActivationRate(records: RawSourceRecordRow[]) {
+  const eligibleAccountIds = new Set(
+    records
+      .filter((record) => record.provider === IntegrationProvider.HUBSPOT)
+      .map(hubspotAccountId)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const activatedAccountIds = new Set(
+    records
+      .filter(isActivationEvent)
+      .map(activationAccountId)
+      .filter(
+        (id): id is string => typeof id === "string" && eligibleAccountIds.has(id),
+      ),
+  );
+  const eligibleAccounts = eligibleAccountIds.size;
+  const activatedAccounts = activatedAccountIds.size;
+
+  return {
+    rate: eligibleAccounts === 0 ? 0 : activatedAccounts / eligibleAccounts,
+    activatedAccounts,
+    eligibleAccounts,
+  };
+}
+
+export async function materializeImladrisProductActivationMetric(
+  input: MaterializeDevelopmentMetricsInput,
+): Promise<MaterializedImladrisMetricResult> {
+  const rawRecords = input.prisma.imladrisRawSourceRecord as RawSourceRecordDelegate;
+  const canonicalMetrics = input.prisma
+    .imladrisCanonicalMetricValue as CanonicalMetricDelegate;
+  const metricLineage = input.prisma.imladrisMetricLineage as MetricLineageDelegate;
+
+  const records = await rawRecords.findMany({
+    where: providerWindowWhere({
+      providers: [IntegrationProvider.HUBSPOT, IntegrationProvider.POSTHOG],
+      context: input.context,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+    }),
+    orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
+  });
+
+  const value = computeActivationRate(records);
+  const status =
+    value.eligibleAccounts > 0
+      ? ImladrisMetricStatus.READY
+      : ImladrisMetricStatus.MISSING;
+  const warnings =
+    status === ImladrisMetricStatus.READY
+      ? []
+      : ["No HubSpot account cohort was available for activation-rate materialization."];
+  const metricValue = await canonicalMetrics.upsert({
+    where: {
+      organizationId_userId_metricKey_periodEnd_calculationVersion: {
+        organizationId: input.context.organizationId,
+        userId: input.context.userId,
+        metricKey: "product.activation_rate",
+        periodEnd: input.periodEnd,
+        calculationVersion: PRODUCT_ACTIVATION_CALCULATION_VERSION,
+      },
+    },
+    create: {
+      metricKey: "product.activation_rate",
+      department: "development",
+      unit: "percent",
+      value,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+      status,
+      confidence: confidenceFor(records),
+      warnings,
+      calculationVersion: PRODUCT_ACTIVATION_CALCULATION_VERSION,
+      computedAt: input.now ?? new Date(),
+      userId: input.context.userId,
+      organizationId: input.context.organizationId,
+    },
+    update: {
+      value,
+      periodStart: input.periodStart,
+      status,
+      confidence: confidenceFor(records),
+      warnings,
+      computedAt: input.now ?? new Date(),
+    },
+  });
+
+  await replaceLineage({
+    metricLineage,
+    metricValueId: metricValue.id,
+    records,
+    calculationVersion: PRODUCT_ACTIVATION_CALCULATION_VERSION,
+  });
+
+  return {
+    metricKey: "product.activation_rate",
+    metricValueId: metricValue.id,
+    status,
+    rawRecordCount: records.length,
+    value,
+  };
+}
+
+function transactionAmount(record: RawSourceRecordRow): number | null {
+  const payload = asRecord(record.payload);
+  return numberFrom(
+    payload.amount ??
+      payload.netAmount ??
+      payload.net_amount ??
+      payload.value,
+  );
+}
+
+function balanceAmount(record: RawSourceRecordRow): number | null {
+  const payload = asRecord(record.payload);
+  return numberFrom(
+    payload.availableBalance ??
+      payload.available_balance ??
+      payload.currentBalance ??
+      payload.current_balance ??
+      payload.balance,
+  );
+}
+
+function stripeMrrAmount(record: RawSourceRecordRow): number | null {
+  const payload = asRecord(record.payload);
+  const status = payload.status;
+  if (
+    typeof status === "string" &&
+    ["canceled", "cancelled", "incomplete_expired", "unpaid"].includes(status.toLowerCase())
+  ) {
+    return null;
+  }
+  return numberFrom(
+    payload.monthlyRecurringRevenue ??
+      payload.monthly_recurring_revenue ??
+      payload.mrr ??
+      payload.amountMonthly ??
+      payload.amount_monthly,
+  );
+}
+
+function hubspotRecurringRevenueAmount(record: RawSourceRecordRow): number | null {
+  const payload = asRecord(record.payload);
+  const stage = payload.dealstage ?? payload.stage;
+  if (typeof stage === "string" && !["closedwon", "closed_won", "won"].includes(stage.toLowerCase())) {
+    return null;
+  }
+  const recurringFlag = payload.recurringRevenue ?? payload.recurring_revenue;
+  if (recurringFlag === false) return null;
+  return numberFrom(
+    payload.recurringRevenueAmount ??
+      payload.recurring_revenue_amount ??
+      payload.monthlyRecurringRevenue ??
+      payload.mrr ??
+      payload.amount,
+  );
+}
+
+function computeFinanceValues(records: RawSourceRecordRow[]) {
+  const mercuryTransactions = records.filter(
+    (record) =>
+      record.provider === IntegrationProvider.MERCURY &&
+      ["transaction", "bank_transaction"].includes(record.objectType),
+  );
+  const cashOutflow = mercuryTransactions.reduce((sum, record) => {
+    const amount = transactionAmount(record);
+    return amount && amount < 0 ? sum + Math.abs(amount) : sum;
+  }, 0);
+  const mercuryCashInflow = mercuryTransactions.reduce((sum, record) => {
+    const amount = transactionAmount(record);
+    return amount && amount > 0 ? sum + amount : sum;
+  }, 0);
+  const stripeMrr = records
+    .filter((record) => record.provider === IntegrationProvider.STRIPE)
+    .reduce((sum, record) => sum + (stripeMrrAmount(record) ?? 0), 0);
+  const hubspotRecurringRevenue = records
+    .filter(
+      (record) =>
+        record.provider === IntegrationProvider.HUBSPOT && record.objectType === "deal",
+    )
+    .reduce((sum, record) => sum + (hubspotRecurringRevenueAmount(record) ?? 0), 0);
+  const cashInflow = mercuryCashInflow + stripeMrr;
+  const netBurn = Math.max(0, cashOutflow - cashInflow);
+  const cashBalance =
+    records
+      .filter(
+        (record) =>
+          record.provider === IntegrationProvider.MERCURY &&
+          ["account_balance", "balance"].includes(record.objectType),
+      )
+      .map(balanceAmount)
+      .filter((amount): amount is number => typeof amount === "number")
+      .at(-1) ?? 0;
+  const currency = currencyFrom(records);
+
+  return {
+    netBurn: {
+      amount: roundMoney(netBurn),
+      currency,
+      cashOutflow: roundMoney(cashOutflow),
+      cashInflow: roundMoney(cashInflow),
+    },
+    runway: {
+      months: netBurn > 0 ? roundRatio(cashBalance / netBurn) : null,
+      cashBalance: roundMoney(cashBalance),
+      netBurn: roundMoney(netBurn),
+      currency,
+    },
+    mrr: {
+      amount: roundMoney(stripeMrr + hubspotRecurringRevenue),
+      currency,
+      stripeMrr: roundMoney(stripeMrr),
+      hubspotRecurringRevenue: roundMoney(hubspotRecurringRevenue),
+    },
+  };
+}
+
+async function upsertCanonicalMetric(input: {
+  canonicalMetrics: CanonicalMetricDelegate;
+  context: ImladrisActorContext;
+  metricKey: string;
+  department: string;
+  unit: string;
+  value: Record<string, unknown>;
+  periodStart: Date;
+  periodEnd: Date;
+  status: keyof typeof ImladrisMetricStatus;
+  confidence: number;
+  warnings: string[];
+  calculationVersion: string;
+  now?: Date;
+}) {
+  return input.canonicalMetrics.upsert({
+    where: {
+      organizationId_userId_metricKey_periodEnd_calculationVersion: {
+        organizationId: input.context.organizationId,
+        userId: input.context.userId,
+        metricKey: input.metricKey,
+        periodEnd: input.periodEnd,
+        calculationVersion: input.calculationVersion,
+      },
+    },
+    create: {
+      metricKey: input.metricKey,
+      department: input.department,
+      unit: input.unit,
+      value: input.value,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+      status: input.status,
+      confidence: input.confidence,
+      warnings: input.warnings,
+      calculationVersion: input.calculationVersion,
+      computedAt: input.now ?? new Date(),
+      userId: input.context.userId,
+      organizationId: input.context.organizationId,
+    },
+    update: {
+      value: input.value,
+      periodStart: input.periodStart,
+      status: input.status,
+      confidence: input.confidence,
+      warnings: input.warnings,
+      computedAt: input.now ?? new Date(),
+    },
+  });
+}
+
+export async function materializeImladrisFinanceMetrics(
+  input: MaterializeDevelopmentMetricsInput,
+): Promise<MaterializedImladrisMetricResult[]> {
+  const rawRecords = input.prisma.imladrisRawSourceRecord as RawSourceRecordDelegate;
+  const canonicalMetrics = input.prisma
+    .imladrisCanonicalMetricValue as CanonicalMetricDelegate;
+  const metricLineage = input.prisma.imladrisMetricLineage as MetricLineageDelegate;
+
+  const records = await rawRecords.findMany({
+    where: providerWindowWhere({
+      providers: [
+        IntegrationProvider.MERCURY,
+        IntegrationProvider.STRIPE,
+        IntegrationProvider.HUBSPOT,
+      ],
+      context: input.context,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+    }),
+    orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
+  });
+  const values = computeFinanceValues(records);
+  const confidence = confidenceFor(records);
+  const status =
+    records.length > 0 ? ImladrisMetricStatus.READY : ImladrisMetricStatus.MISSING;
+  const warnings =
+    status === ImladrisMetricStatus.READY
+      ? []
+      : ["No Mercury, Stripe, or HubSpot raw records were available for finance materialization."];
+  const metricInputs = [
+    {
+      metricKey: "finance.net_burn",
+      department: "finance",
+      unit: "currency",
+      value: values.netBurn,
+      calculationVersion: FINANCE_NET_BURN_CALCULATION_VERSION,
+    },
+    {
+      metricKey: "finance.cash_runway_months",
+      department: "finance",
+      unit: "days",
+      value: values.runway,
+      calculationVersion: FINANCE_CASH_RUNWAY_CALCULATION_VERSION,
+    },
+    {
+      metricKey: "revenue.mrr",
+      department: "finance",
+      unit: "currency",
+      value: values.mrr,
+      calculationVersion: REVENUE_MRR_CALCULATION_VERSION,
+    },
+  ];
+  const results: MaterializedImladrisMetricResult[] = [];
+
+  for (const metricInput of metricInputs) {
+    const metricValue = await upsertCanonicalMetric({
+      canonicalMetrics,
+      context: input.context,
+      metricKey: metricInput.metricKey,
+      department: metricInput.department,
+      unit: metricInput.unit,
+      value: metricInput.value,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+      status,
+      confidence,
+      warnings,
+      calculationVersion: metricInput.calculationVersion,
+      now: input.now,
+    });
+    await replaceLineage({
+      metricLineage,
+      metricValueId: metricValue.id,
+      records,
+      calculationVersion: metricInput.calculationVersion,
+    });
+    results.push({
+      metricKey: metricInput.metricKey,
+      metricValueId: metricValue.id,
+      status,
+      rawRecordCount: records.length,
+      value: metricInput.value,
+    });
+  }
+
+  return results;
+}
+
+function isQualifiedPipelineDeal(record: RawSourceRecordRow): boolean {
+  if (record.provider !== IntegrationProvider.HUBSPOT || record.objectType !== "deal") {
+    return false;
+  }
+  const payload = asRecord(record.payload);
+  const stage = String(payload.dealstage ?? payload.stage ?? "").toLowerCase();
+  if (["closedlost", "closed_lost", "lost", "appointmentscheduled"].includes(stage)) {
+    return false;
+  }
+  return [
+    "qualified",
+    "salesqualifiedlead",
+    "sales_qualified",
+    "proposal",
+    "contractsent",
+    "negotiation",
+    "decisionmakerboughtin",
+  ].includes(stage);
+}
+
+function dealAmount(record: RawSourceRecordRow): number {
+  return numberFrom(asRecord(record.payload).amount) ?? 0;
+}
+
+function dealIdFromRecord(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const id =
+    payload.dealId ??
+    payload.deal_id ??
+    payload.hubspotDealId ??
+    payload.hubspot_deal_id ??
+    payload.id;
+  return typeof id === "string" && id.trim() ? id : record.externalId;
+}
+
+function linkedDealId(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const id =
+    payload.dealId ??
+    payload.deal_id ??
+    payload.hubspotDealId ??
+    payload.hubspot_deal_id ??
+    nestedRecord(payload.properties).dealId ??
+    nestedRecord(payload.properties).hubspotDealId;
+  return typeof id === "string" && id.trim() ? id : null;
+}
+
+function computeQualifiedPipeline(records: RawSourceRecordRow[]) {
+  const qualifiedDeals = records.filter(isQualifiedPipelineDeal);
+  const qualifiedDealIds = new Set(
+    qualifiedDeals.map(dealIdFromRecord).filter((id): id is string => Boolean(id)),
+  );
+  const collaborationTouches = records.filter((record) => {
+    if (
+      record.provider !== IntegrationProvider.GOOGLE_WORKSPACE &&
+      record.provider !== IntegrationProvider.SLACK
+    ) {
+      return false;
+    }
+    const dealId = linkedDealId(record);
+    return Boolean(dealId && qualifiedDealIds.has(dealId));
+  });
+  const coveredDealIds = new Set(
+    collaborationTouches
+      .map(linkedDealId)
+      .filter((id): id is string => Boolean(id)),
+  );
+
+  return {
+    amount: roundMoney(qualifiedDeals.reduce((sum, record) => sum + dealAmount(record), 0)),
+    currency: currencyFrom(qualifiedDeals.length > 0 ? qualifiedDeals : records),
+    qualifiedDealCount: qualifiedDeals.length,
+    collaborationTouchCount: collaborationTouches.length,
+    collaborationCoverage:
+      qualifiedDeals.length === 0 ? 0 : roundRatio(coveredDealIds.size / qualifiedDeals.length),
+  };
+}
+
+export async function materializeImladrisSalesMetrics(
+  input: MaterializeDevelopmentMetricsInput,
+): Promise<MaterializedImladrisMetricResult> {
+  const rawRecords = input.prisma.imladrisRawSourceRecord as RawSourceRecordDelegate;
+  const canonicalMetrics = input.prisma
+    .imladrisCanonicalMetricValue as CanonicalMetricDelegate;
+  const metricLineage = input.prisma.imladrisMetricLineage as MetricLineageDelegate;
+
+  const records = await rawRecords.findMany({
+    where: providerWindowWhere({
+      providers: [
+        IntegrationProvider.HUBSPOT,
+        IntegrationProvider.GOOGLE_WORKSPACE,
+        IntegrationProvider.SLACK,
+      ],
+      context: input.context,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+    }),
+    orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
+  });
+  const value = computeQualifiedPipeline(records);
+  const status =
+    records.length > 0 ? ImladrisMetricStatus.READY : ImladrisMetricStatus.MISSING;
+  const warnings =
+    status === ImladrisMetricStatus.READY
+      ? []
+      : ["No HubSpot, Google Workspace, or Slack raw records were available for sales materialization."];
+  const metricValue = await upsertCanonicalMetric({
+    canonicalMetrics,
+    context: input.context,
+    metricKey: "sales.qualified_pipeline",
+    department: "sales",
+    unit: "currency",
+    value,
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    status,
+    confidence: confidenceFor(records),
+    warnings,
+    calculationVersion: SALES_QUALIFIED_PIPELINE_CALCULATION_VERSION,
+    now: input.now,
+  });
+
+  await replaceLineage({
+    metricLineage,
+    metricValueId: metricValue.id,
+    records,
+    calculationVersion: SALES_QUALIFIED_PIPELINE_CALCULATION_VERSION,
+  });
+
+  return {
+    metricKey: "sales.qualified_pipeline",
+    metricValueId: metricValue.id,
+    status,
+    rawRecordCount: records.length,
+    value,
+  };
+}
+
+function spendAmount(record: RawSourceRecordRow): number {
+  const payload = asRecord(record.payload);
+  return (
+    numberFrom(
+      payload.spend ??
+        payload.amountSpent ??
+        payload.amount_spent ??
+        payload.cost ??
+        payload.costMicros,
+    ) ?? 0
+  );
+}
+
+function sessionsCount(record: RawSourceRecordRow): number {
+  const payload = asRecord(record.payload);
+  return numberFrom(payload.sessions ?? payload.users ?? payload.activeUsers) ?? 0;
+}
+
+function organicTrafficCount(record: RawSourceRecordRow): number {
+  const payload = asRecord(record.payload);
+  return numberFrom(payload.organicTraffic ?? payload.traffic ?? payload.visits) ?? 0;
+}
+
+function webflowFormSubmissionCount(records: RawSourceRecordRow[]): number {
+  const webflowRecords = records.filter((record) => record.provider === IntegrationProvider.WEBFLOW);
+  const snapshotTotal = webflowRecords
+    .filter((record) => record.objectType === "snapshot")
+    .reduce((sum, record) => {
+      const payload = asRecord(record.payload);
+      return sum + (numberFrom(payload.totalFormSubmissions) ?? 0);
+    }, 0);
+  if (snapshotTotal > 0) {
+    return snapshotTotal;
+  }
+
+  return webflowRecords
+    .filter((record) => record.objectType === "form_submission")
+    .reduce((sum, record) => {
+      const payload = asRecord(record.payload);
+      return sum + (numberFrom(payload.count ?? payload.submissions) ?? 0);
+    }, 0);
+}
+
+function searchClicks(record: RawSourceRecordRow): number {
+  if (record.provider !== IntegrationProvider.GOOGLE_SEARCH_CONSOLE) return 0;
+  return numberFrom(asRecord(record.payload).clicks) ?? 0;
+}
+
+function searchImpressions(record: RawSourceRecordRow): number {
+  if (record.provider !== IntegrationProvider.GOOGLE_SEARCH_CONSOLE) return 0;
+  return numberFrom(asRecord(record.payload).impressions) ?? 0;
+}
+
+function isIdentifiedVisitor(record: RawSourceRecordRow): boolean {
+  if (record.provider !== IntegrationProvider.UNIFY) return false;
+  const payload = asRecord(record.payload);
+  return Boolean(
+    payload.identified ??
+      payload.companyId ??
+      payload.company_id ??
+      payload.accountId ??
+      payload.domain,
+  );
+}
+
+function isMarketingPipelineDeal(record: RawSourceRecordRow): boolean {
+  if (record.provider !== IntegrationProvider.HUBSPOT || record.objectType !== "deal") {
+    return false;
+  }
+  const payload = asRecord(record.payload);
+  const stage = String(payload.dealstage ?? payload.stage ?? "").toLowerCase();
+  if (["closedlost", "closed_lost", "lost", "appointmentscheduled"].includes(stage)) {
+    return false;
+  }
+  const source = String(
+    payload.originalSource ?? payload.original_source ?? payload.source ?? "",
+  ).toLowerCase();
+  return (
+    source.includes("paid") ||
+    source.includes("organic") ||
+    source.includes("seo") ||
+    source.includes("website") ||
+    source.includes("marketing")
+  );
+}
+
+function computeMarketingPipelineEfficiency(records: RawSourceRecordRow[]) {
+  const acquisitionSpend = records.reduce((sum, record) => {
+    if (
+      record.provider !== IntegrationProvider.GOOGLE_ADS &&
+      record.provider !== IntegrationProvider.META_ADS &&
+      record.provider !== IntegrationProvider.REDDIT
+    ) {
+      return sum;
+    }
+    return sum + spendAmount(record);
+  }, 0);
+  const qualifiedPipeline = records
+    .filter(isMarketingPipelineDeal)
+    .reduce((sum, record) => sum + dealAmount(record), 0);
+  const websiteSessions = records
+    .filter((record) => record.provider === IntegrationProvider.GOOGLE_ANALYTICS)
+    .reduce((sum, record) => sum + sessionsCount(record), 0);
+  const organicTraffic = records
+    .filter((record) => record.provider === IntegrationProvider.SEMRUSH)
+    .reduce((sum, record) => sum + organicTrafficCount(record), 0);
+  const webflowFormSubmissions = webflowFormSubmissionCount(records);
+  const googleSearchConsoleRecords = records.filter(
+    (record) => record.provider === IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
+  );
+  const searchClickCount = googleSearchConsoleRecords.reduce(
+    (sum, record) => sum + searchClicks(record),
+    0,
+  );
+  const searchImpressionCount = googleSearchConsoleRecords.reduce(
+    (sum, record) => sum + searchImpressions(record),
+    0,
+  );
+  const identifiedVisitors = records.filter(isIdentifiedVisitor).length;
+  const currency = currencyFrom(records);
+
+  return {
+    ratio: acquisitionSpend > 0 ? roundRatio(qualifiedPipeline / acquisitionSpend) : null,
+    qualifiedPipeline: roundMoney(qualifiedPipeline),
+    acquisitionSpend: roundMoney(acquisitionSpend),
+    websiteSessions,
+    webflowFormSubmissions,
+    organicTraffic,
+    searchClicks: searchClickCount,
+    searchImpressions: searchImpressionCount,
+    identifiedVisitors,
+    currency,
+  };
+}
+
+export async function materializeImladrisMarketingMetrics(
+  input: MaterializeDevelopmentMetricsInput,
+): Promise<MaterializedImladrisMetricResult> {
+  const rawRecords = input.prisma.imladrisRawSourceRecord as RawSourceRecordDelegate;
+  const canonicalMetrics = input.prisma
+    .imladrisCanonicalMetricValue as CanonicalMetricDelegate;
+  const metricLineage = input.prisma.imladrisMetricLineage as MetricLineageDelegate;
+
+  const records = await rawRecords.findMany({
+    where: providerWindowWhere({
+      providers: [
+        IntegrationProvider.GOOGLE_ANALYTICS,
+        IntegrationProvider.GOOGLE_ADS,
+        IntegrationProvider.META_ADS,
+        IntegrationProvider.REDDIT,
+        IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
+        IntegrationProvider.SEMRUSH,
+        IntegrationProvider.CODA,
+        IntegrationProvider.WEBFLOW,
+        IntegrationProvider.UNIFY,
+        IntegrationProvider.HUBSPOT,
+      ],
+      context: input.context,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+    }),
+    orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
+  });
+  const value = computeMarketingPipelineEfficiency(records);
+  const status =
+    records.length > 0 ? ImladrisMetricStatus.READY : ImladrisMetricStatus.MISSING;
+  const warnings =
+    status === ImladrisMetricStatus.READY
+      ? []
+      : ["No acquisition, traffic, visitor, or HubSpot raw records were available for marketing materialization."];
+  const metricValue = await upsertCanonicalMetric({
+    canonicalMetrics,
+    context: input.context,
+    metricKey: "marketing.pipeline_efficiency",
+    department: "marketing",
+    unit: "ratio",
+    value,
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    status,
+    confidence: confidenceFor(records),
+    warnings,
+    calculationVersion: MARKETING_PIPELINE_EFFICIENCY_CALCULATION_VERSION,
+    now: input.now,
+  });
+
+  await replaceLineage({
+    metricLineage,
+    metricValueId: metricValue.id,
+    records,
+    calculationVersion: MARKETING_PIPELINE_EFFICIENCY_CALCULATION_VERSION,
+  });
+
+  return {
+    metricKey: "marketing.pipeline_efficiency",
+    metricValueId: metricValue.id,
+    status,
+    rawRecordCount: records.length,
+    value,
+  };
+}
+
+function accountIdFromPayload(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
+  const id =
+    payload.accountId ??
+    payload.account_id ??
+    payload.companyId ??
+    payload.company_id ??
+    payload.customerId ??
+    payload.customer_id ??
+    payload.stripeCustomerId ??
+    payload.stripe_customer_id ??
+    properties.accountId ??
+    properties.account_id ??
+    properties.companyId ??
+    properties.company_id ??
+    properties.customerId ??
+    properties.customer_id ??
+    properties.stripeCustomerId ??
+    properties.stripe_customer_id;
+
+  return typeof id === "string" && id.trim() ? id : null;
+}
+
+function isClosedStatus(status: unknown): boolean {
+  return (
+    typeof status === "string" &&
+    ["closed", "resolved", "done", "complete", "completed", "cancelled", "canceled"].includes(
+      status.toLowerCase(),
+    )
+  );
+}
+
+function isOpenSupportIssue(record: RawSourceRecordRow): boolean {
+  if (record.provider !== IntegrationProvider.PYLON) return false;
+  if (!["conversation", "ticket", "issue"].includes(record.objectType)) return false;
+
+  const payload = asRecord(record.payload);
+  return !isClosedStatus(payload.status ?? payload.state);
+}
+
+function isEscalation(record: RawSourceRecordRow): boolean {
+  if (record.provider !== IntegrationProvider.SLACK) return false;
+
+  const payload = asRecord(record.payload);
+  const type = String(payload.type ?? payload.kind ?? payload.category ?? "").toLowerCase();
+  const tags = Array.isArray(payload.tags) ? payload.tags.map(String) : [];
+
+  return (
+    !isClosedStatus(payload.status ?? payload.state) &&
+    (payload.escalation === true ||
+      type.includes("escalation") ||
+      tags.some((tag) => tag.toLowerCase().includes("escalation")))
+  );
+}
+
+function isBillingRisk(record: RawSourceRecordRow): boolean {
+  if (record.provider !== IntegrationProvider.STRIPE) return false;
+
+  const payload = asRecord(record.payload);
+  const status = String(payload.status ?? payload.collectionStatus ?? "").toLowerCase();
+  return ["past_due", "unpaid", "incomplete", "payment_failed"].includes(status);
+}
+
+function isLowUsage(record: RawSourceRecordRow): boolean {
+  if (record.provider !== IntegrationProvider.POSTHOG) return false;
+
+  const payload = asRecord(record.payload);
+  const activeUsers = numberFrom(
+    payload.activeUsers ?? payload.active_users ?? payload.weeklyActiveUsers,
+  );
+  const daysSinceLastActive = numberFrom(
+    payload.daysSinceLastActive ??
+      payload.days_since_last_active ??
+      payload.inactiveDays ??
+      payload.inactive_days,
+  );
+
+  return (
+    (activeUsers !== null && activeUsers <= 1) ||
+    (daysSinceLastActive !== null && daysSinceLastActive >= 14)
+  );
+}
+
+function isCollaborationSignal(record: RawSourceRecordRow): boolean {
+  if (record.provider !== IntegrationProvider.GOOGLE_WORKSPACE) return false;
+  if (!["calendar_event", "email_thread", "document"].includes(record.objectType)) return false;
+
+  return Boolean(accountIdFromPayload(record));
+}
+
+function computeRetentionRisk(records: RawSourceRecordRow[]) {
+  const supportIssues = records.filter(isOpenSupportIssue);
+  const escalations = records.filter(isEscalation);
+  const billingRiskRecords = records.filter(isBillingRisk);
+  const lowUsageRecords = records.filter(isLowUsage);
+  const collaborationSignals = records.filter(isCollaborationSignal);
+
+  const billingRiskAccounts = new Set(
+    billingRiskRecords
+      .map(accountIdFromPayload)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const lowUsageAccounts = new Set(
+    lowUsageRecords
+      .map(accountIdFromPayload)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const atRiskAccountIds = new Set(
+    [...supportIssues, ...escalations, ...billingRiskRecords, ...lowUsageRecords]
+      .map(accountIdFromPayload)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const collaborationOffset = Math.max(0, 10 - collaborationSignals.length * 5);
+  const score = Math.min(
+    100,
+    Math.round(
+      supportIssues.length * 12 +
+        escalations.length * 18 +
+        billingRiskAccounts.size * 20 +
+        lowUsageAccounts.size * 18 +
+        collaborationOffset,
+    ),
+  );
+
+  return {
+    score,
+    atRiskAccounts: atRiskAccountIds.size,
+    openSupportIssues: supportIssues.length,
+    escalations: escalations.length,
+    accountsWithBillingRisk: billingRiskAccounts.size,
+    lowUsageAccounts: lowUsageAccounts.size,
+    collaborationSignals: collaborationSignals.length,
+  };
+}
+
+export async function materializeImladrisCustomerSuccessMetrics(
+  input: MaterializeDevelopmentMetricsInput,
+): Promise<MaterializedImladrisMetricResult> {
+  const rawRecords = input.prisma.imladrisRawSourceRecord as RawSourceRecordDelegate;
+  const canonicalMetrics = input.prisma
+    .imladrisCanonicalMetricValue as CanonicalMetricDelegate;
+  const metricLineage = input.prisma.imladrisMetricLineage as MetricLineageDelegate;
+
+  const records = await rawRecords.findMany({
+    where: providerWindowWhere({
+      providers: [
+        IntegrationProvider.PYLON,
+        IntegrationProvider.POSTHOG,
+        IntegrationProvider.SLACK,
+        IntegrationProvider.GOOGLE_WORKSPACE,
+        IntegrationProvider.STRIPE,
+      ],
+      context: input.context,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+    }),
+    orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
+  });
+  const value = computeRetentionRisk(records);
+  const status =
+    records.length > 0 ? ImladrisMetricStatus.READY : ImladrisMetricStatus.MISSING;
+  const warnings =
+    status === ImladrisMetricStatus.READY
+      ? []
+      : ["No Pylon, PostHog, Slack, Google Workspace, or Stripe raw records were available for customer-success materialization."];
+  const metricValue = await upsertCanonicalMetric({
+    canonicalMetrics,
+    context: input.context,
+    metricKey: "customer_success.retention_risk",
+    department: "customer-success",
+    unit: "score",
+    value,
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    status,
+    confidence: confidenceFor(records),
+    warnings,
+    calculationVersion: CUSTOMER_SUCCESS_RETENTION_RISK_CALCULATION_VERSION,
+    now: input.now,
+  });
+
+  await replaceLineage({
+    metricLineage,
+    metricValueId: metricValue.id,
+    records,
+    calculationVersion: CUSTOMER_SUCCESS_RETENTION_RISK_CALCULATION_VERSION,
+  });
+
+  return {
+    metricKey: "customer_success.retention_risk",
+    metricValueId: metricValue.id,
+    status,
+    rawRecordCount: records.length,
+    value,
+  };
+}
+
+export async function materializeImladrisCanonicalMetrics(
+  input: MaterializeDevelopmentMetricsInput,
+): Promise<MaterializedImladrisMetricResult[]> {
+  const [development, productActivation, finance, sales, marketing, customerSuccess] =
+    await Promise.all([
+      materializeImladrisDevelopmentMetrics(input),
+      materializeImladrisProductActivationMetric(input),
+      materializeImladrisFinanceMetrics(input),
+      materializeImladrisSalesMetrics(input),
+      materializeImladrisMarketingMetrics(input),
+      materializeImladrisCustomerSuccessMetrics(input),
+    ]);
+
+  return [
+    development,
+    productActivation,
+    ...finance,
+    sales,
+    marketing,
+    customerSuccess,
+  ];
+}

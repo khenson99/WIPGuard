@@ -1,6 +1,6 @@
-# WIPGuard
+# Imladris
 
-WIPGuard is Arda's GTM operator platform: a WIP-limited execution system with first-class integrations, automations, and analytics layered on top of daily work management.
+Imladris is Arda's operating-metrics platform: a meeting place for provider data, canonical analytics, automation recommendations, and department dashboards.
 
 ## Local development
 
@@ -23,7 +23,7 @@ Client-side tracking (GTM):
 
 - `NEXT_PUBLIC_GTM_ID` (optional; enables Google Tag Manager in the app)
 - `NEXT_PUBLIC_ANALYTICS_DEBUG` (optional; set to `1` to log `dataLayer` events in the browser console)
-- Tracking helpers live in `src/lib/tracking/data-layer.ts` and push events like `page_view`, `login`, `sign_up`, and `task_*`.
+- Tracking helpers live in `src/lib/tracking/data-layer.ts` and push events like `page_view`, `login`, `sign_up`, and metric events.
 
 Authentication:
 
@@ -79,6 +79,9 @@ Advertising and marketing analytics:
 - Webflow (required)
 - `WEBFLOW_API_TOKEN`
 - `WEBFLOW_SITE_ID`
+- Google Search Console (required for organic search telemetry)
+- `GOOGLE_SEARCH_CONSOLE_SITE_URL`
+- `GOOGLE_SEARCH_CONSOLE_ACCESS_TOKEN` or Google service-account/OAuth credentials already used for Google analytics access
 - SEMrush (required)
 - `SEMRUSH_API_TOKEN`
 - `SEMRUSH_DOMAIN`
@@ -122,7 +125,7 @@ For deployed environments, replace `http://localhost:3000` with your production 
 
 ## Visitor funnel enrichment
 
-WIPGuard can normalize website-visitor enrichment signals from:
+Imladris can normalize website-visitor enrichment signals from:
 
 - Unify via scheduled pull
 - Clay via webhook push

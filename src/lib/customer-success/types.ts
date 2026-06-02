@@ -115,7 +115,6 @@ export interface CustomerSuccessPlanMilestoneEntity {
   status: CustomerSuccessMilestoneStatus;
   dueDate: string | null;
   completedAt: string | null;
-  linkedTaskId: string | null;
   sortOrder: number;
   metadata: Record<string, unknown> | null;
   createdAt: string;
@@ -153,7 +152,6 @@ export interface CustomerSuccessAlertEntity {
   evidence: unknown[] | null;
   suggestedAction: string | null;
   ownerUserId: string | null;
-  linkedTaskId: string | null;
   openedAt: string;
   resolvedAt: string | null;
   lastEvaluatedAt: string | null;
@@ -277,6 +275,14 @@ export interface CustomerSuccessRelationshipReason {
   dimension: "usage" | "adoption" | "support" | "billing" | "onboarding" | "commercial" | "data";
 }
 
+export interface CustomerSuccessProductMetrics {
+  totalOrders?: number;
+  totalItems?: number;
+  uniqueItemsOrdered?: number;
+  daysTo25Items?: number;
+  daysTo10Orders?: number;
+}
+
 export interface CustomerSuccessRetentionSummary {
   status: string;
   lifecyclePhase: "ONBOARDING" | "MATURE";
@@ -290,27 +296,15 @@ export interface CustomerSuccessRetentionSummary {
   goLiveDate?: string;
   subscriptionStartDate?: string;
   firstOrderDate?: string;
+  productMetrics?: CustomerSuccessProductMetrics;
   explanation?: string;
   reasonCodes: CustomerSuccessRelationshipReason[];
-  ardaAdoptionCountsSource?: "ARDA_ACTIVITY" | "ARDA_USER_DETAILS" | "NONE";
-  ardaDirectActivityCounts?: {
-    orders: number;
-    cards: number;
-    items: number;
-  };
-  ardaUserDetailsCounts?: {
-    orders: number;
-    cards: number;
-    items: number;
-  };
   coverage: {
     arda: boolean;
     coda: boolean;
     stripe: boolean;
     hubspot: boolean;
     pylon: boolean;
-    ardaActivityCollectionAvailable?: boolean;
-    ardaUserDetailsFallback?: boolean;
     missingSources: string[];
   };
   detailUrl: string;
@@ -351,7 +345,7 @@ export interface CustomerSuccessPortfolioRelationshipSummary {
   retentionStatus?: string;
   primaryLirPassed?: boolean;
   implementationStage?: string;
-  ardaAdoptionCountsSource?: "ARDA_ACTIVITY" | "ARDA_USER_DETAILS" | "NONE";
+  productMetrics?: CustomerSuccessProductMetrics;
   missingSources: string[];
 }
 

@@ -36,6 +36,7 @@ export interface ProviderHealthSummary {
   configuredRules: number;
   enabledRules: number;
   staleRules: number;
+  erroredRules: number;
   expectedRules: number;
   missingRules: number;
 }
@@ -48,6 +49,7 @@ export interface IntegrationHealthSummary {
   configuredRules: number;
   enabledRules: number;
   staleRules: number;
+  erroredRules: number;
   expectedRules: number;
   missingRules: number;
   providers: ProviderHealthSummary[];
@@ -85,6 +87,21 @@ function formatValue(value: number | null, suffix: string): string {
   return `${value}${suffix}`;
 }
 
+function createProviderHealthSummary(provider: string): ProviderHealthSummary {
+  return {
+    provider,
+    connected: 0,
+    errored: 0,
+    staleConnections: 0,
+    configuredRules: 0,
+    enabledRules: 0,
+    staleRules: 0,
+    erroredRules: 0,
+    expectedRules: 0,
+    missingRules: 0,
+  };
+}
+
 function summarizeIntegrationHealth(input: {
   now: Date;
   connections: ObservabilityConnectionSample[];
@@ -95,17 +112,9 @@ function summarizeIntegrationHealth(input: {
   const configuredRuleKeysByProvider = new Map<string, Set<string>>();
 
   for (const connection of input.connections) {
-    const current = providerMap.get(connection.provider) ?? {
-      provider: connection.provider,
-      connected: 0,
-      errored: 0,
-      staleConnections: 0,
-      configuredRules: 0,
-      enabledRules: 0,
-      staleRules: 0,
-      expectedRules: 0,
-      missingRules: 0,
-    };
+    const current =
+      providerMap.get(connection.provider) ??
+      createProviderHealthSummary(connection.provider);
 
     if (connection.status === "CONNECTED") {
       current.connected += 1;
@@ -123,17 +132,8 @@ function summarizeIntegrationHealth(input: {
   }
 
   for (const rule of input.rules) {
-    const current = providerMap.get(rule.provider) ?? {
-      provider: rule.provider,
-      connected: 0,
-      errored: 0,
-      staleConnections: 0,
-      configuredRules: 0,
-      enabledRules: 0,
-      staleRules: 0,
-      expectedRules: 0,
-      missingRules: 0,
-    };
+    const current =
+      providerMap.get(rule.provider) ?? createProviderHealthSummary(rule.provider);
 
     const configuredSet = configuredRuleKeysByProvider.get(rule.provider) ?? new Set<string>();
     configuredSet.add(rule.key ?? `__unspecified__${configuredSet.size + 1}`);
@@ -141,6 +141,9 @@ function summarizeIntegrationHealth(input: {
 
     if (rule.enabled) {
       current.enabledRules += 1;
+      if (rule.lastError) {
+        current.erroredRules += 1;
+      }
       const minutes = ageMinutes(input.now, rule.lastRunAt);
       if (minutes === null || minutes > INTEGRATION_FRESHNESS_THRESHOLD_MINUTES) {
         current.staleRules += 1;
@@ -153,17 +156,7 @@ function summarizeIntegrationHealth(input: {
   if (input.expectedRuleKeysByProvider) {
     for (const provider of Object.keys(input.expectedRuleKeysByProvider)) {
       if (!providerMap.has(provider)) {
-        providerMap.set(provider, {
-          provider,
-          connected: 0,
-          errored: 0,
-          staleConnections: 0,
-          configuredRules: 0,
-          enabledRules: 0,
-          staleRules: 0,
-          expectedRules: 0,
-          missingRules: 0,
-        });
+        providerMap.set(provider, createProviderHealthSummary(provider));
       }
     }
   }
@@ -189,6 +182,7 @@ function summarizeIntegrationHealth(input: {
     configuredRules: providers.reduce((sum, provider) => sum + provider.configuredRules, 0),
     enabledRules: providers.reduce((sum, provider) => sum + provider.enabledRules, 0),
     staleRules: providers.reduce((sum, provider) => sum + provider.staleRules, 0),
+    erroredRules: providers.reduce((sum, provider) => sum + provider.erroredRules, 0),
     expectedRules: providers.reduce((sum, provider) => sum + provider.expectedRules, 0),
     missingRules: providers.reduce((sum, provider) => sum + provider.missingRules, 0),
     providers,
@@ -239,9 +233,12 @@ export function evaluateObservabilitySlos(input: EvaluateSloInput): Observabilit
       label: "Integration Sync Freshness",
       objective: "Enabled integration rules run at least every 30 minutes.",
       thresholdLabel: `${INTEGRATION_FRESHNESS_THRESHOLD_MINUTES}m`,
-      value: `${integrationHealth.staleRules} stale rule(s)`,
-      breached: integrationHealth.staleRules > 0,
-      severity: integrationHealth.staleRules > 0 ? "warning" : null,
+      value: `${integrationHealth.staleRules} stale rule(s), ${integrationHealth.erroredRules} errored rule(s)`,
+      breached: integrationHealth.staleRules > 0 || integrationHealth.erroredRules > 0,
+      severity:
+        integrationHealth.staleRules > 0 || integrationHealth.erroredRules > 0
+          ? "warning"
+          : null,
       runbookIds: ["sync-lag"],
     },
     {

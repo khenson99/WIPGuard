@@ -78,6 +78,8 @@ export function normalizeCodaMasterOrderArchiveRow(
       companyName: companyName ?? accountName ?? tenantName,
       orderDate,
       orderStatus: asString(pickValue(values, ["status", "Status"])),
+      itemId: asString(pickValue(values, ["item_id", "itemId", "Item ID"])),
+      itemName: asString(pickValue(values, ["item_name", "itemName", "Item Name", "Item"])),
       locationId: asString(pickValue(values, ["location_id", "locationId", "Location ID"])),
       workflowId: asString(pickValue(values, ["workflow_id", "workflowId", "Workflow ID"])),
       plan: asString(pickValue(values, ["plan", "Plan"])),

@@ -14,10 +14,17 @@ import { logger } from './logger';
 let lastSyncTimestamp: string | null = null;
 let lastSyncDurationMs: number | null = null;
 let lastSyncStatus: 'success' | 'error' | 'running' | null = null;
+let lastSyncError: string | null = null;
 let isReady = false;
 
-export function updateSyncStatus(status: 'success' | 'error' | 'running', durationMs?: number) {
+export function updateSyncStatus(
+  status: 'success' | 'error' | 'running',
+  durationMs?: number,
+  error?: string
+) {
   lastSyncStatus = status;
+  lastSyncError = status === 'error' ? error ?? null : null;
+
   if (status !== 'running') {
     lastSyncTimestamp = new Date().toISOString();
     lastSyncDurationMs = durationMs ?? null;
@@ -40,6 +47,7 @@ export function startHealthServer(): http.Server {
           lastSync: lastSyncTimestamp,
           lastSyncDurationMs,
           lastSyncStatus,
+          lastSyncError,
         })
       );
     } else if (req.url === '/ready' && req.method === 'GET') {

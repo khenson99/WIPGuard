@@ -117,6 +117,7 @@ export async function fetchWithResilience(
     try {
       const response = await fetch(input.url, {
         ...input.init,
+        cache: "no-store",
         signal: merged.signal,
       });
 

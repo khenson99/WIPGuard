@@ -273,6 +273,12 @@ describe("FinanceTab", () => {
           mergedActiveSubscriptions: 148,
           stripeActiveSubscriptions: 155,
           hubspotActiveSubscriptions: 151,
+          stripeMrr: 15_000,
+          hubspotSubscriptionMrr: 14_500,
+          hubspotOnlySubscriptionMrr: 0,
+          excludedLinkedHubspotSubscriptionMrr: 0,
+          totalMrr: 15_000,
+          totalArr: 180_000,
         },
       }),
     });

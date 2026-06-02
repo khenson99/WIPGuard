@@ -9,7 +9,6 @@ interface CompanyPriority {
   summary: string | null;
   priority: number;
   color: string | null;
-  _count?: { projects: number };
 }
 
 interface PriorityForm {
@@ -269,7 +268,7 @@ export function PrioritiesTab() {
           <Target className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">No priorities defined yet</p>
           <p className="text-xs text-muted-foreground">
-            Add company priorities to organize projects hierarchically
+            Add company priorities to organize operating metrics
           </p>
         </div>
       ) : (
@@ -301,9 +300,6 @@ export function PrioritiesTab() {
                   {item.summary && (
                     <span className="text-muted-foreground">{item.summary}</span>
                   )}
-                  {item.summary && item._count?.projects !== undefined && " · "}
-                  {item._count?.projects !== undefined &&
-                    `${item._count.projects} projects`}
                 </p>
               </div>
 

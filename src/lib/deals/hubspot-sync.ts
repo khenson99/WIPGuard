@@ -1,18 +1,13 @@
 import {
-  IntegrationConnectionStatus,
   IntegrationProvider,
   DealStage,
   DealSource,
   MeetingStatus,
 } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import {
-  protectIntegrationSecret,
-  unprotectIntegrationSecret,
-} from "@/lib/integrations/token-crypto";
+import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
 
 const HUBSPOT_BASE = "https://api.hubapi.com";
-const HUBSPOT_TOKEN_ENDPOINT = "https://api.hubapi.com/oauth/v1/token";
 const HUBSPOT_MAIN_PIPELINE_ID = "default";
 
 // ── Stage & source mapping ──────────────────────────────────
@@ -62,71 +57,11 @@ function mapSource(hubspotSource: string | undefined): DealSource {
 // ── Auth ─────────────────────────────────────────────────────
 
 async function getHubSpotAuth(userId: string): Promise<{ accessToken: string }> {
-  const connection = await prisma.integrationConnection.findUnique({
-    where: {
-      userId_provider: { userId, provider: IntegrationProvider.HUBSPOT },
-    },
+  const accessToken = await getValidIntegrationAccessToken({
+    userId,
+    provider: IntegrationProvider.HUBSPOT,
   });
-
-  if (!connection) throw new Error("HubSpot is not connected");
-
-  const token = unprotectIntegrationSecret(connection.accessToken);
-  if (!token) throw new Error("HubSpot access token is missing");
-
-  const expired = connection.expiresAt
-    ? connection.expiresAt.getTime() <= Date.now() + 30_000
-    : false;
-
-  if (!expired) return { accessToken: token };
-
-  // Refresh token
-  const refreshToken = unprotectIntegrationSecret(connection.refreshToken);
-  if (!refreshToken) throw new Error("HubSpot refresh token is missing");
-  if (!process.env.HUBSPOT_CLIENT_ID || !process.env.HUBSPOT_CLIENT_SECRET) {
-    throw new Error("HubSpot OAuth client credentials are missing");
-  }
-
-  const body = new URLSearchParams({
-    grant_type: "refresh_token",
-    client_id: process.env.HUBSPOT_CLIENT_ID,
-    client_secret: process.env.HUBSPOT_CLIENT_SECRET,
-    refresh_token: refreshToken,
-  });
-
-  const response = await fetch(HUBSPOT_TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    await prisma.integrationConnection.update({
-      where: { userId_provider: { userId, provider: IntegrationProvider.HUBSPOT } },
-      data: { status: IntegrationConnectionStatus.ERROR, lastError: `Token refresh failed (${response.status})` },
-    });
-    throw new Error(`HubSpot token refresh failed (${response.status})`);
-  }
-
-  const payload = (await response.json()) as Record<string, unknown>;
-  const newAccessToken = typeof payload.access_token === "string" ? payload.access_token : null;
-  if (!newAccessToken) throw new Error("HubSpot token refresh missing access token");
-
-  const expiresIn = typeof payload.expires_in === "number" ? payload.expires_in : null;
-  const newRefresh = typeof payload.refresh_token === "string" ? payload.refresh_token : null;
-
-  await prisma.integrationConnection.update({
-    where: { userId_provider: { userId, provider: IntegrationProvider.HUBSPOT } },
-    data: {
-      accessToken: protectIntegrationSecret(newAccessToken),
-      refreshToken: newRefresh ? protectIntegrationSecret(newRefresh) : connection.refreshToken,
-      expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : connection.expiresAt,
-      status: IntegrationConnectionStatus.CONNECTED,
-      lastError: null,
-    },
-  });
-
-  return { accessToken: newAccessToken };
+  return { accessToken };
 }
 
 // ── HubSpot API helpers ──────────────────────────────────────

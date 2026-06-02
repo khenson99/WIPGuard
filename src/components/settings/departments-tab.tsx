@@ -7,7 +7,6 @@ interface Department {
   id: string;
   name: string;
   color: string | null;
-  _count?: { projects: number };
 }
 
 interface DepartmentForm {
@@ -121,10 +120,10 @@ export function DepartmentsTab() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-base font-semibold text-foreground">
-            Departments (Swim Lanes)
+            Departments
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Define business departments to organize projects into swim lanes.
+            Define business departments for Imladris operating dashboards.
           </p>
         </div>
         <button
@@ -216,7 +215,7 @@ export function DepartmentsTab() {
           <Building2 className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">No departments yet</p>
           <p className="text-xs text-muted-foreground">
-            Create departments to group projects into swim lanes
+            Create departments to organize operating metrics
           </p>
         </div>
       ) : (
@@ -236,11 +235,6 @@ export function DepartmentsTab() {
                 <span className="text-sm font-medium text-foreground">
                   {dept.name}
                 </span>
-                {dept._count?.projects !== undefined && (
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    {dept._count.projects} project{dept._count.projects !== 1 ? "s" : ""}
-                  </span>
-                )}
               </div>
 
               <button

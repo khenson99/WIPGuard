@@ -13,6 +13,7 @@ const FILTERS: Array<{ id: InsightFilter; label: string }> = [
   { id: "sales-pipeline", label: "Sales" },
   { id: "customer-success", label: "CS" },
   { id: "retention", label: "Retention" },
+  { id: "revenue", label: "Revenue Ops" },
   { id: "finance", label: "Revenue" },
 ];
 
@@ -132,7 +133,7 @@ export function AiInsightsPanel({ bundle, defaultFilter = "all", compact = false
 
   const visible = useMemo(() => {
     if (!bundle) return [];
-    const items = filter === "all" ? bundle.global : bundle.bySection[filter];
+    const items = filter === "all" ? bundle.global : bundle.bySection[filter] ?? [];
     return [...items].sort((a, b) => {
       if (SEVERITY_RANK[a.severity] !== SEVERITY_RANK[b.severity]) {
         return SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity];
