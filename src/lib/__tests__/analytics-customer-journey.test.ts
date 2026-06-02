@@ -211,6 +211,51 @@ describe("buildCustomerJourneyData", () => {
     );
   });
 
+  it("normalizes HubSpot deal stages before building journey conversion touchpoints", () => {
+    const data = baseData();
+    data.hubspot = {
+      funnel: {
+        ...MINIMAL_FUNNEL,
+        totalDeals: 1,
+        closedWon: 1,
+      },
+      contacts: MINIMAL_CONTACTS,
+      deals: [
+        deal({
+          dealId: "formatted-won",
+          dealName: "Formatted Won",
+          stageId: "closedwon",
+          stageLabel: " closed won ",
+          amount: 5000,
+          source: "Organic",
+        }),
+      ],
+      _meta: META,
+    };
+
+    const journey = buildCustomerJourneyData(data);
+
+    expect(journey.journeys[0].currentStage).toBe("Closed Won");
+    expect(journey.journeys[0].touchpoints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: "hubspot",
+          type: "conversion",
+          detail: "Closed Won: Formatted Won",
+          value: 5000,
+        }),
+      ]),
+    );
+    expect(journey.touchpointSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: "hubspot",
+          conversionCount: 1,
+        }),
+      ]),
+    );
+  });
+
   it("populates stageOrder from pipeline stages", () => {
     const data = baseData();
     data.hubspot = {

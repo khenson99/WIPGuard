@@ -12,6 +12,19 @@ import type {
 import { CANONICAL_STAGE_ORDER } from "@/lib/analytics/customer-journey-conversion";
 import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
 
+const CANONICAL_STAGE_BY_KEY = new Map(
+  CANONICAL_STAGE_ORDER.map((stage) => [normalizeStageKey(stage), stage]),
+);
+
+function normalizeStageKey(stage: string): string {
+  return stage.trim().toLowerCase();
+}
+
+function normalizeStage(stage: string | null | undefined): string {
+  const trimmed = stage?.trim() ?? "";
+  return CANONICAL_STAGE_BY_KEY.get(normalizeStageKey(trimmed)) ?? trimmed;
+}
+
 // ── HubSpot source → synthetic channel mapping ──
 
 function mapHubSpotSourceToChannel(
@@ -42,13 +55,16 @@ function mapHubSpotSourceToChannel(
 
 function hubspotTouchpoints(data: AnalyticsDashboardData): Touchpoint[] {
   const deals = data.hubspot?.deals ?? [];
-  return deals.map((deal) => ({
-    timestamp: deal.updatedAt ?? new Date().toISOString(),
-    channel: "hubspot" as TouchpointChannel,
-    type: deal.stageLabel === "Closed Won" ? "conversion" as const : "engagement" as const,
-    detail: `${deal.stageLabel}: ${deal.dealName}`,
-    value: deal.amount,
-  }));
+  return deals.map((deal) => {
+    const stageLabel = normalizeStage(deal.stageLabel);
+    return {
+      timestamp: deal.updatedAt ?? new Date().toISOString(),
+      channel: "hubspot" as TouchpointChannel,
+      type: stageLabel === "Closed Won" ? "conversion" as const : "engagement" as const,
+      detail: `${stageLabel}: ${deal.dealName}`,
+      value: deal.amount,
+    };
+  });
 }
 
 function stripeTouchpoints(data: AnalyticsDashboardData): Touchpoint[] {
@@ -294,7 +310,7 @@ function buildJourneys(data: AnalyticsDashboardData): CustomerJourneyRecord[] {
       dealId: deal.dealId,
       dealName: deal.dealName,
       contactEmail: deal.primaryContactEmail ?? null,
-      currentStage: deal.stageLabel,
+      currentStage: normalizeStage(deal.stageLabel),
       value: deal.amount,
       touchpoints: dealTouchpoints,
       firstTouch,
@@ -345,7 +361,8 @@ function buildTopPaths(journeys: CustomerJourneyRecord[]): JourneyPath[] {
     if (journey.touchpoints.some((tp) => tp.channel === "stripe" && tp.value === null)) {
       entry.freeTrials += 1;
     }
-    if (journey.currentStage !== "Prospect" && journey.currentStage !== "Lead") {
+    const currentStage = normalizeStage(journey.currentStage);
+    if (currentStage !== "Prospect" && currentStage !== "Lead") {
       entry.demos += 1;
     }
     if (journey.touchpoints.some((tp) => tp.channel === "hubspot" && tp.detail.toLowerCase().includes("demo"))) {
