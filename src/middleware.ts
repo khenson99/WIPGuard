@@ -19,6 +19,19 @@ const LEGACY_PRODUCT_API_PREFIXES = [
   "/api/v1/tasks",
 ] as const;
 
+const LEGACY_PRODUCT_PAGE_PREFIXES = [
+  "/dashboard",
+  "/tasks",
+  "/board",
+  "/my-tasks",
+  "/projects",
+  "/standup",
+  "/today",
+  "/whip",
+  "/table",
+  "/logbook",
+] as const;
+
 /**
  * Next.js Middleware
  *
@@ -33,6 +46,9 @@ export function middleware(request: NextRequest) {
 
   const canonicalRedirect = maybeRedirectToCanonicalHost(request, pathname);
   if (canonicalRedirect) return canonicalRedirect;
+
+  const legacyProductPageRedirect = maybeRedirectLegacyProductPage(request, pathname);
+  if (legacyProductPageRedirect) return legacyProductPageRedirect;
 
   // For non-API routes, just add security headers
   if (!pathname.startsWith("/api/")) {
@@ -89,6 +105,27 @@ export function middleware(request: NextRequest) {
   // Unversioned API request — add version header indicating current version
   const response = NextResponse.next();
   response.headers.set("API-Version", CURRENT_API_VERSION);
+  addSecurityHeaders(response);
+  return response;
+}
+
+function maybeRedirectLegacyProductPage(
+  request: NextRequest,
+  pathname: string
+): NextResponse | null {
+  const isLegacyProductPage = LEGACY_PRODUCT_PAGE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+  if (!isLegacyProductPage) {
+    return null;
+  }
+
+  const redirectUrl = new URL(request.url);
+  redirectUrl.pathname = "/metrics";
+  redirectUrl.search = "";
+  redirectUrl.hash = "";
+
+  const response = NextResponse.redirect(redirectUrl, 307);
   addSecurityHeaders(response);
   return response;
 }
