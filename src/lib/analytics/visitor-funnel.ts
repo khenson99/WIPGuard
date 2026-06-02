@@ -187,7 +187,7 @@ function trimOrNull(value: string | null | undefined): string | null {
 }
 
 function normalizeStageKey(value: string): string {
-  return value.trim().toLowerCase();
+  return value.trim().toLowerCase().replace(/[\s_-]+/g, "");
 }
 
 function normalizeDemoStage(value: string | null | undefined): string {

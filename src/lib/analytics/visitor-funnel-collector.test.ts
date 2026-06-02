@@ -299,6 +299,23 @@ describe("collectVisitorEvent", () => {
               primaryContactId: "contact-1",
               primaryContactEmail: "buyer@example.com",
             },
+            {
+              dealId: "deal-demo-scheduled",
+              dealName: "Demo Scheduled",
+              stageId: "demo-scheduled",
+              stageLabel: "demo-scheduled",
+              amount: 3000,
+              source: "HubSpot",
+              ownerId: null,
+              updatedAt: "2026-05-21T13:00:00.000Z",
+              createdAt: "2026-05-21T11:00:00.000Z",
+              closedAt: null,
+              stripeCustomerId: null,
+              pipelineId: "default",
+              contactIds: ["contact-2"],
+              primaryContactId: "contact-2",
+              primaryContactEmail: "scheduled@example.com",
+            },
           ],
           _meta: { fetchedAt: "2026-05-21", nextRefresh: "2026-05-21", source: "live" },
         },
@@ -312,6 +329,17 @@ describe("collectVisitorEvent", () => {
           dedupeKey: "demo_booked:deal-formatted-won",
           metadata: expect.objectContaining({
             stageLabel: "Closed Won",
+          }),
+        }),
+      }),
+    );
+    expect(prisma.funnelEvent.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          eventType: FunnelEventType.DEMO_BOOKED,
+          dedupeKey: "demo_booked:deal-demo-scheduled",
+          metadata: expect.objectContaining({
+            stageLabel: "Demo Scheduled",
           }),
         }),
       }),
