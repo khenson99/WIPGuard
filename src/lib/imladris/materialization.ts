@@ -20,6 +20,13 @@ const INACTIVE_STRIPE_SUBSCRIPTION_STATUSES = new Set([
   "incomplete_expired",
   "unpaid",
 ]);
+const TERMINAL_DEAL_STAGE_KEYS = new Set([
+  "closedwon",
+  "closedlost",
+  "lost",
+  "unlikely",
+  "churn",
+]);
 
 interface ImladrisActorContext {
   userId: string | null;
@@ -1006,7 +1013,7 @@ function isQualifiedPipelineDeal(record: RawSourceRecordRow): boolean {
   }
   const payload = asRecord(record.payload);
   const stage = normalizeStageKey(payload.dealstage ?? payload.stage);
-  if (["closedlost", "lost", "appointmentscheduled"].includes(stage)) {
+  if (TERMINAL_DEAL_STAGE_KEYS.has(stage) || stage === "appointmentscheduled") {
     return false;
   }
   return [
@@ -1215,7 +1222,7 @@ function isMarketingPipelineDeal(record: RawSourceRecordRow): boolean {
   }
   const payload = asRecord(record.payload);
   const stage = normalizeStageKey(payload.dealstage ?? payload.stage);
-  if (["closedlost", "lost", "appointmentscheduled"].includes(stage)) {
+  if (TERMINAL_DEAL_STAGE_KEYS.has(stage) || stage === "appointmentscheduled") {
     return false;
   }
   const source = String(
