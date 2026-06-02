@@ -98,6 +98,19 @@ const DEMO_BOOKED_LABELS = new Set([
   "Closed Lost",
 ]);
 
+const CANONICAL_STAGE_LABEL_BY_KEY = new Map(
+  [...TERMINAL_LABELS, ...DEMO_BOOKED_LABELS].map((label) => [normalizeStageLabelKey(label), label])
+);
+
+function normalizeStageLabelKey(label: string): string {
+  return label.trim().toLowerCase();
+}
+
+function normalizeStageLabel(label: string): string {
+  const trimmed = label.trim();
+  return CANONICAL_STAGE_LABEL_BY_KEY.get(normalizeStageLabelKey(label)) ?? trimmed;
+}
+
 export interface FilteredFunnelMetrics {
   totalDeals: number;
   closedWon: number;
@@ -151,9 +164,10 @@ export function recomputeFunnelMetrics(
   let notActivated = 0;
   let activeSubscriptions = 0;
   let totalValue = 0;
+  let demosForRate = 0;
 
   for (const d of deals) {
-    const label = d.stageLabel;
+    const label = normalizeStageLabel(d.stageLabel);
     const amt = d.amount ?? 0;
     totalValue += amt;
 
@@ -184,6 +198,10 @@ export function recomputeFunnelMetrics(
     rc.value += amt;
 
     // Stage-specific tallies
+    if (DEMO_BOOKED_LABELS.has(label)) {
+      demosForRate += 1;
+    }
+
     switch (label) {
       case "Closed Won":
         closedWon += 1;
@@ -220,9 +238,6 @@ export function recomputeFunnelMetrics(
   const totalDeals = deals.length;
   const decided = closedWon + closedLost;
   const effectiveDecided = closedWon + closedLost + unlikely + churn;
-  const demosForRate = DEMO_BOOKED_LABELS
-    ? deals.filter((d) => DEMO_BOOKED_LABELS.has(d.stageLabel)).length
-    : 0;
 
   const winRate = decided > 0 ? (closedWon / decided) * 100 : 0;
   const effectiveWinRate = effectiveDecided > 0 ? (closedWon / effectiveDecided) * 100 : 0;
@@ -230,7 +245,7 @@ export function recomputeFunnelMetrics(
   const avgDealSize = totalDeals > 0 ? totalValue / totalDeals : 0;
 
   // Build ordered stage list
-  const order = stageOrder ?? seenOrder;
+  const order = stageOrder?.map(normalizeStageLabel) ?? seenOrder;
   const stages = order
     .filter((label) => stageCounts.has(label))
     .map((label) => {
