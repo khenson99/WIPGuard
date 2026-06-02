@@ -27,6 +27,11 @@ const TERMINAL_DEAL_STAGE_KEYS = new Set([
   "unlikely",
   "churn",
 ]);
+const PAID_AD_PROVIDERS = [
+  IntegrationProvider.GOOGLE_ADS,
+  IntegrationProvider.META_ADS,
+  IntegrationProvider.REDDIT,
+] as const;
 
 interface ImladrisActorContext {
   userId: string | null;
@@ -1230,20 +1235,84 @@ export async function materializeImladrisSalesMetrics(
   };
 }
 
-function spendAmount(record: RawSourceRecordRow): number {
+function spendAmount(record: RawSourceRecordRow): number | null {
   const payload = asRecord(record.payload);
-  const costMicros = numberFrom(payload.costMicros ?? payload.cost_micros);
+  const properties = nestedRecord(payload.properties);
+  const summary = nestedRecord(payload.summary);
+  const metrics = nestedRecord(payload.metrics);
+  const costMicros = numberFrom(
+    payload.costMicros ??
+      payload.cost_micros ??
+      payload.spendMicros ??
+      payload.spend_micros ??
+      payload.totalSpendMicros ??
+      payload.total_spend_micros ??
+      properties.costMicros ??
+      properties.cost_micros ??
+      properties.spendMicros ??
+      properties.spend_micros ??
+      properties.totalSpendMicros ??
+      properties.total_spend_micros ??
+      summary.costMicros ??
+      summary.cost_micros ??
+      summary.spendMicros ??
+      summary.spend_micros ??
+      summary.totalSpendMicros ??
+      summary.total_spend_micros ??
+      metrics.costMicros ??
+      metrics.cost_micros,
+  );
   if (costMicros !== null) {
     return costMicros / 1_000_000;
   }
-  return (
-    numberFrom(
+  return numberFrom(
+    payload.totalSpend30d ??
+      payload.total_spend_30d ??
+      payload.totalSpend ??
+      payload.total_spend ??
       payload.spend ??
-        payload.amountSpent ??
-        payload.amount_spent ??
-        payload.cost,
-    ) ?? 0
+      payload.amountSpent ??
+      payload.amount_spent ??
+      payload.cost ??
+      properties.totalSpend30d ??
+      properties.total_spend_30d ??
+      properties.totalSpend ??
+      properties.total_spend ??
+      properties.spend ??
+      properties.amountSpent ??
+      properties.amount_spent ??
+      properties.cost ??
+      summary.totalSpend30d ??
+      summary.total_spend_30d ??
+      summary.totalSpend ??
+      summary.total_spend ??
+      summary.spend ??
+      summary.cost ??
+      metrics.totalSpend30d ??
+      metrics.total_spend_30d ??
+      metrics.totalSpend ??
+      metrics.total_spend ??
+      metrics.spend ??
+      metrics.cost,
   );
+}
+
+function acquisitionSpendForProvider(
+  records: RawSourceRecordRow[],
+  provider: (typeof PAID_AD_PROVIDERS)[number],
+): number {
+  const providerRecords = records.filter((record) => record.provider === provider);
+  const snapshotAmounts = providerRecords
+    .filter((record) => record.objectType === "snapshot")
+    .map(spendAmount)
+    .filter((amount): amount is number => typeof amount === "number");
+  const recordsForSpend =
+    snapshotAmounts.length > 0
+      ? snapshotAmounts
+      : providerRecords
+          .map(spendAmount)
+          .filter((amount): amount is number => typeof amount === "number");
+  return recordsForSpend.reduce((sum, amount) => sum + amount, 0);
 }
 
 function sessionsCount(record: RawSourceRecordRow): number {
@@ -1340,16 +1409,10 @@ function isMarketingPipelineDeal(record: RawSourceRecordRow): boolean {
 }
 
 function computeMarketingPipelineEfficiency(records: RawSourceRecordRow[]) {
-  const acquisitionSpend = records.reduce((sum, record) => {
-    if (
-      record.provider !== IntegrationProvider.GOOGLE_ADS &&
-      record.provider !== IntegrationProvider.META_ADS &&
-      record.provider !== IntegrationProvider.REDDIT
-    ) {
-      return sum;
-    }
-    return sum + spendAmount(record);
-  }, 0);
+  const acquisitionSpend = PAID_AD_PROVIDERS.reduce(
+    (sum, provider) => sum + acquisitionSpendForProvider(records, provider),
+    0,
+  );
   const qualifiedPipeline = records
     .filter(isMarketingPipelineDeal)
     .reduce((sum, record) => sum + dealAmount(record), 0);
