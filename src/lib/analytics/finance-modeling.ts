@@ -524,7 +524,9 @@ export function scoreFinancialHealth(
   const runway = data.mercury?.cashFlow?.runway ?? 0;
   const growthRate = percentRate(data.stripe?.revenue?.revenueGrowth);
   const churnRate = percentRate(data.stripe?.subscriptions?.churnRate);
-  const paymentSuccess = normalizePercentValue(data.stripe?.payments?.successRate);
+  const paymentSuccess = data.stripe?.payments
+    ? normalizePercentValue(data.stripe.payments.successRate)
+    : null;
 
   const components: HealthComponent[] = [
     {
@@ -547,9 +549,9 @@ export function scoreFinancialHealth(
     },
     {
       label: "Payment Success",
-      score: scorePaymentSuccess(paymentSuccess),
+      score: paymentSuccess === null ? 50 : scorePaymentSuccess(paymentSuccess),
       weight: 0.10,
-      detail: `${paymentSuccess.toFixed(1)}%`,
+      detail: paymentSuccess === null ? "No data" : `${paymentSuccess.toFixed(1)}%`,
     },
     {
       label: "Pipeline Coverage",
@@ -600,7 +602,7 @@ export function scoreFinancialHealth(
         relatedTab: "finance-stripe",
       });
     }
-    if (comp.label === "Payment Success" && comp.score < 80) {
+    if (comp.label === "Payment Success" && comp.score < 80 && comp.detail !== "No data") {
       topSuggestions.push({
         priority: topSuggestions.length + 1,
         title: "Improve Payment Recovery",

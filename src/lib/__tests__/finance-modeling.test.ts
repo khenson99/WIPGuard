@@ -957,6 +957,15 @@ describe("scoreFinancialHealth", () => {
     expect(pipeline.score).toBe(50);
   });
 
+  it("does not flag payment recovery when Stripe payment data is unavailable", () => {
+    const data = makeData({ stripe: null });
+    const { components, topSuggestions } = scoreFinancialHealth(data);
+
+    const payment = components.find((c) => c.label === "Payment Success")!;
+    expect(payment.detail).toBe("No data");
+    expect(topSuggestions.map((suggestion) => suggestion.title)).not.toContain("Improve Payment Recovery");
+  });
+
   it("each component score is between 0 and 100", () => {
     const { components } = scoreFinancialHealth(makeData());
     for (const c of components) {
