@@ -3154,6 +3154,60 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("counts Webflow form submission rows when snapshot totals are absent", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_webflow_child_submission_1",
+            provider: IntegrationProvider.WEBFLOW,
+            objectType: "form_submission",
+            externalId: "webflow:form_submission:demo:1",
+            occurredAt: new Date("2026-05-20T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T12:00:00.000Z"),
+            payload: {
+              formName: "Demo",
+              submittedAt: "2026-05-20T12:00:00.000Z",
+            },
+          },
+          {
+            id: "raw_webflow_child_submission_2",
+            provider: IntegrationProvider.WEBFLOW,
+            objectType: "form_submission",
+            externalId: "webflow:form_submission:demo:2",
+            occurredAt: new Date("2026-05-21T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-21T12:00:00.000Z"),
+            payload: {
+              formName: "Demo",
+              submittedAt: "2026-05-21T12:00:00.000Z",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_webflow_children", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      webflowFormSubmissions: 2,
+    });
+  });
+
   it("normalizes Google Ads costMicros before calculating marketing pipeline efficiency", async () => {
     const prisma = {
       imladrisRawSourceRecord: {

@@ -1532,7 +1532,7 @@ function webflowFormSubmissionCount(records: RawSourceRecordRow[]): number {
     .filter((record) => record.objectType === "form_submission")
     .reduce((sum, record) => {
       const payload = asRecord(record.payload);
-      return sum + (numberFrom(payload.count ?? payload.submissions) ?? 0);
+      return sum + (numberFrom(payload.count ?? payload.submissions) ?? 1);
     }, 0);
 }
 
