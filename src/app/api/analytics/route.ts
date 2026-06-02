@@ -1972,21 +1972,32 @@ export async function GET(request: Request) {
 
       const currentTraffic =
         result.googleAnalytics || result.ga ? metrics.kpis.traffic : null;
-      const currentFinance = result.stripe ? metrics.kpis.finance : null;
+      const currentFinanceMrr =
+        result.stripe || result.hubspot ? metrics.kpis.finance : null;
+      const currentStripeFinance = result.stripe ? metrics.kpis.finance : null;
+      const currentFinanceCapturedAt =
+        capturedAtByDomain.stripe ?? capturedAtByDomain.hubspot ?? null;
 
       const prevTraffic = prevGa.payload
         ? buildAnalyticsMetricsLayer(
             { googleAnalytics: prevGa.payload } as unknown as AnalyticsDashboardData,
           ).kpis.traffic
         : null;
-      const prevFinance = prevStripe.payload
+      const prevFinanceMrr = prevStripe.payload || prevHubSpot.payload
         ? buildAnalyticsMetricsLayer(
             {
-              stripe: prevStripe.payload,
+              stripe: prevStripe.payload ?? null,
               hubspot: prevHubSpot.payload ?? null,
             } as unknown as AnalyticsDashboardData,
           ).kpis.finance
         : null;
+      const prevStripeFinance = prevStripe.payload
+        ? buildAnalyticsMetricsLayer(
+            { stripe: prevStripe.payload } as unknown as AnalyticsDashboardData,
+          ).kpis.finance
+        : null;
+      const prevFinanceCapturedAt =
+        prevStripe.capturedAt ?? prevHubSpot.capturedAt;
 
       result.deltas = {
         traffic: {
@@ -2005,14 +2016,14 @@ export async function GET(request: Request) {
         },
         finance: {
           mrr: computeKpiDelta({
-            current: currentFinance?.mrr ?? null,
-            previous: prevFinance?.mrr ?? null,
-            currentCapturedAt: capturedAtByDomain.stripe ?? null,
-            previousCapturedAt: prevStripe.capturedAt,
+            current: currentFinanceMrr?.mrr ?? null,
+            previous: prevFinanceMrr?.mrr ?? null,
+            currentCapturedAt: currentFinanceCapturedAt,
+            previousCapturedAt: prevFinanceCapturedAt,
           }),
           paymentSuccessPct: computeKpiDelta({
-            current: currentFinance?.paymentSuccessPct ?? null,
-            previous: prevFinance?.paymentSuccessPct ?? null,
+            current: currentStripeFinance?.paymentSuccessPct ?? null,
+            previous: prevStripeFinance?.paymentSuccessPct ?? null,
             currentCapturedAt: capturedAtByDomain.stripe ?? null,
             previousCapturedAt: prevStripe.capturedAt,
           }),
