@@ -966,6 +966,20 @@ describe("scoreFinancialHealth", () => {
     expect(topSuggestions.map((suggestion) => suggestion.title)).not.toContain("Improve Payment Recovery");
   });
 
+  it("does not score Stripe growth or churn rates when Stripe data is unavailable", () => {
+    const data = makeData({ stripe: null });
+    const { components, topSuggestions } = scoreFinancialHealth(data);
+
+    const growth = components.find((c) => c.label === "MRR Growth")!;
+    const churn = components.find((c) => c.label === "Churn")!;
+    const suggestionTitles = topSuggestions.map((suggestion) => suggestion.title);
+
+    expect(growth.detail).toBe("No data");
+    expect(churn.detail).toBe("No data");
+    expect(suggestionTitles).not.toContain("Accelerate Revenue Growth");
+    expect(suggestionTitles).not.toContain("Reduce Customer Churn");
+  });
+
   it("each component score is between 0 and 100", () => {
     const { components } = scoreFinancialHealth(makeData());
     for (const c of components) {

@@ -522,8 +522,12 @@ export function scoreFinancialHealth(
   data: AnalyticsDashboardData,
 ): FinanceHealthScore {
   const runway = data.mercury?.cashFlow?.runway ?? 0;
-  const growthRate = percentRate(data.stripe?.revenue?.revenueGrowth);
-  const churnRate = percentRate(data.stripe?.subscriptions?.churnRate);
+  const growthRate = data.stripe?.revenue
+    ? percentRate(data.stripe.revenue.revenueGrowth)
+    : null;
+  const churnRate = data.stripe?.subscriptions
+    ? percentRate(data.stripe.subscriptions.churnRate)
+    : null;
   const paymentSuccess = data.stripe?.payments
     ? normalizePercentValue(data.stripe.payments.successRate)
     : null;
@@ -537,15 +541,15 @@ export function scoreFinancialHealth(
     },
     {
       label: "MRR Growth",
-      score: scoreGrowth(growthRate),
+      score: growthRate === null ? 50 : scoreGrowth(growthRate),
       weight: 0.25,
-      detail: `${(growthRate * 100).toFixed(1)}% monthly`,
+      detail: growthRate === null ? "No data" : `${(growthRate * 100).toFixed(1)}% monthly`,
     },
     {
       label: "Churn",
-      score: scoreChurn(churnRate),
+      score: churnRate === null ? 50 : scoreChurn(churnRate),
       weight: 0.20,
-      detail: `${(churnRate * 100).toFixed(1)}% monthly`,
+      detail: churnRate === null ? "No data" : `${(churnRate * 100).toFixed(1)}% monthly`,
     },
     {
       label: "Payment Success",
@@ -584,7 +588,7 @@ export function scoreFinancialHealth(
         relatedTab: "finance-mercury",
       });
     }
-    if (comp.label === "MRR Growth" && comp.score < 80) {
+    if (comp.label === "MRR Growth" && comp.score < 80 && comp.detail !== "No data") {
       topSuggestions.push({
         priority: topSuggestions.length + 1,
         title: "Accelerate Revenue Growth",
@@ -593,7 +597,7 @@ export function scoreFinancialHealth(
         relatedTab: "finance-stripe",
       });
     }
-    if (comp.label === "Churn" && comp.score < 80) {
+    if (comp.label === "Churn" && comp.score < 80 && comp.detail !== "No data") {
       topSuggestions.push({
         priority: topSuggestions.length + 1,
         title: "Reduce Customer Churn",
