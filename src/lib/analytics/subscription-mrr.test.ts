@@ -96,4 +96,32 @@ describe("buildSubscriptionMrrBreakdown", () => {
     expect(breakdown.hubspotOnlyActiveSubscriptions).toBe(1);
     expect(breakdown.mergedActiveSubscriptions).toBe(13);
   });
+
+  it("treats plural HubSpot Subscriptions stage deals as subscription revenue fallback", () => {
+    const breakdown = buildSubscriptionMrrBreakdown({
+      stripe: {
+        revenue: { mrr: 12000, mrrChange: 500 },
+        subscriptions: {
+          active: 1,
+          activeCustomerRefs: [{ customerId: "cus_123", email: "billing@example.com", emailDomain: "example.com" }],
+        },
+      },
+      hubspot: {
+        deals: [
+          {
+            dealId: "hs-subscription-stage",
+            dealName: "HubSpot Subscription Stage",
+            stageLabel: "Subscriptions",
+            amount: 3600,
+            stripeCustomerId: null,
+            primaryContactEmail: "ops@example-subscription.com",
+          },
+        ],
+      },
+    });
+
+    expect(breakdown.hubspotActiveSubscriptions).toBe(1);
+    expect(breakdown.hubspotOnlySubscriptionMrr).toBe(300);
+    expect(breakdown.totalMrr).toBe(12300);
+  });
 });

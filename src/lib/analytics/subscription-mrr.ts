@@ -79,7 +79,10 @@ function asHubSpotLike(value: unknown): HubSpotLike {
 function getHubSpotSubscriptionDeals(hubspot: HubSpotLike): HubSpotSubscriptionDealLike[] {
   if (Array.isArray(hubspot?.subscriptionDeals)) return hubspot.subscriptionDeals;
   return (hubspot?.deals ?? []).filter(
-    (deal) => deal.stageLabel?.trim().toLowerCase() === "subscription",
+    (deal) => {
+      const stageLabel = deal.stageLabel?.trim().toLowerCase();
+      return stageLabel === "subscription" || stageLabel === "subscriptions";
+    },
   );
 }
 
