@@ -490,6 +490,12 @@ function scorePaymentSuccess(rate: number): number {
   return 15;
 }
 
+const TERMINAL_STAGE_KEYS = new Set(["closedwon", "closedlost", "unlikely", "churn"]);
+
+function stageKey(value: string | null | undefined): string {
+  return value?.trim().toLowerCase().replace(/[\s_-]+/g, "") ?? "";
+}
+
 function scorePipelineCoverage(data: AnalyticsDashboardData): number {
   const pipeline = data.hubspot?.funnel;
   if (!pipeline) return 50; // Neutral if no data
@@ -497,7 +503,13 @@ function scorePipelineCoverage(data: AnalyticsDashboardData): number {
   if (mrr === 0) return 50;
   // Pipeline value vs annual MRR
   const annualMrr = mrr * 12;
-  const totalPipelineValue = pipeline.stages.reduce((sum, s) => sum + s.value, 0);
+  const totalPipelineValue = pipeline.stages
+    .filter(
+      (stage) =>
+        !TERMINAL_STAGE_KEYS.has(stageKey(stage.label)) &&
+        !TERMINAL_STAGE_KEYS.has(stageKey(stage.stageId)),
+    )
+    .reduce((sum, s) => sum + s.value, 0);
   const coverage = totalPipelineValue / annualMrr;
   if (coverage >= 3) return 100;
   if (coverage >= 2) return 80;

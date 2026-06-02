@@ -806,6 +806,36 @@ describe("scoreFinancialHealth", () => {
     expect(pipelineCoverage.score).toBe(35);
   });
 
+  it("excludes terminal stages from pipeline coverage scoring", () => {
+    const { components } = scoreFinancialHealth(makeData({
+      stripe: {
+        revenue: {
+          mrr: 10_000,
+          mrrChange: 0,
+          totalRevenue30d: 10_000,
+          totalRevenuePrev30d: 10_000,
+          revenueGrowth: 0,
+          avgRevenuePerCustomer: 200,
+        },
+      },
+      hubspot: {
+        funnel: {
+          ...makeHubSpot().funnel,
+          stages: [
+            { stageId: "discovery", label: "Discovery", count: 1, value: 60_000 },
+            { stageId: "closedwon", label: "Closed Won", count: 1, value: 500_000 },
+            { stageId: "closedlost", label: "Closed Lost", count: 1, value: 500_000 },
+            { stageId: "churn", label: "Churn", count: 1, value: 500_000 },
+          ],
+        },
+      },
+    }));
+
+    const pipelineCoverage = components.find((c) => c.label === "Pipeline Coverage")!;
+
+    expect(pipelineCoverage.score).toBe(35);
+  });
+
   it("component weights sum to 1.0", () => {
     const { components } = scoreFinancialHealth(makeData());
     const weightSum = components.reduce((s, c) => s + c.weight, 0);
