@@ -1012,7 +1012,14 @@ function isQualifiedPipelineDeal(record: RawSourceRecordRow): boolean {
     return false;
   }
   const payload = asRecord(record.payload);
-  const stage = normalizeStageKey(payload.dealstage ?? payload.stage);
+  const stage = normalizeStageKey(
+    payload.dealstage ??
+      payload.stage ??
+      payload.stageLabel ??
+      payload.stage_label ??
+      payload.stageId ??
+      payload.stage_id,
+  );
   if (TERMINAL_DEAL_STAGE_KEYS.has(stage) || stage === "appointmentscheduled") {
     return false;
   }
@@ -1221,7 +1228,14 @@ function isMarketingPipelineDeal(record: RawSourceRecordRow): boolean {
     return false;
   }
   const payload = asRecord(record.payload);
-  const stage = normalizeStageKey(payload.dealstage ?? payload.stage);
+  const stage = normalizeStageKey(
+    payload.dealstage ??
+      payload.stage ??
+      payload.stageLabel ??
+      payload.stage_label ??
+      payload.stageId ??
+      payload.stage_id,
+  );
   if (TERMINAL_DEAL_STAGE_KEYS.has(stage) || stage === "appointmentscheduled") {
     return false;
   }

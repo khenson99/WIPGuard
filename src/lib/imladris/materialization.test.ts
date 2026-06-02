@@ -1637,6 +1637,50 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("recognizes qualified stage labels before calculating sales pipeline", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_stage_label_qualified_deal",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_stage_label_qualified",
+            occurredAt: new Date("2026-05-20T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+            payload: {
+              id: "deal_stage_label_qualified",
+              amount: 50_000,
+              stageLabel: "Sales Qualified Lead",
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_stage_label", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisSalesMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      amount: 50_000,
+      qualifiedDealCount: 1,
+    });
+  });
+
   it("normalizes deal identifiers before calculating sales collaboration coverage", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -2134,6 +2178,64 @@ describe("Imladris canonical materialization", () => {
       },
       imladrisCanonicalMetricValue: {
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_terminal_pipeline", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      qualifiedPipeline: 0,
+      acquisitionSpend: 10_000,
+      ratio: 0,
+    });
+  });
+
+  it("excludes marketing deals with terminal stage labels before calculating pipeline efficiency", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_google_ads_stage_label_pipeline",
+            provider: IntegrationProvider.GOOGLE_ADS,
+            objectType: "campaign_metric",
+            externalId: "gads_stage_label_pipeline",
+            occurredAt: new Date("2026-05-08T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-08T00:00:00.000Z"),
+            payload: {
+              spend: 10_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_hubspot_marketing_closed_stage_label_deal",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_marketing_closed_stage_label",
+            occurredAt: new Date("2026-05-14T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-14T00:00:00.000Z"),
+            payload: {
+              amount: 50_000,
+              stageLabel: "Closed Won",
+              originalSource: "paid search",
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_stage_label_pipeline", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
