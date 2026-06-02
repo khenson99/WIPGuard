@@ -243,7 +243,7 @@ export function computeUnitEconomics(
   // ---------------------------------------------------------------------------
 
   const netNewArr = stripe
-    ? netNewMrrFromPercentChange(stripe.revenue.mrr, stripe.revenue.mrrChange) * 12
+    ? netNewMrrFromPercentChange(subscriptionBreakdown.totalMrr, stripe.revenue.mrrChange) * 12
     : 0;
   const magicNumber: number | null =
     marketingSpend > 0 ? r2(netNewArr / marketingSpend) : null;

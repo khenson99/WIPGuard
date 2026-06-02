@@ -282,6 +282,25 @@ describe("computeUnitEconomics", () => {
     expect(result.magicNumber).toBe(1.62);
   });
 
+  it("uses canonical MRR including HubSpot subscriptions for magic number", () => {
+    const result = computeUnitEconomics(
+      makeStripe({
+        revenue: {
+          ...stripe.revenue,
+          mrr: 10_000,
+          mrrChange: 10,
+        },
+      }),
+      mercury,
+      makeHubSpot({
+        subscriptionDeals: [subscriptionDeal(12_000)],
+      }),
+    );
+
+    // Canonical MRR is $11k, so 10% growth implies $1k net-new MRR and $12k net-new ARR.
+    expect(result.magicNumber).toBe(1.78);
+  });
+
   it("respects custom budget-informed expense ratios", () => {
     const result = computeUnitEconomics(stripe, mercury, hubspot, {
       ratios: {
