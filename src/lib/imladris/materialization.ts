@@ -1800,6 +1800,27 @@ function isOpenSupportIssue(record: RawSourceRecordRow): boolean {
   );
 }
 
+function pylonSnapshotCount(record: RawSourceRecordRow, keys: string[]): number | null {
+  if (record.provider !== IntegrationProvider.PYLON || record.objectType !== "snapshot") {
+    return null;
+  }
+
+  const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
+  const summary = nestedRecord(payload.summary);
+  const metrics = nestedRecord(payload.metrics);
+  for (const key of keys) {
+    const count = numberFrom(
+      payload[key] ??
+        properties[key] ??
+        summary[key] ??
+        metrics[key],
+    );
+    if (count !== null) return count;
+  }
+  return null;
+}
+
 function isEscalation(record: RawSourceRecordRow): boolean {
   if (record.provider !== IntegrationProvider.SLACK) return false;
 
@@ -1899,6 +1920,35 @@ function computeRetentionRisk(records: RawSourceRecordRow[]) {
   const billingRiskRecords = records.filter(isBillingRisk);
   const lowUsageRecords = records.filter(isLowUsage);
   const collaborationSignals = records.filter(isCollaborationSignal);
+  const pylonSnapshotOpenSupportIssues = records
+    .map((record) =>
+      pylonSnapshotCount(record, [
+        "openConversations",
+        "open_conversations",
+        "openIssues",
+        "open_issues",
+        "openTickets",
+        "open_tickets",
+      ]),
+    )
+    .filter((count): count is number => typeof count === "number")
+    .at(-1);
+  const pylonSnapshotEscalations =
+    records
+      .map((record) =>
+        pylonSnapshotCount(record, [
+          "urgentConversations",
+          "urgent_conversations",
+          "urgentIssues",
+          "urgent_issues",
+          "urgentTickets",
+          "urgent_tickets",
+        ]),
+      )
+      .filter((count): count is number => typeof count === "number")
+      .at(-1) ?? 0;
+  const openSupportIssueCount = pylonSnapshotOpenSupportIssues ?? supportIssues.length;
+  const escalationCount = escalations.length + pylonSnapshotEscalations;
 
   const billingRiskAccounts = new Set(
     billingRiskRecords
@@ -1919,8 +1969,8 @@ function computeRetentionRisk(records: RawSourceRecordRow[]) {
   const score = Math.min(
     100,
     Math.round(
-      supportIssues.length * 12 +
-        escalations.length * 18 +
+      openSupportIssueCount * 12 +
+        escalationCount * 18 +
         billingRiskAccounts.size * 20 +
         lowUsageAccounts.size * 18 +
         collaborationOffset,
@@ -1930,8 +1980,8 @@ function computeRetentionRisk(records: RawSourceRecordRow[]) {
   return {
     score,
     atRiskAccounts: atRiskAccountIds.size,
-    openSupportIssues: supportIssues.length,
-    escalations: escalations.length,
+    openSupportIssues: openSupportIssueCount,
+    escalations: escalationCount,
     accountsWithBillingRisk: billingRiskAccounts.size,
     lowUsageAccounts: lowUsageAccounts.size,
     collaborationSignals: collaborationSignals.length,

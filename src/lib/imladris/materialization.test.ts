@@ -3745,6 +3745,41 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("uses Pylon snapshot support totals when conversation records are absent", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_pylon_snapshot_support_totals",
+        provider: IntegrationProvider.PYLON,
+        objectType: "snapshot",
+        externalId: "pylon:snapshot:2026-05",
+        occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+        payload: {
+          openConversations: 4,
+          urgentConversations: 2,
+          waitingOnTeam: 1,
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      score: 94,
+      atRiskAccounts: 0,
+      openSupportIssues: 4,
+      escalations: 2,
+    });
+  });
+
   it("reads nested account identifiers before calculating customer-success risk", async () => {
     const prisma = createCustomerSuccessPrismaMock();
     prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
