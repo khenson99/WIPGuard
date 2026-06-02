@@ -33,6 +33,11 @@ function roundMetric(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+function clampScore(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
+}
+
 function metricVariancePct(budgeted: number, actual: number): number {
   if (budgeted === 0) return actual === 0 ? 0 : 100;
   return roundMetric(((actual - budgeted) / budgeted) * 100);
@@ -212,8 +217,8 @@ export function computeAnalyticsKpis(data: AnalyticsDashboardData) {
       ga.sessions30d > 0 ? ga.pageviews30d / ga.sessions30d : 0;
   }
 
-  const engagementScore = Math.round(100 - bounceRatePct);
-  const pageDepthScore = Math.min(Math.round(pagesPerSession * 20), 100);
+  const engagementScore = clampScore(Math.round(100 - bounceRatePct));
+  const pageDepthScore = clampScore(Math.round(pagesPerSession * 20));
 
   // ── Finance KPIs ──
   const stripe = data.stripe;

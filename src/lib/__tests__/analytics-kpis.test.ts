@@ -29,6 +29,30 @@ describe("computeAnalyticsKpis (finance)", () => {
   });
 });
 
+describe("computeAnalyticsKpis (traffic)", () => {
+  it("clamps fallback traffic score metrics to the 0-100 score range", () => {
+    const metrics = computeAnalyticsKpis({
+      googleAnalytics: {
+        sessions30d: 10,
+        sessionsPrev30d: 0,
+        users30d: 10,
+        usersPrev30d: 0,
+        pageviews30d: -10,
+        pageviewsPrev30d: 0,
+        bounceRate: 125,
+        avgSessionDuration: 0,
+        trafficByChannel: [],
+        topPages: [],
+        dailyTrend: [],
+        _meta: { fetchedAt: "", nextRefresh: "", source: "live" },
+      },
+    } as unknown as AnalyticsDashboardData);
+
+    expect(metrics.traffic.engagementScore).toBe(0);
+    expect(metrics.traffic.pageDepthScore).toBe(0);
+  });
+});
+
 describe("buildAnalyticsMetricsLayer", () => {
   it("publishes canonical finance summary metrics", () => {
     const metrics = buildAnalyticsMetricsLayer({
