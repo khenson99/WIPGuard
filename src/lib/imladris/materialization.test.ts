@@ -748,6 +748,48 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("reads Linear state names before calculating delivery health", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_linear_done_state_name",
+            provider: IntegrationProvider.LINEAR,
+            objectType: "issue",
+            externalId: "LIN-DONE-NAME",
+            occurredAt: new Date("2026-05-15T10:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-05-10T10:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-15T10:00:00.000Z"),
+            payload: {
+              id: "LIN-DONE-NAME",
+              state: { name: "Done" },
+              createdAt: "2026-05-10T10:00:00.000Z",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_development_state_name", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisDevelopmentMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      completedLinearIssues: 1,
+    });
+  });
+
   it("materializes product activation rate from HubSpot accounts and PostHog activation events", async () => {
     const prisma = createActivationPrismaMock();
     const periodStart = new Date("2026-05-01T00:00:00.000Z");

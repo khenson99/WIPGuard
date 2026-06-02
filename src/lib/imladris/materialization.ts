@@ -101,11 +101,17 @@ function daysBetween(start: Date | null, end: Date | null): number | null {
 function isCompletedLinearIssue(record: RawSourceRecordRow): boolean {
   const payload = asRecord(record.payload);
   const state = payload.state;
+  const completedStateNames = ["done", "completed", "complete"];
   if (typeof state === "string") {
-    return ["done", "completed", "complete"].includes(state.trim().toLowerCase());
+    return completedStateNames.includes(state.trim().toLowerCase());
   }
-  const stateType = nestedRecord(state).type;
+  const stateRecord = nestedRecord(state);
+  const stateType = stateRecord.type;
   if (typeof stateType === "string" && stateType.trim().toLowerCase() === "completed") {
+    return true;
+  }
+  const stateName = stateRecord.name;
+  if (typeof stateName === "string" && completedStateNames.includes(stateName.trim().toLowerCase())) {
     return true;
   }
   return Boolean(payload.completedAt ?? payload.completed_at);
