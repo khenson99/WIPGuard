@@ -1438,10 +1438,10 @@ function isBillingRisk(record: RawSourceRecordRow): boolean {
   if (record.provider !== IntegrationProvider.STRIPE) return false;
 
   const payload = asRecord(record.payload);
-  const status = String(payload.status ?? payload.collectionStatus ?? "")
-    .trim()
-    .toLowerCase();
-  return ["past_due", "unpaid", "incomplete", "payment_failed"].includes(status);
+  const status = normalizeStageKey(
+    payload.status ?? payload.collectionStatus ?? payload.collection_status,
+  );
+  return ["pastdue", "unpaid", "incomplete", "paymentfailed"].includes(status);
 }
 
 function isLowUsage(record: RawSourceRecordRow): boolean {
