@@ -64,6 +64,10 @@ function toNumber(value: number | string | null | undefined): number {
   return 0;
 }
 
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 function asStripeLike(value: unknown): StripeLike {
   return typeof value === "object" && value !== null ? (value as StripeLike) : null;
 }
@@ -115,9 +119,9 @@ export function buildSubscriptionMrrBreakdown(input: {
   );
 
   let hubspotOnlyActiveSubscriptions = 0;
-  let hubspotOnlySubscriptionMrr = 0;
-  let excludedLinkedHubspotSubscriptionMrr = 0;
-  let hubspotSubscriptionMrr = 0;
+  let hubspotOnlySubscriptionArr = 0;
+  let excludedLinkedHubspotSubscriptionArr = 0;
+  let hubspotSubscriptionArr = 0;
 
   for (const deal of hubspotDeals) {
     const amount = Math.max(0, toNumber(deal.amount));
@@ -129,18 +133,21 @@ export function buildSubscriptionMrrBreakdown(input: {
       Boolean(email && stripeEmails.has(email)) ||
       Boolean(emailDomain && stripeDomains.has(emailDomain));
 
-    hubspotSubscriptionMrr += amount;
+    hubspotSubscriptionArr += amount;
     if (linkedToStripe) {
-      excludedLinkedHubspotSubscriptionMrr += amount;
+      excludedLinkedHubspotSubscriptionArr += amount;
       continue;
     }
 
     hubspotOnlyActiveSubscriptions += 1;
-    hubspotOnlySubscriptionMrr += amount;
+    hubspotOnlySubscriptionArr += amount;
   }
 
+  // HubSpot subscription deal amounts are annual subscription value; Stripe arrives as MRR.
   const stripeMrr = Math.max(0, toNumber(stripe?.revenue?.mrr));
-  const totalMrr = stripeMrr + hubspotOnlySubscriptionMrr;
+  const stripeArr = stripeMrr * 12;
+  const totalArr = roundMoney(stripeArr + hubspotOnlySubscriptionArr);
+  const totalMrr = roundMoney(totalArr / 12);
 
   return {
     stripeMrr,
@@ -148,11 +155,11 @@ export function buildSubscriptionMrrBreakdown(input: {
       stripe?.revenue?.mrrChange === null || stripe?.revenue?.mrrChange === undefined
         ? null
         : toNumber(stripe.revenue.mrrChange),
-    hubspotSubscriptionMrr,
-    hubspotOnlySubscriptionMrr,
-    excludedLinkedHubspotSubscriptionMrr,
+    hubspotSubscriptionMrr: roundMoney(hubspotSubscriptionArr / 12),
+    hubspotOnlySubscriptionMrr: roundMoney(hubspotOnlySubscriptionArr / 12),
+    excludedLinkedHubspotSubscriptionMrr: roundMoney(excludedLinkedHubspotSubscriptionArr / 12),
     totalMrr,
-    totalArr: totalMrr * 12,
+    totalArr,
     stripeActiveSubscriptions: stripe?.subscriptions?.active ?? stripeRefs.length,
     hubspotActiveSubscriptions: hubspotDeals.length,
     hubspotOnlyActiveSubscriptions,
