@@ -1699,7 +1699,13 @@ function isOpenSupportIssue(record: RawSourceRecordRow): boolean {
   if (!["conversation", "ticket", "issue"].includes(record.objectType)) return false;
 
   const payload = asRecord(record.payload);
-  return !isClosedStatus(payload.status ?? payload.state);
+  const properties = nestedRecord(payload.properties);
+  return !isClosedStatus(
+    payload.status ??
+      payload.state ??
+      properties.status ??
+      properties.state,
+  );
 }
 
 function isEscalation(record: RawSourceRecordRow): boolean {
