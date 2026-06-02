@@ -235,7 +235,12 @@ function confidenceFor(records: RawSourceRecordRow[]): number {
 function numberFrom(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
+    const trimmed = value.trim();
+    const withoutCurrency = trimmed.replace(/[$,\s]/g, "");
+    const normalized = /^\(.+\)$/.test(withoutCurrency)
+      ? `-${withoutCurrency.slice(1, -1)}`
+      : withoutCurrency;
+    const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
