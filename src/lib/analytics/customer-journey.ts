@@ -17,7 +17,7 @@ const CANONICAL_STAGE_BY_KEY = new Map(
 );
 
 function normalizeStageKey(stage: string): string {
-  return stage.trim().toLowerCase();
+  return stage.trim().toLowerCase().replace(/[\s_-]+/g, "");
 }
 
 function normalizeStage(stage: string | null | undefined): string {
