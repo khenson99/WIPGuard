@@ -448,7 +448,7 @@ function isActivationEvent(record: RawSourceRecordRow): boolean {
   return (
     typeof eventName === "string" &&
     ["activation_completed", "activated", "account_activated"].includes(
-      eventName.toLowerCase(),
+      eventName.trim().toLowerCase(),
     )
   );
 }

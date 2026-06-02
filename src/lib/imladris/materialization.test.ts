@@ -831,6 +831,60 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("normalizes event names before matching product activations", async () => {
+    const prisma = createActivationPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_hubspot_account_for_formatted_activation",
+        provider: IntegrationProvider.HUBSPOT,
+        objectType: "company",
+        externalId: "acct_1",
+        occurredAt: new Date("2026-05-03T10:00:00.000Z"),
+        sourceCreatedAt: new Date("2026-05-03T10:00:00.000Z"),
+        sourceUpdatedAt: new Date("2026-05-03T10:00:00.000Z"),
+        payload: { id: "acct_1", name: "Aperture" },
+      },
+      {
+        id: "raw_hubspot_unactivated_account_for_formatted_activation",
+        provider: IntegrationProvider.HUBSPOT,
+        objectType: "company",
+        externalId: "acct_2",
+        occurredAt: new Date("2026-05-04T10:00:00.000Z"),
+        sourceCreatedAt: new Date("2026-05-04T10:00:00.000Z"),
+        sourceUpdatedAt: new Date("2026-05-04T10:00:00.000Z"),
+        payload: { id: "acct_2", name: "Black Mesa" },
+      },
+      {
+        id: "raw_posthog_formatted_activation_event",
+        provider: IntegrationProvider.POSTHOG,
+        objectType: "event",
+        externalId: "evt_formatted_activation_event",
+        occurredAt: new Date("2026-05-05T10:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: null,
+        payload: {
+          event: " activation_completed ",
+          distinct_id: "acct_1",
+          properties: { hubspotCompanyId: "acct_1" },
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisProductActivationMetric({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      rate: 50,
+      activatedAccounts: 1,
+      eligibleAccounts: 2,
+    });
+  });
+
   it("materializes finance dashboard metrics from Mercury, Stripe, and HubSpot raw records", async () => {
     const prisma = createFinancePrismaMock();
     const periodStart = new Date("2026-05-01T00:00:00.000Z");
