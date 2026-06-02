@@ -1727,8 +1727,14 @@ function isBillingRisk(record: RawSourceRecordRow): boolean {
   if (record.provider !== IntegrationProvider.STRIPE) return false;
 
   const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
   const status = normalizeStageKey(
-    payload.status ?? payload.collectionStatus ?? payload.collection_status,
+    payload.status ??
+      payload.collectionStatus ??
+      payload.collection_status ??
+      properties.status ??
+      properties.collectionStatus ??
+      properties.collection_status,
   );
   return ["pastdue", "unpaid", "incomplete", "paymentfailed"].includes(status);
 }
