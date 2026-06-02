@@ -18,7 +18,7 @@ import {
   createTraceSpan,
   instrumentOutboxDispatch,
   instrumentIntegrationSync,
-  instrumentBoardEvent,
+  instrumentMetricEvent,
   instrumentWebsocketDelivery,
   createInstrumentationSnapshot,
   resetIdCounter,
@@ -290,23 +290,23 @@ describe("breach-detector: utility functions", () => {
 
 describe("structured-logger: createLogEntry", () => {
   it("creates a complete structured log entry", () => {
-    const entry = createLogEntry("info", "board", "board.task_moved", "Task moved to Done", {
+    const entry = createLogEntry("info", "metrics", "metrics.refreshed", "Metric refreshed", {
       traceId: "trace_1",
       spanId: "span_1",
       duration_ms: 42,
-      metadata: { taskId: "task_123" },
+      metadata: { metricId: "metric_123" },
       now: NOW,
     });
 
     expect(entry.timestamp).toBe(NOW.toISOString());
     expect(entry.level).toBe("info");
-    expect(entry.category).toBe("board");
-    expect(entry.event).toBe("board.task_moved");
-    expect(entry.message).toBe("Task moved to Done");
+    expect(entry.category).toBe("metrics");
+    expect(entry.event).toBe("metrics.refreshed");
+    expect(entry.message).toBe("Metric refreshed");
     expect(entry.traceId).toBe("trace_1");
     expect(entry.spanId).toBe("span_1");
     expect(entry.duration_ms).toBe(42);
-    expect(entry.metadata).toEqual({ taskId: "task_123" });
+    expect(entry.metadata).toEqual({ metricId: "metric_123" });
   });
 
   it("defaults to null for optional trace fields", () => {
@@ -336,7 +336,7 @@ describe("structured-logger: createTraceSpan", () => {
 
   it("creates a trace span with computed duration", () => {
     const start = new Date(NOW.getTime() - 100);
-    const span = createTraceSpan("test.op", "board", {
+    const span = createTraceSpan("test.op", "metrics", {
       traceId: "t1",
       spanId: "s1",
       startedAt: start,
@@ -347,7 +347,7 @@ describe("structured-logger: createTraceSpan", () => {
     expect(span.traceId).toBe("t1");
     expect(span.spanId).toBe("s1");
     expect(span.operation).toBe("test.op");
-    expect(span.category).toBe("board");
+    expect(span.category).toBe("metrics");
     expect(span.duration_ms).toBe(100);
     expect(span.status).toBe("ok");
   });
@@ -417,17 +417,17 @@ describe("structured-logger: domain event instrumentation", () => {
     expect(result.span.status).toBe("error");
   });
 
-  it("instrumentBoardEvent produces log and metric", () => {
-    const result = instrumentBoardEvent("task_moved", "task_123", { column: "Done" }, NOW);
+  it("instrumentMetricEvent produces log and metric", () => {
+    const result = instrumentMetricEvent("refreshed", "metric_123", { source: "linear" }, NOW);
 
-    expect(result.log.category).toBe("board");
-    expect(result.log.event).toBe("board.task_moved");
-    expect(result.metric.name).toBe("board.task_moved");
+    expect(result.log.category).toBe("metrics");
+    expect(result.log.event).toBe("metrics.refreshed");
+    expect(result.metric.name).toBe("metrics.refreshed");
     expect(result.metric.value).toBe(1);
   });
 
   it("instrumentWebsocketDelivery calculates drop rate correctly", () => {
-    const result = instrumentWebsocketDelivery("task.updated", 10, 8, 15, NOW);
+    const result = instrumentWebsocketDelivery("metric.updated", 10, 8, 15, NOW);
 
     expect(result.log.category).toBe("websocket");
     expect(result.metrics[2].name).toBe("websocket.delivery.drop_rate");
@@ -436,25 +436,25 @@ describe("structured-logger: domain event instrumentation", () => {
   });
 
   it("instrumentWebsocketDelivery flags high drop rate", () => {
-    const result = instrumentWebsocketDelivery("task.updated", 10, 3, 15, NOW);
+    const result = instrumentWebsocketDelivery("metric.updated", 10, 3, 15, NOW);
 
     expect(result.log.level).toBe("warn"); // > 10% drop
     expect(result.span.status).toBe("error"); // > 50% drop
   });
 
   it("instrumentWebsocketDelivery handles zero connected clients", () => {
-    const result = instrumentWebsocketDelivery("task.updated", 0, 0, 15, NOW);
+    const result = instrumentWebsocketDelivery("metric.updated", 0, 0, 15, NOW);
     expect(result.metrics[2].value).toBe(0); // no division by zero
   });
 });
 
 describe("structured-logger: createInstrumentationSnapshot", () => {
   it("assembles snapshot from logs, metrics, traces", () => {
-    const log = createLogEntry("info", "board", "test", "test", { now: NOW });
+    const log = createLogEntry("info", "metrics", "test", "test", { now: NOW });
     const metric = createMetric("test", 1, "count", {}, NOW);
 
     resetIdCounter();
-    const span = createTraceSpan("test", "board", {
+    const span = createTraceSpan("test", "metrics", {
       traceId: "t1",
       spanId: "s1",
       startedAt: NOW,
@@ -664,7 +664,7 @@ describe("oncall-dashboard: assembleOnCallDashboard", () => {
 
   it("caps recent logs at 50 entries", () => {
     const logs = Array.from({ length: 100 }, (_, i) =>
-      createLogEntry("info", "board", "test", `log ${i}`, { now: NOW })
+      createLogEntry("info", "metrics", "test", `log ${i}`, { now: NOW })
     );
 
     const sloReport = healthySloReport();
@@ -754,12 +754,12 @@ describe("oncall-dashboard: assembleOnCallDashboard", () => {
 describe("oncall-dashboard: filtering helpers", () => {
   it("filterLogsByCategory filters correctly", () => {
     const logs = [
-      createLogEntry("info", "board", "e1", "m1", { now: NOW }),
+      createLogEntry("info", "metrics", "e1", "m1", { now: NOW }),
       createLogEntry("info", "outbox", "e2", "m2", { now: NOW }),
-      createLogEntry("info", "board", "e3", "m3", { now: NOW }),
+      createLogEntry("info", "metrics", "e3", "m3", { now: NOW }),
     ];
 
-    expect(filterLogsByCategory(logs, "board")).toHaveLength(2);
+    expect(filterLogsByCategory(logs, "metrics")).toHaveLength(2);
     expect(filterLogsByCategory(logs, "outbox")).toHaveLength(1);
     expect(filterLogsByCategory(logs, "sync")).toHaveLength(0);
   });
@@ -768,11 +768,11 @@ describe("oncall-dashboard: filtering helpers", () => {
     const metrics = [
       createMetric("outbox.lag", 42, "seconds", {}, NOW),
       createMetric("outbox.count", 10, "count", {}, NOW),
-      createMetric("board.moves", 5, "count", {}, NOW),
+      createMetric("metrics.refreshed", 5, "count", {}, NOW),
     ];
 
     expect(filterMetricsByPrefix(metrics, "outbox.")).toHaveLength(2);
-    expect(filterMetricsByPrefix(metrics, "board.")).toHaveLength(1);
+    expect(filterMetricsByPrefix(metrics, "metrics.")).toHaveLength(1);
   });
 
   it("getActiveBreachSloKeys returns only unresolved breach keys", () => {

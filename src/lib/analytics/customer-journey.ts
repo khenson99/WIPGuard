@@ -53,10 +53,6 @@ function hubspotTouchpoints(data: AnalyticsDashboardData): Touchpoint[] {
 function stripeTouchpoints(data: AnalyticsDashboardData): Touchpoint[] {
   const touchpoints: Touchpoint[] = [];
   const churnEvents = data.stripe?.subscriptions?.recentChurnEvents ?? [];
-  const mergedActiveSubscriptions =
-    data.financialPlanning?.subscriptionOverview?.mergedActiveSubscriptions
-    ?? data.stripe?.subscriptions?.active
-    ?? 0;
   for (const evt of churnEvents) {
     touchpoints.push({
       timestamp: evt.canceledAt,
@@ -66,12 +62,12 @@ function stripeTouchpoints(data: AnalyticsDashboardData): Touchpoint[] {
       value: -evt.amount,
     });
   }
-  if (mergedActiveSubscriptions > 0) {
+  if (data.stripe?.subscriptions?.active) {
     touchpoints.push({
       timestamp: new Date().toISOString(),
       channel: "stripe",
       type: "conversion",
-      detail: `${mergedActiveSubscriptions} active subscriptions`,
+      detail: `${data.stripe.subscriptions.active} active subscriptions`,
       value: data.stripe.revenue?.mrr ?? null,
     });
   }
@@ -113,14 +109,33 @@ function adTouchpoints(data: AnalyticsDashboardData): Touchpoint[] {
 }
 
 function webflowTouchpoints(data: AnalyticsDashboardData): Touchpoint[] {
-  if (!data.webflow) return [];
-  const formCount = data.webflow.formSubmissions.reduce((sum, f) => sum + f.count, 0);
+  const webflowFormsAvailable =
+    data.webflow?._meta?.diagnostics?.formSubmissionsAvailable !== false;
+  const webflowBreakdownCount =
+    data.webflow?.formSubmissions.reduce((sum, f) => sum + f.count, 0) ?? 0;
+  const webflowCount = webflowFormsAvailable
+    ? Math.max(data.webflow?.totalFormSubmissions ?? 0, webflowBreakdownCount)
+    : 0;
+
+  const hubspotCollectedFormsAvailable =
+    data.hubspot?._meta?.diagnostics?.collectedFormsAvailable !== false;
+  const hubspotCollectedFormCount = hubspotCollectedFormsAvailable
+    ? (
+        data.hubspot?.collectedForms?.totalFormSubmissions ??
+        data.hubspot?.funnel?.collectedFormSubmissions ??
+        0
+      )
+    : 0;
+  const formCount = webflowCount + hubspotCollectedFormCount;
   if (formCount === 0) return [];
+  const formTypes =
+    (webflowFormsAvailable ? data.webflow?.formSubmissions.length ?? 0 : 0) +
+    (hubspotCollectedFormsAvailable ? data.hubspot?.collectedForms?.formSubmissions.length ?? 0 : 0);
   return [{
     timestamp: new Date().toISOString(),
     channel: "webflow",
     type: "engagement",
-    detail: `${formCount} form submissions across ${data.webflow.formSubmissions.length} forms`,
+    detail: `${formCount} form submissions across ${formTypes} forms`,
     value: null,
   }];
 }
@@ -171,7 +186,7 @@ function telemetryTouchpoints(
     timestamp: new Date().toISOString(),
     channel,
     type: "engagement",
-    detail: `${telemetry.receiptsInRange} integration events, ${telemetry.automationsTriggeredInRange} automations triggered`,
+    detail: `${telemetry.receiptsInRange} integration events, ${telemetry.artifactsCreatedInRange} artifacts`,
     value: null,
   }];
 }
@@ -255,6 +270,7 @@ function buildJourneys(data: AnalyticsDashboardData): CustomerJourneyRecord[] {
       (tp) =>
         tp.detail.includes(deal.dealName) ||
         tp.channel === "hubspot" ||
+        tp.channel === "webflow" ||
         tp.type === "first-touch"
     );
 

@@ -19,13 +19,13 @@ describe("event-bus", () => {
 
   it("builds canonical idempotency keys", () => {
     const key = buildOutboxIdempotencyKey({
-      aggregateType: " Task ",
+      aggregateType: " Metric ",
       aggregateId: "ABC-123",
       eventType: " Status.Changed ",
       ruleVariant: " default ",
     });
 
-    expect(key).toBe("task:abc-123:status.changed:default");
+    expect(key).toBe("metric:abc-123:status.changed:default");
   });
 
   it("upserts outbox events by idempotency key", async () => {
@@ -37,23 +37,23 @@ describe("event-bus", () => {
     } as unknown as Parameters<typeof enqueueOutboxEvent>[0];
 
     await enqueueOutboxEvent(db, {
-      eventType: "task.status.changed",
-      aggregateType: "task",
-      aggregateId: "task_1",
+      eventType: "metric.status.changed",
+      aggregateType: "metric",
+      aggregateId: "metric_1",
       payload: { to: "ACTIVE" },
-      idempotencyKey: "task:task_1:task.status.changed",
+      idempotencyKey: "metric:metric_1:metric.status.changed",
     });
 
     expect(upsert).toHaveBeenCalledWith({
-      where: { idempotencyKey: "task:task_1:task.status.changed" },
+      where: { idempotencyKey: "metric:metric_1:metric.status.changed" },
       update: {},
       create: {
-        eventType: "task.status.changed",
-        aggregateType: "task",
-        aggregateId: "task_1",
+        eventType: "metric.status.changed",
+        aggregateType: "metric",
+        aggregateId: "metric_1",
         schemaVersion: 1,
         payload: { to: "ACTIVE" },
-        idempotencyKey: "task:task_1:task.status.changed",
+        idempotencyKey: "metric:metric_1:metric.status.changed",
         status: "PENDING",
         retryCount: 0,
         nextAttemptAt: expect.any(Date),
@@ -68,11 +68,11 @@ describe("event-bus", () => {
     );
 
     await publishDomainEvent({
-      eventType: "task.created",
-      aggregateType: "task",
-      aggregateId: "task_2",
+      eventType: "metric.refreshed",
+      aggregateType: "metric",
+      aggregateId: "metric_2",
       payload: { title: "Test" },
-      idempotencyKey: "task:task_2:task.created",
+      idempotencyKey: "metric:metric_2:metric.refreshed",
     });
 
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);

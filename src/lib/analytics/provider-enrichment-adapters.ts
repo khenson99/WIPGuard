@@ -12,6 +12,14 @@ export interface UnifyPullRequest {
   maxRecords?: number | null;
 }
 
+export interface UnifyPullResult {
+  signals: VisitorEnrichmentSignalInput[];
+  truncated: boolean;
+  totalFiltered: number;
+  returned: number;
+  maxRecords: number;
+}
+
 interface NormalizeContext {
   provider: EnrichmentProvider;
   payload: unknown;
@@ -448,7 +456,7 @@ export async function pullUnifySignalsFromApi(input: {
   updatedAfter?: string | null;
   maxRecords?: number | null;
   fetchImpl?: typeof fetch;
-}): Promise<VisitorEnrichmentSignalInput[]> {
+}): Promise<UnifyPullResult> {
   const apiKey = trimOrNull(input.apiKey);
   const objectName = trimOrNull(input.objectName);
   if (!apiKey || !objectName) {
@@ -475,13 +483,21 @@ export async function pullUnifySignalsFromApi(input: {
   const updatedAfter = safeOptionalDate(input.updatedAfter ?? null);
   const maxRecords = Math.max(1, Math.min(5000, input.maxRecords ?? 500));
 
-  return signals
+  const filteredSignals = signals
     .filter((signal) => {
       if (!updatedAfter) return true;
       const occurredAt = safeOptionalDate(signal.occurredAt ?? null);
       return occurredAt ? occurredAt >= updatedAfter : true;
-    })
-    .slice(0, maxRecords);
+    });
+  const returnedSignals = filteredSignals.slice(0, maxRecords);
+
+  return {
+    signals: returnedSignals,
+    truncated: filteredSignals.length > returnedSignals.length,
+    totalFiltered: filteredSignals.length,
+    returned: returnedSignals.length,
+    maxRecords,
+  };
 }
 
 export function summarizeProviderPayload(input: NormalizeContext): string {

@@ -19,9 +19,6 @@ model Organization {
 
   // Relations to all tenant-scoped models
   users                           User[]
-  projects                        Project[]
-  tasks                           Task[]
-  sprints                         Sprint[]
   deals                           Deal[]
   departments                     Department[]
   companyPriorities               CompanyPriority[]
@@ -55,43 +52,29 @@ model User {
   image         String?
   role          String    @default("member")
 
-  accounts                 Account[]
-  sessions                 Session[]
-  integrationConnections   IntegrationConnection[]
-  integrationRules         IntegrationRule[]
-  analyticsSnapshots       AnalyticsSnapshot[]
-  integrationCircuitStates IntegrationCircuitState[]
-  stripeCustomerLinks      StripeCustomerLink[]
-  metricHistory            MetricHistory[]
-  insightFeedback          InsightFeedback[]
-  uiPreference             UserUiPreference?
-  savedViews               UserSavedView[]
-  ownedWorkflows           WorkflowDefinition[]      @relation("WorkflowOwner")
-  workflowRunRequests      WorkflowRun[]             @relation("WorkflowRunRequestedBy")
-  workflowApprovalRequests             WorkflowApproval[]        @relation("WorkflowApprovalRequestedBy")
-  workflowApprovals                    WorkflowApproval[]        @relation("WorkflowApprovalApprover")
-  automationRecommendationRequests     AutomationRecommendation[] @relation("AutomationRecommendationRequestedBy")
-  automationRecommendationApprovals    AutomationRecommendation[] @relation("AutomationRecommendationApprover")
-  automationRecommendationExecutions   AutomationRecommendation[] @relation("AutomationRecommendationExecutedBy")
-  securityAuditEvents                  SecurityAuditEvent[]
-
-  responsibleTasks Task[] @relation("TaskResponsible")
-  accountableTasks Task[] @relation("TaskAccountable")
-  consultedTasks   Task[] @relation("TaskConsulted")
-  informedTasks    Task[] @relation("TaskInformed")
-
-  responsibleProjects Project[] @relation("ProjectResponsible")
-  accountableProjects Project[] @relation("ProjectAccountable")
-  consultedProjects   Project[] @relation("ProjectConsulted")
-  informedProjects    Project[] @relation("ProjectInformed")
-  sponsoredProjects   Project[] @relation("ProjectSponsor")
+  accounts                           Account[]
+  sessions                           Session[]
+  integrationConnections             IntegrationConnection[]
+  integrationRules                   IntegrationRule[]
+  analyticsSnapshots                 AnalyticsSnapshot[]
+  integrationCircuitStates           IntegrationCircuitState[]
+  stripeCustomerLinks                StripeCustomerLink[]
+  metricHistory                      MetricHistory[]
+  insightFeedback                    InsightFeedback[]
+  uiPreference                       UserUiPreference?
+  ownedWorkflows                     WorkflowDefinition[]       @relation("WorkflowOwner")
+  workflowRunRequests                WorkflowRun[]              @relation("WorkflowRunRequestedBy")
+  workflowApprovalRequests           WorkflowApproval[]         @relation("WorkflowApprovalRequestedBy")
+  workflowApprovals                  WorkflowApproval[]         @relation("WorkflowApprovalApprover")
+  automationRecommendationRequests   AutomationRecommendation[] @relation("AutomationRecommendationRequestedBy")
+  automationRecommendationApprovals  AutomationRecommendation[] @relation("AutomationRecommendationApprover")
+  automationRecommendationExecutions AutomationRecommendation[] @relation("AutomationRecommendationExecutedBy")
+  securityAuditEvents                SecurityAuditEvent[]
 
   responsiblePriorities CompanyPriority[] @relation("PriorityResponsible")
   accountablePriorities CompanyPriority[] @relation("PriorityAccountable")
   consultedPriorities   CompanyPriority[] @relation("PriorityConsulted")
   informedPriorities    CompanyPriority[] @relation("PriorityInformed")
-
-  waitingOnTasks Task[] @relation("TaskWaitingOn")
 
   budgets           Budget[]
   financialGoals    FinancialGoal[]
@@ -112,9 +95,9 @@ model User {
   conferenceTeamMemberships     ConferenceTeamMember[]    @relation("ConferenceTeamMemberUser")
   ownedConferenceInventoryItems ConferenceInventoryItem[] @relation("ConferenceInventoryItemOwner")
 
-  submissionEvents   SubmissionEvent[]
-  insightPreferences InsightPreference[]
-  funnelIdentityLinks FunnelIdentityLink[]
+  submissionEvents        SubmissionEvent[]
+  insightPreferences      InsightPreference[]
+  funnelIdentityLinks     FunnelIdentityLink[]
   ceoMetricValueSnapshots CeoMetricValueSnapshot[]
   ceoReportPacks          CeoReportPack[]
   ceoReportRuns           CeoReportRun[]
@@ -180,8 +163,6 @@ model CompanyPriority {
   consulted   User[] @relation("PriorityConsulted")
   informed    User[] @relation("PriorityInformed")
 
-  projects Project[]
-
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
 
@@ -196,10 +177,9 @@ model CompanyPriority {
 // ============================================================
 
 model Department {
-  id       String    @id @default(cuid())
-  name     String    @unique
-  color    String?
-  projects Project[]
+  id    String  @id @default(cuid())
+  name  String  @unique
+  color String?
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
@@ -208,170 +188,6 @@ model Department {
   updatedAt DateTime @updatedAt
 
   @@index([organizationId])
-}
-
-// ============================================================
-// PROJECTS
-// ============================================================
-
-model Project {
-  id          String        @id @default(cuid())
-  name        String
-  description String?       @db.Text
-  status      ProjectStatus @default(ACTIVE)
-  projectType ProjectType   @default(ONE_OFF)
-
-  conferenceId         String?
-  conference           Conference? @relation("ConferenceProjects", fields: [conferenceId], references: [id], onDelete: SetNull)
-  primaryForConference Conference? @relation("ConferencePrimaryProject")
-
-  parentId String?
-  parent   Project?  @relation("ProjectHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
-  children Project[] @relation("ProjectHierarchy")
-
-  companyPriorityId String?
-  companyPriority   CompanyPriority? @relation(fields: [companyPriorityId], references: [id])
-  businessFunction  String?
-
-  departmentId String?
-  department   Department? @relation(fields: [departmentId], references: [id])
-
-  responsible User[] @relation("ProjectResponsible")
-  accountable User[] @relation("ProjectAccountable")
-  consulted   User[] @relation("ProjectConsulted")
-  informed    User[] @relation("ProjectInformed")
-  sponsor     User[] @relation("ProjectSponsor")
-
-  tasks Task[]
-
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([conferenceId])
-  @@index([organizationId])
-}
-
-enum ProjectStatus {
-  ACTIVE
-  ON_HOLD
-  COMPLETED
-  ARCHIVED
-}
-
-enum ProjectType {
-  RECURRING
-  PERPETUAL
-  ONE_OFF
-}
-
-// ============================================================
-// TASKS
-// ============================================================
-
-model Task {
-  id     String     @id @default(cuid())
-  title  String
-  notes  String?    @db.Text
-  status TaskStatus @default(BACKLOG)
-
-  priority           Priority        @default(P2)
-  degreeOfDifficulty DifficultyLevel @default(MEDIUM)
-
-  startDate   DateTime?
-  dueDate     DateTime?
-  completedOn DateTime?
-  assignedOn  DateTime?
-
-  conferenceId String?
-  conference   Conference? @relation("ConferenceTasks", fields: [conferenceId], references: [id], onDelete: SetNull)
-
-  conferenceDeadline     ConferenceDeadline? @relation("ConferenceDeadlineTask")
-  conferenceLeadFollowup ConferenceLead?     @relation("ConferenceLeadFollowupTask")
-
-  parentId String?
-  parent   Task?   @relation("TaskHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
-  children Task[]  @relation("TaskHierarchy")
-
-  projectId String?
-  project   Project? @relation(fields: [projectId], references: [id])
-
-  sprintId String?
-  sprint   Sprint? @relation(fields: [sprintId], references: [id])
-
-  responsible User[] @relation("TaskResponsible")
-  accountable User[] @relation("TaskAccountable")
-  consulted   User[] @relation("TaskConsulted")
-  informed    User[] @relation("TaskInformed")
-
-  dependsOn  Task[] @relation("TaskDependency")
-  dependedBy Task[] @relation("TaskDependency")
-  waitingOn  User[] @relation("TaskWaitingOn")
-
-  unplanned       Boolean          @default(false)
-  unplannedReason UnplannedReason?
-  unplannedNote   String?          @db.Text
-  addedBy         String?
-
-  planningSessionId String?
-  planningSession   PlanningSession? @relation(fields: [planningSessionId], references: [id])
-
-  slackThread      String?
-  metadata         Json?
-  columnOrder      Int             @default(0)
-  customerRecordId String?
-  customerRecord   CustomerRecord? @relation(fields: [customerRecordId], references: [id], onDelete: SetNull)
-
-  statusHistory                 StatusHistory[]
-  logbookEntries                LogbookEntry[]
-  policyOverrides               PolicyOverride[]
-  integrationReceipts           IntegrationReceipt[]
-  customerSuccessPlanMilestones CustomerSuccessPlanMilestone[]
-  customerSuccessAlertRecords   CustomerSuccessAlertRecord[]
-
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([conferenceId])
-  @@index([customerRecordId])
-  @@index([organizationId])
-}
-
-enum TaskStatus {
-  BACKLOG
-  QUEUED
-  WORKING_ON_TODAY
-  ACTIVE
-  NOT_DONE
-  DONE
-}
-
-enum Priority {
-  P0
-  P1
-  P2
-  P3
-}
-
-enum DifficultyLevel {
-  LOW
-  MEDIUM
-  HIGH
-  EPIC
-}
-
-enum UnplannedReason {
-  ESCALATION
-  BUG_FIX
-  CUSTOMER_REQUEST
-  SCOPE_CHANGE
-  DEPENDENCY
-  OTHER
 }
 
 // ============================================================
@@ -476,12 +292,6 @@ model Conference {
   ownerId String?
   owner   User?   @relation("ConferenceOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
-  primaryProjectId String?  @unique
-  primaryProject   Project? @relation("ConferencePrimaryProject", fields: [primaryProjectId], references: [id], onDelete: SetNull)
-
-  projects Project[] @relation("ConferenceProjects")
-  tasks    Task[]    @relation("ConferenceTasks")
-
   deadlines      ConferenceDeadline[]
   budget         ConferenceBudget?
   expenses       ConferenceExpense[]
@@ -517,15 +327,11 @@ model ConferenceDeadline {
   notes     String? @db.Text
   sourceUrl String?
 
-  taskId String? @unique
-  task   Task?   @relation("ConferenceDeadlineTask", fields: [taskId], references: [id], onDelete: SetNull)
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([conferenceId, dueAt])
   @@index([ownerId, dueAt])
-  @@index([taskId])
 }
 
 model ConferenceBudget {
@@ -618,9 +424,6 @@ model ConferenceLead {
   assignedToUserId String?
   assignedToUser   User?   @relation("ConferenceLeadAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
 
-  followupTaskId String? @unique
-  followupTask   Task?   @relation("ConferenceLeadFollowupTask", fields: [followupTaskId], references: [id], onDelete: SetNull)
-
   followedUpAt DateTime?
 
   hubspotCompanyId  String?
@@ -633,7 +436,6 @@ model ConferenceLead {
 
   @@index([conferenceId, status])
   @@index([assignedToUserId, status])
-  @@index([followupTaskId])
 }
 
 model ConferenceTeamMember {
@@ -678,152 +480,6 @@ model ConferenceInventoryItem {
   updatedAt DateTime @updatedAt
 
   @@index([conferenceId, name])
-}
-
-// ============================================================
-// SPRINTS
-// ============================================================
-
-model Sprint {
-  id        String   @id @default(cuid())
-  name      String
-  startDate DateTime
-  endDate   DateTime
-  isActive  Boolean  @default(false)
-
-  tasks            Task[]
-  commitments      SprintCommitment[]
-  planningSessions PlanningSession[]
-
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([organizationId])
-}
-
-// ============================================================
-// SPRINT COMMITMENT LEDGER
-// ============================================================
-
-// Immutable snapshot of tasks committed at sprint start.
-// Append-only: never UPDATE or DELETE — only INSERT.
-model SprintCommitment {
-  id            String   @id @default(cuid())
-  sprintId      String
-  sprint        Sprint   @relation(fields: [sprintId], references: [id], onDelete: Cascade)
-  snapshotAt    DateTime @default(now())
-  createdBy     String
-  taskSnapshots Json // Array of {taskId, title, status, projectId, priority}
-
-  @@index([sprintId, snapshotAt])
-}
-
-model PlanningSession {
-  id          String    @id @default(cuid())
-  sprintId    String
-  sprint      Sprint    @relation(fields: [sprintId], references: [id], onDelete: Cascade)
-  createdBy   String
-  startedAt   DateTime  @default(now())
-  completedAt DateTime?
-  notes       String?   @db.Text
-
-  tasks Task[]
-
-  @@index([sprintId])
-}
-
-// ============================================================
-// STATUS HISTORY
-// ============================================================
-
-model StatusHistory {
-  id         String      @id @default(cuid())
-  taskId     String
-  task       Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  fromStatus TaskStatus?
-  toStatus   TaskStatus
-  changedAt  DateTime    @default(now())
-  changedBy  String?
-}
-
-// ============================================================
-// LOGBOOK
-// ============================================================
-
-model LogbookEntry {
-  id          String     @id @default(cuid())
-  taskId      String
-  task        Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  taskTitle   String
-  taskNotes   String?    @db.Text
-  projectName String?
-  sprintName  String?
-  priority    Priority
-  status      TaskStatus
-  responsible String?
-  accountable String?
-  completedOn DateTime
-  archivedAt  DateTime   @default(now())
-  metadata    Json?
-}
-
-// ============================================================
-// BOARD SETTINGS
-// ============================================================
-
-model BoardSettings {
-  id          String  @id @default(cuid())
-  columnName  String  @unique
-  wipLimit    Int     @default(0)
-  columnVersion Int   @default(0)
-  columnOrder Int     @default(0)
-  color       String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// ============================================================
-// WIP POLICY
-// ============================================================
-
-model WipPolicy {
-  id            String          @id @default(cuid())
-  columnName    String          @unique
-  wipLimit      Int             @default(0)
-  enforcement   EnforcementMode @default(WARN)
-  overrideRoles String[]        @default(["admin"])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-enum EnforcementMode {
-  WARN
-  BLOCK
-}
-
-// ============================================================
-// POLICY OVERRIDE AUDIT
-// ============================================================
-
-model PolicyOverride {
-  id        String  @id @default(cuid())
-  taskId    String
-  task      Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  action    String
-  reason    String  @db.Text
-  actorId   String
-  actorName String?
-  actorRole String?
-  column    String
-  wipCount  Int
-  wipLimit  Int
-
-  createdAt DateTime @default(now())
 }
 
 // ============================================================
@@ -874,7 +530,10 @@ enum IntegrationProvider {
   PYLON
   GOOGLE_ANALYTICS
   GOOGLE_SEARCH_CONSOLE
-  WIPGUARD
+  POSTHOG
+  LINEAR
+  GITHUB
+  UNIFY
 }
 
 enum IntegrationConnectionStatus {
@@ -1022,8 +681,8 @@ enum CeoReportAudience {
 }
 
 model CeoMetricDefinition {
-  id                 String        @id @default(cuid())
-  key                String        @unique
+  id                 String            @id @default(cuid())
+  key                String            @unique
   label              String
   domain             String
   ownerAudience      CeoReportAudience
@@ -1031,9 +690,9 @@ model CeoMetricDefinition {
   calculationVersion String
   sourceDependencies String[]
   freshnessSlaHours  Int
-  boardEligible      Boolean       @default(false)
-  weeklyEligible     Boolean       @default(false)
-  description        String        @db.Text
+  boardEligible      Boolean           @default(false)
+  weeklyEligible     Boolean           @default(false)
+  description        String            @db.Text
 
   valueSnapshots CeoMetricValueSnapshot[]
 
@@ -1046,7 +705,7 @@ model CeoMetricDefinition {
 }
 
 model CeoMetricValueSnapshot {
-  id           String              @id @default(cuid())
+  id           String               @id @default(cuid())
   metricKey    String
   definitionId String?
   definition   CeoMetricDefinition? @relation(fields: [definitionId], references: [id], onDelete: SetNull)
@@ -1191,7 +850,6 @@ model IntegrationRule {
   provider       IntegrationProvider
   key            String
   enabled        Boolean             @default(true)
-  statusOverride TaskStatus?
   config         Json
   checkpoint     Json?
   lastObservedAt DateTime?
@@ -1235,8 +893,6 @@ model IntegrationReceipt {
   externalObjectType String
   externalObjectId   String
   sourceUrl          String?
-  taskId             String?
-  task               Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
   lastObservedAt     DateTime
   metadata           Json?
 
@@ -1244,12 +900,6 @@ model IntegrationReceipt {
   updatedAt DateTime @updatedAt
 
   @@index([ruleId, lastObservedAt])
-  @@index([taskId])
-}
-
-enum SavedViewScope {
-  TASKS
-  PROJECTS
 }
 
 model UserUiPreference {
@@ -1259,33 +909,10 @@ model UserUiPreference {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   dashboardConfig Json?
-  tasksConfig     Json?
-  projectsConfig  Json?
   analyticsConfig Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-}
-
-model UserSavedView {
-  id String @id @default(cuid())
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  scope     SavedViewScope
-  slug      String
-  name      String
-  isDefault Boolean        @default(false)
-  isSystem  Boolean        @default(false)
-  config    Json
-  position  Int            @default(0)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([userId, scope, slug])
-  @@index([userId, scope, isDefault])
 }
 
 enum WorkflowScope {
@@ -1412,10 +1039,10 @@ model WorkflowDefinition {
   triggerCursors WorkflowTriggerCursor[]
   triggerEvents  WorkflowTriggerEvent[]
 
-  automationSourceDocuments  AutomationSourceDocument[]
-  automationAiJobs           AutomationAiJob[]
-  automationArtifacts        AutomationArtifact[]
-  automationRecommendations  AutomationRecommendation[]
+  automationSourceDocuments AutomationSourceDocument[]
+  automationAiJobs          AutomationAiJob[]
+  automationArtifacts       AutomationArtifact[]
+  automationRecommendations AutomationRecommendation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1489,10 +1116,10 @@ model WorkflowRun {
   steps     WorkflowRunStep[]
   approvals WorkflowApproval[]
 
-  automationSourceDocuments  AutomationSourceDocument[]
-  automationAiJobs           AutomationAiJob[]
-  automationArtifacts        AutomationArtifact[]
-  automationRecommendations  AutomationRecommendation[]
+  automationSourceDocuments AutomationSourceDocument[]
+  automationAiJobs          AutomationAiJob[]
+  automationArtifacts       AutomationArtifact[]
+  automationRecommendations AutomationRecommendation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1617,20 +1244,20 @@ model AutomationSourceDocument {
   runId String
   run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
-  operatorKey  AutomationOperatorKey?
-  provider     IntegrationProvider?
-  eventType    String?
-  externalId   String?
-  documentType String
-  status       AutomationSourceDocumentStatus @default(READY)
-  title        String?
-  mimeType     String?
-  sourceUrl    String?
-  dedupeKey    String?                        @unique
-  textContent  String?
+  operatorKey    AutomationOperatorKey?
+  provider       IntegrationProvider?
+  eventType      String?
+  externalId     String?
+  documentType   String
+  status         AutomationSourceDocumentStatus @default(READY)
+  title          String?
+  mimeType       String?
+  sourceUrl      String?
+  dedupeKey      String?                        @unique
+  textContent    String?
   structuredData Json?
   metadata       Json?
-  observedAt     DateTime @default(now())
+  observedAt     DateTime                       @default(now())
 
   artifacts AutomationArtifact[]
 
@@ -1654,24 +1281,24 @@ model AutomationAiJob {
   stepId String?
   step   WorkflowRunStep? @relation(fields: [stepId], references: [id], onDelete: SetNull)
 
-  operatorKey    AutomationOperatorKey?
-  nodeKey        String
-  jobType        String
-  status         AutomationAiJobStatus @default(QUEUED)
-  provider       String                @default("openai")
-  model          String
-  promptVersion  String?
-  requestPayload Json
-  responseId     String?               @unique
-  responseStatus String?
+  operatorKey     AutomationOperatorKey?
+  nodeKey         String
+  jobType         String
+  status          AutomationAiJobStatus  @default(QUEUED)
+  provider        String                 @default("openai")
+  model           String
+  promptVersion   String?
+  requestPayload  Json
+  responseId      String?                @unique
+  responseStatus  String?
   responsePayload Json?
   outputText      String?
   parsedOutput    Json?
   lastError       String?
-  attemptCount    Int      @default(0)
-  nextAttemptAt   DateTime @default(now())
+  attemptCount    Int                    @default(0)
+  nextAttemptAt   DateTime               @default(now())
   completedAt     DateTime?
-  dedupeKey       String?  @unique
+  dedupeKey       String?                @unique
   metadata        Json?
 
   artifacts       AutomationArtifact[]
@@ -1700,19 +1327,19 @@ model AutomationArtifact {
   aiJobId String?
   aiJob   AutomationAiJob? @relation(fields: [aiJobId], references: [id], onDelete: SetNull)
 
-  operatorKey    AutomationOperatorKey?
-  artifactType   String
-  status         AutomationArtifactStatus @default(DRAFT)
-  title          String
-  summary        String?
-  content        String?
-  contentJson    Json?
-  dedupeKey      String?                  @unique
-  metadata       Json?
+  operatorKey      AutomationOperatorKey?
+  artifactType     String
+  status           AutomationArtifactStatus @default(DRAFT)
+  title            String
+  summary          String?
+  content          String?
+  contentJson      Json?
+  dedupeKey        String?                  @unique
+  metadata         Json?
   createdByNodeKey String?
 
   recommendations AutomationRecommendation[]
-  analysisMeeting   DealMeeting? @relation("DealMeetingAnalysisArtifact")
+  analysisMeeting DealMeeting?               @relation("DealMeetingAnalysisArtifact")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2082,22 +1709,22 @@ model DealMeeting {
   title  String
   status MeetingStatus @default(SCHEDULED)
 
-  startAt  DateTime
-  endAt    DateTime?
-  location String?
-  notes    String?   @db.Text
-  googleDriveFileId       String?
-  googleDriveFileName     String?
-  googleDriveFileUrl      String?
-  transcriptMatchedAt     DateTime?
+  startAt                   DateTime
+  endAt                     DateTime?
+  location                  String?
+  notes                     String?             @db.Text
+  googleDriveFileId         String?
+  googleDriveFileName       String?
+  googleDriveFileUrl        String?
+  transcriptMatchedAt       DateTime?
   transcriptMatchConfidence Float?
-  analysisArtifactId      String? @unique
-  analysisArtifact        AutomationArtifact? @relation("DealMeetingAnalysisArtifact", fields: [analysisArtifactId], references: [id], onDelete: SetNull)
-  demoQualityScore        Int?
-  demoQualitySummary      String? @db.Text
-  demoStrengthsJson       Json?
-  demoGapsJson            Json?
-  analyzedAt              DateTime?
+  analysisArtifactId        String?             @unique
+  analysisArtifact          AutomationArtifact? @relation("DealMeetingAnalysisArtifact", fields: [analysisArtifactId], references: [id], onDelete: SetNull)
+  demoQualityScore          Int?
+  demoQualitySummary        String?             @db.Text
+  demoStrengthsJson         Json?
+  demoGapsJson              Json?
+  analyzedAt                DateTime?
 
   expectedAttendees Int @default(0)
   actualAttendees   Int @default(0)
@@ -2149,13 +1776,12 @@ model CustomerRecord {
   mergedInto   CustomerRecord?  @relation("CustomerRecordMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
   mergedFrom   CustomerRecord[] @relation("CustomerRecordMerge")
 
-  externalRefs     CustomerRecordExternalRef[]
-  notes            CustomerSuccessNote[]
-  plans            CustomerSuccessPlan[]
-  alerts           CustomerSuccessAlertRecord[]
-  outreachMessages CustomerSuccessOutreachMessage[]
-  tasks            Task[]
-  meetings         DealMeeting[]
+  externalRefs           CustomerRecordExternalRef[]
+  notes                  CustomerSuccessNote[]
+  plans                  CustomerSuccessPlan[]
+  alerts                 CustomerSuccessAlertRecord[]
+  outreachMessages       CustomerSuccessOutreachMessage[]
+  meetings               DealMeeting[]
   retentionSourceRecords RetentionSourceRecord[]
   retentionTenantMonths  RetentionTenantMonth[]
   retentionTenantCurrent RetentionTenantCurrent?
@@ -2200,18 +1826,18 @@ enum RetentionTenantStatus {
 }
 
 model RetentionSyncRun {
-  id        String                 @id @default(cuid())
-  source    RetentionSourceKind
-  status    RetentionSyncRunStatus @default(SUCCESS)
-  startedAt DateTime               @default(now())
+  id          String                 @id @default(cuid())
+  source      RetentionSourceKind
+  status      RetentionSyncRunStatus @default(SUCCESS)
+  startedAt   DateTime               @default(now())
   completedAt DateTime?
   windowStart DateTime?
   windowEnd   DateTime?
-  recordCount Int                  @default(0)
-  mappedCount Int                  @default(0)
-  errorCount  Int                  @default(0)
-  notes     Json?
-  lastError String? @db.Text
+  recordCount Int                    @default(0)
+  mappedCount Int                    @default(0)
+  errorCount  Int                    @default(0)
+  notes       Json?
+  lastError   String?                @db.Text
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
@@ -2226,17 +1852,17 @@ model RetentionSyncRun {
 }
 
 model RetentionSourceRecord {
-  id         String              @id @default(cuid())
-  syncRunId  String
-  syncRun    RetentionSyncRun    @relation(fields: [syncRunId], references: [id], onDelete: Cascade)
-  source     RetentionSourceKind
-  objectType String
-  externalId String
-  tenantKey  String?
-  occurredAt DateTime?
+  id              String              @id @default(cuid())
+  syncRunId       String
+  syncRun         RetentionSyncRun    @relation(fields: [syncRunId], references: [id], onDelete: Cascade)
+  source          RetentionSourceKind
+  objectType      String
+  externalId      String
+  tenantKey       String?
+  occurredAt      DateTime?
   sourceCreatedAt DateTime?
   sourceUpdatedAt DateTime?
-  payload Json
+  payload         Json
 
   customerRecordId String?
   customerRecord   CustomerRecord? @relation(fields: [customerRecordId], references: [id], onDelete: SetNull)
@@ -2255,23 +1881,23 @@ model RetentionSourceRecord {
 }
 
 model RetentionTenantMonth {
-  id             String                 @id @default(cuid())
-  customerRecordId String
-  customerRecord   CustomerRecord       @relation(fields: [customerRecordId], references: [id], onDelete: Cascade)
-  monthStart     DateTime
-  monthEnd       DateTime
-  lifecyclePhase RetentionLifecyclePhase
-  status         RetentionTenantStatus?
-  featureVersion String                 @default("v1")
-  primaryLirPassed     Boolean          @default(false)
-  primaryLirLabel      String?
-  primaryLirValue      Float?
-  primaryLirThreshold  Float?
-  primaryLirScore      Float?
-  reasonCodes          Json?
-  featureData          Json
-  outcomeData          Json
-  coverageData         Json?
+  id                  String                  @id @default(cuid())
+  customerRecordId    String
+  customerRecord      CustomerRecord          @relation(fields: [customerRecordId], references: [id], onDelete: Cascade)
+  monthStart          DateTime
+  monthEnd            DateTime
+  lifecyclePhase      RetentionLifecyclePhase
+  status              RetentionTenantStatus?
+  featureVersion      String                  @default("v1")
+  primaryLirPassed    Boolean                 @default(false)
+  primaryLirLabel     String?
+  primaryLirValue     Float?
+  primaryLirThreshold Float?
+  primaryLirScore     Float?
+  reasonCodes         Json?
+  featureData         Json
+  outcomeData         Json
+  coverageData        Json?
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
@@ -2288,31 +1914,31 @@ model RetentionTenantMonth {
 }
 
 model RetentionTenantCurrent {
-  id             String                 @id @default(cuid())
-  customerRecordId String               @unique
-  customerRecord   CustomerRecord       @relation(fields: [customerRecordId], references: [id], onDelete: Cascade)
-  monthFactId    String                 @unique
-  monthFact      RetentionTenantMonth   @relation(fields: [monthFactId], references: [id], onDelete: Cascade)
-  lifecyclePhase RetentionLifecyclePhase
-  status         RetentionTenantStatus
-  primaryLirPassed    Boolean           @default(false)
-  primaryLirLabel     String
-  primaryLirValue     Float?
-  primaryLirThreshold Float?
+  id                   String                  @id @default(cuid())
+  customerRecordId     String                  @unique
+  customerRecord       CustomerRecord          @relation(fields: [customerRecordId], references: [id], onDelete: Cascade)
+  monthFactId          String                  @unique
+  monthFact            RetentionTenantMonth    @relation(fields: [monthFactId], references: [id], onDelete: Cascade)
+  lifecyclePhase       RetentionLifecyclePhase
+  status               RetentionTenantStatus
+  primaryLirPassed     Boolean                 @default(false)
+  primaryLirLabel      String
+  primaryLirValue      Float?
+  primaryLirThreshold  Float?
   currentMonthActivity Float?
-  activityTrendPct    Float?
-  supportRisk   Boolean                 @default(false)
-  billingRisk   Boolean                 @default(false)
-  onboardingRisk Boolean                @default(false)
-  icp           Boolean                 @default(false)
-  ownerName     String?
-  segment       String?
-  plan          String?
-  ageBucket     String?
-  summaryData   Json
-  detailData    Json
-  reasonCodes   Json
-  lastMaterializedAt DateTime           @default(now())
+  activityTrendPct     Float?
+  supportRisk          Boolean                 @default(false)
+  billingRisk          Boolean                 @default(false)
+  onboardingRisk       Boolean                 @default(false)
+  icp                  Boolean                 @default(false)
+  ownerName            String?
+  segment              String?
+  plan                 String?
+  ageBucket            String?
+  summaryData          Json
+  detailData           Json
+  reasonCodes          Json
+  lastMaterializedAt   DateTime                @default(now())
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
@@ -2397,18 +2023,16 @@ model CustomerSuccessPlan {
 }
 
 model CustomerSuccessPlanMilestone {
-  id           String                         @id @default(cuid())
-  planId       String
-  plan         CustomerSuccessPlan            @relation(fields: [planId], references: [id], onDelete: Cascade)
-  title        String
-  description  String?
-  status       CustomerSuccessMilestoneStatus @default(NOT_STARTED)
-  dueDate      DateTime?
-  completedAt  DateTime?
-  linkedTaskId String?
-  linkedTask   Task?                          @relation(fields: [linkedTaskId], references: [id], onDelete: SetNull)
-  sortOrder    Int                            @default(0)
-  metadata     Json?
+  id          String                         @id @default(cuid())
+  planId      String
+  plan        CustomerSuccessPlan            @relation(fields: [planId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  status      CustomerSuccessMilestoneStatus @default(NOT_STARTED)
+  dueDate     DateTime?
+  completedAt DateTime?
+  sortOrder   Int                            @default(0)
+  metadata    Json?
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
@@ -2418,7 +2042,6 @@ model CustomerSuccessPlanMilestone {
 
   @@index([planId, sortOrder])
   @@index([organizationId])
-  @@index([linkedTaskId])
 }
 
 model CustomerSuccessAlertRecord {
@@ -2436,8 +2059,6 @@ model CustomerSuccessAlertRecord {
   suggestedAction  String?
   ownerUserId      String?
   ownerUser        User?                        @relation("CustomerSuccessAlertOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
-  linkedTaskId     String?
-  linkedTask       Task?                        @relation(fields: [linkedTaskId], references: [id], onDelete: SetNull)
   openedAt         DateTime                     @default(now())
   resolvedAt       DateTime?
   lastEvaluatedAt  DateTime?
@@ -2452,7 +2073,6 @@ model CustomerSuccessAlertRecord {
   @@unique([customerRecordId, alertKey])
   @@index([organizationId, status, severity])
   @@index([ownerUserId])
-  @@index([linkedTaskId])
 }
 
 model CustomerSuccessOutreachMessage {
@@ -2622,8 +2242,8 @@ enum EnrichmentProvider {
 }
 
 model FunnelVisitor {
-  id                    String                    @id @default(cuid())
-  anonymousId           String                    @unique
+  id                    String                   @id @default(cuid())
+  anonymousId           String                   @unique
   siteHost              String?
   firstTouchSource      String?
   firstTouchChannel     String?
@@ -2639,8 +2259,8 @@ model FunnelVisitor {
   lastTouchUrl          String?
   firstSeenAt           DateTime
   lastSeenAt            DateTime
-  createdAt             DateTime                  @default(now())
-  updatedAt             DateTime                  @updatedAt
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
   events                FunnelEvent[]
   identityLinks         FunnelIdentityLink[]
   enrichmentSignals     FunnelEnrichmentSignal[]
@@ -2675,19 +2295,19 @@ model FunnelEvent {
 }
 
 model FunnelIdentityLink {
-  id            String                @id @default(cuid())
+  id            String               @id @default(cuid())
   visitorId     String
-  visitor       FunnelVisitor         @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  visitor       FunnelVisitor        @relation(fields: [visitorId], references: [id], onDelete: Cascade)
   identityType  FunnelIdentityType
   identityValue String
   provider      String
-  provenance    FunnelLinkProvenance  @default(EXACT)
-  confidence    Float                 @default(1)
+  provenance    FunnelLinkProvenance @default(EXACT)
+  confidence    Float                @default(1)
   metadata      Json?
   userId        String?
-  user          User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
+  user          User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
 
   @@unique([visitorId, identityType, identityValue])
   @@index([identityType, identityValue])
@@ -2738,4 +2358,114 @@ model InsightPreference {
   @@unique([userId, insightId], name: "userId_insightId")
   @@index([userId])
   @@map("insight_preferences")
+}
+
+// ============================================================
+// IMLADRIS RAW + CANONICAL DATA LAYER
+// ============================================================
+
+enum ImladrisSyncStatus {
+  SUCCESS
+  PARTIAL
+  ERROR
+}
+
+enum ImladrisMetricStatus {
+  READY
+  STALE
+  MISSING
+  ERROR
+}
+
+model ImladrisSourceSyncRun {
+  id             String                    @id @default(cuid())
+  provider       IntegrationProvider
+  status         ImladrisSyncStatus        @default(SUCCESS)
+  mode           String                    @default("incremental")
+  windowStart    DateTime?
+  windowEnd      DateTime?
+  startedAt      DateTime                  @default(now())
+  completedAt    DateTime?
+  recordCount    Int                       @default(0)
+  acceptedCount  Int                       @default(0)
+  errorCount     Int                       @default(0)
+  checkpoint     Json?
+  lastError      String?                   @db.Text
+  userId         String?
+  organizationId String?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+  rawRecords     ImladrisRawSourceRecord[]
+
+  @@index([provider, startedAt])
+  @@index([organizationId, provider, startedAt])
+  @@index([userId, provider, startedAt])
+}
+
+model ImladrisRawSourceRecord {
+  id              String                  @id @default(cuid())
+  syncRunId       String
+  syncRun         ImladrisSourceSyncRun   @relation(fields: [syncRunId], references: [id], onDelete: Cascade)
+  provider        IntegrationProvider
+  objectType      String
+  externalId      String
+  scopeKey        String
+  sourceCreatedAt DateTime?
+  sourceUpdatedAt DateTime?
+  occurredAt      DateTime?
+  payload         Json
+  payloadHash     String
+  userId          String?
+  organizationId  String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  metricLineage   ImladrisMetricLineage[]
+
+  @@unique([provider, objectType, externalId, scopeKey])
+  @@index([syncRunId])
+  @@index([provider, objectType, occurredAt])
+  @@index([scopeKey, provider, objectType])
+  @@index([organizationId, provider, objectType])
+}
+
+model ImladrisCanonicalMetricValue {
+  id                 String                  @id @default(cuid())
+  metricKey          String
+  department         String
+  unit               String
+  value              Json
+  periodStart        DateTime
+  periodEnd          DateTime
+  status             ImladrisMetricStatus    @default(MISSING)
+  confidence         Float                   @default(0)
+  warnings           String[]                @default([])
+  calculationVersion String
+  computedAt         DateTime                @default(now())
+  userId             String?
+  organizationId     String?
+  lineage            ImladrisMetricLineage[]
+
+  @@unique([organizationId, userId, metricKey, periodEnd, calculationVersion])
+  @@index([metricKey, periodEnd(sort: Desc)])
+  @@index([organizationId, department, periodEnd(sort: Desc)])
+  @@index([userId, department, periodEnd(sort: Desc)])
+  @@index([status])
+}
+
+model ImladrisMetricLineage {
+  id            String                       @id @default(cuid())
+  metricValueId String
+  metricValue   ImladrisCanonicalMetricValue @relation(fields: [metricValueId], references: [id], onDelete: Cascade)
+  rawRecordId   String?
+  rawRecord     ImladrisRawSourceRecord?     @relation(fields: [rawRecordId], references: [id], onDelete: SetNull)
+  sourceKey     String
+  sourceType    String
+  sourceId      String?
+  capturedAt    DateTime?
+  metadata      Json?
+  createdAt     DateTime                     @default(now())
+
+  @@index([metricValueId])
+  @@index([rawRecordId])
+  @@index([sourceKey, capturedAt])
 }

@@ -1,12 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AnalyticsSnapshotStatus } from "@/generated/prisma/client";
 import { loadCeoMetricSnapshot } from "@/lib/ceo/service";
-import { computeDecisionDashboard } from "@/lib/analytics/decision-dashboard";
 import { prisma } from "@/lib/prisma";
-
-vi.mock("@/lib/analytics/decision-dashboard", () => ({
-  computeDecisionDashboard: vi.fn(),
-}));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -56,28 +51,23 @@ function errorSnapshot(providerKey: string, lastError = "Request timed out after
 describe("loadCeoMetricSnapshot", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
     vi.mocked(prisma.ceoMetricDefinition.upsert).mockImplementation(((input: { where: { key: string } }) =>
       Promise.resolve({
         id: `definition-${input.where.key}`,
         key: input.where.key,
       })) as never);
-    vi.mocked(computeDecisionDashboard).mockResolvedValue({
-      asOf: "2026-05-01T12:00:00.000Z",
-      northStar: {
-        flowReliabilityScore: 87,
-        throughput30d: 12,
-        throughputTrendPct: 25,
-      },
-      supportingMetrics: {
-        overdueOpenTasks: 3,
-      },
-    } as never);
     vi.mocked(prisma.retentionTenantCurrent.count).mockResolvedValue(4 as never);
     vi.mocked(prisma.retentionTenantCurrent.findFirst).mockResolvedValue({
       id: "retention-current-1",
       lastMaterializedAt: new Date("2026-05-01T11:30:00.000Z"),
       updatedAt: new Date("2026-05-01T11:30:00.000Z"),
     } as never);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("computes every default-pack core metric through explicit calculators with lineage", async () => {
@@ -126,6 +116,9 @@ describe("loadCeoMetricSnapshot", () => {
       snapshot("redditAds", { totalSpend30d: 200 }),
       snapshot("googleWorkspace", { enabledRules: 4 }),
       snapshot("slack", { enabledRules: 4 }),
+      snapshot("linear", { completedIssues30d: 12 }),
+      snapshot("github", { mergedPullRequests30d: 10 }),
+      snapshot("posthog", { activatedAccounts30d: 8 }),
     ] as never);
 
     const payload = await loadCeoMetricSnapshot({
@@ -135,11 +128,15 @@ describe("loadCeoMetricSnapshot", () => {
     });
 
     const metricByKey = new Map(payload.metrics.map((metric) => [metric.definition.key, metric]));
-    expect(metricByKey.get("ceo.flow_reliability_score")?.value).toBe(87);
-    expect(metricByKey.get("ceo.flow_reliability_score")?.lineage[0]?.sourceKey).toBe("wipguard");
-    expect(metricByKey.get("ceo.throughput_30d")?.value).toBe(12);
-    expect(metricByKey.get("ceo.throughput_30d")?.delta).toBe(25);
-    expect(metricByKey.get("ceo.overdue_open_tasks")?.value).toBe(3);
+    expect(metricByKey.get("ceo.flow_reliability_score")).toBeUndefined();
+    expect(metricByKey.get("ceo.throughput_30d")).toBeUndefined();
+    expect(metricByKey.get("ceo.overdue_open_tasks")).toBeUndefined();
+    expect(metricByKey.get("development.delivery_health")?.value).toBe(100);
+    expect(metricByKey.get("development.delivery_health")?.lineage.map((lineage) => lineage.sourceKey)).toEqual([
+      "linear",
+      "github",
+      "posthog",
+    ]);
     expect(metricByKey.get("finance.cash_balance")?.value).toBe(123456);
     expect(metricByKey.get("finance.cash_balance")?.details).toEqual([
       { key: "bankCash", label: "Bank cash", value: 23456, unit: "currency" },
@@ -211,6 +208,9 @@ describe("loadCeoMetricSnapshot", () => {
       errorSnapshot("redditAds"),
       snapshot("googleWorkspace", { enabledRules: 4 }),
       snapshot("slack", { enabledRules: 4 }),
+      snapshot("linear", { completedIssues30d: 12 }),
+      snapshot("github", { mergedPullRequests30d: 10 }),
+      snapshot("posthog", { activatedAccounts30d: 8 }),
     ] as never);
 
     const payload = await loadCeoMetricSnapshot({
@@ -270,6 +270,9 @@ describe("loadCeoMetricSnapshot", () => {
       snapshot("metaAds", { totalSpend30d: 700 }),
       snapshot("googleWorkspace", { enabledRules: 4 }),
       snapshot("slack", { enabledRules: 4 }),
+      snapshot("linear", { completedIssues30d: 12 }),
+      snapshot("github", { mergedPullRequests30d: 10 }),
+      snapshot("posthog", { activatedAccounts30d: 8 }),
     ] as never);
 
     const payload = await loadCeoMetricSnapshot({

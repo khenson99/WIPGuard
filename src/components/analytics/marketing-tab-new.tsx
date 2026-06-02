@@ -375,7 +375,14 @@ export function MarketingTabNew({ data, variant = 'website-traffic' }: Marketing
   const companionLabel = isWebsiteTraffic ? 'Social Media, Ads & Conferences' : 'Website Conversion';
   const insightFilter = isWebsiteTraffic ? 'website-traffic' : 'social-media';
   const gaUsers30d = data.googleAnalytics?.users30d || 0;
-  const webflowSubmissions = data.webflow?.totalFormSubmissions ?? 0;
+  const hubspotCollectedForms = data.hubspot?.collectedForms?.formSubmissions ?? [];
+  const hubspotCollectedFormTotal = data.hubspot?.collectedForms?.totalFormSubmissions ?? 0;
+  const combinedFormSubmissions = [
+    ...(data.webflow?.formSubmissions ?? []),
+    ...hubspotCollectedForms,
+  ];
+  const webflowSubmissions = (data.webflow?.totalFormSubmissions ?? 0) + hubspotCollectedFormTotal;
+  const hasFormSubmissionData = webflowStatus.state === 'healthy' || hubspotCollectedFormTotal > 0;
   const semrushOrganicTraffic = data.semrush?.organicTraffic ?? 0;
 
   return (
@@ -449,8 +456,8 @@ export function MarketingTabNew({ data, variant = 'website-traffic' }: Marketing
             />
             <StatCard
               label="Form Submissions"
-              value={webflowStatus.state === 'healthy' ? fmtNum(webflowSubmissions) : webflowStatus.state === 'no_data' ? "No data" : "Not configured"}
-              subtitle={webflowStatus.state === 'failing' ? webflowStatus.error || "Webflow request failed" : "Webflow"}
+              value={hasFormSubmissionData ? fmtNum(webflowSubmissions) : webflowStatus.state === 'no_data' ? "No data" : "Not configured"}
+              subtitle={webflowStatus.state === 'failing' ? webflowStatus.error || "Webflow request failed" : hubspotCollectedFormTotal > 0 ? "Webflow + HubSpot" : "Webflow"}
               icon={Layout}
             />
           </>
@@ -1316,11 +1323,11 @@ export function MarketingTabNew({ data, variant = 'website-traffic' }: Marketing
                 </div>
               </div>
 
-              {webflow.formSubmissions && webflow.formSubmissions.length > 0 && (
+              {combinedFormSubmissions.length > 0 && (
                 <div>
                   <p className="text-sm font-semibold text-foreground mb-2">Form Submissions</p>
                   <div className="space-y-1">
-                    {webflow.formSubmissions.map((form, idx) => (
+                    {combinedFormSubmissions.map((form, idx) => (
                       <div key={idx} className="flex items-center justify-between p-2 bg-secondary/40 rounded text-sm">
                         <span className="text-foreground truncate">{form.formName}</span>
                         <span className="text-muted-foreground font-semibold">{form.count}</span>

@@ -15,7 +15,6 @@ export const RULE_DESCRIPTORS: RuleDescriptor[] = [
     endpoint: "/api/integrations/slack/channel-routing",
     runAction: null,
     supportsDryRun: false,
-    supportsStatusOverride: false,
     editorType: "channel-routing",
     fields: [
       { key: "defaultChannelId", label: "Default Channel ID", type: "text" },
@@ -30,7 +29,6 @@ export const RULE_DESCRIPTORS: RuleDescriptor[] = [
     endpoint: "/api/integrations/pylon/conversation-sync",
     runAction: "sync",
     supportsDryRun: true,
-    supportsStatusOverride: true,
     editorType: "generic",
     fields: [
       { key: "rangePreset", label: "Range", type: "enum", options: [...RANGE_PRESET_OPTIONS] },

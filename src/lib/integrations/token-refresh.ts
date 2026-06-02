@@ -162,6 +162,41 @@ function inflightKey(userId: string, provider: IntegrationProvider): string {
   return `${userId}:${provider}`;
 }
 
+async function persistTokenRefreshError(input: {
+  userId: string;
+  provider: IntegrationProvider;
+  message: string;
+}): Promise<void> {
+  const data = {
+    status: IntegrationConnectionStatus.ERROR,
+    lastError: input.message,
+    lastSyncedAt: null,
+  };
+  const updateResult = await prisma.integrationConnection.updateMany({
+    where: {
+      userId: input.userId,
+      provider: input.provider,
+    },
+    data,
+  });
+  if (updateResult?.count === 0) {
+    await prisma.integrationConnection.upsert({
+      where: {
+        userId_provider: {
+          userId: input.userId,
+          provider: input.provider,
+        },
+      },
+      update: data,
+      create: {
+        userId: input.userId,
+        provider: input.provider,
+        ...data,
+      },
+    });
+  }
+}
+
 export async function getValidIntegrationAccessToken(input: {
   userId: string;
   provider: IntegrationProvider;
@@ -218,44 +253,76 @@ export async function getValidIntegrationAccessToken(input: {
       input.provider === IntegrationProvider.META_ADS ||
       input.provider === IntegrationProvider.META_PAGE;
 
-    const refreshed = isMeta
-      ? await refreshMetaLongLivedToken({ accessToken: token })
-      : await (async () => {
-          const refreshToken = unprotectIntegrationSecret(connection.refreshToken);
-          if (!refreshToken) {
-            throw new IntegrationAuthError(providerLabel(input.provider), "Refresh token is missing");
-          }
-          return await refreshOAuthTokenViaRefreshToken({
-            provider: input.provider,
-            refreshToken,
-          });
-        })();
+    let refreshed: OAuthRefreshResult;
+    try {
+      refreshed = isMeta
+        ? await refreshMetaLongLivedToken({ accessToken: token })
+        : await (async () => {
+            const refreshToken = unprotectIntegrationSecret(connection.refreshToken);
+            if (!refreshToken) {
+              throw new IntegrationAuthError(providerLabel(input.provider), "Refresh token is missing");
+            }
+            return await refreshOAuthTokenViaRefreshToken({
+              provider: input.provider,
+              refreshToken,
+            });
+          })();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      try {
+        await persistTokenRefreshError({
+          userId: input.userId,
+          provider: input.provider,
+          message,
+        });
+      } catch (persistError) {
+        console.error("integration.token_refresh.status_persist_failed", {
+          userId: input.userId,
+          provider: input.provider,
+          intendedStatus: IntegrationConnectionStatus.ERROR,
+          intendedLastError: message,
+          error: persistError instanceof Error ? persistError.message : String(persistError),
+        });
+      }
+      throw error;
+    }
 
-    await prisma.integrationConnection.update({
+    const metadata = {
+      ...(typeof connection.metadata === "object" && connection.metadata && !Array.isArray(connection.metadata)
+        ? (connection.metadata as Record<string, unknown>)
+        : {}),
+      ...(isMeta && refreshed.expiresAt
+        ? { tokenExpiresAt: refreshed.expiresAt.toISOString() }
+        : {}),
+    };
+    const data = {
+      accessToken: protectIntegrationSecret(refreshed.accessToken),
+      refreshToken:
+        protectIntegrationSecret(refreshed.refreshToken) ??
+        connection.refreshToken,
+      tokenType: refreshed.tokenType ?? connection.tokenType,
+      expiresAt: refreshed.expiresAt,
+      status: IntegrationConnectionStatus.CONNECTED,
+      lastError: null,
+      lastSyncedAt: new Date(),
+      metadata: metadata as never,
+    };
+
+    await prisma.integrationConnection.upsert({
       where: {
         userId_provider: {
           userId: input.userId,
           provider: input.provider,
         },
       },
-      data: {
-        accessToken: protectIntegrationSecret(refreshed.accessToken),
-        refreshToken:
-          protectIntegrationSecret(refreshed.refreshToken) ??
-          connection.refreshToken,
-        tokenType: refreshed.tokenType ?? connection.tokenType,
-        expiresAt: refreshed.expiresAt,
-        status: IntegrationConnectionStatus.CONNECTED,
-        lastError: null,
-        lastSyncedAt: new Date(),
-        metadata: {
-          ...(typeof connection.metadata === "object" && connection.metadata && !Array.isArray(connection.metadata)
-            ? (connection.metadata as Record<string, unknown>)
-            : {}),
-          ...(isMeta && refreshed.expiresAt
-            ? { tokenExpiresAt: refreshed.expiresAt.toISOString() }
-            : {}),
-        } as never,
+      update: data,
+      create: {
+        userId: input.userId,
+        provider: input.provider,
+        providerAccountId: connection.providerAccountId,
+        accountLabel: connection.accountLabel,
+        scopes: connection.scopes,
+        ...data,
       },
     });
 

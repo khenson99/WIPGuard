@@ -92,11 +92,7 @@ export function ConferenceCard({
         <span className="rounded-full bg-secondary/40 px-2 py-1 text-[11px] text-muted-foreground">
           Leads: {conference._count.leads}
         </span>
-        <span className="rounded-full bg-secondary/40 px-2 py-1 text-[11px] text-muted-foreground">
-          Tasks: {conference._count.tasks}
-        </span>
       </div>
     </button>
   );
 }
-

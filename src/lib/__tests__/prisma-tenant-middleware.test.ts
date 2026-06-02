@@ -59,7 +59,7 @@ describe('prisma-tenant-middleware (extension)', () => {
     describe('findMany', () => {
       it('injects organizationId into where clause', async () => {
         const { query } = await runInContext(() =>
-          callExtension(handler, 'Project', 'findMany', {
+          callExtension(handler, 'Deal', 'findMany', {
             where: { status: 'active' },
           })
         );
@@ -71,7 +71,7 @@ describe('prisma-tenant-middleware (extension)', () => {
 
       it('creates where clause if none exists', async () => {
         const { query } = await runInContext(() =>
-          callExtension(handler, 'Project', 'findMany', {})
+          callExtension(handler, 'Deal', 'findMany', {})
         );
 
         expect(query).toHaveBeenCalledWith({
@@ -83,13 +83,13 @@ describe('prisma-tenant-middleware (extension)', () => {
     describe('findFirst', () => {
       it('injects organizationId into where clause', async () => {
         const { query } = await runInContext(() =>
-          callExtension(handler, 'Task', 'findFirst', {
-            where: { id: 'task-1' },
+          callExtension(handler, 'Contact', 'findFirst', {
+            where: { id: 'contact-1' },
           })
         );
 
         expect(query).toHaveBeenCalledWith({
-          where: { id: 'task-1', organizationId: orgId },
+          where: { id: 'contact-1', organizationId: orgId },
         });
       });
     });
@@ -97,13 +97,13 @@ describe('prisma-tenant-middleware (extension)', () => {
     describe('findUnique', () => {
       it('injects organizationId into where clause', async () => {
         const { query } = await runInContext(() =>
-          callExtension(handler, 'Sprint', 'findUnique', {
-            where: { id: 'sprint-1' },
+          callExtension(handler, 'CustomerRecord', 'findUnique', {
+            where: { id: 'record-1' },
           })
         );
 
         expect(query).toHaveBeenCalledWith({
-          where: { id: 'sprint-1', organizationId: orgId },
+          where: { id: 'record-1', organizationId: orgId },
         });
       });
     });
@@ -125,25 +125,25 @@ describe('prisma-tenant-middleware (extension)', () => {
     describe('create', () => {
       it('injects organizationId into data', async () => {
         const { query } = await runInContext(() =>
-          callExtension(handler, 'Project', 'create', {
-            data: { name: 'New Project' },
+          callExtension(handler, 'Deal', 'create', {
+            data: { name: 'New Deal' },
           })
         );
 
         expect(query).toHaveBeenCalledWith({
-          data: { name: 'New Project', organizationId: orgId },
+          data: { name: 'New Deal', organizationId: orgId },
         });
       });
 
       it('overrides existing organizationId in data', async () => {
         const { query } = await runInContext(() =>
-          callExtension(handler, 'Project', 'create', {
-            data: { name: 'Project', organizationId: 'wrong-org' },
+          callExtension(handler, 'Deal', 'create', {
+            data: { name: 'Deal', organizationId: 'wrong-org' },
           })
         );
 
         expect(query).toHaveBeenCalledWith({
-          data: { name: 'Project', organizationId: orgId },
+          data: { name: 'Deal', organizationId: orgId },
         });
       });
     });
@@ -151,18 +151,18 @@ describe('prisma-tenant-middleware (extension)', () => {
     describe('createMany', () => {
       it('injects organizationId into array data', async () => {
         const { query } = await runInContext(() =>
-          callExtension(handler, 'Task', 'createMany', {
+          callExtension(handler, 'Contact', 'createMany', {
             data: [
-              { title: 'Task 1' },
-              { title: 'Task 2' },
+              { email: 'one@example.com' },
+              { email: 'two@example.com' },
             ],
           })
         );
 
         expect(query).toHaveBeenCalledWith({
           data: [
-            { title: 'Task 1', organizationId: orgId },
-            { title: 'Task 2', organizationId: orgId },
+            { email: 'one@example.com', organizationId: orgId },
+            { email: 'two@example.com', organizationId: orgId },
           ],
         });
       });
@@ -171,15 +171,15 @@ describe('prisma-tenant-middleware (extension)', () => {
     describe('update', () => {
       it('injects organizationId into where and removes from data', async () => {
         const { query } = await runInContext(() =>
-          callExtension(handler, 'Project', 'update', {
-            where: { id: 'proj-1' },
+          callExtension(handler, 'Deal', 'update', {
+            where: { id: 'deal-1' },
             data: { name: 'Updated', organizationId: 'should-be-removed' },
           })
         );
 
         const calledWith = query.mock.calls[0][0] as Record<string, unknown>;
         expect(calledWith.where).toEqual({
-          id: 'proj-1',
+          id: 'deal-1',
           organizationId: orgId,
         });
         expect((calledWith.data as Record<string, unknown>).organizationId).toBeUndefined();
@@ -190,15 +190,15 @@ describe('prisma-tenant-middleware (extension)', () => {
     describe('updateMany', () => {
       it('injects organizationId into where', async () => {
         const { query } = await runInContext(() =>
-          callExtension(handler, 'Task', 'updateMany', {
-            where: { status: 'todo' },
-            data: { status: 'done' },
+          callExtension(handler, 'Contact', 'updateMany', {
+            where: { lifecycleStage: 'lead' },
+            data: { lifecycleStage: 'customer' },
           })
         );
 
         expect(query).toHaveBeenCalledWith({
-          where: { status: 'todo', organizationId: orgId },
-          data: { status: 'done' },
+          where: { lifecycleStage: 'lead', organizationId: orgId },
+          data: { lifecycleStage: 'customer' },
         });
       });
     });
@@ -206,13 +206,13 @@ describe('prisma-tenant-middleware (extension)', () => {
     describe('delete', () => {
       it('injects organizationId into where', async () => {
         const { query } = await runInContext(() =>
-          callExtension(handler, 'Project', 'delete', {
-            where: { id: 'proj-1' },
+          callExtension(handler, 'Deal', 'delete', {
+            where: { id: 'deal-1' },
           })
         );
 
         expect(query).toHaveBeenCalledWith({
-          where: { id: 'proj-1', organizationId: orgId },
+          where: { id: 'deal-1', organizationId: orgId },
         });
       });
     });
@@ -220,13 +220,13 @@ describe('prisma-tenant-middleware (extension)', () => {
     describe('deleteMany', () => {
       it('injects organizationId into where', async () => {
         const { query } = await runInContext(() =>
-          callExtension(handler, 'Task', 'deleteMany', {
-            where: { status: 'archived' },
+          callExtension(handler, 'Contact', 'deleteMany', {
+            where: { lifecycleStage: 'archived' },
           })
         );
 
         expect(query).toHaveBeenCalledWith({
-          where: { status: 'archived', organizationId: orgId },
+          where: { lifecycleStage: 'archived', organizationId: orgId },
         });
       });
     });
@@ -273,7 +273,7 @@ describe('prisma-tenant-middleware (extension)', () => {
   describe('without organization context', () => {
     it('throws TenantContextError for scoped models', async () => {
       await expect(
-        callExtension(handler, 'Project', 'findMany', {})
+        callExtension(handler, 'Deal', 'findMany', {})
       ).rejects.toThrow(TenantContextError);
     });
 
@@ -288,7 +288,7 @@ describe('prisma-tenant-middleware (extension)', () => {
     const bypassHandler = getExtensionHandler({ allowBypass: true });
 
     it('allows queries without context when bypass is enabled', async () => {
-      const { query } = await callExtension(bypassHandler, 'Project', 'findMany', {
+      const { query } = await callExtension(bypassHandler, 'Deal', 'findMany', {
         where: { status: 'active' },
       });
 
@@ -299,7 +299,7 @@ describe('prisma-tenant-middleware (extension)', () => {
 
     it('still injects context when available even with bypass enabled', async () => {
       const { query } = await requestContext.run({ organizationId: orgId }, () =>
-        callExtension(bypassHandler, 'Project', 'findMany', {
+        callExtension(bypassHandler, 'Deal', 'findMany', {
           where: { status: 'active' },
         })
       );
@@ -343,8 +343,8 @@ describe('prisma-tenant-middleware (extension)', () => {
     });
 
     it('does not apply to default models when overridden', async () => {
-      // No context, but Project is not in custom list so should pass
-      const { query } = await callExtension(customHandler, 'Project', 'findMany', {
+      // No context, but Deal is not in custom list so should pass
+      const { query } = await callExtension(customHandler, 'Deal', 'findMany', {
         where: { status: 'active' },
       });
 
@@ -356,10 +356,9 @@ describe('prisma-tenant-middleware (extension)', () => {
 
   describe('TENANT_SCOPED_MODELS', () => {
     it('includes expected core models', () => {
-      expect(TENANT_SCOPED_MODELS).toContain('Project');
-      expect(TENANT_SCOPED_MODELS).toContain('Task');
-      expect(TENANT_SCOPED_MODELS).toContain('Sprint');
       expect(TENANT_SCOPED_MODELS).toContain('Deal');
+      expect(TENANT_SCOPED_MODELS).toContain('Contact');
+      expect(TENANT_SCOPED_MODELS).toContain('CustomerRecord');
     });
 
     it('does not include User model', () => {
@@ -370,7 +369,7 @@ describe('prisma-tenant-middleware (extension)', () => {
   describe('edge cases', () => {
     it('handles empty args gracefully', async () => {
       const { query } = await requestContext.run({ organizationId: orgId }, () =>
-        callExtension(handler, 'Project', 'findMany', {})
+        callExtension(handler, 'Deal', 'findMany', {})
       );
 
       expect(query).toHaveBeenCalledWith({

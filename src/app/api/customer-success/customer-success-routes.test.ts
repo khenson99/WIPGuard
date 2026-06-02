@@ -164,23 +164,6 @@ describe("customer-success mutation routes", () => {
     expect(updateCustomerSuccessAlertStatus).not.toHaveBeenCalled();
   });
 
-  it("returns 410 for retired linked task creation", async () => {
-    const { POST } = await import("@/app/api/customer-success/accounts/[accountId]/tasks/route");
-    const response = await POST(
-      new NextRequest("http://localhost/api/customer-success/accounts/acct_1/tasks", {
-        method: "POST",
-        body: JSON.stringify({ title: "Coordinate escalation" }),
-        headers: { "content-type": "application/json" },
-      }),
-      accountContext()
-    );
-
-    expect(response.status).toBe(410);
-    await expect(response.json()).resolves.toEqual({
-      error: "Customer success task creation has been retired with the Work section.",
-    });
-  });
-
   it("passes through auth failures for success plan creation", async () => {
     const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
     const { createCustomerSuccessPlan } = await import("@/lib/customer-success/service");
@@ -784,7 +767,6 @@ describe("customer-success mutation routes", () => {
       alerts: [],
       timeline: [],
       stakeholders: [],
-      tasks: [],
       successPlan: { milestones: [] },
       outreach: { recommendedTemplates: [], recentMessages: [] },
     } as never);

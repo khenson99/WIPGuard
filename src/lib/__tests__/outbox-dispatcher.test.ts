@@ -124,8 +124,8 @@ describe("outbox-dispatcher", () => {
       userId: "user-9",
       payload: {
         type: "ops_alert",
-        taskId: "alert-1",
-        taskTitle: "Unify drift detected",
+        alertId: "alert-1",
+        title: "Unify drift detected",
         channelId: "C123",
         context: {
           bucketStart: "2026-03-11T00:00:00.000Z",

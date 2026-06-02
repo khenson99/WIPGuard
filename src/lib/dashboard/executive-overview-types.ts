@@ -47,10 +47,11 @@ export interface OverviewCustomerSuccess {
   connected: boolean;
   openConversations: number;
   urgentConversations: number;
-  waitingOnTeam?: number | null;
   avgFirstResponseMinutes: number | null;
   csat: number | null;
   resolvedInRange: number;
+  completedTasks: number;
+  deliveryRate: number | null;
 }
 
 export interface OverviewAdSpend {

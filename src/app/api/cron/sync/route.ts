@@ -1,8 +1,9 @@
 export const dynamic = "force-dynamic";
 
 import { after, NextRequest, NextResponse } from "next/server";
-import { runAnalyticsRefresh } from "@/lib/analytics/refresh-runner";
-import { pruneAnalyticsSnapshots } from "@/lib/analytics/snapshots";
+import { runAnalyticsSync } from "@/lib/sync/analytics";
+import { runHealthChecksSync } from "@/lib/sync/health-checks";
+import { discoverConnectedUserIds } from "@/lib/sync/users";
 import { runVisitorFunnelEnrichmentSyncs } from "@/lib/analytics/provider-enrichment-sync";
 import {
   VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON,
@@ -17,7 +18,6 @@ import {
   bestEffortMigrateRulesToOwner,
   ensureIntegrationOwnerOrganizationId,
 } from "@/lib/integrations/ownership";
-import { runIntegrationHealthChecks } from "@/lib/integrations/health-checks";
 import { prisma } from "@/lib/prisma";
 import { materializeRetentionCurrent } from "@/lib/retention/pipeline";
 
@@ -86,6 +86,132 @@ async function runRetentionMaterialization(input: {
   };
 }
 
+async function resolveImladrisSyncContext(input: {
+  ownerUserId: string | null;
+  userIds: string[];
+}): Promise<{ userId: string | null; organizationId: string | null }> {
+  const userId = input.ownerUserId ?? input.userIds[0] ?? null;
+  if (!userId) {
+    return { userId: null, organizationId: null };
+  }
+
+  const organizationId =
+    input.ownerUserId === userId
+      ? await ensureIntegrationOwnerOrganizationId(userId)
+      : (
+          await prisma.user.findUnique({
+            where: { id: userId },
+            select: { organizationId: true },
+          })
+        )?.organizationId ?? null;
+
+  return { userId, organizationId };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function positiveNumberField(value: unknown, field: string): number {
+  const record = asRecord(value);
+  const raw = record?.[field];
+  return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : 0;
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return count === 1 ? singular : plural;
+}
+
+function collectAnalyticsPartialFailures(value: unknown): string[] {
+  const record = asRecord(value);
+  if (!record) return [];
+
+  const failures: string[] = [];
+  const refreshFailures = positiveNumberField(record.refresh, "failureCount");
+  if (refreshFailures > 0) {
+    failures.push(
+      `analytics: ${refreshFailures} provider refresh ${pluralize(refreshFailures, "failure")}`,
+    );
+  }
+
+  const imladris = Array.isArray(record.imladris) ? record.imladris : [];
+  const materializationFailures = imladris.filter((entry) => {
+    const entryRecord = asRecord(entry);
+    return typeof entryRecord?.error === "string" && entryRecord.error.trim().length > 0;
+  }).length;
+  if (materializationFailures > 0) {
+    failures.push(
+      `imladris: ${materializationFailures} canonical materialization ${pluralize(
+        materializationFailures,
+        "failure",
+      )}`,
+    );
+  }
+
+  return failures;
+}
+
+function collectRulesPartialFailures(value: unknown): string[] {
+  const failures: string[] = [];
+  const failedUserRuns = positiveNumberField(value, "failedUserRuns");
+  if (failedUserRuns > 0) {
+    failures.push(
+      `rules: ${failedUserRuns} user ${pluralize(failedUserRuns, "run")} failed`,
+    );
+  }
+
+  const failedRules = positiveNumberField(value, "failedRules");
+  if (failedRules > 0) {
+    const record = asRecord(value);
+    const failedRuleErrors = Array.isArray(record?.failedRuleErrors)
+      ? record.failedRuleErrors
+      : [];
+    const details = failedRuleErrors
+      .map((entry) => {
+        const entryRecord = asRecord(entry);
+        const ruleKey =
+          typeof entryRecord?.ruleKey === "string" && entryRecord.ruleKey.trim()
+            ? entryRecord.ruleKey
+            : "unknown_rule";
+        const error =
+          typeof entryRecord?.error === "string" && entryRecord.error.trim()
+            ? entryRecord.error
+            : "failed without error detail";
+        return `${ruleKey}: ${error}`;
+      })
+      .slice(0, 5);
+
+    failures.push(
+      `rules: ${failedRules} provider ${pluralize(failedRules, "rule")} failed${
+        details.length > 0 ? ` (${details.join("; ")})` : ""
+      }`,
+    );
+  }
+
+  return failures;
+}
+
+function collectHealthPartialFailures(value: unknown): string[] {
+  const results = Array.isArray(value) ? value : [];
+  const failedUsers = results.filter((entry) => {
+    const record = asRecord(entry);
+    return (
+      positiveNumberField(record, "failed") > 0 ||
+      (typeof record?.error === "string" && record.error.trim().length > 0)
+    );
+  }).length;
+  if (failedUsers === 0) return [];
+
+  return [
+    `health: ${failedUsers} user health ${pluralize(failedUsers, "check")} failed`,
+  ];
+}
+
+function isDegradedSyncBody(value: unknown): boolean {
+  const record = asRecord(value);
+  return record?.ok === false;
+}
+
 async function executeCronSync(input: {
   startedAt: string;
   ownerUserId: string | null;
@@ -101,7 +227,7 @@ async function executeCronSync(input: {
         startedAt,
         finishedAt: new Date().toISOString(),
         ownerUserId,
-        message: "No connected integrations found — nothing to sync",
+        message: "No recoverable integrations found — nothing to sync",
       },
     };
   }
@@ -141,6 +267,7 @@ async function executeCronSync(input: {
     if (funnelPrisma) {
       visitorFunnelEnrichment = await runVisitorFunnelEnrichmentSyncs({
         prisma,
+        imladrisContext: await resolveImladrisSyncContext({ ownerUserId, userIds }),
       });
       visitorFunnelEnrichmentStatus = await buildVisitorFunnelEnrichmentStatus(funnelPrisma);
       const visitorFunnelEnrichmentTelemetry = instrumentVisitorFunnelEnrichmentAlerts(
@@ -228,11 +355,18 @@ async function executeCronSync(input: {
       visitorFunnelEnrichmentStatus = [];
     }
 
-    const [analyticsResult, rulesResult, healthResult, pruningResult, retentionResult] = await Promise.allSettled([
-      runAnalyticsRefresh({
+    // Analytics refresh + retention pruning are now bundled in the shared
+    // runAnalyticsSync() (src/lib/sync/analytics.ts) so the orchestrator
+    // and this cron route stay in lockstep. We destructure the combined
+    // result back into separate `analytics` and `pruning` response fields
+    // to preserve the external response-body shape that monitoring depends on.
+    const [analyticsSyncResult, rulesResult, healthResult, retentionResult] = await Promise.allSettled([
+      runAnalyticsSync({
+        prisma,
         userIds,
-        rangePresets: ["7d", "30d"],
+        rangePresets: ["7d", "30d", "90d"],
         includeMonthlyFinancialHistory: true,
+        pruneOlderThanDays: parseRetentionDays(),
       }),
       runRules({
         mode: "incremental",
@@ -240,9 +374,10 @@ async function executeCronSync(input: {
         userIds,
         startedAt,
       }),
-      // Health checks run per-user; run for all discovered users.
-      Promise.all(userIds.map((uid) => runIntegrationHealthChecks({ userId: uid }))),
-      pruneAnalyticsSnapshots({ olderThanDays: parseRetentionDays() }),
+      // Health checks run per-user; shared with the orchestrator —
+      // see src/lib/sync/health-checks.ts. The returned array preserves
+      // the cron route's prior `settled.health` shape.
+      runHealthChecksSync({ prisma, userIds }),
       runRetentionMaterialization({ ownerUserId, userIds }),
     ]);
 
@@ -254,15 +389,20 @@ async function executeCronSync(input: {
       retention: null as unknown,
     };
 
-    if (analyticsResult.status === "fulfilled") {
-      settled.analytics = analyticsResult.value;
+    if (analyticsSyncResult.status === "fulfilled") {
+      // Split bundled result back into `analytics` (refresh) and `pruning`
+      // top-level fields — external monitors read these separately.
+      settled.analytics = analyticsSyncResult.value.refresh;
+      settled.pruning = analyticsSyncResult.value.pruning;
+      failures.push(...collectAnalyticsPartialFailures(analyticsSyncResult.value));
     } else {
-      const msg = analyticsResult.reason instanceof Error ? analyticsResult.reason.message : String(analyticsResult.reason);
+      const msg = analyticsSyncResult.reason instanceof Error ? analyticsSyncResult.reason.message : String(analyticsSyncResult.reason);
       failures.push(`analytics: ${msg}`);
-      console.error("POST /api/cron/sync analytics failed:", analyticsResult.reason);
+      console.error("POST /api/cron/sync analytics failed:", analyticsSyncResult.reason);
     }
     if (rulesResult.status === "fulfilled") {
       settled.rules = rulesResult.value;
+      failures.push(...collectRulesPartialFailures(rulesResult.value));
     } else {
       const msg = rulesResult.reason instanceof Error ? rulesResult.reason.message : String(rulesResult.reason);
       failures.push(`rules: ${msg}`);
@@ -270,17 +410,11 @@ async function executeCronSync(input: {
     }
     if (healthResult.status === "fulfilled") {
       settled.health = healthResult.value;
+      failures.push(...collectHealthPartialFailures(healthResult.value));
     } else {
       const msg = healthResult.reason instanceof Error ? healthResult.reason.message : String(healthResult.reason);
       failures.push(`health: ${msg}`);
       console.error("POST /api/cron/sync health failed:", healthResult.reason);
-    }
-    if (pruningResult.status === "fulfilled") {
-      settled.pruning = pruningResult.value;
-    } else {
-      const msg = pruningResult.reason instanceof Error ? pruningResult.reason.message : String(pruningResult.reason);
-      failures.push(`pruning: ${msg}`);
-      console.error("POST /api/cron/sync pruning failed:", pruningResult.reason);
     }
     if (retentionResult.status === "fulfilled") {
       settled.retention = retentionResult.value;
@@ -328,16 +462,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const ownerUserId = process.env.INTEGRATION_OWNER_USER_ID?.trim() || null;
 
   // Discover user IDs: prefer the explicit owner, otherwise query the DB for
-  // all users that have at least one connected integration.
+  // all users that have at least one recoverable integration.
   const userIds: string[] = ownerUserId
     ? [ownerUserId]
-    : (
-        await prisma.integrationConnection.findMany({
-          distinct: ["userId"],
-          where: { status: "CONNECTED" },
-          select: { userId: true },
-        })
-      ).map((row) => row.userId);
+    : await discoverConnectedUserIds(prisma);
 
   if (userIds.length === 0) {
     return NextResponse.json({
@@ -345,7 +473,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       startedAt,
       finishedAt: new Date().toISOString(),
       ownerUserId,
-      message: "No connected integrations found — nothing to sync",
+      message: "No recoverable integrations found — nothing to sync",
     });
   }
 
@@ -358,6 +486,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const result = await executeCronSync({ startedAt, ownerUserId, userIds });
     if (result.status >= 400) {
       console.error("POST /api/cron/sync background error:", result.body);
+      return;
+    }
+    if (isDegradedSyncBody(result.body)) {
+      console.error("POST /api/cron/sync background degraded:", result.body);
     }
   });
 

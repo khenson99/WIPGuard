@@ -10,6 +10,7 @@ describe("normalizeCodaMasterOrderArchiveRow", () => {
       values: {
         Company: "Neff Machine",
         "Order Date": "2026-01-04T00:00:00.000Z",
+        Item: "A-100 Bracket",
         Status: "Ordered",
         Quantity: 4,
       },
@@ -21,6 +22,7 @@ describe("normalizeCodaMasterOrderArchiveRow", () => {
     expect(row?.payload.companyName).toBe("Neff Machine");
     expect(row?.payload.accountName).toBe("Neff Machine");
     expect(row?.payload.tenantName).toBe("Neff Machine");
+    expect(row?.payload.itemName).toBe("A-100 Bracket");
     expect(row?.payload.orderStatus).toBe("Ordered");
     expect(row?.payload.quantity).toBe(4);
   });

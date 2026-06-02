@@ -57,7 +57,7 @@ function sortKeys(obj: unknown): unknown {
  * with the aggregate type and event type for human readability when
  * scanning the database:
  *
- *   `task:task.created:sha256:<hex>`
+ *   `metric:metric.refreshed:sha256:<hex>`
  */
 export function generateIdempotencyKey(input: IdempotencyKeyInput): string {
   const canonical = canonicalize(input);

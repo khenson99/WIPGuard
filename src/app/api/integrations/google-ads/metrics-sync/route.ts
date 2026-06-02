@@ -7,18 +7,20 @@ import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import { enforcePermission } from "@/lib/permissions";
 import {
   GOOGLE_ADS_METRICS_RULE_KEY,
+  buildProviderMetricsSyncResponsePayload,
   getOrCreateProviderMetricsRule,
   patchProviderMetricsRule,
   runProviderMetricsRule,
   serializeProviderMetricsRuleState,
+  type IntegrationRunMode,
   type ProviderMetricsSyncConfig,
 } from "@/lib/integrations/provider-metrics-sync";
 
 interface ProviderMetricsSyncRequestBody {
   action?: "sync" | "configure";
+  mode?: IntegrationRunMode;
   dryRun?: boolean;
   enabled?: boolean;
-  statusOverride?: "QUEUED" | "ACTIVE" | "NOT_DONE" | null;
   config?: Partial<ProviderMetricsSyncConfig>;
 }
 
@@ -86,7 +88,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         ruleKey: GOOGLE_ADS_METRICS_RULE_KEY,
         patch: {
           enabled: body.enabled,
-          statusOverride: body.statusOverride,
           config: body.config,
         },
       });
@@ -102,13 +103,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       userId: ownerUserId,
       ruleKey: GOOGLE_ADS_METRICS_RULE_KEY,
       dryRun: body.dryRun,
+      mode: body.mode,
     });
 
-    return NextResponse.json({
-      ok: true,
-      action: "sync",
-      result,
-    });
+    return NextResponse.json(buildProviderMetricsSyncResponsePayload(result));
   } catch (error) {
     console.error("POST /api/integrations/google-ads/metrics-sync error:", error);
     const message = error instanceof Error ? error.message : "Failed to run Google Ads metrics sync";

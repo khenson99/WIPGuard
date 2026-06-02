@@ -67,8 +67,8 @@ async function dispatchVisitorFunnelSlackAlert(event: OutboxEvent): Promise<void
     userId: ownerUserId,
     payload: {
       type: "ops_alert",
-      taskId: alertId,
-      taskTitle: title,
+      alertId,
+      title,
       channelId,
       context: {
         bucketStart: typeof payload?.bucketStart === "string" ? payload.bucketStart : "",

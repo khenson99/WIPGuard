@@ -61,6 +61,95 @@ describe("MarketingTabNew provider states", () => {
     expect(screen.getByText("No Google Ads data in selected range")).toBeTruthy();
   });
 
+  it("surfaces HubSpot collected forms in the website form submission dashboard", () => {
+    const data = makeData();
+    data.webflow = {
+      siteName: "WIPGuard",
+      lastPublished: "2026-05-20T00:00:00.000Z",
+      totalPages: 4,
+      totalCollections: 0,
+      formSubmissions: [{ formName: "Legacy Webflow Form", count: 1 }],
+      customDomains: [],
+      publishedPages: 4,
+      draftPages: 0,
+      archivedPages: 0,
+      pages: [],
+      seoAudit: {
+        totalPages: 4,
+        pagesWithSeoTitle: 4,
+        pagesWithSeoDescription: 4,
+        pagesWithOgImage: 4,
+        seoScore: 100,
+      },
+      contentFreshness: {
+        updatedLast7d: 0,
+        updatedLast30d: 0,
+        updatedLast90d: 0,
+        staleOver90d: 0,
+      },
+      recentlyUpdatedPages: [],
+      collections: [],
+      totalCmsItems: 0,
+      emptyCollections: 0,
+      formTrend: [],
+      totalFormSubmissions: 1,
+      _meta: {
+        fetchedAt: "2026-05-20T00:00:00.000Z",
+        nextRefresh: "2026-05-20T01:00:00.000Z",
+        source: "live",
+      },
+    };
+    data.hubspot = {
+      funnel: {
+        totalDeals: 0,
+        closedWon: 0,
+        closedLost: 0,
+        unlikely: 0,
+        churn: 0,
+        activeSubscriptions: 0,
+        noShows: 0,
+        demoScheduled: 0,
+        demoFollowUp: 0,
+        collectedFormSubmissions: 3,
+        leadMagnetSubmissions: 2,
+        contactRequestSubmissions: 1,
+        avgDealSize: 0,
+        winRate: 0,
+        effectiveWinRate: 0,
+        noShowRate: 0,
+        stages: [],
+        dealsBySource: [],
+      },
+      collectedForms: {
+        formSubmissions: [
+          { formName: "Kanban Generator", count: 2, funnelCategory: "lead_magnet" },
+          { formName: "Get in Touch", count: 1, funnelCategory: "contact_request" },
+        ],
+        submissions: [],
+        totalFormSubmissions: 3,
+        leadMagnetSubmissions: 2,
+        contactRequestSubmissions: 1,
+      },
+      contacts: {
+        totalContacts: 0,
+        recentContacts: 0,
+        bySource: [],
+      },
+      _meta: {
+        fetchedAt: "2026-05-20T00:00:00.000Z",
+        nextRefresh: "2026-05-20T01:00:00.000Z",
+        source: "live",
+      },
+    };
+
+    render(<MarketingTabNew data={data} variant="website-traffic" />);
+
+    expect(screen.getAllByText("4").length).toBeGreaterThan(0);
+    expect(screen.getByText("Kanban Generator")).toBeTruthy();
+    expect(screen.getByText("Get in Touch")).toBeTruthy();
+    expect(screen.getByText("Legacy Webflow Form")).toBeTruthy();
+  });
+
   it("renders Instagram creative-analysis coverage and sampled note", () => {
     const data = makeData();
     data.instagram = {

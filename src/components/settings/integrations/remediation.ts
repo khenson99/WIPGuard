@@ -1,4 +1,7 @@
-import type { IntegrationItem, RuleLoadState } from "@/components/settings/integrations/types";
+import type {
+  IntegrationItem,
+  RuleLoadState,
+} from "@/components/settings/integrations/types";
 
 export interface RemediationStep {
   id: string;
@@ -22,10 +25,6 @@ export function buildRemediationSteps(input: {
   const rulesWithErrors = rules
     .map((rule) => rule.rule)
     .filter((rule): rule is NonNullable<RuleLoadState["rule"]> => Boolean(rule?.lastError));
-
-  const hubspotBidirectionalEnabled =
-    item.slug === "hubspot" &&
-    rules.some((state) => state.rule?.key === "hubspot_bidirectional_sync" && state.rule.enabled);
 
   if (item.authType === "oauth" && !item.configured) {
     steps.push({
@@ -78,17 +77,10 @@ export function buildRemediationSteps(input: {
     if (meta?.insufficientScopes) {
       const missingScopes = Array.isArray(meta.missingScopes) ? (meta.missingScopes as string[]) : [];
       const missing = missingScopes.length > 0 ? missingScopes.join(", ") : "unknown scopes";
-      const missingDealsWrite = missingScopes.includes("crm.objects.deals.write");
       steps.push({
-        id: hubspotBidirectionalEnabled && missingDealsWrite ? "hubspot-write-scope" : "insufficient-scopes",
-        title:
-          hubspotBidirectionalEnabled && missingDealsWrite
-            ? "Reconnect to grant deal write access"
-            : "Missing required OAuth scopes",
-        detail:
-          hubspotBidirectionalEnabled && missingDealsWrite
-            ? `HubSpot Bidirectional Sync requires deal write scope to update stages. Disconnect and reconnect to grant: ${missing}`
-            : `Disconnect and reconnect to re-authorize with the correct permissions. Missing: ${missing}`,
+        id: "insufficient-scopes",
+        title: "Missing required OAuth scopes",
+        detail: `Disconnect and reconnect to re-authorize with the correct permissions. Missing: ${missing}`,
       });
     }
   }

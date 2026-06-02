@@ -26,7 +26,7 @@ function monthLabel(offset: number): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Project monthly revenue & MRR forward from current values.
+ * Forecast monthly revenue and MRR forward from current values.
  *
  * Each month applies compound growth and churn:
  *   newMrr = prevMrr * (1 + growthRate) * (1 - churnRate)

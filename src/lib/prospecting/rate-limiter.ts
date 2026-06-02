@@ -17,6 +17,7 @@ export const throttledFetch = throttle(
     try {
       return await fetch(url, {
         ...init,
+        cache: "no-store",
         signal: controller.signal,
         headers: {
           "User-Agent": "The-Mother-Node-Prospecting/1.0 (+https://the-mother-node.com)",

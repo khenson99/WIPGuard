@@ -10,7 +10,6 @@ import {
 
 const LEGACY_PRODUCT_API_PREFIXES = [
   "/api/board-settings",
-  "/api/logbook",
   "/api/priorities",
   "/api/projects",
   "/api/sprints",

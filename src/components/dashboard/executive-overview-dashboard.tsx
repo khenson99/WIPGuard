@@ -376,10 +376,10 @@ function CustomerSuccessSection({ data }: { data: ExecutiveOverviewPayload["cust
             <p className="text-xl font-bold tabular-nums">{fmtN(data.resolvedInRange)}</p>
           </div>
           <div className="rounded-lg border border-border/60 p-3">
-            <p className="text-xs text-muted-foreground">Waiting on Team</p>
-            <p className="text-xl font-bold tabular-nums">{fmtN(data.waitingOnTeam ?? 0)}</p>
-            {(data.waitingOnTeam ?? 0) > 0 && (
-              <p className="text-xs text-muted-foreground">Needs internal follow-up</p>
+            <p className="text-xs text-muted-foreground">Issues Completed</p>
+            <p className="text-xl font-bold tabular-nums">{fmtN(data.completedTasks)}</p>
+            {data.deliveryRate !== null && (
+              <p className="text-xs text-muted-foreground">{fmtPct(data.deliveryRate)} throughput</p>
             )}
           </div>
         </div>

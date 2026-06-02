@@ -138,7 +138,7 @@ describe("Unify pull helpers", () => {
       }),
     });
 
-    const signals = await pullUnifySignalsFromApi({
+    const result = await pullUnifySignalsFromApi({
       apiKey: "unify-key",
       objectName: "website_visitors",
       updatedAfter: "2026-03-05T00:00:00.000Z",
@@ -147,8 +147,61 @@ describe("Unify pull helpers", () => {
     });
 
     expect(fetchImpl).toHaveBeenCalledOnce();
-    expect(signals).toHaveLength(1);
-    expect(signals[0]?.signalKey).toBe("new");
-    expect(signals[0]?.email).toBe("new@example.com");
+    expect(result).toMatchObject({
+      truncated: false,
+      totalFiltered: 1,
+      returned: 1,
+    });
+    expect(result.signals).toHaveLength(1);
+    expect(result.signals[0]?.signalKey).toBe("new");
+    expect(result.signals[0]?.email).toBe("new@example.com");
+  });
+
+  it("marks Unify pulls truncated when filtered records exceed the configured cap", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: [
+          {
+            id: "first",
+            updated_at: "2026-03-08T00:00:00.000Z",
+            attributes: {
+              email: "first@example.com",
+              website: "https://first.example.com",
+              seen_at: "2026-03-08T00:00:00.000Z",
+            },
+          },
+          {
+            id: "second",
+            updated_at: "2026-03-08T01:00:00.000Z",
+            attributes: {
+              email: "second@example.com",
+              website: "https://second.example.com",
+              seen_at: "2026-03-08T01:00:00.000Z",
+            },
+          },
+        ],
+      }),
+    });
+
+    const result = await pullUnifySignalsFromApi({
+      apiKey: "unify-key",
+      objectName: "website_visitors",
+      updatedAfter: "2026-03-05T00:00:00.000Z",
+      maxRecords: 1,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    expect(result).toMatchObject({
+      truncated: true,
+      totalFiltered: 2,
+      returned: 1,
+      signals: [
+        expect.objectContaining({
+          signalKey: "first",
+          email: "first@example.com",
+        }),
+      ],
+    });
   });
 });

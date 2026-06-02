@@ -61,6 +61,12 @@ function makeData(): AnalyticsDashboardData {
       mergedActiveSubscriptions: 124,
       stripeActiveSubscriptions: 118,
       hubspotActiveSubscriptions: 121,
+      stripeMrr: 42_000,
+      hubspotSubscriptionMrr: 40_000,
+      hubspotOnlySubscriptionMrr: 2_000,
+      excludedLinkedHubspotSubscriptionMrr: 0,
+      totalMrr: 44_000,
+      totalArr: 528_000,
     },
   };
 

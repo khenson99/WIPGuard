@@ -13,9 +13,6 @@ export async function GET(): Promise<NextResponse> {
     }
 
     const departments = await prisma.department.findMany({
-      include: {
-        _count: { select: { projects: true } },
-      },
       orderBy: { name: "asc" },
     });
 
@@ -38,7 +35,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const permission = await enforcePermission({
       userId: session.user.id,
-      action: "project.write",
+      action: "department.write",
       request,
       targetType: "department",
     });
@@ -58,7 +55,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const department = await prisma.department.create({
       data: { name, color: color || null },
-      include: { _count: { select: { projects: true } } },
     });
 
     return NextResponse.json(department, { status: 201 });

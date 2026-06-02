@@ -5,7 +5,7 @@ import {
   type AnalyticsSubSection,
 } from "@/lib/analytics/section-registry";
 
-export type CeoMetricDomain = AnalyticsPrimarySectionId | "ceo";
+export type CeoMetricDomain = AnalyticsPrimarySectionId | "ceo" | "development";
 
 export type CeoMetricUnit =
   | "count"
@@ -150,9 +150,7 @@ export interface CeoReportRun {
 
 const CALCULATION_VERSION = "ceo-metric-trust-v1";
 const BOARD_GRADE_CORE_KEYS = new Set<string>([
-  "ceo.flow_reliability_score",
-  "ceo.throughput_30d",
-  "ceo.overdue_open_tasks",
+  "development.delivery_health",
   "finance.cash_balance",
   "finance.mrr",
   "sales.open_pipeline_value",
@@ -164,43 +162,17 @@ const BOARD_GRADE_CORE_KEYS = new Set<string>([
 
 const CORE_METRICS: CeoMetricDefinition[] = [
   {
-    key: "ceo.flow_reliability_score",
-    label: "Internal Execution Reliability",
-    domain: "ceo",
-    ownerAudience: "CEO",
+    key: "development.delivery_health",
+    label: "Development Delivery Health",
+    domain: "development",
+    ownerAudience: "TEAM",
     unit: "score",
     calculationVersion: CALCULATION_VERSION,
-    sourceDependencies: ["wipguard"],
-    freshnessSlaHours: 1,
+    sourceDependencies: ["linear", "github", "posthog"],
+    freshnessSlaHours: 6,
     boardEligible: true,
     weeklyEligible: true,
-    description: "Composite legacy internal execution reliability score from overdue, stale, blocker, throughput, and work-in-progress signals.",
-  },
-  {
-    key: "ceo.throughput_30d",
-    label: "Internal Execution Throughput 30d",
-    domain: "ceo",
-    ownerAudience: "TEAM",
-    unit: "count",
-    calculationVersion: CALCULATION_VERSION,
-    sourceDependencies: ["wipguard"],
-    freshnessSlaHours: 1,
-    boardEligible: true,
-    weeklyEligible: true,
-    description: "Completed legacy internal execution items over the trailing 30 days.",
-  },
-  {
-    key: "ceo.overdue_open_tasks",
-    label: "Legacy Open Execution Items",
-    domain: "ceo",
-    ownerAudience: "TEAM",
-    unit: "count",
-    calculationVersion: CALCULATION_VERSION,
-    sourceDependencies: ["wipguard"],
-    freshnessSlaHours: 1,
-    boardEligible: true,
-    weeklyEligible: true,
-    description: "Open legacy internal execution items past their expected date.",
+    description: "Engineering delivery health from Linear issue flow, GitHub code review activity, and PostHog product telemetry.",
   },
   {
     key: "finance.cash_balance",
@@ -314,6 +286,7 @@ function sourceKeyForPrimary(primaryId: AnalyticsPrimarySectionId): string[] {
     "website-traffic": ["googleAnalytics", "webflow"],
     "social-media": ["googleAds", "metaAds"],
     finance: ["mercury", "stripe", "hubspot"],
+    revenue: ["hubspot", "stripe", "mercury"],
     "sales-pipeline": ["hubspot"],
     retention: ["retention"],
     "customer-success": ["pylon", "googleWorkspace", "slack"],
@@ -516,9 +489,7 @@ export function buildDefaultCeoReportPacks(definitions = getDefaultCeoMetricDefi
   const pick = (keys: string[]) => keys.filter((key) => available.has(key));
 
   const weeklyKeys = pick([
-    "ceo.flow_reliability_score",
-    "ceo.throughput_30d",
-    "ceo.overdue_open_tasks",
+    "development.delivery_health",
     "sales.open_pipeline_value",
     "finance.cash_balance",
     "finance.mrr",
@@ -531,7 +502,7 @@ export function buildDefaultCeoReportPacks(definitions = getDefaultCeoMetricDefi
     "finance.mrr",
     "sales.open_pipeline_value",
     "retention.at_risk_accounts",
-    "ceo.flow_reliability_score",
+    "development.delivery_health",
     "domain.customer-journey.health",
     "domain.demo-analytics.health",
     "domain.customer-success.health",
@@ -541,7 +512,7 @@ export function buildDefaultCeoReportPacks(definitions = getDefaultCeoMetricDefi
     "sales.open_pipeline_value",
     "website.sessions",
     "social.paid_spend",
-    "ceo.throughput_30d",
+    "development.delivery_health",
     "domain.retention.health",
   ]);
   const customKeys = definitions
@@ -557,7 +528,7 @@ export function buildDefaultCeoReportPacks(definitions = getDefaultCeoMetricDefi
       audience: "TEAM",
       metricKeys: weeklyKeys,
       sections: [
-        { title: "Internal Execution", metricKeys: pick(["ceo.flow_reliability_score", "ceo.throughput_30d", "ceo.overdue_open_tasks"]) },
+        { title: "Development", metricKeys: pick(["development.delivery_health"]) },
         { title: "Revenue", metricKeys: pick(["sales.open_pipeline_value", "finance.mrr", "finance.cash_balance"]) },
         { title: "Growth and Retention", metricKeys: pick(["retention.at_risk_accounts", "domain.social-media.health", "domain.website-traffic.health"]) },
       ],
@@ -572,7 +543,7 @@ export function buildDefaultCeoReportPacks(definitions = getDefaultCeoMetricDefi
       sections: [
         { title: "Financials", metricKeys: pick(["finance.cash_balance", "finance.mrr"]) },
         { title: "Revenue and Retention", metricKeys: pick(["sales.open_pipeline_value", "retention.at_risk_accounts"]) },
-        { title: "Operational Signals", metricKeys: pick(["ceo.flow_reliability_score", "domain.customer-journey.health", "domain.demo-analytics.health", "domain.customer-success.health"]) },
+        { title: "Operational Signals", metricKeys: pick(["development.delivery_health", "domain.customer-journey.health", "domain.demo-analytics.health", "domain.customer-success.health"]) },
       ],
     },
     {
@@ -584,7 +555,7 @@ export function buildDefaultCeoReportPacks(definitions = getDefaultCeoMetricDefi
       metricKeys: investorKeys,
       sections: [
         { title: "Traction", metricKeys: pick(["finance.mrr", "sales.open_pipeline_value", "website.sessions"]) },
-        { title: "Efficiency", metricKeys: pick(["social.paid_spend", "ceo.throughput_30d", "domain.retention.health"]) },
+        { title: "Efficiency", metricKeys: pick(["social.paid_spend", "development.delivery_health", "domain.retention.health"]) },
       ],
     },
     {

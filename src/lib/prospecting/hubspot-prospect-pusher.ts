@@ -1,96 +1,23 @@
 import {
   Prisma,
   IntegrationProvider,
-  IntegrationConnectionStatus,
   type ManufacturerProspect,
 } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import {
-  protectIntegrationSecret,
-  unprotectIntegrationSecret,
-} from "@/lib/integrations/token-crypto";
+import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
 import type { PushResult } from "./types";
 
 type TransactionClient = Pick<typeof prisma, "integrationRule" | "integrationReceipt">;
 
-const HUBSPOT_TOKEN_ENDPOINT = "https://api.hubapi.com/oauth/v1/token";
-
-// ── Token refresh mutex (prevents concurrent refresh race condition) ──────────
-
-let refreshPromise: Promise<string> | null = null;
-
-// ── Token management follows the shared single-flight refresh pattern ────────
+// ── Token management (mirrors hubspot-customer-signals.ts pattern) ───────────
 
 async function getValidAccessToken(
   userId: string
 ): Promise<string> {
-  // Single-flight: if a refresh is already in progress, reuse it
-  if (refreshPromise) return refreshPromise;
-  const connection = await prisma.integrationConnection.findUnique({
-    where: { userId_provider: { userId, provider: IntegrationProvider.HUBSPOT } },
+  return await getValidIntegrationAccessToken({
+    userId,
+    provider: IntegrationProvider.HUBSPOT,
   });
-
-  if (!connection || connection.status !== IntegrationConnectionStatus.CONNECTED) {
-    throw new Error("HubSpot is not connected");
-  }
-
-  const token = unprotectIntegrationSecret(connection.accessToken);
-  if (!token) throw new Error("HubSpot access token is missing");
-
-  const expiresSoon =
-    Boolean(connection.expiresAt) && connection.expiresAt!.getTime() <= Date.now() + 60_000;
-
-  if (!expiresSoon) return token;
-
-  // Refresh the token — use mutex so concurrent callers share this promise
-  refreshPromise = (async () => {
-    try {
-      const refreshToken = unprotectIntegrationSecret(connection.refreshToken);
-      if (!refreshToken) throw new Error("HubSpot refresh token is missing");
-      if (!process.env.HUBSPOT_CLIENT_ID || !process.env.HUBSPOT_CLIENT_SECRET) {
-        throw new Error("HubSpot OAuth client credentials are missing");
-      }
-
-      const response = await fetch(HUBSPOT_TOKEN_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          grant_type: "refresh_token",
-          client_id: process.env.HUBSPOT_CLIENT_ID,
-          client_secret: process.env.HUBSPOT_CLIENT_SECRET,
-          refresh_token: refreshToken,
-        }),
-        cache: "no-store",
-      });
-
-      if (!response.ok) throw new Error("HubSpot token refresh failed");
-
-      const json = (await response.json()) as Record<string, unknown>;
-      const newToken = json.access_token as string;
-      const expiresIn = (json.expires_in as number) ?? 21600;
-      const newRefreshToken = (json.refresh_token as string) ?? null;
-
-      await prisma.integrationConnection.update({
-        where: { userId_provider: { userId, provider: IntegrationProvider.HUBSPOT } },
-        data: {
-          accessToken: protectIntegrationSecret(newToken),
-          refreshToken: newRefreshToken
-            ? protectIntegrationSecret(newRefreshToken)
-            : connection.refreshToken,
-          expiresAt: new Date(Date.now() + expiresIn * 1000),
-          status: IntegrationConnectionStatus.CONNECTED,
-          lastError: null,
-          lastSyncedAt: new Date(),
-        },
-      });
-
-      return newToken;
-    } finally {
-      refreshPromise = null;
-    }
-  })();
-
-  return refreshPromise;
 }
 
 // ── HubSpot API helpers ──────────────────────────────────────────────────────
@@ -212,7 +139,7 @@ async function createCompany(
         industry: prospect.industry ?? undefined,
         city: prospect.location ?? undefined,
         numberofemployees: prospect.employeeCount ?? undefined,
-        description: `Discovered via WIPGuard prospecting. Kanban confidence: ${Math.round(prospect.confidence * 100)}%`,
+        description: `Discovered via Imladris prospecting. Kanban confidence: ${Math.round(prospect.confidence * 100)}%`,
         // Custom properties (create these in HubSpot settings first)
         kanban_confidence_score: String(Math.round(prospect.confidence * 100)),
         kanban_evidence_urls: evidenceUrls,

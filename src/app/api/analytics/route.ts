@@ -10,9 +10,6 @@ import { getAuthenticatedUser } from "@/lib/session-user";
 import { getCredentials } from "@/lib/analytics/credentials";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
 import { computeProgressPct } from "@/lib/analytics/finance-utils";
-import { normalizeStoredBudgetEndDate } from "@/lib/analytics/budget-period";
-import { normalizeMercuryExpenseMappings } from "@/lib/analytics/mercury-expense-mappings";
-import { normalizeMercuryDataPayload } from "@/lib/analytics/mercury-normalization";
 import { createEmptyAnalyticsDashboardData, patchFreshnessWithStale } from "@/lib/analytics/response-shape";
 import {
   analyticsErrorFromReason,
@@ -29,6 +26,10 @@ import { buildAnalyticsRouteMeta } from "@/lib/analytics/route-meta";
 import { buildAnalyticsMetricsLayer } from "@/lib/analytics/kpis";
 import { computeKpiDelta } from "@/lib/analytics/kpi-deltas";
 import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
+import { buildRevenueDashboardData } from "@/lib/analytics/revenue-dashboard";
+import { ingestImladrisRawRecords } from "@/lib/imladris/ingestion";
+import { buildImladrisRawRecordsFromPayload } from "@/lib/imladris/raw-records";
+import { buildImladrisMetrics } from "@/lib/imladris/service";
 import {
   buildVisitorFunnelData,
   parseVisitorFunnelFilters,
@@ -46,13 +47,11 @@ import type {
   ForecastScenarioData,
   GoalMetric,
   GoalStatus,
-  IntegrationTelemetryData,
+  ProductSuccessData,
   StripeData,
   MercuryData,
-  MercuryExpenseMapping,
   HubSpotData,
 } from "@/lib/analytics/types";
-import { MERCURY_CASHFLOW_SYNC_RULE_KEY } from "@/lib/integrations/provider-metrics-sync";
 
 export const revalidate = 300;
 
@@ -62,6 +61,7 @@ type DomainKey =
   | "stripe"
   | "mercury"
   | "googleAnalytics"
+  | "googleSearchConsole"
   | "googleAds"
   | "metaAds"
   | "metaPage"
@@ -69,12 +69,16 @@ type DomainKey =
   | "redditAds"
   | "webflow"
   | "coda"
+  | "codaOps"
   | "semrush"
   | "pylon"
+  | "posthog"
+  | "linear"
+  | "github"
+  | "product"
   | "googleWorkspace"
   | "slack"
   | "hubspotOps"
-  | "codaOps"
   | "redditOps"
   | "lifecycleFunnel"
   | "funnelJourney"
@@ -91,6 +95,7 @@ const ALL_DOMAINS: DomainKey[] = [
   "stripe",
   "mercury",
   "googleAnalytics",
+  "googleSearchConsole",
   "googleAds",
   "metaAds",
   "metaPage",
@@ -98,12 +103,16 @@ const ALL_DOMAINS: DomainKey[] = [
   "redditAds",
   "webflow",
   "coda",
+  "codaOps",
   "semrush",
   "pylon",
+  "posthog",
+  "linear",
+  "github",
+  "product",
   "googleWorkspace",
   "slack",
   "hubspotOps",
-  "codaOps",
   "redditOps",
   "lifecycleFunnel",
   "funnelJourney",
@@ -122,6 +131,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "stripe",
     "mercury",
     "pylon",
+    "product",
     "googleWorkspace",
     "slack",
     "lifecycleFunnel",
@@ -133,9 +143,9 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "ai-insights": [...ALL_DOMAINS],
   "website-traffic": [
     "googleAnalytics",
+    "googleSearchConsole",
     "webflow",
     "semrush",
-    "coda",
     "lifecycleFunnel",
     "funnelJourney",
     "aiInsights",
@@ -148,6 +158,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "metaPage",
     "instagram",
     "redditAds",
+    "coda",
     "lifecycleFunnel",
     "funnelJourney",
     "aiInsights",
@@ -169,6 +180,7 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "finance-forecast": ["stripe", "mercury"],
   "finance-pnl": ["stripe", "mercury"],
   "finance-unit-economics": ["stripe", "mercury", "hubspot"],
+  revenue: ["hubspot", "stripe", "mercury", "demoAnalytics", "salesPerformance"],
   "sales-pipeline": [
     "hubspot",
     "stripe",
@@ -184,9 +196,10 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "customer-success": [
     "pylon",
     "coda",
+    "codaOps",
+    "product",
     "googleWorkspace",
     "slack",
-    "codaOps",
     "lifecycleFunnel",
     "funnelJourney",
     "aiInsights",
@@ -194,12 +207,12 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
     "distilledInsights",
   ],
   "ads-google-analytics": ["googleAnalytics"],
+  "ads-google-search-console": ["googleSearchConsole"],
   "ads-google-ads": ["googleAds"],
   "ads-meta-ads": ["metaAds", "metaPage", "instagram"],
   "ads-reddit-ads": ["redditAds", "redditOps"],
   "ads-webflow": ["webflow"],
   "ads-semrush": ["semrush"],
-  "ads-coda-kanban": ["coda", "codaOps"],
   "finance-mercury": ["mercury"],
   "finance-stripe": ["stripe"],
   "finance-hubspot": ["hubspot", "hubspotOps"],
@@ -208,19 +221,20 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "sales-google-workspace": ["googleWorkspace"],
   "sales-slack": ["slack"],
   "cs-pylon": ["pylon"],
+  "cs-coda": ["coda", "codaOps"],
   "cs-google-workspace": ["googleWorkspace"],
   "cs-slack": ["slack"],
 
   "customer-journey": [
     "hubspot", "stripe", "mercury", "googleWorkspace", "slack",
-    "webflow", "coda", "googleAnalytics", "googleAds", "metaAds",
+    "webflow", "coda", "codaOps", "googleAnalytics", "googleSearchConsole", "googleAds", "metaAds",
     "instagram", "redditAds", "pylon", "customerJourney",
     "lifecycleFunnel", "funnelJourney", "aiInsights", "recommendations", "distilledInsights",
   ],
-  "cj-overview": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
-  "cj-touchpoints": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
-  "cj-conversion": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "googleAnalytics", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
-  "cj-acquisition-funnel": ["hubspot", "stripe", "coda", "visitorFunnel"],
+  "cj-overview": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "coda", "codaOps", "googleAnalytics", "googleSearchConsole", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
+  "cj-touchpoints": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "coda", "codaOps", "googleAnalytics", "googleSearchConsole", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
+  "cj-conversion": ["hubspot", "stripe", "googleWorkspace", "slack", "webflow", "coda", "codaOps", "googleAnalytics", "googleSearchConsole", "googleAds", "metaAds", "instagram", "redditAds", "pylon", "customerJourney"],
+  "cj-acquisition-funnel": ["hubspot", "stripe", "visitorFunnel"],
 
   "demo-analytics": [
     "hubspot", "googleWorkspace", "demoAnalytics",
@@ -242,64 +256,6 @@ const SECTION_DOMAINS: Record<string, DomainKey[]> = {
   "sales-performance": ["salesPerformance"],
 };
 
-const LEGACY_SECTION_ALIASES: Record<string, string> = {
-  "cs-coda": "customer-success",
-  "cs-product": "customer-success",
-};
-
-const INTEGRATION_TELEMETRY_DOMAINS = new Set<DomainKey>([
-  "googleWorkspace",
-  "hubspotOps",
-  "slack",
-  "codaOps",
-  "redditOps",
-]);
-
-type LegacyIntegrationTrendPoint = {
-  date: string;
-  receipts: number;
-  failures: number;
-  automationsTriggered?: number;
-  createdTasks?: number;
-};
-
-type LegacyIntegrationTelemetryData = Omit<IntegrationTelemetryData, "automationsTriggeredInRange" | "trend"> & {
-  automationsTriggeredInRange?: number;
-  tasksCreatedInRange?: number;
-  trend?: LegacyIntegrationTrendPoint[];
-};
-
-function normalizeIntegrationTelemetryPayload(payload: unknown): IntegrationTelemetryData | unknown {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
-
-  const telemetry = payload as LegacyIntegrationTelemetryData;
-  const {
-    tasksCreatedInRange,
-    automationsTriggeredInRange,
-    trend = [],
-    ...rest
-  } = telemetry;
-
-  return {
-    ...rest,
-    automationsTriggeredInRange:
-      typeof automationsTriggeredInRange === "number"
-        ? automationsTriggeredInRange
-        : typeof tasksCreatedInRange === "number"
-          ? tasksCreatedInRange
-          : 0,
-    trend: trend.map(({ createdTasks, automationsTriggered, ...point }) => ({
-      ...point,
-      automationsTriggered:
-        typeof automationsTriggered === "number"
-          ? automationsTriggered
-          : typeof createdTasks === "number"
-            ? createdTasks
-            : 0,
-    })),
-  } as IntegrationTelemetryData;
-}
-
 function loadOnce<T>(loader: () => Promise<T>): () => Promise<T> {
   let promise: Promise<T> | null = null;
   return () => {
@@ -316,6 +272,9 @@ const loadCoreAnalyticsFetchers = loadOnce(
 const loadGaWebflowFetchers = loadOnce(
   () => import("@/lib/analytics/fetchers-ga-webflow")
 );
+const loadGoogleSearchConsoleFetchers = loadOnce(
+  () => import("@/lib/analytics/fetchers-google-search-console")
+);
 const loadAdsFetchers = loadOnce(
   () => import("@/lib/analytics/fetchers-ads")
 );
@@ -327,6 +286,9 @@ const loadSemrushFetchers = loadOnce(
 );
 const loadPylonFetchers = loadOnce(
   () => import("@/lib/analytics/fetchers-pylon")
+);
+const loadDevelopmentFetchers = loadOnce(
+  () => import("@/lib/analytics/fetchers-development")
 );
 const loadIntegrationTelemetryFetchers = loadOnce(
   () => import("@/lib/analytics/fetchers-integrations")
@@ -361,8 +323,7 @@ const loadBudgetVarianceBuilder = loadOnce(
 
 function requiredDomainsForSection(section: string | null): Set<DomainKey> {
   if (!section) return new Set(ALL_DOMAINS);
-  const normalizedSection = LEGACY_SECTION_ALIASES[section] ?? section;
-  return new Set(SECTION_DOMAINS[normalizedSection] ?? ALL_DOMAINS);
+  return new Set(SECTION_DOMAINS[section] ?? ALL_DOMAINS);
 }
 
 async function resolveAnalyticsOrganizationId(
@@ -492,6 +453,50 @@ async function hydrateStripeCustomerLinks(
   });
 }
 
+async function computeProductSuccessData(input: {
+  userId: string;
+  organizationId: string | null;
+  from: Date;
+  to: Date;
+}): Promise<ProductSuccessData> {
+  const metrics = await buildImladrisMetrics({
+    prisma,
+    context: { userId: input.userId, organizationId: input.organizationId },
+  });
+  const deliveryHealth = metrics.find((metric) => metric.key === "development.delivery_health");
+  const value =
+    deliveryHealth?.value && typeof deliveryHealth.value === "object"
+      ? (deliveryHealth.value as Record<string, unknown>)
+      : {};
+  const completedLinearIssuesInRange =
+    typeof value.completedLinearIssues === "number" ? value.completedLinearIssues : 0;
+  const mergedPullRequestsInRange =
+    typeof value.mergedPullRequests === "number" ? value.mergedPullRequests : 0;
+  const activeContributors =
+    typeof value.productEvents === "number" ? value.productEvents : 0;
+  const cycleTimeRiskSignals =
+    typeof value.averageLinearCycleTimeDays === "number" && value.averageLinearCycleTimeDays > 14
+      ? 1
+      : 0;
+  const deliveryBalance = mergedPullRequestsInRange - completedLinearIssuesInRange;
+  const deliveryRate =
+    mergedPullRequestsInRange > 0 ? Math.round((completedLinearIssuesInRange / mergedPullRequestsInRange) * 10000) / 100 : null;
+
+  return {
+    activeContributors,
+    mergedPullRequestsInRange,
+    completedLinearIssuesInRange,
+    cycleTimeRiskSignals,
+    deliveryBalance,
+    deliveryRate,
+    _meta: {
+      fetchedAt: new Date().toISOString(),
+      nextRefresh: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      source: "live",
+    },
+  };
+}
+
 function buildRecommendations(data: AnalyticsDashboardData): AnalyticsRecommendation[] {
   const recommendations: AnalyticsRecommendation[] = [];
   const financeSummary = data.metrics?.finance.summary ?? null;
@@ -526,6 +531,17 @@ function buildRecommendations(data: AnalyticsDashboardData): AnalyticsRecommenda
       title: "Cash runway is below 4 months",
       insight: `Estimated runway is ${(financeSummary?.runwayMonths ?? 0).toFixed(1)} months.`,
       suggestedAction: "Cut non-performing spend and prioritize collections/revenue acceleration this month.",
+    });
+  }
+
+  if ((data.product?.deliveryBalance ?? 0) > 0) {
+    recommendations.push({
+      id: "cs-delivery-balance",
+      section: "customer-success",
+      severity: "warning",
+      title: "Delivery balance is widening",
+      insight: `Provider delivery balance is ${data.product?.deliveryBalance ?? 0} signals in the selected range.`,
+      suggestedAction: "Review Linear, GitHub, and customer-context signals for blocked or mis-sequenced commitments.",
     });
   }
 
@@ -573,6 +589,7 @@ const LIVE_FIRST_FINANCE_SECTIONS = new Set([
   "finance-forecast",
   "finance-pnl",
   "finance-unit-economics",
+  "revenue",
 ]);
 
 const LIVE_FIRST_FINANCE_DOMAINS = new Set<FetchEntry["key"]>([
@@ -632,7 +649,7 @@ async function buildFinancialPlanningData(
     { buildProfitAndLossCore: buildProfitAndLoss },
     { computeUnitEconomics },
     { buildDefaultScenarios, buildForecastScenario },
-    { computeBudgetSummary },
+    { computeBudgetActuals, computeBudgetSummary },
   ] = await Promise.all([
     loadPnlBuilder(),
     loadUnitEconomicsBuilder(),
@@ -671,127 +688,11 @@ async function buildFinancialPlanningData(
     prisma.forecastScenario.findMany({ where: { userId } }),
   ]);
 
-  type FinancialExpenseRatios = {
-    cogs: number;
-    payroll: number;
-    marketing: number;
-    infrastructure: number;
-    ops: number;
-  };
-
-  function mapBudgetDraft(
-    budget: {
-      id: string;
-      name: string;
-      period: string;
-      startDate: Date;
-      endDate: Date;
-      lineItems: { id: string; category: string; plannedAmount: number; notes: string | null }[];
-    },
-  ): BudgetData {
-    return {
-      id: budget.id,
-      name: budget.name,
-      period: budget.period.toLowerCase() as BudgetData["period"],
-      startDate: budget.startDate.toISOString(),
-      endDate: normalizeStoredBudgetEndDate(
-        budget.startDate.toISOString(),
-        budget.endDate.toISOString(),
-        budget.period as "MONTHLY" | "QUARTERLY" | "ANNUAL",
-      ),
-      lineItems: budget.lineItems.map((lineItem) => ({
-        id: lineItem.id,
-        category: lineItem.category.toLowerCase() as BudgetLineItemData["category"],
-        plannedAmount: lineItem.plannedAmount,
-        actualAmount: null,
-        variance: null,
-        variancePct: null,
-        notes: lineItem.notes ?? undefined,
-      })),
-      totalPlanned: budget.lineItems.reduce((sum, lineItem) => sum + lineItem.plannedAmount, 0),
-      totalActual: null,
-      totalVariance: null,
-    };
-  }
-
-  function deriveExpenseRatiosFromBudget(budget: BudgetData | null): FinancialExpenseRatios | null {
-    if (!budget) return null;
-
-    const totals = {
-      cogs: 0,
-      payroll: 0,
-      marketing: 0,
-      infrastructure: 0,
-      ops: 0,
-    };
-
-    for (const item of budget.lineItems) {
-      if (item.plannedAmount <= 0) continue;
-      if (item.category === "other") {
-        totals.ops += item.plannedAmount;
-        continue;
-      }
-      totals[item.category] += item.plannedAmount;
-    }
-
-    const totalPlanned = Object.values(totals).reduce((sum, value) => sum + value, 0);
-    if (totalPlanned <= 0) return null;
-
-    return {
-      cogs: totals.cogs / totalPlanned,
-      payroll: totals.payroll / totalPlanned,
-      marketing: totals.marketing / totalPlanned,
-      infrastructure: totals.infrastructure / totalPlanned,
-      ops: totals.ops / totalPlanned,
-    };
-  }
-
-  function deriveExpenseRatiosFromMercury(mercuryData: MercuryData | null): FinancialExpenseRatios | null {
-    const breakdown = mercuryData?.cashFlow.expenseBreakdown30d;
-    if (!breakdown) return null;
-
-    const totals = {
-      cogs: breakdown.cogs ?? 0,
-      payroll: breakdown.payroll ?? 0,
-      marketing: breakdown.marketing ?? 0,
-      infrastructure: breakdown.infrastructure ?? 0,
-      ops: (breakdown.ops ?? 0) + (breakdown.other ?? 0),
-    };
-
-    const totalExpenses = Object.values(totals).reduce((sum, value) => sum + value, 0);
-    if (totalExpenses <= 0) return null;
-
-    return {
-      cogs: totals.cogs / totalExpenses,
-      payroll: totals.payroll / totalExpenses,
-      marketing: totals.marketing / totalExpenses,
-      infrastructure: totals.infrastructure / totalExpenses,
-      ops: totals.ops / totalExpenses,
-    };
-  }
-
-  const budgetDrafts = dbBudgets.map(mapBudgetDraft);
-  const activeBudgetRatios = deriveExpenseRatiosFromBudget(budgetDrafts[0] ?? null);
-  const mercuryExpenseRatios = deriveExpenseRatiosFromMercury(mercury);
-  const effectiveExpenseRatios = mercuryExpenseRatios ?? activeBudgetRatios;
-
   // --- P&L ---
-  const pnl = buildProfitAndLoss(
-    stripe,
-    mercury,
-    effectiveExpenseRatios ? { ratios: effectiveExpenseRatios } : undefined,
-  );
+  const pnl = buildProfitAndLoss(stripe, mercury);
 
   // --- Unit Economics ---
-  const unitEconomics = computeUnitEconomics(
-    stripe,
-    mercury,
-    hubspot,
-    {
-      ...(effectiveExpenseRatios ? { ratios: effectiveExpenseRatios } : {}),
-      observedPeriodDays: mercury?.cashFlow.observedPeriodDays ?? data.timeRange?.days ?? 30,
-    },
-  );
+  const unitEconomics = computeUnitEconomics(stripe, mercury, hubspot);
 
   // --- Forecasts: defaults + custom saved scenarios ---
   const defaultForecasts = buildDefaultScenarios(stripe, mercury);
@@ -829,11 +730,11 @@ async function buildFinancialPlanningData(
     const lineItems: BudgetLineItemData[] = computeBudgetActuals(budgetDraft, mercury);
     const summary = computeBudgetSummary(lineItems);
     return {
-      id: budgetDraft.id,
-      name: budgetDraft.name,
-      period: budgetDraft.period,
-      startDate: budgetDraft.startDate,
-      endDate: budgetDraft.endDate,
+      id: b.id,
+      name: b.name,
+      period: b.period.toLowerCase() as BudgetData["period"],
+      startDate: b.startDate.toISOString(),
+      endDate: b.endDate.toISOString(),
       lineItems,
       totalPlanned: summary.totalPlanned,
       totalActual: summary.totalActual,
@@ -893,32 +794,41 @@ function providerForDomain(
   | "google_workspace"
   | "hubspot"
   | "slack"
-  | "coda"
   | "reddit"
   | "redditAds"
   | "stripe"
   | "mercury"
   | "googleAnalytics"
+  | "googleSearchConsole"
   | "googleAds"
   | "metaAds"
   | "metaPage"
   | "webflow"
+  | "coda"
+  | "codaOps"
   | "semrush"
   | "pylon"
+  | "posthog"
+  | "linear"
+  | "github"
   | null {
   if (domain === "hubspot" || domain === "hubspotOps") return "hubspot";
   if (domain === "googleWorkspace") return "google_workspace";
   if (domain === "slack") return "slack";
-  if (domain === "coda" || domain === "codaOps") return "coda";
   if (domain === "stripe") return "stripe";
   if (domain === "mercury") return "mercury";
   if (domain === "googleAnalytics") return "googleAnalytics";
+  if (domain === "googleSearchConsole") return "googleSearchConsole";
   if (domain === "googleAds") return "googleAds";
   if (domain === "metaAds") return "metaAds";
   if (domain === "metaPage" || domain === "instagram") return "metaPage";
   if (domain === "webflow") return "webflow";
+  if (domain === "coda" || domain === "codaOps") return "coda";
   if (domain === "semrush") return "semrush";
   if (domain === "pylon") return "pylon";
+  if (domain === "posthog") return "posthog";
+  if (domain === "linear") return "linear";
+  if (domain === "github") return "github";
   if (domain === "redditAds") return "redditAds";
   if (domain === "redditOps") return "reddit";
   return null;
@@ -941,6 +851,54 @@ type FetchEntry = {
   snapshotUserId: string;
 };
 
+function imladrisProviderForDomain(domain: FetchEntry["key"]): IntegrationProvider | null {
+  switch (domain) {
+    case "hubspot":
+    case "hubspotOps":
+      return IntegrationProvider.HUBSPOT;
+    case "stripe":
+      return IntegrationProvider.STRIPE;
+    case "mercury":
+      return IntegrationProvider.MERCURY;
+    case "googleAnalytics":
+      return IntegrationProvider.GOOGLE_ANALYTICS;
+    case "googleSearchConsole":
+      return IntegrationProvider.GOOGLE_SEARCH_CONSOLE;
+    case "googleAds":
+      return IntegrationProvider.GOOGLE_ADS;
+    case "metaAds":
+      return IntegrationProvider.META_ADS;
+    case "metaPage":
+    case "instagram":
+      return IntegrationProvider.META_PAGE;
+    case "redditAds":
+    case "redditOps":
+      return IntegrationProvider.REDDIT;
+    case "webflow":
+      return IntegrationProvider.WEBFLOW;
+    case "coda":
+    case "codaOps":
+      return IntegrationProvider.CODA;
+    case "semrush":
+      return IntegrationProvider.SEMRUSH;
+    case "pylon":
+      return IntegrationProvider.PYLON;
+    case "posthog":
+      return IntegrationProvider.POSTHOG;
+    case "linear":
+      return IntegrationProvider.LINEAR;
+    case "github":
+      return IntegrationProvider.GITHUB;
+    case "googleWorkspace":
+      return IntegrationProvider.GOOGLE_WORKSPACE;
+    case "slack":
+      return IntegrationProvider.SLACK;
+    case "product":
+      return null;
+  }
+  return null;
+}
+
 type FetchOutcome = {
   key: FetchEntry["key"];
   payload: unknown;
@@ -957,9 +915,80 @@ type RefreshInput = {
   toDate: Date;
   snapshotExpiresAt: Date;
   entry: FetchEntry;
+  organizationId: string;
 };
 
 const inFlightStaleRefreshes = new Map<string, Promise<void>>();
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function assertAnalyticsPayloadComplete(providerKey: DomainKey, payload: unknown): void {
+  const meta = isRecord(payload) && isRecord(payload._meta) ? payload._meta : null;
+  if (meta?.truncated === true) {
+    throw new Error(
+      `Provider payload for ${providerKey} is truncated; refusing to persist partial analytics route data`,
+    );
+  }
+}
+
+function analyticsRouteRawPayload(domain: FetchEntry["key"], payload: unknown): Record<string, unknown> {
+  const base = isRecord(payload) ? payload : { value: payload };
+  return {
+    ...base,
+    analyticsProviderKey: domain,
+    source: "analytics-route",
+  };
+}
+
+async function persistAnalyticsRouteRawRecords(input: {
+  entry: FetchEntry;
+  payload: unknown;
+  rangePreset: string;
+  fromDate: Date;
+  toDate: Date;
+  capturedAt: Date;
+  organizationId: string;
+}): Promise<void> {
+  const provider = imladrisProviderForDomain(input.entry.key);
+  if (!provider) return;
+
+  const records = buildImladrisRawRecordsFromPayload({
+    provider,
+    snapshotKey: input.entry.key,
+    payload: analyticsRouteRawPayload(input.entry.key, input.payload),
+    from: input.fromDate.toISOString(),
+    to: input.toDate.toISOString(),
+    capturedAt: input.capturedAt,
+  });
+  const rawResult = await ingestImladrisRawRecords({
+    prisma,
+    provider,
+    context: {
+      userId: input.entry.snapshotUserId,
+      organizationId: input.organizationId,
+    },
+    records,
+    mode: "analytics-route",
+    windowStart: input.fromDate,
+    windowEnd: input.toDate,
+    checkpoint: {
+      providerKey: input.entry.key,
+      source: "analytics-route",
+      rangePreset: input.rangePreset,
+    },
+    now: input.capturedAt,
+  });
+
+  if (rawResult.status === "ERROR" || rawResult.status === "PARTIAL") {
+    throw new Error(
+      `Imladris raw ingestion ${
+        rawResult.status === "PARTIAL" ? "partially succeeded" : "failed"
+      } for ${input.entry.key}: ${rawResult.acceptedCount}/${rawResult.recordCount} records accepted`,
+    );
+  }
+}
 
 function staleRefreshKey(input: RefreshInput): string {
   return [
@@ -976,6 +1005,16 @@ async function refreshDomainSnapshot(input: RefreshInput): Promise<void> {
     const live = await withRetry(() =>
       withTimeout(input.entry.fn, timeoutMsForDomain(input.entry.key), input.entry.key)
     );
+    assertAnalyticsPayloadComplete(input.entry.key, live);
+    await persistAnalyticsRouteRawRecords({
+      entry: input.entry,
+      payload: live,
+      rangePreset: input.rangePreset,
+      fromDate: input.fromDate,
+      toDate: input.toDate,
+      capturedAt: new Date(),
+      organizationId: input.organizationId,
+    });
     await storeAnalyticsSnapshot({
       userId: input.userId,
       providerKey: input.entry.key,
@@ -1070,6 +1109,17 @@ export async function GET(request: Request) {
         process.env.GOOGLE_CLIENT_ID?.trim() &&
         process.env.GOOGLE_CLIENT_SECRET?.trim()
     );
+    const freshnessFor = (provider: IntegrationProvider) =>
+      creds.freshness[provider] ?? {
+        provider,
+        source: "none" as const,
+        status: null,
+        connectedAt: null,
+        lastSyncedAt: null,
+        lastError: null,
+        stale: false,
+        lastSnapshotAt: null,
+      };
 
     const result: AnalyticsDashboardData = createEmptyAnalyticsDashboardData({
       freshness: {
@@ -1100,16 +1150,6 @@ export async function GET(request: Request) {
         connectedAt: creds.freshness.SLACK.connectedAt,
         lastSyncedAt: creds.freshness.SLACK.lastSyncedAt,
         lastError: creds.freshness.SLACK.lastError,
-        stale: false,
-        lastSnapshotAt: null,
-      },
-      coda: {
-        provider: "coda",
-        source: creds.freshness.CODA.source,
-        status: creds.freshness.CODA.status,
-        connectedAt: creds.freshness.CODA.connectedAt,
-        lastSyncedAt: creds.freshness.CODA.lastSyncedAt,
-        lastError: creds.freshness.CODA.lastError,
         stale: false,
         lastSnapshotAt: null,
       },
@@ -1150,6 +1190,16 @@ export async function GET(request: Request) {
         connectedAt: creds.freshness.GOOGLE_ANALYTICS.connectedAt,
         lastSyncedAt: creds.freshness.GOOGLE_ANALYTICS.lastSyncedAt,
         lastError: creds.freshness.GOOGLE_ANALYTICS.lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
+      googleSearchConsole: {
+        provider: "googleSearchConsole",
+        source: freshnessFor(IntegrationProvider.GOOGLE_SEARCH_CONSOLE).source,
+        status: freshnessFor(IntegrationProvider.GOOGLE_SEARCH_CONSOLE).status,
+        connectedAt: freshnessFor(IntegrationProvider.GOOGLE_SEARCH_CONSOLE).connectedAt,
+        lastSyncedAt: freshnessFor(IntegrationProvider.GOOGLE_SEARCH_CONSOLE).lastSyncedAt,
+        lastError: freshnessFor(IntegrationProvider.GOOGLE_SEARCH_CONSOLE).lastError,
         stale: false,
         lastSnapshotAt: null,
       },
@@ -1203,6 +1253,16 @@ export async function GET(request: Request) {
         stale: false,
         lastSnapshotAt: null,
       },
+      coda: {
+        provider: "coda",
+        source: freshnessFor(IntegrationProvider.CODA).source,
+        status: freshnessFor(IntegrationProvider.CODA).status,
+        connectedAt: freshnessFor(IntegrationProvider.CODA).connectedAt,
+        lastSyncedAt: freshnessFor(IntegrationProvider.CODA).lastSyncedAt,
+        lastError: freshnessFor(IntegrationProvider.CODA).lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
       semrush: {
         provider: "semrush",
         source: creds.freshness.SEMRUSH.source,
@@ -1220,6 +1280,36 @@ export async function GET(request: Request) {
         connectedAt: creds.freshness.PYLON.connectedAt,
         lastSyncedAt: creds.freshness.PYLON.lastSyncedAt,
         lastError: creds.freshness.PYLON.lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
+      posthog: {
+        provider: "posthog",
+        source: freshnessFor(IntegrationProvider.POSTHOG).source,
+        status: freshnessFor(IntegrationProvider.POSTHOG).status,
+        connectedAt: freshnessFor(IntegrationProvider.POSTHOG).connectedAt,
+        lastSyncedAt: freshnessFor(IntegrationProvider.POSTHOG).lastSyncedAt,
+        lastError: freshnessFor(IntegrationProvider.POSTHOG).lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
+      linear: {
+        provider: "linear",
+        source: freshnessFor(IntegrationProvider.LINEAR).source,
+        status: freshnessFor(IntegrationProvider.LINEAR).status,
+        connectedAt: freshnessFor(IntegrationProvider.LINEAR).connectedAt,
+        lastSyncedAt: freshnessFor(IntegrationProvider.LINEAR).lastSyncedAt,
+        lastError: freshnessFor(IntegrationProvider.LINEAR).lastError,
+        stale: false,
+        lastSnapshotAt: null,
+      },
+      github: {
+        provider: "github",
+        source: freshnessFor(IntegrationProvider.GITHUB).source,
+        status: freshnessFor(IntegrationProvider.GITHUB).status,
+        connectedAt: freshnessFor(IntegrationProvider.GITHUB).connectedAt,
+        lastSyncedAt: freshnessFor(IntegrationProvider.GITHUB).lastSyncedAt,
+        lastError: freshnessFor(IntegrationProvider.GITHUB).lastError,
         stale: false,
         lastSnapshotAt: null,
       },
@@ -1277,24 +1367,7 @@ export async function GET(request: Request) {
           snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchMercuryData } = await loadCoreAnalyticsFetchers();
-            const mercuryRule = await prisma.integrationRule.findUnique({
-              where: {
-                userId_provider_key: {
-                  userId: integrationUserId,
-                  provider: IntegrationProvider.MERCURY,
-                  key: MERCURY_CASHFLOW_SYNC_RULE_KEY,
-                },
-              },
-              select: { config: true },
-            });
-            const expenseMappings: MercuryExpenseMapping[] = normalizeMercuryExpenseMappings(
-              mercuryRule?.config ?? null,
-            );
-            return fetchMercuryData(creds.mercuryKey!, {
-              fromDate,
-              toDate,
-              expenseMappings,
-            });
+            return fetchMercuryData(creds.mercuryKey!, { fromDate, toDate });
           },
         }]
       : []),
@@ -1310,6 +1383,27 @@ export async function GET(request: Request) {
               creds.gaPrivateKey ?? "",
               { fromDate, toDate }
             );
+          },
+        }]
+      : []),
+    ...(creds.searchConsoleSiteUrl && (creds.searchConsoleAccessToken || hasGAServiceAccount || hasGAOAuth)
+      ? [{
+          key: "googleSearchConsole" as const,
+          snapshotUserId: integrationUserId,
+          fn: async () => {
+            const { fetchGoogleSearchConsoleData } =
+              await loadGoogleSearchConsoleFetchers();
+            return fetchGoogleSearchConsoleData({
+              accessToken: creds.searchConsoleAccessToken,
+              siteUrl: creds.searchConsoleSiteUrl!,
+              clientEmail: creds.gaClientEmail,
+              privateKey: creds.gaPrivateKey,
+              refreshToken: process.env.GA_REFRESH_TOKEN?.trim() || null,
+              googleClientId: process.env.GOOGLE_CLIENT_ID?.trim() || null,
+              googleClientSecret: process.env.GOOGLE_CLIENT_SECRET?.trim() || null,
+              fromDate,
+              toDate,
+            });
           },
         }]
       : []),
@@ -1448,6 +1542,63 @@ export async function GET(request: Request) {
           },
         }]
       : []),
+    ...(creds.posthogApiKey && creds.posthogProjectId
+      ? [{
+          key: "posthog" as const,
+          snapshotUserId: integrationUserId,
+          fn: async () => {
+            const { fetchPostHogData } = await loadDevelopmentFetchers();
+            return fetchPostHogData({
+              apiKey: creds.posthogApiKey!,
+              projectId: creds.posthogProjectId!,
+              host: creds.posthogHost,
+              fromDate,
+              toDate,
+            });
+          },
+        }]
+      : []),
+    ...(creds.linearApiKey
+      ? [{
+          key: "linear" as const,
+          snapshotUserId: integrationUserId,
+          fn: async () => {
+            const { fetchLinearData } = await loadDevelopmentFetchers();
+            return fetchLinearData({
+              apiKey: creds.linearApiKey!,
+              fromDate,
+              toDate,
+            });
+          },
+        }]
+      : []),
+    ...(creds.githubToken && creds.githubOwner && creds.githubRepo
+      ? [{
+          key: "github" as const,
+          snapshotUserId: integrationUserId,
+          fn: async () => {
+            const { fetchGitHubData } = await loadDevelopmentFetchers();
+            return fetchGitHubData({
+              token: creds.githubToken!,
+              owner: creds.githubOwner!,
+              repo: creds.githubRepo!,
+              fromDate,
+              toDate,
+            });
+          },
+        }]
+      : []),
+    {
+      key: "product" as const,
+      snapshotUserId: userId,
+      fn: () =>
+        computeProductSuccessData({
+          userId,
+          organizationId,
+          from: fromDate,
+          to: toDate,
+        }),
+    },
     {
       key: "googleWorkspace" as const,
       snapshotUserId: integrationUserId,
@@ -1477,20 +1628,6 @@ export async function GET(request: Request) {
       },
     },
     {
-      key: "slack" as const,
-      snapshotUserId: integrationUserId,
-      fn: async () => {
-        const { fetchIntegrationTelemetryData } =
-          await loadIntegrationTelemetryFetchers();
-        return fetchIntegrationTelemetryData({
-          userId: integrationUserId,
-          provider: IntegrationProvider.SLACK,
-          from: fromDate,
-          to: toDate,
-        });
-      },
-    },
-    {
       key: "codaOps" as const,
       snapshotUserId: integrationUserId,
       fn: async () => {
@@ -1499,6 +1636,20 @@ export async function GET(request: Request) {
         return fetchIntegrationTelemetryData({
           userId: integrationUserId,
           provider: IntegrationProvider.CODA,
+          from: fromDate,
+          to: toDate,
+        });
+      },
+    },
+    {
+      key: "slack" as const,
+      snapshotUserId: integrationUserId,
+      fn: async () => {
+        const { fetchIntegrationTelemetryData } =
+          await loadIntegrationTelemetryFetchers();
+        return fetchIntegrationTelemetryData({
+          userId: integrationUserId,
+          provider: IntegrationProvider.SLACK,
           from: fromDate,
           to: toDate,
         });
@@ -1550,6 +1701,7 @@ export async function GET(request: Request) {
             toDate,
             snapshotExpiresAt,
             entry,
+            organizationId,
           });
         }
 
@@ -1566,6 +1718,17 @@ export async function GET(request: Request) {
         const live = await withRetry(
           () => withTimeout(entry.fn, TIMEOUT_OVERRIDES[entry.key] ?? DEFAULT_TIMEOUT, entry.key),
         );
+        assertAnalyticsPayloadComplete(entry.key, live);
+        const capturedAt = new Date();
+        await persistAnalyticsRouteRawRecords({
+          entry,
+          payload: live,
+          rangePreset: range.preset,
+          fromDate,
+          toDate,
+          capturedAt,
+          organizationId,
+        });
         await storeAnalyticsSnapshot({
           userId: entry.snapshotUserId,
           providerKey: entry.key,
@@ -1581,7 +1744,7 @@ export async function GET(request: Request) {
           key: entry.key,
           payload: live,
           stale: false,
-          capturedAt: new Date().toISOString(),
+          capturedAt: capturedAt.toISOString(),
           source: "live" as const,
         };
       } catch (error) {
@@ -1644,12 +1807,7 @@ export async function GET(request: Request) {
     }
 
     const { key, payload, stale, capturedAt, fallbackError } = outcome.value;
-    const normalizedPayload = key === "mercury"
-      ? normalizeMercuryDataPayload(payload as MercuryData | null)
-      : INTEGRATION_TELEMETRY_DOMAINS.has(key)
-        ? normalizeIntegrationTelemetryPayload(payload)
-        : payload;
-    (result as unknown as Record<string, unknown>)[key] = normalizedPayload;
+    (result as unknown as Record<string, unknown>)[key] = payload;
     capturedAtByDomain[key] = capturedAt;
 
     if (stale) {
@@ -1744,6 +1902,10 @@ export async function GET(request: Request) {
   const metrics = buildAnalyticsMetricsLayer(result);
   result.metrics = metrics;
   result.kpis = metrics.kpis;
+
+  if (section === "revenue") {
+    result.revenueDashboard = buildRevenueDashboardData(result);
+  }
 
   if (domains.has("recommendations")) {
     result.recommendations = buildRecommendations(result);

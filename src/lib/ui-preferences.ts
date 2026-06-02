@@ -5,12 +5,6 @@ export interface DashboardPreferenceConfig {
   pinnedWidgets: string[];
   hiddenWidgets: string[];
   timeHorizonDays: number;
-  recommendationMode: "urgency" | "due_date";
-}
-
-export interface ProjectsPreferenceConfig {
-  defaultLayout: "grid" | "swimlane" | "list";
-  showMetrics: string[];
 }
 
 export interface AnalyticsPreferenceConfig {
@@ -19,21 +13,15 @@ export interface AnalyticsPreferenceConfig {
 
 export const DEFAULT_DASHBOARD_CONFIG: DashboardPreferenceConfig = {
   pinnedWidgets: [
-    "my_active",
-    "my_blocked",
-    "my_overdue",
-    "my_due_soon",
-    "recommendations",
-    "team_health",
+    "operating",
+    "finance",
+    "development",
+    "marketing",
+    "sales",
+    "customer_success",
   ],
   hiddenWidgets: [],
   timeHorizonDays: 7,
-  recommendationMode: "urgency",
-};
-
-export const DEFAULT_PROJECTS_CONFIG: ProjectsPreferenceConfig = {
-  defaultLayout: "grid",
-  showMetrics: ["progress", "status", "owner", "department"],
 };
 
 export const DEFAULT_ANALYTICS_CONFIG: AnalyticsPreferenceConfig = {
@@ -64,19 +52,6 @@ export function normalizeDashboardConfig(input: unknown): DashboardPreferenceCon
       typeof record.timeHorizonDays === "number" && Number.isFinite(record.timeHorizonDays)
         ? Math.max(1, Math.min(30, Math.trunc(record.timeHorizonDays)))
         : DEFAULT_DASHBOARD_CONFIG.timeHorizonDays,
-    recommendationMode:
-      record.recommendationMode === "due_date" ? "due_date" : DEFAULT_DASHBOARD_CONFIG.recommendationMode,
-  };
-}
-
-export function normalizeProjectsConfig(input: unknown): ProjectsPreferenceConfig {
-  const record = parseRecord(input) ?? {};
-  return {
-    defaultLayout:
-      record.defaultLayout === "swimlane" || record.defaultLayout === "list"
-        ? record.defaultLayout
-        : DEFAULT_PROJECTS_CONFIG.defaultLayout,
-    showMetrics: parseStringArray(record.showMetrics, DEFAULT_PROJECTS_CONFIG.showMetrics),
   };
 }
 
@@ -101,7 +76,6 @@ export async function getOrCreateUserUiPreference(userId: string) {
     data: {
       userId,
       dashboardConfig: DEFAULT_DASHBOARD_CONFIG as unknown as Prisma.InputJsonValue,
-      projectsConfig: DEFAULT_PROJECTS_CONFIG as unknown as Prisma.InputJsonValue,
       analyticsConfig: DEFAULT_ANALYTICS_CONFIG as unknown as Prisma.InputJsonValue,
     },
   });

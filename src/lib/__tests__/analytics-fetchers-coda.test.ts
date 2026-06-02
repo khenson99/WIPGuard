@@ -61,6 +61,60 @@ describe("coda analytics fetcher", () => {
     expect(calledUrls.some((url) => url.includes("/tables/grid-individual/rows"))).toBe(true);
   });
 
+  it("paginates Coda table discovery before selecting the analytics table", async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [{ id: "grid-tasks", name: "Tasks" }],
+          nextPageToken: "tables-page-2",
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [{ id: "grid-individual", name: "Individual Cards" }],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            { id: "col-1", name: "Name" },
+            { id: "col-2", name: "Status" },
+            { id: "col-3", name: "Created By" },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              id: "row-1",
+              createdAt: "2026-02-10T10:00:00.000Z",
+              updatedAt: "2026-02-10T10:00:00.000Z",
+              values: ["Download A", "Downloaded", { name: "Alice", email: "alice@example.com" }],
+            },
+          ],
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchCodaData("token", "doc-id", {
+      fromDate: new Date("2026-02-01T00:00:00.000Z"),
+      toDate: new Date("2026-02-28T23:59:59.999Z"),
+    });
+
+    const tableRequests = fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/tables"));
+    const calledUrls = fetchMock.mock.calls.map((call) => String(call[0]));
+    const secondTableHeaders = fetchMock.mock.calls[1]?.[1]?.headers as Record<string, string>;
+
+    expect(tableRequests).toHaveLength(2);
+    expect(secondTableHeaders["X-Coda-Page-Token"]).toBe("tables-page-2");
+    expect(calledUrls.some((url) => url.includes("/tables/grid-individual/columns"))).toBe(true);
+    expect(calledUrls.some((url) => url.includes("/tables/grid-individual/rows"))).toBe(true);
+    expect(data.totalCards).toBe(1);
+  });
+
   it("filters cards by provided date range and builds recent submitters summary", async () => {
     const fetchMock = vi.fn();
     fetchMock
@@ -445,7 +499,6 @@ describe("coda analytics fetcher", () => {
 
     const data = await fetchCodaData("token", "doc-id", {
       creatorColumn: "Created By",
-      now: new Date("2026-02-20T00:00:00.000Z"),
     });
 
     expect(data.totalCards).toBe(2);
@@ -539,7 +592,7 @@ describe("coda analytics fetcher", () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
-  it("dedupes downloader identities across gmail aliases", async () => {
+  it("marks Coda payloads truncated when row pagination reaches the page cap", async () => {
     const fetchMock = vi.fn();
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ items: [{ id: "grid-tasks", name: "Tasks" }] }))
@@ -552,80 +605,37 @@ describe("coda analytics fetcher", () => {
           ],
         })
       )
-      .mockResolvedValueOnce(
+      .mockImplementation(async () =>
         jsonResponse({
           items: [
             {
-              id: "row-1",
-              createdAt: "2026-02-10T10:00:00.000Z",
-              updatedAt: "2026-02-10T10:00:00.000Z",
-              values: ["Card A", "Downloaded", { name: "Alice", email: "alice.smith+ads@gmail.com" }],
-            },
-            {
-              id: "row-2",
-              createdAt: "2026-02-12T10:00:00.000Z",
-              updatedAt: "2026-02-12T10:00:00.000Z",
-              values: ["Card B", "Downloaded", { name: "Alice", email: "alicesmith@gmail.com" }],
-            },
-            {
-              id: "row-3",
-              createdAt: "2026-02-13T10:00:00.000Z",
-              updatedAt: "2026-02-13T10:00:00.000Z",
-              values: ["Card C", "Downloaded", { name: "Bob", email: "bob@example.com" }],
+              id: "row-loop",
+              createdAt: "2026-02-10T00:00:00.000Z",
+              updatedAt: "2026-02-10T00:00:00.000Z",
+              values: ["Card A", "Backlog", "alice@example.com"],
             },
           ],
+          nextPageToken: "repeating-page",
         })
       );
 
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
     const data = await fetchCodaData("token", "doc-id", {
-      fromDate: new Date("2026-02-01T00:00:00.000Z"),
-      toDate: new Date("2026-02-28T23:59:59.999Z"),
+      maxRowPages: 2,
     });
 
-    expect(data.rangeSummary?.cardsCreated).toBe(3);
-    expect(data.rangeSummary?.submissions).toBe(2);
-    expect(data.recentSubmitters).toHaveLength(2);
-    expect(data.recentSubmitters?.find((entry) => entry.creator === "Alice")?.cardsCreated).toBe(2);
-  });
+    const rowRequests = fetchMock.mock.calls
+      .map(([url]) => String(url))
+      .filter((url) => url.includes("/rows?"));
 
-  it("returns the full unique downloader list by default instead of truncating to 25 rows", async () => {
-    const fetchMock = vi.fn();
-    fetchMock
-      .mockResolvedValueOnce(jsonResponse({ items: [{ id: "grid-tasks", name: "Tasks" }] }))
-      .mockResolvedValueOnce(
-        jsonResponse({
-          items: [
-            { id: "col-1", name: "Name" },
-            { id: "col-2", name: "Status" },
-            { id: "col-3", name: "Created By" },
-          ],
-        })
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          items: Array.from({ length: 30 }, (_, index) => ({
-            id: `row-${index + 1}`,
-            createdAt: `2026-02-${String((index % 28) + 1).padStart(2, "0")}T10:00:00.000Z`,
-            updatedAt: `2026-02-${String((index % 28) + 1).padStart(2, "0")}T10:00:00.000Z`,
-            values: [
-              `Card ${index + 1}`,
-              "Downloaded",
-              { name: `User ${index + 1}`, email: `user${index + 1}@example.com` },
-            ],
-          })),
-        })
-      );
-
-    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
-
-    const data = await fetchCodaData("token", "doc-id", {
-      fromDate: new Date("2026-02-01T00:00:00.000Z"),
-      toDate: new Date("2026-02-28T23:59:59.999Z"),
-    });
-
-    expect(data.rangeSummary?.submissions).toBe(30);
-    expect(data.recentSubmitters).toHaveLength(30);
+    expect(rowRequests).toHaveLength(2);
+    expect(data.totalCards).toBe(2);
+    expect(data._meta).toEqual(
+      expect.objectContaining({
+        truncated: true,
+        truncatedResources: ["rows"],
+      })
+    );
   });
 });

@@ -161,7 +161,7 @@ function TelemetryDashboard({
           { label: "Errored Rules", value: fmtInt(telemetry.erroredRules) },
           { label: "Events in Range", value: fmtInt(telemetry.eventsInRange) },
           { label: "Receipts", value: fmtInt(telemetry.receiptsInRange) },
-          { label: "Artifacts Created", value: fmtInt(telemetry.tasksCreatedInRange) },
+          { label: "Artifacts Created", value: fmtInt(telemetry.artifactsCreatedInRange) },
           { label: "Failures", value: fmtInt(telemetry.failuresInRange) },
           { label: "Failure Ratio", value: fmtPct((telemetry.failuresInRange / Math.max(1, telemetry.eventsInRange)) * 100) },
         ]}
@@ -191,11 +191,8 @@ function TelemetryDashboard({
           ) : (
             <div className="mt-3 grid grid-cols-7 gap-2">
               {telemetry.trend.slice(-7).map((point) => {
-                const total = point.receipts + point.automationsTriggered;
-                const maxTotal = Math.max(
-                  1,
-                  ...telemetry.trend.map((t) => t.receipts + t.automationsTriggered),
-                );
+                const total = point.receipts + point.artifactsCreated;
+                const maxTotal = Math.max(1, ...telemetry.trend.map((t) => t.receipts + t.artifactsCreated));
                 const height = Math.max(8, Math.round((total / maxTotal) * 100));
                 return (
                   <div key={point.date} className="flex flex-col items-center gap-1">
@@ -715,18 +712,6 @@ export function AdsSemrushDashboard({ data }: IntegrationChildDashboardProps) {
   );
 }
 
-export function AdsCodaKanbanDashboard({ data }: IntegrationChildDashboardProps) {
-  return (
-    <CodaRecordsPanel
-      title="Coda Campaigns"
-      subtitle="Campaign record depth and status distribution for growth execution."
-      coda={data?.coda ?? null}
-      reasons={providerErrors(data, ["coda", "codaOps"])}
-      showCreatorIntelligence
-    />
-  );
-}
-
 export function FinanceMercuryDashboard({ data }: IntegrationChildDashboardProps) {
   const mercury = data?.mercury;
   const mercuryMetrics = data?.metrics?.finance.mercury ?? null;
@@ -952,15 +937,15 @@ export function CustomerSuccessProductDashboard({ data }: IntegrationChildDashbo
   }
 
   return (
-    <DashboardShell title="Product" subtitle="Execution throughput and backlog health for customer-success commitments.">
+    <DashboardShell title="Product" subtitle="Provider-derived delivery health for customer-success commitments.">
       <MetricGrid
         metrics={[
           { label: "Active Contributors", value: fmtInt(product.activeContributors) },
-          { label: "Created Items", value: fmtInt(product.createdTasksInRange) },
-          { label: "Completed Items", value: fmtInt(product.completedTasksInRange) },
-          { label: "Overdue Open", value: fmtInt(product.overdueOpenTasks) },
-          { label: "Backlog Growth", value: fmtInt(product.backlogGrowth) },
-          { label: "Throughput", value: fmtRatio(product.throughputRate) },
+          { label: "Merged PRs", value: fmtInt(product.mergedPullRequestsInRange) },
+          { label: "Completed Linear Issues", value: fmtInt(product.completedLinearIssuesInRange) },
+          { label: "Cycle-time Risk", value: fmtInt(product.cycleTimeRiskSignals) },
+          { label: "Delivery Balance", value: fmtInt(product.deliveryBalance) },
+          { label: "Delivery Rate", value: fmtRatio(product.deliveryRate) },
         ]}
       />
     </DashboardShell>
@@ -996,7 +981,6 @@ export const INTEGRATION_CHILD_DASHBOARD_REGISTRY: Record<string, (props: Integr
   "ads-reddit-ads": AdsRedditAdsDashboard,
   "ads-webflow": AdsWebflowDashboard,
   "ads-semrush": AdsSemrushDashboard,
-  "ads-coda-kanban": AdsCodaKanbanDashboard,
   "finance-mercury": FinanceMercuryDashboard,
   "finance-stripe": FinanceStripeDashboard,
   "finance-hubspot": FinanceHubSpotDashboard,

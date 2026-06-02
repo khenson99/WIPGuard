@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHmac, timingSafeEqual } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { DealStage } from "@/generated/prisma/client";
 import { validateStageTransition } from "@/lib/deals/stage-transitions";
@@ -24,18 +25,88 @@ interface HubSpotWebhookEvent {
   portalId: number;
 }
 
+const HUBSPOT_SIGNATURE_MAX_AGE_MS = 5 * 60 * 1000;
+const HUBSPOT_URI_DECODE_REPLACEMENTS: readonly [RegExp, string][] = [
+  [/%3A/gi, ":"],
+  [/%2F/gi, "/"],
+  [/%3F/gi, "?"],
+  [/%40/gi, "@"],
+  [/%21/gi, "!"],
+  [/%24/gi, "$"],
+  [/%27/gi, "'"],
+  [/%28/gi, "("],
+  [/%29/gi, ")"],
+  [/%2A/gi, "*"],
+  [/%2C/gi, ","],
+  [/%3B/gi, ";"],
+];
+
+function decodeHubSpotSignatureUri(uri: string): string {
+  return HUBSPOT_URI_DECODE_REPLACEMENTS.reduce(
+    (decoded, [pattern, replacement]) => decoded.replace(pattern, replacement),
+    uri,
+  );
+}
+
+function timingSafeStringEqual(actual: string, expected: string): boolean {
+  const actualBuffer = Buffer.from(actual);
+  const expectedBuffer = Buffer.from(expected);
+
+  if (actualBuffer.length !== expectedBuffer.length) {
+    timingSafeEqual(expectedBuffer, expectedBuffer);
+    return false;
+  }
+
+  return timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function verifyHubSpotSignatureV3(input: {
+  method: string;
+  url: string;
+  body: string;
+  timestamp: string | null;
+  signature: string | null;
+}): boolean {
+  const secret = process.env.HUBSPOT_CLIENT_SECRET?.trim();
+  if (!secret || !input.timestamp || !input.signature) {
+    return false;
+  }
+
+  const timestampMs = Number(input.timestamp);
+  if (!Number.isFinite(timestampMs)) {
+    return false;
+  }
+
+  if (Math.abs(Date.now() - timestampMs) > HUBSPOT_SIGNATURE_MAX_AGE_MS) {
+    return false;
+  }
+
+  const source = `${input.method.toUpperCase()}${decodeHubSpotSignatureUri(input.url)}${input.body}${input.timestamp}`;
+  const expected = createHmac("sha256", secret).update(source, "utf8").digest("base64");
+  return timingSafeStringEqual(input.signature, expected);
+}
+
 export async function POST(request: NextRequest) {
-  const signature = request.headers.get("x-hubspot-signature");
-  if (!signature) {
+  const rawBody = await request.text();
+  const signature = request.headers.get("x-hubspot-signature-v3");
+  const timestamp = request.headers.get("x-hubspot-request-timestamp");
+
+  if (
+    !verifyHubSpotSignatureV3({
+      method: request.method,
+      url: request.url,
+      body: rawBody,
+      timestamp,
+      signature,
+    })
+  ) {
     return NextResponse.json(
-      { error: "Missing signature" },
+      { error: "Invalid signature" },
       { status: 401 }
     );
   }
 
-  // TODO: Verify HubSpot webhook signature
-
-  const events: HubSpotWebhookEvent[] = await request.json();
+  const events = JSON.parse(rawBody) as HubSpotWebhookEvent[];
 
   const results = [];
 

@@ -1,11 +1,6 @@
-import type { ConferenceLeadStatus, TaskStatus } from "@/generated/prisma/client";
+import type { ConferenceLeadStatus } from "@/generated/prisma/client";
 
 export interface ConferenceSummary {
-  tasks: {
-    total: number;
-    done: number;
-    overdue: number;
-  };
   deadlines: {
     total: number;
     completed: number;
@@ -20,7 +15,6 @@ export interface ConferenceSummary {
   leads: {
     total: number;
     pushedCount: number;
-    followupOpenCount: number;
     byStatus: Record<ConferenceLeadStatus, number>;
   };
   timing: {
@@ -42,24 +36,12 @@ export function computeConferenceSummary(input: {
   now?: Date;
   startDate: Date;
   endDate: Date;
-  tasks: Array<{ status: TaskStatus; dueDate: Date | null }>;
   deadlines: Array<{ dueAt: Date; completedAt: Date | null }>;
   budgetLineItems: Array<{ plannedAmount: number }>;
   expenses: Array<{ amount: number }>;
-  leads: Array<{ status: ConferenceLeadStatus; pushedToHubspotAt: Date | null; followupTaskId: string | null }>;
-  followupTasksById: Record<string, { status: TaskStatus } | undefined>;
+  leads: Array<{ status: ConferenceLeadStatus; pushedToHubspotAt: Date | null }>;
 }): ConferenceSummary {
   const now = input.now ?? new Date();
-
-  const taskTotal = input.tasks.length;
-  let taskDone = 0;
-  let taskOverdue = 0;
-  for (const task of input.tasks) {
-    if (task.status === "DONE") taskDone += 1;
-    if (task.dueDate && task.status !== "DONE" && task.dueDate.getTime() < now.getTime()) {
-      taskOverdue += 1;
-    }
-  }
 
   const deadlineTotal = input.deadlines.length;
   let deadlineCompleted = 0;
@@ -91,20 +73,12 @@ export function computeConferenceSummary(input: {
     DISQUALIFIED: 0,
   };
   let pushedCount = 0;
-  let followupOpenCount = 0;
   for (const lead of input.leads) {
     byStatus[lead.status] = (byStatus[lead.status] ?? 0) + 1;
     if (lead.pushedToHubspotAt) pushedCount += 1;
-    if (lead.followupTaskId) {
-      const followup = input.followupTasksById[lead.followupTaskId];
-      if (followup && followup.status !== "DONE") {
-        followupOpenCount += 1;
-      }
-    }
   }
 
   return {
-    tasks: { total: taskTotal, done: taskDone, overdue: taskOverdue },
     deadlines: {
       total: deadlineTotal,
       completed: deadlineCompleted,
@@ -115,7 +89,6 @@ export function computeConferenceSummary(input: {
     leads: {
       total: input.leads.length,
       pushedCount,
-      followupOpenCount,
       byStatus,
     },
     timing: {
@@ -124,4 +97,3 @@ export function computeConferenceSummary(input: {
     },
   };
 }
-

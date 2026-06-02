@@ -6,10 +6,7 @@ import { DashboardErrorBanner } from "@/components/dashboard/dashboard-error-ban
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-loading-state";
 import { DashboardStaleBanner } from "@/components/dashboard/dashboard-stale-banner";
 import { useDashboardResource } from "@/components/dashboard/use-dashboard-resource";
-import type {
-  CustomerSuccessAccountDetail,
-  CustomerSuccessRetentionSummary,
-} from "@/lib/customer-success/types";
+import type { CustomerSuccessAccountDetail } from "@/lib/customer-success/types";
 
 type WorkspaceTab =
   | "overview"
@@ -36,6 +33,7 @@ const TABS: Array<{ id: WorkspaceTab; label: string }> = [
   { id: "success-plan", label: "Success Plan" },
   { id: "outreach", label: "Outreach" },
 ];
+
 const OUTREACH_CHANNELS = ["EMAIL", "SLACK"] as const;
 
 function formatDate(value?: string): string {
@@ -52,22 +50,14 @@ function formatNumber(value?: number): string {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
 }
 
+function formatDays(value?: number): string {
+  if (value === undefined || value === null) return "—";
+  return `${formatNumber(value)}d`;
+}
+
 function formatPercent(value?: number): string {
   if (value === undefined || value === null) return "—";
   return `${value.toFixed(1)}%`;
-}
-
-function describeArdaCoverage(
-  retention: CustomerSuccessRetentionSummary
-): string | null {
-  if (!retention.coverage.arda) return null;
-  if (retention.ardaAdoptionCountsSource === "ARDA_ACTIVITY") {
-    return `Arda activity records are live (${retention.ardaDirectActivityCounts?.orders ?? 0} orders, ${retention.ardaDirectActivityCounts?.cards ?? 0} cards, ${retention.ardaDirectActivityCounts?.items ?? 0} items).`;
-  }
-  if (retention.ardaAdoptionCountsSource === "ARDA_USER_DETAILS") {
-    return `Arda activity history is unavailable; adoption breadth falls back to User Details (${retention.ardaUserDetailsCounts?.cards ?? 0} cards, ${retention.ardaUserDetailsCounts?.items ?? 0} items).`;
-  }
-  return "Arda tenant metadata is connected, but no activity history is currently available.";
 }
 
 function formatHealthTone(score: number): string {
@@ -191,8 +181,8 @@ export function CustomerSuccessAccountWorkspace({ accountId }: { accountId: stri
   const activeAlerts = detail.alerts.filter((alert) => alert.status === "open" || alert.status === "in_progress");
   const relationship = detail.relationshipIntelligence;
   const retention = relationship?.retention;
+  const productMetrics = retention?.productMetrics;
   const coda = relationship?.coda;
-  const ardaCoverageDescription = retention ? describeArdaCoverage(retention) : null;
 
   return (
     <div className="space-y-6">
@@ -305,6 +295,24 @@ export function CustomerSuccessAccountWorkspace({ accountId }: { accountId: stri
                   {retention ? `${retention.primaryLirPassed ? "Pass" : "Fail"} · ${retention.primaryLirLabel}` : "—"}
                 </p>
               </div>
+              <div className="rounded-xl border border-border bg-background p-4">
+                <p className="text-xs text-muted-foreground">Orders</p>
+                <p className="mt-1 text-sm font-medium text-foreground">{formatNumber(productMetrics?.totalOrders)}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-background p-4">
+                <p className="text-xs text-muted-foreground">Items</p>
+                <p className="mt-1 text-sm font-medium text-foreground">{formatNumber(productMetrics?.totalItems)}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-background p-4">
+                <p className="text-xs text-muted-foreground">Unique Items Ordered</p>
+                <p className="mt-1 text-sm font-medium text-foreground">{formatNumber(productMetrics?.uniqueItemsOrdered)}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-background p-4">
+                <p className="text-xs text-muted-foreground">Threshold Timing</p>
+                <p className="mt-1 text-sm font-medium text-foreground">
+                  25 items: {formatDays(productMetrics?.daysTo25Items)} · 10 orders: {formatDays(productMetrics?.daysTo10Orders)}
+                </p>
+              </div>
             </div>
 
             {relationship ? (
@@ -344,9 +352,6 @@ export function CustomerSuccessAccountWorkspace({ accountId }: { accountId: stri
 
                 {retention?.explanation ? (
                   <p className="mt-4 text-sm text-muted-foreground">{retention.explanation}</p>
-                ) : null}
-                {ardaCoverageDescription ? (
-                  <p className="mt-2 text-xs text-muted-foreground">{ardaCoverageDescription}</p>
                 ) : null}
 
                 <div className="mt-4 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">

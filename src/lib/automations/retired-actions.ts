@@ -7,7 +7,7 @@ export const RETIRED_AUTOMATION_ACTION_TYPES = [
   "logbook_entry",
 ] as const;
 
-const retiredAutomationActionTypeSet = new Set(RETIRED_AUTOMATION_ACTION_TYPES);
+const retiredAutomationActionTypeSet = new Set<string>(RETIRED_AUTOMATION_ACTION_TYPES);
 
 export const RETIRED_AUTOMATION_ACTION_MESSAGE =
   "Task-oriented workflow actions have been retired with the Work section.";

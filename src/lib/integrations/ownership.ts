@@ -373,7 +373,6 @@ export async function bestEffortMigrateRulesToOwner(ownerUserId: string): Promis
         provider: source.provider,
         key: source.key,
         enabled: source.enabled,
-        statusOverride: source.statusOverride,
         config: source.config as never,
         checkpoint: source.checkpoint as never,
         lastObservedAt: source.lastObservedAt,

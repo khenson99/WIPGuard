@@ -36,6 +36,7 @@ function writeCachedOverviewData(globalCount: number) {
       "customer-journey": [],
       "demo-analytics": [],
       "process-analytics": [],
+      revenue: [],
     },
   };
 

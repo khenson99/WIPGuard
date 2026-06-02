@@ -5,9 +5,6 @@ import { getRequestContext, TenantContextError } from './request-context';
  * Any model with an `organizationId` field should be listed here.
  */
 export const TENANT_SCOPED_MODELS: string[] = [
-  'Project',
-  'Task',
-  'Sprint',
   'Deal',
   'Contact',
   'CustomerRecord',

@@ -15,9 +15,7 @@
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
 export type DomainEventCategory =
-  | "board"
-  | "task"
-  | "sprint"
+  | "metrics"
   | "integration"
   | "outbox"
   | "auth"
@@ -268,21 +266,21 @@ export function instrumentIntegrationSync(
 }
 
 /**
- * Instrument a board state change.
+ * Instrument an operating metric event.
  */
-export function instrumentBoardEvent(
+export function instrumentMetricEvent(
   action: string,
-  taskId: string,
+  metricId: string,
   metadata: Record<string, unknown>,
   now: Date = new Date()
 ): { log: StructuredLogEntry; metric: MetricPoint } {
   return {
-    log: createLogEntry("info", "board", `board.${action}`,
-      `Board action: ${action} on task ${taskId}`, {
-      metadata: { taskId, ...metadata },
+    log: createLogEntry("info", "metrics", `metrics.${action}`,
+      `Metric action: ${action} on ${metricId}`, {
+      metadata: { metricId, ...metadata },
       now,
     }),
-    metric: createMetric(`board.${action}`, 1, "count", { action }, now),
+    metric: createMetric(`metrics.${action}`, 1, "count", { action }, now),
   };
 }
 

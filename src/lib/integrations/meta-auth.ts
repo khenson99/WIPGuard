@@ -18,6 +18,11 @@ function getString(record: UnknownRecord | null, key: string): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+function getMetaPagingNext(record: UnknownRecord | null): string | null {
+  const paging = asRecord(record?.paging);
+  return getString(paging, "next");
+}
+
 function normalizeBearerToken(value: string): string {
   return value.replace(/^Bearer\s+/i, "").trim();
 }
@@ -128,35 +133,45 @@ export async function discoverMetaAdAccountId(input: {
     return null;
   }
 
-  const url = new URL(`https://graph.facebook.com/${graphVersion}/me/adaccounts`);
+  let url: URL | null = new URL(`https://graph.facebook.com/${graphVersion}/me/adaccounts`);
   url.searchParams.set("fields", "id,name,account_id");
   url.searchParams.set("limit", "200");
+  const seen = new Set<string>();
 
-  const response = await fetchWithTimeout(
-    url,
-    {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}` },
-    },
-    timeoutMs
-  );
+  for (let page = 0; url && page < 100; page += 1) {
+    const currentUrl = url.toString();
+    if (seen.has(currentUrl)) break;
+    seen.add(currentUrl);
 
-  const body = await readJsonOrText(response);
-  if (!response.ok) {
-    throw new Error(
-      `Meta ad account discovery failed (${response.status}): ${formatMetaError(body)}`
+    const response = await fetchWithTimeout(
+      url,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+      timeoutMs
     );
-  }
 
-  const payload = asRecord(body);
-  for (const itemRaw of asArray(payload?.data)) {
-    const item = asRecord(itemRaw);
-    const id = getString(item, "id");
-    const accountId = getString(item, "account_id");
-    const candidate = id ?? accountId;
-    if (candidate) {
-      return normalizeMetaAdAccountId(candidate);
+    const body = await readJsonOrText(response);
+    if (!response.ok) {
+      throw new Error(
+        `Meta ad account discovery failed (${response.status}): ${formatMetaError(body)}`
+      );
     }
+
+    const payload = asRecord(body);
+    for (const itemRaw of asArray(payload?.data)) {
+      const item = asRecord(itemRaw);
+      const id = getString(item, "id");
+      const accountId = getString(item, "account_id");
+      const candidate = id ?? accountId;
+      if (candidate) {
+        return normalizeMetaAdAccountId(candidate);
+      }
+    }
+
+    const next = getMetaPagingNext(payload);
+    url = next ? new URL(next) : null;
   }
 
   return null;
@@ -174,52 +189,65 @@ export async function discoverMetaPageAndInstagram(input: {
     return { pageId: null, instagramAccountId: null };
   }
 
-  const url = new URL(`https://graph.facebook.com/${graphVersion}/me/accounts`);
+  let url: URL | null = new URL(`https://graph.facebook.com/${graphVersion}/me/accounts`);
   url.searchParams.set(
     "fields",
     "id,name,instagram_business_account{id,username},connected_instagram_account{id,username}"
   );
   url.searchParams.set("limit", "200");
-
-  const response = await fetchWithTimeout(
-    url,
-    {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}` },
-    },
-    timeoutMs
-  );
-
-  const body = await readJsonOrText(response);
-  if (!response.ok) {
-    throw new Error(
-      `Meta page discovery failed (${response.status}): ${formatMetaError(body)}`
-    );
-  }
-
-  const payload = asRecord(body);
   let pageId: string | null = null;
   let instagramAccountId: string | null = null;
+  const seen = new Set<string>();
 
-  for (const itemRaw of asArray(payload?.data)) {
-    const item = asRecord(itemRaw);
-    if (!pageId) {
-      pageId = getString(item, "id");
+  for (let page = 0; url && page < 100; page += 1) {
+    const currentUrl = url.toString();
+    if (seen.has(currentUrl)) break;
+    seen.add(currentUrl);
+
+    const response = await fetchWithTimeout(
+      url,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+      timeoutMs
+    );
+
+    const body = await readJsonOrText(response);
+    if (!response.ok) {
+      throw new Error(
+        `Meta page discovery failed (${response.status}): ${formatMetaError(body)}`
+      );
     }
 
-    if (!instagramAccountId) {
-      const instagramBusiness = asRecord(item?.instagram_business_account);
-      instagramAccountId = getString(instagramBusiness, "id");
-    }
+    const payload = asRecord(body);
+    for (const itemRaw of asArray(payload?.data)) {
+      const item = asRecord(itemRaw);
+      if (!pageId) {
+        pageId = getString(item, "id");
+      }
 
-    if (!instagramAccountId) {
-      const connectedInstagram = asRecord(item?.connected_instagram_account);
-      instagramAccountId = getString(connectedInstagram, "id");
+      if (!instagramAccountId) {
+        const instagramBusiness = asRecord(item?.instagram_business_account);
+        instagramAccountId = getString(instagramBusiness, "id");
+      }
+
+      if (!instagramAccountId) {
+        const connectedInstagram = asRecord(item?.connected_instagram_account);
+        instagramAccountId = getString(connectedInstagram, "id");
+      }
+
+      if (pageId && instagramAccountId) {
+        break;
+      }
     }
 
     if (pageId && instagramAccountId) {
       break;
     }
+
+    const next = getMetaPagingNext(payload);
+    url = next ? new URL(next) : null;
   }
 
   // Fallback: if /me/accounts returned no pages, the token may be a Page
@@ -256,4 +284,3 @@ export async function discoverMetaPageAndInstagram(input: {
 
   return { pageId, instagramAccountId };
 }
-

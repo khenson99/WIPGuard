@@ -57,6 +57,7 @@ interface CodaRow {
 
 interface CodaTablesResponse {
   items: CodaTable[];
+  nextPageToken?: string;
 }
 
 interface CodaColumnsResponse {
@@ -74,6 +75,7 @@ export interface FetchCodaDataOptions {
   stripeKey?: string | null;
   maxLeadCandidates?: number;
   maxRecentSubmitters?: number;
+  maxRowPages?: number;
   fromDate?: Date;
   toDate?: Date;
   now?: Date;
@@ -459,24 +461,40 @@ export async function fetchCodaData(
   };
 
   const tablesUrl = `${CODA_API_BASE}/docs/${docId}/tables`;
-  const tablesResponse = await fetch(tablesUrl, { headers, cache: "no-store" });
+  const tables: CodaTable[] = [];
+  let nextTablesPageToken: string | null = null;
+  let tablePagesFetched = 0;
 
-  if (!tablesResponse.ok) {
-    throw new Error(
-      `Failed to fetch tables: ${tablesResponse.status} ${tablesResponse.statusText}`
-    );
-  }
+  do {
+    tablePagesFetched += 1;
+    const tablesResponse: Response = await fetch(tablesUrl, {
+      headers: {
+        ...headers,
+        ...asHeaderValue(nextTablesPageToken),
+      },
+      cache: "no-store",
+    });
 
-  const tablesData = await safeJson<CodaTablesResponse>(tablesResponse, "Coda tables");
-  if (!tablesData.items || tablesData.items.length === 0) {
+    if (!tablesResponse.ok) {
+      throw new Error(
+        `Failed to fetch tables: ${tablesResponse.status} ${tablesResponse.statusText}`
+      );
+    }
+
+    const tablesData: CodaTablesResponse = await safeJson<CodaTablesResponse>(tablesResponse, "Coda tables");
+    tables.push(...(tablesData.items || []));
+    nextTablesPageToken = tablesData.nextPageToken ?? null;
+  } while (nextTablesPageToken && tablePagesFetched < 100);
+
+  if (tables.length === 0) {
     throw new Error("No tables found in Coda document");
   }
 
   // Prefer the whitepaper download table ("Individual Cards") when present.
   // Otherwise, fall back to legacy behavior.
-  const tasksTable = tablesData.items.find((table) => normalizeTableName(table.name) === "tasks");
-  const kanbanTable = tablesData.items.find((table) => normalizeTableName(table.name) === "kanban");
-  const selectedTable = selectBestTable(tablesData.items) ?? tasksTable ?? kanbanTable ?? tablesData.items[0]!;
+  const tasksTable = tables.find((table) => normalizeTableName(table.name) === "tasks");
+  const kanbanTable = tables.find((table) => normalizeTableName(table.name) === "kanban");
+  const selectedTable = selectBestTable(tables) ?? tasksTable ?? kanbanTable ?? tables[0]!;
   const tableId = selectedTable.id;
 
   const columnsUrl = `${CODA_API_BASE}/docs/${docId}/tables/${tableId}/columns`;
@@ -504,7 +522,12 @@ export async function fetchCodaData(
 
   const rows: CodaRow[] = [];
   let nextPageToken: string | null = null;
+  let rowPagesFetched = 0;
+  let rowsTruncated = false;
+  const maxRowPages = Math.max(1, Math.floor(options.maxRowPages ?? 1000));
+
   do {
+    rowPagesFetched += 1;
     const rowsResponse: Response = await fetch(
       `${CODA_API_BASE}/docs/${docId}/tables/${tableId}/rows?limit=500&valueFormat=simple`,
       {
@@ -525,6 +548,10 @@ export async function fetchCodaData(
     const rowsData: CodaRowsResponse = await safeJson<CodaRowsResponse>(rowsResponse, "Coda rows");
     rows.push(...(rowsData.items || []));
     nextPageToken = rowsData.nextPageToken ?? null;
+    if (nextPageToken && rowPagesFetched >= maxRowPages) {
+      rowsTruncated = true;
+      break;
+    }
   } while (nextPageToken);
 
   const cards: EnrichedCard[] = rows.map((row) => {
@@ -877,6 +904,15 @@ export async function fetchCodaData(
     };
   });
 
+  const meta = makeMeta("live");
+  meta.truncated = rowsTruncated;
+  meta.truncatedResources = rowsTruncated ? ["rows"] : [];
+  meta.diagnostics = {
+    ...(meta.diagnostics ?? {}),
+    rowPagesFetched,
+    maxRowPages,
+  };
+
   return {
     totalCards: cardsInRange.length,
     cardsByStatus,
@@ -899,6 +935,6 @@ export async function fetchCodaData(
       unknownCardCount: unknownCards,
       hubspotMatchingErrors: hubspotMatchingErrors > 0 ? hubspotMatchingErrors : leadEnrichment.hubspotMatchingErrors,
     },
-    _meta: makeMeta("live"),
+    _meta: meta,
   };
 }

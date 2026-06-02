@@ -175,8 +175,10 @@ function buildStageTransitions(stages: JourneyStageCard[]): StageTransitionCard[
     .filter((transition): transition is StageTransitionCard => transition !== null);
 }
 
+type CustomerJourneyRecordView = NonNullable<AnalyticsDashboardData["customerJourney"]>["journeys"][number];
+
 function journeyChannelAt(
-  journey: AnalyticsDashboardData["customerJourney"]["journeys"][number],
+  journey: CustomerJourneyRecordView,
   position: "first" | "last"
 ): string {
   const touchpoint = position === "first" ? journey.touchpoints[0] : journey.touchpoints[journey.touchpoints.length - 1];
@@ -188,7 +190,7 @@ function journeyChannelAt(
   return fallback ? channelLabel(fallback) : "—";
 }
 
-function frictionReasons(journey: AnalyticsDashboardData["customerJourney"]["journeys"][number]): string[] {
+function frictionReasons(journey: CustomerJourneyRecordView): string[] {
   const reasons: string[] = [];
   if (journey.daysInPipeline >= 45) reasons.push("Long cycle");
   if (journey.touchpoints.length <= 2) reasons.push("Low touch");

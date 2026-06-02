@@ -3,10 +3,18 @@ import { Server as SocketIOServer, Socket } from "socket.io";
 import {
   extractSessionToken,
   getSessionFromToken,
-  verifyProjectAccess,
 } from "@/lib/socket-auth";
 
 let io: SocketIOServer | null = null;
+
+const DASHBOARD_ROOMS = new Set([
+  "operating",
+  "finance",
+  "development",
+  "marketing",
+  "sales",
+  "customer-success",
+]);
 
 export function getIO(): SocketIOServer | null {
   return io;
@@ -65,37 +73,27 @@ export function initSocketServer(httpServer: HTTPServer): SocketIOServer {
       `[socket] User ${userId} connected (socket ${socket.id})`
     );
 
-    // Join a project-scoped room after verifying access
+    // Join an Imladris dashboard room for provider-derived metric refreshes.
     socket.on(
-      "join-board",
-      async (projectId: string, callback?: (response: { ok: boolean; error?: string }) => void) => {
-        if (!projectId || typeof projectId !== "string") {
-          const msg = "Invalid projectId";
+      "dashboard:subscribe",
+      (dashboard: string, callback?: (response: { ok: boolean; error?: string }) => void) => {
+        if (!dashboard || typeof dashboard !== "string" || !DASHBOARD_ROOMS.has(dashboard)) {
+          const msg = "Invalid dashboard";
           console.warn(`[socket] ${msg} from user ${userId}`);
           if (callback) callback({ ok: false, error: msg });
           return;
         }
 
-        const hasAccess = await verifyProjectAccess(userId, projectId);
-
-        if (!hasAccess) {
-          const msg = `Access denied to project ${projectId}`;
-          console.warn(`[socket] User ${userId}: ${msg}`);
-          if (callback) callback({ ok: false, error: msg });
-          return;
-        }
-
-        const room = `project:${projectId}`;
+        const room = `dashboard:${dashboard}`;
         socket.join(room);
         console.log(`[socket] User ${userId} joined room ${room}`);
         if (callback) callback({ ok: true });
       }
     );
 
-    // Leave a project-scoped room
-    socket.on("leave-board", (projectId: string) => {
-      if (!projectId || typeof projectId !== "string") return;
-      const room = `project:${projectId}`;
+    socket.on("dashboard:unsubscribe", (dashboard: string) => {
+      if (!dashboard || typeof dashboard !== "string" || !DASHBOARD_ROOMS.has(dashboard)) return;
+      const room = `dashboard:${dashboard}`;
       socket.leave(room);
       console.log(`[socket] User ${userId} left room ${room}`);
     });

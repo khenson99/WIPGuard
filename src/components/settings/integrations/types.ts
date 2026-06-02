@@ -17,8 +17,7 @@ export type IntegrationSlug =
   | "google-ads"
   | "meta-ads"
   | "meta-page"
-  | "pylon"
-  | "wipguard";
+  | "pylon";
 
 export interface IntegrationItem {
   slug: IntegrationSlug;
@@ -48,7 +47,6 @@ export interface RuleRuntimeState {
   id: string;
   key: string;
   enabled: boolean;
-  statusOverride?: "QUEUED" | "ACTIVE" | "NOT_DONE" | null;
   config: Record<string, unknown>;
   checkpoint: Record<string, unknown>;
   lastObservedAt: string | null;
@@ -62,10 +60,7 @@ export type RuleFieldType =
   | "boolean"
   | "string-list"
   | "enum"
-  | "enum-list"
-  | "string-status-map"
-  | "signal-template-map"
-  | "status-message-map";
+  | "enum-list";
 
 export interface RuleFieldDefinition {
   key: string;
@@ -86,7 +81,6 @@ export interface RuleDescriptor {
   endpoint: string;
   runAction: "sync" | null;
   supportsDryRun: boolean;
-  supportsStatusOverride: boolean;
   editorType: "generic" | "channel-routing";
   fields: RuleFieldDefinition[];
 }

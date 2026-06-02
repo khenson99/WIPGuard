@@ -61,12 +61,12 @@ import {
 function makeOutboxEvent(overrides: Partial<OutboxEvent> = {}): OutboxEvent {
   return {
     id: "evt_1",
-    eventType: "task.created",
-    aggregateType: "task",
-    aggregateId: "task_1",
+    eventType: "metric.refreshed",
+    aggregateType: "metric",
+    aggregateId: "metric_1",
     schemaVersion: 1,
-    payload: { taskId: "task_1", title: "Test", projectId: null, assigneeId: null, priority: null, createdBy: "user_1" },
-    idempotencyKey: "task:task.created:sha256:abc123",
+    payload: { metricKey: "development.delivery_health", sourceKey: "linear", value: 1, refreshedBy: "user_1" },
+    idempotencyKey: "metric:metric.refreshed:sha256:abc123",
     status: "PENDING",
     retryCount: 0,
     nextAttemptAt: new Date("2026-02-15T00:00:00Z"),
@@ -106,13 +106,11 @@ function makeWorkerClient(overrides: Record<string, unknown> = {}) {
 
 describe("outbox-types", () => {
   it("exports all expected domain event types", () => {
-    expect(DOMAIN_EVENT_TYPES).toContain("task.created");
-    expect(DOMAIN_EVENT_TYPES).toContain("task.moved");
-    expect(DOMAIN_EVENT_TYPES).toContain("task.assigned");
-    expect(DOMAIN_EVENT_TYPES).toContain("sprint.started");
-    expect(DOMAIN_EVENT_TYPES).toContain("sprint.completed");
+    expect(DOMAIN_EVENT_TYPES).toContain("metric.refreshed");
+    expect(DOMAIN_EVENT_TYPES).toContain("dashboard.computed");
+    expect(DOMAIN_EVENT_TYPES).toContain("alert.raised");
     expect(DOMAIN_EVENT_TYPES).toContain("integration.sync");
-    expect(DOMAIN_EVENT_TYPES).toHaveLength(11);
+    expect(DOMAIN_EVENT_TYPES).toHaveLength(4);
   });
 });
 
@@ -129,23 +127,23 @@ describe("outbox-writer", () => {
       const now = new Date("2026-02-15T00:00:00Z");
 
       await writeOutboxEvent(db, {
-        eventType: "task.created",
-        aggregateType: "task",
-        aggregateId: "task_1",
-        payload: { title: "New task" },
-        idempotencyKey: "task:task.created:sha256:abc",
+        eventType: "metric.refreshed",
+        aggregateType: "metric",
+        aggregateId: "metric_1",
+        payload: { title: "New metric" },
+        idempotencyKey: "metric:metric.refreshed:sha256:abc",
       }, { now });
 
       expect(db.outboxEvent.upsert).toHaveBeenCalledWith({
-        where: { idempotencyKey: "task:task.created:sha256:abc" },
+        where: { idempotencyKey: "metric:metric.refreshed:sha256:abc" },
         update: {},
         create: {
-          eventType: "task.created",
-          aggregateType: "task",
-          aggregateId: "task_1",
+          eventType: "metric.refreshed",
+          aggregateType: "metric",
+          aggregateId: "metric_1",
           schemaVersion: 1,
-          payload: { title: "New task" },
-          idempotencyKey: "task:task.created:sha256:abc",
+          payload: { title: "New metric" },
+          idempotencyKey: "metric:metric.refreshed:sha256:abc",
           status: "PENDING",
           retryCount: 0,
           nextAttemptAt: now,
@@ -157,9 +155,9 @@ describe("outbox-writer", () => {
       const db = makeWriteClient();
 
       await writeOutboxEvent(db, {
-        eventType: "task.moved",
-        aggregateType: "task",
-        aggregateId: "task_1",
+        eventType: "dashboard.computed",
+        aggregateType: "metric",
+        aggregateId: "metric_1",
         payload: { fromColumn: "TODO", toColumn: "DOING" },
         idempotencyKey: "key_1",
         schemaVersion: 2,
@@ -196,17 +194,17 @@ describe("outbox-writer", () => {
       const db = makeWriteClient();
 
       await publishTypedDomainEvent(db, {
-        eventType: "task.created",
-        aggregateType: "task",
-        aggregateId: "task_99",
-        payload: { taskId: "task_99", title: "Auto", projectId: null, assigneeId: null, priority: null, createdBy: "u1" },
+        eventType: "metric.refreshed",
+        aggregateType: "metric",
+        aggregateId: "metric_99",
+        payload: { metricKey: "development.delivery_health", sourceKey: "linear", value: 1, refreshedBy: "u1" },
       });
 
       expect(db.outboxEvent.upsert).toHaveBeenCalledTimes(1);
       const call = db.outboxEvent.upsert.mock.calls[0][0];
-      expect(call.create.idempotencyKey).toMatch(/^task:task\.created:sha256:[a-f0-9]{64}$/);
-      expect(call.create.eventType).toBe("task.created");
-      expect(call.create.aggregateId).toBe("task_99");
+      expect(call.create.idempotencyKey).toMatch(/^metric:metric\.refreshed:sha256:[a-f0-9]{64}$/);
+      expect(call.create.eventType).toBe("metric.refreshed");
+      expect(call.create.aggregateId).toBe("metric_99");
     });
 
     it("uses provided idempotency key when given", async () => {
@@ -215,10 +213,10 @@ describe("outbox-writer", () => {
       await publishTypedDomainEvent(
         db,
         {
-          eventType: "task.moved",
-          aggregateType: "task",
-          aggregateId: "task_1",
-          payload: { taskId: "task_1", fromColumn: "TODO", toColumn: "DOING", movedBy: "u1" },
+          eventType: "dashboard.computed",
+          aggregateType: "dashboard",
+          aggregateId: "metric_1",
+          payload: { dashboardId: "operating", metricKeys: ["development.delivery_health"], computedBy: "u1" },
         },
         { idempotencyKey: "custom-key-123" }
       );
@@ -242,9 +240,9 @@ describe("outbox-writer", () => {
       });
 
       const result = await writeOutboxEventBatch(db, [
-        { eventType: "task.created", aggregateType: "task", aggregateId: "t1", payload: {}, idempotencyKey: "key_1" },
-        { eventType: "task.created", aggregateType: "task", aggregateId: "t2", payload: {}, idempotencyKey: "key_dup" },
-        { eventType: "task.moved", aggregateType: "task", aggregateId: "t3", payload: {}, idempotencyKey: "key_3" },
+        { eventType: "metric.refreshed", aggregateType: "metric", aggregateId: "m1", payload: {}, idempotencyKey: "key_1" },
+        { eventType: "metric.refreshed", aggregateType: "metric", aggregateId: "m2", payload: {}, idempotencyKey: "key_dup" },
+        { eventType: "dashboard.computed", aggregateType: "metric", aggregateId: "m3", payload: {}, idempotencyKey: "key_3" },
       ]);
 
       expect(result.written).toBe(2);
@@ -425,9 +423,9 @@ describe("outbox-worker", () => {
       const registry = createHandlerRegistry();
       const handler = vi.fn();
 
-      registerHandler(registry, "task.created", handler);
+      registerHandler(registry, "metric.refreshed", handler);
 
-      const resolved = resolveHandlers(registry, "task.created");
+      const resolved = resolveHandlers(registry, "metric.refreshed");
       expect(resolved).toHaveLength(1);
       expect(resolved[0]).toBe(handler);
     });
@@ -437,15 +435,15 @@ describe("outbox-worker", () => {
       const handler1 = vi.fn();
       const handler2 = vi.fn();
 
-      registerHandler(registry, "task.moved", handler1);
-      registerHandler(registry, "task.moved", handler2);
+      registerHandler(registry, "dashboard.computed", handler1);
+      registerHandler(registry, "dashboard.computed", handler2);
 
-      expect(resolveHandlers(registry, "task.moved")).toHaveLength(2);
+      expect(resolveHandlers(registry, "dashboard.computed")).toHaveLength(2);
     });
 
     it("returns empty array for unregistered event types", () => {
       const registry = createHandlerRegistry();
-      expect(resolveHandlers(registry, "task.deleted")).toHaveLength(0);
+      expect(resolveHandlers(registry, "integration.sync")).toHaveLength(0);
     });
   });
 
@@ -454,10 +452,10 @@ describe("outbox-worker", () => {
       const registry = createHandlerRegistry();
       const callOrder: number[] = [];
 
-      registerHandler(registry, "task.created", async () => {
+      registerHandler(registry, "metric.refreshed", async () => {
         callOrder.push(1);
       });
-      registerHandler(registry, "task.created", async () => {
+      registerHandler(registry, "metric.refreshed", async () => {
         callOrder.push(2);
       });
 
@@ -473,7 +471,7 @@ describe("outbox-worker", () => {
 
     it("propagates handler errors", async () => {
       const registry = createHandlerRegistry();
-      registerHandler(registry, "task.created", async () => {
+      registerHandler(registry, "metric.refreshed", async () => {
         throw new Error("handler failure");
       });
 
@@ -489,7 +487,7 @@ describe("outbox-worker", () => {
       });
 
       const registry = createHandlerRegistry();
-      registerHandler(registry, "task.created", vi.fn());
+      registerHandler(registry, "metric.refreshed", vi.fn());
 
       const now = new Date("2026-02-15T00:00:00Z");
       const result = await processOutboxBatch(db, registry, {}, { now });
@@ -513,7 +511,7 @@ describe("outbox-worker", () => {
       });
 
       const registry = createHandlerRegistry();
-      registerHandler(registry, "task.created", async (event) => {
+      registerHandler(registry, "metric.refreshed", async (event) => {
         if (event.id === "fail_1") throw new Error("boom");
       });
 
@@ -540,7 +538,7 @@ describe("outbox-worker", () => {
       });
 
       const registry = createHandlerRegistry();
-      registerHandler(registry, "task.created", async () => {
+      registerHandler(registry, "metric.refreshed", async () => {
         throw new Error("always fails");
       });
 
@@ -580,15 +578,15 @@ describe("idempotency", () => {
   describe("canonicalize", () => {
     it("produces deterministic JSON with sorted keys", () => {
       const a = canonicalize({
-        eventType: "task.created",
-        aggregateType: "task",
-        aggregateId: "t1",
+        eventType: "metric.refreshed",
+        aggregateType: "metric",
+        aggregateId: "m1",
         payload: { z: 1, a: 2 },
       });
       const b = canonicalize({
-        eventType: "task.created",
-        aggregateType: "task",
-        aggregateId: "t1",
+        eventType: "metric.refreshed",
+        aggregateType: "metric",
+        aggregateId: "m1",
         payload: { a: 2, z: 1 },
       });
 
@@ -597,9 +595,9 @@ describe("idempotency", () => {
 
     it("handles nested objects with sorted keys", () => {
       const result = canonicalize({
-        eventType: "task.updated",
-        aggregateType: "task",
-        aggregateId: "t1",
+        eventType: "metric.updated",
+        aggregateType: "metric",
+        aggregateId: "m1",
         payload: { changes: { z: 1, a: 2 }, updatedBy: "u1" },
       });
 
@@ -615,20 +613,20 @@ describe("idempotency", () => {
   describe("generateIdempotencyKey", () => {
     it("generates a prefixed SHA-256 key", () => {
       const key = generateIdempotencyKey({
-        eventType: "task.created",
-        aggregateType: "task",
-        aggregateId: "task_1",
+        eventType: "metric.refreshed",
+        aggregateType: "metric",
+        aggregateId: "metric_1",
         payload: { title: "Test" },
       });
 
-      expect(key).toMatch(/^task:task\.created:sha256:[a-f0-9]{64}$/);
+      expect(key).toMatch(/^metric:metric\.refreshed:sha256:[a-f0-9]{64}$/);
     });
 
     it("produces the same key for identical inputs", () => {
       const input = {
-        eventType: "task.moved",
-        aggregateType: "task",
-        aggregateId: "t1",
+        eventType: "dashboard.computed",
+        aggregateType: "metric",
+        aggregateId: "m1",
         payload: { from: "TODO", to: "DOING" },
       };
 
@@ -640,9 +638,9 @@ describe("idempotency", () => {
 
     it("produces different keys for different payloads", () => {
       const base = {
-        eventType: "task.created",
-        aggregateType: "task",
-        aggregateId: "task_1",
+        eventType: "metric.refreshed",
+        aggregateType: "metric",
+        aggregateId: "metric_1",
       };
 
       const key1 = generateIdempotencyKey({ ...base, payload: { title: "A" } });
@@ -653,13 +651,13 @@ describe("idempotency", () => {
 
     it("produces different keys for different aggregate IDs", () => {
       const base = {
-        eventType: "task.created",
-        aggregateType: "task",
+        eventType: "metric.refreshed",
+        aggregateType: "metric",
         payload: { title: "Same" },
       };
 
-      const key1 = generateIdempotencyKey({ ...base, aggregateId: "t1" });
-      const key2 = generateIdempotencyKey({ ...base, aggregateId: "t2" });
+      const key1 = generateIdempotencyKey({ ...base, aggregateId: "m1" });
+      const key2 = generateIdempotencyKey({ ...base, aggregateId: "m2" });
 
       expect(key1).not.toBe(key2);
     });
@@ -668,24 +666,24 @@ describe("idempotency", () => {
   describe("isValidIdempotencyKey", () => {
     it("validates well-formed keys", () => {
       const key = generateIdempotencyKey({
-        eventType: "task.created",
-        aggregateType: "task",
-        aggregateId: "t1",
+        eventType: "metric.refreshed",
+        aggregateType: "metric",
+        aggregateId: "m1",
         payload: {},
       });
       expect(isValidIdempotencyKey(key)).toBe(true);
     });
 
     it("rejects keys without sha256 prefix", () => {
-      expect(isValidIdempotencyKey("task:task.created:md5:abc")).toBe(false);
+      expect(isValidIdempotencyKey("metric:metric.refreshed:md5:abc")).toBe(false);
     });
 
     it("rejects keys with wrong hash length", () => {
-      expect(isValidIdempotencyKey("task:task.created:sha256:abc")).toBe(false);
+      expect(isValidIdempotencyKey("metric:metric.refreshed:sha256:abc")).toBe(false);
     });
 
     it("rejects keys with too few parts", () => {
-      expect(isValidIdempotencyKey("task:sha256")).toBe(false);
+      expect(isValidIdempotencyKey("metric:sha256")).toBe(false);
     });
   });
 
@@ -808,18 +806,17 @@ describe("event-metrics", () => {
   describe("countByProperty", () => {
     it("groups and counts by property value", () => {
       const items = [
-        { eventType: "task.created" },
-        { eventType: "task.created" },
-        { eventType: "task.moved" },
-        { eventType: "sprint.started" },
+        { eventType: "metric.refreshed" },
+        { eventType: "metric.refreshed" },
+        { eventType: "dashboard.computed" },
+        { eventType: "dashboard.computed" },
       ];
 
       const result = countByProperty(items, "eventType");
 
       expect(result).toEqual([
-        { key: "task.created", count: 2 },
-        { key: "task.moved", count: 1 },
-        { key: "sprint.started", count: 1 },
+        { key: "metric.refreshed", count: 2 },
+        { key: "dashboard.computed", count: 2 },
       ]);
     });
 
@@ -865,16 +862,16 @@ describe("event-metrics", () => {
 
       const findMany = vi.fn()
         .mockResolvedValueOnce([
-          { eventType: "task.created" },
-          { eventType: "task.created" },
-          { eventType: "task.moved" },
+          { eventType: "metric.refreshed" },
+          { eventType: "metric.refreshed" },
+          { eventType: "dashboard.computed" },
         ])
         .mockResolvedValueOnce([
           {
             id: "dead_1",
-            eventType: "task.created",
-            aggregateType: "task",
-            aggregateId: "task_1",
+            eventType: "metric.refreshed",
+            aggregateType: "metric",
+            aggregateId: "metric_1",
             retryCount: 5,
             failedAt: new Date("2026-02-15T00:00:00Z"),
             error: "timeout",
@@ -900,16 +897,16 @@ describe("event-metrics", () => {
       expect(metrics.lag.oldestRetryableAgeSeconds).toBe(600); // 10 minutes
 
       expect(metrics.failuresByEventType).toEqual([
-        { eventType: "task.created", count: 2 },
-        { eventType: "task.moved", count: 1 },
+        { eventType: "metric.refreshed", count: 2 },
+        { eventType: "dashboard.computed", count: 1 },
       ]);
 
       expect(metrics.recentDeadLetters).toHaveLength(1);
       expect(metrics.recentDeadLetters[0]).toEqual({
         id: "dead_1",
-        eventType: "task.created",
-        aggregateType: "task",
-        aggregateId: "task_1",
+        eventType: "metric.refreshed",
+        aggregateType: "metric",
+        aggregateId: "metric_1",
         retryCount: 5,
         failedAt: "2026-02-15T00:00:00.000Z",
         error: "timeout",
@@ -949,9 +946,9 @@ describe("outbox event bus — full flow", () => {
     });
 
     const event = await writeOutboxEvent(writeDb, {
-      eventType: "task.created",
-      aggregateType: "task",
-      aggregateId: "task_1",
+      eventType: "metric.refreshed",
+      aggregateType: "metric",
+      aggregateId: "metric_1",
       payload: { title: "Flow test" },
       idempotencyKey: "flow:test:key",
     });
@@ -964,7 +961,7 @@ describe("outbox event bus — full flow", () => {
 
     const registry = createHandlerRegistry();
     const handler = vi.fn();
-    registerHandler(registry, "task.created", handler);
+    registerHandler(registry, "metric.refreshed", handler);
 
     const now = new Date("2026-02-15T00:00:00Z");
     const result = await processOutboxBatch(workerDb, registry, {}, { now });
@@ -991,7 +988,7 @@ describe("outbox event bus — full flow", () => {
     });
 
     const registry = createHandlerRegistry();
-    registerHandler(registry, "task.created", async () => {
+    registerHandler(registry, "metric.refreshed", async () => {
       throw new Error("service unavailable");
     });
 
@@ -1017,20 +1014,20 @@ describe("outbox event bus — full flow", () => {
   });
 
   it("idempotency prevents duplicate writes", async () => {
-    const payload = { taskId: "t1", title: "Test", projectId: null, assigneeId: null, priority: null, createdBy: "u1" };
+    const payload = { metricKey: "development.delivery_health", sourceKey: "linear", value: 1, refreshedBy: "u1" };
     const key = generateIdempotencyKey({
-      eventType: "task.created",
-      aggregateType: "task",
-      aggregateId: "t1",
+      eventType: "metric.refreshed",
+      aggregateType: "metric",
+      aggregateId: "m1",
       payload,
     });
 
     // First write succeeds
     const db1 = makeWriteClient();
     await writeOutboxEvent(db1, {
-      eventType: "task.created",
-      aggregateType: "task",
-      aggregateId: "t1",
+      eventType: "metric.refreshed",
+      aggregateType: "metric",
+      aggregateId: "m1",
       payload,
       idempotencyKey: key,
     });
@@ -1039,9 +1036,9 @@ describe("outbox event bus — full flow", () => {
     // Second write with same key: upsert's update:{} means it's a no-op
     const db2 = makeWriteClient();
     await writeOutboxEvent(db2, {
-      eventType: "task.created",
-      aggregateType: "task",
-      aggregateId: "t1",
+      eventType: "metric.refreshed",
+      aggregateType: "metric",
+      aggregateId: "m1",
       payload,
       idempotencyKey: key,
     });

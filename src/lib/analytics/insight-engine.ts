@@ -20,6 +20,7 @@ const SECTION_ORDER: AnalyticsSectionId[] = [
   "customer-journey",
   "demo-analytics",
   "process-analytics",
+  "revenue",
 ];
 
 const SEVERITY_RANK: Record<AiInsight["severity"], number> = {
@@ -50,13 +51,6 @@ function sortInsights(items: AiInsight[]): AiInsight[] {
     }
     return b.confidence - a.confidence;
   });
-}
-
-function sanitizeInsightActions<T extends { actions: Array<{ type: string }> }>(items: T[]): T[] {
-  return items.map((item) => ({
-    ...item,
-    actions: item.actions.filter((action) => action.type !== "create_task"),
-  }));
 }
 
 // ── Website Traffic + Social Media ───────────────────────
@@ -102,6 +96,11 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: "Audit top 5 landing pages for message match",
+          payload: { title: "Landing page message-match audit", priority: "P1", status: "QUEUED" },
+        },
       ],
     });
   }
@@ -127,6 +126,11 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: "Create paid-landing relevance sprint",
+          payload: { title: "Tighten ad to landing message match", priority: "P1", status: "QUEUED" },
+        },
         {
           type: "assign_owner",
           label: "Assign demand gen owner for channel triage",
@@ -160,6 +164,11 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: "Investigate traffic decline root cause",
+          payload: { title: "Traffic decline investigation", priority: "P1", status: "QUEUED" },
+        },
       ],
     });
   }
@@ -202,6 +211,11 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: `Review ${expensive} campaign targeting`,
+          payload: { title: `${expensive} CPA audit and budget rebalance`, priority: "P2", status: "QUEUED" },
+        },
       ],
     });
   }
@@ -231,6 +245,11 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: "Audit technical SEO and content gaps",
+          payload: { title: "Technical SEO and Content Gap Audit", priority: "P2", status: "QUEUED" },
+        },
       ],
     });
   } else if (organicKw > 0 && paidKw > organicKw * 2) {
@@ -253,20 +272,38 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: "Map converting paid keywords to content plan",
+          payload: { title: "Paid-to-Organic Content Strategy", priority: "P2", status: "QUEUED" },
+        },
       ],
     });
   }
 
-  // 6. Webflow Conversion (Webflow)
-  const submissions = data.webflow?.formSubmissions?.length ?? 0;
+  // 6. Form conversion (Webflow + HubSpot collected forms)
+  const webflowFormSubmissionsAvailable =
+    data.webflow?._meta?.diagnostics?.formSubmissionsAvailable !== false;
+  const webflowSubmissions = webflowFormSubmissionsAvailable
+    ? (data.webflow?.totalFormSubmissions ??
+      data.webflow?.formSubmissions?.reduce((sum, form) => sum + form.count, 0) ??
+      0)
+    : null;
+  const hubspotFormSubmissions =
+    data.hubspot?.collectedForms?.totalFormSubmissions ??
+    data.hubspot?.funnel?.collectedFormSubmissions ??
+    0;
+  const submissions =
+    (webflowSubmissions ?? 0) + hubspotFormSubmissions;
+  const formSubmissionsKnown = webflowSubmissions !== null || hubspotFormSubmissions > 0;
   const pages = data.webflow?.totalPages ?? 0;
-  if (sessionsCurrent > 500 && submissions === 0 && pages > 0) {
+  if (formSubmissionsKnown && sessionsCurrent > 500 && submissions === 0 && pages > 0) {
     insights.push({
       id: "ai-ads-webflow-zero-conv",
       section: "website-traffic",
       severity: "critical",
       title: "0 form submissions despite meaningful traffic",
-      why: `The site generated ${sessionsCurrent} sessions but recorded 0 form submissions in Webflow.`,
+      why: `The site generated ${sessionsCurrent} sessions but recorded 0 form submissions in Webflow or HubSpot collected forms.`,
       confidence: clampConfidence(0.9),
       expectedImpact: "Fixing broken forms immediately restores inbound lead flow.",
       stale: data.staleDomains.includes("webflow") || data.staleDomains.includes("googleAnalytics"),
@@ -280,6 +317,11 @@ function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: "Test all Webflow forms for functionality",
+          payload: { title: "Urgent: Webflow form QA", priority: "P0", status: "WORKING_ON_TODAY" },
+        },
       ],
     });
   }
@@ -332,9 +374,14 @@ function buildFinanceInsights(data: AnalyticsDashboardData): AiInsight[] {
       ],
       actions: [
         {
+          type: "create_recommendation",
+          label: "Create 30-day runway protection plan",
+          payload: { title: "Runway protection and collections plan", priority: "P0", status: "WORKING_ON_TODAY" },
+        },
+        {
           type: "create_automation_from_template",
-          label: "Review sales pipeline automation coverage",
-          payload: { section: "sales-pipeline" },
+          label: "Enable HubSpot stage checklist automation",
+          payload: { templateKey: "hubspot-stage-checklist" },
         },
       ],
     });
@@ -362,6 +409,11 @@ function buildFinanceInsights(data: AnalyticsDashboardData): AiInsight[] {
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: "Build churn cohort analysis",
+          payload: { title: "Churn analysis and retention playbook", priority: "P1", status: "QUEUED" },
+        },
       ],
     });
   }
@@ -388,6 +440,11 @@ function buildFinanceInsights(data: AnalyticsDashboardData): AiInsight[] {
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: "Enable smart retry and dunning",
+          payload: { title: "Payment recovery automation", priority: "P1", status: "QUEUED" },
+        },
       ],
     });
   }
@@ -415,6 +472,11 @@ function buildFinanceInsights(data: AnalyticsDashboardData): AiInsight[] {
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: "Investigate MRR contraction drivers",
+          payload: { title: "MRR contraction root cause analysis", priority: "P1", status: "QUEUED" },
+        },
       ],
     });
   }
@@ -493,6 +555,15 @@ function buildBudgetVarianceInsights(
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: `Review ${worstItem.category} spend`,
+          payload: {
+            title: `Budget variance audit: ${worstItem.category}`,
+            priority: "P1",
+            status: "QUEUED",
+          },
+        },
       ],
     },
   ];
@@ -542,8 +613,18 @@ function buildRunwayForecastInsights(
             delta: `growth Δ ${base.assumptions.revenueGrowthRate.toFixed(0)}%`,
           },
         ],
-        actions: [],
-      },
+        actions: [
+          {
+            type: "create_recommendation",
+          label: "Create contingency cost-reduction plan",
+          payload: {
+            title: "Contingency plan for conservative runway scenario",
+            priority: "P1",
+            status: "QUEUED",
+          },
+        },
+      ],
+    },
   ];
 }
 
@@ -588,6 +669,15 @@ function buildPnlMarginInsights(
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: "Build path-to-breakeven model",
+          payload: {
+            title: "Operating margin improvement roadmap",
+            priority: "P1",
+            status: "QUEUED",
+          },
+        },
       ],
     });
   }
@@ -613,6 +703,15 @@ function buildPnlMarginInsights(
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: "Audit COGS and hosting costs",
+          payload: {
+            title: "Gross margin optimization: reduce COGS",
+            priority: "P2",
+            status: "QUEUED",
+          },
+        },
       ],
     });
   }
@@ -630,9 +729,6 @@ function buildUnitEconomicsInsights(
     data.stripe,
     data.mercury ?? null,
     data.hubspot ?? null,
-    {
-      observedPeriodDays: data.mercury?.cashFlow.observedPeriodDays ?? data.timeRange?.days ?? 30,
-    },
   );
 
   const insights: AiInsight[] = [];
@@ -666,6 +762,15 @@ function buildUnitEconomicsInsights(
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: "Create unit economics improvement plan",
+          payload: {
+            title: "LTV:CAC optimization — reduce CAC or improve retention",
+            priority: "P1",
+            status: "QUEUED",
+          },
+        },
       ],
     });
   }
@@ -692,6 +797,15 @@ function buildUnitEconomicsInsights(
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: "Review pricing and onboarding efficiency",
+          payload: {
+            title: "Payback period reduction sprint",
+            priority: "P2",
+            status: "QUEUED",
+          },
+        },
       ],
     });
   }
@@ -741,6 +855,15 @@ function buildBurnRateTrendInsights(
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: "Create burn-reduction roadmap",
+          payload: {
+            title: "Burn rate reduction and efficiency plan",
+            priority: "P0",
+            status: "WORKING_ON_TODAY",
+          },
+        },
       ],
     },
   ];
@@ -787,6 +910,15 @@ function buildRevenueVsForecastInsights(
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: "Recalibrate revenue forecast assumptions",
+          payload: {
+            title: "Forecast recalibration with updated growth inputs",
+            priority: "P2",
+            status: "QUEUED",
+          },
+        },
       ],
     },
   ];
@@ -828,7 +960,7 @@ function buildExpenseRevenueGrowthDivergenceInsights(
         ],
         actions: [
           {
-            type: "create_task",
+            type: "create_recommendation",
             label: "Conduct expense audit and identify reduction targets",
             payload: {
               title: "Expense-to-revenue ratio audit",
@@ -893,7 +1025,7 @@ function buildRevenueTrendPatternInsights(
       ],
       actions: [
         {
-          type: "create_task",
+          type: "create_recommendation",
           label: "Investigate revenue decline root cause",
           payload: {
             title: "Multi-month revenue decline investigation",
@@ -945,7 +1077,7 @@ function buildRevenueTrendPatternInsights(
         ],
         actions: [
           {
-            type: "create_task",
+            type: "create_recommendation",
             label: "Evaluate scaling acquisition spend",
             payload: {
               title: "Growth acceleration opportunity assessment",
@@ -1004,6 +1136,11 @@ function buildSalesInsights(data: AnalyticsDashboardData): AiInsight[] {
       ],
       actions: [
         {
+          type: "create_recommendation",
+          label: "Create no-show recovery playbook",
+          payload: { title: "No-show recovery + fast follow-up runbook", priority: "P1", status: "QUEUED" },
+        },
+        {
           type: "assign_owner",
           label: "Assign pipeline owner for SLA monitoring",
           payload: { role: "sales-ops" },
@@ -1052,6 +1189,11 @@ function buildSalesInsights(data: AnalyticsDashboardData): AiInsight[] {
           },
         ],
         actions: [
+          {
+            type: "create_recommendation",
+            label: `Investigate ${bottleneckFrom} → ${bottleneckTo} drop-off`,
+            payload: { title: `Pipeline bottleneck: ${bottleneckFrom}`, priority: "P1", status: "QUEUED" },
+          },
         ],
       });
     }
@@ -1084,6 +1226,11 @@ function buildSalesInsights(data: AnalyticsDashboardData): AiInsight[] {
           },
         ],
         actions: [
+          {
+            type: "create_recommendation",
+            label: "Develop secondary pipeline source strategy",
+            payload: { title: "Pipeline source diversification plan", priority: "P2", status: "QUEUED" },
+          },
         ],
       });
     }
@@ -1097,21 +1244,21 @@ function buildSalesInsights(data: AnalyticsDashboardData): AiInsight[] {
 function buildCustomerSuccessInsights(data: AnalyticsDashboardData): AiInsight[] {
   const insights: AiInsight[] = [];
   const urgent = data.pylon?.urgentConversations ?? 0;
-  const backlogGrowth = data.product?.backlogGrowth ?? 0;
-  const throughputRate = data.product?.throughputRate ?? 0;
-  const csStale = data.staleDomains.includes("pylon") || data.staleDomains.includes("slack");
+  const deliveryBalance = data.product?.deliveryBalance ?? 0;
+  const deliveryRate = data.product?.deliveryRate ?? 0;
+  const csStale = data.staleDomains.includes("pylon") || data.staleDomains.includes("codaOps") || data.staleDomains.includes("slack");
 
   // 1. Escalation pressure
-  if (urgent > 10) {
+  if (urgent > 10 || deliveryBalance > 0) {
     insights.push({
       id: "ai-cs-escalation-risk",
       section: "customer-success",
       subsectionId: "cs-pylon",
-      severity: urgent > 20 ? "critical" : "warning",
+      severity: urgent > 20 || deliveryBalance > 10 ? "critical" : "warning",
       title: "Customer-success execution pressure is rising",
-      why: `Urgent conversations climbed to ${urgent} while only ${data.pylon?.resolvedInRange ?? 0} were resolved in range.`,
+      why: `Urgent conversations: ${urgent}; backlog growth: ${deliveryBalance}; throughput: ${deliveryRate?.toFixed(1) ?? "n/a"}%.`,
       confidence: clampConfidence(0.83),
-      expectedImpact: "Reducing urgent conversation load should lower churn precursors and improve response quality.",
+      expectedImpact: "Rebalancing support and execution queues should reduce urgent backlog and churn precursors.",
       stale: csStale,
       evidence: [
         {
@@ -1121,8 +1268,20 @@ function buildCustomerSuccessInsights(data: AnalyticsDashboardData): AiInsight[]
           value: String(urgent),
           delta: `${data.pylon?.resolvedInRange ?? 0} resolved`,
         },
+        {
+          source: "Product Signals",
+          domain: "product",
+          metric: "Backlog Growth",
+          value: String(deliveryBalance),
+          delta: `${deliveryRate?.toFixed(1) ?? "n/a"}% throughput`,
+        },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: "Create urgent CS triage queue",
+          payload: { title: "Urgent CS triage and owner rebalance", priority: "P1", status: "WORKING_ON_TODAY" },
+        },
         {
           type: "open_integration_followup",
           label: "Review Slack/Coda automation health",
@@ -1133,13 +1292,13 @@ function buildCustomerSuccessInsights(data: AnalyticsDashboardData): AiInsight[]
   }
 
   // 2. Throughput stall warning
-  if (throughputRate > 0 && throughputRate < 0.70) {
+  if (deliveryRate > 0 && deliveryRate < 0.70) {
     insights.push({
       id: "ai-cs-throughput-stall",
       section: "customer-success",
-      severity: throughputRate < 0.50 ? "critical" : "warning",
+      severity: deliveryRate < 0.50 ? "critical" : "warning",
       title: "Execution throughput has stalled below target",
-      why: `Throughput rate is ${(throughputRate * 100).toFixed(1)}% — below the 70% healthy threshold. Backlog is growing at ${backlogGrowth}/period.`,
+      why: `Throughput rate is ${(deliveryRate * 100).toFixed(1)}% — below the 70% healthy threshold. Backlog is growing at ${deliveryBalance}/period.`,
       confidence: clampConfidence(0.81),
       expectedImpact: "Restoring throughput above 70% prevents backlog snowball and customer frustration.",
       stale: csStale,
@@ -1148,13 +1307,13 @@ function buildCustomerSuccessInsights(data: AnalyticsDashboardData): AiInsight[]
           source: "Product Signals",
           domain: "product",
           metric: "Throughput Rate",
-          value: `${(throughputRate * 100).toFixed(1)}%`,
-          delta: `Backlog growth: ${backlogGrowth}`,
+          value: `${(deliveryRate * 100).toFixed(1)}%`,
+          delta: `Backlog growth: ${deliveryBalance}`,
         },
       ],
       actions: [
         {
-          type: "create_task",
+          type: "create_recommendation",
           label: "Identify throughput blockers",
           payload: { title: "Execution throughput recovery plan", priority: "P1", status: "QUEUED" },
         },
@@ -1202,6 +1361,11 @@ function buildCrossdomainInsights(data: AnalyticsDashboardData): AiInsight[] {
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: "Audit ad-to-pipeline attribution",
+          payload: { title: "Cross-channel attribution audit", priority: "P1", status: "QUEUED" },
+        },
       ],
     });
   }
@@ -1237,6 +1401,11 @@ function buildCrossdomainInsights(data: AnalyticsDashboardData): AiInsight[] {
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: "Scale support capacity plan",
+          payload: { title: "Support scaling roadmap aligned to growth", priority: "P1", status: "QUEUED" },
+        },
       ],
     });
   }
@@ -1273,6 +1442,11 @@ function buildCrossdomainInsights(data: AnalyticsDashboardData): AiInsight[] {
         },
       ],
       actions: [
+        {
+          type: "create_recommendation",
+          label: "Review pricing and upsell strategy",
+          payload: { title: "Deal size optimization initiative", priority: "P1", status: "QUEUED" },
+        },
       ],
     });
   }
@@ -1308,12 +1482,62 @@ function buildCrossdomainInsights(data: AnalyticsDashboardData): AiInsight[] {
           delta: `${demoScheduled} booked`,
         }
       ],
-      actions: [],
+      actions: [
+        {
+          type: "create_recommendation",
+          label: "Add qualification questions to demo form",
+          payload: { title: "Demo booking form qualification step", priority: "P1", status: "QUEUED" }
+        }
+      ]
+    });
+  }
+
+  // 5. Product delivery risk vs Runway
+  const runwayNew = data.mercury?.cashFlow?.runway ?? 0;
+  const deliveryBalance = data.product?.deliveryBalance ?? 0;
+  const deliveryRate = data.product?.deliveryRate ?? 0;
+
+  if (runwayNew > 0 && runwayNew < 6 && deliveryBalance > 10 && deliveryRate < 0.5) {
+    insights.push({
+      id: "ai-xd-runway-vs-product",
+      section: "finance",
+      severity: runwayNew < 4 ? "critical" : "warning",
+      title: "Product delivery stalled while runway is critically low",
+      why: `Runway is ${runwayNew.toFixed(1)} months but product throughput is only ${(deliveryRate * 100).toFixed(0)}% with a growing backlog. Risk of missing key milestones before next fundraise.`,
+      confidence: clampConfidence(0.85),
+      expectedImpact: "Scoping down near-term roadmap to strictly revenue-unlocking features extends runway.",
+      stale: data.staleDomains.includes("mercury") || data.staleDomains.includes("codaOps"),
+      crossDomain: true,
+      evidence: [
+        {
+          source: "Mercury",
+          domain: "mercury",
+          metric: "Runway",
+          value: `${runwayNew.toFixed(1)} months`,
+          delta: "Critical window",
+        },
+        {
+          source: "Product Signals",
+          domain: "product",
+          metric: "Throughput",
+          value: `${(deliveryRate * 100).toFixed(0)}%`,
+          delta: `${deliveryBalance} tickets added`,
+        }
+      ],
+      actions: [
+        {
+          type: "create_recommendation",
+          label: "Urgent roadmap reprioritization",
+          payload: { title: "Cut scope to minimum rev-generating features", priority: "P0", status: "WORKING_ON_TODAY" }
+        }
+      ]
     });
   }
 
   return insights;
 }
+
+// ── Journey / Demo / Process Insights ────────────────────
 
 function buildJourneyInsight(data: AnalyticsDashboardData): AiInsight | null {
   const journey = data.customerJourney;
@@ -1354,6 +1578,15 @@ function buildJourneyInsight(data: AnalyticsDashboardData): AiInsight | null {
       },
     ],
     actions: [
+      {
+        type: "create_recommendation",
+        label: "Create mid-funnel engagement playbook",
+        payload: {
+          title: "Add touchpoints for stalled deals with low engagement",
+          priority: "P1",
+          status: "QUEUED",
+        },
+      },
       {
         type: "assign_owner",
         label: "Assign owner for stale-deal review",
@@ -1399,6 +1632,15 @@ function buildDemoInsight(data: AnalyticsDashboardData): AiInsight | null {
       },
     ],
     actions: [
+      {
+        type: "create_recommendation",
+        label: "Implement demo reminder + no-show recovery flow",
+        payload: {
+          title: "SMS/email demo reminders and no-show re-engagement",
+          priority: "P1",
+          status: "QUEUED",
+        },
+      },
       {
         type: "create_automation_from_template",
         label: "Enable post-demo follow-up automation",
@@ -1447,6 +1689,15 @@ function buildProcessInsight(data: AnalyticsDashboardData): AiInsight | null {
     ],
     actions: [
       {
+        type: "create_recommendation",
+        label: "Create bottleneck resolution plan",
+        payload: {
+          title: `Clear ${worstBottleneck?.stageLabel ?? "critical"} stage bottleneck`,
+          priority: "P0",
+          status: "WORKING_ON_TODAY",
+        },
+      },
+      {
         type: "assign_owner",
         label: "Assign pipeline velocity owner",
         payload: { role: "rev-ops" },
@@ -1477,6 +1728,11 @@ function buildSteadyStateInsight(data: AnalyticsDashboardData): AiInsight {
       },
     ],
     actions: [
+      {
+        type: "create_recommendation",
+        label: "Define next GTM experiment",
+        payload: { title: "Run one GTM + one execution experiment", priority: "P2", status: "QUEUED" },
+      },
     ],
   };
 }
@@ -1493,9 +1749,7 @@ export function buildAiInsightsBundle(data: AnalyticsDashboardData): AiInsightsB
     ...[buildJourneyInsight(data), buildDemoInsight(data), buildProcessInsight(data)].filter((item): item is AiInsight => item !== null),
   ];
 
-  const global = sanitizeInsightActions(
-    sortInsights(candidateInsights.length > 0 ? candidateInsights : [buildSteadyStateInsight(data)]).slice(0, 12)
-  );
+  const global = sortInsights(candidateInsights.length > 0 ? candidateInsights : [buildSteadyStateInsight(data)]).slice(0, 12);
 
   const bySection = SECTION_ORDER.reduce<AiInsightsBundle["bySection"]>(
     (acc, section) => {
@@ -1512,6 +1766,7 @@ export function buildAiInsightsBundle(data: AnalyticsDashboardData): AiInsightsB
       "customer-journey": [],
       "demo-analytics": [],
       "process-analytics": [],
+      revenue: [],
     }
   );
 

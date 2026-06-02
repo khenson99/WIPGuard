@@ -238,7 +238,7 @@ describe("Quality Gate Engine", () => {
     it("passes when all critical paths are covered", () => {
       const paths: CriticalPath[] = [
         { id: "login", name: "User login", covered: true, testFile: "auth.test.ts" },
-        { id: "task-create", name: "Task creation", covered: true, testFile: "tasks.test.ts" },
+        { id: "insight-note", name: "Insight note", covered: true, testFile: "insights.test.ts" },
       ];
 
       const result = runQualityGate({ criticalPaths: paths });
@@ -346,7 +346,7 @@ describe("Quality Gate Engine", () => {
         coverageThresholds: DEFAULT_COVERAGE_THRESHOLDS,
         previousCoverage: makeCoverage({ coveredStatements: 78 }),
         criticalPaths: [
-          { id: "task-lifecycle", name: "Task lifecycle", covered: true },
+          { id: "metric-lifecycle", name: "Metric lifecycle", covered: true },
           { id: "policy-enforcement", name: "Policy enforcement", covered: true },
         ],
         testResults: { total: 100, passed: 100, failed: 0, skipped: 2 },

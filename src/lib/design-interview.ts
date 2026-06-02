@@ -18,7 +18,7 @@ export interface DesignInterviewDraft {
   completedPromptIds: string[];
 }
 
-export const DESIGN_INTERVIEW_STORAGE_KEY = "wipguard:design-interview:draft";
+export const DESIGN_INTERVIEW_STORAGE_KEY = "imladris:design-interview:draft";
 
 export const DESIGN_INTERVIEW_CONTEXT = [
   "Stack: React 19, TypeScript, Tailwind CSS v4, shadcn/ui, AG Grid, Storybook 10",

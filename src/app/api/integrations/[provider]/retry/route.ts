@@ -14,6 +14,29 @@ interface RouteParams {
   params: Promise<{ provider: string }>;
 }
 
+function asPositiveNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function formatRuleFailureDetails(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.map((entry) => {
+    const record = entry && typeof entry === "object"
+      ? (entry as Record<string, unknown>)
+      : {};
+    const ruleKey =
+      typeof record.ruleKey === "string" && record.ruleKey.trim()
+        ? record.ruleKey
+        : "unknown_rule";
+    const error =
+      typeof record.error === "string" && record.error.trim()
+        ? record.error
+        : "failed without error detail";
+    return `${ruleKey}: ${error}`;
+  });
+}
+
 export async function POST(
   request: NextRequest,
   context: RouteParams,
@@ -78,23 +101,8 @@ export async function POST(
       );
     }
 
-    // Verify there are enabled rules to run
-    const enabledRuleCount = await prisma.integrationRule.count({
-      where: {
-        userId: ownerUserId,
-        provider: definition.provider,
-        enabled: true,
-      },
-    });
-
-    if (enabledRuleCount === 0) {
-      return NextResponse.json(
-        { error: "No enabled sync rules for this provider" },
-        { status: 409 },
-      );
-    }
-
-    // Trigger sync through the existing orchestrator (respects circuit breaker internally)
+    // Trigger sync through the existing orchestrator. It bootstraps missing
+    // provider metric rules and respects circuit breaker state internally.
     const result = await runRules({
       mode: "incremental",
       providers: [definition.provider],
@@ -102,11 +110,22 @@ export async function POST(
       dryRun: false,
       startedAt: new Date().toISOString(),
     });
+    const failedRules = asPositiveNumber(result.failedRules);
+    const failedUserRuns = asPositiveNumber(result.failedUserRuns);
+    const failures = [
+      ...formatRuleFailureDetails(result.failedRuleErrors),
+      ...(failedUserRuns > 0 ? [`${failedUserRuns} user run failed`] : []),
+    ];
+    const degraded = failedRules > 0 || failedUserRuns > 0;
 
     return NextResponse.json({
-      ok: true,
+      ok: !degraded,
+      degraded,
       provider: definition.provider,
       executedRules: result.executedRules,
+      failedRules,
+      failedUserRuns,
+      failures,
       startedAt: result.startedAt,
       finishedAt: result.finishedAt,
     });

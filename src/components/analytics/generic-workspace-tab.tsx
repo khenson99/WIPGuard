@@ -46,7 +46,7 @@ export function TelemetryDashboard({
 }) {
   const {
     totalRules, enabledRules, erroredRules,
-    receiptsInRange, tasksCreatedInRange: artifactsCreatedInRange, eventsInRange, failuresInRange,
+    receiptsInRange, artifactsCreatedInRange: artifactsCreatedInRange, eventsInRange, failuresInRange,
     trend, topFailureReasons,
   } = telemetry;
 

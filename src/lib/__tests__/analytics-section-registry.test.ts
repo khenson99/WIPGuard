@@ -20,6 +20,7 @@ describe("analytics section registry", () => {
     expect(ids.has("customer-journey")).toBe(true);
     expect(ids.has("demo-analytics")).toBe(true);
     expect(ids.has("process-analytics")).toBe(true);
+    expect(ids.has("revenue")).toBe(true);
   });
 
   it("keeps only non-task customer-success child sections", () => {
@@ -52,24 +53,21 @@ describe("analytics section registry", () => {
 
   it("redirects removed customer-success ops routes to the parent dashboard", () => {
     expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS.tasks).toBe("/analytics/customer-success");
-    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS.coda).toBe("/analytics/ads-coda-kanban");
-    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["decision-dashboard"]).toBe("/analytics/process-analytics");
-    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["flow-metrics"]).toBe("/analytics/process-analytics");
-    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["flow-risk"]).toBe("/analytics/process-analytics");
-    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS.observability).toBe("/analytics/process-analytics");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS.coda).toBe("/analytics/social-media");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["decision-dashboard"]).toBe("/analytics/customer-success");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["flow-metrics"]).toBe("/analytics/customer-success");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["flow-risk"]).toBe("/analytics/customer-success");
+    expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS.observability).toBe("/analytics/customer-success");
     expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-decision-dashboard"]).toBe("/analytics/customer-success");
     expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-flow-metrics"]).toBe("/analytics/customer-success");
     expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-flow-risk"]).toBe("/analytics/customer-success");
     expect(LEGACY_ANALYTICS_ROUTE_REDIRECTS["cs-observability"]).toBe("/analytics/customer-success");
-    expect("cs-product" in LEGACY_ANALYTICS_ROUTE_REDIRECTS).toBe(false);
   });
 
   it("returns the owning primary section for child routes", () => {
-    expect(ANALYTICS_SUB_SECTIONS.find((section) => section.id === "ads-coda-kanban")?.label).toBe(
-      "Campaigns & Conferences",
-    );
+    expect(ANALYTICS_SUB_SECTIONS.find((section) => section.id === "ads-coda-kanban")).toBeUndefined();
     expect(getAnalyticsPrimaryForSection("ads-google-ads")?.id).toBe("social-media");
-    expect(getAnalyticsPrimaryForSection("ads-coda-kanban")?.id).toBe("social-media");
+    expect(getAnalyticsPrimaryForSection("ads-coda-kanban")).toBeNull();
     expect(getAnalyticsPrimaryForSection("ads-google-analytics")?.id).toBe("website-traffic");
     expect(getAnalyticsPrimaryForSection("finance-stripe")?.id).toBe("finance");
     expect(getAnalyticsPrimaryForSection("sales-hubspot")?.id).toBe("sales-pipeline");
@@ -92,5 +90,14 @@ describe("analytics section registry", () => {
     expect(getAnalyticsSecondaryForPrimary("customer-success").length).toBeGreaterThan(0);
     expect(getAnalyticsSecondaryForPrimary("customer-journey").length).toBeGreaterThan(0);
     expect(getAnalyticsSecondaryForPrimary("process-analytics").length).toBeGreaterThan(0);
+  });
+
+  it("includes revenue as a top-level metrics group for investor reporting", () => {
+    const revenue = ANALYTICS_PRIMARY_SECTIONS.find((section) => section.id === "revenue");
+    expect(revenue).toMatchObject({
+      label: "Revenue",
+      path: "/analytics/revenue",
+    });
+    expect(getAnalyticsPrimaryForSection("revenue")?.id).toBe("revenue");
   });
 });

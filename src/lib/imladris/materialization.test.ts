@@ -1,0 +1,1202 @@
+import { describe, expect, it, vi } from "vitest";
+import { IntegrationProvider } from "@/generated/prisma/client";
+import {
+  materializeImladrisCustomerSuccessMetrics,
+  materializeImladrisDevelopmentMetrics,
+  materializeImladrisFinanceMetrics,
+  materializeImladrisMarketingMetrics,
+  materializeImladrisProductActivationMetric,
+  materializeImladrisSalesMetrics,
+} from "@/lib/imladris/materialization";
+
+const CONTEXT = {
+  userId: "user_1",
+  organizationId: "org_1",
+};
+
+function createPrismaMock() {
+  return {
+    imladrisRawSourceRecord: {
+      findMany: vi.fn(async () => [
+        {
+          id: "raw_linear_1",
+          provider: IntegrationProvider.LINEAR,
+          objectType: "issue",
+          externalId: "LIN-1",
+          occurredAt: new Date("2026-05-15T10:00:00.000Z"),
+          sourceCreatedAt: new Date("2026-05-10T10:00:00.000Z"),
+          sourceUpdatedAt: new Date("2026-05-15T10:00:00.000Z"),
+          payload: {
+            id: "LIN-1",
+            state: { type: "completed" },
+            createdAt: "2026-05-10T10:00:00.000Z",
+            completedAt: "2026-05-15T10:00:00.000Z",
+          },
+        },
+        {
+          id: "raw_github_1",
+          provider: IntegrationProvider.GITHUB,
+          objectType: "pull_request",
+          externalId: "repo/pull/7",
+          occurredAt: new Date("2026-05-18T10:00:00.000Z"),
+          sourceCreatedAt: new Date("2026-05-16T10:00:00.000Z"),
+          sourceUpdatedAt: new Date("2026-05-18T10:00:00.000Z"),
+          payload: {
+            number: 7,
+            merged: true,
+            created_at: "2026-05-16T10:00:00.000Z",
+            merged_at: "2026-05-18T10:00:00.000Z",
+          },
+        },
+        {
+          id: "raw_posthog_1",
+          provider: IntegrationProvider.POSTHOG,
+          objectType: "event",
+          externalId: "evt_1",
+          occurredAt: new Date("2026-05-19T10:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: null,
+          payload: {
+            event: "activation_completed",
+            distinct_id: "acct_1",
+          },
+        },
+      ]),
+    },
+    imladrisCanonicalMetricValue: {
+      upsert: vi.fn(async ({ create }) => ({ id: "metric_1", ...create })),
+    },
+    imladrisMetricLineage: {
+      deleteMany: vi.fn(async () => ({ count: 0 })),
+      createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+    },
+  };
+}
+
+function createActivationPrismaMock() {
+  return {
+    imladrisRawSourceRecord: {
+      findMany: vi.fn(async () => [
+        {
+          id: "raw_hubspot_1",
+          provider: IntegrationProvider.HUBSPOT,
+          objectType: "company",
+          externalId: "acct_1",
+          occurredAt: new Date("2026-05-03T10:00:00.000Z"),
+          sourceCreatedAt: new Date("2026-05-03T10:00:00.000Z"),
+          sourceUpdatedAt: new Date("2026-05-03T10:00:00.000Z"),
+          payload: { id: "acct_1", name: "Aperture" },
+        },
+        {
+          id: "raw_hubspot_2",
+          provider: IntegrationProvider.HUBSPOT,
+          objectType: "company",
+          externalId: "acct_2",
+          occurredAt: new Date("2026-05-04T10:00:00.000Z"),
+          sourceCreatedAt: new Date("2026-05-04T10:00:00.000Z"),
+          sourceUpdatedAt: new Date("2026-05-04T10:00:00.000Z"),
+          payload: { id: "acct_2", name: "Black Mesa" },
+        },
+        {
+          id: "raw_posthog_activation_1",
+          provider: IntegrationProvider.POSTHOG,
+          objectType: "event",
+          externalId: "evt_activation_1",
+          occurredAt: new Date("2026-05-05T10:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: null,
+          payload: {
+            event: "activation_completed",
+            distinct_id: "acct_1",
+            properties: { hubspotCompanyId: "acct_1" },
+          },
+        },
+      ]),
+    },
+    imladrisCanonicalMetricValue: {
+      upsert: vi.fn(async ({ create }) => ({ id: "metric_activation_1", ...create })),
+    },
+    imladrisMetricLineage: {
+      deleteMany: vi.fn(async () => ({ count: 0 })),
+      createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+    },
+  };
+}
+
+function createFinancePrismaMock() {
+  return {
+    imladrisRawSourceRecord: {
+      findMany: vi.fn(async () => [
+        {
+          id: "raw_mercury_balance_1",
+          provider: IntegrationProvider.MERCURY,
+          objectType: "account_balance",
+          externalId: "balance_1",
+          occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+          payload: {
+            availableBalance: 500_000,
+            currency: "USD",
+          },
+        },
+        {
+          id: "raw_mercury_txn_1",
+          provider: IntegrationProvider.MERCURY,
+          objectType: "transaction",
+          externalId: "txn_1",
+          occurredAt: new Date("2026-05-05T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-05T00:00:00.000Z"),
+          payload: {
+            amount: -160_000,
+            category: "payroll",
+            currency: "USD",
+          },
+        },
+        {
+          id: "raw_mercury_txn_2",
+          provider: IntegrationProvider.MERCURY,
+          objectType: "transaction",
+          externalId: "txn_2",
+          occurredAt: new Date("2026-05-20T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+          payload: {
+            amount: 40_000,
+            category: "refund",
+            currency: "USD",
+          },
+        },
+        {
+          id: "raw_stripe_sub_1",
+          provider: IntegrationProvider.STRIPE,
+          objectType: "subscription",
+          externalId: "sub_1",
+          occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+          payload: {
+            status: "active",
+            monthlyRecurringRevenue: 30_000,
+            currency: "USD",
+          },
+        },
+        {
+          id: "raw_hubspot_deal_1",
+          provider: IntegrationProvider.HUBSPOT,
+          objectType: "deal",
+          externalId: "deal_1",
+          occurredAt: new Date("2026-05-12T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-12T00:00:00.000Z"),
+          payload: {
+            amount: 15_000,
+            dealstage: "closedwon",
+            recurringRevenue: true,
+            currency: "USD",
+          },
+        },
+      ]),
+    },
+    imladrisCanonicalMetricValue: {
+      upsert: vi.fn(async ({ create }) => {
+        const metricKey = String(create.metricKey);
+        return {
+          id: `metric_${metricKey.replaceAll(".", "_")}`,
+          ...create,
+        };
+      }),
+    },
+    imladrisMetricLineage: {
+      deleteMany: vi.fn(async () => ({ count: 0 })),
+      createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+    },
+  };
+}
+
+function createSalesPrismaMock() {
+  return {
+    imladrisRawSourceRecord: {
+      findMany: vi.fn(async () => [
+        {
+          id: "raw_hubspot_pipeline_1",
+          provider: IntegrationProvider.HUBSPOT,
+          objectType: "deal",
+          externalId: "deal_qualified_1",
+          occurredAt: new Date("2026-05-03T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+          payload: {
+            amount: 120_000,
+            dealstage: "qualified",
+            pipeline: "new-business",
+            companyId: "acct_1",
+            currency: "USD",
+          },
+        },
+        {
+          id: "raw_hubspot_pipeline_2",
+          provider: IntegrationProvider.HUBSPOT,
+          objectType: "deal",
+          externalId: "deal_discovery_1",
+          occurredAt: new Date("2026-05-05T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-21T00:00:00.000Z"),
+          payload: {
+            amount: 50_000,
+            dealstage: "appointmentscheduled",
+            companyId: "acct_2",
+            currency: "USD",
+          },
+        },
+        {
+          id: "raw_google_meeting_1",
+          provider: IntegrationProvider.GOOGLE_WORKSPACE,
+          objectType: "calendar_event",
+          externalId: "meeting_1",
+          occurredAt: new Date("2026-05-15T17:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-15T17:00:00.000Z"),
+          payload: {
+            dealId: "deal_qualified_1",
+            attendees: ["buyer@example.com", "ae@example.com"],
+          },
+        },
+        {
+          id: "raw_slack_thread_1",
+          provider: IntegrationProvider.SLACK,
+          objectType: "thread",
+          externalId: "thread_1",
+          occurredAt: new Date("2026-05-16T17:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-16T17:00:00.000Z"),
+          payload: {
+            dealId: "deal_qualified_1",
+            messageCount: 8,
+          },
+        },
+      ]),
+    },
+    imladrisCanonicalMetricValue: {
+      upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_qualified_pipeline", ...create })),
+    },
+    imladrisMetricLineage: {
+      deleteMany: vi.fn(async () => ({ count: 0 })),
+      createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+    },
+  };
+}
+
+function createMarketingPrismaMock() {
+  return {
+    imladrisRawSourceRecord: {
+      findMany: vi.fn(async () => [
+        {
+          id: "raw_google_ads_1",
+          provider: IntegrationProvider.GOOGLE_ADS,
+          objectType: "campaign_metric",
+          externalId: "gads_1",
+          occurredAt: new Date("2026-05-08T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-08T00:00:00.000Z"),
+          payload: {
+            spend: 10_000,
+            clicks: 900,
+            currency: "USD",
+          },
+        },
+        {
+          id: "raw_meta_ads_1",
+          provider: IntegrationProvider.META_ADS,
+          objectType: "campaign_metric",
+          externalId: "meta_1",
+          occurredAt: new Date("2026-05-09T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-09T00:00:00.000Z"),
+          payload: {
+            amountSpent: 5_000,
+            clicks: 500,
+            currency: "USD",
+          },
+        },
+        {
+          id: "raw_reddit_ads_1",
+          provider: IntegrationProvider.REDDIT,
+          objectType: "campaign_metric",
+          externalId: "reddit_1",
+          occurredAt: new Date("2026-05-09T12:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-09T12:00:00.000Z"),
+          payload: {
+            spend: 2_500,
+            clicks: 250,
+            currency: "USD",
+          },
+        },
+        {
+          id: "raw_ga_1",
+          provider: IntegrationProvider.GOOGLE_ANALYTICS,
+          objectType: "traffic_summary",
+          externalId: "ga_1",
+          occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+          payload: {
+            sessions: 2_000,
+            conversions: 40,
+          },
+        },
+        {
+          id: "raw_webflow_1",
+          provider: IntegrationProvider.WEBFLOW,
+          objectType: "snapshot",
+          externalId: "webflow_snapshot_1",
+          occurredAt: new Date("2026-05-10T12:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-10T12:00:00.000Z"),
+          payload: {
+            siteName: "Imladris",
+            totalPages: 12,
+            publishedPages: 10,
+            totalFormSubmissions: 25,
+          },
+        },
+        {
+          id: "raw_semrush_1",
+          provider: IntegrationProvider.SEMRUSH,
+          objectType: "domain_organic",
+          externalId: "semrush_1",
+          occurredAt: new Date("2026-05-11T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-11T00:00:00.000Z"),
+          payload: {
+            organicTraffic: 500,
+            keywordCount: 120,
+          },
+        },
+        {
+          id: "raw_gsc_1",
+          provider: IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
+          objectType: "query",
+          externalId: "gsc_1",
+          occurredAt: new Date("2026-05-11T12:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-11T12:00:00.000Z"),
+          payload: {
+            query: "imladris analytics",
+            clicks: 120,
+            impressions: 2400,
+          },
+        },
+        {
+          id: "raw_unify_1",
+          provider: IntegrationProvider.UNIFY,
+          objectType: "visitor",
+          externalId: "visitor_1",
+          occurredAt: new Date("2026-05-12T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-12T00:00:00.000Z"),
+          payload: {
+            companyId: "acct_1",
+            identified: true,
+          },
+        },
+        {
+          id: "raw_unify_2",
+          provider: IntegrationProvider.UNIFY,
+          objectType: "visitor",
+          externalId: "visitor_2",
+          occurredAt: new Date("2026-05-13T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-13T00:00:00.000Z"),
+          payload: {
+            companyId: "acct_2",
+            identified: true,
+          },
+        },
+        {
+          id: "raw_hubspot_marketing_deal_1",
+          provider: IntegrationProvider.HUBSPOT,
+          objectType: "deal",
+          externalId: "deal_marketing_1",
+          occurredAt: new Date("2026-05-14T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-14T00:00:00.000Z"),
+          payload: {
+            amount: 90_000,
+            dealstage: "qualified",
+            originalSource: "paid",
+            currency: "USD",
+          },
+        },
+      ]),
+    },
+    imladrisCanonicalMetricValue: {
+      upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_pipeline_efficiency", ...create })),
+    },
+    imladrisMetricLineage: {
+      deleteMany: vi.fn(async () => ({ count: 0 })),
+      createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+    },
+  };
+}
+
+function createCustomerSuccessPrismaMock() {
+  return {
+    imladrisRawSourceRecord: {
+      findMany: vi.fn(async () => [
+        {
+          id: "raw_pylon_issue_1",
+          provider: IntegrationProvider.PYLON,
+          objectType: "conversation",
+          externalId: "conv_1",
+          occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+          payload: {
+            accountId: "acct_1",
+            status: "open",
+            priority: "high",
+            sentiment: "negative",
+          },
+        },
+        {
+          id: "raw_pylon_issue_2",
+          provider: IntegrationProvider.PYLON,
+          objectType: "conversation",
+          externalId: "conv_2",
+          occurredAt: new Date("2026-05-11T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-21T00:00:00.000Z"),
+          payload: {
+            accountId: "acct_1",
+            status: "open",
+            priority: "normal",
+          },
+        },
+        {
+          id: "raw_posthog_usage_1",
+          provider: IntegrationProvider.POSTHOG,
+          objectType: "account_usage",
+          externalId: "usage_1",
+          occurredAt: new Date("2026-05-17T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-17T00:00:00.000Z"),
+          payload: {
+            accountId: "acct_1",
+            activeUsers: 1,
+            daysSinceLastActive: 21,
+          },
+        },
+        {
+          id: "raw_slack_escalation_1",
+          provider: IntegrationProvider.SLACK,
+          objectType: "thread",
+          externalId: "thread_escalation_1",
+          occurredAt: new Date("2026-05-18T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-18T00:00:00.000Z"),
+          payload: {
+            accountId: "acct_1",
+            type: "escalation",
+            status: "open",
+          },
+        },
+        {
+          id: "raw_workspace_meeting_1",
+          provider: IntegrationProvider.GOOGLE_WORKSPACE,
+          objectType: "calendar_event",
+          externalId: "event_1",
+          occurredAt: new Date("2026-05-22T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-22T00:00:00.000Z"),
+          payload: {
+            accountId: "acct_1",
+            eventType: "renewal_review",
+          },
+        },
+        {
+          id: "raw_stripe_subscription_1",
+          provider: IntegrationProvider.STRIPE,
+          objectType: "subscription",
+          externalId: "sub_risk_1",
+          occurredAt: new Date("2026-05-24T00:00:00.000Z"),
+          sourceCreatedAt: null,
+          sourceUpdatedAt: new Date("2026-05-24T00:00:00.000Z"),
+          payload: {
+            accountId: "acct_1",
+            status: "past_due",
+          },
+        },
+      ]),
+    },
+    imladrisCanonicalMetricValue: {
+      upsert: vi.fn(async ({ create }) => ({
+        id: "metric_customer_success_retention_risk",
+        ...create,
+      })),
+    },
+    imladrisMetricLineage: {
+      deleteMany: vi.fn(async () => ({ count: 0 })),
+      createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+    },
+  };
+}
+
+describe("Imladris canonical materialization", () => {
+  it("materializes development delivery health from Linear, GitHub, and PostHog raw records", async () => {
+    const prisma = createPrismaMock();
+    const periodStart = new Date("2026-05-01T00:00:00.000Z");
+    const periodEnd = new Date("2026-05-29T00:00:00.000Z");
+
+    const result = await materializeImladrisDevelopmentMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart,
+      periodEnd,
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result).toMatchObject({
+      metricKey: "development.delivery_health",
+      status: "READY",
+      rawRecordCount: 3,
+    });
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        provider: {
+          in: [
+            IntegrationProvider.LINEAR,
+            IntegrationProvider.GITHUB,
+            IntegrationProvider.POSTHOG,
+          ],
+        },
+        OR: [{ userId: "user_1" }, { organizationId: "org_1" }],
+      }),
+      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
+    });
+    expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith({
+      where: {
+        organizationId_userId_metricKey_periodEnd_calculationVersion: {
+          organizationId: "org_1",
+          userId: "user_1",
+          metricKey: "development.delivery_health",
+          periodEnd,
+          calculationVersion: "development-delivery-health-v1",
+        },
+      },
+      create: expect.objectContaining({
+        metricKey: "development.delivery_health",
+        department: "development",
+        unit: "score",
+        status: "READY",
+        confidence: expect.any(Number),
+        periodStart,
+        periodEnd,
+        userId: "user_1",
+        organizationId: "org_1",
+        value: expect.objectContaining({
+          score: expect.any(Number),
+          completedLinearIssues: 1,
+          mergedPullRequests: 1,
+          productEvents: 1,
+        }),
+      }),
+      update: expect.objectContaining({
+        status: "READY",
+        value: expect.objectContaining({
+          completedLinearIssues: 1,
+          mergedPullRequests: 1,
+          productEvents: 1,
+        }),
+      }),
+    });
+    expect(prisma.imladrisMetricLineage.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          metricValueId: "metric_1",
+          rawRecordId: "raw_linear_1",
+          sourceKey: "linear",
+          sourceType: "issue",
+          sourceId: "LIN-1",
+        }),
+        expect.objectContaining({
+          metricValueId: "metric_1",
+          rawRecordId: "raw_github_1",
+          sourceKey: "github",
+          sourceType: "pull_request",
+          sourceId: "repo/pull/7",
+        }),
+        expect.objectContaining({
+          metricValueId: "metric_1",
+          rawRecordId: "raw_posthog_1",
+          sourceKey: "posthog",
+          sourceType: "event",
+          sourceId: "evt_1",
+        }),
+      ]),
+    });
+  });
+
+  it("materializes product activation rate from HubSpot accounts and PostHog activation events", async () => {
+    const prisma = createActivationPrismaMock();
+    const periodStart = new Date("2026-05-01T00:00:00.000Z");
+    const periodEnd = new Date("2026-05-29T00:00:00.000Z");
+
+    const result = await materializeImladrisProductActivationMetric({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart,
+      periodEnd,
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result).toMatchObject({
+      metricKey: "product.activation_rate",
+      status: "READY",
+      rawRecordCount: 3,
+      value: {
+        rate: 0.5,
+        activatedAccounts: 1,
+        eligibleAccounts: 2,
+      },
+    });
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        provider: {
+          in: [IntegrationProvider.HUBSPOT, IntegrationProvider.POSTHOG],
+        },
+        OR: [{ userId: "user_1" }, { organizationId: "org_1" }],
+      }),
+      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
+    });
+    expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith({
+      where: {
+        organizationId_userId_metricKey_periodEnd_calculationVersion: {
+          organizationId: "org_1",
+          userId: "user_1",
+          metricKey: "product.activation_rate",
+          periodEnd,
+          calculationVersion: "product-activation-rate-v1",
+        },
+      },
+      create: expect.objectContaining({
+        metricKey: "product.activation_rate",
+        department: "development",
+        unit: "percent",
+        status: "READY",
+        value: {
+          rate: 0.5,
+          activatedAccounts: 1,
+          eligibleAccounts: 2,
+        },
+      }),
+      update: expect.objectContaining({
+        status: "READY",
+        value: {
+          rate: 0.5,
+          activatedAccounts: 1,
+          eligibleAccounts: 2,
+        },
+      }),
+    });
+    expect(prisma.imladrisMetricLineage.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          metricValueId: "metric_activation_1",
+          rawRecordId: "raw_hubspot_1",
+          sourceKey: "hubspot",
+          sourceType: "company",
+          sourceId: "acct_1",
+        }),
+        expect.objectContaining({
+          metricValueId: "metric_activation_1",
+          rawRecordId: "raw_posthog_activation_1",
+          sourceKey: "posthog",
+          sourceType: "event",
+          sourceId: "evt_activation_1",
+        }),
+      ]),
+    });
+  });
+
+  it("materializes finance dashboard metrics from Mercury, Stripe, and HubSpot raw records", async () => {
+    const prisma = createFinancePrismaMock();
+    const periodStart = new Date("2026-05-01T00:00:00.000Z");
+    const periodEnd = new Date("2026-05-29T00:00:00.000Z");
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart,
+      periodEnd,
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results).toEqual([
+      expect.objectContaining({
+        metricKey: "finance.net_burn",
+        status: "READY",
+        value: {
+          amount: 90_000,
+          currency: "USD",
+          cashOutflow: 160_000,
+          cashInflow: 70_000,
+        },
+      }),
+      expect.objectContaining({
+        metricKey: "finance.cash_runway_months",
+        status: "READY",
+        value: {
+          months: 5.56,
+          cashBalance: 500_000,
+          netBurn: 90_000,
+          currency: "USD",
+        },
+      }),
+      expect.objectContaining({
+        metricKey: "revenue.mrr",
+        status: "READY",
+        value: {
+          amount: 45_000,
+          currency: "USD",
+          stripeMrr: 30_000,
+          hubspotRecurringRevenue: 15_000,
+        },
+      }),
+    ]);
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        provider: {
+          in: [
+            IntegrationProvider.MERCURY,
+            IntegrationProvider.STRIPE,
+            IntegrationProvider.HUBSPOT,
+          ],
+        },
+        OR: [{ userId: "user_1" }, { organizationId: "org_1" }],
+      }),
+      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
+    });
+    expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          organizationId_userId_metricKey_periodEnd_calculationVersion: {
+            organizationId: "org_1",
+            userId: "user_1",
+            metricKey: "finance.cash_runway_months",
+            periodEnd,
+            calculationVersion: "finance-cash-runway-v1",
+          },
+        },
+        create: expect.objectContaining({
+          metricKey: "finance.cash_runway_months",
+          department: "finance",
+          unit: "days",
+          status: "READY",
+        }),
+      }),
+    );
+    expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          organizationId_userId_metricKey_periodEnd_calculationVersion: {
+            organizationId: "org_1",
+            userId: "user_1",
+            metricKey: "revenue.mrr",
+            periodEnd,
+            calculationVersion: "revenue-mrr-v1",
+          },
+        },
+        create: expect.objectContaining({
+          metricKey: "revenue.mrr",
+          department: "finance",
+          unit: "currency",
+          status: "READY",
+        }),
+      }),
+    );
+    expect(prisma.imladrisMetricLineage.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          sourceKey: "mercury",
+          sourceType: "account_balance",
+          sourceId: "balance_1",
+        }),
+        expect.objectContaining({
+          sourceKey: "stripe",
+          sourceType: "subscription",
+          sourceId: "sub_1",
+        }),
+        expect.objectContaining({
+          sourceKey: "hubspot",
+          sourceType: "deal",
+          sourceId: "deal_1",
+        }),
+      ]),
+    });
+  });
+
+  it("materializes qualified sales pipeline from HubSpot and collaboration raw records", async () => {
+    const prisma = createSalesPrismaMock();
+    const periodStart = new Date("2026-05-01T00:00:00.000Z");
+    const periodEnd = new Date("2026-05-29T00:00:00.000Z");
+
+    const result = await materializeImladrisSalesMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart,
+      periodEnd,
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result).toMatchObject({
+      metricKey: "sales.qualified_pipeline",
+      status: "READY",
+      rawRecordCount: 4,
+      value: {
+        amount: 120_000,
+        currency: "USD",
+        qualifiedDealCount: 1,
+        collaborationTouchCount: 2,
+        collaborationCoverage: 1,
+      },
+    });
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        provider: {
+          in: [
+            IntegrationProvider.HUBSPOT,
+            IntegrationProvider.GOOGLE_WORKSPACE,
+            IntegrationProvider.SLACK,
+          ],
+        },
+        OR: [{ userId: "user_1" }, { organizationId: "org_1" }],
+      }),
+      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
+    });
+    expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith({
+      where: {
+        organizationId_userId_metricKey_periodEnd_calculationVersion: {
+          organizationId: "org_1",
+          userId: "user_1",
+          metricKey: "sales.qualified_pipeline",
+          periodEnd,
+          calculationVersion: "sales-qualified-pipeline-v1",
+        },
+      },
+      create: expect.objectContaining({
+        metricKey: "sales.qualified_pipeline",
+        department: "sales",
+        unit: "currency",
+        status: "READY",
+        value: {
+          amount: 120_000,
+          currency: "USD",
+          qualifiedDealCount: 1,
+          collaborationTouchCount: 2,
+          collaborationCoverage: 1,
+        },
+      }),
+      update: expect.objectContaining({
+        status: "READY",
+        value: {
+          amount: 120_000,
+          currency: "USD",
+          qualifiedDealCount: 1,
+          collaborationTouchCount: 2,
+          collaborationCoverage: 1,
+        },
+      }),
+    });
+    expect(prisma.imladrisMetricLineage.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          metricValueId: "metric_sales_qualified_pipeline",
+          rawRecordId: "raw_hubspot_pipeline_1",
+          sourceKey: "hubspot",
+          sourceType: "deal",
+          sourceId: "deal_qualified_1",
+        }),
+        expect.objectContaining({
+          metricValueId: "metric_sales_qualified_pipeline",
+          rawRecordId: "raw_google_meeting_1",
+          sourceKey: "googleWorkspace",
+          sourceType: "calendar_event",
+          sourceId: "meeting_1",
+        }),
+        expect.objectContaining({
+          metricValueId: "metric_sales_qualified_pipeline",
+          rawRecordId: "raw_slack_thread_1",
+          sourceKey: "slack",
+          sourceType: "thread",
+          sourceId: "thread_1",
+        }),
+      ]),
+    });
+  });
+
+  it("materializes marketing pipeline efficiency from acquisition and pipeline raw records", async () => {
+    const prisma = createMarketingPrismaMock();
+    const periodStart = new Date("2026-05-01T00:00:00.000Z");
+    const periodEnd = new Date("2026-05-29T00:00:00.000Z");
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart,
+      periodEnd,
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result).toMatchObject({
+      metricKey: "marketing.pipeline_efficiency",
+      status: "READY",
+      rawRecordCount: 10,
+      value: {
+        ratio: 5.14,
+        qualifiedPipeline: 90_000,
+        acquisitionSpend: 17_500,
+        websiteSessions: 2_000,
+        webflowFormSubmissions: 25,
+        organicTraffic: 500,
+        searchClicks: 120,
+        searchImpressions: 2400,
+        identifiedVisitors: 2,
+        currency: "USD",
+      },
+    });
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        provider: {
+          in: [
+            IntegrationProvider.GOOGLE_ANALYTICS,
+            IntegrationProvider.GOOGLE_ADS,
+            IntegrationProvider.META_ADS,
+            IntegrationProvider.REDDIT,
+            IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
+            IntegrationProvider.SEMRUSH,
+            IntegrationProvider.CODA,
+            IntegrationProvider.WEBFLOW,
+            IntegrationProvider.UNIFY,
+            IntegrationProvider.HUBSPOT,
+          ],
+        },
+        OR: [{ userId: "user_1" }, { organizationId: "org_1" }],
+      }),
+      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
+    });
+    expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith({
+      where: {
+        organizationId_userId_metricKey_periodEnd_calculationVersion: {
+          organizationId: "org_1",
+          userId: "user_1",
+          metricKey: "marketing.pipeline_efficiency",
+          periodEnd,
+          calculationVersion: "marketing-pipeline-efficiency-v1",
+        },
+      },
+      create: expect.objectContaining({
+        metricKey: "marketing.pipeline_efficiency",
+        department: "marketing",
+        unit: "ratio",
+        status: "READY",
+        value: {
+          ratio: 5.14,
+          qualifiedPipeline: 90_000,
+          acquisitionSpend: 17_500,
+          websiteSessions: 2_000,
+          webflowFormSubmissions: 25,
+          organicTraffic: 500,
+          searchClicks: 120,
+          searchImpressions: 2400,
+          identifiedVisitors: 2,
+          currency: "USD",
+        },
+      }),
+      update: expect.objectContaining({
+        status: "READY",
+        value: {
+          ratio: 5.14,
+          qualifiedPipeline: 90_000,
+          acquisitionSpend: 17_500,
+          websiteSessions: 2_000,
+          webflowFormSubmissions: 25,
+          organicTraffic: 500,
+          searchClicks: 120,
+          searchImpressions: 2400,
+          identifiedVisitors: 2,
+          currency: "USD",
+        },
+      }),
+    });
+    expect(prisma.imladrisMetricLineage.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          metricValueId: "metric_marketing_pipeline_efficiency",
+          rawRecordId: "raw_google_ads_1",
+          sourceKey: "googleAds",
+          sourceType: "campaign_metric",
+          sourceId: "gads_1",
+        }),
+        expect.objectContaining({
+          metricValueId: "metric_marketing_pipeline_efficiency",
+          rawRecordId: "raw_ga_1",
+          sourceKey: "googleAnalytics",
+          sourceType: "traffic_summary",
+          sourceId: "ga_1",
+        }),
+        expect.objectContaining({
+          metricValueId: "metric_marketing_pipeline_efficiency",
+          rawRecordId: "raw_webflow_1",
+          sourceKey: "webflow",
+          sourceType: "snapshot",
+          sourceId: "webflow_snapshot_1",
+        }),
+        expect.objectContaining({
+          metricValueId: "metric_marketing_pipeline_efficiency",
+          rawRecordId: "raw_reddit_ads_1",
+          sourceKey: "reddit",
+          sourceType: "campaign_metric",
+          sourceId: "reddit_1",
+        }),
+        expect.objectContaining({
+          metricValueId: "metric_marketing_pipeline_efficiency",
+          rawRecordId: "raw_semrush_1",
+          sourceKey: "semrush",
+          sourceType: "domain_organic",
+          sourceId: "semrush_1",
+        }),
+        expect.objectContaining({
+          metricValueId: "metric_marketing_pipeline_efficiency",
+          rawRecordId: "raw_gsc_1",
+          sourceKey: "googleSearchConsole",
+          sourceType: "query",
+          sourceId: "gsc_1",
+        }),
+        expect.objectContaining({
+          metricValueId: "metric_marketing_pipeline_efficiency",
+          rawRecordId: "raw_unify_1",
+          sourceKey: "unify",
+          sourceType: "visitor",
+          sourceId: "visitor_1",
+        }),
+      ]),
+    });
+  });
+
+  it("materializes customer-success retention risk from support, usage, collaboration, and billing raw records", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    const periodStart = new Date("2026-05-01T00:00:00.000Z");
+    const periodEnd = new Date("2026-05-29T00:00:00.000Z");
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart,
+      periodEnd,
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result).toMatchObject({
+      metricKey: "customer_success.retention_risk",
+      status: "READY",
+      rawRecordCount: 6,
+      value: {
+        score: 85,
+        atRiskAccounts: 1,
+        openSupportIssues: 2,
+        escalations: 1,
+        accountsWithBillingRisk: 1,
+        lowUsageAccounts: 1,
+        collaborationSignals: 1,
+      },
+    });
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        provider: {
+          in: [
+            IntegrationProvider.PYLON,
+            IntegrationProvider.POSTHOG,
+            IntegrationProvider.SLACK,
+            IntegrationProvider.GOOGLE_WORKSPACE,
+            IntegrationProvider.STRIPE,
+          ],
+        },
+        OR: [{ userId: "user_1" }, { organizationId: "org_1" }],
+      }),
+      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
+    });
+    expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith({
+      where: {
+        organizationId_userId_metricKey_periodEnd_calculationVersion: {
+          organizationId: "org_1",
+          userId: "user_1",
+          metricKey: "customer_success.retention_risk",
+          periodEnd,
+          calculationVersion: "customer-success-retention-risk-v1",
+        },
+      },
+      create: expect.objectContaining({
+        metricKey: "customer_success.retention_risk",
+        department: "customer-success",
+        unit: "score",
+        status: "READY",
+        value: {
+          score: 85,
+          atRiskAccounts: 1,
+          openSupportIssues: 2,
+          escalations: 1,
+          accountsWithBillingRisk: 1,
+          lowUsageAccounts: 1,
+          collaborationSignals: 1,
+        },
+      }),
+      update: expect.objectContaining({
+        status: "READY",
+        value: {
+          score: 85,
+          atRiskAccounts: 1,
+          openSupportIssues: 2,
+          escalations: 1,
+          accountsWithBillingRisk: 1,
+          lowUsageAccounts: 1,
+          collaborationSignals: 1,
+        },
+      }),
+    });
+    expect(prisma.imladrisMetricLineage.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          metricValueId: "metric_customer_success_retention_risk",
+          rawRecordId: "raw_pylon_issue_1",
+          sourceKey: "pylon",
+          sourceType: "conversation",
+          sourceId: "conv_1",
+        }),
+        expect.objectContaining({
+          metricValueId: "metric_customer_success_retention_risk",
+          rawRecordId: "raw_posthog_usage_1",
+          sourceKey: "posthog",
+          sourceType: "account_usage",
+          sourceId: "usage_1",
+        }),
+        expect.objectContaining({
+          metricValueId: "metric_customer_success_retention_risk",
+          rawRecordId: "raw_workspace_meeting_1",
+          sourceKey: "googleWorkspace",
+          sourceType: "calendar_event",
+          sourceId: "event_1",
+        }),
+        expect.objectContaining({
+          metricValueId: "metric_customer_success_retention_risk",
+          rawRecordId: "raw_stripe_subscription_1",
+          sourceKey: "stripe",
+          sourceType: "subscription",
+          sourceId: "sub_risk_1",
+        }),
+      ]),
+    });
+  });
+});

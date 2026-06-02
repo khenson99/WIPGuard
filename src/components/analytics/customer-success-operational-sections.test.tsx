@@ -44,7 +44,7 @@ describe("customer-success-operational-sections", () => {
         maxTrend={1}
         openConversations="—"
         riskItems={[]}
-        throughputRateLabel="—"
+        deliveryRateLabel="—"
         trend={[]}
         urgentConversations="—"
       />
@@ -81,7 +81,7 @@ describe("customer-success-operational-sections", () => {
             description: "High urgent queue can increase churn risk.",
           },
         ]}
-        throughputRateLabel="62.4%"
+        deliveryRateLabel="62.4%"
         trend={[{ date: "2026-03-08", total: 10 }]}
         urgentConversations={18}
       />

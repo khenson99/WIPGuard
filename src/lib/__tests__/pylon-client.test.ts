@@ -1,10 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  __test__,
-  fetchPylonIssues,
-  getPylonIssuePriority,
-  getPylonIssueStatus,
-} from "@/lib/integrations/pylon-client";
+import { __test__, fetchPylonIssues } from "@/lib/integrations/pylon-client";
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -14,46 +9,6 @@ function jsonResponse(payload: unknown, status = 200): Response {
 }
 
 describe("pylon client", () => {
-  it("follows pagination cursors on the issues endpoint", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = new URL(String(input));
-      if (url.pathname.endsWith("/issues")) {
-        if (url.searchParams.get("cursor") === "cursor-2") {
-          return jsonResponse({
-            data: [{ id: "i2" }],
-            pagination: { has_next_page: false, cursor: null },
-          });
-        }
-
-        return jsonResponse({
-          data: [{ id: "i1" }],
-          pagination: { has_next_page: true, cursor: "cursor-2" },
-        });
-      }
-
-      return jsonResponse({ error: "unexpected" }, 500);
-    });
-
-    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
-
-    const issues = await fetchPylonIssues({
-      apiKey: "pylon-key",
-      from: "2026-02-01",
-      to: "2026-02-28",
-      baseUrl: "https://api.example.test",
-      limit: 1,
-      timeoutMs: 2_000,
-    });
-
-    expect(issues).toEqual([{ id: "i1" }, { id: "i2" }]);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-
-    const firstUrl = new URL(String(fetchMock.mock.calls[0]?.[0]));
-    const secondUrl = new URL(String(fetchMock.mock.calls[1]?.[0]));
-    expect(firstUrl.searchParams.get("cursor")).toBeNull();
-    expect(secondUrl.searchParams.get("cursor")).toBe("cursor-2");
-  });
-
   it("falls back to /conversations when /issues endpoints 404", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
@@ -81,8 +36,8 @@ describe("pylon client", () => {
     expect(fetchMock).toHaveBeenCalled();
 
     const requestUrls = fetchMock.mock.calls.map(([url]) => String(url));
-    expect(requestUrls.some((url) => url.includes("/issues?"))).toBe(true);
-    expect(requestUrls.some((url) => url.includes("/conversations?"))).toBe(true);
+    expect(requestUrls.some((u) => u.includes("/issues?"))).toBe(true);
+    expect(requestUrls.some((u) => u.includes("/conversations?"))).toBe(true);
   });
 
   it("returns no issues when every Pylon endpoint returns 404", async () => {
@@ -103,18 +58,18 @@ describe("pylon client", () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
-  it("normalizes date-only filters to RFC3339 timestamps", () => {
+  it("normalizes date-only filters to RFC3339 timestamps", async () => {
     expect(__test__.normalizePylonTimestamp("2026-03-01", "start")).toBe("2026-03-01T00:00:00.000Z");
     expect(__test__.normalizePylonTimestamp("2026-03-15", "end")).toBe("2026-03-15T23:59:59.999Z");
     expect(__test__.normalizePylonTimestamp("2026-03-01T05:00:00Z", "start")).toBe("2026-03-01T05:00:00Z");
   });
 
-  it("splits long sync windows into 30-day chunks", () => {
+  it("splits long sync windows into 30-day chunks", async () => {
     expect(
       __test__.splitPylonDateRange({
         from: "2026-01-01",
         to: "2026-03-16",
-      })
+      }),
     ).toEqual([
       {
         from: "2026-01-01T00:00:00.000Z",
@@ -163,14 +118,19 @@ describe("pylon client", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("parses nested data.items payloads from pylon issue endpoints", async () => {
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({
-        data: {
-          items: [{ id: "nested-1" }],
-        },
-      })
-    );
+  it("follows Pylon cursors within a sync window before returning issues", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      if (!url.pathname.endsWith("/issues")) {
+        return jsonResponse({ error: "unexpected fallback" }, 500);
+      }
+
+      if (url.searchParams.get("cursor") === "cursor_2") {
+        return jsonResponse({ data: [{ id: "i2" }], next_cursor: null });
+      }
+
+      return jsonResponse({ data: [{ id: "i1" }], next_cursor: "cursor_2" });
+    });
 
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
@@ -183,17 +143,42 @@ describe("pylon client", () => {
       timeoutMs: 2_000,
     });
 
-    expect(issues).toHaveLength(1);
-    expect(issues[0]?.id).toBe("nested-1");
+    const requestUrls = fetchMock.mock.calls.map(([url]) => new URL(String(url)));
+
+    expect(issues.map((issue) => issue.id)).toEqual(["i1", "i2"]);
+    expect(requestUrls).toHaveLength(2);
+    expect(requestUrls[1]?.searchParams.get("cursor")).toBe("cursor_2");
   });
 
-  it("reads nested status and priority objects", () => {
-    const issue = {
-      status: { label: "waiting_on_team" },
-      priority: { name: "urgent" },
-    };
+  it("does not mask malformed Pylon JSON by falling back to alternate endpoints", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/issues") {
+        return new Response("not-json", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.pathname === "/v1/issues") {
+        return jsonResponse({ data: [{ id: "fallback-issue" }] });
+      }
+      return jsonResponse({ error: "unexpected fallback" }, 500);
+    });
 
-    expect(getPylonIssueStatus(issue)).toBe("waiting_on_team");
-    expect(getPylonIssuePriority(issue)).toBe("urgent");
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    await expect(
+      fetchPylonIssues({
+        apiKey: "pylon-key",
+        from: "2026-02-01",
+        to: "2026-02-28",
+        baseUrl: "https://api.example.test",
+        limit: 1,
+        timeoutMs: 2_000,
+      }),
+    ).rejects.toThrow("Pylon response parse failed (200)");
+
+    const requestUrls = fetchMock.mock.calls.map(([url]) => new URL(String(url)));
+    expect(requestUrls.map((url) => url.pathname)).toEqual(["/issues"]);
   });
 });

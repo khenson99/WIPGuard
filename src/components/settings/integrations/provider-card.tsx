@@ -14,7 +14,10 @@ import {
 import { descriptorsForProvider } from "@/components/settings/integrations/rule-descriptors";
 import { credentialSourceLabel, type RemediationStep } from "@/components/settings/integrations/remediation";
 import { RuleEditor } from "@/components/settings/integrations/rule-editor";
-import type { IntegrationItem, RuleLoadState } from "@/components/settings/integrations/types";
+import type {
+  IntegrationItem,
+  RuleLoadState,
+} from "@/components/settings/integrations/types";
 
 function formatDate(value: string | null): string {
   if (!value) return "Never";
@@ -83,7 +86,6 @@ interface ProviderCardProps {
     ruleId: string,
     payload: {
       enabled?: boolean;
-      statusOverride?: "QUEUED" | "ACTIVE" | "NOT_DONE" | null;
       config: Record<string, unknown>;
     }
   ) => Promise<void>;

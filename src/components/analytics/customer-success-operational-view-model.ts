@@ -1,6 +1,6 @@
 import type { AnalyticsDashboardData } from "@/lib/analytics/types";
 
-export type IntegrationStatus = "Not provisioned" | "Connected but stale" | "Connected but no data" | "Active";
+export type IntegrationStatus = "Not provisioned" | "Connected but stale" | "Active";
 
 export interface IntegrationStatusItem {
   label: string;
@@ -43,23 +43,6 @@ function deriveIntegrationStatus(input: {
   return "Active";
 }
 
-function deriveTelemetryStatus(input: {
-  connected: boolean;
-  stale: boolean;
-  hasPayload: boolean;
-}): IntegrationStatus {
-  if (!input.connected && !input.hasPayload) {
-    return "Not provisioned";
-  }
-  if (input.connected && !input.hasPayload) {
-    return "Connected but no data";
-  }
-  if (input.stale) {
-    return "Connected but stale";
-  }
-  return "Active";
-}
-
 function buildCombinedTrend(data: AnalyticsDashboardData | null): CustomerOpsTrendPoint[] {
   if (!data) return [];
 
@@ -68,7 +51,7 @@ function buildCombinedTrend(data: AnalyticsDashboardData | null): CustomerOpsTre
 
   trendSources.forEach((trend) => {
     trend.forEach((item) => {
-      buckets.set(item.date, (buckets.get(item.date) ?? 0) + item.receipts);
+      buckets.set(item.date, (buckets.get(item.date) ?? 0) + item.artifactsCreated + item.receipts);
     });
   });
 
@@ -80,49 +63,48 @@ function buildCombinedTrend(data: AnalyticsDashboardData | null): CustomerOpsTre
 
 function deriveCSActions(input: {
   pylon: AnalyticsDashboardData["pylon"];
-  pylonConnected: boolean;
-  pylonError: string | null;
+  product: AnalyticsDashboardData["product"];
+  coda: AnalyticsDashboardData["coda"];
 }): CSAction[] {
   const actions: CSAction[] = [];
-
-  if (input.pylonConnected && !input.pylon) {
-    actions.push({
-      title: "Repair Pylon conversation ingestion",
-      detail: input.pylonError
-        ? `Pylon is connected but analytics payloads are empty: ${input.pylonError}. Validate issue and conversation API access for the selected date range.`
-        : "Pylon is connected but no conversation telemetry was returned. Validate issue and conversation API access for the selected date range.",
-      impact: "Expected: restore support queue visibility in the dashboard.",
-      severity: "warning",
-    });
-  }
 
   const urgent = input.pylon?.urgentConversations ?? 0;
   if (urgent > 15) {
     actions.push({
       title: "Rebalance urgent queue ownership",
       detail: `${urgent} urgent conversations exceed the 15-threshold. Assign a daily triage owner and enforce 2-hour response SLA.`,
-      impact: "Expected: lower urgent backlog within 1 week.",
+      impact: "Expected: lower urgent support load within 1 week.",
       severity: urgent > 25 ? "critical" : "warning",
     });
   }
 
-  const waitingOnTeam = input.pylon?.waitingOnTeam ?? 0;
-  if (waitingOnTeam > 8) {
+  const deliveryBalance = input.product?.deliveryBalance ?? 0;
+  if (deliveryBalance > 5) {
     actions.push({
-      title: "Clear the waiting-on-team queue",
-      detail: `${waitingOnTeam} conversations are waiting on the internal team. Assign owners and publish a twice-daily update cadence until that queue is back under control.`,
-      impact: "Expected: faster customer updates and fewer support escalations.",
-      severity: waitingOnTeam > 15 ? "critical" : "warning",
+      title: "Review delivery balance",
+      detail: `Delivery balance is ${deliveryBalance} net signals. Review Linear and GitHub movement against customer-blocking commitments.`,
+      impact: "Expected: clearer delivery risk and better owner focus.",
+      severity: deliveryBalance > 15 ? "critical" : "warning",
     });
   }
 
-  const avgFirstResponse = input.pylon?.avgFirstResponseMinutes ?? null;
-  if (avgFirstResponse !== null && avgFirstResponse > 120) {
+  const deliveryRate = input.product?.deliveryRate ?? 100;
+  if (deliveryRate < 70) {
     actions.push({
-      title: "Tighten first-response coverage",
-      detail: `Average first response is ${avgFirstResponse.toFixed(0)} minutes. Expand triage coverage windows or add routing for high-priority accounts.`,
-      impact: "Expected: lower time-to-first-response and better queue health.",
-      severity: avgFirstResponse > 240 ? "critical" : "warning",
+      title: "Investigate delivery drag",
+      detail: `Delivery rate at ${deliveryRate.toFixed(1)}% - below 70% target. Use Slack and Workspace context to surface recommendations, notes, and alerts.`,
+      impact: "Expected: faster closure and improved customer confidence.",
+      severity: deliveryRate < 50 ? "critical" : "warning",
+    });
+  }
+
+  const cycleTimeRisk = input.product?.cycleTimeRiskSignals ?? 0;
+  if (cycleTimeRisk > 5) {
+    actions.push({
+      title: "Review cycle-time risk",
+      detail: `${cycleTimeRisk} provider-derived cycle-time risk signals are active. Review owner load and blockers to restore delivery cadence.`,
+      impact: "Expected: reduced retention risk from stalled execution.",
+      severity: cycleTimeRisk > 15 ? "critical" : "warning",
     });
   }
 
@@ -141,6 +123,7 @@ function deriveCSActions(input: {
 export function deriveCustomerSuccessOperationalView(data: AnalyticsDashboardData | null) {
   const pylon = data?.pylon;
   const coda = data?.coda;
+  const product = data?.product;
   const googleWorkspace = data?.googleWorkspace;
   const slackOps = data?.slack;
   const codaOps = data?.codaOps;
@@ -177,17 +160,6 @@ export function deriveCustomerSuccessOperationalView(data: AnalyticsDashboardDat
       }),
       details: `${codaOps?.enabledRules ?? 0}/${codaOps?.totalRules ?? 0} rules enabled`,
     },
-    {
-      label: "Pylon",
-      status: deriveTelemetryStatus({
-        connected: data?.freshness.pylon?.status === "CONNECTED",
-        stale: Boolean(data?.freshness.pylon?.stale),
-        hasPayload: Boolean(pylon),
-      }),
-      details: pylon
-        ? `${pylon.openConversations ?? 0} open · ${pylon.urgentConversations ?? 0} urgent`
-        : "Conversation telemetry unavailable for the selected range",
-    },
   ];
 
   const riskItems: RiskItem[] = [
@@ -199,34 +171,30 @@ export function deriveCustomerSuccessOperationalView(data: AnalyticsDashboardDat
       description: "High urgent queue can increase churn risk.",
     },
     {
-      id: "waiting-on-team",
-      label: "Waiting on Team",
-      value: pylon?.waitingOnTeam ?? 0,
-      threshold: 8,
-      description: "Internal queue lag slows customer updates.",
+      id: "delivery-balance",
+      label: "Delivery Balance",
+      value: product?.deliveryBalance ?? 0,
+      threshold: 1,
+      description: "A widening delivery balance can increase customer risk.",
     },
     {
-      id: "first-response",
-      label: "First Response Minutes",
-      value: pylon?.avgFirstResponseMinutes ?? 0,
-      threshold: 120,
-      description: "Slow first response is usually the first sign of coverage gaps.",
+      id: "cycle-time-risk",
+      label: "Cycle-time Risk Signals",
+      value: product?.cycleTimeRiskSignals ?? 0,
+      threshold: 5,
+      description: "Long cycle times create retention delays.",
     },
   ];
 
   return {
-    actions: deriveCSActions({
-      pylon: pylon ?? null,
-      pylonConnected: data?.freshness.pylon?.status === "CONNECTED",
-      pylonError: data?.meta?.errors?.pylon?.message ?? null,
-    }),
+    actions: deriveCSActions({ pylon: pylon ?? null, product: product ?? null, coda: coda ?? null }),
     codaCards: coda?.totalCards ?? "—",
-    hasLegacyAnalytics: Boolean(pylon || coda),
+    hasLegacyAnalytics: Boolean(pylon || coda || product),
     integrationStatuses,
     maxTrend: Math.max(1, ...trend.map((item) => item.total)),
     openConversations: pylon?.openConversations ?? "—",
     riskItems,
-    avgFirstResponseMinutes: pylon?.avgFirstResponseMinutes ?? null,
+    deliveryRate: product?.deliveryRate ?? null,
     trend,
     urgentConversations: pylon?.urgentConversations ?? "—",
   };

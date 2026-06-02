@@ -42,35 +42,13 @@ function readNumber(value: unknown): number {
     return value;
   }
   if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
+    const normalized = value.trim().replace(/[$,%\s,]/g, "");
+    const parsed = Number(normalized);
     if (Number.isFinite(parsed)) {
       return parsed;
     }
   }
   return 0;
-}
-
-function readInsightValue(value: unknown): number {
-  if (typeof value === "number" || typeof value === "string") {
-    return readNumber(value);
-  }
-
-  const record = asRecord(value);
-  if (!record) return 0;
-
-  return Object.values(record).reduce((sum, entry) => sum + readNumber(entry), 0);
-}
-
-function sumInsightSeries(
-  metrics: Array<{
-    name: string;
-    values?: Array<{ value: unknown }>;
-  }> | undefined,
-  metricName: string
-): number {
-  const series = metrics?.find((metric) => metric.name === metricName);
-  if (!series) return 0;
-  return (series.values ?? []).reduce((sum, item) => sum + readInsightValue(item.value), 0);
 }
 
 function readString(value: unknown): string | null {
@@ -817,6 +795,16 @@ type MetaPageInsightMetric = {
   values?: Array<{ value: string | number }>;
 };
 
+type MetaGraphPage<T> = {
+  data?: T[];
+  paging?: {
+    next?: string;
+    cursors?: {
+      after?: string;
+    };
+  };
+};
+
 function normalizeMetaAdAccountId(adAccountId: string): string {
   return adAccountId.trim().replace(/^act_/i, "");
 }
@@ -824,6 +812,56 @@ function normalizeMetaAdAccountId(adAccountId: string): string {
 function looksLikeMetaAppAccessToken(accessToken: string): boolean {
   const normalized = accessToken.trim();
   return Boolean(normalized && /^\d+\|/.test(normalized));
+}
+
+async function fetchMetaGraphPages<T>(input: {
+  url: URL;
+  headers: Record<string, string>;
+  label: string;
+  maxPages?: number;
+}): Promise<{ rows: T[]; truncated: boolean }> {
+  const rows: T[] = [];
+  const maxPages = Math.max(1, input.maxPages ?? 100);
+  let url: URL | null = new URL(input.url.toString());
+  let truncated = false;
+
+  for (let page = 0; url && page < maxPages; page += 1) {
+    const response = await fetch(url, { headers: input.headers, cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(
+        `${input.label} error (${response.status}): ${await parseErrorBody(response)}`
+      );
+    }
+
+    const payload = (await safeJson<MetaGraphPage<T>>(response, input.label)) as MetaGraphPage<T>;
+    rows.push(...(payload.data ?? []));
+
+    const nextUrl = payload.paging?.next?.trim();
+    if (nextUrl) {
+      if (page === maxPages - 1) {
+        truncated = true;
+        break;
+      }
+      url = new URL(nextUrl);
+      continue;
+    }
+
+    const after = payload.paging?.cursors?.after?.trim();
+    if (after && after !== url.searchParams.get("after")) {
+      if (page === maxPages - 1) {
+        truncated = true;
+        break;
+      }
+      const nextPageUrl: URL = new URL(url.toString());
+      nextPageUrl.searchParams.set("after", after);
+      url = nextPageUrl;
+      continue;
+    }
+
+    url = null;
+  }
+
+  return { rows, truncated };
 }
 
 function extractMetaConversions(actions: unknown): number {
@@ -965,6 +1003,89 @@ interface RedditReportVariant {
   fields: readonly string[];
 }
 
+function readRedditNextCampaignUrl(payload: UnknownRecord, currentUrl: URL): URL | null {
+  const pagination = asRecord(payload.pagination);
+  const paging = asRecord(payload.paging);
+  const directNext =
+    readString(pagination?.next_url) ??
+    readString(pagination?.nextUrl) ??
+    readString(pagination?.next) ??
+    readString(paging?.next) ??
+    readString(payload.next_url) ??
+    readString(payload.nextUrl) ??
+    readString(payload.next);
+
+  if (directNext) {
+    return new URL(directNext, currentUrl);
+  }
+
+  const cursors = asRecord(paging?.cursors) ?? asRecord(pagination?.cursors);
+  const after =
+    readString(cursors?.after) ??
+    readString(pagination?.after) ??
+    readString(payload.after);
+  if (!after || after === currentUrl.searchParams.get("after")) {
+    return null;
+  }
+
+  const nextUrl = new URL(currentUrl.toString());
+  nextUrl.searchParams.set("after", after);
+  return nextUrl;
+}
+
+async function fetchRedditCampaigns(input: {
+  accessToken: string;
+  adAccountId: string;
+  baseHeaders: Record<string, string>;
+  maxPages?: number;
+}): Promise<{ campaigns: Array<{ id?: string; name?: string }>; truncated: boolean }> {
+  const campaigns: Array<{ id?: string; name?: string }> = [];
+  const maxPages = Math.max(1, input.maxPages ?? 100);
+  let url: URL | null = new URL(
+    `https://ads-api.reddit.com/api/v3/ad_accounts/${input.adAccountId}/campaigns`,
+  );
+  let truncated = false;
+
+  for (let page = 0; url && page < maxPages; page += 1) {
+    const campaignResponse = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        ...input.baseHeaders,
+        Authorization: `Bearer ${input.accessToken}`,
+      },
+      cache: "no-store",
+    });
+
+    if (!campaignResponse.ok) {
+      throw new Error(
+        `Reddit campaigns error (${campaignResponse.status}): ${await parseErrorBody(campaignResponse)}`
+      );
+    }
+
+    const campaignsPayload = (await safeJson<UnknownRecord>(
+      campaignResponse,
+      "Reddit campaigns",
+    )) as UnknownRecord;
+    campaigns.push(
+      ...asArray(campaignsPayload.data)
+        .map(asRecord)
+        .filter((campaign): campaign is UnknownRecord => Boolean(campaign))
+        .map((campaign) => ({
+          id: readString(campaign.id) ?? undefined,
+          name: readString(campaign.name) ?? undefined,
+        })),
+    );
+    const nextUrl = readRedditNextCampaignUrl(campaignsPayload, url);
+    if (nextUrl && page === maxPages - 1) {
+      truncated = true;
+      break;
+    }
+    url = nextUrl;
+  }
+
+  return { campaigns, truncated };
+}
+
 async function fetchRedditReportMetrics(input: {
   accessToken: string;
   adAccountId: string;
@@ -1015,6 +1136,7 @@ async function fetchRedditReportMetrics(input: {
           Authorization: `Bearer ${input.accessToken}`,
           "Content-Type": "application/json",
         },
+        cache: "no-store",
         body: JSON.stringify(payload),
       }
     );
@@ -1070,6 +1192,7 @@ export async function fetchGoogleAdsData(
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
     },
+    cache: "no-store",
     body: new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: refreshToken,
@@ -1128,6 +1251,7 @@ export async function fetchGoogleAdsData(
     {
       method: "POST",
       headers,
+      cache: "no-store",
       body: JSON.stringify({ query: gaqlQuery }),
     }
   );
@@ -1215,7 +1339,7 @@ export async function fetchMetaAdsData(
   const token = normalizeBearerToken(accessToken);
   if (looksLikeMetaAppAccessToken(token)) {
     throw new Error(
-      "Meta Ads token error: META_ACCESS_TOKEN looks like an app access token (app_id|app_secret). WIPGuard requires a User/System User token with ads_read or ads_management and access to the configured ad account."
+      "Meta Ads token error: META_ACCESS_TOKEN looks like an app access token (app_id|app_secret). Imladris requires a User/System User token with ads_read or ads_management and access to the configured ad account."
     );
   }
 
@@ -1244,7 +1368,7 @@ export async function fetchMetaAdsData(
   }
   insightsUrl.searchParams.set("level", "account");
 
-  const insightsResponse = await fetch(insightsUrl, { headers: baseHeaders });
+  const insightsResponse = await fetch(insightsUrl, { headers: baseHeaders, cache: "no-store" });
   if (!insightsResponse.ok) {
     throw new Error(
       `Meta Ads insights error (${insightsResponse.status}): ${await parseErrorBody(insightsResponse)}`
@@ -1290,41 +1414,25 @@ export async function fetchMetaAdsData(
     campaignsUrl.searchParams.set("date_preset", "last_30d");
   }
 
-  const campaignsResponse = await fetch(campaignsUrl, { headers: baseHeaders });
-  if (!campaignsResponse.ok) {
-    throw new Error(
-      `Meta Ads campaigns error (${campaignsResponse.status}): ${await parseErrorBody(campaignsResponse)}`
-    );
-  }
-
-  const campaignsData = (await safeJson<{
-    data?: Array<{
-      name?: string;
-      insights?: {
-        data?: Array<{
-          spend?: string | number;
-          impressions?: string | number;
-          clicks?: string | number;
-          actions?: Array<{ action_type?: string; value?: string | number }>;
-        }>;
-      };
-    }>;
-  }>(campaignsResponse, "Meta Ads campaigns")) as {
-    data?: Array<{
-      name?: string;
-      insights?: {
-        data?: Array<{
-          spend?: string | number;
-          impressions?: string | number;
-          clicks?: string | number;
-          actions?: Array<{ action_type?: string; value?: string | number }>;
-        }>;
-      };
-    }>;
-  };
+  const campaignPageResult = await fetchMetaGraphPages<{
+    name?: string;
+    insights?: {
+      data?: Array<{
+        spend?: string | number;
+        impressions?: string | number;
+        clicks?: string | number;
+        actions?: Array<{ action_type?: string; value?: string | number }>;
+      }>;
+    };
+  }>({
+    url: campaignsUrl,
+    headers: baseHeaders,
+    label: "Meta Ads campaigns",
+  });
+  const campaignRows = campaignPageResult.rows;
 
   const campaigns: AdCampaign[] = [];
-  for (const campaign of campaignsData.data ?? []) {
+  for (const campaign of campaignRows) {
     const insight = campaign.insights?.data?.[0];
     if (!insight) continue;
 
@@ -1359,7 +1467,11 @@ export async function fetchMetaAdsData(
     cpc,
     cpa,
     campaigns,
-    _meta: makeMeta("live"),
+    _meta: {
+      ...makeMeta("live"),
+      truncated: campaignPageResult.truncated,
+      truncatedResources: campaignPageResult.truncated ? ["campaigns"] : [],
+    },
   };
 }
 
@@ -1396,7 +1508,7 @@ async function fetchMetaPageInsightMetrics(input: {
   headers: Record<string, string>;
 }): Promise<MetaPageInsightMetric[]> {
   const insightsUrl = buildMetaPageInsightsUrl(input);
-  const insightsResponse = await fetch(insightsUrl, { headers: input.headers });
+  const insightsResponse = await fetch(insightsUrl, { headers: input.headers, cache: "no-store" });
   if (insightsResponse.ok) {
     const insightsData = (await safeJson<{
       data?: MetaPageInsightMetric[];
@@ -1411,22 +1523,24 @@ async function fetchMetaPageInsightMetrics(input: {
     throw new Error(`Meta Page insights error (${insightsResponse.status}): ${errorBody}`);
   }
 
-  const requiredPageMetrics = input.metrics.filter(
-    (metric) => metric === "page_impressions" || metric === "page_engaged_users"
-  );
-  if (requiredPageMetrics.length > 0 && requiredPageMetrics.length < input.metrics.length) {
-    const fallbackUrl = buildMetaPageInsightsUrl({
+  if (input.metrics.length > 2) {
+    const requiredUrl = buildMetaPageInsightsUrl({
       ...input,
-      metrics: requiredPageMetrics,
+      metrics: input.metrics.slice(0, 2),
     });
-    const fallbackResponse = await fetch(fallbackUrl, { headers: input.headers });
-    if (fallbackResponse.ok) {
-      const fallbackData = (await safeJson<{
+    const requiredResponse = await fetch(requiredUrl, { headers: input.headers, cache: "no-store" });
+    if (requiredResponse.ok) {
+      const requiredData = (await safeJson<{
         data?: MetaPageInsightMetric[];
-      }>(fallbackResponse, "Meta Page insights fallback")) as {
+      }>(requiredResponse, "Meta Page insights required metrics")) as {
         data?: MetaPageInsightMetric[];
       };
-      return fallbackData.data ?? [];
+      return requiredData.data ?? [];
+    }
+
+    const requiredError = await parseErrorBody(requiredResponse);
+    if (!isInvalidMetaInsightsMetricError(requiredError)) {
+      throw new Error(`Meta Page insights error (${requiredResponse.status}): ${requiredError}`);
     }
   }
 
@@ -1436,8 +1550,7 @@ async function fetchMetaPageInsightMetrics(input: {
       ...input,
       metrics: [metric],
     });
-    const metricResponse = await fetch(metricUrl, { headers: input.headers });
-    if (!metricResponse) continue;
+    const metricResponse = await fetch(metricUrl, { headers: input.headers, cache: "no-store" });
     if (metricResponse.ok) {
       const metricData = (await safeJson<{
         data?: MetaPageInsightMetric[];
@@ -1465,21 +1578,17 @@ async function resolveMetaPageAccessToken(input: {
   accountsUrl.searchParams.set("fields", "id,access_token");
   accountsUrl.searchParams.set("limit", "200");
 
-  const response = await fetch(accountsUrl, {
-    headers: { Authorization: `Bearer ${input.userAccessToken}` },
-  });
-  if (!response.ok) {
+  try {
+    const pages = await fetchMetaGraphPages<{ id?: string; access_token?: string }>({
+      url: accountsUrl,
+      headers: { Authorization: `Bearer ${input.userAccessToken}` },
+      label: "Meta Page accounts",
+    });
+    const page = pages.rows.find((item) => item.id === input.normalizedPageId);
+    return page?.access_token?.trim() || input.userAccessToken;
+  } catch {
     return input.userAccessToken;
   }
-
-  const payload = (await safeJson<{
-    data?: Array<{ id?: string; access_token?: string }>;
-  }>(response, "Meta Page accounts")) as {
-    data?: Array<{ id?: string; access_token?: string }>;
-  };
-
-  const page = (payload.data ?? []).find((item) => item.id === input.normalizedPageId);
-  return page?.access_token?.trim() || input.userAccessToken;
 }
 
 export async function fetchMetaPageData(
@@ -1490,7 +1599,7 @@ export async function fetchMetaPageData(
   const token = normalizeBearerToken(accessToken);
   if (looksLikeMetaAppAccessToken(token)) {
     throw new Error(
-      "Meta Page token error: META_ACCESS_TOKEN looks like an app access token (app_id|app_secret). WIPGuard requires a User/System User token with ads_read or ads_management and access to the configured Page."
+      "Meta Page token error: META_ACCESS_TOKEN looks like an app access token (app_id|app_secret). Imladris requires a User/System User token with ads_read or ads_management and access to the configured Page."
     );
   }
 
@@ -1517,7 +1626,7 @@ export async function fetchMetaPageData(
   );
   pageUrl.searchParams.set("fields", "fan_count,followers_count");
 
-  const pageResponse = await fetch(pageUrl, { headers: baseHeaders });
+  const pageResponse = await fetch(pageUrl, { headers: baseHeaders, cache: "no-store" });
   if (!pageResponse.ok) {
     throw new Error(
       `Meta Page profile error (${pageResponse.status}): ${await parseErrorBody(pageResponse)}`
@@ -1534,7 +1643,7 @@ export async function fetchMetaPageData(
   const pageLikes = readNumber(pageData.fan_count);
   const pageFollowers = readNumber(pageData.followers_count);
 
-  const pageInsightMetrics = await fetchMetaPageInsightMetrics({
+  const insightsMetrics = await fetchMetaPageInsightMetrics({
     normalizedPageId,
     metrics: ["page_impressions", "page_engaged_users", "page_views_total", "page_total_actions"],
     useRange,
@@ -1543,10 +1652,17 @@ export async function fetchMetaPageData(
     headers: baseHeaders,
   });
 
-  const postReach30d = sumInsightSeries(pageInsightMetrics, "page_impressions");
-  const postEngagement30d = sumInsightSeries(pageInsightMetrics, "page_engaged_users");
-  const traffic = sumInsightSeries(pageInsightMetrics, "page_views_total");
-  const clicks = sumInsightSeries(pageInsightMetrics, "page_total_actions");
+  let postReach30d = 0;
+  let postEngagement30d = 0;
+  for (const metric of insightsMetrics) {
+    const value = (metric.values ?? []).reduce((sum, item) => sum + readNumber(item.value), 0);
+    if (metric.name === "page_impressions") {
+      postReach30d = value;
+    }
+    if (metric.name === "page_engaged_users") {
+      postEngagement30d = value;
+    }
+  }
 
   const postsUrl = new URL(
     `https://graph.facebook.com/${META_GRAPH_VERSION}/${normalizedPageId}/posts`
@@ -1555,45 +1671,30 @@ export async function fetchMetaPageData(
     "fields",
     "message,created_time,insights.metric(post_impressions_unique,post_clicks){name,values}"
   );
-  postsUrl.searchParams.set("limit", "5");
+  postsUrl.searchParams.set("limit", "100");
   if (useRange) {
     postsUrl.searchParams.set("since", since!);
     postsUrl.searchParams.set("until", until!);
   }
 
-  const postsResponse = await fetch(postsUrl, { headers: baseHeaders });
-  if (!postsResponse.ok) {
-    throw new Error(
-      `Meta Page posts error (${postsResponse.status}): ${await parseErrorBody(postsResponse)}`
-    );
-  }
-
-  const postsData = (await safeJson<{
-    data?: Array<{
-      message?: string;
-      created_time?: string;
-      insights?: {
-        data?: Array<{
-          name: string;
-          values?: Array<{ value: string | number }>;
-        }>;
-      };
-    }>;
-  }>(postsResponse, "Meta Page posts")) as {
-    data?: Array<{
-      message?: string;
-      created_time?: string;
-      insights?: {
-        data?: Array<{
-          name: string;
-          values?: Array<{ value: string | number }>;
-        }>;
-      };
-    }>;
-  };
+  const postPageResult = await fetchMetaGraphPages<{
+    message?: string;
+    created_time?: string;
+    insights?: {
+      data?: Array<{
+        name: string;
+        values?: Array<{ value: string | number }>;
+      }>;
+    };
+  }>({
+    url: postsUrl,
+    headers: baseHeaders,
+    label: "Meta Page posts",
+  });
+  const postRows = postPageResult.rows;
 
   const topPosts: { message: string; reach: number; engagement: number; createdAt: string }[] = [];
-  for (const post of postsData.data ?? []) {
+  for (const post of postRows) {
     let reach = 0;
     let engagement = 0;
     for (const metric of post.insights?.data ?? []) {
@@ -1614,17 +1715,21 @@ export async function fetchMetaPageData(
     });
   }
 
+  const meta = makeMeta("live");
+  meta.truncated = postPageResult.truncated;
+  meta.truncatedResources = postPageResult.truncated ? ["posts"] : [];
+
   return {
     pageLikes,
     pageFollowers,
     postReach30d,
     postEngagement30d,
-    traffic,
+    traffic: 0,
     bounceRate: 0,
-    clicks,
+    clicks: 0,
     returningVisitors: 0,
     topPosts,
-    _meta: makeMeta("live"),
+    _meta: meta,
   };
 }
 
@@ -1638,7 +1743,7 @@ export async function fetchMetaInstagramData(
   const token = normalizeBearerToken(accessToken);
   if (looksLikeMetaAppAccessToken(token)) {
     throw new Error(
-      "Meta Instagram token error: META_ACCESS_TOKEN looks like an app access token (app_id|app_secret). WIPGuard requires a User/System User token with ads_read or ads_management and access to the configured Instagram account."
+      "Meta Instagram token error: META_ACCESS_TOKEN looks like an app access token (app_id|app_secret). Imladris requires a User/System User token with ads_read or ads_management and access to the configured Instagram account."
     );
   }
 
@@ -1661,7 +1766,7 @@ export async function fetchMetaInstagramData(
     const accountUrl = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${accountId}`);
     accountUrl.searchParams.set("fields", "id,username,followers_count,media_count");
 
-    const accountResponse = await fetch(accountUrl, { headers: baseHeaders });
+    const accountResponse = await fetch(accountUrl, { headers: baseHeaders, cache: "no-store" });
     if (!accountResponse.ok) {
       throw new Error(
         `Meta Instagram profile error (${accountResponse.status}): ${await parseErrorBody(accountResponse)}`
@@ -1705,7 +1810,7 @@ export async function fetchMetaInstagramData(
       "instagram_business_account{id,username,followers_count,media_count},connected_instagram_account{id,username,followers_count,media_count}"
     );
 
-    const pageResponse = await fetch(pageUrl, { headers: baseHeaders });
+    const pageResponse = await fetch(pageUrl, { headers: baseHeaders, cache: "no-store" });
     if (!pageResponse.ok) {
       return null;
     }
@@ -1769,7 +1874,7 @@ export async function fetchMetaInstagramData(
 
   if (!resolvedProfile) {
     throw new Error(
-      "Meta Instagram configuration error: META_INSTAGRAM_ACCOUNT_ID is not an Instagram Business Account ID. Set META_PAGE_ID (or connect a Meta Page) so WIPGuard can resolve the linked instagram_business_account, or update the configured Instagram Account ID."
+      "Meta Instagram configuration error: META_INSTAGRAM_ACCOUNT_ID is not an Instagram Business Account ID. Set META_PAGE_ID (or connect a Meta Page) so Imladris can resolve the linked instagram_business_account, or update the configured Instagram Account ID."
     );
   }
 
@@ -1788,41 +1893,54 @@ export async function fetchMetaInstagramData(
   
   mediaUrl.searchParams.set("limit", "100");
 
-  const mediaResponse = await fetch(mediaUrl, { headers: baseHeaders });
-  if (!mediaResponse.ok) {
-    throw new Error(
-      `Meta Instagram media error (${mediaResponse.status}): ${await parseErrorBody(mediaResponse)}`
-    );
+  const mediaPageResult = await fetchMetaGraphPages<{
+    id?: string;
+    caption?: string;
+    timestamp?: string;
+    like_count?: string | number;
+    comments_count?: string | number;
+    media_type?: string;
+    media_product_type?: string;
+    permalink?: string;
+    thumbnail_url?: string;
+  }>({
+    url: mediaUrl,
+    headers: baseHeaders,
+    label: "Meta Instagram media",
+  });
+  const mediaRows = mediaPageResult.rows;
+
+  const insightsUrl = new URL(
+    `https://graph.facebook.com/${META_GRAPH_VERSION}/${resolvedProfile.id}/insights`
+  );
+  insightsUrl.searchParams.set("metric", "reach,profile_views,website_clicks");
+  insightsUrl.searchParams.set("period", "day");
+  insightsUrl.searchParams.set("since", fromTime.toString());
+  insightsUrl.searchParams.set("until", toTime.toString());
+  let reach30d = 0;
+  let traffic = 0;
+  let clicks = 0;
+  try {
+    const insightsResponse = await fetch(insightsUrl, { headers: baseHeaders, cache: "no-store" });
+    if (insightsResponse.ok) {
+      const insightsData = (await safeJson<{
+        data?: MetaPageInsightMetric[];
+      }>(insightsResponse, "Meta Instagram insights")) as {
+        data?: MetaPageInsightMetric[];
+      };
+      for (const metric of insightsData.data ?? []) {
+        const value = (metric.values ?? []).reduce((sum, item) => sum + readNumber(item.value), 0);
+        if (metric.name === "reach") reach30d = value;
+        if (metric.name === "profile_views") traffic = value;
+        if (metric.name === "website_clicks") clicks = value;
+      }
+    }
+  } catch {
+    // Instagram account insights are not available for every Meta token/account.
   }
 
-  const mediaData = (await safeJson<{
-    data?: Array<{
-      id?: string;
-      caption?: string;
-      timestamp?: string;
-      like_count?: string | number;
-      comments_count?: string | number;
-      media_type?: string;
-      media_product_type?: string;
-      permalink?: string;
-      thumbnail_url?: string;
-    }>;
-  }>(mediaResponse, "Instagram media")) as {
-    data?: Array<{
-      id?: string;
-      caption?: string;
-      timestamp?: string;
-      like_count?: string | number;
-      comments_count?: string | number;
-      media_type?: string;
-      media_product_type?: string;
-      permalink?: string;
-      thumbnail_url?: string;
-    }>;
-  };
-
   const media = scoreInstagramPosts(
-    (mediaData.data ?? [])
+    mediaRows
     .map((item) =>
       buildInstagramTopPost({
         id: item.id ?? "",
@@ -1907,57 +2025,13 @@ export async function fetchMetaInstagramData(
   const testBacklog = buildInstagramTestBacklog(topVideos);
   const experimentPlan = buildInstagramExperimentPlan(topVideos, testBacklog);
 
-  const fetchInstagramInsights = async (
-    metrics: string
-  ): Promise<Array<{ name: string; values?: Array<{ value: unknown }> }>> => {
-    const insightsUrl = new URL(
-      `https://graph.facebook.com/${META_GRAPH_VERSION}/${resolvedProfile.id}/insights`
-    );
-    insightsUrl.searchParams.set("metric", metrics);
-    insightsUrl.searchParams.set("period", "day");
-    insightsUrl.searchParams.set("since", fromTime.toString());
-    insightsUrl.searchParams.set("until", toTime.toString());
-
-    const insightsResponse = await fetch(insightsUrl, { headers: baseHeaders });
-    if (!insightsResponse) return [];
-    if (!insightsResponse.ok) {
-      throw new Error(
-        `Meta Instagram insights error (${insightsResponse.status}): ${await parseErrorBody(insightsResponse)}`
-      );
-    }
-
-    const insightsData = (await safeJson<{
-      data?: Array<{
-        name: string;
-        values?: Array<{ value: unknown }>;
-      }>;
-    }>(insightsResponse, "Instagram insights")) as {
-      data?: Array<{
-        name: string;
-        values?: Array<{ value: unknown }>;
-      }>;
-    };
-
-    return insightsData.data ?? [];
-  };
-
-  let instagramInsightMetrics: Array<{ name: string; values?: Array<{ value: unknown }> }> = [];
-  try {
-    instagramInsightMetrics = await fetchInstagramInsights("reach,profile_views,website_clicks");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!message.includes("Meta Instagram insights error (400)")) {
-      throw error;
-    }
-  }
-
-  const reach30d = sumInsightSeries(instagramInsightMetrics, "reach");
-  const traffic = sumInsightSeries(instagramInsightMetrics, "profile_views");
-  const clicks = sumInsightSeries(instagramInsightMetrics, "website_clicks");
+  const meta = makeMeta("live");
+  meta.truncated = mediaPageResult.truncated;
+  meta.truncatedResources = mediaPageResult.truncated ? ["media"] : [];
 
   return {
     followers: resolvedProfile.followersCount,
-    reach30d: reach30d > 0 ? reach30d : engagement30d,
+    reach30d,
     engagement30d,
     traffic,
     bounceRate: 0,
@@ -1974,7 +2048,7 @@ export async function fetchMetaInstagramData(
     attributeCorrelations,
     winningPatterns,
     losingPatterns,
-    _meta: makeMeta("live"),
+    _meta: meta,
   };
 }
 
@@ -2006,6 +2080,7 @@ export async function fetchRedditAdsData(
       Authorization: `Basic ${auth}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
+    cache: "no-store",
     body: new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: refreshToken,
@@ -2025,30 +2100,13 @@ export async function fetchRedditAdsData(
   }
 
   const cleanAccountId = adAccountId.trim();
-  const campaignResponse = await fetch(
-    `https://ads-api.reddit.com/api/v3/ad_accounts/${cleanAccountId}/campaigns`,
-    {
-      method: "GET",
-      headers: {
-        ...baseHeaders,
-        Authorization: `Bearer ${accessToken}`,
-      },
-    }
-  );
-
-  if (!campaignResponse.ok) {
-    throw new Error(
-      `Reddit campaigns error (${campaignResponse.status}): ${await parseErrorBody(campaignResponse)}`
-    );
-  }
-
-  const campaignsPayload = (await safeJson<{
-    data?: Array<{ id?: string; name?: string }>;
-  }>(campaignResponse, "Reddit campaigns")) as {
-    data?: Array<{ id?: string; name?: string }>;
-  };
+  const campaignPageResult = await fetchRedditCampaigns({
+    accessToken,
+    adAccountId: cleanAccountId,
+    baseHeaders,
+  });
   const campaignNameById = new Map<string, string>();
-  for (const campaign of campaignsPayload.data ?? []) {
+  for (const campaign of campaignPageResult.campaigns) {
     const id = String(campaign.id ?? "").trim();
     if (!id) continue;
     campaignNameById.set(id, campaign.name || id);
@@ -2145,6 +2203,10 @@ export async function fetchRedditAdsData(
   const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
   const cpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
 
+  const meta = makeMeta("live");
+  meta.truncated = campaignPageResult.truncated;
+  meta.truncatedResources = campaignPageResult.truncated ? ["campaigns"] : [];
+
   return {
     totalSpend30d: totalSpend,
     totalImpressions,
@@ -2154,6 +2216,6 @@ export async function fetchRedditAdsData(
     ctr,
     cpc,
     campaigns,
-    _meta: makeMeta("live"),
+    _meta: meta,
   };
 }

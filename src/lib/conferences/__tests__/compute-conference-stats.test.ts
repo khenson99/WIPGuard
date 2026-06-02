@@ -24,15 +24,12 @@ function makeConf(
     type: "conference",
     ownerId: null,
     owner: null,
-    primaryProjectId: null,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
     _count: {
       deadlines: 0,
       leads: overrides.leads ?? 0,
       expenses: 0,
-      tasks: 0,
-      projects: 0,
     },
     ...overrides,
   } as ConferenceListItem;

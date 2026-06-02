@@ -66,6 +66,26 @@ function withShares(
   }));
 }
 
+function webflowFormSubmissionCount(data: AnalyticsDashboardData): number {
+  if (data.webflow?._meta?.diagnostics?.formSubmissionsAvailable === false) {
+    return 0;
+  }
+  const breakdownCount =
+    data.webflow?.formSubmissions.reduce((sum, form) => sum + form.count, 0) ?? 0;
+  return Math.max(data.webflow?.totalFormSubmissions ?? 0, breakdownCount);
+}
+
+function hubspotCollectedFormSubmissionCount(data: AnalyticsDashboardData): number {
+  if (data.hubspot?._meta?.diagnostics?.collectedFormsAvailable === false) {
+    return 0;
+  }
+  return (
+    data.hubspot?.collectedForms?.totalFormSubmissions ??
+    data.hubspot?.funnel?.collectedFormSubmissions ??
+    0
+  );
+}
+
 function lifecycleStageDefinitions(): StageDefinition[] {
   return [
     {
@@ -120,11 +140,15 @@ function lifecycleStageDefinitions(): StageDefinition[] {
       section: "website-traffic",
       rawVolume: (data) =>
         (data.hubspot?.funnel?.demoScheduled ?? 0) +
+        hubspotCollectedFormSubmissionCount(data) +
+        webflowFormSubmissionCount(data) +
         (data.coda?.totalCards ?? data.codaKanban?.totalCards ?? 0) +
         (data.stripe?.subscriptions?.trialing ?? 0),
       trendDelta: (data) => {
         const current =
           (data.hubspot?.funnel?.demoScheduled ?? 0) +
+          hubspotCollectedFormSubmissionCount(data) +
+          webflowFormSubmissionCount(data) +
           (data.coda?.totalCards ?? data.codaKanban?.totalCards ?? 0) +
           (data.stripe?.subscriptions?.trialing ?? 0);
         const previous = Math.max(
@@ -140,6 +164,24 @@ function lifecycleStageDefinitions(): StageDefinition[] {
           contribution: data.hubspot?.funnel?.demoScheduled ?? 0,
           confidence: data.hubspot ? 0.9 : 0.35,
           detail: "Leads that signed up for a demo.",
+        },
+        {
+          source: "HubSpot Collected Forms",
+          domain: "hubspot",
+          contribution: hubspotCollectedFormSubmissionCount(data),
+          confidence: data.hubspot?.collectedForms ? 0.88 : 0.35,
+          detail: "Collected form submissions from HubSpot forms.",
+        },
+        {
+          source: "Webflow Forms",
+          domain: "webflow",
+          contribution: webflowFormSubmissionCount(data),
+          confidence: data.webflow?._meta?.diagnostics?.formSubmissionsAvailable === false
+            ? 0.3
+            : data.webflow
+              ? 0.86
+              : 0.35,
+          detail: "Website form submissions captured by Webflow.",
         },
         {
           source: "Coda Lead Magnet",
@@ -198,11 +240,11 @@ function lifecycleStageDefinitions(): StageDefinition[] {
           detail: "Active returning Kanban users evaluated for opportunities.",
         },
         {
-          source: "Google Workspace Receipts",
+          source: "Google Workspace Ops",
           domain: "googleWorkspace",
-          contribution: data.googleWorkspace?.automationsTriggeredInRange ?? 0,
+          contribution: data.googleWorkspace?.artifactsCreatedInRange ?? 0,
           confidence: data.googleWorkspace ? 0.74 : 0.3,
-          detail: "Follow-up automations triggered in range.",
+          detail: "Follow-up workflow artifacts generated in range.",
         },
       ],
     },
@@ -281,11 +323,11 @@ function lifecycleStageDefinitions(): StageDefinition[] {
           detail: "Resolved customer conversations.",
         },
         {
-          source: "Slack Receipts",
+          source: "Slack Ops",
           domain: "slack",
-          contribution: data.slack?.automationsTriggeredInRange ?? 0,
+          contribution: data.slack?.artifactsCreatedInRange ?? 0,
           confidence: data.slack ? 0.73 : 0.3,
-          detail: "Retention-related workflow events observed in Slack automation receipts.",
+          detail: "Retention-related workflow execution.",
         },
       ],
     },
@@ -294,17 +336,12 @@ function lifecycleStageDefinitions(): StageDefinition[] {
       label: "Full-Funnel Analytics",
       section: "customer-journey",
       rawVolume: (data) =>
-        Math.max(
-          data.hubspot?.funnel?.activeSubscriptions ?? 0,
-          data.stripe?.subscriptions?.active ?? 0,
-        ),
+        (data.hubspot?.funnel?.activeSubscriptions ?? 0) +
+        Math.max(0, data.product?.completedLinearIssuesInRange ?? 0),
       trendDelta: (data) => {
-        const current = Math.max(
-          data.hubspot?.funnel?.activeSubscriptions ?? 0,
-          data.stripe?.subscriptions?.active ?? 0,
-        );
-        const previous = Math.max(1, current - (data.stripe?.subscriptions?.trialing ?? 0));
-        return toTrendDelta(current, previous);
+        const throughput = data.product?.deliveryRate ?? 0;
+        const prev = Math.max(1, throughput - 5);
+        return toTrendDelta(throughput, prev);
       },
       evidence: (data) => [
         {
@@ -315,18 +352,18 @@ function lifecycleStageDefinitions(): StageDefinition[] {
           detail: "Active base available for expansion.",
         },
         {
-          source: "Stripe Active Subscriptions",
-          domain: "stripe",
-          contribution: data.stripe?.subscriptions?.active ?? 0,
-          confidence: data.stripe ? 0.78 : 0.3,
-          detail: "Recurring customer base available for upsell and expansion.",
+          source: "Development Delivery",
+          domain: "product",
+          contribution: data.product?.completedLinearIssuesInRange ?? 0,
+          confidence: data.product ? 0.78 : 0.3,
+          detail: "Provider-derived delivery signal enabling expansion.",
         },
         {
           source: "Coda Ops",
           domain: "coda",
-          contribution: data.codaOps?.automationsTriggeredInRange ?? 0,
+          contribution: data.codaOps?.artifactsCreatedInRange ?? 0,
           confidence: data.codaOps ? 0.72 : 0.28,
-          detail: "Execution automations for expansion opportunities.",
+          detail: "Execution artifacts for expansion opportunities.",
         },
       ],
     },

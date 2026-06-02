@@ -53,33 +53,3 @@ export async function getSessionFromToken(
     return null;
   }
 }
-
-/**
- * Verify that a user has access to a specific project.
- * Returns true if the user is a member of the project.
- */
-export async function verifyProjectAccess(
-  userId: string,
-  projectId: string
-): Promise<boolean> {
-  try {
-    const project = await prisma.project.findFirst({
-      where: {
-        id: projectId,
-        OR: [
-          { responsible: { some: { id: userId } } },
-          { accountable: { some: { id: userId } } },
-          { consulted: { some: { id: userId } } },
-          { informed: { some: { id: userId } } },
-          { sponsor: { some: { id: userId } } },
-        ],
-      },
-      select: { id: true },
-    });
-
-    return project !== null;
-  } catch (error) {
-    console.error("[socket-auth] Failed to verify project access:", error);
-    return false;
-  }
-}
