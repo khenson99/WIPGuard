@@ -19,6 +19,25 @@ const LEGACY_PRODUCT_API_PREFIXES = [
   "/api/v1/tasks",
 ] as const;
 
+const RETIRED_ROUTE_REDIRECTS = [
+  { prefixes: ["/deals"], destination: "/sources" },
+  {
+    prefixes: [
+      "/dashboard",
+      "/tasks",
+      "/board",
+      "/my-tasks",
+      "/projects",
+      "/standup",
+      "/today",
+      "/whip",
+      "/table",
+      "/logbook",
+    ],
+    destination: "/metrics",
+  },
+] as const;
+
 /**
  * Next.js Middleware
  *
@@ -33,6 +52,9 @@ export function middleware(request: NextRequest) {
 
   const canonicalRedirect = maybeRedirectToCanonicalHost(request, pathname);
   if (canonicalRedirect) return canonicalRedirect;
+
+  const retiredRouteRedirect = maybeRedirectRetiredRoute(request, pathname);
+  if (retiredRouteRedirect) return retiredRouteRedirect;
 
   // For non-API routes, just add security headers
   if (!pathname.startsWith("/api/")) {
@@ -91,6 +113,29 @@ export function middleware(request: NextRequest) {
   response.headers.set("API-Version", CURRENT_API_VERSION);
   addSecurityHeaders(response);
   return response;
+}
+
+function maybeRedirectRetiredRoute(
+  request: NextRequest,
+  pathname: string
+): NextResponse | null {
+  for (const redirect of RETIRED_ROUTE_REDIRECTS) {
+    const matched = redirect.prefixes.some(
+      (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+    );
+    if (!matched) continue;
+
+    const redirectUrl = new URL(request.url);
+    redirectUrl.pathname = redirect.destination;
+    redirectUrl.search = "";
+    redirectUrl.hash = "";
+
+    const response = NextResponse.redirect(redirectUrl, 307);
+    addSecurityHeaders(response);
+    return response;
+  }
+
+  return null;
 }
 
 function maybeRejectLegacyProductApi(pathname: string): NextResponse | null {
