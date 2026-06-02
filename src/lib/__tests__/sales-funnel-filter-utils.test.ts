@@ -230,6 +230,40 @@ describe("recomputeFunnelMetrics", () => {
     ]);
   });
 
+  it("classifies punctuation variants in stage labels", () => {
+    const deals = [
+      makeDeal({ dealId: "d1", stageLabel: "Closed_Won", amount: 1000 }),
+      makeDeal({ dealId: "d2", stageLabel: "closed-lost", amount: 0 }),
+      makeDeal({ dealId: "d3", stageLabel: "no_show/reschedule" }),
+      makeDeal({ dealId: "d4", stageLabel: "demo-scheduled" }),
+      makeDeal({ dealId: "d5", stageLabel: "subscription" }),
+    ];
+
+    const result = recomputeFunnelMetrics(deals, [
+      "Closed Won",
+      "Closed Lost",
+      "No-Show/Reschedule",
+      "Demo Scheduled",
+      "Subscription",
+    ]);
+
+    expect(result.closedWon).toBe(1);
+    expect(result.closedLost).toBe(1);
+    expect(result.noShows).toBe(1);
+    expect(result.demoScheduled).toBe(1);
+    expect(result.activeSubscriptions).toBe(1);
+    expect(result.winRate).toBe(50);
+    expect(result.noShowRate).toBe(20);
+    expect(result.dealsByRep[0].closedWonValue).toBe(1000);
+    expect(result.stages.map((stage) => stage.label)).toEqual([
+      "Closed Won",
+      "Closed Lost",
+      "No-Show/Reschedule",
+      "Demo Scheduled",
+      "Subscription",
+    ]);
+  });
+
   it("computes effective win rate including unlikely + churn in denominator", () => {
     const deals = [
       makeDeal({ dealId: "d1", stageLabel: "Closed Won" }),

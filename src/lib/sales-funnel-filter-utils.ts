@@ -103,7 +103,7 @@ const CANONICAL_STAGE_LABEL_BY_KEY = new Map(
 );
 
 function normalizeStageLabelKey(label: string): string {
-  return label.trim().toLowerCase();
+  return label.trim().toLowerCase().replace(/[\s_-]+/g, "");
 }
 
 function normalizeStageLabel(label: string): string {

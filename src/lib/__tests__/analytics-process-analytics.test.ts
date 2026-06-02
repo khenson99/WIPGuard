@@ -218,6 +218,90 @@ describe("buildProcessAnalyticsData", () => {
       }),
     ]);
   });
+
+  it("normalizes punctuation variants for process stage metrics", () => {
+    const data = baseData();
+    const recentDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+
+    data.hubspot = {
+      funnel: {
+        totalDeals: 3,
+        closedWon: 1,
+        closedLost: 1,
+        unlikely: 0,
+        churn: 0,
+        activeSubscriptions: 0,
+        noShows: 0,
+        demoScheduled: 1,
+        demoFollowUp: 0,
+        avgDealSize: 3000,
+        winRate: 50,
+        effectiveWinRate: 50,
+        noShowRate: 0,
+        stages: [
+          { stageId: "demo", label: "demo-scheduled", count: 1, value: 1000 },
+          { stageId: "won", label: "Closed_Won", count: 1, value: 4000 },
+          { stageId: "lost", label: "closed-lost", count: 1, value: 5000 },
+        ],
+        dealsBySource: [{ source: "Organic", count: 3, value: 10_000 }],
+      },
+      contacts: { totalContacts: 0, recentContacts: 0, bySource: [] },
+      deals: [
+        {
+          dealId: "demo-deal",
+          dealName: "Demo Deal",
+          stageId: "demo",
+          stageLabel: "demo-scheduled",
+          amount: 1000,
+          source: "Organic",
+          ownerId: "owner-1",
+          createdAt: recentDate,
+          updatedAt: recentDate,
+          ...DEAL_CONTACT_DEFAULTS,
+        },
+        {
+          dealId: "won-deal",
+          dealName: "Won Deal",
+          stageId: "won",
+          stageLabel: "Closed_Won",
+          amount: 4000,
+          source: "Organic",
+          ownerId: "owner-1",
+          createdAt: recentDate,
+          updatedAt: recentDate,
+          ...DEAL_CONTACT_DEFAULTS,
+        },
+        {
+          dealId: "lost-deal",
+          dealName: "Lost Deal",
+          stageId: "lost",
+          stageLabel: "closed-lost",
+          amount: 5000,
+          source: "Organic",
+          ownerId: "owner-1",
+          createdAt: recentDate,
+          updatedAt: recentDate,
+          ...DEAL_CONTACT_DEFAULTS,
+        },
+      ],
+      _meta: META,
+    };
+
+    const process = buildProcessAnalyticsData(data);
+
+    expect(process.stageVelocity.map((stage) => stage.stageLabel)).toEqual(["Demo Scheduled"]);
+    expect(process.conversionByStage).toEqual([]);
+    expect(process.throughput).toHaveLength(1);
+    expect(process.throughput[0]).toMatchObject({ entered: 1, exited: 2, netChange: -1 });
+    expect(process.leakagePoints).toEqual([
+      expect.objectContaining({
+        stage: "Closed Lost",
+        lostCount: 1,
+        lostValue: 5000,
+        pctOfTotal: 33.3,
+      }),
+    ]);
+  });
 });
 
 describe("buildSalesPerformancePack", () => {
