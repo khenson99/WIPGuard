@@ -248,6 +248,69 @@ describe("analytics lifecycle funnel", () => {
     expect(cross.insights.map((insight) => insight.id)).not.toContain("winrate-low");
   });
 
+  it("normalizes HubSpot stage punctuation before attributing cross-funnel drop-offs", () => {
+    const data = baseData();
+    data.hubspot = {
+      funnel: {
+        totalDeals: 2,
+        closedWon: 0,
+        closedLost: 0,
+        unlikely: 0,
+        churn: 0,
+        activeSubscriptions: 0,
+        noShows: 0,
+        demoScheduled: 2,
+        demoFollowUp: 1,
+        avgDealSize: 5000,
+        winRate: 0,
+        effectiveWinRate: 0,
+        noShowRate: 0,
+        stages: [
+          { stageId: "demo", label: "Demo Scheduled", count: 2, value: 12_000 },
+          { stageId: "follow", label: "Demo Follow-Up", count: 1, value: 7_000 },
+        ],
+        dealsBySource: [],
+      },
+      contacts: {
+        totalContacts: 0,
+        recentContacts: 0,
+        bySource: [],
+      },
+      deals: [
+        {
+          dealId: "formatted-demo-drop",
+          dealName: "Formatted Demo Drop",
+          stageId: "demo-scheduled",
+          stageLabel: "demo-scheduled",
+          amount: 12_000,
+          source: "Organic",
+          ownerId: "owner-1",
+          updatedAt: "2026-01-29T00:00:00.000Z",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          pipelineId: null,
+          contactIds: [],
+          primaryContactId: null,
+          primaryContactEmail: null,
+        },
+      ],
+      _meta: { fetchedAt: "2026-01-30", nextRefresh: "2026-01-30", source: "live" },
+    };
+
+    const cross = buildCrossFunnelData(data);
+
+    expect(cross.dropoffs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          entityId: "formatted-demo-drop",
+          entityName: "Formatted Demo Drop",
+          fromStageLabel: "Demo Scheduled",
+          toStageLabel: "Demo Follow-Up",
+          source: "hubspot",
+        }),
+      ]),
+    );
+  });
+
   it("normalizes ratio-form delivery rate before lifecycle expansion trend math", () => {
     const data = baseData();
     data.product = {

@@ -54,6 +54,10 @@ function normalizeConfidence(value: number): number {
   return Math.max(0.2, Math.min(0.98, Math.round(value * 100) / 100));
 }
 
+function normalizeStageKey(value: string | null | undefined): string {
+  return value?.trim().toLowerCase().replace(/[\s_-]+/g, "") ?? "";
+}
+
 function withShares(
   segments: Array<Omit<LifecycleSegment, "share">>,
 ): LifecycleSegment[] {
@@ -510,8 +514,9 @@ function buildDropoffRecords(
     if (dropped <= 0) continue;
 
     const dropoffRate = toPct(dropped, from.count);
+    const fromStageKey = normalizeStageKey(fromLabel);
     const stageDeals = deals
-      .filter((deal) => deal.stageLabel === fromLabel)
+      .filter((deal) => normalizeStageKey(deal.stageLabel) === fromStageKey)
       .sort((a, b) => b.amount - a.amount)
       .slice(0, Math.min(10, dropped));
 
