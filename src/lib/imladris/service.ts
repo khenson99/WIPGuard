@@ -318,10 +318,8 @@ export async function buildImladrisMetrics(input: {
         metricKey: {
           in: IMLADRIS_METRIC_DEFINITIONS.map((definition) => definition.key),
         },
-        OR: [
-          { userId: input.context.userId },
-          ...(input.context.organizationId ? [{ organizationId: input.context.organizationId }] : []),
-        ],
+        userId: input.context.userId,
+        organizationId: input.context.organizationId,
       },
       include: {
         lineage: {

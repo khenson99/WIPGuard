@@ -301,6 +301,37 @@ describe("Imladris service", () => {
     ]);
   });
 
+  it("queries canonical metric values for the exact actor context", async () => {
+    const findMany = vi.fn(async () => []);
+    const prisma = createPrismaMock({
+      imladrisCanonicalMetricValue: {
+        findMany,
+      },
+    });
+
+    await buildImladrisMetrics({
+      prisma,
+      context: CONTEXT,
+      now: new Date("2026-05-29T10:00:00.000Z"),
+    });
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          userId: "user_1",
+          organizationId: "org_1",
+        }),
+      }),
+    );
+    expect(findMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.any(Array),
+        }),
+      }),
+    );
+  });
+
   it("renders dashboards from canonical metric values", async () => {
     const prisma = createPrismaMock({
       imladrisCanonicalMetricValue: {
