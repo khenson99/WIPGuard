@@ -379,6 +379,20 @@ describe("computeUnitEconomics", () => {
     expect(result.cac).toBe(3375);
   });
 
+  it("uses canonical merged subscriptions for churn-replacement CAC fallback", () => {
+    const hubspotWithSubscriptions = makeHubSpot({
+      funnel: {
+        ...hubspot.funnel,
+        closedWon: 0,
+      },
+      subscriptionDeals: [subscriptionDeal(12_000), subscriptionDeal(12_000)],
+    });
+
+    const result = computeUnitEconomics(stripe, mercury, hubspotWithSubscriptions);
+
+    expect(result.cac).toBe(3245.19);
+  });
+
   it("returns zero-based values when Stripe is null", () => {
     const result = computeUnitEconomics(null, mercury, hubspot);
     expect(result.arpa).toBe(0);

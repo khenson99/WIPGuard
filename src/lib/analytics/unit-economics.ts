@@ -189,7 +189,10 @@ export function computeUnitEconomics(
   if (newCustomers <= 0 && stripe) {
     // Approximate new customers from active-sub base and churn rate (the
     // minimum number of new subs needed just to replace churn).
-    newCustomers = Math.max(1, stripe.subscriptions.active * monthlyChurnRate);
+    newCustomers = Math.max(
+      1,
+      subscriptionBreakdown.mergedActiveSubscriptions * monthlyChurnRate,
+    );
   }
   // Guard: treat zero new customers as 1 to avoid division by zero.
   if (newCustomers <= 0) {
