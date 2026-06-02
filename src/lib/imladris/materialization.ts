@@ -719,7 +719,14 @@ function hubspotRecurringRevenue(record: RawSourceRecordRow): {
   arr: number;
 } | null {
   const payload = asRecord(record.payload);
-  const stage = normalizeStageKey(payload.dealstage ?? payload.stage);
+  const stage = normalizeStageKey(
+    payload.dealstage ??
+      payload.stage ??
+      payload.stageLabel ??
+      payload.stage_label ??
+      payload.stageId ??
+      payload.stage_id,
+  );
   if (stage && !["closedwon", "won"].includes(stage)) {
     return null;
   }
