@@ -2512,6 +2512,75 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("uses synced Google Analytics snapshot sessions instead of partial channel rows", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_ga_snapshot_sessions",
+            provider: IntegrationProvider.GOOGLE_ANALYTICS,
+            objectType: "snapshot",
+            externalId: "googleAnalytics:snapshot:2026-05-01:2026-05-29",
+            occurredAt: new Date("2026-05-29T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T12:00:00.000Z"),
+            payload: {
+              sessions30d: 4_200,
+            },
+          },
+          {
+            id: "raw_ga_channel_sessions",
+            provider: IntegrationProvider.GOOGLE_ANALYTICS,
+            objectType: "traffic_by_channel",
+            externalId: "googleAnalytics:traffic_by_channel:Organic Search",
+            occurredAt: new Date("2026-05-29T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T12:00:00.000Z"),
+            payload: {
+              channel: "Organic Search",
+              sessions: 2_100,
+            },
+          },
+          {
+            id: "raw_hubspot_snapshot_sessions_deal",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_snapshot_sessions",
+            occurredAt: new Date("2026-05-14T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-14T00:00:00.000Z"),
+            payload: {
+              amount: 50_000,
+              dealstage: "qualified",
+              originalSource: "organic search",
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_snapshot_sessions", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      websiteSessions: 4_200,
+      qualifiedPipeline: 50_000,
+    });
+  });
+
   it("normalizes Google Ads costMicros before calculating marketing pipeline efficiency", async () => {
     const prisma = {
       imladrisRawSourceRecord: {

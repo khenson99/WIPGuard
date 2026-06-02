@@ -1315,9 +1315,62 @@ function acquisitionSpendForProvider(
   return recordsForSpend.reduce((sum, amount) => sum + amount, 0);
 }
 
-function sessionsCount(record: RawSourceRecordRow): number {
+function sessionsCount(record: RawSourceRecordRow): number | null {
   const payload = asRecord(record.payload);
-  return numberFrom(payload.sessions ?? payload.users ?? payload.activeUsers) ?? 0;
+  const properties = nestedRecord(payload.properties);
+  const summary = nestedRecord(payload.summary);
+  const metrics = nestedRecord(payload.metrics);
+  return numberFrom(
+    payload.sessions30d ??
+      payload.sessions_30d ??
+      payload.sessions ??
+      payload.users30d ??
+      payload.users_30d ??
+      payload.users ??
+      payload.activeUsers ??
+      payload.active_users ??
+      properties.sessions30d ??
+      properties.sessions_30d ??
+      properties.sessions ??
+      properties.users30d ??
+      properties.users_30d ??
+      properties.users ??
+      properties.activeUsers ??
+      properties.active_users ??
+      summary.sessions30d ??
+      summary.sessions_30d ??
+      summary.sessions ??
+      summary.users30d ??
+      summary.users_30d ??
+      summary.users ??
+      summary.activeUsers ??
+      summary.active_users ??
+      metrics.sessions30d ??
+      metrics.sessions_30d ??
+      metrics.sessions ??
+      metrics.users30d ??
+      metrics.users_30d ??
+      metrics.users ??
+      metrics.activeUsers ??
+      metrics.active_users,
+  );
+}
+
+function websiteSessionsCount(records: RawSourceRecordRow[]): number {
+  const googleAnalyticsRecords = records.filter(
+    (record) => record.provider === IntegrationProvider.GOOGLE_ANALYTICS,
+  );
+  const snapshotCounts = googleAnalyticsRecords
+    .filter((record) => record.objectType === "snapshot")
+    .map(sessionsCount)
+    .filter((count): count is number => typeof count === "number");
+  const recordsForSessions =
+    snapshotCounts.length > 0
+      ? snapshotCounts
+      : googleAnalyticsRecords
+          .map(sessionsCount)
+          .filter((count): count is number => typeof count === "number");
+  return recordsForSessions.reduce((sum, count) => sum + count, 0);
 }
 
 function organicTrafficCount(record: RawSourceRecordRow): number {
@@ -1416,9 +1469,7 @@ function computeMarketingPipelineEfficiency(records: RawSourceRecordRow[]) {
   const qualifiedPipeline = records
     .filter(isMarketingPipelineDeal)
     .reduce((sum, record) => sum + dealAmount(record), 0);
-  const websiteSessions = records
-    .filter((record) => record.provider === IntegrationProvider.GOOGLE_ANALYTICS)
-    .reduce((sum, record) => sum + sessionsCount(record), 0);
+  const websiteSessions = websiteSessionsCount(records);
   const organicTraffic = records
     .filter((record) => record.provider === IntegrationProvider.SEMRUSH)
     .reduce((sum, record) => sum + organicTrafficCount(record), 0);
