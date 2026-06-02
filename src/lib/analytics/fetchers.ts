@@ -1698,6 +1698,31 @@ interface StripeCharge {
   status: string;
 }
 
+function stripeSubscriptionItemMonthlyAmount(item: StripeSubItem): number {
+  if (!item.price) return 0;
+  const unitAmount = readStripeAmountCents(item.price.unit_amount) / 100;
+  const interval = item.price.recurring?.interval || "month";
+  const intervalCount = item.price.recurring?.interval_count || 1;
+
+  if (interval === "year") {
+    return unitAmount / (12 * intervalCount);
+  }
+  if (interval === "week") {
+    return (unitAmount * 52) / (12 * intervalCount);
+  }
+  if (interval === "day") {
+    return (unitAmount * 365) / (12 * intervalCount);
+  }
+  return unitAmount / intervalCount;
+}
+
+function stripeSubscriptionMonthlyAmount(subscription: StripeSub): number {
+  return (subscription.items?.data ?? []).reduce(
+    (sum, item) => sum + stripeSubscriptionItemMonthlyAmount(item),
+    0,
+  );
+}
+
 function stripeSubscriptionCustomerId(customer: StripeSub["customer"]): string {
   if (typeof customer === "string" && customer.trim().length > 0) {
     return customer.trim();
@@ -1914,25 +1939,7 @@ export async function fetchStripeData(
 
   // ── Calculate MRR — normalize yearly/quarterly subscriptions to monthly ──
   const mrr = activeSubs.reduce((sum: number, s: StripeSub) => {
-    const item = s.items?.data?.[0];
-    if (!item?.price) return sum;
-    const unitAmount = readStripeAmountCents(item.price.unit_amount) / 100;
-    const interval = item.price.recurring?.interval || "month";
-    const intervalCount = item.price.recurring?.interval_count || 1;
-
-    // Convert any interval to monthly
-    let monthlyAmount = unitAmount;
-    if (interval === "year") {
-      monthlyAmount = unitAmount / (12 * intervalCount);
-    } else if (interval === "week") {
-      monthlyAmount = (unitAmount * 52) / (12 * intervalCount);
-    } else if (interval === "day") {
-      monthlyAmount = (unitAmount * 365) / (12 * intervalCount);
-    } else {
-      // "month" — divide by interval_count if multi-month
-      monthlyAmount = unitAmount / intervalCount;
-    }
-    return sum + monthlyAmount;
+    return sum + stripeSubscriptionMonthlyAmount(s);
   }, 0);
 
   const { pastDueCount, trialingCount } = counts;
@@ -1998,7 +2005,7 @@ export async function fetchStripeData(
     .map((subscription: StripeSub) => ({
       customer: stripeSubscriptionCustomerId(subscription.customer),
       canceledAt: new Date((subscription.canceled_at || 0) * 1000).toISOString(),
-      amount: readStripeAmountCents(subscription.items?.data?.[0]?.price?.unit_amount) / 100,
+      amount: stripeSubscriptionMonthlyAmount(subscription),
     }));
 
   const truncatedResources = [

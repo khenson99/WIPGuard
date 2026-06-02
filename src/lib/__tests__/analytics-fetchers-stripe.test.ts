@@ -153,6 +153,99 @@ describe("analytics stripe fetcher", () => {
     expect(data.revenueTrend).toEqual([{ month: "2026-02-01", revenue: 50 }]);
   });
 
+  it("sums all subscription items when computing MRR and churn amounts", async () => {
+    const fromDate = new Date("2026-02-01T00:00:00.000Z");
+    const toDate = new Date("2026-02-28T23:59:59.999Z");
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+
+      if (url.pathname === "/v1/subscriptions") {
+        const status = url.searchParams.get("status");
+
+        if (status === "active") {
+          return jsonResponse({
+            data: [
+              {
+                id: "sub_active_multi_item",
+                customer: "cus_active",
+                canceled_at: null,
+                items: {
+                  data: [
+                    {
+                      price: {
+                        unit_amount: 10_000,
+                        recurring: { interval: "month", interval_count: 1 },
+                      },
+                    },
+                    {
+                      price: {
+                        unit_amount: 12_000,
+                        recurring: { interval: "year", interval_count: 1 },
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+            has_more: false,
+          });
+        }
+
+        if (status === "canceled") {
+          return jsonResponse({
+            data: [
+              {
+                id: "sub_canceled_multi_item",
+                customer: "cus_canceled",
+                canceled_at: 1_700_000_100,
+                items: {
+                  data: [
+                    {
+                      price: {
+                        unit_amount: 5_000,
+                        recurring: { interval: "month", interval_count: 1 },
+                      },
+                    },
+                    {
+                      price: {
+                        unit_amount: 7_500,
+                        recurring: { interval: "month", interval_count: 1 },
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+            has_more: false,
+          });
+        }
+
+        return jsonResponse({ data: [], has_more: false });
+      }
+
+      if (url.pathname === "/v1/charges") {
+        return jsonResponse({ data: [], has_more: false });
+      }
+
+      return jsonResponse({ error: "unexpected request", url: String(url) }, 500);
+    });
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchStripeData("sk_test_123", { fromDate, toDate });
+
+    expect(data.revenue.mrr).toBe(110);
+    expect(data.revenue.avgRevenuePerCustomer).toBe(110);
+    expect(data.subscriptions.recentChurnEvents).toEqual([
+      {
+        customer: "cus_canceled",
+        canceledAt: new Date(1_700_000_100 * 1000).toISOString(),
+        amount: 125,
+      },
+    ]);
+  });
+
   it("preserves Stripe customer charge net amounts when monetary fields arrive as formatted strings", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
