@@ -1352,7 +1352,9 @@ function buildCrossdomainInsights(data: AnalyticsDashboardData): AiInsight[] {
   // 1. Ad spend rising but pipeline value flat/declining
   const totalAdSpend = (data.googleAds?.totalSpend30d ?? 0) + (data.metaAds?.totalSpend30d ?? 0) + (data.redditAds?.totalSpend30d ?? 0);
   const pipelineValue = data.hubspot?.funnel?.stages?.reduce((sum, s) => sum + s.value, 0) ?? 0;
-  const closedWonValue = data.hubspot?.funnel?.stages?.find((s) => normalizeMetricLabel(s.label) === "closedwon")?.value ?? 0;
+  const closedWonValue = data.hubspot?.funnel?.stages?.find((s) =>
+    normalizeMetricLabel(s.label) === "closedwon" || normalizeMetricLabel(s.stageId) === "closedwon"
+  )?.value ?? 0;
   if (totalAdSpend > 1000 && pipelineValue > 0 && closedWonValue < totalAdSpend * 0.5) {
     insights.push({
       id: "ai-xd-spend-vs-pipeline",

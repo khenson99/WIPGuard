@@ -1180,6 +1180,51 @@ describe("cross-domain insights", () => {
     expect(spendVsPipeline).toBeUndefined();
   });
 
+  it("normalizes closed-won stage ids before comparing ad spend to pipeline", () => {
+    const data = baseData();
+    data.googleAds = {
+      totalSpend30d: 5000,
+      totalImpressions: 50000,
+      totalClicks: 2000,
+      totalConversions: 40,
+      ctr: 0.04,
+      cpc: 2.5,
+      cpa: 125,
+      roas: 1,
+      campaigns: [],
+      _meta: META,
+    };
+    data.hubspot = {
+      funnel: {
+        totalDeals: 30,
+        closedWon: 10,
+        closedLost: 3,
+        unlikely: 2,
+        churn: 1,
+        activeSubscriptions: 20,
+        noShows: 2,
+        demoScheduled: 10,
+        demoFollowUp: 5,
+        avgDealSize: 300,
+        winRate: 76,
+        effectiveWinRate: 62,
+        noShowRate: 8,
+        stages: [
+          { stageId: "1", label: "Prospect", count: 20, value: 6000 },
+          { stageId: "closed_won", label: "Won", count: 10, value: 6000 },
+        ],
+        dealsBySource: [{ source: "Organic", count: 30, value: 12000 }],
+      },
+      contacts: { totalContacts: 100, recentContacts: 5, bySource: [] },
+      _meta: META,
+    };
+
+    const bundle = buildAiInsightsBundle(data);
+    const spendVsPipeline = bundle.global.find((i) => i.id === "ai-xd-spend-vs-pipeline");
+
+    expect(spendVsPipeline).toBeUndefined();
+  });
+
   it("fires revenue growth vs support load", () => {
     const data = baseData();
     data.stripe = {
