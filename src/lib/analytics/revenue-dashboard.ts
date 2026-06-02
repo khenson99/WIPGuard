@@ -52,7 +52,9 @@ function emptyWeeklyPoint(week: string): RevenueDashboardWeeklyPoint {
     demosCompleted: 0,
     demoNoShows: 0,
     customersWon: 0,
+    revenueCollected: 0,
     stripeRevenueCollected: 0,
+    mercuryRevenueCollected: 0,
     hubspotBookedRevenue: 0,
     mercuryInflows: 0,
     mercuryOutflows: 0,
@@ -72,17 +74,27 @@ function weeklyEntry(
 }
 
 function closedWonDate(deal: HubSpotDeal): Date | null {
-  const explicitClose = parseDate(deal.closedAt ?? null);
-  if (explicitClose) return explicitClose;
-
   const stageHistoryClose = deal.stageHistory
     ?.filter((stage) => stage.stageLabel === "Closed Won")
     .map((stage) => parseDate(stage.occurredAt))
     .filter((date): date is Date => Boolean(date))
-    .sort((a, b) => b.getTime() - a.getTime())[0];
+    .sort((a, b) => a.getTime() - b.getTime())[0];
   if (stageHistoryClose) return stageHistoryClose;
 
-  return deal.stageLabel === "Closed Won" ? parseDate(deal.updatedAt ?? deal.createdAt ?? null) : null;
+  return deal.stageLabel === "Closed Won" ? parseDate(deal.closedAt ?? null) : null;
+}
+
+function selectedRange(data: AnalyticsDashboardData): { from: Date | null; to: Date | null } {
+  return {
+    from: parseDate(data.timeRange?.from ?? null),
+    to: parseDate(data.timeRange?.to ?? null),
+  };
+}
+
+function inSelectedRange(date: Date, range: { from: Date | null; to: Date | null }): boolean {
+  if (range.from && date < range.from) return false;
+  if (range.to && date > range.to) return false;
+  return true;
 }
 
 function addDemoWeeklyTrend(
@@ -103,9 +115,14 @@ function addHubSpotWeeklyRevenue(
   byWeek: Map<string, RevenueDashboardWeeklyPoint>,
   data: AnalyticsDashboardData,
 ): void {
+  const range = selectedRange(data);
+  const seenDealIds = new Set<string>();
   for (const deal of data.hubspot?.deals ?? []) {
+    if (seenDealIds.has(deal.dealId)) continue;
+    seenDealIds.add(deal.dealId);
     const closeDate = closedWonDate(deal);
     if (!closeDate) continue;
+    if (!inSelectedRange(closeDate, range)) continue;
     const entry = weeklyEntry(byWeek, weekStartUtc(closeDate));
     entry.customersWon += 1;
     entry.hubspotBookedRevenue += deal.amount || 0;
@@ -121,7 +138,38 @@ function addStripeWeeklyRevenue(
     if (!date) continue;
     const entry = weeklyEntry(byWeek, weekStartUtc(date));
     entry.stripeRevenueCollected += point.revenue || 0;
+    entry.revenueCollected += point.revenue || 0;
   }
+}
+
+function mercuryText(transaction: MercuryTransactionData): string {
+  return [
+    transaction.kind,
+    transaction.mercuryCategory,
+    transaction.description,
+    transaction.counterpartyName,
+    transaction.bankDescription,
+    transaction.note,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function isLikelyFinancingOrTransfer(transaction: MercuryTransactionData): boolean {
+  const text = mercuryText(transaction);
+  const kind = (transaction.kind ?? "").toLowerCase();
+  const category = (transaction.mercuryCategory ?? "").toLowerCase();
+  if (kind.includes("internaltransfer") || kind.includes("treasurytransfer")) return true;
+  if (category.includes("treasurytransfer")) return true;
+  return /\b(seed|investment|investor|capital call|venture|fund|safe|note purchase|loan|financing)\b/.test(text);
+}
+
+function isLikelyRevenueInflow(transaction: MercuryTransactionData): boolean {
+  if (transaction.amount <= 0) return false;
+  if (isLikelyFinancingOrTransfer(transaction)) return false;
+  const text = mercuryText(transaction);
+  return /\b(stripe|payout|invoice|subscription|accounts receivable|receivable)\b/.test(text);
 }
 
 function addMercuryWeeklyCashFlow(
@@ -136,6 +184,9 @@ function addMercuryWeeklyCashFlow(
     if (transaction.amount >= 0) {
       entry.mercuryInflows += amount;
       entry.mercuryNetCashFlow += amount;
+      if (isLikelyRevenueInflow(transaction)) {
+        entry.mercuryRevenueCollected += amount;
+      }
     } else {
       entry.mercuryOutflows += amount;
       entry.mercuryNetCashFlow -= amount;
@@ -153,7 +204,9 @@ function buildWeekly(data: AnalyticsDashboardData): RevenueDashboardWeeklyPoint[
   return Array.from(byWeek.values())
     .map((point) => ({
       ...point,
+      revenueCollected: roundMoney(point.revenueCollected || point.mercuryRevenueCollected),
       stripeRevenueCollected: roundMoney(point.stripeRevenueCollected),
+      mercuryRevenueCollected: roundMoney(point.mercuryRevenueCollected),
       hubspotBookedRevenue: roundMoney(point.hubspotBookedRevenue),
       mercuryInflows: roundMoney(point.mercuryInflows),
       mercuryOutflows: roundMoney(point.mercuryOutflows),

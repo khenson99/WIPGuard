@@ -306,7 +306,7 @@ function buildUnscheduledFallbackRecord(input: {
 }): DemoRecord {
   const stageLabel = input.deal.stageLabel;
   const isUnscheduledFallback = stageLabel === "Demo Scheduled";
-  const scheduledAt = input.deal.updatedAt ?? input.deal.createdAt ?? new Date().toISOString();
+  const scheduledAt = demoStageScheduledAt(input.deal);
   const outcome: DemoOutcome =
     stageLabel === "No-Show/Reschedule"
       ? "no-show"
@@ -354,10 +354,7 @@ function buildDealAggregateRecord(input: {
   now: Date;
   deal: HubSpotDeal;
 }): DemoRecord {
-  const scheduledAt =
-    input.deal.updatedAt ??
-    input.deal.createdAt ??
-    input.now.toISOString();
+  const scheduledAt = demoStageScheduledAt(input.deal, input.now);
   const stageLabel = input.deal.stageLabel ?? null;
   const outcome: DemoOutcome =
     stageLabel === "No-Show/Reschedule"
@@ -489,9 +486,8 @@ function buildWeeklyTrend(demos: DemoRecord[]): DemoWeeklyTrend[] {
 
   for (const demo of demos) {
     const date = new Date(demo.scheduledAt);
-    const weekStart = new Date(date);
-    weekStart.setDate(date.getDate() - date.getDay());
-    const weekKey = weekStart.toISOString().slice(0, 10);
+    const weekKey = weekStartUtc(date);
+    if (!weekKey) continue;
 
     const entry = byWeek.get(weekKey) ?? { scheduled: 0, completed: 0, noShows: 0 };
     entry.scheduled += 1;
@@ -554,6 +550,32 @@ function resolveStripeChurnEvent(
 
 function pct(num: number, denom: number): number {
   return denom > 0 ? Math.round((num / denom) * 1000) / 10 : 0;
+}
+
+function weekStartUtc(value: Date): string | null {
+  if (!Number.isFinite(value.getTime())) return null;
+  const date = new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+  const day = date.getUTCDay();
+  date.setUTCDate(date.getUTCDate() + (day === 0 ? -6 : 1 - day));
+  return date.toISOString().slice(0, 10);
+}
+
+function firstStageHistoryDate(deal: HubSpotDeal, stageLabels: Set<string>): string | null {
+  return (deal.stageHistory ?? [])
+    .filter((stage) => stageLabels.has(stage.stageLabel))
+    .map((stage) => new Date(stage.occurredAt))
+    .filter((date) => Number.isFinite(date.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime())[0]
+    ?.toISOString() ?? null;
+}
+
+function demoStageScheduledAt(deal: HubSpotDeal, fallbackNow?: Date): string {
+  return (
+    firstStageHistoryDate(deal, DEMO_ENTRY_STAGES) ??
+    deal.createdAt ??
+    fallbackNow?.toISOString() ??
+    new Date().toISOString()
+  );
 }
 
 function hasActivatedEvidence(deal: HubSpotDeal): boolean {

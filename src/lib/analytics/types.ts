@@ -1881,7 +1881,9 @@ export interface RevenueDashboardWeeklyPoint {
   demosCompleted: number;
   demoNoShows: number;
   customersWon: number;
+  revenueCollected: number;
   stripeRevenueCollected: number;
+  mercuryRevenueCollected: number;
   hubspotBookedRevenue: number;
   mercuryInflows: number;
   mercuryOutflows: number;

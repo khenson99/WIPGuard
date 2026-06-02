@@ -402,6 +402,8 @@ describe("buildRevenueDashboardData", () => {
         mercuryInflows: 2000,
         mercuryOutflows: 0,
         mercuryNetCashFlow: 2000,
+        mercuryRevenueCollected: 0,
+        revenueCollected: 2500,
       },
       {
         week: "2026-02-09",
@@ -414,6 +416,8 @@ describe("buildRevenueDashboardData", () => {
         mercuryInflows: 0,
         mercuryOutflows: 3000,
         mercuryNetCashFlow: -3000,
+        mercuryRevenueCollected: 0,
+        revenueCollected: 5000,
       },
     ]);
 
@@ -444,5 +448,109 @@ describe("buildRevenueDashboardData", () => {
     expect(result.trust.warnings).toEqual(
       expect.arrayContaining(["Stripe data is unavailable.", "Mercury data is unavailable."]),
     );
+  });
+
+  it("does not lump legacy closed-won customers into the sync week from updatedAt", () => {
+    const hubspot = makeHubSpot();
+    hubspot.deals = [
+      {
+        ...hubspot.deals![0]!,
+        dealId: "historical-won",
+        updatedAt: "2026-02-10T12:00:00.000Z",
+        createdAt: "2025-04-10T12:00:00.000Z",
+        closedAt: null,
+        stageHistory: [],
+      },
+      {
+        ...hubspot.deals![1]!,
+        dealId: "stage-history-won",
+        updatedAt: "2026-02-10T12:00:00.000Z",
+        closedAt: null,
+        stageHistory: [
+          {
+            occurredAt: "2026-02-04T15:00:00.000Z",
+            stageId: "closedwon",
+            stageLabel: "Closed Won",
+          },
+        ],
+      },
+      {
+        ...hubspot.deals![2]!,
+        dealId: "closed-lost-with-close-date",
+        stageId: "closedlost",
+        stageLabel: "Closed Lost",
+        closedAt: "2026-02-12T12:00:00.000Z",
+      },
+      {
+        ...hubspot.deals![2]!,
+        dealId: "future-won-out-of-range",
+        stageId: "closedwon",
+        stageLabel: "Closed Won",
+        closedAt: "2026-03-05T12:00:00.000Z",
+      },
+    ];
+
+    const result = buildRevenueDashboardData(makeData({
+      hubspot,
+      stripe: null,
+      mercury: null,
+      demoAnalytics: null,
+      timeRange: {
+        preset: "custom",
+        from: "2026-02-01T00:00:00.000Z",
+        to: "2026-02-28T23:59:59.999Z",
+        days: 28,
+        label: "February",
+      },
+    }));
+
+    expect(result.weekly).toEqual([
+      expect.objectContaining({
+        week: "2026-02-02",
+        customersWon: 1,
+        hubspotBookedRevenue: 5000,
+      }),
+    ]);
+  });
+
+  it("uses conservative Mercury revenue inflows as collected fallback without counting investments", () => {
+    const mercury = makeMercury();
+    mercury.transactions = [
+      {
+        id: "stripe-payout",
+        postedAt: "2026-02-04T12:00:00.000Z",
+        amount: 2200,
+        kind: "other",
+        mercuryCategory: null,
+        description: "Stripe payout",
+        counterpartyName: "Stripe",
+      },
+      {
+        id: "seed-wire",
+        postedAt: "2026-02-04T12:00:00.000Z",
+        amount: 1_200_000,
+        kind: "incomingDomesticWire",
+        mercuryCategory: null,
+        description: "Seed investment from fund",
+        counterpartyName: "Stage 2 Capital",
+      },
+    ];
+
+    const result = buildRevenueDashboardData(makeData({
+      stripe: null,
+      mercury,
+      demoAnalytics: null,
+      hubspot: null,
+    }));
+
+    expect(result.weekly).toEqual([
+      expect.objectContaining({
+        week: "2026-02-02",
+        stripeRevenueCollected: 0,
+        mercuryInflows: 1_202_200,
+        mercuryRevenueCollected: 2200,
+        revenueCollected: 2200,
+      }),
+    ]);
   });
 });

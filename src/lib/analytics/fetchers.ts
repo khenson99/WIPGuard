@@ -1810,6 +1810,7 @@ export async function fetchMercuryData(
     bankDescription?: string | null;
     note?: string | null;
     counterpartyName?: string | null;
+    counterpartyNickname?: string | null;
     merchantName?: string | null;
     externalMemo?: string | null;
     memo?: string | null;
@@ -2018,8 +2019,8 @@ export async function fetchMercuryData(
     );
   }
 
-  function filterInternalTransferPairs(transactions: MercuryLedgerTransaction[]): MercuryLedgerTransaction[] {
-    const grouped = new Map<string, MercuryLedgerTransaction[]>();
+  function filterInternalTransferPairs(transactions: MercuryTransaction[]): MercuryTransaction[] {
+    const grouped = new Map<string, MercuryTransaction[]>();
 
     for (const tx of transactions) {
       const amount = tx.amount ?? 0;
@@ -2032,7 +2033,7 @@ export async function fetchMercuryData(
     }
 
     const excludedIds = new Set<string>();
-    const excludedRefs = new Set<MercuryLedgerTransaction>();
+    const excludedRefs = new Set<MercuryTransaction>();
 
     for (const bucket of grouped.values()) {
       const negatives = bucket.filter((tx) => (tx.amount ?? 0) < 0);
@@ -2218,14 +2219,12 @@ export async function fetchMercuryData(
     note: tx.note ?? null,
   });
 
-  const transactions: MercuryTransactionData[] = [];
   const ledgerTransactions: MercuryTransaction[] = [];
   const expenseBreakdown = emptyExpenseBreakdown();
 
   const addCashFlow = (tx: MercuryTransaction): void => {
     if (!shouldCountCashFlow(tx)) return;
     ledgerTransactions.push(tx);
-    transactions.push(toTransactionData(tx));
   };
 
   let usedGlobalTransactions = false;
@@ -2253,8 +2252,7 @@ export async function fetchMercuryData(
     }
   } catch {
     usedGlobalTransactions = false;
-    inflows = 0;
-    outflows = 0;
+    ledgerTransactions.length = 0;
   }
 
   const bankAccounts = accounts.filter((account) => !isTreasuryAccount(account));
@@ -2284,6 +2282,7 @@ export async function fetchMercuryData(
   }
 
   const externalTransactions = filterInternalTransferPairs(ledgerTransactions);
+  const transactions = externalTransactions.map(toTransactionData);
   let inflows = 0, outflows = 0;
   for (const tx of externalTransactions) {
     const amount = tx.amount ?? 0;

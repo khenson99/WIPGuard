@@ -650,8 +650,8 @@ describe("buildDemoAnalyticsData", () => {
     expect(demo.totalScheduled).toBe(2);
     expect(demo.totalCompleted).toBe(1);
     expect(demo.weeklyTrend).toEqual([
-      { week: "2026-03-01", scheduled: 1, completed: 1, noShows: 0 },
-      { week: "2026-03-15", scheduled: 1, completed: 0, noShows: 0 },
+      { week: "2026-03-02", scheduled: 1, completed: 1, noShows: 0 },
+      { week: "2026-03-09", scheduled: 1, completed: 0, noShows: 0 },
     ]);
     expect(demo.upcomingCount).toBe(2);
     expect(demo.meetingBackedUpcomingCount).toBe(1);
@@ -676,5 +676,87 @@ describe("buildDemoAnalyticsData", () => {
     expect(historical?.qualityScore).toBe(88);
     expect(historical?.coachingMemo).toContain("ROI");
     expect(historical?.nextStepMemo).toContain("proposal");
+  });
+
+  it("uses HubSpot stage-history dates for fallback demo buckets instead of update dates", () => {
+    const data = baseData();
+    data.hubspot = {
+      funnel: {
+        totalDeals: 2,
+        closedWon: 0,
+        closedLost: 0,
+        unlikely: 0,
+        churn: 0,
+        activeSubscriptions: 0,
+        noShows: 0,
+        demoScheduled: 0,
+        demoFollowUp: 2,
+        avgDealSize: 1000,
+        winRate: 0,
+        effectiveWinRate: 0,
+        noShowRate: 0,
+        stages: [],
+        dealsBySource: [],
+      },
+      contacts: { totalContacts: 0, recentContacts: 0, bySource: [] },
+      deals: [
+        makeDeal({
+          dealId: "fallback-1",
+          dealName: "Fallback 1",
+          stageId: "follow",
+          stageLabel: "Demo Follow-Up",
+          amount: 1000,
+          source: "Organic",
+          updatedAt: "2026-03-20T00:00:00.000Z",
+          createdAt: "2026-02-01T00:00:00.000Z",
+          stageHistory: [
+            {
+              occurredAt: "2026-02-04T12:00:00.000Z",
+              stageId: "demo",
+              stageLabel: "Demo Scheduled",
+            },
+            {
+              occurredAt: "2026-03-20T00:00:00.000Z",
+              stageId: "follow",
+              stageLabel: "Demo Follow-Up",
+            },
+          ],
+        }),
+        makeDeal({
+          dealId: "fallback-2",
+          dealName: "Fallback 2",
+          stageId: "follow",
+          stageLabel: "Demo Follow-Up",
+          amount: 1000,
+          source: "Organic",
+          updatedAt: "2026-03-20T00:00:00.000Z",
+          createdAt: "2026-02-01T00:00:00.000Z",
+          stageHistory: [
+            {
+              occurredAt: "2026-02-18T12:00:00.000Z",
+              stageId: "demo",
+              stageLabel: "Demo Scheduled",
+            },
+            {
+              occurredAt: "2026-03-20T00:00:00.000Z",
+              stageId: "follow",
+              stageLabel: "Demo Follow-Up",
+            },
+          ],
+        }),
+      ],
+      _meta: {
+        ...META,
+        fetchedAt: "2026-03-21T00:00:00.000Z",
+        nextRefresh: "2026-03-21T01:00:00.000Z",
+      },
+    };
+
+    const demo = buildDemoAnalyticsData(data, { meetings: [] });
+
+    expect(demo.weeklyTrend).toEqual([
+      { week: "2026-02-02", scheduled: 1, completed: 1, noShows: 0 },
+      { week: "2026-02-16", scheduled: 1, completed: 1, noShows: 0 },
+    ]);
   });
 });

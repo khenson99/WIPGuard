@@ -105,7 +105,7 @@ function SourceFreshnessStrip({ dashboard }: { dashboard: RevenueDashboardData }
 function WeeklyRevenueChart({ dashboard }: { dashboard: RevenueDashboardData }) {
   const chartData = dashboard.weekly.slice(-12).map((point) => ({
     week: formatWeek(point.week),
-    collected: point.stripeRevenueCollected,
+    collected: point.revenueCollected,
     booked: point.hubspotBookedRevenue,
     customers: point.customersWon,
     demos: point.demosScheduled,
@@ -124,7 +124,7 @@ function WeeklyRevenueChart({ dashboard }: { dashboard: RevenueDashboardData }) 
     <section className="rounded-lg border border-border bg-card p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-foreground">Weekly revenue motion</h2>
-        <p className="text-xs text-muted-foreground">Stripe collected · HubSpot booked · customers won</p>
+        <p className="text-xs text-muted-foreground">Collected · HubSpot booked · customers won</p>
       </div>
       <div className="mt-4 overflow-x-auto">
         <BarChart width={760} height={280} data={chartData}>
@@ -160,7 +160,7 @@ function WeeklyRevenueChart({ dashboard }: { dashboard: RevenueDashboardData }) 
                 <td className="py-2 text-muted-foreground">{point.week}</td>
                 <td className="py-2 text-right tabular-nums">{point.demosScheduled}</td>
                 <td className="py-2 text-right tabular-nums">{point.customersWon}</td>
-                <td className="py-2 text-right tabular-nums">{fmtCurrency(point.stripeRevenueCollected)}</td>
+                <td className="py-2 text-right tabular-nums">{fmtCurrency(point.revenueCollected)}</td>
                 <td className="py-2 text-right tabular-nums">{fmtCurrency(point.hubspotBookedRevenue)}</td>
                 <td className="py-2 text-right tabular-nums">{fmtCurrency(point.mercuryNetCashFlow)}</td>
               </tr>
