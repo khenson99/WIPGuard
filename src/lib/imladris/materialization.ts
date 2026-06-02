@@ -693,7 +693,7 @@ function hubspotRecurringRevenue(record: RawSourceRecordRow): {
 } | null {
   const payload = asRecord(record.payload);
   const stage = payload.dealstage ?? payload.stage;
-  if (typeof stage === "string" && !["closedwon", "closed_won", "won"].includes(stage.toLowerCase())) {
+  if (typeof stage === "string" && !["closedwon", "closed_won", "won"].includes(stage.trim().toLowerCase())) {
     return null;
   }
   const recurringFlag = payload.recurringRevenue ?? payload.recurring_revenue;
