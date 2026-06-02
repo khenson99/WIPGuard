@@ -248,6 +248,24 @@ describe("analytics lifecycle funnel", () => {
     expect(cross.insights.map((insight) => insight.id)).not.toContain("winrate-low");
   });
 
+  it("normalizes ratio-form delivery rate before lifecycle expansion trend math", () => {
+    const data = baseData();
+    data.product = {
+      activeContributors: 3,
+      mergedPullRequestsInRange: 10,
+      completedLinearIssuesInRange: 8,
+      cycleTimeRiskSignals: 0,
+      deliveryBalance: 2,
+      deliveryRate: 0.8,
+      _meta: { fetchedAt: "2026-01-30", nextRefresh: "2026-01-30", source: "live" },
+    };
+
+    const lifecycle = buildLifecycleFunnelData(data);
+    const expansion = lifecycle.stages.find((stage) => stage.id === "expansion");
+
+    expect(expansion?.trendDeltaPct).toBe(6.7);
+  });
+
   it("counts HubSpot collected forms as website conversion acquisition evidence", () => {
     const data = baseData();
     data.hubspot = {

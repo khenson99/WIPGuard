@@ -340,7 +340,7 @@ function lifecycleStageDefinitions(): StageDefinition[] {
         (data.hubspot?.funnel?.activeSubscriptions ?? 0) +
         Math.max(0, data.product?.completedLinearIssuesInRange ?? 0),
       trendDelta: (data) => {
-        const throughput = data.product?.deliveryRate ?? 0;
+        const throughput = normalizePercentValue(data.product?.deliveryRate);
         const prev = Math.max(1, throughput - 5);
         return toTrendDelta(throughput, prev);
       },
