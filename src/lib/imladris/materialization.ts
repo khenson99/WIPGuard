@@ -473,6 +473,7 @@ function activationAccountId(record: RawSourceRecordRow): string | null {
   const properties = nestedRecord(payload.properties);
   const id =
     properties.hubspotCompanyId ??
+    properties.hubspot_company_id ??
     properties.companyId ??
     properties.company_id ??
     properties.accountId ??
