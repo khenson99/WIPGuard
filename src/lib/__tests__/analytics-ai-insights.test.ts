@@ -843,6 +843,18 @@ describe("sales insights", () => {
     expect(leak!.subsectionId).toBe("sales-hubspot");
   });
 
+  it("normalizes ratio-form no-show rate in sales insight thresholds and copy", () => {
+    const data = baseData();
+    data.hubspot = hubspotWithFunnel({ noShowRate: 0.22, noShows: 11 });
+    const bundle = buildAiInsightsBundle(data);
+    const leak = bundle.global.find((i) => i.id === "ai-sales-conversion-leak");
+
+    expect(leak).toBeDefined();
+    expect(leak!.severity).toBe("warning");
+    expect(leak!.why).toContain("22.0%");
+    expect(leak!.evidence[0]?.value).toBe("22.0%");
+  });
+
   it("fires conversion leak when follow-up > closed won", () => {
     const data = baseData();
     data.hubspot = hubspotWithFunnel({ noShowRate: 10, demoFollowUp: 15, closedWon: 8 });

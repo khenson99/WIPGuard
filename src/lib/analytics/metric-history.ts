@@ -55,8 +55,8 @@ const METRIC_REGISTRY: MetricDefinition[] = [
   // Sales & Pipeline
   { key: "hubspot.totalDeals", section: "sales-pipeline", label: "Total Deals", extract: (d) => d.hubspot?.funnel?.totalDeals ?? null },
   { key: "hubspot.closedWon", section: "sales-pipeline", label: "Closed Won", extract: (d) => d.hubspot?.funnel?.closedWon ?? null },
-  { key: "hubspot.winRate", section: "sales-pipeline", label: "Win Rate", extract: (d) => d.hubspot?.funnel?.winRate ?? null },
-  { key: "hubspot.noShowRate", section: "sales-pipeline", label: "No-Show Rate", extract: (d) => d.hubspot?.funnel?.noShowRate ?? null },
+  { key: "hubspot.winRate", section: "sales-pipeline", label: "Win Rate", extract: (d) => d.hubspot?.funnel ? normalizePercentValue(d.hubspot.funnel.winRate) : null },
+  { key: "hubspot.noShowRate", section: "sales-pipeline", label: "No-Show Rate", extract: (d) => d.hubspot?.funnel ? normalizePercentValue(d.hubspot.funnel.noShowRate) : null },
   { key: "hubspot.avgDealSize", section: "sales-pipeline", label: "Avg Deal Size", extract: (d) => d.hubspot?.funnel?.avgDealSize ?? null },
   { key: "hubspot.demoScheduled", section: "sales-pipeline", label: "Demos Scheduled", extract: (d) => d.hubspot?.funnel?.demoScheduled ?? null },
 

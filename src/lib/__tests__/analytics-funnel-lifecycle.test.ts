@@ -214,6 +214,40 @@ describe("analytics lifecycle funnel", () => {
     expect(cross.narrative.length).toBeGreaterThan(0);
   });
 
+  it("normalizes ratio-form HubSpot win rate before building funnel insights", () => {
+    const data = baseData();
+    data.hubspot = {
+      funnel: {
+        totalDeals: 2,
+        closedWon: 1,
+        closedLost: 1,
+        unlikely: 0,
+        churn: 0,
+        activeSubscriptions: 1,
+        noShows: 0,
+        demoScheduled: 1,
+        demoFollowUp: 1,
+        avgDealSize: 4000,
+        winRate: 0.5,
+        effectiveWinRate: 0.4,
+        noShowRate: 0,
+        stages: [],
+        dealsBySource: [],
+      },
+      contacts: {
+        totalContacts: 10,
+        recentContacts: 2,
+        bySource: [],
+      },
+      deals: [],
+      _meta: { fetchedAt: "2026-01-30", nextRefresh: "2026-01-30", source: "live" },
+    };
+
+    const cross = buildCrossFunnelData(data);
+
+    expect(cross.insights.map((insight) => insight.id)).not.toContain("winrate-low");
+  });
+
   it("counts HubSpot collected forms as website conversion acquisition evidence", () => {
     const data = baseData();
     data.hubspot = {

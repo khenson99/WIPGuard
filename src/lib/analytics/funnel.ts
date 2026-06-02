@@ -11,6 +11,7 @@ import type {
   LifecycleStageId,
   LifecycleTransition,
 } from "@/lib/analytics/types";
+import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
 
 const SALES_STAGE_ORDER = [
   "Prospect",
@@ -582,7 +583,7 @@ function buildInsights(
     });
   }
 
-  const salesWinRate = data.hubspot?.funnel?.winRate ?? 0;
+  const salesWinRate = normalizePercentValue(data.hubspot?.funnel?.winRate);
   if (salesWinRate < 25) {
     insights.push({
       id: "winrate-low",

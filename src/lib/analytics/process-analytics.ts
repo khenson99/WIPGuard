@@ -8,6 +8,7 @@ import type {
   StageVelocity,
   WeeklyThroughput,
 } from "@/lib/analytics/types";
+import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
 
 const PIPELINE_STAGES = [
   "Prospect", "Lead", "Demo Scheduled", "No-Show/Reschedule",
@@ -115,7 +116,7 @@ function buildHealthScore(data: AnalyticsDashboardData, velocity: StageVelocity[
   const funnel = data.hubspot?.funnel;
 
   // Win rate factor (weight: 30)
-  const winRate = funnel?.winRate ?? 0;
+  const winRate = normalizePercentValue(funnel?.winRate);
   const winRateScore = Math.min(100, winRate * 2); // 50% win rate = 100 score
   factors.push({
     factor: "Win Rate",
@@ -125,7 +126,7 @@ function buildHealthScore(data: AnalyticsDashboardData, velocity: StageVelocity[
   });
 
   // No-show rate factor (weight: 20)
-  const noShowRate = funnel?.noShowRate ?? 0;
+  const noShowRate = normalizePercentValue(funnel?.noShowRate);
   const noShowScore = Math.max(0, 100 - noShowRate * 4); // 25% no-show = 0 score
   factors.push({
     factor: "Demo Attendance",

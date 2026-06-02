@@ -838,6 +838,26 @@ describe("GET /api/analytics", () => {
     expect(bounceRecommendation.insight).not.toContain("6000.0%");
   });
 
+  it("normalizes ratio-form HubSpot no-show rate values in recommendations", async () => {
+    const { fetchHubSpotData } = await import("@/lib/analytics/fetchers");
+    vi.mocked(fetchHubSpotData).mockResolvedValueOnce({
+      ...HUBSPOT_DATA,
+      funnel: {
+        ...HUBSPOT_DATA.funnel,
+        noShowRate: 0.25,
+      },
+    } as never);
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=overview"));
+    const body = await response.json();
+
+    const noShowRecommendation = body.recommendations.find(
+      (recommendation: { id: string }) => recommendation.id === "sales-noshow",
+    );
+    expect(noShowRecommendation).toBeDefined();
+  });
+
   it("loads unlinked HubSpot meetings for demo analytics instead of only deal-linked meetings", async () => {
     const { prisma } = await import("@/lib/prisma");
     const { GET } = await import("@/app/api/analytics/route");

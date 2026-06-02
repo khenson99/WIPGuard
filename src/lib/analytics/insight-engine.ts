@@ -1109,7 +1109,7 @@ function buildSalesInsights(data: AnalyticsDashboardData): AiInsight[] {
   const funnel = data.hubspot?.funnel;
   if (!funnel) return insights;
 
-  const noShowRate = funnel.noShowRate ?? 0;
+  const noShowRate = normalizePercentValue(funnel.noShowRate);
   const demoScheduled = funnel.demoScheduled ?? 0;
   const demoFollowUp = funnel.demoFollowUp ?? 0;
   const closedWon = funnel.closedWon ?? 0;

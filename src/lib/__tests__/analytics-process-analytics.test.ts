@@ -95,6 +95,53 @@ describe("buildProcessAnalyticsData", () => {
     expect(process.bottlenecks.length).toBeGreaterThan(0);
     expect(process.avgCycleTimeDays).toBeGreaterThan(0);
   });
+
+  it("normalizes ratio-form HubSpot funnel rates before scoring health factors", () => {
+    const data = baseData();
+    data.hubspot = {
+      funnel: {
+        totalDeals: 2,
+        closedWon: 1,
+        closedLost: 1,
+        unlikely: 0,
+        churn: 0,
+        activeSubscriptions: 1,
+        noShows: 1,
+        demoScheduled: 4,
+        demoFollowUp: 3,
+        avgDealSize: 4000,
+        winRate: 0.5,
+        effectiveWinRate: 0.4,
+        noShowRate: 0.25,
+        stages: [],
+        dealsBySource: [],
+      },
+      contacts: {
+        totalContacts: 10,
+        recentContacts: 2,
+        bySource: [],
+      },
+      deals: [],
+      _meta: META,
+    };
+
+    const process = buildProcessAnalyticsData(data);
+
+    expect(process.healthFactors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          factor: "Win Rate",
+          score: 100,
+          detail: "50.0% win rate",
+        }),
+        expect.objectContaining({
+          factor: "Demo Attendance",
+          score: 0,
+          detail: "25.0% no-show rate",
+        }),
+      ]),
+    );
+  });
 });
 
 describe("buildSalesPerformancePack", () => {

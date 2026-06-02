@@ -204,9 +204,9 @@ function buildPipeline(data: AnalyticsDashboardData): RevenueDashboardData["pipe
     repScoreboard: ([...(data.hubspot?.repScoreboard ?? [])] as HubSpotRepScoreboardRow[]).map((row) => ({
       ...row,
     })),
-    winRate: data.hubspot?.funnel.winRate ?? 0,
-    effectiveWinRate: data.hubspot?.funnel.effectiveWinRate ?? 0,
-    noShowRate: data.hubspot?.funnel.noShowRate ?? 0,
+    winRate: normalizePercentValue(data.hubspot?.funnel.winRate),
+    effectiveWinRate: normalizePercentValue(data.hubspot?.funnel.effectiveWinRate),
+    noShowRate: normalizePercentValue(data.hubspot?.funnel.noShowRate),
     avgDealSize: data.hubspot?.funnel.avgDealSize ?? 0,
     demoFollowUpCount: data.hubspot?.funnel.demoFollowUp ?? 0,
     ...salesTotals,

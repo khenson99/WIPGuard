@@ -516,7 +516,8 @@ function buildRecommendations(data: AnalyticsDashboardData): AnalyticsRecommenda
     });
   }
 
-  if ((data.hubspot?.funnel?.noShowRate ?? 0) > 15) {
+  const hubspotNoShowRatePct = normalizePercentValue(data.hubspot?.funnel?.noShowRate);
+  if (hubspotNoShowRatePct > 15) {
     recommendations.push({
       id: "sales-noshow",
       section: "sales-pipeline",

@@ -21,6 +21,12 @@ function customerSuccessExtractors() {
   );
 }
 
+function salesPipelineExtractors() {
+  return Object.fromEntries(
+    getMetricsBySection("sales-pipeline").map((metric) => [metric.key, metric.extract]),
+  );
+}
+
 describe("metric history finance extraction", () => {
   it("uses canonical finance summary metrics when they are present", () => {
     const data = {
@@ -143,5 +149,23 @@ describe("metric history finance extraction", () => {
     const extract = customerSuccessExtractors();
 
     expect(extract["product.deliveryRate"]?.(data)).toBe(80);
+  });
+
+  it("normalizes ratio-style HubSpot funnel rates before extracting history", () => {
+    const data = {
+      hubspot: {
+        funnel: {
+          totalDeals: 4,
+          closedWon: 2,
+          winRate: 0.5,
+          noShowRate: 0.25,
+        },
+      },
+    } as unknown as AnalyticsDashboardData;
+
+    const extract = salesPipelineExtractors();
+
+    expect(extract["hubspot.winRate"]?.(data)).toBe(50);
+    expect(extract["hubspot.noShowRate"]?.(data)).toBe(25);
   });
 });

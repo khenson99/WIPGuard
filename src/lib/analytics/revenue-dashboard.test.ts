@@ -458,6 +458,19 @@ describe("buildRevenueDashboardData", () => {
     expect(result.summary.churnRatePct).toBe(4);
   });
 
+  it("normalizes ratio-style HubSpot funnel rates in the revenue pipeline", () => {
+    const hubspot = makeHubSpot();
+    hubspot.funnel.winRate = 0.667;
+    hubspot.funnel.effectiveWinRate = 0.5;
+    hubspot.funnel.noShowRate = 0.25;
+
+    const result = buildRevenueDashboardData(makeData({ hubspot }));
+
+    expect(result.pipeline.winRate).toBe(66.7);
+    expect(result.pipeline.effectiveWinRate).toBe(50);
+    expect(result.pipeline.noShowRate).toBe(25);
+  });
+
   it("builds weekly Mercury rows from the filtered transaction list that backs cash flow totals", () => {
     const mercury = makeMercury();
     mercury.cashFlow = {
