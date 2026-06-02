@@ -378,11 +378,11 @@ describe("buildRevenueDashboardData", () => {
       activeSubscriptions: 3,
       stripeActiveSubscriptions: 2,
       hubspotActiveSubscriptions: 2,
-      mrr: 13000,
-      arr: 156000,
+      mrr: 10250,
+      arr: 123000,
       stripeMrr: 10000,
-      hubspotOnlySubscriptionMrr: 3000,
-      excludedLinkedHubspotSubscriptionMrr: 2000,
+      hubspotOnlySubscriptionMrr: 250,
+      excludedLinkedHubspotSubscriptionMrr: 166.67,
       cashBalance: 100000,
       runwayMonths: 12.5,
       burnRate: 8000,
@@ -438,8 +438,8 @@ describe("buildRevenueDashboardData", () => {
   it("keeps partial dashboard data visible when providers are missing", () => {
     const result = buildRevenueDashboardData(makeData({ stripe: null, mercury: null }));
 
-    expect(result.summary.mrr).toBe(5000);
-    expect(result.summary.arr).toBe(60000);
+    expect(result.summary.mrr).toBe(416.67);
+    expect(result.summary.arr).toBe(5000);
     expect(result.summary.activeSubscriptions).toBe(2);
     expect(result.summary.cashBalance).toBe(0);
     expect(result.trust.warnings).toEqual(

@@ -143,18 +143,18 @@ describe("loadCeoMetricSnapshot", () => {
       { key: "treasuryCash", label: "Treasury cash", value: 100000, unit: "currency" },
       { key: "totalCash", label: "Total cash", value: 123456, unit: "currency" },
     ]);
-    expect(metricByKey.get("finance.mrr")?.value).toBe(25000);
+    expect(metricByKey.get("finance.mrr")?.value).toBe(20416.67);
     expect(metricByKey.get("finance.mrr")?.delta).toBe(1500);
     expect(metricByKey.get("finance.mrr")?.details).toEqual([
       { key: "stripeMrr", label: "Stripe MRR", value: 20000, unit: "currency" },
-      { key: "hubspotOnlySubscriptionMrr", label: "HubSpot-only subscription MRR", value: 5000, unit: "currency" },
+      { key: "hubspotOnlySubscriptionMrr", label: "HubSpot-only subscription MRR", value: 416.67, unit: "currency" },
       {
         key: "excludedLinkedHubspotSubscriptionMrr",
         label: "Linked HubSpot subscription MRR excluded",
-        value: 3000,
+        value: 250,
         unit: "currency",
       },
-      { key: "totalMrr", label: "Total MRR", value: 25000, unit: "currency" },
+      { key: "totalMrr", label: "Total MRR", value: 20416.67, unit: "currency" },
     ]);
     expect(metricByKey.get("sales.open_pipeline_value")?.value).toBe(100000);
     expect(metricByKey.get("retention.at_risk_accounts")?.value).toBe(4);

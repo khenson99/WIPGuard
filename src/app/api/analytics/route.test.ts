@@ -811,7 +811,7 @@ describe("GET /api/analytics", () => {
       },
       select: { config: true },
     });
-    expect(body.revenueDashboard?.summary.arr).toBe(187176);
+    expect(body.revenueDashboard?.summary.arr).toBe(147598);
     expect(body.revenueDashboard?.trust.sources.map((source: { key: string }) => source.key)).toEqual([
       "hubspot",
       "stripe",
@@ -862,11 +862,11 @@ describe("GET /api/analytics", () => {
       stripeActiveSubscriptions: 20,
       hubspotActiveSubscriptions: 1,
       stripeMrr: 12000,
-      hubspotSubscriptionMrr: 3598,
-      hubspotOnlySubscriptionMrr: 3598,
+      hubspotSubscriptionMrr: 299.83,
+      hubspotOnlySubscriptionMrr: 299.83,
       excludedLinkedHubspotSubscriptionMrr: 0,
-      totalMrr: 15598,
-      totalArr: 187176,
+      totalMrr: 12299.83,
+      totalArr: 147598,
     });
   });
 
@@ -896,7 +896,7 @@ describe("GET /api/analytics", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "goal-mrr",
-          currentValue: 15598,
+          currentValue: 12299.83,
         }),
         expect.objectContaining({
           id: "goal-customers",

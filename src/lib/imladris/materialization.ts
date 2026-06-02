@@ -252,6 +252,33 @@ function roundRatio(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+const GENERIC_EMAIL_DOMAINS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "yahoo.com",
+  "outlook.com",
+  "hotmail.com",
+  "icloud.com",
+  "me.com",
+  "proton.me",
+  "protonmail.com",
+]);
+
+function normalizeLookup(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeEmailDomain(value: unknown): string | null {
+  const email = normalizeLookup(value);
+  if (!email || !email.includes("@")) return null;
+  const [, domain] = email.split("@");
+  const normalized = normalizeLookup(domain);
+  if (!normalized || GENERIC_EMAIL_DOMAINS.has(normalized)) return null;
+  return normalized;
+}
+
 function providerWindowWhere(input: {
   providers: IntegrationProvider[];
   context: ImladrisActorContext;
@@ -561,7 +588,102 @@ function stripeMrrAmount(record: RawSourceRecordRow): number | null {
   );
 }
 
-function hubspotRecurringRevenueAmount(record: RawSourceRecordRow): number | null {
+function stripeCustomerId(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const customer = asRecord(payload.customer);
+  return normalizeLookup(
+    payload.customerId ??
+      payload.customer_id ??
+      payload.stripeCustomerId ??
+      payload.stripe_customer_id ??
+      customer.id,
+  );
+}
+
+function stripeCustomerEmail(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const customer = asRecord(payload.customer);
+  return normalizeLookup(
+    payload.customerEmail ??
+      payload.customer_email ??
+      payload.email ??
+      customer.email,
+  );
+}
+
+function stripeCustomerEmailDomain(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const explicitDomain = normalizeLookup(payload.emailDomain ?? payload.email_domain);
+  if (explicitDomain && !GENERIC_EMAIL_DOMAINS.has(explicitDomain)) return explicitDomain;
+  return normalizeEmailDomain(stripeCustomerEmail(record));
+}
+
+function hubspotDealEmail(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
+  return normalizeLookup(
+    payload.primaryContactEmail ??
+      payload.primary_contact_email ??
+      payload.contactEmail ??
+      payload.contact_email ??
+      payload.email ??
+      properties.primaryContactEmail ??
+      properties.contactEmail ??
+      properties.email,
+  );
+}
+
+function hubspotDealEmailDomain(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
+  const explicitDomain = normalizeLookup(
+    payload.emailDomain ??
+      payload.email_domain ??
+      payload.companyDomain ??
+      payload.company_domain ??
+      payload.domain ??
+      properties.companyDomain ??
+      properties.domain,
+  );
+  if (explicitDomain && !GENERIC_EMAIL_DOMAINS.has(explicitDomain)) return explicitDomain;
+  return normalizeEmailDomain(hubspotDealEmail(record));
+}
+
+function hubspotStripeCustomerId(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
+  return normalizeLookup(
+    payload.stripeCustomerId ??
+      payload.stripe_customer_id ??
+      payload.customerId ??
+      payload.customer_id ??
+      properties.stripeCustomerId ??
+      properties.stripe_customer_id,
+  );
+}
+
+function isLinkedHubspotDeal(
+  record: RawSourceRecordRow,
+  stripeRefs: {
+    customerIds: Set<string>;
+    emails: Set<string>;
+    domains: Set<string>;
+  },
+): boolean {
+  const customerId = hubspotStripeCustomerId(record);
+  const email = hubspotDealEmail(record);
+  const emailDomain = hubspotDealEmailDomain(record);
+  return (
+    Boolean(customerId && stripeRefs.customerIds.has(customerId)) ||
+    Boolean(email && stripeRefs.emails.has(email)) ||
+    Boolean(emailDomain && stripeRefs.domains.has(emailDomain))
+  );
+}
+
+function hubspotRecurringRevenue(record: RawSourceRecordRow): {
+  mrr: number;
+  arr: number;
+} | null {
   const payload = asRecord(record.payload);
   const stage = payload.dealstage ?? payload.stage;
   if (typeof stage === "string" && !["closedwon", "closed_won", "won"].includes(stage.toLowerCase())) {
@@ -569,13 +691,90 @@ function hubspotRecurringRevenueAmount(record: RawSourceRecordRow): number | nul
   }
   const recurringFlag = payload.recurringRevenue ?? payload.recurring_revenue;
   if (recurringFlag === false) return null;
-  return numberFrom(
+  const explicitMrr = numberFrom(
+    payload.monthlyRecurringRevenue ??
+      payload.monthly_recurring_revenue ??
+      payload.mrr ??
+      payload.amountMonthly ??
+      payload.amount_monthly,
+  );
+  if (explicitMrr !== null) {
+    const mrr = Math.max(0, explicitMrr);
+    return { mrr, arr: mrr * 12 };
+  }
+  const annualValue = numberFrom(
     payload.recurringRevenueAmount ??
       payload.recurring_revenue_amount ??
-      payload.monthlyRecurringRevenue ??
-      payload.mrr ??
+      payload.annualRecurringRevenue ??
+      payload.annual_recurring_revenue ??
+      payload.arr ??
       payload.amount,
   );
+  if (annualValue === null) return null;
+  const arr = Math.max(0, annualValue);
+  return { mrr: arr / 12, arr };
+}
+
+function buildStripeRefs(records: RawSourceRecordRow[]) {
+  const stripeRecords = records.filter((record) => record.provider === IntegrationProvider.STRIPE);
+  return {
+    customerIds: new Set(
+      stripeRecords.map(stripeCustomerId).filter((value): value is string => Boolean(value)),
+    ),
+    emails: new Set(
+      stripeRecords.map(stripeCustomerEmail).filter((value): value is string => Boolean(value)),
+    ),
+    domains: new Set(
+      stripeRecords.map(stripeCustomerEmailDomain).filter((value): value is string => Boolean(value)),
+    ),
+  };
+}
+
+function computeMrrBreakdown(records: RawSourceRecordRow[]) {
+  const stripeMrr = records
+    .filter((record) => record.provider === IntegrationProvider.STRIPE)
+    .reduce((sum, record) => sum + (stripeMrrAmount(record) ?? 0), 0);
+  const stripeArr = stripeMrr * 12;
+  const stripeRefs = buildStripeRefs(records);
+  let hubspotSubscriptionMrr = 0;
+  let hubspotSubscriptionArr = 0;
+  let hubspotOnlySubscriptionMrr = 0;
+  let hubspotOnlySubscriptionArr = 0;
+  let excludedLinkedHubspotSubscriptionMrr = 0;
+  let excludedLinkedHubspotSubscriptionArr = 0;
+
+  for (const record of records) {
+    if (record.provider !== IntegrationProvider.HUBSPOT || record.objectType !== "deal") continue;
+    const recurringRevenue = hubspotRecurringRevenue(record);
+    if (!recurringRevenue) continue;
+
+    hubspotSubscriptionMrr += recurringRevenue.mrr;
+    hubspotSubscriptionArr += recurringRevenue.arr;
+    if (isLinkedHubspotDeal(record, stripeRefs)) {
+      excludedLinkedHubspotSubscriptionMrr += recurringRevenue.mrr;
+      excludedLinkedHubspotSubscriptionArr += recurringRevenue.arr;
+    } else {
+      hubspotOnlySubscriptionMrr += recurringRevenue.mrr;
+      hubspotOnlySubscriptionArr += recurringRevenue.arr;
+    }
+  }
+
+  const totalMrr = stripeMrr + hubspotOnlySubscriptionMrr;
+  const totalArr = stripeArr + hubspotOnlySubscriptionArr;
+
+  return {
+    amount: roundMoney(totalMrr),
+    arr: roundMoney(totalArr),
+    stripeMrr: roundMoney(stripeMrr),
+    stripeArr: roundMoney(stripeArr),
+    hubspotSubscriptionMrr: roundMoney(hubspotSubscriptionMrr),
+    hubspotSubscriptionArr: roundMoney(hubspotSubscriptionArr),
+    hubspotOnlySubscriptionMrr: roundMoney(hubspotOnlySubscriptionMrr),
+    hubspotOnlySubscriptionArr: roundMoney(hubspotOnlySubscriptionArr),
+    hubspotRecurringRevenue: roundMoney(hubspotOnlySubscriptionMrr),
+    excludedLinkedHubspotSubscriptionMrr: roundMoney(excludedLinkedHubspotSubscriptionMrr),
+    excludedLinkedHubspotSubscriptionArr: roundMoney(excludedLinkedHubspotSubscriptionArr),
+  };
 }
 
 function computeFinanceValues(records: RawSourceRecordRow[]) {
@@ -595,12 +794,7 @@ function computeFinanceValues(records: RawSourceRecordRow[]) {
   const stripeMrr = records
     .filter((record) => record.provider === IntegrationProvider.STRIPE)
     .reduce((sum, record) => sum + (stripeMrrAmount(record) ?? 0), 0);
-  const hubspotRecurringRevenue = records
-    .filter(
-      (record) =>
-        record.provider === IntegrationProvider.HUBSPOT && record.objectType === "deal",
-    )
-    .reduce((sum, record) => sum + (hubspotRecurringRevenueAmount(record) ?? 0), 0);
+  const mrr = computeMrrBreakdown(records);
   const cashInflow = mercuryCashInflow + stripeMrr;
   const netBurn = Math.max(0, cashOutflow - cashInflow);
   const cashBalance =
@@ -629,10 +823,8 @@ function computeFinanceValues(records: RawSourceRecordRow[]) {
       currency,
     },
     mrr: {
-      amount: roundMoney(stripeMrr + hubspotRecurringRevenue),
+      ...mrr,
       currency,
-      stripeMrr: roundMoney(stripeMrr),
-      hubspotRecurringRevenue: roundMoney(hubspotRecurringRevenue),
     },
   };
 }

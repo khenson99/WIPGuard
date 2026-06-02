@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
 
 describe("buildSubscriptionMrrBreakdown", () => {
-  it("adds HubSpot-only subscription revenue to Stripe MRR", () => {
+  it("adds HubSpot-only annual subscription value to Stripe ARR", () => {
     const breakdown = buildSubscriptionMrrBreakdown({
       stripe: {
         revenue: { mrr: 12000, mrrChange: 500 },
@@ -25,10 +25,10 @@ describe("buildSubscriptionMrrBreakdown", () => {
       },
     });
 
-    expect(breakdown.totalMrr).toBe(15598);
-    expect(breakdown.totalArr).toBe(187176);
+    expect(breakdown.totalMrr).toBe(12299.83);
+    expect(breakdown.totalArr).toBe(147598);
     expect(breakdown.stripeMrr).toBe(12000);
-    expect(breakdown.hubspotOnlySubscriptionMrr).toBe(3598);
+    expect(breakdown.hubspotOnlySubscriptionMrr).toBe(299.83);
     expect(breakdown.mergedActiveSubscriptions).toBe(2);
   });
 
@@ -65,7 +65,7 @@ describe("buildSubscriptionMrrBreakdown", () => {
 
     expect(breakdown.totalMrr).toBe(12000);
     expect(breakdown.hubspotOnlySubscriptionMrr).toBe(0);
-    expect(breakdown.excludedLinkedHubspotSubscriptionMrr).toBe(7000);
+    expect(breakdown.excludedLinkedHubspotSubscriptionMrr).toBe(583.33);
     expect(breakdown.mergedActiveSubscriptions).toBe(1);
   });
 });
