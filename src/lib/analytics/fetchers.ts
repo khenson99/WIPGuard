@@ -1368,6 +1368,7 @@ interface StripeSub {
   items: { data: StripeSubItem[] };
   customer: string | { id?: string | null; email?: string | null } | null;
   canceled_at: number | null;
+  created?: number | null;
 }
 
 interface StripeCharge {
@@ -1618,10 +1619,16 @@ export async function fetchStripeData(
       activeCustomerRefs: activeSubs.map((subscription) => {
         const customerId = stripeSubscriptionCustomerId(subscription.customer);
         const email = stripeSubscriptionCustomerEmail(subscription.customer);
+        const createdAt =
+          typeof subscription.created === "number" && subscription.created > 0
+            ? new Date(subscription.created * 1000).toISOString()
+            : null;
         return {
           customerId,
           email,
           emailDomain: normalizeEmailDomain(email),
+          subscriptionId: subscription.id,
+          subscriptionCreatedAt: createdAt,
         };
       }),
     },

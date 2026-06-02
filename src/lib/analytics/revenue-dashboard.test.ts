@@ -177,8 +177,20 @@ function makeStripe(): StripeData {
       churnRate: 2,
       recentChurnEvents: [],
       activeCustomerRefs: [
-        { customerId: "cus_linked", email: "buyer@example.com", emailDomain: "example.com" },
-        { customerId: "cus_other", email: "finance@other.example", emailDomain: "other.example" },
+        {
+          customerId: "cus_linked",
+          email: "buyer@example.com",
+          emailDomain: "example.com",
+          subscriptionId: "sub_linked",
+          subscriptionCreatedAt: "2026-02-03T12:00:00.000Z",
+        },
+        {
+          customerId: "cus_other",
+          email: "finance@other.example",
+          emailDomain: "other.example",
+          subscriptionId: "sub_other",
+          subscriptionCreatedAt: "2026-02-12T12:00:00.000Z",
+        },
       ],
     },
     payments: { succeeded: 3, failed: 1, successRate: 75 },
@@ -397,6 +409,8 @@ describe("buildRevenueDashboardData", () => {
         demosCompleted: 1,
         demoNoShows: 1,
         customersWon: 1,
+        hubspotCustomersWon: 1,
+        stripeCustomersStarted: 0,
         stripeRevenueCollected: 2500,
         hubspotBookedRevenue: 4000,
         mercuryInflows: 2000,
@@ -410,7 +424,9 @@ describe("buildRevenueDashboardData", () => {
         demosScheduled: 1,
         demosCompleted: 1,
         demoNoShows: 0,
-        customersWon: 1,
+        customersWon: 2,
+        hubspotCustomersWon: 1,
+        stripeCustomersStarted: 1,
         stripeRevenueCollected: 5000,
         hubspotBookedRevenue: 5000,
         mercuryInflows: 0,
@@ -508,9 +524,68 @@ describe("buildRevenueDashboardData", () => {
       expect.objectContaining({
         week: "2026-02-02",
         customersWon: 1,
+        hubspotCustomersWon: 1,
+        stripeCustomersStarted: 0,
         hubspotBookedRevenue: 5000,
       }),
     ]);
+  });
+
+  it("counts Stripe-only active subscriptions by subscription creation week", () => {
+    const stripe = makeStripe();
+    stripe.subscriptions.active = 4;
+    stripe.subscriptions.activeCustomerRefs = [
+      {
+        customerId: "cus_linked",
+        email: "buyer@example.com",
+        emailDomain: "example.com",
+        subscriptionId: "sub_linked",
+        subscriptionCreatedAt: "2026-02-03T12:00:00.000Z",
+      },
+      {
+        customerId: "cus_stripe_only",
+        email: "ap@stripe-only.example",
+        emailDomain: "stripe-only.example",
+        subscriptionId: "sub_1",
+        subscriptionCreatedAt: "2026-02-18T12:00:00.000Z",
+      },
+      {
+        customerId: "cus_stripe_only",
+        email: "ap@stripe-only.example",
+        emailDomain: "stripe-only.example",
+        subscriptionId: "sub_2",
+        subscriptionCreatedAt: "2026-02-20T12:00:00.000Z",
+      },
+      {
+        customerId: "cus_out_of_range",
+        email: "ops@future.example",
+        emailDomain: "future.example",
+        subscriptionId: "sub_future",
+        subscriptionCreatedAt: "2026-03-03T12:00:00.000Z",
+      },
+    ];
+
+    const result = buildRevenueDashboardData(makeData({
+      stripe,
+      mercury: null,
+      demoAnalytics: null,
+      timeRange: {
+        preset: "custom",
+        from: "2026-02-01T00:00:00.000Z",
+        to: "2026-02-28T23:59:59.999Z",
+        days: 28,
+        label: "February",
+      },
+    }));
+
+    expect(result.weekly).toContainEqual(
+      expect.objectContaining({
+        week: "2026-02-16",
+        customersWon: 1,
+        hubspotCustomersWon: 0,
+        stripeCustomersStarted: 1,
+      }),
+    );
   });
 
   it("uses conservative Mercury revenue inflows as collected fallback without counting investments", () => {
@@ -546,6 +621,9 @@ describe("buildRevenueDashboardData", () => {
     expect(result.weekly).toEqual([
       expect.objectContaining({
         week: "2026-02-02",
+        customersWon: 0,
+        hubspotCustomersWon: 0,
+        stripeCustomersStarted: 0,
         stripeRevenueCollected: 0,
         mercuryInflows: 1_202_200,
         mercuryRevenueCollected: 2200,

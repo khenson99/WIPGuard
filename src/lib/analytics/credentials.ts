@@ -726,27 +726,25 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
       ? unprotectIntegrationSecret(slackConnection.accessToken)
       : null;
 
-  const stripeKey =
+  const stripeConnectionKey =
     stripeConnection && stripeConnection.status !== IntegrationConnectionStatus.DISCONNECTED
       ? await getValidIntegrationAccessToken({
           userId: stripeConnection.userId,
           provider: IntegrationProvider.STRIPE,
         }).catch(() => null)
-      : envStripe;
-  const usingStripeEnvFallback =
-    Boolean(envStripe) &&
-    (!stripeConnection || stripeConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+      : null;
+  const stripeKey = stripeConnectionKey ?? envStripe;
+  const usingStripeEnvFallback = Boolean(envStripe) && !stripeConnectionKey && stripeKey === envStripe;
 
-  const mercuryKey =
+  const mercuryConnectionKey =
     mercuryConnection && mercuryConnection.status !== IntegrationConnectionStatus.DISCONNECTED
       ? await getValidIntegrationAccessToken({
           userId: mercuryConnection.userId,
           provider: IntegrationProvider.MERCURY,
         }).catch(() => null)
-      : envMercury;
-  const usingMercuryEnvFallback =
-    Boolean(envMercury) &&
-    (!mercuryConnection || mercuryConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+      : null;
+  const mercuryKey = mercuryConnectionKey ?? envMercury;
+  const usingMercuryEnvFallback = Boolean(envMercury) && !mercuryConnectionKey && mercuryKey === envMercury;
 
   const webflowApiToken =
     webflowConnection && webflowConnection.status !== IntegrationConnectionStatus.DISCONNECTED

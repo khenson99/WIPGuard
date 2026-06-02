@@ -128,12 +128,14 @@ describe("analytics stripe fetcher", () => {
                   id: "sub_active_1",
                   customer: "cus_active_1",
                   canceled_at: null,
+                  created: 1_767_398_400,
                   items: { data: [{ price: { unit_amount: 1000, recurring: { interval: "month", interval_count: 1 } } }] },
                 },
                 {
                   id: "sub_active_2",
                   customer: "cus_active_2",
                   canceled_at: null,
+                  created: 1_768_262_400,
                   items: { data: [{ price: { unit_amount: 2000, recurring: { interval: "month", interval_count: 1 } } }] },
                 },
               ],
@@ -148,6 +150,7 @@ describe("analytics stripe fetcher", () => {
                   id: "sub_active_3",
                   customer: "cus_active_3",
                   canceled_at: null,
+                  created: 1_768_348_800,
                   items: { data: [{ price: { unit_amount: 3000, recurring: { interval: "month", interval_count: 1 } } }] },
                 },
               ],
@@ -230,6 +233,29 @@ describe("analytics stripe fetcher", () => {
     });
 
     expect(data.subscriptions.active).toBe(3);
+    expect(data.subscriptions.activeCustomerRefs).toEqual([
+      {
+        customerId: "cus_active_1",
+        email: null,
+        emailDomain: null,
+        subscriptionId: "sub_active_1",
+        subscriptionCreatedAt: new Date(1_767_398_400 * 1000).toISOString(),
+      },
+      {
+        customerId: "cus_active_2",
+        email: null,
+        emailDomain: null,
+        subscriptionId: "sub_active_2",
+        subscriptionCreatedAt: new Date(1_768_262_400 * 1000).toISOString(),
+      },
+      {
+        customerId: "cus_active_3",
+        email: null,
+        emailDomain: null,
+        subscriptionId: "sub_active_3",
+        subscriptionCreatedAt: new Date(1_768_348_800 * 1000).toISOString(),
+      },
+    ]);
     expect(data.subscriptions.canceled).toBe(6);
     expect(data.subscriptions.recentChurnEvents).toEqual([
       {

@@ -852,6 +852,84 @@ describe("GET /api/analytics", () => {
     }
   });
 
+  it("falls back to the env stripe key when the connection-backed fetch fails", async () => {
+    const previousStripeSecretKey = process.env.STRIPE_SECRET_KEY;
+
+    try {
+      process.env.STRIPE_SECRET_KEY = "stripe-env";
+
+      const { fetchStripeData } = await import("@/lib/analytics/fetchers");
+      vi.mocked(fetchStripeData)
+        .mockRejectedValueOnce(new Error("Stripe connection token rejected"))
+        .mockResolvedValueOnce(STRIPE_DATA as never);
+
+      const { GET } = await import("@/app/api/analytics/route");
+      const response = await GET(
+        new Request("http://localhost/api/analytics?section=finance-stripe")
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.stripe).toEqual(STRIPE_DATA);
+      expect(body.freshness.stripe.source).toBe("env");
+      expect(fetchStripeData).toHaveBeenNthCalledWith(
+        1,
+        "stripe",
+        expect.objectContaining({}),
+      );
+      expect(fetchStripeData).toHaveBeenNthCalledWith(
+        2,
+        "stripe-env",
+        expect.objectContaining({}),
+      );
+    } finally {
+      if (previousStripeSecretKey === undefined) {
+        delete process.env.STRIPE_SECRET_KEY;
+      } else {
+        process.env.STRIPE_SECRET_KEY = previousStripeSecretKey;
+      }
+    }
+  });
+
+  it("falls back to the env Mercury token when the connection-backed fetch fails", async () => {
+    const previousMercuryToken = process.env.MERCURY_API_TOKEN;
+
+    try {
+      process.env.MERCURY_API_TOKEN = "mercury-env";
+
+      const { fetchMercuryData } = await import("@/lib/analytics/fetchers");
+      vi.mocked(fetchMercuryData)
+        .mockRejectedValueOnce(new Error("Mercury connection token rejected"))
+        .mockResolvedValueOnce(MERCURY_DATA as never);
+
+      const { GET } = await import("@/app/api/analytics/route");
+      const response = await GET(
+        new Request("http://localhost/api/analytics?section=finance-mercury")
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.mercury.cashFlow.totalBalance).toBe(MERCURY_DATA.cashFlow.totalBalance);
+      expect(body.freshness.mercury.source).toBe("env");
+      expect(fetchMercuryData).toHaveBeenNthCalledWith(
+        1,
+        "mercury",
+        expect.objectContaining({}),
+      );
+      expect(fetchMercuryData).toHaveBeenNthCalledWith(
+        2,
+        "mercury-env",
+        expect.objectContaining({}),
+      );
+    } finally {
+      if (previousMercuryToken === undefined) {
+        delete process.env.MERCURY_API_TOKEN;
+      } else {
+        process.env.MERCURY_API_TOKEN = previousMercuryToken;
+      }
+    }
+  });
+
   it("fetches Google Analytics with OAuth credentials when no service account is configured", async () => {
     const { getCredentials } = await import("@/lib/analytics/credentials");
     const { fetchGAData } = await import("@/lib/analytics/fetchers-ga-webflow");

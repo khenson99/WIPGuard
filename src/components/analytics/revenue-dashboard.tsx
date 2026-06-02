@@ -48,6 +48,14 @@ function formatWeek(value: string): string {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
+function sourceStatusLabel(source: RevenueDashboardData["trust"]["sources"][number]): string {
+  if (source.stale || source.truncated) return "review";
+  if (source.status) return source.status.toLowerCase();
+  if (source.source === "env") return "env";
+  if (source.source === "snapshot") return "snapshot";
+  return "missing";
+}
+
 function RevenueEmptyState({ dashboard }: { dashboard: RevenueDashboardData | null }) {
   const warnings = dashboard?.trust.warnings ?? [];
   return (
@@ -86,7 +94,7 @@ function SourceFreshnessStrip({ dashboard }: { dashboard: RevenueDashboardData }
                   : "border-emerald-500/30 bg-emerald-500/10 text-emerald-600"
               }`}
             >
-              {source.stale || source.truncated ? "review" : source.status?.toLowerCase() ?? "missing"}
+              {sourceStatusLabel(source)}
             </span>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -313,7 +321,7 @@ export function RevenueDashboard({ data }: RevenueDashboardProps) {
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <StatCard label="Revenue 30d" value={fmtCurrency(data?.stripe?.revenue.totalRevenue30d ?? 0)} icon={TrendingUp} />
+        <StatCard label="Stripe collected" value={fmtCurrency(data?.stripe?.revenue.totalRevenue30d ?? 0)} icon={TrendingUp} />
         <StatCard label="Net cash flow 30d" value={fmtCurrency(summary.netCashFlow30d)} icon={CalendarDays} />
         <StatCard label="Payment success" value={fmtPct(summary.paymentSuccessPct)} icon={ShieldCheck} />
       </div>

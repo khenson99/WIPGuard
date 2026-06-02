@@ -608,6 +608,20 @@ function stripePayloadHasSignal(data: StripeData | null | undefined): boolean {
   );
 }
 
+function mercuryPayloadHasSignal(data: MercuryData | null | undefined): boolean {
+  if (!data) return false;
+  return Boolean(
+    data.accounts.length > 0 ||
+      (data.transactions?.length ?? 0) > 0 ||
+      data.cashFlow.totalBalance > 0 ||
+      (data.cashFlow.totalCash ?? 0) > 0 ||
+      (data.cashFlow.bankCash ?? 0) > 0 ||
+      (data.cashFlow.treasuryCash ?? 0) > 0 ||
+      data.cashFlow.inflows30d > 0 ||
+      data.cashFlow.outflows30d > 0
+  );
+}
+
 function buildSubscriptionOverview(data: AnalyticsDashboardData): FinancialPlanningData["subscriptionOverview"] {
   const breakdown = buildSubscriptionMrrBreakdown({
     stripe: data.stripe,
@@ -1247,12 +1261,33 @@ export async function GET(request: Request) {
           snapshotUserId: integrationUserId,
           fn: async () => {
             const { fetchStripeData } = await loadCoreAnalyticsFetchers();
-            const primary = await fetchStripeData(creds.stripeKey!, { fromDate, toDate });
             const envStripeKey = process.env.STRIPE_SECRET_KEY?.trim() ?? null;
-            const shouldTryEnvFallback =
+            const canTryEnvFallback =
               creds.freshness.STRIPE.source === "connection" &&
               Boolean(envStripeKey) &&
-              envStripeKey !== creds.stripeKey &&
+              envStripeKey !== creds.stripeKey;
+
+            let primary: StripeData;
+            try {
+              primary = await fetchStripeData(creds.stripeKey!, { fromDate, toDate });
+            } catch (error) {
+              if (!canTryEnvFallback) throw error;
+
+              try {
+                const fallback = await fetchStripeData(envStripeKey!, { fromDate, toDate });
+                if (stripePayloadHasSignal(fallback)) {
+                  stripeUsedEnvFallback = true;
+                  return fallback;
+                }
+              } catch (fallbackError) {
+                console.warn("[analytics] Stripe env fallback fetch failed", fallbackError);
+              }
+
+              throw error;
+            }
+
+            const shouldTryEnvFallback =
+              canTryEnvFallback &&
               !stripePayloadHasSignal(primary);
 
             if (!shouldTryEnvFallback) {
@@ -1292,11 +1327,34 @@ export async function GET(request: Request) {
             const expenseMappings: MercuryExpenseMapping[] = normalizeMercuryExpenseMappings(
               mercuryRule?.config ?? null,
             );
-            return fetchMercuryData(creds.mercuryKey!, {
+            const fetchOptions = {
               fromDate,
               toDate,
               expenseMappings,
-            });
+            };
+            const envMercuryKey = process.env.MERCURY_API_TOKEN?.trim() ?? null;
+            const canTryEnvFallback =
+              creds.freshness.MERCURY.source === "connection" &&
+              Boolean(envMercuryKey) &&
+              envMercuryKey !== creds.mercuryKey;
+
+            try {
+              return await fetchMercuryData(creds.mercuryKey!, fetchOptions);
+            } catch (error) {
+              if (!canTryEnvFallback) throw error;
+
+              try {
+                const fallback = await fetchMercuryData(envMercuryKey!, fetchOptions);
+                if (mercuryPayloadHasSignal(fallback)) {
+                  mercuryUsedEnvFallback = true;
+                  return fallback;
+                }
+              } catch (fallbackError) {
+                console.warn("[analytics] Mercury env fallback fetch failed", fallbackError);
+              }
+
+              throw error;
+            }
           },
         }]
       : []),
@@ -1530,6 +1588,7 @@ export async function GET(request: Request) {
   const snapshotExpiresAt = snapshotExpiryFromNow(1);
   const capturedAtByDomain: Partial<Record<DomainKey, string | null>> = {};
   let stripeUsedEnvFallback = false;
+  let mercuryUsedEnvFallback = false;
 
   const settled = await Promise.allSettled(
     fetchers.map(async (entry): Promise<FetchOutcome> => {
@@ -1668,7 +1727,11 @@ export async function GET(request: Request) {
         result.freshness[provider] = patchFreshnessWithStale(existing, {
           stale,
           capturedAt,
-          source: key === "stripe" && stripeUsedEnvFallback ? "env" : undefined,
+          source:
+            (key === "stripe" && stripeUsedEnvFallback) ||
+            (key === "mercury" && mercuryUsedEnvFallback)
+              ? "env"
+              : undefined,
           lastError: fallbackError ?? null,
         });
       }

@@ -355,6 +355,8 @@ export interface SubscriptionMetrics {
     customerId: string;
     email: string | null;
     emailDomain: string | null;
+    subscriptionId?: string | null;
+    subscriptionCreatedAt?: string | null;
   }>;
 }
 
@@ -1881,6 +1883,8 @@ export interface RevenueDashboardWeeklyPoint {
   demosCompleted: number;
   demoNoShows: number;
   customersWon: number;
+  hubspotCustomersWon: number;
+  stripeCustomersStarted: number;
   revenueCollected: number;
   stripeRevenueCollected: number;
   mercuryRevenueCollected: number;

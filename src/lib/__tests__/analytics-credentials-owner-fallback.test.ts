@@ -43,6 +43,8 @@ describe("analytics credentials owner fallback", () => {
 
   afterEach(() => {
     delete process.env.INTEGRATION_OWNER_USER_ID;
+    delete process.env.STRIPE_SECRET_KEY;
+    delete process.env.MERCURY_API_TOKEN;
   });
 
   it("fills a missing Stripe provider from another connected user when the owner has other rows", async () => {
@@ -169,6 +171,64 @@ describe("analytics credentials owner fallback", () => {
         status: IntegrationConnectionStatus.CONNECTED,
         lastError: null,
       })
+    );
+  });
+
+  it("uses env Stripe and Mercury keys when connected rows cannot resolve tokens", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_live_env";
+    process.env.MERCURY_API_TOKEN = "mercury_env";
+
+    mockIntegrationConnectionFindMany
+      .mockResolvedValueOnce([
+        {
+          userId: "owner_1",
+          provider: IntegrationProvider.STRIPE,
+          status: IntegrationConnectionStatus.CONNECTED,
+          accessToken: null,
+          refreshToken: null,
+          tokenType: "Bearer",
+          expiresAt: null,
+          scopes: [],
+          metadata: null,
+          connectedAt: new Date("2026-03-01T00:00:00.000Z"),
+          lastSyncedAt: null,
+          lastError: "token missing",
+        },
+        {
+          userId: "owner_1",
+          provider: IntegrationProvider.MERCURY,
+          status: IntegrationConnectionStatus.CONNECTED,
+          accessToken: null,
+          refreshToken: null,
+          tokenType: "Bearer",
+          expiresAt: null,
+          scopes: [],
+          metadata: null,
+          connectedAt: new Date("2026-03-01T00:00:00.000Z"),
+          lastSyncedAt: null,
+          lastError: "token missing",
+        },
+      ])
+      .mockResolvedValueOnce([]);
+
+    mockGetValidIntegrationAccessToken.mockResolvedValue(null);
+
+    const { getCredentials } = await import("@/lib/analytics/credentials");
+    const creds = await getCredentials("owner_1");
+
+    expect(creds.stripeKey).toBe("sk_live_env");
+    expect(creds.mercuryKey).toBe("mercury_env");
+    expect(creds.freshness[IntegrationProvider.STRIPE]).toEqual(
+      expect.objectContaining({
+        source: "env",
+        status: null,
+      }),
+    );
+    expect(creds.freshness[IntegrationProvider.MERCURY]).toEqual(
+      expect.objectContaining({
+        source: "env",
+        status: null,
+      }),
     );
   });
 });

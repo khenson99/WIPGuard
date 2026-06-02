@@ -14,6 +14,9 @@ import type {
 } from "@/lib/analytics/types";
 
 type HubSpotDeal = NonNullable<HubSpotData["deals"]>[number];
+type StripeCustomerRef = NonNullable<
+  NonNullable<AnalyticsDashboardData["stripe"]>["subscriptions"]["activeCustomerRefs"]
+>[number];
 
 const TERMINAL_STAGE_LABELS = new Set(["Closed Won", "Closed Lost", "Unlikely", "Churn"]);
 const QUALIFIED_STAGE_LABELS = new Set([
@@ -26,6 +29,17 @@ const QUALIFIED_STAGE_LABELS = new Set([
   "Freemium",
   "Interested in a pilot",
 ]);
+const GENERIC_EMAIL_DOMAINS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "yahoo.com",
+  "outlook.com",
+  "hotmail.com",
+  "icloud.com",
+  "me.com",
+  "proton.me",
+  "protonmail.com",
+]);
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
@@ -35,6 +49,20 @@ function parseDate(value: string | null | undefined): Date | null {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function normalizeLookup(value: string | null | undefined): string | null {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeEmailDomain(value: string | null | undefined): string | null {
+  const email = normalizeLookup(value);
+  if (!email || !email.includes("@")) return null;
+  const [, domain] = email.split("@");
+  const normalized = normalizeLookup(domain);
+  if (!normalized || GENERIC_EMAIL_DOMAINS.has(normalized)) return null;
+  return normalized;
 }
 
 function weekStartUtc(value: Date): string {
@@ -52,6 +80,8 @@ function emptyWeeklyPoint(week: string): RevenueDashboardWeeklyPoint {
     demosCompleted: 0,
     demoNoShows: 0,
     customersWon: 0,
+    hubspotCustomersWon: 0,
+    stripeCustomersStarted: 0,
     revenueCollected: 0,
     stripeRevenueCollected: 0,
     mercuryRevenueCollected: 0,
@@ -125,7 +155,83 @@ function addHubSpotWeeklyRevenue(
     if (!inSelectedRange(closeDate, range)) continue;
     const entry = weeklyEntry(byWeek, weekStartUtc(closeDate));
     entry.customersWon += 1;
+    entry.hubspotCustomersWon += 1;
     entry.hubspotBookedRevenue += deal.amount || 0;
+  }
+}
+
+function addHubSpotCustomerMatchKeys(keys: Set<string>, deal: HubSpotDeal): void {
+  const stripeCustomerId = normalizeLookup(deal.stripeCustomerId);
+  const email = normalizeLookup(deal.primaryContactEmail);
+  const domain = normalizeEmailDomain(deal.primaryContactEmail);
+  if (stripeCustomerId) keys.add(`stripe:${stripeCustomerId}`);
+  if (email) keys.add(`email:${email}`);
+  if (domain) keys.add(`domain:${domain}`);
+}
+
+function hubSpotCustomerMatchKeys(data: AnalyticsDashboardData): Set<string> {
+  const keys = new Set<string>();
+
+  for (const deal of data.hubspot?.deals ?? []) {
+    if (deal.stageLabel === "Closed Won") {
+      addHubSpotCustomerMatchKeys(keys, deal);
+    }
+  }
+
+  for (const deal of data.hubspot?.subscriptionDeals ?? []) {
+    addHubSpotCustomerMatchKeys(keys, deal);
+  }
+
+  return keys;
+}
+
+function stripeCustomerMatchKeys(ref: StripeCustomerRef): string[] {
+  const keys: string[] = [];
+  const stripeCustomerId = normalizeLookup(ref.customerId);
+  const email = normalizeLookup(ref.email);
+  const domain = normalizeLookup(ref.emailDomain) ?? normalizeEmailDomain(ref.email);
+  if (stripeCustomerId && stripeCustomerId !== "unknown customer") keys.push(`stripe:${stripeCustomerId}`);
+  if (email) keys.push(`email:${email}`);
+  if (domain && !GENERIC_EMAIL_DOMAINS.has(domain)) keys.push(`domain:${domain}`);
+  return keys;
+}
+
+function stripeCustomerDedupeKey(ref: StripeCustomerRef): string | null {
+  return (
+    stripeCustomerMatchKeys(ref)[0] ??
+    normalizeLookup(ref.subscriptionId ?? null)?.replace(/^/, "subscription:") ??
+    null
+  );
+}
+
+function addStripeWeeklyCustomers(
+  byWeek: Map<string, RevenueDashboardWeeklyPoint>,
+  data: AnalyticsDashboardData,
+): void {
+  const range = selectedRange(data);
+  const hubspotKeys = hubSpotCustomerMatchKeys(data);
+  const earliestByCustomer = new Map<string, Date>();
+
+  for (const ref of data.stripe?.subscriptions.activeCustomerRefs ?? []) {
+    const customerKeys = stripeCustomerMatchKeys(ref);
+    if (customerKeys.some((key) => hubspotKeys.has(key))) continue;
+
+    const dedupeKey = stripeCustomerDedupeKey(ref);
+    if (!dedupeKey) continue;
+
+    const startedAt = parseDate(ref.subscriptionCreatedAt ?? null);
+    if (!startedAt || !inSelectedRange(startedAt, range)) continue;
+
+    const current = earliestByCustomer.get(dedupeKey);
+    if (!current || startedAt < current) {
+      earliestByCustomer.set(dedupeKey, startedAt);
+    }
+  }
+
+  for (const startedAt of earliestByCustomer.values()) {
+    const entry = weeklyEntry(byWeek, weekStartUtc(startedAt));
+    entry.customersWon += 1;
+    entry.stripeCustomersStarted += 1;
   }
 }
 
@@ -198,6 +304,7 @@ function buildWeekly(data: AnalyticsDashboardData): RevenueDashboardWeeklyPoint[
   const byWeek = new Map<string, RevenueDashboardWeeklyPoint>();
   addDemoWeeklyTrend(byWeek, data);
   addHubSpotWeeklyRevenue(byWeek, data);
+  addStripeWeeklyCustomers(byWeek, data);
   addStripeWeeklyRevenue(byWeek, data);
   addMercuryWeeklyCashFlow(byWeek, data.mercury?.transactions);
 
