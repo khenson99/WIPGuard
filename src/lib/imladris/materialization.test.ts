@@ -3413,6 +3413,53 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("counts Slack account-linked messages as customer-success collaboration signals", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_pylon_issue_slack_collaboration",
+        provider: IntegrationProvider.PYLON,
+        objectType: "conversation",
+        externalId: "conv_slack_collaboration",
+        occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          status: "open",
+        },
+      },
+      {
+        id: "raw_slack_message_collaboration",
+        provider: IntegrationProvider.SLACK,
+        objectType: "message",
+        externalId: "slack:message:1780240800.000000",
+        occurredAt: new Date("2026-05-22T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-22T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          channelName: "customer-success",
+          text: "Renewal action plan discussed",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      openSupportIssues: 1,
+      collaborationSignals: 1,
+      score: 17,
+    });
+  });
+
   it("reads nested account identifiers before calculating customer-success risk", async () => {
     const prisma = createCustomerSuccessPrismaMock();
     prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([

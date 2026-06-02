@@ -1817,8 +1817,11 @@ function isLowUsage(record: RawSourceRecordRow): boolean {
 }
 
 function isCollaborationSignal(record: RawSourceRecordRow): boolean {
-  if (record.provider !== IntegrationProvider.GOOGLE_WORKSPACE) return false;
-  if (!["calendar_event", "email_thread", "document"].includes(record.objectType)) return false;
+  const supported =
+    (record.provider === IntegrationProvider.GOOGLE_WORKSPACE &&
+      ["calendar_event", "email_thread", "document"].includes(record.objectType)) ||
+    (record.provider === IntegrationProvider.SLACK && record.objectType === "message");
+  if (!supported) return false;
 
   return Boolean(accountIdFromPayload(record));
 }
