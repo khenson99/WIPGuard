@@ -58,7 +58,9 @@ function normalizeEmailDomain(value: string | null | undefined): string | null {
 function toNumber(value: number | string | null | undefined): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   if (typeof value === "string") {
-    const parsed = Number.parseFloat(value);
+    const normalized = value.trim().replace(/[$,\s]/g, "");
+    if (!normalized) return 0;
+    const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : 0;
   }
   return 0;

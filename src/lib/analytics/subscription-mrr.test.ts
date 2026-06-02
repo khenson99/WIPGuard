@@ -124,4 +124,30 @@ describe("buildSubscriptionMrrBreakdown", () => {
     expect(breakdown.hubspotOnlySubscriptionMrr).toBe(300);
     expect(breakdown.totalMrr).toBe(12300);
   });
+
+  it("parses formatted HubSpot annual subscription amounts as currency", () => {
+    const breakdown = buildSubscriptionMrrBreakdown({
+      stripe: {
+        revenue: { mrr: 0, mrrChange: null },
+        subscriptions: { active: 0, activeCustomerRefs: [] },
+      },
+      hubspot: {
+        subscriptionDeals: [
+          {
+            dealId: "formatted-amount",
+            dealName: "Formatted Annual Subscription",
+            stageLabel: "Subscriptions",
+            amount: "$3,600.00",
+            stripeCustomerId: null,
+            primaryContactEmail: "ops@example-subscription.com",
+          },
+        ],
+      },
+    });
+
+    expect(breakdown.hubspotSubscriptionMrr).toBe(300);
+    expect(breakdown.hubspotOnlySubscriptionMrr).toBe(300);
+    expect(breakdown.totalMrr).toBe(300);
+    expect(breakdown.totalArr).toBe(3600);
+  });
 });
