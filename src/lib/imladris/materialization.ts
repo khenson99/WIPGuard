@@ -1009,7 +1009,7 @@ function dealIdFromRecord(record: RawSourceRecordRow): string | null {
     payload.hubspotDealId ??
     payload.hubspot_deal_id ??
     payload.id;
-  return typeof id === "string" && id.trim() ? id : record.externalId;
+  return normalizeIdentifier(id) ?? normalizeIdentifier(record.externalId);
 }
 
 function linkedDealId(record: RawSourceRecordRow): string | null {
@@ -1021,7 +1021,7 @@ function linkedDealId(record: RawSourceRecordRow): string | null {
     payload.hubspot_deal_id ??
     nestedRecord(payload.properties).dealId ??
     nestedRecord(payload.properties).hubspotDealId;
-  return typeof id === "string" && id.trim() ? id : null;
+  return normalizeIdentifier(id);
 }
 
 function computeQualifiedPipeline(records: RawSourceRecordRow[]) {

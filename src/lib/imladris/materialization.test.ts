@@ -1318,6 +1318,63 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("normalizes deal identifiers before calculating sales collaboration coverage", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_qualified_deal_spaced_id",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_spaced_id",
+            occurredAt: new Date("2026-05-20T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+            payload: {
+              id: " deal_spaced_id ",
+              amount: 50_000,
+              dealstage: "qualified",
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_google_touch_matching_unspaced_deal_id",
+            provider: IntegrationProvider.GOOGLE_WORKSPACE,
+            objectType: "calendar_event",
+            externalId: "meeting_matching_unspaced_deal_id",
+            occurredAt: new Date("2026-05-21T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-21T00:00:00.000Z"),
+            payload: {
+              dealId: "deal_spaced_id",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_spaced_deal_id", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisSalesMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      qualifiedDealCount: 1,
+      collaborationTouchCount: 1,
+      collaborationCoverage: 1,
+    });
+  });
+
   it("materializes marketing pipeline efficiency from acquisition and pipeline raw records", async () => {
     const prisma = createMarketingPrismaMock();
     const periodStart = new Date("2026-05-01T00:00:00.000Z");
