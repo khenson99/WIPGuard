@@ -1677,6 +1677,77 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("sums Mercury account balances before calculating cash runway", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_mercury_checking_balance",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "account_balance",
+            externalId: "mercury:account_balance:checking",
+            occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+            payload: {
+              accountId: "checking",
+              balance: 100_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_mercury_treasury_balance",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "account_balance",
+            externalId: "mercury:account_balance:treasury",
+            occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T00:01:00.000Z"),
+            payload: {
+              accountId: "treasury",
+              balance: 250_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_mercury_outflow_multi_balance",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "transaction",
+            externalId: "txn_multi_balance_outflow",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              amount: -100_000,
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "finance.cash_runway_months")?.value).toMatchObject({
+      cashBalance: 350_000,
+      netBurn: 100_000,
+      months: 3.5,
+    });
+  });
+
   it("excludes inactive Stripe subscriptions with formatted statuses from canonical MRR", async () => {
     const prisma = {
       imladrisRawSourceRecord: {

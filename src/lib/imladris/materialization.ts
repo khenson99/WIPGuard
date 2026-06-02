@@ -939,7 +939,7 @@ function computeFinanceValues(records: RawSourceRecordRow[]) {
       )
       .map(balanceAmount)
       .filter((amount): amount is number => typeof amount === "number")
-      .at(-1) ?? 0;
+      .reduce((sum, amount) => sum + amount, 0);
   const currency = currencyFrom(records);
 
   return {
