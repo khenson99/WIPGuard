@@ -1474,7 +1474,7 @@ function buildCrossdomainInsights(data: AnalyticsDashboardData): AiInsight[] {
   // 4. Marketing intent mismatch: High traffic/demos but critical no-show rate
   const gaSessions = data.googleAnalytics?.sessions30d ?? 0;
   const demoScheduled = data.demoAnalytics?.totalScheduled ?? 0;
-  const noShowRate = data.demoAnalytics?.noShowRate ?? 0;
+  const noShowRate = normalizePercentValue(data.demoAnalytics?.noShowRate ?? 0);
   if (gaSessions > 2000 && demoScheduled > 10 && noShowRate > 35) {
     insights.push({
       id: "ai-xd-traffic-vs-noshow",
@@ -1620,9 +1620,9 @@ function buildDemoInsight(data: AnalyticsDashboardData): AiInsight | null {
   const demo = data.demoAnalytics;
   if (!demo || demo.totalScheduled === 0) return null;
 
-  const noShowRate = demo.noShowRate;
+  const noShowRate = normalizePercentValue(demo.noShowRate);
   const conversionStep = demo.conversionFunnel.find((s) => s.label === "Closed Won");
-  const endConversion = conversionStep?.conversionFromPrevious ?? 0;
+  const endConversion = normalizePercentValue(conversionStep?.conversionFromPrevious ?? 0);
 
   if (noShowRate <= 15 && endConversion >= 20) return null;
 

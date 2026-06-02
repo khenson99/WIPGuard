@@ -1276,6 +1276,62 @@ describe("cross-domain insights", () => {
     expect(runwayDeal!.section).toBe("finance");
   });
 
+  it("normalizes ratio-style demo analytics rates before alerting", () => {
+    const data = baseData();
+    data.googleAnalytics = {
+      sessions30d: 3000,
+      sessionsPrev30d: 2800,
+      users30d: 2500,
+      usersPrev30d: 2400,
+      pageviews30d: 6000,
+      pageviewsPrev30d: 5600,
+      bounceRate: 0.45,
+      avgSessionDuration: 120,
+      trafficByChannel: [],
+      topPages: [],
+      dailyTrend: [],
+      _meta: META,
+    };
+    data.demoAnalytics = {
+      totalScheduled: 20,
+      totalCompleted: 12,
+      totalNoShows: 8,
+      noShowRate: 0.4,
+      avgLeadTimeDays: 2,
+      upcomingCount: 0,
+      meetingBackedUpcomingCount: 0,
+      unscheduledDemoCount: 0,
+      analyzedDemoCount: 0,
+      avgDemoQualityScore: 0,
+      transcriptCoveragePct: 0,
+      topStrengthThemes: [],
+      topGapThemes: [],
+      demos: [],
+      upcomingDemos: [],
+      bySource: [],
+      byOutcome: [],
+      conversionFunnel: [
+        { label: "Demo Scheduled", count: 20, conversionFromPrevious: null },
+        { label: "Demo Completed", count: 12, conversionFromPrevious: 0.6 },
+        { label: "Closed Won", count: 1, conversionFromPrevious: 0.05 },
+      ],
+      weeklyTrend: [],
+      journeyPaths: [],
+    };
+
+    const bundle = buildAiInsightsBundle(data);
+    const trafficMismatch = bundle.global.find((i) => i.id === "ai-xd-traffic-vs-noshow");
+    const demoEffectiveness = bundle.global.find((i) => i.id === "ai-demo-effectiveness");
+
+    expect(trafficMismatch).toBeDefined();
+    expect(trafficMismatch!.why).toContain("no-show rate is 40.0%");
+    expect(trafficMismatch!.evidence[1]?.value).toBe("40.0%");
+    expect(demoEffectiveness).toBeDefined();
+    expect(demoEffectiveness!.why).toContain("No-show rate is 40.0%");
+    expect(demoEffectiveness!.why).toContain("Post-demo close rate: 5.0%");
+    expect(demoEffectiveness!.evidence[1]?.value).toBe("5.0%");
+  });
+
   it("does not fire cross-domain insights when thresholds not met", () => {
     const data = baseData();
     // Healthy scenario: good runway, large deal size, moderate support
