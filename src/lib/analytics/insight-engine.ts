@@ -57,7 +57,7 @@ function sortInsights(items: AiInsight[]): AiInsight[] {
 
 function buildAdsInsights(data: AnalyticsDashboardData): AiInsight[] {
   const insights: AiInsight[] = [];
-  const bounce = data.googleAnalytics?.bounceRate ?? 0;
+  const bounce = normalizePercentValue(data.googleAnalytics?.bounceRate ?? 0) / 100;
   const sessionsCurrent = data.googleAnalytics?.sessions30d ?? 0;
   const sessionsPrev = data.googleAnalytics?.sessionsPrev30d ?? 0;
   const gClicks = data.googleAds?.totalClicks ?? 0;

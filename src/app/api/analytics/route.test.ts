@@ -819,6 +819,25 @@ describe("GET /api/analytics", () => {
     ]);
   });
 
+  it("normalizes percent-point bounce rate values in recommendations", async () => {
+    const { fetchGAData } = await import("@/lib/analytics/fetchers-ga-webflow");
+    vi.mocked(fetchGAData).mockResolvedValueOnce({
+      ...GA_DATA,
+      bounceRate: 60,
+    } as never);
+
+    const { GET } = await import("@/app/api/analytics/route");
+    const response = await GET(new Request("http://localhost/api/analytics?section=overview"));
+    const body = await response.json();
+
+    const bounceRecommendation = body.recommendations.find(
+      (recommendation: { id: string }) => recommendation.id === "ads-bounce",
+    );
+    expect(bounceRecommendation).toBeDefined();
+    expect(bounceRecommendation.insight).toContain("60.0%");
+    expect(bounceRecommendation.insight).not.toContain("6000.0%");
+  });
+
   it("loads unlinked HubSpot meetings for demo analytics instead of only deal-linked meetings", async () => {
     const { prisma } = await import("@/lib/prisma");
     const { GET } = await import("@/app/api/analytics/route");

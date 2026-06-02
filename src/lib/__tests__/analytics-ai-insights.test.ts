@@ -400,6 +400,26 @@ describe("ads insights", () => {
     expect(bounceInsight!.subsectionId).toBe("ads-google-analytics");
   });
 
+  it("normalizes percent-point bounce rate values before thresholding and display", () => {
+    const data = baseData();
+    data.googleAnalytics = {
+      sessions30d: 1000, sessionsPrev30d: 1000,
+      users30d: 800, usersPrev30d: 800,
+      pageviews30d: 0, pageviewsPrev30d: 0,
+      bounceRate: 60, avgSessionDuration: 50,
+      trafficByChannel: [], topPages: [], dailyTrend: [],
+      _meta: META,
+    };
+
+    const bundle = buildAiInsightsBundle(data);
+    const bounceInsight = bundle.global.find((i) => i.id === "ai-ads-bounce-rate");
+
+    expect(bounceInsight).toBeDefined();
+    expect(bounceInsight!.severity).toBe("warning");
+    expect(bounceInsight!.why).toContain("60.0%");
+    expect(bounceInsight!.evidence[0]?.value).toBe("60.0%");
+  });
+
   it("escalates bounce rate to critical above 65%", () => {
     const data = baseData();
     data.googleAnalytics = {

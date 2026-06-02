@@ -9,6 +9,7 @@ import { runWithContextAsync } from "@/lib/request-context";
 import { getAuthenticatedUser } from "@/lib/session-user";
 import { getCredentials } from "@/lib/analytics/credentials";
 import { normalizeMercuryExpenseMappings } from "@/lib/analytics/mercury-expense-mappings";
+import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
 import { parseAnalyticsTimeRange } from "@/lib/analytics/time-range";
 import { computeProgressPct } from "@/lib/analytics/finance-utils";
 import { createEmptyAnalyticsDashboardData, patchFreshnessWithStale } from "@/lib/analytics/response-shape";
@@ -502,14 +503,15 @@ async function computeProductSuccessData(input: {
 function buildRecommendations(data: AnalyticsDashboardData): AnalyticsRecommendation[] {
   const recommendations: AnalyticsRecommendation[] = [];
   const financeSummary = data.metrics?.finance.summary ?? null;
+  const bounceRatePct = normalizePercentValue(data.googleAnalytics?.bounceRate ?? 0);
 
-  if ((data.googleAnalytics?.bounceRate ?? 0) > 0.55) {
+  if (bounceRatePct > 55) {
     recommendations.push({
       id: "ads-bounce",
       section: "website-traffic",
       severity: "warning",
       title: "Reduce high bounce traffic",
-      insight: `Bounce rate is ${((data.googleAnalytics?.bounceRate ?? 0) * 100).toFixed(1)}%, indicating weak landing relevance.`,
+      insight: `Bounce rate is ${bounceRatePct.toFixed(1)}%, indicating weak landing relevance.`,
       suggestedAction: "Launch A/B tests on top entry pages and tighten ad-to-page message match.",
     });
   }
