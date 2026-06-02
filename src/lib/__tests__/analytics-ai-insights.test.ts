@@ -61,6 +61,49 @@ function baseData(): AnalyticsDashboardData {
 
 const META = { fetchedAt: "2026-01-30", nextRefresh: "2026-01-30", source: "live" as const };
 
+function hubspotWithSubscription(amount: number): NonNullable<AnalyticsDashboardData["hubspot"]> {
+  return {
+    funnel: {
+      totalDeals: 1,
+      closedWon: 1,
+      closedLost: 0,
+      unlikely: 0,
+      churn: 0,
+      activeSubscriptions: 1,
+      noShows: 0,
+      demoScheduled: 0,
+      demoFollowUp: 0,
+      avgDealSize: amount,
+      winRate: 100,
+      effectiveWinRate: 100,
+      noShowRate: 0,
+      stages: [],
+      dealsBySource: [],
+    },
+    contacts: { totalContacts: 1, recentContacts: 1, bySource: [] },
+    subscriptionDeals: [
+      {
+        dealId: `sub-${amount}`,
+        dealName: `Subscription ${amount}`,
+        stageId: "subscriptions",
+        stageLabel: "Subscriptions",
+        amount,
+        source: "Referral",
+        ownerId: null,
+        updatedAt: "2026-01-10T00:00:00Z",
+        createdAt: "2026-01-01T00:00:00Z",
+        closedAt: "2026-01-10T00:00:00Z",
+        stripeCustomerId: null,
+        pipelineId: "subscription-pipeline",
+        contactIds: [],
+        primaryContactId: null,
+        primaryContactEmail: "buyer@example.com",
+      },
+    ],
+    _meta: META,
+  };
+}
+
 // ── Bundle-level tests ───────────────────────────────────
 
 describe("analytics AI insights bundle", () => {
@@ -657,6 +700,32 @@ describe("finance insights", () => {
     expect(mrr!.evidence[0].trendValues).toEqual([19500, 18000]);
   });
 
+  it("uses canonical MRR in MRR decline insight copy", () => {
+    const data = baseData();
+    data.stripe = {
+      revenue: {
+        mrr: 18000, mrrChange: -7,
+        totalRevenue30d: 18000, totalRevenuePrev30d: 19500,
+        revenueGrowth: -7.7, avgRevenuePerCustomer: 450,
+      },
+      subscriptions: {
+        active: 40, pastDue: 1, canceled: 3, trialing: 2,
+        churnRate: 0.06, recentChurnEvents: [],
+      },
+      payments: { succeeded: 100, failed: 5, successRate: 0.95 },
+      revenueTrend: [],
+      _meta: META,
+    };
+    data.hubspot = hubspotWithSubscription(12_000);
+
+    const bundle = buildAiInsightsBundle(data);
+    const mrr = bundle.global.find((i) => i.id === "ai-finance-mrr-decline");
+
+    expect(mrr).toBeDefined();
+    expect(mrr!.why).toContain("$19,000");
+    expect(mrr!.evidence[0].delta).toBe("$19,000 current MRR");
+  });
+
   it("escalates MRR to critical when mrrChange < -10", () => {
     const data = baseData();
     data.stripe = {
@@ -676,6 +745,62 @@ describe("finance insights", () => {
     const bundle = buildAiInsightsBundle(data);
     const mrr = bundle.global.find((i) => i.id === "ai-finance-mrr-decline");
     expect(mrr!.severity).toBe("critical");
+  });
+
+  it("uses canonical MRR before flagging burn-to-revenue ratio", () => {
+    const data = baseData();
+    data.stripe = {
+      revenue: {
+        mrr: 10000, mrrChange: 0,
+        totalRevenue30d: 10000, totalRevenuePrev30d: 9000,
+        revenueGrowth: 10, avgRevenuePerCustomer: 500,
+      },
+      subscriptions: {
+        active: 20, pastDue: 0, canceled: 0, trialing: 0,
+        churnRate: 0.04, recentChurnEvents: [],
+      },
+      payments: { succeeded: 100, failed: 0, successRate: 1 },
+      revenueTrend: [],
+      _meta: META,
+    };
+    data.mercury = {
+      accounts: [],
+      cashFlow: {
+        totalBalance: 200000, inflows30d: 10000, outflows30d: 32000,
+        netCashFlow: -22000, runway: 9.1, burnRate: 22000,
+      },
+      _meta: META,
+    };
+    data.hubspot = hubspotWithSubscription(24_000);
+
+    const bundle = buildAiInsightsBundle(data);
+    const burnTrend = bundle.global.find((i) => i.id === "ai-finance-burn-rate-trend");
+
+    expect(burnTrend).toBeUndefined();
+  });
+
+  it("uses canonical MRR before flagging revenue forecast gaps", () => {
+    const data = baseData();
+    data.stripe = {
+      revenue: {
+        mrr: 10000, mrrChange: 0,
+        totalRevenue30d: 10000, totalRevenuePrev30d: 9000,
+        revenueGrowth: 10, avgRevenuePerCustomer: 500,
+      },
+      subscriptions: {
+        active: 20, pastDue: 0, canceled: 0, trialing: 0,
+        churnRate: 4, recentChurnEvents: [],
+      },
+      payments: { succeeded: 100, failed: 0, successRate: 100 },
+      revenueTrend: [],
+      _meta: META,
+    };
+    data.hubspot = hubspotWithSubscription(12_000);
+
+    const bundle = buildAiInsightsBundle(data);
+    const forecastGap = bundle.global.find((i) => i.id === "ai-finance-revenue-vs-forecast");
+
+    expect(forecastGap).toBeUndefined();
   });
 });
 

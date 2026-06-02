@@ -9,6 +9,7 @@ import { computeBudgetActuals, computeBudgetSummary } from "./budget-variance";
 import { buildDefaultScenarios } from "./forecast-engine";
 import { normalizePercentValue } from "./percentage-utils";
 import { buildProfitAndLoss } from "./pnl-builder";
+import { buildSubscriptionMrrBreakdown } from "./subscription-mrr";
 import { computeUnitEconomics } from "./unit-economics";
 
 const SECTION_ORDER: AnalyticsSectionId[] = [
@@ -51,6 +52,13 @@ function sortInsights(items: AiInsight[]): AiInsight[] {
     }
     return b.confidence - a.confidence;
   });
+}
+
+function canonicalMrr(data: AnalyticsDashboardData): number {
+  return buildSubscriptionMrrBreakdown({
+    stripe: data.stripe,
+    hubspot: data.hubspot,
+  }).totalMrr;
 }
 
 // ── Website Traffic + Social Media ───────────────────────
@@ -339,6 +347,7 @@ function buildFinanceInsights(data: AnalyticsDashboardData): AiInsight[] {
   const churnRate = normalizePercentValue(data.stripe?.subscriptions?.churnRate ?? 0);
   const paymentSuccessRate = normalizePercentValue(data.stripe?.payments?.successRate ?? 1);
   const mrrChange = data.stripe?.revenue?.mrrChange ?? 0;
+  const currentMrr = canonicalMrr(data);
   const revenueTrend = data.stripe?.revenueTrend ?? [];
   const revenueTrendValues = revenueTrend.map((t) => t.revenue);
   const financeStale = data.staleDomains.includes("mercury") || data.staleDomains.includes("stripe");
@@ -457,7 +466,7 @@ function buildFinanceInsights(data: AnalyticsDashboardData): AiInsight[] {
       subsectionId: "finance-stripe",
       severity: mrrChange < -10 ? "critical" : "warning",
       title: "MRR is contracting month-over-month",
-      why: `MRR changed ${mrrChange.toFixed(1)}% — current MRR is $${(data.stripe?.revenue?.mrr ?? 0).toLocaleString()}.`,
+      why: `MRR changed ${mrrChange.toFixed(1)}% — current MRR is $${currentMrr.toLocaleString()}.`,
       confidence: clampConfidence(0.86),
       expectedImpact: "Stabilizing MRR protects cash runway and signals product-market fit health.",
       stale: data.staleDomains.includes("stripe"),
@@ -467,7 +476,7 @@ function buildFinanceInsights(data: AnalyticsDashboardData): AiInsight[] {
           domain: "stripe",
           metric: "MRR Change",
           value: `${mrrChange.toFixed(1)}%`,
-          delta: `$${(data.stripe?.revenue?.mrr ?? 0).toLocaleString()} current MRR`,
+          delta: `$${currentMrr.toLocaleString()} current MRR`,
           trendValues: revenueTrendValues.length > 0 ? revenueTrendValues : undefined,
         },
       ],
@@ -819,7 +828,7 @@ function buildBurnRateTrendInsights(
 ): AiInsight[] {
   const burnRate = data.mercury?.cashFlow?.burnRate ?? 0;
   const revenueGrowth = data.stripe?.revenue?.revenueGrowth ?? 0;
-  const mrr = data.stripe?.revenue?.mrr ?? 0;
+  const mrr = canonicalMrr(data);
 
   if (burnRate <= 0 || mrr <= 0) return [];
 
@@ -880,7 +889,7 @@ function buildRevenueVsForecastInsights(
     if (!base || base.months.length < 1) return [];
 
     // Compare current MRR to month-0 of forecast — detect if already behind
-    const currentMrr = data.stripe?.revenue?.mrr ?? 0;
+    const currentMrr = canonicalMrr(data);
     const forecastMonth1 = base.months[0]?.projectedMrr ?? 0;
 
   if (forecastMonth1 <= 0 || currentMrr <= 0) return [];
@@ -1390,7 +1399,7 @@ function buildCrossdomainInsights(data: AnalyticsDashboardData): AiInsight[] {
           domain: "stripe",
           metric: "Revenue Growth",
           value: `${revenueGrowth.toFixed(1)}%`,
-          delta: `$${(data.stripe?.revenue?.mrr ?? 0).toLocaleString()} MRR`,
+          delta: `$${canonicalMrr(data).toLocaleString()} MRR`,
         },
         {
           source: "Pylon",
