@@ -261,7 +261,7 @@ describe("offline-sync", () => {
 
   it("getQueueStatus counts correctly", async () => {
     await queueOfflineAction("field-note", { text: "a" });
-    await queueOfflineAction("task-create", { title: "b" });
+    await queueOfflineAction("insight-note", { title: "b" });
     const status = await getQueueStatus();
     expect(status.pending).toBe(2);
     expect(status.total).toBe(2);
@@ -287,7 +287,7 @@ describe("offline-sync", () => {
   });
 
   it("processSync records errors and increments retries", async () => {
-    await queueOfflineAction("task-create", { title: "x" });
+    await queueOfflineAction("insight-note", { title: "x" });
     const result = await processSync(async () => {
       throw new Error("network failure");
     });

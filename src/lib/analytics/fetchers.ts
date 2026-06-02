@@ -13,13 +13,12 @@ import type {
   StripeData,
   MercuryData,
   MercuryTransactionData,
-  AnalyticsTimestamp,
-  DealStage,
   ExpenseCategory,
   MercuryExpenseMapping,
+  AnalyticsTimestamp,
+  DealStage,
 } from "./types";
 import { safeJson } from "@/lib/analytics/fetcher-utils";
-import { normalizeMercuryDataPayload } from "@/lib/analytics/mercury-normalization";
 
 function makeMeta(source: "live" | "cached" = "live"): AnalyticsTimestamp {
   const now = new Date();
@@ -28,13 +27,6 @@ function makeMeta(source: "live" | "cached" = "live"): AnalyticsTimestamp {
     nextRefresh: new Date(now.getTime() + 60 * 60 * 1000).toISOString(),
     source,
   };
-}
-
-function inclusiveUtcDaySpan(from: Date, to: Date): number {
-  const start = Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate());
-  const end = Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate());
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 30;
-  return Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -130,6 +122,46 @@ type HubSpotDealsListResponse = {
   paging?: { next?: { after?: string } };
 };
 
+type HubSpotFormObject = {
+  guid?: string;
+  id?: string;
+  name?: string;
+  formType?: string;
+};
+
+type HubSpotFormSubmissionObject = {
+  submittedAt?: string | number;
+  pageUrl?: string;
+  values?: Array<{ name?: string; value?: string }>;
+};
+
+type HubSpotFormsListResponse = {
+  results?: HubSpotFormObject[];
+  forms?: HubSpotFormObject[];
+  hasMore?: boolean;
+  offset?: string | number;
+  paging?: { next?: { after?: string } };
+};
+
+type HubSpotFormSubmissionsResponse = {
+  results?: HubSpotFormSubmissionObject[];
+  submissions?: HubSpotFormSubmissionObject[];
+  after?: string | number;
+  paging?: { next?: { after?: string } };
+};
+
+type HubSpotCollectedFormsFetchResult = {
+  data: HubSpotData["collectedForms"];
+  truncated: boolean;
+  truncatedResources: string[];
+  available: boolean;
+  error: string | null;
+  pagesFetched: {
+    forms: number;
+    submissions: number;
+  };
+};
+
 type HubSpotStageHistoryEntry = { value?: string; timestamp?: string | number };
 
 type HubSpotStageEvent = {
@@ -148,6 +180,241 @@ function normalizeHubSpotStageLabel(label: string): string {
   if (!trimmed) return trimmed;
   const canonical = HUBSPOT_STAGE_LABEL_CANONICALIZATION[trimmed.toLowerCase()];
   return canonical ?? trimmed;
+}
+
+function classifyHubSpotCollectedForm(
+  formName: string,
+): NonNullable<HubSpotData["collectedForms"]>["formSubmissions"][number]["funnelCategory"] {
+  const normalized = formName.trim().toLowerCase();
+  if (
+    normalized.includes("kanban") ||
+    normalized.includes("lead magnet") ||
+    normalized.includes("coda")
+  ) {
+    return "lead_magnet";
+  }
+  if (
+    normalized.includes("get in touch") ||
+    normalized.includes("contact") ||
+    normalized.includes("demo")
+  ) {
+    return "contact_request";
+  }
+  return "other";
+}
+
+function hubSpotSubmittedAt(value: string | number | undefined): Date | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const numeric = Number(value);
+    const date = Number.isFinite(numeric) ? new Date(numeric) : new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  return null;
+}
+
+function extractHubSpotSubmissionEmail(values: HubSpotFormSubmissionObject["values"]): string | null {
+  const email = values?.find((value) => String(value.name ?? "").toLowerCase() === "email")?.value?.trim();
+  return email ? email.toLowerCase() : null;
+}
+
+async function fetchHubSpotCollectedForms(input: {
+  baseUrl: string;
+  headers: Record<string, string>;
+  from: Date | null;
+  to: Date | null;
+}): Promise<HubSpotCollectedFormsFetchResult> {
+  const emptyResult = (error: string | null = null): HubSpotCollectedFormsFetchResult => ({
+    data: undefined,
+    truncated: false,
+    truncatedResources: [],
+    available: error === null,
+    error,
+    pagesFetched: {
+      forms: 0,
+      submissions: 0,
+    },
+  });
+
+  try {
+    const forms: HubSpotFormObject[] = [];
+    let formOffset: string | null = "0";
+    let formAfter: string | null = null;
+    let formsTruncated = false;
+    let submissionPagesTruncated = false;
+    let formPagesFetched = 0;
+    let submissionPagesFetched = 0;
+
+    for (let page = 0; page < 100; page += 1) {
+      const formsUrl = new URL(`${input.baseUrl}/forms/v2/forms`);
+      formsUrl.searchParams.set("limit", "100");
+      formsUrl.searchParams.set("formTypes", "ALL");
+      if (formAfter) {
+        formsUrl.searchParams.set("after", formAfter);
+      } else if (formOffset) {
+        formsUrl.searchParams.set("offset", formOffset);
+      }
+
+      const formsRes = await fetch(formsUrl.toString(), {
+        headers: input.headers,
+        cache: "no-store",
+      });
+      if (!formsRes.ok) {
+        return emptyResult(`HubSpot collected forms request failed (${formsRes.status})`);
+      }
+      formPagesFetched += 1;
+
+      const rawForms = (await formsRes.json().catch(() => [])) as unknown;
+      const formsPage = (Array.isArray(rawForms)
+        ? rawForms
+        : Array.isArray((rawForms as HubSpotFormsListResponse).results)
+          ? (rawForms as HubSpotFormsListResponse).results
+          : Array.isArray((rawForms as HubSpotFormsListResponse).forms)
+            ? (rawForms as HubSpotFormsListResponse).forms
+            : []) as HubSpotFormObject[];
+      forms.push(...formsPage);
+
+      if (Array.isArray(rawForms)) break;
+
+      const payload = rawForms as HubSpotFormsListResponse;
+      const nextAfter = payload.paging?.next?.after?.trim() || null;
+      const nextOffset =
+        payload.hasMore && payload.offset !== undefined && payload.offset !== null
+          ? String(payload.offset)
+          : null;
+      const hasNextFormPage = Boolean(nextAfter || (nextOffset && nextOffset !== formOffset));
+
+      if (page === 99 && hasNextFormPage) {
+        formsTruncated = true;
+        break;
+      }
+
+      if (nextAfter) {
+        formAfter = nextAfter;
+        formOffset = null;
+      } else if (nextOffset && nextOffset !== formOffset) {
+        formOffset = nextOffset;
+        formAfter = null;
+      } else {
+        break;
+      }
+
+      if (formsPage.length === 0) break;
+    }
+
+    const relevantForms = forms
+      .map((form) => ({
+        formGuid: String(form.guid ?? form.id ?? "").trim(),
+        formName: String(form.name ?? "Unknown").trim() || "Unknown",
+      }))
+      .filter((form) => form.formGuid.length > 0)
+      .filter((form) => classifyHubSpotCollectedForm(form.formName) !== "other");
+
+    const submissions: NonNullable<HubSpotData["collectedForms"]>["submissions"] = [];
+    const formCountMap = new Map<string, { formName: string; count: number; funnelCategory: ReturnType<typeof classifyHubSpotCollectedForm> }>();
+
+    for (const form of relevantForms) {
+      let after: string | null = null;
+
+      for (let page = 0; page < 100; page += 1) {
+        const submissionsUrl = new URL(
+          `${input.baseUrl}/form-integrations/v1/submissions/forms/${encodeURIComponent(form.formGuid)}`,
+        );
+        submissionsUrl.searchParams.set("limit", "50");
+        if (after) submissionsUrl.searchParams.set("after", after);
+
+        const response = await fetch(submissionsUrl.toString(), {
+          headers: input.headers,
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          return emptyResult(`HubSpot collected form submissions request failed (${response.status})`);
+        }
+        submissionPagesFetched += 1;
+        const payload = (await response.json().catch(() => ({}))) as HubSpotFormSubmissionsResponse;
+        const category = classifyHubSpotCollectedForm(form.formName);
+        const pageSubmissions = Array.isArray(payload.results)
+          ? payload.results
+          : Array.isArray(payload.submissions)
+            ? payload.submissions
+            : [];
+
+        for (const submission of pageSubmissions) {
+          const submittedAt = hubSpotSubmittedAt(submission.submittedAt);
+          if (!submittedAt) continue;
+          if (input.from && submittedAt < input.from) continue;
+          if (input.to && submittedAt > input.to) continue;
+
+          const email = extractHubSpotSubmissionEmail(submission.values);
+          const id = `${form.formGuid}:${submittedAt.getTime()}:${email ?? stableFormSubmissionKey(submission)}`;
+          submissions.push({
+            id,
+            formGuid: form.formGuid,
+            formName: form.formName,
+            funnelCategory: category,
+            email,
+            submittedAt: submittedAt.toISOString(),
+            pageUrl: submission.pageUrl?.trim() || null,
+          });
+
+          const existing = formCountMap.get(form.formGuid) ?? {
+            formName: form.formName,
+            count: 0,
+            funnelCategory: category,
+          };
+          existing.count += 1;
+          formCountMap.set(form.formGuid, existing);
+        }
+
+        const nextAfter =
+          payload.paging?.next?.after?.trim() ||
+          (payload.after !== undefined && payload.after !== null ? String(payload.after) : null);
+        if (page === 99 && nextAfter && nextAfter !== after) {
+          submissionPagesTruncated = true;
+          break;
+        }
+        if (!nextAfter || nextAfter === after || pageSubmissions.length === 0) break;
+        after = nextAfter;
+      }
+    }
+
+    const formSubmissions = [...formCountMap.values()].sort((a, b) => b.count - a.count || a.formName.localeCompare(b.formName));
+    const totalFormSubmissions = submissions.length;
+    const leadMagnetSubmissions = submissions.filter((submission) => submission.funnelCategory === "lead_magnet").length;
+    const contactRequestSubmissions = submissions.filter((submission) => submission.funnelCategory === "contact_request").length;
+
+    const truncatedResources = [
+      ...(formsTruncated ? ["collectedForms"] : []),
+      ...(submissionPagesTruncated ? ["collectedFormSubmissions"] : []),
+    ];
+
+    return {
+      data: {
+        formSubmissions,
+        submissions,
+        totalFormSubmissions,
+        leadMagnetSubmissions,
+        contactRequestSubmissions,
+      },
+      truncated: truncatedResources.length > 0,
+      truncatedResources,
+      available: true,
+      error: null,
+      pagesFetched: {
+        forms: formPagesFetched,
+        submissions: submissionPagesFetched,
+      },
+    };
+  } catch (error) {
+    return emptyResult(error instanceof Error ? error.message : String(error));
+  }
+}
+
+function stableFormSubmissionKey(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString("base64url").slice(0, 24);
 }
 
 function buildFallbackPipelines(): HubSpotPipeline[] {
@@ -233,6 +500,7 @@ async function fetchAllHubSpotDeals(input: {
   deals: HubSpotDealObject[];
   pagesFetched: number;
   lastAfter: string | null;
+  truncated: boolean;
 }> {
   const deals: HubSpotDealObject[] = [];
   let after: string | undefined;
@@ -267,7 +535,12 @@ async function fetchAllHubSpotDeals(input: {
     if (input.maxTotalDeals && deals.length >= input.maxTotalDeals) break;
   }
 
-  return { deals, pagesFetched, lastAfter: after ?? null };
+  return {
+    deals,
+    pagesFetched,
+    lastAfter: after ?? null,
+    truncated: Boolean(after && input.maxTotalDeals && deals.length >= input.maxTotalDeals),
+  };
 }
 
 async function fetchHubSpotDealPipelines(input: {
@@ -327,21 +600,33 @@ async function fetchHubSpotDealPipelines(input: {
 }
 
 function parseHubSpotTimestamp(value: string | number | undefined): number | null {
+  const validMillis = (millis: number): number | null => {
+    const date = new Date(millis);
+    return Number.isNaN(date.getTime()) ? null : millis;
+  };
+
   if (typeof value === "number" && Number.isFinite(value)) {
     // HubSpot often returns ms timestamps; guard seconds timestamps too.
-    return value < 1_000_000_000_000 ? Math.round(value * 1000) : Math.round(value);
+    const millis = value < 1_000_000_000_000 ? Math.round(value * 1000) : Math.round(value);
+    return validMillis(millis);
   }
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (!trimmed) return null;
     const numeric = Number(trimmed);
     if (Number.isFinite(numeric)) {
-      return numeric < 1_000_000_000_000 ? Math.round(numeric * 1000) : Math.round(numeric);
+      const millis = numeric < 1_000_000_000_000 ? Math.round(numeric * 1000) : Math.round(numeric);
+      return validMillis(millis);
     }
     const parsed = Date.parse(trimmed);
-    return Number.isFinite(parsed) ? parsed : null;
+    return Number.isFinite(parsed) ? validMillis(parsed) : null;
   }
   return null;
+}
+
+function hubSpotTimestampToIso(value: string | number | undefined | null): string | null {
+  const timestamp = parseHubSpotTimestamp(value ?? undefined);
+  return timestamp === null ? null : new Date(timestamp).toISOString();
 }
 
 function extractHubSpotStageEvents(deal: HubSpotDealObject): HubSpotStageEvent[] {
@@ -500,7 +785,7 @@ async function fetchHubSpotOwners(input: {
       url.searchParams.set("limit", "100");
       if (after) url.searchParams.set("after", after);
       const res = await fetch(url.toString(), { headers: input.headers, cache: "no-store" });
-      if (!res.ok) break;
+      if (!res.ok) throw new Error(`HubSpot owners v3 error ${res.status}`);
       const data = (await res.json().catch(() => null)) as
         | { results?: Array<{ id?: string; firstName?: string; lastName?: string; email?: string }>; paging?: { next?: { after?: string } } }
         | null;
@@ -525,22 +810,30 @@ async function fetchHubSpotOwners(input: {
   }
 
   try {
-    const res = await fetch(`${input.baseUrl}/owners/v2/owners?count=500&offset=0`, {
-      headers: input.headers,
-      cache: "no-store",
-    });
-    if (!res.ok) return { owners: [], source: "none" };
-    const data = (await res.json().catch(() => null)) as
-      | Array<{ ownerId?: number; firstName?: string; lastName?: string; email?: string }>
-      | null;
     const owners: HubSpotOwnerRecord[] = [];
-    for (const row of data ?? []) {
-      const id = String(row.ownerId ?? "").trim();
-      if (!id) continue;
-      const full = `${row.firstName ?? ""} ${row.lastName ?? ""}`.trim();
-      const email = row.email?.trim() || null;
-      owners.push({ id, name: full || email || `Owner ${id}`, email });
+    const count = 500;
+
+    for (let page = 0; page < 100; page += 1) {
+      const offset = page * count;
+      const res = await fetch(`${input.baseUrl}/owners/v2/owners?count=${count}&offset=${offset}`, {
+        headers: input.headers,
+        cache: "no-store",
+      });
+      if (!res.ok) return owners.length > 0 ? { owners, source: "v2" } : { owners: [], source: "none" };
+      const data = (await res.json().catch(() => null)) as
+        | Array<{ ownerId?: number; firstName?: string; lastName?: string; email?: string }>
+        | null;
+      const rows = data ?? [];
+      for (const row of rows) {
+        const id = String(row.ownerId ?? "").trim();
+        if (!id) continue;
+        const full = `${row.firstName ?? ""} ${row.lastName ?? ""}`.trim();
+        const email = row.email?.trim() || null;
+        owners.push({ id, name: full || email || `Owner ${id}`, email });
+      }
+      if (rows.length < count) break;
     }
+
     return { owners, source: "v2" };
   } catch {
     return { owners: [], source: "none" };
@@ -570,7 +863,7 @@ export async function fetchHubSpotData(
     "dealstage,amount,dealname,closedate,createdate,hs_analytics_source,num_associated_contacts,hubspot_owner_id,hs_lastmodifieddate,stripe_customer_id,stripe_customer,pipeline";
   const historyKey = "dealstage";
 
-  const [pipelineResult, activeDealsResult, archivedDealsResult] = await Promise.all([
+  const [pipelineResult, activeDealsResult, archivedDealsResult, collectedFormsResult] = await Promise.all([
     fetchHubSpotDealPipelines({ baseUrl, headers }),
     fetchAllHubSpotDeals({
       baseUrl,
@@ -587,6 +880,12 @@ export async function fetchHubSpotData(
       properties,
       propertiesWithHistory: historyKey,
       maxTotalDeals: 10_000,
+    }),
+    fetchHubSpotCollectedForms({
+      baseUrl,
+      headers,
+      from: rangeFrom,
+      to: rangeTo,
     }),
   ]);
 
@@ -655,9 +954,9 @@ export async function fetchHubSpotData(
       source: props.hs_analytics_source || "Unknown",
       ownerId,
       repName: resolveOwnerName(ownerId),
-      updatedAt: props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).toISOString() : null,
-      createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
-      closedAt: props.closedate ? new Date(props.closedate).toISOString() : null,
+      updatedAt: hubSpotTimestampToIso(props.hs_lastmodifieddate),
+      createdAt: hubSpotTimestampToIso(props.createdate),
+      closedAt: hubSpotTimestampToIso(props.closedate),
       stripeCustomerId: props.stripe_customer_id || props.stripe_customer || null,
       pipelineId: props.pipeline || null,
       contactIds: [] as string[],
@@ -680,9 +979,9 @@ export async function fetchHubSpotData(
       source: props.hs_analytics_source || "Unknown",
       ownerId,
       repName: resolveOwnerName(ownerId),
-      updatedAt: props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).toISOString() : null,
-      createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
-      closedAt: props.closedate ? new Date(props.closedate).toISOString() : null,
+      updatedAt: hubSpotTimestampToIso(props.hs_lastmodifieddate),
+      createdAt: hubSpotTimestampToIso(props.createdate),
+      closedAt: hubSpotTimestampToIso(props.closedate),
       stripeCustomerId: props.stripe_customer_id || props.stripe_customer || null,
       pipelineId: props.pipeline || null,
       contactIds: [] as string[],
@@ -974,7 +1273,10 @@ export async function fetchHubSpotData(
   let recentContacts = 0;
   try {
     const contactsUrl = `${baseUrl}/crm/v3/objects/contacts?limit=1&properties=createdate`;
-    const contactsRes = await fetch(contactsUrl, { headers });
+    const contactsRes = await fetch(contactsUrl, {
+      headers,
+      cache: "no-store",
+    });
     if (contactsRes.ok) {
       const contactsData = await safeJson<{ total?: number }>(contactsRes, "hubspot contacts");
       // The list endpoint returns total count in the response
@@ -985,6 +1287,14 @@ export async function fetchHubSpotData(
   }
 
   const meta = makeMeta("live");
+  const collectedForms = collectedFormsResult.data;
+  const truncatedResources = [
+    ...(activeDealsResult.truncated ? ["activeDeals"] : []),
+    ...(archivedDealsResult.truncated ? ["archivedDeals"] : []),
+    ...collectedFormsResult.truncatedResources,
+  ];
+  meta.truncated = truncatedResources.length > 0;
+  meta.truncatedResources = truncatedResources;
   meta.diagnostics = {
     dealsFetched,
     archivedIncluded: true,
@@ -1015,6 +1325,11 @@ export async function fetchHubSpotData(
         }
       : null,
     ownerLookup: ownerLookupDiagnostics,
+    collectedFormsAvailable: collectedFormsResult.available,
+    collectedFormsError: collectedFormsResult.error,
+    collectedFormsFetched: collectedForms?.totalFormSubmissions ?? 0,
+    collectedFormsTruncated: collectedFormsResult.truncated,
+    collectedFormsPagesFetched: collectedFormsResult.pagesFetched,
   };
 
   return {
@@ -1030,6 +1345,9 @@ export async function fetchHubSpotData(
       noShows,
       demoScheduled,
       demoFollowUp,
+      collectedFormSubmissions: collectedForms?.totalFormSubmissions ?? 0,
+      leadMagnetSubmissions: collectedForms?.leadMagnetSubmissions ?? 0,
+      contactRequestSubmissions: collectedForms?.contactRequestSubmissions ?? 0,
       avgDealSize,
       winRate,
       effectiveWinRate,
@@ -1037,6 +1355,7 @@ export async function fetchHubSpotData(
       stages: funnelStages,
       dealsBySource,
     },
+    collectedForms,
     contacts: {
       totalContacts: Math.max(0, recentContacts - suspiciousLeadExclusions),
       recentContacts: Math.max(0, recentContacts - suspiciousLeadExclusions),
@@ -1137,6 +1456,7 @@ async function fetchDealContactAnalytics(
       const res = await fetch(`${baseUrl}/crm/v4/associations/deal/contact/batch/read`, {
         method: "POST",
         headers,
+        cache: "no-store",
         body: JSON.stringify({ inputs: batch.map((id) => ({ id })) }),
       });
       if (!res.ok) continue;
@@ -1177,6 +1497,7 @@ async function fetchDealContactAnalytics(
       const res = await fetch(`${baseUrl}/crm/v3/objects/contacts/batch/read`, {
         method: "POST",
         headers,
+        cache: "no-store",
         body: JSON.stringify({
           inputs: batch.map((id) => ({ id })),
           properties: CONTACT_ANALYTICS_PROPERTIES,
@@ -1204,15 +1525,15 @@ async function fetchDealContactAnalytics(
       primaryContactId,
       primaryContactEmail: primaryProps?.email ?? null,
       primaryContactAnalytics: primaryProps ? {
-        createdAt: primaryProps.createdate ? new Date(primaryProps.createdate).toISOString() : null,
+        createdAt: hubSpotTimestampToIso(primaryProps.createdate),
         source: primaryProps.hs_analytics_source || null,
         sourceData1: primaryProps.hs_analytics_source_data_1 || null,
         sourceData2: primaryProps.hs_analytics_source_data_2 || null,
         firstSeenAt: primaryProps.hs_analytics_first_timestamp
-          ? new Date(Number(primaryProps.hs_analytics_first_timestamp)).toISOString()
+          ? hubSpotTimestampToIso(primaryProps.hs_analytics_first_timestamp)
           : null,
         lastSeenAt: primaryProps.hs_analytics_last_timestamp
-          ? new Date(Number(primaryProps.hs_analytics_last_timestamp)).toISOString()
+          ? hubSpotTimestampToIso(primaryProps.hs_analytics_last_timestamp)
           : null,
         firstUrl: primaryProps.hs_analytics_first_url || null,
         lastUrl: primaryProps.hs_analytics_last_url || null,
@@ -1311,7 +1632,7 @@ export async function fetchHubSpotContacts(
         ownerId,
         repName: ownerId ? ownerMap[ownerId] || "Unknown" : "Unassigned",
         updatedAt: null,
-        createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
+        createdAt: hubSpotTimestampToIso(props.createdate),
         closedAt: null,
         stripeCustomerId: null,
         pipelineId: null,
@@ -1319,7 +1640,7 @@ export async function fetchHubSpotContacts(
         primaryContactId: String(contact.id ?? "") || null,
         primaryContactEmail: email,
         primaryContactAnalytics: {
-          createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
+          createdAt: hubSpotTimestampToIso(props.createdate),
           source: rawSource,
           sourceData1: null,
           sourceData2: null,
@@ -1338,7 +1659,7 @@ export async function fetchHubSpotContacts(
 
       out.push({
         contactId: String(contact.id ?? ""),
-        createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
+        createdAt: hubSpotTimestampToIso(props.createdate),
         ownerId,
         repName: ownerId ? ownerMap[ownerId] || "Unknown" : "Unassigned",
         rawSource,
@@ -1358,7 +1679,7 @@ export async function fetchHubSpotContacts(
 
 interface StripeSubItem {
   price: {
-    unit_amount: number;
+    unit_amount: number | string;
     recurring?: { interval?: string; interval_count?: number };
   };
 }
@@ -1372,7 +1693,7 @@ interface StripeSub {
 
 interface StripeCharge {
   id?: string;
-  amount: number;
+  amount: number | string;
   created: number;
   status: string;
 }
@@ -1414,12 +1735,27 @@ function normalizeEmailDomain(email: string | null): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function readStripeAmountCents(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value !== "string") return 0;
+
+  const normalized = value.trim().replace(/[$,\s]/g, "");
+  if (!normalized) return 0;
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export async function fetchStripeData(
   apiKey: string,
-  options?: { fromDate?: Date; toDate?: Date }
+  options?: { fromDate?: Date; toDate?: Date; maxPages?: number }
 ): Promise<StripeData> {
   const headers = { Authorization: `Bearer ${apiKey}` };
   const baseUrl = "https://api.stripe.com/v1";
+  const maxPages =
+    typeof options?.maxPages === "number" && Number.isFinite(options.maxPages)
+      ? Math.max(1, Math.floor(options.maxPages))
+      : 1000;
   const now = Math.floor(Date.now() / 1000);
   const rangeFrom = options?.fromDate ?? null;
   const rangeTo = options?.toDate ?? null;
@@ -1438,11 +1774,31 @@ export async function fetchStripeData(
   const fetchStripe = async (url: string): Promise<Response> =>
     fetch(url, { headers, cache: "no-store" });
 
-  const fetchSubscriptionsByStatus = async (status: string): Promise<StripeSub[]> => {
+  const readStripeErrorMessage = async (response: Response): Promise<string> => {
+    const text = await response.text().catch(() => "");
+    if (!text) return response.statusText || "Stripe API request failed";
+    try {
+      const parsed = JSON.parse(text) as {
+        error?: { message?: string };
+        message?: string;
+      };
+      return parsed.error?.message ?? parsed.message ?? text;
+    } catch {
+      return text;
+    }
+  };
+
+  const fetchSubscriptionsByStatus = async (status: string): Promise<{
+    subscriptions: StripeSub[];
+    pagesFetched: number;
+    truncated: boolean;
+  }> => {
     const subscriptions: StripeSub[] = [];
     let startingAfter: string | undefined;
+    let pagesFetched = 0;
+    let truncated = false;
 
-    for (let page = 0; page < 1000; page++) {
+    for (let page = 0; page < maxPages; page++) {
       let url = `${baseUrl}/subscriptions?limit=100&status=${encodeURIComponent(status)}&expand[]=data.customer`;
       if (startingAfter) url += `&starting_after=${startingAfter}`;
 
@@ -1457,63 +1813,110 @@ export async function fetchStripeData(
       );
       const batch = data.data ?? [];
       subscriptions.push(...batch);
+      pagesFetched += 1;
 
       if (!data.has_more || batch.length === 0) break;
       startingAfter = batch[batch.length - 1]?.id;
       if (!startingAfter) break;
+      if (page === maxPages - 1) {
+        truncated = true;
+        break;
+      }
     }
 
-    return subscriptions;
+    return { subscriptions, pagesFetched, truncated };
   };
 
   const fetchPastDueAndTrialingCounts = async (): Promise<{
     pastDueCount: number;
     trialingCount: number;
+    truncatedResources: string[];
+    pagesFetched: Record<string, number>;
   }> => {
     try {
-      const [pastDueCount, trialingCount] = await Promise.all([
-        fetchSubscriptionsByStatus("past_due").then((subscriptions) => subscriptions.length),
-        fetchSubscriptionsByStatus("trialing").then((subscriptions) => subscriptions.length),
+      const [pastDueResult, trialingResult] = await Promise.all([
+        fetchSubscriptionsByStatus("past_due"),
+        fetchSubscriptionsByStatus("trialing"),
       ]);
-      return { pastDueCount, trialingCount };
+      return {
+        pastDueCount: pastDueResult.subscriptions.length,
+        trialingCount: trialingResult.subscriptions.length,
+        truncatedResources: [
+          ...(pastDueResult.truncated ? ["pastDueSubscriptions"] : []),
+          ...(trialingResult.truncated ? ["trialingSubscriptions"] : []),
+        ],
+        pagesFetched: {
+          pastDueSubscriptions: pastDueResult.pagesFetched,
+          trialingSubscriptions: trialingResult.pagesFetched,
+        },
+      };
     } catch {
       // Non-critical
     }
-    return { pastDueCount: 0, trialingCount: 0 };
+    return {
+      pastDueCount: 0,
+      trialingCount: 0,
+      truncatedResources: [],
+      pagesFetched: {
+        pastDueSubscriptions: 0,
+        trialingSubscriptions: 0,
+      },
+    };
   };
 
-  const fetchCharges = async (createdGte: number, createdLte: number): Promise<StripeCharge[]> => {
+  const fetchCharges = async (createdGte: number, createdLte: number): Promise<{
+    charges: StripeCharge[];
+    pagesFetched: number;
+    truncated: boolean;
+  }> => {
     const allCharges: StripeCharge[] = [];
     let startingAfter: string | undefined;
-    for (let page = 0; page < 10; page++) {
+    let pagesFetched = 0;
+    let truncated = false;
+
+    for (let page = 0; page < maxPages; page++) {
       let chargesUrl = `${baseUrl}/charges?limit=100&created[gte]=${createdGte}&created[lte]=${createdLte}`;
       if (startingAfter) chargesUrl += `&starting_after=${startingAfter}`;
 
       const chargesRes = await fetchStripe(chargesUrl);
-      if (!chargesRes.ok) break;
+      if (!chargesRes.ok) {
+        throw new Error(
+          `Stripe charges error (${chargesRes.status}): ${await readStripeErrorMessage(chargesRes)}`
+        );
+      }
       const chargesData = await safeJson<{ data?: StripeCharge[]; has_more?: boolean }>(chargesRes, "stripe charges");
       const batch = chargesData.data || [];
       allCharges.push(...batch);
+      pagesFetched += 1;
 
       if (!chargesData.has_more || batch.length === 0) break;
       startingAfter = batch[batch.length - 1].id;
+      if (!startingAfter) break;
+      if (page === maxPages - 1) {
+        truncated = true;
+        break;
+      }
     }
-    return allCharges;
+    return { charges: allCharges, pagesFetched, truncated };
   };
 
-  const [activeSubs, canceledSubs, counts, chargesInRange, chargesPrevRange] = await Promise.all([
+  const [activeSubResult, canceledSubResult, counts, chargesInRangeResult, chargesPrevRangeResult] = await Promise.all([
     fetchSubscriptionsByStatus("active"),
     fetchSubscriptionsByStatus("canceled"),
     fetchPastDueAndTrialingCounts(),
     fetchCharges(rangeStart, rangeEnd),
     fetchCharges(previousStart, previousEnd),
   ]);
+  const activeSubs = activeSubResult.subscriptions;
+  const canceledSubs = canceledSubResult.subscriptions;
+  const chargesInRange = chargesInRangeResult.charges;
+  const chargesPrevRange = chargesPrevRangeResult.charges;
 
   // ── Calculate MRR — normalize yearly/quarterly subscriptions to monthly ──
   const mrr = activeSubs.reduce((sum: number, s: StripeSub) => {
     const item = s.items?.data?.[0];
     if (!item?.price) return sum;
-    const unitAmount = (item.price.unit_amount || 0) / 100;
+    const unitAmount = readStripeAmountCents(item.price.unit_amount) / 100;
     const interval = item.price.recurring?.interval || "month";
     const intervalCount = item.price.recurring?.interval_count || 1;
 
@@ -1542,7 +1945,7 @@ export async function fetchStripeData(
   let succeeded = 0;
   let failed = 0;
   for (const charge of chargesInRange) {
-    const amt = (charge.amount || 0) / 100;
+    const amt = readStripeAmountCents(charge.amount) / 100;
     const chargeDate = new Date(charge.created * 1000);
     const monthKey = chargeDate.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
 
@@ -1556,7 +1959,7 @@ export async function fetchStripeData(
   }
   for (const charge of chargesPrevRange) {
     if (charge.status === "succeeded") {
-      revPrev += (charge.amount || 0) / 100;
+      revPrev += readStripeAmountCents(charge.amount) / 100;
     }
   }
 
@@ -1570,7 +1973,7 @@ export async function fetchStripeData(
     for (const charge of chargesInRange) {
       if (charge.status !== "succeeded") continue;
       const dayKey = new Date(charge.created * 1000).toISOString().slice(0, 10);
-      dayBuckets[dayKey] = (dayBuckets[dayKey] || 0) + (charge.amount || 0) / 100;
+      dayBuckets[dayKey] = (dayBuckets[dayKey] || 0) + readStripeAmountCents(charge.amount) / 100;
     }
     const keys = Object.keys(dayBuckets).sort();
     for (const key of keys) {
@@ -1595,8 +1998,29 @@ export async function fetchStripeData(
     .map((subscription: StripeSub) => ({
       customer: stripeSubscriptionCustomerId(subscription.customer),
       canceledAt: new Date((subscription.canceled_at || 0) * 1000).toISOString(),
-      amount: (subscription.items?.data?.[0]?.price?.unit_amount || 0) / 100,
+      amount: readStripeAmountCents(subscription.items?.data?.[0]?.price?.unit_amount) / 100,
     }));
+
+  const truncatedResources = [
+    ...(activeSubResult.truncated ? ["activeSubscriptions"] : []),
+    ...(canceledSubResult.truncated ? ["canceledSubscriptions"] : []),
+    ...counts.truncatedResources,
+    ...(chargesInRangeResult.truncated ? ["chargesInRange"] : []),
+    ...(chargesPrevRangeResult.truncated ? ["chargesPreviousRange"] : []),
+  ];
+  const meta = makeMeta();
+  meta.truncated = truncatedResources.length > 0;
+  meta.truncatedResources = truncatedResources;
+  meta.diagnostics = {
+    maxPages,
+    pagesFetched: {
+      activeSubscriptions: activeSubResult.pagesFetched,
+      canceledSubscriptions: canceledSubResult.pagesFetched,
+      ...counts.pagesFetched,
+      chargesInRange: chargesInRangeResult.pagesFetched,
+      chargesPreviousRange: chargesPrevRangeResult.pagesFetched,
+    },
+  };
 
   return {
     revenue: {
@@ -1631,15 +2055,15 @@ export async function fetchStripeData(
       successRate: succeeded + failed > 0 ? (succeeded / (succeeded + failed)) * 100 : 0,
     },
     revenueTrend: trend,
-    _meta: makeMeta(),
+    _meta: meta,
   };
 }
 
 type StripeChargeListResponse = {
   data: Array<{
     id: string;
-    amount: number;
-    amount_refunded?: number;
+    amount: number | string;
+    amount_refunded?: number | string;
     created: number;
     currency?: string;
     status?: string;
@@ -1725,8 +2149,8 @@ async function fetchStripeChargesForCustomer(
       if (charge.status !== "succeeded") continue;
       if (charge.paid === false) continue;
 
-      const amountRefunded = charge.amount_refunded ?? 0;
-      const net = Math.max(0, (charge.amount ?? 0) - amountRefunded);
+      const amountRefunded = readStripeAmountCents(charge.amount_refunded);
+      const net = Math.max(0, readStripeAmountCents(charge.amount) - amountRefunded);
 
       all.push({
         chargeId: charge.id,
@@ -1782,28 +2206,24 @@ export async function fetchStripeChargesByCustomer(
 
 export async function fetchMercuryData(
   apiKey: string,
-  options?: { fromDate?: Date; toDate?: Date; expenseMappings?: MercuryExpenseMapping[] }
+  options?: { fromDate?: Date; toDate?: Date; maxPages?: number; expenseMappings?: MercuryExpenseMapping[] }
 ): Promise<MercuryData> {
-  const MERCURY_PAGE_LIMIT = 500;
-  const MERCURY_MAX_PAGES = 100;
-
   type MercuryAccount = {
     id?: string;
     name?: string;
-    currentBalance?: number;
-    availableBalance?: number;
+    currentBalance?: number | string;
+    availableBalance?: number | string;
     type?: string;
     status?: string;
   };
 
   type MercuryTransaction = {
     id?: string;
-    accountId?: string;
     postedAt?: string;
     createdAt?: string;
     timestamp?: string;
     status?: string;
-    amount?: number;
+    amount?: number | string;
     kind?: string | null;
     mercuryCategory?: string | null;
     description?: string | null;
@@ -1823,26 +2243,25 @@ export async function fetchMercuryData(
     } | null;
   };
 
-  type MercuryPageResponse<T> = {
-    accounts?: T[];
-    transactions?: T[];
-    cursor?: string | number | null;
-    nextCursor?: string | number | null;
-    pagination?: {
-      cursor?: string | number | null;
-      nextCursor?: string | number | null;
-      hasNextPage?: boolean | null;
-      has_next_page?: boolean | null;
-    } | null;
-    paging?: {
-      next?: {
-        cursor?: string | number | null;
-        startAfter?: string | number | null;
-        start_after?: string | number | null;
-      } | null;
-    } | null;
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
   };
+  const baseUrl = "https://api.mercury.com/api/v1";
+  const maxPages =
+    typeof options?.maxPages === "number" && Number.isFinite(options.maxPages)
+      ? Math.max(1, Math.floor(options.maxPages))
+      : 1000;
+  const readMercuryNumber = (value: unknown): number => {
+    if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+    if (typeof value !== "string") return 0;
 
+    const normalized = value.trim().replace(/[$,\s]/g, "");
+    if (!normalized) return 0;
+
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
   const emptyExpenseBreakdown = (): Record<ExpenseCategory, number> => ({
     cogs: 0,
     payroll: 0,
@@ -1851,7 +2270,6 @@ export async function fetchMercuryData(
     ops: 0,
     other: 0,
   });
-
   const MERCURY_CATEGORY_KEYWORDS: Record<ExpenseCategory, string[]> = {
     cogs: [
       "cost of goods",
@@ -1859,23 +2277,18 @@ export async function fetchMercuryData(
       "hosting",
       "cloud",
       "compute",
-      "inference",
       "api usage",
       "payment processing",
       "merchant fee",
       "processing fee",
       "aws",
-      "amazon web services",
       "google cloud",
       "gcp",
       "azure",
       "openai",
       "anthropic",
-      "pinecone",
       "twilio",
       "sendgrid",
-      "resend",
-      "cloudinary",
     ],
     payroll: [
       "payroll",
@@ -1888,10 +2301,6 @@ export async function fetchMercuryData(
       "deel",
       "adp",
       "paychex",
-      "justworks",
-      "trinet",
-      "remote",
-      "oyster",
     ],
     marketing: [
       "marketing",
@@ -1899,23 +2308,18 @@ export async function fetchMercuryData(
       "ad spend",
       "paid search",
       "paid social",
-      "sponsorship",
       "google ads",
       "meta ads",
       "facebook ads",
       "linkedin ads",
       "reddit ads",
-      "tiktok ads",
       "hubspot",
       "semrush",
-      "mailchimp",
-      "klaviyo",
     ],
     infrastructure: [
       "software",
       "saas",
       "tools",
-      "tooling",
       "monitoring",
       "security",
       "domain",
@@ -1923,17 +2327,12 @@ export async function fetchMercuryData(
       "vercel",
       "cloudflare",
       "github",
-      "gitlab",
       "notion",
       "slack",
       "zoom",
       "linear",
       "figma",
-      "datadog",
-      "sentry",
       "railway",
-      "render",
-      "netlify",
     ],
     ops: [
       "operations",
@@ -1954,7 +2353,6 @@ export async function fetchMercuryData(
     ],
     other: [],
   };
-
   const classifyMercuryExpense = (tx: MercuryTransaction): ExpenseCategory => {
     const haystack = [
       tx.categoryData?.categoryDataName ?? tx.mercuryCategory ?? "",
@@ -1987,160 +2385,63 @@ export async function fetchMercuryData(
     return "other";
   };
 
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${apiKey}`,
-    "Content-Type": "application/json",
-  };
-  const baseUrl = "https://api.mercury.com/api/v1";
-
-  function transactionDateKey(tx: MercuryTransaction): string | null {
-    const timestamp = tx.postedAt || tx.createdAt || tx.timestamp || "";
-    if (!timestamp) return null;
-    const parsed = Date.parse(timestamp);
-    if (!Number.isFinite(parsed)) return null;
-    return new Date(parsed).toISOString().split("T")[0] ?? null;
-  }
-
-  function textSuggestsInternalTransfer(tx: MercuryTransaction): boolean {
-    const fields = [
-      tx.bankDescription,
-      tx.counterpartyName,
-      tx.counterpartyNickname,
-      tx.mercuryCategory,
-    ]
-      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-      .map((value) => value.trim().toLowerCase());
-
-    return fields.some((value) =>
-      value.includes("internal transfer") ||
-      value.includes("between your mercury accounts") ||
-      value.includes("between your accounts")
-    );
-  }
-
-  function filterInternalTransferPairs(transactions: MercuryLedgerTransaction[]): MercuryLedgerTransaction[] {
-    const grouped = new Map<string, MercuryLedgerTransaction[]>();
-
-    for (const tx of transactions) {
-      const amount = tx.amount ?? 0;
-      const dateKey = transactionDateKey(tx);
-      if (!dateKey || !Number.isFinite(amount) || amount === 0) continue;
-      const key = `${dateKey}:${Math.abs(amount)}`;
-      const bucket = grouped.get(key) ?? [];
-      bucket.push(tx);
-      grouped.set(key, bucket);
-    }
-
-    const excludedIds = new Set<string>();
-    const excludedRefs = new Set<MercuryLedgerTransaction>();
-
-    for (const bucket of grouped.values()) {
-      const negatives = bucket.filter((tx) => (tx.amount ?? 0) < 0);
-      const positives = bucket.filter((tx) => (tx.amount ?? 0) > 0);
-      if (negatives.length === 0 || positives.length === 0) continue;
-
-      const hinted = bucket.some(textSuggestsInternalTransfer);
-      if (!hinted && (negatives.length !== 1 || positives.length !== 1)) {
-        continue;
-      }
-
-      const availablePositives = [...positives];
-      for (const debit of negatives) {
-        const matchIndex = availablePositives.findIndex((credit) => credit.accountId !== debit.accountId);
-        if (matchIndex === -1) continue;
-        const [credit] = availablePositives.splice(matchIndex, 1);
-        if (debit.id) excludedIds.add(debit.id); else excludedRefs.add(debit);
-        if (credit.id) excludedIds.add(credit.id); else excludedRefs.add(credit);
-      }
-    }
-
-    return transactions.filter((tx) => {
-      if (tx.id && excludedIds.has(tx.id)) return false;
-      if (!tx.id && excludedRefs.has(tx)) return false;
-      return true;
-    });
-  }
-
-  function readMercuryNextCursor<T extends { id?: string }>(
-    body: MercuryPageResponse<T> | null,
-    batch: T[],
-    pageLimit: number,
-  ): string | null {
-    const explicitCursor =
-      body?.paging?.next?.start_after ??
-      body?.paging?.next?.startAfter ??
-      body?.paging?.next?.cursor ??
-      body?.pagination?.nextCursor ??
-      body?.pagination?.cursor ??
-      body?.nextCursor ??
-      body?.cursor;
-
-    if (explicitCursor != null && String(explicitCursor).trim()) {
-      return String(explicitCursor);
-    }
-
-    const hasNextPage = body?.pagination?.hasNextPage ?? body?.pagination?.has_next_page;
-    if (hasNextPage === false) return null;
-
-    if (batch.length < pageLimit) return null;
-
-    const lastId = batch[batch.length - 1]?.id;
-    return lastId?.trim() ? lastId : null;
-  }
-
-  async function fetchMercuryPages<T extends { id?: string }>(
-    path: string,
-    extract: (body: MercuryPageResponse<T> | null) => T[],
-    searchParams: Record<string, string>,
-    label: string,
-  ): Promise<T[]> {
-    const all: T[] = [];
+  const fetchMercuryAccounts = async (): Promise<{
+    accounts: MercuryAccount[];
+    pagesFetched: number;
+    truncated: boolean;
+  }> => {
+    const allAccounts: MercuryAccount[] = [];
+    const limit = 1000;
     let startAfter: string | null = null;
+    let pagesFetched = 0;
+    let truncated = false;
 
-    for (let page = 0; page < MERCURY_MAX_PAGES; page++) {
-      const url = new URL(`${baseUrl}${path}`);
-      for (const [key, value] of Object.entries(searchParams)) {
-        url.searchParams.set(key, value);
-      }
-      if (startAfter) {
-        url.searchParams.set("start_after", startAfter);
+    for (let page = 0; page < maxPages; page += 1) {
+      const params = new URLSearchParams({
+        limit: String(limit),
+        order: "asc",
+      });
+      if (startAfter) params.set("start_after", startAfter);
+
+      const accountsRes = await fetch(`${baseUrl}/accounts?${params.toString()}`, {
+        headers,
+        cache: "no-store",
+      });
+      if (!accountsRes.ok) {
+        throw new Error(`Mercury accounts error ${accountsRes.status}`);
       }
 
-      const res = await fetch(url.toString(), { headers, cache: "no-store" });
-      if (!res.ok) {
-        throw new Error(`Mercury ${label} error ${res.status}`);
-      }
+      const accountsData = await safeJson<{ accounts?: MercuryAccount[] }>(accountsRes, "mercury accounts");
+      const pageAccounts = accountsData.accounts ?? [];
+      allAccounts.push(...pageAccounts);
+      pagesFetched += 1;
 
-      const body = await safeJson<MercuryPageResponse<T>>(res, `mercury ${label}`);
-      const batch = extract(body);
-      all.push(...batch);
-
-      const nextCursor = readMercuryNextCursor(body, batch, MERCURY_PAGE_LIMIT);
-      if (!nextCursor || batch.length === 0) {
-        return all;
+      if (pageAccounts.length < limit) break;
+      const lastId = pageAccounts[pageAccounts.length - 1]?.id;
+      if (!lastId || lastId === startAfter) break;
+      if (page === maxPages - 1) {
+        truncated = true;
+        break;
       }
-      startAfter = nextCursor;
+      startAfter = lastId;
     }
 
-    throw new Error(`Mercury ${label} pagination exceeded ${MERCURY_MAX_PAGES} pages`);
-  }
+    return { accounts: allAccounts, pagesFetched, truncated };
+  };
 
-  // Fetch accounts
-  const mercuryAccounts = await fetchMercuryPages<MercuryAccount>(
-    "/accounts",
-    (body) => body?.accounts ?? [],
-    { limit: String(MERCURY_PAGE_LIMIT) },
-    "accounts",
-  );
-  const accounts = mercuryAccounts.map((account) => ({
+  const accountResult = await fetchMercuryAccounts();
+  const accounts = accountResult.accounts.map((account) => ({
     accountId: account.id ?? "",
     accountName: account.name ?? "Unknown account",
-    balance: account.currentBalance ?? 0,
+    balance: readMercuryNumber(account.currentBalance),
     type: account.type ?? "checking",
   }));
 
   try {
-    const treasuryRes = await fetch(`${baseUrl}/treasury?limit=1000`, { headers });
+    const treasuryRes = await fetch(`${baseUrl}/treasury?limit=1000`, {
+      headers,
+      cache: "no-store",
+    });
     if (treasuryRes.ok) {
       const treasuryData = await safeJson<{ accounts?: MercuryAccount[] }>(treasuryRes, "mercury treasury");
       const treasuryAccounts = (treasuryData.accounts ?? [])
@@ -2148,7 +2449,7 @@ export async function fetchMercuryData(
         .map((account, index) => ({
           accountId: account.id ?? `treasury-${index}`,
           accountName: account.name ?? `Mercury Treasury${index > 0 ? ` ${index + 1}` : ""}`,
-          balance: account.currentBalance ?? 0,
+          balance: readMercuryNumber(account.currentBalance),
           type: "treasury",
         }));
       accounts.push(...treasuryAccounts);
@@ -2180,14 +2481,15 @@ export async function fetchMercuryData(
   const startKey = (useRange ? rangeFrom! : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
     .toISOString()
     .split("T")[0];
-  const observedPeriodDays = useRange && rangeFrom && rangeTo
-    ? inclusiveUtcDaySpan(rangeFrom, rangeTo)
-    : 30;
 
   const endKey = (useRange ? rangeTo! : new Date()).toISOString().split("T")[0];
+  const observedPeriodDays =
+    useRange && rangeFrom && rangeTo
+      ? Math.max(1, Math.ceil((rangeTo.getTime() - rangeFrom.getTime() + 1) / (24 * 60 * 60 * 1000)))
+      : 30;
   const shouldCountCashFlow = (tx: MercuryTransaction): boolean => {
     if (tx.status !== "sent") return false;
-    if (typeof tx.amount !== "number" || !Number.isFinite(tx.amount) || tx.amount === 0) return false;
+    if (readMercuryNumber(tx.amount) === 0) return false;
     const kind = (tx.kind ?? "").toLowerCase();
     const mercuryCategory = (tx.mercuryCategory ?? "").toLowerCase();
     return !(
@@ -2199,7 +2501,7 @@ export async function fetchMercuryData(
   const toTransactionData = (tx: MercuryTransaction): MercuryTransactionData => ({
     id: tx.id ?? "",
     postedAt: tx.postedAt ?? tx.createdAt ?? tx.timestamp ?? null,
-    amount: tx.amount ?? 0,
+    amount: readMercuryNumber(tx.amount),
     kind: tx.kind ?? null,
     mercuryCategory: tx.mercuryCategory ?? null,
     description:
@@ -2219,19 +2521,29 @@ export async function fetchMercuryData(
   });
 
   const transactions: MercuryTransactionData[] = [];
-  const ledgerTransactions: MercuryTransaction[] = [];
-  const expenseBreakdown = emptyExpenseBreakdown();
+  const expenseBreakdown30d = emptyExpenseBreakdown();
 
   const addCashFlow = (tx: MercuryTransaction): void => {
     if (!shouldCountCashFlow(tx)) return;
-    ledgerTransactions.push(tx);
+    const amount = readMercuryNumber(tx.amount);
+    const amt = Math.abs(amount);
+    if (amount > 0) inflows += amt;
+    else {
+      outflows += amt;
+      expenseBreakdown30d[classifyMercuryExpense(tx)] += amt;
+    }
     transactions.push(toTransactionData(tx));
   };
 
+  let inflows = 0, outflows = 0;
   let usedGlobalTransactions = false;
+  let globalTransactionPagesFetched = 0;
+  let globalTransactionsTruncated = false;
+  let accountTransactionPagesFetched = 0;
+  let accountTransactionsTruncated = false;
   try {
     let startAfter: string | null = null;
-    for (let page = 0; page < 10; page += 1) {
+    for (let page = 0; page < maxPages; page += 1) {
       const params = new URLSearchParams({
         postedStart: startKey,
         postedEnd: endKey,
@@ -2240,15 +2552,23 @@ export async function fetchMercuryData(
         order: "desc",
       });
       if (startAfter) params.set("start_after", startAfter);
-      const txRes = await fetch(`${baseUrl}/transactions?${params.toString()}`, { headers });
+      const txRes = await fetch(`${baseUrl}/transactions?${params.toString()}`, {
+        headers,
+        cache: "no-store",
+      });
       if (!txRes.ok) break;
       usedGlobalTransactions = true;
       const txData = await safeJson<{ transactions?: MercuryTransaction[] }>(txRes, "mercury transactions");
       const txs = txData.transactions ?? [];
+      globalTransactionPagesFetched += 1;
       for (const tx of txs) addCashFlow(tx);
       if (txs.length < 1000) break;
       const lastId = txs[txs.length - 1]?.id;
       if (!lastId || lastId === startAfter) break;
+      if (page === maxPages - 1) {
+        globalTransactionsTruncated = true;
+        break;
+      }
       startAfter = lastId;
     }
   } catch {
@@ -2261,21 +2581,42 @@ export async function fetchMercuryData(
   if (!usedGlobalTransactions) {
     for (const account of bankAccounts) {
       try {
-        const txRes = await fetch(
-          `${baseUrl}/account/${account.accountId}/transactions?start=${startKey}&limit=500`,
-          { headers }
-        );
-        if (!txRes.ok) continue;
-        const txData = await safeJson<{ transactions?: MercuryTransaction[] }>(txRes, "mercury transactions");
-        for (const tx of txData.transactions ?? []) {
-          if (useRange && rangeTo) {
-            const postedAt = tx.postedAt || tx.createdAt || tx.timestamp || "";
-            if (postedAt) {
-              const postedMs = Date.parse(postedAt);
-              if (Number.isFinite(postedMs) && postedMs > rangeTo.getTime()) continue;
+        const limit = 500;
+        for (let page = 0; page < maxPages; page += 1) {
+          const params = new URLSearchParams({
+            start: startKey,
+            end: endKey,
+            status: "sent",
+            limit: String(limit),
+            offset: String(page * limit),
+            order: "desc",
+          });
+          const txRes = await fetch(
+            `${baseUrl}/account/${encodeURIComponent(account.accountId)}/transactions?${params.toString()}`,
+            {
+              headers,
+              cache: "no-store",
             }
+          );
+          if (!txRes.ok) break;
+          const txData = await safeJson<{ transactions?: MercuryTransaction[] }>(txRes, "mercury transactions");
+          const txs = txData.transactions ?? [];
+          accountTransactionPagesFetched += 1;
+          for (const tx of txs) {
+            if (useRange && rangeTo) {
+              const postedAt = tx.postedAt || tx.createdAt || tx.timestamp || "";
+              if (postedAt) {
+                const postedMs = Date.parse(postedAt);
+                if (Number.isFinite(postedMs) && postedMs > rangeTo.getTime()) continue;
+              }
+            }
+            addCashFlow(tx);
           }
-          addCashFlow(tx);
+          if (txs.length < limit) break;
+          if (page === maxPages - 1) {
+            accountTransactionsTruncated = true;
+            break;
+          }
         }
       } catch {
         // Skip account on error
@@ -2283,29 +2624,25 @@ export async function fetchMercuryData(
     }
   }
 
-  const externalTransactions = filterInternalTransferPairs(ledgerTransactions);
-  let inflows = 0, outflows = 0;
-  for (const tx of externalTransactions) {
-    const amount = tx.amount ?? 0;
-    const amt = Math.abs(amount);
-    if (amount > 0) inflows += amt;
-    else {
-      outflows += amt;
-      expenseBreakdown[classifyMercuryExpense(tx)] += amt;
-    }
-  }
   const burnRate = Math.max(outflows - inflows, 0);
   const runway = burnRate > 0 ? totalBalance / burnRate : 999;
-  const monthlyExpenseBreakdown: Record<ExpenseCategory, number> = {
-    cogs: observedPeriodDays > 0 ? expenseBreakdown.cogs * (30 / observedPeriodDays) : expenseBreakdown.cogs,
-    payroll: observedPeriodDays > 0 ? expenseBreakdown.payroll * (30 / observedPeriodDays) : expenseBreakdown.payroll,
-    marketing: observedPeriodDays > 0 ? expenseBreakdown.marketing * (30 / observedPeriodDays) : expenseBreakdown.marketing,
-    infrastructure: observedPeriodDays > 0 ? expenseBreakdown.infrastructure * (30 / observedPeriodDays) : expenseBreakdown.infrastructure,
-    ops: observedPeriodDays > 0 ? expenseBreakdown.ops * (30 / observedPeriodDays) : expenseBreakdown.ops,
-    other: observedPeriodDays > 0 ? expenseBreakdown.other * (30 / observedPeriodDays) : expenseBreakdown.other,
+  const truncatedResources = [
+    ...(accountResult.truncated ? ["accounts"] : []),
+    ...(globalTransactionsTruncated ? ["globalTransactions"] : []),
+    ...(accountTransactionsTruncated ? ["accountTransactions"] : []),
+  ];
+  const meta = makeMeta();
+  meta.truncated = truncatedResources.length > 0;
+  meta.truncatedResources = truncatedResources;
+  meta.diagnostics = {
+    maxPages,
+    accountPagesFetched: accountResult.pagesFetched,
+    usedGlobalTransactions,
+    globalTransactionPagesFetched,
+    accountTransactionPagesFetched,
   };
 
-  return normalizeMercuryDataPayload({
+  return {
     accounts,
     cashFlow: {
       totalBalance,
@@ -2316,17 +2653,17 @@ export async function fetchMercuryData(
       outflows30d: outflows,
       netCashFlow: inflows - outflows,
       runway: Math.round(runway * 10) / 10,
-      burnRate: Math.round(burnRate * 100) / 100,
+      burnRate,
       observedPeriodDays,
       observedInflowTotal: inflows,
       observedOutflowTotal: outflows,
       observedNetCashFlow: inflows - outflows,
-      expenseBreakdown30d: monthlyExpenseBreakdown,
-      observedExpenseBreakdown: expenseBreakdown,
+      expenseBreakdown30d,
+      observedExpenseBreakdown: expenseBreakdown30d,
     },
     transactions,
-    _meta: makeMeta(),
-  })!;
+    _meta: meta,
+  };
 }
 
 type HubSpotDeal = NonNullable<HubSpotData["deals"]>[number];

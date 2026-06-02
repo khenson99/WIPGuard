@@ -12,6 +12,7 @@ const SECTION_LABELS: Record<AnalyticsSectionId, string> = {
   "customer-journey": "Full-Funnel Analytics",
   "demo-analytics": "Demo Analytics",
   "process-analytics": "Process Analytics",
+  revenue: "Revenue",
 };
 
 function StatusDot({ status }: { status: "green" | "yellow" | "red" }) {

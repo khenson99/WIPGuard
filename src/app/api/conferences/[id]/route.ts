@@ -10,7 +10,6 @@ import {
   ConferenceLeadStatus,
   ConferenceStatus,
   ConferenceType,
-  type TaskStatus,
 } from "@/generated/prisma/client";
 
 const USER_SELECT = {
@@ -80,14 +79,11 @@ export async function GET(
       where: { id },
       include: {
         owner: { select: USER_SELECT },
-        primaryProject: { select: { id: true, name: true } },
         _count: {
           select: {
             deadlines: true,
             leads: true,
             expenses: true,
-            tasks: true,
-            projects: true,
           },
         },
         deadlines: { orderBy: { dueAt: "asc" } },
@@ -105,40 +101,16 @@ export async function GET(
       return NextResponse.json({ error: "Conference not found" }, { status: 404 });
     }
 
-    const tasks = await prisma.task.findMany({
-      where: { conferenceId: id },
-      select: { status: true, dueDate: true },
-    });
-
-    const followupIds = Array.from(
-      new Set(conference.leads.map((lead) => lead.followupTaskId).filter(Boolean)),
-    ) as string[];
-
-    const followupTasks = followupIds.length
-      ? await prisma.task.findMany({
-          where: { id: { in: followupIds } },
-          select: { id: true, status: true },
-        })
-      : [];
-
-    const followupTasksById: Record<string, { status: TaskStatus } | undefined> = {};
-    for (const task of followupTasks) {
-      followupTasksById[task.id] = { status: task.status };
-    }
-
     const summary = computeConferenceSummary({
       startDate: conference.startDate,
       endDate: conference.endDate,
-      tasks,
       deadlines: conference.deadlines.map((d) => ({ dueAt: d.dueAt, completedAt: d.completedAt })),
       budgetLineItems: conference.budget?.lineItems?.map((li) => ({ plannedAmount: li.plannedAmount })) ?? [],
       expenses: conference.expenses.map((e) => ({ amount: e.amount })),
       leads: conference.leads.map((lead) => ({
         status: isConferenceLeadStatus(lead.status) ? lead.status : ConferenceLeadStatus.NEW,
         pushedToHubspotAt: lead.pushedToHubspotAt,
-        followupTaskId: lead.followupTaskId,
       })),
-      followupTasksById,
     });
 
     return NextResponse.json({
@@ -302,7 +274,6 @@ export async function PATCH(
       data,
       include: {
         owner: { select: USER_SELECT },
-        primaryProject: { select: { id: true, name: true } },
       },
     });
 

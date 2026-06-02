@@ -19,7 +19,7 @@ type StripeSubscription = {
   items?: {
     data?: Array<{
       price?: {
-        unit_amount?: number | null;
+        unit_amount?: number | string | null;
         unit_amount_decimal?: string | null;
         recurring?: {
           interval?: string | null;
@@ -27,7 +27,7 @@ type StripeSubscription = {
         } | null;
       } | null;
       plan?: {
-        amount?: number | null;
+        amount?: number | string | null;
         interval?: string | null;
         interval_count?: number | null;
       } | null;
@@ -37,9 +37,9 @@ type StripeSubscription = {
 
 type StripeCharge = {
   id: string;
-  amount?: number | null;
-  amount_refunded?: number | null;
-  created: number;
+  amount?: number | string | null;
+  amount_refunded?: number | string | null;
+  created: number | string;
   status?: string | null;
   paid?: boolean | null;
 };
@@ -111,8 +111,19 @@ function statusRank(status: StripeSubscriptionStatus): number {
 function parseUnitAmountCents(input: unknown): number | null {
   if (typeof input === "number" && Number.isFinite(input)) return input;
   if (typeof input === "string") {
-    const parsed = Number.parseFloat(input);
+    const normalized = input.trim().replace(/[$,\s]/g, "");
+    if (!normalized) return null;
+    const parsed = Number.parseFloat(normalized);
     return Number.isFinite(parsed) ? Math.round(parsed) : null;
+  }
+  return null;
+}
+
+function parseUnixSeconds(input: unknown): number | null {
+  if (typeof input === "number" && Number.isFinite(input)) return input;
+  if (typeof input === "string" && input.trim()) {
+    const parsed = Number(input.trim());
+    return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
 }
@@ -221,7 +232,7 @@ async function listCustomersByEmail(input: {
   apiKey: string;
   email: string;
   timeoutMs: number;
-}): Promise<{ customers: StripeCustomer[]; usedFallback: boolean }> {
+}): Promise<{ customers: StripeCustomer[]; usedFallback: boolean; available: boolean }> {
   // Attempt 1: customers.search (best match)
   const searchUrl = new URL(`${STRIPE_API_BASE}/customers/search`);
   searchUrl.searchParams.set("limit", "10");
@@ -231,7 +242,7 @@ async function listCustomersByEmail(input: {
   if (search.ok) {
     const parsed = search.json as StripeListResponse<StripeCustomer>;
     const customers = (parsed.data ?? []).filter((c) => typeof c?.id === "string");
-    return { customers, usedFallback: false };
+    return { customers, usedFallback: false, available: true };
   }
 
   // Attempt 2: list customers filtered by email (works even without search)
@@ -241,31 +252,49 @@ async function listCustomersByEmail(input: {
     listUrl.searchParams.set("email", input.email);
     const list = await fetchStripeJson(input.apiKey, listUrl.toString(), input.timeoutMs);
     if (!list.ok) {
-      return { customers: [], usedFallback: true };
+      return { customers: [], usedFallback: true, available: false };
     }
     const parsed = list.json as StripeListResponse<StripeCustomer>;
     const customers = (parsed.data ?? []).filter((c) => typeof c?.id === "string");
-    return { customers, usedFallback: true };
+    return { customers, usedFallback: true, available: true };
   }
 
-  return { customers: [], usedFallback: true };
+  return { customers: [], usedFallback: true, available: false };
 }
 
 async function listSubscriptionsForCustomer(input: {
   apiKey: string;
   customerId: string;
   timeoutMs: number;
-}): Promise<StripeSubscription[]> {
-  const url = new URL(`${STRIPE_API_BASE}/subscriptions`);
-  url.searchParams.set("limit", "100");
-  url.searchParams.set("customer", input.customerId);
-  url.searchParams.set("status", "all");
+  maxPages?: number;
+}): Promise<{ subscriptions: StripeSubscription[]; available: boolean }> {
+  const maxPages = Math.max(1, Math.min(input.maxPages ?? 20, 20));
+  const subscriptions: StripeSubscription[] = [];
+  let startingAfter: string | null = null;
 
-  const res = await fetchStripeJson(input.apiKey, url.toString(), input.timeoutMs);
-  if (!res.ok) return [];
+  for (let page = 0; page < maxPages; page++) {
+    const url = new URL(`${STRIPE_API_BASE}/subscriptions`);
+    url.searchParams.set("limit", "100");
+    url.searchParams.set("customer", input.customerId);
+    url.searchParams.set("status", "all");
+    if (startingAfter) url.searchParams.set("starting_after", startingAfter);
 
-  const parsed = res.json as StripeListResponse<StripeSubscription>;
-  return (parsed.data ?? []).filter((s) => typeof s?.id === "string");
+    const res = await fetchStripeJson(input.apiKey, url.toString(), input.timeoutMs);
+    if (!res.ok) return { subscriptions: [], available: false };
+
+    const parsed = res.json as StripeListResponse<StripeSubscription>;
+    const batch = (parsed.data ?? []).filter((s) => typeof s?.id === "string");
+    subscriptions.push(...batch);
+
+    if (!parsed.has_more) {
+      return { subscriptions, available: true };
+    }
+
+    startingAfter = batch[batch.length - 1]?.id ?? null;
+    if (!startingAfter) return { subscriptions: [], available: false };
+  }
+
+  return { subscriptions: [], available: false };
 }
 
 async function chargesPaid12moForCustomer(input: {
@@ -290,7 +319,9 @@ async function chargesPaid12moForCustomer(input: {
     if (startingAfter) url.searchParams.set("starting_after", startingAfter);
 
     const res = await fetchStripeJson(input.apiKey, url.toString(), input.timeoutMs);
-    if (!res.ok) break;
+    if (!res.ok) {
+      return { paid12mo: null, lastPaymentAt: null };
+    }
 
     const parsed = res.json as StripeListResponse<StripeCharge>;
     const batch = parsed.data ?? [];
@@ -300,11 +331,12 @@ async function chargesPaid12moForCustomer(input: {
       if (charge.status !== "succeeded") continue;
       if (charge.paid === false) continue;
 
-      const amount = charge.amount ?? 0;
-      const refunded = charge.amount_refunded ?? 0;
+      const amount = parseUnitAmountCents(charge.amount) ?? 0;
+      const refunded = parseUnitAmountCents(charge.amount_refunded) ?? 0;
       const net = Math.max(0, amount - refunded);
       totalCents += net;
-      if (charge.created > lastPaymentCreated) lastPaymentCreated = charge.created;
+      const created = parseUnixSeconds(charge.created);
+      if (created !== null && created > lastPaymentCreated) lastPaymentCreated = created;
     }
 
     if (!parsed.has_more) break;
@@ -331,11 +363,15 @@ async function enrichOneEmail(input: {
   const email = normalizeEmail(input.email);
   if (!email) return defaultEnrichment("none");
 
-  const { customers } = await listCustomersByEmail({
+  const { customers, available } = await listCustomersByEmail({
     apiKey: input.apiKey,
     email,
     timeoutMs: input.timeoutMs,
   });
+
+  if (!available) {
+    return defaultEnrichment("unknown");
+  }
 
   if (customers.length === 0) {
     return defaultEnrichment("none");
@@ -346,13 +382,17 @@ async function enrichOneEmail(input: {
 
   const customerSummaries = await Promise.all(
     candidates.map(async (customer) => {
-      const subs = await listSubscriptionsForCustomer({
+      const subscriptionResult = await listSubscriptionsForCustomer({
         apiKey: input.apiKey,
         customerId: customer.id,
         timeoutMs: input.timeoutMs,
       });
-      const status = computePrimarySubscriptionStatus(subs);
-      const mrr = computeMrrFromSubscriptions(subs);
+      const status = subscriptionResult.available
+        ? computePrimarySubscriptionStatus(subscriptionResult.subscriptions)
+        : "unknown";
+      const mrr = subscriptionResult.available
+        ? computeMrrFromSubscriptions(subscriptionResult.subscriptions)
+        : null;
       return { customer, status, mrr };
     })
   );
@@ -439,4 +479,3 @@ export async function enrichStripeEmails(input: {
 
   return byEmail;
 }
-

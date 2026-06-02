@@ -53,8 +53,8 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
               "1. A demo_quality_scorecard artifact with contentJson containing overallScore (0-100), strengths, gaps, customerSignals, nextSteps, and outcomeConfidence (low|medium|high).",
               "2. A demo_coaching_memo artifact for the rep.",
               "3. A deal_next_step_memo artifact for deal progression.",
-              "4. Recommendations for HubSpot updates, CRM reminder creation, Gmail draft creation, and calendar invite drafting when a next meeting was agreed.",
-              "Use action types create_hubspot_task, update_hubspot, create_gmail_draft, and create_calendar_draft.",
+              "4. Recommendations for HubSpot updates, CRM notes, internal alerts, Gmail draft creation, and calendar invite drafting when a next meeting was agreed.",
+              "Use action types update_hubspot, create_gmail_draft, and create_calendar_draft.",
               "Mark calendar drafting recommendations as approval-worthy when the meeting is not already confirmed.",
             ].join("\n"),
           },
@@ -74,7 +74,7 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     name: "Funnel Dropoff Operator",
     description:
       "Triage funnel dropoff alerts into diagnostics, experiment briefs, and GTM follow-up work.",
-    providers: ["WIPGUARD", "GOOGLE_ANALYTICS", "WEBFLOW", "GOOGLE_ADS", "META_ADS", "REDDIT"],
+    providers: ["IMLADRIS", "GOOGLE_ANALYTICS", "WEBFLOW", "GOOGLE_ADS", "META_ADS", "REDDIT"],
     graph: {
       nodes: [
         {
@@ -82,7 +82,7 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
           type: "TRIGGER",
           label: "Funnel Dropoff Detected",
           config: {
-            provider: "wipguard",
+            provider: "imladris",
             eventType: "analytics.funnel.dropoff_detected",
           },
           positionX: 80,
@@ -118,8 +118,8 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     operatorKey: "SALES_FOLLOWUP",
     name: "Arda Sales Follow-up Operator",
     description:
-      "Turn post-demo meeting signals into an account brief, CRM updates, and approval-gated customer drafts.",
-    providers: ["HUBSPOT", "GOOGLE_WORKSPACE", "WIPGUARD"],
+      "Turn post-demo meeting signals into an account brief, CRM updates, internal alerts, and approval-gated customer drafts.",
+    providers: ["HUBSPOT", "GOOGLE_WORKSPACE", "IMLADRIS"],
     graph: {
       nodes: [
         {
@@ -151,6 +151,28 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
               "{{trigger.payload}}",
             ].join("\n"),
             tools: [
+              {
+                name: "post_followup_digest",
+                description: "Post an internal follow-up summary for the account owner.",
+                actionType: "post_slack_digest",
+                recommendationType: "slack_digest",
+                requiresApproval: false,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    summary: { type: "string" },
+                    actionPayload: {
+                      type: "object",
+                      properties: {
+                        message: { type: "string" },
+                        slackUserId: { type: "string" },
+                      },
+                    },
+                  },
+                  required: ["title", "summary", "actionPayload"],
+                },
+              },
               {
                 name: "update_hubspot_next_step",
                 description: "Update the HubSpot deal with a clear next step and meeting summary.",
@@ -218,15 +240,15 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     operatorKey: "CUSTOMER_HEALTH",
     name: "Arda Customer Health Operator",
     description:
-      "Analyze account health events, create intervention briefs, coordinate internal response, and gate outreach drafts behind approval.",
-    providers: ["STRIPE", "HUBSPOT", "SLACK", "WIPGUARD"],
+      "Analyze account health events, create intervention briefs, auto-queue internal saves, and gate outreach drafts behind approval.",
+    providers: ["STRIPE", "HUBSPOT", "SLACK", "IMLADRIS"],
     graph: {
       nodes: [
         {
           key: "trigger_health",
           type: "TRIGGER",
           label: "Customer Health Changed",
-          config: { provider: "wipguard", eventType: "wipguard.customer.health.changed" },
+          config: { provider: "imladris", eventType: "imladris.customer.health.changed" },
           positionX: 80,
           positionY: 100,
         },
@@ -244,6 +266,28 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
               "Internal Slack digests may auto-execute. Customer email drafts require approval.",
             ].join("\n"),
             tools: [
+              {
+                name: "post_health_alert",
+                description: "Post an internal alert for the account team to address a health risk.",
+                actionType: "post_slack_digest",
+                recommendationType: "slack_digest",
+                requiresApproval: false,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    summary: { type: "string" },
+                    actionPayload: {
+                      type: "object",
+                      properties: {
+                        message: { type: "string" },
+                        slackUserId: { type: "string" },
+                      },
+                    },
+                  },
+                  required: ["title", "summary", "actionPayload"],
+                },
+              },
               {
                 name: "post_health_digest",
                 description: "Send an internal Slack digest summarizing the health issue and next steps.",
@@ -303,39 +347,39 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     },
   },
   {
-    key: "arda-gtm-scrum-operator",
+    key: "arda-gtm-brief-operator",
     operatorKey: "GTM_SCRUM",
-    name: "Arda GTM Scrum Operator",
+    name: "Arda GTM Brief Operator",
     description:
-      "Convert daily GTM signal bundles into a ranked scrum brief, internal Slack digest, and durable follow-up issues.",
-    providers: ["WIPGUARD", "SLACK", "HUBSPOT"],
+      "Convert daily GTM signal bundles into a ranked brief, internal Slack digest, and GitHub-ready follow-ups.",
+    providers: ["IMLADRIS", "SLACK", "HUBSPOT"],
     graph: {
       nodes: [
         {
-          key: "trigger_scrum",
+          key: "trigger_gtm_brief",
           type: "TRIGGER",
           label: "Daily GTM Signal Bundle",
-          config: { provider: "wipguard", eventType: "wipguard.gtm.daily_bundle" },
+          config: { provider: "imladris", eventType: "imladris.gtm.daily_bundle" },
           positionX: 80,
           positionY: 100,
         },
         {
-          key: "analyze_scrum",
+          key: "analyze_gtm_brief",
           type: "ACTION",
-          label: "Compile GTM Scrum Brief",
+          label: "Compile GTM Brief",
           config: {
             actionType: "ai_generate",
-            promptVersion: "arda-gtm-scrum-v1",
+            promptVersion: "arda-gtm-brief-v1",
             instructionsTemplate: [
-              "You are Arda's GTM scrum operator.",
+              "You are Arda's GTM brief operator.",
               "Synthesize cross-functional GTM changes into a short daily brief.",
               "Recommend only concrete internal actions with explicit owners and rationale.",
               "GitHub issues and Slack digests may auto-execute when clearly internal.",
             ].join("\n"),
             tools: [
               {
-                name: "post_scrum_digest",
-                description: "Publish an internal scrum digest to Slack.",
+                name: "post_gtm_digest",
+                description: "Publish an internal GTM digest to Slack.",
                 actionType: "post_slack_digest",
                 recommendationType: "slack_digest",
                 requiresApproval: false,
@@ -386,11 +430,11 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
           positionX: 360,
           positionY: 100,
         },
-        executeApprovedRecommendationsNode("execute_scrum_actions", 680, 100),
+        executeApprovedRecommendationsNode("execute_gtm_actions", 680, 100),
       ],
       edges: [
-        { source: "trigger_scrum", target: "analyze_scrum", priority: 0 },
-        { source: "analyze_scrum", target: "execute_scrum_actions", priority: 0 },
+        { source: "trigger_gtm_brief", target: "analyze_gtm_brief", priority: 0 },
+        { source: "analyze_gtm_brief", target: "execute_gtm_actions", priority: 0 },
       ],
     },
   },
@@ -400,7 +444,7 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     name: "Arda SEO Growth Operator",
     description:
       "Translate search and traffic changes into content briefs and GitHub-ready follow-ups for execution.",
-    providers: ["GOOGLE_SEARCH_CONSOLE", "GOOGLE_ANALYTICS", "SEMRUSH", "WIPGUARD"],
+    providers: ["GOOGLE_SEARCH_CONSOLE", "GOOGLE_ANALYTICS", "SEMRUSH", "IMLADRIS"],
     graph: {
       nodes: [
         {
@@ -422,7 +466,7 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
               "You are Arda's SEO growth operator.",
               "Look for ranking losses, opportunity pages, and content expansion themes.",
               "Produce an artifact that explains the search movement and specific next actions.",
-              "GitHub issues may auto-execute.",
+              "Internal GitHub issues may auto-execute.",
             ].join("\n"),
             tools: [
               {
@@ -470,7 +514,7 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     name: "Arda Ads Optimizer Operator",
     description:
       "Review paid-channel anomalies, summarize findings, and auto-queue internal investigations while keeping external comms approval-gated.",
-    providers: ["GOOGLE_ADS", "META_ADS", "GOOGLE_ANALYTICS", "WIPGUARD"],
+    providers: ["GOOGLE_ADS", "META_ADS", "GOOGLE_ANALYTICS", "IMLADRIS"],
     graph: {
       nodes: [
         {
@@ -491,7 +535,7 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
             instructionsTemplate: [
               "You are Arda's ads optimizer operator.",
               "Explain what changed, the likely cause, and the recommended investigation path.",
-              "Do not recommend spend adjustments because those are not directly executable in WIPGuard yet.",
+              "Do not recommend spend adjustments unless they remain recommendation-only and approval-gated.",
               "Internal Slack digests may auto-execute. External stakeholder drafts require approval.",
             ].join("\n"),
             tools: [
@@ -558,15 +602,15 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     operatorKey: "ROADMAP_INTELLIGENCE",
     name: "Arda Roadmap Intelligence Operator",
     description:
-      "Synthesize product signals into a roadmap memo and GitHub-ready opportunities without losing auditability.",
-    providers: ["HUBSPOT", "SLACK", "WIPGUARD"],
+      "Synthesize product signals into a roadmap memo, GitHub-ready opportunities, and internal recommendations without losing auditability.",
+    providers: ["HUBSPOT", "SLACK", "IMLADRIS"],
     graph: {
       nodes: [
         {
           key: "trigger_roadmap",
           type: "TRIGGER",
           label: "Product Signal Bundle",
-          config: { provider: "wipguard", eventType: "wipguard.product.signal.bundle" },
+          config: { provider: "imladris", eventType: "imladris.product.signal.bundle" },
           positionX: 80,
           positionY: 100,
         },
@@ -580,7 +624,7 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
             instructionsTemplate: [
               "You are Arda's roadmap intelligence operator.",
               "Synthesize sales, support, and product signals into a roadmap-ready brief.",
-              "Recommend internal issues when the evidence is strong and recurring.",
+              "Recommend internal GitHub issues when the evidence is strong and recurring.",
               "Customer-facing follow-up drafts require approval.",
             ].join("\n"),
             tools: [

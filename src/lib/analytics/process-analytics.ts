@@ -222,7 +222,7 @@ function getLeakageReasons(stage: string): string[] {
     "Churn": ["Product-market fit gap", "Support response time", "Pricing sensitivity"],
     "No-Show/Reschedule": ["Calendar conflict", "Lost interest", "Poor scheduling experience"],
     "Ping Later": ["Extended evaluation cycle", "Internal reorganization", "Budget freeze"],
-    "On Hold": ["Decision delayed", "Stakeholder change", "Dependency on other project"],
+    "On Hold": ["Decision delayed", "Stakeholder change", "Dependency on another initiative"],
   };
   return reasons[stage] ?? ["Unknown"];
 }

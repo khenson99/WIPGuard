@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { ArrowLeft, CalendarPlus, RefreshCw, Trash2 } from "lucide-react";
 import { clsx } from "clsx";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
@@ -413,19 +412,6 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
             {location ? ` • ${location}` : ""}
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-            {conference.primaryProject ? (
-              <span>
-                Primary project:{" "}
-                <Link
-                  href={`/projects/${conference.primaryProject.id}`}
-                  className="text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
-                >
-                  {conference.primaryProject.name}
-                </Link>
-              </span>
-            ) : (
-              <span>Primary project: not seeded</span>
-            )}
             {conference.websiteUrl ? (
               <a
                 href={conference.websiteUrl}
@@ -456,13 +442,13 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
             </span>
           </button>
 
-          {!conference.primaryProjectId ? (
+          {!conference.budget ? (
             <button
               type="button"
               onClick={() => setShowSeedConfirm(true)}
               disabled={actionBusy}
               className="btn-primary-theme inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
-              title="Seed projects, deadlines, and budget from playbook"
+              title="Seed deadlines and budget from playbook"
             >
               <CalendarPlus className="h-4 w-4" />
               {actionBusy ? "Seeding..." : "Seed Playbook"}
@@ -601,11 +587,6 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
         <div role="tabpanel" id="tabpanel-overview" aria-labelledby="tab-overview" className="space-y-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <SummaryCard
-              label="Tasks"
-              value={`${summary.tasks.done}/${summary.tasks.total}`}
-              hint={`${summary.tasks.overdue} overdue`}
-            />
-            <SummaryCard
               label="Deadlines"
               value={`${summary.deadlines.completed}/${summary.deadlines.total}`}
               hint={`${summary.deadlines.overdue} overdue • next: ${summary.deadlines.nextDueAt ? formatDate(summary.deadlines.nextDueAt) : "—"}`}
@@ -618,7 +599,7 @@ export function ConferenceDetail({ conferenceId }: { conferenceId: string }) {
             <SummaryCard
               label="Leads"
               value={`${summary.leads.pushedCount}/${summary.leads.total}`}
-              hint={`${summary.leads.followupOpenCount} follow-ups open`}
+              hint="Pushed to HubSpot"
             />
           </div>
 

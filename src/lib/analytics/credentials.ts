@@ -47,6 +47,10 @@ export interface AnalyticsCredentials {
   gaClientEmail: string | null;
   gaPrivateKey: string | null;
 
+  // Google Search Console
+  searchConsoleAccessToken: string | null;
+  searchConsoleSiteUrl: string | null;
+
   // Google Ads
   googleAdsDevToken: string | null;
   googleAdsCustomerId: string | null;
@@ -86,6 +90,15 @@ export interface AnalyticsCredentials {
   pylonApiKey: string | null;
   pylonBaseUrl: string | null;
 
+  // Imladris development/product sources
+  posthogApiKey: string | null;
+  posthogProjectId: string | null;
+  posthogHost: string | null;
+  linearApiKey: string | null;
+  githubToken: string | null;
+  githubOwner: string | null;
+  githubRepo: string | null;
+
   // Integration OAuth tokens used for integration analytics tabs.
   googleWorkspaceAccessToken: string | null;
   slackAccessToken: string | null;
@@ -105,13 +118,27 @@ export function hasIntegrationCredential(
     case IntegrationProvider.SLACK:
       return hasValue(credentials.slackAccessToken);
     case IntegrationProvider.CODA:
-      return hasValue(credentials.codaApiToken);
+      return hasValue(credentials.codaApiToken) && hasValue(credentials.codaDocId);
     case IntegrationProvider.REDDIT:
-      return hasValue(credentials.redditRefreshToken);
+      return (
+        hasValue(credentials.redditClientId) &&
+        hasValue(credentials.redditClientSecret) &&
+        hasValue(credentials.redditRefreshToken) &&
+        hasValue(credentials.redditAdAccountId)
+      );
     case IntegrationProvider.GOOGLE_ANALYTICS:
       return Boolean(
         credentials.gaPropertyId &&
           ((credentials.gaClientEmail && credentials.gaPrivateKey) ||
+            (process.env.GA_REFRESH_TOKEN &&
+              process.env.GOOGLE_CLIENT_ID &&
+              process.env.GOOGLE_CLIENT_SECRET))
+      );
+    case IntegrationProvider.GOOGLE_SEARCH_CONSOLE:
+      return Boolean(
+        credentials.searchConsoleSiteUrl &&
+          (credentials.searchConsoleAccessToken ||
+            (credentials.gaClientEmail && credentials.gaPrivateKey) ||
             (process.env.GA_REFRESH_TOKEN &&
               process.env.GOOGLE_CLIENT_ID &&
               process.env.GOOGLE_CLIENT_SECRET))
@@ -121,7 +148,7 @@ export function hasIntegrationCredential(
     case IntegrationProvider.MERCURY:
       return hasValue(credentials.mercuryKey);
     case IntegrationProvider.WEBFLOW:
-      return hasValue(credentials.webflowApiToken);
+      return hasValue(credentials.webflowApiToken) && hasValue(credentials.webflowSiteId);
     case IntegrationProvider.GOOGLE_ADS:
       return Boolean(
         credentials.googleAdsDevToken &&
@@ -140,7 +167,22 @@ export function hasIntegrationCredential(
     case IntegrationProvider.PYLON:
       return hasValue(credentials.pylonApiKey);
     case IntegrationProvider.SEMRUSH:
-      return hasValue(credentials.semrushApiToken);
+      return hasValue(credentials.semrushApiToken) && hasValue(credentials.semrushDomain);
+    case IntegrationProvider.POSTHOG:
+      return hasValue(credentials.posthogApiKey) && hasValue(credentials.posthogProjectId);
+    case IntegrationProvider.LINEAR:
+      return hasValue(credentials.linearApiKey);
+    case IntegrationProvider.GITHUB:
+      return (
+        hasValue(credentials.githubToken) &&
+        hasValue(credentials.githubOwner) &&
+        hasValue(credentials.githubRepo)
+      );
+    case IntegrationProvider.UNIFY:
+      return Boolean(
+        envOrNull(getIntegrationEnvValue("UNIFY_DATA_API_KEY")) &&
+          envOrNull(process.env.UNIFY_FUNNEL_OBJECT_NAME)
+      );
     default:
       return false;
   }
@@ -338,20 +380,29 @@ async function bestEffortRefreshOAuthConnection(input: {
         }
 
         const now = new Date();
-        await prisma.integrationConnection.update({
+        const data = {
+          accessToken: nextAccessToken,
+          tokenType: tokenResponse.tokenType ?? connection.tokenType,
+          expiresAt: tokenResponse.expiresAt,
+          status: IntegrationConnectionStatus.CONNECTED,
+          lastError: null,
+          lastSyncedAt: now,
+        };
+        await prisma.integrationConnection.upsert({
           where: {
             userId_provider: {
               userId,
               provider: connection.provider,
             },
           },
-          data: {
-            accessToken: nextAccessToken,
-            tokenType: tokenResponse.tokenType ?? connection.tokenType,
-            expiresAt: tokenResponse.expiresAt,
-            status: IntegrationConnectionStatus.CONNECTED,
-            lastError: null,
-            lastSyncedAt: now,
+          update: data,
+          create: {
+            userId,
+            provider: connection.provider,
+            refreshToken: connection.refreshToken,
+            scopes: connection.scopes,
+            metadata: asJsonObject(connection.metadata) as Prisma.InputJsonValue,
+            ...data,
           },
         });
 
@@ -388,22 +439,29 @@ async function bestEffortRefreshOAuthConnection(input: {
         tokenResponse.scopes.length > 0 ? tokenResponse.scopes : connection.scopes;
 
       const now = new Date();
-      await prisma.integrationConnection.update({
+      const data = {
+        accessToken: nextAccessToken,
+        refreshToken: nextRefreshToken,
+        tokenType: tokenResponse.tokenType ?? connection.tokenType,
+        expiresAt: tokenResponse.expiresAt,
+        scopes: nextScopes,
+        status: IntegrationConnectionStatus.CONNECTED,
+        lastError: null,
+        lastSyncedAt: now,
+      };
+      await prisma.integrationConnection.upsert({
         where: {
           userId_provider: {
             userId,
             provider: connection.provider,
           },
         },
-        data: {
-          accessToken: nextAccessToken,
-          refreshToken: nextRefreshToken,
-          tokenType: tokenResponse.tokenType ?? connection.tokenType,
-          expiresAt: tokenResponse.expiresAt,
-          scopes: nextScopes,
-          status: IntegrationConnectionStatus.CONNECTED,
-          lastError: null,
-          lastSyncedAt: now,
+        update: data,
+        create: {
+          userId,
+          provider: connection.provider,
+          metadata: asJsonObject(connection.metadata) as Prisma.InputJsonValue,
+          ...data,
         },
       });
 
@@ -434,16 +492,10 @@ async function bestEffortRefreshOAuthConnection(input: {
   } catch (error) {
     if (required) {
       const message = compactErrorMessage(error);
-      await prisma.integrationConnection.updateMany({
-        where: {
-          userId,
-          provider: connection.provider,
-        },
-        data: {
-          status: IntegrationConnectionStatus.ERROR,
-          lastError: message,
-          lastSyncedAt: null,
-        },
+      await persistRequiredOAuthRefreshFailure({
+        userId,
+        provider: connection.provider,
+        message,
       });
       connection.status = IntegrationConnectionStatus.ERROR;
       connection.lastError = message;
@@ -454,6 +506,41 @@ async function bestEffortRefreshOAuthConnection(input: {
         error
       );
     }
+  }
+}
+
+async function persistRequiredOAuthRefreshFailure(input: {
+  userId: string;
+  provider: IntegrationProvider;
+  message: string;
+}): Promise<void> {
+  const data = {
+    status: IntegrationConnectionStatus.ERROR,
+    lastError: input.message,
+    lastSyncedAt: null,
+  };
+  const updateResult = await prisma.integrationConnection.updateMany({
+    where: {
+      userId: input.userId,
+      provider: input.provider,
+    },
+    data,
+  });
+  if (updateResult?.count === 0) {
+    await prisma.integrationConnection.upsert({
+      where: {
+        userId_provider: {
+          userId: input.userId,
+          provider: input.provider,
+        },
+      },
+      update: data,
+      create: {
+        userId: input.userId,
+        provider: input.provider,
+        ...data,
+      },
+    });
   }
 }
 
@@ -490,16 +577,43 @@ async function bestEffortHealScopeMetadata(input: {
   nextMetadata.insufficientScopes = false;
   delete nextMetadata.missingScopes;
 
-  await prisma.integrationConnection.updateMany({
+  const data = {
+    metadata: nextMetadata as unknown as Prisma.InputJsonValue,
+    lastError: null,
+  };
+
+  const updateResult = await prisma.integrationConnection.updateMany({
     where: {
       userId,
       provider: connection.provider,
     },
-    data: {
-      metadata: nextMetadata as unknown as Prisma.InputJsonValue,
-      lastError: null,
-    },
+    data,
   });
+  if (updateResult?.count === 0) {
+    await prisma.integrationConnection.upsert({
+      where: {
+        userId_provider: {
+          userId,
+          provider: connection.provider,
+        },
+      },
+      update: data,
+      create: {
+        userId,
+        provider: connection.provider,
+        status: connection.status,
+        accessToken: connection.accessToken,
+        refreshToken: connection.refreshToken,
+        tokenType: connection.tokenType,
+        expiresAt: connection.expiresAt,
+        scopes: connection.scopes,
+        metadata: nextMetadata as unknown as Prisma.InputJsonValue,
+        connectedAt: connection.connectedAt,
+        lastSyncedAt: connection.lastSyncedAt,
+        lastError: null,
+      },
+    });
+  }
 
   connection.metadata = nextMetadata;
   connection.lastError = null;
@@ -671,6 +785,10 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
   const metaAdsConnection = byProvider.get(IntegrationProvider.META_ADS) ?? null;
   const metaPageConnection = byProvider.get(IntegrationProvider.META_PAGE) ?? null;
   const pylonConnection = byProvider.get(IntegrationProvider.PYLON) ?? null;
+  const posthogConnection = byProvider.get(IntegrationProvider.POSTHOG) ?? null;
+  const linearConnection = byProvider.get(IntegrationProvider.LINEAR) ?? null;
+  const githubConnection = byProvider.get(IntegrationProvider.GITHUB) ?? null;
+  const unifyConnection = byProvider.get(IntegrationProvider.UNIFY) ?? null;
 
   const envHubspot = envOrNull(process.env.HUBSPOT_ACCESS_TOKEN);
   const envCoda = envOrNull(process.env.CODA_API_TOKEN);
@@ -685,6 +803,23 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
   const envMetaAdAccountId = envOrNull(process.env.META_AD_ACCOUNT_ID);
   const envMetaPageId = envOrNull(process.env.META_PAGE_ID);
   const envMetaInstagramAccountId = envOrNull(process.env.META_INSTAGRAM_ACCOUNT_ID);
+  const envPosthogApiKey = envOrNull(getIntegrationEnvValue("POSTHOG_API_KEY"));
+  const envPosthogProjectId = envOrNull(process.env.POSTHOG_PROJECT_ID);
+  const envPosthogHost =
+    envOrNull(process.env.POSTHOG_HOST) ?? envOrNull(process.env.POSTHOG_API_HOST);
+  const envLinearApiKey = envOrNull(getIntegrationEnvValue("LINEAR_API_KEY"));
+  const envGithubToken = envOrNull(getIntegrationEnvValue("GITHUB_TOKEN"));
+  const envGithubOwner =
+    envOrNull(process.env.GITHUB_REPO_OWNER) ?? envOrNull(process.env.GITHUB_OWNER);
+  const envGithubRepo =
+    envOrNull(process.env.GITHUB_REPO_NAME) ?? envOrNull(process.env.GITHUB_REPO);
+  const envUnifyApiKey = envOrNull(getIntegrationEnvValue("UNIFY_DATA_API_KEY"));
+  const envSearchConsoleAccessToken = envOrNull(
+    getIntegrationEnvValue("GOOGLE_SEARCH_CONSOLE_ACCESS_TOKEN")
+  );
+  const envSearchConsoleSiteUrl = envOrNull(
+    getIntegrationEnvValue("GOOGLE_SEARCH_CONSOLE_SITE_URL")
+  );
 
   const hubspotToken =
     hubspotConnection && hubspotConnection.status !== IntegrationConnectionStatus.DISCONNECTED
@@ -930,6 +1065,55 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
 
   const pylonBaseUrl =
     metadataString(pylonConnection?.metadata, "baseUrl") ?? envPylonBaseUrl;
+
+  const posthogApiKey =
+    posthogConnection && posthogConnection.status !== IntegrationConnectionStatus.DISCONNECTED
+      ? unprotectIntegrationSecret(posthogConnection.accessToken)
+      : envPosthogApiKey;
+  const posthogProjectId =
+    (posthogConnection && posthogConnection.status !== IntegrationConnectionStatus.DISCONNECTED
+      ? metadataString(posthogConnection.metadata, "projectId") ??
+        metadataString(posthogConnection.metadata, "defaultProjectId")
+      : null) ?? envPosthogProjectId;
+  const posthogHost =
+    (posthogConnection && posthogConnection.status !== IntegrationConnectionStatus.DISCONNECTED
+      ? metadataString(posthogConnection.metadata, "host") ??
+        metadataString(posthogConnection.metadata, "apiHost")
+      : null) ?? envPosthogHost;
+  const usingPosthogEnvFallback =
+    Boolean(envPosthogApiKey && envPosthogProjectId) &&
+    (!posthogConnection || posthogConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+
+  const linearApiKey =
+    linearConnection && linearConnection.status !== IntegrationConnectionStatus.DISCONNECTED
+      ? unprotectIntegrationSecret(linearConnection.accessToken)
+      : envLinearApiKey;
+  const usingLinearEnvFallback =
+    Boolean(envLinearApiKey) &&
+    (!linearConnection || linearConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+
+  const githubToken =
+    githubConnection && githubConnection.status !== IntegrationConnectionStatus.DISCONNECTED
+      ? unprotectIntegrationSecret(githubConnection.accessToken)
+      : envGithubToken;
+  const githubOwner =
+    (githubConnection && githubConnection.status !== IntegrationConnectionStatus.DISCONNECTED
+      ? metadataString(githubConnection.metadata, "owner") ??
+        metadataString(githubConnection.metadata, "repoOwner")
+      : null) ?? envGithubOwner;
+  const githubRepo =
+    (githubConnection && githubConnection.status !== IntegrationConnectionStatus.DISCONNECTED
+      ? metadataString(githubConnection.metadata, "repo") ??
+        metadataString(githubConnection.metadata, "repoName")
+      : null) ?? envGithubRepo;
+  const usingGithubEnvFallback =
+    Boolean(envGithubToken && envGithubOwner && envGithubRepo) &&
+    (!githubConnection || githubConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+
+  const usingUnifyEnvFallback =
+    Boolean(envUnifyApiKey && envOrNull(process.env.UNIFY_FUNNEL_OBJECT_NAME)) &&
+    (!unifyConnection || unifyConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+
   const freshness: Record<IntegrationProvider, ProviderFreshnessSnapshot> = {
     [IntegrationProvider.GOOGLE_WORKSPACE]: buildFreshness(
       IntegrationProvider.GOOGLE_WORKSPACE,
@@ -992,11 +1176,35 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
       null,
       Boolean(getIntegrationEnvValue("SEMRUSH_API_TOKEN"))
     ),
-    [IntegrationProvider.GOOGLE_SEARCH_CONSOLE]: defaultFreshnessSnapshot(
-      IntegrationProvider.GOOGLE_SEARCH_CONSOLE
+    [IntegrationProvider.GOOGLE_SEARCH_CONSOLE]: buildFreshness(
+      IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
+      null,
+      Boolean(
+        envSearchConsoleSiteUrl &&
+          (envSearchConsoleAccessToken ||
+            (process.env.GA_CLIENT_EMAIL && process.env.GA_PRIVATE_KEY) ||
+            (process.env.GA_REFRESH_TOKEN && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET))
+      )
     ),
-    [IntegrationProvider.WIPGUARD]: defaultFreshnessSnapshot(
-      IntegrationProvider.WIPGUARD
+    [IntegrationProvider.POSTHOG]: buildFreshness(
+      IntegrationProvider.POSTHOG,
+      posthogConnection,
+      usingPosthogEnvFallback
+    ),
+    [IntegrationProvider.LINEAR]: buildFreshness(
+      IntegrationProvider.LINEAR,
+      linearConnection,
+      usingLinearEnvFallback
+    ),
+    [IntegrationProvider.GITHUB]: buildFreshness(
+      IntegrationProvider.GITHUB,
+      githubConnection,
+      usingGithubEnvFallback
+    ),
+    [IntegrationProvider.UNIFY]: buildFreshness(
+      IntegrationProvider.UNIFY,
+      unifyConnection,
+      usingUnifyEnvFallback
     ),
     [IntegrationProvider.PYLON]: buildFreshness(
       IntegrationProvider.PYLON,
@@ -1019,6 +1227,8 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     gaPropertyId: envOrNull(process.env.GA_PROPERTY_ID),
     gaClientEmail: envOrNull(process.env.GA_CLIENT_EMAIL),
     gaPrivateKey: process.env.GA_PRIVATE_KEY?.replace(/\\n/g, "\n").trim() || null,
+    searchConsoleAccessToken: envSearchConsoleAccessToken,
+    searchConsoleSiteUrl: envSearchConsoleSiteUrl,
 
     googleAdsDevToken: envOrNull(process.env.GOOGLE_ADS_DEVELOPER_TOKEN),
     googleAdsCustomerId: envOrNull(process.env.GOOGLE_ADS_CUSTOMER_ID),
@@ -1054,6 +1264,14 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
 
     pylonApiKey,
     pylonBaseUrl,
+
+    posthogApiKey,
+    posthogProjectId,
+    posthogHost,
+    linearApiKey,
+    githubToken,
+    githubOwner,
+    githubRepo,
 
     googleWorkspaceAccessToken,
     slackAccessToken,

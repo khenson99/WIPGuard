@@ -1,13 +1,12 @@
 /**
  * Slack Notification Service
  *
- * Posts assignment, status, and blocked notifications to Slack channels.
+ * Posts operating alerts to Slack channels.
  * Implements throttling to keep updates actionable and non-spammy:
  *
  *  - Per-channel rate limiting with configurable window and max burst
  *  - Deduplication via outbox idempotency keys
  *  - Collapsible notifications: batches rapid updates into single messages
- *  - Priority-based urgency: P0/blocked bypass throttle, P3 gets longer windows
  */
 
 import {
@@ -24,21 +23,12 @@ import { buildOutboxIdempotencyKey, publishDomainEvent } from "@/lib/event-bus";
 // Types
 // ---------------------------------------------------------------------------
 
-export type SlackNotificationType =
-  | "assignment"
-  | "status_change"
-  | "blocked"
-  | "unblocked"
-  | "mention"
-  | "ops_alert";
+export type SlackNotificationType = "ops_alert";
 
 export interface SlackNotificationPayload {
   type: SlackNotificationType;
-  taskId: string;
-  taskTitle: string;
-  projectId?: string | null;
-  projectName?: string | null;
-  priority?: string | null;
+  alertId: string;
+  title: string;
   channelId: string;
   threadTs?: string | null;
   actorId?: string | null;
@@ -77,11 +67,6 @@ interface ThrottleEntry {
 // ---------------------------------------------------------------------------
 
 const NOTIFICATION_EMOJIS: Record<SlackNotificationType, string> = {
-  assignment: ":bust_in_silhouette:",
-  status_change: ":arrows_counterclockwise:",
-  blocked: ":octagonal_sign:",
-  unblocked: ":white_check_mark:",
-  mention: ":speech_balloon:",
   ops_alert: ":rotating_light:",
 };
 
@@ -95,7 +80,7 @@ export function defaultThrottleConfig(): ThrottleConfig {
   return {
     windowMs: 60_000,
     maxBurst: 5,
-    bypassTypes: ["blocked", "ops_alert"],
+    bypassTypes: ["ops_alert"],
     minIntervalMs: 2_000,
   };
 }
@@ -179,34 +164,8 @@ export function getThrottleEntry(channelId: string): ThrottleEntry | undefined {
 
 export function renderNotificationMessage(payload: SlackNotificationPayload): string {
   const emoji = NOTIFICATION_EMOJIS[payload.type];
-  const projectLabel = payload.projectName ? ` (${payload.projectName})` : "";
-  const actorLabel = payload.actorName ? ` by ${payload.actorName}` : "";
 
   switch (payload.type) {
-    case "assignment":
-      return `${emoji} *${payload.taskTitle}*${projectLabel} was assigned${actorLabel}`;
-
-    case "status_change": {
-      const newStatus = payload.context?.newStatus ?? "updated";
-      const oldStatus = payload.context?.oldStatus;
-      const statusTransition = oldStatus ? `${oldStatus} -> ${newStatus}` : newStatus;
-      return `${emoji} *${payload.taskTitle}*${projectLabel} status changed to *${statusTransition}*${actorLabel}`;
-    }
-
-    case "blocked": {
-      const reason = payload.context?.reason;
-      const reasonSuffix = reason ? `\n> Reason: ${reason}` : "";
-      return `${emoji} *${payload.taskTitle}*${projectLabel} is *BLOCKED*${actorLabel}${reasonSuffix}`;
-    }
-
-    case "unblocked":
-      return `${emoji} *${payload.taskTitle}*${projectLabel} is no longer blocked${actorLabel}`;
-
-    case "mention": {
-      const role = payload.context?.role ?? "mentioned";
-      return `${emoji} You were ${role} on *${payload.taskTitle}*${projectLabel}${actorLabel}`;
-    }
-
     case "ops_alert": {
       const severity = payload.context?.severity?.trim().toUpperCase() || "ALERT";
       const kind = payload.context?.kind?.trim();
@@ -221,11 +180,8 @@ export function renderNotificationMessage(payload: SlackNotificationPayload): st
         .filter(Boolean)
         .join(" • ");
       const reasonSuffix = reason ? `\n> ${reason}` : "";
-      return `${emoji} *${severity}* visitor funnel alert: *${payload.taskTitle}*${suffixes ? `\n>${suffixes}` : ""}${reasonSuffix}`;
+      return `${emoji} *${severity}* operating alert: *${payload.title}*${suffixes ? `\n>${suffixes}` : ""}${reasonSuffix}`;
     }
-
-    default:
-      return `${emoji} Update on *${payload.taskTitle}*${projectLabel}${actorLabel}`;
   }
 }
 
@@ -238,7 +194,7 @@ export function buildNotificationDedupeKey(payload: SlackNotificationPayload): s
     "slack",
     "notification",
     payload.channelId,
-    payload.taskId,
+    payload.alertId,
     payload.type,
     // Include threadTs to avoid deduping across different threads
     payload.threadTs ?? "no-thread",
@@ -289,6 +245,39 @@ async function getSlackToken(userId: string): Promise<string> {
   }
 
   return token;
+}
+
+async function persistSlackConnectionError(input: {
+  userId: string;
+  message: string;
+}): Promise<void> {
+  const data = {
+    status: IntegrationConnectionStatus.ERROR,
+    lastError: input.message,
+  };
+  const updateResult = await prisma.integrationConnection.updateMany({
+    where: {
+      userId: input.userId,
+      provider: IntegrationProvider.SLACK,
+    },
+    data,
+  });
+  if (updateResult?.count === 0) {
+    await prisma.integrationConnection.upsert({
+      where: {
+        userId_provider: {
+          userId: input.userId,
+          provider: IntegrationProvider.SLACK,
+        },
+      },
+      update: data,
+      create: {
+        userId: input.userId,
+        provider: IntegrationProvider.SLACK,
+        ...data,
+      },
+    });
+  }
 }
 
 interface SlackPostResult {
@@ -470,7 +459,7 @@ export async function sendSlackNotification(input: {
       provider: "slack",
       channelId: input.payload.channelId,
       type: input.payload.type,
-      taskId: input.payload.taskId,
+      alertId: input.payload.alertId,
       reason: throttleResult.reason,
     });
 
@@ -501,15 +490,9 @@ export async function sendSlackNotification(input: {
     token = await getSlackToken(input.userId);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await prisma.integrationConnection.updateMany({
-      where: {
-        userId: input.userId,
-        provider: IntegrationProvider.SLACK,
-      },
-      data: {
-        status: IntegrationConnectionStatus.ERROR,
-        lastError: message,
-      },
+    await persistSlackConnectionError({
+      userId: input.userId,
+      message,
     });
     throw error;
   }
@@ -534,18 +517,18 @@ export async function sendSlackNotification(input: {
     // 6. Publish domain event
     await publishDomainEvent({
       eventType: `integration.slack.notification.${input.payload.type}`,
-      aggregateType: "task",
-      aggregateId: input.payload.taskId,
+      aggregateType: "operating_alert",
+      aggregateId: input.payload.alertId,
       payload: {
         type: input.payload.type,
-        taskId: input.payload.taskId,
+        alertId: input.payload.alertId,
         channelId: input.payload.channelId,
         messageTs: posted.ts,
         actorId: input.payload.actorId,
       },
       idempotencyKey: buildOutboxIdempotencyKey({
-        aggregateType: "task",
-        aggregateId: input.payload.taskId,
+        aggregateType: "operating_alert",
+        aggregateId: input.payload.alertId,
         eventType: `slack_notification_${input.payload.type}_${now}`,
       }),
     });
@@ -554,7 +537,7 @@ export async function sendSlackNotification(input: {
       provider: "slack",
       channelId: input.payload.channelId,
       type: input.payload.type,
-      taskId: input.payload.taskId,
+      alertId: input.payload.alertId,
       messageTs: posted.ts,
     });
 
@@ -572,8 +555,8 @@ export async function sendSlackNotification(input: {
     await prisma.outboxEvent.create({
       data: {
         eventType: "integration.slack.notification.failed",
-        aggregateType: "task",
-        aggregateId: input.payload.taskId,
+        aggregateType: "operating_alert",
+        aggregateId: input.payload.alertId,
         schemaVersion: 1,
         payload: {
           type: input.payload.type,
@@ -594,7 +577,7 @@ export async function sendSlackNotification(input: {
       provider: "slack",
       channelId: input.payload.channelId,
       type: input.payload.type,
-      taskId: input.payload.taskId,
+      alertId: input.payload.alertId,
       error: message,
     });
 
@@ -603,7 +586,7 @@ export async function sendSlackNotification(input: {
 }
 
 // ---------------------------------------------------------------------------
-// Batch notification sender (for status change events that fire rapidly)
+// Batch notification sender
 // ---------------------------------------------------------------------------
 
 export async function sendBatchSlackNotifications(input: {

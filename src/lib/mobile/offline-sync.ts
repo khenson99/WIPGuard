@@ -5,7 +5,7 @@
 
 import { type ConflictType, type ConflictStrategy, detectConflict, resolveWithStrategy } from "./conflict-resolution";
 
-export type ActionType = "status-update" | "field-note" | "task-create" | "task-update";
+export type ActionType = "status-update" | "field-note" | "insight-note" | "metric-update";
 
 export interface OfflineAction { id: string; type: ActionType; payload: Record<string, unknown>; timestamp: number; retries: number; status: "pending" | "syncing" | "synced" | "conflict"; }
 export interface SyncQueue { actions: OfflineAction[]; lastSyncedAt: number | null; }

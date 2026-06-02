@@ -1,3 +1,5 @@
+import type { GoogleSearchConsoleData } from "@/lib/analytics/fetchers-google-search-console";
+
 // ─── Analytics Module Types ───────────────────────────────
 // Shared types for the analytics dashboard system
 
@@ -5,6 +7,8 @@ export interface AnalyticsTimestamp {
   fetchedAt: string;
   nextRefresh: string;
   source: "live" | "cached";
+  truncated?: boolean;
+  truncatedResources?: string[];
   diagnostics?: Record<string, unknown>;
 }
 
@@ -26,11 +30,17 @@ export type IntegrationProviderKey =
   | "mercury"
   | "ga"
   | "googleAnalytics"
+  | "googleSearchConsole"
+  | "searchConsole"
   | "googleAds"
   | "metaAds"
   | "metaPage"
+  | "instagram"
   | "semrush"
   | "pylon"
+  | "posthog"
+  | "linear"
+  | "github"
   | "product"
   | "hubspotOps";
 
@@ -73,6 +83,35 @@ export interface DealsByRep {
   closedWonValue: number;
 }
 
+export type HubSpotCollectedFormFunnelCategory =
+  | "lead_magnet"
+  | "contact_request"
+  | "other";
+
+export interface HubSpotCollectedFormEntry {
+  formName: string;
+  count: number;
+  funnelCategory: HubSpotCollectedFormFunnelCategory;
+}
+
+export interface HubSpotCollectedFormSubmission {
+  id: string;
+  formGuid: string;
+  formName: string;
+  funnelCategory: HubSpotCollectedFormFunnelCategory;
+  email: string | null;
+  submittedAt: string;
+  pageUrl: string | null;
+}
+
+export interface HubSpotCollectedFormsData {
+  formSubmissions: HubSpotCollectedFormEntry[];
+  submissions: HubSpotCollectedFormSubmission[];
+  totalFormSubmissions: number;
+  leadMagnetSubmissions: number;
+  contactRequestSubmissions: number;
+}
+
 export interface HubSpotRepScoreboardRow {
   ownerId: string | null;
   ownerName: string;
@@ -104,6 +143,9 @@ export interface FunnelMetrics {
   noShows: number;
   demoScheduled: number;
   demoFollowUp: number;
+  collectedFormSubmissions?: number;
+  leadMagnetSubmissions?: number;
+  contactRequestSubmissions?: number;
   avgDealSize: number;
   winRate: number;
   effectiveWinRate: number;
@@ -121,6 +163,7 @@ export interface ContactMetrics {
 
 export interface HubSpotData {
   funnel: FunnelMetrics;
+  collectedForms?: HubSpotCollectedFormsData;
   contacts: ContactMetrics;
   repScoreboard?: HubSpotRepScoreboardRow[];
   pipelineDetected?: { pipelineId: string; dealCount: number };
@@ -972,11 +1015,11 @@ export interface PylonData {
 
 export interface ProductSuccessData {
   activeContributors: number;
-  createdTasksInRange: number;
-  completedTasksInRange: number;
-  overdueOpenTasks: number;
-  backlogGrowth: number;
-  throughputRate: number | null;
+  mergedPullRequestsInRange: number;
+  completedLinearIssuesInRange: number;
+  cycleTimeRiskSignals: number;
+  deliveryBalance: number;
+  deliveryRate: number | null;
   _meta: AnalyticsTimestamp;
 }
 
@@ -986,10 +1029,10 @@ export interface IntegrationTelemetryData {
   enabledRules: number;
   erroredRules: number;
   receiptsInRange: number;
-  automationsTriggeredInRange: number;
+  artifactsCreatedInRange: number;
   eventsInRange: number;
   failuresInRange: number;
-  trend: Array<{ date: string; receipts: number; automationsTriggered: number; failures: number }>;
+  trend: Array<{ date: string; receipts: number; artifactsCreated: number; failures: number }>;
   topFailureReasons: Array<{ reason: string; count: number }>;
   coverageStatus?: "active" | "stale" | "not_provisioned" | null;
   configuredRules?: string[];
@@ -1056,7 +1099,8 @@ export type AnalyticsSectionId =
   | "customer-success"
   | "customer-journey"
   | "demo-analytics"
-  | "process-analytics";
+  | "process-analytics"
+  | "revenue";
 
 export type LifecycleStageId =
   | "awareness"
@@ -1127,6 +1171,7 @@ export interface AnalyticsRecommendation {
 }
 
 export type InsightActionType =
+  | "create_recommendation"
   | "assign_owner"
   | "create_automation_from_template"
   | "open_integration_followup";
@@ -1848,6 +1893,88 @@ export interface FinancialPlanningData {
 }
 
 // ══════════════════════════════════════════════════════════
+// REVENUE DASHBOARD
+// ══════════════════════════════════════════════════════════
+
+export interface RevenueDashboardSummary {
+  activeSubscriptions: number;
+  stripeActiveSubscriptions: number;
+  hubspotActiveSubscriptions: number;
+  hubspotOnlyActiveSubscriptions: number;
+  mrr: number;
+  arr: number;
+  stripeMrr: number;
+  hubspotSubscriptionMrr: number;
+  hubspotOnlySubscriptionMrr: number;
+  excludedLinkedHubspotSubscriptionMrr: number;
+  cashBalance: number;
+  bankCash: number | null;
+  treasuryCash: number | null;
+  runwayMonths: number;
+  burnRate: number;
+  netCashFlow30d: number;
+  inflows30d: number;
+  outflows30d: number;
+  paymentSuccessPct: number;
+  churnRatePct: number;
+}
+
+export interface RevenueDashboardWeeklyPoint {
+  week: string;
+  demosScheduled: number;
+  demosCompleted: number;
+  demoNoShows: number;
+  customersWon: number;
+  stripeRevenueCollected: number;
+  hubspotBookedRevenue: number;
+  mercuryInflows: number;
+  mercuryOutflows: number;
+  mercuryNetCashFlow: number;
+}
+
+export interface RevenueDashboardPipelineMetrics {
+  openPipelineValue: number;
+  openPipelineCount: number;
+  qualifiedPipelineValue: number;
+  qualifiedPipelineCount: number;
+  stageBreakdown: DealStage[];
+  sourceBreakdown: DealsBySource[];
+  repScoreboard: HubSpotRepScoreboardRow[];
+  winRate: number;
+  effectiveWinRate: number;
+  noShowRate: number;
+  avgDealSize: number;
+  demoFollowUpCount: number;
+  bookedValue: number;
+  realizedValue30d: number;
+  bookedToRealizedRatio30d: number | null;
+}
+
+export interface RevenueDashboardTrustSource {
+  key: "hubspot" | "stripe" | "mercury";
+  label: string;
+  status: ProviderFreshness["status"];
+  stale: boolean;
+  source: ProviderFreshness["source"] | "none";
+  lastSyncedAt: string | null;
+  lastSnapshotAt: string | null;
+  lastError: string | null;
+  fetchedAt: string | null;
+  truncated: boolean;
+  truncatedResources: string[];
+}
+
+export interface RevenueDashboardData {
+  summary: RevenueDashboardSummary;
+  weekly: RevenueDashboardWeeklyPoint[];
+  pipeline: RevenueDashboardPipelineMetrics;
+  trust: {
+    sources: RevenueDashboardTrustSource[];
+    warnings: string[];
+  };
+}
+
+// ══════════════════════════════════════════════════════════
 // COMBINED DASHBOARD
 // ══════════════════════════════════════════════════════════
 
@@ -1882,6 +2009,7 @@ export interface AnalyticsDashboardData {
   stripe: StripeData | null;
   mercury: MercuryData | null;
   googleAnalytics: GAData | null;
+  googleSearchConsole: GoogleSearchConsoleData | null;
   ga?: GAData | null;
   googleAds: GoogleAdsData | null;
   metaAds: MetaAdsData | null;
@@ -1893,6 +2021,9 @@ export interface AnalyticsDashboardData {
   codaKanban?: CodaKanbanData | null;
   semrush: SemrushData | null;
   pylon: PylonData | null;
+  posthog?: Record<string, unknown> | null;
+  linear?: Record<string, unknown> | null;
+  github?: Record<string, unknown> | null;
   product: ProductSuccessData | null;
   googleWorkspace: IntegrationTelemetryData | null;
   slack: IntegrationTelemetryData | null;
@@ -1927,6 +2058,7 @@ export interface AnalyticsDashboardData {
   };
   lastFullRefresh: string;
   financialPlanning: FinancialPlanningData | null;
+  revenueDashboard?: RevenueDashboardData | null;
   metrics?: AnalyticsMetricsLayer | null;
   kpis?: AnalyticsKpis;
   deltas?: AnalyticsKpiDeltas;

@@ -29,6 +29,7 @@ interface ObservabilityResponse {
       staleConnections: number;
       enabledRules: number;
       staleRules: number;
+      erroredRules: number;
       providers: Array<{
         provider: string;
         connected: number;
@@ -36,6 +37,7 @@ interface ObservabilityResponse {
         staleConnections: number;
         enabledRules: number;
         staleRules: number;
+        erroredRules: number;
       }>;
     };
   };
@@ -267,7 +269,7 @@ export function OperationsTab() {
                 Connected {provider.connected} • Error {provider.errored} • Stale sync {provider.staleConnections}
               </p>
               <p className="text-xs text-muted-foreground">
-                Enabled rules {provider.enabledRules} • Stale rules {provider.staleRules}
+                Enabled rules {provider.enabledRules} • Stale rules {provider.staleRules} • Error rules {provider.erroredRules}
               </p>
             </div>
           ))}

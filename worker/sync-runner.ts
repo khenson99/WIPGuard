@@ -3,7 +3,7 @@
  * Standalone sync worker process.
  *
  * This is the main entry point for the worker service that runs integration
- * sync operations (HubSpot, Slack, Coda, Google, analytics, health checks)
+ * sync operations (provider rules, analytics, enrichment, automations, health checks)
  * in a dedicated process, separate from the Next.js web server.
  *
  * Usage:
@@ -27,6 +27,8 @@ import { logger } from './logger';
 import { getWorkerPrisma, disconnectWorkerPrisma } from './prisma';
 import { startHealthServer, updateSyncStatus, setReady } from './health';
 import { withTimeout } from './timeout';
+import { assertSyncResultsHealthy } from './sync-results';
+import { loadOrchestrator } from './orchestrator-loader';
 
 // ─── Graceful Shutdown ───────────────────────────────────────────────────────
 
@@ -99,47 +101,6 @@ process.on('uncaughtException', (error) => {
 // ─── Sync Orchestration ──────────────────────────────────────────────────────
 
 /**
- * Attempts to dynamically import the existing sync orchestrator.
- * Falls back to a stub if the orchestrator module isn't found.
- *
- * The orchestrator is expected to live at one of these paths:
- *   - src/lib/sync/orchestrator
- *   - src/lib/cron/sync
- *   - lib/sync/orchestrator
- *
- * This indirection allows the worker to be developed and tested
- * before the orchestrator is fully extracted.
- */
-async function loadOrchestrator(): Promise<{
-  runSync: (prisma: ReturnType<typeof getWorkerPrisma>, modules: typeof workerConfig.modules) => Promise<void>;
-} | null> {
-  const candidates = [
-    '../src/lib/sync/orchestrator',
-    '../src/lib/cron/sync',
-    '../lib/sync/orchestrator',
-  ];
-
-  for (const modulePath of candidates) {
-    try {
-      const mod = await import(modulePath);
-      if (typeof mod.runSync === 'function') {
-        logger.info(`Loaded orchestrator from ${modulePath}`);
-        return mod;
-      }
-      // Some modules might export the function differently
-      if (typeof mod.default?.runSync === 'function') {
-        logger.info(`Loaded orchestrator (default export) from ${modulePath}`);
-        return mod.default;
-      }
-    } catch {
-      // Module not found, try next candidate
-    }
-  }
-
-  return null;
-}
-
-/**
  * Run a single sync cycle with timeout protection.
  */
 async function runSyncCycle(): Promise<void> {
@@ -155,32 +116,22 @@ async function runSyncCycle(): Promise<void> {
 
   try {
     const orchestrator = await loadOrchestrator();
-
-    if (orchestrator) {
-      await withTimeout(
-        orchestrator.runSync(prisma, workerConfig.modules),
-        workerConfig.syncTimeoutMs,
-        `Sync cycle timed out after ${workerConfig.syncTimeoutMs}ms`
-      );
-    } else {
-      // No orchestrator found — run a stub that logs what would happen.
-      // This allows deploying the worker infrastructure before the
-      // orchestrator is fully extracted from the cron endpoint.
-      logger.warn(
-        'No orchestrator module found. Running in stub mode. ' +
-          'Please implement src/lib/sync/orchestrator.ts with a runSync() export.'
-      );
-      await runStubSync(prisma);
-    }
+    const syncResult = await withTimeout(
+      orchestrator.runSync(prisma, workerConfig.modules),
+      workerConfig.syncTimeoutMs,
+      `Sync cycle timed out after ${workerConfig.syncTimeoutMs}ms`
+    );
+    assertSyncResultsHealthy(syncResult);
 
     const durationMs = Date.now() - startTime;
     updateSyncStatus('success', durationMs);
     logger.info('Sync cycle completed successfully', { durationMs });
   } catch (err) {
     const durationMs = Date.now() - startTime;
-    updateSyncStatus('error', durationMs);
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    updateSyncStatus('error', durationMs, errorMessage);
     logger.error('Sync cycle failed', {
-      error: err instanceof Error ? err.message : String(err),
+      error: errorMessage,
       stack: err instanceof Error ? err.stack : undefined,
       durationMs,
     });
@@ -190,33 +141,6 @@ async function runSyncCycle(): Promise<void> {
       throw err;
     }
   }
-}
-
-/**
- * Stub sync function for when the orchestrator hasn't been extracted yet.
- * Verifies the database connection and logs enabled modules.
- */
-async function runStubSync(
-  prisma: ReturnType<typeof getWorkerPrisma>
-): Promise<void> {
-  // Verify database connectivity
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    logger.info('Database connection verified');
-  } catch (err) {
-    logger.error('Database connection failed', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    throw err;
-  }
-
-  const enabledModules = Object.entries(workerConfig.modules)
-    .filter(([, enabled]) => enabled)
-    .map(([name]) => name);
-
-  logger.info('Stub sync completed. Enabled modules (not yet wired):', {
-    modules: enabledModules,
-  });
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────

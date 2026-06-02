@@ -8,11 +8,6 @@ describe("versioned integration routes", () => {
     expect(typeof mod.POST).toBe("function");
   });
 
-  it("exports HubSpot webhook handler", async () => {
-    const mod = await import("@/app/api/v1/integrations/hubspot/webhook/route");
-    expect(typeof mod.POST).toBe("function");
-  });
-
   it("exports Slack events handler", async () => {
     const mod = await import("@/app/api/v1/integrations/slack/events/route");
     expect(typeof mod.POST).toBe("function");

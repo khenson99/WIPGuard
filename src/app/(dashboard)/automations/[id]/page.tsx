@@ -39,8 +39,8 @@ function defaultNode(): WorkflowNode {
   return {
     key: `node_${Math.random().toString(16).slice(2, 8)}`,
     type: "ACTION",
-    label: "Team Digest",
-    config: { actionType: "post_slack_digest" },
+    label: "Generate Recommendation",
+    config: { actionType: "ai_generate" },
     positionX: 200,
     positionY: 200,
   };
@@ -50,7 +50,7 @@ export default function AutomationBuilderPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const workflowId = params?.id ?? "";
-  const cacheKey = `dashboard:automations:workflow:v2:${workflowId}`;
+  const cacheKey = `dashboard:automations:workflow:v1:${workflowId}`;
 
   const [workflow, setWorkflow] = useState<WorkflowDetail | null>(null);
   const [name, setName] = useState("");

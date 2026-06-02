@@ -7,19 +7,14 @@ import { recordSecurityAuditEvent } from "@/lib/security-audit";
 export type AppRole = "admin" | "member" | "observer";
 
 export type PermissionAction =
-  | "board.write"
-  | "project.read"
-  | "project.write"
+  | "department.write"
   | "conference.write"
   | "deals.read"
   | "deals.write"
   | "analytics.read"
   | "analytics.write"
-  | "hierarchy.read"
-  | "sprint.write"
   | "priority.write"
   | "policy.write"
-  | "policy.override"
   | "team.invite"
   | "team.role.write"
   | "profile.write"
@@ -31,19 +26,14 @@ export type PermissionAction =
 const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> =
   {
     admin: [
-      "board.write",
-      "project.read",
-      "project.write",
+      "department.write",
       "conference.write",
       "deals.read",
       "deals.write",
       "analytics.read",
       "analytics.write",
-      "hierarchy.read",
-      "sprint.write",
       "priority.write",
       "policy.write",
-      "policy.override",
       "team.invite",
       "team.role.write",
       "profile.write",
@@ -53,18 +43,13 @@ const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> 
       "automation.approve",
     ],
     member: [
-      "board.write",
-      "project.read",
-      "project.write",
+      "department.write",
       "conference.write",
       "deals.read",
       "deals.write",
       "analytics.read",
       "analytics.write",
-      "hierarchy.read",
-      "sprint.write",
       "priority.write",
-      "policy.override",
       "profile.write",
       "integration.read",
       "automation.write",
@@ -96,14 +81,9 @@ export function workspaceIdForPermissionAction(
   action: PermissionAction
 ): WorkspaceId | null {
   switch (action) {
-    case "board.write":
-    case "project.read":
-    case "project.write":
-    case "hierarchy.read":
-    case "sprint.write":
+    case "department.write":
     case "priority.write":
     case "policy.write":
-    case "policy.override":
       return "metrics";
     case "conference.write":
     case "deals.read":

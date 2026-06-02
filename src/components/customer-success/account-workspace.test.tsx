@@ -162,6 +162,13 @@ function buildDetail(overrides: Partial<CustomerSuccessAccountDetail> = {}): Cus
         goLiveDate: "2025-10-01T00:00:00.000Z",
         subscriptionStartDate: "2025-09-15T00:00:00.000Z",
         firstOrderDate: "2025-10-05T00:00:00.000Z",
+        productMetrics: {
+          totalOrders: 42,
+          totalItems: 31,
+          uniqueItemsOrdered: 18,
+          daysTo25Items: 37,
+          daysTo10Orders: 21,
+        },
         explanation: "watch because activity is trailing and recent usage is below the habit threshold.",
         reasonCodes: [
           {
@@ -172,25 +179,12 @@ function buildDetail(overrides: Partial<CustomerSuccessAccountDetail> = {}): Cus
             dimension: "usage",
           },
         ],
-        ardaAdoptionCountsSource: "ARDA_USER_DETAILS",
-        ardaDirectActivityCounts: {
-          orders: 0,
-          cards: 0,
-          items: 0,
-        },
-        ardaUserDetailsCounts: {
-          orders: 0,
-          cards: 12,
-          items: 10,
-        },
         coverage: {
           arda: true,
           coda: true,
           stripe: true,
           hubspot: true,
           pylon: false,
-          ardaActivityCollectionAvailable: false,
-          ardaUserDetailsFallback: true,
           missingSources: ["pylon"],
         },
         detailUrl: "/analytics/retention/acct_1",
@@ -272,9 +266,6 @@ describe("CustomerSuccessAccountWorkspace", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Acme Co" })).toBeTruthy();
     });
-    expect(
-      screen.getByText("Arda activity history is unavailable; adoption breadth falls back to User Details (12 cards, 10 items).")
-    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Timeline" }));
     fireEvent.change(screen.getByPlaceholderText("Optional title"), { target: { value: "Weekly review" } });
@@ -295,6 +286,27 @@ describe("CustomerSuccessAccountWorkspace", () => {
       "/api/customer-success/accounts/acct_1/notes",
       expect.objectContaining({ method: "POST" })
     );
+  });
+
+  it("does not expose local task creation in the account workspace", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => buildDetail(),
+      }))
+    );
+
+    render(<CustomerSuccessAccountWorkspace accountId="acct_1" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Acme Co" })).toBeTruthy();
+    });
+
+    expect(screen.queryByRole("button", { name: "Tasks" })).toBeNull();
+    expect(screen.queryByText(/Create Linked Task/i)).toBeNull();
+    expect(screen.queryByText(/Linked Tasks/i)).toBeNull();
   });
 
   it("resolves an alert and refreshes the attention queue", async () => {

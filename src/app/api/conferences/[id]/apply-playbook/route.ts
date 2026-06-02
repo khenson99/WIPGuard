@@ -36,7 +36,6 @@ export async function POST(
         name: true,
         startDate: true,
         endDate: true,
-        primaryProjectId: true,
         budget: { select: { id: true } },
       },
     });
@@ -45,7 +44,7 @@ export async function POST(
       return NextResponse.json({ error: "Conference not found" }, { status: 404 });
     }
 
-    if (conference.primaryProjectId || conference.budget) {
+    if (conference.budget) {
       return NextResponse.json(
         { error: "Already seeded" },
         { status: 409 },
@@ -69,4 +68,3 @@ export async function POST(
     );
   }
 }
-

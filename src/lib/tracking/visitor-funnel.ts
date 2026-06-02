@@ -1,9 +1,9 @@
 "use client";
 
-const ANON_STORAGE_KEY = "wipguard:funnel:anonymous-id";
-const SESSION_STORAGE_KEY = "wipguard:funnel:session-id";
-const AUTH_TRACKED_PREFIX = "wipguard:funnel:auth-tracked:";
-const COOKIE_NAME = "wipguard_funnel_anon_id";
+const ANON_STORAGE_KEY = "imladris:funnel:anonymous-id";
+const SESSION_STORAGE_KEY = "imladris:funnel:session-id";
+const AUTH_TRACKED_PREFIX = "imladris:funnel:auth-tracked:";
+const COOKIE_NAME = "imladris_funnel_anon_id";
 
 export type ClientFunnelEventType =
   | "PAGE_VIEW"

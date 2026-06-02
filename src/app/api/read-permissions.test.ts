@@ -12,8 +12,6 @@ vi.mock("@/lib/permissions", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     deal: { findMany: vi.fn() },
-    task: { findMany: vi.fn() },
-    project: { findMany: vi.fn() },
     companyPriority: { findMany: vi.fn() },
   },
 }));
@@ -59,29 +57,4 @@ describe("collection read permissions", () => {
     expect(prisma.deal.findMany).not.toHaveBeenCalled();
   });
 
-  it("returns 410 for retired GET /api/projects", async () => {
-    const { enforcePermission } = await import("@/lib/permissions");
-    const { prisma } = await import("@/lib/prisma");
-
-    const { GET } = await import("@/app/api/projects/route");
-    const response = await GET(new NextRequest("http://localhost/api/projects"));
-
-    expect(response.status).toBe(410);
-    expect(enforcePermission).not.toHaveBeenCalled();
-    expect(prisma.project.findMany).not.toHaveBeenCalled();
-  });
-
-  it("returns 410 for retired GET /api/hierarchy", async () => {
-    const { enforcePermission } = await import("@/lib/permissions");
-    const { prisma } = await import("@/lib/prisma");
-
-    const { GET } = await import("@/app/api/hierarchy/route");
-    const response = await GET(new NextRequest("http://localhost/api/hierarchy"));
-
-    expect(response.status).toBe(410);
-    expect(enforcePermission).not.toHaveBeenCalled();
-    expect(prisma.companyPriority.findMany).not.toHaveBeenCalled();
-    expect(prisma.project.findMany).not.toHaveBeenCalled();
-    expect(prisma.task.findMany).not.toHaveBeenCalled();
-  });
 });

@@ -3,18 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/socket-auth", () => ({
   extractSessionToken: vi.fn(),
   getSessionFromToken: vi.fn(),
-  verifyProjectAccess: vi.fn(),
 }));
 
 import {
   extractSessionToken,
   getSessionFromToken,
-  verifyProjectAccess,
 } from "@/lib/socket-auth";
 
 const mockExtractSessionToken = vi.mocked(extractSessionToken);
 const mockGetSessionFromToken = vi.mocked(getSessionFromToken);
-const mockVerifyProjectAccess = vi.mocked(verifyProjectAccess);
 
 describe("socket-server auth middleware", () => {
   beforeEach(() => {
@@ -51,15 +48,8 @@ describe("socket-server auth middleware", () => {
     });
   });
 
-  describe("project access verification", () => {
-    it("denies access when user is not a project member", async () => {
-      mockVerifyProjectAccess.mockResolvedValue(false);
-      await expect(mockVerifyProjectAccess("user-1", "project-99")).resolves.toBe(false);
-    });
-
-    it("grants access when user is a project member", async () => {
-      mockVerifyProjectAccess.mockResolvedValue(true);
-      await expect(mockVerifyProjectAccess("user-1", "project-1")).resolves.toBe(true);
-    });
+  it("does not expose project-scoped board authorization", async () => {
+    const auth = await import("@/lib/socket-auth");
+    expect("verifyProjectAccess" in auth).toBe(false);
   });
 });

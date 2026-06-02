@@ -82,4 +82,52 @@ describe("evaluateObservabilitySlos", () => {
     expect(report.integrationHealth.errorConnections).toBe(1);
     expect(report.integrationHealth.staleRules).toBe(1);
   });
+
+  it("flags recent enabled rules with errors as degraded integration sync health", () => {
+    const now = new Date("2026-02-16T15:00:00.000Z");
+
+    const report = evaluateObservabilitySlos({
+      now,
+      outboxMetrics: baseOutboxMetrics(),
+      connections: [
+        {
+          provider: "STRIPE",
+          status: "CONNECTED",
+          lastSyncedAt: "2026-02-16T14:55:00.000Z",
+          lastError: null,
+        },
+      ],
+      rules: [
+        {
+          provider: "STRIPE",
+          key: "stripe.revenue-sync",
+          enabled: true,
+          lastRunAt: "2026-02-16T14:55:00.000Z",
+          lastError: "Stripe returned 503",
+        },
+      ],
+    });
+
+    const freshnessSlo = report.slos.find(
+      (slo) => slo.key === "integration_sync_freshness"
+    );
+
+    expect(report.overallStatus).toBe("degraded");
+    expect(report.integrationHealth.erroredRules).toBe(1);
+    expect(report.integrationHealth.providers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: "STRIPE",
+          erroredRules: 1,
+        }),
+      ])
+    );
+    expect(freshnessSlo).toEqual(
+      expect.objectContaining({
+        breached: true,
+        severity: "warning",
+        value: "0 stale rule(s), 1 errored rule(s)",
+      })
+    );
+  });
 });

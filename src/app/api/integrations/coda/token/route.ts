@@ -45,6 +45,65 @@ function hasCodaDocInput(body: ConnectCodaBody): boolean {
   return Boolean(body.docId?.trim() || body.docUrl?.trim());
 }
 
+function isMissingConnectionUpdateError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const code = "code" in error ? (error as { code?: unknown }).code : undefined;
+  if (code === "P2025") {
+    return true;
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  return message.toLowerCase().includes("record to update not found");
+}
+
+async function persistCodaDocMetadata(input: {
+  ownerUserId: string;
+  organizationId: string | null;
+  metadata: Prisma.InputJsonObject;
+}): Promise<void> {
+  const { ownerUserId, organizationId, metadata } = input;
+
+  try {
+    await prisma.integrationConnection.update({
+      where: {
+        userId_provider: {
+          userId: ownerUserId,
+          provider: IntegrationProvider.CODA,
+        },
+      },
+      data: { metadata },
+    });
+    return;
+  } catch (error) {
+    if (!isMissingConnectionUpdateError(error)) {
+      throw error;
+    }
+  }
+
+  await prisma.integrationConnection.upsert({
+    where: {
+      userId_provider: {
+        userId: ownerUserId,
+        provider: IntegrationProvider.CODA,
+      },
+    },
+    create: {
+      userId: ownerUserId,
+      provider: IntegrationProvider.CODA,
+      status: IntegrationConnectionStatus.ERROR,
+      lastError: "Coda token is required to reconnect this doc sync.",
+      metadata,
+      organizationId,
+    },
+    update: {
+      metadata,
+    },
+  });
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await auth();
@@ -100,14 +159,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         docId,
       };
 
-        await prisma.integrationConnection.update({
-          where: {
-            userId_provider: {
-              userId: ownerUserId,
-              provider: IntegrationProvider.CODA,
-            },
-          },
-        data: { metadata },
+      await persistCodaDocMetadata({
+        ownerUserId,
+        organizationId,
+        metadata,
       });
 
       return NextResponse.json({ ok: true, docId });

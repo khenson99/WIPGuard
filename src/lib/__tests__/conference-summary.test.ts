@@ -8,11 +8,6 @@ describe("computeConferenceSummary", () => {
       now,
       startDate: new Date("2026-02-01T00:00:00Z"),
       endDate: new Date("2026-02-03T00:00:00Z"),
-      tasks: [
-        { status: "DONE", dueDate: new Date("2026-01-05T00:00:00Z") },
-        { status: "ACTIVE", dueDate: new Date("2026-01-09T00:00:00Z") },
-        { status: "ACTIVE", dueDate: new Date("2026-01-11T00:00:00Z") },
-      ],
       deadlines: [
         { dueAt: new Date("2026-01-08T00:00:00Z"), completedAt: null },
         { dueAt: new Date("2026-01-12T00:00:00Z"), completedAt: null },
@@ -21,17 +16,10 @@ describe("computeConferenceSummary", () => {
       budgetLineItems: [{ plannedAmount: 100 }, { plannedAmount: 50 }],
       expenses: [{ amount: 200 }],
       leads: [
-        { status: "NEW", pushedToHubspotAt: now, followupTaskId: "t1" },
-        { status: "QUALIFIED", pushedToHubspotAt: null, followupTaskId: null },
+        { status: "NEW", pushedToHubspotAt: now },
+        { status: "QUALIFIED", pushedToHubspotAt: null },
       ],
-      followupTasksById: {
-        t1: { status: "ACTIVE" },
-      },
     });
-
-    expect(summary.tasks.total).toBe(3);
-    expect(summary.tasks.done).toBe(1);
-    expect(summary.tasks.overdue).toBe(1);
 
     expect(summary.deadlines.total).toBe(3);
     expect(summary.deadlines.completed).toBe(1);
@@ -44,7 +32,6 @@ describe("computeConferenceSummary", () => {
 
     expect(summary.leads.total).toBe(2);
     expect(summary.leads.pushedCount).toBe(1);
-    expect(summary.leads.followupOpenCount).toBe(1);
     expect(summary.leads.byStatus.NEW).toBe(1);
     expect(summary.leads.byStatus.QUALIFIED).toBe(1);
   });

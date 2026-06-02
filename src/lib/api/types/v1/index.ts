@@ -10,69 +10,6 @@
 export type { PaginatedResponse, ApiErrorResponse, ApiSuccessResponse, ApiListResponse } from "../common";
 
 // ============================================================
-// Task Types
-// ============================================================
-
-export interface TaskResponse {
-  id: string;
-  title: string;
-  description: string | null;
-  status: string;
-  priority: string | null;
-  dueDate: string | null;
-  projectId: string | null;
-  assigneeId: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CreateTaskRequest {
-  title: string;
-  description?: string;
-  status?: string;
-  priority?: string;
-  dueDate?: string;
-  projectId?: string;
-  assigneeId?: string;
-}
-
-export interface UpdateTaskRequest {
-  title?: string;
-  description?: string;
-  status?: string;
-  priority?: string;
-  dueDate?: string;
-  projectId?: string;
-  assigneeId?: string;
-}
-
-// ============================================================
-// Project Types
-// ============================================================
-
-export interface ProjectResponse {
-  id: string;
-  name: string;
-  description: string | null;
-  status: string;
-  ownerId: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CreateProjectRequest {
-  name: string;
-  description?: string;
-  status?: string;
-}
-
-export interface UpdateProjectRequest {
-  name?: string;
-  description?: string;
-  status?: string;
-}
-
-// ============================================================
 // Deal Types
 // ============================================================
 

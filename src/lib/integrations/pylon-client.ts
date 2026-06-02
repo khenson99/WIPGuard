@@ -1,5 +1,10 @@
 export type PylonIssue = Record<string, unknown>;
 
+export interface PylonIssuesFetchResult {
+  issues: PylonIssue[];
+  truncated: boolean;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -63,74 +68,48 @@ function splitPylonDateRange(input: {
   return windows;
 }
 
-function asNamedString(value: unknown): string | null {
-  const direct = asString(value);
-  if (direct) return direct;
+function parseIssueArray(payload: unknown): PylonIssue[] {
+  const record = asRecord(payload);
+  if (!record) return [];
 
-  const record = asRecord(value);
+  const candidates = [record.data, record.items, record.conversations];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate.filter((item) => item && typeof item === "object") as PylonIssue[];
+    }
+  }
+  return [];
+}
+
+function extractNextCursor(payload: unknown): string | null {
+  const record = asRecord(payload);
   if (!record) return null;
 
+  const direct =
+    asString(record.next_cursor) ??
+    asString(record.nextCursor) ??
+    asString(record.cursor) ??
+    asString(record.after);
+  if (direct) return direct;
+
+  const paging = asRecord(record.paging);
+  const next = asRecord(paging?.next);
   return (
-    asString(record.name) ??
-    asString(record.label) ??
-    asString(record.value) ??
-    asString(record.key) ??
-    asString(record.id)
+    asString(next?.cursor) ??
+    asString(next?.after) ??
+    asString(next?.next_cursor) ??
+    asString(next?.nextCursor)
   );
-}
-
-function parseIssueArray(payload: unknown): PylonIssue[] {
-  const visited = new Set<unknown>();
-
-  function visit(value: unknown): PylonIssue[] {
-    if (!value || visited.has(value)) return [];
-    if (Array.isArray(value)) {
-      return value.filter((item) => item && typeof item === "object") as PylonIssue[];
-    }
-
-    const record = asRecord(value);
-    if (!record) return [];
-    visited.add(value);
-
-    const directCandidates = [
-      record.data,
-      record.items,
-      record.conversations,
-      record.results,
-      record.records,
-      record.edges,
-      record.nodes,
-    ];
-
-    for (const candidate of directCandidates) {
-      const parsed = visit(candidate);
-      if (parsed.length > 0) return parsed;
-    }
-
-    return [];
-  }
-
-  return visit(payload);
-}
-
-function parsePagination(payload: unknown): { cursor: string | null; hasNextPage: boolean } {
-  const record = asRecord(payload);
-  const pagination = asRecord(record?.pagination);
-  const cursor = asString(pagination?.cursor) ?? asString(record?.next_cursor);
-  const hasNextPage =
-    pagination?.has_next_page === true ||
-    pagination?.hasNextPage === true ||
-    record?.has_next_page === true ||
-    record?.hasNextPage === true;
-
-  return { cursor, hasNextPage };
 }
 
 async function fetchJsonWithTimeout(input: {
   url: string;
   apiKey: string;
   timeoutMs: number;
-}): Promise<{ ok: true; payload: unknown } | { ok: false; status: number; message: string }> {
+}): Promise<
+  | { ok: true; payload: unknown }
+  | { ok: false; status: number; message: string; fatal?: boolean }
+> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), input.timeoutMs);
 
@@ -152,7 +131,18 @@ async function fetchJsonWithTimeout(input: {
       };
     }
 
-    const payload = (await response.json()) as unknown;
+    let payload: unknown;
+    try {
+      payload = (await response.json()) as unknown;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "invalid JSON";
+      return {
+        ok: false,
+        status: response.status,
+        message: `Pylon response parse failed (${response.status}): ${message}`,
+        fatal: true,
+      };
+    }
     return { ok: true, payload };
   } catch (error) {
     const message =
@@ -171,59 +161,87 @@ export async function fetchPylonIssues(input: {
   limit?: number;
   timeoutMs?: number;
 }): Promise<PylonIssue[]> {
+  return (await fetchPylonIssuesResult(input)).issues;
+}
+
+export async function fetchPylonIssuesResult(input: {
+  apiKey: string;
+  from: string;
+  to: string;
+  baseUrl?: string;
+  limit?: number;
+  timeoutMs?: number;
+}): Promise<PylonIssuesFetchResult> {
   const baseUrl = input.baseUrl || "https://api.usepylon.com";
   const limit = input.limit ?? 200;
   const timeoutMs = input.timeoutMs ?? 10_000;
   const issuesById = new Map<string, PylonIssue>();
   const issuesWithoutId: PylonIssue[] = [];
+  let truncated = false;
 
   for (const window of splitPylonDateRange({ from: input.from, to: input.to })) {
-    const query = new URLSearchParams({
-      limit: String(limit),
-      start_time: window.from,
-      end_time: window.to,
-    });
-
     const endpoints = [
-      `${baseUrl}/issues?${query.toString()}`,
-      `${baseUrl}/v1/issues?${query.toString()}`,
+      `${baseUrl}/issues`,
+      `${baseUrl}/v1/issues`,
       // Some Pylon tenants expose the issues collection under conversations.
-      `${baseUrl}/conversations?${query.toString()}`,
-      `${baseUrl}/v1/conversations?${query.toString()}`,
+      `${baseUrl}/conversations`,
+      `${baseUrl}/v1/conversations`,
     ];
 
     let lastError: { status: number; message: string } | null = null;
     let sawNotFound = false;
     let payload: PylonIssue[] | null = null;
-    for (const url of endpoints) {
-      const endpointPayload: PylonIssue[] = [];
+
+    for (const endpoint of endpoints) {
+      const endpointIssues: PylonIssue[] = [];
       let cursor: string | null = null;
+      let endpointFailed = false;
+      let endpointTruncated = false;
 
       for (let page = 0; page < 100; page += 1) {
-        const pageUrl = new URL(url);
-        if (cursor) pageUrl.searchParams.set("cursor", cursor);
-        const result = await fetchJsonWithTimeout({ url: pageUrl.toString(), apiKey: input.apiKey, timeoutMs });
+        const query = new URLSearchParams({
+          limit: String(limit),
+          start_time: window.from,
+          end_time: window.to,
+        });
+        if (cursor) query.set("cursor", cursor);
+
+        const result = await fetchJsonWithTimeout({
+          url: `${endpoint}?${query.toString()}`,
+          apiKey: input.apiKey,
+          timeoutMs,
+        });
         if (!result.ok) {
+          if (result.fatal) {
+            throw new Error(result.message);
+          }
           if (result.status === 404) {
             sawNotFound = true;
-            endpointPayload.length = 0;
-            break;
+          } else {
+            lastError = { status: result.status, message: result.message };
           }
-          lastError = { status: result.status, message: result.message };
-          endpointPayload.length = 0;
+          endpointFailed = true;
           break;
         }
 
-        endpointPayload.push(...parseIssueArray(result.payload));
-        const pagination = parsePagination(result.payload);
-        if (!pagination.hasNextPage || !pagination.cursor) {
-          payload = endpointPayload;
-          break;
+        endpointIssues.push(...parseIssueArray(result.payload));
+        const nextCursor = extractNextCursor(result.payload);
+        if (!nextCursor || nextCursor === cursor) break;
+        cursor = nextCursor;
+        if (page === 99) {
+          endpointTruncated = true;
         }
-        cursor = pagination.cursor;
       }
 
-      if (payload) break;
+      if (endpointFailed) {
+        continue;
+      }
+
+      if (endpointTruncated) {
+        truncated = true;
+      }
+      payload = endpointIssues;
+      break;
     }
 
     if (!payload) {
@@ -246,7 +264,10 @@ export async function fetchPylonIssues(input: {
     }
   }
 
-  return [...issuesById.values(), ...issuesWithoutId];
+  return {
+    issues: [...issuesById.values(), ...issuesWithoutId],
+    truncated,
+  };
 }
 
 export function getPylonIssueId(issue: PylonIssue): string | null {
@@ -269,19 +290,11 @@ export function getPylonIssueTitle(issue: PylonIssue): string | null {
 }
 
 export function getPylonIssueStatus(issue: PylonIssue): string | null {
-  return (
-    asNamedString(issue.status) ??
-    asNamedString(issue.state) ??
-    asNamedString(issue.workflowStatus) ??
-    asNamedString(issue.workflow_status)
-  );
+  return asString(issue.status) ?? asString(issue.state);
 }
 
 export function getPylonIssuePriority(issue: PylonIssue): string | null {
-  return (
-    asNamedString(issue.priority) ??
-    asNamedString(issue.severity)
-  );
+  return asString(issue.priority);
 }
 
 export function getPylonIssueTags(issue: PylonIssue): string[] {

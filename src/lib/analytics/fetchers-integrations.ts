@@ -29,20 +29,52 @@ function toDateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-function toSeries(
-  from: Date,
-  to: Date,
-): Array<{ date: string; receipts: number; automationsTriggered: number; failures: number }> {
-  const result: Array<{ date: string; receipts: number; automationsTriggered: number; failures: number }> = [];
+function toSeries(from: Date, to: Date): Array<{ date: string; receipts: number; artifactsCreated: number; failures: number }> {
+  const result: Array<{ date: string; receipts: number; artifactsCreated: number; failures: number }> = [];
   const cursor = new Date(`${toDateKey(from)}T00:00:00.000Z`);
   const end = new Date(`${toDateKey(to)}T00:00:00.000Z`);
 
   while (cursor <= end) {
-    result.push({ date: toDateKey(cursor), receipts: 0, automationsTriggered: 0, failures: 0 });
+    result.push({ date: toDateKey(cursor), receipts: 0, artifactsCreated: 0, failures: 0 });
     cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
 
   return result;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function positiveInteger(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : 0;
+}
+
+function countStringArray(value: unknown): number {
+  if (!Array.isArray(value)) return 0;
+  return value.filter((item) => typeof item === "string" && item.trim().length > 0).length;
+}
+
+function artifactCountFromReceiptMetadata(metadata: unknown): number {
+  const record = asRecord(metadata);
+  const explicit =
+    positiveInteger(record.artifactsCreated) ||
+    positiveInteger(record.artifactCount) ||
+    positiveInteger(record.createdArtifactsCount);
+  if (explicit > 0) return explicit;
+
+  const arrayCount =
+    countStringArray(record.artifactIds) ||
+    countStringArray(record.createdArtifactIds);
+  if (arrayCount > 0) return arrayCount;
+
+  return typeof record.artifactId === "string" && record.artifactId.trim().length > 0
+    ? 1
+    : 0;
 }
 
 function getFailurePrefix(provider: IntegrationProvider): string {
@@ -114,9 +146,7 @@ export async function fetchIntegrationTelemetryData(input: {
     const bucket = index.get(key);
     if (!bucket) continue;
     bucket.receipts += 1;
-    if (receipt.taskId) {
-      bucket.automationsTriggered += 1;
-    }
+    bucket.artifactsCreated += artifactCountFromReceiptMetadata(receipt.metadata);
   }
 
   const topFailureCounter = new Map<string, number>();
@@ -140,7 +170,7 @@ export async function fetchIntegrationTelemetryData(input: {
     enabledRules: rules.filter((rule) => rule.enabled).length,
     erroredRules: rules.filter((rule) => Boolean(rule.lastError)).length,
     receiptsInRange: receipts.length,
-    automationsTriggeredInRange: receipts.filter((receipt) => Boolean(receipt.taskId)).length,
+    artifactsCreatedInRange: trend.reduce((sum, item) => sum + item.artifactsCreated, 0),
     eventsInRange: outboxEvents.length,
     failuresInRange: trend.reduce((sum, item) => sum + item.failures, 0),
     trend,

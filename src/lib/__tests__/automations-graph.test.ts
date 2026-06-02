@@ -38,8 +38,7 @@ describe("automations graph", () => {
     expect(providers.has("GOOGLE_WORKSPACE")).toBe(true);
     expect(providers.has("HUBSPOT")).toBe(true);
     expect(providers.has("SLACK")).toBe(true);
-    expect(providers.has("REDDIT")).toBe(true);
-    expect(providers.has("WIPGUARD")).toBe(true);
+    expect(providers.has("IMLADRIS")).toBe(true);
     expect(providers.has("GOOGLE_SEARCH_CONSOLE")).toBe(true);
   });
 

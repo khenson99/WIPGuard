@@ -85,4 +85,27 @@ describe('health server', () => {
     expect(data.lastSyncDurationMs).toBe(1500);
     expect(data.lastSync).toBeTruthy();
   });
+
+  it('exposes the latest sync error detail and clears it after success', async () => {
+    process.env.WORKER_HEALTH_PORT = '0';
+    vi.resetModules();
+    const healthModule = await import('../health');
+    healthModule.updateSyncStatus('error', 2500, 'analytics: 2 provider refresh failures');
+    server = healthModule.startHealthServer();
+
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('No address');
+
+    const failed = await fetch(`http://127.0.0.1:${address.port}/health`);
+    const failedData = JSON.parse(failed.body);
+    expect(failedData.lastSyncStatus).toBe('error');
+    expect(failedData.lastSyncError).toBe('analytics: 2 provider refresh failures');
+
+    healthModule.updateSyncStatus('success', 1000);
+
+    const recovered = await fetch(`http://127.0.0.1:${address.port}/health`);
+    const recoveredData = JSON.parse(recovered.body);
+    expect(recoveredData.lastSyncStatus).toBe('success');
+    expect(recoveredData.lastSyncError).toBeNull();
+  });
 });

@@ -95,8 +95,10 @@ describe("CEO metric trust layer", () => {
   it("registers default metric definitions across every existing analytics domain", () => {
     const definitions = getDefaultCeoMetricDefinitions();
     const domains = new Set(definitions.map((definition) => definition.domain));
+    const keys = definitions.map((definition) => definition.key);
     const socialPaidSpend = definitions.find((definition) => definition.key === "social.paid_spend");
     const socialDomainHealth = definitions.find((definition) => definition.key === "domain.social-media.health");
+    const revenueDomainHealth = definitions.find((definition) => definition.key === "domain.revenue.health");
 
     expect(domains).toContain("finance");
     expect(domains).toContain("sales-pipeline");
@@ -104,12 +106,20 @@ describe("CEO metric trust layer", () => {
     expect(domains).toContain("process-analytics");
     expect(domains).toContain("website-traffic");
     expect(domains).toContain("social-media");
-    expect(domains).toContain("ceo");
+    expect(domains).toContain("revenue");
+    expect(domains).toContain("development");
     expect(definitions.every((definition) => definition.sourceDependencies.length > 0)).toBe(true);
     expect(socialPaidSpend?.sourceDependencies).toEqual(["googleAds", "metaAds"]);
     expect(socialPaidSpend?.optionalSourceDependencies).toEqual(["redditAds"]);
     expect(socialDomainHealth?.sourceDependencies).toEqual(["googleAds", "metaAds"]);
     expect(socialDomainHealth?.optionalSourceDependencies).toEqual(["redditAds"]);
+    expect(revenueDomainHealth?.sourceDependencies).toEqual(["hubspot", "stripe", "mercury"]);
+    expect(keys).not.toContain("ceo.flow_reliability_score");
+    expect(keys).not.toContain("ceo.throughput_30d");
+    expect(keys).not.toContain("ceo.overdue_open_tasks");
+    expect(definitions.find((definition) => definition.key === "development.delivery_health")).toMatchObject({
+      sourceDependencies: ["linear", "github", "posthog"],
+    });
   });
 
   it("maps CEO finance projection source health to real provider dependencies", () => {

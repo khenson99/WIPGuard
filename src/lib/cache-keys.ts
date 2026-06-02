@@ -14,12 +14,6 @@ export const CACHE_TTL = {
   /** Team member list — changes weekly */
   TEAM_MEMBERS: 120, // 2 minutes
 
-  /** Project list — changes daily */
-  PROJECTS: 60, // 1 minute
-
-  /** WIP policy settings — changes rarely */
-  WIP_POLICIES: 300, // 5 minutes
-
   /** Integration connection status — changes on reconnect */
   INTEGRATION_STATUS: 60, // 1 minute
 
@@ -55,20 +49,6 @@ export const cacheKeys = {
     `company:${companyId}:team-members*`,
   teamMember: (companyId: string, memberId: string) =>
     `company:${companyId}:team-members:${memberId}`,
-
-  // Projects
-  projects: (companyId: string) =>
-    `company:${companyId}:projects`,
-  projectsPattern: (companyId: string) =>
-    `company:${companyId}:projects*`,
-  project: (companyId: string, projectId: string) =>
-    `company:${companyId}:projects:${projectId}`,
-
-  // WIP Policies
-  wipPolicies: (companyId: string) =>
-    `company:${companyId}:wip-policies`,
-  wipPoliciesPattern: (companyId: string) =>
-    `company:${companyId}:wip-policies*`,
 
   // Integration status
   integrationStatus: (companyId: string) =>

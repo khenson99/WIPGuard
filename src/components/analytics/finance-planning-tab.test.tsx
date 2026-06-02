@@ -4,6 +4,7 @@ import { FinancePlanningTab } from "@/components/analytics/finance-planning-tab"
 import { createEmptyAnalyticsDashboardData } from "@/lib/analytics/response-shape";
 import type {
   AnalyticsDashboardData,
+  FinancialPlanningData,
   MercuryData,
   StripeData,
 } from "@/lib/analytics/types";

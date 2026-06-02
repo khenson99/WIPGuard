@@ -10,11 +10,6 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import * as fs from "fs";
 import * as path from "path";
 import { normalizeWorkflowGraph, graphToPrismaJson } from "../src/lib/automations/graph";
-import {
-  ARDA_GTM_OPERATOR_BOARD_PROJECT_DESCRIPTION,
-  ARDA_GTM_OPERATOR_BOARD_PROJECT_NAME,
-  ARDA_GTM_OPERATOR_BOARD_TASKS,
-} from "../src/lib/automations/ralph-board";
 import { AUTOMATION_TEMPLATES } from "../src/lib/automations/templates";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
@@ -72,54 +67,6 @@ const COMPANY_PRIORITIES = [
     responsible: [],
   },
 ];
-
-// ── Priority → Project mapping from Coda ──
-const PRIORITY_PROJECT_MAP: Record<string, string[]> = {
-  Aquisition: [
-    "Conference Prep",
-    "Customer Onboarding ",
-    "Kyle's BD Pipeline ",
-    "Direct Outbound ",
-    "Trade Show Program",
-    "Website Revamp",
-    "Marketing, Content",
-    "ABM Strategy",
-    "Customer Stories",
-    "Digital Advertising",
-    "Modex Prep",
-    "Channel Partner Program",
-    "RFP Automation & Support",
-    "Sales Enablement & Demos",
-    "Industry Outreach & Networking",
-    "Industry Publications & Thought Leadership",
-  ],
-  Retention: [
-    "NPS/Customer Feedback Loop",
-    "Churn Prevention Workflows",
-    "Customer Health Dashboard",
-  ],
-  Expansion: [
-    "Arda Marketplace",
-    "Pricing Strategy / Packaging",
-  ],
-  "Arda Core": [
-    "Project The Mother Node",
-    "Feature: Webhooks & Integrations",
-    "Feature: Automations & Alerts",
-    "Feature: Smart Analytics Engine",
-    "Feature: Multi-Tenant Architecture",
-    "Feature: Mobile Experience",
-    "Infrastructure & DevOps",
-    "Security & Compliance",
-    "QA & Testing Framework",
-    "Feature: AI Work Assistant",
-    "Arda Marketplace",
-  ],
-  "Company Scale": [
-    "SOPs, Processes",
-    "Hiring",
-  ],
-};
 
 // ── Helpers ──
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -431,139 +378,6 @@ async function seedOperatorWorkflows(userMap: Map<string, string>): Promise<numb
   return seededCount;
 }
 
-async function seedRalphBoardProject(input: {
-  userMap: Map<string, string>;
-  priorityMap: Map<string, string>;
-}): Promise<{ projectId: string | null; seededTasks: number }> {
-  const ownerId =
-    input.userMap.get("kyle@arda.cards") ?? input.userMap.values().next().value;
-  if (!ownerId) {
-    console.log("  ! Skipping Ralph board project seed because no owner user exists");
-    return { projectId: null, seededTasks: 0 };
-  }
-
-  const responsibleIds = ["kyle@arda.cards", "mat@arda.cards"]
-    .map((email) => input.userMap.get(email))
-    .filter((id): id is string => Boolean(id))
-    .map((id) => ({ id }));
-
-  const accountableIds = [ownerId].map((id) => ({ id }));
-
-  const existing = await prisma.project.findFirst({
-    where: { name: ARDA_GTM_OPERATOR_BOARD_PROJECT_NAME },
-    select: { id: true },
-    orderBy: { createdAt: "asc" },
-  });
-
-  const project = existing
-    ? await prisma.project.update({
-        where: { id: existing.id },
-        data: {
-          description: ARDA_GTM_OPERATOR_BOARD_PROJECT_DESCRIPTION,
-          status: "ACTIVE",
-          projectType: "PERPETUAL",
-          businessFunction: "GTM Operations",
-          companyPriorityId: input.priorityMap.get("Company Scale") ?? null,
-          responsible: { set: responsibleIds },
-          accountable: { set: accountableIds },
-        },
-        select: { id: true },
-      })
-    : await prisma.project.create({
-        data: {
-          name: ARDA_GTM_OPERATOR_BOARD_PROJECT_NAME,
-          description: ARDA_GTM_OPERATOR_BOARD_PROJECT_DESCRIPTION,
-          status: "ACTIVE",
-          projectType: "PERPETUAL",
-          businessFunction: "GTM Operations",
-          companyPriorityId: input.priorityMap.get("Company Scale") ?? null,
-          responsible: { connect: responsibleIds },
-          accountable: { connect: accountableIds },
-        },
-        select: { id: true },
-      });
-
-  const existingTasks = await prisma.task.findMany({
-    where: { projectId: project.id },
-    select: { id: true, title: true, status: true, columnOrder: true },
-  });
-
-  const existingByTitle = new Map(existingTasks.map((task) => [task.title, task] as const));
-  const nextColumnOrder = new Map<string, number>();
-
-  for (const task of existingTasks) {
-    const current = nextColumnOrder.get(task.status) ?? 0;
-    nextColumnOrder.set(task.status, Math.max(current, task.columnOrder + 1));
-  }
-
-  let seededTasks = 0;
-
-  for (const template of ARDA_GTM_OPERATOR_BOARD_TASKS) {
-    const responsibleId = template.ownerEmail
-      ? input.userMap.get(template.ownerEmail) ?? null
-      : null;
-
-    const metadata = {
-      source: "seed",
-      boardKey: "arda-gtm-operators",
-      wave: template.wave,
-      operatorKey: template.operatorKey ?? null,
-    };
-
-    const existingTask = existingByTitle.get(template.title);
-    if (existingTask) {
-      await prisma.task.update({
-        where: { id: existingTask.id },
-        data: {
-          notes: template.notes,
-          status: template.status,
-          priority: template.priority,
-          metadata,
-          responsible: {
-            set: responsibleId ? [{ id: responsibleId }] : [],
-          },
-          accountable: {
-            set: accountableIds,
-          },
-        },
-      });
-      seededTasks += 1;
-      continue;
-    }
-
-    const columnOrder = nextColumnOrder.get(template.status) ?? 0;
-    nextColumnOrder.set(template.status, columnOrder + 1);
-
-    await prisma.task.create({
-      data: {
-        title: template.title,
-        notes: template.notes,
-        status: template.status,
-        priority: template.priority,
-        projectId: project.id,
-        columnOrder,
-        metadata,
-        responsible: {
-          connect: responsibleId ? [{ id: responsibleId }] : [],
-        },
-        accountable: {
-          connect: accountableIds,
-        },
-        statusHistory: {
-          create: {
-            fromStatus: null,
-            toStatus: template.status,
-            changedBy: ownerId,
-          },
-        },
-      },
-    });
-    seededTasks += 1;
-  }
-
-  return { projectId: project.id, seededTasks };
-}
-
 async function main() {
   console.log("Starting Coda → The Mother Node import...\n");
 
@@ -583,9 +397,6 @@ async function main() {
         ...priority.accountable,
         ...priority.responsible,
       ]),
-      ...ARDA_GTM_OPERATOR_BOARD_TASKS.flatMap((task) =>
-        task.ownerEmail ? [task.ownerEmail] : []
-      ),
     ]);
     console.log(`  ✓ ${userMap.size} users available for operator seeding\n`);
 
@@ -596,7 +407,6 @@ async function main() {
   } else {
     const raw = JSON.parse(fs.readFileSync(dataPath, "utf-8"));
 
-    // ── 1. UPSERT USERS ──
     console.log(`Creating ${raw.people.length} users...`);
     for (const person of raw.people) {
       const user = await prisma.user.upsert({
@@ -612,217 +422,12 @@ async function main() {
     }
     console.log(`  ✓ ${userMap.size} users created/updated\n`);
 
-    // Helper to resolve email list to user ID list
-    const resolveUsers = (
-      people: { name: string; email: string }[] | undefined
-    ): { id: string }[] => {
-      if (!people) return [];
-      return people
-        .map((p) => userMap.get(p.email))
-        .filter((id): id is string => !!id)
-        .map((id) => ({ id }));
-    };
-
-    // ── 2. CREATE SPRINTS ──
-    console.log(`Creating ${raw.sprints.length} sprints...`);
-    const sprintMap = new Map<string, string>(); // name → id
-    for (const sprintName of raw.sprints) {
-      // Parse sprint names like "Sprint_03_0126" → Sprint 3, Jan 2026
-      const match = sprintName.match(/Sprint_(\d+)_(\d{2})(\d{2})/);
-      let startDate = new Date();
-      let endDate = new Date();
-      if (match) {
-        const sprintNum = parseInt(match[1]);
-        const month = parseInt(match[2]) - 1; // 0-indexed
-        const year = 2000 + parseInt(match[3]);
-        // Rough 2-week sprint cadence
-        const weekInMonth = ((sprintNum - 1) % 2) * 2;
-        startDate = new Date(year, month, 1 + weekInMonth * 7);
-        endDate = new Date(startDate);
-        endDate.setDate(endDate.getDate() + 13);
-      }
-      const sprint = await prisma.sprint.create({
-        data: {
-          name: sprintName.replace(/_/g, " "),
-          startDate,
-          endDate,
-          isActive: false,
-        },
-      });
-      sprintMap.set(sprintName, sprint.id);
-    }
-    console.log(`  ✓ ${sprintMap.size} sprints created\n`);
-
-    // ── 3. CREATE COMPANY PRIORITIES ──
     console.log(`Creating ${COMPANY_PRIORITIES.length} company priorities...`);
     for (const cp of COMPANY_PRIORITIES) {
-      const priority = await prisma.companyPriority.create({
-        data: {
-          name: cp.name,
-          priority: cp.priority,
-          responsible: {
-            connect: resolveUsers(
-              cp.responsible.map((e) => ({ name: "", email: e }))
-            ),
-          },
-          accountable: {
-            connect: resolveUsers(
-              cp.accountable.map((e) => ({ name: "", email: e }))
-            ),
-          },
-        },
-      });
-      priorityMap.set(cp.name, priority.id);
+      await upsertCompanyPriority(userMap, priorityMap, cp);
     }
-    console.log(`  ✓ ${priorityMap.size} company priorities created\n`);
-
-    // ── 4. CREATE PROJECTS ──
-    console.log(`Creating ${raw.projects.length} projects...`);
-    const projectMap = new Map<string, string>(); // name → id
-
-    // First pass: create all projects without parent references
-    for (const proj of raw.projects) {
-      // Find company priority for this project
-      let companyPriorityId: string | undefined;
-      for (const [cpName, projectNames] of Object.entries(PRIORITY_PROJECT_MAP)) {
-        if (projectNames.includes(proj.name)) {
-          companyPriorityId = priorityMap.get(cpName);
-          break;
-        }
-      }
-
-      const project = await prisma.project.create({
-        data: {
-          name: proj.name.trim(),
-          description: toPlainString(proj.description),
-          status: proj.status || "ACTIVE",
-          projectType: proj.projectType || "ONE_OFF",
-          businessFunction: toPlainString(proj.businessFunction),
-          companyPriorityId: companyPriorityId || null,
-          responsible: { connect: resolveUsers(proj.responsible) },
-          accountable: { connect: resolveUsers(proj.accountable) },
-          consulted: { connect: resolveUsers(proj.consulted) },
-          informed: { connect: resolveUsers(proj.informed) },
-        },
-      });
-      projectMap.set(proj.name, project.id);
-    }
-    console.log(`  ✓ ${projectMap.size} projects created\n`);
-
-    // ── 5. CREATE TASKS ──
-    console.log(`Creating ${raw.tasks.length} tasks...`);
-    let taskCount = 0;
-    const taskMap = new Map<string, string>(); // title → id (for dependency resolution)
-
-    for (const task of raw.tasks) {
-      const projectId = task.project ? projectMap.get(task.project) : undefined;
-      const sprintId = task.sprint ? sprintMap.get(task.sprint) : undefined;
-      const notes = toPlainString(task.notes);
-
-      const created = await prisma.task.create({
-        data: {
-          title: task.title,
-          notes,
-          status: task.status || "BACKLOG",
-          priority: task.priority || "P2",
-          degreeOfDifficulty: task.difficulty || "MEDIUM",
-          startDate: parseDate(task.startDate),
-          dueDate: parseDate(task.dueDate),
-          assignedOn: parseDate(task.assignedOn),
-          projectId: projectId || null,
-          sprintId: sprintId || null,
-          unplanned: task.unplanned || false,
-          columnOrder: task.columnOrder || 0,
-          responsible: { connect: resolveUsers(task.responsible) },
-          accountable: { connect: resolveUsers(task.accountable) },
-          consulted: { connect: resolveUsers(task.consulted) },
-          informed: { connect: resolveUsers(task.informed) },
-          statusHistory: {
-            create: {
-              fromStatus: null,
-              toStatus: task.status || "BACKLOG",
-            },
-          },
-        },
-      });
-      taskMap.set(task.title, created.id);
-      taskCount++;
-    }
-    console.log(`  ✓ ${taskCount} tasks created\n`);
-
-    // ── 6. CREATE LOGBOOK ENTRIES ──
-    console.log(`Creating ${raw.logbook.length} logbook entries...`);
-    let logbookCount = 0;
-    // We need a dummy task for logbook entries - create tasks on-the-fly if needed
-    // Actually, logbook entries reference tasks but don't need a live task relation
-    // They store denormalized data (taskTitle, projectName, etc.)
-
-    for (const entry of raw.logbook) {
-      // Find or create a task reference
-      let taskId = taskMap.get(entry.title);
-      if (!taskId) {
-        // Create a minimal "archived" task for this logbook entry
-        const archivedTask = await prisma.task.create({
-          data: {
-            title: entry.title,
-            notes: toPlainString(entry.notes),
-            status: entry.status || "DONE",
-            priority: entry.priority || "P2",
-            completedOn: parseDate(entry.completedOn),
-            projectId: entry.project ? projectMap.get(entry.project) : undefined,
-          },
-        });
-        taskId = archivedTask.id;
-        taskMap.set(entry.title, taskId);
-      }
-
-      const responsibleNames = entry.responsible
-        ?.map((p: { name: string }) => p.name)
-        .join(", ");
-      const accountableNames = entry.accountable
-        ?.map((p: { name: string }) => p.name)
-        .join(", ");
-
-      await prisma.logbookEntry.create({
-        data: {
-          taskId,
-          taskTitle: entry.title,
-          taskNotes: toPlainString(entry.notes),
-          projectName: entry.project || null,
-          sprintName: entry.sprint
-            ? entry.sprint.replace(/_/g, " ")
-            : null,
-          priority: entry.priority || "P2",
-          status: entry.status || "DONE",
-          responsible: responsibleNames || null,
-          accountable: accountableNames || null,
-          completedOn: parseDate(entry.completedOn) || new Date(),
-          archivedAt: parseDate(entry.archivedAt) || new Date(),
-        },
-      });
-      logbookCount++;
-    }
-    console.log(`  ✓ ${logbookCount} logbook entries created\n`);
-
-    // ── 7. CREATE BOARD SETTINGS ──
-    console.log("Creating board settings...");
-    const columns = [
-      { columnName: "BACKLOG", wipLimit: 0, columnOrder: 0, color: "#6B7280" },
-      { columnName: "QUEUED", wipLimit: 0, columnOrder: 1, color: "#8B5CF6" },
-      {
-        columnName: "WORKING_ON_TODAY",
-        wipLimit: 3,
-        columnOrder: 2,
-        color: "#3B82F6",
-      },
-      { columnName: "ACTIVE", wipLimit: 5, columnOrder: 3, color: "#F59E0B" },
-      { columnName: "NOT_DONE", wipLimit: 0, columnOrder: 4, color: "#EF4444" },
-      { columnName: "DONE", wipLimit: 0, columnOrder: 5, color: "#10B981" },
-    ];
-    for (const col of columns) {
-      await prisma.boardSettings.create({ data: col });
-    }
-    console.log(`  ✓ ${columns.length} board columns created\n`);
+    console.log(`  ✓ ${priorityMap.size} company priorities synced\n`);
+    console.log("  ! Legacy Coda operating-plan data ignored; Imladris uses provider raw and canonical metric tables.\n");
   }
 
   // ── 8. SEED SYSTEM-MANAGED GTM OPERATOR WORKFLOWS ──
@@ -830,22 +435,11 @@ async function main() {
   const operatorWorkflowCount = await seedOperatorWorkflows(userMap);
   console.log(`  ✓ ${operatorWorkflowCount} GTM operator workflows synced\n`);
 
-  // ── 9. SEED DEDICATED GTM OPERATOR RALPH BOARD PROJECT ──
-  console.log("Seeding Ralph board project...");
-  const ralphBoard = await seedRalphBoardProject({ userMap, priorityMap });
-  console.log(`  ✓ ${ralphBoard.seededTasks} Ralph board tasks synced\n`);
-
   // ── Summary ──
   const counts = {
     users: await prisma.user.count(),
     priorities: await prisma.companyPriority.count(),
-    projects: await prisma.project.count(),
-    sprints: await prisma.sprint.count(),
-    tasks: await prisma.task.count(),
-    logbook: await prisma.logbookEntry.count(),
-    boardSettings: await prisma.boardSettings.count(),
     workflows: await prisma.workflowDefinition.count(),
-    ralphBoardProjectId: ralphBoard.projectId,
   };
   console.log("=== IMPORT COMPLETE ===");
   console.log(JSON.stringify(counts, null, 2));

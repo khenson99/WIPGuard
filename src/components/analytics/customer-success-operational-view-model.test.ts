@@ -24,23 +24,20 @@ describe("deriveCustomerSuccessOperationalView", () => {
         status: "Active",
         details: "3/3 rules enabled",
       },
-      {
-        label: "Pylon",
-        status: "Active",
-        details: "28 open · 18 urgent",
-      },
     ]);
-    expect(view.trend).toEqual([{ date: "2026-03-08", total: 6 }]);
-    expect(view.maxTrend).toBe(6);
-    expect(view.riskItems.map((item) => item.value)).toEqual([18, 12, 180]);
+    expect(view.trend).toEqual([{ date: "2026-03-08", total: 13 }]);
+    expect(view.maxTrend).toBe(13);
+    expect(view.riskItems.map((item) => item.value)).toEqual([18, 8, 9]);
     expect(view.actions.map((item) => item.title)).toEqual([
       "Rebalance urgent queue ownership",
-      "Clear the waiting-on-team queue",
-      "Tighten first-response coverage",
+      "Review delivery balance",
+      "Investigate delivery drag",
+      "Review cycle-time risk",
     ]);
     expect(view.openConversations).toBe(28);
     expect(view.codaCards).toBe(42);
     expect(view.hasLegacyAnalytics).toBe(true);
+    expect(view.deliveryRate).toBe(62.4);
   });
 
   it("returns fallback state when analytics data is unavailable", () => {
@@ -58,7 +55,6 @@ describe("deriveCustomerSuccessOperationalView", () => {
       },
     ]);
     expect(view.integrationStatuses.map((item) => item.status)).toEqual([
-      "Not provisioned",
       "Not provisioned",
       "Not provisioned",
       "Not provisioned",

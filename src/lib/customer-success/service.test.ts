@@ -205,7 +205,26 @@ describe("customer success service", () => {
 
     const portfolio = buildCustomerSuccessPortfolioFromSnapshots(
       [stalledOnboarding, healthyActive, expansionReady, partialData],
-      NOW
+      NOW,
+      new Map([
+        [
+          "acct-healthy",
+          {
+            connectedSystems: 4,
+            retentionStatus: "Healthy",
+            primaryLirPassed: true,
+            implementationStage: "LIVE",
+            productMetrics: {
+              totalOrders: 42,
+              totalItems: 31,
+              uniqueItemsOrdered: 18,
+              daysTo25Items: 37,
+              daysTo10Orders: 21,
+            },
+            missingSources: [],
+          },
+        ],
+      ])
     );
 
     expect(portfolio.summary.totalAccounts).toBe(4);
@@ -221,6 +240,17 @@ describe("customer success service", () => {
       expect.objectContaining({
         connectedSystems: 1,
         missingSources: [],
+      })
+    );
+    expect(portfolio.accounts.find((account) => account.accountId === "acct-healthy")?.relationship).toEqual(
+      expect.objectContaining({
+        productMetrics: {
+          totalOrders: 42,
+          totalItems: 31,
+          uniqueItemsOrdered: 18,
+          daysTo25Items: 37,
+          daysTo10Orders: 21,
+        },
       })
     );
   });
@@ -254,18 +284,6 @@ describe("customer success service", () => {
       meetings: [],
       outreach: [],
       updatedAt: new Date("2026-03-07T00:00:00.000Z"),
-      tasks: [
-        {
-          id: "stale-task",
-          title: "Internal follow-up",
-          status: "ACTIVE",
-          priority: "P1",
-          dueDate: new Date("2026-03-12T00:00:00.000Z"),
-          createdAt: new Date("2026-03-06T00:00:00.000Z"),
-          updatedAt: new Date("2026-03-07T00:00:00.000Z"),
-          completedOn: null,
-        },
-      ],
     });
 
     const activeTouches = accountFixture({
@@ -339,7 +357,6 @@ describe("customer success service", () => {
         meetings: [],
         alerts: [],
         plans: [],
-        tasks: [],
         primaryDealAmount: null,
         renewalDate: null,
         paymentStatus: null,

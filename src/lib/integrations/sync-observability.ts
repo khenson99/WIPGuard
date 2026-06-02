@@ -8,7 +8,7 @@ import { CircuitOpenError, getCircuitState } from "./circuit-breaker";
  *  - userId (for per-user debugging)
  *  - timing (durationMs)
  *  - outcome (success / error / circuit_open)
- *  - key metrics extracted from the result (tasks created, errors, etc.)
+ *  - key metrics extracted from the result (artifacts emitted, errors, etc.)
  *  - circuit breaker state at the time of the call
  *
  * Usage in route handlers:
@@ -27,7 +27,7 @@ export interface SyncLogEntry {
   outcome: "success" | "error" | "circuit_open";
   circuitState: string;
   dryRun?: boolean;
-  /** Key numeric metrics pulled from the result, e.g. { createdTasks: 3, errors: 1 } */
+  /** Key numeric metrics pulled from the result, e.g. { artifactsCreated: 3, errors: 1 } */
   metrics?: Record<string, number>;
   error?: string;
 }

@@ -44,13 +44,13 @@
   --sidebar-muted: #64748b;
   --sidebar-hover: #f1f5f9;
 
-  /* Column / Board */
+  /* Metric columns */
   --column-bg: #f5f5f5;
   --column-header: #fafafa;
   --column-border: #e5e5e5;
   --drop-highlight: rgba(252, 90, 41, 0.06);
 
-  /* Task Card */
+  /* Data card */
   --card-border: #e5e5e5;
   --card-hover-border: #d4d4d4;
   --card-drag-border: #fc5a29;
@@ -61,13 +61,13 @@
   --avatar-text: #525252;
   --avatar-border: #ffffff;
 
-  /* WIP Indicators */
-  --wip-over-bg: #fef2f2;
-  --wip-over-border: #fecaca;
-  --wip-over-text: #dc2626;
-  --wip-at-bg: #fffbeb;
-  --wip-at-border: #fde68a;
-  --wip-at-text: #d97706;
+  /* Threshold indicators */
+  --threshold-over-bg: #fef2f2;
+  --threshold-over-border: #fecaca;
+  --threshold-over-text: #dc2626;
+  --threshold-at-bg: #fffbeb;
+  --threshold-at-border: #fde68a;
+  --threshold-at-text: #d97706;
 
   /* Difficulty Shading */
   --diff-low-bg: transparent;
@@ -159,13 +159,13 @@
   --sidebar-muted: #94a3b8;
   --sidebar-hover: #1e293b;
 
-  /* Column / Board */
+  /* Metric columns */
   --column-bg: #111111;
   --column-header: #141414;
   --column-border: #262626;
   --drop-highlight: rgba(252, 90, 41, 0.08);
 
-  /* Task Card */
+  /* Data card */
   --card-border: #262626;
   --card-hover-border: #3a3a3a;
   --card-drag-border: #fc5a29;
@@ -176,13 +176,13 @@
   --avatar-text: #d4d4d4;
   --avatar-border: #141414;
 
-  /* WIP Indicators */
-  --wip-over-bg: rgba(220, 38, 38, 0.08);
-  --wip-over-border: rgba(220, 38, 38, 0.3);
-  --wip-over-text: #f87171;
-  --wip-at-bg: rgba(217, 119, 6, 0.08);
-  --wip-at-border: rgba(217, 119, 6, 0.3);
-  --wip-at-text: #fbbf24;
+  /* Threshold indicators */
+  --threshold-over-bg: rgba(220, 38, 38, 0.08);
+  --threshold-over-border: rgba(220, 38, 38, 0.3);
+  --threshold-over-text: #f87171;
+  --threshold-at-bg: rgba(217, 119, 6, 0.08);
+  --threshold-at-border: rgba(217, 119, 6, 0.3);
+  --threshold-at-text: #fbbf24;
 
   /* Difficulty Shading */
   --diff-low-bg: transparent;
@@ -268,13 +268,13 @@
   --color-sidebar-muted: var(--sidebar-muted);
   --color-sidebar-hover: var(--sidebar-hover);
 
-  /* Column / Board */
+  /* Metric columns */
   --color-column-bg: var(--column-bg);
   --color-column-header: var(--column-header);
   --color-column-border: var(--column-border);
   --color-drop-highlight: var(--drop-highlight);
 
-  /* Task Card */
+  /* Data card */
   --color-card-border: var(--card-border);
   --color-card-hover-border: var(--card-hover-border);
   --color-tag-bg: var(--tag-bg);
@@ -283,13 +283,13 @@
   --color-avatar-text: var(--avatar-text);
   --color-avatar-border: var(--avatar-border);
 
-  /* WIP Indicators */
-  --color-wip-over-bg: var(--wip-over-bg);
-  --color-wip-over-border: var(--wip-over-border);
-  --color-wip-over-text: var(--wip-over-text);
-  --color-wip-at-bg: var(--wip-at-bg);
-  --color-wip-at-border: var(--wip-at-border);
-  --color-wip-at-text: var(--wip-at-text);
+  /* Threshold indicators */
+  --color-threshold-over-bg: var(--threshold-over-bg);
+  --color-threshold-over-border: var(--threshold-over-border);
+  --color-threshold-over-text: var(--threshold-over-text);
+  --color-threshold-at-bg: var(--threshold-at-bg);
+  --color-threshold-at-border: var(--threshold-at-border);
+  --color-threshold-at-text: var(--threshold-at-text);
 
   /* Form */
   --color-form-separator: var(--form-separator);
@@ -443,7 +443,7 @@ body {
   color: var(--link);
 }
 
-/* Task-modal specific utilities */
+/* Modal action utilities */
 .btn-advance-modal {
   background: var(--secondary);
   color: var(--primary);

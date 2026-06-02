@@ -137,16 +137,14 @@ interface MonthlyTenantAccumulator {
   daysActive: Set<string>;
   activeWeeks: Set<string>;
   orderCount: number;
+  orderEvents: Array<{ occurredAt: Date; key: string | null; itemKey: string | null }>;
   cardTouches: number;
   itemTouches: number;
+  itemEvents: Array<{ occurredAt: Date; key: string | null }>;
+  itemKeys: Set<string>;
+  orderedItemKeys: Set<string>;
   activeCardCount: number;
   activeItemCount: number;
-  ardaOrderRecords: number;
-  ardaCardRecords: number;
-  ardaItemRecords: number;
-  ardaUserDetailsOrderCount: number;
-  ardaUserDetailsCardCount: number;
-  ardaUserDetailsItemCount: number;
   locations: Set<string>;
   workflows: Set<string>;
   ticketsLast30: number;
@@ -329,6 +327,54 @@ function timestampToIso(timestamp: number | null): string | null {
   return timestamp ? new Date(timestamp).toISOString() : null;
 }
 
+function normalizeMetricKey(value: string | null): string | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase().replace(/\s+/g, " ");
+  return normalized.length > 0 ? normalized : null;
+}
+
+function firstStringValue(payload: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = asString(payload[key]);
+    if (value) return value;
+  }
+  return null;
+}
+
+function orderedItemKey(payload: Record<string, unknown>): string | null {
+  return normalizeMetricKey(
+    firstStringValue(payload, [
+      "itemId",
+      "item_id",
+      "itemEid",
+      "item",
+      "itemName",
+      "item_name",
+      "kanbanItemId",
+      "productId",
+      "productName",
+      "partNumber",
+      "sku",
+    ])
+  );
+}
+
+function inventoryItemKey(payload: Record<string, unknown>): string | null {
+  return normalizeMetricKey(
+    firstStringValue(payload, [
+      "itemId",
+      "id",
+      "eid",
+      "entityId",
+      "itemName",
+      "item_name",
+      "name",
+      "partNumber",
+      "sku",
+    ])
+  );
+}
+
 function ardaCreatedTimestamp(record: ArdaEntityRecord): string | null {
   return timestampToIso(asTimestamp(record.createdAt));
 }
@@ -431,14 +477,10 @@ async function fetchCodaApiRows(
 function normalizeArdaTenantConfigRow(row: CodaApiRow): ArdaTenantConfig | null {
   const values = asRecord(row.values);
   const tenantId = asString(values.tenantId) ?? "";
-  const customerName =
-    asString(asRecord(values.Customer).name) ??
-    asString(values.Customer) ??
-    asString(values.CustomerName) ??
-    null;
   const companyName =
     asString(values.CompanyName) ??
-    customerName;
+    asString(asRecord(values.Customer).name) ??
+    asString(values.Customer);
   if (!companyName) return null;
 
   const loweredTenantId = tenantId.toLowerCase();
@@ -453,7 +495,7 @@ function normalizeArdaTenantConfigRow(row: CodaApiRow): ArdaTenantConfig | null 
     configuredTenantId: tenantId,
     tenantName: companyName,
     companyName,
-    customerName,
+    customerName: null,
     customerStatus,
     health: asString(values.Health),
     mainCodaDocId: asString(values.mainCodaDocId) ?? asString(values["ActiveMainDoc ID"]),
@@ -477,7 +519,6 @@ async function discoverArdaTenantIdsByConfig(
       configs.map((config) => ({
         configuredTenantId: config.configuredTenantId,
         companyName: config.companyName,
-        customerName: config.customerName,
       })),
       rows.map((row) => {
         const values = asRecord(row.values);
@@ -504,9 +545,9 @@ function resolveArdaTenantIds(
   if (isUuid(config.tenantId)) return [config.tenantId];
   if (config.resultTenantIds.length > 0) return config.resultTenantIds;
 
-  for (const candidate of [config.companyName, config.customerName, config.tenantName]) {
-    const normalizedCompanyName = normalizeArdaCustomerName(candidate);
-    if (!normalizedCompanyName) continue;
+  const normalizedCompanyName =
+    normalizeArdaCustomerName(config.companyName) ?? normalizeArdaCustomerName(config.tenantName);
+  if (normalizedCompanyName) {
     const manualTenantIds = ARDA_CUSTOMER_TENANT_IDS[normalizedCompanyName];
     if (manualTenantIds?.length) return manualTenantIds;
   }
@@ -638,7 +679,7 @@ async function queryArdaCollection(
   const sharedHeaders = {
     Accept: "application/json",
     "Content-Type": "application/json",
-    "X-Author": process.env.ARDA_API_AUTHOR?.trim() || "WIPGuard-retention-sync",
+    "X-Author": process.env.ARDA_API_AUTHOR?.trim() || "Imladris-retention-sync",
     "X-Tenant-Id": tenantId,
   };
 
@@ -1309,6 +1350,7 @@ async function loadArdaSourceRecords(): Promise<SourceSeedRecord[]> {
           tenantName: config.tenantName,
           companyName: config.companyName,
           orderId: ardaRecordId(record),
+          itemId: orderedItemKey(payload),
           locationId: asString(payload.locationId),
           workflowId: asString(payload.workflowId),
           quantity: asNumber(payload.quantity),
@@ -1460,16 +1502,14 @@ function initAccumulator(customerRecordId: string, monthStart: Date, monthEnd: D
     daysActive: new Set<string>(),
     activeWeeks: new Set<string>(),
     orderCount: 0,
+    orderEvents: [],
     cardTouches: 0,
     itemTouches: 0,
+    itemEvents: [],
+    itemKeys: new Set<string>(),
+    orderedItemKeys: new Set<string>(),
     activeCardCount: 0,
     activeItemCount: 0,
-    ardaOrderRecords: 0,
-    ardaCardRecords: 0,
-    ardaItemRecords: 0,
-    ardaUserDetailsOrderCount: 0,
-    ardaUserDetailsCardCount: 0,
-    ardaUserDetailsItemCount: 0,
     locations: new Set<string>(),
     workflows: new Set<string>(),
     ticketsLast30: 0,
@@ -1492,29 +1532,9 @@ function addActivity(acc: MonthlyTenantAccumulator, occurredAt: Date | null): vo
   acc.activeWeeks.add(weekKey(occurredAt));
 }
 
-function ardaActivityRecordCount(acc: MonthlyTenantAccumulator): number {
-  return acc.ardaOrderRecords + acc.ardaCardRecords + acc.ardaItemRecords;
-}
-
-function ardaUserDetailsFallbackAvailable(acc: MonthlyTenantAccumulator): boolean {
-  return (
-    acc.ardaUserDetailsOrderCount > 0 ||
-    acc.ardaUserDetailsCardCount > 0 ||
-    acc.ardaUserDetailsItemCount > 0
-  );
-}
-
-function ardaAdoptionCountsSource(acc: MonthlyTenantAccumulator): "ARDA_ACTIVITY" | "ARDA_USER_DETAILS" | "NONE" {
-  if (ardaActivityRecordCount(acc) > 0) return "ARDA_ACTIVITY";
-  if (ardaUserDetailsFallbackAvailable(acc)) return "ARDA_USER_DETAILS";
-  return "NONE";
-}
-
 function mergeSourceRecord(acc: MonthlyTenantAccumulator, record: { source: string; objectType: string; occurredAt: Date | null; payload: Record<string, unknown> }): void {
   const payload = record.payload;
-  if (!(record.source === "ARDA" && record.objectType === "tenant")) {
-    addActivity(acc, record.occurredAt);
-  }
+  addActivity(acc, record.occurredAt);
 
   if (record.source === "HUBSPOT") {
     acc.coverage.hubspot = true;
@@ -1541,6 +1561,15 @@ function mergeSourceRecord(acc: MonthlyTenantAccumulator, record: { source: stri
     acc.orderCount += 1;
     acc.plan = acc.plan ?? asString(payload.plan);
     const orderDate = parseDate(payload.orderDate);
+    const itemKey = orderedItemKey(payload);
+    if (itemKey) acc.orderedItemKeys.add(itemKey);
+    if (record.occurredAt) {
+      acc.orderEvents.push({
+        occurredAt: record.occurredAt,
+        key: asString(payload.orderId) ?? asString(payload.externalId),
+        itemKey,
+      });
+    }
     if (orderDate && (!acc.firstOrderDate || orderDate < new Date(acc.firstOrderDate))) {
       acc.firstOrderDate = orderDate.toISOString();
     }
@@ -1567,26 +1596,6 @@ function mergeSourceRecord(acc: MonthlyTenantAccumulator, record: { source: stri
     if (record.objectType === "tenant") {
       acc.goLiveDate = asString(payload.goLiveDate) ?? acc.goLiveDate;
       acc.implementationStage = asString(payload.implementationStage) ?? acc.implementationStage;
-      acc.ardaUserDetailsOrderCount = Math.max(
-        acc.ardaUserDetailsOrderCount,
-        asNumber(payload.userDetailsOrderCount) ?? 0
-      );
-      acc.ardaUserDetailsCardCount = Math.max(
-        acc.ardaUserDetailsCardCount,
-        asNumber(payload.userDetailsCardCount) ?? 0
-      );
-      acc.ardaUserDetailsItemCount = Math.max(
-        acc.ardaUserDetailsItemCount,
-        asNumber(payload.userDetailsItemCount) ?? 0
-      );
-      acc.activeCardCount = Math.max(
-        acc.activeCardCount,
-        asNumber(payload.userDetailsCardCount) ?? 0
-      );
-      acc.activeItemCount = Math.max(
-        acc.activeItemCount,
-        asNumber(payload.userDetailsItemCount) ?? 0
-      );
       if (asNumber(payload.locationsCount)) {
         for (let i = 0; i < Number(payload.locationsCount); i += 1) acc.locations.add(`loc-${i + 1}`);
       }
@@ -1595,8 +1604,16 @@ function mergeSourceRecord(acc: MonthlyTenantAccumulator, record: { source: stri
       }
     }
     if (record.objectType === "order") {
-      acc.ardaOrderRecords += 1;
       acc.orderCount += 1;
+      const itemKey = orderedItemKey(payload);
+      if (itemKey) acc.orderedItemKeys.add(itemKey);
+      if (record.occurredAt) {
+        acc.orderEvents.push({
+          occurredAt: record.occurredAt,
+          key: asString(payload.orderId),
+          itemKey,
+        });
+      }
       const locationId = asString(payload.locationId);
       if (locationId) acc.locations.add(locationId);
       const workflowId = asString(payload.workflowId);
@@ -1607,15 +1624,21 @@ function mergeSourceRecord(acc: MonthlyTenantAccumulator, record: { source: stri
       }
     }
     if (record.objectType === "card") {
-      acc.ardaCardRecords += 1;
       acc.cardTouches += 1;
       if (asBoolean(payload.active)) acc.activeCardCount += 1;
       const locationId = asString(payload.locationId);
       if (locationId) acc.locations.add(locationId);
     }
     if (record.objectType === "item") {
-      acc.ardaItemRecords += 1;
       acc.itemTouches += 1;
+      const itemKey = inventoryItemKey(payload);
+      if (itemKey) acc.itemKeys.add(itemKey);
+      if (record.occurredAt) {
+        acc.itemEvents.push({
+          occurredAt: record.occurredAt,
+          key: itemKey,
+        });
+      }
       if (asBoolean(payload.active)) acc.activeItemCount += 1;
       const locationId = asString(payload.locationId);
       if (locationId) acc.locations.add(locationId);
@@ -1717,9 +1740,45 @@ function computeActiveWeeksTrailing8(
   return seenWeeks.size;
 }
 
+function uniqueEventCount<T extends { key: string | null }>(events: T[]): number {
+  const keyed = new Set(events.map((event) => event.key).filter((key): key is string => Boolean(key)));
+  return keyed.size > 0 ? keyed.size : events.length;
+}
+
+function cumulativeThresholdDate<T extends { occurredAt: Date; key: string | null }>(
+  events: T[],
+  threshold: number
+): Date | null {
+  const sorted = [...events].sort((left, right) => left.occurredAt.getTime() - right.occurredAt.getTime());
+  const seen = new Set<string>();
+  let count = 0;
+
+  for (const event of sorted) {
+    if (event.key) {
+      if (seen.has(event.key)) continue;
+      seen.add(event.key);
+      count = seen.size;
+    } else {
+      count += 1;
+    }
+
+    if (count >= threshold) return event.occurredAt;
+  }
+
+  return null;
+}
+
+function daysFromStart(startDate: string | null, endDate: Date | null): number | null {
+  if (!startDate || !endDate) return null;
+  const start = parseDate(startDate);
+  if (!start) return null;
+  return Math.max(0, Math.round((endDate.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)));
+}
+
 function buildFeaturePayload(
   acc: MonthlyTenantAccumulator,
   trailing: MonthlyTenantAccumulator[],
+  history: MonthlyTenantAccumulator[],
   lifecycleStartDate: string | null,
   onboardingStartDate: string | null
 ): RetentionFeaturePayload {
@@ -1734,6 +1793,32 @@ function buildFeaturePayload(
       ? Math.round((new Date(acc.firstOrderDate).getTime() - new Date(onboardingStartDate).getTime()) / (24 * 60 * 60 * 1000))
       : null;
   const activeWeeksTrailing8 = computeActiveWeeksTrailing8(acc, trailing);
+  const cumulativeMonths = [...history, acc];
+  const cumulativeOrderEvents = cumulativeMonths.flatMap((month) => month.orderEvents);
+  const cumulativeItemEvents = cumulativeMonths.flatMap((month) => month.itemEvents);
+  const cumulativeOrderedItemEvents = cumulativeOrderEvents
+    .filter((event) => event.itemKey)
+    .map((event) => ({ occurredAt: event.occurredAt, key: event.itemKey }));
+  const totalOrders = cumulativeOrderEvents.length;
+  const totalItems =
+    uniqueEventCount(cumulativeItemEvents) > 0
+      ? uniqueEventCount(cumulativeItemEvents)
+      : uniqueEventCount(cumulativeOrderedItemEvents);
+  const uniqueItemsOrdered = uniqueEventCount(cumulativeOrderedItemEvents);
+  const tenthOrderDate = cumulativeThresholdDate(
+    cumulativeOrderEvents.map((event, index) => ({
+      occurredAt: event.occurredAt,
+      key: event.key ?? `order-event-${index}`,
+    })),
+    10
+  );
+  const twentyFifthItemDate = cumulativeThresholdDate(
+    (cumulativeItemEvents.length > 0 ? cumulativeItemEvents : cumulativeOrderedItemEvents).map((event, index) => ({
+      occurredAt: event.occurredAt,
+      key: event.key ?? `item-event-${index}`,
+    })),
+    25
+  );
 
   return {
     commercial: {
@@ -1746,30 +1831,25 @@ function buildFeaturePayload(
     },
     usage: {
       ordersPerMonth: acc.orderCount,
+      totalOrders,
       cardTouchesLast30: acc.cardTouches,
       itemTouchesLast30: acc.itemTouches,
+      uniqueItemsOrdered,
       currentMonthActivity: acc.orderCount + acc.cardTouches + acc.itemTouches,
       daysActiveLast30: acc.daysActive.size,
       firstOrderDate: acc.firstOrderDate,
+      tenthOrderDate: isoOrNull(tenthOrderDate),
+      daysTo10Orders: daysFromStart(onboardingStartDate ?? lifecycleStartDate, tenthOrderDate),
     },
     adoption: {
       activeCardCount: acc.activeCardCount,
       activeItemCount: acc.activeItemCount,
+      totalItems,
       locationCount: acc.locations.size,
       workflowCount: acc.workflows.size,
       breadthScore: acc.locations.size + acc.workflows.size + (acc.activeCardCount > 0 ? 1 : 0) + (acc.activeItemCount > 0 ? 1 : 0),
-      ardaAdoptionCountsSource: ardaAdoptionCountsSource(acc),
-      ardaActivityCollectionAvailable: ardaActivityRecordCount(acc) > 0,
-      ardaDirectActivityCounts: {
-        orders: acc.ardaOrderRecords,
-        cards: acc.ardaCardRecords,
-        items: acc.ardaItemRecords,
-      },
-      ardaUserDetailsCounts: {
-        orders: acc.ardaUserDetailsOrderCount,
-        cards: acc.ardaUserDetailsCardCount,
-        items: acc.ardaUserDetailsItemCount,
-      },
+      twentyFifthItemDate: isoOrNull(twentyFifthItemDate),
+      daysTo25Items: daysFromStart(onboardingStartDate ?? lifecycleStartDate, twentyFifthItemDate),
     },
     support: {
       ticketsLast30: acc.ticketsLast30,
@@ -1793,6 +1873,11 @@ function buildFeaturePayload(
       activeWeeksTrailing8,
       recentBaselineRatio,
       ordersPerMonth: acc.orderCount,
+      totalOrders,
+      totalItems,
+      uniqueItemsOrdered,
+      daysTo10Orders: daysFromStart(onboardingStartDate ?? lifecycleStartDate, tenthOrderDate),
+      daysTo25Items: daysFromStart(onboardingStartDate ?? lifecycleStartDate, twentyFifthItemDate),
       daysActiveLast30: acc.daysActive.size,
       timeToFirstOrderDays,
     },
@@ -1808,8 +1893,6 @@ function buildCoverage(acc: MonthlyTenantAccumulator): RetentionCoveragePayload 
   if (!acc.coverage.pylon) missingSources.push("pylon");
   return {
     ...acc.coverage,
-    ardaActivityCollectionAvailable: ardaActivityRecordCount(acc) > 0,
-    ardaUserDetailsFallback: ardaUserDetailsFallbackAvailable(acc),
     missingSources,
   };
 }
@@ -1928,20 +2011,6 @@ function buildReasonCodes(
       })
     );
   }
-  if (acc.coverage.arda && ardaActivityRecordCount(acc) === 0) {
-    reasons.push(
-      buildReasonCode({
-        code: "arda_activity_unavailable",
-        label: "Arda activity history unavailable",
-        detail:
-          ardaAdoptionCountsSource(acc) === "ARDA_USER_DETAILS"
-            ? "Arda item/card/order history is unavailable, so adoption breadth is currently sourced from User Details snapshot counts."
-            : "Arda tenant metadata is present, but item/card/order history is unavailable for this tenant.",
-        severity: "info",
-        dimension: "data",
-      })
-    );
-  }
   return reasons;
 }
 
@@ -2014,7 +2083,7 @@ export async function buildRetentionDataset(actor: RetentionActor): Promise<void
         const lifecycleStartDate = deriveLifecycleStartDate(current, history);
         const onboardingStartDate = deriveOnboardingStartDate(current, history);
         const future = months.slice(index + 1);
-        const featurePayload = buildFeaturePayload(current, trailing, lifecycleStartDate, onboardingStartDate);
+        const featurePayload = buildFeaturePayload(current, trailing, history, lifecycleStartDate, onboardingStartDate);
         const outcomePayload = buildOutcomePayload(current, future, featurePayload);
         const coveragePayload = buildCoverage(current);
         const lifecyclePhase = determineLifecyclePhase({

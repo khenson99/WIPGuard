@@ -81,8 +81,6 @@ export function integrationProviderFromString(
       return IntegrationProvider.PYLON;
     case "SEMRUSH":
       return IntegrationProvider.SEMRUSH;
-    case "WIPGUARD":
-      return IntegrationProvider.WIPGUARD;
     default:
       return null;
   }

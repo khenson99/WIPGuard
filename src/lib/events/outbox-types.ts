@@ -43,71 +43,24 @@ export interface OutboxEvent {
 // Domain Event Payloads
 // ---------------------------------------------------------------------------
 
-export interface TaskCreatedPayload {
-  taskId: string;
-  title: string;
-  projectId: string | null;
-  assigneeId: string | null;
-  priority: string | null;
-  createdBy: string;
+export interface MetricRefreshedPayload {
+  metricKey: string;
+  sourceKey: string;
+  value: unknown;
+  refreshedBy: string;
 }
 
-export interface TaskMovedPayload {
-  taskId: string;
-  fromColumn: string;
-  toColumn: string;
-  movedBy: string;
+export interface DashboardComputedPayload {
+  dashboardId: string;
+  metricKeys: string[];
+  computedBy: string;
 }
 
-export interface TaskAssignedPayload {
-  taskId: string;
-  previousAssigneeId: string | null;
-  newAssigneeId: string;
-  assignedBy: string;
-}
-
-export interface TaskUpdatedPayload {
-  taskId: string;
-  changes: Record<string, { from: unknown; to: unknown }>;
-  updatedBy: string;
-}
-
-export interface TaskDeletedPayload {
-  taskId: string;
-  deletedBy: string;
-}
-
-export interface TaskBlockedPayload {
-  taskId: string;
-  reason: string;
-  blockedBy: string;
-}
-
-export interface TaskUnblockedPayload {
-  taskId: string;
-  unblockedBy: string;
-}
-
-export interface SprintStartedPayload {
-  sprintId: string;
-  name: string;
-  startDate: string;
-  endDate: string;
-  startedBy: string;
-}
-
-export interface SprintCompletedPayload {
-  sprintId: string;
-  name: string;
-  completedTaskCount: number;
-  totalTaskCount: number;
-  completedBy: string;
-}
-
-export interface SprintPlanningPayload {
-  sprintId: string;
-  taskIds: string[];
-  plannedBy: string;
+export interface AlertRaisedPayload {
+  alertId: string;
+  metricKey: string;
+  severity: "info" | "warning" | "critical";
+  raisedBy: string;
 }
 
 export interface IntegrationSyncPayload {
@@ -122,16 +75,9 @@ export interface IntegrationSyncPayload {
 // ---------------------------------------------------------------------------
 
 export type DomainEvent =
-  | { eventType: "task.created"; aggregateType: "task"; payload: TaskCreatedPayload }
-  | { eventType: "task.moved"; aggregateType: "task"; payload: TaskMovedPayload }
-  | { eventType: "task.assigned"; aggregateType: "task"; payload: TaskAssignedPayload }
-  | { eventType: "task.updated"; aggregateType: "task"; payload: TaskUpdatedPayload }
-  | { eventType: "task.deleted"; aggregateType: "task"; payload: TaskDeletedPayload }
-  | { eventType: "task.blocked"; aggregateType: "task"; payload: TaskBlockedPayload }
-  | { eventType: "task.unblocked"; aggregateType: "task"; payload: TaskUnblockedPayload }
-  | { eventType: "sprint.started"; aggregateType: "sprint"; payload: SprintStartedPayload }
-  | { eventType: "sprint.completed"; aggregateType: "sprint"; payload: SprintCompletedPayload }
-  | { eventType: "sprint.planning"; aggregateType: "sprint"; payload: SprintPlanningPayload }
+  | { eventType: "metric.refreshed"; aggregateType: "metric"; payload: MetricRefreshedPayload }
+  | { eventType: "dashboard.computed"; aggregateType: "dashboard"; payload: DashboardComputedPayload }
+  | { eventType: "alert.raised"; aggregateType: "alert"; payload: AlertRaisedPayload }
   | { eventType: "integration.sync"; aggregateType: "integration"; payload: IntegrationSyncPayload };
 
 /**
@@ -146,16 +92,9 @@ export type PayloadFor<T extends DomainEvent["eventType"]> = Extract<
  * All known event type strings.
  */
 export const DOMAIN_EVENT_TYPES = [
-  "task.created",
-  "task.moved",
-  "task.assigned",
-  "task.updated",
-  "task.deleted",
-  "task.blocked",
-  "task.unblocked",
-  "sprint.started",
-  "sprint.completed",
-  "sprint.planning",
+  "metric.refreshed",
+  "dashboard.computed",
+  "alert.raised",
   "integration.sync",
 ] as const satisfies readonly DomainEvent["eventType"][];
 

@@ -2,6 +2,10 @@ export const dynamic = "force-dynamic";
 
 import { timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import {
+  IntegrationConnectionStatus,
+  IntegrationProvider,
+} from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getAuthenticatedUser } from "@/lib/session-user";
@@ -19,6 +23,8 @@ import {
   VISITOR_FUNNEL_PRISMA_UNAVAILABLE_REASON,
   getVisitorFunnelPrisma,
 } from "@/lib/analytics/visitor-funnel-availability";
+import { ingestImladrisRawRecords } from "@/lib/imladris/ingestion";
+import { buildImladrisRawRecordsFromPayload } from "@/lib/imladris/raw-records";
 
 const SUPPORTED_PROVIDERS = new Set<EnrichmentProvider>(["unify", "clay", "rb2b"]);
 
@@ -151,6 +157,127 @@ function buildDisabledPreviewRows(signals: VisitorEnrichmentSignalInput[]): Reco
   });
 }
 
+function parsedSignalDate(signal: VisitorEnrichmentSignalInput): Date | null {
+  const occurredAt = trimOrNull(signal.occurredAt);
+  if (!occurredAt) return null;
+  const parsed = new Date(occurredAt);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function signalWindow(signals: VisitorEnrichmentSignalInput[], now: Date): {
+  windowStart: Date;
+  windowEnd: Date;
+} {
+  const timestamps = signals
+    .map(parsedSignalDate)
+    .filter((date): date is Date => Boolean(date))
+    .map((date) => date.getTime());
+  if (timestamps.length === 0) {
+    return {
+      windowStart: now,
+      windowEnd: now,
+    };
+  }
+
+  return {
+    windowStart: new Date(Math.min(...timestamps)),
+    windowEnd: now,
+  };
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return typeof error === "string" ? error : "Unknown error";
+}
+
+async function persistEnrichmentConnectionFreshness(input: {
+  userId: string | null | undefined;
+  syncedAt: Date;
+}): Promise<string[]> {
+  const userId = trimOrNull(input.userId);
+  if (!userId) return [];
+
+  const data = {
+    status: IntegrationConnectionStatus.CONNECTED,
+    lastSyncedAt: input.syncedAt,
+    lastError: null,
+  };
+  try {
+    const updateResult = await prisma.integrationConnection.updateMany({
+      where: {
+        userId,
+        provider: IntegrationProvider.UNIFY,
+      },
+      data,
+    });
+    if (updateResult?.count === 0) {
+      await prisma.integrationConnection.upsert({
+        where: {
+          userId_provider: {
+            userId,
+            provider: IntegrationProvider.UNIFY,
+          },
+        },
+        update: data,
+        create: {
+          userId,
+          provider: IntegrationProvider.UNIFY,
+          ...data,
+        },
+      });
+    }
+    return [];
+  } catch (error) {
+    return [
+      `Integration connection freshness persistence failed: ${errorMessage(error)}`,
+    ];
+  }
+}
+
+async function persistEnrichmentConnectionFailure(input: {
+  userId: string | null | undefined;
+  message: string;
+}): Promise<string[]> {
+  const userId = trimOrNull(input.userId);
+  if (!userId) return [];
+
+  const data = {
+    status: IntegrationConnectionStatus.ERROR,
+    lastSyncedAt: null,
+    lastError: input.message,
+  };
+  try {
+    const updateResult = await prisma.integrationConnection.updateMany({
+      where: {
+        userId,
+        provider: IntegrationProvider.UNIFY,
+      },
+      data,
+    });
+    if (updateResult?.count === 0) {
+      await prisma.integrationConnection.upsert({
+        where: {
+          userId_provider: {
+            userId,
+            provider: IntegrationProvider.UNIFY,
+          },
+        },
+        update: data,
+        create: {
+          userId,
+          provider: IntegrationProvider.UNIFY,
+          ...data,
+        },
+      });
+    }
+    return [];
+  } catch (error) {
+    return [
+      `Integration connection failure persistence failed: ${errorMessage(error)}`,
+    ];
+  }
+}
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ provider: string }> },
@@ -208,12 +335,27 @@ export async function POST(
         );
       }
 
-      signals = await pullUnifySignalsFromApi({
+      const pullResult = await pullUnifySignalsFromApi({
         apiKey,
         objectName,
         updatedAfter: trimOrNull(typeof body.updatedAfter === "string" ? body.updatedAfter : null),
         maxRecords: typeof body.maxRecords === "number" ? body.maxRecords : null,
       });
+      if (pullResult.truncated) {
+        return NextResponse.json(
+          {
+            error: `Unify pull returned ${pullResult.returned}/${pullResult.totalFiltered} filtered records; no enrichment signals were stored.`,
+            dryRun,
+            mode,
+            provider,
+            received: pullResult.returned,
+            totalFiltered: pullResult.totalFiltered,
+            maxRecords: pullResult.maxRecords,
+          },
+          { status: 409 },
+        );
+      }
+      signals = pullResult.signals;
     } else {
       mode = "native";
       signals = normalizeNativeProviderSignals(provider, body);
@@ -279,11 +421,76 @@ export async function POST(
       );
     }
 
+    const now = new Date();
+    const { windowStart, windowEnd } = signalWindow(signals, now);
+    const deliveryMode = mode === "pull" ? "pull" : "push";
+    const rawRecords = buildImladrisRawRecordsFromPayload({
+      provider: IntegrationProvider.UNIFY,
+      snapshotKey: "visitorFunnel",
+      payload: {
+        signals: signals.map((signal) => ({
+          ...signal,
+          enrichmentProvider: provider,
+        })),
+        enrichmentProvider: provider,
+        deliveryMode,
+        received: signals.length,
+      },
+      from: windowStart.toISOString(),
+      to: windowEnd.toISOString(),
+      capturedAt: now,
+    });
+    const rawResult = await ingestImladrisRawRecords({
+      prisma,
+      provider: IntegrationProvider.UNIFY,
+      context: {
+        userId: user?.id ?? null,
+        organizationId: user?.organizationId ?? null,
+      },
+      records: rawRecords,
+      mode: "incremental",
+      windowStart,
+      windowEnd,
+      checkpoint: {
+        providerKey: provider,
+        deliveryMode,
+        signalCount: signals.length,
+      },
+      now,
+    });
+    if (rawResult.status === "ERROR" || rawResult.status === "PARTIAL") {
+      const ingestionMessage = `Imladris raw ingestion ${
+        rawResult.status === "PARTIAL" ? "partially succeeded" : "failed"
+      } for ${provider}; enrichment signals were not stored.`;
+      const statusPersistenceErrors = await persistEnrichmentConnectionFailure({
+        userId: user?.id,
+        message: ingestionMessage,
+      });
+      return NextResponse.json(
+        {
+          error: ingestionMessage,
+          dryRun: false,
+          mode,
+          provider,
+          rawAccepted: rawResult.acceptedCount,
+          rawErrors: rawResult.errorCount,
+          rawRecordCount: rawResult.recordCount,
+          received: signals.length,
+          ...(statusPersistenceErrors.length > 0 ? { statusPersistenceErrors } : {}),
+        },
+        { status: 502 },
+      );
+    }
+
     const result = await ingestVisitorEnrichmentSignals(
       funnelPrisma,
       provider,
       signals,
     );
+    const statusPersistenceErrors = await persistEnrichmentConnectionFreshness({
+      userId: user?.id,
+      syncedAt: now,
+    });
     return NextResponse.json(
       {
         ...result,
@@ -291,6 +498,7 @@ export async function POST(
         mode,
         provider,
         received: signals.length,
+        ...(statusPersistenceErrors.length > 0 ? { statusPersistenceErrors } : {}),
       },
       { status: 202 },
     );

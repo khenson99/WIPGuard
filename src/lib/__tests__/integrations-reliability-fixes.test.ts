@@ -146,8 +146,8 @@ describe("orchestrator structured error logging", () => {
             .mockResolvedValueOnce([
               {
                 id: "rule_1",
-                key: "legacy_workflow_rule",
-                provider: "SLACK",
+                key: "stripe_revenue",
+                provider: "STRIPE",
                 enabled: true,
                 userId: "user_1",
               },
@@ -161,16 +161,66 @@ describe("orchestrator structured error logging", () => {
       resolveIntegrationOrganizationId: vi.fn(async () => "org_1"),
     }));
 
+    // Mock all other imports to prevent errors
     vi.doMock("@/lib/integrations/provider-metrics-sync", () => ({
+      CODA_DOC_SYNC_RULE_KEY: "coda_doc_sync",
+      GITHUB_PULL_REQUESTS_SYNC_RULE_KEY: "github_pull_requests",
+      GOOGLE_ANALYTICS_TRAFFIC_SYNC_RULE_KEY: "google_analytics_traffic",
+      GOOGLE_SEARCH_CONSOLE_SYNC_RULE_KEY: "google_search_console",
       GOOGLE_ADS_METRICS_RULE_KEY: "google_ads_metrics",
+      GOOGLE_WORKSPACE_ACTIVITY_SYNC_RULE_KEY: "google_workspace_activity",
+      HUBSPOT_PIPELINE_SYNC_RULE_KEY: "hubspot_pipeline",
+      LINEAR_ISSUES_SYNC_RULE_KEY: "linear_issues",
       META_ADS_METRICS_RULE_KEY: "meta_ads_metrics",
       META_INSTAGRAM_METRICS_RULE_KEY: "meta_instagram_metrics",
       META_PAGE_METRICS_RULE_KEY: "meta_page_metrics",
       MERCURY_CASHFLOW_SYNC_RULE_KEY: "mercury_cashflow",
+      POSTHOG_PRODUCT_EVENTS_SYNC_RULE_KEY: "posthog_product_events",
       PYLON_CONVERSATION_SYNC_RULE_KEY: "pylon_conversations",
       REDDIT_ADS_METRICS_RULE_KEY: "reddit_ads_metrics",
+      SEMRUSH_DOMAIN_SYNC_RULE_KEY: "semrush_domain",
+      SLACK_ACTIVITY_SYNC_RULE_KEY: "slack_activity",
       STRIPE_REVENUE_SYNC_RULE_KEY: "stripe_revenue",
-      runProviderMetricsRule: vi.fn(),
+      WEBFLOW_SITE_SYNC_RULE_KEY: "webflow_site",
+      ensureProviderMetricsRulesForConnectedProviders: vi.fn(async () => ({
+        created: 0,
+        examined: 0,
+      })),
+      runProviderMetricsRule: vi.fn().mockRejectedValue(new Error("Stripe token expired")),
+    }));
+
+    vi.doMock("@/lib/integrations/slack-unanswered-requests", () => ({
+      runSlackUnansweredDetector: vi.fn(),
+    }));
+    vi.doMock("@/lib/integrations/google-gmail-capture", () => ({
+      runGmailCapture: vi.fn(),
+    }));
+    vi.doMock("@/lib/integrations/google-drive-comment-escalation", () => ({
+      runGoogleDriveCommentEscalation: vi.fn(),
+    }));
+    vi.doMock("@/lib/integrations/google-calendar-followup", () => ({
+      runGoogleCalendarPrepFollowup: vi.fn(),
+    }));
+    vi.doMock("@/lib/integrations/hubspot-stage-checklist", () => ({
+      runHubSpotStageChecklist: vi.fn(),
+    }));
+    vi.doMock("@/lib/integrations/hubspot-risk-intervention", () => ({
+      runHubSpotRiskIntervention: vi.fn(),
+    }));
+    vi.doMock("@/lib/integrations/hubspot-customer-signals", () => ({
+      runHubSpotCustomerSignalAutomation: vi.fn(),
+    }));
+    vi.doMock("@/lib/integrations/hubspot-bidirectional-sync", () => ({
+      runHubSpotBidirectionalSync: vi.fn(),
+    }));
+    vi.doMock("@/lib/integrations/coda-row-sync", () => ({
+      runCodaRowSync: vi.fn(),
+    }));
+    vi.doMock("@/lib/integrations/coda-dependency-gates", () => ({
+      runCodaDependencyGateAutomation: vi.fn(),
+    }));
+    vi.doMock("@/lib/integrations/coda-decision-actions", () => ({
+      runCodaDecisionActionConverter: vi.fn(),
     }));
 
     const { runRules } = await import("@/lib/integrations/orchestrator");
@@ -182,12 +232,18 @@ describe("orchestrator structured error logging", () => {
     });
 
     // Orchestrator should continue (not throw)
-    expect(result.executedRules).toBe(0);
+    expect(result.executedRules).toBe(1);
 
-    // Retired workflow rules should now be skipped entirely.
-    expect(errorSpy).not.toHaveBeenCalledWith(
+    // And should have logged the error with structured details
+    expect(errorSpy).toHaveBeenCalledWith(
       "integration.orchestrator.rule_failed",
-      expect.anything()
+      expect.objectContaining({
+        ruleId: "rule_1",
+        ruleKey: "stripe_revenue",
+        provider: "STRIPE",
+        userId: "user_1",
+        error: "Stripe token expired",
+      })
     );
 
     errorSpy.mockRestore();
@@ -195,7 +251,92 @@ describe("orchestrator structured error logging", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. Slack notifications timeout
+// 3. Manual provider sync degraded responses
+// ---------------------------------------------------------------------------
+
+describe("manual provider sync API degradation responses", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.restoreAllMocks();
+  });
+
+  it("surfaces metadata persistence warnings when manual provider sync data was pulled", async () => {
+    const runProviderMetricsRuleMock = vi.fn(async () => ({
+      ruleId: "rule_1",
+      ruleKey: "stripe_revenue_sync",
+      provider: "STRIPE",
+      snapshotKey: "stripe",
+      dryRun: false,
+      rangePreset: "30d",
+      from: "2026-05-02",
+      to: "2026-06-01",
+      capturedAt: "2026-06-01T12:00:00.000Z",
+      rawRecordCount: 7,
+      acceptedRawRecordCount: 7,
+      statusPersistenceErrors: [
+        "integrationConnection status persistence failed: connection lastSyncedAt write failed",
+      ],
+    }));
+    vi.doMock("@/lib/auth", () => ({
+      auth: vi.fn(async () => ({ user: { id: "user_1" } })),
+    }));
+    vi.doMock("@/lib/permissions", () => ({
+      enforcePermission: vi.fn(async () => ({ deniedResponse: null })),
+    }));
+    vi.doMock("@/lib/integrations/ownership", () => ({
+      resolveIntegrationOwnerUserId: (userId: string) => `owner:${userId}`,
+    }));
+    vi.doMock("@/lib/integrations/provider-metrics-sync", () => ({
+      CODA_DOC_SYNC_RULE_KEY: "coda_doc_sync",
+      STRIPE_REVENUE_SYNC_RULE_KEY: "stripe_revenue_sync",
+      getOrCreateProviderMetricsRule: vi.fn(),
+      patchProviderMetricsRule: vi.fn(),
+      serializeProviderMetricsRuleState: vi.fn(),
+      buildProviderMetricsSyncResponsePayload: (result: {
+        statusPersistenceErrors?: string[];
+      }) => ({
+        ok: true,
+        action: "sync",
+        degraded: Boolean(result.statusPersistenceErrors?.length),
+        warnings: result.statusPersistenceErrors ?? [],
+        result,
+      }),
+      runProviderMetricsRule: runProviderMetricsRuleMock,
+    }));
+
+    const { POST } = await import("@/app/api/integrations/stripe/revenue-sync/route");
+    const response = await POST(
+      new Request("http://localhost/api/integrations/stripe/revenue-sync", {
+        method: "POST",
+        body: JSON.stringify({ action: "sync", mode: "backfill" }),
+      }) as never,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      action: "sync",
+      degraded: true,
+      warnings: [
+        "integrationConnection status persistence failed: connection lastSyncedAt write failed",
+      ],
+      result: {
+        rawRecordCount: 7,
+        acceptedRawRecordCount: 7,
+      },
+    });
+    expect(runProviderMetricsRuleMock).toHaveBeenCalledWith({
+      userId: "owner:user_1",
+      ruleKey: "stripe_revenue_sync",
+      dryRun: undefined,
+      mode: "backfill",
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4. Slack notifications timeout
 // ---------------------------------------------------------------------------
 
 describe("slack-notifications SLACK_API_TIMEOUT_MS constant", () => {

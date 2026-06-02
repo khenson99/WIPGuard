@@ -1,14 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import DashboardPage from "@/app/(dashboard)/dashboard/page";
-import TasksPage from "@/app/(dashboard)/tasks/page";
-import BoardPage from "@/app/(dashboard)/board/page";
-import MyTasksPage from "@/app/(dashboard)/my-tasks/page";
-import ProjectsPage from "@/app/(dashboard)/projects/page";
-import StandupPage from "@/app/(dashboard)/standup/page";
-import TodayPage from "@/app/(dashboard)/today/page";
-import WhipPage from "@/app/(dashboard)/whip/page";
-import TablePage from "@/app/(dashboard)/table/page";
-import LogbookPage from "@/app/(dashboard)/logbook/page";
 import { ANALYTICS_HOME } from "@/lib/platform/routes";
 
 vi.mock("next/navigation", () => ({
@@ -17,17 +10,20 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-const routes = [
+const redirectRoutes = [
   ["dashboard", DashboardPage],
-  ["tasks", TasksPage],
-  ["board", BoardPage],
-  ["my-tasks", MyTasksPage],
-  ["projects", ProjectsPage],
-  ["standup", StandupPage],
-  ["today", TodayPage],
-  ["whip", WhipPage],
-  ["table", TablePage],
-  ["logbook", LogbookPage],
+] as const;
+
+const retiredRoutes = [
+  "tasks",
+  "board",
+  "my-tasks",
+  "projects",
+  "standup",
+  "today",
+  "whip",
+  "table",
+  "logbook",
 ] as const;
 
 describe("legacy product routes", () => {
@@ -35,10 +31,14 @@ describe("legacy product routes", () => {
     vi.clearAllMocks();
   });
 
-  it.each(routes)("redirects /%s to metrics", async (_name, Page) => {
+  it.each(redirectRoutes)("redirects /%s to metrics", async (_name, Page) => {
     const { redirect } = await import("next/navigation");
 
     await expect(async () => Page()).rejects.toThrow(`NEXT_REDIRECT:${ANALYTICS_HOME}`);
     expect(redirect).toHaveBeenCalledWith(ANALYTICS_HOME);
+  });
+
+  it.each(retiredRoutes)("does not ship a visible /%s page", (route) => {
+    expect(existsSync(join(process.cwd(), "src/app/(dashboard)", route, "page.tsx"))).toBe(false);
   });
 });

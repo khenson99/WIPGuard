@@ -9,6 +9,7 @@ function baseData(): AnalyticsDashboardData {
     stripe: null,
     mercury: null,
     googleAnalytics: null,
+    googleSearchConsole: null,
     googleAds: null,
     metaAds: null,
     metaPage: null,
@@ -42,6 +43,7 @@ function baseData(): AnalyticsDashboardData {
         "customer-journey": [],
         "demo-analytics": [],
         "process-analytics": [],
+        revenue: [],
       },
     },
     customerJourney: null,
@@ -174,11 +176,11 @@ describe("analytics lifecycle funnel", () => {
     };
     data.product = {
       activeContributors: 11,
-      createdTasksInRange: 130,
-      completedTasksInRange: 119,
-      overdueOpenTasks: 9,
-      backlogGrowth: 11,
-      throughputRate: 91.5,
+      mergedPullRequestsInRange: 130,
+      completedLinearIssuesInRange: 119,
+      cycleTimeRiskSignals: 9,
+      deliveryBalance: 11,
+      deliveryRate: 91.5,
       _meta: { fetchedAt: "2026-01-30", nextRefresh: "2026-01-30", source: "live" },
     };
 
@@ -210,5 +212,153 @@ describe("analytics lifecycle funnel", () => {
     const cross = buildCrossFunnelData(data);
     expect(cross.stages).toHaveLength(6);
     expect(cross.narrative.length).toBeGreaterThan(0);
+  });
+
+  it("counts HubSpot collected forms as website conversion acquisition evidence", () => {
+    const data = baseData();
+    data.hubspot = {
+      funnel: {
+        totalDeals: 0,
+        closedWon: 0,
+        closedLost: 0,
+        unlikely: 0,
+        churn: 0,
+        activeSubscriptions: 0,
+        noShows: 0,
+        demoScheduled: 0,
+        demoFollowUp: 0,
+        collectedFormSubmissions: 3,
+        leadMagnetSubmissions: 2,
+        contactRequestSubmissions: 1,
+        avgDealSize: 0,
+        winRate: 0,
+        effectiveWinRate: 0,
+        noShowRate: 0,
+        stages: [],
+        dealsBySource: [],
+      },
+      collectedForms: {
+        formSubmissions: [
+          { formName: "Kanban Generator", count: 2, funnelCategory: "lead_magnet" },
+          { formName: "Get in Touch", count: 1, funnelCategory: "contact_request" },
+        ],
+        submissions: [],
+        totalFormSubmissions: 3,
+        leadMagnetSubmissions: 2,
+        contactRequestSubmissions: 1,
+      },
+      contacts: {
+        totalContacts: 0,
+        recentContacts: 0,
+        bySource: [],
+      },
+      _meta: { fetchedAt: "2026-05-20", nextRefresh: "2026-05-20", source: "live" },
+    };
+
+    const lifecycle = buildLifecycleFunnelData(data);
+    const acquisition = lifecycle.stages.find((stage) => stage.id === "acquisition");
+
+    expect(acquisition?.volume).toBe(3);
+    expect(acquisition?.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "HubSpot Collected Forms",
+          domain: "hubspot",
+          contribution: 3,
+        }),
+      ]),
+    );
+  });
+
+  it("uses available Webflow form totals and excludes unavailable HubSpot collected-form fallbacks", () => {
+    const data = baseData();
+    data.hubspot = {
+      funnel: {
+        totalDeals: 0,
+        closedWon: 0,
+        closedLost: 0,
+        unlikely: 0,
+        churn: 0,
+        activeSubscriptions: 0,
+        noShows: 0,
+        demoScheduled: 0,
+        demoFollowUp: 0,
+        collectedFormSubmissions: 5,
+        avgDealSize: 0,
+        winRate: 0,
+        effectiveWinRate: 0,
+        noShowRate: 0,
+        stages: [],
+        dealsBySource: [],
+      },
+      contacts: {
+        totalContacts: 0,
+        recentContacts: 0,
+        bySource: [],
+      },
+      _meta: {
+        fetchedAt: "2026-05-20",
+        nextRefresh: "2026-05-20",
+        source: "live",
+        diagnostics: {
+          collectedFormsAvailable: false,
+          collectedFormsError: "HubSpot collected forms request failed (500)",
+        },
+      },
+    };
+    data.webflow = {
+      siteName: "WIP Guard",
+      lastPublished: "2026-05-20T00:00:00.000Z",
+      totalPages: 1,
+      totalCollections: 0,
+      formSubmissions: [{ formName: "Contact", count: 2 }],
+      customDomains: [],
+      publishedPages: 1,
+      draftPages: 0,
+      archivedPages: 0,
+      pages: [],
+      seoAudit: {
+        totalPages: 1,
+        pagesWithSeoTitle: 1,
+        pagesWithSeoDescription: 1,
+        pagesWithOgImage: 1,
+        seoScore: 100,
+      },
+      contentFreshness: {
+        updatedLast7d: 0,
+        updatedLast30d: 0,
+        updatedLast90d: 0,
+        staleOver90d: 0,
+      },
+      recentlyUpdatedPages: [],
+      collections: [],
+      totalCmsItems: 0,
+      emptyCollections: 0,
+      formTrend: [],
+      totalFormSubmissions: 9,
+      _meta: { fetchedAt: "2026-05-20", nextRefresh: "2026-05-20", source: "live" },
+    };
+
+    const lifecycle = buildLifecycleFunnelData(data);
+    const acquisition = lifecycle.stages.find((stage) => stage.id === "acquisition");
+
+    expect(acquisition?.volume).toBe(9);
+    expect(acquisition?.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "Webflow Forms",
+          domain: "webflow",
+          contribution: 9,
+        }),
+      ]),
+    );
+    expect(acquisition?.evidence).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "HubSpot Collected Forms",
+          contribution: 5,
+        }),
+      ]),
+    );
   });
 });

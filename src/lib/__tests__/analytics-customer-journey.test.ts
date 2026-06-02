@@ -124,6 +124,124 @@ describe("buildCustomerJourneyData", () => {
     expect(journey.stageOrderSource).toBe("pipeline");
   });
 
+  it("includes HubSpot collected forms in form engagement touchpoints", () => {
+    const data = baseData();
+    data.hubspot = {
+      funnel: {
+        ...MINIMAL_FUNNEL,
+        totalDeals: 1,
+        collectedFormSubmissions: 2,
+        leadMagnetSubmissions: 1,
+        contactRequestSubmissions: 1,
+      },
+      contacts: MINIMAL_CONTACTS,
+      deals: [
+        deal({
+          dealId: "deal-forms",
+          dealName: "Forms Buyer",
+          stageId: "lead",
+          stageLabel: "Lead",
+          amount: 1000,
+          source: "Organic",
+        }),
+      ],
+      collectedForms: {
+        formSubmissions: [
+          { formName: "Kanban Generator", count: 1, funnelCategory: "lead_magnet" },
+          { formName: "Get in Touch", count: 1, funnelCategory: "contact_request" },
+        ],
+        submissions: [],
+        totalFormSubmissions: 2,
+        leadMagnetSubmissions: 1,
+        contactRequestSubmissions: 1,
+      },
+      _meta: META,
+    };
+
+    const journey = buildCustomerJourneyData(data);
+
+    expect(journey.touchpointSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: "webflow",
+          totalTouchpoints: 1,
+        }),
+      ]),
+    );
+  });
+
+  it("uses known Webflow form totals without counting unavailable HubSpot form telemetry", () => {
+    const data = baseData();
+    data.hubspot = {
+      funnel: {
+        ...MINIMAL_FUNNEL,
+        totalDeals: 1,
+        collectedFormSubmissions: 5,
+      },
+      contacts: MINIMAL_CONTACTS,
+      deals: [
+        deal({
+          dealId: "deal-webflow-forms",
+          dealName: "Webflow Forms Buyer",
+          stageId: "lead",
+          stageLabel: "Lead",
+          amount: 1000,
+          source: "Organic",
+        }),
+      ],
+      _meta: {
+        ...META,
+        diagnostics: {
+          collectedFormsAvailable: false,
+          collectedFormsError: "HubSpot collected forms request failed (500)",
+        },
+      },
+    };
+    data.webflow = {
+      siteName: "WIP Guard",
+      lastPublished: "2026-02-09T00:00:00.000Z",
+      totalPages: 1,
+      totalCollections: 0,
+      formSubmissions: [{ formName: "Contact", count: 2 }],
+      customDomains: [],
+      publishedPages: 1,
+      draftPages: 0,
+      archivedPages: 0,
+      pages: [],
+      seoAudit: {
+        totalPages: 1,
+        pagesWithSeoTitle: 1,
+        pagesWithSeoDescription: 1,
+        pagesWithOgImage: 1,
+        seoScore: 100,
+      },
+      contentFreshness: {
+        updatedLast7d: 0,
+        updatedLast30d: 0,
+        updatedLast90d: 0,
+        staleOver90d: 0,
+      },
+      recentlyUpdatedPages: [],
+      collections: [],
+      totalCmsItems: 0,
+      emptyCollections: 0,
+      formTrend: [],
+      totalFormSubmissions: 9,
+      _meta: META,
+    };
+
+    const journey = buildCustomerJourneyData(data);
+
+    expect(journey.journeys[0].touchpoints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: "webflow",
+          detail: "9 form submissions across 1 forms",
+        }),
+      ]),
+    );
+  });
+
   it("falls back to canonical stage order when no pipeline stages", () => {
     const data = baseData();
     data.hubspot = {

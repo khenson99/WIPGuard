@@ -274,13 +274,15 @@ export function makeAnalyticsData(): AnalyticsDashboardData {
       google_workspace: { status: "CONNECTED", stale: false },
       slack: { status: "CONNECTED", stale: true },
       coda: { status: "CONNECTED", stale: false },
-      pylon: { status: "CONNECTED", stale: false },
     },
     pylon: {
       openConversations: 28,
       urgentConversations: 18,
-      waitingOnTeam: 12,
-      avgFirstResponseMinutes: 180,
+    },
+    product: {
+      deliveryBalance: 8,
+      deliveryRate: 62.4,
+      cycleTimeRiskSignals: 9,
     },
     coda: {
       totalCards: 42,
@@ -288,17 +290,17 @@ export function makeAnalyticsData(): AnalyticsDashboardData {
     slack: {
       enabledRules: 2,
       totalRules: 2,
-      trend: [{ date: "2026-03-08", createdTasks: 2, receipts: 3 }],
+      trend: [{ date: "2026-03-08", artifactsCreated: 2, receipts: 3 }],
     },
     googleWorkspace: {
       enabledRules: 1,
       totalRules: 1,
-      trend: [{ date: "2026-03-08", createdTasks: 1, receipts: 1 }],
+      trend: [{ date: "2026-03-08", artifactsCreated: 1, receipts: 1 }],
     },
     codaOps: {
       enabledRules: 3,
       totalRules: 3,
-      trend: [{ date: "2026-03-08", createdTasks: 4, receipts: 2 }],
+      trend: [{ date: "2026-03-08", artifactsCreated: 4, receipts: 2 }],
     },
   } as unknown as AnalyticsDashboardData;
 }

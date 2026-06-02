@@ -144,16 +144,16 @@ describe("outbox-worker", () => {
     const findMany = vi
       .fn()
       .mockResolvedValueOnce([
-        { eventType: "task.created" },
-        { eventType: "task.created" },
-        { eventType: "task.updated" },
+        { eventType: "metric.refreshed" },
+        { eventType: "metric.refreshed" },
+        { eventType: "metric.updated" },
       ])
       .mockResolvedValueOnce([
         {
           id: "dead_1",
-          eventType: "task.created",
-          aggregateType: "task",
-          aggregateId: "task_1",
+          eventType: "metric.refreshed",
+          aggregateType: "metric",
+          aggregateId: "metric_1",
           retryCount: 5,
           failedAt: new Date("2026-02-15T00:00:00.000Z"),
           error: "timeout",
@@ -182,8 +182,8 @@ describe("outbox-worker", () => {
     });
     expect(metrics.lag.oldestRetryableEventId).toBe("evt_oldest");
     expect(metrics.failuresByEventType).toEqual([
-      { eventType: "task.created", count: 2 },
-      { eventType: "task.updated", count: 1 },
+      { eventType: "metric.refreshed", count: 2 },
+      { eventType: "metric.updated", count: 1 },
     ]);
     expect(metrics.recentDeadLetters).toHaveLength(1);
   });
