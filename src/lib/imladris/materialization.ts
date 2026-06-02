@@ -446,7 +446,19 @@ export async function materializeImladrisDevelopmentMetrics(
 function hubspotAccountId(record: RawSourceRecordRow): string | null {
   if (!["company", "account", "contact"].includes(record.objectType)) return null;
   const payload = asRecord(record.payload);
-  const id = payload.companyId ?? payload.company_id ?? payload.accountId ?? payload.id;
+  const properties = nestedRecord(payload.properties);
+  const id =
+    payload.companyId ??
+    payload.company_id ??
+    payload.accountId ??
+    payload.account_id ??
+    payload.id ??
+    properties.companyId ??
+    properties.company_id ??
+    properties.accountId ??
+    properties.account_id ??
+    properties.hs_object_id ??
+    properties.id;
   return normalizeIdentifier(id) ?? normalizeIdentifier(record.externalId);
 }
 

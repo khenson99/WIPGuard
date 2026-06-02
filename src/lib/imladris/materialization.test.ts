@@ -1001,6 +1001,66 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("reads nested HubSpot account identifiers before matching product activations", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_nested_activation_account",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "company",
+            externalId: "hubspot_record_nested_activation_account",
+            occurredAt: new Date("2026-05-03T10:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-05-03T10:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-03T10:00:00.000Z"),
+            payload: {
+              properties: {
+                hs_object_id: "acct_nested",
+              },
+              name: "Aperture",
+            },
+          },
+          {
+            id: "raw_posthog_nested_activation_account",
+            provider: IntegrationProvider.POSTHOG,
+            objectType: "event",
+            externalId: "evt_nested_activation_account",
+            occurredAt: new Date("2026-05-05T10:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: null,
+            payload: {
+              event: "activation_completed",
+              properties: {
+                hubspotCompanyId: "acct_nested",
+              },
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_activation_nested_account", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisProductActivationMetric({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      rate: 100,
+      activatedAccounts: 1,
+      eligibleAccounts: 1,
+    });
+  });
+
   it("materializes finance dashboard metrics from Mercury, Stripe, and HubSpot raw records", async () => {
     const prisma = createFinancePrismaMock();
     const periodStart = new Date("2026-05-01T00:00:00.000Z");
