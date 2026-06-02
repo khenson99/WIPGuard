@@ -1373,9 +1373,46 @@ function websiteSessionsCount(records: RawSourceRecordRow[]): number {
   return recordsForSessions.reduce((sum, count) => sum + count, 0);
 }
 
-function organicTrafficCount(record: RawSourceRecordRow): number {
+function organicTrafficCount(record: RawSourceRecordRow): number | null {
   const payload = asRecord(record.payload);
-  return numberFrom(payload.organicTraffic ?? payload.traffic ?? payload.visits) ?? 0;
+  const properties = nestedRecord(payload.properties);
+  const summary = nestedRecord(payload.summary);
+  const metrics = nestedRecord(payload.metrics);
+  return numberFrom(
+    payload.organicTraffic ??
+      payload.organic_traffic ??
+      payload.traffic ??
+      payload.visits ??
+      properties.organicTraffic ??
+      properties.organic_traffic ??
+      properties.traffic ??
+      properties.visits ??
+      summary.organicTraffic ??
+      summary.organic_traffic ??
+      summary.traffic ??
+      summary.visits ??
+      metrics.organicTraffic ??
+      metrics.organic_traffic ??
+      metrics.traffic ??
+      metrics.visits,
+  );
+}
+
+function semrushOrganicTraffic(records: RawSourceRecordRow[]): number {
+  const semrushRecords = records.filter(
+    (record) => record.provider === IntegrationProvider.SEMRUSH,
+  );
+  const snapshotCounts = semrushRecords
+    .filter((record) => record.objectType === "snapshot")
+    .map(organicTrafficCount)
+    .filter((count): count is number => typeof count === "number");
+  const recordsForTraffic =
+    snapshotCounts.length > 0
+      ? snapshotCounts
+      : semrushRecords
+          .map(organicTrafficCount)
+          .filter((count): count is number => typeof count === "number");
+  return recordsForTraffic.reduce((sum, count) => sum + count, 0);
 }
 
 function webflowFormSubmissionCount(records: RawSourceRecordRow[]): number {
@@ -1470,9 +1507,7 @@ function computeMarketingPipelineEfficiency(records: RawSourceRecordRow[]) {
     .filter(isMarketingPipelineDeal)
     .reduce((sum, record) => sum + dealAmount(record), 0);
   const websiteSessions = websiteSessionsCount(records);
-  const organicTraffic = records
-    .filter((record) => record.provider === IntegrationProvider.SEMRUSH)
-    .reduce((sum, record) => sum + organicTrafficCount(record), 0);
+  const organicTraffic = semrushOrganicTraffic(records);
   const webflowFormSubmissions = webflowFormSubmissionCount(records);
   const googleSearchConsoleRecords = records.filter(
     (record) => record.provider === IntegrationProvider.GOOGLE_SEARCH_CONSOLE,

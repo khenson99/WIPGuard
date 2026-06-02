@@ -2581,6 +2581,60 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("uses synced SEMrush snapshot organic traffic instead of competitor rows", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_semrush_snapshot_traffic",
+            provider: IntegrationProvider.SEMRUSH,
+            objectType: "snapshot",
+            externalId: "semrush:snapshot:2026-05-01:2026-05-29",
+            occurredAt: new Date("2026-05-29T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T12:00:00.000Z"),
+            payload: {
+              domain: "example.com",
+              organicTraffic: 1_800,
+            },
+          },
+          {
+            id: "raw_semrush_competitor_traffic",
+            provider: IntegrationProvider.SEMRUSH,
+            objectType: "organic_competitor",
+            externalId: "semrush:organic_competitor:competitor.com",
+            occurredAt: new Date("2026-05-29T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T12:00:00.000Z"),
+            payload: {
+              domain: "competitor.com",
+              organicTraffic: 500,
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_semrush_snapshot", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      organicTraffic: 1_800,
+    });
+  });
+
   it("normalizes Google Ads costMicros before calculating marketing pipeline efficiency", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
