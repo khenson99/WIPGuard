@@ -447,6 +447,17 @@ describe("buildRevenueDashboardData", () => {
     );
   });
 
+  it("normalizes ratio-style Stripe percentages in the revenue summary", () => {
+    const stripe = makeStripe();
+    stripe.payments.successRate = 0.975;
+    stripe.subscriptions.churnRate = 0.04;
+
+    const result = buildRevenueDashboardData(makeData({ stripe }));
+
+    expect(result.summary.paymentSuccessPct).toBe(97.5);
+    expect(result.summary.churnRatePct).toBe(4);
+  });
+
   it("builds weekly Mercury rows from the filtered transaction list that backs cash flow totals", () => {
     const mercury = makeMercury();
     mercury.cashFlow = {

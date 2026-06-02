@@ -1,4 +1,5 @@
 import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
+import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
 import type {
   AnalyticsDashboardData,
   DealStage,
@@ -299,8 +300,8 @@ export function buildRevenueDashboardData(data: AnalyticsDashboardData): Revenue
       netCashFlow30d: mercury?.netCashFlow ?? 0,
       inflows30d: mercury?.inflows30d ?? 0,
       outflows30d: mercury?.outflows30d ?? 0,
-      paymentSuccessPct: data.stripe?.payments.successRate ?? 0,
-      churnRatePct: data.stripe?.subscriptions.churnRate ?? 0,
+      paymentSuccessPct: normalizePercentValue(data.stripe?.payments.successRate ?? 0),
+      churnRatePct: normalizePercentValue(data.stripe?.subscriptions.churnRate ?? 0),
     },
     weekly: buildWeekly(data),
     pipeline: buildPipeline(data),
