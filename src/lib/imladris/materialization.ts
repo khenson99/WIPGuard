@@ -89,10 +89,10 @@ function isCompletedLinearIssue(record: RawSourceRecordRow): boolean {
   const payload = asRecord(record.payload);
   const state = payload.state;
   if (typeof state === "string") {
-    return ["done", "completed", "complete"].includes(state.toLowerCase());
+    return ["done", "completed", "complete"].includes(state.trim().toLowerCase());
   }
   const stateType = nestedRecord(state).type;
-  if (typeof stateType === "string" && stateType.toLowerCase() === "completed") {
+  if (typeof stateType === "string" && stateType.trim().toLowerCase() === "completed") {
     return true;
   }
   return Boolean(payload.completedAt ?? payload.completed_at);
