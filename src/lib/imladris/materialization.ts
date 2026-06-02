@@ -271,6 +271,12 @@ function normalizeLookup(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function normalizeIdentifier(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
 function normalizeEmailDomain(value: unknown): string | null {
   const email = normalizeLookup(value);
   if (!email || !email.includes("@")) return null;
@@ -417,7 +423,7 @@ function hubspotAccountId(record: RawSourceRecordRow): string | null {
   if (!["company", "account", "contact"].includes(record.objectType)) return null;
   const payload = asRecord(record.payload);
   const id = payload.companyId ?? payload.company_id ?? payload.accountId ?? payload.id;
-  return typeof id === "string" && id.trim() ? id : record.externalId;
+  return normalizeIdentifier(id) ?? normalizeIdentifier(record.externalId);
 }
 
 function activationAccountId(record: RawSourceRecordRow): string | null {
@@ -431,7 +437,7 @@ function activationAccountId(record: RawSourceRecordRow): string | null {
     payload.accountId ??
     payload.companyId ??
     payload.distinct_id;
-  return typeof id === "string" && id.trim() ? id : null;
+  return normalizeIdentifier(id);
 }
 
 function isActivationEvent(record: RawSourceRecordRow): boolean {
