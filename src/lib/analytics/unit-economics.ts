@@ -168,7 +168,10 @@ export function computeUnitEconomics(
   // 4. Gross margin
   // ---------------------------------------------------------------------------
 
-  const revenue = stripe?.revenue.totalRevenue30d ?? 0;
+  const revenue = Math.max(
+    stripe?.revenue.totalRevenue30d ?? 0,
+    subscriptionBreakdown.totalMrr,
+  );
   const categorizedSpend = spendFromTransactions(mercury);
   const totalOutflows = mercury?.cashFlow.outflows30d ?? 0;
   const cogs = categorizedSpend?.cogs ?? totalOutflows * ratios.cogs;

@@ -404,6 +404,32 @@ describe("computeUnitEconomics", () => {
     expect(result.paybackMonths).toBe(0);
   });
 
+  it("uses HubSpot subscription MRR as the revenue basis when Stripe revenue is absent", () => {
+    const lowSpendMercury = makeMercury({
+      cashFlow: {
+        totalBalance: 500_000,
+        inflows30d: 0,
+        outflows30d: 400,
+        netCashFlow: -400,
+        runway: 1250,
+        burnRate: 400,
+      },
+    });
+    const hubspotWithSubscription = makeHubSpot({
+      funnel: {
+        ...hubspot.funnel,
+        closedWon: 1,
+      },
+      subscriptionDeals: [subscriptionDeal(12_000)],
+    });
+
+    const result = computeUnitEconomics(null, lowSpendMercury, hubspotWithSubscription);
+
+    expect(result.arpa).toBe(1000);
+    expect(result.grossMarginPct).toBe(90);
+    expect(result.paybackMonths).toBe(0.07);
+  });
+
   it("returns CAC of 0 when Mercury is null (no marketing spend)", () => {
     const result = computeUnitEconomics(stripe, null, hubspot);
     // totalOutflows = 0, marketingSpend = 0, CAC = 0 / 50 = 0
