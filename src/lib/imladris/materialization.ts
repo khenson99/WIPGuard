@@ -1703,10 +1703,7 @@ function accountIdFromPayload(record: RawSourceRecordRow): string | null {
     propertiesCustomer.stripeCustomerId ??
     propertiesCustomer.stripe_customer_id;
 
-  if (typeof id !== "string") return null;
-
-  const normalizedId = id.trim();
-  return normalizedId.length > 0 ? normalizedId : null;
+  return normalizeIdentifier(id);
 }
 
 function isClosedStatus(status: unknown): boolean {

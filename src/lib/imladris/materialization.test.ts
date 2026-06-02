@@ -3413,6 +3413,67 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("normalizes numeric account identifiers before de-duping customer-success risk accounts", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_pylon_issue_numeric_account",
+        provider: IntegrationProvider.PYLON,
+        objectType: "conversation",
+        externalId: "conv_numeric_account",
+        occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+        payload: {
+          accountId: 42,
+          status: "open",
+        },
+      },
+      {
+        id: "raw_posthog_usage_numeric_account",
+        provider: IntegrationProvider.POSTHOG,
+        objectType: "account_usage",
+        externalId: "usage_numeric_account",
+        occurredAt: new Date("2026-05-17T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-17T00:00:00.000Z"),
+        payload: {
+          account_id: 42,
+          activeUsers: 1,
+        },
+      },
+      {
+        id: "raw_stripe_subscription_numeric_account",
+        provider: IntegrationProvider.STRIPE,
+        objectType: "subscription",
+        externalId: "sub_numeric_account",
+        occurredAt: new Date("2026-05-24T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-24T00:00:00.000Z"),
+        payload: {
+          customer: {
+            id: 42,
+          },
+          status: "past_due",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      atRiskAccounts: 1,
+      accountsWithBillingRisk: 1,
+      lowUsageAccounts: 1,
+    });
+  });
+
   it("counts Slack account-linked messages as customer-success collaboration signals", async () => {
     const prisma = createCustomerSuccessPrismaMock();
     prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
