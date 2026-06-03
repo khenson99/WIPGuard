@@ -12,6 +12,10 @@ vi.mock("@/lib/retention/service", () => ({
   normalizeRetentionFilters: vi.fn(() => ({ status: null })),
 }));
 
+vi.mock("@/lib/retention/customer-health-dashboard", () => ({
+  buildCustomerHealthDashboard: vi.fn(),
+}));
+
 vi.mock("@/lib/retention/pipeline", () => ({
   syncRetentionSources: vi.fn(),
   buildRetentionDataset: vi.fn(),
@@ -198,5 +202,63 @@ describe("retention routes", () => {
     expect(syncRetentionSources).toHaveBeenCalledWith(ACTOR);
     expect(buildRetentionDataset).toHaveBeenCalledWith(ACTOR);
     expect(materializeRetentionCurrent).toHaveBeenCalledWith(ACTOR);
+  });
+
+  it("passes through auth failures for customer health dashboard requests", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { buildCustomerHealthDashboard } = await import("@/lib/retention/customer-health-dashboard");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    });
+
+    const { GET } = await import("@/app/api/retention/customer-health/route");
+    const response = await GET(new NextRequest("http://localhost/api/retention/customer-health"));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: "Unauthorized" });
+    expect(buildCustomerHealthDashboard).not.toHaveBeenCalled();
+  });
+
+  it("returns the materialized customer health dashboard for authenticated actors", async () => {
+    const { requireCustomerSuccessActor } = await import("@/lib/customer-success/access");
+    const { buildCustomerHealthDashboard } = await import("@/lib/retention/customer-health-dashboard");
+
+    vi.mocked(requireCustomerSuccessActor).mockResolvedValue({ actor: ACTOR });
+    vi.mocked(buildCustomerHealthDashboard).mockResolvedValue({
+      generatedAt: "2026-03-15T00:00:00.000Z",
+      totals: {
+        totalAccounts: 1,
+        healthyAccounts: 1,
+        watchAccounts: 0,
+        atRiskAccounts: 0,
+        onboardingRiskAccounts: 0,
+        billingRiskAccounts: 0,
+        lirPassingAccounts: 1,
+        avgCurrentMonthActivity: 24,
+      },
+      healthStatusBreakdown: [{ status: "Healthy", count: 1 }],
+      sourceCoverage: [],
+      ardaDataQuality: {
+        latestSync: null,
+        tenantRecords: 1,
+        orderRecords: 0,
+        cardRecords: 0,
+        itemRecords: 0,
+        activityRecords: 0,
+        adoptionBreadthSource: "NONE",
+        note: "No Arda activity history or User Details fallback breadth counts are currently available.",
+      },
+      riskQueues: { atRisk: [], onboardingRisk: [], billingRisk: [], sharpDeclines: [] },
+      accounts: [],
+    } as never);
+
+    const { GET } = await import("@/app/api/retention/customer-health/route");
+    const response = await GET(new NextRequest("http://localhost/api/retention/customer-health"));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.totals.totalAccounts).toBe(1);
+    expect(buildCustomerHealthDashboard).toHaveBeenCalledWith(ACTOR);
   });
 });

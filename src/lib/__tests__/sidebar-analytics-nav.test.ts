@@ -20,7 +20,7 @@ describe("sidebar workspace navigation", () => {
     expect(navItems.some((item) => item.href === "/dashboard")).toBe(false);
   });
 
-  it("exposes the company tracker under Metrics without restoring analytics children", () => {
+  it("exposes metrics dashboards under Metrics without restoring analytics children", () => {
     const metrics = navItems.find((item) => item.id === "metrics");
 
     expect(metrics?.children).toEqual([
@@ -28,6 +28,12 @@ describe("sidebar workspace navigation", () => {
         id: "company-tracker",
         href: "/metrics/company",
         label: "Company Tracker",
+        workspaceId: "metrics",
+      }),
+      expect.objectContaining({
+        id: "customer-health",
+        href: "/metrics/customer-health",
+        label: "Customer Health",
         workspaceId: "metrics",
       }),
     ]);

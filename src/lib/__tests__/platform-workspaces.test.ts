@@ -11,7 +11,7 @@ describe("platform workspace navigation", () => {
     ]);
   });
 
-  it("links the company tracker as a metrics child without restoring legacy analytics routes", () => {
+  it("links metrics dashboards as children without restoring legacy analytics routes", () => {
     const metrics = WORKSPACE_NAV_ITEMS.find((item) => item.id === "metrics");
 
     expect(metrics?.children).toEqual([
@@ -19,6 +19,12 @@ describe("platform workspace navigation", () => {
         id: "company-tracker",
         label: "Company Tracker",
         href: "/metrics/company",
+        workspaceId: "metrics",
+      },
+      {
+        id: "customer-health",
+        label: "Customer Health",
+        href: "/metrics/customer-health",
         workspaceId: "metrics",
       },
     ]);
