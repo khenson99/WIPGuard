@@ -11,8 +11,17 @@ describe("platform workspace navigation", () => {
     ]);
   });
 
-  it("keeps primary workspace navigation free of legacy analytics children", () => {
-    expect(WORKSPACE_NAV_ITEMS.flatMap((item) => item.children ?? [])).toEqual([]);
+  it("links the expense dashboard under metrics without restoring legacy analytics routes", () => {
+    const metrics = WORKSPACE_NAV_ITEMS.find((item) => item.id === "metrics");
+
+    expect(metrics?.children).toEqual([
+      {
+        id: "expense-dashboard",
+        label: "Expenses",
+        href: "/metrics/expenses",
+        workspaceId: "metrics",
+      },
+    ]);
     expect(
       WORKSPACE_NAV_ITEMS.some((item) => item.href.startsWith("/analytics"))
     ).toBe(false);

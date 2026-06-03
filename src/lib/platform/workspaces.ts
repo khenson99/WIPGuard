@@ -31,6 +31,14 @@ export const WORKSPACE_NAV_ITEMS: WorkspaceNavItem[] = [
     label: "Metrics",
     href: "/metrics",
     description: "Canonical metric definitions, computed values, trust, and lineage.",
+    children: [
+      {
+        id: "expense-dashboard",
+        label: "Expenses",
+        href: "/metrics/expenses",
+        workspaceId: "metrics",
+      },
+    ],
   },
   {
     id: "reports",

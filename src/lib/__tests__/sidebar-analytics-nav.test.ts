@@ -20,8 +20,17 @@ describe("sidebar workspace navigation", () => {
     expect(navItems.some((item) => item.href === "/dashboard")).toBe(false);
   });
 
-  it("keeps workspace navigation flat after the product reset", () => {
-    expect(navItems.flatMap((item) => item.children ?? [])).toEqual([]);
+  it("exposes the expense dashboard under Metrics without restoring analytics children", () => {
+    const metrics = navItems.find((item) => item.id === "metrics");
+
+    expect(metrics?.children).toEqual([
+      expect.objectContaining({
+        id: "expense-dashboard",
+        href: "/metrics/expenses",
+        label: "Expenses",
+        workspaceId: "metrics",
+      }),
+    ]);
     expect(navItems.some((item) => item.href.startsWith("/analytics"))).toBe(false);
   });
 

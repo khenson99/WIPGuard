@@ -33,6 +33,7 @@
     "@prisma/adapter-pg": "^7.4.0",
     "@prisma/client": "^7.4.0",
     "@socket.io/redis-adapter": "^8.3.0",
+    "chart.js": "^4.4.1",
     "cheerio": "^1.2.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
