@@ -2338,7 +2338,7 @@ function pylonSnapshotCount(record: RawSourceRecordRow, keys: string[]): number 
   const summary = nestedRecord(payload.summary);
   const metrics = nestedRecord(payload.metrics);
   for (const key of keys) {
-    const count = numberFrom(
+    const count = nonNegativeNumberFrom(
       payload[key] ??
         properties[key] ??
         summary[key] ??
