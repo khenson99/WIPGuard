@@ -43,6 +43,7 @@ function formatMetricValue(metric: CompanyTrackerMetric, currency: string): stri
   const amount = typeof payload.amount === "number" ? payload.amount : null;
   const score = typeof payload.score === "number" ? payload.score : null;
   const rate = typeof payload.rate === "number" ? payload.rate : null;
+  const ratio = typeof payload.ratio === "number" ? payload.ratio : null;
   const riskScore = typeof payload.riskScore === "number" ? payload.riskScore : null;
 
   if (metric.key === "revenue.mrr") return formatCurrency(amount, currency);
@@ -51,6 +52,7 @@ function formatMetricValue(metric: CompanyTrackerMetric, currency: string): stri
   if (metric.key === "finance.cash_runway_months") {
     return formatNumber(typeof payload.months === "number" ? payload.months : null, "months");
   }
+  if (ratio !== null) return formatNumber(ratio, "ratio");
   if (score !== null) return formatNumber(score);
   if (rate !== null) return formatNumber(rate, "percent");
   if (riskScore !== null) return formatNumber(riskScore);
