@@ -1711,7 +1711,7 @@ function isQualifiedPipelineDeal(record: RawSourceRecordRow): boolean {
 function dealAmount(record: RawSourceRecordRow): number {
   const payload = asRecord(record.payload);
   const properties = nestedRecord(payload.properties);
-  return numberFrom(payload.amount ?? properties.amount) ?? 0;
+  return nonNegativeNumberFrom(payload.amount ?? properties.amount) ?? 0;
 }
 
 function dealIdFromRecord(record: RawSourceRecordRow): string | null {
