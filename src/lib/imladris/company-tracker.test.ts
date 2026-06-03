@@ -47,13 +47,16 @@ function metricRow(input: {
   };
 }
 
-function prismaMock(options?: { canonicalRows?: unknown[]; goals?: unknown[] }) {
+function prismaMock(options?: { canonicalRows?: unknown[]; goals?: unknown[]; snapshots?: unknown[] }) {
   return {
     imladrisCanonicalMetricValue: {
       findMany: vi.fn(async () => options?.canonicalRows ?? []),
     },
     financialGoal: {
       findMany: vi.fn(async () => options?.goals ?? []),
+    },
+    analyticsSnapshot: {
+      findMany: vi.fn(async () => options?.snapshots ?? []),
     },
   };
 }
@@ -231,6 +234,230 @@ describe("buildCompanyTrackerDashboard", () => {
     expect(dashboard.trust.summary.error).toBe(1);
     expect(dashboard.trust.warnings).toContain("Mercury source data is stale.");
     expect(dashboard.trust.warnings).toContain("Pylon source failed during materialization.");
+  });
+
+  it("uses the live analytics metrics layer when canonical company rows are not materialized yet", async () => {
+    const capturedAt = new Date("2026-05-31T20:00:00.000Z");
+    const prisma = prismaMock({
+      snapshots: [
+        {
+          providerKey: "stripe",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            revenue: {
+              mrr: 32_000,
+              mrrChange: 0,
+              totalRevenue30d: 37_000,
+              totalRevenuePrev30d: 34_000,
+              revenueGrowth: 0.08,
+              avgRevenuePerCustomer: 800,
+            },
+            subscriptions: {
+              active: 42,
+              pastDue: 0,
+              canceled: 0,
+              trialing: 0,
+              churnRate: 0.02,
+              recentChurnEvents: [],
+            },
+            payments: {
+              succeeded: 20,
+              failed: 1,
+              successRate: 0.95,
+            },
+            revenueTrend: [],
+          },
+        },
+        {
+          providerKey: "mercury",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            accounts: [],
+            cashFlow: {
+              totalBalance: 765_000,
+              inflows30d: 70_000,
+              outflows30d: 160_000,
+              netCashFlow: -90_000,
+              burnRate: 90_000,
+              runway: 8.5,
+            },
+          },
+        },
+        {
+          providerKey: "hubspot",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            funnel: {
+              totalDeals: 1,
+              closedWon: 0,
+              closedLost: 0,
+              unlikely: 0,
+              churn: 0,
+              activeSubscriptions: 42,
+              noShows: 0,
+              demoScheduled: 1,
+              demoFollowUp: 0,
+              avgDealSize: 1_000_000,
+              winRate: 0,
+              effectiveWinRate: 0,
+              noShowRate: 0,
+              stages: [],
+              dealsBySource: [],
+            },
+            contacts: {
+              totalContacts: 0,
+              recentContacts: 0,
+              bySource: [],
+            },
+            deals: [
+              {
+                dealId: "deal_1",
+                dealName: "Expansion",
+                stageId: "presentationscheduled",
+                stageLabel: "Demo Scheduled",
+                amount: 1_000_000,
+                source: "Outbound",
+                ownerId: "owner_1",
+                updatedAt: "2026-05-30T00:00:00.000Z",
+                createdAt: "2026-05-01T00:00:00.000Z",
+                closedAt: null,
+                stripeCustomerId: null,
+                pipelineId: "default",
+                contactIds: [],
+                primaryContactId: null,
+                primaryContactEmail: null,
+              },
+            ],
+          },
+        },
+      ],
+      goals: [
+        {
+          id: "goal_arr",
+          userId: "user_1",
+          metric: "ARR",
+          targetValue: 500_000,
+          deadline: new Date("2026-12-31T00:00:00.000Z"),
+          status: "ACTIVE",
+        },
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.summary).toMatchObject({
+      arr: 384_000,
+      mrr: 32_000,
+      runwayMonths: 8.5,
+      cashBalance: 765_000,
+      netBurn: 90_000,
+      qualifiedPipeline: 1_000_000,
+      activeSubscriptions: 42,
+      currency: "USD",
+    });
+    expect(dashboard.goalProgress).toEqual([
+      expect.objectContaining({
+        id: "goal_arr",
+        currentValue: 384_000,
+        progressPct: 76.8,
+      }),
+    ]);
+    expect(dashboard.metrics.find((metric) => metric.key === "revenue.mrr")).toMatchObject({
+      status: "partial",
+      value: expect.objectContaining({
+        amount: 32_000,
+        arr: 384_000,
+        source: "analytics.metrics_layer",
+      }),
+      sourceLineageCount: 3,
+    });
+    expect(dashboard.metrics.find((metric) => metric.key === "sales.qualified_pipeline")).toMatchObject({
+      status: "partial",
+      value: expect.objectContaining({
+        amount: 1_000_000,
+        source: "analytics.revenue_dashboard",
+      }),
+    });
+    expect(dashboard.trust.warnings).toContain(
+      "Canonical revenue.mrr is missing; using latest analytics snapshot stats.",
+    );
+    expect(prisma.analyticsSnapshot.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          userId: "user_1",
+          providerKey: {
+            in: ["stripe", "mercury", "hubspot", "salesPerformance"],
+          },
+          status: "SUCCESS",
+        }),
+      }),
+    );
+  });
+
+  it("keeps revenue missing when analytics snapshots do not include revenue providers", async () => {
+    const capturedAt = new Date("2026-05-31T20:00:00.000Z");
+    const prisma = prismaMock({
+      snapshots: [
+        {
+          providerKey: "mercury",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            accounts: [],
+            cashFlow: {
+              totalBalance: 765_000,
+              inflows30d: 70_000,
+              outflows30d: 160_000,
+              netCashFlow: -90_000,
+              burnRate: 90_000,
+              runway: 8.5,
+            },
+          },
+        },
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.summary).toMatchObject({
+      arr: null,
+      mrr: null,
+      runwayMonths: 8.5,
+      cashBalance: 765_000,
+      netBurn: 90_000,
+      qualifiedPipeline: null,
+      activeSubscriptions: null,
+    });
+    expect(dashboard.metrics.find((metric) => metric.key === "revenue.mrr")).toMatchObject({
+      status: "missing",
+      value: null,
+    });
+    expect(dashboard.metrics.find((metric) => metric.key === "finance.cash_runway_months")).toMatchObject({
+      status: "partial",
+      value: expect.objectContaining({
+        months: 8.5,
+        source: "analytics.metrics_layer",
+      }),
+    });
   });
 
   it("defensively ignores future-period canonical rows when building current company state", async () => {

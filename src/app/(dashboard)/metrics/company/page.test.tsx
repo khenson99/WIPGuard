@@ -19,6 +19,9 @@ vi.mock("@/lib/prisma", () => ({
     financialGoal: {
       findMany: vi.fn(async () => []),
     },
+    analyticsSnapshot: {
+      findMany: vi.fn(async () => []),
+    },
   },
 }));
 
