@@ -4112,6 +4112,49 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("clamps negative HubSpot deal amounts before calculating sales pipeline", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_negative_qualified_deal",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_negative_qualified",
+            occurredAt: new Date("2026-05-20T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+            payload: {
+              amount: -50_000,
+              dealstage: "qualified",
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_negative_deal", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisSalesMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      amount: 0,
+      qualifiedDealCount: 1,
+    });
+  });
+
   it("normalizes deal identifiers before calculating sales collaboration coverage", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -5146,6 +5189,64 @@ describe("Imladris canonical materialization", () => {
         identifiedVisitors: 1,
         currency: "USD",
       },
+    });
+  });
+
+  it("clamps negative HubSpot deal amounts before calculating marketing pipeline", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_google_ads_negative_marketing_deal",
+            provider: IntegrationProvider.GOOGLE_ADS,
+            objectType: "campaign_metric",
+            externalId: "gads_negative_marketing_deal",
+            occurredAt: new Date("2026-05-08T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-08T00:00:00.000Z"),
+            payload: {
+              spend: 10_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_hubspot_marketing_negative_deal_amount",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_marketing_negative_amount",
+            occurredAt: new Date("2026-05-14T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-14T00:00:00.000Z"),
+            payload: {
+              amount: -90_000,
+              dealstage: "qualified",
+              originalSource: "paid",
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_negative_deal", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      qualifiedPipeline: 0,
+      acquisitionSpend: 10_000,
+      ratio: 0,
     });
   });
 
