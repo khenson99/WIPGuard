@@ -25,6 +25,9 @@ vi.mock("@/lib/prisma", () => ({
     imladrisCanonicalMetricValue: {
       findMany: vi.fn(async () => []),
     },
+    financialGoal: {
+      findMany: vi.fn(async () => []),
+    },
   },
 }));
 
@@ -96,5 +99,44 @@ describe("Imladris API routes", () => {
 
     expect(developmentResponse.status).toBe(200);
     expect(developmentPayload.dashboard.sourceKeys).toEqual(["linear", "github", "posthog"]);
+  });
+
+  it("serves the company tracker dashboard from canonical company metrics", async () => {
+    const route = await import("@/app/api/imladris/dashboards/company/route");
+    const response = await route.GET(
+      new NextRequest("http://localhost/api/imladris/dashboards/company"),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.product).toBe("Imladris");
+    expect(payload).toEqual(
+      expect.objectContaining({
+        generatedAt: expect.any(String),
+        dashboard: expect.any(Object),
+        summary: expect.any(Object),
+        goalProgress: expect.any(Array),
+        healthBands: expect.any(Array),
+        metrics: expect.any(Array),
+        trust: expect.any(Object),
+      }),
+    );
+    expect(payload.dashboard.id).toBe("company");
+    expect(payload.summary).toBeTruthy();
+    expect(payload.goalProgress).toEqual([]);
+    expect(payload.trust.summary.missing).toBeGreaterThan(0);
+  });
+
+  it("rejects unauthenticated company tracker requests", async () => {
+    const { auth } = await import("@/lib/auth");
+    vi.mocked(auth).mockResolvedValueOnce(null as never);
+
+    const route = await import("@/app/api/imladris/dashboards/company/route");
+    const response = await route.GET(
+      new NextRequest("http://localhost/api/imladris/dashboards/company"),
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Unauthorized" });
   });
 });

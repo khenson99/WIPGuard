@@ -20,8 +20,17 @@ describe("sidebar workspace navigation", () => {
     expect(navItems.some((item) => item.href === "/dashboard")).toBe(false);
   });
 
-  it("keeps workspace navigation flat after the product reset", () => {
-    expect(navItems.flatMap((item) => item.children ?? [])).toEqual([]);
+  it("exposes the company tracker under Metrics without restoring analytics children", () => {
+    const metrics = navItems.find((item) => item.id === "metrics");
+
+    expect(metrics?.children).toEqual([
+      expect.objectContaining({
+        id: "company-tracker",
+        href: "/metrics/company",
+        label: "Company Tracker",
+        workspaceId: "metrics",
+      }),
+    ]);
     expect(navItems.some((item) => item.href.startsWith("/analytics"))).toBe(false);
   });
 

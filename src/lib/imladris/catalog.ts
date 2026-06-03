@@ -25,7 +25,7 @@ export type ImladrisDepartment =
   | "sales"
   | "customer-success";
 
-export type ImladrisDashboardId = "operating" | ImladrisDepartment;
+export type ImladrisDashboardId = "operating" | "company" | ImladrisDepartment;
 
 export interface ImladrisProviderDefinition {
   key: ImladrisProviderKey;
@@ -284,6 +284,37 @@ export const IMLADRIS_DASHBOARDS: ImladrisDashboardDefinition[] = [
       "sales.qualified_pipeline",
       "marketing.pipeline_efficiency",
       "development.delivery_health",
+      "product.activation_rate",
+      "customer_success.retention_risk",
+    ],
+  },
+  {
+    id: "company",
+    label: "Company Tracker",
+    sourceKeys: [
+      "stripe",
+      "hubspot",
+      "mercury",
+      "googleWorkspace",
+      "slack",
+      "googleAnalytics",
+      "googleSearchConsole",
+      "googleAds",
+      "metaAds",
+      "reddit",
+      "semrush",
+      "coda",
+      "webflow",
+      "unify",
+      "posthog",
+      "pylon",
+    ],
+    metricKeys: [
+      "revenue.mrr",
+      "finance.cash_runway_months",
+      "finance.net_burn",
+      "sales.qualified_pipeline",
+      "marketing.pipeline_efficiency",
       "product.activation_rate",
       "customer_success.retention_risk",
     ],
