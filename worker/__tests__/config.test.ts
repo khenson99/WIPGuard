@@ -19,6 +19,7 @@ describe('workerConfig', () => {
     expect(workerConfig.databasePoolSize).toBe(5);
     expect(workerConfig.databaseTimeout).toBe(30000);
     expect(workerConfig.healthCheckPort).toBe(8081);
+    expect(workerConfig.healthCheckHost).toBe('0.0.0.0');
     expect(workerConfig.syncTimeoutMs).toBe(300000);
     expect(workerConfig.syncIntervalMs).toBe(300000);
     expect(workerConfig.runOnce).toBe(false);
@@ -37,6 +38,7 @@ describe('workerConfig', () => {
     process.env.WORKER_DB_POOL_SIZE = '10';
     process.env.WORKER_DB_TIMEOUT = '60000';
     process.env.WORKER_HEALTH_PORT = '9090';
+    process.env.WORKER_HEALTH_HOST = '127.0.0.1';
     process.env.WORKER_SYNC_TIMEOUT = '600000';
     process.env.WORKER_SYNC_INTERVAL = '120000';
     process.env.WORKER_RUN_ONCE = 'true';
@@ -47,6 +49,7 @@ describe('workerConfig', () => {
     expect(workerConfig.databasePoolSize).toBe(10);
     expect(workerConfig.databaseTimeout).toBe(60000);
     expect(workerConfig.healthCheckPort).toBe(9090);
+    expect(workerConfig.healthCheckHost).toBe('127.0.0.1');
     expect(workerConfig.syncTimeoutMs).toBe(600000);
     expect(workerConfig.syncIntervalMs).toBe(120000);
     expect(workerConfig.runOnce).toBe(true);

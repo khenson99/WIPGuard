@@ -104,6 +104,48 @@ describe("retention pipeline helpers", () => {
     await expect(__test__.fetchCodaApiRows("doc123", "table123", "token123", 1)).resolves.toEqual([]);
   });
 
+  it("sends a fresh Arda request id on collection query requests", async () => {
+    vi.stubEnv("ARDA_API_BASE_URL", "https://arda.example.test");
+    vi.stubEnv("ARDA_API_TOKEN", "token123");
+    vi.stubEnv("ARDA_API_AUTHOR", "author_1");
+
+    const requests: Array<{ url: string; headers: Headers }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({
+          url: String(input),
+          headers: new Headers(init?.headers),
+        });
+        return new Response(
+          JSON.stringify({
+            results: [],
+            nextPage: null,
+          }),
+          { status: 200 },
+        );
+      }) as unknown as typeof fetch,
+    );
+
+    await expect(
+      (
+        __test__ as {
+          queryArdaCollection: (
+            endpoint: string,
+            tenantId: string,
+            asOfMs: number,
+          ) => Promise<unknown>;
+        }
+      ).queryArdaCollection("order/order", "tenant_1", Date.parse("2026-03-15T00:00:00.000Z")),
+    ).resolves.toEqual([]);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].headers.get("X-Request-ID")).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(requests[0].headers.get("X-Tenant-Id")).toBe("tenant_1");
+  });
+
   it("derives persisted Coda external refs from latest Arda tenant metadata", () => {
     expect(
       __test__.buildDerivedCodaExternalRefsFromSourceRecords([

@@ -17,7 +17,9 @@ const CUSTOMER_SUCCESS_RETENTION_RISK_CALCULATION_VERSION =
 const INACTIVE_STRIPE_SUBSCRIPTION_STATUSES = new Set([
   "canceled",
   "cancelled",
+  "incomplete",
   "incompleteexpired",
+  "paused",
   "unpaid",
 ]);
 const TERMINAL_DEAL_STAGE_KEYS = new Set([
@@ -30,6 +32,7 @@ const TERMINAL_DEAL_STAGE_KEYS = new Set([
 const PAID_AD_PROVIDERS = [
   IntegrationProvider.GOOGLE_ADS,
   IntegrationProvider.META_ADS,
+  IntegrationProvider.META_PAGE,
   IntegrationProvider.REDDIT,
 ] as const;
 
@@ -43,6 +46,9 @@ interface RawSourceRecordRow {
   provider: IntegrationProvider;
   objectType: string;
   externalId: string;
+  scopeKey?: string | null;
+  userId?: string | null;
+  organizationId?: string | null;
   occurredAt: Date | string | null;
   sourceCreatedAt: Date | string | null;
   sourceUpdatedAt: Date | string | null;
@@ -94,8 +100,46 @@ function nestedRecord(value: unknown): Record<string, unknown> {
 
 function dateFrom(value: unknown): Date | null {
   if (!value) return null;
-  const date = value instanceof Date ? value : new Date(String(value));
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    const timestampMs = value < 10_000_000_000 ? value * 1000 : value;
+    const date = new Date(timestampMs);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!normalized) return null;
+    if (/^\d+(?:\.\d+)?$/.test(normalized)) {
+      const timestamp = Number(normalized);
+      if (Number.isFinite(timestamp) && timestamp > 0) {
+        const timestampMs = timestamp < 10_000_000_000 ? timestamp * 1000 : timestamp;
+        const date = new Date(timestampMs);
+        return Number.isNaN(date.getTime()) ? null : date;
+      }
+    }
+    const date = new Date(normalized);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  const date = new Date(String(value));
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function firstDateFrom(...values: unknown[]): Date | null {
+  for (const value of values) {
+    const date = dateFrom(value);
+    if (date) return date;
+  }
+  return null;
+}
+
+function firstDateAtOrBefore(asOf: Date, ...values: unknown[]): Date | null {
+  for (const value of values) {
+    const date = dateFrom(value);
+    if (date && date.getTime() <= asOf.getTime()) return date;
+  }
+  return null;
 }
 
 function daysBetween(start: Date | null, end: Date | null): number | null {
@@ -125,8 +169,8 @@ function isCompletedLinearIssue(record: RawSourceRecordRow): boolean {
 function linearCycleTimeDays(record: RawSourceRecordRow): number | null {
   const payload = asRecord(record.payload);
   return daysBetween(
-    dateFrom(payload.createdAt ?? payload.created_at ?? record.sourceCreatedAt),
-    dateFrom(payload.completedAt ?? payload.completed_at ?? record.occurredAt ?? record.sourceUpdatedAt),
+    firstDateFrom(payload.createdAt, payload.created_at, record.sourceCreatedAt),
+    firstDateFrom(payload.completedAt, payload.completed_at, record.occurredAt, record.sourceUpdatedAt),
   );
 }
 
@@ -204,17 +248,17 @@ function average(values: number[]): number | null {
 
 function computeDeliveryHealth(records: RawSourceRecordRow[]) {
   const linearIssues = records.filter(
-    (record) => record.provider === IntegrationProvider.LINEAR && record.objectType === "issue",
+    (record) => record.provider === IntegrationProvider.LINEAR && recordIsObjectType(record, "issue"),
   );
   const completedLinearIssues = linearIssues.filter(isCompletedLinearIssue);
   const mergedPullRequests = records.filter(
     (record) =>
       record.provider === IntegrationProvider.GITHUB &&
-      record.objectType === "pull_request" &&
+      recordIsObjectType(record, "pull_request") &&
       isMergedPullRequest(record),
   );
   const productEvents = records.filter(
-    (record) => record.provider === IntegrationProvider.POSTHOG && record.objectType === "event",
+    (record) => record.provider === IntegrationProvider.POSTHOG && recordIsObjectType(record, "event"),
   );
   const cycleTimes = completedLinearIssues
     .map(linearCycleTimeDays)
@@ -250,6 +294,83 @@ function confidenceFor(records: RawSourceRecordRow[]): number {
   return Math.min(0.95, Number((0.55 + providerCount * 0.12).toFixed(2)));
 }
 
+function providerDisplayName(provider: IntegrationProvider): string {
+  switch (provider) {
+    case IntegrationProvider.GOOGLE_WORKSPACE:
+      return "Google Workspace";
+    case IntegrationProvider.GOOGLE_ANALYTICS:
+      return "Google Analytics";
+    case IntegrationProvider.GOOGLE_SEARCH_CONSOLE:
+      return "Google Search Console";
+    case IntegrationProvider.GOOGLE_ADS:
+      return "Google Ads";
+    case IntegrationProvider.META_ADS:
+      return "Meta Ads";
+    case IntegrationProvider.META_PAGE:
+      return "Meta Page";
+    case IntegrationProvider.HUBSPOT:
+      return "HubSpot";
+    case IntegrationProvider.GITHUB:
+      return "GitHub";
+    case IntegrationProvider.POSTHOG:
+      return "PostHog";
+    case IntegrationProvider.SEMRUSH:
+      return "SEMrush";
+    default:
+      return provider
+        .toLowerCase()
+        .split("_")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+  }
+}
+
+function formatProviderList(providers: IntegrationProvider[]): string {
+  const names = providers.map(providerDisplayName);
+  if (names.length <= 1) return names[0] ?? "";
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
+}
+
+function missingProviders(
+  records: RawSourceRecordRow[],
+  requiredProviders: IntegrationProvider[],
+): IntegrationProvider[] {
+  const presentProviders = new Set(records.map((record) => providerCoverageKey(record.provider)));
+  return requiredProviders.filter(
+    (provider) => !presentProviders.has(providerCoverageKey(provider)),
+  );
+}
+
+function providerCoverageKey(provider: IntegrationProvider): IntegrationProvider {
+  return provider === IntegrationProvider.META_PAGE ? IntegrationProvider.META_ADS : provider;
+}
+
+function statusForProviderCoverage(input: {
+  records: RawSourceRecordRow[];
+  requiredProviders: IntegrationProvider[];
+}): keyof typeof ImladrisMetricStatus {
+  if (input.records.length === 0) return ImladrisMetricStatus.MISSING;
+  return missingProviders(input.records, input.requiredProviders).length === 0
+    ? ImladrisMetricStatus.READY
+    : ImladrisMetricStatus.PARTIAL;
+}
+
+function providerCoverageWarning(input: {
+  metricLabel: string;
+  missingVerb?: "is" | "are";
+  records: RawSourceRecordRow[];
+  requiredProviders: IntegrationProvider[];
+  emptyWarning: string;
+}): string[] {
+  if (input.records.length === 0) return [input.emptyWarning];
+  const missing = missingProviders(input.records, input.requiredProviders);
+  if (missing.length === 0) return [];
+  return [
+    `${input.metricLabel} ${input.missingVerb ?? "is"} missing ${formatProviderList(missing)} raw records for this period.`,
+  ];
+}
+
 function numberFrom(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.trim()) {
@@ -262,6 +383,11 @@ function numberFrom(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function nonNegativeNumberFrom(value: unknown): number | null {
+  const number = numberFrom(value);
+  return number === null ? null : Math.max(0, number);
 }
 
 function currencyFrom(records: RawSourceRecordRow[]): string {
@@ -317,11 +443,41 @@ function normalizeLookup(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function normalizeObjectType(value: string): string {
+  return value
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase();
+}
+
+function recordObjectType(record: RawSourceRecordRow): string {
+  return normalizeObjectType(record.objectType);
+}
+
+function recordIsObjectType(record: RawSourceRecordRow, ...objectTypes: string[]): boolean {
+  return objectTypes.includes(recordObjectType(record));
+}
+
 function normalizeIdentifier(value: unknown): string | null {
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   if (typeof value !== "string") return null;
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeTenantId(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeContext(context: ImladrisActorContext): ImladrisActorContext {
+  return {
+    userId: normalizeTenantId(context.userId),
+    organizationId: normalizeTenantId(context.organizationId),
+  };
 }
 
 function normalizeStageKey(value: unknown): string {
@@ -340,8 +496,9 @@ function normalizeEmailDomain(value: unknown): string | null {
 }
 
 function scopeKeyForContext(context: ImladrisActorContext): string {
-  if (context.organizationId) return `org:${context.organizationId}`;
-  if (context.userId) return `user:${context.userId}`;
+  const normalized = normalizeContext(context);
+  if (normalized.organizationId) return `org:${normalized.organizationId}`;
+  if (normalized.userId) return `user:${normalized.userId}`;
   return "global";
 }
 
@@ -351,21 +508,18 @@ function providerWindowWhere(input: {
   periodStart: Date;
   periodEnd: Date;
 }) {
+  const context = normalizeContext(input.context);
+  const scopeFilters = rawRecordScopeFilters(context);
   return {
     provider: {
       in: input.providers,
     },
-    scopeKey: scopeKeyForContext(input.context),
-    OR: [
-      { userId: input.context.userId },
-      ...(input.context.organizationId
-        ? [{ organizationId: input.context.organizationId }]
-        : []),
-    ],
+    OR: scopeFilters,
     AND: [
       {
         OR: [
           { occurredAt: { gte: input.periodStart, lte: input.periodEnd } },
+          { sourceCreatedAt: { gte: input.periodStart, lte: input.periodEnd } },
           { sourceUpdatedAt: { gte: input.periodStart, lte: input.periodEnd } },
         ],
       },
@@ -373,11 +527,130 @@ function providerWindowWhere(input: {
   };
 }
 
+function rawRecordScopeFilters(context: ImladrisActorContext): Array<Record<string, string | null>> {
+  if (context.organizationId) {
+    const organizationScopeKey = scopeKeyForContext({
+      userId: null,
+      organizationId: context.organizationId,
+    });
+    return [
+      { scopeKey: organizationScopeKey, organizationId: context.organizationId },
+      ...(context.userId
+        ? [
+            { scopeKey: organizationScopeKey, userId: context.userId },
+            {
+              scopeKey: scopeKeyForContext({ userId: context.userId, organizationId: null }),
+              userId: context.userId,
+            },
+          ]
+        : []),
+      { scopeKey: "global", userId: null, organizationId: null },
+    ];
+  }
+
+  if (context.userId) {
+    return [
+      { scopeKey: scopeKeyForContext(context), userId: context.userId },
+      { scopeKey: "global", userId: null, organizationId: null },
+    ];
+  }
+
+  return [{ scopeKey: "global", userId: null, organizationId: null }];
+}
+
+function rawRecordDeduplicationKey(record: RawSourceRecordRow): string {
+  return `${record.provider}:${recordObjectType(record)}:${record.externalId.trim()}`;
+}
+
+function rawRecordScopeRank(record: RawSourceRecordRow, context: ImladrisActorContext): number {
+  const rowUserId = record.userId ?? null;
+  const rowOrganizationId = record.organizationId ?? null;
+  const scopeKey = record.scopeKey ?? null;
+
+  if (context.organizationId) {
+    const organizationScopeKey = scopeKeyForContext({
+      userId: null,
+      organizationId: context.organizationId,
+    });
+    if (
+      context.userId &&
+      rowUserId === context.userId &&
+      (rowOrganizationId === context.organizationId || rowOrganizationId === null) &&
+      scopeKey === organizationScopeKey
+    ) {
+      return 4;
+    }
+    if (rowUserId === null && rowOrganizationId === context.organizationId && scopeKey === organizationScopeKey) {
+      return 3;
+    }
+    if (
+      context.userId &&
+      rowUserId === context.userId &&
+      rowOrganizationId === null &&
+      scopeKey === scopeKeyForContext({ userId: context.userId, organizationId: null })
+    ) {
+      return 2;
+    }
+  }
+
+  if (context.userId && rowUserId === context.userId && rowOrganizationId === null) return 2;
+  if (rowUserId === null && rowOrganizationId === null && scopeKey === "global") return 1;
+  if (record.userId === undefined && record.organizationId === undefined && record.scopeKey === undefined) return 1;
+  return 0;
+}
+
+function rawRevisionTimestampAsOf(value: Date | string | null, asOf: Date): number | null {
+  const date = dateFrom(value);
+  if (!date) return null;
+  return date.getTime() <= asOf.getTime() ? date.getTime() : null;
+}
+
+function compareRawRecordPreference(
+  left: RawSourceRecordRow,
+  right: RawSourceRecordRow,
+  context: ImladrisActorContext,
+  asOf: Date,
+): number {
+  const scopeDelta = rawRecordScopeRank(right, context) - rawRecordScopeRank(left, context);
+  if (scopeDelta !== 0) return scopeDelta;
+  return (
+    (rawRevisionTimestampAsOf(right.sourceUpdatedAt, asOf) ??
+      rawRevisionTimestampAsOf(right.occurredAt, asOf) ??
+      rawRevisionTimestampAsOf(right.sourceCreatedAt, asOf) ??
+      0) -
+    (rawRevisionTimestampAsOf(left.sourceUpdatedAt, asOf) ??
+      rawRevisionTimestampAsOf(left.occurredAt, asOf) ??
+      rawRevisionTimestampAsOf(left.sourceCreatedAt, asOf) ??
+      0)
+  );
+}
+
+function rawRecordIsObservableAsOf(record: RawSourceRecordRow, asOf: Date): boolean {
+  return firstDateAtOrBefore(asOf, record.sourceUpdatedAt, record.occurredAt, record.sourceCreatedAt) !== null;
+}
+
+function dedupeRawSourceRecords(
+  records: RawSourceRecordRow[],
+  context: ImladrisActorContext,
+  asOf: Date,
+): RawSourceRecordRow[] {
+  const bestByObject = new Map<string, RawSourceRecordRow>();
+  for (const record of records) {
+    const key = rawRecordDeduplicationKey(record);
+    const current = bestByObject.get(key);
+    if (!current || compareRawRecordPreference(current, record, context, asOf) > 0) {
+      bestByObject.set(key, record);
+    }
+  }
+  return [...bestByObject.values()].filter((record) => rawRecordIsObservableAsOf(record, asOf));
+}
+
 async function replaceLineage(input: {
   metricLineage: MetricLineageDelegate;
   metricValueId: string;
   records: RawSourceRecordRow[];
   calculationVersion: string;
+  asOf: Date;
 }) {
   await input.metricLineage.deleteMany({
     where: { metricValueId: input.metricValueId },
@@ -390,7 +663,12 @@ async function replaceLineage(input: {
       sourceKey: sourceKeyForProvider(record.provider),
       sourceType: record.objectType,
       sourceId: record.externalId,
-      capturedAt: dateFrom(record.occurredAt ?? record.sourceUpdatedAt),
+      capturedAt: firstDateAtOrBefore(
+        input.asOf,
+        record.occurredAt,
+        record.sourceUpdatedAt,
+        record.sourceCreatedAt,
+      ),
       metadata: {
         provider: record.provider,
         calculationVersion: input.calculationVersion,
@@ -406,33 +684,38 @@ export async function materializeImladrisDevelopmentMetrics(
   const canonicalMetrics = input.prisma
     .imladrisCanonicalMetricValue as CanonicalMetricDelegate;
   const metricLineage = input.prisma.imladrisMetricLineage as MetricLineageDelegate;
+  const context = normalizeContext(input.context);
+  const now = input.now ?? new Date();
 
-  const records = await rawRecords.findMany({
+  const requiredProviders = [
+    IntegrationProvider.LINEAR,
+    IntegrationProvider.GITHUB,
+    IntegrationProvider.POSTHOG,
+  ];
+  const queriedRecords = await rawRecords.findMany({
     where: providerWindowWhere({
-      providers: [
-        IntegrationProvider.LINEAR,
-        IntegrationProvider.GITHUB,
-        IntegrationProvider.POSTHOG,
-      ],
-      context: input.context,
+      providers: requiredProviders,
+      context,
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
     }),
     orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
   });
+  const records = dedupeRawSourceRecords(queriedRecords, context, now);
 
   const value = computeDeliveryHealth(records);
-  const status =
-    records.length > 0 ? ImladrisMetricStatus.READY : ImladrisMetricStatus.MISSING;
-  const warnings =
-    records.length > 0
-      ? []
-      : ["No Linear, GitHub, or PostHog raw records were available for this period."];
+  const status = statusForProviderCoverage({ records, requiredProviders });
+  const warnings = providerCoverageWarning({
+    metricLabel: "Development Delivery Health",
+    records,
+    requiredProviders,
+    emptyWarning: "No Linear, GitHub, or PostHog raw records were available for this period.",
+  });
   const metricValue = await canonicalMetrics.upsert({
     where: {
       organizationId_userId_metricKey_periodEnd_calculationVersion: {
-        organizationId: input.context.organizationId,
-        userId: input.context.userId,
+        organizationId: context.organizationId,
+        userId: context.userId,
         metricKey: "development.delivery_health",
         periodEnd: input.periodEnd,
         calculationVersion: DEVELOPMENT_CALCULATION_VERSION,
@@ -449,9 +732,9 @@ export async function materializeImladrisDevelopmentMetrics(
       confidence: confidenceFor(records),
       warnings,
       calculationVersion: DEVELOPMENT_CALCULATION_VERSION,
-      computedAt: input.now ?? new Date(),
-      userId: input.context.userId,
-      organizationId: input.context.organizationId,
+      computedAt: now,
+      userId: context.userId,
+      organizationId: context.organizationId,
     },
     update: {
       value,
@@ -459,7 +742,7 @@ export async function materializeImladrisDevelopmentMetrics(
       status,
       confidence: confidenceFor(records),
       warnings,
-      computedAt: input.now ?? new Date(),
+      computedAt: now,
     },
   });
 
@@ -468,6 +751,7 @@ export async function materializeImladrisDevelopmentMetrics(
     metricValueId: metricValue.id,
     records,
     calculationVersion: DEVELOPMENT_CALCULATION_VERSION,
+    asOf: now,
   });
 
   return {
@@ -480,7 +764,7 @@ export async function materializeImladrisDevelopmentMetrics(
 }
 
 function hubspotAccountId(record: RawSourceRecordRow): string | null {
-  if (!["company", "account", "contact"].includes(record.objectType)) return null;
+  if (!recordIsObjectType(record, "company", "account", "contact")) return null;
   const payload = asRecord(record.payload);
   const properties = nestedRecord(payload.properties);
   const id =
@@ -517,7 +801,7 @@ function activationAccountId(record: RawSourceRecordRow): string | null {
 }
 
 function isActivationEvent(record: RawSourceRecordRow): boolean {
-  if (record.provider !== IntegrationProvider.POSTHOG || record.objectType !== "event") {
+  if (record.provider !== IntegrationProvider.POSTHOG || !recordIsObjectType(record, "event")) {
     return false;
   }
   const eventName = asRecord(record.payload).event;
@@ -561,31 +845,40 @@ export async function materializeImladrisProductActivationMetric(
   const canonicalMetrics = input.prisma
     .imladrisCanonicalMetricValue as CanonicalMetricDelegate;
   const metricLineage = input.prisma.imladrisMetricLineage as MetricLineageDelegate;
+  const context = normalizeContext(input.context);
+  const now = input.now ?? new Date();
 
-  const records = await rawRecords.findMany({
+  const requiredProviders = [IntegrationProvider.HUBSPOT, IntegrationProvider.POSTHOG];
+  const queriedRecords = await rawRecords.findMany({
     where: providerWindowWhere({
-      providers: [IntegrationProvider.HUBSPOT, IntegrationProvider.POSTHOG],
-      context: input.context,
+      providers: requiredProviders,
+      context,
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
     }),
     orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
   });
+  const records = dedupeRawSourceRecords(queriedRecords, context, now);
 
   const value = computeActivationRate(records);
   const status =
     value.eligibleAccounts > 0
-      ? ImladrisMetricStatus.READY
+      ? statusForProviderCoverage({ records, requiredProviders })
       : ImladrisMetricStatus.MISSING;
   const warnings =
-    status === ImladrisMetricStatus.READY
-      ? []
+    value.eligibleAccounts > 0
+      ? providerCoverageWarning({
+          metricLabel: "Activation Rate",
+          records,
+          requiredProviders,
+          emptyWarning: "No HubSpot account cohort was available for activation-rate materialization.",
+        })
       : ["No HubSpot account cohort was available for activation-rate materialization."];
   const metricValue = await canonicalMetrics.upsert({
     where: {
       organizationId_userId_metricKey_periodEnd_calculationVersion: {
-        organizationId: input.context.organizationId,
-        userId: input.context.userId,
+        organizationId: context.organizationId,
+        userId: context.userId,
         metricKey: "product.activation_rate",
         periodEnd: input.periodEnd,
         calculationVersion: PRODUCT_ACTIVATION_CALCULATION_VERSION,
@@ -602,9 +895,9 @@ export async function materializeImladrisProductActivationMetric(
       confidence: confidenceFor(records),
       warnings,
       calculationVersion: PRODUCT_ACTIVATION_CALCULATION_VERSION,
-      computedAt: input.now ?? new Date(),
-      userId: input.context.userId,
-      organizationId: input.context.organizationId,
+      computedAt: now,
+      userId: context.userId,
+      organizationId: context.organizationId,
     },
     update: {
       value,
@@ -612,7 +905,7 @@ export async function materializeImladrisProductActivationMetric(
       status,
       confidence: confidenceFor(records),
       warnings,
-      computedAt: input.now ?? new Date(),
+      computedAt: now,
     },
   });
 
@@ -621,6 +914,7 @@ export async function materializeImladrisProductActivationMetric(
     metricValueId: metricValue.id,
     records,
     calculationVersion: PRODUCT_ACTIVATION_CALCULATION_VERSION,
+    asOf: now,
   });
 
   return {
@@ -662,6 +956,76 @@ function balanceAmount(record: RawSourceRecordRow): number | null {
       properties.current_balance ??
       properties.balance,
   );
+}
+
+function balanceAccountKey(record: RawSourceRecordRow): string {
+  const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
+  const account = nestedRecord(payload.account ?? properties.account);
+  return (
+    normalizeIdentifier(
+      payload.accountId ??
+        payload.account_id ??
+        payload.accountNumber ??
+        payload.account_number ??
+        properties.accountId ??
+        properties.account_id ??
+        properties.accountNumber ??
+        properties.account_number ??
+        account.id ??
+        account.accountId ??
+        account.account_id,
+    ) ?? record.externalId
+  );
+}
+
+function recordFactTimestamp(record: RawSourceRecordRow): number {
+  return (
+    dateFrom(record.occurredAt)?.getTime() ??
+    dateFrom(record.sourceUpdatedAt)?.getTime() ??
+    dateFrom(record.sourceCreatedAt)?.getTime() ??
+    0
+  );
+}
+
+function balanceRecordTimestamp(record: RawSourceRecordRow): number {
+  const payload = asRecord(record.payload);
+  const properties = nestedRecord(payload.properties);
+  return (
+    dateFrom(
+      payload.balanceAsOf ??
+        payload.balance_as_of ??
+        payload.asOf ??
+        payload.as_of ??
+        payload.effectiveAt ??
+        payload.effective_at ??
+        properties.balanceAsOf ??
+        properties.balance_as_of ??
+        properties.asOf ??
+        properties.as_of ??
+        properties.effectiveAt ??
+        properties.effective_at,
+    )?.getTime() ??
+    dateFrom(record.sourceUpdatedAt)?.getTime() ??
+    dateFrom(record.occurredAt)?.getTime() ??
+    dateFrom(record.sourceCreatedAt)?.getTime() ??
+    0
+  );
+}
+
+function latestAccountBalanceAmounts(records: RawSourceRecordRow[]): number[] {
+  const latestByAccount = new Map<string, { amount: number; timestamp: number }>();
+  for (const record of records) {
+    const amount = balanceAmount(record);
+    if (amount === null) continue;
+    const accountKey = balanceAccountKey(record);
+    const timestamp = balanceRecordTimestamp(record);
+    const current = latestByAccount.get(accountKey);
+    if (!current || timestamp >= current.timestamp) {
+      latestByAccount.set(accountKey, { amount, timestamp });
+    }
+  }
+  return [...latestByAccount.values()].map((entry) => entry.amount);
 }
 
 function mercurySnapshotCashBalance(record: RawSourceRecordRow): number | null {
@@ -719,13 +1083,137 @@ function mercurySnapshotCashBalance(record: RawSourceRecordRow): number | null {
 function stripeMrrAmount(record: RawSourceRecordRow): number | null {
   const payload = asRecord(record.payload);
   if (isInactiveStripeSubscription(record)) return null;
-  return numberFrom(
+  const explicitMrr = numberFrom(
     payload.monthlyRecurringRevenue ??
       payload.monthly_recurring_revenue ??
       payload.mrr ??
       payload.amountMonthly ??
       payload.amount_monthly,
   );
+  if (explicitMrr !== null) return Math.max(0, explicitMrr);
+  const itemMrr = stripeSubscriptionItemMrr(payload);
+  return itemMrr === null ? null : applyStripeSubscriptionDiscounts(itemMrr, payload);
+}
+
+function recurringMonthlyDivisor(value: unknown): number {
+  const recurring = nestedRecord(value);
+  const interval =
+    typeof recurring.interval === "string" ? recurring.interval.trim().toLowerCase() : "month";
+  const intervalCount = Math.max(1, numberFrom(recurring.interval_count ?? recurring.intervalCount) ?? 1);
+  if (interval === "year") return 12 * intervalCount;
+  if (interval === "month") return intervalCount;
+  if (interval === "week") return intervalCount / (52 / 12);
+  if (interval === "day") return intervalCount / (365 / 12);
+  return intervalCount;
+}
+
+function itemUnitAmount(item: Record<string, unknown>): number | null {
+  const price = nestedRecord(item.price);
+  const plan = nestedRecord(item.plan);
+  const unitCents = numberFrom(
+    item.unit_amount ??
+      item.unitAmount ??
+      item.unit_amount_decimal ??
+      item.unitAmountDecimal ??
+      price.unit_amount ??
+      price.unitAmount ??
+      price.unit_amount_decimal ??
+      price.unitAmountDecimal ??
+      plan.amount ??
+      plan.unit_amount ??
+      plan.unitAmount,
+  );
+  if (unitCents === null) return null;
+  const quantity = Math.max(0, numberFrom(item.quantity) ?? 1);
+  const recurring = Object.keys(nestedRecord(price.recurring)).length > 0 ? price.recurring : plan;
+  return (unitCents / 100) * quantity / recurringMonthlyDivisor(recurring);
+}
+
+function stripeSubscriptionItems(payload: Record<string, unknown>): Record<string, unknown>[] {
+  const itemContainers = [
+    payload.items,
+    payload.subscriptionItems,
+    payload.subscription_items,
+  ];
+  return itemContainers.flatMap((container) => {
+    if (Array.isArray(container)) return container;
+    const data = nestedRecord(container).data;
+    return Array.isArray(data) ? data : [];
+  }).map((item) => nestedRecord(item));
+}
+
+function stripeSubscriptionItemMrr(payload: Record<string, unknown>): number | null {
+  const items = stripeSubscriptionItems(payload);
+  const amounts = items
+    .map((item) => itemUnitAmount(item))
+    .filter((amount): amount is number => amount !== null);
+  if (amounts.length === 0) return null;
+  return amounts.reduce((sum, amount) => sum + amount, 0);
+}
+
+function stripeSubscriptionDiscountMonthlyDivisor(payload: Record<string, unknown>): number {
+  const divisors = stripeSubscriptionItems(payload)
+    .map((item) => {
+      const price = nestedRecord(item.price);
+      const plan = nestedRecord(item.plan);
+      const recurring = Object.keys(nestedRecord(price.recurring)).length > 0 ? price.recurring : plan;
+      return recurringMonthlyDivisor(recurring);
+    })
+    .filter((divisor) => Number.isFinite(divisor) && divisor > 0);
+  return divisors.length === 0 ? 1 : Math.max(...divisors);
+}
+
+function stripeSubscriptionDiscounts(payload: Record<string, unknown>): Record<string, unknown>[] {
+  const discounts: Record<string, unknown>[] = [];
+  const addDiscount = (value: unknown) => {
+    const discount = nestedRecord(value);
+    if (Object.keys(discount).length > 0) discounts.push(discount);
+  };
+  addDiscount(payload.discount);
+  const discountContainers = [payload.discounts, payload.subscriptionDiscounts, payload.subscription_discounts];
+  for (const container of discountContainers) {
+    if (Array.isArray(container)) {
+      for (const entry of container) addDiscount(entry);
+      continue;
+    }
+    const data = nestedRecord(container).data;
+    if (Array.isArray(data)) {
+      for (const entry of data) addDiscount(entry);
+    }
+  }
+  return discounts;
+}
+
+function percentFrom(value: unknown): number | null {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (normalized.endsWith("%")) {
+      const parsed = numberFrom(normalized.slice(0, -1).trim());
+      return parsed === null ? null : parsed;
+    }
+  }
+  return numberFrom(value);
+}
+
+function applyStripeSubscriptionDiscounts(
+  monthlyAmount: number,
+  payload: Record<string, unknown>,
+): number {
+  let discountedAmount = monthlyAmount;
+  const discountMonthlyDivisor = stripeSubscriptionDiscountMonthlyDivisor(payload);
+  for (const discount of stripeSubscriptionDiscounts(payload)) {
+    const coupon = nestedRecord(discount.coupon);
+    const percentOff = percentFrom(coupon.percent_off ?? coupon.percentOff ?? discount.percent_off ?? discount.percentOff);
+    if (percentOff !== null) {
+      const discountRatio = Math.min(Math.max(percentOff, 0), 100) / 100;
+      discountedAmount *= 1 - discountRatio;
+    }
+    const amountOff = numberFrom(coupon.amount_off ?? coupon.amountOff ?? discount.amount_off ?? discount.amountOff);
+    if (amountOff !== null) {
+      discountedAmount -= amountOff / 100 / discountMonthlyDivisor;
+    }
+  }
+  return Math.max(0, discountedAmount);
 }
 
 function isInactiveStripeSubscription(record: RawSourceRecordRow): boolean {
@@ -808,6 +1296,13 @@ function hubspotStripeCustomerId(record: RawSourceRecordRow): string | null {
   );
 }
 
+function isFalseLike(value: unknown): boolean {
+  if (value === false) return true;
+  if (typeof value === "number") return value === 0;
+  if (typeof value !== "string") return false;
+  return ["false", "no", "n", "0"].includes(value.trim().toLowerCase());
+}
+
 function isLinkedHubspotDeal(
   record: RawSourceRecordRow,
   stripeRefs: {
@@ -854,7 +1349,7 @@ function hubspotRecurringRevenue(record: RawSourceRecordRow): {
     payload.recurring_revenue ??
     properties.recurringRevenue ??
     properties.recurring_revenue;
-  if (recurringFlag === false) return null;
+  if (isFalseLike(recurringFlag)) return null;
   const explicitMrr = numberFrom(
     payload.monthlyRecurringRevenue ??
       payload.monthly_recurring_revenue ??
@@ -894,8 +1389,8 @@ function buildStripeRefs(records: RawSourceRecordRow[]) {
   const stripeRecords = records.filter(
     (record) =>
       record.provider === IntegrationProvider.STRIPE &&
-      (record.objectType === "active_customer_ref" ||
-        (record.objectType === "subscription" && !isInactiveStripeSubscription(record))),
+      (recordIsObjectType(record, "active_customer_ref") ||
+        (recordIsObjectType(record, "subscription") && !isInactiveStripeSubscription(record))),
   );
   return {
     customerIds: new Set(
@@ -926,7 +1421,7 @@ function computeMrrBreakdown(records: RawSourceRecordRow[]) {
   for (const record of records) {
     if (
       record.provider !== IntegrationProvider.HUBSPOT ||
-      !["deal", "subscription_deal"].includes(record.objectType)
+      !recordIsObjectType(record, "deal", "subscription_deal")
     ) {
       continue;
     }
@@ -966,7 +1461,7 @@ function computeFinanceValues(records: RawSourceRecordRow[]) {
   const mercuryTransactions = records.filter(
     (record) =>
       record.provider === IntegrationProvider.MERCURY &&
-      ["transaction", "bank_transaction"].includes(record.objectType),
+      recordIsObjectType(record, "transaction", "bank_transaction"),
   );
   const cashOutflow = mercuryTransactions.reduce((sum, record) => {
     const amount = transactionAmount(record);
@@ -986,18 +1481,30 @@ function computeFinanceValues(records: RawSourceRecordRow[]) {
     .filter(
       (record) =>
         record.provider === IntegrationProvider.MERCURY &&
-        ["account_balance", "balance"].includes(record.objectType),
-    )
-    .map(balanceAmount)
-    .filter((amount): amount is number => typeof amount === "number");
+        recordIsObjectType(record, "account_balance", "balance"),
+    );
   const snapshotCashBalances = records
     .filter((record) => record.provider === IntegrationProvider.MERCURY)
-    .map(mercurySnapshotCashBalance)
-    .filter((amount): amount is number => typeof amount === "number");
+    .map((record) => ({
+      amount: mercurySnapshotCashBalance(record),
+      timestamp: recordFactTimestamp(record),
+    }))
+    .filter(
+      (entry): entry is { amount: number; timestamp: number } =>
+        typeof entry.amount === "number",
+    );
+  const latestSnapshotCashBalance = snapshotCashBalances.reduce<
+    { amount: number; timestamp: number } | null
+  >(
+    (latest, entry) =>
+      !latest || entry.timestamp >= latest.timestamp ? entry : latest,
+    null,
+  );
+  const latestAccountBalances = latestAccountBalanceAmounts(mercuryBalanceAmounts);
   const cashBalance =
-    mercuryBalanceAmounts.length > 0
-      ? mercuryBalanceAmounts.reduce((sum, amount) => sum + amount, 0)
-      : snapshotCashBalances.at(-1) ?? 0;
+    latestAccountBalances.length > 0
+      ? latestAccountBalances.reduce((sum, amount) => sum + amount, 0)
+      : latestSnapshotCashBalance?.amount ?? 0;
   const currency = currencyFrom(records);
 
   return {
@@ -1035,11 +1542,12 @@ async function upsertCanonicalMetric(input: {
   calculationVersion: string;
   now?: Date;
 }) {
+  const context = normalizeContext(input.context);
   return input.canonicalMetrics.upsert({
     where: {
       organizationId_userId_metricKey_periodEnd_calculationVersion: {
-        organizationId: input.context.organizationId,
-        userId: input.context.userId,
+        organizationId: context.organizationId,
+        userId: context.userId,
         metricKey: input.metricKey,
         periodEnd: input.periodEnd,
         calculationVersion: input.calculationVersion,
@@ -1057,8 +1565,8 @@ async function upsertCanonicalMetric(input: {
       warnings: input.warnings,
       calculationVersion: input.calculationVersion,
       computedAt: input.now ?? new Date(),
-      userId: input.context.userId,
-      organizationId: input.context.organizationId,
+      userId: context.userId,
+      organizationId: context.organizationId,
     },
     update: {
       value: input.value,
@@ -1078,28 +1586,34 @@ export async function materializeImladrisFinanceMetrics(
   const canonicalMetrics = input.prisma
     .imladrisCanonicalMetricValue as CanonicalMetricDelegate;
   const metricLineage = input.prisma.imladrisMetricLineage as MetricLineageDelegate;
+  const context = normalizeContext(input.context);
+  const now = input.now ?? new Date();
 
-  const records = await rawRecords.findMany({
+  const requiredProviders = [
+    IntegrationProvider.MERCURY,
+    IntegrationProvider.STRIPE,
+    IntegrationProvider.HUBSPOT,
+  ];
+  const queriedRecords = await rawRecords.findMany({
     where: providerWindowWhere({
-      providers: [
-        IntegrationProvider.MERCURY,
-        IntegrationProvider.STRIPE,
-        IntegrationProvider.HUBSPOT,
-      ],
-      context: input.context,
+      providers: requiredProviders,
+      context,
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
     }),
     orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
   });
+  const records = dedupeRawSourceRecords(queriedRecords, context, now);
   const values = computeFinanceValues(records);
   const confidence = confidenceFor(records);
-  const status =
-    records.length > 0 ? ImladrisMetricStatus.READY : ImladrisMetricStatus.MISSING;
-  const warnings =
-    status === ImladrisMetricStatus.READY
-      ? []
-      : ["No Mercury, Stripe, or HubSpot raw records were available for finance materialization."];
+  const status = statusForProviderCoverage({ records, requiredProviders });
+  const warnings = providerCoverageWarning({
+    metricLabel: "Finance metrics",
+    missingVerb: "are",
+    records,
+    requiredProviders,
+    emptyWarning: "No Mercury, Stripe, or HubSpot raw records were available for finance materialization.",
+  });
   const metricInputs = [
     {
       metricKey: "finance.net_burn",
@@ -1139,13 +1653,14 @@ export async function materializeImladrisFinanceMetrics(
       confidence,
       warnings,
       calculationVersion: metricInput.calculationVersion,
-      now: input.now,
+      now,
     });
     await replaceLineage({
       metricLineage,
       metricValueId: metricValue.id,
       records,
       calculationVersion: metricInput.calculationVersion,
+      asOf: now,
     });
     results.push({
       metricKey: metricInput.metricKey,
@@ -1160,7 +1675,7 @@ export async function materializeImladrisFinanceMetrics(
 }
 
 function isQualifiedPipelineDeal(record: RawSourceRecordRow): boolean {
-  if (record.provider !== IntegrationProvider.HUBSPOT || record.objectType !== "deal") {
+  if (record.provider !== IntegrationProvider.HUBSPOT || !recordIsObjectType(record, "deal")) {
     return false;
   }
   const payload = asRecord(record.payload);
@@ -1270,30 +1785,35 @@ export async function materializeImladrisSalesMetrics(
   const canonicalMetrics = input.prisma
     .imladrisCanonicalMetricValue as CanonicalMetricDelegate;
   const metricLineage = input.prisma.imladrisMetricLineage as MetricLineageDelegate;
+  const context = normalizeContext(input.context);
+  const now = input.now ?? new Date();
 
-  const records = await rawRecords.findMany({
+  const requiredProviders = [
+    IntegrationProvider.HUBSPOT,
+    IntegrationProvider.GOOGLE_WORKSPACE,
+    IntegrationProvider.SLACK,
+  ];
+  const queriedRecords = await rawRecords.findMany({
     where: providerWindowWhere({
-      providers: [
-        IntegrationProvider.HUBSPOT,
-        IntegrationProvider.GOOGLE_WORKSPACE,
-        IntegrationProvider.SLACK,
-      ],
-      context: input.context,
+      providers: requiredProviders,
+      context,
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
     }),
     orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
   });
+  const records = dedupeRawSourceRecords(queriedRecords, context, now);
   const value = computeQualifiedPipeline(records);
-  const status =
-    records.length > 0 ? ImladrisMetricStatus.READY : ImladrisMetricStatus.MISSING;
-  const warnings =
-    status === ImladrisMetricStatus.READY
-      ? []
-      : ["No HubSpot, Google Workspace, or Slack raw records were available for sales materialization."];
+  const status = statusForProviderCoverage({ records, requiredProviders });
+  const warnings = providerCoverageWarning({
+    metricLabel: "Qualified Pipeline",
+    records,
+    requiredProviders,
+    emptyWarning: "No HubSpot, Google Workspace, or Slack raw records were available for sales materialization.",
+  });
   const metricValue = await upsertCanonicalMetric({
     canonicalMetrics,
-    context: input.context,
+    context,
     metricKey: "sales.qualified_pipeline",
     department: "sales",
     unit: "currency",
@@ -1304,7 +1824,7 @@ export async function materializeImladrisSalesMetrics(
     confidence: confidenceFor(records),
     warnings,
     calculationVersion: SALES_QUALIFIED_PIPELINE_CALCULATION_VERSION,
-    now: input.now,
+    now,
   });
 
   await replaceLineage({
@@ -1312,6 +1832,7 @@ export async function materializeImladrisSalesMetrics(
     metricValueId: metricValue.id,
     records,
     calculationVersion: SALES_QUALIFIED_PIPELINE_CALCULATION_VERSION,
+    asOf: now,
   });
 
   return {
@@ -1328,7 +1849,7 @@ function spendAmount(record: RawSourceRecordRow): number | null {
   const properties = nestedRecord(payload.properties);
   const summary = nestedRecord(payload.summary);
   const metrics = nestedRecord(payload.metrics);
-  const costMicros = numberFrom(
+  const costMicros = nonNegativeNumberFrom(
     payload.costMicros ??
       payload.cost_micros ??
       payload.spendMicros ??
@@ -1353,7 +1874,7 @@ function spendAmount(record: RawSourceRecordRow): number | null {
   if (costMicros !== null) {
     return costMicros / 1_000_000;
   }
-  return numberFrom(
+  return nonNegativeNumberFrom(
     payload.totalSpend30d ??
       payload.total_spend_30d ??
       payload.totalSpend ??
@@ -1391,7 +1912,7 @@ function acquisitionSpendForProvider(
 ): number {
   const providerRecords = records.filter((record) => record.provider === provider);
   const snapshotAmounts = providerRecords
-    .filter((record) => record.objectType === "snapshot")
+    .filter((record) => recordIsObjectType(record, "snapshot"))
     .map(spendAmount)
     .filter((amount): amount is number => typeof amount === "number");
   const recordsForSpend =
@@ -1408,7 +1929,7 @@ function sessionsCount(record: RawSourceRecordRow): number | null {
   const properties = nestedRecord(payload.properties);
   const summary = nestedRecord(payload.summary);
   const metrics = nestedRecord(payload.metrics);
-  return numberFrom(
+  return nonNegativeNumberFrom(
     payload.sessions30d ??
       payload.sessions_30d ??
       payload.sessions ??
@@ -1449,7 +1970,7 @@ function websiteSessionsCount(records: RawSourceRecordRow[]): number {
     (record) => record.provider === IntegrationProvider.GOOGLE_ANALYTICS,
   );
   const snapshotCounts = googleAnalyticsRecords
-    .filter((record) => record.objectType === "snapshot")
+    .filter((record) => recordIsObjectType(record, "snapshot"))
     .map(sessionsCount)
     .filter((count): count is number => typeof count === "number");
   const recordsForSessions =
@@ -1466,7 +1987,7 @@ function organicTrafficCount(record: RawSourceRecordRow): number | null {
   const properties = nestedRecord(payload.properties);
   const summary = nestedRecord(payload.summary);
   const metrics = nestedRecord(payload.metrics);
-  return numberFrom(
+  return nonNegativeNumberFrom(
     payload.organicTraffic ??
       payload.organic_traffic ??
       payload.traffic ??
@@ -1491,7 +2012,7 @@ function semrushOrganicTraffic(records: RawSourceRecordRow[]): number {
     (record) => record.provider === IntegrationProvider.SEMRUSH,
   );
   const snapshotCounts = semrushRecords
-    .filter((record) => record.objectType === "snapshot")
+    .filter((record) => recordIsObjectType(record, "snapshot"))
     .map(organicTrafficCount)
     .filter((count): count is number => typeof count === "number");
   const recordsForTraffic =
@@ -1506,13 +2027,13 @@ function semrushOrganicTraffic(records: RawSourceRecordRow[]): number {
 function webflowFormSubmissionCount(records: RawSourceRecordRow[]): number {
   const webflowRecords = records.filter((record) => record.provider === IntegrationProvider.WEBFLOW);
   const snapshotCounts = webflowRecords
-    .filter((record) => record.objectType === "snapshot")
+    .filter((record) => recordIsObjectType(record, "snapshot"))
     .map((record) => {
       const payload = asRecord(record.payload);
       const properties = nestedRecord(payload.properties);
       const summary = nestedRecord(payload.summary);
       const metrics = nestedRecord(payload.metrics);
-      return numberFrom(
+      return nonNegativeNumberFrom(
         payload.totalFormSubmissions ??
           payload.total_form_submissions ??
           properties.totalFormSubmissions ??
@@ -1529,21 +2050,21 @@ function webflowFormSubmissionCount(records: RawSourceRecordRow[]): number {
   }
 
   return webflowRecords
-    .filter((record) => record.objectType === "form_submission")
+    .filter((record) => recordIsObjectType(record, "form_submission"))
     .reduce((sum, record) => {
       const payload = asRecord(record.payload);
-      return sum + (numberFrom(payload.count ?? payload.submissions) ?? 1);
+      return sum + (nonNegativeNumberFrom(payload.count ?? payload.submissions) ?? 1);
     }, 0);
 }
 
 function searchClicks(record: RawSourceRecordRow): number {
   if (record.provider !== IntegrationProvider.GOOGLE_SEARCH_CONSOLE) return 0;
-  return numberFrom(asRecord(record.payload).clicks) ?? 0;
+  return nonNegativeNumberFrom(asRecord(record.payload).clicks) ?? 0;
 }
 
 function searchImpressions(record: RawSourceRecordRow): number {
   if (record.provider !== IntegrationProvider.GOOGLE_SEARCH_CONSOLE) return 0;
-  return numberFrom(asRecord(record.payload).impressions) ?? 0;
+  return nonNegativeNumberFrom(asRecord(record.payload).impressions) ?? 0;
 }
 
 function isIdentifiedVisitor(record: RawSourceRecordRow): boolean {
@@ -1583,7 +2104,7 @@ function isIdentifiedVisitor(record: RawSourceRecordRow): boolean {
 }
 
 function isMarketingPipelineDeal(record: RawSourceRecordRow): boolean {
-  if (record.provider !== IntegrationProvider.HUBSPOT || record.objectType !== "deal") {
+  if (record.provider !== IntegrationProvider.HUBSPOT || !recordIsObjectType(record, "deal")) {
     return false;
   }
   const payload = asRecord(record.payload);
@@ -1638,7 +2159,7 @@ function computeMarketingPipelineEfficiency(records: RawSourceRecordRow[]) {
     (record) => record.provider === IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
   );
   const googleSearchConsoleSummaryRecords = googleSearchConsoleRecords.filter(
-    (record) => record.objectType === "snapshot",
+    (record) => recordIsObjectType(record, "snapshot"),
   );
   const googleSearchConsoleTrafficRecords =
     googleSearchConsoleSummaryRecords.length > 0
@@ -1676,37 +2197,43 @@ export async function materializeImladrisMarketingMetrics(
   const canonicalMetrics = input.prisma
     .imladrisCanonicalMetricValue as CanonicalMetricDelegate;
   const metricLineage = input.prisma.imladrisMetricLineage as MetricLineageDelegate;
+  const context = normalizeContext(input.context);
+  const now = input.now ?? new Date();
 
-  const records = await rawRecords.findMany({
+  const requiredProviders = [
+    IntegrationProvider.GOOGLE_ANALYTICS,
+    IntegrationProvider.GOOGLE_ADS,
+    IntegrationProvider.META_ADS,
+    IntegrationProvider.REDDIT,
+    IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
+    IntegrationProvider.SEMRUSH,
+    IntegrationProvider.CODA,
+    IntegrationProvider.WEBFLOW,
+    IntegrationProvider.UNIFY,
+    IntegrationProvider.HUBSPOT,
+  ];
+  const queryProviders = [...requiredProviders, IntegrationProvider.META_PAGE];
+  const queriedRecords = await rawRecords.findMany({
     where: providerWindowWhere({
-      providers: [
-        IntegrationProvider.GOOGLE_ANALYTICS,
-        IntegrationProvider.GOOGLE_ADS,
-        IntegrationProvider.META_ADS,
-        IntegrationProvider.REDDIT,
-        IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
-        IntegrationProvider.SEMRUSH,
-        IntegrationProvider.CODA,
-        IntegrationProvider.WEBFLOW,
-        IntegrationProvider.UNIFY,
-        IntegrationProvider.HUBSPOT,
-      ],
-      context: input.context,
+      providers: queryProviders,
+      context,
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
     }),
     orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
   });
+  const records = dedupeRawSourceRecords(queriedRecords, context, now);
   const value = computeMarketingPipelineEfficiency(records);
-  const status =
-    records.length > 0 ? ImladrisMetricStatus.READY : ImladrisMetricStatus.MISSING;
-  const warnings =
-    status === ImladrisMetricStatus.READY
-      ? []
-      : ["No acquisition, traffic, visitor, or HubSpot raw records were available for marketing materialization."];
+  const status = statusForProviderCoverage({ records, requiredProviders });
+  const warnings = providerCoverageWarning({
+    metricLabel: "Pipeline Efficiency",
+    records,
+    requiredProviders,
+    emptyWarning: "No acquisition, traffic, visitor, or HubSpot raw records were available for marketing materialization.",
+  });
   const metricValue = await upsertCanonicalMetric({
     canonicalMetrics,
-    context: input.context,
+    context,
     metricKey: "marketing.pipeline_efficiency",
     department: "marketing",
     unit: "ratio",
@@ -1717,7 +2244,7 @@ export async function materializeImladrisMarketingMetrics(
     confidence: confidenceFor(records),
     warnings,
     calculationVersion: MARKETING_PIPELINE_EFFICIENCY_CALCULATION_VERSION,
-    now: input.now,
+    now,
   });
 
   await replaceLineage({
@@ -1725,6 +2252,7 @@ export async function materializeImladrisMarketingMetrics(
     metricValueId: metricValue.id,
     records,
     calculationVersion: MARKETING_PIPELINE_EFFICIENCY_CALCULATION_VERSION,
+    asOf: now,
   });
 
   return {
@@ -1788,7 +2316,7 @@ function isClosedStatus(status: unknown): boolean {
 
 function isOpenSupportIssue(record: RawSourceRecordRow): boolean {
   if (record.provider !== IntegrationProvider.PYLON) return false;
-  if (!["conversation", "ticket", "issue"].includes(record.objectType)) return false;
+  if (!recordIsObjectType(record, "conversation", "ticket", "issue")) return false;
 
   const payload = asRecord(record.payload);
   const properties = nestedRecord(payload.properties);
@@ -1801,7 +2329,7 @@ function isOpenSupportIssue(record: RawSourceRecordRow): boolean {
 }
 
 function pylonSnapshotCount(record: RawSourceRecordRow, keys: string[]): number | null {
-  if (record.provider !== IntegrationProvider.PYLON || record.objectType !== "snapshot") {
+  if (record.provider !== IntegrationProvider.PYLON || !recordIsObjectType(record, "snapshot")) {
     return null;
   }
 
@@ -1819,6 +2347,16 @@ function pylonSnapshotCount(record: RawSourceRecordRow, keys: string[]): number 
     if (count !== null) return count;
   }
   return null;
+}
+
+function latestRecordByFactTimestamp(records: RawSourceRecordRow[]): RawSourceRecordRow | null {
+  return records.reduce<RawSourceRecordRow | null>(
+    (latest, record) =>
+      !latest || recordFactTimestamp(record) >= recordFactTimestamp(latest)
+        ? record
+        : latest,
+    null,
+  );
 }
 
 function isEscalation(record: RawSourceRecordRow): boolean {
@@ -1907,8 +2445,8 @@ function isLowUsage(record: RawSourceRecordRow): boolean {
 function isCollaborationSignal(record: RawSourceRecordRow): boolean {
   const supported =
     (record.provider === IntegrationProvider.GOOGLE_WORKSPACE &&
-      ["calendar_event", "email_thread", "document"].includes(record.objectType)) ||
-    (record.provider === IntegrationProvider.SLACK && record.objectType === "message");
+      recordIsObjectType(record, "calendar_event", "email_thread", "document")) ||
+    (record.provider === IntegrationProvider.SLACK && recordIsObjectType(record, "message"));
   if (!supported) return false;
 
   return Boolean(accountIdFromPayload(record));
@@ -1920,33 +2458,35 @@ function computeRetentionRisk(records: RawSourceRecordRow[]) {
   const billingRiskRecords = records.filter(isBillingRisk);
   const lowUsageRecords = records.filter(isLowUsage);
   const collaborationSignals = records.filter(isCollaborationSignal);
-  const pylonSnapshotOpenSupportIssues = records
-    .map((record) =>
-      pylonSnapshotCount(record, [
+  const latestPylonSnapshot = latestRecordByFactTimestamp(
+    records.filter(
+      (record) =>
+        record.provider === IntegrationProvider.PYLON &&
+        recordIsObjectType(record, "snapshot"),
+    ),
+  );
+  const pylonSnapshotOpenSupportIssues =
+    latestPylonSnapshot
+      ? pylonSnapshotCount(latestPylonSnapshot, [
         "openConversations",
         "open_conversations",
         "openIssues",
         "open_issues",
         "openTickets",
         "open_tickets",
-      ]),
-    )
-    .filter((count): count is number => typeof count === "number")
-    .at(-1);
+      ])
+      : null;
   const pylonSnapshotEscalations =
-    records
-      .map((record) =>
-        pylonSnapshotCount(record, [
+    latestPylonSnapshot
+      ? pylonSnapshotCount(latestPylonSnapshot, [
           "urgentConversations",
           "urgent_conversations",
           "urgentIssues",
           "urgent_issues",
           "urgentTickets",
           "urgent_tickets",
-        ]),
-      )
-      .filter((count): count is number => typeof count === "number")
-      .at(-1) ?? 0;
+        ]) ?? 0
+      : 0;
   const openSupportIssueCount = pylonSnapshotOpenSupportIssues ?? supportIssues.length;
   const escalationCount = escalations.length + pylonSnapshotEscalations;
 
@@ -1995,32 +2535,37 @@ export async function materializeImladrisCustomerSuccessMetrics(
   const canonicalMetrics = input.prisma
     .imladrisCanonicalMetricValue as CanonicalMetricDelegate;
   const metricLineage = input.prisma.imladrisMetricLineage as MetricLineageDelegate;
+  const context = normalizeContext(input.context);
+  const now = input.now ?? new Date();
 
-  const records = await rawRecords.findMany({
+  const requiredProviders = [
+    IntegrationProvider.PYLON,
+    IntegrationProvider.POSTHOG,
+    IntegrationProvider.SLACK,
+    IntegrationProvider.GOOGLE_WORKSPACE,
+    IntegrationProvider.STRIPE,
+  ];
+  const queriedRecords = await rawRecords.findMany({
     where: providerWindowWhere({
-      providers: [
-        IntegrationProvider.PYLON,
-        IntegrationProvider.POSTHOG,
-        IntegrationProvider.SLACK,
-        IntegrationProvider.GOOGLE_WORKSPACE,
-        IntegrationProvider.STRIPE,
-      ],
-      context: input.context,
+      providers: requiredProviders,
+      context,
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
     }),
     orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
   });
+  const records = dedupeRawSourceRecords(queriedRecords, context, now);
   const value = computeRetentionRisk(records);
-  const status =
-    records.length > 0 ? ImladrisMetricStatus.READY : ImladrisMetricStatus.MISSING;
-  const warnings =
-    status === ImladrisMetricStatus.READY
-      ? []
-      : ["No Pylon, PostHog, Slack, Google Workspace, or Stripe raw records were available for customer-success materialization."];
+  const status = statusForProviderCoverage({ records, requiredProviders });
+  const warnings = providerCoverageWarning({
+    metricLabel: "Retention Risk",
+    records,
+    requiredProviders,
+    emptyWarning: "No Pylon, PostHog, Slack, Google Workspace, or Stripe raw records were available for customer-success materialization.",
+  });
   const metricValue = await upsertCanonicalMetric({
     canonicalMetrics,
-    context: input.context,
+    context,
     metricKey: "customer_success.retention_risk",
     department: "customer-success",
     unit: "score",
@@ -2031,7 +2576,7 @@ export async function materializeImladrisCustomerSuccessMetrics(
     confidence: confidenceFor(records),
     warnings,
     calculationVersion: CUSTOMER_SUCCESS_RETENTION_RISK_CALCULATION_VERSION,
-    now: input.now,
+    now,
   });
 
   await replaceLineage({
@@ -2039,6 +2584,7 @@ export async function materializeImladrisCustomerSuccessMetrics(
     metricValueId: metricValue.id,
     records,
     calculationVersion: CUSTOMER_SUCCESS_RETENTION_RISK_CALCULATION_VERSION,
+    asOf: now,
   });
 
   return {

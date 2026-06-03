@@ -226,6 +226,89 @@ describe("expense dashboard data builder", () => {
     expect(dashboard.chartSeries.runwayCash).toBe(100_000);
   });
 
+  it("ignores balance records with malformed timestamps when selecting runway cash", async () => {
+    const records = [
+      {
+        ...rawMercuryRecord({
+          id: "balance_without_valid_timestamp",
+          objectType: "account_balance",
+          occurredAt: undefined,
+          payload: { accountId: "checking", accountName: "Checking", balance: 100_000 },
+        }),
+        sourceUpdatedAt: "not-a-date",
+        sourceCreatedAt: "also-not-a-date",
+      },
+      rawMercuryRecord({
+        id: "tx_cloud",
+        occurredAt: "2026-03-04T12:00:00.000Z",
+        payload: {
+          id: "tx_cloud",
+          postedAt: "2026-03-04T12:00:00.000Z",
+          amount: -1200,
+          counterpartyName: "Amazon Web Services",
+          description: "AWS hosting invoice",
+        },
+      }),
+    ];
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => records),
+      },
+    };
+
+    const dashboard = await buildExpenseDashboard({
+      prisma: prisma as never,
+      context: { userId: "user_1", organizationId: "org_1" },
+      range: "180d",
+      now: new Date("2026-06-03T12:00:00.000Z"),
+    });
+
+    expect(dashboard.chartSeries.runwayCash).toBeUndefined();
+  });
+
+  it("ignores transactions whose payload posted date falls outside the requested range", async () => {
+    const records = [
+      rawMercuryRecord({
+        id: "tx_current_cloud",
+        occurredAt: "2026-03-04T12:00:00.000Z",
+        payload: {
+          id: "tx_current_cloud",
+          postedAt: "2026-03-04T12:00:00.000Z",
+          amount: -1200,
+          counterpartyName: "Amazon Web Services",
+          description: "AWS hosting invoice",
+        },
+      }),
+      rawMercuryRecord({
+        id: "tx_future_payload_date",
+        occurredAt: "2026-03-05T12:00:00.000Z",
+        payload: {
+          id: "tx_future_payload_date",
+          postedAt: "2099-01-01T00:00:00.000Z",
+          amount: -99_000,
+          counterpartyName: "OpenAI",
+          description: "Future-dated software invoice",
+        },
+      }),
+    ];
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => records),
+      },
+    };
+
+    const dashboard = await buildExpenseDashboard({
+      prisma: prisma as never,
+      context: { userId: "user_1", organizationId: "org_1" },
+      range: "180d",
+      now: new Date("2026-06-03T12:00:00.000Z"),
+    });
+
+    expect(dashboard.months).toEqual(["2026-03"]);
+    expect(dashboard.categoryTotals).toEqual({ cloud: 1200 });
+    expect(dashboard.vendorTotals.OpenAI).toBeUndefined();
+  });
+
   it("queries global Mercury raw-record fallback for organization expense dashboards", async () => {
     const records = [
       {

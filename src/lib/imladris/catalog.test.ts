@@ -72,6 +72,26 @@ describe("Imladris catalog", () => {
     expect(marketing?.sourceKeys).toContain("webflow");
   });
 
+  it("defines the company tracker as a non-department dashboard", () => {
+    expect(CANONICAL_DEPARTMENTS).not.toContain("company");
+
+    const company = getImladrisDashboardDefinition("company");
+
+    expect(company).toMatchObject({
+      id: "company",
+      label: "Company Tracker",
+      metricKeys: [
+        "revenue.mrr",
+        "finance.cash_runway_months",
+        "finance.net_burn",
+        "sales.qualified_pipeline",
+        "marketing.pipeline_efficiency",
+        "product.activation_rate",
+        "customer_success.retention_risk",
+      ],
+    });
+  });
+
   it("declares units that match canonical metric values", () => {
     expect(
       IMLADRIS_METRIC_DEFINITIONS.find((metric) => metric.key === "finance.cash_runway_months")?.unit,

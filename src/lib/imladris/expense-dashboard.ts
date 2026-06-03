@@ -469,6 +469,15 @@ function recordTimestamp(record: RawSourceRecordRow): Date | null {
   return dateFrom(record.occurredAt) ?? dateFrom(record.sourceUpdatedAt) ?? dateFrom(record.sourceCreatedAt);
 }
 
+function transactionPostedAt(tx: ExpenseDashboardTransactionInput, record: RawSourceRecordRow): Date | null {
+  return dateFrom(tx.postedAt) ?? recordTimestamp(record);
+}
+
+function dateWithinRange(date: Date, fromDate: Date, toDate: Date): boolean {
+  const time = date.getTime();
+  return time >= fromDate.getTime() && time <= toDate.getTime();
+}
+
 function transactionFromRecord(record: RawSourceRecordRow): ExpenseDashboardTransactionInput {
   const payload = asRecord(record.payload);
   return {
@@ -492,11 +501,13 @@ function latestCashBalance(records: RawSourceRecordRow[], asOf: Date): number | 
     .filter((record) => recordIsObjectType(record, "account_balance", "balance"))
     .map((record) => ({
       amount: numberFrom(asRecord(record.payload).balance ?? asRecord(record.payload).currentBalance),
-      timestamp: recordTimestamp(record)?.getTime() ?? 0,
+      timestamp: recordTimestamp(record)?.getTime() ?? null,
     }))
     .filter(
       (entry): entry is { amount: number; timestamp: number } =>
-        typeof entry.amount === "number" && entry.timestamp <= asOf.getTime(),
+        typeof entry.amount === "number" &&
+        typeof entry.timestamp === "number" &&
+        entry.timestamp <= asOf.getTime(),
     );
 
   if (balances.length === 0) return undefined;
@@ -571,8 +582,10 @@ export async function buildExpenseDashboard(input: {
   for (const record of records.filter((entry) => recordIsObjectType(entry, "transaction", "bank_transaction"))) {
     const tx = transactionFromRecord(record);
     const amount = numberFrom(tx.amount) ?? 0;
-    const month = monthKeyFromDate(tx.postedAt) ?? monthKeyFromDate(record.occurredAt);
-    if (!month || amount === 0) continue;
+    const postedAt = transactionPostedAt(tx, record);
+    if (!postedAt || !dateWithinRange(postedAt, fromDate, toDate) || amount === 0) continue;
+    const month = monthKeyFromDate(postedAt);
+    if (!month) continue;
 
     monthsSet.add(month);
     if (amount > 0) {
@@ -594,7 +607,7 @@ export async function buildExpenseDashboard(input: {
     vendorCategory[vendor] = category;
     txnIndex[key] ??= [];
     txnIndex[key].push({
-      date: dayKeyFromDate(tx.postedAt) ?? dayKeyFromDate(record.occurredAt) ?? "",
+      date: dayKeyFromDate(postedAt) ?? "",
       vendor,
       amount: roundMoney(absoluteAmount),
       description: tx.description || tx.bankDescription || tx.note || "",

@@ -1,20 +1,31 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import http from 'http';
-import { startHealthServer, updateSyncStatus, setReady } from '../health';
+import type { IncomingMessage, Server, ServerResponse } from 'http';
 
-function fetch(url: string): Promise<{ status: number; body: string }> {
-  return new Promise((resolve, reject) => {
-    http.get(url, (res) => {
-      let body = '';
-      res.on('data', (chunk) => (body += chunk));
-      res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
-      res.on('error', reject);
-    }).on('error', reject);
+function request(
+  server: Server,
+  url: string
+): Promise<{ status: number; body: string }> {
+  return new Promise((resolve) => {
+    const req = { method: 'GET', url } as IncomingMessage;
+    const res = {
+      statusCode: 200,
+      body: '',
+      writeHead(statusCode: number) {
+        this.statusCode = statusCode;
+        return this;
+      },
+      end(chunk?: string) {
+        this.body += chunk ?? '';
+        resolve({ status: this.statusCode, body: this.body });
+      },
+    } as ServerResponse & { body: string };
+
+    server.emit('request', req, res);
   });
 }
 
 describe('health server', () => {
-  let server: http.Server;
+  let server: Server;
 
   afterEach(async () => {
     if (server) {
@@ -23,16 +34,11 @@ describe('health server', () => {
   });
 
   it('returns 200 on /health', async () => {
-    // Use a random high port to avoid conflicts
-    process.env.WORKER_HEALTH_PORT = '0';
     vi.resetModules();
     const healthModule = await import('../health');
-    server = healthModule.startHealthServer();
+    server = healthModule.createHealthServer();
 
-    const address = server.address();
-    if (!address || typeof address === 'string') throw new Error('No address');
-
-    const res = await fetch(`http://127.0.0.1:${address.port}/health`);
+    const res = await request(server, '/health');
     expect(res.status).toBe(200);
 
     const data = JSON.parse(res.body);
@@ -42,44 +48,32 @@ describe('health server', () => {
   });
 
   it('returns 503 on /ready when not ready', async () => {
-    process.env.WORKER_HEALTH_PORT = '0';
     vi.resetModules();
     const healthModule = await import('../health');
     healthModule.setReady(false);
-    server = healthModule.startHealthServer();
+    server = healthModule.createHealthServer();
 
-    const address = server.address();
-    if (!address || typeof address === 'string') throw new Error('No address');
-
-    const res = await fetch(`http://127.0.0.1:${address.port}/ready`);
+    const res = await request(server, '/ready');
     expect(res.status).toBe(503);
   });
 
   it('returns 200 on /ready when ready', async () => {
-    process.env.WORKER_HEALTH_PORT = '0';
     vi.resetModules();
     const healthModule = await import('../health');
     healthModule.setReady(true);
-    server = healthModule.startHealthServer();
+    server = healthModule.createHealthServer();
 
-    const address = server.address();
-    if (!address || typeof address === 'string') throw new Error('No address');
-
-    const res = await fetch(`http://127.0.0.1:${address.port}/ready`);
+    const res = await request(server, '/ready');
     expect(res.status).toBe(200);
   });
 
   it('tracks sync status updates', async () => {
-    process.env.WORKER_HEALTH_PORT = '0';
     vi.resetModules();
     const healthModule = await import('../health');
     healthModule.updateSyncStatus('success', 1500);
-    server = healthModule.startHealthServer();
+    server = healthModule.createHealthServer();
 
-    const address = server.address();
-    if (!address || typeof address === 'string') throw new Error('No address');
-
-    const res = await fetch(`http://127.0.0.1:${address.port}/health`);
+    const res = await request(server, '/health');
     const data = JSON.parse(res.body);
     expect(data.lastSyncStatus).toBe('success');
     expect(data.lastSyncDurationMs).toBe(1500);
@@ -87,23 +81,19 @@ describe('health server', () => {
   });
 
   it('exposes the latest sync error detail and clears it after success', async () => {
-    process.env.WORKER_HEALTH_PORT = '0';
     vi.resetModules();
     const healthModule = await import('../health');
     healthModule.updateSyncStatus('error', 2500, 'analytics: 2 provider refresh failures');
-    server = healthModule.startHealthServer();
+    server = healthModule.createHealthServer();
 
-    const address = server.address();
-    if (!address || typeof address === 'string') throw new Error('No address');
-
-    const failed = await fetch(`http://127.0.0.1:${address.port}/health`);
+    const failed = await request(server, '/health');
     const failedData = JSON.parse(failed.body);
     expect(failedData.lastSyncStatus).toBe('error');
     expect(failedData.lastSyncError).toBe('analytics: 2 provider refresh failures');
 
     healthModule.updateSyncStatus('success', 1000);
 
-    const recovered = await fetch(`http://127.0.0.1:${address.port}/health`);
+    const recovered = await request(server, '/health');
     const recoveredData = JSON.parse(recovered.body);
     expect(recoveredData.lastSyncStatus).toBe('success');
     expect(recoveredData.lastSyncError).toBeNull();

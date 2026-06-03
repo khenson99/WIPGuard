@@ -1,5 +1,6 @@
 import { REQUIRED_IMLADRIS_PROVIDERS, IMLADRIS_METRIC_DEFINITIONS, getImladrisDashboardDefinition } from "@/lib/imladris/catalog";
 import type { ImladrisProviderKey } from "@/lib/imladris/catalog";
+import { normalizeMetricConfidence, normalizeMetricStatus, normalizeMetricWarnings } from "@/lib/imladris/confidence";
 import { getImladrisHistoricalWindow } from "@/lib/imladris/ingestion";
 import type { IntegrationProvider } from "@/generated/prisma/client";
 import type { PrismaClientType } from "@/lib/prisma";
@@ -8,19 +9,23 @@ type SourceStatus = "connected" | "missing" | "partial" | "stale" | "error";
 type MetricStatus = "ready" | "missing" | "partial" | "stale" | "error";
 
 interface UserContext {
-  userId: string;
+  userId: string | null;
   organizationId: string | null;
 }
 
 interface SourceRow {
   provider: unknown;
   status: string;
+  userId?: string | null;
+  organizationId?: string | null;
   connectedAt: Date | string | null;
   lastSyncedAt: Date | string | null;
+  expiresAt?: Date | string | null;
   lastError: string | null;
 }
 
 interface SnapshotRow {
+  userId?: string | null;
   providerKey: string;
   status: string;
   capturedAt: Date | string;
@@ -31,6 +36,8 @@ interface SnapshotRow {
 interface SourceSyncRunRow {
   provider: unknown;
   status: string;
+  userId?: string | null;
+  organizationId?: string | null;
   startedAt: Date | string;
   completedAt: Date | string | null;
   windowStart: Date | string | null;
@@ -63,19 +70,40 @@ interface CanonicalMetricRow {
   warnings: string[];
   calculationVersion: string;
   computedAt: Date | string;
+  userId?: string | null;
+  organizationId?: string | null;
   lineage: MetricLineageRow[];
 }
 
-function toIso(value: Date | string | null | undefined): string | null {
-  if (!value) return null;
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+function toDate(value: unknown): Date | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    const timestampMs = value < 10_000_000_000 ? value * 1000 : value;
+    const date = new Date(timestampMs);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!normalized) return null;
+    if (/^\d+(?:\.\d+)?$/.test(normalized)) {
+      const timestamp = Number(normalized);
+      if (Number.isFinite(timestamp) && timestamp > 0) {
+        const timestampMs = timestamp < 10_000_000_000 ? timestamp * 1000 : timestamp;
+        const date = new Date(timestampMs);
+        return Number.isNaN(date.getTime()) ? null : date;
+      }
+    }
+    const date = new Date(normalized);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  return null;
 }
 
-function toDate(value: Date | string | null | undefined): Date | null {
-  if (!value) return null;
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
+function toIso(value: Date | string | null | undefined): string | null {
+  return toDate(value)?.toISOString() ?? null;
 }
 
 function addHours(date: Date, hours: number): Date {
@@ -86,6 +114,241 @@ function ageHours(from: Date, to: Date): number {
   return (to.getTime() - from.getTime()) / (60 * 60 * 1000);
 }
 
+function normalizeTenantId(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeContext(context: UserContext): UserContext {
+  return {
+    userId: normalizeTenantId(context.userId),
+    organizationId: normalizeTenantId(context.organizationId),
+  };
+}
+
+function normalizeSourceStateStatus(status: string | null | undefined): string {
+  return typeof status === "string" ? status.trim().toUpperCase() : "";
+}
+
+function normalizeProviderAlias(value: unknown): string {
+  return typeof value === "string"
+    ? value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "")
+    : "";
+}
+
+function providerAliasMatches(value: unknown, aliases: string[]): boolean {
+  const normalizedValue = normalizeProviderAlias(value);
+  return normalizedValue.length > 0 &&
+    aliases.some((alias) => normalizeProviderAlias(alias) === normalizedValue);
+}
+
+function snapshotKeyQueryVariants(snapshotKeys: string[]): string[] {
+  const values = new Set<string>();
+  for (const snapshotKey of snapshotKeys) {
+    const trimmed = snapshotKey.trim();
+    if (!trimmed) continue;
+    const snakeCaseKey = trimmed
+      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+      .replace(/[^a-zA-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .toLowerCase();
+
+    values.add(trimmed);
+    if (snakeCaseKey) {
+      values.add(snakeCaseKey);
+      values.add(snakeCaseKey.replaceAll("_", "-"));
+      values.add(snakeCaseKey.replaceAll("_", ""));
+    }
+  }
+  return [...values];
+}
+
+function isUnknownCompletedSyncRunStatus(status: string): boolean {
+  return !["SUCCESS", "PARTIAL", "ERROR"].includes(status);
+}
+
+function connectionExpired(connection: SourceRow | null, now: Date): boolean {
+  if (!connection?.expiresAt) return false;
+  const expiresAt = toDate(connection.expiresAt);
+  return expiresAt !== null && expiresAt.getTime() <= now.getTime();
+}
+
+function connectionExpiryInvalid(connection: SourceRow | null): boolean {
+  return Boolean(connection?.expiresAt && toDate(connection.expiresAt) === null);
+}
+
+function canonicalMetricScopeWhere(context: UserContext) {
+  if (context.organizationId) {
+    const scopedRows = context.userId ? [{ userId: context.userId, organizationId: context.organizationId }] : [];
+    const legacyUserRows = context.userId ? [{ userId: context.userId, organizationId: null }] : [];
+    return {
+      OR: [
+        ...scopedRows,
+        { userId: null, organizationId: context.organizationId },
+        ...legacyUserRows,
+        { userId: null, organizationId: null },
+      ],
+    };
+  }
+
+  if (!context.userId) {
+    return {
+      OR: [{ userId: null, organizationId: null }],
+    };
+  }
+
+  return {
+    OR: [
+      { userId: context.userId, organizationId: null },
+      { userId: null, organizationId: null },
+    ],
+  };
+}
+
+function canonicalMetricMatchesContext(row: CanonicalMetricRow, context: UserContext): boolean {
+  if (row.userId === undefined && row.organizationId === undefined) return true;
+
+  const rowUserId = row.userId ?? null;
+  const rowOrganizationId = row.organizationId ?? null;
+
+  if (context.organizationId) {
+    if (rowOrganizationId === context.organizationId) {
+      return rowUserId === null || rowUserId === context.userId;
+    }
+    if (rowOrganizationId === null) {
+      return rowUserId === null || Boolean(context.userId && rowUserId === context.userId);
+    }
+    return false;
+  }
+
+  if (context.userId) {
+    return rowOrganizationId === null && (rowUserId === null || rowUserId === context.userId);
+  }
+
+  return rowUserId === null && rowOrganizationId === null;
+}
+
+function canonicalMetricScopeSpecificity(row: CanonicalMetricRow, context: UserContext): number {
+  if (row.userId === undefined && row.organizationId === undefined) return 1;
+
+  const rowUserId = row.userId ?? null;
+  const rowOrganizationId = row.organizationId ?? null;
+
+  if (context.organizationId) {
+    if (rowUserId === context.userId && rowOrganizationId === context.organizationId) return 4;
+    if (context.userId && rowUserId === context.userId && rowOrganizationId === null) return 3;
+    if (rowUserId === null && rowOrganizationId === context.organizationId) return 2;
+    if (rowUserId === null && rowOrganizationId === null) return 1;
+    return 0;
+  }
+
+  if (context.userId) {
+    if (rowUserId === context.userId && rowOrganizationId === null) return 3;
+    if (rowUserId === null && rowOrganizationId === null) return 1;
+    return 0;
+  }
+
+  return rowUserId === null && rowOrganizationId === null ? 1 : 0;
+}
+
+function contextQueryOr(context: UserContext): Array<Record<string, string | null>> {
+  if (context.userId && context.organizationId) {
+    return [
+      { userId: context.userId, organizationId: context.organizationId },
+      { userId: null, organizationId: context.organizationId },
+      { userId: context.userId, organizationId: null },
+      { userId: null, organizationId: null },
+    ];
+  }
+  if (context.organizationId) {
+    return [
+      { userId: null, organizationId: context.organizationId },
+      { userId: null, organizationId: null },
+    ];
+  }
+  if (context.userId) {
+    return [
+      { userId: context.userId, organizationId: null },
+      { userId: null, organizationId: null },
+    ];
+  }
+  return [{ userId: null, organizationId: null }];
+}
+
+function compareCanonicalMetricRows(
+  left: CanonicalMetricRow,
+  right: CanonicalMetricRow,
+  context: UserContext,
+): number {
+  const periodDelta =
+    (toDate(right.periodEnd)?.getTime() ?? 0) - (toDate(left.periodEnd)?.getTime() ?? 0);
+  if (periodDelta !== 0) return periodDelta;
+  const scopeDelta =
+    canonicalMetricScopeSpecificity(right, context) -
+    canonicalMetricScopeSpecificity(left, context);
+  if (scopeDelta !== 0) return scopeDelta;
+  return (toDate(right.computedAt)?.getTime() ?? 0) - (toDate(left.computedAt)?.getTime() ?? 0);
+}
+
+function canonicalMetricAvailableAt(row: CanonicalMetricRow, now: Date): boolean {
+  const periodStart = toDate(row.periodStart);
+  const periodEnd = toDate(row.periodEnd);
+  const computedAt = toDate(row.computedAt);
+  return (
+    periodStart !== null &&
+    periodEnd !== null &&
+    periodStart.getTime() <= periodEnd.getTime() &&
+    periodEnd.getTime() <= now.getTime() &&
+    computedAt !== null &&
+    computedAt.getTime() <= now.getTime()
+  );
+}
+
+function hasInvalidSyncRunAccounting(syncRun: SourceSyncRunRow): boolean {
+  const counts = [syncRun.recordCount, syncRun.acceptedCount, syncRun.errorCount];
+  if (counts.some((count) => !Number.isFinite(count) || count < 0)) return true;
+  return (
+    syncRun.acceptedCount > syncRun.recordCount ||
+    syncRun.acceptedCount + syncRun.errorCount > syncRun.recordCount
+  );
+}
+
+function syncRunAccountingError(syncRun: SourceSyncRunRow): string | null {
+  const counts = [syncRun.recordCount, syncRun.acceptedCount, syncRun.errorCount];
+  if (counts.some((count) => !Number.isFinite(count) || count < 0)) {
+    return "Sync run record counts are invalid.";
+  }
+  if (syncRun.acceptedCount > syncRun.recordCount) {
+    return "Sync run accepted count exceeds record count.";
+  }
+  if (syncRun.acceptedCount + syncRun.errorCount > syncRun.recordCount) {
+    return "Sync run accepted and error counts exceed record count.";
+  }
+  return null;
+}
+
+function hasInvalidSyncRunWindow(syncRun: SourceSyncRunRow, now: Date): boolean {
+  const windowStart = toDate(syncRun.windowStart);
+  const windowEnd = toDate(syncRun.windowEnd);
+  if (!windowStart || !windowEnd) return true;
+  if (windowStart.getTime() > windowEnd.getTime()) return true;
+  return windowEnd.getTime() > now.getTime();
+}
+
+function syncRunWindowError(syncRun: SourceSyncRunRow, now: Date): string | null {
+  const windowStart = toDate(syncRun.windowStart);
+  const windowEnd = toDate(syncRun.windowEnd);
+  if (!windowStart || !windowEnd) return "Sync run data window is invalid.";
+  if (windowStart.getTime() > windowEnd.getTime()) {
+    return "Sync run data window starts after it ends.";
+  }
+  if (windowEnd.getTime() > now.getTime()) {
+    return "Sync run data window ends in the future.";
+  }
+  return null;
+}
+
 function sourceStatus(input: {
   connection: SourceRow | null;
   snapshot: SnapshotRow | null;
@@ -93,21 +356,46 @@ function sourceStatus(input: {
   now: Date;
   freshnessSlaHours: number;
   lastSyncedAt: Date | null;
+  hasRequiredLookback: boolean | null;
+  hasFreshWindowEnd: boolean | null;
 }): SourceStatus {
+  const connectionStatus = normalizeSourceStateStatus(input.connection?.status);
+  const snapshotStatus = normalizeSourceStateStatus(input.snapshot?.status);
+  const syncRunStatus = normalizeSourceStateStatus(input.syncRun?.status);
+  if (connectionStatus === "DISCONNECTED") {
+    return "missing";
+  }
   if (
-    input.connection?.status === "ERROR" ||
-    input.snapshot?.status === "ERROR" ||
-    input.syncRun?.status === "ERROR"
+    connectionExpiryInvalid(input.connection) ||
+    connectionExpired(input.connection, input.now) ||
+    connectionStatus === "ERROR" ||
+    snapshotStatus === "ERROR" ||
+    syncRunStatus === "ERROR"
   ) {
     return "error";
   }
+  if (input.syncRun && !toDate(input.syncRun.completedAt)) {
+    return "partial";
+  }
   if (!input.connection && !input.snapshot && !input.syncRun) return "missing";
+  if (input.connection && !input.snapshot && !input.syncRun && !input.lastSyncedAt) {
+    return "missing";
+  }
   if (
-    input.syncRun?.status === "PARTIAL" ||
+    syncRunStatus === "PARTIAL" ||
+    (input.syncRun && isUnknownCompletedSyncRunStatus(syncRunStatus)) ||
+    (input.syncRun && hasInvalidSyncRunAccounting(input.syncRun)) ||
+    (input.syncRun && hasInvalidSyncRunWindow(input.syncRun, input.now)) ||
     (input.syncRun && input.syncRun.acceptedCount < input.syncRun.recordCount) ||
     (input.syncRun?.errorCount ?? 0) > 0
   ) {
     return "partial";
+  }
+  if (input.hasRequiredLookback === false) {
+    return "stale";
+  }
+  if (input.hasFreshWindowEnd === false) {
+    return "stale";
   }
   if (
     input.lastSyncedAt &&
@@ -117,12 +405,73 @@ function sourceStatus(input: {
   }
   if (
     !input.syncRun &&
-    input.snapshot &&
-    new Date(input.snapshot.expiresAt).getTime() < input.now.getTime()
+    input.snapshot
   ) {
-    return "stale";
+    const snapshotExpiresAt = toDate(input.snapshot.expiresAt);
+    if (!snapshotExpiresAt || snapshotExpiresAt.getTime() < input.now.getTime()) {
+      return "stale";
+    }
   }
   return "connected";
+}
+
+function sourceLastError(input: {
+  status: SourceStatus;
+  connection: SourceRow | null;
+  snapshot: SnapshotRow | null;
+  syncRun: SourceSyncRunRow | null;
+  now: Date;
+}): string | null {
+  const connectionStatus = normalizeSourceStateStatus(input.connection?.status);
+  const snapshotStatus = normalizeSourceStateStatus(input.snapshot?.status);
+  const syncRunStatus = normalizeSourceStateStatus(input.syncRun?.status);
+
+  if (connectionStatus === "DISCONNECTED") {
+    return input.connection?.lastError ?? null;
+  }
+
+  if (input.status === "error") {
+    if (connectionExpiryInvalid(input.connection)) {
+      return input.connection?.lastError ?? "Integration credential expiry is invalid.";
+    }
+    if (connectionExpired(input.connection, input.now)) {
+      return input.connection?.lastError ?? "Integration credentials expired.";
+    }
+    if (syncRunStatus === "ERROR" && input.syncRun?.lastError) {
+      return input.syncRun.lastError;
+    }
+    if (snapshotStatus === "ERROR" && input.snapshot?.lastError) {
+      return input.snapshot.lastError;
+    }
+    if (connectionStatus === "ERROR" && input.connection?.lastError) {
+      return input.connection.lastError;
+    }
+  }
+
+  if (
+    input.status === "partial" &&
+    input.syncRun &&
+    (!toDate(input.syncRun.completedAt) ||
+      syncRunStatus === "PARTIAL" ||
+      isUnknownCompletedSyncRunStatus(syncRunStatus) ||
+      hasInvalidSyncRunAccounting(input.syncRun) ||
+      hasInvalidSyncRunWindow(input.syncRun, input.now) ||
+      input.syncRun.acceptedCount < input.syncRun.recordCount ||
+      input.syncRun.errorCount > 0) &&
+    input.syncRun.lastError
+  ) {
+    return input.syncRun.lastError;
+  }
+
+  if (input.status === "partial" && input.syncRun) {
+    return (
+      (!toDate(input.syncRun.completedAt) ? "Sync run has not completed." : null) ??
+      syncRunAccountingError(input.syncRun) ??
+      syncRunWindowError(input.syncRun, input.now)
+    );
+  }
+
+  return input.connection?.lastError ?? input.syncRun?.lastError ?? input.snapshot?.lastError ?? null;
 }
 
 function canonicalMetricStatus(sourceKeys: ImladrisProviderKey[], sourceStatuses: Map<ImladrisProviderKey, SourceStatus>) {
@@ -133,17 +482,403 @@ function canonicalMetricStatus(sourceKeys: ImladrisProviderKey[], sourceStatuses
   return "missing";
 }
 
-function canonicalStatus(status: string): MetricStatus {
+function canonicalStatus(status: unknown): MetricStatus {
+  return normalizeMetricStatus(status);
+}
+
+function formatList(values: string[]): string {
+  if (values.length <= 1) return values[0] ?? "";
+  if (values.length === 2) return `${values[0]} and ${values[1]}`;
+  return `${values.slice(0, -1).join(", ")}, and ${values.at(-1)}`;
+}
+
+function sourceLabel(sourceKey: ImladrisProviderKey): string {
+  return (
+    REQUIRED_IMLADRIS_PROVIDERS.find((provider) => provider.key === sourceKey)?.label ??
+    sourceKey
+  );
+}
+
+function canonicalLineageSourceKey(value: string): ImladrisProviderKey | null {
+  const normalized = normalizeProviderAlias(value);
+  if (!normalized) return null;
+  return (
+    REQUIRED_IMLADRIS_PROVIDERS.find((provider) =>
+      [provider.key, ...provider.providerAliases, ...provider.snapshotKeys].some(
+        (alias) => normalizeProviderAlias(alias) === normalized,
+      ),
+    )?.key ?? null
+  );
+}
+
+function sourceHealthDescription(status: MetricStatus, sourceCount: number): string {
   switch (status) {
-    case "READY":
-      return "ready";
-    case "STALE":
-      return "stale";
-    case "ERROR":
-      return "error";
+    case "partial":
+      return sourceCount === 1 ? "has partial sync coverage" : "have partial sync coverage";
+    case "error":
+      return sourceCount === 1 ? "has errors" : "have errors";
+    case "stale":
+      return "is stale";
+    case "missing":
+      return "is missing";
     default:
-      return "missing";
+      return status;
   }
+}
+
+function metricSourceHealthWarnings(input: {
+  status: MetricStatus;
+  sourceKeys: ImladrisProviderKey[];
+  sourceStatuses: Map<ImladrisProviderKey, SourceStatus>;
+}): string[] {
+  const affectedSources = input.sourceKeys.filter((sourceKey) => {
+    const sourceStatus = input.sourceStatuses.get(sourceKey) ?? "missing";
+    return sourceStatus === input.status;
+  });
+  if (affectedSources.length === 0) return [];
+
+  const sourceNames = affectedSources.map(sourceLabel);
+  return [
+    `Metric is ${input.status} because ${formatList(sourceNames)} source data ${sourceHealthDescription(input.status, sourceNames.length)}.`,
+  ];
+}
+
+function metricStatusWithSourceHealth(input: {
+  canonicalStatus: MetricStatus;
+  sourceKeys: ImladrisProviderKey[];
+  sourceStatuses: Map<ImladrisProviderKey, SourceStatus>;
+}): MetricStatus {
+  if (input.canonicalStatus !== "ready") return input.canonicalStatus;
+  const dependencyStatuses = input.sourceKeys
+    .map((sourceKey) => input.sourceStatuses.get(sourceKey))
+    .filter((status): status is SourceStatus => Boolean(status));
+  if (dependencyStatuses.some((status) => status === "error")) return "error";
+  if (dependencyStatuses.some((status) => status === "partial")) return "partial";
+  if (dependencyStatuses.some((status) => status === "stale")) return "stale";
+  if (
+    dependencyStatuses.length < input.sourceKeys.length ||
+    dependencyStatuses.some((status) => status === "missing")
+  ) {
+    return "missing";
+  }
+  return input.canonicalStatus;
+}
+
+function metricLineageWarnings(
+  lineage: MetricLineageRow[] | undefined,
+  now: Date,
+  expectedSourceKeys: ImladrisProviderKey[],
+): string[] {
+  if (!lineage?.length) return [];
+  const warnings: string[] = [];
+  const expectedSourceKeySet = new Set<string>(expectedSourceKeys);
+  const lineageSourceKeySet = new Set(
+    lineage.map((row) => canonicalLineageSourceKey(row.sourceKey)).filter((sourceKey): sourceKey is ImladrisProviderKey => Boolean(sourceKey)),
+  );
+  const hasUnexpectedSource = lineage.some((row) => {
+    const sourceKey = canonicalLineageSourceKey(row.sourceKey);
+    return sourceKey === null || !expectedSourceKeySet.has(sourceKey);
+  });
+  const hasMissingEvidenceTimestamp = lineage.some((row) => row.capturedAt === null || row.capturedAt === undefined);
+  const hasMalformedEvidenceTimestamp = lineage.some(
+    (row) => row.capturedAt !== null && row.capturedAt !== undefined && toDate(row.capturedAt) === null,
+  );
+  const hasFutureEvidence = lineage.some((row) => {
+    const capturedAt = toDate(row.capturedAt);
+    return capturedAt !== null && capturedAt.getTime() > now.getTime();
+  });
+  const hasMissingRequiredSource =
+    !hasUnexpectedSource &&
+    !hasMalformedEvidenceTimestamp &&
+    !hasFutureEvidence &&
+    expectedSourceKeys.some((sourceKey) => !lineageSourceKeySet.has(sourceKey));
+  if (hasUnexpectedSource) warnings.push("Metric lineage references sources outside this metric definition.");
+  if (hasMissingRequiredSource) warnings.push("Metric lineage is missing required source evidence.");
+  if (hasMissingEvidenceTimestamp) warnings.push("Metric lineage is missing source evidence timestamps.");
+  if (hasMalformedEvidenceTimestamp) warnings.push("Metric lineage includes malformed source evidence timestamps.");
+  if (hasFutureEvidence) warnings.push("Metric lineage includes future-dated source evidence.");
+  return warnings;
+}
+
+function sourceConnectionStatusRank(status: string): number {
+  switch (normalizeSourceStateStatus(status)) {
+    case "CONNECTED":
+      return 0;
+    case "ERROR":
+      return 1;
+    case "DISCONNECTED":
+      return 2;
+    default:
+      return 3;
+  }
+}
+
+function dateAtOrBefore(value: Date | string | null | undefined, now: Date): Date | null {
+  const date = toDate(value);
+  return date !== null && date.getTime() <= now.getTime() ? date : null;
+}
+
+function connectionTimestamp(connection: SourceRow, now: Date): number {
+  if (normalizeSourceStateStatus(connection.status) === "DISCONNECTED") {
+    return (
+      dateAtOrBefore(connection.connectedAt, now)?.getTime() ??
+      dateAtOrBefore(connection.lastSyncedAt, now)?.getTime() ??
+      0
+    );
+  }
+  return (
+    dateAtOrBefore(connection.lastSyncedAt, now)?.getTime() ??
+    dateAtOrBefore(connection.connectedAt, now)?.getTime() ??
+    0
+  );
+}
+
+function connectionScopeSpecificity(connection: SourceRow, context: UserContext): number {
+  const userId = connection.userId ?? null;
+  const organizationId = connection.organizationId ?? null;
+
+  if (context.organizationId) {
+    if (userId === context.userId && organizationId === context.organizationId) return 4;
+    if (context.userId && userId === context.userId && organizationId === null) return 3;
+    if (userId === null && organizationId === context.organizationId) return 2;
+    if (userId === null && organizationId === null) return 1;
+    return 0;
+  }
+
+  if (context.userId) {
+    if (userId === context.userId && organizationId === null) return 3;
+    if (userId === null && organizationId === null) return 1;
+    return 0;
+  }
+
+  return userId === null && organizationId === null ? 1 : 0;
+}
+
+function sameConnectionScope(left: SourceRow, right: SourceRow): boolean {
+  return (left.userId ?? null) === (right.userId ?? null) &&
+    (left.organizationId ?? null) === (right.organizationId ?? null);
+}
+
+function isAtOrBefore(value: Date | string | null | undefined, now: Date): boolean {
+  const date = toDate(value);
+  return date !== null && date.getTime() <= now.getTime();
+}
+
+function connectionAvailableAt(connection: SourceRow, now: Date): boolean {
+  if (dateAtOrBefore(connection.lastSyncedAt, now)) return true;
+  if (dateAtOrBefore(connection.connectedAt, now)) return true;
+  if (connection.lastSyncedAt || connection.connectedAt) return false;
+  return true;
+}
+
+function connectionMatchesContext(connection: SourceRow, context: UserContext): boolean {
+  const userMatches =
+    connection.userId === undefined ||
+    connection.userId === null ||
+    connection.userId === context.userId;
+  const organizationMatches =
+    connection.organizationId === undefined ||
+    connection.organizationId === context.organizationId;
+  return userMatches && organizationMatches;
+}
+
+function compareSourceConnections(
+  left: SourceRow,
+  right: SourceRow,
+  context: UserContext,
+  now: Date,
+): number {
+  const scopeDifference =
+    connectionScopeSpecificity(right, context) -
+    connectionScopeSpecificity(left, context);
+  if (scopeDifference !== 0) return scopeDifference;
+
+  if (sameConnectionScope(left, right)) {
+    const timestampDifference = connectionTimestamp(right, now) - connectionTimestamp(left, now);
+    if (timestampDifference !== 0) return timestampDifference;
+  }
+
+  const statusDifference =
+    sourceConnectionStatusRank(left.status) - sourceConnectionStatusRank(right.status);
+  if (statusDifference !== 0) return statusDifference;
+
+  return connectionTimestamp(right, now) - connectionTimestamp(left, now);
+}
+
+function bestConnectionForProvider(input: {
+  connections: SourceRow[];
+  providerAliases: string[];
+  context: UserContext;
+  now: Date;
+}): SourceRow | null {
+  const candidates = input.connections.filter(
+    (candidate) =>
+      providerAliasMatches(candidate.provider, input.providerAliases) &&
+      connectionMatchesContext(candidate, input.context) &&
+      connectionAvailableAt(candidate, input.now),
+  );
+  if (candidates.length === 0) return null;
+  return [...candidates].sort((left, right) =>
+    compareSourceConnections(left, right, input.context, input.now),
+  )[0] ?? null;
+}
+
+function syncRunTimestamp(syncRun: SourceSyncRunRow): number {
+  return (
+    toDate(syncRun.completedAt)?.getTime() ??
+    toDate(syncRun.startedAt)?.getTime() ??
+    0
+  );
+}
+
+function syncRunMatchesContext(syncRun: SourceSyncRunRow, context: UserContext): boolean {
+  if (syncRun.userId === undefined && syncRun.organizationId === undefined) return true;
+
+  const userId = syncRun.userId ?? null;
+  const organizationId = syncRun.organizationId ?? null;
+
+  if (context.organizationId) {
+    if (organizationId === context.organizationId) {
+      return userId === null || userId === context.userId;
+    }
+    if (organizationId === null) {
+      return userId === null || Boolean(context.userId && userId === context.userId);
+    }
+    return false;
+  }
+
+  if (context.userId) {
+    return organizationId === null && (userId === null || userId === context.userId);
+  }
+
+  return userId === null && organizationId === null;
+}
+
+function syncRunScopeSpecificity(syncRun: SourceSyncRunRow, context: UserContext): number {
+  if (syncRun.userId === undefined && syncRun.organizationId === undefined) return 1;
+
+  const userId = syncRun.userId ?? null;
+  const organizationId = syncRun.organizationId ?? null;
+
+  if (context.organizationId) {
+    if (userId === context.userId && organizationId === context.organizationId) return 4;
+    if (context.userId && userId === context.userId && organizationId === null) return 3;
+    if (userId === null && organizationId === context.organizationId) return 2;
+    if (userId === null && organizationId === null) return 1;
+    return 0;
+  }
+
+  if (context.userId) {
+    if (userId === context.userId && organizationId === null) return 3;
+    if (userId === null && organizationId === null) return 1;
+    return 0;
+  }
+
+  return userId === null && organizationId === null ? 1 : 0;
+}
+
+function syncRunAvailableAt(syncRun: SourceSyncRunRow, now: Date): boolean {
+  const completedAt = toDate(syncRun.completedAt);
+  if (completedAt) return completedAt.getTime() <= now.getTime();
+  const startedAt = toDate(syncRun.startedAt);
+  if (startedAt) return startedAt.getTime() <= now.getTime();
+  return false;
+}
+
+function hasFreshCompletedSyncRunEvidence(
+  syncRun: SourceSyncRunRow,
+  now: Date,
+  freshnessSlaHours: number,
+  expectedWindowStart: Date,
+): boolean {
+  const completedAt = toDate(syncRun.completedAt);
+  const windowStart = toDate(syncRun.windowStart);
+  const windowEnd = toDate(syncRun.windowEnd);
+  return (
+    completedAt !== null &&
+    windowStart !== null &&
+    windowEnd !== null &&
+    !hasInvalidSyncRunAccounting(syncRun) &&
+    !hasInvalidSyncRunWindow(syncRun, now) &&
+    windowStart.getTime() <= expectedWindowStart.getTime() &&
+    addHours(completedAt, freshnessSlaHours).getTime() >= now.getTime() &&
+    addHours(windowEnd, freshnessSlaHours).getTime() >= now.getTime()
+  );
+}
+
+function syncRunSelectionRank(
+  syncRun: SourceSyncRunRow,
+  now: Date,
+  freshnessSlaHours: number,
+  expectedWindowStart: Date,
+): number {
+  const completedAt = toDate(syncRun.completedAt);
+  const status = normalizeSourceStateStatus(syncRun.status);
+  if (completedAt && status && status !== "SUCCESS") return 0;
+  if (hasFreshCompletedSyncRunEvidence(syncRun, now, freshnessSlaHours, expectedWindowStart)) {
+    return 0;
+  }
+  return completedAt ? 2 : 1;
+}
+
+function bestSyncRunForProvider(input: {
+  syncRuns: SourceSyncRunRow[];
+  providerAliases: string[];
+  context: UserContext;
+  now: Date;
+  freshnessSlaHours: number;
+  expectedWindowStart: Date;
+}): SourceSyncRunRow | null {
+  const candidates = input.syncRuns.filter(
+    (candidate) =>
+      providerAliasMatches(candidate.provider, input.providerAliases) &&
+      syncRunMatchesContext(candidate, input.context) &&
+      syncRunAvailableAt(candidate, input.now),
+  );
+  if (candidates.length === 0) return null;
+  return [...candidates].sort((left, right) => {
+    const scopeDifference =
+      syncRunScopeSpecificity(right, input.context) -
+      syncRunScopeSpecificity(left, input.context);
+    if (scopeDifference !== 0) return scopeDifference;
+
+    const completionDifference =
+      syncRunSelectionRank(left, input.now, input.freshnessSlaHours, input.expectedWindowStart) -
+      syncRunSelectionRank(right, input.now, input.freshnessSlaHours, input.expectedWindowStart);
+    if (completionDifference !== 0) return completionDifference;
+
+    return syncRunTimestamp(right) - syncRunTimestamp(left);
+  })[0] ?? null;
+}
+
+function snapshotTimestamp(snapshot: SnapshotRow): number {
+  return toDate(snapshot.capturedAt)?.getTime() ?? 0;
+}
+
+function snapshotMatchesContext(snapshot: SnapshotRow, context: UserContext): boolean {
+  return snapshot.userId === undefined || snapshot.userId === context.userId;
+}
+
+function snapshotAvailableAt(snapshot: SnapshotRow, now: Date): boolean {
+  return isAtOrBefore(snapshot.capturedAt, now);
+}
+
+function bestSnapshotForProvider(input: {
+  snapshots: SnapshotRow[];
+  snapshotKeys: string[];
+  context: UserContext;
+  now: Date;
+}): SnapshotRow | null {
+  const candidates = input.snapshots.filter(
+    (candidate) =>
+      providerAliasMatches(candidate.providerKey, input.snapshotKeys) &&
+      snapshotMatchesContext(candidate, input.context) &&
+      snapshotAvailableAt(candidate, input.now),
+  );
+  if (candidates.length === 0) return null;
+  return [...candidates].sort(
+    (left, right) => snapshotTimestamp(right) - snapshotTimestamp(left),
+  )[0] ?? null;
 }
 
 export async function buildImladrisSources(input: {
@@ -152,54 +887,70 @@ export async function buildImladrisSources(input: {
   now?: Date;
 }) {
   const now = input.now ?? new Date();
+  const context = normalizeContext(input.context);
   const providerAliases = REQUIRED_IMLADRIS_PROVIDERS.flatMap(
     (provider) => provider.providerAliases,
   ) as IntegrationProvider[];
+  const snapshotKeys = snapshotKeyQueryVariants(
+    REQUIRED_IMLADRIS_PROVIDERS.flatMap((provider) => provider.snapshotKeys),
+  );
+  const snapshotQuery = context.userId
+    ? input.prisma.analyticsSnapshot.findMany({
+        where: {
+          userId: context.userId,
+          providerKey: {
+            in: snapshotKeys,
+          },
+          capturedAt: {
+            lte: now,
+          },
+        },
+        select: {
+          userId: true,
+          providerKey: true,
+          status: true,
+          capturedAt: true,
+          expiresAt: true,
+          lastError: true,
+        },
+        orderBy: [{ capturedAt: "desc" }],
+      })
+    : Promise.resolve([]);
   const [connections, snapshots, syncRuns] = await Promise.all([
     input.prisma.integrationConnection.findMany({
       where: {
-        OR: [
-          { userId: input.context.userId },
-          ...(input.context.organizationId ? [{ organizationId: input.context.organizationId }] : []),
-        ],
+        provider: {
+          in: providerAliases,
+        },
+        OR: contextQueryOr(context),
       },
       select: {
         provider: true,
         status: true,
+        userId: true,
+        organizationId: true,
         connectedAt: true,
         lastSyncedAt: true,
-        lastError: true,
-      },
-    }),
-    input.prisma.analyticsSnapshot.findMany({
-      where: {
-        userId: input.context.userId,
-        providerKey: {
-          in: REQUIRED_IMLADRIS_PROVIDERS.flatMap((provider) => provider.snapshotKeys),
-        },
-      },
-      select: {
-        providerKey: true,
-        status: true,
-        capturedAt: true,
         expiresAt: true,
         lastError: true,
       },
-      orderBy: [{ capturedAt: "desc" }],
     }),
+    snapshotQuery,
     input.prisma.imladrisSourceSyncRun.findMany({
       where: {
         provider: {
           in: providerAliases,
         },
-        OR: [
-          { userId: input.context.userId },
-          ...(input.context.organizationId ? [{ organizationId: input.context.organizationId }] : []),
-        ],
+        startedAt: {
+          lte: now,
+        },
+        OR: contextQueryOr(context),
       },
       select: {
         provider: true,
         status: true,
+        userId: true,
+        organizationId: true,
         startedAt: true,
         completedAt: true,
         windowStart: true,
@@ -218,42 +969,46 @@ export async function buildImladrisSources(input: {
   const typedSnapshots = snapshots as SnapshotRow[];
   const typedSyncRuns = syncRuns as SourceSyncRunRow[];
 
-  const snapshotByKey = new Map<string, SnapshotRow>();
-  for (const snapshot of typedSnapshots) {
-    if (!snapshotByKey.has(snapshot.providerKey)) {
-      snapshotByKey.set(snapshot.providerKey, snapshot);
-    }
-  }
-
-  const syncRunByProvider = new Map<string, SourceSyncRunRow>();
-  for (const syncRun of typedSyncRuns) {
-    const provider = String(syncRun.provider);
-    if (!syncRunByProvider.has(provider)) {
-      syncRunByProvider.set(provider, syncRun);
-    }
-  }
-
   return REQUIRED_IMLADRIS_PROVIDERS.map((provider) => {
-    const connection =
-      typedConnections.find((candidate) =>
-        provider.providerAliases.includes(String(candidate.provider)),
-      ) ?? null;
-    const snapshot =
-      provider.snapshotKeys.map((key) => snapshotByKey.get(key)).find(Boolean) ?? null;
-    const syncRun =
-      provider.providerAliases.map((alias) => syncRunByProvider.get(alias)).find(Boolean) ??
-      null;
+    const connection = bestConnectionForProvider({
+      connections: typedConnections,
+      providerAliases: provider.providerAliases,
+      context,
+      now,
+    });
+    const snapshot = bestSnapshotForProvider({
+      snapshots: typedSnapshots,
+      snapshotKeys: provider.snapshotKeys,
+      context,
+      now,
+    });
+    const expectedWindow = getImladrisHistoricalWindow(now);
+    const syncRun = bestSyncRunForProvider({
+      syncRuns: typedSyncRuns,
+      providerAliases: provider.providerAliases,
+      context,
+      now,
+      freshnessSlaHours: provider.freshnessSlaHours,
+      expectedWindowStart: expectedWindow.windowStart,
+    });
     const lastSyncedAt =
       toDate(syncRun?.completedAt) ??
-      toDate(syncRun?.startedAt) ??
       toDate(snapshot?.capturedAt) ??
-      toDate(connection?.lastSyncedAt);
+      (connectionExpired(connection, now) || connectionExpiryInvalid(connection)
+        ? null
+        : dateAtOrBefore(connection?.lastSyncedAt, now));
     const staleAfter = lastSyncedAt
       ? addHours(lastSyncedAt, provider.freshnessSlaHours)
       : null;
-    const expectedWindow = getImladrisHistoricalWindow(now);
     const latestWindowStart = toDate(syncRun?.windowStart);
     const latestWindowEnd = toDate(syncRun?.windowEnd);
+    const hasRequiredLookback =
+      latestWindowStart != null &&
+      latestWindowStart.getTime() <= expectedWindow.windowStart.getTime();
+    const hasFreshWindowEnd =
+      latestWindowEnd != null &&
+      latestWindowEnd.getTime() <= now.getTime() &&
+      addHours(latestWindowEnd, provider.freshnessSlaHours).getTime() >= now.getTime();
     const status = sourceStatus({
       connection,
       snapshot,
@@ -261,6 +1016,8 @@ export async function buildImladrisSources(input: {
       now,
       freshnessSlaHours: provider.freshnessSlaHours,
       lastSyncedAt,
+      hasRequiredLookback: syncRun ? hasRequiredLookback : null,
+      hasFreshWindowEnd: syncRun ? hasFreshWindowEnd : null,
     });
 
     return {
@@ -270,7 +1027,13 @@ export async function buildImladrisSources(input: {
       connected: status === "connected",
       lastSyncedAt: toIso(lastSyncedAt),
       lastSnapshotAt: toIso(snapshot?.capturedAt),
-      lastError: connection?.lastError ?? syncRun?.lastError ?? snapshot?.lastError ?? null,
+      lastError: sourceLastError({
+        status,
+        connection,
+        snapshot,
+        syncRun,
+        now,
+      }),
       snapshotKeys: provider.snapshotKeys,
       freshness: {
         slaHours: provider.freshnessSlaHours,
@@ -284,13 +1047,12 @@ export async function buildImladrisSources(input: {
         expectedWindowEnd: toIso(expectedWindow.windowEnd),
         latestWindowStart: toIso(latestWindowStart),
         latestWindowEnd: toIso(latestWindowEnd),
-        hasRequiredLookback:
-          latestWindowStart != null &&
-          latestWindowStart.getTime() <= expectedWindow.windowStart.getTime(),
+        hasRequiredLookback,
+        hasFreshWindowEnd,
       },
       latestSyncRun: syncRun
         ? {
-            status: syncRun.status,
+            status: normalizeSourceStateStatus(syncRun.status) || syncRun.status,
             startedAt: toIso(syncRun.startedAt),
             completedAt: toIso(syncRun.completedAt),
             windowStart: toIso(syncRun.windowStart),
@@ -311,15 +1073,22 @@ export async function buildImladrisMetrics(input: {
   context: UserContext;
   now?: Date;
 }) {
+  const now = input.now ?? new Date();
+  const context = normalizeContext(input.context);
   const [sources, canonicalRows] = await Promise.all([
-    buildImladrisSources(input),
+    buildImladrisSources({ ...input, context, now }),
     input.prisma.imladrisCanonicalMetricValue.findMany({
       where: {
         metricKey: {
           in: IMLADRIS_METRIC_DEFINITIONS.map((definition) => definition.key),
         },
-        userId: input.context.userId,
-        organizationId: input.context.organizationId,
+        periodEnd: {
+          lte: now,
+        },
+        computedAt: {
+          lte: now,
+        },
+        ...canonicalMetricScopeWhere(context),
       },
       include: {
         lineage: {
@@ -333,7 +1102,12 @@ export async function buildImladrisMetrics(input: {
     sources.map((source) => [source.key, source.status] as const),
   );
   const canonicalByMetricKey = new Map<string, CanonicalMetricRow>();
-  for (const row of canonicalRows as CanonicalMetricRow[]) {
+  const sortedCanonicalRows = [...(canonicalRows as CanonicalMetricRow[])].sort((left, right) =>
+    compareCanonicalMetricRows(left, right, context),
+  );
+  for (const row of sortedCanonicalRows) {
+    if (!canonicalMetricAvailableAt(row, now)) continue;
+    if (!canonicalMetricMatchesContext(row, context)) continue;
     if (!canonicalByMetricKey.has(row.metricKey)) {
       canonicalByMetricKey.set(row.metricKey, row);
     }
@@ -341,9 +1115,34 @@ export async function buildImladrisMetrics(input: {
 
   return IMLADRIS_METRIC_DEFINITIONS.map((definition) => {
     const canonicalRow = canonicalByMetricKey.get(definition.key);
-    const status = canonicalRow
+    const storedStatus = canonicalRow
       ? canonicalStatus(canonicalRow.status)
       : canonicalMetricStatus(definition.sourceKeys, sourceStatuses);
+    const sourceHealthStatus = canonicalRow
+      ? metricStatusWithSourceHealth({
+          canonicalStatus: storedStatus,
+          sourceKeys: definition.sourceKeys,
+          sourceStatuses,
+        })
+      : storedStatus;
+    const lineageWarnings = canonicalRow ? metricLineageWarnings(canonicalRow.lineage, now, definition.sourceKeys) : [];
+    const status =
+      canonicalRow && sourceHealthStatus === "ready" && lineageWarnings.length > 0
+        ? "partial"
+        : sourceHealthStatus;
+    const sourceHealthWarnings =
+      canonicalRow && storedStatus === "ready" && sourceHealthStatus !== "ready"
+        ? metricSourceHealthWarnings({
+            status: sourceHealthStatus,
+            sourceKeys: definition.sourceKeys,
+            sourceStatuses,
+          })
+        : [];
+    const warnings = canonicalRow
+      ? [...normalizeMetricWarnings(canonicalRow.warnings), ...sourceHealthWarnings, ...lineageWarnings]
+      : status === "ready"
+        ? []
+        : ["Canonical provider materialization is required before this metric is board-ready."];
     return {
       key: definition.key,
       label: definition.label,
@@ -353,28 +1152,30 @@ export async function buildImladrisMetrics(input: {
       periodStart: toIso(canonicalRow?.periodStart),
       periodEnd: toIso(canonicalRow?.periodEnd),
       status,
-      confidence: canonicalRow?.confidence ?? (status === "ready" ? 0.8 : 0),
+      confidence: normalizeMetricConfidence(
+        canonicalRow?.confidence,
+        status === "ready" ? 0.8 : 0,
+      ),
       calculationVersion: canonicalRow?.calculationVersion ?? null,
       computedAt: toIso(canonicalRow?.computedAt),
       sourceLineage: canonicalRow?.lineage?.length
-        ? canonicalRow.lineage.map((lineage) => ({
-            sourceKey: lineage.sourceKey,
-            sourceType: lineage.sourceType,
-            sourceId: lineage.sourceId,
-            rawRecordId: lineage.rawRecordId,
-            capturedAt: toIso(lineage.capturedAt),
-            metadata: lineage.metadata,
-            status: sourceStatuses.get(lineage.sourceKey as ImladrisProviderKey) ?? "missing",
-          }))
+        ? canonicalRow.lineage.map((lineage) => {
+            const sourceKey = canonicalLineageSourceKey(lineage.sourceKey) ?? lineage.sourceKey;
+            return {
+              sourceKey,
+              sourceType: lineage.sourceType,
+              sourceId: lineage.sourceId,
+              rawRecordId: lineage.rawRecordId,
+              capturedAt: toIso(lineage.capturedAt),
+              metadata: lineage.metadata,
+              status: sourceStatuses.get(sourceKey as ImladrisProviderKey) ?? "missing",
+            };
+          })
         : definition.sourceKeys.map((sourceKey) => ({
             sourceKey,
             status: sourceStatuses.get(sourceKey) ?? "missing",
           })),
-      warnings:
-        canonicalRow?.warnings ??
-        (status === "ready"
-          ? []
-          : ["Canonical provider materialization is required before this metric is board-ready."]),
+      warnings,
     };
   });
 }

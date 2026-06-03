@@ -25,6 +25,15 @@ function asBoolean(value: unknown): boolean {
   return value === true;
 }
 
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value.trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 async function readJson(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!response.ok) {
@@ -50,6 +59,101 @@ function normalizeMaxPages(value: number | null | undefined): number {
 function normalizePostHogHost(host: string | null | undefined): string {
   const trimmed = host?.trim().replace(/\/+$/g, "");
   return trimmed || "https://app.posthog.com";
+}
+
+function isoDate(value: unknown): string | null {
+  const raw = asString(value);
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function dateValue(value: unknown): Date | null {
+  const iso = isoDate(value);
+  return iso ? new Date(iso) : null;
+}
+
+function normalizedProjectState(project: UnknownRecord): string {
+  const directState = asString(project.state);
+  if (directState) return directState.toLowerCase();
+  const status = asRecord(project.status);
+  return (asString(status.type) ?? asString(status.name) ?? "unknown").toLowerCase();
+}
+
+function issueIsArchived(issue: UnknownRecord): boolean {
+  return Boolean(issue.archivedAt ?? issue.archived_at);
+}
+
+function issueIsCompleted(issue: UnknownRecord): boolean {
+  const state = asRecord(issue.state);
+  return Boolean(issue.completedAt ?? issue.completed_at) || asString(state.type)?.toLowerCase() === "completed";
+}
+
+function normalizeLinearIssue(issue: unknown): UnknownRecord {
+  const record = asRecord(issue);
+  return {
+    id: asString(record.id),
+    identifier: asString(record.identifier),
+    title: asString(record.title),
+    archivedAt: isoDate(record.archivedAt ?? record.archived_at),
+    completedAt: isoDate(record.completedAt ?? record.completed_at),
+    updatedAt: isoDate(record.updatedAt ?? record.updated_at),
+    estimate: asNumber(record.estimate),
+    state: asRecord(record.state),
+    team: asRecord(record.team),
+    assignee: record.assignee === null ? null : asRecord(record.assignee),
+  };
+}
+
+function projectIsRecentlyCompleted(project: UnknownRecord, recentThreshold: Date): boolean {
+  if (normalizedProjectState(project) !== "completed") return false;
+  const completedAt = dateValue(project.completedAt ?? project.completed_at);
+  const updatedAt = dateValue(project.updatedAt ?? project.updated_at);
+  const completedTimestamp = completedAt?.getTime() ?? updatedAt?.getTime() ?? 0;
+  return completedTimestamp >= recentThreshold.getTime();
+}
+
+function shouldIncludeProject(project: UnknownRecord, recentThreshold: Date): boolean {
+  const state = normalizedProjectState(project);
+  return ["planned", "started", "paused"].includes(state) || projectIsRecentlyCompleted(project, recentThreshold);
+}
+
+function normalizeLinearProject(project: unknown, issues: UnknownRecord[], recentThreshold: Date): UnknownRecord | null {
+  const record = asRecord(project);
+  if (!shouldIncludeProject(record, recentThreshold)) return null;
+
+  const nonArchivedIssues = issues.filter((issue) => !issueIsArchived(issue));
+  const completedIssueCount = nonArchivedIssues.filter(issueIsCompleted).length;
+  const totalIssueCount = nonArchivedIssues.length;
+  const archivedIssueCount = issues.length - nonArchivedIssues.length;
+  const progressPct =
+    totalIssueCount === 0
+      ? 0
+      : Math.round((completedIssueCount / totalIssueCount) * 10000) / 100;
+  const teamsPayload = asRecord(record.teams);
+  const warnings = totalIssueCount === 0 ? ["No linked issues."] : [];
+
+  return {
+    ...record,
+    id: asString(record.id),
+    name: asString(record.name),
+    description: asString(record.description),
+    url: asString(record.url),
+    state: normalizedProjectState(record),
+    startDate: asString(record.startDate ?? record.start_date),
+    targetDate: asString(record.targetDate ?? record.target_date),
+    createdAt: isoDate(record.createdAt ?? record.created_at),
+    updatedAt: isoDate(record.updatedAt ?? record.updated_at),
+    completedAt: isoDate(record.completedAt ?? record.completed_at),
+    lead: record.lead === null ? null : asRecord(record.lead),
+    teams: asArray(teamsPayload.nodes).map(asRecord),
+    issues,
+    completedIssueCount,
+    totalIssueCount,
+    archivedIssueCount,
+    progressPct,
+    warnings,
+  };
 }
 
 export async function fetchPostHogData(input: {
@@ -104,13 +208,23 @@ export async function fetchLinearData(input: {
   maxPages?: number;
 }): Promise<UnknownRecord> {
   const issues: unknown[] = [];
+  const projects: UnknownRecord[] = [];
   const maxPages = normalizeMaxPages(input.maxPages);
   let pageCount = 0;
+  let issuePageCount = 0;
+  let projectPageCount = 0;
   let after: string | null = null;
-  let hasNextPage = true;
+  let projectAfter: string | null = null;
+  let issueHasNextPage = true;
+  let projectHasNextPage = true;
+  let projectFieldObserved = false;
+  let truncated = false;
+  const recentCompletedThreshold = new Date(input.toDate.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-  while (hasNextPage && pageCount < maxPages) {
+  while ((issueHasNextPage || projectHasNextPage) && pageCount < maxPages) {
     pageCount += 1;
+    const includeIssues = issueHasNextPage;
+    const includeProjects = projectHasNextPage;
     const response = await fetchJsonResponse("https://api.linear.app/graphql", {
       method: "POST",
       headers: {
@@ -119,13 +233,20 @@ export async function fetchLinearData(input: {
       },
       body: JSON.stringify({
         query: `
-          query ImladrisIssues($updatedAfter: DateTime!, $updatedBefore: DateTime!, $after: String) {
+          query ImladrisLinear(
+            $updatedAfter: DateTime!
+            $updatedBefore: DateTime!
+            $after: String
+            $projectAfter: String
+            $includeIssues: Boolean!
+            $includeProjects: Boolean!
+          ) {
             issues(
               first: 100
               after: $after
               filter: { updatedAt: { gte: $updatedAfter, lte: $updatedBefore } }
               orderBy: updatedAt
-            ) {
+            ) @include(if: $includeIssues) {
               nodes {
                 id
                 identifier
@@ -133,9 +254,55 @@ export async function fetchLinearData(input: {
                 createdAt
                 updatedAt
                 completedAt
+                archivedAt
+                estimate
                 state { id name type }
                 team { id key name }
                 assignee { id name email }
+              }
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
+            }
+            projects(
+              first: 50
+              after: $projectAfter
+              includeArchived: false
+              orderBy: updatedAt
+            ) @include(if: $includeProjects) {
+              nodes {
+                id
+                name
+                description
+                url
+                progress
+                state
+                startDate
+                targetDate
+                createdAt
+                updatedAt
+                completedAt
+                lead { id name email }
+                teams { nodes { id key name } }
+                issues(first: 100) {
+                  nodes {
+                    id
+                    identifier
+                    title
+                    archivedAt
+                    completedAt
+                    updatedAt
+                    estimate
+                    state { id name type }
+                    team { id key name }
+                    assignee { id name email }
+                  }
+                  pageInfo {
+                    hasNextPage
+                    endCursor
+                  }
+                }
               }
               pageInfo {
                 hasNextPage
@@ -148,6 +315,9 @@ export async function fetchLinearData(input: {
           updatedAfter: input.fromDate.toISOString(),
           updatedBefore: input.toDate.toISOString(),
           after,
+          projectAfter,
+          includeIssues,
+          includeProjects,
         },
       }),
       cache: "no-store",
@@ -157,22 +327,120 @@ export async function fetchLinearData(input: {
     if (errors.length > 0) {
       throw new Error(`Linear GraphQL error: ${JSON.stringify(errors.slice(0, 3))}`);
     }
-    const issuesPayload = asRecord(asRecord(payload.data).issues);
-    issues.push(...asArray(issuesPayload.nodes));
-    const pageInfo = asRecord(issuesPayload.pageInfo);
-    hasNextPage = asBoolean(pageInfo.hasNextPage);
-    after = asString(pageInfo.endCursor);
-    if (hasNextPage && !after) break;
+    const data = asRecord(payload.data);
+    if (includeIssues && "issues" in data) {
+      const issuesPayload = asRecord(data.issues);
+      issues.push(...asArray(issuesPayload.nodes));
+      issuePageCount += 1;
+      const pageInfo = asRecord(issuesPayload.pageInfo);
+      issueHasNextPage = asBoolean(pageInfo.hasNextPage);
+      after = asString(pageInfo.endCursor);
+      if (issueHasNextPage && !after) {
+        truncated = true;
+        issueHasNextPage = false;
+      }
+    } else {
+      issueHasNextPage = false;
+    }
+
+    if (includeProjects && "projects" in data) {
+      projectFieldObserved = true;
+      const projectsPayload = asRecord(data.projects);
+      projectPageCount += 1;
+      for (const project of asArray(projectsPayload.nodes)) {
+        const projectRecord = asRecord(project);
+        const initialIssuesPayload = asRecord(projectRecord.issues);
+        const projectIssues = asArray(initialIssuesPayload.nodes).map(normalizeLinearIssue);
+        let issueAfter = asString(asRecord(initialIssuesPayload.pageInfo).endCursor);
+        let hasMoreProjectIssues = asBoolean(asRecord(initialIssuesPayload.pageInfo).hasNextPage);
+        while (hasMoreProjectIssues && pageCount + issuePageCount < maxPages) {
+          issuePageCount += 1;
+          const issueResponse = await fetchJsonResponse("https://api.linear.app/graphql", {
+            method: "POST",
+            headers: {
+              Authorization: input.apiKey,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              query: `
+                query ImladrisProjectIssues($projectId: String!, $after: String) {
+                  project(id: $projectId) {
+                    issues(first: 100, after: $after) {
+                      nodes {
+                        id
+                        identifier
+                        title
+                        archivedAt
+                        completedAt
+                        updatedAt
+                        estimate
+                        state { id name type }
+                        team { id key name }
+                        assignee { id name email }
+                      }
+                      pageInfo {
+                        hasNextPage
+                        endCursor
+                      }
+                    }
+                  }
+                }
+              `,
+              variables: {
+                projectId: asString(projectRecord.id),
+                after: issueAfter,
+              },
+            }),
+            cache: "no-store",
+          });
+          const issuePayload = asRecord(await readJson(issueResponse));
+          const issueErrors = asArray(issuePayload.errors);
+          if (issueErrors.length > 0) {
+            throw new Error(`Linear GraphQL error: ${JSON.stringify(issueErrors.slice(0, 3))}`);
+          }
+          const nextIssuesPayload = asRecord(asRecord(asRecord(issuePayload.data).project).issues);
+          projectIssues.push(...asArray(nextIssuesPayload.nodes).map(normalizeLinearIssue));
+          const issuePageInfo = asRecord(nextIssuesPayload.pageInfo);
+          hasMoreProjectIssues = asBoolean(issuePageInfo.hasNextPage);
+          issueAfter = asString(issuePageInfo.endCursor);
+          if (hasMoreProjectIssues && !issueAfter) {
+            truncated = true;
+            hasMoreProjectIssues = false;
+          }
+        }
+        if (hasMoreProjectIssues) truncated = true;
+        const normalizedProject = normalizeLinearProject(projectRecord, projectIssues, recentCompletedThreshold);
+        if (normalizedProject) projects.push(normalizedProject);
+      }
+      const pageInfo = asRecord(projectsPayload.pageInfo);
+      projectHasNextPage = asBoolean(pageInfo.hasNextPage);
+      projectAfter = asString(pageInfo.endCursor);
+      if (projectHasNextPage && !projectAfter) {
+        truncated = true;
+        projectHasNextPage = false;
+      }
+    } else {
+      projectHasNextPage = false;
+    }
   }
+  if (issueHasNextPage || projectHasNextPage) truncated = true;
 
   return {
     issues,
     issueCount: issues.length,
+    ...(projectFieldObserved
+      ? {
+          projects,
+          projectCount: projects.length,
+        }
+      : {}),
     _meta: {
       fetchedAt: new Date().toISOString(),
       source: "live",
       pageCount,
-      truncated: hasNextPage,
+      issuePageCount,
+      projectPageCount,
+      truncated,
     },
   };
 }

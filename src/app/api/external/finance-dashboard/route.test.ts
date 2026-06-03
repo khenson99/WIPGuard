@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const prismaMock = {
@@ -30,6 +30,8 @@ function request(
 
 describe("external finance dashboard export", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-01T12:00:00.000Z"));
     vi.clearAllMocks();
     process.env.FINANCE_DASHBOARD_EXPORT_TOKEN = "test-export-token";
     process.env.FINANCE_DASHBOARD_PASSWORD_HASH =
@@ -168,6 +170,10 @@ describe("external finance dashboard export", () => {
         payload: { dealstage: "closedwon", amount: 3_000 },
       },
     ]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("returns CORS headers for the private GitHub Pages origin", async () => {

@@ -18,6 +18,11 @@ function parseIntegerEnv(name: string, fallback: number, minimum = 1): number {
   return value >= minimum ? value : fallback;
 }
 
+function parseStringEnv(name: string, fallback: string): string {
+  const raw = process.env[name]?.trim();
+  return raw ? raw : fallback;
+}
+
 export const workerConfig = {
   /**
    * Database connection pool size for the worker.
@@ -34,6 +39,11 @@ export const workerConfig = {
    * Health check server port for the worker process.
    */
   healthCheckPort: parseIntegerEnv('WORKER_HEALTH_PORT', 8081, 0),
+
+  /**
+   * Health check server bind host. Defaults to all interfaces for Railway health checks.
+   */
+  healthCheckHost: parseStringEnv('WORKER_HEALTH_HOST', '0.0.0.0'),
 
   /**
    * Maximum time (ms) a single sync cycle is allowed to run before being considered stuck.

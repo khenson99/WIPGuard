@@ -656,6 +656,7 @@ async function fetchArdaPage(
       ...init,
       headers: {
         ...sharedHeaders,
+        "X-Request-ID": crypto.randomUUID(),
         ...authHeaders,
       },
       cache: "no-store",
@@ -2292,4 +2293,5 @@ export const __test__ = {
   deriveOnboardingStartDate,
   computeActiveWeeksTrailing8,
   fetchCodaApiRows,
+  queryArdaCollection,
 };

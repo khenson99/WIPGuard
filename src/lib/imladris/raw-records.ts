@@ -9,16 +9,69 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function stableJson(value: unknown): string {
+function serializableValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === undefined || typeof value === "function" || typeof value === "symbol") {
+    return undefined;
+  }
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value === "number" && !Number.isFinite(value)) return null;
+  if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) {
-    return `[${value.map((item) => stableJson(item)).join(",")}]`;
+    if (seen.has(value)) return undefined;
+    seen.add(value);
+    const serialized = value.map((item) => {
+      const serializedItem = serializableValue(item, seen);
+      return serializedItem === undefined ? null : serializedItem;
+    });
+    seen.delete(value);
+    return serialized;
+  }
+  if (!value || typeof value !== "object") return value;
+  if (seen.has(value)) return undefined;
+
+  seen.add(value);
+  const serialized = Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .map(([key, entryValue]) => [key, serializableValue(entryValue, seen)] as const)
+      .filter(([, entryValue]) => entryValue !== undefined),
+  );
+  seen.delete(value);
+  return serialized;
+}
+
+function serializableRecord(value: Record<string, unknown>): Record<string, unknown> {
+  return asRecord(serializableValue(value));
+}
+
+function providerFieldRecords(record: Record<string, unknown>): Record<string, unknown>[] {
+  const properties = asRecord(record.properties);
+  return Object.keys(properties).length > 0 ? [record, properties] : [record];
+}
+
+function stableJson(value: unknown, seen = new WeakSet<object>()): string {
+  if (value === undefined || typeof value === "function" || typeof value === "symbol") {
+    return "null";
+  }
+  if (typeof value === "bigint") return JSON.stringify(value.toString());
+  if (typeof value === "number" && !Number.isFinite(value)) return "null";
+  if (value instanceof Date) return JSON.stringify(value.toISOString());
+  if (Array.isArray(value)) {
+    if (seen.has(value)) return JSON.stringify("[Circular]");
+    seen.add(value);
+    const serialized = `[${value.map((item) => stableJson(item, seen)).join(",")}]`;
+    seen.delete(value);
+    return serialized;
   }
   if (value && typeof value === "object") {
-    return `{${Object.entries(value as Record<string, unknown>)
+    if (seen.has(value)) return JSON.stringify("[Circular]");
+    seen.add(value);
+    const serialized = `{${Object.entries(value as Record<string, unknown>)
       .filter(([, entryValue]) => entryValue !== undefined)
       .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableJson(entryValue)}`)
+      .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableJson(entryValue, seen)}`)
       .join(",")}}`;
+    seen.delete(value);
+    return serialized;
   }
   return JSON.stringify(value);
 }
@@ -83,6 +136,10 @@ function providerExternalIdForRecord(input: {
 }): string | null {
   for (const key of [
     "id",
+    "uuid",
+    "objectId",
+    "object_id",
+    "hs_object_id",
     "dealId",
     "deal_id",
     "contactId",
@@ -107,6 +164,14 @@ function providerExternalIdForRecord(input: {
     "customerId",
     "customer_id",
     "customer",
+    "subscriptionId",
+    "subscription_id",
+    "invoiceId",
+    "invoice_id",
+    "paymentIntentId",
+    "payment_intent_id",
+    "paymentId",
+    "payment_id",
     "accountId",
     "account_id",
     "transactionId",
@@ -126,18 +191,20 @@ function providerExternalIdForRecord(input: {
     "date",
     "month",
   ]) {
-    const value = input.record[key];
-    if (typeof value === "string" && value.trim()) {
-      if (input.parentExternalId) {
-        return `${input.snapshotKey}:${input.objectType}:${input.parentExternalId}:${value.trim()}`;
+    for (const record of providerFieldRecords(input.record)) {
+      const value = record[key];
+      if (typeof value === "string" && value.trim()) {
+        if (input.parentExternalId) {
+          return `${input.snapshotKey}:${input.objectType}:${input.parentExternalId}:${value.trim()}`;
+        }
+        return `${input.snapshotKey}:${input.objectType}:${value.trim()}`;
       }
-      return `${input.snapshotKey}:${input.objectType}:${value.trim()}`;
-    }
-    if (typeof value === "number" && Number.isFinite(value)) {
-      if (input.parentExternalId) {
-        return `${input.snapshotKey}:${input.objectType}:${input.parentExternalId}:${value}`;
+      if (typeof value === "number" && Number.isFinite(value)) {
+        if (input.parentExternalId) {
+          return `${input.snapshotKey}:${input.objectType}:${input.parentExternalId}:${value}`;
+        }
+        return `${input.snapshotKey}:${input.objectType}:${value}`;
       }
-      return `${input.snapshotKey}:${input.objectType}:${value}`;
     }
   }
 
@@ -160,7 +227,7 @@ function fallbackObjectExternalId(input: {
 function isoFromTimestampValue(value: unknown): string | null {
   if (typeof value === "string" && value.trim()) {
     const normalized = value.trim();
-    if (/^\d+$/.test(normalized)) {
+    if (/^\d+(?:\.\d+)?$/.test(normalized)) {
       const numericValue = Number(normalized);
       if (Number.isFinite(numericValue) && numericValue > 0) {
         const millis = numericValue < 10_000_000_000 ? numericValue * 1000 : numericValue;
@@ -183,8 +250,10 @@ function isoFromTimestampValue(value: unknown): string | null {
 
 function timestampFromRecord(record: Record<string, unknown>, keys: string[]): string | null {
   for (const key of keys) {
-    const iso = isoFromTimestampValue(record[key]);
-    if (iso) return iso;
+    for (const sourceRecord of providerFieldRecords(record)) {
+      const iso = isoFromTimestampValue(sourceRecord[key]);
+      if (iso) return iso;
+    }
   }
   return null;
 }
@@ -251,6 +320,62 @@ function recordSourceUpdatedAt(record: Record<string, unknown>): string | null {
   ]);
 }
 
+function rawRecordFreshnessTimestamp(value: unknown, asOf: Date): number | null {
+  const iso = isoFromTimestampValue(value);
+  if (!iso) return null;
+  const timestamp = Date.parse(iso);
+  return timestamp <= asOf.getTime() ? timestamp : null;
+}
+
+function rawRecordFreshness(record: ImladrisRawRecordInput, asOf: Date): number {
+  return (
+    rawRecordFreshnessTimestamp(record.sourceUpdatedAt, asOf) ??
+    rawRecordFreshnessTimestamp(record.occurredAt, asOf) ??
+    rawRecordFreshnessTimestamp(record.sourceCreatedAt, asOf) ??
+    0
+  );
+}
+
+function rawRecordHasObservableTimestamp(record: ImladrisRawRecordInput, asOf: Date): boolean {
+  return (
+    rawRecordFreshnessTimestamp(record.sourceUpdatedAt, asOf) !== null ||
+    rawRecordFreshnessTimestamp(record.occurredAt, asOf) !== null ||
+    rawRecordFreshnessTimestamp(record.sourceCreatedAt, asOf) !== null
+  );
+}
+
+function rawRecordFreshnessRank(
+  record: ImladrisRawRecordInput,
+  freshnessRanks: WeakMap<ImladrisRawRecordInput, number>,
+  asOf: Date,
+): number {
+  const rank = freshnessRanks.get(record) ?? 0;
+  return rank > 0 && !rawRecordHasObservableTimestamp(record, asOf) ? 0 : rank;
+}
+
+function preferRawRecord(
+  current: ImladrisRawRecordInput | undefined,
+  candidate: ImladrisRawRecordInput,
+  freshnessRanks: WeakMap<ImladrisRawRecordInput, number>,
+  asOf: Date,
+): ImladrisRawRecordInput {
+  if (!current) return candidate;
+  const rankDelta =
+    rawRecordFreshnessRank(candidate, freshnessRanks, asOf) -
+    rawRecordFreshnessRank(current, freshnessRanks, asOf);
+  if (rankDelta !== 0) return rankDelta > 0 ? candidate : current;
+  return rawRecordFreshness(candidate, asOf) >= rawRecordFreshness(current, asOf) ? candidate : current;
+}
+
+function rangeEndTimestamp(input: { to: string; capturedAt: Date }): string {
+  const requestedEnd = isoFromTimestampValue(input.to);
+  if (!requestedEnd) return input.capturedAt.toISOString();
+  const requestedEndMs = Date.parse(requestedEnd);
+  return requestedEndMs <= input.capturedAt.getTime()
+    ? requestedEnd
+    : input.capturedAt.toISOString();
+}
+
 export function buildImladrisRawRecordsFromPayload(input: {
   provider: IntegrationProvider;
   snapshotKey: string;
@@ -260,29 +385,49 @@ export function buildImladrisRawRecordsFromPayload(input: {
   capturedAt: Date;
 }): ImladrisRawRecordInput[] {
   const payloadRecord = asRecord(input.payload);
-  const records: ImladrisRawRecordInput[] = [
-    {
-      objectType: "snapshot",
-      externalId: `${input.snapshotKey}:snapshot:${input.from}:${input.to}`,
-      occurredAt: input.capturedAt,
-      sourceUpdatedAt: input.capturedAt,
-      payload: {
-        ...payloadRecord,
-        snapshotKey: input.snapshotKey,
-        provider: input.provider,
-        from: input.from,
-        to: input.to,
-      },
-    },
-  ];
+  const snapshotPayload = Array.isArray(input.payload)
+    ? { records: input.payload }
+    : payloadRecord;
+  const fallbackTimestamp = rangeEndTimestamp(input);
+  const records: ImladrisRawRecordInput[] = [];
+  const freshnessRanks = new WeakMap<ImladrisRawRecordInput, number>();
+  const pushRecord = (record: ImladrisRawRecordInput, freshnessRank: number) => {
+    freshnessRanks.set(record, freshnessRank);
+    records.push(record);
+  };
 
-  const visit = (value: unknown, path: string[], parentExternalId?: string): void => {
+  pushRecord({
+    objectType: "snapshot",
+    externalId: `${input.snapshotKey}:snapshot:${input.from}:${input.to}`,
+    occurredAt: fallbackTimestamp,
+    sourceUpdatedAt: fallbackTimestamp,
+    payload: {
+      ...serializableRecord(snapshotPayload),
+      snapshotKey: input.snapshotKey,
+      provider: input.provider,
+      from: input.from,
+      to: input.to,
+    },
+  }, 0);
+
+  const visit = (
+    value: unknown,
+    path: string[],
+    parentExternalId?: string,
+    seen = new WeakSet<object>(),
+  ): void => {
     if (path.length > 5) return;
     if (Array.isArray(value)) {
+      if (seen.has(value)) return;
+      seen.add(value);
       const objectType = objectTypeForArray(path, input.snapshotKey);
       value.forEach((entry, index) => {
+        if (entry && typeof entry === "object" && seen.has(entry)) return;
         const entryRecord = asRecord(entry);
         if (Object.keys(entryRecord).length === 0) return;
+        if (entry && typeof entry === "object") {
+          seen.add(entry);
+        }
         const occurredAt = recordOccurredAt(entryRecord);
         const sourceCreatedAt = recordSourceCreatedAt(entryRecord);
         const sourceUpdatedAt = recordSourceUpdatedAt(entryRecord) ?? occurredAt;
@@ -295,32 +440,43 @@ export function buildImladrisRawRecordsFromPayload(input: {
           to: input.to,
           parentExternalId,
         });
-        records.push({
+        pushRecord({
           objectType,
           externalId,
           sourceCreatedAt,
-          occurredAt,
-          sourceUpdatedAt: sourceUpdatedAt ?? input.capturedAt,
+          occurredAt: occurredAt ?? fallbackTimestamp,
+          sourceUpdatedAt: sourceUpdatedAt ?? fallbackTimestamp,
           payload: {
-            ...entryRecord,
+            ...serializableRecord(entryRecord),
             sourcePath: path.join("."),
             ...(parentExternalId ? { sourceParentExternalId: parentExternalId } : {}),
             snapshotKey: input.snapshotKey,
           },
-        });
+        }, sourceUpdatedAt || occurredAt || sourceCreatedAt ? 1 : 0);
 
         for (const [key, child] of Object.entries(entryRecord)) {
           if (key.startsWith("_")) continue;
           if (child && typeof child === "object") {
-            visit(child, [...path, key], externalId);
+            visit(child, [...path, key], externalId, seen);
           }
         }
+        if (entry && typeof entry === "object") {
+          seen.delete(entry);
+        }
       });
+      seen.delete(value);
       return;
     }
 
+    if (value && typeof value === "object") {
+      if (seen.has(value)) return;
+      seen.add(value);
+    }
     const record = asRecord(value);
-    if (Object.keys(record).length === 0) return;
+    if (Object.keys(record).length === 0) {
+      if (value && typeof value === "object") seen.delete(value);
+      return;
+    }
 
     let currentExternalId = parentExternalId;
     if (path.length > 0 && !path.at(-1)?.startsWith("_")) {
@@ -344,34 +500,36 @@ export function buildImladrisRawRecordsFromPayload(input: {
           parentExternalId,
         });
       currentExternalId = externalId;
-      records.push({
+      pushRecord({
         objectType,
         externalId,
         sourceCreatedAt,
-        occurredAt: occurredAt ?? input.capturedAt,
-        sourceUpdatedAt: sourceUpdatedAt ?? input.capturedAt,
+        occurredAt: occurredAt ?? fallbackTimestamp,
+        sourceUpdatedAt: sourceUpdatedAt ?? fallbackTimestamp,
         payload: {
-          ...record,
+          ...serializableRecord(record),
           sourcePath: path.join("."),
           ...(parentExternalId ? { sourceParentExternalId: parentExternalId } : {}),
           snapshotKey: input.snapshotKey,
         },
-      });
+      }, sourceUpdatedAt || occurredAt || sourceCreatedAt ? 1 : 0);
     }
 
     for (const [key, child] of Object.entries(record)) {
       if (key.startsWith("_")) continue;
       if (child && typeof child === "object") {
-        visit(child, [...path, key], currentExternalId);
+        visit(child, [...path, key], currentExternalId, seen);
       }
     }
+    if (value && typeof value === "object") seen.delete(value);
   };
 
-  visit(payloadRecord, []);
+  visit(input.payload, []);
 
   const deduped = new Map<string, ImladrisRawRecordInput>();
   for (const record of records) {
-    deduped.set(`${record.objectType}:${record.externalId}`, record);
+    const key = `${record.objectType}:${record.externalId}`;
+    deduped.set(key, preferRawRecord(deduped.get(key), record, freshnessRanks, input.capturedAt));
   }
   return [...deduped.values()];
 }

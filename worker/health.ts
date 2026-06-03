@@ -35,8 +35,8 @@ export function setReady(ready: boolean) {
   isReady = ready;
 }
 
-export function startHealthServer(): http.Server {
-  const server = http.createServer((req, res) => {
+export function createHealthServer(): http.Server {
+  return http.createServer((req, res) => {
     if (req.url === '/health' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(
@@ -63,9 +63,14 @@ export function startHealthServer(): http.Server {
       res.end('Not found');
     }
   });
+}
 
-  server.listen(workerConfig.healthCheckPort, () => {
-    logger.info(`Worker health server listening on port ${workerConfig.healthCheckPort}`);
+export function startHealthServer(): http.Server {
+  const server = createHealthServer();
+  server.listen(workerConfig.healthCheckPort, workerConfig.healthCheckHost, () => {
+    logger.info(
+      `Worker health server listening on ${workerConfig.healthCheckHost}:${workerConfig.healthCheckPort}`
+    );
   });
 
   return server;
