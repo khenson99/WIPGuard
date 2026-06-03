@@ -981,7 +981,7 @@ function computeFinanceValues(records: RawSourceRecordRow[]) {
     .reduce((sum, record) => sum + (stripeMrrAmount(record) ?? 0), 0);
   const mrr = computeMrrBreakdown(records);
   const cashInflow = mercuryCashInflow + stripeMrr;
-  const netBurn = Math.max(0, cashOutflow - cashInflow);
+  const netBurn = cashOutflow - cashInflow;
   const mercuryBalanceAmounts = records
     .filter(
       (record) =>

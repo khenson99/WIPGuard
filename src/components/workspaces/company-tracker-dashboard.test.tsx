@@ -38,6 +38,18 @@ const DATA: CompanyTrackerDashboardData = {
       sourceMetricKey: "revenue.mrr",
     },
   ],
+  goalRecommendations: [
+    {
+      metric: "RUNWAY",
+      targetValue: 18,
+      currentValue: 8.5,
+      direction: "higher",
+      deadline: "2027-06-01T00:00:00.000Z",
+      sourceMetricKey: "finance.cash_runway_months",
+      formula: "target 18 months of runway",
+      rationale: "18 months is a common operating target for fundraise and burn planning conversations.",
+    },
+  ],
   healthBands: [
     {
       id: "runway",
@@ -50,6 +62,30 @@ const DATA: CompanyTrackerDashboardData = {
       sourceMetricKeys: ["finance.cash_runway_months"],
     },
   ],
+  sourceCoverage: [
+    {
+      key: "stripe",
+      label: "Stripe",
+      status: "available",
+      lastCapturedAt: "2026-05-31T20:00:00.000Z",
+      detail: "Latest analytics snapshot is available.",
+    },
+    {
+      key: "posthog",
+      label: "PostHog",
+      status: "missing",
+      lastCapturedAt: null,
+      detail: "No canonical lineage or analytics snapshot is available.",
+    },
+  ],
+  boardReadiness: {
+    status: "watch",
+    score: 82,
+    blockers: [],
+    caveats: ["Using analytics snapshots for revenue.mrr until canonical materialization catches up."],
+    requiredActions: ["Configure RUNWAY FinancialGoal target."],
+    requiredActionCount: 1,
+  },
   metrics: [
     {
       key: "revenue.mrr",
@@ -58,6 +94,7 @@ const DATA: CompanyTrackerDashboardData = {
       status: "ready",
       confidence: 0.92,
       warnings: [],
+      caveats: [],
       calculationVersion: "revenue-mrr-v1",
       computedAt: "2026-06-01T00:00:00.000Z",
       periodEnd: "2026-05-31T23:59:59.999Z",
@@ -74,6 +111,7 @@ const DATA: CompanyTrackerDashboardData = {
       warnings: 0,
     },
     warnings: [],
+    caveats: [],
   },
 };
 
@@ -86,6 +124,10 @@ describe("CompanyTrackerDashboard", () => {
     expect(screen.getByText("$384.0k")).toBeTruthy();
     expect(screen.getByText("Goal Progress")).toBeTruthy();
     expect(screen.getByText("Growth Engine")).toBeTruthy();
+    expect(screen.getByText("Board Readiness")).toBeTruthy();
+    expect(screen.getByText("Source Coverage")).toBeTruthy();
+    expect(screen.getByText("Draft Board Targets")).toBeTruthy();
+    expect(screen.getByText("Configure RUNWAY FinancialGoal target.")).toBeTruthy();
     expect(screen.getByText("Data Trust")).toBeTruthy();
     expect(screen.getByText("finance.cash_runway_months.value.months")).toBeTruthy();
   });
@@ -104,6 +146,7 @@ describe("CompanyTrackerDashboard", () => {
               status: "missing",
               confidence: 0,
               warnings: ["Canonical company metric is missing."],
+              caveats: [],
               calculationVersion: null,
               computedAt: null,
               periodEnd: null,
@@ -113,6 +156,13 @@ describe("CompanyTrackerDashboard", () => {
           trust: {
             summary: { ready: 0, partial: 0, stale: 0, missing: 1, error: 0, warnings: 1 },
             warnings: ["Canonical company metric is missing."],
+            caveats: [],
+          },
+          boardReadiness: {
+            ...DATA.boardReadiness,
+            status: "blocked",
+            blockers: ["ARR/MRR is missing."],
+            caveats: [],
           },
         }}
       />,

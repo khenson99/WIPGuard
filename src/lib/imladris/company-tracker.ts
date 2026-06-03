@@ -1,4 +1,5 @@
 import {
+  REQUIRED_IMLADRIS_PROVIDERS,
   getImladrisDashboardDefinition,
   getImladrisMetricDefinition,
 } from "@/lib/imladris/catalog";
@@ -21,6 +22,8 @@ type MetricStatus = "ready" | "missing" | "partial" | "stale" | "error";
 type GoalDirection = "higher" | "lower";
 type GoalProgressStatus = "active" | "achieved" | "missed";
 type HealthBandStatus = "strong" | "watch" | "risk" | "missing";
+type SourceCoverageStatus = "available" | "missing" | "stale" | "error";
+type BoardReadinessStatus = "ready" | "watch" | "blocked";
 
 interface UserContext {
   userId: string;
@@ -75,6 +78,8 @@ interface CompanyAnalyticsStats {
   snapshotCount: number;
   latestCapturedAt: string | null;
   availableProviders: Set<string>;
+  staleProviders: Set<string>;
+  errorProviders: Map<string, string>;
   warnings: string[];
 }
 
@@ -85,6 +90,7 @@ export interface CompanyTrackerMetric {
   status: MetricStatus;
   confidence: number;
   warnings: string[];
+  caveats?: string[];
   calculationVersion: string | null;
   computedAt: string | null;
   periodEnd: string | null;
@@ -114,6 +120,17 @@ export interface CompanyGoalProgress {
   sourceMetricKey: string | null;
 }
 
+export interface CompanyGoalRecommendation {
+  metric: string;
+  targetValue: number | null;
+  currentValue: number | null;
+  direction: GoalDirection;
+  deadline: string;
+  sourceMetricKey: string | null;
+  formula: string;
+  rationale: string;
+}
+
 export interface CompanyHealthBand {
   id: string;
   label: string;
@@ -123,6 +140,14 @@ export interface CompanyHealthBand {
   formula: string;
   detail: string;
   sourceMetricKeys: string[];
+}
+
+export interface CompanySourceCoverage {
+  key: string;
+  label: string;
+  status: SourceCoverageStatus;
+  lastCapturedAt: string | null;
+  detail: string;
 }
 
 export interface CompanyTrackerTrustSummary {
@@ -137,13 +162,26 @@ export interface CompanyTrackerTrustSummary {
 export interface CompanyTrackerTrust {
   summary: CompanyTrackerTrustSummary;
   warnings: string[];
+  caveats: string[];
+}
+
+export interface CompanyBoardReadiness {
+  status: BoardReadinessStatus;
+  score: number;
+  blockers: string[];
+  caveats: string[];
+  requiredActions: string[];
+  requiredActionCount: number;
 }
 
 export interface CompanyTrackerDashboardData {
   dashboard: ImladrisDashboardDefinition;
   summary: CompanyTrackerSummary;
   goalProgress: CompanyGoalProgress[];
+  goalRecommendations: CompanyGoalRecommendation[];
   healthBands: CompanyHealthBand[];
+  sourceCoverage: CompanySourceCoverage[];
+  boardReadiness: CompanyBoardReadiness;
   metrics: CompanyTrackerMetric[];
   trust: CompanyTrackerTrust;
 }
@@ -161,7 +199,36 @@ const ANALYTICS_SNAPSHOT_PROVIDER_KEYS = [
   "mercury",
   "hubspot",
   "salesPerformance",
+  "googleWorkspace",
+  "slack",
+  "googleAnalytics",
+  "googleSearchConsole",
+  "searchConsole",
+  "googleAds",
+  "metaAds",
+  "metaPage",
+  "instagram",
+  "redditAds",
+  "redditOps",
+  "semrush",
+  "coda",
+  "codaOps",
+  "webflow",
+  "unify",
+  "visitorFunnel",
+  "posthog",
+  "pylon",
+  "product",
 ] as const;
+
+const SOURCE_SNAPSHOT_KEYS = new Map<string, string[]>(
+  REQUIRED_IMLADRIS_PROVIDERS.map((provider) => [
+    provider.key,
+    provider.snapshotKeys,
+  ]),
+);
+
+const BOARD_TARGET_METRICS = ["ARR", "RUNWAY", "BURN_RATE"] as const;
 
 function toDate(value: Date | string | null | undefined): Date | null {
   if (!value) return null;
@@ -212,6 +279,25 @@ function round(value: number, decimals = 2): number {
   return Math.round(value * factor) / factor;
 }
 
+function roundTo(value: number, increment: number): number {
+  if (!Number.isFinite(value) || increment <= 0) return value;
+  return Math.round(value / increment) * increment;
+}
+
+function nextRoundRevenueTarget(value: number | null): number | null {
+  if (value === null || value <= 0) return null;
+  const growthTarget = value * 1.25;
+  if (growthTarget < 100_000) return Math.ceil(growthTarget / 25_000) * 25_000;
+  if (growthTarget < 1_000_000) return Math.ceil(growthTarget / 100_000) * 100_000;
+  return Math.ceil(growthTarget / 500_000) * 500_000;
+}
+
+function addYears(value: Date, years: number): Date {
+  const date = new Date(value);
+  date.setUTCFullYear(date.getUTCFullYear() + years);
+  return date;
+}
+
 function metricTimestamp(row: CanonicalMetricRow): number {
   return (
     toDate(row.periodEnd)?.getTime() ??
@@ -231,6 +317,10 @@ function latestRowsByMetric(rows: CanonicalMetricRow[]): Map<string, CanonicalMe
     if (!latest.has(row.metricKey)) latest.set(row.metricKey, row);
   }
   return latest;
+}
+
+function snapshotKeysForSource(sourceKey: string): string[] {
+  return SOURCE_SNAPSHOT_KEYS.get(sourceKey) ?? [sourceKey];
 }
 
 function latestSnapshotsByProvider(rows: AnalyticsSnapshotRow[]): Map<string, AnalyticsSnapshotRow> {
@@ -306,6 +396,20 @@ async function buildCompanyAnalyticsStats(input: {
       .map((snapshot) => toDate(snapshot.capturedAt))
       .filter((date): date is Date => Boolean(date))
       .sort((left, right) => right.getTime() - left.getTime())[0]?.toISOString() ?? null;
+  const staleProviders = new Set(
+    [...snapshots.values()]
+      .filter(
+        (snapshot) =>
+          (toDate(snapshot.expiresAt)?.getTime() ?? Number.POSITIVE_INFINITY) <
+          input.now.getTime(),
+      )
+      .map((snapshot) => snapshot.providerKey),
+  );
+  const errorProviders = new Map(
+    [...snapshots.values()]
+      .filter((snapshot) => snapshot.lastError)
+      .map((snapshot) => [snapshot.providerKey, snapshot.lastError ?? "Snapshot reported an error."]),
+  );
 
   return {
     metricsLayer: buildAnalyticsMetricsLayer(analyticsData),
@@ -313,6 +417,8 @@ async function buildCompanyAnalyticsStats(input: {
     snapshotCount: snapshots.size,
     latestCapturedAt,
     availableProviders: new Set(snapshots.keys()),
+    staleProviders,
+    errorProviders,
     warnings: [...snapshots.values()]
       .filter((snapshot) => snapshot.lastError)
       .map((snapshot) => `${snapshot.providerKey}: ${snapshot.lastError}`),
@@ -435,7 +541,8 @@ function companyMetric(
         value: fallbackValue,
         status: "partial",
         confidence: 0.72,
-        warnings: [`Canonical ${key} is missing; using latest analytics snapshot stats.`],
+        warnings: [],
+        caveats: [`Canonical ${key} is missing; using latest analytics snapshot stats.`],
         calculationVersion: "analytics-snapshot-company-fallback-v1",
         computedAt: analyticsStats?.latestCapturedAt ?? null,
         periodEnd: analyticsStats?.latestCapturedAt ?? null,
@@ -450,6 +557,7 @@ function companyMetric(
       status: "missing",
       confidence: 0,
       warnings: ["Canonical company metric is missing."],
+      caveats: [],
       calculationVersion: null,
       computedAt: null,
       periodEnd: null,
@@ -463,6 +571,7 @@ function companyMetric(
     status: metricStatus(row.status),
     confidence: row.confidence,
     warnings: row.warnings ?? [],
+    caveats: [],
     calculationVersion: row.calculationVersion,
     computedAt: toIso(row.computedAt),
     periodEnd: toIso(row.periodEnd),
@@ -637,6 +746,80 @@ function activeGoalsForContext(goals: FinancialGoalRow[], context: UserContext):
   });
 }
 
+function goalRecommendation(
+  metric: (typeof BOARD_TARGET_METRICS)[number],
+  summary: CompanyTrackerSummary,
+  now: Date,
+): CompanyGoalRecommendation | null {
+  const current = currentValueForGoal(metric, summary);
+  const deadline = toIso(addYears(now, 1)) ?? "";
+
+  switch (metric) {
+    case "ARR": {
+      const targetValue = nextRoundRevenueTarget(summary.arr);
+      return {
+        metric,
+        targetValue,
+        currentValue: current.value,
+        direction: current.direction,
+        deadline,
+        sourceMetricKey: current.sourceMetricKey,
+        formula: "next board-scale ARR milestone above current ARR",
+        rationale: "Board decks need an explicit ARR milestone even before FinancialGoal rows are configured.",
+      };
+    }
+    case "RUNWAY":
+      return {
+        metric,
+        targetValue: 18,
+        currentValue: current.value,
+        direction: current.direction,
+        deadline,
+        sourceMetricKey: current.sourceMetricKey,
+        formula: "target 18 months of runway",
+        rationale: "18 months is a common operating target for fundraise and burn planning conversations.",
+      };
+    case "BURN_RATE": {
+      const runwayBurnTarget =
+        summary.cashBalance !== null && summary.cashBalance > 0
+          ? summary.cashBalance / 18
+          : null;
+      const improvementTarget =
+        summary.netBurn !== null && summary.netBurn > 0
+          ? summary.netBurn * 0.85
+          : summary.netBurn;
+      const rawTarget =
+        runwayBurnTarget !== null && improvementTarget !== null
+          ? Math.min(runwayBurnTarget, improvementTarget)
+          : runwayBurnTarget ?? improvementTarget;
+      return {
+        metric,
+        targetValue: rawTarget === null ? null : roundTo(rawTarget, 100),
+        currentValue: current.value,
+        direction: current.direction,
+        deadline,
+        sourceMetricKey: current.sourceMetricKey,
+        formula: "min(current burn * 85%, cash balance / 18)",
+        rationale: "Burn targets should tie directly to runway math and capital efficiency.",
+      };
+    }
+  }
+}
+
+function buildGoalRecommendations(
+  goalProgressRows: CompanyGoalProgress[],
+  summary: CompanyTrackerSummary,
+  now: Date,
+): CompanyGoalRecommendation[] {
+  const configuredMetrics = new Set(goalProgressRows.map((goal) => goal.metric));
+  return BOARD_TARGET_METRICS
+    .filter((metric) => !configuredMetrics.has(metric))
+    .map((metric) => goalRecommendation(metric, summary, now))
+    .filter((recommendation): recommendation is CompanyGoalRecommendation =>
+      Boolean(recommendation),
+    );
+}
+
 function statusForRunway(value: number | null): HealthBandStatus {
   if (value === null) return "missing";
   if (value >= 12) return "strong";
@@ -729,6 +912,80 @@ function buildHealthBands(input: {
   ];
 }
 
+function canonicalSourceKeys(rows: CanonicalMetricRow[]): Set<string> {
+  const sourceKeys = new Set<string>();
+  for (const row of rows) {
+    for (const lineage of row.lineage ?? []) {
+      if (lineage.sourceKey) sourceKeys.add(lineage.sourceKey);
+    }
+  }
+  return sourceKeys;
+}
+
+function sourceHasSnapshot(
+  analyticsStats: CompanyAnalyticsStats | null,
+  sourceKey: string,
+): boolean {
+  return snapshotKeysForSource(sourceKey).some((snapshotKey) =>
+    analyticsStats?.availableProviders.has(snapshotKey),
+  );
+}
+
+function sourceSnapshotStatus(
+  analyticsStats: CompanyAnalyticsStats | null,
+  sourceKey: string,
+): SourceCoverageStatus | null {
+  const snapshotKeys = snapshotKeysForSource(sourceKey);
+  if (snapshotKeys.some((snapshotKey) => analyticsStats?.errorProviders.has(snapshotKey))) {
+    return "error";
+  }
+  if (snapshotKeys.some((snapshotKey) => analyticsStats?.staleProviders.has(snapshotKey))) {
+    return "stale";
+  }
+  if (snapshotKeys.some((snapshotKey) => analyticsStats?.availableProviders.has(snapshotKey))) {
+    return "available";
+  }
+  return null;
+}
+
+function buildSourceCoverage(input: {
+  dashboard: ImladrisDashboardDefinition;
+  canonicalRows: CanonicalMetricRow[];
+  analyticsStats: CompanyAnalyticsStats | null;
+}): CompanySourceCoverage[] {
+  const canonicalSources = canonicalSourceKeys(input.canonicalRows);
+
+  return input.dashboard.sourceKeys.map((sourceKey) => {
+    const definition = REQUIRED_IMLADRIS_PROVIDERS.find((provider) => provider.key === sourceKey);
+    const snapshotStatus = sourceSnapshotStatus(input.analyticsStats, sourceKey);
+    const canonicalAvailable = canonicalSources.has(sourceKey);
+    const status: SourceCoverageStatus =
+      snapshotStatus ??
+      (canonicalAvailable ? "available" : "missing");
+    const lastCapturedAt = sourceHasSnapshot(input.analyticsStats, sourceKey)
+      ? input.analyticsStats?.latestCapturedAt ?? null
+      : null;
+    const detail =
+      status === "available"
+        ? canonicalAvailable
+          ? "Canonical lineage or analytics snapshot is available."
+          : "Latest analytics snapshot is available."
+        : status === "stale"
+          ? "Latest analytics snapshot is stale."
+          : status === "error"
+            ? "Latest analytics snapshot reported an error."
+            : "No canonical lineage or analytics snapshot is available.";
+
+    return {
+      key: sourceKey,
+      label: definition?.label ?? sourceKey,
+      status,
+      lastCapturedAt,
+      detail,
+    };
+  });
+}
+
 function buildTrust(
   metrics: CompanyTrackerMetric[],
   analyticsStats: CompanyAnalyticsStats | null,
@@ -742,10 +999,12 @@ function buildTrust(
     warnings: 0,
   };
   const warningSet = new Set<string>();
+  const caveatSet = new Set<string>();
   for (const metric of metrics) {
     summary[metric.status] += 1;
     summary.warnings += metric.warnings.length;
     for (const warning of metric.warnings) warningSet.add(warning);
+    for (const caveat of metric.caveats ?? []) caveatSet.add(caveat);
   }
   for (const warning of analyticsStats?.warnings ?? []) {
     summary.warnings += 1;
@@ -754,6 +1013,94 @@ function buildTrust(
   return {
     summary,
     warnings: [...warningSet],
+    caveats: [...caveatSet],
+  };
+}
+
+function buildBoardReadiness(input: {
+  summary: CompanyTrackerSummary;
+  metrics: CompanyTrackerMetric[];
+  goalProgress: CompanyGoalProgress[];
+  goalRecommendations: CompanyGoalRecommendation[];
+  sourceCoverage: CompanySourceCoverage[];
+  trust: CompanyTrackerTrust;
+}): CompanyBoardReadiness {
+  const blockers: string[] = [];
+  const caveats = new Set<string>(input.trust.caveats);
+  const requiredActions: string[] = [];
+  const metricByKey = new Map(input.metrics.map((metric) => [metric.key, metric]));
+  const coreMetricKeys = [
+    "revenue.mrr",
+    "finance.cash_runway_months",
+    "finance.net_burn",
+  ];
+  const missingCore = coreMetricKeys.filter((metricKey) => {
+    const metric = metricByKey.get(metricKey);
+    return !metric || metric.status === "missing" || metric.status === "error";
+  });
+
+  if (input.summary.arr === null || input.summary.mrr === null) {
+    blockers.push("ARR/MRR is missing.");
+  }
+  if (input.summary.runwayMonths === null) {
+    blockers.push("Cash runway is missing.");
+  }
+  if (input.summary.netBurn === null) {
+    blockers.push("Net burn is missing.");
+  }
+  if (missingCore.length > 0) {
+    blockers.push(`Core metric rows need attention: ${missingCore.join(", ")}.`);
+  }
+
+  for (const metric of input.metrics) {
+    if (metric.status === "partial") {
+      caveats.add(`Using analytics snapshots for ${metric.key} until canonical materialization catches up.`);
+    }
+    if (metric.status === "stale") {
+      caveats.add(`${metric.label} is stale.`);
+    }
+  }
+
+  if (input.goalProgress.length === 0) {
+    for (const recommendation of input.goalRecommendations) {
+      requiredActions.push(`Configure ${recommendation.metric} FinancialGoal target.`);
+    }
+  }
+
+  const criticalSources = new Set(["stripe", "hubspot", "mercury"]);
+  const missingCriticalSources = input.sourceCoverage.filter(
+    (source) => criticalSources.has(source.key) && source.status !== "available",
+  );
+  for (const source of missingCriticalSources) {
+    blockers.push(`${source.label} source is not available.`);
+  }
+
+  const warningPenalty = Math.min(input.trust.summary.warnings * 8, 32);
+  const caveatPenalty = Math.min(caveats.size * 4, 24);
+  const missingSourcePenalty = Math.min(
+    input.sourceCoverage.filter((source) => source.status === "missing").length * 2,
+    20,
+  );
+  const actionPenalty = Math.min(requiredActions.length * 6, 18);
+  const blockerPenalty = Math.min(blockers.length * 24, 72);
+  const score = Math.max(
+    0,
+    Math.round(100 - warningPenalty - caveatPenalty - missingSourcePenalty - actionPenalty - blockerPenalty),
+  );
+  const status: BoardReadinessStatus =
+    blockers.length > 0
+      ? "blocked"
+      : caveats.size > 0 || requiredActions.length > 0 || input.trust.summary.warnings > 0
+        ? "watch"
+        : "ready";
+
+  return {
+    status,
+    score,
+    blockers,
+    caveats: [...caveats],
+    requiredActions,
+    requiredActionCount: requiredActions.length,
   };
 }
 
@@ -813,18 +1160,36 @@ export async function buildCompanyTrackerDashboard(input: {
   const currentMrr = latestMetrics.get("revenue.mrr") ?? null;
   const previousMrr = previousMetricRow(typedCanonicalRows, "revenue.mrr", currentMrr);
   const goalProgressRows = typedGoals.map((goal) => goalProgress(goal, summary, now));
+  const goalRecommendations = buildGoalRecommendations(goalProgressRows, summary, now);
+  const sourceCoverage = buildSourceCoverage({
+    dashboard,
+    canonicalRows: typedCanonicalRows,
+    analyticsStats,
+  });
+  const trust = buildTrust(metrics, analyticsStats);
+  const boardReadiness = buildBoardReadiness({
+    summary,
+    metrics,
+    goalProgress: goalProgressRows,
+    goalRecommendations,
+    sourceCoverage,
+    trust,
+  });
 
   return {
     dashboard,
     summary,
     goalProgress: goalProgressRows,
+    goalRecommendations,
     healthBands: buildHealthBands({
       summary,
       currentMrr,
       previousMrr,
       goalProgress: goalProgressRows,
     }),
+    sourceCoverage,
+    boardReadiness,
     metrics,
-    trust: buildTrust(metrics, analyticsStats),
+    trust,
   };
 }
