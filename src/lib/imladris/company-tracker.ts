@@ -2,9 +2,21 @@ import {
   getImladrisDashboardDefinition,
   getImladrisMetricDefinition,
 } from "@/lib/imladris/catalog";
+import { buildAnalyticsMetricsLayer } from "@/lib/analytics/kpis";
+import { buildRevenueDashboardData } from "@/lib/analytics/revenue-dashboard";
+import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import type { ImladrisDashboardDefinition } from "@/lib/imladris/catalog";
 import { normalizeMetricConfidence, normalizeMetricStatus, normalizeMetricWarnings } from "@/lib/imladris/confidence";
 import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
+import type {
+  AnalyticsDashboardData,
+  AnalyticsMetricsLayer,
+  HubSpotData,
+  MercuryData,
+  RevenueDashboardData,
+  SalesPerformancePack,
+  StripeData,
+} from "@/lib/analytics/types";
 import type { PrismaClientType } from "@/lib/prisma";
 
 type MetricStatus = "ready" | "missing" | "partial" | "stale" | "error";
@@ -49,6 +61,24 @@ interface FinancialGoalRow {
   targetValue: unknown;
   deadline: Date | string;
   status: string;
+}
+
+interface AnalyticsSnapshotRow {
+  providerKey: string;
+  payload: unknown;
+  status: string;
+  capturedAt: Date | string;
+  expiresAt: Date | string;
+  lastError: string | null;
+}
+
+interface CompanyAnalyticsStats {
+  metricsLayer: AnalyticsMetricsLayer;
+  revenueDashboard: RevenueDashboardData;
+  snapshotCount: number;
+  latestCapturedAt: string | null;
+  availableProviders: Set<string>;
+  warnings: string[];
 }
 
 export interface CompanyTrackerMetric {
@@ -126,8 +156,15 @@ export type CompanyTrackerHealthBand = CompanyHealthBand;
 
 export type CompanyTrackerPrisma = Pick<
   PrismaClientType,
-  "imladrisCanonicalMetricValue" | "financialGoal"
+  "imladrisCanonicalMetricValue" | "financialGoal" | "analyticsSnapshot"
 >;
+
+const ANALYTICS_SNAPSHOT_PROVIDER_KEYS = [
+  "stripe",
+  "mercury",
+  "hubspot",
+  "salesPerformance",
+] as const;
 
 function toDate(value: unknown): Date | null {
   const normalizedValue = scalarValue(value) ?? value;
@@ -377,6 +414,103 @@ function latestRowsByMetric(
   return latest;
 }
 
+function latestSnapshotsByProvider(rows: AnalyticsSnapshotRow[]): Map<string, AnalyticsSnapshotRow> {
+  const latest = new Map<string, AnalyticsSnapshotRow>();
+  for (const row of rows) {
+    const existing = latest.get(row.providerKey);
+    if (!existing || (toDate(row.capturedAt)?.getTime() ?? 0) > (toDate(existing.capturedAt)?.getTime() ?? 0)) {
+      latest.set(row.providerKey, row);
+    }
+  }
+  return latest;
+}
+
+function analyticsDataFromSnapshots(
+  snapshots: Map<string, AnalyticsSnapshotRow>,
+  now: Date,
+): AnalyticsDashboardData {
+  return {
+    stripe: (snapshots.get("stripe")?.payload as StripeData | undefined) ?? null,
+    mercury: (snapshots.get("mercury")?.payload as MercuryData | undefined) ?? null,
+    hubspot: (snapshots.get("hubspot")?.payload as HubSpotData | undefined) ?? null,
+    salesPerformance:
+      (snapshots.get("salesPerformance")?.payload as SalesPerformancePack | undefined) ?? null,
+    freshness: Object.fromEntries(
+      [...snapshots.entries()].map(([providerKey, snapshot]) => [
+        providerKey,
+        {
+          provider: providerKey,
+          source: "snapshot",
+          status: "CONNECTED",
+          connectedAt: null,
+          lastSyncedAt: toIso(snapshot.capturedAt),
+          lastError: snapshot.lastError,
+          stale:
+            (toDate(snapshot.expiresAt)?.getTime() ?? Number.POSITIVE_INFINITY) <
+            now.getTime(),
+          lastSnapshotAt: toIso(snapshot.capturedAt),
+        },
+      ]),
+    ),
+  } as unknown as AnalyticsDashboardData;
+}
+
+async function buildCompanyAnalyticsStats(input: {
+  prisma: CompanyTrackerPrisma;
+  context: UserContext;
+  now: Date;
+}): Promise<CompanyAnalyticsStats | null> {
+  if (!input.context.userId) return null;
+
+  const snapshotRows = (await input.prisma.analyticsSnapshot.findMany({
+    where: {
+      userId: resolveIntegrationOwnerUserId(input.context.userId),
+      providerKey: {
+        in: [...ANALYTICS_SNAPSHOT_PROVIDER_KEYS],
+      },
+      status: "SUCCESS",
+    },
+    select: {
+      providerKey: true,
+      payload: true,
+      status: true,
+      capturedAt: true,
+      expiresAt: true,
+      lastError: true,
+    },
+    orderBy: [{ capturedAt: "desc" }],
+  })) as AnalyticsSnapshotRow[];
+  const snapshots = latestSnapshotsByProvider(snapshotRows);
+  if (snapshots.size === 0) return null;
+
+  const analyticsData = analyticsDataFromSnapshots(snapshots, input.now);
+  const latestCapturedAt =
+    [...snapshots.values()]
+      .map((snapshot) => toDate(snapshot.capturedAt))
+      .filter((date): date is Date => Boolean(date))
+      .sort((left, right) => right.getTime() - left.getTime())[0]?.toISOString() ?? null;
+
+  return {
+    metricsLayer: buildAnalyticsMetricsLayer(analyticsData),
+    revenueDashboard: buildRevenueDashboardData(analyticsData),
+    snapshotCount: snapshots.size,
+    latestCapturedAt,
+    availableProviders: new Set(snapshots.keys()),
+    warnings: [...snapshots.values()]
+      .filter((snapshot) => snapshot.lastError)
+      .map((snapshot) => `${snapshot.providerKey}: ${snapshot.lastError}`),
+  };
+}
+
+function hasAnalyticsProvider(
+  analyticsStats: CompanyAnalyticsStats | null,
+  ...providerKeys: string[]
+): boolean {
+  return providerKeys.some((providerKey) =>
+    analyticsStats?.availableProviders.has(providerKey),
+  );
+}
+
 function canonicalMetricAvailableAt(row: CanonicalMetricRow, now: Date): boolean {
   const periodStart = toDate(row.periodStart);
   const periodEnd = toDate(row.periodEnd);
@@ -466,9 +600,84 @@ function previousMetricRow(
     })[0] ?? null;
 }
 
-function companyMetric(row: CanonicalMetricRow | null, key: string): CompanyTrackerMetric {
+function analyticsFallbackForMetric(
+  key: string,
+  analyticsStats: CompanyAnalyticsStats | null,
+): unknown {
+  if (!analyticsStats) return null;
+  const finance = analyticsStats.metricsLayer.finance.summary;
+  const revenue = analyticsStats.revenueDashboard.summary;
+  const pipeline = analyticsStats.revenueDashboard.pipeline;
+
+  switch (key) {
+    case "revenue.mrr":
+      if (!hasAnalyticsProvider(analyticsStats, "stripe", "hubspot")) return null;
+      return {
+        amount: finance.mrr,
+        arr: finance.mrr * 12,
+        activeSubscriptions: finance.activeSubscriptions,
+        stripeActiveSubscriptions: finance.stripeActiveSubscriptions,
+        hubspotActiveSubscriptions: finance.hubspotActiveSubscriptions,
+        currency: "USD",
+        source: "analytics.metrics_layer",
+      };
+    case "finance.cash_runway_months":
+      if (!hasAnalyticsProvider(analyticsStats, "mercury")) return null;
+      return {
+        months: finance.runwayMonths,
+        cashBalance: finance.cashBalance || revenue.cashBalance,
+        bankCash: finance.bankCash,
+        treasuryCash: finance.treasuryCash,
+        currency: "USD",
+        source: "analytics.metrics_layer",
+      };
+    case "finance.net_burn":
+      if (!hasAnalyticsProvider(analyticsStats, "mercury")) return null;
+      return {
+        amount: finance.burnRate,
+        netCashFlow: finance.netCashFlow30d,
+        cashInflow: finance.inflows30d,
+        cashOutflow: finance.outflows30d,
+        currency: "USD",
+        source: "analytics.metrics_layer",
+      };
+    case "sales.qualified_pipeline":
+      if (!hasAnalyticsProvider(analyticsStats, "hubspot")) return null;
+      return {
+        amount: pipeline.qualifiedPipelineValue,
+        qualifiedDealCount: pipeline.qualifiedPipelineCount,
+        openPipelineValue: pipeline.openPipelineValue,
+        openPipelineCount: pipeline.openPipelineCount,
+        source: "analytics.revenue_dashboard",
+      };
+    default:
+      return null;
+  }
+}
+
+function companyMetric(
+  row: CanonicalMetricRow | null,
+  key: string,
+  analyticsStats: CompanyAnalyticsStats | null,
+): CompanyTrackerMetric {
   const definition = getImladrisMetricDefinition(key);
   if (!row) {
+    const fallbackValue = analyticsFallbackForMetric(key, analyticsStats);
+    if (fallbackValue !== null) {
+      return {
+        key,
+        label: definition?.label ?? key,
+        value: fallbackValue,
+        status: "partial",
+        confidence: 0.72,
+        warnings: [`Canonical ${key} is missing; using latest analytics snapshot stats.`],
+        calculationVersion: "analytics-snapshot-company-fallback-v1",
+        computedAt: analyticsStats?.latestCapturedAt ?? null,
+        periodEnd: analyticsStats?.latestCapturedAt ?? null,
+        sourceLineageCount: analyticsStats?.snapshotCount ?? 0,
+      };
+    }
+
     return {
       key,
       label: definition?.label ?? key,
@@ -496,12 +705,27 @@ function companyMetric(row: CanonicalMetricRow | null, key: string): CompanyTrac
   };
 }
 
-function buildSummary(metrics: Map<string, CanonicalMetricRow>): CompanyTrackerSummary {
+function buildSummary(
+  metrics: Map<string, CanonicalMetricRow>,
+  analyticsStats: CompanyAnalyticsStats | null,
+): CompanyTrackerSummary {
   const mrr = metricValueView(usableMetricRow(metrics.get("revenue.mrr"))?.value);
   const runway = metricValueView(usableMetricRow(metrics.get("finance.cash_runway_months"))?.value);
   const netBurn = metricValueView(usableMetricRow(metrics.get("finance.net_burn"))?.value);
   const pipeline = metricValueView(usableMetricRow(metrics.get("sales.qualified_pipeline"))?.value);
+  const financeSummary = analyticsStats?.metricsLayer.finance.summary ?? null;
+  const revenueSummary = analyticsStats?.revenueDashboard.summary ?? null;
+  const revenuePipeline = analyticsStats?.revenueDashboard.pipeline ?? null;
+  const hasRevenueFallback = hasAnalyticsProvider(analyticsStats, "stripe", "hubspot");
+  const hasFinanceFallback = hasAnalyticsProvider(analyticsStats, "mercury");
+  const hasPipelineFallback = hasAnalyticsProvider(analyticsStats, "hubspot");
   const mrrAmount = numberValue(mrr.amount);
+  const fallbackMrr = hasRevenueFallback
+    ? financeSummary?.mrr ?? revenueSummary?.mrr ?? null
+    : null;
+  const fallbackArr = hasRevenueFallback
+    ? revenueSummary?.arr ?? (fallbackMrr === null ? null : fallbackMrr * 12)
+    : null;
   const numberFromFields = (record: Record<string, unknown>, ...fields: string[]): number | null => {
     for (const field of fields) {
       const value = numberValue(record[field]);
@@ -511,21 +735,42 @@ function buildSummary(metrics: Map<string, CanonicalMetricRow>): CompanyTrackerS
   };
 
   return {
-    arr: numberValue(mrr.arr) ?? (mrrAmount === null ? null : mrrAmount * 12),
-    mrr: mrrAmount,
-    runwayMonths: numberValue(runway.months),
-    cashBalance: numberFromFields(runway, "cashBalance", "cash_balance"),
+    arr:
+      numberValue(mrr.arr) ??
+      (mrrAmount === null ? null : mrrAmount * 12) ??
+      fallbackArr,
+    mrr: mrrAmount ?? fallbackMrr,
+    runwayMonths:
+      numberValue(runway.months) ??
+      (hasFinanceFallback
+        ? financeSummary?.runwayMonths ?? revenueSummary?.runwayMonths ?? null
+        : null),
+    cashBalance:
+      numberFromFields(runway, "cashBalance", "cash_balance") ??
+      (hasFinanceFallback
+        ? financeSummary?.cashBalance ?? revenueSummary?.cashBalance ?? null
+        : null),
     netBurn:
       numberFromFields(netBurn, "amount", "netBurn", "net_burn") ??
-      numberFromFields(runway, "netBurn", "net_burn"),
-    qualifiedPipeline: numberValue(pipeline.amount),
+      numberFromFields(runway, "netBurn", "net_burn") ??
+      (hasFinanceFallback
+        ? financeSummary?.burnRate ?? revenueSummary?.burnRate ?? null
+        : null),
+    qualifiedPipeline:
+      numberValue(pipeline.amount) ??
+      (hasPipelineFallback ? revenuePipeline?.qualifiedPipelineValue ?? null : null),
     activeSubscriptions:
       countValue(mrr.activeSubscriptions) ??
       countValue(mrr.active_subscriptions) ??
       countValue(mrr.mergedActiveSubscriptions) ??
       countValue(mrr.merged_active_subscriptions) ??
       countValue(mrr.subscriptionCount) ??
-      countValue(mrr.subscription_count),
+      countValue(mrr.subscription_count) ??
+      (hasRevenueFallback
+        ? financeSummary?.activeSubscriptions ??
+          revenueSummary?.activeSubscriptions ??
+          null
+        : null),
     currency: currencyFrom(mrr, runway, netBurn, pipeline),
   };
 }
@@ -727,7 +972,10 @@ function buildHealthBands(input: {
   ];
 }
 
-function buildTrust(metrics: CompanyTrackerMetric[]): CompanyTrackerTrust {
+function buildTrust(
+  metrics: CompanyTrackerMetric[],
+  analyticsStats: CompanyAnalyticsStats | null,
+): CompanyTrackerTrust {
   const summary = {
     ready: 0,
     missing: 0,
@@ -741,6 +989,10 @@ function buildTrust(metrics: CompanyTrackerMetric[]): CompanyTrackerTrust {
     summary[metric.status] += 1;
     summary.warnings += metric.warnings.length;
     for (const warning of metric.warnings) warningSet.add(warning);
+  }
+  for (const warning of analyticsStats?.warnings ?? []) {
+    summary.warnings += 1;
+    warningSet.add(warning);
   }
   return {
     summary,
@@ -769,7 +1021,7 @@ export async function buildCompanyTrackerDashboard(input: {
         orderBy: [{ deadline: "asc" }],
       })
     : Promise.resolve([]);
-  const [canonicalRows, goals] = await Promise.all([
+  const [canonicalRows, goals, analyticsStats] = await Promise.all([
     input.prisma.imladrisCanonicalMetricValue.findMany({
       where: {
         metricKey: { in: dashboard.metricKeys },
@@ -785,6 +1037,11 @@ export async function buildCompanyTrackerDashboard(input: {
       orderBy: [{ periodEnd: "desc" }, { computedAt: "desc" }],
     }),
     goalsQuery,
+    buildCompanyAnalyticsStats({
+      prisma: input.prisma,
+      context,
+      now,
+    }),
   ]);
 
   const typedCanonicalRows = (canonicalRows as CanonicalMetricRow[]).filter((row) => {
@@ -796,9 +1053,9 @@ export async function buildCompanyTrackerDashboard(input: {
   const typedGoals = activeGoalsForContext(goals as FinancialGoalRow[], context);
   const latestMetrics = latestRowsByMetric(typedCanonicalRows, context);
   const metrics = dashboard.metricKeys.map((metricKey) =>
-    companyMetric(latestMetrics.get(metricKey) ?? null, metricKey),
+    companyMetric(latestMetrics.get(metricKey) ?? null, metricKey, analyticsStats),
   );
-  const summary = buildSummary(latestMetrics);
+  const summary = buildSummary(latestMetrics, analyticsStats);
   const currentMrr = latestMetrics.get("revenue.mrr") ?? null;
   const previousMrr = previousMetricRow(typedCanonicalRows, "revenue.mrr", currentMrr, context);
   const goalProgressRows = typedGoals.map((goal) => goalProgress(goal, summary, now));
@@ -814,6 +1071,6 @@ export async function buildCompanyTrackerDashboard(input: {
       goalProgress: goalProgressRows,
     }),
     metrics,
-    trust: buildTrust(metrics),
+    trust: buildTrust(metrics, analyticsStats),
   };
 }
