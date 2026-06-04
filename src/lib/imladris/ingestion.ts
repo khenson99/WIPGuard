@@ -470,16 +470,26 @@ function requiredExternalId(value: unknown, index: number): string {
   return normalized;
 }
 
+function singularizeObjectType(value: string): string {
+  if (value.endsWith("status")) return value;
+  if (value.endsWith("ss")) return value;
+  if (value.endsWith("ies")) return `${value.slice(0, -3)}y`;
+  if (value.endsWith("ses")) return value.slice(0, -2);
+  if (value.endsWith("s")) return value.slice(0, -1);
+  return value;
+}
+
 function requiredObjectType(value: unknown, index: number): string {
   const normalized = requiredRecordIdentity(value, "objectType", index)
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
     .replace(/[^a-zA-Z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .toLowerCase();
-  if (!normalized) {
+  const objectType = singularizeObjectType(normalized);
+  if (!objectType) {
     throw recordRejection(index, "objectType is required");
   }
-  return normalized;
+  return objectType;
 }
 
 function normalizeRecordPayload(payload: unknown, index: number): unknown {

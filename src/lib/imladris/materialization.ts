@@ -2081,6 +2081,10 @@ function stripeSubscriptionInactiveAt(record: RawSourceRecordRow): Date | null {
   const sources = wrapperSources(payload);
   const subscriptionSources = sources.map((source) => nestedRecord(source.subscription));
   const stripeSources = [...sources, ...subscriptionSources];
+  const periodSources = stripeSources.flatMap((source) => [
+    nestedRecord(source.current_period),
+    nestedRecord(source.currentPeriod),
+  ]);
   return firstDateFrom(
     ...stripeSources.flatMap((source) => [
       source.canceled_at,
@@ -2094,6 +2098,18 @@ function stripeSubscriptionInactiveAt(record: RawSourceRecordRow): Date | null {
       source.ended,
       source.statusChangedAt,
       source.status_changed_at,
+      source.current_period_end,
+      source.currentPeriodEnd,
+    ]),
+    ...periodSources.flatMap((source) => [
+      source.end,
+      source.ended,
+      source.endedAt,
+      source.ended_at,
+      source.endDate,
+      source.end_date,
+      source.endsAt,
+      source.ends_at,
     ]),
   );
 }
@@ -2156,6 +2172,8 @@ function isFutureStartStripeSubscription(record: RawSourceRecordRow, asOf: Date)
       source.start,
       source.startsAt,
       source.starts_at,
+      source.startDate,
+      source.start_date,
     ]),
   );
   return Boolean(startsAt && startsAt.getTime() > asOf.getTime());

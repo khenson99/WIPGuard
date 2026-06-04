@@ -9981,6 +9981,91 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("excludes active Stripe subscriptions with nested current period end dates before the report", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_subscription_nested_period_ended",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_nested_period_ended",
+            occurredAt: new Date("2026-04-15T00:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-04-15T00:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-15T00:00:00.000Z"),
+            payload: {
+              status: "active",
+              subscription: {
+                current_period: {
+                  end_date: "2026-05-15T00:00:00.000Z",
+                },
+              },
+              customerId: "cus_nested_period_ended",
+              monthlyRecurringRevenue: 25_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_stripe_top_level_period_ended",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_top_level_period_ended",
+            occurredAt: new Date("2026-04-16T00:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-04-16T00:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-16T00:00:00.000Z"),
+            payload: {
+              status: "active",
+              currentPeriod: {
+                endDate: "2026-05-16T00:00:00.000Z",
+              },
+              customerId: "cus_top_level_period_ended",
+              monthlyRecurringRevenue: 15_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_stripe_period_end_alias",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_period_end_alias",
+            occurredAt: new Date("2026-04-17T00:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-04-17T00:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-17T00:00:00.000Z"),
+            payload: {
+              status: "active",
+              current_period_end: "2026-05-17T00:00:00.000Z",
+              customerId: "cus_period_end_alias",
+              monthlyRecurringRevenue: 10_000,
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-06-03T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 0,
+      arr: 0,
+      stripeMrr: 0,
+      stripeArr: 0,
+    });
+  });
+
   it("excludes inactive Stripe subscriptions with display statuses from canonical MRR", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -10250,6 +10335,75 @@ describe("Imladris canonical materialization", () => {
               customerId: "cus_future_start",
               monthlyRecurringRevenue: 30_000,
               current_period_start: "2026-06-01T00:00:00.000Z",
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 0,
+      arr: 0,
+      stripeMrr: 0,
+      stripeArr: 0,
+    });
+  });
+
+  it("excludes active Stripe subscriptions with nested future current period start dates", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_nested_future_start_subscription",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_nested_future_start",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              subscription: {
+                status: "active",
+                currentPeriod: {
+                  startDate: "2026-06-01T00:00:00.000Z",
+                },
+              },
+              customerId: "cus_nested_future_start",
+              monthlyRecurringRevenue: 30_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_stripe_top_level_future_start_subscription",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_top_level_future_start",
+            occurredAt: new Date("2026-05-11T00:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-05-11T00:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-11T00:00:00.000Z"),
+            payload: {
+              status: "active",
+              currentPeriod: {
+                startDate: "2026-06-01T00:00:00.000Z",
+              },
+              customerId: "cus_top_level_future_start",
+              monthlyRecurringRevenue: 20_000,
               currency: "USD",
             },
           },
