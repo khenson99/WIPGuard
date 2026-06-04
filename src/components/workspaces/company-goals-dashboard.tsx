@@ -11,6 +11,7 @@ import type {
   CompanyGoalRow,
   CompanyGoalsDashboardData,
 } from "@/lib/imladris/company-goals";
+import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
 
 function statusClasses(status: string): string {
   switch (status) {
@@ -29,14 +30,75 @@ function statusLabel(status: string): string {
   return status.replaceAll("_", " ");
 }
 
-function dateLabel(value: string | null): string {
-  if (!value) return "Missing";
-  const parsed = new Date(value);
+function scalarValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value !== "object") return value;
+  if (value instanceof Date) return value;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.length === 1 ? scalarValue(value[0], seen) : null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const data =
+    record.data && typeof record.data === "object" && !Array.isArray(record.data)
+      ? (record.data as Record<string, unknown>)
+      : {};
+  const attributes =
+    data.attributes && typeof data.attributes === "object" && !Array.isArray(data.attributes)
+      ? (data.attributes as Record<string, unknown>)
+      : {};
+  const candidates = [
+    record.value,
+    record.metricValue,
+    record.metric_value,
+    record.amount,
+    record.number,
+    record.count,
+    record.total,
+    record.date,
+    record.timestamp,
+    record.time,
+    record.iso,
+    record.isoString,
+    record.iso_string,
+    attributes.value,
+    data.value,
+    data.attributes,
+    record.attributes,
+    record.values,
+    record.fields,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = scalarValue(candidate, seen);
+    if (normalized !== null && normalized !== undefined && typeof normalized !== "object") return normalized;
+    if (normalized instanceof Date) return normalized;
+  }
+
+  return value;
+}
+
+function dateLabel(value: unknown): string {
+  const normalizedValue = scalarValue(value);
+  if (!normalizedValue) return "Missing";
+  const parsed = new Date(normalizedValue as string | number | Date);
   if (Number.isNaN(parsed.getTime())) return "Missing";
   return parsed.toISOString().slice(0, 10);
 }
 
-function syncLabel(value: string | null): string {
+function numberValue(value: unknown): number | null {
+  return parseImladrisNumber(scalarValue(value));
+}
+
+function countLabel(value: unknown): string {
+  const parsed = numberValue(value);
+  return parsed === null ? "Missing" : parsed.toLocaleString();
+}
+
+function syncLabel(value: unknown): string {
   if (!value) return "Never synced";
   return `Synced ${dateLabel(value)}`;
 }
@@ -80,6 +142,7 @@ function StatusBadge({ status }: { status: string }) {
 
 function GoalCard({ goal }: { goal: CompanyGoalRow }) {
   const teamLabel = goal.teamLabels.length > 0 ? goal.teamLabels.join(", ") : "No team";
+  const progressPct = numberValue(goal.progressPct) ?? 0;
 
   return (
     <article className="rounded-lg border border-border bg-card p-4">
@@ -105,15 +168,15 @@ function GoalCard({ goal }: { goal: CompanyGoalRow }) {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-2xl font-semibold text-foreground">{goal.progressPct.toFixed(1)}%</p>
+        <p className="text-2xl font-semibold text-foreground">{progressPct.toFixed(1)}%</p>
         <p className="text-sm font-medium text-muted-foreground">
-          {goal.completedIssueCount} / {goal.totalIssueCount} issues
+          {countLabel(goal.completedIssueCount)} / {countLabel(goal.totalIssueCount)} issues
         </p>
       </div>
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-secondary">
         <div
           className="h-full rounded-full bg-primary"
-          style={{ width: `${Math.min(Math.max(goal.progressPct, 0), 100)}%` }}
+          style={{ width: `${Math.min(Math.max(progressPct, 0), 100)}%` }}
         />
       </div>
 
@@ -136,7 +199,7 @@ function GoalCard({ goal }: { goal: CompanyGoalRow }) {
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 text-primary" aria-hidden="true" />
           <div>
             <dt>Blocked</dt>
-            <dd className="font-medium text-foreground">{goal.blockedIssueCount}</dd>
+            <dd className="font-medium text-foreground">{countLabel(goal.blockedIssueCount)}</dd>
           </div>
         </div>
       </dl>

@@ -1,4 +1,5 @@
 import { normalizeMetricConfidence, normalizeMetricStatus, normalizeMetricWarnings } from "@/lib/imladris/confidence";
+import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
 import type { PrismaClientType } from "@/lib/prisma";
 
 const INVESTOR_METRIC_KEYS = [
@@ -10,6 +11,7 @@ const INVESTOR_METRIC_KEYS = [
 const EXPORT_SOURCE = "imladris-investor-dashboard-export";
 const EXPORT_SCHEMA_VERSION = 1;
 const RAW_PROVIDERS = ["STRIPE", "HUBSPOT", "MERCURY", "GOOGLE_WORKSPACE", "SLACK"] as const;
+const RAW_PROVIDER_KEYS = new Set<string>(RAW_PROVIDERS);
 const INACTIVE_SUBSCRIPTION_STATUSES = new Set([
   "canceled",
   "cancelled",
@@ -94,15 +96,168 @@ function nestedRecord(value: unknown): Record<string, unknown> {
   return asRecord(value);
 }
 
+function expandSingleValueSource(source: Record<string, unknown>): Record<string, unknown>[] {
+  const entries = Object.entries(source);
+  if (entries.length !== 1) return [source];
+
+  const [key, value] = entries[0];
+  const nestedValue = asRecord(value);
+  if (!["value", "metricValue", "metric_value"].includes(key) || Object.keys(nestedValue).length === 0) {
+    return [source];
+  }
+
+  return [nestedValue, source];
+}
+
+function wrapperSources(payload: Record<string, unknown>): Record<string, unknown>[] {
+  const data = nestedRecord(payload.data);
+  const wrappers = [
+    data,
+    nestedRecord(payload.properties),
+    nestedRecord(payload.summary),
+    nestedRecord(payload.metrics),
+    nestedRecord(payload.values),
+    nestedRecord(payload.attributes),
+    nestedRecord(payload.fields),
+    nestedRecord(data.properties),
+    nestedRecord(data.summary),
+    nestedRecord(data.metrics),
+    nestedRecord(data.values),
+    nestedRecord(data.attributes),
+    nestedRecord(data.fields),
+  ].filter((source) => Object.keys(source).length > 0);
+  return (wrappers.length > 0 ? [payload, ...wrappers] : [payload]).flatMap(expandSingleValueSource);
+}
+
+function directCanonicalMetricFields(payload: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(payload).filter(
+      ([key]) => !["data", "properties", "summary", "metrics", "values", "attributes", "fields"].includes(key),
+    ),
+  );
+}
+
+function directJsonApiDataMetricFields(payload: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(payload).filter(
+      ([key]) => !["id", "type", "data", "properties", "summary", "metrics", "values", "attributes", "fields"].includes(key),
+    ),
+  );
+}
+
+function canonicalMetricSources(value: unknown): Record<string, unknown>[] {
+  const payload = asRecord(value);
+  const data = nestedRecord(payload.data);
+  return [
+    directCanonicalMetricFields(payload),
+    nestedRecord(payload.properties),
+    nestedRecord(payload.summary),
+    nestedRecord(payload.metrics),
+    nestedRecord(payload.values),
+    nestedRecord(payload.attributes),
+    nestedRecord(payload.fields),
+    directJsonApiDataMetricFields(data),
+    nestedRecord(data.properties),
+    nestedRecord(data.summary),
+    nestedRecord(data.metrics),
+    nestedRecord(data.values),
+    nestedRecord(data.attributes),
+    nestedRecord(data.fields),
+  ].filter((source) => Object.keys(source).length > 0);
+}
+
+function unwrapSingleMetricValueField(value: Record<string, unknown>): unknown {
+  const entries = Object.entries(value);
+  if (entries.length !== 1) return value;
+
+  const [key, nestedValue] = entries[0];
+  if (!["value", "metricValue", "metric_value"].includes(key)) return value;
+
+  return nestedValue;
+}
+
+function flattenedCanonicalMetricValue(value: unknown): unknown {
+  const sources = canonicalMetricSources(value);
+  if (sources.length === 0) return value ?? null;
+  return unwrapSingleMetricValueField(Object.assign({}, ...sources.reverse()));
+}
+
+function firstValueFromSources(
+  sources: Record<string, unknown>[],
+  keys: string[],
+): unknown {
+  for (const source of sources) {
+    for (const key of keys) {
+      const value = source[key];
+      if (value !== undefined && value !== null) return value;
+    }
+  }
+  return undefined;
+}
+
+function scalarValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || value === undefined || typeof value !== "object") return value;
+  if (value instanceof Date) return value;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.length === 1 ? scalarValue(value[0], seen) : null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const data = asRecord(record.data);
+  const candidates = [
+    record.value,
+    record.metricValue,
+    record.metric_value,
+    record.amount,
+    record.number,
+    record.count,
+    record.total,
+    record.currency,
+    asRecord(data.attributes).value,
+    data.value,
+    data.attributes,
+    record.attributes,
+    record.values,
+    record.fields,
+  ];
+  for (const candidate of candidates) {
+    const normalized = scalarValue(candidate, seen);
+    if (normalized instanceof Date) return normalized;
+    if (normalized !== null && normalized !== undefined && typeof normalized !== "object") return normalized;
+  }
+
+  return value;
+}
+
 function numberFrom(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const withoutCurrency = value.trim().replace(/[$,\s]/g, "");
-    const normalized = /^\(.+\)$/.test(withoutCurrency)
-      ? `-${withoutCurrency.slice(1, -1)}`
-      : withoutCurrency;
-    const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : null;
+  return parseImladrisNumber(scalarValue(value) ?? value);
+}
+
+function nonNegativeNumberFrom(value: unknown): number | null {
+  const number = numberFrom(value);
+  return number === null ? null : Math.max(0, number);
+}
+
+function countFrom(value: unknown): number | null {
+  const number = nonNegativeNumberFrom(value);
+  return number === null ? null : Math.floor(number);
+}
+
+function numberFromFields(record: Record<string, unknown>, ...fields: string[]): number | null {
+  for (const field of fields) {
+    const value = numberFrom(record[field]);
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+function countFromFields(record: Record<string, unknown>, ...fields: string[]): number | null {
+  for (const field of fields) {
+    const value = countFrom(record[field]);
+    if (value !== null) return value;
   }
   return null;
 }
@@ -116,47 +271,163 @@ function roundRatio(value: number): number {
 }
 
 function ratioFrom(value: unknown): number | null {
-  if (typeof value === "string") {
-    const normalized = value.trim();
+  const normalizedValue = scalarValue(value) ?? value;
+  if (typeof normalizedValue === "string") {
+    const normalized = normalizedValue.trim();
     if (normalized.endsWith("%")) {
       const parsed = numberFrom(normalized.slice(0, -1));
       return parsed === null ? null : parsed / 100;
     }
+    const textPercent = normalized.match(/^(.+?)\s*(?:percent|pct)$/i);
+    if (textPercent) {
+      const parsed = numberFrom(textPercent[1].trim());
+      return parsed === null ? null : parsed / 100;
+    }
   }
-  const parsed = numberFrom(value);
+  const parsed = numberFrom(normalizedValue);
   if (parsed === null) return null;
   return parsed > 1 && parsed <= 100 ? parsed / 100 : parsed;
 }
 
 function normalizeLookup(value: unknown): string | null {
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  if (typeof value !== "string") return null;
-  const normalized = value.trim().toLowerCase();
+  const normalizedValue = scalarValue(value);
+  if (typeof normalizedValue === "number" && Number.isFinite(normalizedValue)) return String(normalizedValue);
+  if (typeof normalizedValue !== "string") return null;
+  const normalized = normalizedValue.trim().toLowerCase();
   return normalized.length > 0 ? normalized : null;
 }
 
+function stageText(value: unknown, seen = new WeakSet<object>()): string | null {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object") return null;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  const record = value as Record<string, unknown>;
+  const candidates = [
+    record.status,
+    record.state,
+    record.type,
+    record.name,
+    record.label,
+    record.value,
+    (record.data as Record<string, unknown> | undefined)?.attributes,
+  ];
+  for (const candidate of candidates) {
+    const normalized = stageText(candidate, seen);
+    if (normalized && normalized.trim()) {
+      seen.delete(value);
+      return normalized;
+    }
+  }
+
+  seen.delete(value);
+  return null;
+}
+
 function normalizeStageKey(value: unknown): string {
-  return typeof value === "string"
-    ? value.trim().toLowerCase().replace(/[\s_-]+/g, "")
+  const normalizedValue = stageText(value);
+  return typeof normalizedValue === "string"
+    ? normalizedValue.trim().toLowerCase().replace(/[\s_-]+/g, "")
     : "";
+}
+
+function booleanValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (typeof value === "boolean" || typeof value === "number" || typeof value === "string") return value;
+  if (!value || typeof value !== "object") return null;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  const record = value as Record<string, unknown>;
+  const candidates = [
+    record.value,
+    record.boolean,
+    record.booleanValue,
+    record.boolean_value,
+    record.enabled,
+    record.active,
+    record.flag,
+    (record.data as Record<string, unknown> | undefined)?.attributes,
+  ];
+  for (const candidate of candidates) {
+    const normalized = booleanValue(candidate, seen);
+    if (typeof normalized === "boolean" || typeof normalized === "number" || typeof normalized === "string") {
+      seen.delete(value);
+      return normalized;
+    }
+  }
+
+  seen.delete(value);
+  return null;
 }
 
 function isTrueLike(value: unknown): boolean {
-  if (value === true) return true;
-  if (typeof value === "number") return value === 1;
-  if (typeof value !== "string") return false;
-  return ["true", "yes", "y", "1"].includes(value.trim().toLowerCase());
+  const normalizedValue = booleanValue(value);
+  if (normalizedValue === true) return true;
+  if (typeof normalizedValue === "number") return normalizedValue === 1;
+  if (typeof normalizedValue !== "string") return false;
+  return ["true", "yes", "y", "1"].includes(normalizedValue.trim().toLowerCase());
 }
 
 function normalizeProviderKey(value: unknown): string {
-  return typeof value === "string"
-    ? value.trim().toUpperCase().replace(/[\s-]+/g, "_")
-    : "";
+  const normalizedValue = scalarValue(value);
+  if (typeof normalizedValue !== "string") return "";
+  const normalized = normalizedValue
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase();
+  if (RAW_PROVIDER_KEYS.has(normalized)) return normalized;
+  const compactNormalized = normalized.replaceAll("_", "");
+  return RAW_PROVIDERS.find((provider) => provider.replaceAll("_", "") === compactNormalized) ?? normalized;
+}
+
+function objectTypeValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  const normalizedValue = scalarValue(value);
+  if (normalizedValue !== null && normalizedValue !== undefined && typeof normalizedValue !== "object") {
+    return normalizedValue;
+  }
+  if (value === null || value === undefined || typeof value !== "object") return null;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    const normalized = value.length === 1 ? objectTypeValue(value[0], seen) : null;
+    seen.delete(value);
+    return normalized;
+  }
+
+  const record = value as Record<string, unknown>;
+  const data = asRecord(record.data);
+  const dataAttributes = asRecord(data.attributes);
+  const candidates = [
+    record.objectType,
+    record.object_type,
+    record.type,
+    data.objectType,
+    data.object_type,
+    data.type,
+    dataAttributes.objectType,
+    dataAttributes.object_type,
+    dataAttributes.type,
+  ];
+  for (const candidate of candidates) {
+    const normalized = scalarValue(candidate);
+    if (normalized !== null && normalized !== undefined && typeof normalized !== "object") {
+      seen.delete(value);
+      return normalized;
+    }
+  }
+
+  seen.delete(value);
+  return null;
 }
 
 function normalizeObjectType(value: unknown): string {
-  if (typeof value !== "string") return "";
-  return value
+  const normalizedValue = objectTypeValue(value);
+  if (typeof normalizedValue !== "string") return "";
+  return normalizedValue
     .trim()
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
     .toLowerCase()
@@ -165,7 +436,8 @@ function normalizeObjectType(value: unknown): string {
 }
 
 function normalizeExternalId(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
+  const normalizedValue = scalarValue(value);
+  return typeof normalizedValue === "string" ? normalizedValue.trim() : "";
 }
 
 function normalizeEmailDomain(value: unknown): string | null {
@@ -175,16 +447,59 @@ function normalizeEmailDomain(value: unknown): string | null {
   return domain && !GENERIC_EMAIL_DOMAINS.has(domain) ? domain : null;
 }
 
+function scalarDateValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || value === undefined || typeof value !== "object") return value;
+  if (value instanceof Date) return value;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.length === 1 ? scalarDateValue(value[0], seen) : null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const data = asRecord(record.data);
+  const candidates = [
+    record.value,
+    record.date,
+    record.datetime,
+    record.dateTime,
+    record.date_time,
+    record.timestamp,
+    record.time,
+    record.iso,
+    record.isoString,
+    record.iso_string,
+    record.seconds,
+    record.milliseconds,
+    record.millis,
+    asRecord(data.attributes).value,
+    data.value,
+    data.attributes,
+    record.attributes,
+    record.values,
+    record.fields,
+  ];
+  for (const candidate of candidates) {
+    const normalized = scalarDateValue(candidate, seen);
+    if (normalized instanceof Date) return normalized;
+    if (normalized !== null && normalized !== undefined && typeof normalized !== "object") return normalized;
+  }
+
+  return value;
+}
+
 function dateFrom(value: unknown): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-  if (typeof value === "number" && Number.isFinite(value)) {
-    const millis = value < 10_000_000_000 ? value * 1000 : value;
+  const normalizedValue = scalarDateValue(value);
+  if (!normalizedValue) return null;
+  if (normalizedValue instanceof Date) return Number.isNaN(normalizedValue.getTime()) ? null : normalizedValue;
+  if (typeof normalizedValue === "number" && Number.isFinite(normalizedValue)) {
+    const millis = normalizedValue < 10_000_000_000 ? normalizedValue * 1000 : normalizedValue;
     const date = new Date(millis);
     return Number.isNaN(date.getTime()) ? null : date;
   }
-  if (typeof value === "string" && value.trim()) {
-    const normalized = value.trim();
+  if (typeof normalizedValue === "string" && normalizedValue.trim()) {
+    const normalized = normalizedValue.trim();
     if (/^\d+(?:\.\d+)?$/.test(normalized)) {
       const timestamp = Number(normalized);
       if (Number.isFinite(timestamp) && timestamp > 0) {
@@ -292,27 +607,47 @@ function weekStartUtc(value: Date): string {
 
 function recordDate(record: RawSourceRecordRow): Date | null {
   const payload = asRecord(record.payload);
-  const properties = nestedRecord(payload.properties);
+  const sources = wrapperSources(payload);
+  const startSources = sources.map((source) => nestedRecord(source.start));
+  const endSources = sources.map((source) => nestedRecord(source.end));
+  const firstDateFromSources = (sourceRecords: Record<string, unknown>[], keys: string[]): Date | null => {
+    for (const source of sourceRecords) {
+      for (const key of keys) {
+        const date = dateFrom(source[key]);
+        if (date) return date;
+      }
+    }
+    return null;
+  };
   return (
-    dateFrom(payload.closedAt) ??
-    dateFrom(payload.closed_at) ??
-    dateFrom(payload.closeDate) ??
-    dateFrom(payload.close_date) ??
-    dateFrom(payload.closedate) ??
-    dateFrom(properties.closedAt) ??
-    dateFrom(properties.closed_at) ??
-    dateFrom(properties.closeDate) ??
-    dateFrom(properties.close_date) ??
-    dateFrom(properties.closedate) ??
-    dateFrom(payload.created) ??
-    dateFrom(payload.createdAt) ??
-    dateFrom(payload.created_at) ??
-    dateFrom(payload.createdate) ??
-    dateFrom(properties.created) ??
-    dateFrom(properties.createdAt) ??
-    dateFrom(properties.created_at) ??
-    dateFrom(properties.createdate) ??
-    dateFrom(properties.hs_createdate) ??
+    firstDateFromSources(sources, [
+      "closedAt",
+      "closed_at",
+      "closeDate",
+      "close_date",
+      "closedate",
+      "created",
+      "createdAt",
+      "created_at",
+      "createdate",
+      "hs_createdate",
+      "currentPeriodStart",
+      "current_period_start",
+      "currentPeriodEnd",
+      "current_period_end",
+      "startedAt",
+      "started_at",
+      "startDate",
+      "start_date",
+      "startAt",
+      "start_at",
+      "startTime",
+      "start_time",
+      "eventStart",
+      "event_start",
+    ]) ??
+    firstDateFromSources(startSources, ["dateTime", "date_time", "date"]) ??
+    firstDateFromSources(endSources, ["dateTime", "date_time", "date"]) ??
     dateFrom(record.occurredAt) ??
     dateFrom(record.sourceUpdatedAt) ??
     dateFrom(record.sourceCreatedAt)
@@ -334,7 +669,7 @@ function metricStatus(status: unknown): string {
 
 function currencyFrom(...values: Array<Record<string, unknown> | null | undefined>): string {
   for (const value of values) {
-    const currency = value?.currency;
+    const currency = scalarValue(value?.currency);
     if (typeof currency === "string" && currency.trim()) return currency.trim().toUpperCase();
   }
   return "USD";
@@ -371,14 +706,14 @@ function latestMetricsByKey(
   context: InvestorDashboardExportContext,
 ): Map<string, CanonicalMetricRow> {
   const sortedRows = [...rows].sort((left, right) => {
-    const periodDelta =
-      (dateFrom(right.periodEnd)?.getTime() ?? 0) -
-      (dateFrom(left.periodEnd)?.getTime() ?? 0);
-    if (periodDelta !== 0) return periodDelta;
     const scopeDelta =
       canonicalMetricScopeSpecificity(right, context) -
       canonicalMetricScopeSpecificity(left, context);
     if (scopeDelta !== 0) return scopeDelta;
+    const periodDelta =
+      (dateFrom(right.periodEnd)?.getTime() ?? 0) -
+      (dateFrom(left.periodEnd)?.getTime() ?? 0);
+    if (periodDelta !== 0) return periodDelta;
     return (
       (dateFrom(right.computedAt)?.getTime() ?? 0) -
       (dateFrom(left.computedAt)?.getTime() ?? 0)
@@ -401,10 +736,13 @@ function rowsWithinExportWindow(
   const maxPeriodEnd = toDate.getTime();
   const maxComputedAt = now.getTime();
   return rows.filter((row) => {
+    const periodStart = dateFrom(row.periodStart);
     const periodEnd = dateFrom(row.periodEnd);
     const computedAt = dateFrom(row.computedAt);
     return (
+      periodStart !== null &&
       periodEnd !== null &&
+      periodStart.getTime() <= periodEnd.getTime() &&
       periodEnd.getTime() <= maxPeriodEnd &&
       computedAt !== null &&
       computedAt.getTime() <= maxComputedAt
@@ -455,7 +793,15 @@ function rawRecordScopeWhere(context: InvestorDashboardExportContext): {
 }
 
 function rawRecordDeduplicationKey(record: RawSourceRecordRow): string {
-  return `${normalizeProviderKey(record.provider)}:${normalizeObjectType(record.objectType)}:${normalizeExternalId(record.externalId)}`;
+  const provider = normalizeProviderKey(record.provider);
+  const objectType = normalizeObjectType(record.objectType);
+  const externalId = normalizeExternalId(record.externalId);
+  if (externalId) return `${provider}:${objectType}:external:${externalId}`;
+  return `${provider}:${objectType}:raw:${record.id.trim()}`;
+}
+
+function rawRecordIdentityFallback(record: RawSourceRecordRow): string {
+  return normalizeExternalId(record.externalId) || record.id.trim();
 }
 
 function rawRecordScopeRank(record: RawSourceRecordRow, context: InvestorDashboardExportContext): number {
@@ -487,9 +833,19 @@ function rawRecordScopeRank(record: RawSourceRecordRow, context: InvestorDashboa
     ) {
       return 2;
     }
+    if (rowUserId === null && rowOrganizationId === null && scopeKey === "global") return 1;
+    if (record.userId === undefined && record.organizationId === undefined && record.scopeKey === undefined) return 1;
+    return 0;
   }
 
-  if (context.userId && rowUserId === context.userId && rowOrganizationId === null) return 2;
+  if (
+    context.userId &&
+    rowUserId === context.userId &&
+    rowOrganizationId === null &&
+    scopeKey === scopeKeyForContext({ userId: context.userId, organizationId: null })
+  ) {
+    return 2;
+  }
   if (rowUserId === null && rowOrganizationId === null && scopeKey === "global") return 1;
   if (record.userId === undefined && record.organizationId === undefined && record.scopeKey === undefined) return 1;
   return 0;
@@ -519,6 +875,7 @@ function dedupeRawSourceRecords(
 ): RawSourceRecordRow[] {
   const bestByObject = new Map<string, RawSourceRecordRow>();
   for (const record of records) {
+    if (rawRecordScopeRank(record, context) === 0) continue;
     const key = rawRecordDeduplicationKey(record);
     const current = bestByObject.get(key);
     if (!current || compareRawRecordPreference(current, record, context, asOf) > 0) {
@@ -534,75 +891,80 @@ function earlierDate(left: Date, right: Date): Date {
 
 function stripeCustomerId(record: RawSourceRecordRow): string | null {
   const payload = asRecord(record.payload);
-  const customer = nestedRecord(payload.customer);
+  const sources = wrapperSources(payload);
+  const subscriptionSources = sources.map((source) => nestedRecord(source.subscription));
+  const customerSources = [...sources, ...subscriptionSources].map((source) => nestedRecord(source.customer));
   return normalizeLookup(
-    payload.customerId ??
-      payload.customer_id ??
-      payload.stripeCustomerId ??
-      payload.stripe_customer_id ??
-      customer.id,
+    firstValueFromSources([...sources, ...subscriptionSources, ...customerSources], [
+      "customerId",
+      "customer_id",
+      "stripeCustomerId",
+      "stripe_customer_id",
+      "id",
+    ]),
   );
 }
 
 function stripeCustomerEmail(record: RawSourceRecordRow): string | null {
   const payload = asRecord(record.payload);
-  const customer = nestedRecord(payload.customer);
-  return normalizeLookup(payload.customerEmail ?? payload.customer_email ?? payload.email ?? customer.email);
+  const sources = wrapperSources(payload);
+  const subscriptionSources = sources.map((source) => nestedRecord(source.subscription));
+  const customerSources = [...sources, ...subscriptionSources].map((source) => nestedRecord(source.customer));
+  return normalizeLookup(
+    firstValueFromSources([...sources, ...subscriptionSources, ...customerSources], [
+      "customerEmail",
+      "customer_email",
+      "email",
+    ]),
+  );
 }
 
 function isActiveStripeSubscription(record: RawSourceRecordRow): boolean {
   if (normalizeProviderKey(record.provider) !== "STRIPE") return false;
   if (!["subscription", "active_customer_ref"].includes(normalizeObjectType(record.objectType))) return false;
-  const status = normalizeStageKey(asRecord(record.payload).status);
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const subscriptionSources = sources.map((source) => nestedRecord(source.subscription));
+  const status = normalizeStageKey(firstValueFromSources([...sources, ...subscriptionSources], ["status"]));
   return !status || !INACTIVE_SUBSCRIPTION_STATUSES.has(status);
 }
 
 function hubspotDealStage(record: RawSourceRecordRow): string {
   const payload = asRecord(record.payload);
-  const properties = nestedRecord(payload.properties);
   return normalizeStageKey(
-    payload.dealstage ??
-      payload.stage ??
-      payload.stageLabel ??
-      payload.stage_label ??
-      payload.stageId ??
-      payload.stage_id ??
-      properties.dealstage ??
-      properties.stage ??
-      properties.stageLabel ??
-      properties.stage_label ??
-      properties.stageId ??
-      properties.stage_id,
+    firstValueFromSources(wrapperSources(payload), [
+      "dealstage",
+      "stage",
+      "stageLabel",
+      "stage_label",
+      "stageId",
+      "stage_id",
+    ]),
   );
 }
 
 function hubspotCustomerId(record: RawSourceRecordRow): string | null {
   const payload = asRecord(record.payload);
-  const properties = nestedRecord(payload.properties);
   return normalizeLookup(
-    payload.stripeCustomerId ??
-      payload.stripe_customer_id ??
-      payload.customerId ??
-      payload.customer_id ??
-      properties.stripeCustomerId ??
-      properties.stripe_customer_id ??
-      properties.customerId ??
-      properties.customer_id,
+    firstValueFromSources(wrapperSources(payload), [
+      "stripeCustomerId",
+      "stripe_customer_id",
+      "customerId",
+      "customer_id",
+    ]),
   );
 }
 
 function hubspotEmail(record: RawSourceRecordRow): string | null {
   const payload = asRecord(record.payload);
-  const properties = nestedRecord(payload.properties);
   return normalizeLookup(
-    payload.primaryContactEmail ??
-      payload.primary_contact_email ??
-      payload.contactEmail ??
-      payload.contact_email ??
-      payload.email ??
-      properties.primaryContactEmail ??
-      properties.contactEmail ??
-      properties.email,
+    firstValueFromSources(wrapperSources(payload), [
+      "primaryContactEmail",
+      "primary_contact_email",
+      "contactEmail",
+      "contact_email",
+      "email",
+    ]),
   );
 }
 
@@ -613,14 +975,14 @@ function isHubspotSubscriptionRecord(record: RawSourceRecordRow): boolean {
   if (objectType !== "deal") return false;
   const stage = hubspotDealStage(record);
   const payload = asRecord(record.payload);
-  const properties = nestedRecord(payload.properties);
+  const recurringFlag = firstValueFromSources(wrapperSources(payload), [
+    "recurringRevenue",
+    "recurring_revenue",
+  ]);
   return (
     stage === "subscription" ||
     stage === "subscriptions" ||
-    isTrueLike(payload.recurringRevenue) ||
-    isTrueLike(payload.recurring_revenue) ||
-    isTrueLike(properties.recurringRevenue) ||
-    isTrueLike(properties.recurring_revenue)
+    isTrueLike(recurringFlag)
   );
 }
 
@@ -644,7 +1006,7 @@ function activeSubscriptionCount(records: RawSourceRecordRow[], fromDate: Date, 
       .filter((value): value is string => Boolean(value)),
   );
   const stripeSubscriptionKeys = new Set(
-    stripeRecords.map((record) => stripeCustomerId(record) ?? record.externalId),
+    stripeRecords.map((record) => stripeCustomerId(record) ?? rawRecordIdentityFallback(record)),
   );
   const hubspotOnlyKeys = new Set<string>();
 
@@ -658,7 +1020,7 @@ function activeSubscriptionCount(records: RawSourceRecordRow[], fromDate: Date, 
       Boolean(email && stripeEmails.has(email)) ||
       Boolean(emailDomain && stripeDomains.has(emailDomain));
     if (linkedToStripe) continue;
-    hubspotOnlyKeys.add(customerId ?? email ?? record.externalId);
+    hubspotOnlyKeys.add(customerId ?? email ?? rawRecordIdentityFallback(record));
   }
 
   return stripeSubscriptionKeys.size + hubspotOnlyKeys.size;
@@ -670,25 +1032,22 @@ function isDemoRecord(record: RawSourceRecordRow): boolean {
     return false;
   }
   const payload = asRecord(record.payload);
-  const properties = nestedRecord(payload.properties);
-  const text = [
-    payload.summary,
-    payload.title,
-    payload.name,
-    payload.subject,
-    payload.description,
-    payload.dealName,
-    payload.dealname,
-    payload.stageLabel,
-    payload.stage,
-    payload.dealstage,
-    properties.summary,
-    properties.title,
-    properties.subject,
-    properties.dealname,
-    properties.stageLabel,
-    properties.dealstage,
-  ]
+  const textKeys = [
+    "summary",
+    "title",
+    "name",
+    "subject",
+    "description",
+    "dealName",
+    "dealname",
+    "stageLabel",
+    "stage_label",
+    "stage",
+    "dealstage",
+  ];
+  const text = wrapperSources(payload)
+    .flatMap((source) => textKeys.map((key) => source[key]))
+    .map((value) => scalarValue(value))
     .filter((value): value is string => typeof value === "string")
     .join(" ")
     .toLowerCase();
@@ -704,20 +1063,40 @@ function isClosedWonDeal(record: RawSourceRecordRow): boolean {
 }
 
 function stripeChargeRevenue(record: RawSourceRecordRow): number {
-  if (normalizeProviderKey(record.provider) !== "STRIPE" || normalizeObjectType(record.objectType) !== "charge") return 0;
+  if (normalizeProviderKey(record.provider) !== "STRIPE" || normalizeObjectType(record.objectType) !== "charge") {
+    return 0;
+  }
   const payload = asRecord(record.payload);
-  const status = normalizeStageKey(payload.status);
+  const sources = wrapperSources(payload);
+  const status = normalizeStageKey(firstValueFromSources(sources, ["status"]));
   if (status && status !== "succeeded" && status !== "paid") return 0;
-  const explicitDecimal = numberFrom(
-    payload.amountDecimal ??
-      payload.amount_decimal ??
-      payload.amountDollars ??
-      payload.amount_dollars ??
-      payload.amountUsd ??
-      payload.amount_usd,
+  const explicitDecimal = nonNegativeNumberFrom(
+    firstValueFromSources(sources, [
+      "amountDecimal",
+      "amount_decimal",
+      "amountDollars",
+      "amount_dollars",
+      "amountUsd",
+      "amount_usd",
+    ]),
   );
-  const explicitCents = numberFrom(payload.amountCents ?? payload.amount_cents);
-  const amount = numberFrom(payload.amount ?? payload.amount_paid ?? payload.amountPaid);
+  const explicitCents = nonNegativeNumberFrom(
+    firstValueFromSources(sources, ["amountCents", "amount_cents"]),
+  );
+  const amount = nonNegativeNumberFrom(
+    firstValueFromSources(sources, [
+      "amount",
+      "amount_paid",
+      "amountPaid",
+      "amount_captured",
+      "amountCaptured",
+      "amount_received",
+      "amountReceived",
+      "netAmount",
+      "net_amount",
+      "value",
+    ]),
+  );
   const grossRevenue =
     explicitDecimal ??
     (explicitCents !== null
@@ -725,17 +1104,29 @@ function stripeChargeRevenue(record: RawSourceRecordRow): number {
       : amount === null
         ? 0
         : amount / 100);
-  const refundedDecimal = numberFrom(
-    payload.amountRefundedDecimal ??
-      payload.amount_refunded_decimal ??
-      payload.refundedAmountDecimal ??
-      payload.refunded_amount_decimal,
+  const refundedDecimal = nonNegativeNumberFrom(
+    firstValueFromSources(sources, [
+      "amountRefundedDecimal",
+      "amount_refunded_decimal",
+      "refundedAmountDecimal",
+      "refunded_amount_decimal",
+    ]),
   );
-  const refundedCents = numberFrom(
-    payload.amountRefunded ??
-      payload.amount_refunded ??
-      payload.refundedAmount ??
-      payload.refunded_amount,
+  const refundedCents = nonNegativeNumberFrom(
+    firstValueFromSources(sources, [
+      "amountRefunded",
+      "amount_refunded",
+      "amountRefundedCents",
+      "amount_refunded_cents",
+      "refundedAmount",
+      "refunded_amount",
+      "refundedAmountCents",
+      "refunded_amount_cents",
+      "refundAmount",
+      "refund_amount",
+      "refundAmountCents",
+      "refund_amount_cents",
+    ]),
   );
   const refundedRevenue = refundedDecimal ?? (refundedCents === null ? 0 : refundedCents / 100);
   return Math.max(0, grossRevenue - refundedRevenue);
@@ -769,7 +1160,7 @@ function metricPayload(row: CanonicalMetricRow | undefined): Record<string, unkn
   if (!row) return {};
   const status = metricStatus(row.status);
   if (status === "missing" || status === "error") return {};
-  return asRecord(row?.value);
+  return asRecord(flattenedCanonicalMetricValue(row.value));
 }
 
 function buildMetrics(rowsByKey: Map<string, CanonicalMetricRow>) {
@@ -779,7 +1170,7 @@ function buildMetrics(rowsByKey: Map<string, CanonicalMetricRow>) {
       key,
       department: row?.department ?? null,
       unit: row?.unit ?? null,
-      value: row?.value ?? null,
+      value: row ? flattenedCanonicalMetricValue(row.value) : null,
       status: row ? metricStatus(row.status) : "missing",
       confidence: normalizeMetricConfidence(row?.confidence),
       warnings: row
@@ -868,16 +1259,22 @@ export async function buildInvestorDashboardExport(input: {
       mrr: roundMoney(numberFrom(mrr.amount) ?? 0),
       activeSubscriptions: activeSubscriptionCount(dedupedRawRecords, input.fromDate, input.toDate),
       runwayMonths: numberFrom(runway.months) ?? 0,
-      cashBalance: roundMoney(numberFrom(runway.cashBalance) ?? 0),
-      netBurn: roundMoney(numberFrom(netBurn.amount) ?? numberFrom(runway.netBurn) ?? 0),
+      cashBalance: roundMoney(numberFromFields(runway, "cashBalance", "cash_balance") ?? 0),
+      netBurn: roundMoney(
+        numberFromFields(netBurn, "amount", "netBurn", "net_burn") ??
+          numberFromFields(runway, "netBurn", "net_burn") ??
+          0,
+      ),
       currency,
     },
     weekly: buildWeekly(dedupedRawRecords, input.fromDate, input.toDate),
     pipeline: {
       qualifiedPipelineValue: roundMoney(numberFrom(pipeline.amount) ?? 0),
-      qualifiedPipelineCount: numberFrom(pipeline.qualifiedDealCount) ?? 0,
-      collaborationTouchCount: numberFrom(pipeline.collaborationTouchCount) ?? 0,
-      collaborationCoverage: roundRatio(ratioFrom(pipeline.collaborationCoverage) ?? 0),
+      qualifiedPipelineCount: countFromFields(pipeline, "qualifiedDealCount", "qualified_deal_count") ?? 0,
+      collaborationTouchCount: countFromFields(pipeline, "collaborationTouchCount", "collaboration_touch_count") ?? 0,
+      collaborationCoverage: roundRatio(
+        ratioFrom(pipeline.collaborationCoverage ?? pipeline.collaboration_coverage) ?? 0,
+      ),
       currency: currencyFrom(pipeline, mrr, runway, netBurn),
     },
     metrics: buildMetrics(metricsByKey),

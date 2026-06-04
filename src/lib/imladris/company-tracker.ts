@@ -4,6 +4,7 @@ import {
 } from "@/lib/imladris/catalog";
 import type { ImladrisDashboardDefinition } from "@/lib/imladris/catalog";
 import { normalizeMetricConfidence, normalizeMetricStatus, normalizeMetricWarnings } from "@/lib/imladris/confidence";
+import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
 import type { PrismaClientType } from "@/lib/prisma";
 
 type MetricStatus = "ready" | "missing" | "partial" | "stale" | "error";
@@ -34,6 +35,7 @@ interface CanonicalMetricRow {
   warnings: string[];
   calculationVersion: string;
   computedAt: Date | string;
+  periodStart: Date | string;
   periodEnd: Date | string;
   userId?: string | null;
   organizationId?: string | null;
@@ -128,17 +130,18 @@ export type CompanyTrackerPrisma = Pick<
 >;
 
 function toDate(value: unknown): Date | null {
-  if (value === null || value === undefined) return null;
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
+  const normalizedValue = scalarValue(value) ?? value;
+  if (normalizedValue === null || normalizedValue === undefined) return null;
+  if (normalizedValue instanceof Date) {
+    return Number.isNaN(normalizedValue.getTime()) ? null : normalizedValue;
   }
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    const timestampMs = value < 10_000_000_000 ? value * 1000 : value;
+  if (typeof normalizedValue === "number" && Number.isFinite(normalizedValue) && normalizedValue > 0) {
+    const timestampMs = normalizedValue < 10_000_000_000 ? normalizedValue * 1000 : normalizedValue;
     const date = new Date(timestampMs);
     return Number.isNaN(date.getTime()) ? null : date;
   }
-  if (typeof value === "string") {
-    const normalized = value.trim();
+  if (typeof normalizedValue === "string") {
+    const normalized = normalizedValue.trim();
     if (!normalized) return null;
     if (/^\d+(?:\.\d+)?$/.test(normalized)) {
       const timestamp = Number(normalized);
@@ -177,22 +180,123 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function numberValue(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const withoutCurrency = value.trim().replace(/[$,\s]/g, "");
-    const normalized = /^\(.+\)$/.test(withoutCurrency)
-      ? `-${withoutCurrency.slice(1, -1)}`
-      : withoutCurrency;
-    const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : null;
+function directMetricFields(payload: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([key]) => !["properties", "values", "fields", "attributes", "data"].includes(key)),
+  );
+}
+
+function directDataMetricFields(payload: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(payload).filter(
+      ([key]) => !["id", "type", "properties", "values", "fields", "attributes", "data"].includes(key),
+    ),
+  );
+}
+
+function wrapperSources(payload: Record<string, unknown>): Record<string, unknown>[] {
+  const data = asRecord(payload.data);
+  return [
+    directMetricFields(payload),
+    asRecord(payload.properties),
+    asRecord(payload.values),
+    asRecord(payload.fields),
+    asRecord(payload.attributes),
+    directDataMetricFields(data),
+    asRecord(data.properties),
+    asRecord(data.values),
+    asRecord(data.fields),
+    asRecord(data.attributes),
+  ].filter((source) => Object.keys(source).length > 0);
+}
+
+function mergedMetricValue(value: unknown): Record<string, unknown> {
+  const sources = wrapperSources(asRecord(value));
+  return Object.assign({}, ...sources.reverse());
+}
+
+function unwrapSingleMetricValueField(value: Record<string, unknown>): unknown {
+  const entries = Object.entries(value);
+  if (entries.length !== 1) return value;
+
+  const [key, nestedValue] = entries[0];
+  if (!["value", "metricValue", "metric_value"].includes(key)) return value;
+
+  return nestedValue;
+}
+
+function flattenedMetricValue(value: unknown): unknown {
+  const merged = mergedMetricValue(value);
+  if (Object.keys(merged).length === 0) return value ?? null;
+  return unwrapSingleMetricValueField(merged);
+}
+
+function metricValueView(value: unknown): Record<string, unknown> {
+  return asRecord(flattenedMetricValue(value));
+}
+
+function displayMetricValue(value: unknown): unknown {
+  return flattenedMetricValue(value);
+}
+
+function scalarValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  if (!value || typeof value !== "object") return null;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    const normalized = value.length === 1 ? scalarValue(value[0], seen) : null;
+    seen.delete(value);
+    return normalized;
   }
+
+  const record = value as Record<string, unknown>;
+  const data = asRecord(record.data);
+  const candidates = [
+    record.value,
+    record.metricValue,
+    record.metric_value,
+    record.number,
+    record.amount,
+    record.count,
+    record.name,
+    record.label,
+    asRecord(data.attributes).value,
+    data.value,
+    data.attributes,
+    record.attributes,
+    record.values,
+    record.fields,
+  ];
+  for (const candidate of candidates) {
+    const normalized = scalarValue(candidate, seen);
+    if (
+      typeof normalized === "string" ||
+      typeof normalized === "number" ||
+      typeof normalized === "boolean"
+    ) {
+      seen.delete(value);
+      return normalized;
+    }
+  }
+
+  seen.delete(value);
   return null;
+}
+
+function numberValue(value: unknown): number | null {
+  return parseImladrisNumber(scalarValue(value) ?? value);
+}
+
+function countValue(value: unknown): number | null {
+  const valueAsNumber = numberValue(value);
+  return valueAsNumber === null ? null : Math.floor(Math.max(0, valueAsNumber));
 }
 
 function currencyFrom(...values: Array<Record<string, unknown>>): string {
   for (const value of values) {
-    const currency = value.currency;
+    const currency = scalarValue(value.currency);
     if (typeof currency !== "string") continue;
     const normalized = currency.trim();
     if (normalized) return normalized.toUpperCase();
@@ -260,10 +364,10 @@ function latestRowsByMetric(
   context: UserContext,
 ): Map<string, CanonicalMetricRow> {
   const sortedRows = [...rows].sort((left, right) => {
-    const periodDelta = metricTimestamp(right) - metricTimestamp(left);
-    if (periodDelta !== 0) return periodDelta;
     const scopeDelta = scopeSpecificity(right, context) - scopeSpecificity(left, context);
     if (scopeDelta !== 0) return scopeDelta;
+    const periodDelta = metricTimestamp(right) - metricTimestamp(left);
+    if (periodDelta !== 0) return periodDelta;
     return rowComputedAt(right) - rowComputedAt(left);
   });
   const latest = new Map<string, CanonicalMetricRow>();
@@ -274,10 +378,13 @@ function latestRowsByMetric(
 }
 
 function canonicalMetricAvailableAt(row: CanonicalMetricRow, now: Date): boolean {
+  const periodStart = toDate(row.periodStart);
   const periodEnd = toDate(row.periodEnd);
   const computedAt = toDate(row.computedAt);
   return (
+    periodStart !== null &&
     periodEnd !== null &&
+    periodStart.getTime() <= periodEnd.getTime() &&
     periodEnd.getTime() <= now.getTime() &&
     computedAt !== null &&
     computedAt.getTime() <= now.getTime()
@@ -378,7 +485,7 @@ function companyMetric(row: CanonicalMetricRow | null, key: string): CompanyTrac
   return {
     key,
     label: definition?.label ?? key,
-    value: row.value,
+    value: displayMetricValue(row.value),
     status: metricStatus(row.status),
     confidence: normalizeMetricConfidence(row.confidence),
     warnings: normalizeMetricWarnings(row.warnings),
@@ -390,23 +497,35 @@ function companyMetric(row: CanonicalMetricRow | null, key: string): CompanyTrac
 }
 
 function buildSummary(metrics: Map<string, CanonicalMetricRow>): CompanyTrackerSummary {
-  const mrr = asRecord(usableMetricRow(metrics.get("revenue.mrr"))?.value);
-  const runway = asRecord(usableMetricRow(metrics.get("finance.cash_runway_months"))?.value);
-  const netBurn = asRecord(usableMetricRow(metrics.get("finance.net_burn"))?.value);
-  const pipeline = asRecord(usableMetricRow(metrics.get("sales.qualified_pipeline"))?.value);
+  const mrr = metricValueView(usableMetricRow(metrics.get("revenue.mrr"))?.value);
+  const runway = metricValueView(usableMetricRow(metrics.get("finance.cash_runway_months"))?.value);
+  const netBurn = metricValueView(usableMetricRow(metrics.get("finance.net_burn"))?.value);
+  const pipeline = metricValueView(usableMetricRow(metrics.get("sales.qualified_pipeline"))?.value);
   const mrrAmount = numberValue(mrr.amount);
+  const numberFromFields = (record: Record<string, unknown>, ...fields: string[]): number | null => {
+    for (const field of fields) {
+      const value = numberValue(record[field]);
+      if (value !== null) return value;
+    }
+    return null;
+  };
 
   return {
     arr: numberValue(mrr.arr) ?? (mrrAmount === null ? null : mrrAmount * 12),
     mrr: mrrAmount,
     runwayMonths: numberValue(runway.months),
-    cashBalance: numberValue(runway.cashBalance),
-    netBurn: numberValue(netBurn.amount),
+    cashBalance: numberFromFields(runway, "cashBalance", "cash_balance"),
+    netBurn:
+      numberFromFields(netBurn, "amount", "netBurn", "net_burn") ??
+      numberFromFields(runway, "netBurn", "net_burn"),
     qualifiedPipeline: numberValue(pipeline.amount),
     activeSubscriptions:
-      numberValue(mrr.activeSubscriptions) ??
-      numberValue(mrr.mergedActiveSubscriptions) ??
-      numberValue(mrr.subscriptionCount),
+      countValue(mrr.activeSubscriptions) ??
+      countValue(mrr.active_subscriptions) ??
+      countValue(mrr.mergedActiveSubscriptions) ??
+      countValue(mrr.merged_active_subscriptions) ??
+      countValue(mrr.subscriptionCount) ??
+      countValue(mrr.subscription_count),
     currency: currencyFrom(mrr, runway, netBurn, pipeline),
   };
 }
@@ -530,7 +649,7 @@ function buildHealthBands(input: {
   goalProgress: CompanyGoalProgress[];
 }): CompanyHealthBand[] {
   const currentArr = input.summary.arr;
-  const previousArr = numberValue(asRecord(input.previousMrr?.value).arr);
+  const previousArr = numberValue(metricValueView(input.previousMrr?.value).arr);
   const netNewArr =
     currentArr !== null && previousArr !== null ? Math.max(0, currentArr - previousArr) : null;
   const burnMultiple =

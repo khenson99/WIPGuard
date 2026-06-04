@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Chart from "chart.js/auto";
 import type { ExpenseDashboardData, ExpenseDashboardTransaction } from "@/lib/imladris/expense-dashboard";
+import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
 
 type ExpenseView = "overview" | "heatmap" | "categories" | "vendors" | "runway" | "recs";
 
@@ -34,24 +35,56 @@ const CATEGORY_COLORS: Record<string, string> = {
   shipping: "#22c55e",
 };
 
-function fmt(value: number): string {
-  const absolute = Math.abs(value);
+function scalarValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || value === undefined || typeof value !== "object") return value;
+  if (seen.has(value)) return null;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.length === 1 ? scalarValue(value[0], seen) : null;
+  }
+
+  const record = value as Record<string, unknown>;
+  for (const key of ["value", "metricValue", "metric_value", "amount", "number", "count", "total", "balance"]) {
+    if (key in record) {
+      const normalized = scalarValue(record[key], seen);
+      if (normalized !== null && normalized !== undefined) return normalized;
+    }
+  }
+  for (const key of ["data", "attributes", "fields", "values"]) {
+    if (key in record) {
+      const normalized = scalarValue(record[key], seen);
+      if (normalized !== null && normalized !== undefined) return normalized;
+    }
+  }
+  return null;
+}
+
+function numericValue(value: unknown): number {
+  const normalized = scalarValue(value);
+  return parseImladrisNumber(normalized ?? value) ?? 0;
+}
+
+function fmt(value: unknown): string {
+  const normalized = numericValue(value);
+  const absolute = Math.abs(normalized);
   const formatted = absolute.toLocaleString("en-US", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   });
-  return value < 0 ? `-$${formatted}` : `$${formatted}`;
+  return normalized < 0 ? `-$${formatted}` : `$${formatted}`;
 }
 
-function fmt2(value: number): string {
-  return `$${value.toLocaleString("en-US", {
+function fmt2(value: unknown): string {
+  return `$${numericValue(value).toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
 }
 
-function pct(value: number, total: number): string {
-  return total > 0 ? `${((value / total) * 100).toFixed(1)}%` : "0%";
+function pct(value: unknown, total: unknown): string {
+  const normalizedValue = numericValue(value);
+  const normalizedTotal = numericValue(total);
+  return normalizedTotal > 0 ? `${((normalizedValue / normalizedTotal) * 100).toFixed(1)}%` : "0%";
 }
 
 function shortMonth(month: string): string {
@@ -78,18 +111,18 @@ function refreshDateLabel(value: string): string {
 }
 
 function sortedCategories(data: ExpenseDashboardData): string[] {
-  return Object.keys(data.categoryTotals).sort((left, right) => data.categoryTotals[right] - data.categoryTotals[left]);
+  return Object.keys(data.categoryTotals).sort((left, right) => numericValue(data.categoryTotals[right]) - numericValue(data.categoryTotals[left]));
 }
 
 function sortedVendors(data: ExpenseDashboardData): string[] {
-  return Object.keys(data.vendorTotals).sort((left, right) => data.vendorTotals[right] - data.vendorTotals[left]);
+  return Object.keys(data.vendorTotals).sort((left, right) => numericValue(data.vendorTotals[right]) - numericValue(data.vendorTotals[left]));
 }
 
 function transactionsForMonth(data: ExpenseDashboardData, month: string): ExpenseDashboardTransaction[] {
   return Object.entries(data.txnIndex)
     .filter(([key]) => key.endsWith(`|${month}`))
     .flatMap(([, txns]) => txns)
-    .sort((left, right) => right.amount - left.amount);
+    .sort((left, right) => numericValue(right.amount) - numericValue(left.amount));
 }
 
 function transactionsForVendor(data: ExpenseDashboardData, vendor: string): ExpenseDashboardTransaction[] {
@@ -100,15 +133,15 @@ function transactionsForVendor(data: ExpenseDashboardData, vendor: string): Expe
 }
 
 function totalSpend(data: ExpenseDashboardData): number {
-  return Object.values(data.categoryTotals).reduce((sum, value) => sum + value, 0);
+  return Object.values(data.categoryTotals).reduce((sum, value) => sum + numericValue(value), 0);
 }
 
 function KpiCards({ data }: { data: ExpenseDashboardData }) {
-  const cash = data.chartSeries.runwayCash ?? 0;
-  const outflows = data.chartSeries.operatingOutflows;
-  const inflows = data.chartSeries.operatingInflows;
+  const cash = numericValue(data.chartSeries.runwayCash ?? 0);
+  const outflows = data.chartSeries.operatingOutflows.map(numericValue);
+  const inflows = data.chartSeries.operatingInflows.map(numericValue);
   const recentGross = outflows.slice(-3);
-  const recentNet = data.chartSeries.netBurn.slice(-3);
+  const recentNet = data.chartSeries.netBurn.map(numericValue).slice(-3);
   const avgGross = recentGross.length ? recentGross.reduce((sum, value) => sum + value, 0) / recentGross.length : 0;
   const avgNet = recentNet.length ? recentNet.reduce((sum, value) => sum + value, 0) / recentNet.length : 0;
   const latestOutflow = outflows.at(-1) ?? 0;
@@ -167,7 +200,7 @@ function DetailTable({
           </thead>
           <tbody>
             {transactions.map((txn, index) => (
-              <tr key={`${txn.date}-${txn.vendor}-${txn.amount}-${index}`}>
+              <tr key={`${txn.date}-${txn.vendor}-${numericValue(txn.amount)}-${index}`}>
                 <td>{txn.date}</td>
                 <td className={includeDescription ? "max-w-[300px] overflow-hidden text-ellipsis" : undefined}>
                   {includeDescription ? txn.description || "—" : txn.vendor}
@@ -228,8 +261,8 @@ function OverviewView({ data, onMonth }: { data: ExpenseDashboardData; onMonth: 
             </thead>
             <tbody>
               {data.months.map((month, index) => {
-                const inflow = data.chartSeries.operatingInflows[index] ?? 0;
-                const outflow = data.chartSeries.operatingOutflows[index] ?? 0;
+                const inflow = numericValue(data.chartSeries.operatingInflows[index] ?? 0);
+                const outflow = numericValue(data.chartSeries.operatingOutflows[index] ?? 0);
                 const netOperating = inflow - outflow;
                 return (
                   <tr key={month}>
@@ -250,7 +283,7 @@ function OverviewView({ data, onMonth }: { data: ExpenseDashboardData; onMonth: 
         </div>
         {activeMonth ? (
           <DetailTable
-            title={`All Outflows: ${shortMonth(activeMonth)} (${transactionsForMonth(data, activeMonth).length} transactions, ${fmt(transactionsForMonth(data, activeMonth).reduce((sum, txn) => sum + txn.amount, 0))})`}
+            title={`All Outflows: ${shortMonth(activeMonth)} (${transactionsForMonth(data, activeMonth).length} transactions, ${fmt(transactionsForMonth(data, activeMonth).reduce((sum, txn) => sum + numericValue(txn.amount), 0))})`}
             transactions={transactionsForMonth(data, activeMonth)}
           />
         ) : null}
@@ -262,7 +295,7 @@ function OverviewView({ data, onMonth }: { data: ExpenseDashboardData; onMonth: 
 function HeatmapView({ data }: { data: ExpenseDashboardData }) {
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const categories = sortedCategories(data);
-  const maxValue = Math.max(1, ...categories.flatMap((category) => data.months.map((month) => data.categoryMonthly[category]?.[month] ?? 0)));
+  const maxValue = Math.max(1, ...categories.flatMap((category) => data.months.map((month) => numericValue(data.categoryMonthly[category]?.[month] ?? 0))));
   const [activeCategory, activeMonth] = activeKey?.split("|") ?? [];
 
   return (
@@ -289,7 +322,7 @@ function HeatmapView({ data }: { data: ExpenseDashboardData }) {
                     {category}
                   </td>
                   {data.months.map((month) => {
-                    const value = data.categoryMonthly[category]?.[month] ?? 0;
+                    const value = numericValue(data.categoryMonthly[category]?.[month] ?? 0);
                     const intensity = value > 0 ? Math.max(0.05, Math.min(0.6, value / maxValue)) : 0;
                     const key = `${category}|${month}`;
                     return (
@@ -313,7 +346,7 @@ function HeatmapView({ data }: { data: ExpenseDashboardData }) {
         </div>
         {activeKey && activeCategory && activeMonth ? (
           <DetailTable
-            title={`${activeCategory} · ${shortMonth(activeMonth)} - ${(data.txnIndex[activeKey] ?? []).length} transactions (${fmt((data.txnIndex[activeKey] ?? []).reduce((sum, txn) => sum + txn.amount, 0))})`}
+            title={`${activeCategory} · ${shortMonth(activeMonth)} - ${(data.txnIndex[activeKey] ?? []).length} transactions (${fmt((data.txnIndex[activeKey] ?? []).reduce((sum, txn) => sum + numericValue(txn.amount), 0))})`}
             transactions={data.txnIndex[activeKey] ?? []}
           />
         ) : null}
@@ -332,7 +365,7 @@ function CategoriesView({ data }: { data: ExpenseDashboardData }) {
         .flatMap((txns) => txns)
         .filter((txn) => txn.category === activeCategory)
         .reduce<Record<string, number>>((acc, txn) => {
-          acc[txn.vendor] = (acc[txn.vendor] ?? 0) + txn.amount;
+          acc[txn.vendor] = (acc[txn.vendor] ?? 0) + numericValue(txn.amount);
           return acc;
         }, {})
     : {};
@@ -358,7 +391,7 @@ function CategoriesView({ data }: { data: ExpenseDashboardData }) {
             </thead>
             <tbody>
               {categories.map((category) => {
-                const total = data.categoryTotals[category];
+                const total = numericValue(data.categoryTotals[category]);
                 return (
                   <tr key={category}>
                     <td>
@@ -371,7 +404,7 @@ function CategoriesView({ data }: { data: ExpenseDashboardData }) {
                     <td className="expense-num">{pct(total, spend)}</td>
                     <td className="expense-num text-[var(--expense-text-secondary)]">{fmt(total / completeMonths)}</td>
                     {data.months.map((month) => {
-                      const value = data.categoryMonthly[category]?.[month] ?? 0;
+                      const value = numericValue(data.categoryMonthly[category]?.[month] ?? 0);
                       return <td key={`${category}-${month}`} className="expense-num">{value > 0 ? fmt(value) : "—"}</td>;
                     })}
                   </tr>
@@ -413,7 +446,7 @@ function VendorsView({ data }: { data: ExpenseDashboardData }) {
   const [activeVendor, setActiveVendor] = useState<string | null>(null);
   const categories = Array.from(new Set(Object.values(data.vendorCategory))).sort();
   const vendors = sortedVendors(data).filter((vendor) => !filter || data.vendorCategory[vendor] === filter);
-  const spend = Object.values(data.vendorTotals).reduce((sum, value) => sum + value, 0);
+  const spend = Object.values(data.vendorTotals).reduce((sum, value) => sum + numericValue(value), 0);
   const activeTransactions = activeVendor ? transactionsForVendor(data, activeVendor) : [];
 
   return (
@@ -445,6 +478,7 @@ function VendorsView({ data }: { data: ExpenseDashboardData }) {
             <tbody>
               {vendors.map((vendor) => {
                 const category = data.vendorCategory[vendor] ?? "";
+                const total = numericValue(data.vendorTotals[vendor]);
                 return (
                   <tr key={vendor}>
                     <td>
@@ -453,10 +487,10 @@ function VendorsView({ data }: { data: ExpenseDashboardData }) {
                       </button>
                     </td>
                     <td><span className="expense-badge" style={{ background: CATEGORY_COLORS[category] ?? "#334155", color: "#fff" }}>{category}</span></td>
-                    <td className="expense-num">{fmt(data.vendorTotals[vendor])}</td>
-                    <td className="expense-num">{pct(data.vendorTotals[vendor], spend)}</td>
+                    <td className="expense-num">{fmt(total)}</td>
+                    <td className="expense-num">{pct(total, spend)}</td>
                     {data.months.map((month) => {
-                      const value = data.vendorMonthly[vendor]?.[month] ?? 0;
+                      const value = numericValue(data.vendorMonthly[vendor]?.[month] ?? 0);
                       return <td key={`${vendor}-${month}`} className="expense-num">{value > 0 ? fmt(value) : "—"}</td>;
                     })}
                   </tr>
@@ -467,7 +501,7 @@ function VendorsView({ data }: { data: ExpenseDashboardData }) {
         </div>
         {activeVendor ? (
           <DetailTable
-            title={`${activeVendor} - ${activeTransactions.length} transactions (${fmt(activeTransactions.reduce((sum, txn) => sum + txn.amount, 0))})`}
+            title={`${activeVendor} - ${activeTransactions.length} transactions (${fmt(activeTransactions.reduce((sum, txn) => sum + numericValue(txn.amount), 0))})`}
             transactions={activeTransactions}
             includeDescription
           />
@@ -478,10 +512,12 @@ function VendorsView({ data }: { data: ExpenseDashboardData }) {
 }
 
 function RunwayView({ data }: { data: ExpenseDashboardData }) {
-  const cash = data.chartSeries.runwayCash ?? 0;
-  const latestBurn = data.chartSeries.netBurn.at(-1) ?? data.chartSeries.operatingOutflows.at(-1) ?? 0;
-  const avgBurn = data.chartSeries.netBurn.length
-    ? data.chartSeries.netBurn.reduce((sum, value) => sum + value, 0) / data.chartSeries.netBurn.length
+  const cash = numericValue(data.chartSeries.runwayCash ?? 0);
+  const netBurn = data.chartSeries.netBurn.map(numericValue);
+  const operatingOutflows = data.chartSeries.operatingOutflows.map(numericValue);
+  const latestBurn = netBurn.at(-1) ?? operatingOutflows.at(-1) ?? 0;
+  const avgBurn = netBurn.length
+    ? netBurn.reduce((sum, value) => sum + value, 0) / netBurn.length
     : latestBurn;
   const scenarios = [
     ["Current", latestBurn],
@@ -662,8 +698,10 @@ export function ExpenseDashboard({ initialData }: { initialData: ExpenseDashboar
     const months = data.months;
     const labels = months.map(shortMonth);
     const categories = sortedCategories(data);
-    const opIn = data.chartSeries.operatingInflows;
-    const opOut = data.chartSeries.operatingOutflows;
+    const opIn = data.chartSeries.operatingInflows.map(numericValue);
+    const opOut = data.chartSeries.operatingOutflows.map(numericValue);
+    const grossBurn = data.chartSeries.grossBurn.map(numericValue);
+    const netBurn = data.chartSeries.netBurn.map(numericValue);
     const netOp = opIn.map((value, index) => value - (opOut[index] ?? 0));
     const chartOptions = {
       responsive: true,
@@ -697,7 +735,7 @@ export function ExpenseDashboard({ initialData }: { initialData: ExpenseDashboar
         type: "doughnut",
         data: {
           labels: categories,
-          datasets: [{ data: categories.map((category) => data.categoryTotals[category]), backgroundColor: categories.map((category) => CATEGORY_COLORS[category] ?? "#666"), borderWidth: 0 }],
+          datasets: [{ data: categories.map((category) => numericValue(data.categoryTotals[category])), backgroundColor: categories.map((category) => CATEGORY_COLORS[category] ?? "#666"), borderWidth: 0 }],
         },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "right", labels: { color: "#94a3b8", font: { size: 11 }, padding: 6 } } } },
       });
@@ -710,8 +748,8 @@ export function ExpenseDashboard({ initialData }: { initialData: ExpenseDashboar
         data: {
           labels,
           datasets: [
-            { label: "Gross Burn", data: data.chartSeries.grossBurn, borderColor: "#f87171", backgroundColor: "rgba(248,113,113,0.08)", fill: true, tension: 0.3 },
-            { label: "Net Burn", data: data.chartSeries.netBurn, borderColor: "#fbbf24", backgroundColor: "rgba(251,191,36,0.08)", fill: true, tension: 0.3 },
+            { label: "Gross Burn", data: grossBurn, borderColor: "#f87171", backgroundColor: "rgba(248,113,113,0.08)", fill: true, tension: 0.3 },
+            { label: "Net Burn", data: netBurn, borderColor: "#fbbf24", backgroundColor: "rgba(251,191,36,0.08)", fill: true, tension: 0.3 },
           ],
         },
         options: chartOptions,
@@ -726,7 +764,7 @@ export function ExpenseDashboard({ initialData }: { initialData: ExpenseDashboar
           labels,
           datasets: categories.slice(0, 8).map((category) => ({
             label: category,
-            data: months.map((month) => data.categoryMonthly[category]?.[month] ?? 0),
+            data: months.map((month) => numericValue(data.categoryMonthly[category]?.[month] ?? 0)),
             backgroundColor: CATEGORY_COLORS[category] ?? "#666",
             borderRadius: 1,
           })),
@@ -743,7 +781,7 @@ export function ExpenseDashboard({ initialData }: { initialData: ExpenseDashboar
 
     const runway = document.getElementById("runwayChart") as HTMLCanvasElement | null;
     if (runway) {
-      const cash = data.chartSeries.runwayCash ?? 0;
+      const cash = numericValue(data.chartSeries.runwayCash ?? 0);
       const burns = Array.from({ length: 31 }, (_, index) => 50000 + index * 10000);
       new Chart(runway, {
         type: "line",

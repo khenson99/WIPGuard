@@ -2,6 +2,7 @@ import { REQUIRED_IMLADRIS_PROVIDERS, IMLADRIS_METRIC_DEFINITIONS, getImladrisDa
 import type { ImladrisProviderKey } from "@/lib/imladris/catalog";
 import { normalizeMetricConfidence, normalizeMetricStatus, normalizeMetricWarnings } from "@/lib/imladris/confidence";
 import { getImladrisHistoricalWindow } from "@/lib/imladris/ingestion";
+import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
 import type { IntegrationProvider } from "@/generated/prisma/client";
 import type { PrismaClientType } from "@/lib/prisma";
 
@@ -15,7 +16,7 @@ interface UserContext {
 
 interface SourceRow {
   provider: unknown;
-  status: string;
+  status: unknown;
   userId?: string | null;
   organizationId?: string | null;
   connectedAt: Date | string | null;
@@ -27,7 +28,7 @@ interface SourceRow {
 interface SnapshotRow {
   userId?: string | null;
   providerKey: string;
-  status: string;
+  status: unknown;
   capturedAt: Date | string;
   expiresAt: Date | string;
   lastError: string | null;
@@ -35,7 +36,7 @@ interface SnapshotRow {
 
 interface SourceSyncRunRow {
   provider: unknown;
-  status: string;
+  status: unknown;
   userId?: string | null;
   organizationId?: string | null;
   startedAt: Date | string;
@@ -43,9 +44,9 @@ interface SourceSyncRunRow {
   windowStart: Date | string | null;
   windowEnd: Date | string | null;
   checkpoint: unknown;
-  recordCount: number;
-  acceptedCount: number;
-  errorCount: number;
+  recordCount: unknown;
+  acceptedCount: unknown;
+  errorCount: unknown;
   lastError: string | null;
 }
 
@@ -65,7 +66,7 @@ interface CanonicalMetricRow {
   value: unknown;
   periodStart: Date | string;
   periodEnd: Date | string;
-  status: string;
+  status: unknown;
   confidence: number;
   warnings: string[];
   calculationVersion: string;
@@ -75,18 +76,60 @@ interface CanonicalMetricRow {
   lineage: MetricLineageRow[];
 }
 
-function toDate(value: unknown): Date | null {
-  if (value === null || value === undefined) return null;
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
+function scalarDateValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value !== "object") return value;
+  if (value instanceof Date) return value;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.length === 1 ? scalarDateValue(value[0], seen) : null;
   }
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    const timestampMs = value < 10_000_000_000 ? value * 1000 : value;
+
+  const record = value as Record<string, unknown>;
+  const data = asRecord(record.data);
+  const candidates = [
+    record.value,
+    record.date,
+    record.timestamp,
+    record.time,
+    record.iso,
+    record.isoString,
+    record.iso_string,
+    record.milliseconds,
+    record.millis,
+    record.seconds,
+    asRecord(data.attributes).value,
+    data.value,
+    data.attributes,
+    record.attributes,
+    record.values,
+    record.fields,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = scalarDateValue(candidate, seen);
+    if (normalized !== null && normalized !== undefined && typeof normalized !== "object") return normalized;
+    if (normalized instanceof Date) return normalized;
+  }
+
+  return value;
+}
+
+function toDate(value: unknown): Date | null {
+  const normalizedValue = scalarDateValue(value);
+  if (normalizedValue === null || normalizedValue === undefined) return null;
+  if (normalizedValue instanceof Date) {
+    return Number.isNaN(normalizedValue.getTime()) ? null : normalizedValue;
+  }
+  if (typeof normalizedValue === "number" && Number.isFinite(normalizedValue) && normalizedValue > 0) {
+    const timestampMs = normalizedValue < 10_000_000_000 ? normalizedValue * 1000 : normalizedValue;
     const date = new Date(timestampMs);
     return Number.isNaN(date.getTime()) ? null : date;
   }
-  if (typeof value === "string") {
-    const normalized = value.trim();
+  if (typeof normalizedValue === "string") {
+    const normalized = normalizedValue.trim();
     if (!normalized) return null;
     if (/^\d+(?:\.\d+)?$/.test(normalized)) {
       const timestamp = Number(normalized);
@@ -127,14 +170,225 @@ function normalizeContext(context: UserContext): UserContext {
   };
 }
 
-function normalizeSourceStateStatus(status: string | null | undefined): string {
-  return typeof status === "string" ? status.trim().toUpperCase() : "";
+function sourceStatusValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object") return null;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    const normalized = value.length === 1 ? sourceStatusValue(value[0], seen) : null;
+    seen.delete(value);
+    return normalized;
+  }
+
+  const record = value as Record<string, unknown>;
+  const data = asRecord(record.data);
+  const candidates = [
+    record.status,
+    record.state,
+    record.result,
+    record.code,
+    record.name,
+    data.status,
+    data.state,
+    data.result,
+    data.code,
+    data.name,
+    data.attributes,
+    data.value,
+    record.value,
+    record.sourceStatus,
+    record.source_status,
+    record.connectionStatus,
+    record.connection_status,
+    record.syncStatus,
+    record.sync_status,
+    record.providerStatus,
+    record.provider_status,
+    record.rawStatus,
+    record.raw_status,
+  ];
+  for (const candidate of candidates) {
+    const normalized = sourceStatusValue(candidate, seen);
+    if (typeof normalized === "string" && normalized.trim().length > 0) {
+      seen.delete(value);
+      return normalized;
+    }
+  }
+
+  seen.delete(value);
+  return null;
 }
 
-function normalizeProviderAlias(value: unknown): string {
-  return typeof value === "string"
-    ? value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "")
-    : "";
+function normalizeSourceStateStatus(status: unknown): string {
+  const statusText = sourceStatusValue(status);
+  if (typeof statusText !== "string") return "";
+  const normalized = statusText.trim().toUpperCase().replace(/[\s_-]+/g, "_");
+  if (
+    [
+      "COMPLETED_WITH_ERRORS",
+      "COMPLETE_WITH_ERRORS",
+      "DONE_WITH_ERRORS",
+      "SUCCESS_WITH_ERRORS",
+      "WARNING",
+      "WARN",
+      "PENDING",
+      "QUEUED",
+      "RUNNING",
+      "IN_PROGRESS",
+      "PROCESSING",
+      "STARTED",
+    ].includes(normalized)
+  ) {
+    return "PARTIAL";
+  }
+  if (["COMPLETED", "COMPLETE", "DONE", "OK"].includes(normalized)) {
+    return "SUCCESS";
+  }
+  if (["ACTIVE", "AUTHORIZED", "AUTHENTICATED", "ENABLED"].includes(normalized)) {
+    return "CONNECTED";
+  }
+  if (["DISABLED", "REVOKED", "REMOVED"].includes(normalized)) {
+    return "DISCONNECTED";
+  }
+  if (
+    ["FAILED", "EXPIRED", "TIMED_OUT", "TIMEOUT", "CANCELED", "CANCELLED", "ABORTED", "TERMINATED"].includes(
+      normalized,
+    )
+  ) {
+    return "ERROR";
+  }
+  return normalized;
+}
+
+function displaySourceStateStatus(status: unknown): string {
+  return normalizeSourceStateStatus(status) || (typeof status === "string" && status.trim()) || "UNKNOWN";
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function directMetricValueFields(payload: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([key]) => !["properties", "values", "fields", "attributes", "data"].includes(key)),
+  );
+}
+
+function directDataMetricValueFields(payload: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(payload).filter(
+      ([key]) => !["id", "type", "properties", "values", "fields", "attributes", "data"].includes(key),
+    ),
+  );
+}
+
+function publicMetricValue(value: unknown): unknown {
+  const payload = asRecord(value);
+  if (Object.keys(payload).length === 0) return value ?? null;
+  const data = asRecord(payload.data);
+  const sources = [
+    directMetricValueFields(payload),
+    asRecord(payload.properties),
+    asRecord(payload.values),
+    asRecord(payload.fields),
+    asRecord(payload.attributes),
+    directDataMetricValueFields(data),
+    asRecord(data.properties),
+    asRecord(data.values),
+    asRecord(data.fields),
+    asRecord(data.attributes),
+  ].filter((source) => Object.keys(source).length > 0);
+  const merged = Object.assign({}, ...sources.reverse());
+  const entries = Object.entries(merged);
+  if (entries.length === 1 && ["value", "metricValue", "metric_value"].includes(entries[0][0])) {
+    return entries[0][1];
+  }
+  return merged;
+}
+
+function lineageTextValue(value: unknown, seen = new WeakSet<object>()): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized ? normalized : null;
+  }
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value !== "object") return null;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.length === 1 ? lineageTextValue(value[0], seen) : null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const data = asRecord(record.data);
+  const candidates = [
+    record.value,
+    record.key,
+    record.id,
+    record.type,
+    record.name,
+    data.key,
+    data.id,
+    data.type,
+    data.name,
+    asRecord(data.attributes).value,
+    data.value,
+    data.attributes,
+    record.attributes,
+    record.values,
+    record.fields,
+  ];
+  for (const candidate of candidates) {
+    const normalized = lineageTextValue(candidate, seen);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function normalizeProviderAlias(value: unknown, seen = new WeakSet<object>()): string {
+  if (typeof value === "string") {
+    return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+  }
+  if (value === null || value === undefined || typeof value !== "object") return "";
+  if (seen.has(value)) return "";
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.length === 1 ? normalizeProviderAlias(value[0], seen) : "";
+  }
+
+  const providerRecord = asRecord(value);
+  const data = asRecord(providerRecord.data);
+  const candidates = [
+    providerRecord.key,
+    providerRecord.provider,
+    providerRecord.providerKey,
+    providerRecord.provider_key,
+    providerRecord.name,
+    providerRecord.label,
+    providerRecord.value,
+    providerRecord.id,
+    data.key,
+    data.id,
+    data.type,
+    data.name,
+    asRecord(data.attributes).value,
+    data.value,
+    data.attributes,
+    providerRecord.attributes,
+    providerRecord.values,
+    providerRecord.fields,
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizeProviderAlias(candidate, seen);
+    if (normalized) return normalized;
+  }
+  return "";
 }
 
 function providerAliasMatches(value: unknown, aliases: string[]): boolean {
@@ -281,13 +535,13 @@ function compareCanonicalMetricRows(
   right: CanonicalMetricRow,
   context: UserContext,
 ): number {
-  const periodDelta =
-    (toDate(right.periodEnd)?.getTime() ?? 0) - (toDate(left.periodEnd)?.getTime() ?? 0);
-  if (periodDelta !== 0) return periodDelta;
   const scopeDelta =
     canonicalMetricScopeSpecificity(right, context) -
     canonicalMetricScopeSpecificity(left, context);
   if (scopeDelta !== 0) return scopeDelta;
+  const periodDelta =
+    (toDate(right.periodEnd)?.getTime() ?? 0) - (toDate(left.periodEnd)?.getTime() ?? 0);
+  if (periodDelta !== 0) return periodDelta;
   return (toDate(right.computedAt)?.getTime() ?? 0) - (toDate(left.computedAt)?.getTime() ?? 0);
 }
 
@@ -305,24 +559,90 @@ function canonicalMetricAvailableAt(row: CanonicalMetricRow, now: Date): boolean
   );
 }
 
+function scalarNumberValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || value === undefined || typeof value !== "object") return value;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.length === 1 ? scalarNumberValue(value[0], seen) : null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const data = asRecord(record.data);
+  const candidates = [
+    record.value,
+    record.count,
+    record.number,
+    record.total,
+    record.recordCount,
+    record.record_count,
+    record.acceptedCount,
+    record.accepted_count,
+    record.errorCount,
+    record.error_count,
+    asRecord(data.attributes).value,
+    data.value,
+    data.attributes,
+    record.attributes,
+    record.values,
+    record.fields,
+  ];
+  for (const candidate of candidates) {
+    const normalized = scalarNumberValue(candidate, seen);
+    if (normalized !== null && normalized !== undefined && typeof normalized !== "object") return normalized;
+  }
+  return value;
+}
+
+function syncRunCount(value: unknown): number | null {
+  return parseImladrisNumber(scalarNumberValue(value) ?? value);
+}
+
+function syncRunCounts(syncRun: SourceSyncRunRow): {
+  recordCount: number | null;
+  acceptedCount: number | null;
+  errorCount: number | null;
+} {
+  return {
+    recordCount: syncRunCount(syncRun.recordCount),
+    acceptedCount: syncRunCount(syncRun.acceptedCount),
+    errorCount: syncRunCount(syncRun.errorCount),
+  };
+}
+
+function syncRunCountsAreIncomplete(counts: ReturnType<typeof syncRunCounts> | null): boolean {
+  return counts?.acceptedCount !== null &&
+    counts?.recordCount !== null &&
+    counts?.acceptedCount !== undefined &&
+    counts?.recordCount !== undefined &&
+    counts.acceptedCount < counts.recordCount;
+}
+
+function syncRunCountsHaveErrors(counts: ReturnType<typeof syncRunCounts> | null): boolean {
+  return (counts?.errorCount ?? 0) > 0;
+}
+
 function hasInvalidSyncRunAccounting(syncRun: SourceSyncRunRow): boolean {
-  const counts = [syncRun.recordCount, syncRun.acceptedCount, syncRun.errorCount];
-  if (counts.some((count) => !Number.isFinite(count) || count < 0)) return true;
+  const { recordCount, acceptedCount, errorCount } = syncRunCounts(syncRun);
+  const counts = [recordCount, acceptedCount, errorCount];
+  if (counts.some((count) => count === null || !Number.isInteger(count) || count < 0)) return true;
   return (
-    syncRun.acceptedCount > syncRun.recordCount ||
-    syncRun.acceptedCount + syncRun.errorCount > syncRun.recordCount
+    acceptedCount! > recordCount! ||
+    acceptedCount! + errorCount! > recordCount!
   );
 }
 
 function syncRunAccountingError(syncRun: SourceSyncRunRow): string | null {
-  const counts = [syncRun.recordCount, syncRun.acceptedCount, syncRun.errorCount];
-  if (counts.some((count) => !Number.isFinite(count) || count < 0)) {
+  const { recordCount, acceptedCount, errorCount } = syncRunCounts(syncRun);
+  const counts = [recordCount, acceptedCount, errorCount];
+  if (counts.some((count) => count === null || !Number.isInteger(count) || count < 0)) {
     return "Sync run record counts are invalid.";
   }
-  if (syncRun.acceptedCount > syncRun.recordCount) {
+  if (acceptedCount! > recordCount!) {
     return "Sync run accepted count exceeds record count.";
   }
-  if (syncRun.acceptedCount + syncRun.errorCount > syncRun.recordCount) {
+  if (acceptedCount! + errorCount! > recordCount!) {
     return "Sync run accepted and error counts exceed record count.";
   }
   return null;
@@ -362,6 +682,7 @@ function sourceStatus(input: {
   const connectionStatus = normalizeSourceStateStatus(input.connection?.status);
   const snapshotStatus = normalizeSourceStateStatus(input.snapshot?.status);
   const syncRunStatus = normalizeSourceStateStatus(input.syncRun?.status);
+  const counts = input.syncRun ? syncRunCounts(input.syncRun) : null;
   if (connectionStatus === "DISCONNECTED") {
     return "missing";
   }
@@ -369,7 +690,7 @@ function sourceStatus(input: {
     connectionExpiryInvalid(input.connection) ||
     connectionExpired(input.connection, input.now) ||
     connectionStatus === "ERROR" ||
-    snapshotStatus === "ERROR" ||
+    (!input.syncRun && snapshotStatus === "ERROR") ||
     syncRunStatus === "ERROR"
   ) {
     return "error";
@@ -379,6 +700,7 @@ function sourceStatus(input: {
   }
   if (!input.connection && !input.snapshot && !input.syncRun) return "missing";
   if (input.connection && !input.snapshot && !input.syncRun && !input.lastSyncedAt) {
+    if (connectionStatus === "CONNECTED") return "partial";
     return "missing";
   }
   if (
@@ -386,8 +708,8 @@ function sourceStatus(input: {
     (input.syncRun && isUnknownCompletedSyncRunStatus(syncRunStatus)) ||
     (input.syncRun && hasInvalidSyncRunAccounting(input.syncRun)) ||
     (input.syncRun && hasInvalidSyncRunWindow(input.syncRun, input.now)) ||
-    (input.syncRun && input.syncRun.acceptedCount < input.syncRun.recordCount) ||
-    (input.syncRun?.errorCount ?? 0) > 0
+    syncRunCountsAreIncomplete(counts) ||
+    syncRunCountsHaveErrors(counts)
   ) {
     return "partial";
   }
@@ -416,6 +738,7 @@ function sourceStatus(input: {
 }
 
 function sourceLastError(input: {
+  sourceKey: ImladrisProviderKey;
   status: SourceStatus;
   connection: SourceRow | null;
   snapshot: SnapshotRow | null;
@@ -425,6 +748,7 @@ function sourceLastError(input: {
   const connectionStatus = normalizeSourceStateStatus(input.connection?.status);
   const snapshotStatus = normalizeSourceStateStatus(input.snapshot?.status);
   const syncRunStatus = normalizeSourceStateStatus(input.syncRun?.status);
+  const counts = input.syncRun ? syncRunCounts(input.syncRun) : null;
 
   if (connectionStatus === "DISCONNECTED") {
     return input.connection?.lastError ?? null;
@@ -440,7 +764,7 @@ function sourceLastError(input: {
     if (syncRunStatus === "ERROR" && input.syncRun?.lastError) {
       return input.syncRun.lastError;
     }
-    if (snapshotStatus === "ERROR" && input.snapshot?.lastError) {
+    if (!input.syncRun && snapshotStatus === "ERROR" && input.snapshot?.lastError) {
       return input.snapshot.lastError;
     }
     if (connectionStatus === "ERROR" && input.connection?.lastError) {
@@ -456,8 +780,8 @@ function sourceLastError(input: {
       isUnknownCompletedSyncRunStatus(syncRunStatus) ||
       hasInvalidSyncRunAccounting(input.syncRun) ||
       hasInvalidSyncRunWindow(input.syncRun, input.now) ||
-      input.syncRun.acceptedCount < input.syncRun.recordCount ||
-      input.syncRun.errorCount > 0) &&
+      syncRunCountsAreIncomplete(counts) ||
+      syncRunCountsHaveErrors(counts)) &&
     input.syncRun.lastError
   ) {
     return input.syncRun.lastError;
@@ -471,7 +795,18 @@ function sourceLastError(input: {
     );
   }
 
-  return input.connection?.lastError ?? input.syncRun?.lastError ?? input.snapshot?.lastError ?? null;
+  if (
+    input.status === "partial" &&
+    input.connection &&
+    !input.snapshot &&
+    !input.syncRun &&
+    connectionStatus === "CONNECTED"
+  ) {
+    return input.connection.lastError ?? `${sourceLabel(input.sourceKey)} is connected but no raw sync has completed yet.`;
+  }
+
+  const snapshotLastError = input.syncRun ? null : input.snapshot?.lastError ?? null;
+  return input.connection?.lastError ?? input.syncRun?.lastError ?? snapshotLastError;
 }
 
 function canonicalMetricStatus(sourceKeys: ImladrisProviderKey[], sourceStatuses: Map<ImladrisProviderKey, SourceStatus>) {
@@ -499,8 +834,8 @@ function sourceLabel(sourceKey: ImladrisProviderKey): string {
   );
 }
 
-function canonicalLineageSourceKey(value: string): ImladrisProviderKey | null {
-  const normalized = normalizeProviderAlias(value);
+function canonicalLineageSourceKey(value: unknown): ImladrisProviderKey | null {
+  const normalized = normalizeProviderAlias(lineageTextValue(value) ?? value);
   if (!normalized) return null;
   return (
     REQUIRED_IMLADRIS_PROVIDERS.find((provider) =>
@@ -600,7 +935,7 @@ function metricLineageWarnings(
   return warnings;
 }
 
-function sourceConnectionStatusRank(status: string): number {
+function sourceConnectionStatusRank(status: unknown): number {
   switch (normalizeSourceStateStatus(status)) {
     case "CONNECTED":
       return 0;
@@ -664,22 +999,39 @@ function isAtOrBefore(value: Date | string | null | undefined, now: Date): boole
   return date !== null && date.getTime() <= now.getTime();
 }
 
+function isAfter(value: Date | string | null | undefined, now: Date): boolean {
+  const date = toDate(value);
+  return date !== null && date.getTime() > now.getTime();
+}
+
 function connectionAvailableAt(connection: SourceRow, now: Date): boolean {
   if (dateAtOrBefore(connection.lastSyncedAt, now)) return true;
   if (dateAtOrBefore(connection.connectedAt, now)) return true;
-  if (connection.lastSyncedAt || connection.connectedAt) return false;
+  if (isAfter(connection.lastSyncedAt, now) || isAfter(connection.connectedAt, now)) return false;
   return true;
 }
 
 function connectionMatchesContext(connection: SourceRow, context: UserContext): boolean {
-  const userMatches =
-    connection.userId === undefined ||
-    connection.userId === null ||
-    connection.userId === context.userId;
-  const organizationMatches =
-    connection.organizationId === undefined ||
-    connection.organizationId === context.organizationId;
-  return userMatches && organizationMatches;
+  if (connection.userId === undefined && connection.organizationId === undefined) return true;
+
+  const userId = connection.userId ?? null;
+  const organizationId = connection.organizationId ?? null;
+
+  if (context.organizationId) {
+    if (organizationId === context.organizationId) {
+      return userId === null || userId === context.userId;
+    }
+    if (organizationId === null) {
+      return userId === null || Boolean(context.userId && userId === context.userId);
+    }
+    return false;
+  }
+
+  if (context.userId) {
+    return organizationId === null && (userId === null || userId === context.userId);
+  }
+
+  return userId === null && organizationId === null;
 }
 
 function compareSourceConnections(
@@ -814,7 +1166,9 @@ function syncRunSelectionRank(
 ): number {
   const completedAt = toDate(syncRun.completedAt);
   const status = normalizeSourceStateStatus(syncRun.status);
-  if (completedAt && status && status !== "SUCCESS") return 0;
+  if (completedAt && status && status !== "SUCCESS") {
+    return addHours(completedAt, freshnessSlaHours).getTime() >= now.getTime() ? 0 : 2;
+  }
   if (hasFreshCompletedSyncRunEvidence(syncRun, now, freshnessSlaHours, expectedWindowStart)) {
     return 0;
   }
@@ -991,6 +1345,7 @@ export async function buildImladrisSources(input: {
       freshnessSlaHours: provider.freshnessSlaHours,
       expectedWindowStart: expectedWindow.windowStart,
     });
+    const counts = syncRun ? syncRunCounts(syncRun) : null;
     const lastSyncedAt =
       toDate(syncRun?.completedAt) ??
       toDate(snapshot?.capturedAt) ??
@@ -1028,6 +1383,7 @@ export async function buildImladrisSources(input: {
       lastSyncedAt: toIso(lastSyncedAt),
       lastSnapshotAt: toIso(snapshot?.capturedAt),
       lastError: sourceLastError({
+        sourceKey: provider.key,
         status,
         connection,
         snapshot,
@@ -1052,15 +1408,15 @@ export async function buildImladrisSources(input: {
       },
       latestSyncRun: syncRun
         ? {
-            status: normalizeSourceStateStatus(syncRun.status) || syncRun.status,
+            status: displaySourceStateStatus(syncRun.status),
             startedAt: toIso(syncRun.startedAt),
             completedAt: toIso(syncRun.completedAt),
             windowStart: toIso(syncRun.windowStart),
             windowEnd: toIso(syncRun.windowEnd),
             checkpoint: syncRun.checkpoint,
-            recordCount: syncRun.recordCount,
-            acceptedCount: syncRun.acceptedCount,
-            errorCount: syncRun.errorCount,
+            recordCount: counts?.recordCount,
+            acceptedCount: counts?.acceptedCount,
+            errorCount: counts?.errorCount,
             lastError: syncRun.lastError,
           }
         : null,
@@ -1148,7 +1504,7 @@ export async function buildImladrisMetrics(input: {
       label: definition.label,
       department: definition.department,
       unit: definition.unit,
-      value: canonicalRow?.value ?? null,
+      value: publicMetricValue(canonicalRow?.value),
       periodStart: toIso(canonicalRow?.periodStart),
       periodEnd: toIso(canonicalRow?.periodEnd),
       status,
@@ -1160,15 +1516,16 @@ export async function buildImladrisMetrics(input: {
       computedAt: toIso(canonicalRow?.computedAt),
       sourceLineage: canonicalRow?.lineage?.length
         ? canonicalRow.lineage.map((lineage) => {
-            const sourceKey = canonicalLineageSourceKey(lineage.sourceKey) ?? lineage.sourceKey;
+            const canonicalSourceKey = canonicalLineageSourceKey(lineage.sourceKey);
+            const sourceKey = canonicalSourceKey ?? lineageTextValue(lineage.sourceKey) ?? "unknown";
             return {
               sourceKey,
-              sourceType: lineage.sourceType,
-              sourceId: lineage.sourceId,
-              rawRecordId: lineage.rawRecordId,
+              sourceType: lineageTextValue(lineage.sourceType) ?? "unknown",
+              sourceId: lineageTextValue(lineage.sourceId),
+              rawRecordId: lineageTextValue(lineage.rawRecordId),
               capturedAt: toIso(lineage.capturedAt),
               metadata: lineage.metadata,
-              status: sourceStatuses.get(sourceKey as ImladrisProviderKey) ?? "missing",
+              status: canonicalSourceKey ? sourceStatuses.get(canonicalSourceKey) ?? "missing" : "missing",
             };
           })
         : definition.sourceKeys.map((sourceKey) => ({

@@ -125,6 +125,84 @@ describe("ExpenseDashboard", () => {
     expect(screen.getByText("AWS hosting invoice")).toBeTruthy();
   });
 
+  it("renders provider-shaped numeric envelopes without losing currency values", async () => {
+    const user = userEvent.setup();
+    const wrappedData: ExpenseDashboardData = {
+      ...DATA,
+      categoryMonthly: {
+        cloud: { "2026-03": { data: { attributes: { value: "$1,200.50" } } } as never },
+        payroll: { "2026-03": { metricValue: "6300" } as never },
+        travel: { "2026-03": { amount: "43.60" } as never },
+      },
+      categoryTotals: {
+        cloud: { data: { attributes: { value: "$1,200.50" } } } as never,
+        payroll: { metricValue: "6300" } as never,
+        travel: { amount: "43.60" } as never,
+      },
+      vendorMonthly: {
+        "Amazon Web Services": { "2026-03": { data: { value: "$1,200.50" } } as never },
+        "Elisha Eisen": { "2026-03": { metric_value: "6300" } as never },
+        "Kyle Henson": { "2026-03": { amount: "43.60" } as never },
+      },
+      vendorTotals: {
+        "Amazon Web Services": { data: { value: "$1,200.50" } } as never,
+        "Elisha Eisen": { metric_value: "6300" } as never,
+        "Kyle Henson": { amount: "43.60" } as never,
+      },
+      txnIndex: {
+        "cloud|2026-03": [
+          {
+            date: "2026-03-04",
+            vendor: "Amazon Web Services",
+            amount: { value: "1200.50" } as never,
+            description: "AWS hosting invoice",
+            category: "cloud",
+          },
+        ],
+        "payroll|2026-03": [
+          {
+            date: "2026-03-02",
+            vendor: "Elisha Eisen",
+            amount: { metricValue: "6300" } as never,
+            description: "",
+            category: "payroll",
+          },
+        ],
+        "travel|2026-03": [
+          {
+            date: "2026-03-03",
+            vendor: "Kyle Henson",
+            amount: { amount: "43.60" } as never,
+            description: "Reimbursement for expense at Lyft",
+            category: "travel",
+          },
+        ],
+      },
+      chartSeries: {
+        operatingInflows: [{ value: "5000" } as never],
+        operatingOutflows: [{ amount: "7544.10" } as never],
+        grossBurn: [{ value: "7544.10" } as never],
+        netBurn: [{ metricValue: "2544.10" } as never],
+        runwayCash: { data: { attributes: { value: "USD 100,000" } } } as never,
+      },
+    };
+    render(<ExpenseDashboard initialData={wrappedData} />);
+
+    expect(screen.getByText("$100,000")).toBeTruthy();
+    expect(screen.queryByText(/\bNaN\b/)).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Categories" }));
+    expect(screen.getAllByText("$1,201").length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("button", { name: "Vendors" }));
+    const vendorsView = screen.getByTestId("expense-view-vendors");
+    await user.click(within(vendorsView).getByRole("button", { name: /Amazon Web Services/i }));
+
+    expect(screen.getByText("Amazon Web Services - 1 transactions ($1,201)")).toBeTruthy();
+    expect(screen.getByText("$1,200.50")).toBeTruthy();
+    expect(screen.queryByText(/\bNaN\b/)).toBeNull();
+  });
+
   it("refreshes from the local WIPGuard expense dashboard API", async () => {
     const user = userEvent.setup();
     const nextData: ExpenseDashboardData = {

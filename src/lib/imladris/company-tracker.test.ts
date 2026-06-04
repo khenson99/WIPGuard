@@ -14,20 +14,23 @@ function metricRow(input: {
   status?: string;
   confidence?: number;
   warnings?: string[];
+  periodStart?: Date;
   periodEnd?: Date;
   computedAt?: Date;
   userId?: string | null;
   organizationId?: string | null;
   lineage?: Array<Record<string, unknown>>;
 }) {
+  const periodEnd = input.periodEnd ?? new Date("2026-05-31T23:59:59.999Z");
+  const periodStart = input.periodStart ?? new Date(Date.UTC(periodEnd.getUTCFullYear(), periodEnd.getUTCMonth(), 1));
   return {
     id: input.id ?? `metric_${input.metricKey.replaceAll(".", "_")}`,
     metricKey: input.metricKey,
     department: input.metricKey.startsWith("sales.") ? "sales" : "finance",
     unit: input.metricKey === "finance.cash_runway_months" ? "months" : "currency",
     value: input.value,
-    periodStart: new Date("2026-05-01T00:00:00.000Z"),
-    periodEnd: input.periodEnd ?? new Date("2026-05-31T23:59:59.999Z"),
+    periodStart,
+    periodEnd,
     status: input.status ?? "READY",
     confidence: input.confidence ?? 0.92,
     warnings: input.warnings ?? [],
@@ -182,6 +185,56 @@ describe("buildCompanyTrackerDashboard", () => {
     });
   });
 
+  it("uses runway net burn as a summary fallback when the dedicated net burn metric is missing", async () => {
+    const prisma = prismaMock({
+      canonicalRows: [
+        metricRow({
+          id: "metric_revenue_mrr_current",
+          metricKey: "revenue.mrr",
+          value: {
+            amount: 32_000,
+            arr: 384_000,
+            activeSubscriptions: 42,
+            currency: "USD",
+          },
+          periodEnd: new Date("2026-05-31T23:59:59.999Z"),
+          computedAt: new Date("2026-06-01T00:00:00.000Z"),
+        }),
+        metricRow({
+          id: "metric_revenue_mrr_previous",
+          metricKey: "revenue.mrr",
+          value: { amount: 25_000, arr: 300_000, currency: "USD" },
+          periodEnd: new Date("2026-04-30T23:59:59.999Z"),
+          computedAt: new Date("2026-05-01T00:00:00.000Z"),
+        }),
+        metricRow({
+          metricKey: "finance.cash_runway_months",
+          value: {
+            months: 8.5,
+            cashBalance: 765_000,
+            netBurn: 90_000,
+            currency: "USD",
+          },
+        }),
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.summary.netBurn).toBe(90_000);
+    expect(dashboard.healthBands.find((band) => band.id === "burn_multiple")).toMatchObject({
+      value: 1.07,
+      status: "watch",
+    });
+    expect(dashboard.metrics.find((metric) => metric.key === "finance.net_burn")).toMatchObject({
+      status: "missing",
+    });
+  });
+
   it("ignores future-computed canonical rows when building the founder cockpit summary", async () => {
     const prisma = prismaMock({
       canonicalRows: [
@@ -300,6 +353,62 @@ describe("buildCompanyTrackerDashboard", () => {
     });
   });
 
+  it("unwraps provider date envelopes before canonical metric and goal freshness checks", async () => {
+    const prisma = prismaMock({
+      canonicalRows: [
+        {
+          ...metricRow({
+            id: "wrapped_date_revenue_mrr",
+            metricKey: "revenue.mrr",
+            value: {
+              amount: 32_000,
+              arr: 384_000,
+              activeSubscriptions: 42,
+              currency: "USD",
+            },
+          }),
+          periodStart: { value: "2026-05-01T00:00:00.000Z" },
+          periodEnd: { data: { attributes: { value: "2026-05-31T23:59:59.999Z" } } },
+          computedAt: { value: "2026-06-01T00:00:00.000Z" },
+        },
+      ],
+      goals: [
+        {
+          id: "goal_arr_wrapped_deadline",
+          metric: "ARR",
+          targetValue: 500_000,
+          deadline: { data: { attributes: { value: "2026-12-31T00:00:00.000Z" } } },
+          status: "ACTIVE",
+        },
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T12:00:00.000Z"),
+    });
+
+    expect(dashboard.summary).toMatchObject({
+      arr: 384_000,
+      mrr: 32_000,
+      activeSubscriptions: 42,
+    });
+    expect(dashboard.metrics.find((metric) => metric.key === "revenue.mrr")).toMatchObject({
+      computedAt: "2026-06-01T00:00:00.000Z",
+      periodEnd: "2026-05-31T23:59:59.999Z",
+    });
+    expect(dashboard.goalProgress).toEqual([
+      expect.objectContaining({
+        id: "goal_arr_wrapped_deadline",
+        deadline: "2026-12-31T00:00:00.000Z",
+        currentValue: 384_000,
+        progressPct: 76.8,
+        status: "active",
+      }),
+    ]);
+  });
+
   it("parses formatted accounting numbers before summary and goal calculations", async () => {
     const prisma = prismaMock({
       canonicalRows: [
@@ -351,6 +460,443 @@ describe("buildCompanyTrackerDashboard", () => {
         status: "achieved",
       }),
     ]);
+  });
+
+  it("parses ISO currency canonical values before summary and goal calculations", async () => {
+    const prisma = prismaMock({
+      canonicalRows: [
+        metricRow({
+          metricKey: "revenue.mrr",
+          value: {
+            amount: "USD 32,000",
+            arr: "384,000 USD",
+            activeSubscriptions: "42",
+            currency: "USD",
+          },
+        }),
+        metricRow({
+          metricKey: "finance.net_burn",
+          value: {
+            amount: "USD -10,000",
+            currency: "USD",
+          },
+        }),
+      ],
+      goals: [
+        {
+          id: "goal_burn_profitable",
+          metric: "BURN_RATE",
+          targetValue: 80_000,
+          deadline: new Date("2026-12-31T00:00:00.000Z"),
+          status: "ACTIVE",
+        },
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.summary).toMatchObject({
+      arr: 384_000,
+      mrr: 32_000,
+      netBurn: -10_000,
+      activeSubscriptions: 42,
+    });
+    expect(dashboard.goalProgress).toEqual([
+      expect.objectContaining({
+        id: "goal_burn_profitable",
+        currentValue: -10_000,
+        progressPct: 100,
+        status: "achieved",
+      }),
+    ]);
+  });
+
+  it("parses compact currency canonical values before summary and goal calculations", async () => {
+    const prisma = prismaMock({
+      canonicalRows: [
+        metricRow({
+          metricKey: "revenue.mrr",
+          value: {
+            amount: "USD 100k",
+            arr: "1.2M USD",
+            activeSubscriptions: "42",
+            currency: "USD",
+          },
+        }),
+        metricRow({
+          metricKey: "finance.net_burn",
+          value: {
+            amount: "USD -80k",
+            currency: "USD",
+          },
+        }),
+      ],
+      goals: [
+        {
+          id: "goal_arr_compact_target",
+          metric: "ARR",
+          targetValue: "USD 1.5M",
+          deadline: new Date("2026-12-31T00:00:00.000Z"),
+          status: "ACTIVE",
+        },
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.summary).toMatchObject({
+      arr: 1_200_000,
+      mrr: 100_000,
+      netBurn: -80_000,
+      activeSubscriptions: 42,
+    });
+    expect(dashboard.goalProgress).toEqual([
+      expect.objectContaining({
+        id: "goal_arr_compact_target",
+        targetValue: 1_500_000,
+        currentValue: 1_200_000,
+        progressPct: 80,
+      }),
+    ]);
+  });
+
+  it("reads wrapped canonical metric values before summary and health band calculations", async () => {
+    const prisma = prismaMock({
+      canonicalRows: [
+        metricRow({
+          id: "metric_revenue_mrr_current_wrapped",
+          metricKey: "revenue.mrr",
+          value: {
+            values: {
+              amount: "USD 32k",
+              arr: "USD 384k",
+              active_subscriptions: "42",
+              currency: "usd",
+            },
+          },
+          periodEnd: new Date("2026-05-31T23:59:59.999Z"),
+        }),
+        metricRow({
+          id: "metric_revenue_mrr_previous_wrapped",
+          metricKey: "revenue.mrr",
+          value: {
+            fields: {
+              amount: 25_000,
+              arr: 300_000,
+              currency: "usd",
+            },
+          },
+          periodEnd: new Date("2026-04-30T23:59:59.999Z"),
+        }),
+        metricRow({
+          metricKey: "finance.cash_runway_months",
+          value: {
+            attributes: {
+              months: "9.5",
+              cash_balance: "765k",
+              net_burn: "84k",
+              currency: "usd",
+            },
+          },
+        }),
+        metricRow({
+          metricKey: "finance.net_burn",
+          value: {
+            values: {
+              amount: "USD 84k",
+              currency: "usd",
+            },
+          },
+        }),
+        metricRow({
+          metricKey: "sales.qualified_pipeline",
+          value: {
+            fields: {
+              amount: "USD 1.5M",
+              currency: "usd",
+            },
+          },
+        }),
+      ],
+      goals: [
+        {
+          id: "goal_arr_wrapped",
+          metric: "ARR",
+          targetValue: "USD 500k",
+          deadline: new Date("2026-12-31T00:00:00.000Z"),
+          status: "ACTIVE",
+        },
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.summary).toMatchObject({
+      arr: 384_000,
+      mrr: 32_000,
+      runwayMonths: 9.5,
+      cashBalance: 765_000,
+      netBurn: 84_000,
+      qualifiedPipeline: 1_500_000,
+      activeSubscriptions: 42,
+      currency: "USD",
+    });
+    expect(dashboard.goalProgress).toEqual([
+      expect.objectContaining({
+        id: "goal_arr_wrapped",
+        currentValue: 384_000,
+        progressPct: 76.8,
+        status: "active",
+      }),
+    ]);
+    expect(dashboard.healthBands.find((band) => band.id === "burn_multiple")).toMatchObject({
+      value: 1,
+      status: "strong",
+    });
+    expect(dashboard.healthBands.find((band) => band.id === "pipeline_coverage")).toMatchObject({
+      value: 3.9,
+      status: "strong",
+    });
+    expect(dashboard.metrics.find((metric) => metric.key === "sales.qualified_pipeline")?.value).toEqual({
+      amount: "USD 1.5M",
+      currency: "usd",
+    });
+  });
+
+  it("reads JSON:API data attribute canonical metric values before summary calculations", async () => {
+    const prisma = prismaMock({
+      canonicalRows: [
+        metricRow({
+          id: "metric_revenue_mrr_json_api",
+          metricKey: "revenue.mrr",
+          value: {
+            data: {
+              type: "canonical_metric_values",
+              id: "metric_revenue_mrr_json_api",
+              attributes: {
+                amount: "USD 32k",
+                arr: "USD 384k",
+                active_subscriptions: "42",
+                currency: "usd",
+              },
+            },
+          },
+        }),
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.summary).toMatchObject({
+      arr: 384_000,
+      mrr: 32_000,
+      activeSubscriptions: 42,
+      currency: "USD",
+    });
+    expect(dashboard.metrics.find((metric) => metric.key === "revenue.mrr")?.value).toEqual({
+      amount: "USD 32k",
+      arr: "USD 384k",
+      active_subscriptions: "42",
+      currency: "usd",
+    });
+  });
+
+  it("unwraps single-value JSON:API canonical metric attributes before summary calculations", async () => {
+    const prisma = prismaMock({
+      canonicalRows: [
+        metricRow({
+          id: "metric_revenue_mrr_json_api_value",
+          metricKey: "revenue.mrr",
+          value: {
+            data: {
+              type: "canonical_metric_values",
+              id: "metric_revenue_mrr_json_api_value",
+              attributes: {
+                value: {
+                  amount: "USD 32k",
+                  arr: "USD 384k",
+                  active_subscriptions: "42",
+                  currency: "usd",
+                },
+              },
+            },
+          },
+        }),
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.summary).toMatchObject({
+      arr: 384_000,
+      mrr: 32_000,
+      activeSubscriptions: 42,
+      currency: "USD",
+    });
+    expect(dashboard.metrics.find((metric) => metric.key === "revenue.mrr")?.value).toEqual({
+      amount: "USD 32k",
+      arr: "USD 384k",
+      active_subscriptions: "42",
+      currency: "usd",
+    });
+  });
+
+  it("unwraps object-shaped canonical scalar values before summary and goal calculations", async () => {
+    const prisma = prismaMock({
+      canonicalRows: [
+        metricRow({
+          metricKey: "revenue.mrr",
+          value: {
+            amount: { value: "USD 32k" },
+            arr: {
+              data: {
+                value: "USD 384k",
+              },
+            },
+            activeSubscriptions: { value: "42" },
+            currency: { value: "usd" },
+          },
+        }),
+        metricRow({
+          metricKey: "finance.net_burn",
+          value: {
+            amount: { value: "USD 84k" },
+            currency: { value: "usd" },
+          },
+        }),
+      ],
+      goals: [
+        {
+          id: "goal_arr_scalar_wrapped",
+          metric: "ARR",
+          targetValue: { value: "USD 500k" },
+          deadline: new Date("2026-12-31T00:00:00.000Z"),
+          status: "ACTIVE",
+        },
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.summary).toMatchObject({
+      arr: 384_000,
+      mrr: 32_000,
+      netBurn: 84_000,
+      activeSubscriptions: 42,
+      currency: "USD",
+    });
+    expect(dashboard.goalProgress).toEqual([
+      expect.objectContaining({
+        id: "goal_arr_scalar_wrapped",
+        targetValue: 500_000,
+        currentValue: 384_000,
+        progressPct: 76.8,
+      }),
+    ]);
+  });
+
+  it("floors fractional active subscription counts before summary and goal calculations", async () => {
+    const prisma = prismaMock({
+      canonicalRows: [
+        metricRow({
+          metricKey: "revenue.mrr",
+          value: {
+            amount: 32_000,
+            arr: 384_000,
+            activeSubscriptions: 42.9,
+            currency: "USD",
+          },
+        }),
+      ],
+      goals: [
+        {
+          id: "goal_customer_count",
+          metric: "CUSTOMER_COUNT",
+          targetValue: 50,
+          deadline: new Date("2026-12-31T00:00:00.000Z"),
+          status: "ACTIVE",
+        },
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.summary.activeSubscriptions).toBe(42);
+    expect(dashboard.goalProgress).toEqual([
+      expect.objectContaining({
+        id: "goal_customer_count",
+        currentValue: 42,
+        progressPct: 84,
+      }),
+    ]);
+  });
+
+  it("reads snake_case canonical summary payload aliases", async () => {
+    const prisma = prismaMock({
+      canonicalRows: [
+        metricRow({
+          metricKey: "revenue.mrr",
+          value: {
+            amount: 32_000,
+            arr: 384_000,
+            active_subscriptions: 42,
+            currency: "USD",
+          },
+        }),
+        metricRow({
+          metricKey: "finance.cash_runway_months",
+          value: {
+            months: 8.5,
+            cash_balance: 765_000,
+            net_burn: 90_000,
+            currency: "USD",
+          },
+        }),
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.summary).toMatchObject({
+      arr: 384_000,
+      mrr: 32_000,
+      runwayMonths: 8.5,
+      cashBalance: 765_000,
+      netBurn: 90_000,
+      activeSubscriptions: 42,
+    });
   });
 
   it("uses the first nonblank trimmed currency code in the company summary", async () => {
@@ -651,6 +1197,54 @@ describe("buildCompanyTrackerDashboard", () => {
         }),
       }),
     );
+  });
+
+  it("defensively ignores canonical rows with inverted reporting windows", async () => {
+    const prisma = prismaMock({
+      canonicalRows: [
+        metricRow({
+          id: "metric_revenue_mrr_inverted_window",
+          metricKey: "revenue.mrr",
+          value: {
+            amount: 99_000,
+            arr: 1_188_000,
+            activeSubscriptions: 99,
+            currency: "USD",
+          },
+          periodStart: new Date("2026-06-01T00:00:00.000Z"),
+          periodEnd: new Date("2026-05-31T23:59:59.999Z"),
+          computedAt: new Date("2026-06-01T00:30:00.000Z"),
+        }),
+        metricRow({
+          id: "metric_revenue_mrr_current",
+          metricKey: "revenue.mrr",
+          value: {
+            amount: 32_000,
+            arr: 384_000,
+            activeSubscriptions: 42,
+            currency: "USD",
+          },
+          periodEnd: new Date("2026-05-31T23:59:59.999Z"),
+          computedAt: new Date("2026-06-01T00:00:00.000Z"),
+        }),
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T01:00:00.000Z"),
+    });
+
+    expect(dashboard.summary).toMatchObject({
+      arr: 384_000,
+      mrr: 32_000,
+      activeSubscriptions: 42,
+    });
+    expect(dashboard.metrics.find((metric) => metric.key === "revenue.mrr")).toMatchObject({
+      computedAt: "2026-06-01T00:00:00.000Z",
+      periodEnd: "2026-05-31T23:59:59.999Z",
+    });
   });
 
   it("defensively ignores inactive or wrong-user goals returned by the data layer", async () => {
@@ -1060,6 +1654,64 @@ describe("buildCompanyTrackerDashboard", () => {
         currency: "USD",
       },
       computedAt: "2026-06-01T00:00:00.000Z",
+    });
+  });
+
+  it("does not let newer global canonical rows override scoped company metrics", async () => {
+    const prisma = prismaMock({
+      canonicalRows: [
+        metricRow({
+          id: "metric_revenue_mrr_global_future_period",
+          metricKey: "revenue.mrr",
+          userId: null,
+          organizationId: null,
+          value: {
+            amount: 99_000,
+            arr: 1_188_000,
+            activeSubscriptions: 99,
+            currency: "USD",
+          },
+          periodStart: new Date("2026-06-01T00:00:00.000Z"),
+          periodEnd: new Date("2026-06-02T23:59:59.999Z"),
+          computedAt: new Date("2026-06-03T00:00:00.000Z"),
+        }),
+        metricRow({
+          id: "metric_revenue_mrr_scoped_current",
+          metricKey: "revenue.mrr",
+          userId: "user_1",
+          organizationId: "org_1",
+          value: {
+            amount: 32_000,
+            arr: 384_000,
+            activeSubscriptions: 42,
+            currency: "USD",
+          },
+          periodEnd: new Date("2026-05-31T23:59:59.999Z"),
+          computedAt: new Date("2026-06-01T00:00:00.000Z"),
+        }),
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-03T12:00:00.000Z"),
+    });
+
+    expect(dashboard.summary).toMatchObject({
+      arr: 384_000,
+      mrr: 32_000,
+      activeSubscriptions: 42,
+    });
+    expect(dashboard.metrics.find((metric) => metric.key === "revenue.mrr")).toMatchObject({
+      value: {
+        amount: 32_000,
+        arr: 384_000,
+        activeSubscriptions: 42,
+        currency: "USD",
+      },
+      computedAt: "2026-06-01T00:00:00.000Z",
+      periodEnd: "2026-05-31T23:59:59.999Z",
     });
   });
 

@@ -1,4 +1,5 @@
 import { IntegrationProvider } from "@/generated/prisma/client";
+import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
 import type { PrismaClientType } from "@/lib/prisma";
 
 export type ExpenseDashboardRange = "30d" | "90d" | "180d";
@@ -38,9 +39,10 @@ export interface ExpenseDashboardData {
 }
 
 interface RawSourceRecordRow {
-  provider: IntegrationProvider | string;
+  id?: string;
+  provider: unknown;
   objectType: string;
-  externalId: string;
+  externalId: unknown;
   scopeKey?: string | null;
   occurredAt: Date | string | null;
   sourceCreatedAt?: Date | string | null;
@@ -209,8 +211,50 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function scalarValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value !== "object") return value;
+  if (value instanceof Date) return value;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.length === 1 ? scalarValue(value[0], seen) : null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const data = asRecord(record.data);
+  const candidates = [
+    record.value,
+    record.metricValue,
+    record.metric_value,
+    record.amount,
+    record.number,
+    record.count,
+    record.date,
+    record.timestamp,
+    record.name,
+    record.label,
+    record.text,
+    asRecord(data.attributes).value,
+    data.value,
+    data.attributes,
+    record.attributes,
+    record.values,
+    record.fields,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = scalarValue(candidate, seen);
+    if (normalized !== null && normalized !== undefined && typeof normalized !== "object") return normalized;
+    if (normalized instanceof Date) return normalized;
+  }
+
+  return value;
+}
+
 function normalizeVendorKey(value: unknown): string {
-  return String(value || "")
+  return String(scalarValue(value) || "")
     .toLowerCase()
     .replace(/[–—]/g, "-")
     .replace(/\s+/g, " ")
@@ -218,23 +262,18 @@ function normalizeVendorKey(value: unknown): string {
 }
 
 function numberFrom(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const normalized = value.trim().replace(/[$,\s]/g, "");
-    const parsed = Number(/^\(.+\)$/.test(normalized) ? `-${normalized.slice(1, -1)}` : normalized);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
+  return parseImladrisNumber(scalarValue(value) ?? value);
 }
 
 function dateFrom(value: unknown): Date | null {
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    const parsed = new Date(value < 10_000_000_000 ? value * 1000 : value);
+  const normalizedValue = scalarValue(value);
+  if (normalizedValue instanceof Date) return Number.isNaN(normalizedValue.getTime()) ? null : normalizedValue;
+  if (typeof normalizedValue === "number" && Number.isFinite(normalizedValue) && normalizedValue > 0) {
+    const parsed = new Date(normalizedValue < 10_000_000_000 ? normalizedValue * 1000 : normalizedValue);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
-  if (typeof value === "string" && value.trim()) {
-    const normalized = value.trim();
+  if (typeof normalizedValue === "string" && normalizedValue.trim()) {
+    const normalized = normalizedValue.trim();
     if (/^\d+(?:\.\d+)?$/.test(normalized)) {
       const timestamp = Number(normalized);
       if (Number.isFinite(timestamp) && timestamp > 0) {
@@ -246,6 +285,46 @@ function dateFrom(value: unknown): Date | null {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
   return null;
+}
+
+function wrapperSources(payload: Record<string, unknown>): Record<string, unknown>[] {
+  const data = asRecord(payload.data);
+  const sources = [
+    payload,
+    asRecord(payload.properties),
+    asRecord(payload.values),
+    asRecord(payload.fields),
+    asRecord(payload.attributes),
+    data,
+    asRecord(data.properties),
+    asRecord(data.values),
+    asRecord(data.fields),
+    asRecord(data.attributes),
+  ];
+  const expandedSources = sources.flatMap((source) => {
+    const entries = Object.entries(source);
+    if (entries.length !== 1) return [source];
+
+    const [key, value] = entries[0];
+    const nestedValue = asRecord(value);
+    if (!["value", "metricValue", "metric_value"].includes(key) || Object.keys(nestedValue).length === 0) {
+      return [source];
+    }
+
+    return [nestedValue, source];
+  });
+  return expandedSources.filter((source, index, sources) =>
+    Object.keys(source).length > 0 && sources.findIndex((candidate) => candidate === source) === index,
+  );
+}
+
+function firstValueFromSources(sources: Record<string, unknown>[], keys: string[]): unknown {
+  for (const source of sources) {
+    for (const key of keys) {
+      if (source[key] !== undefined && source[key] !== null) return source[key];
+    }
+  }
+  return undefined;
 }
 
 function monthKeyFromDate(value: unknown): string | null {
@@ -420,7 +499,14 @@ function rawRecordMatchesContext(record: RawSourceRecordRow, context: ExpenseDas
   if (context.organizationId) {
     const organizationScopeKey = scopeKeyForContext({ userId: null, organizationId: context.organizationId });
     if (rowOrganizationId === context.organizationId && scopeKey === organizationScopeKey) return true;
-    if (context.userId && rowUserId === context.userId && scopeKey === organizationScopeKey) return true;
+    if (
+      context.userId &&
+      rowUserId === context.userId &&
+      rowOrganizationId === null &&
+      scopeKey === organizationScopeKey
+    ) {
+      return true;
+    }
     if (
       context.userId &&
       rowUserId === context.userId &&
@@ -442,15 +528,76 @@ function rawRecordMatchesContext(record: RawSourceRecordRow, context: ExpenseDas
   return rowUserId === null && rowOrganizationId === null && scopeKey === "global";
 }
 
+function objectTypeValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  const normalizedValue = scalarValue(value);
+  if (normalizedValue !== null && normalizedValue !== undefined && typeof normalizedValue !== "object") {
+    return normalizedValue;
+  }
+  if (value === null || value === undefined || typeof value !== "object") return null;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    const normalized = value.length === 1 ? objectTypeValue(value[0], seen) : null;
+    seen.delete(value);
+    return normalized;
+  }
+
+  const record = value as Record<string, unknown>;
+  const data = asRecord(record.data);
+  const dataAttributes = asRecord(data.attributes);
+  const candidates = [
+    record.objectType,
+    record.object_type,
+    record.type,
+    data.objectType,
+    data.object_type,
+    data.type,
+    dataAttributes.objectType,
+    dataAttributes.object_type,
+    dataAttributes.type,
+  ];
+  for (const candidate of candidates) {
+    const normalized = scalarValue(candidate);
+    if (normalized !== null && normalized !== undefined && typeof normalized !== "object") {
+      seen.delete(value);
+      return normalized;
+    }
+  }
+
+  seen.delete(value);
+  return null;
+}
+
 function normalizeObjectType(value: unknown): string {
-  return typeof value === "string"
-    ? value
+  const normalizedValue = objectTypeValue(value);
+  return typeof normalizedValue === "string"
+    ? normalizedValue
         .trim()
         .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
         .replace(/[^a-zA-Z0-9]+/g, "_")
         .replace(/^_+|_+$/g, "")
         .toLowerCase()
     : "";
+}
+
+function normalizeProviderKey(value: unknown): string {
+  const normalizedValue = scalarValue(value);
+  return typeof normalizedValue === "string"
+    ? normalizedValue
+        .trim()
+        .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+        .replace(/[^a-zA-Z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .toUpperCase()
+    : "";
+}
+
+function recordIsProvider(record: RawSourceRecordRow, provider: IntegrationProvider): boolean {
+  const normalized = normalizeProviderKey(record.provider);
+  const expected = normalizeProviderKey(provider);
+  if (!normalized || !expected) return false;
+  return normalized === expected || normalized.replaceAll("_", "") === expected.replaceAll("_", "");
 }
 
 function recordIsObjectType(record: RawSourceRecordRow, ...objectTypes: string[]): boolean {
@@ -478,17 +625,111 @@ function dateWithinRange(date: Date, fromDate: Date, toDate: Date): boolean {
   return time >= fromDate.getTime() && time <= toDate.getTime();
 }
 
+function transactionAmountFromPayload(payload: Record<string, unknown>): number | string | null {
+  const sources = wrapperSources(payload);
+  const explicitDecimal = numberFrom(firstValueFromSources(sources, [
+    "amountDecimal",
+    "amount_decimal",
+    "amountDollars",
+    "amount_dollars",
+    "netAmountDecimal",
+    "net_amount_decimal",
+    "netAmountDollars",
+    "net_amount_dollars",
+  ]));
+  if (explicitDecimal !== null) return explicitDecimal;
+  const explicitCents = numberFrom(firstValueFromSources(sources, [
+    "amountCents",
+    "amount_cents",
+    "netAmountCents",
+    "net_amount_cents",
+    "valueCents",
+    "value_cents",
+  ]));
+  if (explicitCents !== null) return explicitCents / 100;
+  const debitAmountCents = numberFrom(firstValueFromSources(sources, [
+    "debitAmountCents",
+    "debit_amount_cents",
+    "debitCents",
+    "debit_cents",
+    "withdrawalAmountCents",
+    "withdrawal_amount_cents",
+    "withdrawalCents",
+    "withdrawal_cents",
+  ]));
+  const creditAmountCents = numberFrom(firstValueFromSources(sources, [
+    "creditAmountCents",
+    "credit_amount_cents",
+    "creditCents",
+    "credit_cents",
+    "depositAmountCents",
+    "deposit_amount_cents",
+    "depositCents",
+    "deposit_cents",
+  ]));
+  if (debitAmountCents !== null || creditAmountCents !== null) {
+    return (Math.abs(creditAmountCents ?? 0) - Math.abs(debitAmountCents ?? 0)) / 100;
+  }
+  const debitAmount = numberFrom(firstValueFromSources(sources, [
+    "debitAmount",
+    "debit_amount",
+    "debit",
+    "withdrawalAmount",
+    "withdrawal_amount",
+    "withdrawal",
+  ]));
+  const creditAmount = numberFrom(firstValueFromSources(sources, [
+    "creditAmount",
+    "credit_amount",
+    "credit",
+    "depositAmount",
+    "deposit_amount",
+    "deposit",
+  ]));
+  if (debitAmount !== null || creditAmount !== null) {
+    return Math.abs(creditAmount ?? 0) - Math.abs(debitAmount ?? 0);
+  }
+  return firstValueFromSources(sources, ["amount", "netAmount", "net_amount", "value"]) as number | string | null;
+}
+
+function firstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    const normalized = scalarValue(value);
+    if (typeof normalized === "string") return normalized;
+  }
+  return null;
+}
+
+function scalarString(value: unknown, fallback = ""): string {
+  const normalized = scalarValue(value);
+  if (normalized instanceof Date) return normalized.toISOString();
+  if (normalized === null || normalized === undefined) return fallback;
+  return String(normalized);
+}
+
+function identifierString(value: unknown): string {
+  const normalized = scalarValue(value);
+  if (normalized instanceof Date) return normalized.toISOString();
+  if (typeof normalized === "string") return normalized.trim();
+  if (typeof normalized === "number" || typeof normalized === "boolean" || typeof normalized === "bigint") {
+    return String(normalized);
+  }
+  return "";
+}
+
 function transactionFromRecord(record: RawSourceRecordRow): ExpenseDashboardTransactionInput {
   const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const postedAt = firstValueFromSources(sources, ["postedAt", "posted_at"]);
   return {
-    postedAt: String(payload.postedAt ?? payload.posted_at ?? record.occurredAt ?? ""),
-    amount: payload.amount as number | string | null,
-    kind: typeof payload.kind === "string" ? payload.kind : null,
-    mercuryCategory: typeof payload.mercuryCategory === "string" ? payload.mercuryCategory : null,
-    description: typeof payload.description === "string" ? payload.description : null,
-    counterpartyName: typeof payload.counterpartyName === "string" ? payload.counterpartyName : null,
-    bankDescription: typeof payload.bankDescription === "string" ? payload.bankDescription : null,
-    note: typeof payload.note === "string" ? payload.note : null,
+    postedAt: scalarString(postedAt ?? record.occurredAt),
+    amount: transactionAmountFromPayload(payload),
+    kind: firstString(firstValueFromSources(sources, ["kind"])),
+    mercuryCategory: firstString(firstValueFromSources(sources, ["mercuryCategory", "mercury_category"])),
+    description: firstString(firstValueFromSources(sources, ["description"])),
+    counterpartyName: firstString(firstValueFromSources(sources, ["counterpartyName", "counterparty_name"])),
+    bankDescription: firstString(firstValueFromSources(sources, ["bankDescription", "bank_description"])),
+    note: firstString(firstValueFromSources(sources, ["note"])),
   };
 }
 
@@ -496,27 +737,55 @@ function vendorFromTransaction(tx: ExpenseDashboardTransactionInput): string {
   return tx.counterpartyName || tx.description || tx.bankDescription || "Unknown vendor";
 }
 
-function latestCashBalance(records: RawSourceRecordRow[], asOf: Date): number | undefined {
-  const balances = records
-    .filter((record) => recordIsObjectType(record, "account_balance", "balance"))
-    .map((record) => ({
-      amount: numberFrom(asRecord(record.payload).balance ?? asRecord(record.payload).currentBalance),
-      timestamp: recordTimestamp(record)?.getTime() ?? null,
-    }))
-    .filter(
-      (entry): entry is { amount: number; timestamp: number } =>
-        typeof entry.amount === "number" &&
-        typeof entry.timestamp === "number" &&
-        entry.timestamp <= asOf.getTime(),
-    );
+function balanceTimestamp(record: RawSourceRecordRow, sources: Record<string, unknown>[]): Date | null {
+  return dateFrom(firstValueFromSources(sources, [
+    "balanceAsOf",
+    "balance_as_of",
+    "asOf",
+    "as_of",
+    "effectiveAt",
+    "effective_at",
+  ])) ?? recordTimestamp(record);
+}
 
-  if (balances.length === 0) return undefined;
-  const latestTimestamp = Math.max(...balances.map((entry) => entry.timestamp));
-  return roundMoney(
-    balances
-      .filter((entry) => entry.timestamp === latestTimestamp)
-      .reduce((sum, entry) => sum + entry.amount, 0),
-  );
+function latestCashBalance(records: RawSourceRecordRow[], asOf: Date): number | undefined {
+  const latestByAccount = new Map<string, { amount: number; timestamp: number }>();
+  for (const record of records.filter((entry) => recordIsObjectType(entry, "account_balance", "balance"))) {
+    const payload = asRecord(record.payload);
+    const sources = wrapperSources(payload);
+    const account = asRecord(firstValueFromSources(sources, ["account"]));
+    const amount = numberFrom(firstValueFromSources(sources, [
+      "balance",
+      "currentBalance",
+      "current_balance",
+      "availableBalance",
+      "available_balance",
+    ]));
+    const timestamp = balanceTimestamp(record, sources)?.getTime() ?? null;
+    if (amount === null || timestamp === null || timestamp > asOf.getTime()) continue;
+    const accountSources = wrapperSources(account);
+    const accountCandidate = scalarValue(
+      firstValueFromSources(sources, ["accountId", "account_id", "accountName", "account_name"]) ??
+        firstValueFromSources(accountSources, [
+          "id",
+          "accountId",
+          "account_id",
+          "accountNumber",
+          "account_number",
+        ]),
+    );
+    const fallbackAccountKey = identifierString(record.externalId) || identifierString(record.id);
+    const accountKey = identifierString(accountCandidate) || fallbackAccountKey;
+    const key = accountKey || fallbackAccountKey;
+    if (!key) continue;
+    const current = latestByAccount.get(key);
+    if (!current || timestamp >= current.timestamp) {
+      latestByAccount.set(key, { amount, timestamp });
+    }
+  }
+
+  if (latestByAccount.size === 0) return undefined;
+  return roundMoney([...latestByAccount.values()].reduce((sum, entry) => sum + entry.amount, 0));
 }
 
 export function createEmptyExpenseDashboardData(refreshedAt = new Date().toISOString()): ExpenseDashboardData {
@@ -565,7 +834,9 @@ export async function buildExpenseDashboard(input: {
       ],
     },
     orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }, { sourceCreatedAt: "asc" }],
-  })) as RawSourceRecordRow[]).filter((record) => rawRecordMatchesContext(record, context));
+  })) as RawSourceRecordRow[]).filter((record) =>
+    rawRecordMatchesContext(record, context) && recordIsProvider(record, IntegrationProvider.MERCURY),
+  );
 
   if (records.length === 0) return createEmptyExpenseDashboardData(now.toISOString());
 

@@ -95,4 +95,53 @@ describe("CompanyGoalsDashboard", () => {
     expect(screen.getByText(/Settings > Integrations/)).toBeTruthy();
     expect(screen.getByRole("link", { name: /Open integrations/i }).getAttribute("href")).toBe("/settings");
   });
+
+  it("unwraps provider date envelopes before rendering sync and goal dates", () => {
+    render(
+      <CompanyGoalsDashboard
+        data={{
+          ...DATA,
+          summary: {
+            ...DATA.summary,
+            latestSyncAt: { value: "2026-06-01T12:00:00.000Z" } as never,
+          },
+          goals: [
+            {
+              ...DATA.goals[0],
+              targetDate: { data: { value: "2026-06-30" } } as never,
+              updatedAt: { attributes: { value: "2026-05-31T00:00:00.000Z" } } as never,
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Synced 2026-06-01")).toBeTruthy();
+    expect(screen.getByText("2026-06-30")).toBeTruthy();
+    expect(screen.getByText("2026-05-31")).toBeTruthy();
+  });
+
+  it("unwraps provider numeric envelopes before rendering progress and issue counts", () => {
+    render(
+      <CompanyGoalsDashboard
+        data={{
+          ...DATA,
+          goals: [
+            {
+              ...DATA.goals[0],
+              progressPct: { data: { attributes: { value: "50" } } } as never,
+              completedIssueCount: { value: "1" } as never,
+              totalIssueCount: { metricValue: "2" } as never,
+              blockedIssueCount: { amount: "0" } as never,
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("50.0%")).toBeTruthy();
+    expect(screen.getByText("1 / 2 issues")).toBeTruthy();
+    expect(screen.getByText("0")).toBeTruthy();
+    expect(screen.queryByText("[object Object]")).toBeNull();
+  });
 });

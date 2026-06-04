@@ -284,7 +284,7 @@ describe("Imladris raw ingestion", () => {
     expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledOnce();
   });
 
-  it("drops lossy checkpoint containers instead of serializing them as empty objects", async () => {
+  it("normalizes checkpoint containers instead of serializing them as empty objects", async () => {
     const { prisma } = createPrismaMock();
 
     await ingestImladrisRawRecords({
@@ -308,7 +308,9 @@ describe("Imladris raw ingestion", () => {
 
     expect(prisma.imladrisSourceSyncRun.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        checkpoint: undefined,
+        checkpoint: {
+          seenIds: ["LIN-1", "LIN-2"],
+        },
       }),
     });
   });
@@ -494,7 +496,262 @@ describe("Imladris raw ingestion", () => {
     });
   });
 
-  it("rejects non-string raw record identities with precise per-record errors", async () => {
+  it("normalizes numeric external identifiers before raw persistence", async () => {
+    const { prisma } = createPrismaMock();
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.GOOGLE_ADS,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      records: [
+        {
+          objectType: "campaign_metric",
+          externalId: 1234567890,
+          payload: {
+            campaignId: 1234567890,
+            spend: "1,250.00",
+          },
+        },
+      ] as never,
+    });
+
+    expect(result).toMatchObject({
+      syncRunId: "sync_1",
+      status: "SUCCESS",
+      recordCount: 1,
+      acceptedCount: 1,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          provider_objectType_externalId_scopeKey: {
+            provider: IntegrationProvider.GOOGLE_ADS,
+            objectType: "campaign_metric",
+            externalId: "1234567890",
+            scopeKey: "org:org_1",
+          },
+        },
+        create: expect.objectContaining({
+          externalId: "1234567890",
+        }),
+        update: expect.objectContaining({
+          payload: {
+            campaignId: 1234567890,
+            spend: "1,250.00",
+          },
+        }),
+      }),
+    );
+  });
+
+  it("unwraps scalar record identity envelopes before raw persistence", async () => {
+    const { prisma } = createPrismaMock();
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.STRIPE,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      records: [
+        {
+          objectType: { value: " SubscriptionItem " },
+          externalId: { data: { attributes: { value: "si_wrapped_identity" } } },
+          payload: { id: "si_wrapped_identity" },
+        },
+      ] as never,
+    });
+
+    expect(result).toMatchObject({
+      syncRunId: "sync_1",
+      status: "SUCCESS",
+      recordCount: 1,
+      acceptedCount: 1,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          provider_objectType_externalId_scopeKey: {
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription_item",
+            externalId: "si_wrapped_identity",
+            scopeKey: "org:org_1",
+          },
+        },
+        create: expect.objectContaining({
+          objectType: "subscription_item",
+          externalId: "si_wrapped_identity",
+        }),
+      }),
+    );
+  });
+
+  it("unwraps JSON API record identity envelopes before raw persistence", async () => {
+    const { prisma } = createPrismaMock();
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.STRIPE,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      records: [
+        {
+          objectType: {
+            data: {
+              type: "SubscriptionItem",
+              id: "ignored_for_object_type",
+            },
+          },
+          externalId: {
+            data: {
+              type: "subscription_items",
+              id: "si_json_api_identity",
+            },
+          },
+          payload: { id: "si_json_api_identity" },
+        },
+      ] as never,
+    });
+
+    expect(result).toMatchObject({
+      syncRunId: "sync_1",
+      status: "SUCCESS",
+      recordCount: 1,
+      acceptedCount: 1,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          provider_objectType_externalId_scopeKey: {
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription_item",
+            externalId: "si_json_api_identity",
+            scopeKey: "org:org_1",
+          },
+        },
+        create: expect.objectContaining({
+          objectType: "subscription_item",
+          externalId: "si_json_api_identity",
+        }),
+      }),
+    );
+  });
+
+  it("unwraps provider SDK id envelopes before raw persistence", async () => {
+    const { prisma } = createPrismaMock();
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.HUBSPOT,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      records: [
+        {
+          objectType: "deal",
+          externalId: { id: "deal_wrapped_id" },
+          payload: { id: "deal_wrapped_id", amount: 24_000 },
+        },
+      ] as never,
+    });
+
+    expect(result).toMatchObject({
+      syncRunId: "sync_1",
+      status: "SUCCESS",
+      recordCount: 1,
+      acceptedCount: 1,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          provider_objectType_externalId_scopeKey: {
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_wrapped_id",
+            scopeKey: "org:org_1",
+          },
+        },
+        create: expect.objectContaining({
+          objectType: "deal",
+          externalId: "deal_wrapped_id",
+        }),
+      }),
+    );
+  });
+
+  it("rejects ambiguous numeric external identifiers before raw persistence", async () => {
+    const { prisma } = createPrismaMock();
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.GOOGLE_ADS,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      records: [
+        {
+          objectType: "campaign_metric",
+          externalId: 1234567890,
+          payload: { campaignId: 1234567890 },
+        },
+        {
+          objectType: "campaign_metric",
+          externalId: 123.45,
+          payload: { campaignId: 123.45 },
+        },
+        {
+          objectType: "campaign_metric",
+          externalId: Number.MAX_SAFE_INTEGER + 1,
+          payload: { campaignId: Number.MAX_SAFE_INTEGER + 1 },
+        },
+      ] as never,
+    });
+
+    expect(result).toMatchObject({
+      syncRunId: "sync_1",
+      status: "PARTIAL",
+      recordCount: 3,
+      acceptedCount: 1,
+      errorCount: 2,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledOnce();
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          provider_objectType_externalId_scopeKey: {
+            provider: IntegrationProvider.GOOGLE_ADS,
+            objectType: "campaign_metric",
+            externalId: "1234567890",
+            scopeKey: "org:org_1",
+          },
+        },
+      }),
+    );
+    expect(prisma.imladrisSourceSyncRun.update).toHaveBeenCalledWith({
+      where: { id: "sync_1" },
+      data: expect.objectContaining({
+        status: "PARTIAL",
+        recordCount: 3,
+        acceptedCount: 1,
+        errorCount: 2,
+        lastError: "raw record 3 rejected: externalId must be a string or safe integer",
+      }),
+    });
+  });
+
+  it("rejects invalid raw record identities with precise per-record errors", async () => {
     const { prisma } = createPrismaMock();
 
     const result = await ingestImladrisRawRecords({
@@ -512,7 +769,7 @@ describe("Imladris raw ingestion", () => {
         },
         {
           objectType: "deal",
-          externalId: { id: "deal_2" },
+          externalId: { identifiers: ["deal_2"] },
           payload: { amount: 24_000 },
         },
       ] as never,
@@ -533,7 +790,7 @@ describe("Imladris raw ingestion", () => {
         recordCount: 2,
         acceptedCount: 0,
         errorCount: 2,
-        lastError: "raw record 2 rejected: externalId must be a string",
+        lastError: "raw record 2 rejected: externalId must be a string or safe integer",
       }),
     });
   });
@@ -594,7 +851,7 @@ describe("Imladris raw ingestion", () => {
     });
   });
 
-  it("rejects lossy provider payload containers instead of persisting empty objects", async () => {
+  it("normalizes Map and Set provider payload containers instead of persisting empty objects", async () => {
     const { prisma } = createPrismaMock();
 
     const result = await ingestImladrisRawRecords({
@@ -616,6 +873,7 @@ describe("Imladris raw ingestion", () => {
           payload: {
             id: "sub_map",
             metadata: new Map([["plan", "enterprise"]]),
+            tags: new Set(["annual", "priority"]),
           },
         },
       ],
@@ -623,12 +881,162 @@ describe("Imladris raw ingestion", () => {
 
     expect(result).toMatchObject({
       syncRunId: "sync_1",
-      status: "PARTIAL",
+      status: "SUCCESS",
       recordCount: 2,
-      acceptedCount: 1,
-      errorCount: 1,
+      acceptedCount: 2,
+      errorCount: 0,
     });
-    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledOnce();
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledTimes(2);
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: {
+          provider_objectType_externalId_scopeKey: {
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_valid",
+            scopeKey: "org:org_1",
+          },
+        },
+      }),
+    );
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          provider_objectType_externalId_scopeKey: {
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_map",
+            scopeKey: "org:org_1",
+          },
+        },
+        create: expect.objectContaining({
+          payload: {
+            id: "sub_map",
+            metadata: {
+              plan: "enterprise",
+            },
+            tags: ["annual", "priority"],
+          },
+        }),
+        update: expect.objectContaining({
+          payload: {
+            id: "sub_map",
+            metadata: {
+              plan: "enterprise",
+            },
+            tags: ["annual", "priority"],
+          },
+        }),
+      }),
+    );
+    expect(prisma.imladrisSourceSyncRun.update).toHaveBeenCalledWith({
+      where: { id: "sync_1" },
+      data: expect.objectContaining({
+        status: "SUCCESS",
+        recordCount: 2,
+        acceptedCount: 2,
+        errorCount: 0,
+        lastError: null,
+      }),
+    });
+  });
+
+  it("normalizes object-shaped Map keys without collapsing distinct provider payload entries", async () => {
+    const { prisma } = createPrismaMock();
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.STRIPE,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      records: [
+        {
+          objectType: "subscription",
+          externalId: "sub_object_key_map",
+          payload: {
+            id: "sub_object_key_map",
+            usageByPrice: new Map([
+              [{ priceId: "price_enterprise", dimension: "seats" }, 42],
+              [{ priceId: "price_enterprise", dimension: "api_calls" }, 12_000],
+            ]),
+          },
+        },
+      ],
+    });
+
+    const expectedUsageByPrice = {
+      'object:{"dimension":"api_calls","priceId":"price_enterprise"}': 12_000,
+      'object:{"dimension":"seats","priceId":"price_enterprise"}': 42,
+    };
+
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      recordCount: 1,
+      acceptedCount: 1,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          payload: {
+            id: "sub_object_key_map",
+            usageByPrice: expectedUsageByPrice,
+          },
+        }),
+        update: expect.objectContaining({
+          payload: {
+            id: "sub_object_key_map",
+            usageByPrice: expectedUsageByPrice,
+          },
+        }),
+      }),
+    );
+  });
+
+  it("preserves Map payloads with keys that would collide after string coercion", async () => {
+    const { prisma } = createPrismaMock();
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.STRIPE,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      records: [
+        {
+          objectType: "subscription",
+          externalId: "sub_valid",
+          payload: { id: "sub_valid", monthlyRecurringRevenue: 1200 },
+        },
+        {
+          objectType: "subscription",
+          externalId: "sub_colliding_map_key",
+          payload: {
+            id: "sub_colliding_map_key",
+            usageByTier: new Map<unknown, unknown>([
+              ["1", "string-key-tier"],
+              [1, "numeric-key-tier"],
+              ["boolean:true", "string-boolean-tier"],
+              [true, "boolean-tier"],
+            ]),
+          },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      syncRunId: "sync_1",
+      status: "SUCCESS",
+      recordCount: 2,
+      acceptedCount: 2,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledTimes(2);
     expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -641,16 +1049,340 @@ describe("Imladris raw ingestion", () => {
         },
       }),
     );
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          provider_objectType_externalId_scopeKey: {
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_colliding_map_key",
+            scopeKey: "org:org_1",
+          },
+        },
+        create: expect.objectContaining({
+          payload: {
+            id: "sub_colliding_map_key",
+            usageByTier: {
+              "1": "string-key-tier",
+              "number:1": "numeric-key-tier",
+              "boolean:true": "boolean-tier",
+              "string:boolean:true": "string-boolean-tier",
+            },
+          },
+        }),
+        update: expect.objectContaining({
+          payload: {
+            id: "sub_colliding_map_key",
+            usageByTier: {
+              "1": "string-key-tier",
+              "number:1": "numeric-key-tier",
+              "boolean:true": "boolean-tier",
+              "string:boolean:true": "string-boolean-tier",
+            },
+          },
+        }),
+      }),
+    );
     expect(prisma.imladrisSourceSyncRun.update).toHaveBeenCalledWith({
       where: { id: "sync_1" },
       data: expect.objectContaining({
-        status: "PARTIAL",
+        status: "SUCCESS",
         recordCount: 2,
-        acceptedCount: 1,
-        errorCount: 1,
-        lastError: "raw record 2 rejected: payload must be JSON-serializable",
+        acceptedCount: 2,
+        errorCount: 0,
+        lastError: null,
       }),
     });
+  });
+
+  it("preserves bigint Map keys as typed labels during raw persistence", async () => {
+    const { prisma } = createPrismaMock();
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.STRIPE,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      records: [
+        {
+          objectType: "subscription",
+          externalId: "sub_bigint_map_key",
+          payload: {
+            id: "sub_bigint_map_key",
+            usageByTier: new Map<unknown, unknown>([
+              [BigInt(1), "bigint-tier"],
+              ["bigint:1", "string-bigint-label"],
+            ]),
+          },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      syncRunId: "sync_1",
+      status: "SUCCESS",
+      recordCount: 1,
+      acceptedCount: 1,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          payload: {
+            id: "sub_bigint_map_key",
+            usageByTier: {
+              "bigint:1": "bigint-tier",
+              "string:bigint:1": "string-bigint-label",
+            },
+          },
+        }),
+        update: expect.objectContaining({
+          payload: {
+            id: "sub_bigint_map_key",
+            usageByTier: {
+              "bigint:1": "bigint-tier",
+              "string:bigint:1": "string-bigint-label",
+            },
+          },
+        }),
+      }),
+    );
+  });
+
+  it("does not treat dropped Map entries as duplicate normalized keys", async () => {
+    const { prisma } = createPrismaMock();
+    class OptionalProviderValue {
+      toJSON() {
+        return undefined;
+      }
+    }
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.STRIPE,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      records: [
+        {
+          objectType: "subscription",
+          externalId: "sub_dropped_map_key",
+          payload: {
+            id: "sub_dropped_map_key",
+            usageByTier: new Map<unknown, unknown>([
+              ["1", new OptionalProviderValue()],
+              [1, "numeric-key-tier"],
+            ]),
+          },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      syncRunId: "sync_1",
+      status: "SUCCESS",
+      recordCount: 1,
+      acceptedCount: 1,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          payload: {
+            id: "sub_dropped_map_key",
+            usageByTier: {
+              "number:1": "numeric-key-tier",
+            },
+          },
+        }),
+        update: expect.objectContaining({
+          payload: {
+            id: "sub_dropped_map_key",
+            usageByTier: {
+              "number:1": "numeric-key-tier",
+            },
+          },
+        }),
+      }),
+    );
+  });
+
+  it("does not reject dropped Map entries with non-serializable keys", async () => {
+    const { prisma } = createPrismaMock();
+    class OptionalProviderValue {
+      toJSON() {
+        return undefined;
+      }
+    }
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.STRIPE,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      records: [
+        {
+          objectType: "subscription",
+          externalId: "sub_dropped_bad_map_key",
+          payload: {
+            id: "sub_dropped_bad_map_key",
+            usageByTier: new Map<unknown, unknown>([
+              [Symbol("optional-provider-key"), new OptionalProviderValue()],
+              ["1", "string-key-tier"],
+            ]),
+          },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      syncRunId: "sync_1",
+      status: "SUCCESS",
+      recordCount: 1,
+      acceptedCount: 1,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          payload: {
+            id: "sub_dropped_bad_map_key",
+            usageByTier: {
+              "1": "string-key-tier",
+            },
+          },
+        }),
+        update: expect.objectContaining({
+          payload: {
+            id: "sub_dropped_bad_map_key",
+            usageByTier: {
+              "1": "string-key-tier",
+            },
+          },
+        }),
+      }),
+    );
+  });
+
+  it("normalizes provider SDK payload objects with toJSON before raw persistence", async () => {
+    const { prisma } = createPrismaMock();
+    class ProviderAmount {
+      constructor(private readonly cents: number) {}
+
+      toJSON() {
+        return {
+          amount_cents: this.cents,
+          currency: "usd",
+        };
+      }
+    }
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.STRIPE,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      records: [
+        {
+          objectType: "charge",
+          externalId: "ch_sdk_to_json",
+          payload: {
+            id: "ch_sdk_to_json",
+            amount: new ProviderAmount(125_000),
+          },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      recordCount: 1,
+      acceptedCount: 1,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          payload: {
+            amount: {
+              amount_cents: 125_000,
+              currency: "usd",
+            },
+            id: "ch_sdk_to_json",
+          },
+        }),
+        update: expect.objectContaining({
+          payload: {
+            amount: {
+              amount_cents: 125_000,
+              currency: "usd",
+            },
+            id: "ch_sdk_to_json",
+          },
+        }),
+      }),
+    );
+  });
+
+  it("drops optional provider SDK payload fields whose toJSON returns undefined", async () => {
+    const { prisma } = createPrismaMock();
+    class ProviderValue {
+      constructor(private readonly value: unknown) {}
+
+      toJSON() {
+        return this.value;
+      }
+    }
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.STRIPE,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      records: [
+        {
+          objectType: "charge",
+          externalId: "ch_optional_sdk_to_json",
+          payload: {
+            id: "ch_optional_sdk_to_json",
+            amount: new ProviderValue(125_000),
+            optionalMetadata: new ProviderValue(undefined),
+          },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      recordCount: 1,
+      acceptedCount: 1,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          payload: {
+            amount: 125_000,
+            id: "ch_optional_sdk_to_json",
+          },
+        }),
+        update: expect.objectContaining({
+          payload: {
+            amount: 125_000,
+            id: "ch_optional_sdk_to_json",
+          },
+        }),
+      }),
+    );
   });
 
   it("rejects non-finite provider numbers instead of silently coercing them to null", async () => {
@@ -968,6 +1700,60 @@ describe("Imladris raw ingestion", () => {
     );
   });
 
+  it("unwraps provider timestamp envelopes before sync-window and raw timestamp persistence", async () => {
+    const { prisma } = createPrismaMock();
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.POSTHOG,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      windowStart: { value: "2026-02-01T00:00:00.000Z" } as never,
+      windowEnd: { data: { value: "2026-02-28T00:00:00.000Z" } } as never,
+      records: [
+        {
+          objectType: "event",
+          externalId: "evt_wrapped_dates",
+          sourceCreatedAt: { value: "2026-02-11T09:00:00.000Z" } as never,
+          sourceUpdatedAt: { data: { attributes: { value: "2026-02-11T09:01:00.000Z" } } } as never,
+          occurredAt: { values: { value: "1770800520" } } as never,
+          payload: {
+            event: "activation_completed",
+          },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      recordCount: 1,
+      acceptedCount: 1,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisSourceSyncRun.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        windowStart: new Date("2026-02-01T00:00:00.000Z"),
+        windowEnd: new Date("2026-02-28T00:00:00.000Z"),
+      }),
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          sourceCreatedAt: new Date("2026-02-11T09:00:00.000Z"),
+          sourceUpdatedAt: new Date("2026-02-11T09:01:00.000Z"),
+          occurredAt: new Date("2026-02-11T09:02:00.000Z"),
+        }),
+        update: expect.objectContaining({
+          sourceCreatedAt: new Date("2026-02-11T09:00:00.000Z"),
+          sourceUpdatedAt: new Date("2026-02-11T09:01:00.000Z"),
+          occurredAt: new Date("2026-02-11T09:02:00.000Z"),
+        }),
+      }),
+    );
+  });
+
   it("persists only the freshest duplicate raw input in a single sync run", async () => {
     const { prisma } = createPrismaMock();
 
@@ -1007,7 +1793,7 @@ describe("Imladris raw ingestion", () => {
     expect(result).toMatchObject({
       status: "SUCCESS",
       recordCount: 2,
-      acceptedCount: 1,
+      acceptedCount: 2,
       errorCount: 0,
     });
     expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledOnce();
@@ -1034,7 +1820,57 @@ describe("Imladris raw ingestion", () => {
       data: expect.objectContaining({
         status: "SUCCESS",
         recordCount: 2,
-        acceptedCount: 1,
+        acceptedCount: 2,
+        errorCount: 0,
+      }),
+    });
+  });
+
+  it("counts deduplicated raw inputs as accepted sync-run records", async () => {
+    const { prisma } = createPrismaMock();
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.HUBSPOT,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      records: [
+        {
+          objectType: "deal",
+          externalId: "deal_duplicate_counted",
+          sourceUpdatedAt: "2026-05-31T10:00:00.000Z",
+          payload: {
+            id: "deal_duplicate_counted",
+            amount: 42_000,
+          },
+        },
+        {
+          objectType: "deal",
+          externalId: "deal_duplicate_counted",
+          sourceUpdatedAt: "2026-05-01T10:00:00.000Z",
+          payload: {
+            id: "deal_duplicate_counted",
+            amount: 12_000,
+          },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      recordCount: 2,
+      acceptedCount: 2,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledOnce();
+    expect(prisma.imladrisSourceSyncRun.update).toHaveBeenCalledWith({
+      where: { id: "sync_1" },
+      data: expect.objectContaining({
+        status: "SUCCESS",
+        recordCount: 2,
+        acceptedCount: 2,
         errorCount: 0,
       }),
     });
@@ -1075,7 +1911,7 @@ describe("Imladris raw ingestion", () => {
     expect(result).toMatchObject({
       status: "SUCCESS",
       recordCount: 2,
-      acceptedCount: 1,
+      acceptedCount: 2,
       errorCount: 0,
     });
     expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledOnce();
@@ -1147,7 +1983,7 @@ describe("Imladris raw ingestion", () => {
     expect(result).toMatchObject({
       status: "SUCCESS",
       recordCount: 2,
-      acceptedCount: 1,
+      acceptedCount: 2,
       errorCount: 0,
     });
     expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledOnce();
@@ -1210,7 +2046,7 @@ describe("Imladris raw ingestion", () => {
     expect(result).toMatchObject({
       status: "SUCCESS",
       recordCount: 2,
-      acceptedCount: 1,
+      acceptedCount: 2,
       errorCount: 0,
     });
     expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledOnce();
@@ -1231,6 +2067,186 @@ describe("Imladris raw ingestion", () => {
             id: "deal_future_only_tie",
             stage: "contract_sent",
           },
+        }),
+      }),
+    );
+  });
+
+  it("does not let future-skewed duplicate metadata beat a clean freshness tie", async () => {
+    const { prisma } = createPrismaMock();
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.HUBSPOT,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      now: new Date("2026-05-29T10:00:00.000Z"),
+      records: [
+        {
+          objectType: "deal",
+          externalId: "deal_future_metadata_tie",
+          sourceUpdatedAt: "2026-05-29T09:45:00.000Z",
+          payload: {
+            id: "deal_future_metadata_tie",
+            amount: 42_000,
+            stage: "contract_sent",
+          },
+        },
+        {
+          objectType: "deal",
+          externalId: "deal_future_metadata_tie",
+          sourceUpdatedAt: "2026-05-29T09:45:00.000Z",
+          occurredAt: "2099-01-01T00:00:00.000Z",
+          payload: {
+            id: "deal_future_metadata_tie",
+            amount: 12_000,
+            primaryContactEmail: "future-skew@example.com",
+            stage: "bad_future_clock",
+          },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      recordCount: 2,
+      acceptedCount: 2,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledOnce();
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          sourceUpdatedAt: new Date("2026-05-29T09:45:00.000Z"),
+          occurredAt: null,
+          payload: {
+            amount: 42_000,
+            id: "deal_future_metadata_tie",
+            stage: "contract_sent",
+          },
+        }),
+        update: expect.objectContaining({
+          sourceUpdatedAt: new Date("2026-05-29T09:45:00.000Z"),
+          occurredAt: null,
+          payload: {
+            amount: 42_000,
+            id: "deal_future_metadata_tie",
+            stage: "contract_sent",
+          },
+        }),
+      }),
+    );
+  });
+
+  it("keeps the more complete duplicate when provider freshness ties", async () => {
+    const { prisma } = createPrismaMock();
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.HUBSPOT,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      now: new Date("2026-05-29T10:00:00.000Z"),
+      records: [
+        {
+          objectType: "deal",
+          externalId: "deal_tie_complete",
+          sourceUpdatedAt: "2026-05-29T09:45:00.000Z",
+          payload: {
+            id: "deal_tie_complete",
+            amount: 42_000,
+            stage: "contract_sent",
+            primaryContactEmail: "buyer@example.com",
+          },
+        },
+        {
+          objectType: "deal",
+          externalId: "deal_tie_complete",
+          sourceUpdatedAt: "2026-05-29T09:45:00.000Z",
+          payload: {
+            id: "deal_tie_complete",
+            amount: 42_000,
+          },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      recordCount: 2,
+      acceptedCount: 2,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledOnce();
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          payload: {
+            amount: 42_000,
+            id: "deal_tie_complete",
+            primaryContactEmail: "buyer@example.com",
+            stage: "contract_sent",
+          },
+        }),
+        update: expect.objectContaining({
+          payload: {
+            amount: 42_000,
+            id: "deal_tie_complete",
+            primaryContactEmail: "buyer@example.com",
+            stage: "contract_sent",
+          },
+        }),
+      }),
+    );
+  });
+
+  it("nulls future provider timestamps before raw persistence", async () => {
+    const { prisma } = createPrismaMock();
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.GITHUB,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      now: new Date("2026-05-29T10:00:00.000Z"),
+      records: [
+        {
+          objectType: "pull_request",
+          externalId: "repo/pull/future-skew",
+          sourceCreatedAt: "2099-01-01T00:00:00.000Z",
+          sourceUpdatedAt: "2099-01-02T00:00:00.000Z",
+          occurredAt: "2099-01-03T00:00:00.000Z",
+          payload: {
+            id: 42,
+            merged: true,
+          },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      recordCount: 1,
+      acceptedCount: 1,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          sourceCreatedAt: null,
+          sourceUpdatedAt: null,
+          occurredAt: null,
+        }),
+        update: expect.objectContaining({
+          sourceCreatedAt: null,
+          sourceUpdatedAt: null,
+          occurredAt: null,
         }),
       }),
     );

@@ -1,4 +1,5 @@
 import { IntegrationProvider } from "@/generated/prisma/client";
+import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
 import type { PrismaClientType } from "@/lib/prisma";
 
 type GoalStatus = "on_track" | "at_risk" | "completed";
@@ -10,6 +11,7 @@ interface UserContext {
 
 interface RawProjectRecord {
   id: string;
+  provider?: unknown;
   objectType?: string | null;
   externalId?: string | null;
   payload: unknown;
@@ -66,33 +68,238 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function directDataFields(payload: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(payload).filter(
+      ([key]) => !["type", "properties", "values", "fields", "attributes", "data"].includes(key),
+    ),
+  );
+}
+
+function expandSingleValueSource(source: Record<string, unknown>): Record<string, unknown>[] {
+  const entries = Object.entries(source);
+  if (entries.length !== 1) return [source];
+
+  const [key, value] = entries[0];
+  const nestedValue = asRecord(value);
+  if (!["value", "metricValue", "metric_value"].includes(key) || Object.keys(nestedValue).length === 0) {
+    return [source];
+  }
+
+  return [nestedValue, source];
+}
+
+function wrapperSources(payload: Record<string, unknown>): Record<string, unknown>[] {
+  const data = asRecord(payload.data);
+  return [
+    payload,
+    asRecord(payload.properties),
+    asRecord(payload.values),
+    asRecord(payload.fields),
+    asRecord(payload.attributes),
+    directDataFields(data),
+    asRecord(data.properties),
+    asRecord(data.values),
+    asRecord(data.fields),
+    asRecord(data.attributes),
+  ]
+    .flatMap(expandSingleValueSource)
+    .filter((source) => Object.keys(source).length > 0);
+}
+
+function projectPayloadView(payload: unknown): Record<string, unknown> {
+  const sources = wrapperSources(asRecord(payload));
+  return Object.assign({}, ...sources.reverse());
+}
+
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
-function asString(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+function scalarStringValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || value === undefined || typeof value !== "object") return value;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.length === 1 ? scalarStringValue(value[0], seen) : null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const data = asRecord(record.data);
+  const candidates = [
+    record.value,
+    record.metricValue,
+    record.metric_value,
+    asRecord(data.attributes).value,
+    data.value,
+    data.attributes,
+    record.attributes,
+    record.values,
+    record.fields,
+  ];
+  for (const candidate of candidates) {
+    const normalized = scalarStringValue(candidate, seen);
+    if (normalized !== null && normalized !== undefined && typeof normalized !== "object") return normalized;
+  }
+  return value;
 }
 
-function asNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value.trim());
-    return Number.isFinite(parsed) ? parsed : null;
-  }
+function asString(value: unknown): string | null {
+  const normalized = scalarStringValue(value);
+  if (typeof normalized === "string" && normalized.trim()) return normalized.trim();
+  if (typeof normalized === "number" || typeof normalized === "boolean") return String(normalized);
   return null;
 }
 
+function warningValues(value: unknown, seen = new WeakSet<object>()): unknown[] {
+  if (typeof value === "string") return [value];
+  if (!value || typeof value !== "object") return [];
+  if (seen.has(value)) return [];
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    const values = value.flatMap((item) => warningValues(item, seen));
+    seen.delete(value);
+    return values;
+  }
+
+  const record = value as Record<string, unknown>;
+  const data = asRecord(record.data);
+  const values = [
+    data.attributes,
+    asRecord(data.attributes).warnings,
+    asRecord(data.attributes).messages,
+    data.warnings,
+    data.warning,
+    data.messages,
+    data.message,
+    data.errors,
+    data.error,
+    data.issues,
+    data.issue,
+    data.details,
+    data.detail,
+    record.warnings,
+    record.warning,
+    record.messages,
+    record.message,
+    record.errors,
+    record.error,
+    record.issues,
+    record.issue,
+    record.details,
+    record.detail,
+    record.value,
+    record.metricValue,
+    record.metric_value,
+  ].flatMap((item) => warningValues(item, seen));
+
+  seen.delete(value);
+  return values;
+}
+
+function normalizedWarnings(value: unknown): string[] {
+  return warningValues(value)
+    .filter((warning): warning is string => typeof warning === "string")
+    .map((warning) => warning.trim())
+    .filter(Boolean);
+}
+
+function scalarNumberValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || value === undefined || typeof value !== "object") return value;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.length === 1 ? scalarNumberValue(value[0], seen) : null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const data = asRecord(record.data);
+  const candidates = [
+    record.value,
+    record.metricValue,
+    record.metric_value,
+    record.count,
+    record.number,
+    record.total,
+    record.totalIssueCount,
+    record.total_issue_count,
+    record.completedIssueCount,
+    record.completed_issue_count,
+    record.blockedIssueCount,
+    record.blocked_issue_count,
+    asRecord(data.attributes).value,
+    data.value,
+    data.attributes,
+    record.attributes,
+    record.values,
+    record.fields,
+  ];
+  for (const candidate of candidates) {
+    const normalized = scalarNumberValue(candidate, seen);
+    if (normalized !== null && normalized !== undefined && typeof normalized !== "object") return normalized;
+  }
+  return value;
+}
+
+function asNumber(value: unknown): number | null {
+  return parseImladrisNumber(scalarNumberValue(value) ?? value);
+}
+
+function scalarDateValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || value === undefined || typeof value !== "object") return value;
+  if (value instanceof Date) return value;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.length === 1 ? scalarDateValue(value[0], seen) : null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const data = asRecord(record.data);
+  const candidates = [
+    record.value,
+    record.date,
+    record.datetime,
+    record.dateTime,
+    record.date_time,
+    record.timestamp,
+    record.time,
+    record.iso,
+    record.isoString,
+    record.iso_string,
+    record.seconds,
+    record.milliseconds,
+    record.millis,
+    asRecord(data.attributes).value,
+    data.value,
+    data.attributes,
+    record.attributes,
+    record.values,
+    record.fields,
+  ];
+  for (const candidate of candidates) {
+    const normalized = scalarDateValue(candidate, seen);
+    if (normalized !== null && normalized !== undefined && typeof normalized !== "object") return normalized;
+    if (normalized instanceof Date) return normalized;
+  }
+  return value;
+}
+
 function toDate(value: unknown): Date | null {
-  if (value === null || value === undefined) return null;
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    const timestampMs = value < 10_000_000_000 ? value * 1000 : value;
+  const normalizedValue = scalarDateValue(value);
+  if (normalizedValue === null || normalizedValue === undefined) return null;
+  if (normalizedValue instanceof Date) return Number.isNaN(normalizedValue.getTime()) ? null : normalizedValue;
+  if (typeof normalizedValue === "number" && Number.isFinite(normalizedValue) && normalizedValue > 0) {
+    const timestampMs = normalizedValue < 10_000_000_000 ? normalizedValue * 1000 : normalizedValue;
     const date = new Date(timestampMs);
     return Number.isNaN(date.getTime()) ? null : date;
   }
-  if (typeof value === "string") {
-    const normalized = value.trim();
+  if (typeof normalizedValue === "string") {
+    const normalized = normalizedValue.trim();
     if (!normalized) return null;
     if (/^\d+(?:\.\d+)?$/.test(normalized)) {
       const timestamp = Number(normalized);
@@ -117,6 +324,8 @@ function targetDateValue(payload: Record<string, unknown>): unknown {
 }
 
 function hasPresentDateValue(value: unknown): boolean {
+  const normalizedValue = scalarDateValue(value);
+  if (normalizedValue !== value) return hasPresentDateValue(normalizedValue);
   if (value instanceof Date) return true;
   if (typeof value === "number") return Number.isFinite(value);
   if (typeof value === "string") return value.trim().length > 0;
@@ -237,15 +446,76 @@ function rawProjectMatchesContext(record: RawProjectRecord, context: UserContext
   return rawProjectScopeRank(record, context) > 0;
 }
 
+function objectTypeStringValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  const normalizedValue = scalarStringValue(value);
+  if (normalizedValue !== null && normalizedValue !== undefined && typeof normalizedValue !== "object") {
+    return normalizedValue;
+  }
+  if (value === null || value === undefined || typeof value !== "object") return null;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    const normalized = value.length === 1 ? objectTypeStringValue(value[0], seen) : null;
+    seen.delete(value);
+    return normalized;
+  }
+
+  const record = value as Record<string, unknown>;
+  const data = asRecord(record.data);
+  const dataAttributes = asRecord(data.attributes);
+  const candidates = [
+    record.objectType,
+    record.object_type,
+    record.type,
+    data.objectType,
+    data.object_type,
+    data.type,
+    dataAttributes.objectType,
+    dataAttributes.object_type,
+    dataAttributes.type,
+  ];
+  for (const candidate of candidates) {
+    const normalized = scalarStringValue(candidate);
+    if (normalized !== null && normalized !== undefined && typeof normalized !== "object") {
+      seen.delete(value);
+      return normalized;
+    }
+  }
+
+  seen.delete(value);
+  return null;
+}
+
 function normalizeObjectType(value: unknown): string {
-  return typeof value === "string"
-    ? value
+  const normalizedValue = objectTypeStringValue(value);
+  return typeof normalizedValue === "string"
+    ? normalizedValue
         .trim()
         .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
         .replace(/[^a-zA-Z0-9]+/g, "_")
         .replace(/^_+|_+$/g, "")
         .toLowerCase()
     : "";
+}
+
+function normalizeProviderKey(value: unknown): string {
+  const normalizedValue = scalarStringValue(value);
+  return typeof normalizedValue === "string"
+    ? normalizedValue
+        .trim()
+        .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+        .replace(/[^a-zA-Z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .toUpperCase()
+    : "";
+}
+
+function rawProjectIsProvider(record: RawProjectRecord, provider: IntegrationProvider): boolean {
+  const normalized = normalizeProviderKey(record.provider);
+  const expected = normalizeProviderKey(provider);
+  if (!normalized || !expected) return false;
+  return normalized === expected || normalized.replaceAll("_", "") === expected.replaceAll("_", "");
 }
 
 function rawProjectIsProject(record: RawProjectRecord): boolean {
@@ -265,7 +535,7 @@ function rawProjectTimestamp(record: RawProjectRecord, asOf?: Date): number {
 }
 
 function rawProjectKey(record: RawProjectRecord): string {
-  const payload = asRecord(record.payload);
+  const payload = projectPayloadView(record.payload);
   return asString(payload.id) ?? asString(record.externalId) ?? record.id;
 }
 
@@ -293,25 +563,128 @@ function dedupeRawProjects(records: RawProjectRecord[], context: UserContext, as
 }
 
 function normalizeState(payload: Record<string, unknown>): string {
-  return (asString(payload.state) ?? asString(asRecord(payload.status).type) ?? "unknown").toLowerCase();
+  const state = asRecord(payload.state);
+  const status = asRecord(payload.status);
+  return (
+    asString(payload.state) ??
+    asString(state.type) ??
+    asString(state.name) ??
+    asString(payload.status) ??
+    asString(status.type) ??
+    asString(status.name) ??
+    "unknown"
+  ).toLowerCase();
 }
 
-function issueIsArchived(issue: Record<string, unknown>): boolean {
-  return Boolean(issue.archivedAt ?? issue.archived_at);
+function unwrapBooleanValue(value: unknown, seen = new Set<unknown>()): unknown {
+  if (!value || typeof value !== "object") return value;
+  if (seen.has(value)) return value;
+  seen.add(value);
+
+  const record = asRecord(value);
+  for (const field of ["value", "boolean", "booleanValue", "boolean_value", "flag", "enabled", "active"]) {
+    if (field in record) return unwrapBooleanValue(record[field], seen);
+  }
+
+  const data = asRecord(record.data);
+  if (Object.keys(data).length > 0) return unwrapBooleanValue(data, seen);
+
+  const attributes = asRecord(record.attributes);
+  if (Object.keys(attributes).length > 0) return unwrapBooleanValue(attributes, seen);
+
+  return value;
+}
+
+function booleanFrom(value: unknown): boolean | null {
+  const unwrapped = unwrapBooleanValue(value);
+  if (typeof unwrapped === "boolean") return unwrapped;
+  if (typeof unwrapped === "number" && Number.isFinite(unwrapped)) {
+    if (unwrapped === 1) return true;
+    if (unwrapped === 0) return false;
+  }
+  if (typeof unwrapped !== "string") return null;
+
+  const normalized = unwrapped.trim().toLowerCase();
+  if (["true", "1", "yes", "y", "blocked"].includes(normalized)) return true;
+  if (["false", "0", "no", "n", "unblocked", "not_blocked", "not blocked"].includes(normalized)) return false;
+  return null;
+}
+
+function issueIsArchived(issue: Record<string, unknown>, now: Date): boolean {
+  const archivedAt = toDate(issue.archivedAt ?? issue.archived_at);
+  if (archivedAt !== null) return archivedAt.getTime() <= now.getTime();
+  return ["archived", "isArchived", "is_archived"].some((field) => booleanFrom(issue[field]) === true);
 }
 
 function issueIsCompleted(issue: Record<string, unknown>, now: Date): boolean {
+  const completedStateNames = ["done", "completed", "complete"];
+  const stringState = asString(issue.state)?.toLowerCase();
+  if (stringState && completedStateNames.includes(stringState)) return true;
+  if (["completed", "complete", "done", "isCompleted", "is_completed"].some((field) => booleanFrom(issue[field]) === true)) {
+    return true;
+  }
   const state = asRecord(issue.state);
-  if (asString(state.type)?.toLowerCase() === "completed") return true;
+  const stateType = asString(state.type)?.toLowerCase();
+  if (stateType === "completed") return true;
+  const stateName = asString(state.name)?.toLowerCase();
+  if (stateName && completedStateNames.includes(stateName)) return true;
   const completedAt = toDate(issue.completedAt ?? issue.completed_at);
   return completedAt !== null && completedAt.getTime() <= now.getTime();
 }
 
+function issueHasBlockedFlag(issue: Record<string, unknown>): boolean {
+  return ["blocked", "isBlocked", "is_blocked"].some((field) => booleanFrom(issue[field]) === true);
+}
+
+function hasCollectionItems(value: unknown, seen = new Set<unknown>()): boolean {
+  if (Array.isArray(value)) return value.length > 0;
+  if (!value || typeof value !== "object") return false;
+  if (seen.has(value)) return false;
+  seen.add(value);
+
+  const record = asRecord(value);
+  for (const field of ["count", "totalCount", "total_count", "length", "size"]) {
+    const count = asNumber(record[field]);
+    if (count !== null && count > 0) return true;
+  }
+
+  for (const field of ["nodes", "edges", "items", "records", "values", "data"]) {
+    if (hasCollectionItems(record[field], seen)) return true;
+  }
+
+  return Boolean(asString(record.id) ?? asString(record.externalId) ?? asString(record.external_id));
+}
+
+function issueHasBlockingRelation(issue: Record<string, unknown>): boolean {
+  const relations = asRecord(issue.relations);
+  const relationships = asRecord(issue.relationships);
+  return [
+    issue.blockedBy,
+    issue.blocked_by,
+    issue.blockers,
+    issue.blockerIssues,
+    issue.blocker_issues,
+    relations.blockedBy,
+    relations.blocked_by,
+    relations.blockers,
+    relationships.blockedBy,
+    relationships.blocked_by,
+    relationships.blockers,
+  ].some((value) => hasCollectionItems(value));
+}
+
 function issueIsBlocked(issue: Record<string, unknown>): boolean {
+  const stringState = asString(issue.state)?.toLowerCase() ?? "";
   const state = asRecord(issue.state);
   const stateType = asString(state.type)?.toLowerCase() ?? "";
   const stateName = asString(state.name)?.toLowerCase() ?? "";
-  return stateType === "blocked" || stateName.includes("blocked");
+  return (
+    stringState === "blocked" ||
+    stateType === "blocked" ||
+    stateName.includes("blocked") ||
+    issueHasBlockedFlag(issue) ||
+    issueHasBlockingRelation(issue)
+  );
 }
 
 function recentThreshold(now: Date): Date {
@@ -360,9 +733,12 @@ function projectLeadName(payload: Record<string, unknown>): string | null {
   return asString(asRecord(payload.lead).name);
 }
 
-function aggregateIssueCount(value: unknown): number {
-  const count = asNumber(value);
-  return count !== null && count > 0 ? Math.floor(count) : 0;
+function aggregateIssueCountFrom(payload: Record<string, unknown>, ...fields: string[]): number {
+  for (const field of fields) {
+    const count = asNumber(payload[field]);
+    if (count !== null) return count > 0 ? Math.floor(count) : 0;
+  }
+  return 0;
 }
 
 function clampCount(value: number, max: number): number {
@@ -374,17 +750,23 @@ function countIssues(payload: Record<string, unknown>, now: Date): {
   completedIssueCount: number;
   blockedIssueCount: number;
 } {
-  const issues = asArray(payload.issues).map(asRecord);
+  const issues = asArray(payload.issues).map(projectPayloadView);
   if (issues.length === 0) {
-    const totalIssueCount = aggregateIssueCount(payload.totalIssueCount);
+    const totalIssueCount = aggregateIssueCountFrom(payload, "totalIssueCount", "total_issue_count");
     return {
       totalIssueCount,
-      completedIssueCount: clampCount(aggregateIssueCount(payload.completedIssueCount), totalIssueCount),
-      blockedIssueCount: clampCount(aggregateIssueCount(payload.blockedIssueCount), totalIssueCount),
+      completedIssueCount: clampCount(
+        aggregateIssueCountFrom(payload, "completedIssueCount", "completed_issue_count"),
+        totalIssueCount,
+      ),
+      blockedIssueCount: clampCount(
+        aggregateIssueCountFrom(payload, "blockedIssueCount", "blocked_issue_count"),
+        totalIssueCount,
+      ),
     };
   }
 
-  const nonArchivedIssues = issues.filter((issue) => !issueIsArchived(issue));
+  const nonArchivedIssues = issues.filter((issue) => !issueIsArchived(issue, now));
   return {
     totalIssueCount: nonArchivedIssues.length,
     completedIssueCount: nonArchivedIssues.filter((issue) => issueIsCompleted(issue, now)).length,
@@ -406,9 +788,8 @@ function warningsFor(input: {
   blockedIssueCount: number;
 }): string[] {
   const warnings = new Set<string>();
-  for (const warning of asArray(input.payload.warnings)) {
-    const text = asString(warning);
-    if (text) warnings.add(text);
+  for (const warning of normalizedWarnings(input.payload.warnings)) {
+    if (warning) warnings.add(warning);
   }
 
   if (input.totalIssueCount === 0) warnings.add("No linked issues.");
@@ -436,8 +817,33 @@ function warningsFor(input: {
   return [...warnings];
 }
 
+function observableProjectUpdatedAt(
+  payload: Record<string, unknown>,
+  record: RawProjectRecord,
+  now: Date,
+): string | null {
+  return toIso(
+    firstDateAtOrBefore(
+      now,
+      toDate(payload.updatedAt ?? payload.updated_at),
+      toDate(record.sourceUpdatedAt),
+      toDate(record.updatedAt),
+      toDate(record.sourceCreatedAt),
+    ),
+  );
+}
+
+function observableProjectCompletedAt(payload: Record<string, unknown>, now: Date): string | null {
+  return toIso(
+    firstDateAtOrBefore(
+      now,
+      toDate(payload.completedAt ?? payload.completed_at),
+    ),
+  );
+}
+
 function goalFromRawRecord(record: RawProjectRecord, now: Date): CompanyGoalRow | null {
-  const payload = asRecord(record.payload);
+  const payload = projectPayloadView(record.payload);
   const recordTimestamp = toDate(record.sourceUpdatedAt) ?? toDate(record.updatedAt) ?? toDate(record.sourceCreatedAt);
   if (!projectIsVisible(payload, now, recordTimestamp)) return null;
 
@@ -469,8 +875,8 @@ function goalFromRawRecord(record: RawProjectRecord, now: Date): CompanyGoalRow 
     leadName: projectLeadName(payload),
     teamLabels: projectTeams(payload),
     targetDate: normalizedTargetDate(payload),
-    updatedAt: toIso(payload.updatedAt ?? payload.updated_at),
-    completedAt: toIso(payload.completedAt ?? payload.completed_at),
+    updatedAt: observableProjectUpdatedAt(payload, record, now),
+    completedAt: observableProjectCompletedAt(payload, now),
     progressPct: progress,
     completedIssueCount: issueCounts.completedIssueCount,
     totalIssueCount: issueCounts.totalIssueCount,
@@ -481,7 +887,14 @@ function goalFromRawRecord(record: RawProjectRecord, now: Date): CompanyGoalRow 
 
 function latestSyncAt(records: RawProjectRecord[], asOf: Date): string | null {
   const latest = records
-    .map((record) => toDate(record.updatedAt) ?? toDate(record.sourceUpdatedAt))
+    .map((record) =>
+      firstDateAtOrBefore(
+        asOf,
+        toDate(record.updatedAt),
+        toDate(record.sourceUpdatedAt),
+        toDate(record.sourceCreatedAt),
+      ),
+    )
     .filter((date): date is Date => date !== null && date.getTime() <= asOf.getTime())
     .sort((left, right) => right.getTime() - left.getTime())[0];
   return latest?.toISOString() ?? null;
@@ -504,7 +917,9 @@ export async function buildCompanyGoalsDashboard(input: {
     take: 200,
   });
   const records = dedupeRawProjects(
-    (rawRecords as RawProjectRecord[]).filter(rawProjectIsProject),
+    (rawRecords as RawProjectRecord[]).filter((record) =>
+      rawProjectIsProvider(record, IntegrationProvider.LINEAR) && rawProjectIsProject(record),
+    ),
     context,
     now,
   );
