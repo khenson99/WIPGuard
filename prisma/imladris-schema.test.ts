@@ -23,6 +23,19 @@ describe("Imladris canonical data schema", () => {
     expect(rawRecordSection).not.toContain("@@unique([provider, objectType, externalId])");
   });
 
+  it("represents partial canonical metric readiness in the persisted enum", () => {
+    const statusEnumSection = schema.slice(
+      schema.indexOf("enum ImladrisMetricStatus"),
+      schema.indexOf("model ImladrisSourceSyncRun"),
+    );
+
+    expect(statusEnumSection).toContain("READY");
+    expect(statusEnumSection).toContain("PARTIAL");
+    expect(statusEnumSection).toContain("STALE");
+    expect(statusEnumSection).toContain("MISSING");
+    expect(statusEnumSection).toContain("ERROR");
+  });
+
   it("does not tie canonical Imladris models to task/WIP tables", () => {
     const imladrisSection = schema.slice(schema.indexOf("model ImladrisSourceSyncRun"));
     expect(imladrisSection).not.toMatch(/\bTask\b/);

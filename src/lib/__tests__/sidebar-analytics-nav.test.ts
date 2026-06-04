@@ -7,12 +7,14 @@ describe("sidebar workspace navigation", () => {
   it("builds the API meeting-place workspace pillars", () => {
     expect(navItems.map((item) => item.id)).toEqual([
       "sources",
+      "goals",
       "metrics",
       "reports",
       "pipelines",
     ]);
     expect(navItems.map((item) => item.label)).toEqual([
       "Sources",
+      "Goals",
       "Metrics",
       "Reports",
       "Automation Pipelines",
@@ -36,6 +38,12 @@ describe("sidebar workspace navigation", () => {
         label: "Customer Health",
         workspaceId: "metrics",
       }),
+      expect.objectContaining({
+        id: "expense-dashboard",
+        href: "/metrics/expenses",
+        label: "Expenses",
+        workspaceId: "metrics",
+      }),
     ]);
     expect(navItems.some((item) => item.href.startsWith("/analytics"))).toBe(false);
   });
@@ -46,5 +54,13 @@ describe("sidebar workspace navigation", () => {
     expect(sources).toBeTruthy();
     expect(sources?.href).toBe("/sources");
     expect(sources?.children).toBeUndefined();
+  });
+
+  it("promotes Linear goals to a first-class workspace", () => {
+    const goals = navItems.find((item) => item.id === "goals");
+
+    expect(goals).toBeTruthy();
+    expect(goals?.href).toBe("/goals");
+    expect(goals?.children).toBeUndefined();
   });
 });

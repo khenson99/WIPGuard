@@ -30,6 +30,7 @@ describe("google analytics fetcher", () => {
       }
 
       const body = JSON.parse(String(init?.body ?? "{}")) as {
+        dateRanges?: Array<{ startDate?: string; endDate?: string }>;
         dimensions?: Array<{ name?: string }>;
         limit?: number;
         offset?: number;
@@ -96,21 +97,28 @@ describe("google analytics fetcher", () => {
       .filter(([url]) => String(url).includes("analyticsdata.googleapis.com"))
       .map(([, init]) =>
         JSON.parse(String(init?.body ?? "{}")) as {
+          dateRanges?: Array<{ startDate?: string; endDate?: string }>;
           dimensions?: Array<{ name?: string }>;
           limit?: number;
           offset?: number;
         },
       )
       .filter((body) => body.dimensions?.some((dimension) => dimension.name === "pagePath"));
-
-    expect(topPageRequests).toHaveLength(3);
-    expect(topPageRequests).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ limit: 100, offset: 0 }),
-        expect.objectContaining({ limit: 100, offset: 100 }),
-        expect.objectContaining({ limit: 100 }),
-      ])
+    const currentTopPageRequests = topPageRequests.filter(
+      (body) => body.dateRanges?.[0]?.startDate === "2026-05-01",
     );
+    const previousTopPageRequests = topPageRequests.filter(
+      (body) => body.dateRanges?.[0]?.startDate === "2026-03-29",
+    );
+
+    expect(currentTopPageRequests).toEqual([
+      expect.objectContaining({ limit: 100, offset: 0 }),
+      expect.objectContaining({ limit: 100, offset: 100 }),
+    ]);
+    expect(previousTopPageRequests).toEqual([
+      expect.objectContaining({ limit: 100, offset: 0 }),
+      expect.objectContaining({ limit: 100, offset: 100 }),
+    ]);
     expect(data.topPages).toHaveLength(101);
     expect(data.topPages[0]).toEqual({
       path: "/page-1",
@@ -126,6 +134,7 @@ describe("google analytics fetcher", () => {
       sessions: 0,
       bounceRate: 0,
     });
+    expect(data.topPagesPrev30d).toHaveLength(101);
   });
 
   it("keeps GA4 aggregates finite when provider metric values are malformed", async () => {
@@ -281,6 +290,7 @@ describe("google analytics fetcher", () => {
       }
 
       const body = JSON.parse(String(init?.body ?? "{}")) as {
+        dateRanges?: Array<{ startDate?: string; endDate?: string }>;
         dimensions?: Array<{ name?: string }>;
         limit?: number;
         offset?: number;
@@ -334,21 +344,28 @@ describe("google analytics fetcher", () => {
       .filter(([url]) => String(url).includes("analyticsdata.googleapis.com"))
       .map(([, init]) =>
         JSON.parse(String(init?.body ?? "{}")) as {
+          dateRanges?: Array<{ startDate?: string; endDate?: string }>;
           dimensions?: Array<{ name?: string }>;
           offset?: number;
         },
       )
       .filter((body) => body.dimensions?.some((dimension) => dimension.name === "pagePath"));
+    const currentTopPageRequests = topPageRequests.filter(
+      (body) => body.dateRanges?.[0]?.startDate === "2026-05-01",
+    );
+    const previousTopPageRequests = topPageRequests.filter(
+      (body) => body.dateRanges?.[0]?.startDate === "2026-03-29",
+    );
 
-    const currentPageOffsets = topPageRequests
-      .map((request) => request.offset)
-      .filter((offset): offset is number => typeof offset === "number");
-    expect(topPageRequests).toHaveLength(101);
-    expect(Math.max(...currentPageOffsets)).toBe(9_900);
+    expect(currentTopPageRequests).toHaveLength(100);
+    expect(currentTopPageRequests.at(-1)?.offset).toBe(9_900);
+    expect(previousTopPageRequests).toHaveLength(100);
+    expect(previousTopPageRequests.at(-1)?.offset).toBe(9_900);
     expect(data.topPages).toHaveLength(10_000);
+    expect(data.topPagesPrev30d).toHaveLength(10_000);
     expect(data._meta).toEqual(expect.objectContaining({
       truncated: true,
-      truncatedResources: ["topPages"],
+      truncatedResources: ["topPages", "topPagesPrev30d"],
     }));
   });
 });

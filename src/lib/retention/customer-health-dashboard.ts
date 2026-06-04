@@ -142,7 +142,7 @@ function toIso(value: Date | string | null | undefined): string {
   if (value instanceof Date) return value.toISOString();
   if (typeof value === "string") {
     const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
+    return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
   }
   return "";
 }

@@ -8,6 +8,7 @@ import {
   Target,
   TrendingUp,
 } from "lucide-react";
+import { CompanyReadinessSetupAction } from "@/components/workspaces/company-readiness-setup-action";
 import type {
   CompanyTrackerDashboardData,
   CompanyGoalProgress,
@@ -16,47 +17,123 @@ import type {
   CompanySourceCoverage,
   CompanyTrackerMetric,
 } from "@/lib/imladris/company-tracker";
+import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
 
-function formatCurrency(value: number | null, currency: string | null): string {
-  if (value === null) return "Missing";
+function formatCurrency(value: unknown, currency: string | null): string {
+  const amount = numberValue(value);
+  if (amount === null) return "Missing";
   const code = currency ?? "USD";
   const prefix = code === "USD" ? "$" : `${code} `;
-  const absolute = Math.abs(value);
-  if (absolute >= 1_000_000) return `${prefix}${(value / 1_000_000).toFixed(2)}m`;
-  if (absolute >= 1_000) return `${prefix}${(value / 1_000).toFixed(1)}k`;
-  return `${prefix}${value.toFixed(0)}`;
+  const absolute = Math.abs(amount);
+  if (absolute >= 1_000_000) return `${prefix}${(amount / 1_000_000).toFixed(2)}m`;
+  if (absolute >= 1_000) return `${prefix}${(amount / 1_000).toFixed(1)}k`;
+  return `${prefix}${amount.toFixed(0)}`;
 }
 
-function formatNumber(value: number | null, unit?: string): string {
-  if (value === null) return "Missing";
-  if (unit === "months") return `${value.toFixed(1)} mo`;
-  if (unit === "percent") return `${value.toFixed(1)}%`;
-  if (unit === "ratio") return `${value.toFixed(2)}x`;
-  return value.toLocaleString();
+function formatNumber(value: unknown, unit?: string): string {
+  const parsed = numberValue(value);
+  if (parsed === null) return "Missing";
+  if (unit === "months") return `${parsed.toFixed(1)} mo`;
+  if (unit === "percent") return `${parsed.toFixed(1)}%`;
+  if (unit === "ratio") return `${parsed.toFixed(2)}x`;
+  return parsed.toLocaleString();
+}
+
+function scalarValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value !== "object") return value;
+  if (value instanceof Date) return value;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.length === 1 ? scalarValue(value[0], seen) : null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const data =
+    record.data && typeof record.data === "object" && !Array.isArray(record.data)
+      ? (record.data as Record<string, unknown>)
+      : {};
+  const attributes =
+    data.attributes && typeof data.attributes === "object" && !Array.isArray(data.attributes)
+      ? (data.attributes as Record<string, unknown>)
+      : {};
+  const candidates = [
+    record.value,
+    record.metricValue,
+    record.metric_value,
+    record.amount,
+    record.number,
+    record.count,
+    record.total,
+    record.balance,
+    record.rate,
+    record.score,
+    record.months,
+    attributes.value,
+    data.value,
+    data.attributes,
+    record.attributes,
+    record.values,
+    record.fields,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = scalarValue(candidate, seen);
+    if (normalized !== null && normalized !== undefined && typeof normalized !== "object") return normalized;
+    if (normalized instanceof Date) return normalized;
+  }
+
+  return value;
+}
+
+function numberValue(value: unknown): number | null {
+  const normalizedValue = scalarValue(value);
+  if (typeof normalizedValue === "string" && normalizedValue.trim()) {
+    const trimmed = normalizedValue.trim();
+    const withoutPercent = trimmed.endsWith("%") ? trimmed.slice(0, -1).trim() : trimmed;
+    return parseImladrisNumber(withoutPercent);
+  }
+  return parseImladrisNumber(normalizedValue);
 }
 
 function formatMetricValue(metric: CompanyTrackerMetric, currency: string): string {
+  if (metric.status === "missing" || metric.status === "error") return "Missing";
+
   const payload =
     metric.value && typeof metric.value === "object" && !Array.isArray(metric.value)
       ? (metric.value as Record<string, unknown>)
       : {};
-  const amount = typeof payload.amount === "number" ? payload.amount : null;
-  const score = typeof payload.score === "number" ? payload.score : null;
-  const rate = typeof payload.rate === "number" ? payload.rate : null;
-  const ratio = typeof payload.ratio === "number" ? payload.ratio : null;
-  const riskScore = typeof payload.riskScore === "number" ? payload.riskScore : null;
+  const amount = numberValue(payload.amount);
+  const score = numberValue(payload.score);
+  const rate = numberValue(payload.rate);
+  const ratio = numberValue(payload.ratio);
+  const riskScore = numberValue(payload.riskScore);
 
   if (metric.key === "revenue.mrr") return formatCurrency(amount, currency);
   if (metric.key === "finance.net_burn") return formatCurrency(amount, currency);
   if (metric.key === "sales.qualified_pipeline") return formatCurrency(amount, currency);
   if (metric.key === "finance.cash_runway_months") {
-    return formatNumber(typeof payload.months === "number" ? payload.months : null, "months");
+    return formatNumber(numberValue(payload.months), "months");
   }
   if (ratio !== null) return formatNumber(ratio, "ratio");
   if (score !== null) return formatNumber(score);
   if (rate !== null) return formatNumber(rate, "percent");
   if (riskScore !== null) return formatNumber(riskScore);
   return metric.value === null ? "Missing" : "Available";
+}
+
+function confidencePercent(value: unknown): number {
+  const parsed = numberValue(value);
+  if (parsed === null) return 0;
+  const ratio = parsed > 1 && parsed <= 100 ? parsed / 100 : parsed;
+  return Math.min(Math.max(ratio * 100, 0), 100);
+}
+
+function lineageLabel(value: unknown): string {
+  const parsed = numberValue(value);
+  return parsed === null ? "Missing" : parsed.toLocaleString();
 }
 
 function statusClasses(status: string): string {
@@ -119,6 +196,10 @@ function KpiCard({
 }
 
 function GoalRow({ goal }: { goal: CompanyGoalProgress }) {
+  const progressPct = numberValue(goal.progressPct) ?? 0;
+  const currentValue = numberValue(goal.currentValue);
+  const targetValue = numberValue(goal.targetValue);
+
   return (
     <article className="rounded-lg border border-border bg-card p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -132,17 +213,17 @@ function GoalRow({ goal }: { goal: CompanyGoalProgress }) {
             {goal.sourceMetricKey ?? "missing"}
           </p>
         </div>
-        <p className="text-sm font-semibold text-foreground">{goal.progressPct.toFixed(1)}%</p>
+        <p className="text-sm font-semibold text-foreground">{progressPct.toFixed(1)}%</p>
       </div>
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-secondary">
         <div
           className="h-full rounded-full bg-primary"
-          style={{ width: `${Math.min(Math.max(goal.progressPct, 0), 100)}%` }}
+          style={{ width: `${Math.min(Math.max(progressPct, 0), 100)}%` }}
         />
       </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-        <span>Current {goal.currentValue === null ? "Missing" : goal.currentValue.toLocaleString()}</span>
-        <span>Target {goal.targetValue.toLocaleString()}</span>
+        <span>Current {formatNumber(currentValue)}</span>
+        <span>Target {formatNumber(targetValue)}</span>
         <span>Due {goal.deadline?.slice(0, 10) ?? "Missing"}</span>
       </div>
     </article>
@@ -228,6 +309,9 @@ function SourceCoverageRow({ source }: { source: CompanySourceCoverage }) {
 }
 
 function GrowthMetricCard({ metric, currency }: { metric: CompanyTrackerMetric; currency: string }) {
+  const confidence = confidencePercent(metric.confidence);
+  const lineage = lineageLabel(metric.sourceLineageCount);
+
   return (
     <article className="rounded-lg border border-border bg-card p-4">
       <div className="flex items-start justify-between gap-3">
@@ -240,13 +324,16 @@ function GrowthMetricCard({ metric, currency }: { metric: CompanyTrackerMetric; 
         <StatusBadge status={metric.status} />
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
-        Confidence {(metric.confidence * 100).toFixed(0)}% · lineage {metric.sourceLineageCount}
+        Confidence {confidence.toFixed(0)}% · lineage {lineage}
       </p>
     </article>
   );
 }
 
 function TrustRow({ metric }: { metric: CompanyTrackerMetric }) {
+  const confidence = confidencePercent(metric.confidence);
+  const lineage = lineageLabel(metric.sourceLineageCount);
+
   return (
     <article className="rounded-lg border border-border bg-card p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -259,11 +346,11 @@ function TrustRow({ metric }: { metric: CompanyTrackerMetric }) {
       <dl className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
         <div>
           <dt>Confidence</dt>
-          <dd className="font-medium text-foreground">{(metric.confidence * 100).toFixed(0)}%</dd>
+          <dd className="font-medium text-foreground">{confidence.toFixed(0)}%</dd>
         </div>
         <div>
           <dt>Lineage</dt>
-          <dd className="font-medium text-foreground">{metric.sourceLineageCount}</dd>
+          <dd className="font-medium text-foreground">{lineage}</dd>
         </div>
         <div>
           <dt>Version</dt>
@@ -299,6 +386,15 @@ export function CompanyTrackerDashboard({ data }: { data: CompanyTrackerDashboar
       "customer_success.retention_risk",
     ].includes(metric.key),
   );
+  const readyCount = numberValue(data.trust.summary.ready) ?? 0;
+  const watchCount =
+    (numberValue(data.trust.summary.missing) ?? 0) +
+    (numberValue(data.trust.summary.stale) ?? 0) +
+    (numberValue(data.trust.summary.error) ?? 0);
+  const canRunReadinessSetup =
+    data.boardReadiness.blockers.length > 0 ||
+    data.boardReadiness.caveats.length > 0 ||
+    data.boardReadiness.requiredActions.length > 0;
 
   return (
     <div className="h-full overflow-y-auto p-4">
@@ -319,11 +415,11 @@ export function CompanyTrackerDashboard({ data }: { data: CompanyTrackerDashboar
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5">
                 <ShieldCheck className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-                {data.trust.summary.ready} ready
+                {readyCount.toLocaleString()} ready
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5">
                 <AlertTriangle className="h-3.5 w-3.5 text-warning" aria-hidden="true" />
-                {data.trust.summary.missing + data.trust.summary.stale + data.trust.summary.error} watch
+                {watchCount.toLocaleString()} watch
               </span>
             </div>
           </div>
@@ -361,6 +457,7 @@ export function CompanyTrackerDashboard({ data }: { data: CompanyTrackerDashboar
                 ))}
               </div>
             ) : null}
+            {canRunReadinessSetup ? <CompanyReadinessSetupAction /> : null}
           </article>
 
           <div className="space-y-3">

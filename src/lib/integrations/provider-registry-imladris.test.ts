@@ -11,7 +11,7 @@ describe("Imladris provider registry coverage", () => {
   it("registers PostHog, Linear, GitHub, Unify, and Reddit as first-class Imladris sources", () => {
     expect(resolveProviderRegistryEntryBySlug("posthog")).toMatchObject({
       provider: IntegrationProvider.POSTHOG,
-      snapshotKeys: ["posthog"],
+      snapshotKeys: ["posthog", "product"],
     });
     expect(resolveProviderRegistryEntryBySlug("linear")).toMatchObject({
       provider: IntegrationProvider.LINEAR,
@@ -35,6 +35,14 @@ describe("Imladris provider registry coverage", () => {
     expect(providerForSnapshotKey("github")).toBe(IntegrationProvider.GITHUB);
     expect(providerForSnapshotKey("unify")).toBe(IntegrationProvider.UNIFY);
     expect(providerForSnapshotKey("redditAds")).toBe(IntegrationProvider.REDDIT);
+  });
+
+  it("normalizes snapshot key aliases used by Imladris backfills", () => {
+    expect(providerForSnapshotKey("Google Analytics")).toBe(IntegrationProvider.GOOGLE_ANALYTICS);
+    expect(providerForSnapshotKey("google_analytics")).toBe(IntegrationProvider.GOOGLE_ANALYTICS);
+    expect(providerForSnapshotKey("google-analytics")).toBe(IntegrationProvider.GOOGLE_ANALYTICS);
+    expect(providerForSnapshotKey("sales-performance")).toBe(IntegrationProvider.HUBSPOT);
+    expect(providerForSnapshotKey("product")).toBe(IntegrationProvider.POSTHOG);
   });
 
   it("does not expose WIPGuard as a provider source", () => {

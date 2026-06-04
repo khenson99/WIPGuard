@@ -117,6 +117,225 @@ describe("development analytics fetchers", () => {
     }));
   });
 
+  it("fetches Linear projects as company goals and computes issue-count progress", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        data: {
+          projects: {
+            nodes: [
+              {
+                id: "project_1",
+                name: "Launch self-serve onboarding",
+                description: "Ship the onboarding project.",
+                url: "https://linear.app/acme/project/self-serve-onboarding",
+                progress: 0.5,
+                state: "started",
+                startDate: "2026-05-01",
+                targetDate: "2026-06-30",
+                createdAt: "2026-04-20T00:00:00.000Z",
+                updatedAt: "2026-05-31T00:00:00.000Z",
+                completedAt: null,
+                lead: { id: "user_1", name: "Ada Lovelace", email: "ada@example.com" },
+                teams: {
+                  nodes: [{ id: "team_1", key: "ENG", name: "Engineering" }],
+                },
+                issues: {
+                  nodes: [
+                    {
+                      id: "issue_1",
+                      identifier: "ENG-1",
+                      title: "Design onboarding checklist",
+                      archivedAt: null,
+                      completedAt: "2026-05-20T00:00:00.000Z",
+                      updatedAt: "2026-05-20T00:00:00.000Z",
+                      estimate: 2,
+                      state: { id: "state_1", name: "Done", type: "completed" },
+                      team: { id: "team_1", key: "ENG", name: "Engineering" },
+                      assignee: { id: "user_1", name: "Ada Lovelace", email: "ada@example.com" },
+                    },
+                    {
+                      id: "issue_2",
+                      identifier: "ENG-2",
+                      title: "Instrument activation event",
+                      archivedAt: null,
+                      completedAt: null,
+                      updatedAt: "2026-05-28T00:00:00.000Z",
+                      estimate: 3,
+                      state: { id: "state_2", name: "In Progress", type: "started" },
+                      team: { id: "team_1", key: "ENG", name: "Engineering" },
+                      assignee: null,
+                    },
+                    {
+                      id: "issue_3",
+                      identifier: "ENG-3",
+                      title: "Archived implementation note",
+                      archivedAt: "2026-05-29T00:00:00.000Z",
+                      completedAt: null,
+                      updatedAt: "2026-05-29T00:00:00.000Z",
+                      estimate: 1,
+                      state: { id: "state_3", name: "Canceled", type: "canceled" },
+                      team: { id: "team_1", key: "ENG", name: "Engineering" },
+                      assignee: null,
+                    },
+                  ],
+                  pageInfo: { hasNextPage: true, endCursor: "issue_cursor_2" },
+                },
+              },
+              {
+                id: "project_2",
+                name: "Recently completed reporting",
+                url: "https://linear.app/acme/project/reporting",
+                progress: 1,
+                state: "completed",
+                startDate: "2026-04-01",
+                targetDate: "2026-05-15",
+                createdAt: "2026-04-01T00:00:00.000Z",
+                updatedAt: "2026-05-22T00:00:00.000Z",
+                completedAt: "2026-05-22T00:00:00.000Z",
+                lead: null,
+                teams: { nodes: [] },
+                issues: {
+                  nodes: [],
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                },
+              },
+              {
+                id: "project_3",
+                name: "Canceled migration",
+                url: "https://linear.app/acme/project/canceled",
+                state: "canceled",
+                updatedAt: "2026-05-31T00:00:00.000Z",
+                teams: { nodes: [] },
+                issues: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+              },
+            ],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        data: {
+          project: {
+            issues: {
+              nodes: [
+                {
+                  id: "issue_4",
+                  identifier: "ENG-4",
+                  title: "QA activation event",
+                  archivedAt: null,
+                  completedAt: "2026-05-30T00:00:00.000Z",
+                  updatedAt: "2026-05-30T00:00:00.000Z",
+                  estimate: 1,
+                  state: { id: "state_1", name: "Done", type: "completed" },
+                  team: { id: "team_1", key: "ENG", name: "Engineering" },
+                  assignee: { id: "user_2", name: "Grace Hopper", email: "grace@example.com" },
+                },
+              ],
+              pageInfo: { hasNextPage: false, endCursor: null },
+            },
+          },
+        },
+      }));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchLinearData({
+      apiKey: "lin_api_key",
+      fromDate: new Date("2026-05-01T00:00:00.000Z"),
+      toDate: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual(expect.objectContaining({
+      variables: expect.objectContaining({
+        projectId: "project_1",
+        after: "issue_cursor_2",
+      }),
+    }));
+    expect(data.projects).toEqual([
+      expect.objectContaining({
+        id: "project_1",
+        name: "Launch self-serve onboarding",
+        state: "started",
+        completedIssueCount: 2,
+        totalIssueCount: 3,
+        archivedIssueCount: 1,
+        progressPct: 66.67,
+        issues: expect.arrayContaining([
+          expect.objectContaining({ identifier: "ENG-1", state: expect.objectContaining({ type: "completed" }) }),
+          expect.objectContaining({ identifier: "ENG-4", state: expect.objectContaining({ type: "completed" }) }),
+        ]),
+      }),
+      expect.objectContaining({
+        id: "project_2",
+        state: "completed",
+        completedIssueCount: 0,
+        totalIssueCount: 0,
+        progressPct: 0,
+        warnings: ["No linked issues."],
+      }),
+    ]);
+    expect(data.projects).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "project_3" }),
+    ]));
+    expect(data.projectCount).toBe(2);
+    expect(data._meta).toEqual(expect.objectContaining({
+      projectPageCount: 1,
+      issuePageCount: 1,
+      truncated: false,
+    }));
+  });
+
+  it("marks Linear project sync truncated when project pages exceed the max page budget", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      data: {
+        projects: {
+          nodes: [
+            {
+              id: "project_1",
+              name: "Started project",
+              state: "started",
+              updatedAt: "2026-05-31T00:00:00.000Z",
+              teams: { nodes: [] },
+              issues: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+            },
+          ],
+          pageInfo: { hasNextPage: true, endCursor: "project_cursor_2" },
+        },
+      },
+    }));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchLinearData({
+      apiKey: "lin_api_key",
+      fromDate: new Date("2026-05-01T00:00:00.000Z"),
+      toDate: new Date("2026-06-01T00:00:00.000Z"),
+      maxPages: 1,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(data.projects).toEqual([
+      expect.objectContaining({ id: "project_1" }),
+    ]);
+    expect(data._meta).toEqual(expect.objectContaining({
+      projectPageCount: 1,
+      truncated: true,
+    }));
+  });
+
+  it("surfaces Linear GraphQL errors before reading project payloads", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      errors: [{ message: "Cannot query field projects" }],
+      data: null,
+    }));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    await expect(fetchLinearData({
+      apiKey: "lin_api_key",
+      fromDate: new Date("2026-05-01T00:00:00.000Z"),
+      toDate: new Date("2026-06-01T00:00:00.000Z"),
+    })).rejects.toThrow(/Linear GraphQL error/);
+  });
+
   it("follows GitHub search pagination within the requested update window", async () => {
     const firstPageItems = Array.from({ length: 100 }, (_, index) => ({
       id: index + 1,

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { IntegrationProvider } from "@/generated/prisma/client";
 import {
   CANONICAL_DEPARTMENTS,
   IMLADRIS_METRIC_DEFINITIONS,
   REQUIRED_IMLADRIS_PROVIDERS,
   getImladrisDashboardDefinition,
 } from "@/lib/imladris/catalog";
+import { getProviderRegistryEntry } from "@/lib/integrations/provider-registry";
 
 describe("Imladris catalog", () => {
   it("requires every v1 source system and excludes task/WIP pseudo-sources", () => {
@@ -37,6 +39,17 @@ describe("Imladris catalog", () => {
     for (const provider of REQUIRED_IMLADRIS_PROVIDERS) {
       expect(provider.freshnessSlaHours).toBeGreaterThan(0);
       expect(provider.historicalLookbackMonths).toBe(13);
+    }
+  });
+
+  it("keeps Imladris snapshot keys aligned with registry-backed provider aliases", () => {
+    for (const provider of REQUIRED_IMLADRIS_PROVIDERS) {
+      const registrySnapshotKeys = provider.providerAliases.flatMap((alias) => {
+        const registryProvider = IntegrationProvider[alias as keyof typeof IntegrationProvider];
+        return registryProvider ? (getProviderRegistryEntry(registryProvider)?.snapshotKeys ?? []) : [];
+      });
+
+      expect(provider.snapshotKeys).toEqual(expect.arrayContaining(registrySnapshotKeys));
     }
   });
 

@@ -3,6 +3,7 @@ import {
   evaluateProviderSyncHealth,
   providerForSnapshotKey,
   snapshotKeysForIntegrationProvider,
+  snapshotsForProvider,
 } from "@/lib/analytics/provider-health";
 
 describe("provider health", () => {
@@ -112,6 +113,13 @@ describe("provider health", () => {
     expect(snapshotKeysForIntegrationProvider(IntegrationProvider.HUBSPOT)).toEqual([
       "hubspot",
       "hubspotOps",
+      "hubspotops",
+      "hubspot_ops",
+      "hubspot-ops",
+      "salesPerformance",
+      "salesperformance",
+      "sales_performance",
+      "sales-performance",
     ]);
     expect(snapshotKeysForIntegrationProvider(IntegrationProvider.STRIPE)).toEqual([
       "stripe",
@@ -119,12 +127,42 @@ describe("provider health", () => {
     expect(snapshotKeysForIntegrationProvider(IntegrationProvider.WEBFLOW)).toEqual([
       "webflow",
     ]);
+    expect(snapshotKeysForIntegrationProvider(IntegrationProvider.GOOGLE_ANALYTICS)).toEqual([
+      "googleAnalytics",
+      "googleanalytics",
+      "google_analytics",
+      "google-analytics",
+    ]);
   });
 
   it("maps snapshot keys back to integration providers", () => {
     expect(providerForSnapshotKey("hubspotOps")).toBe(IntegrationProvider.HUBSPOT);
+    expect(providerForSnapshotKey("sales-performance")).toBe(IntegrationProvider.HUBSPOT);
     expect(providerForSnapshotKey("stripe")).toBe(IntegrationProvider.STRIPE);
     expect(providerForSnapshotKey("webflow")).toBe(IntegrationProvider.WEBFLOW);
     expect(providerForSnapshotKey("unknown")).toBeNull();
+  });
+
+  it("matches delimiter-formatted stored snapshots to their integration provider", () => {
+    const snapshots = snapshotsForProvider(IntegrationProvider.GOOGLE_ANALYTICS, [
+      {
+        providerKey: "google_analytics",
+        status: "SUCCESS",
+        capturedAt: "2026-02-16T11:59:00.000Z",
+        expiresAt: "2026-02-16T13:00:00.000Z",
+        lastError: null,
+      },
+      {
+        providerKey: "google-ads",
+        status: "SUCCESS",
+        capturedAt: "2026-02-16T11:59:00.000Z",
+        expiresAt: "2026-02-16T13:00:00.000Z",
+        lastError: null,
+      },
+    ]);
+
+    expect(snapshots).toEqual([
+      expect.objectContaining({ providerKey: "google_analytics" }),
+    ]);
   });
 });

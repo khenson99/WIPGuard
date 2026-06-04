@@ -13,15 +13,74 @@ import type {
   CustomerHealthDashboardData,
   CustomerHealthSourceCoverage,
 } from "@/lib/retention/customer-health-dashboard";
+import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
 
-function formatPercent(value: number | null | undefined): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "Missing";
-  return `${value.toFixed(1)}%`;
+function scalarValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value !== "object") return value;
+  if (value instanceof Date) return value;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.length === 1 ? scalarValue(value[0], seen) : null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const data =
+    record.data && typeof record.data === "object" && !Array.isArray(record.data)
+      ? (record.data as Record<string, unknown>)
+      : {};
+  const attributes =
+    data.attributes && typeof data.attributes === "object" && !Array.isArray(data.attributes)
+      ? (data.attributes as Record<string, unknown>)
+      : {};
+  const candidates = [
+    record.value,
+    record.metricValue,
+    record.metric_value,
+    record.amount,
+    record.number,
+    record.count,
+    record.percent,
+    record.percentage,
+    attributes.value,
+    data.value,
+    data.attributes,
+    record.attributes,
+    record.values,
+    record.fields,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = scalarValue(candidate, seen);
+    if (normalized !== null && normalized !== undefined && typeof normalized !== "object") return normalized;
+    if (normalized instanceof Date) return normalized;
+  }
+
+  return value;
 }
 
-function formatNumber(value: number | null | undefined): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "Missing";
-  return value.toLocaleString();
+function numericValue(value: unknown): number | null {
+  const normalized = scalarValue(value);
+  if (typeof normalized === "string") {
+    const trimmed = normalized.trim();
+    const withoutPercent = trimmed.endsWith("%") ? trimmed.slice(0, -1).trim() : trimmed;
+    return parseImladrisNumber(withoutPercent);
+  }
+  return parseImladrisNumber(normalized);
+}
+
+function formatPercent(value: unknown): string {
+  const parsed = numericValue(value);
+  if (parsed === null) return "Missing";
+  return `${parsed.toFixed(1)}%`;
+}
+
+function formatNumber(value: unknown): string {
+  const parsed = numericValue(value);
+  if (parsed === null) return "Missing";
+  return parsed.toLocaleString();
 }
 
 function statusClasses(status: string): string {
@@ -151,7 +210,7 @@ function AccountRow({ account }: { account: CustomerHealthAccountRow }) {
         {formatPercent(account.trendVsPriorPct)}
       </td>
       <td className="px-3 py-3 align-top text-sm text-foreground">
-        {account.primaryLirValue === null
+        {account.primaryLirValue === null || account.primaryLirValue === undefined
           ? "Missing"
           : `${formatNumber(account.primaryLirValue)} / ${formatNumber(account.primaryLirThreshold)}`}
       </td>

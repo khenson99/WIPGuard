@@ -31,6 +31,36 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/lib/imladris/company-readiness-setup", () => ({
+  runCompanyReadinessSetup: vi.fn(async () => ({
+    setup: {
+      snapshotsUsed: [],
+      metricsMaterialized: [],
+      goalsCreated: [],
+      unresolvedActions: [],
+      unresolvedBlockers: [],
+    },
+    dashboard: {
+      dashboard: { id: "company" },
+      summary: {},
+      goalProgress: [],
+      goalRecommendations: [],
+      healthBands: [],
+      sourceCoverage: [],
+      boardReadiness: {
+        status: "ready",
+        score: 100,
+        blockers: [],
+        caveats: [],
+        requiredActions: [],
+        requiredActionCount: 0,
+      },
+      metrics: [],
+      trust: { summary: {}, warnings: [], caveats: [] },
+    },
+  })),
+}));
+
 describe("Imladris API routes", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -134,6 +164,46 @@ describe("Imladris API routes", () => {
     const route = await import("@/app/api/imladris/dashboards/company/route");
     const response = await route.GET(
       new NextRequest("http://localhost/api/imladris/dashboards/company"),
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Unauthorized" });
+  });
+
+  it("runs authenticated company readiness setup", async () => {
+    const { runCompanyReadinessSetup } = await import("@/lib/imladris/company-readiness-setup");
+    const route = await import("@/app/api/imladris/dashboards/company/readiness/setup/route");
+    const response = await route.POST(
+      new NextRequest("http://localhost/api/imladris/dashboards/company/readiness/setup"),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(runCompanyReadinessSetup).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: {
+          userId: "user_1",
+          organizationId: "org_1",
+        },
+      }),
+    );
+    expect(payload.product).toBe("Imladris");
+    expect(payload.setup).toEqual(
+      expect.objectContaining({
+        snapshotsUsed: [],
+        goalsCreated: [],
+      }),
+    );
+    expect(payload.boardReadiness.status).toBe("ready");
+  });
+
+  it("rejects unauthenticated company readiness setup requests", async () => {
+    const { auth } = await import("@/lib/auth");
+    vi.mocked(auth).mockResolvedValueOnce(null as never);
+
+    const route = await import("@/app/api/imladris/dashboards/company/readiness/setup/route");
+    const response = await route.POST(
+      new NextRequest("http://localhost/api/imladris/dashboards/company/readiness/setup"),
     );
 
     expect(response.status).toBe(401);

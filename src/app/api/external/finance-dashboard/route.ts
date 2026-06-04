@@ -2,7 +2,8 @@ export const dynamic = "force-dynamic";
 
 import { createHash, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { fetchMercuryData } from "@/lib/analytics/fetchers";
+import { buildInvestorDashboardExport } from "@/lib/imladris/investor-dashboard-export";
+import { prisma } from "@/lib/prisma";
 
 const DEFAULT_ALLOWED_ORIGIN = "https://vigilant-invention-j1n5g1p.pages.github.io";
 const RANGE_DAYS = {
@@ -112,6 +113,32 @@ function dateRangeForPreset(preset: RangePreset, now = new Date()): { fromDate: 
   return { fromDate, toDate };
 }
 
+async function resolveExportContext(): Promise<
+  | { ok: true; context: { userId: string; organizationId: string | null } }
+  | { ok: false; error: string }
+> {
+  const ownerUserId = process.env.INTEGRATION_OWNER_USER_ID?.trim();
+  if (!ownerUserId) {
+    return { ok: false, error: "Finance dashboard export owner is not configured" };
+  }
+
+  const owner = await prisma.user.findUnique({
+    where: { id: ownerUserId },
+    select: { organizationId: true },
+  });
+  if (!owner) {
+    return { ok: false, error: "Finance dashboard export owner is invalid" };
+  }
+
+  return {
+    ok: true,
+    context: {
+      userId: ownerUserId,
+      organizationId: owner.organizationId ?? null,
+    },
+  };
+}
+
 export async function OPTIONS(request: NextRequest): Promise<NextResponse> {
   return new NextResponse(null, {
     status: 204,
@@ -124,33 +151,25 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return jsonResponse(request, { error: "Unauthorized" }, { status: 401 });
   }
 
-  const mercuryToken = process.env.MERCURY_API_TOKEN?.trim();
-  if (!mercuryToken) {
-    return jsonResponse(request, { error: "Mercury data source is not configured" }, { status: 503 });
-  }
-
   try {
+    const exportContext = await resolveExportContext();
+    if (!exportContext.ok) {
+      return jsonResponse(request, { error: exportContext.error }, { status: 503 });
+    }
+
     const range = parseRange(request);
     const { fromDate, toDate } = dateRangeForPreset(range);
-    const mercury = await fetchMercuryData(mercuryToken, { fromDate, toDate });
-    const servedAt = new Date().toISOString();
+    const payload = await buildInvestorDashboardExport({
+      prisma,
+      context: exportContext.context,
+      range,
+      fromDate,
+      toDate,
+    });
 
-    return jsonResponse(
-      request,
-      {
-        mercury,
-        meta: {
-          servedAt,
-          range,
-          from: fromDate.toISOString().slice(0, 10),
-          to: toDate.toISOString().slice(0, 10),
-          source: "wipguard-finance-dashboard-export",
-        },
-      },
-      { status: 200 },
-    );
+    return jsonResponse(request, payload, { status: 200 });
   } catch (error) {
     console.error("GET /api/external/finance-dashboard error:", error);
-    return jsonResponse(request, { error: "Failed to load fresh finance data" }, { status: 500 });
+    return jsonResponse(request, { error: "Failed to load investor dashboard export" }, { status: 500 });
   }
 }

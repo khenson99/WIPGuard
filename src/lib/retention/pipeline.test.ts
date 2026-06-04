@@ -122,9 +122,9 @@ describe("retention pipeline helpers", () => {
             results: [],
             nextPage: null,
           }),
-          { status: 200 }
+          { status: 200 },
         );
-      }) as unknown as typeof fetch
+      }) as unknown as typeof fetch,
     );
 
     await expect(
@@ -133,15 +133,15 @@ describe("retention pipeline helpers", () => {
           queryArdaCollection: (
             endpoint: string,
             tenantId: string,
-            asOfMs: number
+            asOfMs: number,
           ) => Promise<unknown>;
         }
-      ).queryArdaCollection("order/order", "tenant_1", Date.parse("2026-03-15T00:00:00.000Z"))
+      ).queryArdaCollection("order/order", "tenant_1", Date.parse("2026-03-15T00:00:00.000Z")),
     ).resolves.toEqual([]);
 
     expect(requests).toHaveLength(1);
     expect(requests[0].headers.get("X-Request-ID")).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
     expect(requests[0].headers.get("X-Tenant-Id")).toBe("tenant_1");
   });

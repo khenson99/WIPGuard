@@ -3,6 +3,7 @@ import type { AnalyticsSnapshotStatus } from "@/lib/analytics/types";
 import {
   getProviderRegistryEntry,
   providerForSnapshotKey as providerForSnapshotKeyFromRegistry,
+  snapshotKeyQueryVariants,
 } from "@/lib/integrations/provider-registry";
 
 export type ProviderSyncHealth = "healthy" | "degraded" | "error" | "missing";
@@ -23,7 +24,7 @@ export interface ProviderSyncHealthResult {
 }
 
 export function snapshotKeysForIntegrationProvider(provider: IntegrationProvider): string[] {
-  return getProviderRegistryEntry(provider)?.snapshotKeys ?? [];
+  return snapshotKeyQueryVariants(getProviderRegistryEntry(provider)?.snapshotKeys ?? []);
 }
 
 function toDate(value: Date | string): Date {
@@ -120,8 +121,7 @@ export function snapshotsForProvider(
   provider: IntegrationProvider,
   snapshots: ProviderSnapshotSample[]
 ): ProviderSnapshotSample[] {
-  const keys = new Set(snapshotKeysForIntegrationProvider(provider));
-  return snapshots.filter((snapshot) => keys.has(snapshot.providerKey));
+  return snapshots.filter((snapshot) => providerForSnapshotKeyFromRegistry(snapshot.providerKey) === provider);
 }
 
 export function providerForSnapshotKey(providerKey: string): IntegrationProvider | null {

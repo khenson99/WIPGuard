@@ -1,5 +1,6 @@
 export type WorkspaceId =
   | "sources"
+  | "goals"
   | "metrics"
   | "reports"
   | "pipelines";
@@ -27,6 +28,12 @@ export const WORKSPACE_NAV_ITEMS: WorkspaceNavItem[] = [
     description: "Provider health, sync state, freshness, errors, and source lineage.",
   },
   {
+    id: "goals",
+    label: "Goals",
+    href: "/goals",
+    description: "Company goals and progress from Linear projects.",
+  },
+  {
     id: "metrics",
     label: "Metrics",
     href: "/metrics",
@@ -42,6 +49,12 @@ export const WORKSPACE_NAV_ITEMS: WorkspaceNavItem[] = [
         id: "customer-health",
         label: "Customer Health",
         href: "/metrics/customer-health",
+        workspaceId: "metrics",
+      },
+      {
+        id: "expense-dashboard",
+        label: "Expenses",
+        href: "/metrics/expenses",
         workspaceId: "metrics",
       },
     ],

@@ -1,0 +1,1 @@
+ALTER TYPE "ImladrisMetricStatus" ADD VALUE IF NOT EXISTS 'PARTIAL';

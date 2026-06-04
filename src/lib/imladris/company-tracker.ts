@@ -7,6 +7,8 @@ import { buildAnalyticsMetricsLayer } from "@/lib/analytics/kpis";
 import { buildRevenueDashboardData } from "@/lib/analytics/revenue-dashboard";
 import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import type { ImladrisDashboardDefinition } from "@/lib/imladris/catalog";
+import { normalizeMetricConfidence, normalizeMetricStatus, normalizeMetricWarnings } from "@/lib/imladris/confidence";
+import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
 import type {
   AnalyticsDashboardData,
   AnalyticsMetricsLayer,
@@ -26,7 +28,7 @@ type SourceCoverageStatus = "available" | "missing" | "stale" | "error";
 type BoardReadinessStatus = "ready" | "watch" | "blocked";
 
 interface UserContext {
-  userId: string;
+  userId: string | null;
   organizationId: string | null;
 }
 
@@ -48,6 +50,7 @@ interface CanonicalMetricRow {
   warnings: string[];
   calculationVersion: string;
   computedAt: Date | string;
+  periodStart: Date | string;
   periodEnd: Date | string;
   userId?: string | null;
   organizationId?: string | null;
@@ -58,7 +61,7 @@ interface FinancialGoalRow {
   id: string;
   userId?: string;
   metric: string;
-  targetValue: number;
+  targetValue: unknown;
   deadline: Date | string;
   status: string;
 }
@@ -231,14 +234,49 @@ const SOURCE_SNAPSHOT_KEYS = new Map<string, string[]>(
 
 const BOARD_TARGET_METRICS = ["ARR", "RUNWAY", "BURN_RATE"] as const;
 
-function toDate(value: Date | string | null | undefined): Date | null {
-  if (!value) return null;
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
+function toDate(value: unknown): Date | null {
+  const normalizedValue = scalarValue(value) ?? value;
+  if (normalizedValue === null || normalizedValue === undefined) return null;
+  if (normalizedValue instanceof Date) {
+    return Number.isNaN(normalizedValue.getTime()) ? null : normalizedValue;
+  }
+  if (typeof normalizedValue === "number" && Number.isFinite(normalizedValue) && normalizedValue > 0) {
+    const timestampMs = normalizedValue < 10_000_000_000 ? normalizedValue * 1000 : normalizedValue;
+    const date = new Date(timestampMs);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  if (typeof normalizedValue === "string") {
+    const normalized = normalizedValue.trim();
+    if (!normalized) return null;
+    if (/^\d+(?:\.\d+)?$/.test(normalized)) {
+      const timestamp = Number(normalized);
+      if (Number.isFinite(timestamp) && timestamp > 0) {
+        const timestampMs = timestamp < 10_000_000_000 ? timestamp * 1000 : timestamp;
+        const date = new Date(timestampMs);
+        return Number.isNaN(date.getTime()) ? null : date;
+      }
+    }
+    const date = new Date(normalized);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  return null;
 }
 
 function toIso(value: Date | string | null | undefined): string | null {
   return toDate(value)?.toISOString() ?? null;
+}
+
+function normalizeTenantId(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeContext(context: UserContext): UserContext {
+  return {
+    userId: normalizeTenantId(context.userId),
+    organizationId: normalizeTenantId(context.organizationId),
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -247,13 +285,113 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function numberValue(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value.trim().replace(/[$,\s]/g, ""));
-    return Number.isFinite(parsed) ? parsed : null;
+function directMetricFields(payload: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([key]) => !["properties", "values", "fields", "attributes", "data"].includes(key)),
+  );
+}
+
+function directDataMetricFields(payload: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(payload).filter(
+      ([key]) => !["id", "type", "properties", "values", "fields", "attributes", "data"].includes(key),
+    ),
+  );
+}
+
+function wrapperSources(payload: Record<string, unknown>): Record<string, unknown>[] {
+  const data = asRecord(payload.data);
+  return [
+    directMetricFields(payload),
+    asRecord(payload.properties),
+    asRecord(payload.values),
+    asRecord(payload.fields),
+    asRecord(payload.attributes),
+    directDataMetricFields(data),
+    asRecord(data.properties),
+    asRecord(data.values),
+    asRecord(data.fields),
+    asRecord(data.attributes),
+  ].filter((source) => Object.keys(source).length > 0);
+}
+
+function mergedMetricValue(value: unknown): Record<string, unknown> {
+  const sources = wrapperSources(asRecord(value));
+  return Object.assign({}, ...sources.reverse());
+}
+
+function unwrapSingleMetricValueField(value: Record<string, unknown>): unknown {
+  const entries = Object.entries(value);
+  if (entries.length !== 1) return value;
+
+  const [key, nestedValue] = entries[0];
+  if (!["value", "metricValue", "metric_value"].includes(key)) return value;
+
+  return nestedValue;
+}
+
+function flattenedMetricValue(value: unknown): unknown {
+  const merged = mergedMetricValue(value);
+  if (Object.keys(merged).length === 0) return value ?? null;
+  return unwrapSingleMetricValueField(merged);
+}
+
+function metricValueView(value: unknown): Record<string, unknown> {
+  return asRecord(flattenedMetricValue(value));
+}
+
+function displayMetricValue(value: unknown): unknown {
+  return flattenedMetricValue(value);
+}
+
+function scalarValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  if (!value || typeof value !== "object") return null;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    const normalized = value.length === 1 ? scalarValue(value[0], seen) : null;
+    seen.delete(value);
+    return normalized;
   }
+
+  const record = value as Record<string, unknown>;
+  const data = asRecord(record.data);
+  const candidates = [
+    record.value,
+    record.metricValue,
+    record.metric_value,
+    record.number,
+    record.amount,
+    record.count,
+    record.name,
+    record.label,
+    asRecord(data.attributes).value,
+    data.value,
+    data.attributes,
+    record.attributes,
+    record.values,
+    record.fields,
+  ];
+  for (const candidate of candidates) {
+    const normalized = scalarValue(candidate, seen);
+    if (
+      typeof normalized === "string" ||
+      typeof normalized === "number" ||
+      typeof normalized === "boolean"
+    ) {
+      seen.delete(value);
+      return normalized;
+    }
+  }
+
+  seen.delete(value);
   return null;
+}
+
+function numberValue(value: unknown): number | null {
+  return parseImladrisNumber(scalarValue(value) ?? value);
 }
 
 function valueAtPath(value: unknown, path: string[]): unknown {
@@ -280,23 +418,29 @@ function arrayAtPath(value: unknown, path: string[]): unknown[] {
   return Array.isArray(target) ? target : [];
 }
 
-function metricStatus(status: string | null | undefined): MetricStatus {
-  switch (status) {
-    case "READY":
-    case "ready":
-      return "ready";
-    case "PARTIAL":
-    case "partial":
-      return "partial";
-    case "STALE":
-    case "stale":
-      return "stale";
-    case "ERROR":
-    case "error":
-      return "error";
-    default:
-      return "missing";
+function countValue(value: unknown): number | null {
+  const valueAsNumber = numberValue(value);
+  return valueAsNumber === null ? null : Math.floor(Math.max(0, valueAsNumber));
+}
+
+function currencyFrom(...values: Array<Record<string, unknown>>): string {
+  for (const value of values) {
+    const currency = scalarValue(value.currency);
+    if (typeof currency !== "string") continue;
+    const normalized = currency.trim();
+    if (normalized) return normalized.toUpperCase();
   }
+  return "USD";
+}
+
+function metricStatus(status: unknown): MetricStatus {
+  return normalizeMetricStatus(status);
+}
+
+function usableMetricRow(row: CanonicalMetricRow | undefined): CanonicalMetricRow | null {
+  if (!row) return null;
+  const status = metricStatus(row.status);
+  return status === "missing" || status === "error" ? null : row;
 }
 
 function round(value: number, decimals = 2): number {
@@ -331,11 +475,48 @@ function metricTimestamp(row: CanonicalMetricRow): number {
   );
 }
 
-function latestRowsByMetric(rows: CanonicalMetricRow[]): Map<string, CanonicalMetricRow> {
+function scopeSpecificity(row: CanonicalMetricRow, context: UserContext): number {
+  if (row.userId === undefined && row.organizationId === undefined) return 1;
+
+  const rowUserId = row.userId ?? null;
+  const rowOrganizationId = row.organizationId ?? null;
+
+  if (context.organizationId) {
+    if (rowUserId === context.userId && rowOrganizationId === context.organizationId) return 4;
+    if (context.userId && rowUserId === context.userId && rowOrganizationId === null) return 3;
+    if (rowUserId === null && rowOrganizationId === context.organizationId) return 2;
+    if (rowUserId === null && rowOrganizationId === null) return 1;
+    return 0;
+  }
+
+  if (context.userId) {
+    if (rowUserId === context.userId && rowOrganizationId === null) return 3;
+    if (rowUserId === null && rowOrganizationId === null) return 1;
+    return 0;
+  }
+
+  return rowUserId === null && rowOrganizationId === null ? 1 : 0;
+}
+
+function rowComputedAt(row: CanonicalMetricRow): number {
+  return toDate(row.computedAt)?.getTime() ?? 0;
+}
+
+function sameMetricScope(left: CanonicalMetricRow, right: CanonicalMetricRow): boolean {
+  return (left.userId ?? null) === (right.userId ?? null) &&
+    (left.organizationId ?? null) === (right.organizationId ?? null);
+}
+
+function latestRowsByMetric(
+  rows: CanonicalMetricRow[],
+  context: UserContext,
+): Map<string, CanonicalMetricRow> {
   const sortedRows = [...rows].sort((left, right) => {
+    const scopeDelta = scopeSpecificity(right, context) - scopeSpecificity(left, context);
+    if (scopeDelta !== 0) return scopeDelta;
     const periodDelta = metricTimestamp(right) - metricTimestamp(left);
     if (periodDelta !== 0) return periodDelta;
-    return (toDate(right.computedAt)?.getTime() ?? 0) - (toDate(left.computedAt)?.getTime() ?? 0);
+    return rowComputedAt(right) - rowComputedAt(left);
   });
   const latest = new Map<string, CanonicalMetricRow>();
   for (const row of sortedRows) {
@@ -360,11 +541,12 @@ function latestSnapshotsByProvider(rows: AnalyticsSnapshotRow[]): Map<string, An
 }
 
 function analyticsSnapshotScopeWhere(context: UserContext) {
-  const ownerUserId = resolveIntegrationOwnerUserId(context.userId);
-  const userScopes: Array<Record<string, unknown>> = [
-    { userId: ownerUserId },
-    { userId: context.userId },
-  ];
+  const userScopes: Array<Record<string, unknown>> = [];
+
+  if (context.userId) {
+    const ownerUserId = resolveIntegrationOwnerUserId(context.userId);
+    userScopes.push({ userId: ownerUserId }, { userId: context.userId });
+  }
 
   if (context.organizationId) {
     userScopes.push({ user: { organizationId: context.organizationId } });
@@ -427,6 +609,8 @@ async function buildCompanyAnalyticsStats(input: {
   context: UserContext;
   now: Date;
 }): Promise<CompanyAnalyticsStats | null> {
+  if (!input.context.userId) return null;
+
   const snapshotRows = (await input.prisma.analyticsSnapshot.findMany({
     where: {
       ...analyticsSnapshotScopeWhere(input.context),
@@ -789,21 +973,60 @@ function retentionRiskFallback(
   };
 }
 
+function canonicalMetricAvailableAt(row: CanonicalMetricRow, now: Date): boolean {
+  const periodStart = toDate(row.periodStart);
+  const periodEnd = toDate(row.periodEnd);
+  const computedAt = toDate(row.computedAt);
+  return (
+    periodStart !== null &&
+    periodEnd !== null &&
+    periodStart.getTime() <= periodEnd.getTime() &&
+    periodEnd.getTime() <= now.getTime() &&
+    computedAt !== null &&
+    computedAt.getTime() <= now.getTime()
+  );
+}
+
 function rowMatchesContext(row: CanonicalMetricRow, context: UserContext): boolean {
-  const userMatches = row.userId === undefined || row.userId === null || row.userId === context.userId;
-  const organizationMatches =
-    row.organizationId === undefined ||
-    row.organizationId === context.organizationId;
-  return userMatches && organizationMatches;
+  if (row.userId === undefined && row.organizationId === undefined) return true;
+
+  const rowUserId = row.userId ?? null;
+  const rowOrganizationId = row.organizationId ?? null;
+
+  if (context.organizationId) {
+    if (rowOrganizationId === context.organizationId) {
+      return rowUserId === null || rowUserId === context.userId;
+    }
+    if (rowOrganizationId === null) {
+      return rowUserId === null || Boolean(context.userId && rowUserId === context.userId);
+    }
+    return false;
+  }
+
+  if (context.userId) {
+    return rowOrganizationId === null && (rowUserId === null || rowUserId === context.userId);
+  }
+
+  return rowUserId === null && rowOrganizationId === null;
 }
 
 function canonicalMetricScopeWhere(context: UserContext) {
   if (context.organizationId) {
+    const scopedRows = context.userId ? [{ userId: context.userId, organizationId: context.organizationId }] : [];
+    const legacyUserRows = context.userId ? [{ userId: context.userId, organizationId: null }] : [];
     return {
       OR: [
-        { userId: context.userId, organizationId: context.organizationId },
+        ...scopedRows,
         { userId: null, organizationId: context.organizationId },
+        ...legacyUserRows,
+        { userId: null, organizationId: null },
       ],
+    };
+  }
+
+  if (!context.userId) {
+    return {
+      OR: [{ userId: null, organizationId: null }],
     };
   }
 
@@ -819,11 +1042,24 @@ function previousMetricRow(
   rows: CanonicalMetricRow[],
   metricKey: string,
   current: CanonicalMetricRow | null,
+  context: UserContext,
 ): CanonicalMetricRow | null {
   const currentTime = current ? metricTimestamp(current) : Number.POSITIVE_INFINITY;
   return [...rows]
     .filter((row) => row.metricKey === metricKey && metricTimestamp(row) < currentTime)
-    .sort((left, right) => metricTimestamp(right) - metricTimestamp(left))[0] ?? null;
+    .filter((row) => usableMetricRow(row) !== null)
+    .sort((left, right) => {
+      if (current) {
+        const scopeDelta =
+          Number(sameMetricScope(right, current)) - Number(sameMetricScope(left, current));
+        if (scopeDelta !== 0) return scopeDelta;
+      }
+      const periodDelta = metricTimestamp(right) - metricTimestamp(left);
+      if (periodDelta !== 0) return periodDelta;
+      const scopeDelta = scopeSpecificity(right, context) - scopeSpecificity(left, context);
+      if (scopeDelta !== 0) return scopeDelta;
+      return rowComputedAt(right) - rowComputedAt(left);
+    })[0] ?? null;
 }
 
 function analyticsFallbackForMetric(
@@ -928,10 +1164,10 @@ function companyMetric(
   return {
     key,
     label: definition?.label ?? key,
-    value: row.value,
+    value: displayMetricValue(row.value),
     status: metricStatus(row.status),
-    confidence: row.confidence,
-    warnings: row.warnings ?? [],
+    confidence: normalizeMetricConfidence(row.confidence),
+    warnings: normalizeMetricWarnings(row.warnings),
     caveats: [],
     calculationVersion: row.calculationVersion,
     computedAt: toIso(row.computedAt),
@@ -944,26 +1180,16 @@ function buildSummary(
   metrics: Map<string, CanonicalMetricRow>,
   analyticsStats: CompanyAnalyticsStats | null,
 ): CompanyTrackerSummary {
-  const mrr = asRecord(metrics.get("revenue.mrr")?.value);
-  const runway = asRecord(metrics.get("finance.cash_runway_months")?.value);
-  const netBurn = asRecord(metrics.get("finance.net_burn")?.value);
-  const pipeline = asRecord(metrics.get("sales.qualified_pipeline")?.value);
+  const mrr = metricValueView(usableMetricRow(metrics.get("revenue.mrr"))?.value);
+  const runway = metricValueView(usableMetricRow(metrics.get("finance.cash_runway_months"))?.value);
+  const netBurn = metricValueView(usableMetricRow(metrics.get("finance.net_burn"))?.value);
+  const pipeline = metricValueView(usableMetricRow(metrics.get("sales.qualified_pipeline"))?.value);
   const financeSummary = analyticsStats?.metricsLayer.finance.summary ?? null;
   const revenueSummary = analyticsStats?.revenueDashboard.summary ?? null;
   const revenuePipeline = analyticsStats?.revenueDashboard.pipeline ?? null;
   const hasRevenueFallback = hasAnalyticsProvider(analyticsStats, "stripe", "hubspot");
   const hasFinanceFallback = hasAnalyticsProvider(analyticsStats, "mercury");
   const hasPipelineFallback = hasAnalyticsProvider(analyticsStats, "hubspot");
-  const currency =
-    typeof mrr.currency === "string"
-      ? mrr.currency
-      : typeof runway.currency === "string"
-        ? runway.currency
-        : typeof netBurn.currency === "string"
-          ? netBurn.currency
-          : typeof pipeline.currency === "string"
-            ? pipeline.currency
-            : "USD";
   const mrrAmount = numberValue(mrr.amount);
   const fallbackMrr = hasRevenueFallback
     ? financeSummary?.mrr ?? revenueSummary?.mrr ?? null
@@ -971,6 +1197,13 @@ function buildSummary(
   const fallbackArr = hasRevenueFallback
     ? revenueSummary?.arr ?? (fallbackMrr === null ? null : fallbackMrr * 12)
     : null;
+  const numberFromFields = (record: Record<string, unknown>, ...fields: string[]): number | null => {
+    for (const field of fields) {
+      const value = numberValue(record[field]);
+      if (value !== null) return value;
+    }
+    return null;
+  };
 
   return {
     arr:
@@ -984,12 +1217,13 @@ function buildSummary(
         ? financeSummary?.runwayMonths ?? revenueSummary?.runwayMonths ?? null
         : null),
     cashBalance:
-      numberValue(runway.cashBalance) ??
+      numberFromFields(runway, "cashBalance", "cash_balance") ??
       (hasFinanceFallback
         ? financeSummary?.cashBalance ?? revenueSummary?.cashBalance ?? null
         : null),
     netBurn:
-      numberValue(netBurn.amount) ??
+      numberFromFields(netBurn, "amount", "netBurn", "net_burn") ??
+      numberFromFields(runway, "netBurn", "net_burn") ??
       (hasFinanceFallback
         ? financeSummary?.burnRate ?? revenueSummary?.burnRate ?? null
         : null),
@@ -997,15 +1231,18 @@ function buildSummary(
       numberValue(pipeline.amount) ??
       (hasPipelineFallback ? revenuePipeline?.qualifiedPipelineValue ?? null : null),
     activeSubscriptions:
-      numberValue(mrr.activeSubscriptions) ??
-      numberValue(mrr.mergedActiveSubscriptions) ??
-      numberValue(mrr.subscriptionCount) ??
+      countValue(mrr.activeSubscriptions) ??
+      countValue(mrr.active_subscriptions) ??
+      countValue(mrr.mergedActiveSubscriptions) ??
+      countValue(mrr.merged_active_subscriptions) ??
+      countValue(mrr.subscriptionCount) ??
+      countValue(mrr.subscription_count) ??
       (hasRevenueFallback
         ? financeSummary?.activeSubscriptions ??
           revenueSummary?.activeSubscriptions ??
           null
         : null),
-    currency: currency.toUpperCase(),
+    currency: currencyFrom(mrr, runway, netBurn, pipeline),
   };
 }
 
@@ -1050,7 +1287,7 @@ function currentValueForGoal(
 function goalStatus(input: {
   storedStatus: string;
   currentValue: number | null;
-  targetValue: number;
+  targetValue: number | null;
   direction: GoalDirection;
   deadline: Date | null;
   now: Date;
@@ -1059,6 +1296,7 @@ function goalStatus(input: {
   if (input.storedStatus === "MISSED") return "missed";
   const achieved =
     input.currentValue !== null &&
+    input.targetValue !== null &&
     (input.direction === "higher"
       ? input.currentValue >= input.targetValue
       : input.currentValue <= input.targetValue);
@@ -1069,20 +1307,25 @@ function goalStatus(input: {
 
 function goalProgress(goal: FinancialGoalRow, summary: CompanyTrackerSummary, now: Date): CompanyGoalProgress {
   const current = currentValueForGoal(goal.metric, summary);
+  const targetValue = numberValue(goal.targetValue);
   const progressPct =
-    current.value === null || goal.targetValue <= 0
+    current.value === null || targetValue === null
       ? 0
-      : current.direction === "higher"
-        ? round(Math.min(Math.max((current.value / goal.targetValue) * 100, 0), 100))
-        : current.value <= goal.targetValue
+      : targetValue <= 0
+        ? current.direction === "lower" && current.value <= targetValue
           ? 100
-          : round(Math.min(Math.max((goal.targetValue / current.value) * 100, 0), 100));
+          : 0
+      : current.direction === "higher"
+        ? round(Math.min(Math.max((current.value / targetValue) * 100, 0), 100))
+        : current.value <= targetValue
+          ? 100
+          : round(Math.min(Math.max((targetValue / current.value) * 100, 0), 100));
   const deadline = toDate(goal.deadline);
 
   return {
     id: goal.id,
     metric: goal.metric,
-    targetValue: goal.targetValue,
+    targetValue: targetValue ?? 0,
     currentValue: current.value,
     direction: current.direction,
     progressPct,
@@ -1090,7 +1333,7 @@ function goalProgress(goal: FinancialGoalRow, summary: CompanyTrackerSummary, no
     status: goalStatus({
       storedStatus: goal.status,
       currentValue: current.value,
-      targetValue: goal.targetValue,
+      targetValue,
       direction: current.direction,
       deadline,
       now,
@@ -1103,7 +1346,8 @@ function activeGoalsForContext(goals: FinancialGoalRow[], context: UserContext):
   return goals.filter((goal) => {
     const status = typeof goal.status === "string" ? goal.status.trim().toUpperCase() : "";
     const userMatches = !goal.userId || goal.userId === context.userId;
-    return status === "ACTIVE" && userMatches;
+    const hasValidDeadline = toDate(goal.deadline) !== null;
+    return status === "ACTIVE" && userMatches && hasValidDeadline;
   });
 }
 
@@ -1195,7 +1439,7 @@ function buildHealthBands(input: {
   goalProgress: CompanyGoalProgress[];
 }): CompanyHealthBand[] {
   const currentArr = input.summary.arr;
-  const previousArr = numberValue(asRecord(input.previousMrr?.value).arr);
+  const previousArr = numberValue(metricValueView(input.previousMrr?.value).arr);
   const netNewArr =
     currentArr !== null && previousArr !== null ? Math.max(0, currentArr - previousArr) : null;
   const burnMultiple =
@@ -1471,17 +1715,28 @@ export async function buildCompanyTrackerDashboard(input: {
   now?: Date;
 }): Promise<CompanyTrackerDashboardData> {
   const now = input.now ?? new Date();
+  const context = normalizeContext(input.context);
   const dashboard = getImladrisDashboardDefinition("company");
   if (!dashboard) {
     throw new Error("Company tracker dashboard is not defined.");
   }
 
+  const goalsQuery = context.userId
+    ? input.prisma.financialGoal.findMany({
+        where: {
+          userId: context.userId,
+          status: "ACTIVE",
+        },
+        orderBy: [{ deadline: "asc" }],
+      })
+    : Promise.resolve([]);
   const [canonicalRows, goals, analyticsStats] = await Promise.all([
     input.prisma.imladrisCanonicalMetricValue.findMany({
       where: {
         metricKey: { in: dashboard.metricKeys },
         periodEnd: { lte: now },
-        ...canonicalMetricScopeWhere(input.context),
+        computedAt: { lte: now },
+        ...canonicalMetricScopeWhere(context),
       },
       include: {
         lineage: {
@@ -1490,36 +1745,28 @@ export async function buildCompanyTrackerDashboard(input: {
       },
       orderBy: [{ periodEnd: "desc" }, { computedAt: "desc" }],
     }),
-    input.prisma.financialGoal.findMany({
-      where: {
-        userId: input.context.userId,
-        status: "ACTIVE",
-      },
-      orderBy: [{ deadline: "asc" }],
-    }),
+    goalsQuery,
     buildCompanyAnalyticsStats({
       prisma: input.prisma,
-      context: input.context,
+      context,
       now,
     }),
   ]);
 
   const typedCanonicalRows = (canonicalRows as CanonicalMetricRow[]).filter((row) => {
-    const periodEnd = toDate(row.periodEnd);
     return (
-      periodEnd !== null &&
-      periodEnd.getTime() <= now.getTime() &&
-      rowMatchesContext(row, input.context)
+      canonicalMetricAvailableAt(row, now) &&
+      rowMatchesContext(row, context)
     );
   });
-  const typedGoals = activeGoalsForContext(goals as FinancialGoalRow[], input.context);
-  const latestMetrics = latestRowsByMetric(typedCanonicalRows);
+  const typedGoals = activeGoalsForContext(goals as FinancialGoalRow[], context);
+  const latestMetrics = latestRowsByMetric(typedCanonicalRows, context);
   const metrics = dashboard.metricKeys.map((metricKey) =>
     companyMetric(latestMetrics.get(metricKey) ?? null, metricKey, analyticsStats),
   );
   const summary = buildSummary(latestMetrics, analyticsStats);
   const currentMrr = latestMetrics.get("revenue.mrr") ?? null;
-  const previousMrr = previousMetricRow(typedCanonicalRows, "revenue.mrr", currentMrr);
+  const previousMrr = previousMetricRow(typedCanonicalRows, "revenue.mrr", currentMrr, context);
   const goalProgressRows = typedGoals.map((goal) => goalProgress(goal, summary, now));
   const goalRecommendations = buildGoalRecommendations(goalProgressRows, summary, now);
   const sourceCoverage = buildSourceCoverage({

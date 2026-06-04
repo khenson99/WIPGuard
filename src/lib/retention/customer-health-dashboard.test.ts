@@ -205,4 +205,27 @@ describe("customer health dashboard service", () => {
       }),
     );
   });
+
+  it("normalizes malformed account materialization timestamps to an empty timestamp", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { buildCustomerHealthDashboard } = await import("@/lib/retention/customer-health-dashboard");
+
+    vi.mocked(prisma.retentionTenantCurrent.findMany).mockResolvedValue([
+      currentRow({
+        lastMaterializedAt: "not-a-date",
+      }),
+    ] as never);
+    vi.mocked(prisma.retentionSourceRecord.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.retentionSourceRecord.groupBy).mockResolvedValue([] as never);
+    vi.mocked(prisma.retentionSyncRun.findFirst).mockResolvedValue(null as never);
+
+    const dashboard = await buildCustomerHealthDashboard({ id: "user_1", organizationId: "org_1" });
+
+    expect(dashboard.accounts).toEqual([
+      expect.objectContaining({
+        accountId: "cust_1",
+        lastMaterializedAt: "",
+      }),
+    ]);
+  });
 });

@@ -18,6 +18,13 @@ function parseIntegerEnv(name: string, fallback: number, minimum = 1): number {
   return value >= minimum ? value : fallback;
 }
 
+function parseStringEnv(name: string, fallback: string): string {
+  const raw = process.env[name]?.trim();
+  return raw ? raw : fallback;
+}
+
+const defaultHealthCheckHost = process.env.NODE_ENV === 'test' ? '127.0.0.1' : '0.0.0.0';
+
 export const workerConfig = {
   /**
    * Database connection pool size for the worker.
@@ -34,6 +41,11 @@ export const workerConfig = {
    * Health check server port for the worker process.
    */
   healthCheckPort: parseIntegerEnv('WORKER_HEALTH_PORT', 8081, 0),
+
+  /**
+   * Health check server host for the worker process.
+   */
+  healthCheckHost: parseStringEnv('WORKER_HEALTH_HOST', defaultHealthCheckHost),
 
   /**
    * Maximum time (ms) a single sync cycle is allowed to run before being considered stuck.

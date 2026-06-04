@@ -82,7 +82,7 @@ export const REQUIRED_IMLADRIS_PROVIDERS: ImladrisProviderDefinition[] = [
   {
     key: "posthog",
     label: "PostHog",
-    snapshotKeys: ["posthog"],
+    snapshotKeys: ["posthog", "product"],
     providerAliases: ["POSTHOG"],
     ...DEFAULT_PROVIDER_POLICY,
   },

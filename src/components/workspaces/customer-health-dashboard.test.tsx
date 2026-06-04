@@ -162,4 +162,39 @@ describe("CustomerHealthDashboard", () => {
 
     expect(screen.getByText("No customer health snapshots are materialized yet.")).toBeTruthy();
   });
+
+  it("unwraps scalar metric envelopes before rendering customer health values", () => {
+    render(
+      <CustomerHealthDashboard
+        data={{
+          ...DATA,
+          sourceCoverage: [
+            {
+              source: "ARDA",
+              tenantsCovered: 1,
+              totalTenants: 2,
+              coveragePct: { value: "75" } as never,
+            },
+          ],
+          riskQueues: { atRisk: [], onboardingRisk: [], billingRisk: [], sharpDeclines: [] },
+          accounts: [
+            {
+              ...DATA.accounts[0],
+              currentMonthActivity: { value: "37" } as never,
+              trendVsPriorPct: { data: { value: "-12.5" } } as never,
+              primaryLirValue: { value: "9" } as never,
+              primaryLirThreshold: { data: { attributes: { value: "11" } } } as never,
+            },
+          ],
+        }}
+      />,
+    );
+
+    const ardaCoverage = screen.getByText("ARDA").closest("div");
+    expect(ardaCoverage).toBeTruthy();
+    expect(within(ardaCoverage as HTMLElement).getByText("75.0%")).toBeTruthy();
+    expect(screen.getByText("37")).toBeTruthy();
+    expect(screen.getByText("-12.5%")).toBeTruthy();
+    expect(screen.getByText("9 / 11")).toBeTruthy();
+  });
 });

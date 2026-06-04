@@ -1,4 +1,4 @@
-import { BarChart3, Cable, FileText, Workflow, type LucideIcon } from "lucide-react";
+import { BarChart3, Cable, FileText, Target, Workflow, type LucideIcon } from "lucide-react";
 import { WORKSPACE_NAV_ITEMS, type WorkspaceId } from "@/lib/platform/workspaces";
 
 export interface NavChildItem {
@@ -20,6 +20,7 @@ export interface NavItem {
 
 const WORKSPACE_ICONS: Record<WorkspaceId, LucideIcon> = {
   sources: Cable,
+  goals: Target,
   metrics: BarChart3,
   reports: FileText,
   pipelines: Workflow,

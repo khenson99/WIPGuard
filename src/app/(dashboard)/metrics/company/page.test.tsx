@@ -27,6 +27,9 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("next/navigation", () => ({
   redirect: vi.fn(),
+  useRouter: () => ({
+    refresh: vi.fn(),
+  }),
 }));
 
 describe("/metrics/company", () => {

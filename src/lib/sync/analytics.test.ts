@@ -238,7 +238,7 @@ describe("runAnalyticsSync", () => {
     expect(materializeImladrisCanonicalMetrics).toHaveBeenCalledTimes(1);
   });
 
-  it("skips canonical materialization when provider refresh reports failures", async () => {
+  it("continues canonical materialization when provider refresh reports failures and surfaces a warning", async () => {
     const prisma = createPrismaMock();
     vi.mocked(runAnalyticsRefresh).mockResolvedValue({
       usersProcessed: 2,
@@ -251,7 +251,7 @@ describe("runAnalyticsSync", () => {
       prisma: prisma as never,
     });
 
-    expect(materializeImladrisCanonicalMetrics).not.toHaveBeenCalled();
+    expect(materializeImladrisCanonicalMetrics).toHaveBeenCalledTimes(2);
     expect(pruneAnalyticsSnapshots).toHaveBeenCalledOnce();
     expect(result.imladris).toEqual([
       {
@@ -259,18 +259,26 @@ describe("runAnalyticsSync", () => {
         organizationId: "org_1",
         periodStart: "2026-05-02T12:00:00.000Z",
         periodEnd: "2026-06-01T12:00:00.000Z",
-        metrics: [],
-        error:
-          "Skipped canonical materialization because analytics refresh had 2 provider failures.",
+        metrics: [
+          expect.objectContaining({
+            metricKey: "development.delivery_health",
+          }),
+        ],
+        warning:
+          "Analytics refresh reported 2 provider failures; canonical materialization used available raw records.",
       },
       {
         userId: "user_2",
         organizationId: null,
         periodStart: "2026-05-02T12:00:00.000Z",
         periodEnd: "2026-06-01T12:00:00.000Z",
-        metrics: [],
-        error:
-          "Skipped canonical materialization because analytics refresh had 2 provider failures.",
+        metrics: [
+          expect.objectContaining({
+            metricKey: "development.delivery_health",
+          }),
+        ],
+        warning:
+          "Analytics refresh reported 2 provider failures; canonical materialization used available raw records.",
       },
     ]);
   });

@@ -26,10 +26,10 @@ const INTEGRATION_PROVIDER_REGISTRY: readonly IntegrationProviderRegistryEntry[]
     provider: IntegrationProvider.HUBSPOT,
     slug: "hubspot",
     authType: "oauth",
-    snapshotKeys: ["hubspot", "hubspotOps"],
+    snapshotKeys: ["hubspot", "hubspotOps", "salesPerformance"],
     settingsVisible: true,
     envManaged: true,
-    aliases: ["hub_spot"],
+    aliases: ["hub_spot", "sales-performance", "sales_performance"],
   },
   {
     provider: IntegrationProvider.SLACK,
@@ -143,7 +143,7 @@ const INTEGRATION_PROVIDER_REGISTRY: readonly IntegrationProviderRegistryEntry[]
     provider: IntegrationProvider.POSTHOG,
     slug: "posthog",
     authType: "token",
-    snapshotKeys: ["posthog"],
+    snapshotKeys: ["posthog", "product"],
     settingsVisible: true,
     envManaged: true,
     aliases: ["post_hog"],
@@ -190,18 +190,46 @@ const PROVIDER_LOOKUP = new Map(
   INTEGRATION_PROVIDER_REGISTRY.map((entry) => [entry.provider, entry] as const)
 );
 
+function normalizeProviderRegistryKey(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function providerRegistryKeyVariants(value: string): string[] {
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  const snakeCase = trimmed
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase();
+  const variants = new Set([
+    trimmed,
+    trimmed.toLowerCase(),
+    normalizeProviderRegistryKey(trimmed),
+  ]);
+  if (snakeCase) {
+    variants.add(snakeCase);
+    variants.add(snakeCase.replaceAll("_", "-"));
+    variants.add(snakeCase.replaceAll("_", ""));
+  }
+  return [...variants];
+}
+
 const SLUG_ALIAS_LOOKUP = new Map<string, IntegrationProviderRegistryEntry>();
 for (const entry of INTEGRATION_PROVIDER_REGISTRY) {
-  SLUG_ALIAS_LOOKUP.set(entry.slug, entry);
-  for (const alias of entry.aliases) {
-    SLUG_ALIAS_LOOKUP.set(alias, entry);
+  for (const alias of [entry.slug, ...entry.aliases]) {
+    for (const variant of providerRegistryKeyVariants(alias)) {
+      SLUG_ALIAS_LOOKUP.set(normalizeProviderRegistryKey(variant), entry);
+    }
   }
 }
 
 const SNAPSHOT_KEY_LOOKUP = new Map<string, IntegrationProvider>();
 for (const entry of INTEGRATION_PROVIDER_REGISTRY) {
   for (const snapshotKey of entry.snapshotKeys) {
-    SNAPSHOT_KEY_LOOKUP.set(snapshotKey, entry.provider);
+    for (const variant of providerRegistryKeyVariants(snapshotKey)) {
+      SNAPSHOT_KEY_LOOKUP.set(normalizeProviderRegistryKey(variant), entry.provider);
+    }
   }
 }
 
@@ -218,9 +246,13 @@ export function getProviderRegistryEntry(
 export function resolveProviderRegistryEntryBySlug(
   slugOrAlias: string
 ): IntegrationProviderRegistryEntry | null {
-  return SLUG_ALIAS_LOOKUP.get(slugOrAlias.trim().toLowerCase()) ?? null;
+  return SLUG_ALIAS_LOOKUP.get(normalizeProviderRegistryKey(slugOrAlias)) ?? null;
 }
 
 export function providerForSnapshotKey(snapshotKey: string): IntegrationProvider | null {
-  return SNAPSHOT_KEY_LOOKUP.get(snapshotKey) ?? null;
+  return SNAPSHOT_KEY_LOOKUP.get(normalizeProviderRegistryKey(snapshotKey)) ?? null;
+}
+
+export function snapshotKeyQueryVariants(snapshotKeys: string[]): string[] {
+  return [...new Set(snapshotKeys.flatMap(providerRegistryKeyVariants))];
 }

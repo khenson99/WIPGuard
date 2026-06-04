@@ -72,6 +72,7 @@ interface ImladrisMaterializationSyncResult {
   periodEnd: string;
   metrics: MaterializedImladrisMetricResult[];
   error?: string;
+  warning?: string;
 }
 
 function parseDefaultRetentionDays(): number {
@@ -143,7 +144,7 @@ async function runImladrisMaterializationSync(input: {
   prisma: PrismaClientType;
   userIds: string[];
   now: Date;
-  skipReason?: string;
+  warning?: string;
 }): Promise<ImladrisMaterializationSyncResult[]> {
   const contexts = await loadImladrisMaterializationContexts(
     input.prisma,
@@ -152,17 +153,6 @@ async function runImladrisMaterializationSync(input: {
   const periodEnd = input.now;
   const periodStart = daysBefore(periodEnd, IMLADRIS_MATERIALIZATION_WINDOW_DAYS);
 
-  if (input.skipReason) {
-    return contexts.map((context) => ({
-      userId: context.userId,
-      organizationId: context.organizationId,
-      periodStart: periodStart.toISOString(),
-      periodEnd: periodEnd.toISOString(),
-      metrics: [],
-      error: input.skipReason,
-    }));
-  }
-
   return Promise.all(
     contexts.map(async (context) => {
       const baseResult = {
@@ -170,6 +160,7 @@ async function runImladrisMaterializationSync(input: {
         organizationId: context.organizationId,
         periodStart: periodStart.toISOString(),
         periodEnd: periodEnd.toISOString(),
+        ...(input.warning ? { warning: input.warning } : {}),
       };
 
       try {
@@ -234,9 +225,9 @@ export async function runAnalyticsSync(
     typeof refresh.failureCount === 'number' && Number.isFinite(refresh.failureCount)
       ? refresh.failureCount
       : 0;
-  const materializationSkipReason =
+  const materializationWarning =
     failureCount > 0
-      ? `Skipped canonical materialization because analytics refresh had ${failureCount} provider failure${failureCount === 1 ? '' : 's'}.`
+      ? `Analytics refresh reported ${failureCount} provider failure${failureCount === 1 ? '' : 's'}; canonical materialization used available raw records.`
       : undefined;
   const [pruning, imladris] = await Promise.all([
     pruneAnalyticsSnapshots({ olderThanDays }),
@@ -244,7 +235,7 @@ export async function runAnalyticsSync(
       prisma: input.prisma,
       userIds,
       now,
-      skipReason: materializationSkipReason,
+      warning: materializationWarning,
     }),
   ]);
 

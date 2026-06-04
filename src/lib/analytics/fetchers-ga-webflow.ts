@@ -249,7 +249,7 @@ export async function fetchGAData(
   };
 
   // Run all requests in parallel
-  const [current30d, previous30d, trafficAndTrend, topPageResult, topPagesPrevious] = await Promise.all([
+  const [current30d, previous30d, trafficAndTrend, topPageResult, topPagePrevResult] = await Promise.all([
     // Request 1: Current 30d metrics
     fetchReport(
       {
@@ -297,7 +297,7 @@ export async function fetchGAData(
       "traffic",
     ),
 
-    // Request 4: Top pages
+    // Request 4: Top pages for the current range.
     fetchReportPages(
       {
         dateRanges: currentRange,
@@ -318,8 +318,8 @@ export async function fetchGAData(
       "top pages",
     ),
 
-    // Request 5: Previous-period top pages used for landing-page bounce deltas.
-    fetchReport(
+    // Request 5: Top pages for the previous range, enabling period deltas.
+    fetchReportPages(
       {
         dateRanges: previousRange,
         dimensions: [{ name: "pagePath" }],
@@ -329,7 +329,6 @@ export async function fetchGAData(
           { name: "sessions" },
           { name: "bounceRate" },
         ],
-        limit: 100,
         orderBys: [
           {
             metric: { metricName: "screenPageViews" },
@@ -341,6 +340,7 @@ export async function fetchGAData(
     ),
   ]);
   const topPageRows = topPageResult.rows;
+  const topPagePrevRows = topPagePrevResult.rows;
 
   // Parse current 30d metrics
   const current30dRow = current30d.rows?.[0]?.metricValues || [];
@@ -396,8 +396,9 @@ export async function fetchGAData(
     sessions,
   }));
 
-  // Parse top pages
-  const parseTopPage = (row: GAReportRow): GATopPage => {
+  // Parse top pages (current 30d)
+  // Metric order matches Request 4: [screenPageViews, averageSessionDuration, sessions, bounceRate]
+  const parseTopPagesRow = (row: GAReportRow): GATopPage => {
     const dimensionValues = row.dimensionValues ?? [];
     const metricValues = row.metricValues ?? [];
     return {
@@ -409,16 +410,22 @@ export async function fetchGAData(
     };
   };
 
-  const topPages: GATopPage[] = topPageRows.map(parseTopPage);
-  const topPagesPrev30d: GATopPage[] = (topPagesPrevious.rows ?? []).map(parseTopPage);
+  const topPages: GATopPage[] = topPageRows.map(parseTopPagesRow);
+  const topPagesPrev30d: GATopPage[] = topPagePrevRows.map(parseTopPagesRow);
+
+  // Compute the Kanban whitepaper bounce-rate benchmark up-front so consumers
+  // (overview KPI tile, Kanban dashboard tab) get a stable shape and don't
+  // recompute it on every render.
   const kanbanBounceComparison = computeKanbanBounceComparison({
     siteBounceRate: bounceRate,
+    siteBounceRatePrev: bounceRatePrev30d,
     topPages,
     topPagesPrev: topPagesPrev30d,
   });
 
   const truncatedResources = [
     ...(topPageResult.truncated ? ["topPages"] : []),
+    ...(topPagePrevResult.truncated ? ["topPagesPrev30d"] : []),
   ];
   const meta = makeMeta("live");
   meta.truncated = truncatedResources.length > 0;
@@ -437,8 +444,8 @@ export async function fetchGAData(
     trafficByChannel,
     topPages,
     topPagesPrev30d,
-    kanbanBounceComparison,
     dailyTrend,
+    kanbanBounceComparison,
     _meta: meta,
   };
 }
