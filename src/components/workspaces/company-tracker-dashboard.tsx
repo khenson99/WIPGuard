@@ -11,7 +11,9 @@ import {
 import type {
   CompanyTrackerDashboardData,
   CompanyGoalProgress,
+  CompanyGoalRecommendation,
   CompanyHealthBand,
+  CompanySourceCoverage,
   CompanyTrackerMetric,
 } from "@/lib/imladris/company-tracker";
 import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
@@ -136,6 +138,7 @@ function statusClasses(status: string): string {
     case "ready":
     case "strong":
     case "achieved":
+    case "available":
       return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300";
     case "watch":
     case "stale":
@@ -145,6 +148,7 @@ function statusClasses(status: string): string {
     case "risk":
     case "error":
     case "missed":
+    case "blocked":
       return "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300";
     default:
       return "border-border bg-secondary text-muted-foreground";
@@ -223,6 +227,46 @@ function GoalRow({ goal }: { goal: CompanyGoalProgress }) {
   );
 }
 
+function GoalRecommendationRow({ goal, currency }: { goal: CompanyGoalRecommendation; currency: string }) {
+  const current =
+    goal.metric === "ARR" || goal.metric === "BURN_RATE"
+      ? formatCurrency(goal.currentValue, currency)
+      : formatNumber(goal.currentValue, goal.metric === "RUNWAY" ? "months" : undefined);
+  const target =
+    goal.metric === "ARR" || goal.metric === "BURN_RATE"
+      ? formatCurrency(goal.targetValue, currency)
+      : formatNumber(goal.targetValue, goal.metric === "RUNWAY" ? "months" : undefined);
+
+  return (
+    <article className="rounded-lg border border-border bg-card p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">{goal.metric}</h3>
+          <p className="mt-1 text-xs text-muted-foreground">{goal.rationale}</p>
+        </div>
+        <StatusBadge status="watch" />
+      </div>
+      <dl className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+        <div>
+          <dt>Current</dt>
+          <dd className="font-medium text-foreground">{current}</dd>
+        </div>
+        <div>
+          <dt>Draft Target</dt>
+          <dd className="font-medium text-foreground">{target}</dd>
+        </div>
+        <div>
+          <dt>Due</dt>
+          <dd className="font-medium text-foreground">{goal.deadline.slice(0, 10)}</dd>
+        </div>
+      </dl>
+      <p className="mt-3 break-words font-mono text-[11px] leading-5 text-muted-foreground">
+        {goal.formula}
+      </p>
+    </article>
+  );
+}
+
 function HealthBandCard({ band }: { band: CompanyHealthBand }) {
   return (
     <article className="rounded-lg border border-border bg-card p-4">
@@ -238,6 +282,24 @@ function HealthBandCard({ band }: { band: CompanyHealthBand }) {
       </p>
       <p className="mt-2 break-words font-mono text-[11px] leading-5 text-muted-foreground">
         {band.formula}
+      </p>
+    </article>
+  );
+}
+
+function SourceCoverageRow({ source }: { source: CompanySourceCoverage }) {
+  return (
+    <article className="rounded-lg border border-border bg-card p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">{source.label}</h3>
+          <p className="mt-1 font-mono text-[11px] text-muted-foreground">{source.key}</p>
+        </div>
+        <StatusBadge status={source.status} />
+      </div>
+      <p className="mt-3 text-xs leading-5 text-muted-foreground">{source.detail}</p>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Last captured {source.lastCapturedAt?.slice(0, 10) ?? "Missing"}
       </p>
     </article>
   );
@@ -301,6 +363,13 @@ function TrustRow({ metric }: { metric: CompanyTrackerMetric }) {
           ))}
         </div>
       ) : null}
+      {metric.caveats && metric.caveats.length > 0 ? (
+        <div className="mt-3 space-y-1 text-xs leading-5 text-muted-foreground">
+          {metric.caveats.map((caveat) => (
+            <p key={caveat}>{caveat}</p>
+          ))}
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -346,6 +415,60 @@ export function CompanyTrackerDashboard({ data }: { data: CompanyTrackerDashboar
                 {watchCount.toLocaleString()} watch
               </span>
             </div>
+          </div>
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+          <article className="rounded-lg border border-border bg-card p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">Board Readiness</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Score {data.boardReadiness.score}/100 · {data.boardReadiness.requiredActionCount} actions
+                </p>
+              </div>
+              <StatusBadge status={data.boardReadiness.status} />
+            </div>
+            {data.boardReadiness.blockers.length > 0 ? (
+              <div className="mt-4 space-y-1 text-xs leading-5 text-muted-foreground">
+                {data.boardReadiness.blockers.map((blocker) => (
+                  <p key={blocker}>{blocker}</p>
+                ))}
+              </div>
+            ) : null}
+            {data.boardReadiness.requiredActions.length > 0 ? (
+              <div className="mt-4 space-y-1 text-xs leading-5 text-muted-foreground">
+                {data.boardReadiness.requiredActions.map((action) => (
+                  <p key={action}>{action}</p>
+                ))}
+              </div>
+            ) : null}
+            {data.boardReadiness.caveats.length > 0 ? (
+              <div className="mt-4 space-y-1 text-xs leading-5 text-muted-foreground">
+                {data.boardReadiness.caveats.map((caveat) => (
+                  <p key={caveat}>{caveat}</p>
+                ))}
+              </div>
+            ) : null}
+          </article>
+
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold text-foreground">Draft Board Targets</h2>
+            {data.goalRecommendations.length > 0 ? (
+              <div className="grid gap-3 md:grid-cols-3">
+                {data.goalRecommendations.map((goal) => (
+                  <GoalRecommendationRow
+                    key={goal.metric}
+                    goal={goal}
+                    currency={data.summary.currency}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
+                Configured FinancialGoal records cover the board target set.
+              </div>
+            )}
           </div>
         </section>
 
@@ -413,6 +536,15 @@ export function CompanyTrackerDashboard({ data }: { data: CompanyTrackerDashboar
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {growthMetrics.map((metric) => (
               <GrowthMetricCard key={metric.key} metric={metric} currency={data.summary.currency} />
+            ))}
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-foreground">Source Coverage</h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {data.sourceCoverage.map((source) => (
+              <SourceCoverageRow key={source.key} source={source} />
             ))}
           </div>
         </section>

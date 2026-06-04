@@ -8973,6 +8973,80 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("preserves negative net burn when cash inflow exceeds cash outflow", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_mercury_balance_profitable",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "account_balance",
+            externalId: "balance_profitable",
+            occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+            payload: {
+              availableBalance: 240_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_mercury_txn_profitable_outflow",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "transaction",
+            externalId: "txn_profitable_outflow",
+            occurredAt: new Date("2026-05-05T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-05T00:00:00.000Z"),
+            payload: {
+              amount: -40_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_mercury_txn_profitable_inflow",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "transaction",
+            externalId: "txn_profitable_inflow",
+            occurredAt: new Date("2026-05-15T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-15T00:00:00.000Z"),
+            payload: {
+              amount: 90_000,
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "finance.net_burn")?.value).toMatchObject({
+      amount: -50_000,
+      cashOutflow: 40_000,
+      cashInflow: 90_000,
+    });
+    expect(results.find((result) => result.metricKey === "finance.cash_runway_months")?.value).toMatchObject({
+      months: null,
+      cashBalance: 240_000,
+      netBurn: -50_000,
+    });
+  });
+
   it("reads nested currency fields before finance materialization", async () => {
     const prisma = {
       imladrisRawSourceRecord: {

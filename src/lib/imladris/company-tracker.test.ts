@@ -343,7 +343,10 @@ describe("buildCompanyTrackerDashboard", () => {
         source: "analytics.revenue_dashboard",
       }),
     });
-    expect(dashboard.trust.warnings).toContain(
+    expect(dashboard.trust.warnings).not.toContain(
+      "Canonical revenue.mrr is missing; using latest analytics snapshot stats.",
+    );
+    expect(dashboard.trust.caveats).toContain(
       "Canonical revenue.mrr is missing; using latest analytics snapshot stats.",
     );
     expect(prisma.analyticsSnapshot.findMany).toHaveBeenCalledWith(
@@ -351,11 +354,164 @@ describe("buildCompanyTrackerDashboard", () => {
         where: expect.objectContaining({
           userId: "user_1",
           providerKey: {
-            in: ["stripe", "mercury", "hubspot", "salesPerformance"],
+            in: expect.arrayContaining(["stripe", "mercury", "hubspot", "salesPerformance"]),
           },
           status: "SUCCESS",
         }),
       }),
+    );
+  });
+
+  it("returns board readiness, source coverage, and draft targets when goals are not configured", async () => {
+    const capturedAt = new Date("2026-05-31T20:00:00.000Z");
+    const prisma = prismaMock({
+      snapshots: [
+        {
+          providerKey: "stripe",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            revenue: {
+              mrr: 32_000,
+              mrrChange: 0.12,
+              totalRevenue30d: 37_000,
+              totalRevenuePrev30d: 34_000,
+              revenueGrowth: 0.08,
+              avgRevenuePerCustomer: 800,
+            },
+            subscriptions: {
+              active: 42,
+              pastDue: 0,
+              canceled: 0,
+              trialing: 0,
+              churnRate: 0.02,
+              recentChurnEvents: [],
+            },
+            payments: {
+              succeeded: 20,
+              failed: 1,
+              successRate: 0.95,
+            },
+            revenueTrend: [],
+          },
+        },
+        {
+          providerKey: "mercury",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            accounts: [],
+            cashFlow: {
+              totalBalance: 765_000,
+              inflows30d: 70_000,
+              outflows30d: 160_000,
+              netCashFlow: -90_000,
+              burnRate: 90_000,
+              runway: 8.5,
+            },
+          },
+        },
+        {
+          providerKey: "hubspot",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            funnel: {
+              totalDeals: 1,
+              closedWon: 0,
+              closedLost: 0,
+              unlikely: 0,
+              churn: 0,
+              activeSubscriptions: 42,
+              noShows: 0,
+              demoScheduled: 1,
+              demoFollowUp: 0,
+              avgDealSize: 1_000_000,
+              winRate: 0,
+              effectiveWinRate: 0,
+              noShowRate: 0,
+              stages: [],
+              dealsBySource: [],
+            },
+            contacts: {
+              totalContacts: 0,
+              recentContacts: 0,
+              bySource: [],
+            },
+            deals: [
+              {
+                dealId: "deal_1",
+                dealName: "Expansion",
+                stageId: "presentationscheduled",
+                stageLabel: "Demo Scheduled",
+                amount: 1_000_000,
+                source: "Outbound",
+                ownerId: "owner_1",
+                updatedAt: "2026-05-30T00:00:00.000Z",
+                createdAt: "2026-05-01T00:00:00.000Z",
+                closedAt: null,
+                stripeCustomerId: null,
+                pipelineId: "default",
+                contactIds: [],
+                primaryContactId: null,
+                primaryContactEmail: null,
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.goalProgress).toEqual([]);
+    expect(dashboard.goalRecommendations).toEqual([
+      expect.objectContaining({
+        metric: "ARR",
+        targetValue: 500_000,
+        currentValue: 384_000,
+        sourceMetricKey: "revenue.mrr",
+      }),
+      expect.objectContaining({
+        metric: "RUNWAY",
+        targetValue: 18,
+        currentValue: 8.5,
+        sourceMetricKey: "finance.cash_runway_months",
+      }),
+      expect.objectContaining({
+        metric: "BURN_RATE",
+        targetValue: 42_500,
+        currentValue: 90_000,
+        direction: "lower",
+        sourceMetricKey: "finance.net_burn",
+      }),
+    ]);
+    expect(dashboard.sourceCoverage).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "stripe", status: "available" }),
+        expect.objectContaining({ key: "hubspot", status: "available" }),
+        expect.objectContaining({ key: "mercury", status: "available" }),
+        expect.objectContaining({ key: "posthog", status: "missing" }),
+        expect.objectContaining({ key: "pylon", status: "missing" }),
+      ]),
+    );
+    expect(dashboard.boardReadiness).toMatchObject({
+      status: "watch",
+      requiredActionCount: 3,
+      blockers: [],
+    });
+    expect(dashboard.boardReadiness.caveats).toContain(
+      "Using analytics snapshots for revenue.mrr until canonical materialization catches up.",
     );
   });
 

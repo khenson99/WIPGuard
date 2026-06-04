@@ -2520,7 +2520,7 @@ function computeFinanceValues(records: RawSourceRecordRow[], asOf: Date) {
   const stripeMrr = computeStripeMrr(records, asOf);
   const mrr = computeMrrBreakdown(records, asOf);
   const cashInflow = mercuryCashInflow + stripeMrr;
-  const netBurn = Math.max(0, cashOutflow - cashInflow);
+  const netBurn = cashOutflow - cashInflow;
   const mercuryBalanceAmounts = records
     .filter(
       (record) =>
