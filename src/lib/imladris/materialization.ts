@@ -98,6 +98,14 @@ function dateFrom(value: unknown): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function firstDateFrom(...values: unknown[]): Date | null {
+  for (const value of values) {
+    const date = dateFrom(value);
+    if (date) return date;
+  }
+  return null;
+}
+
 function daysBetween(start: Date | null, end: Date | null): number | null {
   if (!start || !end) return null;
   return Math.max(0, (end.getTime() - start.getTime()) / 86_400_000);
@@ -716,9 +724,10 @@ function mercurySnapshotCashBalance(record: RawSourceRecordRow): number | null {
     : null;
 }
 
-function stripeMrrAmount(record: RawSourceRecordRow): number | null {
+function stripeMrrAmount(record: RawSourceRecordRow, asOf?: Date): number | null {
   const payload = asRecord(record.payload);
-  if (isInactiveStripeSubscription(record)) return null;
+  if (isInactiveStripeSubscription(record, asOf)) return null;
+  if (asOf && isFutureStartStripeSubscription(record, asOf)) return null;
   return numberFrom(
     payload.monthlyRecurringRevenue ??
       payload.monthly_recurring_revenue ??
@@ -728,10 +737,94 @@ function stripeMrrAmount(record: RawSourceRecordRow): number | null {
   );
 }
 
-function isInactiveStripeSubscription(record: RawSourceRecordRow): boolean {
+function stripeSources(record: RawSourceRecordRow): Record<string, unknown>[] {
   const payload = asRecord(record.payload);
-  const status = payload.status;
-  return INACTIVE_STRIPE_SUBSCRIPTION_STATUSES.has(normalizeStageKey(status));
+  return [payload, nestedRecord(payload.subscription)];
+}
+
+function firstStripeValue(sources: Record<string, unknown>[], keys: string[]): unknown {
+  for (const source of sources) {
+    for (const key of keys) {
+      const value = source[key];
+      if (value !== null && value !== undefined) return value;
+    }
+  }
+  return null;
+}
+
+function stripeSubscriptionInactiveAt(record: RawSourceRecordRow): Date | null {
+  const sources = stripeSources(record);
+  const periodSources = sources.flatMap((source) => [
+    nestedRecord(source.current_period),
+    nestedRecord(source.currentPeriod),
+  ]);
+  return firstDateFrom(
+    ...sources.flatMap((source) => [
+      source.canceled_at,
+      source.canceledAt,
+      source.cancel_at,
+      source.cancelAt,
+      source.cancelled_at,
+      source.cancelledAt,
+      source.ended_at,
+      source.endedAt,
+      source.ended,
+      source.statusChangedAt,
+      source.status_changed_at,
+      source.current_period_end,
+      source.currentPeriodEnd,
+    ]),
+    ...periodSources.flatMap((source) => [
+      source.end,
+      source.ended,
+      source.endedAt,
+      source.ended_at,
+      source.endDate,
+      source.end_date,
+      source.endsAt,
+      source.ends_at,
+    ]),
+  );
+}
+
+function isFutureStartStripeSubscription(record: RawSourceRecordRow, asOf: Date): boolean {
+  const sources = stripeSources(record);
+  const periodSources = sources.flatMap((source) => [
+    nestedRecord(source.current_period),
+    nestedRecord(source.currentPeriod),
+  ]);
+  const startsAt = firstDateFrom(
+    ...sources.flatMap((source) => [
+      source.start,
+      source.startsAt,
+      source.starts_at,
+      source.startedAt,
+      source.started_at,
+      source.startDate,
+      source.start_date,
+      source.current_period_start,
+      source.currentPeriodStart,
+    ]),
+    ...periodSources.flatMap((source) => [
+      source.start,
+      source.startsAt,
+      source.starts_at,
+      source.startDate,
+      source.start_date,
+    ]),
+  );
+  return Boolean(startsAt && startsAt.getTime() > asOf.getTime());
+}
+
+function isInactiveStripeSubscription(record: RawSourceRecordRow, asOf?: Date): boolean {
+  const sources = stripeSources(record);
+  const status = firstStripeValue(sources, ["status"]);
+  const inactiveAt = asOf ? stripeSubscriptionInactiveAt(record) : null;
+  if (!INACTIVE_STRIPE_SUBSCRIPTION_STATUSES.has(normalizeStageKey(status))) {
+    return Boolean(inactiveAt && asOf && inactiveAt.getTime() <= asOf.getTime());
+  }
+  if (!asOf) return true;
+  return !(inactiveAt && inactiveAt.getTime() > asOf.getTime());
 }
 
 function stripeCustomerId(record: RawSourceRecordRow): string | null {
@@ -890,12 +983,12 @@ function hubspotRecurringRevenue(record: RawSourceRecordRow): {
   return { mrr: arr / 12, arr };
 }
 
-function buildStripeRefs(records: RawSourceRecordRow[]) {
+function buildStripeRefs(records: RawSourceRecordRow[], asOf?: Date) {
   const stripeRecords = records.filter(
     (record) =>
       record.provider === IntegrationProvider.STRIPE &&
       (record.objectType === "active_customer_ref" ||
-        (record.objectType === "subscription" && !isInactiveStripeSubscription(record))),
+        (record.objectType === "subscription" && !isInactiveStripeSubscription(record, asOf))),
   );
   return {
     customerIds: new Set(
@@ -910,12 +1003,12 @@ function buildStripeRefs(records: RawSourceRecordRow[]) {
   };
 }
 
-function computeMrrBreakdown(records: RawSourceRecordRow[]) {
+function computeMrrBreakdown(records: RawSourceRecordRow[], asOf?: Date) {
   const stripeMrr = records
     .filter((record) => record.provider === IntegrationProvider.STRIPE)
-    .reduce((sum, record) => sum + (stripeMrrAmount(record) ?? 0), 0);
+    .reduce((sum, record) => sum + (stripeMrrAmount(record, asOf) ?? 0), 0);
   const stripeArr = stripeMrr * 12;
-  const stripeRefs = buildStripeRefs(records);
+  const stripeRefs = buildStripeRefs(records, asOf);
   let hubspotSubscriptionMrr = 0;
   let hubspotSubscriptionArr = 0;
   let hubspotOnlySubscriptionMrr = 0;
@@ -962,7 +1055,7 @@ function computeMrrBreakdown(records: RawSourceRecordRow[]) {
   };
 }
 
-function computeFinanceValues(records: RawSourceRecordRow[]) {
+function computeFinanceValues(records: RawSourceRecordRow[], asOf?: Date) {
   const mercuryTransactions = records.filter(
     (record) =>
       record.provider === IntegrationProvider.MERCURY &&
@@ -978,8 +1071,8 @@ function computeFinanceValues(records: RawSourceRecordRow[]) {
   }, 0);
   const stripeMrr = records
     .filter((record) => record.provider === IntegrationProvider.STRIPE)
-    .reduce((sum, record) => sum + (stripeMrrAmount(record) ?? 0), 0);
-  const mrr = computeMrrBreakdown(records);
+    .reduce((sum, record) => sum + (stripeMrrAmount(record, asOf) ?? 0), 0);
+  const mrr = computeMrrBreakdown(records, asOf);
   const cashInflow = mercuryCashInflow + stripeMrr;
   const netBurn = cashOutflow - cashInflow;
   const mercuryBalanceAmounts = records
@@ -1092,7 +1185,7 @@ export async function materializeImladrisFinanceMetrics(
     }),
     orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
   });
-  const values = computeFinanceValues(records);
+  const values = computeFinanceValues(records, input.periodEnd);
   const confidence = confidenceFor(records);
   const status =
     records.length > 0 ? ImladrisMetricStatus.READY : ImladrisMetricStatus.MISSING;

@@ -209,6 +209,96 @@ describe("Imladris raw ingestion", () => {
     );
   });
 
+  it("singularizes plural raw object types before persistence", async () => {
+    const { prisma } = createPrismaMock();
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.STRIPE,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      records: [
+        {
+          objectType: "subscriptions",
+          externalId: "sub_plural",
+          payload: {
+            id: "sub_plural",
+            monthlyRecurringRevenue: 42_000,
+          },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      recordCount: 1,
+      acceptedCount: 1,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          provider_objectType_externalId_scopeKey: {
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_plural",
+            scopeKey: "org:org_1",
+          },
+        },
+        create: expect.objectContaining({
+          objectType: "subscription",
+        }),
+      }),
+    );
+  });
+
+  it("preserves singular raw object types that already end in s", async () => {
+    const { prisma } = createPrismaMock();
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.HUBSPOT,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      records: [
+        {
+          objectType: "business",
+          externalId: "business_1",
+          payload: {
+            id: "business_1",
+            name: "Imladris Metrics LLC",
+          },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      recordCount: 1,
+      acceptedCount: 1,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          provider_objectType_externalId_scopeKey: {
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "business",
+            externalId: "business_1",
+            scopeKey: "org:org_1",
+          },
+        },
+        create: expect.objectContaining({
+          objectType: "business",
+        }),
+      }),
+    );
+  });
+
   it("returns accepted raw records with a persistence warning when the final sync-run status update fails", async () => {
     const { prisma } = createPrismaMock();
     vi.mocked(prisma.imladrisSourceSyncRun.update).mockRejectedValueOnce(

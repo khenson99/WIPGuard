@@ -88,6 +88,25 @@ function scopeKey(context: ImladrisActorContext): string {
   return "global";
 }
 
+function singularizeObjectType(value: string): string {
+  if (value.endsWith("status")) return value;
+  if (value.endsWith("ss")) return value;
+  if (value.endsWith("ies")) return `${value.slice(0, -3)}y`;
+  if (value.endsWith("ses")) return value.slice(0, -2);
+  if (value.endsWith("s")) return value.slice(0, -1);
+  return value;
+}
+
+function normalizeObjectType(value: string): string {
+  return singularizeObjectType(
+    value
+      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+      .replace(/[^a-zA-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .toLowerCase(),
+  );
+}
+
 export function getImladrisHistoricalWindow(now = new Date()): {
   windowStart: Date;
   windowEnd: Date;
@@ -126,6 +145,7 @@ export async function ingestImladrisRawRecords(
   let lastError: string | null = null;
 
   for (const record of input.records) {
+    const objectType = normalizeObjectType(record.objectType);
     const hash = payloadHash(record.payload);
     const sourceCreatedAt = asDate(record.sourceCreatedAt);
     const sourceUpdatedAt = asDate(record.sourceUpdatedAt);
@@ -136,7 +156,7 @@ export async function ingestImladrisRawRecords(
         where: {
           provider_objectType_externalId_scopeKey: {
             provider: input.provider,
-            objectType: record.objectType,
+            objectType,
             externalId: record.externalId,
             scopeKey: rawRecordScopeKey,
           },
@@ -144,7 +164,7 @@ export async function ingestImladrisRawRecords(
         create: {
           syncRunId: syncRun.id,
           provider: input.provider,
-          objectType: record.objectType,
+          objectType,
           externalId: record.externalId,
           scopeKey: rawRecordScopeKey,
           sourceCreatedAt,
