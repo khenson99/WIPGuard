@@ -76,6 +76,7 @@ interface AnalyticsSnapshotRow {
 }
 
 interface CompanyAnalyticsStats {
+  snapshots: Map<string, AnalyticsSnapshotRow>;
   metricsLayer: AnalyticsMetricsLayer;
   revenueDashboard: RevenueDashboardData;
   snapshotCount: number;
@@ -393,6 +394,30 @@ function numberValue(value: unknown): number | null {
   return parseImladrisNumber(scalarValue(value) ?? value);
 }
 
+function valueAtPath(value: unknown, path: string[]): unknown {
+  let current = value;
+  for (const segment of path) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
+      return null;
+    }
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current;
+}
+
+function firstNumberAtPath(value: unknown, paths: string[][]): number | null {
+  for (const path of paths) {
+    const number = numberValue(valueAtPath(value, path));
+    if (number !== null) return number;
+  }
+  return null;
+}
+
+function arrayAtPath(value: unknown, path: string[]): unknown[] {
+  const target = valueAtPath(value, path);
+  return Array.isArray(target) ? target : [];
+}
+
 function countValue(value: unknown): number | null {
   const valueAsNumber = numberValue(value);
   return valueAsNumber === null ? null : Math.floor(Math.max(0, valueAsNumber));
@@ -515,16 +540,50 @@ function latestSnapshotsByProvider(rows: AnalyticsSnapshotRow[]): Map<string, An
   return latest;
 }
 
+function analyticsSnapshotScopeWhere(context: UserContext) {
+  const userScopes: Array<Record<string, unknown>> = [];
+
+  if (context.userId) {
+    const ownerUserId = resolveIntegrationOwnerUserId(context.userId);
+    userScopes.push({ userId: ownerUserId }, { userId: context.userId });
+  }
+
+  if (context.organizationId) {
+    userScopes.push({ user: { organizationId: context.organizationId } });
+  }
+
+  return { OR: userScopes };
+}
+
 function analyticsDataFromSnapshots(
   snapshots: Map<string, AnalyticsSnapshotRow>,
   now: Date,
 ): AnalyticsDashboardData {
+  const payload = (providerKey: string) => snapshots.get(providerKey)?.payload ?? null;
+
   return {
     stripe: (snapshots.get("stripe")?.payload as StripeData | undefined) ?? null,
     mercury: (snapshots.get("mercury")?.payload as MercuryData | undefined) ?? null,
     hubspot: (snapshots.get("hubspot")?.payload as HubSpotData | undefined) ?? null,
     salesPerformance:
       (snapshots.get("salesPerformance")?.payload as SalesPerformancePack | undefined) ?? null,
+    googleAnalytics: payload("googleAnalytics"),
+    googleSearchConsole: payload("googleSearchConsole") ?? payload("searchConsole"),
+    googleAds: payload("googleAds"),
+    metaAds: payload("metaAds"),
+    metaPage: payload("metaPage"),
+    instagram: payload("instagram"),
+    redditAds: payload("redditAds"),
+    semrush: payload("semrush"),
+    coda: payload("coda") ?? payload("codaOps"),
+    webflow: payload("webflow"),
+    pylon: payload("pylon"),
+    posthog: payload("posthog"),
+    product: payload("product"),
+    googleWorkspace: payload("googleWorkspace"),
+    slack: payload("slack"),
+    linear: payload("linear"),
+    github: payload("github"),
     freshness: Object.fromEntries(
       [...snapshots.entries()].map(([providerKey, snapshot]) => [
         providerKey,
@@ -554,11 +613,10 @@ async function buildCompanyAnalyticsStats(input: {
 
   const snapshotRows = (await input.prisma.analyticsSnapshot.findMany({
     where: {
-      userId: resolveIntegrationOwnerUserId(input.context.userId),
+      ...analyticsSnapshotScopeWhere(input.context),
       providerKey: {
         in: [...ANALYTICS_SNAPSHOT_PROVIDER_KEYS],
       },
-      status: "SUCCESS",
     },
     select: {
       providerKey: true,
@@ -570,8 +628,17 @@ async function buildCompanyAnalyticsStats(input: {
     },
     orderBy: [{ capturedAt: "desc" }],
   })) as AnalyticsSnapshotRow[];
-  const snapshots = latestSnapshotsByProvider(snapshotRows);
-  if (snapshots.size === 0) return null;
+  const latestStatusSnapshots = latestSnapshotsByProvider(snapshotRows);
+  if (latestStatusSnapshots.size === 0) return null;
+
+  const snapshots = latestSnapshotsByProvider(
+    snapshotRows.filter(
+      (snapshot) =>
+        snapshot.status === "SUCCESS" &&
+        snapshot.payload !== null &&
+        snapshot.payload !== undefined,
+    ),
+  );
 
   const analyticsData = analyticsDataFromSnapshots(snapshots, input.now);
   const latestCapturedAt =
@@ -589,12 +656,16 @@ async function buildCompanyAnalyticsStats(input: {
       .map((snapshot) => snapshot.providerKey),
   );
   const errorProviders = new Map(
-    [...snapshots.values()]
-      .filter((snapshot) => snapshot.lastError)
-      .map((snapshot) => [snapshot.providerKey, snapshot.lastError ?? "Snapshot reported an error."]),
+    [...latestStatusSnapshots.values()]
+      .filter((snapshot) => snapshot.status === "ERROR" || snapshot.lastError)
+      .map((snapshot) => [
+        snapshot.providerKey,
+        snapshot.lastError ?? "Snapshot reported an error.",
+      ]),
   );
 
   return {
+    snapshots,
     metricsLayer: buildAnalyticsMetricsLayer(analyticsData),
     revenueDashboard: buildRevenueDashboardData(analyticsData),
     snapshotCount: snapshots.size,
@@ -602,9 +673,12 @@ async function buildCompanyAnalyticsStats(input: {
     availableProviders: new Set(snapshots.keys()),
     staleProviders,
     errorProviders,
-    warnings: [...snapshots.values()]
-      .filter((snapshot) => snapshot.lastError)
-      .map((snapshot) => `${snapshot.providerKey}: ${snapshot.lastError}`),
+    warnings: [...latestStatusSnapshots.values()]
+      .filter((snapshot) => snapshot.status === "ERROR" || snapshot.lastError)
+      .map(
+        (snapshot) =>
+          `${snapshot.providerKey}: ${snapshot.lastError ?? "Snapshot reported an error."}`,
+      ),
   };
 }
 
@@ -615,6 +689,288 @@ function hasAnalyticsProvider(
   return providerKeys.some((providerKey) =>
     analyticsStats?.availableProviders.has(providerKey),
   );
+}
+
+function snapshotPayload(
+  analyticsStats: CompanyAnalyticsStats | null,
+  providerKey: string,
+): unknown {
+  return analyticsStats?.snapshots.get(providerKey)?.payload ?? null;
+}
+
+function paidAcquisitionSummary(analyticsStats: CompanyAnalyticsStats): {
+  amount: number;
+  paidSourceCount: number;
+  clicks: number;
+  conversions: number;
+  impressions: number;
+} | null {
+  const paidProviderKeys = ["googleAds", "metaAds", "redditAds"] as const;
+  let amount = 0;
+  let paidSourceCount = 0;
+  let clicks = 0;
+  let conversions = 0;
+  let impressions = 0;
+
+  for (const providerKey of paidProviderKeys) {
+    const payload = snapshotPayload(analyticsStats, providerKey);
+    const spend = firstNumberAtPath(payload, [
+      ["totalSpend30d"],
+      ["spend"],
+      ["cost"],
+      ["summary", "spend"],
+    ]);
+    if (spend === null) continue;
+
+    amount += Math.max(spend, 0);
+    if (spend > 0) paidSourceCount += 1;
+    clicks +=
+      firstNumberAtPath(payload, [["totalClicks"], ["clicks"], ["summary", "clicks"]]) ??
+      0;
+    conversions +=
+      firstNumberAtPath(payload, [
+        ["totalConversions"],
+        ["conversions"],
+        ["summary", "conversions"],
+      ]) ?? 0;
+    impressions +=
+      firstNumberAtPath(payload, [
+        ["totalImpressions"],
+        ["impressions"],
+        ["summary", "impressions"],
+      ]) ?? 0;
+  }
+
+  if (amount <= 0 || paidSourceCount === 0) return null;
+  return { amount, paidSourceCount, clicks, conversions, impressions };
+}
+
+function marketingPipelineEfficiencyFallback(
+  analyticsStats: CompanyAnalyticsStats,
+): Record<string, unknown> | null {
+  if (!hasAnalyticsProvider(analyticsStats, "hubspot")) return null;
+
+  const qualifiedPipeline =
+    analyticsStats.revenueDashboard.pipeline.qualifiedPipelineValue;
+  const acquisitionSpend = paidAcquisitionSummary(analyticsStats);
+  if (qualifiedPipeline <= 0 || !acquisitionSpend) return null;
+
+  return {
+    ratio: round(qualifiedPipeline / acquisitionSpend.amount, 2),
+    qualifiedPipeline,
+    acquisitionSpend: acquisitionSpend.amount,
+    paidSourceCount: acquisitionSpend.paidSourceCount,
+    clicks: acquisitionSpend.clicks,
+    conversions: acquisitionSpend.conversions,
+    impressions: acquisitionSpend.impressions,
+    currency: "USD",
+    formula: "qualified pipeline / paid acquisition spend",
+    source: "analytics.snapshot_pipeline_efficiency",
+  };
+}
+
+function activationEventName(event: unknown): string {
+  const record = asRecord(event);
+  const rawName =
+    record.event ??
+    record.name ??
+    record.eventName ??
+    valueAtPath(record, ["properties", "event"]);
+  return typeof rawName === "string"
+    ? rawName.trim().toLowerCase().replace(/[\s-]+/g, "_")
+    : "";
+}
+
+function activationEventIdentity(event: unknown): string | null {
+  const record = asRecord(event);
+  const candidates = [
+    record.distinct_id,
+    record.user_id,
+    record.userId,
+    record.accountId,
+    record.companyId,
+    valueAtPath(record, ["properties", "accountId"]),
+    valueAtPath(record, ["properties", "companyId"]),
+    valueAtPath(record, ["properties", "hubspotCompanyId"]),
+    valueAtPath(record, ["properties", "distinct_id"]),
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  return null;
+}
+
+function activatedAccountCount(posthogPayload: unknown): {
+  activatedAccounts: number;
+  eventCount: number | null;
+} | null {
+  const directCount = firstNumberAtPath(posthogPayload, [
+    ["activatedAccounts30d"],
+    ["activatedAccounts"],
+    ["activationCount"],
+    ["summary", "activatedAccounts"],
+    ["summary", "activationCount"],
+  ]);
+  const eventCount = firstNumberAtPath(posthogPayload, [
+    ["eventCount"],
+    ["totalEvents"],
+    ["summary", "eventCount"],
+  ]);
+  if (directCount !== null) {
+    return {
+      activatedAccounts: directCount,
+      eventCount: eventCount ?? directCount,
+    };
+  }
+
+  const events = arrayAtPath(posthogPayload, ["events"]).length > 0
+    ? arrayAtPath(posthogPayload, ["events"])
+    : arrayAtPath(posthogPayload, ["results"]);
+  if (events.length === 0) return null;
+
+  const activationNames = new Set([
+    "activation_completed",
+    "account_activated",
+    "activated",
+    "user_activated",
+    "workspace_activated",
+  ]);
+  const identities = new Set<string>();
+  let anonymousActivationEvents = 0;
+
+  for (const event of events) {
+    if (!activationNames.has(activationEventName(event))) continue;
+    const identity = activationEventIdentity(event);
+    if (identity) {
+      identities.add(identity);
+    } else {
+      anonymousActivationEvents += 1;
+    }
+  }
+
+  return {
+    activatedAccounts: identities.size + anonymousActivationEvents,
+    eventCount: eventCount ?? events.length,
+  };
+}
+
+function productActivationFallback(
+  analyticsStats: CompanyAnalyticsStats,
+): Record<string, unknown> | null {
+  if (
+    !hasAnalyticsProvider(analyticsStats, "posthog") ||
+    !hasAnalyticsProvider(analyticsStats, "hubspot")
+  ) {
+    return null;
+  }
+
+  const posthogPayload = snapshotPayload(analyticsStats, "posthog");
+  const hubspotPayload = snapshotPayload(analyticsStats, "hubspot");
+  const activation = activatedAccountCount(posthogPayload);
+  const eligibleAccounts =
+    firstNumberAtPath(hubspotPayload, [
+      ["funnel", "activeSubscriptions"],
+      ["funnel", "totalDeals"],
+      ["activeSubscriptions"],
+      ["totalDeals"],
+    ]) ?? null;
+
+  if (!activation || eligibleAccounts === null || eligibleAccounts <= 0) {
+    return null;
+  }
+
+  return {
+    rate: round((activation.activatedAccounts / eligibleAccounts) * 100, 2),
+    activatedAccounts: activation.activatedAccounts,
+    eligibleAccounts,
+    eventCount: activation.eventCount,
+    formula: "activated accounts / eligible accounts",
+    source: "analytics.snapshot_activation",
+  };
+}
+
+function normalizedCsat(value: number | null): number | null {
+  if (value === null) return null;
+  if (value > 1) return Math.min(value / 100, 1);
+  return Math.max(Math.min(value, 1), 0);
+}
+
+function retentionRiskFallback(
+  analyticsStats: CompanyAnalyticsStats,
+): Record<string, unknown> | null {
+  if (!hasAnalyticsProvider(analyticsStats, "pylon")) return null;
+
+  const pylonPayload = snapshotPayload(analyticsStats, "pylon");
+  const openConversations = firstNumberAtPath(pylonPayload, [
+    ["openConversations"],
+    ["openIssues"],
+    ["summary", "openConversations"],
+    ["summary", "openIssues"],
+  ]);
+  const urgentConversations = firstNumberAtPath(pylonPayload, [
+    ["urgentConversations"],
+    ["urgentIssues"],
+    ["summary", "urgentConversations"],
+    ["summary", "urgentIssues"],
+  ]);
+  const waitingOnTeam = firstNumberAtPath(pylonPayload, [
+    ["waitingOnTeam"],
+    ["summary", "waitingOnTeam"],
+  ]);
+  const resolvedInRange = firstNumberAtPath(pylonPayload, [
+    ["resolvedInRange"],
+    ["resolvedConversations"],
+    ["summary", "resolvedInRange"],
+  ]);
+  const avgFirstResponseMinutes = firstNumberAtPath(pylonPayload, [
+    ["avgFirstResponseMinutes"],
+    ["averageFirstResponseMinutes"],
+    ["summary", "avgFirstResponseMinutes"],
+  ]);
+  const csat = normalizedCsat(
+    firstNumberAtPath(pylonPayload, [["csat"], ["summary", "csat"]]),
+  );
+  const hasAnySignal = [
+    openConversations,
+    urgentConversations,
+    waitingOnTeam,
+    resolvedInRange,
+    avgFirstResponseMinutes,
+    csat,
+  ].some((value) => value !== null);
+  if (!hasAnySignal) return null;
+
+  const responseRisk =
+    avgFirstResponseMinutes === null
+      ? 0
+      : Math.min(Math.max((avgFirstResponseMinutes - 30) / 15, 0), 12);
+  const csatRisk = csat === null ? 0 : Math.max(0, (1 - csat) * 20);
+  const score = round(
+    Math.min(
+      100,
+      (urgentConversations ?? 0) * 18 +
+        (waitingOnTeam ?? 0) * 8 +
+        (openConversations ?? 0) * 2 +
+        responseRisk +
+        csatRisk,
+    ),
+    1,
+  );
+
+  return {
+    score,
+    riskScore: score,
+    openConversations: openConversations ?? 0,
+    urgentConversations: urgentConversations ?? 0,
+    waitingOnTeam: waitingOnTeam ?? 0,
+    resolvedInRange: resolvedInRange ?? null,
+    avgFirstResponseMinutes: avgFirstResponseMinutes ?? null,
+    csat,
+    formula: "urgent support load + team-waiting load + open load + response lag + CSAT risk",
+    source: "analytics.snapshot_retention_risk",
+  };
 }
 
 function canonicalMetricAvailableAt(row: CanonicalMetricRow, now: Date): boolean {
@@ -756,6 +1112,12 @@ function analyticsFallbackForMetric(
         openPipelineCount: pipeline.openPipelineCount,
         source: "analytics.revenue_dashboard",
       };
+    case "marketing.pipeline_efficiency":
+      return marketingPipelineEfficiencyFallback(analyticsStats);
+    case "product.activation_rate":
+      return productActivationFallback(analyticsStats);
+    case "customer_success.retention_risk":
+      return retentionRiskFallback(analyticsStats);
     default:
       return null;
   }

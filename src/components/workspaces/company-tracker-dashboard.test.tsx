@@ -446,4 +446,68 @@ describe("CompanyTrackerDashboard", () => {
     const riskBadge = screen.getByText("risk");
     expect(riskBadge.className).toContain("text-red-700");
   });
+
+  it("renders analytics-backed growth engine metric values", () => {
+    render(
+      <CompanyTrackerDashboard
+        data={{
+          ...DATA,
+          metrics: [
+            {
+              key: "marketing.pipeline_efficiency",
+              label: "Pipeline Efficiency",
+              value: {
+                ratio: 10,
+                qualifiedPipeline: 250_000,
+                acquisitionSpend: 25_000,
+              },
+              status: "partial",
+              confidence: 0.72,
+              warnings: [],
+              caveats: [
+                "Canonical marketing.pipeline_efficiency is missing; using latest analytics snapshot stats.",
+              ],
+              calculationVersion: "analytics-snapshot-company-fallback-v1",
+              computedAt: "2026-05-31T20:00:00.000Z",
+              periodEnd: "2026-05-31T20:00:00.000Z",
+              sourceLineageCount: 5,
+            },
+            {
+              key: "product.activation_rate",
+              label: "Activation Rate",
+              value: { rate: 25 },
+              status: "partial",
+              confidence: 0.72,
+              warnings: [],
+              caveats: [],
+              calculationVersion: "analytics-snapshot-company-fallback-v1",
+              computedAt: "2026-05-31T20:00:00.000Z",
+              periodEnd: "2026-05-31T20:00:00.000Z",
+              sourceLineageCount: 5,
+            },
+            {
+              key: "customer_success.retention_risk",
+              label: "Retention Risk",
+              value: { score: 36.6 },
+              status: "partial",
+              confidence: 0.72,
+              warnings: [],
+              caveats: [],
+              calculationVersion: "analytics-snapshot-company-fallback-v1",
+              computedAt: "2026-05-31T20:00:00.000Z",
+              periodEnd: "2026-05-31T20:00:00.000Z",
+              sourceLineageCount: 5,
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getAllByText("Pipeline Efficiency").length).toBeGreaterThan(0);
+    expect(screen.getByText("10.00x")).toBeTruthy();
+    expect(screen.getAllByText("Activation Rate").length).toBeGreaterThan(0);
+    expect(screen.getByText("25.0%")).toBeTruthy();
+    expect(screen.getAllByText("Retention Risk").length).toBeGreaterThan(0);
+    expect(screen.getByText("36.6")).toBeTruthy();
+  });
 });
