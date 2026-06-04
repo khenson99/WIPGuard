@@ -980,7 +980,8 @@ function durableFinanceRecordAppliesToPeriod(
       recordIsObjectType(record, "active_customer_ref") ||
       (recordIsObjectType(record, "subscription") &&
         !isInactiveStripeSubscription(record, asOf) &&
-        !isFutureTrialStripeSubscription(record, asOf))
+        !isFutureTrialStripeSubscription(record, asOf) &&
+        !isFutureStartStripeSubscription(record, asOf))
     );
   }
   if (recordIsProvider(record, IntegrationProvider.HUBSPOT)) {
@@ -1496,7 +1497,11 @@ function mercurySnapshotCashBalance(record: RawSourceRecordRow): number | null {
 function stripeMrrAmount(record: RawSourceRecordRow, asOf: Date): number | null {
   if (!recordIsObjectType(record, "revenue_summary", "subscription")) return null;
   const payload = asRecord(record.payload);
-  if (isInactiveStripeSubscription(record, asOf) || isFutureTrialStripeSubscription(record, asOf)) {
+  if (
+    isInactiveStripeSubscription(record, asOf) ||
+    isFutureTrialStripeSubscription(record, asOf) ||
+    isFutureStartStripeSubscription(record, asOf)
+  ) {
     return null;
   }
   const sources = wrapperSources(payload);
@@ -2126,6 +2131,36 @@ function isFutureTrialStripeSubscription(record: RawSourceRecordRow, asOf: Date)
   return !trialEnd || trialEnd.getTime() > asOf.getTime();
 }
 
+function isFutureStartStripeSubscription(record: RawSourceRecordRow, asOf: Date): boolean {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const subscriptionSources = sources.map((source) => nestedRecord(source.subscription));
+  const stripeSources = [...sources, ...subscriptionSources];
+  const periodSources = stripeSources.flatMap((source) => [
+    nestedRecord(source.current_period),
+    nestedRecord(source.currentPeriod),
+  ]);
+  const startsAt = firstDateFrom(
+    ...stripeSources.flatMap((source) => [
+      source.start,
+      source.startsAt,
+      source.starts_at,
+      source.startedAt,
+      source.started_at,
+      source.startDate,
+      source.start_date,
+      source.current_period_start,
+      source.currentPeriodStart,
+    ]),
+    ...periodSources.flatMap((source) => [
+      source.start,
+      source.startsAt,
+      source.starts_at,
+    ]),
+  );
+  return Boolean(startsAt && startsAt.getTime() > asOf.getTime());
+}
+
 function stripeCustomerId(record: RawSourceRecordRow): string | null {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
@@ -2293,6 +2328,61 @@ function hubspotRecurringRevenueAsOf(
     ]),
   );
   if (asOf && closedAt && closedAt.getTime() > asOf.getTime()) return null;
+  const lifecycleSources = sources.flatMap((source) => [
+    source,
+    nestedRecord(source.subscription),
+    nestedRecord(source.billing),
+    nestedRecord(source.service),
+    nestedRecord(source.contract),
+  ]);
+  const subscriptionStartsAt = firstDateFrom(
+    ...lifecycleSources.flatMap((source) => [
+      source.subscriptionStartDate,
+      source.subscription_start_date,
+      source.subscriptionStartsAt,
+      source.subscription_starts_at,
+      source.billingStartDate,
+      source.billing_start_date,
+      source.billingStartsAt,
+      source.billing_starts_at,
+      source.serviceStartDate,
+      source.service_start_date,
+      source.contractStartDate,
+      source.contract_start_date,
+      source.startDate,
+      source.start_date,
+      source.startsAt,
+      source.starts_at,
+    ]),
+  );
+  if (asOf && subscriptionStartsAt && subscriptionStartsAt.getTime() > asOf.getTime()) return null;
+  const subscriptionEndsAt = firstDateFrom(
+    ...lifecycleSources.flatMap((source) => [
+      source.subscriptionEndDate,
+      source.subscription_end_date,
+      source.subscriptionEndsAt,
+      source.subscription_ends_at,
+      source.billingEndDate,
+      source.billing_end_date,
+      source.billingEndsAt,
+      source.billing_ends_at,
+      source.serviceEndDate,
+      source.service_end_date,
+      source.contractEndDate,
+      source.contract_end_date,
+      source.canceledAt,
+      source.canceled_at,
+      source.cancelledAt,
+      source.cancelled_at,
+      source.churnedAt,
+      source.churned_at,
+      source.endDate,
+      source.end_date,
+      source.endsAt,
+      source.ends_at,
+    ]),
+  );
+  if (asOf && subscriptionEndsAt && subscriptionEndsAt.getTime() <= asOf.getTime()) return null;
   const recurringFlag = firstValueFromSources(sources, [
     "recurringRevenue",
     "recurring_revenue",
@@ -2344,7 +2434,8 @@ function buildStripeRefs(
       ((includeActiveCustomerRefs && recordIsObjectType(record, "active_customer_ref")) ||
         (recordIsObjectType(record, "subscription") &&
           !isInactiveStripeSubscription(record, asOf) &&
-          !isFutureTrialStripeSubscription(record, asOf))),
+          !isFutureTrialStripeSubscription(record, asOf) &&
+          !isFutureStartStripeSubscription(record, asOf))),
   );
   return {
     customerIds: new Set(
