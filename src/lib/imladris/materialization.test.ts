@@ -11325,6 +11325,55 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("excludes future-trial Stripe subscriptions with uppercase nested subscription fields", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_uppercase_nested_future_trial_subscription",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_uppercase_nested_future_trial",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              SUBSCRIPTION: {
+                status: "trialing",
+                monthlyRecurringRevenue: 30_000,
+                trial_end: "2026-06-15T00:00:00.000Z",
+              },
+              customerId: "cus_uppercase_nested_future_trial",
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 0,
+      arr: 0,
+      stripeMrr: 0,
+      stripeArr: 0,
+    });
+  });
+
   it("excludes active Stripe subscriptions that start after the reporting period", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -11411,6 +11460,57 @@ describe("Imladris canonical materialization", () => {
               },
               customerId: "cus_top_level_future_start",
               monthlyRecurringRevenue: 20_000,
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 0,
+      arr: 0,
+      stripeMrr: 0,
+      stripeArr: 0,
+    });
+  });
+
+  it("excludes active Stripe subscriptions with uppercase nested future current period starts", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_uppercase_nested_future_start_subscription",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_uppercase_nested_future_start",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              SUBSCRIPTION: {
+                status: "active",
+                monthlyRecurringRevenue: 30_000,
+                CURRENT_PERIOD: {
+                  startDate: "2026-06-01T00:00:00.000Z",
+                },
+              },
+              customerId: "cus_uppercase_nested_future_start",
               currency: "USD",
             },
           },

@@ -2367,7 +2367,7 @@ function isInactiveStripeSubscription(record: RawSourceRecordRow, asOf?: Date): 
 function isFutureTrialStripeSubscription(record: RawSourceRecordRow, asOf: Date): boolean {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
-  const subscriptionSources = sources.map((source) => nestedRecord(source.subscription));
+  const subscriptionSources = sources.map((source) => nestedRecordFromKey(source, "subscription"));
   const stripeSources = [...sources, ...subscriptionSources];
   const status = firstValueFromSources(stripeSources, ["status"]);
   if (normalizeStageKey(status) !== "trialing") return false;
@@ -2387,11 +2387,11 @@ function isFutureTrialStripeSubscription(record: RawSourceRecordRow, asOf: Date)
 function isFutureStartStripeSubscription(record: RawSourceRecordRow, asOf: Date): boolean {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
-  const subscriptionSources = sources.map((source) => nestedRecord(source.subscription));
+  const subscriptionSources = sources.map((source) => nestedRecordFromKey(source, "subscription"));
   const stripeSources = [...sources, ...subscriptionSources];
   const periodSources = stripeSources.flatMap((source) => [
-    nestedRecord(source.current_period),
-    nestedRecord(source.currentPeriod),
+    nestedRecordFromKey(source, "current_period"),
+    nestedRecordFromKey(source, "currentPeriod"),
   ]);
   const startsAt = firstDateFrom(
     ...stripeSources.flatMap((source) => [
