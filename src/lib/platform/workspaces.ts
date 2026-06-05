@@ -47,6 +47,12 @@ export const WORKSPACE_NAV_ITEMS: WorkspaceNavItem[] = [
         workspaceId: "metrics",
       },
       {
+        id: "operating",
+        label: "Operating",
+        href: "/operating",
+        workspaceId: "metrics",
+      },
+      {
         id: "customer-health",
         label: "Customer Health",
         href: "/metrics/customer-health",
