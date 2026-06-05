@@ -107,6 +107,30 @@ const DASHBOARDS: DashboardConfig[] = [
   },
 ];
 
+const FALLBACK_DASHBOARD: DashboardConfig = DASHBOARDS[0] ?? {
+  id: "founder",
+  label: "Founder",
+  title: "Operating Cockpit",
+  eyebrow: "Startup Operating Metrics",
+  summary: "Company operating metrics for founders and investors.",
+  metricIds: [],
+  primaryAction: {
+    href: "/metrics/company",
+    label: "Open company tracker",
+    icon: Gauge,
+  },
+};
+
+const FALLBACK_METRIC: ExecutiveMetric = {
+  id: "fallback",
+  label: "Metrics",
+  value: "Missing",
+  detail: "Metric data is not available yet.",
+  tone: "neutral",
+  href: "/metrics/company",
+  icon: Gauge,
+};
+
 function num(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -370,7 +394,7 @@ export function ExecutiveMetricsDashboard({
   expenses,
 }: ExecutiveMetricsDashboardProps) {
   const [lens, setLens] = useState<DashboardLens>("founder");
-  const dashboard = DASHBOARDS.find((item) => item.id === lens) ?? DASHBOARDS[0]!;
+  const dashboard = DASHBOARDS.find((item) => item.id === lens) ?? FALLBACK_DASHBOARD;
   const currency = company.summary.currency || "USD";
   const customerRisk =
     customerHealth.totals.atRiskAccounts +
@@ -562,7 +586,7 @@ export function ExecutiveMetricsDashboard({
     [dashboard.metricIds, metricMap],
   );
   const [selectedMetricId, setSelectedMetricId] = useState<string>(visibleMetrics[0]?.id ?? "arr");
-  const selectedMetric = metricMap.get(selectedMetricId) ?? visibleMetrics[0] ?? metrics[0]!;
+  const selectedMetric = metricMap.get(selectedMetricId) ?? visibleMetrics[0] ?? metrics[0] ?? FALLBACK_METRIC;
 
   useEffect(() => {
     if (!visibleMetrics.some((metric) => metric.id === selectedMetricId) && visibleMetrics[0]) {
