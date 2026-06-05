@@ -1,10 +1,14 @@
+import { ExecutiveMetricsDashboard } from "@/components/workspaces/executive-metrics-dashboard";
 import { MetricsWorkspace } from "@/components/workspaces/metrics-workspace";
 import { auth } from "@/lib/auth";
 import { CeoOrganizationContextError, withCeoOrganizationContext } from "@/lib/ceo/api-context";
 import { loadCeoMetricSnapshot, type CeoMetricSnapshotPayload } from "@/lib/ceo/service";
+import { buildCompanyTrackerDashboard } from "@/lib/imladris/company-tracker";
+import { buildExpenseDashboard } from "@/lib/imladris/expense-dashboard";
 import { buildImladrisMetrics } from "@/lib/imladris/service";
 import { redirectInvestorToInvestorWorkspace } from "@/lib/investor/route-guards";
 import { prisma } from "@/lib/prisma";
+import { buildCustomerHealthDashboard } from "@/lib/retention/customer-health-dashboard";
 import { getAuthenticatedUser } from "@/lib/session-user";
 import { redirect } from "next/navigation";
 
@@ -23,13 +27,44 @@ export default async function MetricsPage() {
   if (!user) redirect("/login");
   redirectInvestorToInvestorWorkspace(user.role);
 
-  const [metrics, ceoSnapshot] = await Promise.all([
-    buildImladrisMetrics({ prisma, context: { userId: user.id, organizationId: user.organizationId ?? null } }).catch(() => []),
-    withCeoOrganizationContext(session, user, (organizationId) => loadCeoMetricSnapshot({ userId: user.id, organizationId, persist: false })).catch((error) => {
+  const userId = user.id;
+  const organizationId = user.organizationId ?? null;
+
+  const [company, customerHealth, expenses, metrics, ceoSnapshot] = await Promise.all([
+    buildCompanyTrackerDashboard({
+      prisma,
+      context: {
+        userId,
+        organizationId,
+      },
+    }),
+    buildCustomerHealthDashboard({
+      id: userId,
+      organizationId: organizationId ?? "",
+    }),
+    buildExpenseDashboard({
+      prisma,
+      context: {
+        userId,
+        organizationId,
+      },
+      range: "180d",
+    }),
+    buildImladrisMetrics({ prisma, context: { userId, organizationId } }).catch(() => []),
+    withCeoOrganizationContext(session, user, (orgId) => loadCeoMetricSnapshot({ userId, organizationId: orgId, persist: false })).catch((error) => {
       if (error instanceof CeoOrganizationContextError || isMissingTableError(error)) return emptyCeoSnapshot();
       throw error;
     }),
   ]);
 
-  return <MetricsWorkspace metrics={metrics} ceoSnapshot={ceoSnapshot} />;
+  return (
+    <>
+      <ExecutiveMetricsDashboard
+        company={company}
+        customerHealth={customerHealth}
+        expenses={expenses}
+      />
+      <MetricsWorkspace metrics={metrics} ceoSnapshot={ceoSnapshot} />
+    </>
+  );
 }

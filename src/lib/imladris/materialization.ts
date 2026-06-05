@@ -3733,11 +3733,20 @@ function computeFinanceValues(records: RawSourceRecordRow[], asOf: Date) {
     const amount = transactionAmount(record);
     return amount && amount > 0 ? sum + amount : sum;
   }, 0);
-  const stripeMrr = computeStripeMrr(records, asOf);
   const mrr = computeMrrBreakdown(records, asOf);
+  // recognizedMrr is the recognized (billed) MRR. Per the canonical finance fix
+  // it is surfaced for visibility but is NOT treated as cash inflow.
+  const recognizedMrr = mrr.amount;
+  // stripeMrr is retained as an informational "estimated MRR inflow" figure only.
+  const stripeMrr = computeStripeMrr(records, asOf);
   const stripeCashCollections = computeStripeCashCollections(records);
-  const stripeCashInflow =
-    stripeCashCollections.observedCashEvidence ? stripeCashCollections.amount : stripeMrr;
+  // Only count actual Stripe cash collections (paid invoices/charges net of
+  // disputes and refunds) as cash inflow. When there is no observed cash
+  // evidence we fall back to 0 rather than recognized MRR, since recognized
+  // revenue is not cash.
+  const stripeCashInflow = stripeCashCollections.observedCashEvidence
+    ? stripeCashCollections.amount
+    : 0;
   const servicesRevenue = computeServicesRevenue(records, asOf);
   const grossMarginRevenue = mrr.amount + servicesRevenue.amount;
   const cashInflow = mercuryCashInflow + stripeCashInflow;
@@ -3782,6 +3791,7 @@ function computeFinanceValues(records: RawSourceRecordRow[], asOf: Date) {
       currency,
       cashOutflow: roundMoney(cashOutflow),
       cashInflow: roundMoney(cashInflow),
+      recognizedMrr,
       mercuryCashInflow: roundMoney(mercuryCashInflow),
       stripeCashCollections: stripeCashCollections.amount,
       stripeCashCollectionInvoices: stripeCashCollections.paidInvoices,
@@ -3797,6 +3807,7 @@ function computeFinanceValues(records: RawSourceRecordRow[], asOf: Date) {
       months: netBurn > 0 ? roundRatio(cashBalance / netBurn) : null,
       cashBalance: roundMoney(cashBalance),
       netBurn: roundMoney(netBurn),
+      recognizedMrr,
       currency,
     },
     expenses: {
@@ -6476,15 +6487,13 @@ function computeRetentionRisk(records: RawSourceRecordRow[], periodStart: Date, 
       .map(accountIdFromPayload)
       .filter((id): id is string => Boolean(id)),
   );
-  const collaborationOffset = Math.max(0, 10 - collaborationSignals.length * 5);
   const score = Math.min(
     100,
     Math.round(
       openSupportIssueCount * 12 +
         escalationCount * 18 +
         billingRiskAccounts.size * 20 +
-        lowUsageAccounts.size * 18 +
-        collaborationOffset,
+        lowUsageAccounts.size * 18,
     ),
   );
 

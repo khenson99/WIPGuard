@@ -40,6 +40,7 @@ describe("integrations catalog", () => {
     expect(mercury).not.toBeNull();
     expect(mercury?.provider).toBe("MERCURY");
     expect(mercury ? isOAuthIntegration(mercury) : false).toBe(true);
+    expect(mercury?.oauth?.scopes).toEqual(expect.arrayContaining(["read", "offline_access"]));
   });
 
   it("includes webflow as an oauth integration", () => {

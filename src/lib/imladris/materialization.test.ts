@@ -2944,14 +2944,15 @@ describe("Imladris canonical materialization", () => {
         metricKey: "finance.net_burn",
         status: "READY",
         value: expect.objectContaining({
-          amount: 90_000,
+          amount: 120_000,
           currency: "USD",
           cashOutflow: 160_000,
-          cashInflow: 70_000,
+          cashInflow: 40_000,
+          recognizedMrr: 32_000,
           mercuryCashInflow: 40_000,
           stripeCashCollections: 0,
           stripeEstimatedMrrInflow: 30_000,
-          stripeCashInflow: 30_000,
+          stripeCashInflow: 0,
         }),
       }),
       expect.objectContaining({
@@ -2966,9 +2967,10 @@ describe("Imladris canonical materialization", () => {
         metricKey: "finance.cash_runway_months",
         status: "READY",
         value: {
-          months: 5.56,
+          months: 4.17,
           cashBalance: 500_000,
-          netBurn: 90_000,
+          netBurn: 120_000,
+          recognizedMrr: 32_000,
           currency: "USD",
         },
       }),
@@ -3516,6 +3518,83 @@ describe("Imladris canonical materialization", () => {
         stripeCashCollections: 120,
         stripeCashInflow: 120,
       }),
+    });
+  });
+
+  it("does not treat billing MRR as cash inflow when calculating burn and runway", async () => {
+    const prisma = createFinancePrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_mercury_balance_cash_burn",
+        provider: IntegrationProvider.MERCURY,
+        objectType: "account_balance",
+        externalId: "balance_cash_burn",
+        occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+        payload: {
+          availableBalance: 120_000,
+          currency: "USD",
+        },
+      },
+      {
+        id: "raw_mercury_outflow_cash_burn",
+        provider: IntegrationProvider.MERCURY,
+        objectType: "transaction",
+        externalId: "txn_cash_burn_outflow",
+        occurredAt: new Date("2026-05-05T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-05T00:00:00.000Z"),
+        payload: {
+          amount: -80_000,
+          currency: "USD",
+        },
+      },
+      {
+        id: "raw_stripe_subscription_cash_burn",
+        provider: IntegrationProvider.STRIPE,
+        objectType: "subscription",
+        externalId: "sub_cash_burn",
+        occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+        payload: {
+          status: "active",
+          customerId: "cus_cash_burn",
+          monthlyRecurringRevenue: 50_000,
+          currency: "USD",
+        },
+      },
+    ]);
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "finance.net_burn")).toMatchObject({
+      value: {
+        amount: 80_000,
+        cashOutflow: 80_000,
+        cashInflow: 0,
+        recognizedMrr: 50_000,
+      },
+    });
+    expect(results.find((result) => result.metricKey === "finance.cash_runway_months")).toMatchObject({
+      value: {
+        months: 1.5,
+        cashBalance: 120_000,
+        netBurn: 80_000,
+        recognizedMrr: 50_000,
+      },
+    });
+    expect(results.find((result) => result.metricKey === "revenue.mrr")).toMatchObject({
+      value: {
+        amount: 50_000,
+      },
     });
   });
 
@@ -4618,7 +4697,7 @@ describe("Imladris canonical materialization", () => {
       status: "READY",
       value: {
         cashBalance: 100_000,
-        netBurn: 19_000,
+        netBurn: 20_000,
       },
     });
     expect(results.find((result) => result.metricKey === "revenue.mrr")).toMatchObject({
@@ -5016,16 +5095,16 @@ describe("Imladris canonical materialization", () => {
 
     expect(results.find((result) => result.metricKey === "finance.net_burn")).toMatchObject({
       value: {
-        amount: 90_000,
+        amount: 100_000,
         cashOutflow: 100_000,
-        cashInflow: 10_000,
+        cashInflow: 0,
       },
     });
     expect(results.find((result) => result.metricKey === "finance.cash_runway_months")).toMatchObject({
       value: {
-        months: 5.56,
+        months: 5,
         cashBalance: 500_000,
-        netBurn: 90_000,
+        netBurn: 100_000,
       },
     });
     expect(results.find((result) => result.metricKey === "revenue.mrr")).toMatchObject({
@@ -5236,7 +5315,8 @@ describe("Imladris canonical materialization", () => {
       stripeArr: 504_000,
     });
     expect(results.find((result) => result.metricKey === "finance.net_burn")?.value).toMatchObject({
-      cashInflow: 42_000,
+      cashInflow: 0,
+      recognizedMrr: 42_000,
     });
   });
 
@@ -5302,7 +5382,8 @@ describe("Imladris canonical materialization", () => {
       stripeArr: 504_000,
     });
     expect(results.find((result) => result.metricKey === "finance.net_burn")?.value).toMatchObject({
-      cashInflow: 42_000,
+      cashInflow: 0,
+      recognizedMrr: 42_000,
     });
   });
 
@@ -5362,7 +5443,8 @@ describe("Imladris canonical materialization", () => {
       stripeArr: 504_000,
     });
     expect(results.find((result) => result.metricKey === "finance.net_burn")?.value).toMatchObject({
-      cashInflow: 42_000,
+      cashInflow: 0,
+      recognizedMrr: 42_000,
     });
   });
 
@@ -5422,7 +5504,8 @@ describe("Imladris canonical materialization", () => {
       stripeArr: 504_000,
     });
     expect(results.find((result) => result.metricKey === "finance.net_burn")?.value).toMatchObject({
-      cashInflow: 42_000,
+      cashInflow: 0,
+      recognizedMrr: 42_000,
     });
   });
 
@@ -7071,14 +7154,16 @@ describe("Imladris canonical materialization", () => {
     });
 
     expect(results.find((result) => result.metricKey === "finance.net_burn")?.value).toMatchObject({
-      amount: 115_000,
+      amount: 150_000,
       cashOutflow: 150_000,
-      cashInflow: 35_000,
+      cashInflow: 0,
+      recognizedMrr: 36_000,
     });
     expect(results.find((result) => result.metricKey === "finance.cash_runway_months")?.value).toMatchObject({
-      months: 2.09,
+      months: 1.6,
       cashBalance: 240_000,
-      netBurn: 115_000,
+      netBurn: 150_000,
+      recognizedMrr: 36_000,
     });
     expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
       amount: 36_000,
@@ -13362,14 +13447,16 @@ describe("Imladris canonical materialization", () => {
       arr: 600_000,
     });
     expect(results.find((result) => result.metricKey === "finance.net_burn")?.value).toMatchObject({
-      amount: 50_000,
+      amount: 100_000,
       cashOutflow: 100_000,
-      cashInflow: 50_000,
+      cashInflow: 0,
+      recognizedMrr: 50_000,
     });
     expect(results.find((result) => result.metricKey === "finance.cash_runway_months")?.value).toMatchObject({
       cashBalance: 100_000,
-      netBurn: 50_000,
-      months: 2,
+      netBurn: 100_000,
+      months: 1,
+      recognizedMrr: 50_000,
     });
     expect(results.find((result) => result.metricKey === "revenue.mrr")?.rawRecordCount).toBe(3);
   });
@@ -21562,6 +21649,75 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("does not add retention risk solely because collaboration signals are absent", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_pylon_closed_conversation_no_risk",
+        provider: IntegrationProvider.PYLON,
+        objectType: "conversation",
+        externalId: "conv_no_risk",
+        occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_no_risk",
+          status: "closed",
+        },
+      },
+      {
+        id: "raw_posthog_active_usage_no_risk",
+        provider: IntegrationProvider.POSTHOG,
+        objectType: "account_usage",
+        externalId: "usage_no_risk",
+        occurredAt: new Date("2026-05-17T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-17T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_no_risk",
+          activeUsers: 5,
+          daysSinceLastActive: 1,
+        },
+      },
+      {
+        id: "raw_stripe_active_subscription_no_risk",
+        provider: IntegrationProvider.STRIPE,
+        objectType: "subscription",
+        externalId: "sub_no_risk",
+        occurredAt: new Date("2026-05-24T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-24T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_no_risk",
+          status: "active",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result).toMatchObject({
+      metricKey: "customer_success.retention_risk",
+      status: "PARTIAL",
+      rawRecordCount: 3,
+      value: {
+        score: 0,
+        atRiskAccounts: 0,
+        openSupportIssues: 0,
+        escalations: 0,
+        accountsWithBillingRisk: 0,
+        lowUsageAccounts: 0,
+        collaborationSignals: 0,
+      },
+    });
+  });
+
   it("uses HubSpot ticket company associations as customer-success account identities", async () => {
     const prisma = createCustomerSuccessPrismaMock();
     const periodStart = new Date("2026-05-01T00:00:00.000Z");
@@ -22345,7 +22501,7 @@ describe("Imladris canonical materialization", () => {
     expect(result.value).toMatchObject({
       openSupportIssues: 1,
       collaborationSignals: 1,
-      score: 17,
+      score: 12,
     });
   });
 
@@ -22441,7 +22597,7 @@ describe("Imladris canonical materialization", () => {
     expect(result.value).toMatchObject({
       openSupportIssues: 1,
       collaborationSignals: 1,
-      score: 17,
+      score: 12,
     });
   });
 
@@ -22761,7 +22917,7 @@ describe("Imladris canonical materialization", () => {
 
     expect(result.value).toMatchObject({
       collaborationSignals: 1,
-      score: 5,
+      score: 0,
     });
   });
 
@@ -22818,7 +22974,7 @@ describe("Imladris canonical materialization", () => {
     });
 
     expect(result.value).toMatchObject({
-      score: 23,
+      score: 18,
       lowUsageAccounts: 1,
       collaborationSignals: 1,
     });
@@ -22867,7 +23023,7 @@ describe("Imladris canonical materialization", () => {
 
     expect(result.value).toMatchObject({
       collaborationSignals: 1,
-      score: 5,
+      score: 0,
     });
   });
 
@@ -22914,7 +23070,7 @@ describe("Imladris canonical materialization", () => {
 
     expect(result.value).toMatchObject({
       collaborationSignals: 1,
-      score: 5,
+      score: 0,
     });
   });
 
@@ -22961,7 +23117,7 @@ describe("Imladris canonical materialization", () => {
 
     expect(result.value).toMatchObject({
       collaborationSignals: 1,
-      score: 5,
+      score: 0,
     });
   });
 
@@ -23020,7 +23176,7 @@ describe("Imladris canonical materialization", () => {
     });
 
     expect(result.value).toMatchObject({
-      score: 41,
+      score: 36,
       atRiskAccounts: 1,
       escalations: 1,
       lowUsageAccounts: 1,
@@ -23083,7 +23239,7 @@ describe("Imladris canonical materialization", () => {
     });
 
     expect(result.value).toMatchObject({
-      score: 41,
+      score: 36,
       atRiskAccounts: 1,
       escalations: 1,
       lowUsageAccounts: 1,
@@ -23122,7 +23278,7 @@ describe("Imladris canonical materialization", () => {
       atRiskAccounts: 1,
       openSupportIssues: 1,
       escalations: 1,
-      score: 40,
+      score: 30,
     });
   });
 
@@ -23157,7 +23313,7 @@ describe("Imladris canonical materialization", () => {
       atRiskAccounts: 1,
       openSupportIssues: 1,
       escalations: 1,
-      score: 40,
+      score: 30,
     });
   });
 
@@ -23192,7 +23348,7 @@ describe("Imladris canonical materialization", () => {
       atRiskAccounts: 1,
       openSupportIssues: 1,
       escalations: 1,
-      score: 40,
+      score: 30,
     });
   });
 
@@ -23227,7 +23383,7 @@ describe("Imladris canonical materialization", () => {
       atRiskAccounts: 1,
       openSupportIssues: 1,
       escalations: 1,
-      score: 40,
+      score: 30,
     });
   });
 
@@ -23269,7 +23425,7 @@ describe("Imladris canonical materialization", () => {
       atRiskAccounts: 1,
       openSupportIssues: 1,
       escalations: 1,
-      score: 40,
+      score: 30,
     });
   });
 
@@ -23301,7 +23457,7 @@ describe("Imladris canonical materialization", () => {
     });
 
     expect(result.value).toMatchObject({
-      score: 94,
+      score: 84,
       atRiskAccounts: 0,
       openSupportIssues: 4,
       escalations: 2,
@@ -23349,7 +23505,7 @@ describe("Imladris canonical materialization", () => {
     });
 
     expect(result.value).toMatchObject({
-      score: 40,
+      score: 30,
       atRiskAccounts: 1,
       openSupportIssues: 1,
       escalations: 1,
@@ -23385,7 +23541,7 @@ describe("Imladris canonical materialization", () => {
     });
 
     expect(result.value).toMatchObject({
-      score: 94,
+      score: 84,
       atRiskAccounts: 0,
       openSupportIssues: 4,
       escalations: 2,
@@ -23495,7 +23651,7 @@ describe("Imladris canonical materialization", () => {
     });
 
     expect(result.value).toMatchObject({
-      score: 10,
+      score: 0,
       atRiskAccounts: 0,
       openSupportIssues: 0,
       escalations: 0,
@@ -23529,7 +23685,7 @@ describe("Imladris canonical materialization", () => {
     });
 
     expect(result.value).toMatchObject({
-      score: 94,
+      score: 84,
       atRiskAccounts: 0,
       openSupportIssues: 4,
       escalations: 2,
@@ -23576,7 +23732,7 @@ describe("Imladris canonical materialization", () => {
     });
 
     expect(result.value).toMatchObject({
-      score: 94,
+      score: 84,
       openSupportIssues: 4,
       escalations: 2,
     });
@@ -23622,7 +23778,7 @@ describe("Imladris canonical materialization", () => {
     });
 
     expect(result.value).toMatchObject({
-      score: 94,
+      score: 84,
       openSupportIssues: 4,
       escalations: 2,
     });

@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getIntegrationBySlug, isOAuthIntegration } from "@/lib/integrations/catalog";
-import { fetchOAuthAccountProfile, verifyPylonApiToken } from "@/lib/integrations/oauth";
+import {
+  fetchOAuthAccountProfile,
+  verifyPostHogApiToken,
+  verifyPylonApiToken,
+} from "@/lib/integrations/oauth";
 
 describe("fetchOAuthAccountProfile webflow", () => {
   const webflow = getIntegrationBySlug("webflow");
@@ -185,5 +189,67 @@ describe("verifyPylonApiToken", () => {
     await expect(verifyPylonApiToken("token")).rejects.toThrow(
       "Pylon token verification failed (404)"
     );
+  });
+});
+
+describe("verifyPostHogApiToken", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("verifies a personal API key against the configured project", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 12345,
+          name: "Arda Product",
+          organization: {
+            name: "Arda",
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      )
+    );
+
+    const profile = await verifyPostHogApiToken({
+      token: "phx_token",
+      projectId: "12345",
+      host: "https://us.posthog.com/",
+    });
+
+    expect(fetch).toHaveBeenCalledWith("https://us.posthog.com/api/projects/12345/", {
+      headers: { Authorization: "Bearer phx_token" },
+      cache: "no-store",
+    });
+    expect(profile).toEqual({
+      providerAccountId: "12345",
+      accountLabel: "Arda Product",
+      metadata: {
+        projectId: "12345",
+        host: "https://us.posthog.com",
+        projectName: "Arda Product",
+        organizationName: "Arda",
+      },
+    });
+  });
+
+  it("surfaces PostHog API errors without leaking the token", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "Invalid token" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      })
+    );
+
+    await expect(
+      verifyPostHogApiToken({
+        token: "phx_secret",
+        projectId: "12345",
+        host: "https://app.posthog.com",
+      })
+    ).rejects.toThrow("Invalid token");
   });
 });

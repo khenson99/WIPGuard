@@ -81,6 +81,13 @@ interface ProviderCardProps {
   onPylonTokenChange?: (value: string) => void;
   onPylonBaseUrlChange?: (value: string) => void;
   onConnectPylon?: () => Promise<void>;
+  posthogToken?: string;
+  posthogProjectId?: string;
+  posthogHost?: string;
+  onPosthogTokenChange?: (value: string) => void;
+  onPosthogProjectIdChange?: (value: string) => void;
+  onPosthogHostChange?: (value: string) => void;
+  onConnectPosthog?: () => Promise<void>;
   linearToken?: string;
   onLinearTokenChange?: (value: string) => void;
   onConnectLinear?: () => Promise<void>;
@@ -126,6 +133,13 @@ export function ProviderCard({
   onPylonTokenChange,
   onPylonBaseUrlChange,
   onConnectPylon,
+  posthogToken,
+  posthogProjectId,
+  posthogHost,
+  onPosthogTokenChange,
+  onPosthogProjectIdChange,
+  onPosthogHostChange,
+  onConnectPosthog,
   linearToken,
   onLinearTokenChange,
   onConnectLinear,
@@ -517,6 +531,73 @@ export function ProviderCard({
                     "Save Pylon Settings"
                   ) : (
                     "Connect Pylon"
+                  )}
+                </button>
+                {canDisconnectStoredConnection ? (
+                  <button
+                    type="button"
+                    onClick={() => onDisconnect(item.slug)}
+                    disabled={loadingProviderAction === item.slug}
+                    className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-60"
+                  >
+                    Disconnect
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {item.slug === "posthog" ? (
+            <div className="rounded-lg border border-border p-3">
+              <p className="text-sm font-medium text-foreground">PostHog Connection</p>
+              <div className="mt-2 grid gap-2 md:grid-cols-3">
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  PostHog Project ID
+                  <input
+                    type="text"
+                    value={posthogProjectId ?? ""}
+                    onChange={(event) => onPosthogProjectIdChange?.(event.target.value)}
+                    placeholder="12345"
+                    className="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  PostHog Host
+                  <input
+                    type="url"
+                    value={posthogHost ?? ""}
+                    onChange={(event) => onPosthogHostChange?.(event.target.value)}
+                    placeholder="https://app.posthog.com"
+                    className="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  Personal API Key
+                  <input
+                    type="password"
+                    value={posthogToken ?? ""}
+                    onChange={(event) => onPosthogTokenChange?.(event.target.value)}
+                    placeholder="phx_..."
+                    className="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                  />
+                </label>
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={onConnectPosthog}
+                  disabled={!onConnectPosthog || loadingProviderAction === "posthog"}
+                  className="btn-primary-theme rounded-md px-3 py-1.5 text-xs disabled:opacity-60"
+                >
+                  {loadingProviderAction === "posthog" ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Saving...
+                    </span>
+                  ) : item.connected ? (
+                    "Save PostHog Settings"
+                  ) : (
+                    "Connect PostHog"
                   )}
                 </button>
                 {canDisconnectStoredConnection ? (

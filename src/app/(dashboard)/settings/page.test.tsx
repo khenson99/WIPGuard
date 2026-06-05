@@ -52,14 +52,15 @@ describe("SettingsPage", () => {
     expect(queryByRole("tab", { name: "Design Interview" })).toBeNull();
   });
 
-  it("renders the integrations tab from direct links", () => {
+  it("moves direct integrations links to Sources", async () => {
     mockSearchParams = new URLSearchParams("tab=integrations&status=connected&integration=slack");
 
     render(<SettingsPage />);
 
-    expect(screen.getByRole("tab", { name: "Integrations" }).getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByText("Integrations panel")).toBeTruthy();
-    expect(replace).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(replace).toHaveBeenCalledWith("/sources", { scroll: false });
+    });
+    expect(screen.queryByRole("tab", { name: "Integrations" })).toBeNull();
   });
 
   it("redirects legacy task-management tabs to team settings", async () => {

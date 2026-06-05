@@ -170,7 +170,7 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     oauth: {
       authorizationEndpoint: "https://oauth2.mercury.com/oauth2/auth",
       tokenEndpoint: "https://oauth2.mercury.com/oauth2/token",
-      scopes: getScopesFromEnv("MERCURY_SCOPES", ["read"]),
+      scopes: getScopesFromEnv("MERCURY_SCOPES", ["read", "offline_access"]),
       pkce: true,
       authorizationRedirectParamName: "redirect_url",
       tokenRedirectParamName: "redirect_url",

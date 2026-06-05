@@ -45,6 +45,12 @@ export default function SettingsPage() {
   }, [router, session?.user?.role]);
 
   useEffect(() => {
+    if (tabParam === "integrations") {
+      router.replace("/sources", { scroll: false });
+    }
+  }, [router, tabParam]);
+
+  useEffect(() => {
     if (
       tabParam !== "board" &&
       tabParam !== "sprints" &&
@@ -101,7 +107,7 @@ export default function SettingsPage() {
     [activeTab, handleTabChange],
   );
 
-  if (isLegacySettingsTab) {
+  if (isLegacySettingsTab || tabParam === "integrations") {
     return null;
   }
   if (status === "loading" || session?.user?.role === "investor") {

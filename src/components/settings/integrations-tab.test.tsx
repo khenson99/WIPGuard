@@ -357,4 +357,63 @@ describe("IntegrationsTab", () => {
 
     expect(screen.getByText("Linear Issue Sync")).toBeTruthy();
   });
+
+  it("renders PostHog inputs and posts token plus project settings", async () => {
+    mockIntegrationsFetch({
+      items: [
+        {
+          slug: "posthog",
+          provider: "POSTHOG",
+          name: "PostHog",
+          description: "PostHog integration",
+          capabilities: ["Product events"],
+          authType: "token",
+          configured: true,
+          missingEnv: [],
+          connected: false,
+          status: "DISCONNECTED",
+          accountLabel: null,
+          connectedAt: null,
+          lastSyncedAt: null,
+          lastError: null,
+          credentialSource: "none",
+          syncHealth: "missing",
+          syncHealthReason: "No integration credentials found.",
+          lastSnapshotAt: null,
+          lastSnapshotStatus: null,
+        },
+      ],
+    });
+
+    render(<IntegrationsTab />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Toggle PostHog").getAttribute("aria-expanded")).toBe("true");
+    });
+
+    fireEvent.change(screen.getByLabelText("PostHog Project ID"), {
+      target: { value: "12345" },
+    });
+    fireEvent.change(screen.getByLabelText("PostHog Host"), {
+      target: { value: "https://us.posthog.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Personal API Key"), {
+      target: { value: "phx_token" },
+    });
+    fireEvent.click(screen.getByText("Connect PostHog"));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/integrations/posthog/token",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            token: "phx_token",
+            projectId: "12345",
+            host: "https://us.posthog.com",
+          }),
+        }),
+      );
+    });
+  });
 });
