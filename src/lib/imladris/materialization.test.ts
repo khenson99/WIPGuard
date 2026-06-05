@@ -913,6 +913,38 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("reads uppercase wrapped GitHub merge fields before calculating delivery health", async () => {
+    const prisma = createPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_github_uppercase_wrapped_merge",
+        provider: IntegrationProvider.GITHUB,
+        objectType: "pull_request",
+        externalId: "repo/pull/uppercase-wrapped-merge",
+        occurredAt: new Date("2026-05-18T10:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: null,
+        payload: {
+          VALUES: {
+            MERGED_AT: "2026-05-18T10:00:00.000Z",
+          },
+        },
+      },
+    ] as never);
+
+    const result = await materializeImladrisDevelopmentMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      mergedPullRequests: 1,
+    });
+  });
+
   it("does not count future Linear completion or GitHub merge timestamps as completed delivery", async () => {
     const prisma = createPrismaMock();
     prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
@@ -1118,6 +1150,100 @@ describe("Imladris canonical materialization", () => {
       },
       imladrisCanonicalMetricValue: {
         upsert: vi.fn(async ({ create }) => ({ id: "metric_development_pr_alias", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisDevelopmentMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      score: 57,
+      completedLinearIssues: 1,
+      mergedPullRequests: 1,
+      productEvents: 1,
+      averageLinearCycleTimeDays: 5,
+    });
+  });
+
+  it("reads uppercase nested GitHub repository identities before de-duping pull requests", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_linear_uppercase_pr_repo_context",
+            provider: IntegrationProvider.LINEAR,
+            objectType: "issue",
+            externalId: "LIN-1",
+            occurredAt: new Date("2026-05-15T10:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-05-10T10:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-15T10:00:00.000Z"),
+            payload: {
+              id: "LIN-1",
+              state: { type: "completed" },
+              createdAt: "2026-05-10T10:00:00.000Z",
+              completedAt: "2026-05-15T10:00:00.000Z",
+            },
+          },
+          {
+            id: "raw_github_uppercase_repo_pr_primary",
+            provider: IntegrationProvider.GITHUB,
+            objectType: "pull_request",
+            externalId: "github:pull_request:octo/app#7",
+            occurredAt: new Date("2026-05-18T10:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-05-16T10:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-18T10:00:00.000Z"),
+            payload: {
+              repositoryFullName: "octo/app",
+              number: 7,
+              merged: true,
+              created_at: "2026-05-16T10:00:00.000Z",
+              merged_at: "2026-05-18T10:00:00.000Z",
+            },
+          },
+          {
+            id: "raw_github_uppercase_repo_pr_secondary",
+            provider: IntegrationProvider.GITHUB,
+            objectType: "pull_request",
+            externalId: "github:import:octo/app#7",
+            occurredAt: new Date("2026-05-18T10:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-05-16T10:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-19T10:00:00.000Z"),
+            payload: {
+              REPOSITORY: {
+                fullName: "octo/app",
+              },
+              pullRequestNumber: 7,
+              merged: true,
+              created_at: "2026-05-16T10:00:00.000Z",
+              merged_at: "2026-05-18T10:00:00.000Z",
+            },
+          },
+          {
+            id: "raw_posthog_uppercase_pr_repo_context",
+            provider: IntegrationProvider.POSTHOG,
+            objectType: "event",
+            externalId: "evt_uppercase_pr_repo_context",
+            occurredAt: new Date("2026-05-19T10:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: null,
+            payload: {
+              event: "activation_completed",
+              distinct_id: "acct_1",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_development_uppercase_repo_pr", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
@@ -1678,6 +1804,42 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("reads uppercase wrapped Linear lifecycle timestamps before calculating delivery health", async () => {
+    const prisma = createPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_linear_uppercase_wrapped_lifecycle",
+        provider: IntegrationProvider.LINEAR,
+        objectType: "issue",
+        externalId: "LIN-UPPERCASE-WRAPPED-LIFECYCLE",
+        occurredAt: new Date("2026-05-15T10:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: null,
+        payload: {
+          id: "LIN-UPPERCASE-WRAPPED-LIFECYCLE",
+          VALUES: {
+            STATE: { TYPE: "completed" },
+            CREATED_AT: "2026-05-10T10:00:00.000Z",
+            COMPLETED_AT: "2026-05-15T10:00:00.000Z",
+          },
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisDevelopmentMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      completedLinearIssues: 1,
+      averageLinearCycleTimeDays: 5,
+    });
+  });
+
   it("marks development metrics partial when required provider families are incomplete", async () => {
     const prisma = createPrismaMock();
     prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
@@ -2203,6 +2365,63 @@ describe("Imladris canonical materialization", () => {
           distinct_id: "acct_1",
           timestamp: "2099-01-01T00:00:00.000Z",
           properties: { hubspotCompanyId: "acct_1" },
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisProductActivationMetric({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      rate: 0,
+      activatedAccounts: 0,
+      eligibleAccounts: 2,
+    });
+  });
+
+  it("ignores uppercase wrapped future PostHog activation timestamps before matching product activations", async () => {
+    const prisma = createActivationPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_hubspot_account_for_uppercase_future_activation",
+        provider: IntegrationProvider.HUBSPOT,
+        objectType: "company",
+        externalId: "acct_1",
+        occurredAt: new Date("2026-05-03T10:00:00.000Z"),
+        sourceCreatedAt: new Date("2026-05-03T10:00:00.000Z"),
+        sourceUpdatedAt: new Date("2026-05-03T10:00:00.000Z"),
+        payload: { id: "acct_1", name: "Aperture" },
+      },
+      {
+        id: "raw_hubspot_unactivated_account_for_uppercase_future_activation",
+        provider: IntegrationProvider.HUBSPOT,
+        objectType: "company",
+        externalId: "acct_2",
+        occurredAt: new Date("2026-05-04T10:00:00.000Z"),
+        sourceCreatedAt: new Date("2026-05-04T10:00:00.000Z"),
+        sourceUpdatedAt: new Date("2026-05-04T10:00:00.000Z"),
+        payload: { id: "acct_2", name: "Black Mesa" },
+      },
+      {
+        id: "raw_posthog_uppercase_future_activation_event",
+        provider: IntegrationProvider.POSTHOG,
+        objectType: "event",
+        externalId: "evt_uppercase_future_activation_event",
+        occurredAt: new Date("2026-05-05T10:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: null,
+        payload: {
+          VALUES: {
+            EVENT: "activation_completed",
+            DISTINCT_ID: "acct_1",
+            TIMESTAMP: "2099-01-01T00:00:00.000Z",
+            PROPERTIES: { HUBSPOT_COMPANY_ID: "acct_1" },
+          },
         },
       },
     ]);
@@ -3940,6 +4159,87 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("excludes HubSpot recurring revenue linked by uppercase nested Stripe customer references", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_revenue_summary_uppercase_nested_customer_ref",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "revenue_summary",
+            externalId: "stripe:revenue_summary:uppercase_nested_customer_ref",
+            occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+            payload: {
+              mrr: 42_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_stripe_active_customer_uppercase_nested_ref",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "active_customer_ref",
+            externalId: "stripe:active_customer_ref:uppercase_nested",
+            occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+            payload: {
+              CUSTOMER: {
+                id: "cus_uppercase_nested_ref",
+              },
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_hubspot_uppercase_nested_customer_linked_deal",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_uppercase_nested_customer_linked",
+            occurredAt: new Date("2026-05-12T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-12T00:00:00.000Z"),
+            payload: {
+              amount: 12_000,
+              dealstage: "closedwon",
+              recurringRevenue: true,
+              stripeCustomerId: "cus_uppercase_nested_ref",
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 42_000,
+      arr: 504_000,
+      stripeMrr: 42_000,
+      stripeArr: 504_000,
+      hubspotSubscriptionMrr: 1_000,
+      hubspotSubscriptionArr: 12_000,
+      hubspotOnlySubscriptionMrr: 0,
+      hubspotOnlySubscriptionArr: 0,
+      excludedLinkedHubspotSubscriptionMrr: 1_000,
+      excludedLinkedHubspotSubscriptionArr: 12_000,
+    });
+  });
+
   it("excludes HubSpot recurring revenue linked by wrapped Stripe customer references", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -4133,6 +4433,77 @@ describe("Imladris canonical materialization", () => {
               recurringRevenue: true,
               monthlyRecurringRevenue: 12_000,
               stripeSubscriptionId: "sub_identifier_ref",
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 42_000,
+      arr: 504_000,
+      stripeMrr: 42_000,
+      stripeArr: 504_000,
+      hubspotSubscriptionMrr: 12_000,
+      hubspotSubscriptionArr: 144_000,
+      hubspotOnlySubscriptionMrr: 0,
+      hubspotOnlySubscriptionArr: 0,
+      excludedLinkedHubspotSubscriptionMrr: 12_000,
+      excludedLinkedHubspotSubscriptionArr: 144_000,
+    });
+  });
+
+  it("excludes HubSpot recurring revenue linked by uppercase nested Stripe subscription identifiers", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_uppercase_nested_subscription_identifier_ref",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "stripe:subscription:unrelated_uppercase_identifier_ref",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              SUBSCRIPTION: {
+                id: "sub_uppercase_identifier_ref",
+                status: "active",
+                monthlyRecurringRevenue: 42_000,
+              },
+              customerId: "cus_uppercase_identifier_ref",
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_hubspot_uppercase_subscription_identifier_linked_deal",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_uppercase_subscription_identifier_linked",
+            occurredAt: new Date("2026-05-12T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-12T00:00:00.000Z"),
+            payload: {
+              dealstage: "closedwon",
+              recurringRevenue: true,
+              monthlyRecurringRevenue: 12_000,
+              stripeSubscriptionId: "sub_uppercase_identifier_ref",
               currency: "USD",
             },
           },
@@ -6135,6 +6506,65 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("unwraps uppercase Stripe subscription item data containers before canonical MRR", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_uppercase_item_data_container",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_uppercase_item_data_container",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              status: "active",
+              customerId: "cus_uppercase_item_data_container",
+              currency: "USD",
+              ITEMS: {
+                DATA: [
+                  {
+                    quantity: 2,
+                    price: {
+                      unit_amount: 75_000,
+                      recurring: {
+                        interval: "month",
+                        interval_count: 1,
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 1_500,
+      arr: 18_000,
+      stripeMrr: 1_500,
+      stripeArr: 18_000,
+    });
+  });
+
   it("unwraps object-shaped Stripe recurring intervals before canonical MRR", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -7516,6 +7946,76 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("unwraps uppercase one-time Stripe latest invoice line price types before canonical MRR", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_latest_invoice_uppercase_one_time_line",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_latest_invoice_uppercase_one_time_line",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              status: "active",
+              customerId: "cus_latest_invoice_uppercase_one_time_line",
+              currency: "USD",
+              latest_invoice: {
+                lines: {
+                  data: [
+                    {
+                      amount: 100_000,
+                      quantity: 1,
+                      price: {
+                        unit_amount: 100_000,
+                        recurring: {
+                          interval: "month",
+                          interval_count: 1,
+                        },
+                      },
+                    },
+                    {
+                      amount: 50_000,
+                      quantity: 1,
+                      price: {
+                        TYPE: { VALUE: "one_time" },
+                        unit_amount: 50_000,
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 1_000,
+      arr: 12_000,
+      stripeMrr: 1_000,
+      stripeArr: 12_000,
+    });
+  });
+
   it("excludes one-time Stripe latest invoice line pricing fields before canonical MRR", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -7699,6 +8199,91 @@ describe("Imladris canonical materialization", () => {
                         type: "invoice_item_details",
                         invoice_item_details: {
                           invoice_item: "ii_one_time_support",
+                        },
+                      },
+                      price: {
+                        unit_amount: 50_000,
+                        recurring: {
+                          interval: "month",
+                          interval_count: 1,
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 1_000,
+      arr: 12_000,
+      stripeMrr: 1_000,
+      stripeArr: 12_000,
+    });
+  });
+
+  it("excludes uppercase nested Stripe parent invoice item lines before canonical MRR", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_uppercase_parent_invoice_item_line",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_uppercase_parent_invoice_item_line",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              status: "active",
+              customerId: "cus_uppercase_parent_invoice_item_line",
+              currency: "USD",
+              latest_invoice: {
+                lines: {
+                  data: [
+                    {
+                      amount: 100_000,
+                      quantity: 1,
+                      PARENT: {
+                        type: "subscription_item_details",
+                        SUBSCRIPTION_ITEM_DETAILS: {
+                          subscription_item: "si_uppercase_parent_subscription_item",
+                        },
+                      },
+                      price: {
+                        unit_amount: 100_000,
+                        recurring: {
+                          interval: "month",
+                          interval_count: 1,
+                        },
+                      },
+                    },
+                    {
+                      amount: 50_000,
+                      quantity: 1,
+                      PARENT: {
+                        type: "invoice_item_details",
+                        INVOICE_ITEM_DETAILS: {
+                          invoice_item: "ii_uppercase_one_time_support",
                         },
                       },
                       price: {
@@ -8082,6 +8667,64 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("amortizes uppercase nested Stripe latest invoice line periods before canonical MRR", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_latest_invoice_line_uppercase_period",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_latest_invoice_line_uppercase_period",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              status: "active",
+              customerId: "cus_latest_invoice_line_uppercase_period",
+              currency: "USD",
+              latest_invoice: {
+                lines: {
+                  data: [
+                    {
+                      amount: 1_200_000,
+                      PERIOD: {
+                        start: "2026-01-01T00:00:00.000Z",
+                        end: "2027-01-01T00:00:00.000Z",
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 1_000,
+      arr: 12_000,
+      stripeMrr: 1_000,
+      stripeArr: 12_000,
+    });
+  });
+
   it("subtracts Stripe subscription discounts before materializing canonical MRR", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -8231,6 +8874,71 @@ describe("Imladris canonical materialization", () => {
                 start: "2026-06-01T00:00:00.000Z",
                 coupon: {
                   percent_off: 20,
+                },
+              },
+              items: {
+                data: [
+                  {
+                    quantity: 3,
+                    price: {
+                      unit_amount: 50_000,
+                      recurring: {
+                        interval: "month",
+                        interval_count: 1,
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 1_500,
+      arr: 18_000,
+      stripeMrr: 1_500,
+      stripeArr: 18_000,
+    });
+  });
+
+  it("ignores uppercase future Stripe subscription discounts before materializing canonical MRR", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_uppercase_future_discounted_subscription",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_uppercase_future_discounted",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              status: "active",
+              customerId: "cus_uppercase_future_discounted",
+              currency: "USD",
+              DISCOUNT: {
+                START: "2026-06-01T00:00:00.000Z",
+                COUPON: {
+                  PERCENT_OFF: 20,
                 },
               },
               items: {
@@ -9182,6 +9890,74 @@ describe("Imladris canonical materialization", () => {
                   currency_options: {
                     usd: {
                       amount_off: 120_000,
+                    },
+                  },
+                },
+              },
+              items: {
+                data: [
+                  {
+                    quantity: 1,
+                    price: {
+                      unit_amount: 1_200_000,
+                      recurring: {
+                        interval: "year",
+                        interval_count: 1,
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 900,
+      arr: 10_800,
+      stripeMrr: 900,
+      stripeArr: 10_800,
+    });
+  });
+
+  it("reads uppercase Stripe fixed discount currency options before canonical MRR", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_uppercase_currency_option_fixed_discount",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_uppercase_currency_option_fixed_discount",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              status: "active",
+              customerId: "cus_uppercase_currency_option_fixed_discount",
+              currency: "USD",
+              discount: {
+                coupon: {
+                  CURRENCY_OPTIONS: {
+                    USD: {
+                      AMOUNT_OFF: 120_000,
                     },
                   },
                 },
@@ -10234,6 +11010,103 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("reads uppercase nested Mercury account identities before choosing latest balances", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_mercury_uppercase_account_old_balance",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "account_balance",
+            externalId: "mercury:account_balance:uppercase-old",
+            occurredAt: new Date("2026-05-15T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-15T00:00:00.000Z"),
+            payload: {
+              values: {
+                ACCOUNT: {
+                  id: "checking",
+                },
+                balance: 80_000,
+              },
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_mercury_uppercase_account_savings_balance",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "account_balance",
+            externalId: "mercury:account_balance:uppercase-savings",
+            occurredAt: new Date("2026-05-20T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+            payload: {
+              values: {
+                ACCOUNT: {
+                  id: "savings",
+                },
+                balance: 50_000,
+              },
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_mercury_uppercase_account_new_balance",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "account_balance",
+            externalId: "mercury:account_balance:uppercase-new",
+            occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+            payload: {
+              values: {
+                ACCOUNT: {
+                  id: "checking",
+                },
+                balance: 100_000,
+              },
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_mercury_uppercase_account_outflow",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "transaction",
+            externalId: "txn_uppercase_account_outflow",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              amount: -50_000,
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "finance.cash_runway_months")?.value).toMatchObject({
+      cashBalance: 150_000,
+      netBurn: 50_000,
+      months: 3,
+    });
+  });
+
   it("prefers Mercury balance update timestamps over generic occurrence dates", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -10525,6 +11398,67 @@ describe("Imladris canonical materialization", () => {
             provider: IntegrationProvider.MERCURY,
             objectType: "transaction",
             externalId: "txn_wrapped_snapshot_outflow",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              amount: -120_000,
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "finance.cash_runway_months")?.value).toMatchObject({
+      cashBalance: 480_000,
+      netBurn: 120_000,
+      months: 4,
+    });
+  });
+
+  it("reads uppercase nested Mercury snapshot cash totals when account balances are absent", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_mercury_uppercase_snapshot_cash_flow",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "snapshot",
+            externalId: "mercury:snapshot:uppercase-cash",
+            occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+            payload: {
+              values: {
+                CASH_FLOW: {
+                  bankCash: 180_000,
+                  treasuryCash: 300_000,
+                },
+              },
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_mercury_uppercase_snapshot_outflow",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "transaction",
+            externalId: "txn_uppercase_snapshot_outflow",
             occurredAt: new Date("2026-05-10T00:00:00.000Z"),
             sourceCreatedAt: null,
             sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
@@ -10940,6 +11874,55 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("excludes uppercase wrapped active Stripe subscriptions scheduled to cancel inside the reporting period", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_uppercase_wrapped_subscription_scheduled_cancel",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_uppercase_wrapped_scheduled_cancel",
+            occurredAt: new Date("2026-04-15T00:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-04-15T00:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-15T00:00:00.000Z"),
+            payload: {
+              VALUES: {
+                STATUS: "active",
+                CANCEL_AT: "2026-05-15T00:00:00.000Z",
+                CUSTOMER_ID: "cus_uppercase_wrapped_scheduled_cancel",
+                MONTHLY_RECURRING_REVENUE: 25_000,
+                CURRENCY: "USD",
+              },
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-06-03T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 0,
+      arr: 0,
+      stripeMrr: 0,
+      stripeArr: 0,
+    });
+  });
+
   it("excludes active Stripe subscriptions with nested current period end dates before the report", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -10995,6 +11978,57 @@ describe("Imladris canonical materialization", () => {
               current_period_end: "2026-05-17T00:00:00.000Z",
               customerId: "cus_period_end_alias",
               monthlyRecurringRevenue: 10_000,
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-06-03T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 0,
+      arr: 0,
+      stripeMrr: 0,
+      stripeArr: 0,
+    });
+  });
+
+  it("excludes active Stripe subscriptions with uppercase nested current period end dates before the report", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_subscription_uppercase_nested_period_ended",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_uppercase_nested_period_ended",
+            occurredAt: new Date("2026-04-15T00:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-04-15T00:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-15T00:00:00.000Z"),
+            payload: {
+              status: "active",
+              SUBSCRIPTION: {
+                CURRENT_PERIOD: {
+                  end_date: "2026-05-15T00:00:00.000Z",
+                },
+              },
+              customerId: "cus_uppercase_nested_period_ended",
+              monthlyRecurringRevenue: 25_000,
               currency: "USD",
             },
           },
@@ -11541,6 +12575,55 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("excludes active Stripe subscriptions with uppercase wrapped future current period starts", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_uppercase_wrapped_future_start_subscription",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_uppercase_wrapped_future_start",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              VALUES: {
+                STATUS: "active",
+                CUSTOMER_ID: "cus_uppercase_wrapped_future_start",
+                MONTHLY_RECURRING_REVENUE: 30_000,
+                CURRENT_PERIOD_START: "2026-06-01T00:00:00.000Z",
+                CURRENCY: "USD",
+              },
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 0,
+      arr: 0,
+      stripeMrr: 0,
+      stripeArr: 0,
+    });
+  });
+
   it("unwraps Stripe trial end date envelopes before canonical MRR materialization", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -11559,6 +12642,55 @@ describe("Imladris canonical materialization", () => {
               monthlyRecurringRevenue: 30_000,
               trial_end: { data: { attributes: { value: "2026-05-15T00:00:00.000Z" } } },
               currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 30_000,
+      arr: 360_000,
+      stripeMrr: 30_000,
+      stripeArr: 360_000,
+    });
+  });
+
+  it("unwraps uppercase wrapped Stripe trial end dates before canonical MRR materialization", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_uppercase_wrapped_past_trial_subscription",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_uppercase_wrapped_past_trial",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              VALUES: {
+                STATUS: "trialing",
+                CUSTOMER_ID: "cus_uppercase_wrapped_past_trial",
+                MONTHLY_RECURRING_REVENUE: 30_000,
+                TRIAL_END: "2026-05-15T00:00:00.000Z",
+                CURRENCY: "USD",
+              },
             },
           },
         ]),
@@ -12157,6 +13289,59 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("excludes HubSpot recurring revenue with uppercase nested future subscription start dates", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_uppercase_nested_future_start_subscription_deal",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_uppercase_nested_future_start_subscription",
+            occurredAt: new Date("2026-05-12T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-12T00:00:00.000Z"),
+            payload: {
+              properties: {
+                amount: 12_000,
+                dealstage: "closedwon",
+                recurringRevenue: true,
+                SUBSCRIPTION: {
+                  startDate: "2026-06-01T00:00:00.000Z",
+                },
+              },
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 0,
+      arr: 0,
+      hubspotSubscriptionMrr: 0,
+      hubspotSubscriptionArr: 0,
+      hubspotOnlySubscriptionMrr: 0,
+      hubspotOnlySubscriptionArr: 0,
+    });
+  });
+
   it("recognizes human-readable closed-won stages before canonical MRR calculation", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -12219,6 +13404,53 @@ describe("Imladris canonical materialization", () => {
               amount: 120_000,
               dealstage: "Closed Won",
               closed_at: "2026-06-02T00:00:00.000Z",
+              recurringRevenue: true,
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-06-03T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 0,
+      arr: 0,
+      hubspotSubscriptionMrr: 0,
+      hubspotOnlySubscriptionMrr: 0,
+    });
+  });
+
+  it("excludes HubSpot subscription revenue with uppercase close dates after the reporting period", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_uppercase_future_closed_subscription_deal",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_uppercase_future_closed_subscription",
+            occurredAt: new Date("2026-06-02T00:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-04-15T00:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-06-02T00:00:00.000Z"),
+            payload: {
+              amount: 120_000,
+              dealstage: "Closed Won",
+              CLOSED_AT: "2026-06-02T00:00:00.000Z",
               recurringRevenue: true,
               currency: "USD",
             },
@@ -12988,6 +14220,52 @@ describe("Imladris canonical materialization", () => {
       },
       imladrisCanonicalMetricValue: {
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_stage_label", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisSalesMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      amount: 50_000,
+      qualifiedDealCount: 1,
+    });
+  });
+
+  it("unwraps uppercase scalar HubSpot stage labels before calculating sales pipeline", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_uppercase_scalar_stage_label_deal",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_uppercase_scalar_stage_label",
+            occurredAt: new Date("2026-05-20T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+            payload: {
+              id: "deal_uppercase_scalar_stage_label",
+              amount: 50_000,
+              stageLabel: {
+                VALUE: "Sales Qualified Lead",
+              },
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_uppercase_scalar_stage", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
@@ -14734,6 +16012,66 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("reads uppercase nested Unify visitor identity fields before calculating identified visitors", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_unify_uppercase_company_visitor_primary",
+            provider: IntegrationProvider.UNIFY,
+            objectType: "visitor",
+            externalId: "visitor_uppercase_company_primary",
+            occurredAt: new Date("2026-05-12T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-12T00:00:00.000Z"),
+            payload: {
+              values: {
+                COMPANY: {
+                  accountId: "acct_uppercase",
+                },
+              },
+            },
+          },
+          {
+            id: "raw_unify_uppercase_company_visitor_secondary",
+            provider: IntegrationProvider.UNIFY,
+            objectType: "visitor",
+            externalId: "visitor_uppercase_company_secondary",
+            occurredAt: new Date("2026-05-12T00:01:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-12T00:01:00.000Z"),
+            payload: {
+              values: {
+                COMPANY: {
+                  accountId: "acct_uppercase",
+                },
+              },
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_uppercase_unify", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      identifiedVisitors: 1,
+    });
+  });
+
   it("ignores blank Unify visitor identity fields before calculating identified visitors", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -14980,6 +16318,62 @@ describe("Imladris canonical materialization", () => {
         sourceUpdatedAt: new Date("2026-05-09T00:00:00.000Z"),
         payload: {
           campaign_id: "campaign_brand",
+          row_date: "2026-05",
+          spend: 11_000,
+          currency: "USD",
+        },
+      },
+    ] as never);
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      acquisitionSpend: 18_500,
+      qualifiedPipeline: 90_000,
+      ratio: 4.86,
+    });
+  });
+
+  it("reads uppercase nested paid ad group identities before de-duping acquisition spend", async () => {
+    const prisma = createMarketingPrismaMock();
+    const baseRecords = await prisma.imladrisRawSourceRecord.findMany();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValue([
+      ...baseRecords.filter((record) => record.id !== "raw_google_ads_1"),
+      {
+        id: "raw_google_ads_uppercase_ad_group_alias_primary",
+        provider: IntegrationProvider.GOOGLE_ADS,
+        objectType: "campaign_metric",
+        externalId: "googleAds:ad-group:uppercase-primary",
+        occurredAt: new Date("2026-05-08T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-08T00:00:00.000Z"),
+        payload: {
+          campaignId: "campaign_brand",
+          adGroupId: "ad_group_brand",
+          date: "2026-05",
+          spend: 10_000,
+          currency: "USD",
+        },
+      },
+      {
+        id: "raw_google_ads_uppercase_ad_group_alias_secondary",
+        provider: IntegrationProvider.GOOGLE_ADS,
+        objectType: "campaign_metric",
+        externalId: "googleAds:import:uppercase-ad-group-brand",
+        occurredAt: new Date("2026-05-08T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-09T00:00:00.000Z"),
+        payload: {
+          AD_GROUP: {
+            campaignId: "campaign_brand",
+            id: "ad_group_brand",
+          },
           row_date: "2026-05",
           spend: 11_000,
           currency: "USD",
@@ -15851,6 +17245,124 @@ describe("Imladris canonical materialization", () => {
       },
       imladrisCanonicalMetricValue: {
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_webflow_aliases", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      webflowFormSubmissions: 1,
+    });
+  });
+
+  it("reads uppercase nested Webflow customer submitters before de-duping submissions", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_webflow_uppercase_customer_alias_primary",
+            provider: IntegrationProvider.WEBFLOW,
+            objectType: "form_submission",
+            externalId: "webflow:submission:uppercase-customer-primary",
+            occurredAt: new Date("2026-05-10T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T12:00:00.000Z"),
+            payload: {
+              formId: "demo-request",
+              email: "ada@example.com",
+              submittedAt: "2026-05-10T12:00:00.000Z",
+            },
+          },
+          {
+            id: "raw_webflow_uppercase_customer_alias_secondary",
+            provider: IntegrationProvider.WEBFLOW,
+            objectType: "form_submission",
+            externalId: "webflow:import:uppercase-customer-secondary",
+            occurredAt: new Date("2026-05-10T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-11T12:00:00.000Z"),
+            payload: {
+              form_id: "demo-request",
+              CUSTOMER: {
+                email: "ada@example.com",
+              },
+              submitted_at: "2026-05-10T12:00:00.000Z",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_webflow_uppercase_customer", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      webflowFormSubmissions: 1,
+    });
+  });
+
+  it("reads uppercase nested Webflow form and contact identities before de-duping submissions", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_webflow_uppercase_form_contact_alias_primary",
+            provider: IntegrationProvider.WEBFLOW,
+            objectType: "form_submission",
+            externalId: "webflow:submission:uppercase-form-contact-primary",
+            occurredAt: new Date("2026-05-10T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T12:00:00.000Z"),
+            payload: {
+              formId: "demo-request",
+              email: "ada@example.com",
+              submittedAt: "2026-05-10T12:00:00.000Z",
+            },
+          },
+          {
+            id: "raw_webflow_uppercase_form_contact_alias_secondary",
+            provider: IntegrationProvider.WEBFLOW,
+            objectType: "form_submission",
+            externalId: "webflow:import:uppercase-form-contact-secondary",
+            occurredAt: new Date("2026-05-10T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-11T12:00:00.000Z"),
+            payload: {
+              FORM: {
+                id: "demo-request",
+              },
+              CONTACT: {
+                email: "ada@example.com",
+              },
+              submitted_at: "2026-05-10T12:00:00.000Z",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_webflow_uppercase_form_contact", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
@@ -17604,6 +19116,198 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("counts uppercase nested Google Workspace calendar identities as distinct collaboration signals", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_workspace_uppercase_calendar_scoped_event_primary",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        objectType: "calendar_event",
+        externalId: "googleWorkspace:calendar_event:import_primary",
+        occurredAt: new Date("2026-05-22T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-22T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          eventId: "event_demo_1",
+          CALENDAR: {
+            id: "calendar_1",
+          },
+          summary: "Customer QBR",
+        },
+      },
+      {
+        id: "raw_workspace_uppercase_calendar_scoped_event_secondary",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        objectType: "calendar_event",
+        externalId: "googleWorkspace:calendar_event:import_secondary",
+        occurredAt: new Date("2026-05-22T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-23T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          event_id: "event_demo_1",
+          CALENDAR: {
+            id: "calendar_2",
+          },
+          summary: "Implementation QBR",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      collaborationSignals: 2,
+    });
+  });
+
+  it("ignores stale uppercase nested Google Workspace event starts before customer-success collaboration counts", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_workspace_uppercase_stale_event_start",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        objectType: "calendar_event",
+        externalId: "googleWorkspace:calendar_event:stale_event_import",
+        occurredAt: new Date("2026-05-22T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-22T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          eventId: "event_stale_1",
+          START: {
+            dateTime: "2026-04-30T23:00:00.000Z",
+          },
+          summary: "Prior-month QBR",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      collaborationSignals: 0,
+    });
+  });
+
+  it("ignores stale uppercase scalar Google Workspace event starts before customer-success collaboration counts", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_workspace_uppercase_stale_scalar_start_time",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        objectType: "calendar_event",
+        externalId: "googleWorkspace:calendar_event:stale_scalar_start_time_import",
+        occurredAt: new Date("2026-05-22T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-22T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          eventId: "event_stale_scalar_start_time",
+          START_TIME: "2026-04-30T23:00:00.000Z",
+          summary: "Prior-month QBR",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      collaborationSignals: 0,
+    });
+  });
+
+  it("ignores stale uppercase nested Google Workspace start field names before customer-success collaboration counts", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_workspace_uppercase_stale_nested_start_field",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        objectType: "calendar_event",
+        externalId: "googleWorkspace:calendar_event:stale_nested_start_field_import",
+        occurredAt: new Date("2026-05-22T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-22T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          eventId: "event_stale_nested_start_field",
+          START: {
+            DATE_TIME: "2026-04-30T23:00:00.000Z",
+          },
+          summary: "Prior-month QBR",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      collaborationSignals: 0,
+    });
+  });
+
+  it("ignores stale uppercase scalar date envelopes before customer-success collaboration counts", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_workspace_uppercase_stale_date_envelope",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        objectType: "calendar_event",
+        externalId: "googleWorkspace:calendar_event:stale_date_envelope_import",
+        occurredAt: new Date("2026-05-22T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-22T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          eventId: "event_stale_date_envelope",
+          START: {
+            DATE_TIME: {
+              VALUE: "2026-04-30T23:00:00.000Z",
+            },
+          },
+          summary: "Prior-month QBR",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      collaborationSignals: 0,
+    });
+  });
+
   it("counts raw-ingested Google Workspace files as customer-success collaboration signals", async () => {
     const prisma = createCustomerSuccessPrismaMock();
     prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
@@ -18033,6 +19737,41 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("unwraps uppercase scalar Pylon priority fields before calculating customer-success escalations", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_pylon_issue_uppercase_scalar_urgent_priority",
+        provider: IntegrationProvider.PYLON,
+        objectType: "conversation",
+        externalId: "conv_uppercase_scalar_urgent_priority",
+        occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          status: "open",
+          priority: { VALUE: " urgent " },
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      atRiskAccounts: 1,
+      openSupportIssues: 1,
+      escalations: 1,
+      score: 40,
+    });
+  });
+
   it("unwraps scalar Pylon tag lists before calculating customer-success escalations", async () => {
     const prisma = createCustomerSuccessPrismaMock();
     prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
@@ -18048,6 +19787,48 @@ describe("Imladris canonical materialization", () => {
           accountId: "acct_1",
           status: "open",
           tags: { value: [" bug ", { value: " urgent " }] },
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      atRiskAccounts: 1,
+      openSupportIssues: 1,
+      escalations: 1,
+      score: 40,
+    });
+  });
+
+  it("unwraps uppercase Pylon tag list containers before calculating customer-success escalations", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_pylon_issue_uppercase_urgent_tags",
+        provider: IntegrationProvider.PYLON,
+        objectType: "conversation",
+        externalId: "conv_uppercase_urgent_tags",
+        occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          status: "open",
+          TAGS: {
+            DATA: [
+              " bug ",
+              {
+                VALUE: " urgent ",
+              },
+            ],
+          },
         },
       },
     ]);
@@ -18201,6 +19982,44 @@ describe("Imladris canonical materialization", () => {
         payload: {
           values: {
             support: {
+              unresolvedTickets: "5",
+              urgentTickets: "3",
+            },
+          },
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      score: 100,
+      atRiskAccounts: 0,
+      openSupportIssues: 5,
+      escalations: 3,
+    });
+  });
+
+  it("reads uppercase nested Pylon support snapshot totals before calculating retention risk", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_pylon_snapshot_uppercase_support_totals",
+        provider: IntegrationProvider.PYLON,
+        objectType: "snapshot",
+        externalId: "pylon:snapshot:uppercase-support",
+        occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+        payload: {
+          values: {
+            SUPPORT: {
               unresolvedTickets: "5",
               urgentTickets: "3",
             },
@@ -18419,6 +20238,40 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("reads uppercase nested account identifiers before calculating customer-success risk", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_stripe_subscription_uppercase_nested_customer",
+        provider: IntegrationProvider.STRIPE,
+        objectType: "subscription",
+        externalId: "sub_uppercase_nested_customer",
+        occurredAt: new Date("2026-05-24T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-24T00:00:00.000Z"),
+        payload: {
+          CUSTOMER: {
+            id: "acct_1",
+          },
+          status: "past_due",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      atRiskAccounts: 1,
+      accountsWithBillingRisk: 1,
+    });
+  });
+
   it("reads snake_case weekly active users before calculating customer-success risk", async () => {
     const prisma = createCustomerSuccessPrismaMock();
     prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
@@ -18498,6 +20351,38 @@ describe("Imladris canonical materialization", () => {
         payload: {
           accountId: "acct_1",
           lastActiveAt: "2026-05-01T00:00:00.000Z",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      atRiskAccounts: 1,
+      lowUsageAccounts: 1,
+    });
+  });
+
+  it("derives low PostHog usage from uppercase stale last-active timestamps", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_posthog_usage_uppercase_last_active_at",
+        provider: IntegrationProvider.POSTHOG,
+        objectType: "account_usage",
+        externalId: "usage_uppercase_last_active_at",
+        occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          LAST_ACTIVE_AT: "2026-05-01T00:00:00.000Z",
         },
       },
     ]);
@@ -18619,6 +20504,39 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("normalizes uppercase scalar Slack escalation flags before calculating customer-success risk", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_slack_uppercase_scalar_escalation_flag",
+        provider: IntegrationProvider.SLACK,
+        objectType: "thread",
+        externalId: "thread_uppercase_scalar_escalation_flag",
+        occurredAt: new Date("2026-05-24T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-24T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          escalation: { VALUE: true },
+          threadTs: "1779555600.000100",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      atRiskAccounts: 1,
+      escalations: 1,
+    });
+  });
+
   it("recognizes Slack escalation flag aliases before calculating customer-success risk", async () => {
     const prisma = createCustomerSuccessPrismaMock();
     prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
@@ -18682,6 +20600,43 @@ describe("Imladris canonical materialization", () => {
           status: "open",
           priority: "high",
           closedAt: "2026-05-21T00:00:00.000Z",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      atRiskAccounts: 0,
+      openSupportIssues: 0,
+      escalations: 0,
+    });
+  });
+
+  it("ignores uppercase wrapped Pylon support records closed before the report", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_pylon_uppercase_wrapped_closed_timestamp",
+        provider: IntegrationProvider.PYLON,
+        objectType: "conversation",
+        externalId: "conv_uppercase_wrapped_closed_timestamp",
+        occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+        payload: {
+          VALUES: {
+            ACCOUNT_ID: "acct_1",
+            STATUS: "open",
+            PRIORITY: "high",
+            CLOSED_AT: "2026-05-21T00:00:00.000Z",
+          },
         },
       },
     ]);

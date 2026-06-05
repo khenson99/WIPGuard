@@ -134,6 +134,10 @@ function firstValueFromSources(
   return null;
 }
 
+function valuesFromSources(sources: Record<string, unknown>[], keys: string[]): unknown[] {
+  return sources.map((source) => firstValueFromSources([source], keys));
+}
+
 function keyVariants(key: string): string[] {
   const uppercaseKey = key.toUpperCase();
   return uppercaseKey === key ? [key] : [key, uppercaseKey];
@@ -145,6 +149,10 @@ function nestedRecordFromKey(source: Record<string, unknown>, key: string): Reco
     if (Object.keys(record).length > 0) return record;
   }
   return {};
+}
+
+function nonEmptyRecord(record: Record<string, unknown>): Record<string, unknown> | null {
+  return Object.keys(record).length > 0 ? record : null;
 }
 
 function expandSingleValueSource(source: Record<string, unknown>): Record<string, unknown>[] {
@@ -203,27 +211,31 @@ function scalarDateValue(value: unknown, seen = new WeakSet<object>()): unknown 
   }
 
   const record = value as Record<string, unknown>;
-  const data = asRecord(record.data);
+  const data = nestedRecordFromKey(record, "data");
+  const dataAttributes = nestedRecordFromKey(data, "attributes");
+  const dateValueKeys = [
+    "value",
+    "date",
+    "datetime",
+    "dateTime",
+    "date_time",
+    "timestamp",
+    "time",
+    "iso",
+    "isoString",
+    "iso_string",
+    "seconds",
+    "milliseconds",
+    "millis",
+  ];
   const candidates = [
-    record.value,
-    record.date,
-    record.datetime,
-    record.dateTime,
-    record.date_time,
-    record.timestamp,
-    record.time,
-    record.iso,
-    record.isoString,
-    record.iso_string,
-    record.seconds,
-    record.milliseconds,
-    record.millis,
-    asRecord(data.attributes).value,
-    data.value,
-    data.attributes,
-    record.attributes,
-    record.values,
-    record.fields,
+    ...dateValueKeys.map((key) => firstValueFromSources([record], [key])),
+    firstValueFromSources([dataAttributes], ["value"]),
+    firstValueFromSources([data], ["value"]),
+    nonEmptyRecord(nestedRecordFromKey(data, "attributes")),
+    nonEmptyRecord(nestedRecordFromKey(record, "attributes")),
+    nonEmptyRecord(nestedRecordFromKey(record, "values")),
+    nonEmptyRecord(nestedRecordFromKey(record, "fields")),
   ];
   for (const candidate of candidates) {
     const normalized = scalarDateValue(candidate, seen);
@@ -294,10 +306,7 @@ function daysBetween(start: Date | null, end: Date | null): number | null {
 function isCompletedLinearIssue(record: RawSourceRecordRow, asOf: Date): boolean {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
-  const completionDateFields = sources.flatMap((source) => [
-    source.completedAt,
-    source.completed_at,
-  ]);
+  const completionDateFields = valuesFromSources(sources, ["completedAt", "completed_at"]);
   if (hasDateAfter(asOf, ...completionDateFields)) return false;
   const state = firstValueFromSources(sources, ["state"]);
   const completedStateNames = ["done", "completed", "complete"];
@@ -318,18 +327,12 @@ function linearCycleTimeDays(record: RawSourceRecordRow, asOf: Date): number | n
   const sources = wrapperSources(payload);
   return daysBetween(
     firstDateFrom(
-      ...sources.flatMap((source) => [
-        source.createdAt,
-        source.created_at,
-      ]),
+      ...valuesFromSources(sources, ["createdAt", "created_at"]),
       record.sourceCreatedAt,
     ),
     firstDateAtOrBefore(
       asOf,
-      ...sources.flatMap((source) => [
-        source.completedAt,
-        source.completed_at,
-      ]),
+      ...valuesFromSources(sources, ["completedAt", "completed_at"]),
       record.occurredAt,
       record.sourceUpdatedAt,
     ),
@@ -339,10 +342,7 @@ function linearCycleTimeDays(record: RawSourceRecordRow, asOf: Date): number | n
 function isMergedPullRequest(record: RawSourceRecordRow, asOf: Date): boolean {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
-  const mergedDateFields = sources.flatMap((source) => [
-    source.mergedAt,
-    source.merged_at,
-  ]);
+  const mergedDateFields = valuesFromSources(sources, ["mergedAt", "merged_at"]);
   if (hasDateAfter(asOf, ...mergedDateFields)) return false;
   return (
     booleanFrom(firstValueFromSources(sources, ["merged"])) === true ||
@@ -502,11 +502,11 @@ function githubPullRequestIdentity(record: RawSourceRecordRow): string | null {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
   const repositorySources = sources.flatMap((source) => [
-    nestedRecord(source.repository),
-    nestedRecord(source.repo),
+    nestedRecordFromKey(source, "repository"),
+    nestedRecordFromKey(source, "repo"),
   ]);
   const repository = normalizeLookup(
-    firstValueFromSources([...sources, ...repositorySources], [
+    firstValueFromSources([...repositorySources, ...sources], [
       "repositoryFullName",
       "repository_full_name",
       "repoFullName",
@@ -743,15 +743,25 @@ function booleanValue(value: unknown, seen = new WeakSet<object>()): unknown {
   seen.add(value);
 
   const record = value as Record<string, unknown>;
+  const data = nestedRecordFromKey(record, "data");
+  const dataAttributes = nestedRecordFromKey(data, "attributes");
+  const booleanValueKeys = [
+    "value",
+    "boolean",
+    "booleanValue",
+    "boolean_value",
+    "enabled",
+    "active",
+    "flag",
+  ];
   const candidates = [
-    record.value,
-    record.boolean,
-    record.booleanValue,
-    record.boolean_value,
-    record.enabled,
-    record.active,
-    record.flag,
-    (record.data as Record<string, unknown> | undefined)?.attributes,
+    ...booleanValueKeys.map((key) => firstValueFromSources([record], [key])),
+    firstValueFromSources([dataAttributes], booleanValueKeys),
+    firstValueFromSources([data], booleanValueKeys),
+    nonEmptyRecord(dataAttributes),
+    nonEmptyRecord(nestedRecordFromKey(record, "attributes")),
+    nonEmptyRecord(nestedRecordFromKey(record, "values")),
+    nonEmptyRecord(nestedRecordFromKey(record, "fields")),
   ];
   for (const candidate of candidates) {
     const normalized = booleanValue(candidate, seen);
@@ -864,6 +874,21 @@ function normalizeContext(context: ImladrisActorContext): ImladrisActorContext {
   };
 }
 
+function textEnvelopeCandidates(record: Record<string, unknown>): unknown[] {
+  const data = nestedRecordFromKey(record, "data");
+  const dataAttributes = nestedRecordFromKey(data, "attributes");
+  const textValueKeys = ["status", "state", "type", "name", "label", "value"];
+  return [
+    ...textValueKeys.map((key) => firstValueFromSources([record], [key])),
+    firstValueFromSources([dataAttributes], textValueKeys),
+    firstValueFromSources([data], textValueKeys),
+    nonEmptyRecord(dataAttributes),
+    nonEmptyRecord(nestedRecordFromKey(record, "attributes")),
+    nonEmptyRecord(nestedRecordFromKey(record, "values")),
+    nonEmptyRecord(nestedRecordFromKey(record, "fields")),
+  ];
+}
+
 function stageText(value: unknown, seen = new WeakSet<object>()): string | null {
   if (typeof value === "string") return value;
   if (!value || typeof value !== "object") return null;
@@ -871,15 +896,7 @@ function stageText(value: unknown, seen = new WeakSet<object>()): string | null 
   seen.add(value);
 
   const record = value as Record<string, unknown>;
-  const candidates = [
-    record.status,
-    record.state,
-    record.type,
-    record.name,
-    record.label,
-    record.value,
-    (record.data as Record<string, unknown> | undefined)?.attributes,
-  ];
+  const candidates = textEnvelopeCandidates(record);
   for (const candidate of candidates) {
     const normalized = stageText(candidate, seen);
     if (normalized && normalized.trim()) {
@@ -1336,15 +1353,15 @@ function posthogEventTimestamp(record: RawSourceRecordRow): Date | null {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
   return firstDateFrom(
-    ...sources.flatMap((source) => [
-      source.timestamp,
-      source.time,
-      source.eventTimestamp,
-      source.event_timestamp,
-      source.eventTime,
-      source.event_time,
-      source.createdAt,
-      source.created_at,
+    ...valuesFromSources(sources, [
+      "timestamp",
+      "time",
+      "eventTimestamp",
+      "event_timestamp",
+      "eventTime",
+      "event_time",
+      "createdAt",
+      "created_at",
     ]),
   );
 }
@@ -1615,7 +1632,7 @@ function balanceAccountKey(record: RawSourceRecordRow): string {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
   const accountSources = sources.flatMap((source) => [
-    nestedRecord(source.account),
+    nestedRecordFromKey(source, "account"),
   ]);
   return (
     normalizeIdentifier(
@@ -1676,8 +1693,8 @@ function mercurySnapshotCashBalance(record: RawSourceRecordRow): number | null {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
   const cashFlowSources = sources.flatMap((source) => [
-    nestedRecord(source.cashFlow),
-    nestedRecord(source.cash_flow),
+    nestedRecordFromKey(source, "cashFlow"),
+    nestedRecordFromKey(source, "cash_flow"),
   ]);
   const directTotal = numberFrom(
     firstValueFromSources([...cashFlowSources, ...metricSources(payload)], [
@@ -1797,23 +1814,26 @@ function scalarValue(value: unknown, seen = new WeakSet<object>()): unknown {
   }
 
   const record = value as Record<string, unknown>;
-  const data = asRecord(record.data);
+  const data = nestedRecordFromKey(record, "data");
+  const dataAttributes = nestedRecordFromKey(data, "attributes");
+  const scalarValueKeys = [
+    "value",
+    "number",
+    "count",
+    "name",
+    "label",
+    "id",
+    "type",
+  ];
   const candidates = [
-    record.value,
-    record.number,
-    record.count,
-    record.name,
-    record.label,
-    record.id,
-    record.type,
-    asRecord(data.attributes).value,
-    asRecord(data.attributes).type,
-    data.type,
-    data.attributes,
-    record.attributes,
-    record.values,
-    record.fields,
-    record.data,
+    ...scalarValueKeys.map((key) => firstValueFromSources([record], [key])),
+    firstValueFromSources([dataAttributes], ["value", "type"]),
+    firstValueFromSources([data], ["type"]),
+    nonEmptyRecord(nestedRecordFromKey(data, "attributes")),
+    nonEmptyRecord(nestedRecordFromKey(record, "attributes")),
+    nonEmptyRecord(nestedRecordFromKey(record, "values")),
+    nonEmptyRecord(nestedRecordFromKey(record, "fields")),
+    nonEmptyRecord(data),
   ];
   for (const candidate of candidates) {
     const normalized = scalarValue(candidate, seen);
@@ -1853,7 +1873,7 @@ function recurringMonthlyDivisor(value: unknown): number {
 
 function invoiceLinePeriodMonthlyDivisor(item: Record<string, unknown>): number | null {
   if (item[STRIPE_INVOICE_LINE_ITEM_KEY] !== true) return null;
-  const periodSources = wrapperSources(item).map((source) => nestedRecord(source.period));
+  const periodSources = wrapperSources(item).map((source) => nestedRecordFromKey(source, "period"));
   const start = firstDateFrom(
     ...periodSources.flatMap((period) => [
       period.start,
@@ -1892,14 +1912,14 @@ function stripeSubscriptionItemRecurring(item: Record<string, unknown>): unknown
 function isOneTimeStripeInvoiceLine(item: Record<string, unknown>): boolean {
   if (item[STRIPE_INVOICE_LINE_ITEM_KEY] !== true) return false;
   const sources = wrapperSources(item);
-  const parentSources = sources.map((source) => nestedRecord(source.parent));
+  const parentSources = sources.map((source) => nestedRecordFromKey(source, "parent"));
   const parentInvoiceItemSources = parentSources.flatMap((source) => [
-    nestedRecord(source.invoice_item_details),
-    nestedRecord(source.invoiceItemDetails),
+    nestedRecordFromKey(source, "invoice_item_details"),
+    nestedRecordFromKey(source, "invoiceItemDetails"),
   ]);
   const parentSubscriptionItemSources = parentSources.flatMap((source) => [
-    nestedRecord(source.subscription_item_details),
-    nestedRecord(source.subscriptionItemDetails),
+    nestedRecordFromKey(source, "subscription_item_details"),
+    nestedRecordFromKey(source, "subscriptionItemDetails"),
   ]);
   const lineSources = [
     ...sources,
@@ -1919,7 +1939,7 @@ function isOneTimeStripeInvoiceLine(item: Record<string, unknown>): boolean {
   const priceSources = sources.flatMap((source) => wrapperSources(nestedRecordFromKey(source, "price")));
   const pricingSources = sources.flatMap((source) => wrapperSources(nestedRecordFromKey(source, "pricing")));
   return [...sources, ...priceSources, ...pricingSources].some((source) => {
-    const type = scalarValue(source.type);
+    const type = scalarValue(firstValueFromSources([source], ["type"]));
     if (typeof type !== "string") return false;
     const normalized = type.trim().toLowerCase().replace(/[\s_-]+/g, "");
     return normalized === "onetime" || normalized === "invoiceitem";
@@ -1983,10 +2003,10 @@ function stripeSubscriptionItemId(item: Record<string, unknown>): string | null 
 function stripeInvoiceLineSubscriptionItemId(item: Record<string, unknown>): string | null {
   const sources = wrapperSources(item);
   const parentSubscriptionItemSources = sources
-    .map((source) => nestedRecord(source.parent))
+    .map((source) => nestedRecordFromKey(source, "parent"))
     .flatMap((parent) => [
-      nestedRecord(parent.subscription_item_details),
-      nestedRecord(parent.subscriptionItemDetails),
+      nestedRecordFromKey(parent, "subscription_item_details"),
+      nestedRecordFromKey(parent, "subscriptionItemDetails"),
     ]);
   return stripeReferenceId(
     firstValueFromSources([...sources, ...parentSubscriptionItemSources], [
@@ -2005,17 +2025,21 @@ function arrayValuesFromContainer(value: unknown, seen = new WeakSet<object>()):
   seen.add(value);
 
   const record = nestedRecord(value);
-  const data = record.data;
-  const dataRecord = nestedRecord(data);
-  const dataAttributes = nestedRecord(dataRecord.attributes);
+  const dataValue = firstValueFromSources([record], ["data"]);
+  const dataRecord = nestedRecord(dataValue);
+  const dataAttributesValue = firstValueFromSources([dataRecord], ["attributes"]);
+  const dataAttributes = nestedRecord(dataAttributesValue);
   const candidates = [
-    data,
-    dataAttributes.value,
-    dataRecord.value,
-    record.value,
-    record.values,
-    record.fields,
-    record.attributes,
+    dataValue,
+    firstValueFromSources([dataAttributes], ["value"]),
+    firstValueFromSources([dataRecord], ["value"]),
+    firstValueFromSources([record], ["value"]),
+    dataAttributesValue,
+    nonEmptyRecord(dataRecord),
+    nonEmptyRecord(dataAttributes),
+    nonEmptyRecord(nestedRecordFromKey(record, "values")),
+    nonEmptyRecord(nestedRecordFromKey(record, "fields")),
+    nonEmptyRecord(nestedRecordFromKey(record, "attributes")),
   ];
   for (const candidate of candidates) {
     if (candidate === undefined || candidate === null) continue;
@@ -2178,17 +2202,21 @@ function recordFromContainer(value: unknown, seen = new WeakSet<object>()): Reco
   seen.add(value);
 
   const record = nestedRecord(value);
-  const data = record.data;
-  const dataRecord = nestedRecord(data);
-  const dataAttributes = nestedRecord(dataRecord.attributes);
+  const dataValue = firstValueFromSources([record], ["data"]);
+  const dataRecord = nestedRecord(dataValue);
+  const dataAttributesValue = firstValueFromSources([dataRecord], ["attributes"]);
+  const dataAttributes = nestedRecord(dataAttributesValue);
   const candidates = [
-    dataAttributes.value,
-    dataRecord.value,
-    data,
-    record.value,
-    record.values,
-    record.fields,
-    record.attributes,
+    dataValue,
+    firstValueFromSources([dataAttributes], ["value"]),
+    firstValueFromSources([dataRecord], ["value"]),
+    firstValueFromSources([record], ["value"]),
+    dataAttributesValue,
+    nonEmptyRecord(dataRecord),
+    nonEmptyRecord(dataAttributes),
+    nonEmptyRecord(nestedRecordFromKey(record, "values")),
+    nonEmptyRecord(nestedRecordFromKey(record, "fields")),
+    nonEmptyRecord(nestedRecordFromKey(record, "attributes")),
   ];
   for (const candidate of candidates) {
     const normalized = recordFromContainer(candidate, seen);
@@ -2213,12 +2241,12 @@ function isInactiveStripeDiscount(discount: Record<string, unknown>, asOf: Date)
       : "";
   if (normalizedDuration === "once" || normalizedDuration === "onetime") return true;
   const startsAt = firstDateFrom(
-    ...sources.flatMap((source) => [
-      source.start,
-      source.startsAt,
-      source.starts_at,
-      source.startedAt,
-      source.started_at,
+    ...valuesFromSources(sources, [
+      "start",
+      "startsAt",
+      "starts_at",
+      "startedAt",
+      "started_at",
     ]),
   );
   if (startsAt && startsAt.getTime() > asOf.getTime()) return true;
@@ -2239,12 +2267,12 @@ function isInactiveStripeDiscount(discount: Record<string, unknown>, asOf: Date)
     if (derivedEnd.getTime() <= asOf.getTime()) return true;
   }
   const endedAt = firstDateFrom(
-    ...sources.flatMap((source) => [
-      source.end,
-      source.endsAt,
-      source.ends_at,
-      source.endedAt,
-      source.ended_at,
+    ...valuesFromSources(sources, [
+      "end",
+      "endsAt",
+      "ends_at",
+      "endedAt",
+      "ended_at",
     ]),
   );
   return Boolean(endedAt && endedAt.getTime() <= asOf.getTime());
@@ -2267,8 +2295,8 @@ function stripeDiscountAmountOff(
   for (const source of [...couponSources, ...discountSources]) {
     const currencyOptionRecords =
       [
-        recordFromContainer(source.currency_options),
-        recordFromContainer(source.currencyOptions),
+        recordFromContainer(firstValueFromSources([source], ["currency_options"])),
+        recordFromContainer(firstValueFromSources([source], ["currencyOptions"])),
       ].find((optionRecords) => Object.keys(optionRecords).length > 0) ?? {};
     const option = nestedRecord(
       currencyOptionRecords[currency] ??
@@ -2319,34 +2347,34 @@ function stripeSubscriptionInactiveAt(record: RawSourceRecordRow): Date | null {
   const subscriptionSources = sources.map((source) => nestedRecordFromKey(source, "subscription"));
   const stripeSources = [...sources, ...subscriptionSources];
   const periodSources = stripeSources.flatMap((source) => [
-    nestedRecord(source.current_period),
-    nestedRecord(source.currentPeriod),
+    nestedRecordFromKey(source, "current_period"),
+    nestedRecordFromKey(source, "currentPeriod"),
   ]);
   return firstDateFrom(
-    ...stripeSources.flatMap((source) => [
-      source.canceled_at,
-      source.canceledAt,
-      source.cancel_at,
-      source.cancelAt,
-      source.cancelled_at,
-      source.cancelledAt,
-      source.ended_at,
-      source.endedAt,
-      source.ended,
-      source.statusChangedAt,
-      source.status_changed_at,
-      source.current_period_end,
-      source.currentPeriodEnd,
+    ...valuesFromSources(stripeSources, [
+      "canceled_at",
+      "canceledAt",
+      "cancel_at",
+      "cancelAt",
+      "cancelled_at",
+      "cancelledAt",
+      "ended_at",
+      "endedAt",
+      "ended",
+      "statusChangedAt",
+      "status_changed_at",
+      "current_period_end",
+      "currentPeriodEnd",
     ]),
-    ...periodSources.flatMap((source) => [
-      source.end,
-      source.ended,
-      source.endedAt,
-      source.ended_at,
-      source.endDate,
-      source.end_date,
-      source.endsAt,
-      source.ends_at,
+    ...valuesFromSources(periodSources, [
+      "end",
+      "ended",
+      "endedAt",
+      "ended_at",
+      "endDate",
+      "end_date",
+      "endsAt",
+      "ends_at",
     ]),
   );
 }
@@ -2372,13 +2400,13 @@ function isFutureTrialStripeSubscription(record: RawSourceRecordRow, asOf: Date)
   const status = firstValueFromSources(stripeSources, ["status"]);
   if (normalizeStageKey(status) !== "trialing") return false;
   const trialEnd = firstDateFrom(
-    ...stripeSources.flatMap((source) => [
-      source.trial_end,
-      source.trialEnd,
-      source.trial_ends_at,
-      source.trialEndsAt,
-      source.trial_ended_at,
-      source.trialEndedAt,
+    ...valuesFromSources(stripeSources, [
+      "trial_end",
+      "trialEnd",
+      "trial_ends_at",
+      "trialEndsAt",
+      "trial_ended_at",
+      "trialEndedAt",
     ]),
   );
   return !trialEnd || trialEnd.getTime() > asOf.getTime();
@@ -2394,23 +2422,23 @@ function isFutureStartStripeSubscription(record: RawSourceRecordRow, asOf: Date)
     nestedRecordFromKey(source, "currentPeriod"),
   ]);
   const startsAt = firstDateFrom(
-    ...stripeSources.flatMap((source) => [
-      source.start,
-      source.startsAt,
-      source.starts_at,
-      source.startedAt,
-      source.started_at,
-      source.startDate,
-      source.start_date,
-      source.current_period_start,
-      source.currentPeriodStart,
+    ...valuesFromSources(stripeSources, [
+      "start",
+      "startsAt",
+      "starts_at",
+      "startedAt",
+      "started_at",
+      "startDate",
+      "start_date",
+      "current_period_start",
+      "currentPeriodStart",
     ]),
-    ...periodSources.flatMap((source) => [
-      source.start,
-      source.startsAt,
-      source.starts_at,
-      source.startDate,
-      source.start_date,
+    ...valuesFromSources(periodSources, [
+      "start",
+      "startsAt",
+      "starts_at",
+      "startDate",
+      "start_date",
     ]),
   );
   return Boolean(startsAt && startsAt.getTime() > asOf.getTime());
@@ -2419,8 +2447,10 @@ function isFutureStartStripeSubscription(record: RawSourceRecordRow, asOf: Date)
 function stripeCustomerId(record: RawSourceRecordRow): string | null {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
-  const subscriptionSources = sources.map((source) => nestedRecord(source.subscription));
-  const customerSources = [...sources, ...subscriptionSources].map((source) => nestedRecord(source.customer));
+  const subscriptionSources = sources.map((source) => nestedRecordFromKey(source, "subscription"));
+  const customerSources = [...sources, ...subscriptionSources].map((source) =>
+    nestedRecordFromKey(source, "customer"),
+  );
   return normalizeLookup(
     firstValueFromSources([...sources, ...customerSources], [
       "customerId",
@@ -2435,8 +2465,10 @@ function stripeCustomerId(record: RawSourceRecordRow): string | null {
 function stripeCustomerEmail(record: RawSourceRecordRow): string | null {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
-  const subscriptionSources = sources.map((source) => nestedRecord(source.subscription));
-  const customerSources = [...sources, ...subscriptionSources].map((source) => nestedRecord(source.customer));
+  const subscriptionSources = sources.map((source) => nestedRecordFromKey(source, "subscription"));
+  const customerSources = [...sources, ...subscriptionSources].map((source) =>
+    nestedRecordFromKey(source, "customer"),
+  );
   return normalizeLookup(
     firstValueFromSources([...sources, ...customerSources], [
       "customerEmail",
@@ -2463,7 +2495,7 @@ function stripeCustomerEmailDomain(record: RawSourceRecordRow): string | null {
 function stripeSubscriptionId(record: RawSourceRecordRow): string | null {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
-  const subscriptionSources = sources.map((source) => nestedRecord(source.subscription));
+  const subscriptionSources = sources.map((source) => nestedRecordFromKey(source, "subscription"));
   return normalizeLookup(
     firstValueFromSources([...sources, ...subscriptionSources], [
       "subscriptionId",
@@ -2571,70 +2603,70 @@ function hubspotRecurringRevenueAsOf(
     return null;
   }
   const closedAt = firstDateFrom(
-    ...sources.flatMap((source) => [
-      source.closedAt,
-      source.closed_at,
-      source.closeDate,
-      source.close_date,
-      source.closedate,
-      source.wonAt,
-      source.won_at,
-      source.hs_closedate,
+    ...valuesFromSources(sources, [
+      "closedAt",
+      "closed_at",
+      "closeDate",
+      "close_date",
+      "closedate",
+      "wonAt",
+      "won_at",
+      "hs_closedate",
     ]),
   );
   if (asOf && closedAt && closedAt.getTime() > asOf.getTime()) return null;
   const lifecycleSources = sources.flatMap((source) => [
     source,
-    nestedRecord(source.subscription),
-    nestedRecord(source.billing),
-    nestedRecord(source.service),
-    nestedRecord(source.contract),
+    nestedRecordFromKey(source, "subscription"),
+    nestedRecordFromKey(source, "billing"),
+    nestedRecordFromKey(source, "service"),
+    nestedRecordFromKey(source, "contract"),
   ]);
   const subscriptionStartsAt = firstDateFrom(
-    ...lifecycleSources.flatMap((source) => [
-      source.subscriptionStartDate,
-      source.subscription_start_date,
-      source.subscriptionStartsAt,
-      source.subscription_starts_at,
-      source.billingStartDate,
-      source.billing_start_date,
-      source.billingStartsAt,
-      source.billing_starts_at,
-      source.serviceStartDate,
-      source.service_start_date,
-      source.contractStartDate,
-      source.contract_start_date,
-      source.startDate,
-      source.start_date,
-      source.startsAt,
-      source.starts_at,
+    ...valuesFromSources(lifecycleSources, [
+      "subscriptionStartDate",
+      "subscription_start_date",
+      "subscriptionStartsAt",
+      "subscription_starts_at",
+      "billingStartDate",
+      "billing_start_date",
+      "billingStartsAt",
+      "billing_starts_at",
+      "serviceStartDate",
+      "service_start_date",
+      "contractStartDate",
+      "contract_start_date",
+      "startDate",
+      "start_date",
+      "startsAt",
+      "starts_at",
     ]),
   );
   if (asOf && subscriptionStartsAt && subscriptionStartsAt.getTime() > asOf.getTime()) return null;
   const subscriptionEndsAt = firstDateFrom(
-    ...lifecycleSources.flatMap((source) => [
-      source.subscriptionEndDate,
-      source.subscription_end_date,
-      source.subscriptionEndsAt,
-      source.subscription_ends_at,
-      source.billingEndDate,
-      source.billing_end_date,
-      source.billingEndsAt,
-      source.billing_ends_at,
-      source.serviceEndDate,
-      source.service_end_date,
-      source.contractEndDate,
-      source.contract_end_date,
-      source.canceledAt,
-      source.canceled_at,
-      source.cancelledAt,
-      source.cancelled_at,
-      source.churnedAt,
-      source.churned_at,
-      source.endDate,
-      source.end_date,
-      source.endsAt,
-      source.ends_at,
+    ...valuesFromSources(lifecycleSources, [
+      "subscriptionEndDate",
+      "subscription_end_date",
+      "subscriptionEndsAt",
+      "subscription_ends_at",
+      "billingEndDate",
+      "billing_end_date",
+      "billingEndsAt",
+      "billing_ends_at",
+      "serviceEndDate",
+      "service_end_date",
+      "contractEndDate",
+      "contract_end_date",
+      "canceledAt",
+      "canceled_at",
+      "cancelledAt",
+      "cancelled_at",
+      "churnedAt",
+      "churned_at",
+      "endDate",
+      "end_date",
+      "endsAt",
+      "ends_at",
     ]),
   );
   if (asOf && subscriptionEndsAt && subscriptionEndsAt.getTime() <= asOf.getTime()) return null;
@@ -3098,32 +3130,37 @@ function latestRecordsByDealId(records: RawSourceRecordRow[], asOf: Date): RawSo
 function collaborationEventTimestamp(record: RawSourceRecordRow): Date | null {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
+  const timestampKeys = [
+    "timestamp",
+    "time",
+    "ts",
+    "createdAt",
+    "created_at",
+    "sentAt",
+    "sent_at",
+    "messageTs",
+    "message_ts",
+    "eventTime",
+    "event_time",
+    "eventTimestamp",
+    "event_timestamp",
+    "startTime",
+    "start_time",
+    "startAt",
+    "start_at",
+    "start",
+    "dateTime",
+    "date_time",
+    "date",
+  ];
   return firstDateFrom(
     ...sources.flatMap((source) => [
-      source.timestamp,
-      source.time,
-      source.ts,
-      source.createdAt,
-      source.created_at,
-      source.sentAt,
-      source.sent_at,
-      source.messageTs,
-      source.message_ts,
-      source.eventTime,
-      source.event_time,
-      source.eventTimestamp,
-      source.event_timestamp,
-      source.startTime,
-      source.start_time,
-      source.startAt,
-      source.start_at,
-      source.start,
-      source.dateTime,
-      source.date_time,
-      source.date,
-      nestedRecord(source.start).dateTime,
-      nestedRecord(source.start).date_time,
-      nestedRecord(source.start).date,
+      firstValueFromSources([source], timestampKeys),
+      firstValueFromSources([nestedRecordFromKey(source, "start")], [
+        "dateTime",
+        "date_time",
+        "date",
+      ]),
     ]),
   );
 }
@@ -3180,7 +3217,7 @@ function googleWorkspaceCalendarId(sources: Record<string, unknown>[]): string |
   if (explicit) return explicit;
   return normalizeLookup(
     firstValueFromSources(
-      sources.flatMap((source) => [nestedRecord(source.calendar)]),
+      sources.flatMap((source) => [nestedRecordFromKey(source, "calendar")]),
       ["calendarId", "calendar_id", "id"],
     ),
   );
@@ -3439,13 +3476,13 @@ function paidAdDimensionSources(record: RawSourceRecordRow): Record<string, unkn
   return [
     ...sources,
     ...sources.flatMap((source) => [
-      nestedRecord(source.campaign),
-      nestedRecord(source.campaigns),
-      nestedRecord(source.adGroup),
-      nestedRecord(source.ad_group),
-      nestedRecord(source.adSet),
-      nestedRecord(source.ad_set),
-      nestedRecord(source.ad),
+      nestedRecordFromKey(source, "campaign"),
+      nestedRecordFromKey(source, "campaigns"),
+      nestedRecordFromKey(source, "adGroup"),
+      nestedRecordFromKey(source, "ad_group"),
+      nestedRecordFromKey(source, "adSet"),
+      nestedRecordFromKey(source, "ad_set"),
+      nestedRecordFromKey(source, "ad"),
     ]),
   ];
 }
@@ -3770,9 +3807,9 @@ function webflowSubmissionSources(record: RawSourceRecordRow): Record<string, un
   return [
     ...sources,
     ...sources.flatMap((source) => [
-      nestedRecord(source.submission),
-      nestedRecord(source.formSubmission),
-      nestedRecord(source.form_submission),
+      nestedRecordFromKey(source, "submission"),
+      nestedRecordFromKey(source, "formSubmission"),
+      nestedRecordFromKey(source, "form_submission"),
     ]),
   ];
 }
@@ -3783,9 +3820,9 @@ function webflowFormSources(record: RawSourceRecordRow): Record<string, unknown>
   return [
     ...sources,
     ...sources.flatMap((source) => [
-      nestedRecord(source.form),
-      nestedRecord(source.formData),
-      nestedRecord(source.form_data),
+      nestedRecordFromKey(source, "form"),
+      nestedRecordFromKey(source, "formData"),
+      nestedRecordFromKey(source, "form_data"),
     ]),
   ];
 }
@@ -3796,12 +3833,12 @@ function webflowSubmitterSources(record: RawSourceRecordRow): Record<string, unk
   return [
     ...sources,
     ...sources.flatMap((source) => [
-      nestedRecord(source.contact),
-      nestedRecord(source.submitter),
-      nestedRecord(source.person),
-      nestedRecord(source.customer),
-      nestedRecord(source.lead),
-      nestedRecord(source.user),
+      nestedRecordFromKey(source, "contact"),
+      nestedRecordFromKey(source, "submitter"),
+      nestedRecordFromKey(source, "person"),
+      nestedRecordFromKey(source, "customer"),
+      nestedRecordFromKey(source, "lead"),
+      nestedRecordFromKey(source, "user"),
     ]),
   ];
 }
@@ -4010,8 +4047,8 @@ function isIdentifiedVisitor(record: RawSourceRecordRow): boolean {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
   const nestedSources = sources.flatMap((source) => [
-    nestedRecord(source.account),
-    nestedRecord(source.company),
+    nestedRecordFromKey(source, "account"),
+    nestedRecordFromKey(source, "company"),
   ]);
   const identified = firstValueFromSources(sources, ["identified"]);
   if (identified !== null && identified !== undefined) return booleanFrom(identified) ?? false;
@@ -4037,8 +4074,8 @@ function identifiedVisitorKey(record: RawSourceRecordRow): string | null {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
   const nestedSources = sources.flatMap((source) => [
-    nestedRecord(source.account),
-    nestedRecord(source.company),
+    nestedRecordFromKey(source, "account"),
+    nestedRecordFromKey(source, "company"),
   ]);
   const identity = firstValueFromSources([...sources, ...nestedSources], [
     "companyId",
@@ -4239,9 +4276,9 @@ function accountIdFromPayload(record: RawSourceRecordRow): string | null {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
   const nestedSources = sources.flatMap((source) => [
-    nestedRecord(source.account),
-    nestedRecord(source.company),
-    nestedRecord(source.customer),
+    nestedRecordFromKey(source, "account"),
+    nestedRecordFromKey(source, "company"),
+    nestedRecordFromKey(source, "customer"),
   ]);
   const id =
     firstValueFromSources(sources, [
@@ -4270,15 +4307,7 @@ function statusText(value: unknown, seen = new WeakSet<object>()): string | null
   seen.add(value);
 
   const record = value as Record<string, unknown>;
-  const candidates = [
-    record.status,
-    record.state,
-    record.type,
-    record.name,
-    record.label,
-    record.value,
-    (record.data as Record<string, unknown> | undefined)?.attributes,
-  ];
+  const candidates = textEnvelopeCandidates(record);
   for (const candidate of candidates) {
     const normalized = statusText(candidate, seen);
     if (normalized && normalized.trim()) {
@@ -4307,17 +4336,17 @@ function supportClosedAtOrBefore(record: RawSourceRecordRow, asOf: Date): boolea
   const sources = wrapperSources(payload);
   return firstDateAtOrBefore(
     asOf,
-    ...sources.flatMap((source) => [
-      source.closedAt,
-      source.closed_at,
-      source.resolvedAt,
-      source.resolved_at,
-      source.completedAt,
-      source.completed_at,
-      source.cancelledAt,
-      source.cancelled_at,
-      source.canceledAt,
-      source.canceled_at,
+    ...valuesFromSources(sources, [
+      "closedAt",
+      "closed_at",
+      "resolvedAt",
+      "resolved_at",
+      "completedAt",
+      "completed_at",
+      "cancelledAt",
+      "cancelled_at",
+      "canceledAt",
+      "canceled_at",
     ]),
   ) !== null;
 }
@@ -4397,7 +4426,7 @@ function pylonSnapshotCount(record: RawSourceRecordRow, keys: string[]): number 
 
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
-  const supportRecords = sources.map((source) => nestedRecord(source.support));
+  const supportRecords = sources.map((source) => nestedRecordFromKey(source, "support"));
   for (const key of keys) {
     const count = nonNegativeIntegerFrom(
       [...sources, ...supportRecords]
@@ -4439,18 +4468,24 @@ function tagValueCandidates(value: unknown, seen = new WeakSet<object>()): unkno
   }
 
   const record = value as Record<string, unknown>;
-  const data = asRecord(record.data);
+  const dataValue = firstValueFromSources([record], ["data"]);
+  const dataRecord = nestedRecord(dataValue);
+  const dataAttributesValue = firstValueFromSources([dataRecord], ["attributes"]);
+  const dataAttributes = nestedRecord(dataAttributesValue);
   const values = [
-    record.value,
-    record.tags,
-    record.labels,
-    record.items,
-    asRecord(data.attributes).value,
-    data.value,
-    data.attributes,
-    record.attributes,
-    record.values,
-    record.fields,
+    firstValueFromSources([record], ["value"]),
+    firstValueFromSources([record], ["tags"]),
+    firstValueFromSources([record], ["labels"]),
+    firstValueFromSources([record], ["items"]),
+    dataValue,
+    firstValueFromSources([dataAttributes], ["value"]),
+    firstValueFromSources([dataRecord], ["value"]),
+    dataAttributesValue,
+    nonEmptyRecord(dataRecord),
+    nonEmptyRecord(dataAttributes),
+    nonEmptyRecord(nestedRecordFromKey(record, "attributes")),
+    nonEmptyRecord(nestedRecordFromKey(record, "values")),
+    nonEmptyRecord(nestedRecordFromKey(record, "fields")),
   ].flatMap((candidate) => tagValueCandidates(candidate, seen));
 
   seen.delete(value);
@@ -4548,13 +4583,13 @@ function isLowUsage(record: RawSourceRecordRow, asOf: Date): boolean {
   );
   const lastActiveAt = firstDateAtOrBefore(
     asOf,
-    ...sources.flatMap((source) => [
-      source.lastActiveAt,
-      source.last_active_at,
-      source.lastSeenAt,
-      source.last_seen_at,
-      source.lastActivityAt,
-      source.last_activity_at,
+    ...valuesFromSources(sources, [
+      "lastActiveAt",
+      "last_active_at",
+      "lastSeenAt",
+      "last_seen_at",
+      "lastActivityAt",
+      "last_activity_at",
     ]),
   );
   const derivedInactiveDays = daysBetween(lastActiveAt, asOf);
@@ -4651,7 +4686,7 @@ function latestEscalationSignalsById(records: RawSourceRecordRow[], asOf: Date):
   return [...latestByKey.values()];
 }
 
-function computeRetentionRisk(records: RawSourceRecordRow[], asOf: Date) {
+function computeRetentionRisk(records: RawSourceRecordRow[], periodStart: Date, asOf: Date) {
   const pylonSupportRecords = latestPylonSupportRecordsById(records, asOf);
   const supportIssues = pylonSupportRecords.filter((record) => isOpenSupportIssue(record, asOf));
   const nonPylonEscalations = latestEscalationSignalsById(
@@ -4664,7 +4699,14 @@ function computeRetentionRisk(records: RawSourceRecordRow[], asOf: Date) {
   ];
   const billingRiskRecords = records.filter(isBillingRisk);
   const lowUsageRecords = records.filter((record) => isLowUsage(record, asOf));
-  const collaborationSignals = latestCollaborationSignalsById(records, asOf);
+  const collaborationSignals = latestCollaborationSignalsById(
+    records.filter(
+      (record) =>
+        !recordIsProvider(record, IntegrationProvider.GOOGLE_WORKSPACE) ||
+        collaborationTimestampIsWithinPeriod(record, periodStart, asOf),
+    ),
+    asOf,
+  );
   const latestPylonSnapshot = latestRecordByFactTimestamp(
     records.filter(
       (record) =>
@@ -4769,7 +4811,7 @@ export async function materializeImladrisCustomerSuccessMetrics(
     orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
   });
   const records = dedupeRawSourceRecords(queriedRecords, context, input.periodStart, input.periodEnd, now);
-  const value = computeRetentionRisk(records, now);
+  const value = computeRetentionRisk(records, input.periodStart, now);
   const status = statusForProviderCoverage({ records, requiredProviders });
   const warnings = providerCoverageWarning({
     metricLabel: "Retention Risk",
