@@ -12,11 +12,19 @@ export interface GoogleWorkspaceCalendarEventRecord {
   eventId: string;
   calendarId: string;
   summary: string | null;
+  description: string | null;
+  location: string | null;
   status: string | null;
   htmlLink: string | null;
+  hangoutLink: string | null;
   creatorEmail: string | null;
   organizerEmail: string | null;
   attendeeCount: number;
+  attendeeEmails: string[];
+  attendees: Array<{
+    email: string | null;
+    responseStatus: string | null;
+  }>;
   startedAt: string | null;
   endedAt: string | null;
   updatedAt: string | null;
@@ -197,16 +205,27 @@ async function fetchCalendarEvents(input: {
         const end = asRecord(event.end);
         const creator = asRecord(event.creator);
         const organizer = asRecord(event.organizer);
-        const attendees = Array.isArray(event.attendees) ? event.attendees : [];
+        const attendees = Array.isArray(event.attendees) ? event.attendees.map(asRecord) : [];
+        const attendeeDetails = attendees.map((attendee) => ({
+          email: asString(attendee.email),
+          responseStatus: asString(attendee.responseStatus),
+        }));
         events.push({
           eventId,
           calendarId,
           summary: asString(event.summary),
+          description: asString(event.description),
+          location: asString(event.location),
           status: asString(event.status),
           htmlLink: asString(event.htmlLink),
+          hangoutLink: asString(event.hangoutLink),
           creatorEmail: asString(creator.email),
           organizerEmail: asString(organizer.email),
           attendeeCount: attendees.length,
+          attendeeEmails: attendeeDetails
+            .map((attendee) => attendee.email)
+            .filter((email): email is string => Boolean(email)),
+          attendees: attendeeDetails,
           startedAt: isoOrNull(start.dateTime ?? start.date),
           endedAt: isoOrNull(end.dateTime ?? end.date),
           updatedAt: isoOrNull(event.updated),

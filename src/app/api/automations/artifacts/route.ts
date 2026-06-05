@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { WorkflowScope } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { normalizeAutomationOperatorKey } from "@/lib/automations/operators";
+import { investorForbiddenResponse } from "@/lib/investor/api-guards";
 import { prisma } from "@/lib/prisma";
 import { getAuthenticatedUser } from "@/lib/session-user";
 
@@ -14,6 +15,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const investorDenied = investorForbiddenResponse(user.role);
+    if (investorDenied) return investorDenied;
 
     const workflowId = request.nextUrl.searchParams.get("workflowId");
     const runId = request.nextUrl.searchParams.get("runId");

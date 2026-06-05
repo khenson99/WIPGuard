@@ -5,6 +5,7 @@ import { AutomationRecommendationStatus } from "@/lib/automations/prisma-enums";
 import { WorkflowScope, type Prisma } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { getAppRole } from "@/lib/permissions";
+import { investorForbiddenResponse } from "@/lib/investor/api-guards";
 import { prisma } from "@/lib/prisma";
 import { getAuthenticatedUser } from "@/lib/session-user";
 
@@ -15,6 +16,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const investorDenied = investorForbiddenResponse(user.role);
+    if (investorDenied) return investorDenied;
 
     const role = await getAppRole(user.id);
     const mineOnly = request.nextUrl.searchParams.get("mine") === "true";

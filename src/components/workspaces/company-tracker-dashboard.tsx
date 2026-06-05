@@ -1,12 +1,16 @@
 import {
   AlertTriangle,
+  Activity,
   BadgeCheck,
   CircleDollarSign,
   Gauge,
   LineChart,
+  Percent,
+  ReceiptText,
   ShieldCheck,
   Target,
   TrendingUp,
+  Users,
 } from "lucide-react";
 import { CompanyReadinessSetupAction } from "@/components/workspaces/company-readiness-setup-action";
 import type {
@@ -14,6 +18,7 @@ import type {
   CompanyGoalProgress,
   CompanyGoalRecommendation,
   CompanyHealthBand,
+  CompanyNorthStarDriver,
   CompanySourceCoverage,
   CompanyTrackerMetric,
 } from "@/lib/imladris/company-tracker";
@@ -37,6 +42,101 @@ function formatNumber(value: unknown, unit?: string): string {
   if (unit === "percent") return `${parsed.toFixed(1)}%`;
   if (unit === "ratio") return `${parsed.toFixed(2)}x`;
   return parsed.toLocaleString();
+}
+
+function formatBenchmarkValue(
+  value: unknown,
+  unit: string,
+  currency: string | null,
+): string {
+  if (unit === "currency") return formatCurrency(value, currency);
+  return formatNumber(value, unit);
+}
+
+function conversionBreakdownDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `${formatNumber(summary.webflowFormSubmissions)} Webflow / ${formatNumber(
+    summary.hubspotLeadConversions,
+  )} HubSpot / ${formatNumber(summary.identifiedVisitors)} identified`;
+}
+
+function pipelineEfficiencyDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `${formatCurrency(summary.qualifiedPipeline, summary.currency)} pipeline / ${formatCurrency(
+    summary.acquisitionSpend,
+    summary.currency,
+  )} spend`;
+}
+
+function formatRatioPercent(value: unknown): string {
+  const parsed = numberValue(value);
+  if (parsed === null) return "Missing";
+  const percent = parsed > 1 && parsed <= 100 ? parsed : parsed * 100;
+  return `${percent.toFixed(1)}%`;
+}
+
+function pipelineDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `${formatNumber(summary.qualifiedPipelineCount)} deals / ${formatRatioPercent(
+    summary.collaborationCoverage,
+  )} collaboration`;
+}
+
+function activationDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `${formatNumber(summary.activatedAccounts)} activated / ${formatNumber(
+    summary.eligibleAccounts,
+  )} eligible`;
+}
+
+function subscriptionBreakdownDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `${formatNumber(summary.stripeSubscriptions)} Stripe / ${formatNumber(
+    summary.hubspotOnlySubscriptions,
+  )} HubSpot-only`;
+}
+
+function customerBreakdownDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `${formatNumber(summary.stripeCustomers)} Stripe / ${formatNumber(
+    summary.hubspotOnlyCustomers,
+  )} HubSpot-only`;
+}
+
+function burnDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `${formatCurrency(summary.cashOutflow, summary.currency)} out / ${formatCurrency(
+    summary.cashInflow,
+    summary.currency,
+  )} in`;
+}
+
+function grossMarginDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `${formatCurrency(summary.grossMarginRevenue, summary.currency)} revenue / ${formatCurrency(
+    summary.costOfGoodsSold,
+    summary.currency,
+  )} COGS`;
+}
+
+function demoBreakdownDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `${formatNumber(summary.scheduledDemos)} scheduled / ${formatNumber(
+    summary.requestedDemos,
+  )} requested`;
+}
+
+function trafficBreakdownDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `${formatNumber(summary.websiteSessions)} sessions / ${formatNumber(
+    summary.organicTraffic,
+  )} organic`;
+}
+
+function customerActivityDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `${formatNumber(summary.supportInteractions)} support / ${formatNumber(
+    summary.productUsageRecords,
+  )} usage / ${formatNumber(summary.collaborationSignals)} collaboration`;
+}
+
+function customerHealthDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `${formatNumber(summary.atRiskAccounts)} at risk / ${formatNumber(
+    summary.openSupportIssues,
+  )} open support`;
+}
+
+function retentionRiskDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `${formatNumber(summary.retentionRiskAccounts)} at risk from retention model`;
 }
 
 function scalarValue(value: unknown, seen = new WeakSet<object>()): unknown {
@@ -110,6 +210,7 @@ function formatMetricValue(metric: CompanyTrackerMetric, currency: string): stri
   const rate = numberValue(payload.rate);
   const ratio = numberValue(payload.ratio);
   const riskScore = numberValue(payload.riskScore);
+  const count = numberValue(payload.count);
 
   if (metric.key === "revenue.mrr") return formatCurrency(amount, currency);
   if (metric.key === "finance.net_burn") return formatCurrency(amount, currency);
@@ -121,6 +222,7 @@ function formatMetricValue(metric: CompanyTrackerMetric, currency: string): stri
   if (score !== null) return formatNumber(score);
   if (rate !== null) return formatNumber(rate, "percent");
   if (riskScore !== null) return formatNumber(riskScore);
+  if (count !== null) return formatNumber(count);
   return metric.value === null ? "Missing" : "Available";
 }
 
@@ -191,6 +293,23 @@ function KpiCard({
         <Icon className="h-4 w-4 text-primary" aria-hidden="true" />
       </div>
       <p className="mt-2 text-xs leading-5 text-muted-foreground">{detail}</p>
+    </article>
+  );
+}
+
+function NorthStarDriverRow({ driver }: { driver: CompanyNorthStarDriver }) {
+  return (
+    <article className="rounded-lg border border-border bg-background/60 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">{driver.label}</h3>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">{driver.detail}</p>
+        </div>
+        <StatusBadge status={driver.status} />
+      </div>
+      <p className="mt-2 text-lg font-semibold text-foreground">
+        {formatNumber(driver.value, driver.unit)}
+      </p>
     </article>
   );
 }
@@ -381,8 +500,15 @@ export function CompanyTrackerDashboard({ data }: { data: CompanyTrackerDashboar
   const growthMetrics = data.metrics.filter((metric) =>
     [
       "sales.qualified_pipeline",
+      "sales.demos",
+      "revenue.active_subscriptions",
+      "revenue.customer_count",
       "marketing.pipeline_efficiency",
       "product.activation_rate",
+      "customer_success.customer_health",
+      "customer_success.customer_activity",
+      "customer_success.churn_rate",
+      "customer_success.retention_rate",
       "customer_success.retention_risk",
     ].includes(metric.key),
   );
@@ -423,6 +549,102 @@ export function CompanyTrackerDashboard({ data }: { data: CompanyTrackerDashboar
               </span>
             </div>
           </div>
+        </section>
+
+        <section className="rounded-lg border border-border bg-card p-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-3xl">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-semibold text-foreground">
+                  {data.northStar.label}
+                </h2>
+                <StatusBadge status={data.northStar.status} />
+              </div>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {data.northStar.formula}
+              </p>
+            </div>
+            <dl className="grid gap-3 text-sm sm:grid-cols-3">
+              <div>
+                <dt className="text-xs text-muted-foreground">ARR</dt>
+                <dd className="font-semibold text-foreground">
+                  ARR {formatCurrency(data.northStar.currentArr, data.summary.currency)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">MRR</dt>
+                <dd className="font-semibold text-foreground">
+                  MRR {formatCurrency(data.northStar.currentMrr, data.summary.currency)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Delta</dt>
+                <dd className="font-semibold text-foreground">
+                  Net new ARR {formatCurrency(data.northStar.netNewArr, data.summary.currency)}
+                </dd>
+              </div>
+            </dl>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {data.northStar.drivers.map((driver) => (
+              <NorthStarDriverRow key={driver.id} driver={driver} />
+            ))}
+          </div>
+          <p className="mt-3 break-words font-mono text-[11px] leading-5 text-muted-foreground">
+            {data.northStar.sourceMetricKeys.join(" · ")}
+          </p>
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+          <article className="rounded-lg border border-border bg-card p-4">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-primary" aria-hidden="true" />
+              <h2 className="text-sm font-semibold text-foreground">Benchmark Context</h2>
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              {data.benchmarkContext.items.map((benchmark) => (
+                <div key={benchmark.id} className="rounded-md bg-secondary px-3 py-2 text-xs">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-foreground">{benchmark.label}</p>
+                      <p className="mt-1 text-lg font-semibold text-foreground">
+                        {formatBenchmarkValue(benchmark.value, benchmark.unit, data.summary.currency)}
+                      </p>
+                    </div>
+                    <StatusBadge status={benchmark.status} />
+                  </div>
+                  <p className="mt-2 text-muted-foreground">{benchmark.benchmark}</p>
+                  <p className="mt-1 font-mono text-[11px] text-muted-foreground">{benchmark.formula}</p>
+                  <p className="mt-1 text-muted-foreground">{benchmark.assumption}</p>
+                </div>
+              ))}
+            </div>
+          </article>
+          <article className="rounded-lg border border-border bg-card p-4">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-primary" aria-hidden="true" />
+              <h2 className="text-sm font-semibold text-foreground">Cohorts And Segments</h2>
+            </div>
+            <div className="mt-3 space-y-2">
+              {data.benchmarkContext.cohorts.map((cohort) => (
+                <div key={cohort.id} className="rounded-md bg-secondary px-3 py-2 text-xs">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-foreground">{cohort.label}</p>
+                      <p className="mt-1 text-muted-foreground">{cohort.detail}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-foreground">
+                        {formatBenchmarkValue(cohort.value, cohort.unit, data.summary.currency)}
+                      </p>
+                      <StatusBadge status={cohort.status} />
+                    </div>
+                  </div>
+                  <p className="mt-2 font-mono text-[11px] text-muted-foreground">{cohort.formula}</p>
+                </div>
+              ))}
+            </div>
+          </article>
         </section>
 
         <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
@@ -502,8 +724,137 @@ export function CompanyTrackerDashboard({ data }: { data: CompanyTrackerDashboar
           <KpiCard
             label="Net Burn"
             value={formatCurrency(data.summary.netBurn, data.summary.currency)}
-            detail="finance.net_burn.value.amount"
+            detail={burnDetail(data.summary)}
             icon={LineChart}
+          />
+        </section>
+
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <KpiCard
+            label="Revenue"
+            value={formatCurrency(data.summary.totalRevenue, data.summary.currency)}
+            detail="revenue.total_revenue.value.amount"
+            icon={CircleDollarSign}
+          />
+          <KpiCard
+            label="Subscription Revenue"
+            value={formatCurrency(data.summary.subscriptionRevenue, data.summary.currency)}
+            detail="revenue.subscription_revenue.value.amount"
+            icon={CircleDollarSign}
+          />
+          <KpiCard
+            label="Services Revenue"
+            value={formatCurrency(data.summary.servicesRevenue, data.summary.currency)}
+            detail="revenue.services_revenue.value.amount"
+            icon={ReceiptText}
+          />
+          <KpiCard
+            label="Active Subscriptions"
+            value={formatNumber(data.summary.activeSubscriptions)}
+            detail={subscriptionBreakdownDetail(data.summary)}
+            icon={BadgeCheck}
+          />
+          <KpiCard
+            label="Customers"
+            value={formatNumber(data.summary.customers)}
+            detail={customerBreakdownDetail(data.summary)}
+            icon={Users}
+          />
+        </section>
+
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <KpiCard
+            label="Cash Balance"
+            value={formatCurrency(data.summary.cashBalance, data.summary.currency)}
+            detail="finance.cash_balance.value.amount"
+            icon={CircleDollarSign}
+          />
+          <KpiCard
+            label="Expenses"
+            value={formatCurrency(data.summary.expenses, data.summary.currency)}
+            detail="finance.expenses.value.amount"
+            icon={ReceiptText}
+          />
+          <KpiCard
+            label="Gross Margin"
+            value={formatNumber(data.summary.grossMargin, "percent")}
+            detail={grossMarginDetail(data.summary)}
+            icon={Percent}
+          />
+          <KpiCard
+            label="Demos"
+            value={formatNumber(data.summary.demos)}
+            detail={demoBreakdownDetail(data.summary)}
+            icon={Target}
+          />
+          <KpiCard
+            label="Qualified Pipeline"
+            value={formatCurrency(data.summary.qualifiedPipeline, data.summary.currency)}
+            detail={pipelineDetail(data.summary)}
+            icon={Target}
+          />
+        </section>
+
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <KpiCard
+            label="Website Traffic"
+            value={formatNumber(data.summary.websiteTraffic)}
+            detail={trafficBreakdownDetail(data.summary)}
+            icon={LineChart}
+          />
+          <KpiCard
+            label="Conversion Rate"
+            value={formatNumber(data.summary.conversionRate, "percent")}
+            detail="marketing.conversion_rate.value.rate"
+            icon={Percent}
+          />
+          <KpiCard
+            label="Conversions"
+            value={formatNumber(data.summary.conversions)}
+            detail={conversionBreakdownDetail(data.summary)}
+            icon={Target}
+          />
+          <KpiCard
+            label="Pipeline Efficiency"
+            value={formatNumber(data.summary.pipelineEfficiency, "ratio")}
+            detail={pipelineEfficiencyDetail(data.summary)}
+            icon={TrendingUp}
+          />
+          <KpiCard
+            label="Activation Rate"
+            value={formatNumber(data.summary.activationRate, "percent")}
+            detail={activationDetail(data.summary)}
+            icon={BadgeCheck}
+          />
+          <KpiCard
+            label="Customer Health"
+            value={formatNumber(data.summary.customerHealth)}
+            detail={customerHealthDetail(data.summary)}
+            icon={Gauge}
+          />
+          <KpiCard
+            label="Customer Activity"
+            value={formatNumber(data.summary.customerActivity)}
+            detail={customerActivityDetail(data.summary)}
+            icon={Activity}
+          />
+          <KpiCard
+            label="Churn Rate"
+            value={formatNumber(data.summary.churnRate, "percent")}
+            detail="customer_success.churn_rate.value.rate"
+            icon={AlertTriangle}
+          />
+          <KpiCard
+            label="Retention Rate"
+            value={formatNumber(data.summary.retentionRate, "percent")}
+            detail="customer_success.retention_rate.value.rate"
+            icon={ShieldCheck}
+          />
+          <KpiCard
+            label="Retention Risk"
+            value={formatNumber(data.summary.retentionRiskScore)}
+            detail={retentionRiskDetail(data.summary)}
+            icon={AlertTriangle}
           />
         </section>
 

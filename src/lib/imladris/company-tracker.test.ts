@@ -79,10 +79,63 @@ describe("buildCompanyTrackerDashboard", () => {
           },
         }),
         metricRow({
+          metricKey: "revenue.arr",
+          value: {
+            amount: 390_000,
+            currency: "USD",
+          },
+        }),
+        metricRow({
+          metricKey: "revenue.total_revenue",
+          value: {
+            amount: 462_000,
+            subscriptionRevenue: 390_000,
+            servicesRevenue: 72_000,
+            currency: "USD",
+          },
+        }),
+        metricRow({
+          metricKey: "revenue.subscription_revenue",
+          value: {
+            amount: 390_000,
+            currency: "USD",
+          },
+        }),
+        metricRow({
+          metricKey: "revenue.services_revenue",
+          value: {
+            amount: 72_000,
+            currency: "USD",
+          },
+        }),
+        metricRow({
+          metricKey: "revenue.active_subscriptions",
+          value: {
+            count: 45,
+            stripeSubscriptions: 38,
+            hubspotOnlySubscriptions: 7,
+          },
+        }),
+        metricRow({
+          metricKey: "revenue.customer_count",
+          value: {
+            count: 39,
+            stripeCustomers: 34,
+            hubspotOnlyCustomers: 5,
+          },
+        }),
+        metricRow({
           id: "metric_revenue_mrr_previous",
           metricKey: "revenue.mrr",
           value: { amount: 25_000, arr: 300_000, currency: "USD" },
           periodEnd: new Date("2026-04-30T23:59:59.999Z"),
+        }),
+        metricRow({
+          metricKey: "finance.cash_balance",
+          value: {
+            amount: 800_000,
+            currency: "USD",
+          },
         }),
         metricRow({
           metricKey: "finance.cash_runway_months",
@@ -103,12 +156,115 @@ describe("buildCompanyTrackerDashboard", () => {
           },
         }),
         metricRow({
+          metricKey: "finance.expenses",
+          value: {
+            amount: 182_000,
+            currency: "USD",
+          },
+        }),
+        metricRow({
+          metricKey: "finance.gross_margin",
+          value: {
+            rate: 78.4,
+            revenue: 456_000,
+            costOfGoodsSold: 98_500,
+            currency: "USD",
+          },
+        }),
+        metricRow({
           metricKey: "sales.qualified_pipeline",
           value: {
             amount: 1_000_000,
             qualifiedDealCount: 7,
+            collaborationTouchCount: 5,
             collaborationCoverage: 0.84,
             currency: "USD",
+          },
+        }),
+        metricRow({
+          metricKey: "sales.demos",
+          value: {
+            count: 4,
+            scheduledDemos: 3,
+            requestedDemos: 1,
+            hubspotDemoDeals: 1,
+            hubspotDemoMeetings: 1,
+            calendarDemoEvents: 1,
+            webflowDemoRequests: 1,
+          },
+        }),
+        metricRow({
+          metricKey: "marketing.website_traffic",
+          value: {
+            count: 18_500,
+            websiteSessions: 15_000,
+            organicTraffic: 3_500,
+            searchClicks: 240,
+            searchImpressions: 4_800,
+          },
+        }),
+        metricRow({
+          metricKey: "marketing.conversion_rate",
+          value: {
+            rate: 3.4,
+            conversions: 629,
+            webflowFormSubmissions: 450,
+            hubspotLeadConversions: 179,
+            identifiedVisitors: 210,
+          },
+        }),
+        metricRow({
+          metricKey: "marketing.pipeline_efficiency",
+          value: {
+            rate: 40,
+            qualifiedPipeline: 1_000_000,
+            acquisitionSpend: 25_000,
+            currency: "USD",
+          },
+        }),
+        metricRow({
+          metricKey: "product.activation_rate",
+          value: {
+            rate: 64,
+            activatedAccounts: 16,
+            eligibleAccounts: 25,
+          },
+        }),
+        metricRow({
+          metricKey: "customer_success.customer_health",
+          value: {
+            score: 86,
+            atRiskAccounts: 3,
+            openSupportIssues: 9,
+          },
+        }),
+        metricRow({
+          metricKey: "customer_success.customer_activity",
+          value: {
+            count: 214,
+            supportInteractions: 7,
+            productUsageRecords: 151,
+            collaborationSignals: 56,
+          },
+        }),
+        metricRow({
+          metricKey: "customer_success.churn_rate",
+          value: {
+            rate: 2.5,
+          },
+        }),
+        metricRow({
+          metricKey: "customer_success.retention_rate",
+          value: {
+            rate: 97.5,
+          },
+        }),
+        metricRow({
+          metricKey: "customer_success.retention_risk",
+          value: {
+            score: 18,
+            atRiskAccounts: 3,
+            openSupportIssues: 9,
           },
         }),
       ],
@@ -137,21 +293,91 @@ describe("buildCompanyTrackerDashboard", () => {
     });
 
     expect(dashboard.summary).toMatchObject({
-      arr: 384_000,
+      arr: 390_000,
       mrr: 32_000,
+      totalRevenue: 462_000,
+      subscriptionRevenue: 390_000,
+      servicesRevenue: 72_000,
       runwayMonths: 8.5,
-      cashBalance: 765_000,
+      cashBalance: 800_000,
       netBurn: 90_000,
+      cashOutflow: 160_000,
+      cashInflow: 70_000,
+      expenses: 182_000,
+      grossMargin: 78.4,
+      grossMarginRevenue: 456_000,
+      costOfGoodsSold: 98_500,
       qualifiedPipeline: 1_000_000,
-      activeSubscriptions: 42,
+      qualifiedPipelineCount: 7,
+      collaborationTouchCount: 5,
+      collaborationCoverage: 0.84,
+      demos: 4,
+      scheduledDemos: 3,
+      requestedDemos: 1,
+      hubspotDemoDeals: 1,
+      hubspotDemoMeetings: 1,
+      calendarDemoEvents: 1,
+      webflowDemoRequests: 1,
+      activeSubscriptions: 45,
+      stripeSubscriptions: 38,
+      hubspotOnlySubscriptions: 7,
+      customers: 39,
+      stripeCustomers: 34,
+      hubspotOnlyCustomers: 5,
+      websiteTraffic: 18_500,
+      websiteSessions: 15_000,
+      organicTraffic: 3_500,
+      searchClicks: 240,
+      searchImpressions: 4_800,
+      conversionRate: 3.4,
+      conversions: 629,
+      webflowFormSubmissions: 450,
+      hubspotLeadConversions: 179,
+      identifiedVisitors: 210,
+      pipelineEfficiency: 40,
+      acquisitionSpend: 25_000,
+      activationRate: 64,
+      activatedAccounts: 16,
+      eligibleAccounts: 25,
+      customerHealth: 86,
+      atRiskAccounts: 3,
+      openSupportIssues: 9,
+      customerActivity: 214,
+      supportInteractions: 7,
+      productUsageRecords: 151,
+      collaborationSignals: 56,
+      churnRate: 2.5,
+      retentionRate: 97.5,
+      retentionRiskScore: 18,
+      retentionRiskAccounts: 3,
       currency: "USD",
     });
+    expect(dashboard.northStar).toMatchObject({
+      id: "healthy_arr_growth",
+      label: "Healthy ARR Growth",
+      status: "watch",
+      currentArr: 390_000,
+      netNewArr: 90_000,
+      sourceMetricKeys: [
+        "revenue.mrr",
+        "finance.cash_runway_months",
+        "finance.net_burn",
+        "sales.qualified_pipeline",
+      ],
+    });
+    expect(dashboard.northStar.drivers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "runway", status: "watch" }),
+        expect.objectContaining({ id: "burn_multiple", value: 1 }),
+        expect.objectContaining({ id: "pipeline_coverage", value: 2.6 }),
+      ]),
+    );
     expect(dashboard.goalProgress).toEqual([
       expect.objectContaining({
         id: "goal_arr",
         metric: "ARR",
-        currentValue: 384_000,
-        progressPct: 76.8,
+        currentValue: 390_000,
+        progressPct: 78,
         status: "active",
       }),
       expect.objectContaining({
@@ -171,7 +397,7 @@ describe("buildCompanyTrackerDashboard", () => {
         }),
         expect.objectContaining({
           id: "burn_multiple",
-          value: 1.07,
+          value: 1,
           formula: "finance.net_burn.value.amount / net new ARR",
         }),
         expect.objectContaining({
@@ -182,6 +408,9 @@ describe("buildCompanyTrackerDashboard", () => {
       ]),
     );
     expect(dashboard.trust.summary.ready).toBeGreaterThan(0);
+    expect(dashboard.sourceCoverage.map((source) => source.key)).toEqual(
+      expect.arrayContaining(["linear", "github"]),
+    );
     expect(dashboard.metrics.find((metric) => metric.key === "revenue.mrr")).toMatchObject({
       status: "ready",
       sourceLineageCount: 1,
@@ -214,6 +443,10 @@ describe("buildCompanyTrackerDashboard", () => {
               trialing: 0,
               churnRate: 0.02,
               recentChurnEvents: [],
+              activeCustomerRefs: [
+                { customerId: "cus_1", email: "buyer@example.com", emailDomain: "example.com" },
+                { customerId: "cus_2", email: "buyer-2@example.com", emailDomain: "example.com" },
+              ],
             },
             payments: {
               succeeded: 20,
@@ -262,8 +495,16 @@ describe("buildCompanyTrackerDashboard", () => {
               winRate: 0,
               effectiveWinRate: 0,
               noShowRate: 0,
+              collectedFormSubmissions: 185,
               stages: [],
               dealsBySource: [],
+            },
+            collectedForms: {
+              formSubmissions: [],
+              submissions: [],
+              totalFormSubmissions: 185,
+              leadMagnetSubmissions: 120,
+              contactRequestSubmissions: 65,
             },
             contacts: {
               totalContacts: 0,
@@ -291,6 +532,41 @@ describe("buildCompanyTrackerDashboard", () => {
             ],
           },
         },
+        {
+          providerKey: "googleAnalytics",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            sessions30d: 18_500,
+            sessionsPrev30d: 16_200,
+            users30d: 12_400,
+            usersPrev30d: 11_000,
+            pageviews30d: 42_000,
+            pageviewsPrev30d: 36_000,
+            bounceRate: 0.38,
+            avgSessionDuration: 91,
+            trafficByChannel: [],
+            topPages: [],
+            dailyTrend: [],
+          },
+        },
+        {
+          providerKey: "pylon",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            openConversations: 3,
+            urgentConversations: 1,
+            waitingOnTeam: 1,
+            resolvedInRange: 8,
+            avgFirstResponseMinutes: 45,
+            csat: 0.82,
+          },
+        },
       ],
       goals: [
         {
@@ -313,11 +589,22 @@ describe("buildCompanyTrackerDashboard", () => {
     expect(dashboard.summary).toMatchObject({
       arr: 384_000,
       mrr: 32_000,
+      totalRevenue: 384_000,
+      subscriptionRevenue: 384_000,
       runwayMonths: 8.5,
       cashBalance: 765_000,
       netBurn: 90_000,
+      expenses: 160_000,
       qualifiedPipeline: 1_000_000,
+      demos: 1,
       activeSubscriptions: 42,
+      customers: 2,
+      websiteTraffic: 18_500,
+      conversionRate: 1,
+      customerHealth: 82,
+      customerActivity: 12,
+      churnRate: 2,
+      retentionRate: 98,
       currency: "USD",
     });
     expect(dashboard.goalProgress).toEqual([
@@ -334,13 +621,35 @@ describe("buildCompanyTrackerDashboard", () => {
         arr: 384_000,
         source: "analytics.metrics_layer",
       }),
-      sourceLineageCount: 3,
+      sourceLineageCount: 5,
     });
     expect(dashboard.metrics.find((metric) => metric.key === "sales.qualified_pipeline")).toMatchObject({
       status: "partial",
       value: expect.objectContaining({
         amount: 1_000_000,
         source: "analytics.revenue_dashboard",
+      }),
+    });
+    expect(dashboard.metrics.find((metric) => metric.key === "sales.demos")).toMatchObject({
+      status: "partial",
+      value: expect.objectContaining({
+        count: 1,
+        scheduledDemos: 1,
+        source: "analytics.snapshot_demos",
+      }),
+    });
+    expect(dashboard.metrics.find((metric) => metric.key === "marketing.website_traffic")).toMatchObject({
+      status: "partial",
+      value: expect.objectContaining({
+        count: 18_500,
+        source: "analytics.snapshot_website_traffic",
+      }),
+    });
+    expect(dashboard.metrics.find((metric) => metric.key === "customer_success.customer_health")).toMatchObject({
+      status: "partial",
+      value: expect.objectContaining({
+        score: 82,
+        source: "analytics.snapshot_customer_health",
       }),
     });
     expect(dashboard.trust.warnings).not.toContain(
@@ -2215,7 +2524,10 @@ describe("buildCompanyTrackerDashboard", () => {
     expect(dashboard.metrics.find((metric) => metric.key === "sales.qualified_pipeline")).toMatchObject({
       warnings: ["HubSpot coverage is partial.", "Slack context is missing."],
     });
-    expect(dashboard.trust.summary.warnings).toBe(8);
+    const missingMetricWarningCount = dashboard.metrics.filter(
+      (metric) => metric.status === "missing",
+    ).length;
+    expect(dashboard.trust.summary.warnings).toBe(missingMetricWarningCount + 3);
     expect(dashboard.trust.warnings).toContain("Mercury sync is stale.");
     expect(dashboard.trust.warnings).toContain("HubSpot coverage is partial.");
     expect(dashboard.trust.warnings).toContain("Slack context is missing.");

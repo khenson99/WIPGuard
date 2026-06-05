@@ -5,6 +5,7 @@ describe("permissions", () => {
   it("normalizes unknown roles to member", () => {
     expect(normalizeRole("ADMIN")).toBe("admin");
     expect(normalizeRole("observer")).toBe("observer");
+    expect(normalizeRole("investor")).toBe("investor");
     expect(normalizeRole("something-else")).toBe("member");
     expect(normalizeRole(undefined)).toBe("member");
   });
@@ -15,6 +16,7 @@ describe("permissions", () => {
     expect(can("admin", "team.invite")).toBe(true);
     expect(can("admin", "analytics.read")).toBe(true);
     expect(can("admin", "analytics.write")).toBe(true);
+    expect(can("admin", "board_final.approve")).toBe(true);
   });
 
   it("blocks observer operating metric mutations and policy changes", () => {
@@ -30,8 +32,21 @@ describe("permissions", () => {
     expect(can("member", "deals.read")).toBe(true);
     expect(can("member", "analytics.read")).toBe(true);
     expect(can("member", "analytics.write")).toBe(true);
+    expect(can("member", "report.write")).toBe(true);
     expect(can("member", "policy.write")).toBe(false);
     expect(can("member", "team.role.write")).toBe(false);
     expect(can("member", "team.invite")).toBe(false);
+    expect(can("member", "board_final.approve")).toBe(false);
+  });
+
+  it("keeps investors read-only and outside operator workspaces", () => {
+    expect(can("investor", "investor.read")).toBe(true);
+    expect(can("investor", "report.read")).toBe(true);
+    expect(can("investor", "profile.write")).toBe(true);
+    expect(can("investor", "report.write")).toBe(false);
+    expect(can("investor", "board_final.approve")).toBe(false);
+    expect(can("investor", "analytics.read")).toBe(false);
+    expect(can("investor", "deals.read")).toBe(false);
+    expect(can("investor", "integration.read")).toBe(false);
   });
 });

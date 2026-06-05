@@ -95,6 +95,25 @@ describe("Imladris API routes", () => {
     ]);
   });
 
+  it("blocks investor users from direct Imladris source APIs", async () => {
+    const { auth } = await import("@/lib/auth");
+    vi.mocked(auth).mockResolvedValueOnce({
+      user: {
+        id: "investor_1",
+        role: "investor",
+        organizationId: "org_1",
+      },
+    } as never);
+
+    const { GET } = await import("@/app/api/imladris/sources/route");
+    const response = await GET(new NextRequest("http://localhost/api/imladris/sources"));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "Forbidden: investors must use investor-scoped APIs",
+    });
+  });
+
   it("serves canonical operating metrics without task-derived keys", async () => {
     const { GET } = await import("@/app/api/imladris/metrics/route");
     const response = await GET(new NextRequest("http://localhost/api/imladris/metrics"));

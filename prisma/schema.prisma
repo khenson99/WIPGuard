@@ -816,12 +816,16 @@ model CeoReportRun {
   csv                String   @db.Text
   slideJson          Json
   aiDraft            String?  @db.Text
+  boardFinalAt       DateTime?
+  boardFinalApprovedById String?
+  boardFinalOverrideReason String? @db.Text
 
   createdAt DateTime @default(now())
 
   @@index([packSlug, generatedAt(sort: Desc)])
   @@index([userId, generatedAt(sort: Desc)])
   @@index([organizationId, generatedAt(sort: Desc)])
+  @@index([packSlug, boardFinalAt, generatedAt(sort: Desc)])
 }
 
 enum InsightFeedbackAction {

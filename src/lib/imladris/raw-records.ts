@@ -425,6 +425,10 @@ function providerExternalIdForRecord(input: {
     "hubspotContactId",
     "hubspot_contact_id",
     "contact",
+    "meetingId",
+    "meeting_id",
+    "hubspotMeetingId",
+    "hubspot_meeting_id",
     "eventId",
     "event_id",
     "issueId",
@@ -591,7 +595,10 @@ function providerSpecificExternalIdValue(input: {
   if (input.snapshotKey === "googleSearchConsole") {
     return googleSearchConsoleExternalIdValue(input.record);
   }
-  if (input.snapshotKey === "webflow" && input.objectType === "form_submission") {
+  if (
+    input.snapshotKey === "webflow" &&
+    ["form_submission", "form_submission_detail"].includes(input.objectType)
+  ) {
     return webflowFormSubmissionExternalIdValue(input.record);
   }
   if (input.snapshotKey === "unify" && input.objectType === "visitor") {
@@ -602,6 +609,9 @@ function providerSpecificExternalIdValue(input: {
   }
   if (input.snapshotKey === "hubspot" && input.objectType === "contact") {
     return hubspotContactExternalIdValue(input.record);
+  }
+  if (input.snapshotKey === "hubspot" && input.objectType === "ticket") {
+    return pylonSupportExternalIdValue(input.record);
   }
   if (
     input.snapshotKey === "mercury" &&
@@ -657,6 +667,12 @@ function providerSpecificExternalIdValue(input: {
   }
   if (input.snapshotKey === "stripe" && input.objectType === "payment_intent") {
     return stripePaymentIntentExternalIdValue(input.record);
+  }
+  if (input.snapshotKey === "stripe" && input.objectType === "dispute") {
+    return stripeDisputeExternalIdValue(input.record);
+  }
+  if (input.snapshotKey === "stripe" && input.objectType === "refund") {
+    return stripeRefundExternalIdValue(input.record);
   }
   if (input.snapshotKey === "semrush" && input.objectType === "organic_competitor") {
     return semrushCompetitorExternalIdValue(input.record);
@@ -851,6 +867,26 @@ function stripeInvoiceExternalIdValue(record: Record<string, unknown>): string |
 function stripePaymentIntentExternalIdValue(record: Record<string, unknown>): string | number | null {
   for (const sourceRecord of providerFieldRecords(record)) {
     for (const key of ["paymentIntentId", "payment_intent_id", "paymentIntent", "payment_intent", "id"]) {
+      const value = providerExternalIdValue(sourceRecord, key);
+      if (value !== null) return value;
+    }
+  }
+  return null;
+}
+
+function stripeDisputeExternalIdValue(record: Record<string, unknown>): string | number | null {
+  for (const sourceRecord of providerFieldRecords(record)) {
+    for (const key of ["disputeId", "dispute_id", "dispute", "id"]) {
+      const value = providerExternalIdValue(sourceRecord, key);
+      if (value !== null) return value;
+    }
+  }
+  return null;
+}
+
+function stripeRefundExternalIdValue(record: Record<string, unknown>): string | number | null {
+  for (const sourceRecord of providerFieldRecords(record)) {
+    for (const key of ["refundId", "refund_id", "refund", "id"]) {
       const value = providerExternalIdValue(sourceRecord, key);
       if (value !== null) return value;
     }
@@ -1322,6 +1358,15 @@ function recordOccurredAt(record: Record<string, unknown>): string | null {
     "occurredAt",
     "occurred_at",
     "timestamp",
+    "startedAt",
+    "started_at",
+    "startTime",
+    "start_time",
+    "startAt",
+    "start_at",
+    "hs_timestamp",
+    "submittedAt",
+    "submitted_at",
     "created",
     "postedAt",
     "posted_at",
@@ -1329,6 +1374,7 @@ function recordOccurredAt(record: Record<string, unknown>): string | null {
     "created_at",
     "createdOn",
     "created_on",
+    "hs_createdate",
     "createdate",
     "committedAt",
     "committed_at",
@@ -1357,6 +1403,7 @@ function recordSourceCreatedAt(record: Record<string, unknown>): string | null {
     "created_at",
     "createdOn",
     "created_on",
+    "hs_createdate",
     "createdate",
     "firstCardAt",
     "first_card_at",

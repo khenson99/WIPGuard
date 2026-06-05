@@ -39,9 +39,16 @@ describe("google workspace analytics fetcher", () => {
               {
                 id: "event_2",
                 summary: "Customer renewal",
+                description: "Renewal planning notes",
+                location: "Google Meet",
+                hangoutLink: "https://meet.google.com/renewal",
                 status: "confirmed",
                 start: { dateTime: "2026-05-31T18:00:00.000Z" },
                 end: { dateTime: "2026-05-31T18:30:00.000Z" },
+                attendees: [
+                  { email: "champion@example.com", responseStatus: "accepted" },
+                  { email: "founder@example.com", responseStatus: "needsAction" },
+                ],
                 updated: "2026-05-31T18:15:00.000Z",
               },
             ],
@@ -53,9 +60,16 @@ describe("google workspace analytics fetcher", () => {
             {
               id: "event_1",
               summary: "Pipeline review",
+              description: "Pipeline review agenda",
+              location: "Board room",
+              htmlLink: "https://calendar.google.com/event/event_1",
               status: "confirmed",
               start: { dateTime: "2026-05-30T18:00:00.000Z" },
               end: { dateTime: "2026-05-30T18:30:00.000Z" },
+              attendees: [
+                { email: "buyer@example.com", responseStatus: "accepted" },
+                { email: "founder@example.com", responseStatus: "accepted" },
+              ],
               updated: "2026-05-30T18:15:00.000Z",
             },
           ],
@@ -171,6 +185,18 @@ describe("google workspace analytics fetcher", () => {
     );
 
     expect(data.calendarEvents.map((event) => event.eventId)).toEqual(["event_1", "event_2"]);
+    expect(data.calendarEvents[0]).toMatchObject({
+      eventId: "event_1",
+      summary: "Pipeline review",
+      description: "Pipeline review agenda",
+      location: "Board room",
+      htmlLink: "https://calendar.google.com/event/event_1",
+      attendeeEmails: ["buyer@example.com", "founder@example.com"],
+      attendees: [
+        { email: "buyer@example.com", responseStatus: "accepted" },
+        { email: "founder@example.com", responseStatus: "accepted" },
+      ],
+    });
     expect(data.emailThreads.map((thread) => thread.threadId)).toEqual(["thread_1", "thread_2"]);
     expect(data.documents.map((document) => document.fileId)).toEqual(["file_1", "file_2"]);
     expect(data._meta).toEqual(expect.objectContaining({

@@ -18,7 +18,7 @@ export default async function DashboardLayout({
   return (
     <SocketProvider>
       <div className="flex h-screen overflow-hidden">
-        <Sidebar />
+        <Sidebar role={session.user.role} />
         <div className="flex flex-1 flex-col overflow-hidden">
           <Header />
           <main className="flex-1 overflow-hidden">{children}</main>

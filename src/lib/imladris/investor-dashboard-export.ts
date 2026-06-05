@@ -1,14 +1,33 @@
 import { normalizeMetricConfidence, normalizeMetricStatus, normalizeMetricWarnings } from "@/lib/imladris/confidence";
+import { getImladrisDashboardDefinition } from "@/lib/imladris/catalog";
 import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
 import { normalizeImladrisObjectType } from "@/lib/imladris/object-types";
 import type { PrismaClientType } from "@/lib/prisma";
 
-const INVESTOR_METRIC_KEYS = [
+const INVESTOR_METRIC_KEYS = getImladrisDashboardDefinition("company")?.metricKeys ?? [
   "revenue.mrr",
+  "revenue.arr",
+  "revenue.subscription_revenue",
+  "revenue.services_revenue",
+  "revenue.active_subscriptions",
+  "revenue.customer_count",
+  "finance.cash_balance",
   "finance.cash_runway_months",
   "finance.net_burn",
+  "finance.expenses",
+  "finance.gross_margin",
   "sales.qualified_pipeline",
-] as const;
+  "sales.demos",
+  "marketing.website_traffic",
+  "marketing.conversion_rate",
+  "marketing.pipeline_efficiency",
+  "product.activation_rate",
+  "customer_success.customer_health",
+  "customer_success.customer_activity",
+  "customer_success.churn_rate",
+  "customer_success.retention_rate",
+  "customer_success.retention_risk",
+];
 const EXPORT_SOURCE = "imladris-investor-dashboard-export";
 const EXPORT_SCHEMA_VERSION = 1;
 const RAW_PROVIDERS = ["STRIPE", "HUBSPOT", "MERCURY", "GOOGLE_WORKSPACE", "SLACK"] as const;
@@ -1244,23 +1263,166 @@ export async function buildInvestorDashboardExport(input: {
     context,
   );
   const mrr = metricPayload(metricsByKey.get("revenue.mrr"));
+  const arr = metricPayload(metricsByKey.get("revenue.arr"));
+  const totalRevenue = metricPayload(metricsByKey.get("revenue.total_revenue"));
+  const subscriptionRevenue = metricPayload(metricsByKey.get("revenue.subscription_revenue"));
+  const servicesRevenue = metricPayload(metricsByKey.get("revenue.services_revenue"));
+  const activeSubscriptions = metricPayload(metricsByKey.get("revenue.active_subscriptions"));
+  const customerCount = metricPayload(metricsByKey.get("revenue.customer_count"));
+  const cashBalance = metricPayload(metricsByKey.get("finance.cash_balance"));
   const runway = metricPayload(metricsByKey.get("finance.cash_runway_months"));
   const netBurn = metricPayload(metricsByKey.get("finance.net_burn"));
+  const expenses = metricPayload(metricsByKey.get("finance.expenses"));
+  const grossMargin = metricPayload(metricsByKey.get("finance.gross_margin"));
   const pipeline = metricPayload(metricsByKey.get("sales.qualified_pipeline"));
-  const currency = currencyFrom(mrr, runway, netBurn, pipeline);
+  const demos = metricPayload(metricsByKey.get("sales.demos"));
+  const websiteTraffic = metricPayload(metricsByKey.get("marketing.website_traffic"));
+  const conversionRate = metricPayload(metricsByKey.get("marketing.conversion_rate"));
+  const pipelineEfficiency = metricPayload(metricsByKey.get("marketing.pipeline_efficiency"));
+  const activationRate = metricPayload(metricsByKey.get("product.activation_rate"));
+  const customerHealth = metricPayload(metricsByKey.get("customer_success.customer_health"));
+  const customerActivity = metricPayload(metricsByKey.get("customer_success.customer_activity"));
+  const churnRate = metricPayload(metricsByKey.get("customer_success.churn_rate"));
+  const retentionRate = metricPayload(metricsByKey.get("customer_success.retention_rate"));
+  const retentionRisk = metricPayload(metricsByKey.get("customer_success.retention_risk"));
+  const currency = currencyFrom(
+    mrr,
+    arr,
+    totalRevenue,
+    subscriptionRevenue,
+    servicesRevenue,
+    cashBalance,
+    runway,
+    netBurn,
+    expenses,
+    pipeline,
+  );
+  const rawActiveSubscriptions = activeSubscriptionCount(dedupedRawRecords, input.fromDate, input.toDate);
+  const subscriptionRevenueAmount = numberFromFields(subscriptionRevenue, "amount", "arr") ?? 0;
+  const servicesRevenueAmount = numberFromFields(servicesRevenue, "amount") ?? 0;
 
   return {
     summary: {
-      arr: roundMoney(numberFrom(mrr.arr) ?? (numberFrom(mrr.amount) ?? 0) * 12),
+      arr: roundMoney(
+        numberFromFields(arr, "amount", "arr") ??
+          numberFrom(mrr.arr) ??
+          (numberFrom(mrr.amount) ?? 0) * 12,
+      ),
       mrr: roundMoney(numberFrom(mrr.amount) ?? 0),
-      activeSubscriptions: activeSubscriptionCount(dedupedRawRecords, input.fromDate, input.toDate),
+      totalRevenue: roundMoney(
+        numberFromFields(totalRevenue, "amount", "totalRevenue", "total_revenue") ??
+          subscriptionRevenueAmount + servicesRevenueAmount,
+      ),
+      subscriptionRevenue: roundMoney(subscriptionRevenueAmount),
+      servicesRevenue: roundMoney(servicesRevenueAmount),
+      activeSubscriptions: countFromFields(activeSubscriptions, "count", "activeSubscriptions", "active_subscriptions") ?? rawActiveSubscriptions,
+      stripeSubscriptions:
+        countFromFields(activeSubscriptions, "stripeSubscriptions", "stripe_subscriptions") ?? 0,
+      hubspotOnlySubscriptions:
+        countFromFields(activeSubscriptions, "hubspotOnlySubscriptions", "hubspot_only_subscriptions") ?? 0,
+      customers: countFromFields(customerCount, "count", "activeCustomers", "active_customers") ?? 0,
+      stripeCustomers:
+        countFromFields(customerCount, "stripeCustomers", "stripe_customers") ?? 0,
+      hubspotOnlyCustomers:
+        countFromFields(customerCount, "hubspotOnlyCustomers", "hubspot_only_customers") ?? 0,
       runwayMonths: numberFrom(runway.months) ?? 0,
-      cashBalance: roundMoney(numberFromFields(runway, "cashBalance", "cash_balance") ?? 0),
+      cashBalance: roundMoney(
+        numberFromFields(cashBalance, "amount", "cashBalance", "cash_balance") ??
+          numberFromFields(runway, "cashBalance", "cash_balance") ??
+          0,
+      ),
       netBurn: roundMoney(
         numberFromFields(netBurn, "amount", "netBurn", "net_burn") ??
           numberFromFields(runway, "netBurn", "net_burn") ??
           0,
       ),
+      cashOutflow:
+        roundMoney(numberFromFields(netBurn, "cashOutflow", "cash_outflow") ?? 0),
+      cashInflow:
+        roundMoney(numberFromFields(netBurn, "cashInflow", "cash_inflow") ?? 0),
+      expenses: roundMoney(numberFromFields(expenses, "amount", "expenses") ?? 0),
+      grossMargin: numberFromFields(grossMargin, "rate", "grossMargin", "gross_margin") ?? 0,
+      grossMarginRevenue:
+        roundMoney(numberFromFields(grossMargin, "revenue", "grossMarginRevenue", "gross_margin_revenue") ?? 0),
+      costOfGoodsSold:
+        roundMoney(numberFromFields(grossMargin, "costOfGoodsSold", "cost_of_goods_sold", "cogs") ?? 0),
+      qualifiedPipelineCount:
+        countFromFields(pipeline, "qualifiedDealCount", "qualified_deal_count") ?? 0,
+      collaborationTouchCount:
+        countFromFields(pipeline, "collaborationTouchCount", "collaboration_touch_count") ?? 0,
+      collaborationCoverage: roundRatio(
+        ratioFrom(pipeline.collaborationCoverage ?? pipeline.collaboration_coverage) ?? 0,
+      ),
+      demos: countFromFields(demos, "count", "demos", "scheduledDemos", "scheduled_demos") ?? 0,
+      scheduledDemos:
+        countFromFields(demos, "scheduledDemos", "scheduled_demos") ?? 0,
+      requestedDemos:
+        countFromFields(demos, "requestedDemos", "requested_demos") ?? 0,
+      hubspotDemoDeals:
+        countFromFields(demos, "hubspotDemoDeals", "hubspot_demo_deals") ?? 0,
+      hubspotDemoMeetings:
+        countFromFields(demos, "hubspotDemoMeetings", "hubspot_demo_meetings") ?? 0,
+      calendarDemoEvents:
+        countFromFields(demos, "calendarDemoEvents", "calendar_demo_events") ?? 0,
+      webflowDemoRequests:
+        countFromFields(demos, "webflowDemoRequests", "webflow_demo_requests") ?? 0,
+      websiteTraffic: countFromFields(websiteTraffic, "count", "websiteSessions", "website_sessions") ?? 0,
+      websiteSessions:
+        countFromFields(websiteTraffic, "websiteSessions", "website_sessions", "sessions") ?? 0,
+      organicTraffic:
+        countFromFields(websiteTraffic, "organicTraffic", "organic_traffic") ?? 0,
+      searchClicks:
+        countFromFields(websiteTraffic, "searchClicks", "search_clicks") ?? 0,
+      searchImpressions:
+        countFromFields(websiteTraffic, "searchImpressions", "search_impressions") ?? 0,
+      conversionRate: numberFromFields(conversionRate, "rate", "conversionRate", "conversion_rate") ?? 0,
+      conversions: countFromFields(conversionRate, "conversions", "conversionCount", "conversion_count") ?? 0,
+      webflowFormSubmissions:
+        countFromFields(
+          conversionRate,
+          "webflowFormSubmissions",
+          "webflow_form_submissions",
+          "formSubmissions",
+          "form_submissions",
+        ) ?? 0,
+      hubspotLeadConversions:
+        countFromFields(
+          conversionRate,
+          "hubspotLeadConversions",
+          "hubspot_lead_conversions",
+          "hubspotConversions",
+          "hubspot_conversions",
+        ) ?? 0,
+      identifiedVisitors:
+        countFromFields(conversionRate, "identifiedVisitors", "identified_visitors") ?? 0,
+      pipelineEfficiency:
+        numberFromFields(pipelineEfficiency, "ratio", "rate", "pipelineEfficiency", "pipeline_efficiency") ?? 0,
+      acquisitionSpend:
+        roundMoney(numberFromFields(pipelineEfficiency, "acquisitionSpend", "acquisition_spend") ?? 0),
+      activationRate:
+        numberFromFields(activationRate, "rate", "activationRate", "activation_rate") ?? 0,
+      activatedAccounts:
+        countFromFields(activationRate, "activatedAccounts", "activated_accounts") ?? 0,
+      eligibleAccounts:
+        countFromFields(activationRate, "eligibleAccounts", "eligible_accounts") ?? 0,
+      customerHealth: numberFromFields(customerHealth, "score", "customerHealth", "customer_health") ?? 0,
+      atRiskAccounts:
+        countFromFields(customerHealth, "atRiskAccounts", "at_risk_accounts") ?? 0,
+      openSupportIssues:
+        countFromFields(customerHealth, "openSupportIssues", "open_support_issues") ?? 0,
+      customerActivity: countFromFields(customerActivity, "count", "customerActivity", "customer_activity") ?? 0,
+      supportInteractions:
+        countFromFields(customerActivity, "supportInteractions", "support_interactions") ?? 0,
+      productUsageRecords:
+        countFromFields(customerActivity, "productUsageRecords", "product_usage_records") ?? 0,
+      collaborationSignals:
+        countFromFields(customerActivity, "collaborationSignals", "collaboration_signals") ?? 0,
+      churnRate: numberFromFields(churnRate, "rate", "churnRate", "churn_rate") ?? 0,
+      retentionRate: numberFromFields(retentionRate, "rate", "retentionRate", "retention_rate") ?? 0,
+      retentionRiskScore:
+        numberFromFields(retentionRisk, "score", "riskScore", "risk_score") ?? 0,
+      retentionRiskAccounts:
+        countFromFields(retentionRisk, "atRiskAccounts", "at_risk_accounts") ?? 0,
       currency,
     },
     weekly: buildWeekly(dedupedRawRecords, input.fromDate, input.toDate),

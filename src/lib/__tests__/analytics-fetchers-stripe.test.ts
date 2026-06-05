@@ -293,6 +293,193 @@ describe("analytics stripe fetcher", () => {
     ]);
   });
 
+  it("fetches invoices and exposes raw Stripe objects for durable Imladris ingestion", async () => {
+    const fromDate = new Date("2026-02-01T00:00:00.000Z");
+    const toDate = new Date("2026-02-28T23:59:59.999Z");
+    const currentStart = String(Math.floor(fromDate.getTime() / 1000));
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+
+      if (url.pathname === "/v1/subscriptions") {
+        const status = url.searchParams.get("status");
+        if (status === "active") {
+          return jsonResponse({
+            data: [
+              {
+                id: "sub_active_1",
+                customer: { id: "cus_active", email: "buyer@example.com" },
+                status: "active",
+                items: {
+                  data: [
+                    {
+                      id: "si_recurring",
+                      price: {
+                        id: "price_recurring",
+                        unit_amount: 12_000,
+                        recurring: { interval: "month", interval_count: 1 },
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+            has_more: false,
+          });
+        }
+        if (status === "canceled") {
+          return jsonResponse({
+            data: [{ id: "sub_canceled_1", customer: "cus_churned", status: "canceled" }],
+            has_more: false,
+          });
+        }
+        return jsonResponse({ data: [], has_more: false });
+      }
+
+      if (url.pathname === "/v1/charges") {
+        const isCurrentRange = url.searchParams.get("created[gte]") === currentStart;
+        return jsonResponse({
+          data: isCurrentRange
+            ? [{ id: "ch_current_1", amount: 12_000, created: Number(currentStart), status: "succeeded" }]
+            : [],
+          has_more: false,
+        });
+      }
+
+      if (url.pathname === "/v1/invoices") {
+        return jsonResponse({
+          data: [
+            {
+              id: "in_services_1",
+              customer: { id: "cus_active", email: "buyer@example.com" },
+              status: "paid",
+              created: Number(currentStart),
+              amount_paid: 75_000,
+              currency: "usd",
+              lines: {
+                data: [
+                  {
+                    id: "il_implementation_1",
+                    amount: 75_000,
+                    description: "Implementation services",
+                    price: { id: "price_implementation", type: "one_time" },
+                  },
+                ],
+              },
+            },
+          ],
+          has_more: false,
+        });
+      }
+
+      if (url.pathname === "/v1/disputes") {
+        return jsonResponse({
+          data: [
+            {
+              id: "dp_lost_1",
+              charge: "ch_current_1",
+              amount: 12_000,
+              currency: "usd",
+              status: "lost",
+              created: Number(currentStart),
+              reason: "fraudulent",
+            },
+          ],
+          has_more: false,
+        });
+      }
+
+      if (url.pathname === "/v1/refunds") {
+        return jsonResponse({
+          data: [
+            {
+              id: "re_1",
+              charge: "ch_current_1",
+              payment_intent: "pi_current_1",
+              amount: 2_500,
+              currency: "usd",
+              status: "succeeded",
+              created: Number(currentStart),
+              reason: "requested_by_customer",
+            },
+          ],
+          has_more: false,
+        });
+      }
+
+      return jsonResponse({ error: "unexpected request", url: String(url) }, 500);
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchStripeData("sk_test_123", { fromDate, toDate });
+
+    const invoiceRequest = fetchMock.mock.calls
+      .map(([url]) => new URL(String(url)))
+      .find((url) => url.pathname === "/v1/invoices");
+    expect(invoiceRequest?.searchParams.get("limit")).toBe("100");
+    expect(invoiceRequest?.searchParams.get("created[gte]")).toBe(currentStart);
+    expect(invoiceRequest?.searchParams.get("expand[]")).toBe("data.customer");
+    expect(invoiceRequest?.searchParams.getAll("expand[]")).toContain("data.lines.data.price.product");
+    const disputeRequest = fetchMock.mock.calls
+      .map(([url]) => new URL(String(url)))
+      .find((url) => url.pathname === "/v1/disputes");
+    expect(disputeRequest?.searchParams.get("limit")).toBe("100");
+    expect(disputeRequest?.searchParams.get("created[gte]")).toBe(currentStart);
+    expect(disputeRequest?.searchParams.getAll("expand[]")).toContain("data.charge");
+    const refundRequest = fetchMock.mock.calls
+      .map(([url]) => new URL(String(url)))
+      .find((url) => url.pathname === "/v1/refunds");
+    expect(refundRequest?.searchParams.get("limit")).toBe("100");
+    expect(refundRequest?.searchParams.get("created[gte]")).toBe(currentStart);
+    expect(refundRequest?.searchParams.getAll("expand[]")).toContain("data.charge");
+    expect(refundRequest?.searchParams.getAll("expand[]")).toContain("data.payment_intent");
+    expect(data.stripeObjects).toEqual({
+      subscriptions: [
+        expect.objectContaining({ id: "sub_active_1", status: "active" }),
+        expect.objectContaining({ id: "sub_canceled_1", status: "canceled" }),
+      ],
+      charges: [expect.objectContaining({ id: "ch_current_1", status: "succeeded" })],
+      previousCharges: [],
+      invoices: [
+        expect.objectContaining({
+          id: "in_services_1",
+          amount_paid: 75_000,
+          lines: {
+            data: [
+              expect.objectContaining({
+                id: "il_implementation_1",
+                description: "Implementation services",
+              }),
+            ],
+          },
+        }),
+      ],
+      disputes: [
+        expect.objectContaining({
+          id: "dp_lost_1",
+          charge: "ch_current_1",
+          status: "lost",
+        }),
+      ],
+      refunds: [
+        expect.objectContaining({
+          id: "re_1",
+          charge: "ch_current_1",
+          payment_intent: "pi_current_1",
+          status: "succeeded",
+        }),
+      ],
+    });
+    expect(data._meta.diagnostics).toEqual(expect.objectContaining({
+      invoicesFetched: 1,
+      invoicesAvailable: true,
+      disputesFetched: 1,
+      disputesAvailable: true,
+      refundsFetched: 1,
+      refundsAvailable: true,
+    }));
+  });
+
   it("preserves Stripe customer charge net amounts when monetary fields arrive as formatted strings", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));

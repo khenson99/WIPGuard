@@ -36,6 +36,28 @@ describe("GET /api/ceo/metrics", () => {
     await expect(response.json()).resolves.toEqual({ error: "Unauthorized" });
   });
 
+  it("blocks investors from internal CEO metric snapshots", async () => {
+    const { auth } = await import("@/lib/auth");
+    const { getAuthenticatedUser } = await import("@/lib/session-user");
+    const { loadCeoMetricSnapshot } = await import("@/lib/ceo/service");
+    const { GET } = await import("@/app/api/ceo/metrics/route");
+
+    vi.mocked(auth).mockResolvedValue({ user: { id: "investor-1", role: "investor" } } as never);
+    vi.mocked(getAuthenticatedUser).mockReturnValue({
+      id: "investor-1",
+      role: "investor",
+      organizationId: "org-1",
+    } as never);
+
+    const response = await GET();
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "Forbidden: investors must use investor-scoped APIs",
+    });
+    expect(loadCeoMetricSnapshot).not.toHaveBeenCalled();
+  });
+
   it("loads trusted CEO metrics for the authenticated organization", async () => {
     const { auth } = await import("@/lib/auth");
     const { getAuthenticatedUser } = await import("@/lib/session-user");

@@ -31,7 +31,53 @@ export interface CeoMetricSnapshotPayload {
 
 export interface CreateCeoReportRunResult extends CeoReportRun {
   id: string | null;
+  boardFinal?: CeoReportBoardFinal | null;
 }
+
+export interface CeoReportBoardFinal {
+  approvedAt: string;
+  approvedById: string;
+  overrideReason: string | null;
+}
+
+export interface MonthlyInvestorReportRunResult {
+  created: boolean;
+  periodStart: string;
+  periodEnd: string;
+  run: CreateCeoReportRunResult;
+}
+
+interface CeoReportRunRow {
+  id: string;
+  packSlug: string;
+  packName: string;
+  generatedAt: Date | string;
+  metricPayload: unknown;
+  deterministicNotes: string[];
+  markdown: string;
+  csv: string;
+  slideJson: unknown;
+  boardFinalAt?: Date | string | null;
+  boardFinalApprovedById?: string | null;
+  boardFinalOverrideReason?: string | null;
+}
+
+type CeoReportRunDelegate = {
+  findFirst(args: {
+    where: Record<string, unknown>;
+    orderBy?: Record<string, "asc" | "desc">;
+    select: Record<keyof CeoReportRunRow, true>;
+  }): Promise<CeoReportRunRow | null>;
+  update(args: {
+    where: { id: string };
+    data: {
+      boardFinalAt: Date;
+      boardFinalApprovedById: string;
+      boardFinalOverrideReason: string | null;
+    };
+    select: Record<keyof CeoReportRunRow, true>;
+  }): Promise<CeoReportRunRow>;
+};
 
 const TRUST_SUMMARY_KEYS: CeoMetricTrustStatus[] = [
   "fresh",
@@ -89,6 +135,78 @@ function metricTrustToDb(status: CeoMetricTrustStatus) {
 
 function audienceToDb(audience: CeoMetricDefinition["ownerAudience"] | CeoReportPack["audience"]) {
   return audience;
+}
+
+const CEO_REPORT_RUN_SELECT: Record<keyof CeoReportRunRow, true> = {
+  id: true,
+  packSlug: true,
+  packName: true,
+  generatedAt: true,
+  metricPayload: true,
+  deterministicNotes: true,
+  markdown: true,
+  csv: true,
+  slideJson: true,
+  boardFinalAt: true,
+  boardFinalApprovedById: true,
+  boardFinalOverrideReason: true,
+};
+
+function boardFinalFromRow(row: CeoReportRunRow): CeoReportBoardFinal | null {
+  if (!row.boardFinalAt || !row.boardFinalApprovedById) return null;
+  return {
+    approvedAt: new Date(row.boardFinalAt).toISOString(),
+    approvedById: row.boardFinalApprovedById,
+    overrideReason: row.boardFinalOverrideReason ?? null,
+  };
+}
+
+function reportRunFromRow(row: CeoReportRunRow): CreateCeoReportRunResult {
+  return {
+    id: row.id,
+    packSlug: row.packSlug,
+    packName: row.packName,
+    generatedAt: new Date(row.generatedAt).toISOString(),
+    metrics: row.metricPayload as unknown as CeoMetricValue[],
+    deterministicNotes: row.deterministicNotes,
+    markdown: row.markdown,
+    csv: row.csv,
+    slideJson: row.slideJson as unknown as CeoReportRun["slideJson"],
+    boardFinal: boardFinalFromRow(row),
+  };
+}
+
+function monthWindow(now = new Date()): { start: Date; end: Date } {
+  return {
+    start: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0)),
+    end: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0, 0)),
+  };
+}
+
+function reportReadinessFromSlideJson(slideJson: unknown): CeoReadiness | null {
+  if (!slideJson || typeof slideJson !== "object" || Array.isArray(slideJson)) return null;
+  const readiness = (slideJson as Record<string, unknown>).readiness;
+  if (!readiness || typeof readiness !== "object" || Array.isArray(readiness)) return null;
+
+  const record = readiness as Record<string, unknown>;
+  if (typeof record.ready !== "boolean" || typeof record.status !== "string") return null;
+
+  return {
+    status: record.status === "board_ready" ? "board_ready" : "not_board_final",
+    ready: record.ready,
+    summary: typeof record.summary === "string" ? record.summary : "",
+    failingGates: Array.isArray(record.failingGates)
+      ? record.failingGates.filter(
+          (gate): gate is CeoReadiness["failingGates"][number] =>
+            Boolean(gate) &&
+            typeof gate === "object" &&
+            !Array.isArray(gate) &&
+            typeof (gate as Record<string, unknown>).metricKey === "string" &&
+            typeof (gate as Record<string, unknown>).label === "string" &&
+            typeof (gate as Record<string, unknown>).reason === "string",
+        )
+      : [],
+  };
 }
 
 function sourceSampleFromSnapshot(snapshot: AnalyticsSnapshotSample): CeoSourceSample {
@@ -215,6 +333,74 @@ function cashBreakdownFromMercury(payload: unknown): {
   return { bankCash, treasuryCash, totalCash };
 }
 
+function subscriptionBreakdownFromSnapshots(latestSnapshots: Map<string, AnalyticsSnapshotSample>) {
+  return buildSubscriptionMrrBreakdown({
+    stripe: latestSnapshots.get("stripe")?.payload,
+    hubspot: latestSnapshots.get("hubspot")?.payload,
+  });
+}
+
+function qualifiedPipelineFromHubSpot(payload: unknown): number | null {
+  const scoreboardPipeline = sumArrayNumber(payload, ["repScoreboard"], "totalPipeline");
+  return (
+    scoreboardPipeline ??
+    getFirstNumber(payload, [
+      ["pipeline", "qualifiedPipelineValue"],
+      ["pipeline", "totalValue"],
+      ["qualifiedPipelineValue"],
+      ["totalPipelineValue"],
+      ["totalValue"],
+    ])
+  );
+}
+
+function demoCountFromSnapshots(latestSnapshots: Map<string, AnalyticsSnapshotSample>): number | null {
+  const hubspot = latestSnapshots.get("hubspot")?.payload;
+  const googleWorkspace = latestSnapshots.get("googleWorkspace")?.payload;
+  const webflow = latestSnapshots.get("webflow")?.payload;
+  const count =
+    (getFirstNumber(hubspot, [["demoCount"], ["demos"], ["meetings", "demos"]]) ?? 0) +
+    (getFirstNumber(googleWorkspace, [["demoMeetings"], ["meetings", "demos"]]) ?? 0) +
+    (getFirstNumber(webflow, [["demoRequests"], ["forms", "demoRequests"]]) ?? 0);
+  return count > 0 ? count : null;
+}
+
+function websiteTrafficFromSnapshots(latestSnapshots: Map<string, AnalyticsSnapshotSample>) {
+  const googleAnalytics = latestSnapshots.get("googleAnalytics")?.payload;
+  const googleSearchConsole = latestSnapshots.get("googleSearchConsole")?.payload;
+  const semrush = latestSnapshots.get("semrush")?.payload;
+  const websiteSessions = getFirstNumber(googleAnalytics, [
+    ["sessions30d"],
+    ["overview", "sessions"],
+    ["sessions"],
+    ["traffic", "sessions"],
+  ]);
+  const organicTraffic = getFirstNumber(semrush, [["organicTraffic"], ["traffic", "organic"]]) ?? 0;
+  const searchClicks = getFirstNumber(googleSearchConsole, [["clicks"], ["search", "clicks"]]) ?? 0;
+  const searchImpressions = getFirstNumber(googleSearchConsole, [["impressions"], ["search", "impressions"]]) ?? 0;
+  const count = (websiteSessions ?? 0) + organicTraffic;
+
+  return {
+    value: count > 0 ? count : null,
+    websiteSessions,
+    organicTraffic,
+    searchClicks,
+    searchImpressions,
+  };
+}
+
+function paidSpendFromSnapshots(latestSnapshots: Map<string, AnalyticsSnapshotSample>): number {
+  return ["googleAds", "metaAds", "redditAds"].reduce((sum, key) => {
+    const value = getFirstNumber(latestSnapshots.get(key)?.payload, [
+      ["totalSpend30d"],
+      ["spend"],
+      ["cost"],
+      ["summary", "spend"],
+    ]);
+    return sum + (value ?? 0);
+  }, 0);
+}
+
 function derivedSourceSample(input: {
   sourceKey: string;
   sourceId: string;
@@ -295,10 +481,72 @@ const CEO_METRIC_CALCULATORS: Record<string, CeoMetricCalculator> = {
       ],
     };
   },
-  "finance.mrr": ({ latestSnapshots }) => {
+  "finance.cash_runway_months": ({ latestSnapshots }) => {
+    const mercury = latestSnapshots.get("mercury")?.payload;
+    const cash = cashBreakdownFromMercury(mercury);
+    const netBurn = getFirstNumber(mercury, [
+      ["cashFlow", "netBurn"],
+      ["cashFlow", "burnRate"],
+      ["netBurn"],
+      ["burnRate"],
+    ]);
+    return {
+      value: cash.totalCash !== null && netBurn && netBurn > 0 ? Math.round((cash.totalCash / netBurn) * 100) / 100 : null,
+      priorValue: null,
+      delta: null,
+      details: [
+        { key: "cashBalance", label: "Cash balance", value: cash.totalCash, unit: "currency" },
+        { key: "netBurn", label: "Net burn", value: netBurn, unit: "currency" },
+      ],
+    };
+  },
+  "finance.net_burn": ({ latestSnapshots }) => {
+    const mercury = latestSnapshots.get("mercury")?.payload;
+    const explicitNetBurn = getFirstNumber(mercury, [
+      ["cashFlow", "netBurn"],
+      ["cashFlow", "burnRate"],
+      ["netBurn"],
+      ["burnRate"],
+    ]);
+    const cashInflow = getFirstNumber(mercury, [["cashFlow", "inflows30d"], ["inflows30d"]]) ?? 0;
+    const cashOutflow = getFirstNumber(mercury, [["cashFlow", "outflows30d"], ["outflows30d"]]) ?? 0;
+    return {
+      value: explicitNetBurn ?? (cashOutflow > 0 || cashInflow > 0 ? cashOutflow - cashInflow : null),
+      priorValue: null,
+      delta: null,
+      details: [
+        { key: "cashInflow", label: "Cash inflow", value: cashInflow, unit: "currency" },
+        { key: "cashOutflow", label: "Cash outflow", value: cashOutflow, unit: "currency" },
+      ],
+    };
+  },
+  "finance.expenses": ({ latestSnapshots }) => {
+    const mercury = latestSnapshots.get("mercury")?.payload;
+    const expenses = getFirstNumber(mercury, [
+      ["cashFlow", "expenses"],
+      ["cashFlow", "outflows30d"],
+      ["expenses"],
+      ["outflows30d"],
+    ]);
+    return { value: expenses, priorValue: null, delta: null };
+  },
+  "finance.gross_margin": ({ latestSnapshots }) => {
     const stripe = latestSnapshots.get("stripe")?.payload;
-    const hubspot = latestSnapshots.get("hubspot")?.payload;
-    const breakdown = buildSubscriptionMrrBreakdown({ stripe, hubspot });
+    const mercury = latestSnapshots.get("mercury")?.payload;
+    const revenue = getFirstNumber(stripe, [["revenue", "mrr"], ["mrr"]]);
+    const cogs = getFirstNumber(mercury, [["cashFlow", "costOfGoodsSold"], ["costOfGoodsSold"]]) ?? 0;
+    return {
+      value: revenue && revenue > 0 ? Math.round(((revenue - cogs) / revenue) * 10_000) / 100 : null,
+      priorValue: null,
+      delta: null,
+      details: [
+        { key: "revenue", label: "Revenue", value: revenue, unit: "currency" },
+        { key: "costOfGoodsSold", label: "Cost of goods sold", value: cogs, unit: "currency" },
+      ],
+    };
+  },
+  "finance.mrr": ({ latestSnapshots }) => {
+    const breakdown = subscriptionBreakdownFromSnapshots(latestSnapshots);
     return {
       value: breakdown.totalMrr,
       priorValue: null,
@@ -321,21 +569,92 @@ const CEO_METRIC_CALCULATORS: Record<string, CeoMetricCalculator> = {
       ],
     };
   },
-  "sales.open_pipeline_value": ({ latestSnapshots }) => {
-    const hubspot = latestSnapshots.get("hubspot")?.payload;
-    const scoreboardPipeline = sumArrayNumber(hubspot, ["repScoreboard"], "totalPipeline");
+  "revenue.mrr": ({ latestSnapshots }) => {
+    const breakdown = subscriptionBreakdownFromSnapshots(latestSnapshots);
     return {
-      value:
-        scoreboardPipeline ??
-        getFirstNumber(hubspot, [
-          ["pipeline", "totalValue"],
-          ["totalPipelineValue"],
-          ["totalValue"],
-        ]),
+      value: breakdown.totalMrr,
+      priorValue: null,
+      delta: breakdown.stripeMrrChange,
+      details: [
+        { key: "stripeMrr", label: "Stripe MRR", value: breakdown.stripeMrr, unit: "currency" },
+        {
+          key: "hubspotOnlySubscriptionMrr",
+          label: "HubSpot-only subscription MRR",
+          value: breakdown.hubspotOnlySubscriptionMrr,
+          unit: "currency",
+        },
+        {
+          key: "excludedLinkedHubspotSubscriptionMrr",
+          label: "Linked HubSpot subscription MRR excluded",
+          value: breakdown.excludedLinkedHubspotSubscriptionMrr,
+          unit: "currency",
+        },
+        { key: "totalMrr", label: "Total MRR", value: breakdown.totalMrr, unit: "currency" },
+      ],
+    };
+  },
+  "revenue.arr": ({ latestSnapshots }) => {
+    const breakdown = subscriptionBreakdownFromSnapshots(latestSnapshots);
+    return {
+      value: breakdown.totalArr,
+      priorValue: null,
+      delta: breakdown.stripeMrrChange === null ? null : breakdown.stripeMrrChange * 12,
+    };
+  },
+  "revenue.subscription_revenue": ({ latestSnapshots }) => {
+    const breakdown = subscriptionBreakdownFromSnapshots(latestSnapshots);
+    return {
+      value: breakdown.totalArr,
+      priorValue: null,
+      delta: breakdown.stripeMrrChange === null ? null : breakdown.stripeMrrChange * 12,
+    };
+  },
+  "revenue.services_revenue": ({ latestSnapshots }) => {
+    const hubspot = latestSnapshots.get("hubspot")?.payload;
+    return {
+      value: getFirstNumber(hubspot, [["servicesRevenue"], ["revenue", "services"]]),
       priorValue: null,
       delta: null,
     };
   },
+  "revenue.active_subscriptions": ({ latestSnapshots }) => {
+    const breakdown = subscriptionBreakdownFromSnapshots(latestSnapshots);
+    return {
+      value: breakdown.mergedActiveSubscriptions,
+      priorValue: null,
+      delta: null,
+      details: [
+        { key: "stripeActiveSubscriptions", label: "Stripe active subscriptions", value: breakdown.stripeActiveSubscriptions, unit: "count" },
+        { key: "hubspotOnlyActiveSubscriptions", label: "HubSpot-only active subscriptions", value: breakdown.hubspotOnlyActiveSubscriptions, unit: "count" },
+      ],
+    };
+  },
+  "revenue.customer_count": ({ latestSnapshots }) => {
+    const breakdown = subscriptionBreakdownFromSnapshots(latestSnapshots);
+    return {
+      value: breakdown.mergedActiveSubscriptions,
+      priorValue: null,
+      delta: null,
+    };
+  },
+  "sales.open_pipeline_value": ({ latestSnapshots }) => {
+    const hubspot = latestSnapshots.get("hubspot")?.payload;
+    return {
+      value: qualifiedPipelineFromHubSpot(hubspot),
+      priorValue: null,
+      delta: null,
+    };
+  },
+  "sales.qualified_pipeline": ({ latestSnapshots }) => ({
+    value: qualifiedPipelineFromHubSpot(latestSnapshots.get("hubspot")?.payload),
+    priorValue: null,
+    delta: null,
+  }),
+  "sales.demos": ({ latestSnapshots }) => ({
+    value: demoCountFromSnapshots(latestSnapshots),
+    priorValue: null,
+    delta: null,
+  }),
   "retention.at_risk_accounts": ({ retentionMetric }) => ({
     value: retentionMetric.atRiskAccounts,
     priorValue: null,
@@ -349,6 +668,47 @@ const CEO_METRIC_CALCULATORS: Record<string, CeoMetricCalculator> = {
       delta: null,
     };
   },
+  "customer_success.customer_health": ({ latestSnapshots, retentionMetric }) => {
+    const pylon = latestSnapshots.get("pylon")?.payload;
+    const openSupportIssues = getFirstNumber(pylon, [["openIssues"], ["openConversations"], ["summary", "openIssues"]]) ?? 0;
+    const risk = (retentionMetric.atRiskAccounts ?? 0) * 10 + openSupportIssues * 5;
+    return {
+      value: Math.max(0, 100 - risk),
+      priorValue: null,
+      delta: null,
+      details: [
+        { key: "atRiskAccounts", label: "At-risk accounts", value: retentionMetric.atRiskAccounts, unit: "count" },
+        { key: "openSupportIssues", label: "Open support issues", value: openSupportIssues, unit: "count" },
+      ],
+    };
+  },
+  "customer_success.customer_activity": ({ latestSnapshots }) => {
+    const posthog = latestSnapshots.get("posthog")?.payload;
+    const pylon = latestSnapshots.get("pylon")?.payload;
+    const slack = latestSnapshots.get("slack")?.payload;
+    const googleWorkspace = latestSnapshots.get("googleWorkspace")?.payload;
+    const count =
+      (getFirstNumber(posthog, [["activeAccounts30d"], ["activeUsers30d"], ["activatedAccounts30d"]]) ?? 0) +
+      (getFirstNumber(pylon, [["openIssues"], ["openConversations"], ["summary", "openIssues"]]) ?? 0) +
+      (getFirstNumber(slack, [["customerMessages30d"], ["messages30d"]]) ?? 0) +
+      (getFirstNumber(googleWorkspace, [["customerMeetings30d"], ["meetings30d"]]) ?? 0);
+    return { value: count > 0 ? count : null, priorValue: null, delta: null };
+  },
+  "customer_success.churn_rate": ({ latestSnapshots }) => ({
+    value: getFirstNumber(latestSnapshots.get("hubspot")?.payload, [["churnRate"], ["retention", "churnRate"]]),
+    priorValue: null,
+    delta: null,
+  }),
+  "customer_success.retention_rate": ({ latestSnapshots }) => ({
+    value: getFirstNumber(latestSnapshots.get("hubspot")?.payload, [["retentionRate"], ["retention", "retentionRate"]]),
+    priorValue: null,
+    delta: null,
+  }),
+  "customer_success.retention_risk": ({ retentionMetric }) => ({
+    value: retentionMetric.atRiskAccounts,
+    priorValue: null,
+    delta: null,
+  }),
   "website.sessions": ({ latestSnapshots }) => {
     const googleAnalytics = latestSnapshots.get("googleAnalytics")?.payload;
     return {
@@ -362,17 +722,61 @@ const CEO_METRIC_CALCULATORS: Record<string, CeoMetricCalculator> = {
       delta: null,
     };
   },
+  "marketing.website_traffic": ({ latestSnapshots }) => {
+    const traffic = websiteTrafficFromSnapshots(latestSnapshots);
+    return {
+      value: traffic.value,
+      priorValue: null,
+      delta: null,
+      details: [
+        { key: "websiteSessions", label: "Website sessions", value: traffic.websiteSessions, unit: "count" },
+        { key: "organicTraffic", label: "Organic traffic", value: traffic.organicTraffic, unit: "count" },
+        { key: "searchClicks", label: "Search clicks", value: traffic.searchClicks, unit: "count" },
+        { key: "searchImpressions", label: "Search impressions", value: traffic.searchImpressions, unit: "count" },
+      ],
+    };
+  },
+  "marketing.conversion_rate": ({ latestSnapshots }) => {
+    const traffic = websiteTrafficFromSnapshots(latestSnapshots);
+    const webflow = latestSnapshots.get("webflow")?.payload;
+    const submissions = getFirstNumber(webflow, [["formSubmissions"], ["demoRequests"], ["forms", "submissions"]]);
+    return {
+      value: traffic.websiteSessions && submissions !== null ? Math.round((submissions / traffic.websiteSessions) * 10_000) / 100 : null,
+      priorValue: null,
+      delta: null,
+      details: [
+        { key: "conversions", label: "Conversions", value: submissions, unit: "count" },
+        { key: "websiteSessions", label: "Website sessions", value: traffic.websiteSessions, unit: "count" },
+      ],
+    };
+  },
   "social.paid_spend": ({ latestSnapshots }) => {
-    const spend = ["googleAds", "metaAds", "redditAds"].reduce((sum, key) => {
-      const value = getFirstNumber(latestSnapshots.get(key)?.payload, [
-        ["totalSpend30d"],
-        ["spend"],
-        ["cost"],
-        ["summary", "spend"],
-      ]);
-      return sum + (value ?? 0);
-    }, 0);
+    const spend = paidSpendFromSnapshots(latestSnapshots);
     return { value: spend > 0 ? spend : null, priorValue: null, delta: null };
+  },
+  "marketing.pipeline_efficiency": ({ latestSnapshots }) => {
+    const pipeline = qualifiedPipelineFromHubSpot(latestSnapshots.get("hubspot")?.payload);
+    const spend = paidSpendFromSnapshots(latestSnapshots);
+    return {
+      value: pipeline !== null && spend > 0 ? Math.round((pipeline / spend) * 100) / 100 : null,
+      priorValue: null,
+      delta: null,
+      details: [
+        { key: "qualifiedPipeline", label: "Qualified pipeline", value: pipeline, unit: "currency" },
+        { key: "acquisitionSpend", label: "Acquisition spend", value: spend, unit: "currency" },
+      ],
+    };
+  },
+  "product.activation_rate": ({ latestSnapshots }) => {
+    const posthog = latestSnapshots.get("posthog")?.payload;
+    const hubspot = latestSnapshots.get("hubspot")?.payload;
+    const activated = getFirstNumber(posthog, [["activatedAccounts30d"], ["activation", "activatedAccounts"]]);
+    const eligible = getFirstNumber(hubspot, [["eligibleAccounts"], ["accounts", "eligible"]]);
+    return {
+      value: activated !== null && eligible && eligible > 0 ? Math.round((activated / eligible) * 10_000) / 100 : activated,
+      priorValue: null,
+      delta: null,
+    };
   },
 };
 
@@ -732,6 +1136,52 @@ export async function createCeoReportRun(input: {
   return {
     ...run,
     id: persisted.id,
+    boardFinal: null,
+  };
+}
+
+export async function createMonthlyInvestorReportRun(input: {
+  userId: string;
+  organizationId?: string | null;
+  now?: Date;
+}): Promise<MonthlyInvestorReportRunResult> {
+  const { start, end } = monthWindow(input.now);
+  const existing = await (prisma.ceoReportRun as unknown as CeoReportRunDelegate).findFirst({
+    where: {
+      packSlug: "investor-update",
+      generatedAt: {
+        gte: start,
+        lt: end,
+      },
+      OR: [
+        { userId: input.userId },
+        ...(input.organizationId ? [{ organizationId: input.organizationId }] : []),
+      ],
+    },
+    orderBy: { generatedAt: "desc" },
+    select: CEO_REPORT_RUN_SELECT,
+  });
+
+  if (existing) {
+    return {
+      created: false,
+      periodStart: start.toISOString(),
+      periodEnd: end.toISOString(),
+      run: reportRunFromRow(existing),
+    };
+  }
+
+  const run = await createCeoReportRun({
+    userId: input.userId,
+    organizationId: input.organizationId,
+    packSlug: "investor-update",
+  });
+
+  return {
+    created: true,
+    periodStart: start.toISOString(),
+    periodEnd: end.toISOString(),
+    run,
   };
 }
 
@@ -740,7 +1190,7 @@ export async function getCeoReportRun(input: {
   organizationId?: string | null;
   runId: string;
 }): Promise<CreateCeoReportRunResult | null> {
-  const row = await prisma.ceoReportRun.findFirst({
+  const row = await (prisma.ceoReportRun as unknown as CeoReportRunDelegate).findFirst({
     where: {
       id: input.runId,
       OR: [
@@ -748,18 +1198,48 @@ export async function getCeoReportRun(input: {
         ...(input.organizationId ? [{ organizationId: input.organizationId }] : []),
       ],
     },
+    select: CEO_REPORT_RUN_SELECT,
   });
   if (!row) return null;
 
-  return {
-    id: row.id,
-    packSlug: row.packSlug,
-    packName: row.packName,
-    generatedAt: row.generatedAt.toISOString(),
-    metrics: row.metricPayload as unknown as CeoMetricValue[],
-    deterministicNotes: row.deterministicNotes,
-    markdown: row.markdown,
-    csv: row.csv,
-    slideJson: row.slideJson as unknown as CeoReportRun["slideJson"],
-  };
+  return reportRunFromRow(row);
+}
+
+export async function approveCeoReportRun(input: {
+  userId: string;
+  organizationId?: string | null;
+  runId: string;
+  overrideReason?: string | null;
+}): Promise<CreateCeoReportRunResult> {
+  const overrideReason =
+    typeof input.overrideReason === "string" && input.overrideReason.trim()
+      ? input.overrideReason.trim()
+      : null;
+  const existing = await (prisma.ceoReportRun as unknown as CeoReportRunDelegate).findFirst({
+    where: {
+      id: input.runId,
+      ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+    },
+    select: CEO_REPORT_RUN_SELECT,
+  });
+  if (!existing) {
+    throw new Error("CEO report run not found");
+  }
+
+  const readiness = reportReadinessFromSlideJson(existing.slideJson);
+  if (readiness?.ready !== true && !overrideReason) {
+    throw new Error("Board-final approval requires board-ready report or override reason");
+  }
+
+  const updated = await (prisma.ceoReportRun as unknown as CeoReportRunDelegate).update({
+    where: { id: input.runId },
+    data: {
+      boardFinalAt: new Date(),
+      boardFinalApprovedById: input.userId,
+      boardFinalOverrideReason: overrideReason,
+    },
+    select: CEO_REPORT_RUN_SELECT,
+  });
+
+  return reportRunFromRow(updated);
 }

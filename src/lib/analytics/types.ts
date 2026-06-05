@@ -112,6 +112,50 @@ export interface HubSpotCollectedFormsData {
   contactRequestSubmissions: number;
 }
 
+export interface HubSpotMeetingRecord {
+  meetingId: string;
+  title: string | null;
+  body: string | null;
+  outcome: string | null;
+  ownerId: string | null;
+  startedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  contactIds: string[];
+  dealIds: string[];
+}
+
+export interface HubSpotCompanyRecord {
+  companyId: string;
+  name: string | null;
+  domain: string | null;
+  industry: string | null;
+  lifecycleStage: string | null;
+  employeeCount: number | null;
+  annualRevenue: number | null;
+  ownerId: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface HubSpotTicketRecord {
+  ticketId: string;
+  subject: string | null;
+  content: string | null;
+  pipelineId: string | null;
+  stageId: string | null;
+  priority: string | null;
+  category: string | null;
+  sourceType: string | null;
+  ownerId: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  closedAt: string | null;
+  companyIds: string[];
+  contactIds: string[];
+  dealIds: string[];
+}
+
 export interface HubSpotRepScoreboardRow {
   ownerId: string | null;
   ownerName: string;
@@ -164,6 +208,9 @@ export interface ContactMetrics {
 export interface HubSpotData {
   funnel: FunnelMetrics;
   collectedForms?: HubSpotCollectedFormsData;
+  meetings?: HubSpotMeetingRecord[];
+  companies?: HubSpotCompanyRecord[];
+  tickets?: HubSpotTicketRecord[];
   contacts: ContactMetrics;
   repScoreboard?: HubSpotRepScoreboardRow[];
   pipelineDetected?: { pipelineId: string; dealCount: number };
@@ -412,11 +459,21 @@ export interface RevenueTrend {
   revenue: number;
 }
 
+export interface StripeObjectDetails {
+  subscriptions: Record<string, unknown>[];
+  charges: Record<string, unknown>[];
+  previousCharges: Record<string, unknown>[];
+  invoices: Record<string, unknown>[];
+  disputes: Record<string, unknown>[];
+  refunds: Record<string, unknown>[];
+}
+
 export interface StripeData {
   revenue: RevenueMetrics;
   subscriptions: SubscriptionMetrics;
   payments: PaymentMetrics;
   revenueTrend: RevenueTrend[];
+  stripeObjects?: StripeObjectDetails;
   _meta: AnalyticsTimestamp;
 }
 
@@ -777,6 +834,15 @@ export interface WebflowFormEntry {
   count: number;
 }
 
+export interface WebflowFormSubmissionDetail {
+  submissionId: string | null;
+  formId: string | null;
+  formName: string;
+  submittedAt: string | null;
+  pageUrl: string | null;
+  fields: Record<string, unknown>;
+}
+
 export interface WebflowPageDetail {
   id: string;
   title: string;
@@ -824,6 +890,7 @@ export interface WebflowData {
   totalPages: number;
   totalCollections: number;
   formSubmissions: WebflowFormEntry[];
+  formSubmissionDetails: WebflowFormSubmissionDetail[];
   customDomains: string[];
 
   publishedPages: number;

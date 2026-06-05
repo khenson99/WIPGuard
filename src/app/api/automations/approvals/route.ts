@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { WorkflowApprovalStatus } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
+import { investorForbiddenResponse } from "@/lib/investor/api-guards";
 import { getAppRole } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 
@@ -12,6 +13,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const investorDenied = investorForbiddenResponse(session.user.role);
+    if (investorDenied) return investorDenied;
 
     const role = await getAppRole(session.user.id);
     const mineOnly = request.nextUrl.searchParams.get("mine") === "true";

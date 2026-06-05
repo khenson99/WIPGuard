@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { assertCanViewWorkflow } from "@/lib/automations/service";
+import { investorForbiddenResponse } from "@/lib/investor/api-guards";
 import { prisma } from "@/lib/prisma";
 import { getAuthenticatedUser } from "@/lib/session-user";
 
@@ -20,6 +21,8 @@ export async function GET(
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const investorDenied = investorForbiddenResponse(user.role);
+    if (investorDenied) return investorDenied;
 
     const { runId } = await context.params;
     // Automation run relations exist at runtime, but the generated Prisma types for

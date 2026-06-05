@@ -33,7 +33,9 @@ function toRoleArray(input: unknown, fallback: AppRole[]): AppRole[] {
   if (!Array.isArray(input)) return fallback;
   const mapped = input
     .map((value) => (typeof value === "string" ? value.trim().toLowerCase() : ""))
-    .filter((value): value is AppRole => value === "admin" || value === "member" || value === "observer");
+    .filter((value): value is AppRole =>
+      value === "admin" || value === "member" || value === "observer" || value === "investor"
+    );
   return mapped.length > 0 ? Array.from(new Set(mapped)) : fallback;
 }
 

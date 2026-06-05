@@ -3,7 +3,8 @@ export type WorkspaceId =
   | "goals"
   | "metrics"
   | "reports"
-  | "pipelines";
+  | "pipelines"
+  | "investor";
 
 export interface WorkspaceNavChildItem {
   id: string;

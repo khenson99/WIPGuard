@@ -37,6 +37,15 @@ function createPipelineResponse() {
 function createHubSpotFetchMock(input: {
   activeDeals?: unknown[];
   archivedDeals?: unknown[];
+  meetings?: unknown[];
+  meetingsPages?: Record<string, unknown>;
+  meetingsStatus?: number;
+  companies?: unknown[];
+  companyPages?: Record<string, unknown>;
+  companiesStatus?: number;
+  tickets?: unknown[];
+  ticketPages?: Record<string, unknown>;
+  ticketsStatus?: number;
   totalContacts?: number;
   owners?: unknown[];
   ownerV3Status?: number;
@@ -61,6 +70,45 @@ function createHubSpotFetchMock(input: {
       const archived = parsed.searchParams.get("archived") === "true";
       return jsonResponse({
         results: archived ? input.archivedDeals ?? [] : input.activeDeals ?? [],
+      });
+    }
+
+    if (parsed.pathname === "/crm/v3/objects/meetings") {
+      if (input.meetingsStatus && input.meetingsStatus >= 400) {
+        return jsonResponse({ error: "meetings unavailable" }, input.meetingsStatus);
+      }
+      if (input.meetingsPages) {
+        const after = parsed.searchParams.get("after") ?? "initial";
+        return jsonResponse(input.meetingsPages[after] ?? { results: [] });
+      }
+      return jsonResponse({
+        results: input.meetings ?? [],
+      });
+    }
+
+    if (parsed.pathname === "/crm/v3/objects/companies") {
+      if (input.companiesStatus && input.companiesStatus >= 400) {
+        return jsonResponse({ error: "companies unavailable" }, input.companiesStatus);
+      }
+      if (input.companyPages) {
+        const after = parsed.searchParams.get("after") ?? "initial";
+        return jsonResponse(input.companyPages[after] ?? { results: [] });
+      }
+      return jsonResponse({
+        results: input.companies ?? [],
+      });
+    }
+
+    if (parsed.pathname === "/crm/v3/objects/tickets") {
+      if (input.ticketsStatus && input.ticketsStatus >= 400) {
+        return jsonResponse({ error: "tickets unavailable" }, input.ticketsStatus);
+      }
+      if (input.ticketPages) {
+        const after = parsed.searchParams.get("after") ?? "initial";
+        return jsonResponse(input.ticketPages[after] ?? { results: [] });
+      }
+      return jsonResponse({
+        results: input.tickets ?? [],
       });
     }
 
@@ -155,6 +203,182 @@ describe("analytics hubspot fetcher", () => {
     expect(String(dealsRequest?.[0] ?? "")).toContain("limit=50");
     expect(data.pipelineStageLabelsSource).toBe("api");
     expect(data.pipelineDetected).toEqual({ pipelineId: "default", dealCount: 0 });
+  });
+
+  it("loads recent meeting objects with attendee associations for demo evidence", async () => {
+    const fetchMock = createHubSpotFetchMock({
+      meetings: [
+        {
+          id: "meeting_demo_1",
+          properties: {
+            hs_object_id: "meeting_demo_1",
+            hs_timestamp: "2026-05-20T17:00:00.000Z",
+            hs_meeting_title: "Demo with Gamma",
+            hs_meeting_body: "Product walkthrough and pricing discussion",
+            hs_meeting_outcome: "SCHEDULED",
+            hs_createdate: "2026-05-18T12:00:00.000Z",
+            hs_lastmodifieddate: "2026-05-19T12:00:00.000Z",
+            hubspot_owner_id: "owner-1",
+          },
+          associations: {
+            contacts: {
+              results: [{ id: "contact-1", type: "meeting_to_contact" }],
+            },
+            deals: {
+              results: [{ id: "deal-1", type: "meeting_to_deal" }],
+            },
+          },
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchHubSpotData("hs-token");
+
+    const meetingsRequest = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("/crm/v3/objects/meetings"),
+    );
+
+    expect(String(meetingsRequest?.[0] ?? "")).toContain("properties=hs_object_id");
+    expect(String(meetingsRequest?.[0] ?? "")).toContain("hs_meeting_title");
+    expect(String(meetingsRequest?.[0] ?? "")).toContain("associations=contacts%2Cdeals");
+    expect(String(meetingsRequest?.[0] ?? "")).toContain("limit=100");
+    expect(data.meetings).toEqual([
+      {
+        meetingId: "meeting_demo_1",
+        title: "Demo with Gamma",
+        body: "Product walkthrough and pricing discussion",
+        outcome: "SCHEDULED",
+        ownerId: "owner-1",
+        startedAt: "2026-05-20T17:00:00.000Z",
+        createdAt: "2026-05-18T12:00:00.000Z",
+        updatedAt: "2026-05-19T12:00:00.000Z",
+        contactIds: ["contact-1"],
+        dealIds: ["deal-1"],
+      },
+    ]);
+    expect(data._meta.diagnostics).toEqual(expect.objectContaining({
+      meetingsAvailable: true,
+      meetingsFetched: 1,
+      meetingsTruncated: false,
+    }));
+  });
+
+  it("loads HubSpot company account objects for customer context ingestion", async () => {
+    const fetchMock = createHubSpotFetchMock({
+      companies: [
+        {
+          id: "company-1",
+          properties: {
+            hs_object_id: "company-1",
+            name: "Gamma Co",
+            domain: "gamma.example",
+            industry: "SaaS",
+            lifecyclestage: "customer",
+            numberofemployees: "42",
+            annualrevenue: "1200000",
+            createdate: "2026-01-10T12:00:00.000Z",
+            hs_lastmodifieddate: "2026-05-22T12:00:00.000Z",
+            hubspot_owner_id: "owner-1",
+          },
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchHubSpotData("hs-token");
+
+    const companiesRequest = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("/crm/v3/objects/companies"),
+    );
+
+    expect(String(companiesRequest?.[0] ?? "")).toContain("properties=hs_object_id");
+    expect(String(companiesRequest?.[0] ?? "")).toContain("lifecyclestage");
+    expect(String(companiesRequest?.[0] ?? "")).toContain("limit=100");
+    expect(data.companies).toEqual([
+      {
+        companyId: "company-1",
+        name: "Gamma Co",
+        domain: "gamma.example",
+        industry: "SaaS",
+        lifecycleStage: "customer",
+        employeeCount: 42,
+        annualRevenue: 1_200_000,
+        ownerId: "owner-1",
+        createdAt: "2026-01-10T12:00:00.000Z",
+        updatedAt: "2026-05-22T12:00:00.000Z",
+      },
+    ]);
+    expect(data._meta.diagnostics).toEqual(expect.objectContaining({
+      companiesAvailable: true,
+      companiesFetched: 1,
+      companiesTruncated: false,
+    }));
+  });
+
+  it("loads HubSpot support ticket objects for customer health ingestion", async () => {
+    const fetchMock = createHubSpotFetchMock({
+      tickets: [
+        {
+          id: "ticket-1",
+          properties: {
+            hs_object_id: "ticket-1",
+            subject: "Payment failure",
+            content: "Customer cannot update card.",
+            hs_pipeline: "support-pipeline",
+            hs_pipeline_stage: "open-stage",
+            hs_ticket_priority: "HIGH",
+            hs_ticket_category: "BILLING",
+            source_type: "EMAIL",
+            createdate: "2026-05-20T10:00:00.000Z",
+            hs_lastmodifieddate: "2026-05-21T10:00:00.000Z",
+            closed_date: "2026-05-22T10:00:00.000Z",
+            hubspot_owner_id: "owner-1",
+          },
+          associations: {
+            companies: { results: [{ id: "company-1" }] },
+            contacts: { results: [{ id: "contact-1" }] },
+            deals: { results: [{ id: "deal-1" }] },
+          },
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchHubSpotData("hs-token");
+
+    const ticketsRequest = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("/crm/v3/objects/tickets"),
+    );
+
+    expect(String(ticketsRequest?.[0] ?? "")).toContain("properties=hs_object_id");
+    expect(String(ticketsRequest?.[0] ?? "")).toContain("hs_ticket_priority");
+    expect(String(ticketsRequest?.[0] ?? "")).toContain("associations=companies%2Ccontacts%2Cdeals");
+    expect(String(ticketsRequest?.[0] ?? "")).toContain("limit=100");
+    expect(data.tickets).toEqual([
+      {
+        ticketId: "ticket-1",
+        subject: "Payment failure",
+        content: "Customer cannot update card.",
+        pipelineId: "support-pipeline",
+        stageId: "open-stage",
+        priority: "HIGH",
+        category: "BILLING",
+        sourceType: "EMAIL",
+        ownerId: "owner-1",
+        createdAt: "2026-05-20T10:00:00.000Z",
+        updatedAt: "2026-05-21T10:00:00.000Z",
+        closedAt: "2026-05-22T10:00:00.000Z",
+        companyIds: ["company-1"],
+        contactIds: ["contact-1"],
+        dealIds: ["deal-1"],
+      },
+    ]);
+    expect(data._meta.diagnostics).toEqual(expect.objectContaining({
+      ticketsAvailable: true,
+      ticketsFetched: 1,
+      ticketsTruncated: false,
+    }));
   });
 
   it("keeps subscription pipeline deals out of main deals while exposing active subscriptions", async () => {
