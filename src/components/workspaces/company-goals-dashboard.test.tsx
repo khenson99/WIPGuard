@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompanyGoalsDashboard } from "@/components/workspaces/company-goals-dashboard";
 import type { CompanyGoalsDashboardData } from "@/lib/imladris/company-goals";
 
@@ -29,6 +30,7 @@ const DATA: CompanyGoalsDashboardData = {
       completedIssueCount: 1,
       totalIssueCount: 2,
       blockedIssueCount: 0,
+      trackingEnabled: false,
       warnings: [],
     },
     {
@@ -47,11 +49,33 @@ const DATA: CompanyGoalsDashboardData = {
       completedIssueCount: 0,
       totalIssueCount: 1,
       blockedIssueCount: 1,
+      trackingEnabled: false,
       warnings: ["Target date has passed.", "No Linear activity in the last 14 days.", "1 blocked issue."],
     },
   ],
+  trackingSetup: {
+    configured: false,
+    options: [
+      {
+        id: "project_1",
+        name: "Launch self-serve onboarding",
+        state: "started",
+        tracked: false,
+      },
+      {
+        id: "project_2",
+        name: "Repair billing lifecycle",
+        state: "started",
+        tracked: false,
+      },
+    ],
+  },
   emptyState: null,
 };
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("CompanyGoalsDashboard", () => {
   it("renders Linear project goals and progress without legacy analytics copy", () => {
@@ -61,8 +85,8 @@ describe("CompanyGoalsDashboard", () => {
     expect(screen.getByText("2 active")).toBeTruthy();
     expect(screen.getByText("1 on track")).toBeTruthy();
     expect(screen.getByText("1 at risk")).toBeTruthy();
-    expect(screen.getByText("Launch self-serve onboarding")).toBeTruthy();
-    expect(screen.getByText("Repair billing lifecycle")).toBeTruthy();
+    expect(screen.getAllByText("Launch self-serve onboarding").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Repair billing lifecycle").length).toBeGreaterThan(0);
     expect(screen.getByText("1 / 2 issues")).toBeTruthy();
     expect(screen.getByText("0 / 1 issues")).toBeTruthy();
     expect(screen.getByText("50.0%")).toBeTruthy();
@@ -83,6 +107,10 @@ describe("CompanyGoalsDashboard", () => {
             latestSyncAt: null,
           },
           goals: [],
+          trackingSetup: {
+            configured: false,
+            options: [],
+          },
           emptyState: {
             title: "No Linear goals synced",
             description: "Connect Linear in Settings > Integrations or run the Linear sync to populate company goals.",
@@ -94,6 +122,29 @@ describe("CompanyGoalsDashboard", () => {
     expect(screen.getByText("No Linear goals synced")).toBeTruthy();
     expect(screen.getByText(/Settings > Integrations/)).toBeTruthy();
     expect(screen.getByRole("link", { name: /Open integrations/i }).getAttribute("href")).toBe("/settings");
+  });
+
+  it("lets users choose which synced Linear projects become tracked goals", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ linearProjectIds: ["project_1"] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    render(<CompanyGoalsDashboard data={DATA} />);
+
+    await user.click(screen.getByRole("checkbox", { name: /Launch self-serve onboarding/i }));
+    await user.click(screen.getByRole("button", { name: /Save tracked goals/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/goals/tracking", expect.objectContaining({
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ linearProjectIds: ["project_1"] }),
+      }));
+    });
+    expect(screen.getByText("Tracked goals saved.")).toBeTruthy();
   });
 
   it("unwraps provider date envelopes before rendering sync and goal dates", () => {

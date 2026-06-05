@@ -16,6 +16,9 @@ vi.mock("@/lib/prisma", () => ({
     imladrisRawSourceRecord: {
       findMany: vi.fn(async () => []),
     },
+    companyGoalTracking: {
+      findMany: vi.fn(async () => []),
+    },
   },
 }));
 

@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -9,6 +12,7 @@ import {
 } from "lucide-react";
 import type {
   CompanyGoalRow,
+  CompanyGoalSetupOption,
   CompanyGoalsDashboardData,
 } from "@/lib/imladris/company-goals";
 import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
@@ -215,6 +219,96 @@ function GoalCard({ goal }: { goal: CompanyGoalRow }) {
   );
 }
 
+function GoalSetupPanel({ options }: { options: CompanyGoalSetupOption[] }) {
+  const initialSelection = useMemo(
+    () => options.filter((option) => option.tracked).map((option) => option.id),
+    [options],
+  );
+  const [selectedIds, setSelectedIds] = useState<string[]>(initialSelection);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const selectedSet = new Set(selectedIds);
+
+  const toggleSelection = (projectId: string) => {
+    setMessage(null);
+    setSelectedIds((current) =>
+      current.includes(projectId)
+        ? current.filter((id) => id !== projectId)
+        : [...current, projectId],
+    );
+  };
+
+  const saveSelection = async () => {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/goals/tracking", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ linearProjectIds: selectedIds }),
+      });
+      if (!response.ok) {
+        setMessage("Could not save tracked goals.");
+        return;
+      }
+      setMessage("Tracked goals saved.");
+    } catch {
+      setMessage("Could not save tracked goals.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (options.length === 0) return null;
+
+  return (
+    <section className="rounded-lg border border-border bg-card p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Goal Setup</h2>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Choose which synced Linear projects should be tracked as company goals.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={saveSelection}
+          disabled={saving}
+          className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
+        >
+          <Target className="h-4 w-4" aria-hidden="true" />
+          {saving ? "Saving..." : "Save tracked goals"}
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-2 md:grid-cols-2">
+        {options.map((option) => (
+          <label
+            key={option.id}
+            className="flex min-h-12 items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+          >
+            <input
+              type="checkbox"
+              checked={selectedSet.has(option.id)}
+              onChange={() => toggleSelection(option.id)}
+              className="h-4 w-4 rounded border-border"
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-medium">{option.name}</span>
+              <span className="block text-xs text-muted-foreground">{option.state}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+
+      {message ? (
+        <p className="mt-3 text-xs font-medium text-muted-foreground">{message}</p>
+      ) : null}
+    </section>
+  );
+}
+
 export function CompanyGoalsDashboard({ data }: { data: CompanyGoalsDashboardData }) {
   return (
     <div className="h-full overflow-y-auto p-4">
@@ -263,6 +357,8 @@ export function CompanyGoalsDashboard({ data }: { data: CompanyGoalsDashboardDat
             icon={Clock3}
           />
         </section>
+
+        <GoalSetupPanel options={data.trackingSetup.options} />
 
         {data.emptyState ? (
           <section className="rounded-lg border border-dashed border-border bg-card p-6">

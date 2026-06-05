@@ -27,6 +27,12 @@ interface RawProjectRecord {
   organizationId?: string | null;
 }
 
+interface CompanyGoalTrackingRow {
+  linearProjectId: string;
+  sortOrder: number;
+  enabled: boolean;
+}
+
 export interface CompanyGoalRow {
   id: string;
   name: string;
@@ -43,7 +49,15 @@ export interface CompanyGoalRow {
   completedIssueCount: number;
   totalIssueCount: number;
   blockedIssueCount: number;
+  trackingEnabled: boolean;
   warnings: string[];
+}
+
+export interface CompanyGoalSetupOption {
+  id: string;
+  name: string;
+  state: string;
+  tracked: boolean;
 }
 
 export interface CompanyGoalsDashboardData {
@@ -56,13 +70,17 @@ export interface CompanyGoalsDashboardData {
     latestSyncAt: string | null;
   };
   goals: CompanyGoalRow[];
+  trackingSetup: {
+    configured: boolean;
+    options: CompanyGoalSetupOption[];
+  };
   emptyState: {
     title: string;
     description: string;
   } | null;
 }
 
-export type CompanyGoalsPrisma = Pick<PrismaClientType, "imladrisRawSourceRecord">;
+export type CompanyGoalsPrisma = Pick<PrismaClientType, "imladrisRawSourceRecord" | "companyGoalTracking">;
 
 const PROJECT_OBJECT_TYPES = imladrisObjectTypeQueryVariants("project");
 
@@ -839,7 +857,7 @@ function observableProjectCompletedAt(payload: Record<string, unknown>, now: Dat
   );
 }
 
-function goalFromRawRecord(record: RawProjectRecord, now: Date): CompanyGoalRow | null {
+function goalFromRawRecord(record: RawProjectRecord, now: Date, trackedProjectIds = new Set<string>()): CompanyGoalRow | null {
   const payload = projectPayloadView(record.payload);
   const recordTimestamp = toDate(record.sourceUpdatedAt) ?? toDate(record.updatedAt) ?? toDate(record.sourceCreatedAt);
   if (!projectIsVisible(payload, now, recordTimestamp)) return null;
@@ -878,6 +896,7 @@ function goalFromRawRecord(record: RawProjectRecord, now: Date): CompanyGoalRow 
     completedIssueCount: issueCounts.completedIssueCount,
     totalIssueCount: issueCounts.totalIssueCount,
     blockedIssueCount: issueCounts.blockedIssueCount,
+    trackingEnabled: trackedProjectIds.has(asString(payload.id) ?? record.id),
     warnings,
   };
 }
@@ -904,15 +923,31 @@ export async function buildCompanyGoalsDashboard(input: {
 }): Promise<CompanyGoalsDashboardData> {
   const now = input.now ?? new Date();
   const context = normalizedContext(input.context);
-  const rawRecords = await input.prisma.imladrisRawSourceRecord.findMany({
-    where: {
-      provider: IntegrationProvider.LINEAR,
-      objectType: { in: PROJECT_OBJECT_TYPES },
-      ...rawProjectScopeWhere(context),
-    },
-    orderBy: [{ sourceUpdatedAt: "desc" }, { updatedAt: "desc" }],
-    take: 200,
-  });
+  const scopeKey = scopeKeyForContext(context);
+  const [rawRecords, trackedRows] = await Promise.all([
+    input.prisma.imladrisRawSourceRecord.findMany({
+      where: {
+        provider: IntegrationProvider.LINEAR,
+        objectType: { in: PROJECT_OBJECT_TYPES },
+        ...rawProjectScopeWhere(context),
+      },
+      orderBy: [{ sourceUpdatedAt: "desc" }, { updatedAt: "desc" }],
+      take: 200,
+    }),
+    context.userId
+      ? input.prisma.companyGoalTracking.findMany({
+          where: {
+            userId: context.userId,
+            scopeKey,
+            enabled: true,
+          },
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        })
+      : Promise.resolve([]),
+  ]);
+  const typedTrackedRows = trackedRows as CompanyGoalTrackingRow[];
+  const trackedProjectIds = new Set(typedTrackedRows.map((row) => row.linearProjectId));
+  const trackedSortOrder = new Map(typedTrackedRows.map((row) => [row.linearProjectId, row.sortOrder]));
   const records = dedupeRawProjects(
     (rawRecords as RawProjectRecord[]).filter((record) =>
       rawProjectIsProvider(record, IntegrationProvider.LINEAR) && rawProjectIsProject(record),
@@ -920,10 +955,26 @@ export async function buildCompanyGoalsDashboard(input: {
     context,
     now,
   );
-  const goals = records
-    .map((record) => goalFromRawRecord(record, now))
+  const allGoals = records
+    .map((record) => goalFromRawRecord(record, now, trackedProjectIds))
     .filter((goal): goal is CompanyGoalRow => Boolean(goal));
+  const trackingConfigured = trackedProjectIds.size > 0;
+  const goals = trackingConfigured
+    ? allGoals
+        .filter((goal) => trackedProjectIds.has(goal.id))
+        .sort((left, right) => {
+          const leftOrder = trackedSortOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+          const rightOrder = trackedSortOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+          return leftOrder - rightOrder || left.name.localeCompare(right.name);
+        })
+    : allGoals;
   const activeGoals = goals.filter((goal) => goal.status !== "completed");
+  const setupOptions = allGoals.map((goal) => ({
+    id: goal.id,
+    name: goal.name,
+    state: goal.state,
+    tracked: trackedProjectIds.has(goal.id),
+  }));
 
   return {
     generatedAt: now.toISOString(),
@@ -935,11 +986,18 @@ export async function buildCompanyGoalsDashboard(input: {
       latestSyncAt: latestSyncAt(records, now),
     },
     goals,
+    trackingSetup: {
+      configured: trackingConfigured,
+      options: setupOptions,
+    },
     emptyState:
       goals.length === 0
         ? {
-            title: "No Linear goals synced",
-            description: "Connect Linear in Settings > Integrations or run the Linear sync to populate company goals.",
+            title: allGoals.length > 0 && trackingConfigured ? "No tracked goals selected" : "No Linear goals synced",
+            description:
+              allGoals.length > 0 && trackingConfigured
+                ? "Choose at least one synced Linear project in Goal Setup to track it here."
+                : "Connect Linear in Settings > Integrations or run the Linear sync to populate company goals.",
           }
         : null,
   };

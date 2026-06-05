@@ -65,7 +65,10 @@ function projectRecord(input: {
 function prismaMock(rawRecords: unknown[]) {
   return {
     imladrisRawSourceRecord: {
-      findMany: vi.fn(async () => rawRecords),
+      findMany: vi.fn(async (): Promise<unknown[]> => rawRecords),
+    },
+    companyGoalTracking: {
+      findMany: vi.fn(async (): Promise<unknown[]> => []),
     },
   };
 }
@@ -211,6 +214,66 @@ describe("buildCompanyGoalsDashboard", () => {
     expect(dashboard.emptyState).toEqual({
       title: "No Linear goals synced",
       description: "Connect Linear in Settings > Integrations or run the Linear sync to populate company goals.",
+    });
+  });
+
+  it("filters the dashboard to explicitly tracked Linear projects when selections exist", async () => {
+    const prisma = prismaMock([
+      projectRecord({
+        id: "project_1",
+        name: "Launch self-serve onboarding",
+        state: "started",
+        issues: [
+          {
+            id: "issue_1",
+            completedAt: null,
+            archivedAt: null,
+            state: { type: "started", name: "In Progress" },
+          },
+        ],
+      }),
+      projectRecord({
+        id: "project_2",
+        name: "Repair billing lifecycle",
+        state: "started",
+        issues: [
+          {
+            id: "issue_2",
+            completedAt: null,
+            archivedAt: null,
+            state: { type: "started", name: "In Progress" },
+          },
+        ],
+      }),
+    ]);
+    prisma.companyGoalTracking.findMany.mockResolvedValue([
+      {
+        id: "tracking_2",
+        linearProjectId: "project_2",
+        sortOrder: 0,
+        enabled: true,
+      },
+    ]);
+
+    const dashboard = await buildCompanyGoalsDashboard({
+      prisma: prisma as unknown as CompanyGoalsPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T12:00:00.000Z"),
+    });
+
+    expect(dashboard.goals).toEqual([
+      expect.objectContaining({
+        id: "project_2",
+        name: "Repair billing lifecycle",
+        trackingEnabled: true,
+      }),
+    ]);
+    expect(dashboard.trackingSetup).toEqual({
+      configured: true,
+      options: [
+        expect.objectContaining({ id: "project_1", name: "Launch self-serve onboarding", tracked: false }),
+        expect.objectContaining({ id: "project_2", name: "Repair billing lifecycle", tracked: true }),
+      ],
     });
   });
 
