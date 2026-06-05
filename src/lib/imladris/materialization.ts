@@ -2810,9 +2810,9 @@ function computeFinanceValues(records: RawSourceRecordRow[], asOf: Date) {
     const amount = transactionAmount(record);
     return amount && amount > 0 ? sum + amount : sum;
   }, 0);
-  const stripeMrr = computeStripeMrr(records, asOf);
   const mrr = computeMrrBreakdown(records, asOf);
-  const cashInflow = mercuryCashInflow + stripeMrr;
+  const recognizedMrr = mrr.amount;
+  const cashInflow = mercuryCashInflow;
   const netBurn = cashOutflow - cashInflow;
   const mercuryBalanceAmounts = records
     .filter(
@@ -2854,11 +2854,13 @@ function computeFinanceValues(records: RawSourceRecordRow[], asOf: Date) {
       currency,
       cashOutflow: roundMoney(cashOutflow),
       cashInflow: roundMoney(cashInflow),
+      recognizedMrr,
     },
     runway: {
       months: netBurn > 0 ? roundRatio(cashBalance / netBurn) : null,
       cashBalance: roundMoney(cashBalance),
       netBurn: roundMoney(netBurn),
+      recognizedMrr,
       currency,
     },
     mrr: {
@@ -4761,15 +4763,13 @@ function computeRetentionRisk(records: RawSourceRecordRow[], periodStart: Date, 
       .map(accountIdFromPayload)
       .filter((id): id is string => Boolean(id)),
   );
-  const collaborationOffset = Math.max(0, 10 - collaborationSignals.length * 5);
   const score = Math.min(
     100,
     Math.round(
       openSupportIssueCount * 12 +
         escalationCount * 18 +
         billingRiskAccounts.size * 20 +
-        lowUsageAccounts.size * 18 +
-        collaborationOffset,
+        lowUsageAccounts.size * 18,
     ),
   );
 
