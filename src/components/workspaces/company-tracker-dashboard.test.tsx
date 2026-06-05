@@ -258,6 +258,7 @@ const DATA: CompanyTrackerDashboardData = {
       computedAt: "2026-06-01T00:00:00.000Z",
       periodEnd: "2026-05-31T23:59:59.999Z",
       sourceLineageCount: 2,
+      sourceLineageKeys: ["stripe", "hubspot"],
     },
   ],
   trust: {
@@ -347,6 +348,7 @@ describe("CompanyTrackerDashboard", () => {
     expect(screen.getByText("Draft Board Targets")).toBeTruthy();
     expect(screen.getByText("Configure RUNWAY FinancialGoal target.")).toBeTruthy();
     expect(screen.getByText("Data Trust")).toBeTruthy();
+    expect(screen.getByText("Sources stripe · hubspot")).toBeTruthy();
     expect(screen.getByText("finance.cash_runway_months.value.months")).toBeTruthy();
   });
 

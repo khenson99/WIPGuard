@@ -417,6 +417,66 @@ describe("buildCompanyTrackerDashboard", () => {
     });
   });
 
+  it("surfaces distinct canonical lineage source keys on company metrics", async () => {
+    const prisma = prismaMock({
+      canonicalRows: [
+        metricRow({
+          metricKey: "revenue.mrr",
+          value: {
+            amount: 32_000,
+            arr: 384_000,
+            currency: "USD",
+          },
+          lineage: [
+            {
+              sourceKey: "stripe",
+              sourceType: "raw",
+              sourceId: "sub_1",
+              rawRecordId: "raw_stripe_subscription",
+              capturedAt: new Date("2026-05-31T00:00:00.000Z"),
+              metadata: {},
+            },
+            {
+              sourceKey: "hubspot",
+              sourceType: "raw",
+              sourceId: "deal_1",
+              rawRecordId: "raw_hubspot_deal",
+              capturedAt: new Date("2026-05-31T00:00:00.000Z"),
+              metadata: {},
+            },
+            {
+              sourceKey: "stripe",
+              sourceType: "raw",
+              sourceId: "sub_2",
+              rawRecordId: "raw_stripe_subscription_2",
+              capturedAt: new Date("2026-05-31T00:00:00.000Z"),
+              metadata: {},
+            },
+            {
+              sourceKey: "",
+              sourceType: "raw",
+              sourceId: "blank",
+              rawRecordId: "raw_blank",
+              capturedAt: new Date("2026-05-31T00:00:00.000Z"),
+              metadata: {},
+            },
+          ],
+        }),
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.metrics.find((metric) => metric.key === "revenue.mrr")).toMatchObject({
+      sourceLineageCount: 4,
+      sourceLineageKeys: ["stripe", "hubspot"],
+    });
+  });
+
   it("uses the live analytics metrics layer when canonical company rows are not materialized yet", async () => {
     const capturedAt = new Date("2026-05-31T20:00:00.000Z");
     const prisma = prismaMock({

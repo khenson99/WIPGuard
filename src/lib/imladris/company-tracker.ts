@@ -101,6 +101,7 @@ export interface CompanyTrackerMetric {
   computedAt: string | null;
   periodEnd: string | null;
   sourceLineageCount: number;
+  sourceLineageKeys?: string[];
 }
 
 export interface CompanyTrackerSummary {
@@ -1581,6 +1582,7 @@ function companyMetric(
         computedAt: analyticsStats?.latestCapturedAt ?? null,
         periodEnd: analyticsStats?.latestCapturedAt ?? null,
         sourceLineageCount: analyticsStats?.snapshotCount ?? 0,
+        sourceLineageKeys: analyticsStats ? [...analyticsStats.availableProviders].sort() : [],
       };
     }
 
@@ -1596,6 +1598,7 @@ function companyMetric(
       computedAt: null,
       periodEnd: null,
       sourceLineageCount: 0,
+      sourceLineageKeys: [],
     };
   }
   return {
@@ -1610,7 +1613,17 @@ function companyMetric(
     computedAt: toIso(row.computedAt),
     periodEnd: toIso(row.periodEnd),
     sourceLineageCount: row.lineage?.length ?? 0,
+    sourceLineageKeys: lineageSourceKeys(row.lineage),
   };
+}
+
+function lineageSourceKeys(lineage: MetricLineageRow[] | undefined): string[] {
+  const sourceKeys = new Set<string>();
+  for (const entry of lineage ?? []) {
+    const sourceKey = entry.sourceKey.trim();
+    if (sourceKey.length > 0) sourceKeys.add(sourceKey);
+  }
+  return [...sourceKeys];
 }
 
 function buildSummary(

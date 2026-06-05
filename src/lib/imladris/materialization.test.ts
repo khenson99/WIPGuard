@@ -3443,6 +3443,107 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("deduplicates HubSpot subscription customers by association toObjectId rows", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_mercury_balance_hubspot_to_object_customer",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "account_balance",
+            externalId: "balance_hubspot_to_object_customer",
+            occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+            payload: {
+              currentBalance: 100_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_hubspot_to_object_subscription_primary",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "subscription_deal",
+            externalId: "deal_to_object_subscription_primary",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              dealId: "deal_to_object_subscription_primary",
+              associations: {
+                companies: {
+                  results: [
+                    {
+                      toObjectId: "company_shared_to_object",
+                      associationTypes: [{ typeId: 5, label: "Primary" }],
+                    },
+                  ],
+                },
+              },
+              monthlyRecurringRevenue: 1_000,
+              dealstage: "closedwon",
+              recurringRevenue: true,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_hubspot_to_object_subscription_expansion",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "subscription_deal",
+            externalId: "deal_to_object_subscription_expansion",
+            occurredAt: new Date("2026-05-12T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-12T00:00:00.000Z"),
+            payload: {
+              dealId: "deal_to_object_subscription_expansion",
+              associations: {
+                companies: {
+                  results: [
+                    {
+                      toObjectId: "company_shared_to_object",
+                      associationTypes: [{ typeId: 5, label: "Primary" }],
+                    },
+                  ],
+                },
+              },
+              monthlyRecurringRevenue: 500,
+              dealstage: "closedwon",
+              recurringRevenue: true,
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({
+          id: `metric_${String(create.metricKey).replaceAll(".", "_")}`,
+          ...create,
+        })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.active_subscriptions")?.value).toMatchObject({
+      count: 2,
+      hubspotOnlySubscriptions: 2,
+    });
+    expect(results.find((result) => result.metricKey === "revenue.customer_count")?.value).toMatchObject({
+      count: 1,
+      hubspotOnlyCustomers: 1,
+    });
+  });
+
   it("deduplicates Stripe subscription customers by scalar customer IDs", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -5408,6 +5509,88 @@ describe("Imladris canonical materialization", () => {
       hubspotOnlySubscriptionArr: 0,
       excludedLinkedHubspotSubscriptionMrr: 1_000,
       excludedLinkedHubspotSubscriptionArr: 12_000,
+    });
+  });
+
+  it("excludes HubSpot recurring revenue linked by Stripe HubSpot company metadata", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_subscription_hubspot_company_metadata",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "stripe:subscription:hubspot_company_metadata",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              id: "sub_hubspot_company_metadata",
+              status: "active",
+              monthlyRecurringRevenue: 42_000,
+              customerId: "cus_hubspot_company_metadata",
+              metadata: {
+                hubspot_company_id: "company_from_stripe_metadata",
+              },
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_hubspot_company_metadata_linked_deal",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "subscription_deal",
+            externalId: "deal_hubspot_company_metadata_linked",
+            occurredAt: new Date("2026-05-12T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-12T00:00:00.000Z"),
+            payload: {
+              amount: 12_000,
+              dealstage: "closedwon",
+              recurringRevenue: true,
+              companyIds: ["company_from_stripe_metadata"],
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 42_000,
+      arr: 504_000,
+      stripeMrr: 42_000,
+      stripeArr: 504_000,
+      hubspotSubscriptionMrr: 1_000,
+      hubspotSubscriptionArr: 12_000,
+      hubspotOnlySubscriptionMrr: 0,
+      hubspotOnlySubscriptionArr: 0,
+      excludedLinkedHubspotSubscriptionMrr: 1_000,
+      excludedLinkedHubspotSubscriptionArr: 12_000,
+    });
+    expect(results.find((result) => result.metricKey === "revenue.active_subscriptions")?.value).toMatchObject({
+      count: 1,
+      stripeSubscriptions: 1,
+      hubspotOnlySubscriptions: 0,
+    });
+    expect(results.find((result) => result.metricKey === "revenue.customer_count")?.value).toMatchObject({
+      count: 1,
+      stripeCustomers: 1,
+      hubspotOnlyCustomers: 0,
     });
   });
 

@@ -154,6 +154,7 @@ type HubSpotDealObject = {
   id?: string;
   properties?: Record<string, string>;
   propertiesWithHistory?: Record<string, Array<{ value?: string; timestamp?: string | number }>>;
+  associations?: HubSpotAssociationMap;
 };
 
 type HubSpotDealsListResponse = {
@@ -609,6 +610,7 @@ async function fetchAllHubSpotDeals(input: {
     // smaller page size (currently max 50 objects per request).
     url.searchParams.set("limit", input.propertiesWithHistory ? "50" : "100");
     url.searchParams.set("properties", input.properties);
+    url.searchParams.set("associations", "companies,contacts");
     url.searchParams.set("archived", input.archived ? "true" : "false");
     if (input.propertiesWithHistory) {
       url.searchParams.set("propertiesWithHistory", input.propertiesWithHistory);
@@ -651,6 +653,17 @@ function hubSpotAssociationIds(
     if (id) seen.add(id);
   }
   return [...seen];
+}
+
+function firstHubSpotProperty(
+  props: Record<string, string>,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const value = props[key];
+    if (typeof value === "string" && value.trim().length > 0) return value;
+  }
+  return null;
 }
 
 function hubSpotMeetingRecordFromObject(meeting: HubSpotMeetingObject) {
@@ -1208,7 +1221,7 @@ export async function fetchHubSpotData(
     Boolean(rangeFrom && rangeTo && rangeFrom <= rangeTo);
 
   const properties =
-    "dealstage,amount,dealname,closedate,createdate,hs_analytics_source,num_associated_contacts,hubspot_owner_id,hs_lastmodifieddate,stripe_customer_id,stripe_customer,pipeline";
+    "dealstage,amount,dealname,closedate,createdate,hs_analytics_source,num_associated_contacts,hubspot_owner_id,hs_lastmodifieddate,stripe_customer_id,stripe_customer,pipeline,hs_mrr,hs_arr,monthly_recurring_revenue,annual_recurring_revenue,recurring_revenue,recurring_revenue_amount,subscription_start_date,subscription_end_date,hs_recurring_billing_start_date,hs_recurring_billing_end_date";
   const historyKey = "dealstage";
 
   const [
@@ -1318,9 +1331,28 @@ export async function fetchHubSpotData(
       closedAt: hubSpotTimestampToIso(props.closedate),
       stripeCustomerId: props.stripe_customer_id || props.stripe_customer || null,
       pipelineId: props.pipeline || null,
-      contactIds: [] as string[],
+      companyIds: hubSpotAssociationIds(deal.associations, "companies"),
+      contactIds: hubSpotAssociationIds(deal.associations, "contacts"),
       primaryContactId: null as string | null,
       primaryContactEmail: null as string | null,
+      monthlyRecurringRevenue: firstHubSpotProperty(props, [
+        "hs_mrr",
+        "monthly_recurring_revenue",
+      ]),
+      recurringRevenueAmount: firstHubSpotProperty(props, [
+        "hs_arr",
+        "annual_recurring_revenue",
+        "recurring_revenue_amount",
+      ]),
+      recurringRevenue: firstHubSpotProperty(props, ["recurring_revenue"]),
+      subscriptionStartDate: firstHubSpotProperty(props, [
+        "subscription_start_date",
+        "hs_recurring_billing_start_date",
+      ]),
+      subscriptionEndDate: firstHubSpotProperty(props, [
+        "subscription_end_date",
+        "hs_recurring_billing_end_date",
+      ]),
       stageHistory: buildHubSpotStageHistory(deal, mainStageLabelById),
     };
   });
@@ -1343,9 +1375,28 @@ export async function fetchHubSpotData(
       closedAt: hubSpotTimestampToIso(props.closedate),
       stripeCustomerId: props.stripe_customer_id || props.stripe_customer || null,
       pipelineId: props.pipeline || null,
-      contactIds: [] as string[],
+      companyIds: hubSpotAssociationIds(deal.associations, "companies"),
+      contactIds: hubSpotAssociationIds(deal.associations, "contacts"),
       primaryContactId: null as string | null,
       primaryContactEmail: null as string | null,
+      monthlyRecurringRevenue: firstHubSpotProperty(props, [
+        "hs_mrr",
+        "monthly_recurring_revenue",
+      ]),
+      recurringRevenueAmount: firstHubSpotProperty(props, [
+        "hs_arr",
+        "annual_recurring_revenue",
+        "recurring_revenue_amount",
+      ]),
+      recurringRevenue: firstHubSpotProperty(props, ["recurring_revenue"]),
+      subscriptionStartDate: firstHubSpotProperty(props, [
+        "subscription_start_date",
+        "hs_recurring_billing_start_date",
+      ]),
+      subscriptionEndDate: firstHubSpotProperty(props, [
+        "subscription_end_date",
+        "hs_recurring_billing_end_date",
+      ]),
       stageHistory: buildHubSpotStageHistory(deal, stageLabelById),
     };
   });
@@ -1358,8 +1409,10 @@ export async function fetchHubSpotData(
     for (const deal of [...deals, ...subscriptionDeals]) {
       const analytics = contactAnalytics.get(deal.dealId);
       if (analytics) {
-        deal.contactIds = analytics.contactIds;
-        deal.primaryContactId = analytics.primaryContactId;
+        if (analytics.contactIds.length > 0) {
+          deal.contactIds = analytics.contactIds;
+        }
+        deal.primaryContactId = analytics.primaryContactId ?? deal.contactIds[0] ?? null;
         deal.primaryContactEmail = analytics.primaryContactEmail;
         (deal as Record<string, unknown>).primaryContactAnalytics = analytics.primaryContactAnalytics;
       }

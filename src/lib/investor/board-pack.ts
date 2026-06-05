@@ -10,6 +10,7 @@ export interface InvestorBoardMetric {
   trust: string | null;
   asOf: string | null;
   warnings: string[];
+  sourceLineageKeys?: string[];
 }
 
 export interface InvestorHealthyArrGrowthDriver {
@@ -101,6 +102,34 @@ function asMetricWarnings(value: unknown): string[] {
   return value.filter((warning): warning is string => typeof warning === "string" && warning.trim().length > 0);
 }
 
+function asMetricSourceLineageKeys(metric: Record<string, unknown>): string[] {
+  const keys: string[] = [];
+  const seen = new Set<string>();
+  const addKey = (value: unknown) => {
+    const key = asString(value);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    keys.push(key);
+  };
+
+  if (Array.isArray(metric.sourceLineageKeys)) {
+    for (const key of metric.sourceLineageKeys) addKey(key);
+  }
+
+  if (Array.isArray(metric.sourceLineage)) {
+    for (const lineage of metric.sourceLineage) {
+      addKey(asRecord(lineage).sourceKey);
+    }
+  }
+
+  return keys;
+}
+
+function metricSourceLineageField(metric: Record<string, unknown>): Pick<InvestorBoardMetric, "sourceLineageKeys"> {
+  const sourceLineageKeys = asMetricSourceLineageKeys(metric);
+  return sourceLineageKeys.length > 0 ? { sourceLineageKeys } : {};
+}
+
 function extractInvestorMetrics(slideJson: unknown): InvestorBoardMetric[] {
   const sections = asRecord(slideJson).sections;
   if (!Array.isArray(sections)) return [];
@@ -130,6 +159,7 @@ function extractInvestorMetrics(slideJson: unknown): InvestorBoardMetric[] {
         trust: asString(metric.trust),
         asOf: asString(metric.asOf),
         warnings: asMetricWarnings(metric.warnings),
+        ...metricSourceLineageField(metric),
       });
     }
   }
@@ -167,6 +197,7 @@ function sanitizeSlideJson(slideJson: unknown): unknown {
                   trust: asString(metric.trust),
                   asOf: asString(metric.asOf),
                   warnings: asMetricWarnings(metric.warnings),
+                  ...metricSourceLineageField(metric),
                 };
               })
               .filter(Boolean)

@@ -231,9 +231,15 @@ export interface HubSpotData {
     closedAt?: string | null;
     stripeCustomerId?: string | null;
     pipelineId: string | null;
+    companyIds?: string[];
     contactIds: string[];
     primaryContactId: string | null;
     primaryContactEmail: string | null;
+    monthlyRecurringRevenue?: string | null;
+    recurringRevenueAmount?: string | null;
+    recurringRevenue?: string | null;
+    subscriptionStartDate?: string | null;
+    subscriptionEndDate?: string | null;
     primaryContactAnalytics?: {
       createdAt?: string | null;
       source: string | null;
@@ -265,9 +271,15 @@ export interface HubSpotData {
     closedAt?: string | null;
     stripeCustomerId?: string | null;
     pipelineId: string | null;
+    companyIds?: string[];
     contactIds: string[];
     primaryContactId: string | null;
     primaryContactEmail: string | null;
+    monthlyRecurringRevenue?: string | null;
+    recurringRevenueAmount?: string | null;
+    recurringRevenue?: string | null;
+    subscriptionStartDate?: string | null;
+    subscriptionEndDate?: string | null;
     primaryContactAnalytics?: {
       createdAt?: string | null;
       source: string | null;
@@ -299,9 +311,15 @@ export interface HubSpotData {
     closedAt?: string | null;
     stripeCustomerId?: string | null;
     pipelineId: string | null;
+    companyIds?: string[];
     contactIds: string[];
     primaryContactId: string | null;
     primaryContactEmail: string | null;
+    monthlyRecurringRevenue?: string | null;
+    recurringRevenueAmount?: string | null;
+    recurringRevenue?: string | null;
+    subscriptionStartDate?: string | null;
+    subscriptionEndDate?: string | null;
     primaryContactAnalytics?: {
       createdAt?: string | null;
       source: string | null;

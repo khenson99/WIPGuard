@@ -874,6 +874,75 @@ function normalizeFirstLookup(value: unknown): string | null {
   return null;
 }
 
+function normalizeFirstAssociationLookup(
+  value: unknown,
+  seen = new WeakSet<object>(),
+): string | null {
+  if (typeof value === "string" || typeof value === "number") return normalizeLookup(value);
+  if (!value || typeof value !== "object") return null;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const normalized = normalizeFirstAssociationLookup(item, seen);
+      if (normalized) {
+        seen.delete(value);
+        return normalized;
+      }
+    }
+    seen.delete(value);
+    return null;
+  }
+
+  const record = nestedRecord(value);
+  const directId = normalizeLookup(
+    firstValueFromSources([record], [
+      "toObjectId",
+      "to_object_id",
+      "toId",
+      "to_id",
+      "objectId",
+      "object_id",
+      "id",
+    ]),
+  );
+  if (directId) {
+    seen.delete(value);
+    return directId;
+  }
+
+  const nestedTo = nestedRecordFromKey(record, "to");
+  if (Object.keys(nestedTo).length > 0) {
+    const nestedToId = normalizeFirstAssociationLookup(nestedTo, seen);
+    if (nestedToId) {
+      seen.delete(value);
+      return nestedToId;
+    }
+  }
+
+  for (const key of [
+    "results",
+    "data",
+    "ids",
+    "companies",
+    "company",
+    "accounts",
+    "account",
+  ]) {
+    const nested = firstValueFromSources([record], [key]);
+    const normalized = normalizeFirstAssociationLookup(nested, seen);
+    if (normalized) {
+      seen.delete(value);
+      return normalized;
+    }
+  }
+
+  const normalized = normalizeLookup(value);
+  seen.delete(value);
+  return normalized;
+}
+
 function normalizeObjectType(value: unknown): string {
   const normalizedValue = scalarValue(value);
   return typeof normalizedValue === "string" ? normalizeImladrisObjectType(normalizedValue) : "";
@@ -2579,6 +2648,30 @@ function stripeCustomerEmailDomain(record: RawSourceRecordRow): string | null {
   return normalizeEmailDomain(stripeCustomerEmail(record));
 }
 
+function stripeHubspotCompanyIdentity(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const subscriptionSources = sources.map((source) => nestedRecordFromKey(source, "subscription"));
+  const customerSources = [...sources, ...subscriptionSources].map((source) =>
+    nestedRecordFromKey(source, "customer"),
+  );
+  const metadataSources = [...sources, ...subscriptionSources, ...customerSources].map((source) =>
+    nestedRecordFromKey(source, "metadata"),
+  );
+  return normalizeFirstAssociationLookup(
+    firstValueFromSources([...sources, ...subscriptionSources, ...customerSources, ...metadataSources], [
+      "hubspotCompanyId",
+      "hubspot_company_id",
+      "hubspotCompanyIds",
+      "hubspot_company_ids",
+      "hubspotAssociatedCompanyId",
+      "hubspot_associated_company_id",
+      "hubspotAssociatedCompanyIds",
+      "hubspot_associated_company_ids",
+    ]),
+  );
+}
+
 function stripeSubscriptionId(record: RawSourceRecordRow): string | null {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
@@ -2639,7 +2732,7 @@ function hubspotDealAssociatedCompanyIdentity(record: RawSourceRecordRow): strin
     ];
   });
 
-  return normalizeFirstLookup(
+  return normalizeFirstAssociationLookup(
     firstValueFromSources([...sources, ...associationSources], [
       "companyIds",
       "company_ids",
@@ -2715,17 +2808,20 @@ function isLinkedHubspotDeal(
     subscriptionIds: Set<string>;
     emails: Set<string>;
     domains: Set<string>;
+    hubspotCompanyIds: Set<string>;
   },
 ): boolean {
   const customerId = hubspotStripeCustomerId(record);
   const subscriptionId = hubspotStripeSubscriptionId(record);
   const email = hubspotDealEmail(record);
   const emailDomain = hubspotDealEmailDomain(record);
+  const hubspotCompanyId = hubspotDealAssociatedCompanyIdentity(record);
   return (
     Boolean(customerId && stripeRefs.customerIds.has(customerId)) ||
     Boolean(subscriptionId && stripeRefs.subscriptionIds.has(subscriptionId)) ||
     Boolean(email && stripeRefs.emails.has(email)) ||
-    Boolean(emailDomain && stripeRefs.domains.has(emailDomain))
+    Boolean(emailDomain && stripeRefs.domains.has(emailDomain)) ||
+    Boolean(hubspotCompanyId && stripeRefs.hubspotCompanyIds.has(hubspotCompanyId))
   );
 }
 
@@ -2885,6 +2981,9 @@ function buildStripeRefs(
     ),
     domains: new Set(
       stripeRecords.map(stripeCustomerEmailDomain).filter((value): value is string => Boolean(value)),
+    ),
+    hubspotCompanyIds: new Set(
+      stripeRecords.map(stripeHubspotCompanyIdentity).filter((value): value is string => Boolean(value)),
     ),
   };
 }

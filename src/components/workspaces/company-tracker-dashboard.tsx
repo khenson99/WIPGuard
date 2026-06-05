@@ -238,6 +238,15 @@ function lineageLabel(value: unknown): string {
   return parsed === null ? "Missing" : parsed.toLocaleString();
 }
 
+function lineageSourcesLabel(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+  const sources = value
+    .map((entry) => scalarValue(entry))
+    .map((entry) => String(entry ?? "").trim())
+    .filter((entry) => entry.length > 0);
+  return sources.length > 0 ? sources.join(" · ") : null;
+}
+
 function statusClasses(status: string): string {
   switch (status) {
     case "ready":
@@ -452,6 +461,7 @@ function GrowthMetricCard({ metric, currency }: { metric: CompanyTrackerMetric; 
 function TrustRow({ metric }: { metric: CompanyTrackerMetric }) {
   const confidence = confidencePercent(metric.confidence);
   const lineage = lineageLabel(metric.sourceLineageCount);
+  const lineageSources = lineageSourcesLabel(metric.sourceLineageKeys);
 
   return (
     <article className="rounded-lg border border-border bg-card p-4">
@@ -478,6 +488,11 @@ function TrustRow({ metric }: { metric: CompanyTrackerMetric }) {
           </dd>
         </div>
       </dl>
+      {lineageSources ? (
+        <p className="mt-3 break-words text-xs leading-5 text-muted-foreground">
+          Sources {lineageSources}
+        </p>
+      ) : null}
       {metric.warnings.length > 0 ? (
         <div className="mt-3 space-y-1 text-xs leading-5 text-muted-foreground">
           {metric.warnings.map((warning) => (

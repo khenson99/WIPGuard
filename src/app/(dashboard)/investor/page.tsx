@@ -36,6 +36,12 @@ function statusClass(status: string | null): string {
   return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300";
 }
 
+function sourceLineageLabel(value: string[] | undefined): string | null {
+  if (!Array.isArray(value)) return null;
+  const sources = value.map((source) => source.trim()).filter((source) => source.length > 0);
+  return sources.length > 0 ? sources.join(" · ") : null;
+}
+
 function TrustBadge({ status }: { status: string | null }) {
   return (
     <span className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-medium ${statusClass(status)}`}>
@@ -60,6 +66,7 @@ function DriverCard({ driver }: { driver: InvestorHealthyArrGrowthDriver }) {
 
 function MetricCard({ metric }: { metric: InvestorBoardMetric }) {
   const delta = metric.delta === null ? null : metric.delta > 0 ? `+${metric.delta}` : `${metric.delta}`;
+  const sources = sourceLineageLabel(metric.sourceLineageKeys);
   return (
     <article className="rounded-lg border border-border bg-card p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -75,6 +82,7 @@ function MetricCard({ metric }: { metric: InvestorBoardMetric }) {
       <p className="mt-2 text-xs text-muted-foreground">
         {delta ? `Delta ${delta}` : "Delta unavailable"} · as of {metric.asOf ? dateLabel(metric.asOf) : "Unknown"}
       </p>
+      {sources ? <p className="mt-2 text-xs text-muted-foreground">Sources {sources}</p> : null}
     </article>
   );
 }

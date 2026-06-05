@@ -205,6 +205,116 @@ describe("analytics hubspot fetcher", () => {
     expect(data.pipelineDetected).toEqual({ pipelineId: "default", dealCount: 0 });
   });
 
+  it("requests HubSpot deal associations and preserves company context on shaped deals", async () => {
+    const fetchMock = createHubSpotFetchMock({
+      activeDeals: [
+        {
+          id: "deal-associated-main",
+          properties: {
+            dealstage: "presentationscheduled",
+            amount: "12000",
+            dealname: "Gamma expansion",
+            hs_analytics_source: "PAID_SEARCH",
+            createdate: "2026-05-01T12:00:00.000Z",
+            hs_lastmodifieddate: "2026-05-08T12:00:00.000Z",
+            pipeline: "default",
+          },
+          associations: {
+            companies: { results: [{ id: "company-main-1" }] },
+            contacts: { results: [{ id: "contact-main-1" }] },
+          },
+          propertiesWithHistory: {
+            dealstage: [{ value: "presentationscheduled", timestamp: "2026-05-08T12:00:00.000Z" }],
+          },
+        },
+        {
+          id: "deal-associated-subscription",
+          properties: {
+            dealstage: "2239936224",
+            amount: "5000",
+            dealname: "Gamma subscription",
+            hs_analytics_source: "DIRECT_TRAFFIC",
+            createdate: "2026-05-02T12:00:00.000Z",
+            hs_lastmodifieddate: "2026-05-09T12:00:00.000Z",
+            pipeline: "1390107368",
+          },
+          associations: {
+            companies: { results: [{ toObjectId: "company-subscription-1" }] },
+            contacts: { results: [{ toObjectId: "contact-subscription-1" }] },
+          },
+          propertiesWithHistory: {
+            dealstage: [{ value: "2239936224", timestamp: "2026-05-09T12:00:00.000Z" }],
+          },
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchHubSpotData("hs-token");
+
+    const dealsRequests = fetchMock.mock.calls
+      .map(([url]) => String(url))
+      .filter((url) => url.includes("/crm/v3/objects/deals"));
+
+    expect(dealsRequests).not.toHaveLength(0);
+    expect(dealsRequests.every((url) => url.includes("associations=companies%2Ccontacts"))).toBe(true);
+    expect(data.deals?.[0]).toEqual(expect.objectContaining({
+      dealId: "deal-associated-main",
+      companyIds: ["company-main-1"],
+      contactIds: ["contact-main-1"],
+    }));
+    expect(data.subscriptionDeals?.[0]).toEqual(expect.objectContaining({
+      dealId: "deal-associated-subscription",
+      companyIds: ["company-subscription-1"],
+      contactIds: ["contact-subscription-1"],
+    }));
+  });
+
+  it("preserves explicit HubSpot subscription MRR and ARR properties on subscription deals", async () => {
+    const fetchMock = createHubSpotFetchMock({
+      activeDeals: [
+        {
+          id: "deal-subscription-revenue-fields",
+          properties: {
+            dealstage: "2239936224",
+            amount: "18000",
+            dealname: "Gamma annual subscription",
+            hs_analytics_source: "DIRECT_TRAFFIC",
+            createdate: "2026-05-02T12:00:00.000Z",
+            hs_lastmodifieddate: "2026-05-09T12:00:00.000Z",
+            pipeline: "1390107368",
+            hs_mrr: "1500",
+            hs_arr: "18000",
+            recurring_revenue: "true",
+            subscription_start_date: "2026-05-01",
+            subscription_end_date: "2027-05-01",
+          },
+          propertiesWithHistory: {
+            dealstage: [{ value: "2239936224", timestamp: "2026-05-09T12:00:00.000Z" }],
+          },
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchHubSpotData("hs-token");
+
+    const dealsRequests = fetchMock.mock.calls
+      .map(([url]) => String(url))
+      .filter((url) => url.includes("/crm/v3/objects/deals"));
+
+    expect(dealsRequests.every((url) => url.includes("hs_mrr"))).toBe(true);
+    expect(dealsRequests.every((url) => url.includes("hs_arr"))).toBe(true);
+    expect(data.subscriptionDeals?.[0]).toEqual(expect.objectContaining({
+      dealId: "deal-subscription-revenue-fields",
+      monthlyRecurringRevenue: "1500",
+      recurringRevenueAmount: "18000",
+      recurringRevenue: "true",
+      subscriptionStartDate: "2026-05-01",
+      subscriptionEndDate: "2027-05-01",
+    }));
+  });
+
   it("loads recent meeting objects with attendee associations for demo evidence", async () => {
     const fetchMock = createHubSpotFetchMock({
       meetings: [

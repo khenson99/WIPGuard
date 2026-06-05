@@ -82,6 +82,7 @@ describe("/investor", () => {
             trust: "fresh",
             asOf: "2026-05-31T00:00:00.000Z",
             warnings: [],
+            sourceLineageKeys: ["stripe", "hubspot"],
           },
         ],
         markdown: "# Investor Update\n\nApproved facts only.",
@@ -102,6 +103,7 @@ describe("/investor", () => {
     expect(screen.getByText("Healthy ARR Growth")).toBeTruthy();
     expect(screen.getByText("Net new ARR $12.0k")).toBeTruthy();
     expect(screen.getByText("Board-Final Metrics")).toBeTruthy();
+    expect(screen.getByText("Sources stripe · hubspot")).toBeTruthy();
     expect(screen.getByText("MRR increased from approved canonical metrics.")).toBeTruthy();
     expect(screen.getByText("Markdown")).toBeTruthy();
     expect(screen.getByText("CSV")).toBeTruthy();

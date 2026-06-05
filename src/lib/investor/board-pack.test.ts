@@ -71,6 +71,20 @@ describe("loadInvestorBoardPack", () => {
                 trust: "fresh",
                 asOf: "2026-05-31T00:00:00.000Z",
                 warnings: [],
+                sourceLineage: [
+                  {
+                    sourceKey: "stripe",
+                    rawRecordId: "raw_stripe_subscription_internal",
+                  },
+                  {
+                    sourceKey: "hubspot",
+                    rawRecordId: "raw_hubspot_deal_internal",
+                  },
+                  {
+                    sourceKey: "stripe",
+                    rawRecordId: "raw_stripe_subscription_internal_2",
+                  },
+                ],
               },
               {
                 key: "revenue.arr",
@@ -135,6 +149,7 @@ describe("loadInvestorBoardPack", () => {
           trust: "fresh",
           asOf: "2026-05-31T00:00:00.000Z",
           warnings: [],
+          sourceLineageKeys: ["stripe", "hubspot"],
         },
         {
           key: "revenue.arr",
@@ -168,6 +183,7 @@ describe("loadInvestorBoardPack", () => {
                 trust: "fresh",
                 asOf: "2026-05-31T00:00:00.000Z",
                 warnings: [],
+                sourceLineageKeys: ["stripe", "hubspot"],
               },
               {
                 key: "revenue.arr",
@@ -192,5 +208,6 @@ describe("loadInvestorBoardPack", () => {
     });
     expect(JSON.stringify(payload)).not.toContain("must not leak");
     expect(JSON.stringify(payload)).not.toContain("admin-1");
+    expect(JSON.stringify(payload)).not.toContain("raw_stripe_subscription_internal");
   });
 });
