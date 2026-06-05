@@ -1321,6 +1321,16 @@ export async function buildImladrisSources(input: {
   const snapshotUserIds = snapshotScopeUserIds(context);
   const sourceEvidenceScopes = sourceEvidenceQueryOr(context);
   const sourceEvidenceOwnerId = sourceEvidenceOwnerUserId(context);
+  // IntegrationConnection.userId is non-nullable, so it must never be filtered with
+  // `userId: null` — Prisma rejects that as "Argument `userId` is missing" (crashing the
+  // Imladris metrics/sources endpoints with a 500). Connections are per-user
+  // (@@unique([userId, provider])), so fetch the candidate user IDs directly and let
+  // connectionMatchesContext() narrow by organization below.
+  const connectionUserIds = Array.from(
+    new Set(
+      [context.userId, sourceEvidenceOwnerId].filter((id): id is string => Boolean(id)),
+    ),
+  );
   const snapshotQuery = snapshotUserIds.length > 0
     ? input.prisma.analyticsSnapshot.findMany({
         where: {
@@ -1351,7 +1361,9 @@ export async function buildImladrisSources(input: {
         provider: {
           in: providerAliases,
         },
-        OR: sourceEvidenceScopes,
+        userId: {
+          in: connectionUserIds,
+        },
       },
       select: {
         provider: true,

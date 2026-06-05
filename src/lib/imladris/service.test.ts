@@ -107,6 +107,34 @@ describe("Imladris service", () => {
     }
   });
 
+  it("never filters integration connections by a null userId (userId is non-nullable)", async () => {
+    const integrationConnectionFindMany = vi.fn(async () => []);
+    const prisma = createPrismaMock({
+      integrationConnection: { findMany: integrationConnectionFindMany },
+    });
+
+    await buildImladrisSources({
+      prisma,
+      context: CONTEXT,
+      now: new Date("2026-05-29T10:00:00.000Z"),
+    });
+
+    // IntegrationConnection.userId is non-nullable and unique per (userId, provider), so the
+    // query must scope by concrete user IDs. Filtering `userId: null` makes Prisma throw
+    // "Argument `userId` is missing", which previously 500'd the metrics/sources endpoints.
+    expect(integrationConnectionFindMany).toHaveBeenCalledTimes(1);
+    expect(integrationConnectionFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          userId: { in: expect.arrayContaining(["user_1"]) },
+        }),
+      }),
+    );
+    expect(integrationConnectionFindMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ OR: expect.anything() }) }),
+    );
+  });
+
   it("uses latest Imladris source sync runs for source readiness", async () => {
     const prisma = createPrismaMock({
       imladrisSourceSyncRun: {
@@ -2735,7 +2763,7 @@ describe("Imladris service", () => {
     );
   });
 
-  it("includes global fallback connection scope when querying sources for an organization context", async () => {
+  it("scopes source connection queries to concrete user IDs (never a null userId)", async () => {
     const findMany = vi.fn(async () => []);
     const prisma = createPrismaMock({
       integrationConnection: {
@@ -2749,17 +2777,18 @@ describe("Imladris service", () => {
       now: new Date("2026-05-29T10:00:00.000Z"),
     });
 
+    // IntegrationConnection.userId is non-nullable, so connections are scoped by concrete
+    // user IDs and organization narrowing happens in JS (connectionMatchesContext) — never
+    // via a `userId: null` filter, which Prisma rejects as "Argument `userId` is missing".
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          OR: expect.arrayContaining([
-            { userId: "user_1", organizationId: "org_1" },
-            { userId: null, organizationId: "org_1" },
-            { userId: "user_1", organizationId: null },
-            { userId: null, organizationId: null },
-          ]),
+          userId: { in: expect.arrayContaining(["user_1"]) },
         }),
       }),
+    );
+    expect(findMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ OR: expect.anything() }) }),
     );
   });
 
@@ -2939,7 +2968,7 @@ describe("Imladris service", () => {
       expect(integrationConnectionFindMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            OR: expect.arrayContaining([{ userId: "owner_1", organizationId: null }]),
+            userId: { in: expect.arrayContaining(["user_1", "owner_1"]) },
           }),
         }),
       );
