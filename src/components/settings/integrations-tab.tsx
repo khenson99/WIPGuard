@@ -107,6 +107,10 @@ export function IntegrationsTab() {
   const [pylonToken, setPylonToken] = useState("");
   const [pylonBaseUrl, setPylonBaseUrl] = useState("");
 
+  const [posthogToken, setPosthogToken] = useState("");
+  const [posthogProjectId, setPosthogProjectId] = useState("");
+  const [posthogHost, setPosthogHost] = useState("");
+
   const [linearToken, setLinearToken] = useState("");
 
   const [ruleStates, setRuleStates] = useState<Record<string, RuleLoadState>>(createInitialRuleStates);
@@ -157,6 +161,13 @@ export function IntegrationsTab() {
       const pylon = integrations.find((item) => item.slug === "pylon");
       const storedBaseUrl = asRecord(pylon?.metadata ?? null).baseUrl;
       setPylonBaseUrl(typeof storedBaseUrl === "string" ? storedBaseUrl : "");
+
+      const posthog = integrations.find((item) => item.slug === "posthog");
+      const posthogMetadata = asRecord(posthog?.metadata ?? null);
+      const storedProjectId = posthogMetadata.projectId ?? posthogMetadata.defaultProjectId;
+      const storedHost = posthogMetadata.host ?? posthogMetadata.apiHost;
+      setPosthogProjectId(typeof storedProjectId === "string" ? storedProjectId : "");
+      setPosthogHost(typeof storedHost === "string" ? storedHost : "");
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : "Could not load integrations.");
     } finally {
@@ -431,6 +442,50 @@ export function IntegrationsTab() {
     }
   }, [fetchIntegrations, linearToken]);
 
+  const connectPosthog = useCallback(async () => {
+    setLoadingProviderAction("posthog");
+    setError(null);
+
+    try {
+      const token = posthogToken.trim();
+      const projectId = posthogProjectId.trim();
+      const host = posthogHost.trim();
+      const payload: { token?: string; projectId?: string; host?: string } = {};
+
+      if (token) payload.token = token;
+      if (projectId) payload.projectId = projectId;
+      if (host) payload.host = host;
+
+      const response = await fetch("/api/integrations/posthog/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseErrorMessage(response, "Failed to connect PostHog"));
+      }
+
+      const successPayload = (await response.json().catch(() => null)) as
+        | { projectId?: string | null; host?: string | null }
+        | null;
+
+      setPosthogToken("");
+      if (typeof successPayload?.projectId === "string") {
+        setPosthogProjectId(successPayload.projectId);
+      }
+      if (typeof successPayload?.host === "string") {
+        setPosthogHost(successPayload.host);
+      }
+
+      await fetchIntegrations();
+    } catch (connectError) {
+      setError(connectError instanceof Error ? connectError.message : "Failed to connect PostHog");
+    } finally {
+      setLoadingProviderAction(null);
+    }
+  }, [fetchIntegrations, posthogHost, posthogProjectId, posthogToken]);
+
   const saveRule = useCallback(
     async (
       ruleId: string,
@@ -669,6 +724,13 @@ export function IntegrationsTab() {
               onPylonTokenChange={setPylonToken}
               onPylonBaseUrlChange={setPylonBaseUrl}
               onConnectPylon={connectPylon}
+              posthogToken={posthogToken}
+              posthogProjectId={posthogProjectId}
+              posthogHost={posthogHost}
+              onPosthogTokenChange={setPosthogToken}
+              onPosthogProjectIdChange={setPosthogProjectId}
+              onPosthogHostChange={setPosthogHost}
+              onConnectPosthog={connectPosthog}
               linearToken={linearToken}
               onLinearTokenChange={setLinearToken}
               onConnectLinear={connectLinear}

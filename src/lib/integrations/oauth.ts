@@ -330,6 +330,17 @@ export function decodeOAuthStateCookie(value: string): OAuthStateCookiePayload |
   }
 }
 
+function normalizeApiHost(value: string | null | undefined, fallback: string): string {
+  const trimmed = value?.trim().replace(/\/+$/g, "");
+  if (!trimmed) return fallback;
+
+  try {
+    return new URL(trimmed).origin;
+  } catch {
+    throw new Error("API host must be a valid URL");
+  }
+}
+
 async function fetchGoogleProfile(accessToken: string): Promise<AccountProfile> {
   const response = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -930,6 +941,56 @@ export async function verifyPylonApiToken(
   }
 
   throw new Error("Pylon token verification failed");
+}
+
+export async function verifyPostHogApiToken(input: {
+  token: string;
+  projectId: string;
+  host?: string | null;
+}): Promise<AccountProfile> {
+  const token = normalizeBearerToken(input.token);
+  const projectId = input.projectId.trim();
+  if (!token) {
+    throw new Error("PostHog API token is required");
+  }
+  if (!projectId) {
+    throw new Error("PostHog project ID is required");
+  }
+
+  const host = normalizeApiHost(input.host, "https://app.posthog.com");
+  const response = await fetch(`${host}/api/projects/${encodeURIComponent(projectId)}/`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  const raw = (await response.json().catch(() => null)) as unknown;
+  if (!response.ok) {
+    const details = asRecord(raw);
+    throw new Error(
+      getString(details ?? {}, "detail") ||
+        getString(details ?? {}, "error") ||
+        `PostHog project lookup failed (${response.status})`
+    );
+  }
+
+  const project = asRecord(raw);
+  if (!project) {
+    throw new Error("PostHog project response was invalid");
+  }
+
+  const id = getString(project, "id") ?? String(getNumber(project, "id") ?? projectId);
+  const name = getString(project, "name") ?? getString(project, "display_name");
+  const organization = asRecord(project.organization);
+
+  return {
+    providerAccountId: id,
+    accountLabel: name ?? `PostHog project ${projectId}`,
+    metadata: {
+      projectId,
+      host,
+      projectName: name,
+      organizationName: organization ? getString(organization, "name") : null,
+    },
+  };
 }
 
 export async function verifyLinearApiToken(token: string): Promise<AccountProfile> {
