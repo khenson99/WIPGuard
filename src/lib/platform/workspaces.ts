@@ -53,6 +53,48 @@ export const WORKSPACE_NAV_ITEMS: WorkspaceNavItem[] = [
         workspaceId: "metrics",
       },
       {
+        id: "company-tracker-cockpit",
+        label: "Company Tracker (Cockpit)",
+        href: "/operating/company",
+        workspaceId: "metrics",
+      },
+      {
+        id: "finance",
+        label: "Finance",
+        href: "/operating/finance",
+        workspaceId: "metrics",
+      },
+      {
+        id: "sales",
+        label: "Sales",
+        href: "/operating/sales",
+        workspaceId: "metrics",
+      },
+      {
+        id: "marketing",
+        label: "Marketing",
+        href: "/operating/marketing",
+        workspaceId: "metrics",
+      },
+      {
+        id: "development",
+        label: "Development",
+        href: "/operating/development",
+        workspaceId: "metrics",
+      },
+      {
+        id: "customer-success",
+        label: "Customer Success",
+        href: "/operating/customer-success",
+        workspaceId: "metrics",
+      },
+      {
+        id: "source-health",
+        label: "Source Health",
+        href: "/operating/sources",
+        workspaceId: "metrics",
+      },
+      {
         id: "customer-health",
         label: "Customer Health",
         href: "/metrics/customer-health",
