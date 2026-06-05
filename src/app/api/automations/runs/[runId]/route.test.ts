@@ -23,6 +23,31 @@ describe("GET /api/automations/runs/[runId]", () => {
     vi.resetModules();
   });
 
+  it("blocks investor users from automation run internals", async () => {
+    const { auth } = await import("@/lib/auth");
+    const { assertCanViewWorkflow } = await import("@/lib/automations/service");
+    const { prisma } = await import("@/lib/prisma");
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: "investor_1", role: "investor" },
+    } as never);
+
+    const { GET } = await import("@/app/api/automations/runs/[runId]/route");
+    const response = await GET(
+      new Request("http://localhost/api/automations/runs/run_1") as unknown as NextRequest,
+      {
+        params: Promise.resolve({ runId: "run_1" }),
+      }
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "Forbidden: investors must use investor-scoped APIs",
+    });
+    expect(prisma.workflowRun.findUnique).not.toHaveBeenCalled();
+    expect(assertCanViewWorkflow).not.toHaveBeenCalled();
+  });
+
   it("requests only non-sensitive ai job fields", async () => {
     const { auth } = await import("@/lib/auth");
     const { assertCanViewWorkflow } = await import("@/lib/automations/service");

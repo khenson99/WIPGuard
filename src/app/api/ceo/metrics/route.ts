@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { CeoOrganizationContextError, withCeoOrganizationContext } from "@/lib/ceo/api-context";
 import { loadCeoMetricSnapshot } from "@/lib/ceo/service";
+import { investorForbiddenResponse } from "@/lib/investor/api-guards";
 import { getAuthenticatedUser } from "@/lib/session-user";
 
 export async function GET(): Promise<NextResponse> {
@@ -13,6 +14,8 @@ export async function GET(): Promise<NextResponse> {
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const investorDenied = investorForbiddenResponse(user.role);
+    if (investorDenied) return investorDenied;
 
     const payload = await withCeoOrganizationContext(session, user, (organizationId) =>
       loadCeoMetricSnapshot({

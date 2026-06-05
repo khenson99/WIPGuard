@@ -7,6 +7,7 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/permissions", () => ({
   getAppRole: vi.fn(),
+  normalizeRole: (role: string | null | undefined) => (role === "investor" ? "investor" : role ?? "member"),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -21,6 +22,28 @@ describe("GET /api/automations/recommendations", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.resetModules();
+  });
+
+  it("blocks investor users from operator recommendations", async () => {
+    const { auth } = await import("@/lib/auth");
+    const { getAppRole } = await import("@/lib/permissions");
+    const { prisma } = await import("@/lib/prisma");
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: "investor_1", role: "investor" },
+    } as never);
+
+    const { GET } = await import("@/app/api/automations/recommendations/route");
+    const response = await GET(
+      new NextRequest("http://localhost/api/automations/recommendations")
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "Forbidden: investors must use investor-scoped APIs",
+    });
+    expect(getAppRole).not.toHaveBeenCalled();
+    expect(prisma.automationRecommendation.findMany).not.toHaveBeenCalled();
   });
 
   it("keeps workflow owners in the inbox filter for non-admin viewers", async () => {

@@ -841,6 +841,49 @@ describe("Imladris raw record builder", () => {
     ]));
   });
 
+  it("recognizes HubSpot meeting identifiers and start timestamps for raw demo evidence", () => {
+    const records = buildImladrisRawRecordsFromPayload({
+      provider: IntegrationProvider.HUBSPOT,
+      snapshotKey: "hubspot",
+      from: "2026-05-01",
+      to: "2026-06-01",
+      capturedAt: new Date("2026-06-01T12:00:00.000Z"),
+      payload: {
+        meetings: [
+          {
+            meetingId: "meeting_camel_1",
+            title: "Demo with Gamma",
+            startedAt: "2026-05-20T17:00:00.000Z",
+            updatedAt: "2026-05-19T12:00:00.000Z",
+          },
+          {
+            properties: {
+              hs_object_id: "meeting_nested_1",
+              hs_meeting_title: "Demo with Delta",
+              hs_timestamp: "2026-05-21T17:00:00.000Z",
+              hs_lastmodifieddate: "2026-05-20T12:00:00.000Z",
+            },
+          },
+        ],
+      },
+    });
+
+    expect(records).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        objectType: "meeting",
+        externalId: "hubspot:meeting:meeting_camel_1",
+        occurredAt: "2026-05-20T17:00:00.000Z",
+        sourceUpdatedAt: "2026-05-19T12:00:00.000Z",
+      }),
+      expect.objectContaining({
+        objectType: "meeting",
+        externalId: "hubspot:meeting:meeting_nested_1",
+        occurredAt: "2026-05-21T17:00:00.000Z",
+        sourceUpdatedAt: "2026-05-20T12:00:00.000Z",
+      }),
+    ]));
+  });
+
   it("uses HubSpot contact ID aliases before company IDs for stable contact external IDs", () => {
     const records = buildImladrisRawRecordsFromPayload({
       provider: IntegrationProvider.HUBSPOT,
@@ -882,6 +925,40 @@ describe("Imladris raw record builder", () => {
       }),
     ]));
     expect(contacts).toHaveLength(2);
+  });
+
+  it("maps HubSpot contactRecords arrays to contact raw objects", () => {
+    const records = buildImladrisRawRecordsFromPayload({
+      provider: IntegrationProvider.HUBSPOT,
+      snapshotKey: "hubspot",
+      from: "2026-05-01",
+      to: "2026-06-01",
+      capturedAt: new Date("2026-06-01T12:00:00.000Z"),
+      payload: {
+        contactRecords: [
+          {
+            contactId: "contact_from_fetcher",
+            email: "buyer@example.com",
+            createdAt: "2026-05-14T12:00:00.000Z",
+            rawSource: "PAID_SEARCH",
+          },
+        ],
+      },
+    });
+
+    expect(records).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        objectType: "contact",
+        externalId: "hubspot:contact:contact_from_fetcher",
+        occurredAt: "2026-05-14T12:00:00.000Z",
+        sourceUpdatedAt: "2026-05-14T12:00:00.000Z",
+        payload: expect.objectContaining({
+          contactId: "contact_from_fetcher",
+          rawSource: "PAID_SEARCH",
+        }),
+      }),
+    ]));
+    expect(records.find((record) => record.objectType === "contact_records")).toBeUndefined();
   });
 
   it("recognizes Pylon issue aliases for stable raw record external IDs", () => {
@@ -1916,6 +1993,146 @@ describe("Imladris raw record builder", () => {
     expect(paymentIntents).toHaveLength(2);
   });
 
+  it("uses Stripe dispute ID aliases before charge IDs for stable dispute external IDs", () => {
+    const records = buildImladrisRawRecordsFromPayload({
+      provider: IntegrationProvider.STRIPE,
+      snapshotKey: "stripe",
+      from: "2026-05-01",
+      to: "2026-06-01",
+      capturedAt: new Date("2026-06-01T12:00:00.000Z"),
+      payload: {
+        disputes: [
+          {
+            charge: "ch_1",
+            disputeId: "dp_1",
+            amount: 5_000,
+            status: "lost",
+            created: "2026-05-28T12:00:00.000Z",
+          },
+          {
+            charge_id: "ch_2",
+            dispute_id: "dp_2",
+            amount: 2_500,
+            status: "won",
+            created: "2026-05-29T12:00:00.000Z",
+          },
+        ],
+      },
+    });
+
+    const disputes = records.filter((record) => record.objectType === "dispute");
+    expect(disputes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        externalId: "stripe:dispute:dp_1",
+        payload: expect.objectContaining({
+          disputeId: "dp_1",
+        }),
+      }),
+      expect.objectContaining({
+        externalId: "stripe:dispute:dp_2",
+        payload: expect.objectContaining({
+          dispute_id: "dp_2",
+        }),
+      }),
+    ]));
+    expect(disputes).toHaveLength(2);
+  });
+
+  it("uses Stripe refund ID aliases before charge IDs for stable refund external IDs", () => {
+    const records = buildImladrisRawRecordsFromPayload({
+      provider: IntegrationProvider.STRIPE,
+      snapshotKey: "stripe",
+      from: "2026-05-01",
+      to: "2026-06-01",
+      capturedAt: new Date("2026-06-01T12:00:00.000Z"),
+      payload: {
+        refunds: [
+          {
+            charge: "ch_1",
+            refundId: "re_1",
+            amount: 5_000,
+            status: "succeeded",
+            created: "2026-05-28T12:00:00.000Z",
+          },
+          {
+            charge_id: "ch_2",
+            refund_id: "re_2",
+            amount: 2_500,
+            status: "pending",
+            created: "2026-05-29T12:00:00.000Z",
+          },
+        ],
+      },
+    });
+
+    const refunds = records.filter((record) => record.objectType === "refund");
+    expect(refunds).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        externalId: "stripe:refund:re_1",
+        payload: expect.objectContaining({
+          refundId: "re_1",
+        }),
+      }),
+      expect.objectContaining({
+        externalId: "stripe:refund:re_2",
+        payload: expect.objectContaining({
+          refund_id: "re_2",
+        }),
+      }),
+    ]));
+    expect(refunds).toHaveLength(2);
+  });
+
+  it("uses Stripe balance transaction ID aliases for stable raw record external IDs", () => {
+    const records = buildImladrisRawRecordsFromPayload({
+      provider: IntegrationProvider.STRIPE,
+      snapshotKey: "stripe",
+      from: "2026-05-01",
+      to: "2026-06-01",
+      capturedAt: new Date("2026-06-01T12:00:00.000Z"),
+      payload: {
+        balanceTransactions: [
+          {
+            balanceTransactionId: "txn_1",
+            source: "ch_1",
+            amount: 12_000,
+            fee: 700,
+            net: 11_300,
+            created: "2026-05-28T12:00:00.000Z",
+          },
+          {
+            balance_transaction_id: "txn_2",
+            source: "re_1",
+            amount: -2_500,
+            fee: 0,
+            net: -2_500,
+            created: "2026-05-29T12:00:00.000Z",
+          },
+        ],
+      },
+    });
+
+    const balanceTransactions = records.filter((record) => record.objectType === "balance_transaction");
+    expect(balanceTransactions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        externalId: "stripe:balance_transaction:txn_1",
+        payload: expect.objectContaining({
+          balanceTransactionId: "txn_1",
+          fee: 700,
+          net: 11_300,
+        }),
+      }),
+      expect.objectContaining({
+        externalId: "stripe:balance_transaction:txn_2",
+        payload: expect.objectContaining({
+          balance_transaction_id: "txn_2",
+          net: -2_500,
+        }),
+      }),
+    ]));
+    expect(balanceTransactions).toHaveLength(2);
+  });
+
   it("uses nested payment and transaction IDs for stable raw record external IDs", () => {
     const records = buildImladrisRawRecordsFromPayload({
       provider: IntegrationProvider.MERCURY,
@@ -2355,6 +2572,43 @@ describe("Imladris raw record builder", () => {
     });
   });
 
+  it("uses HubSpot ticket ID aliases for stable support ticket external IDs", () => {
+    const records = buildImladrisRawRecordsFromPayload({
+      provider: IntegrationProvider.HUBSPOT,
+      snapshotKey: "hubspot",
+      from: "2026-05-01",
+      to: "2026-06-01",
+      capturedAt: new Date("2026-06-01T12:00:00.000Z"),
+      payload: {
+        tickets: [
+          {
+            ticketId: "ticket_camel_1",
+            status: "open",
+            updatedAt: "2026-05-28T12:00:00.000Z",
+          },
+          {
+            ticket_id: "ticket_snake_1",
+            status: "resolved",
+            updated_at: "2026-05-29T12:00:00.000Z",
+          },
+        ],
+      },
+    });
+
+    const tickets = records.filter((record) => record.objectType === "ticket");
+    expect(tickets).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        externalId: "hubspot:ticket:ticket_camel_1",
+        payload: expect.objectContaining({ ticketId: "ticket_camel_1" }),
+      }),
+      expect.objectContaining({
+        externalId: "hubspot:ticket:ticket_snake_1",
+        payload: expect.objectContaining({ ticket_id: "ticket_snake_1" }),
+      }),
+    ]));
+    expect(tickets).toHaveLength(2);
+  });
+
   it("uses Slack message timestamp aliases for stable message external IDs", () => {
     const records = buildImladrisRawRecordsFromPayload({
       provider: IntegrationProvider.SLACK,
@@ -2710,6 +2964,32 @@ describe("Imladris raw record builder", () => {
       }),
     ]));
     expect(calendarEvents).toHaveLength(2);
+  });
+
+  it("uses Google Workspace calendar event start times as raw record occurrence times", () => {
+    const records = buildImladrisRawRecordsFromPayload({
+      provider: IntegrationProvider.GOOGLE_WORKSPACE,
+      snapshotKey: "googleWorkspace",
+      from: "2026-05-01",
+      to: "2026-06-01",
+      capturedAt: new Date("2026-06-01T12:00:00.000Z"),
+      payload: {
+        calendarEvents: [
+          {
+            eventId: "event_demo_1",
+            summary: "Demo with Gamma",
+            startedAt: "2026-05-12T17:00:00.000Z",
+            updatedAt: "2026-05-20T17:00:00.000Z",
+          },
+        ],
+      },
+    });
+
+    expect(records.find((record) => record.objectType === "calendar_event")).toMatchObject({
+      externalId: "googleWorkspace:calendar_event:event_demo_1",
+      occurredAt: "2026-05-12T17:00:00.000Z",
+      sourceUpdatedAt: "2026-05-20T17:00:00.000Z",
+    });
   });
 
   it("uses Google Workspace document ID aliases for stable document external IDs", () => {
@@ -3291,6 +3571,44 @@ describe("Imladris raw record builder", () => {
       sourceUpdatedAt: "2026-05-11T12:00:00.000Z",
       payload: expect.objectContaining({
         id: "sub_demo_1",
+      }),
+    });
+  });
+
+  it("uses Webflow detailed submission IDs for stable form submission detail external IDs", () => {
+    const records = buildImladrisRawRecordsFromPayload({
+      provider: IntegrationProvider.WEBFLOW,
+      snapshotKey: "webflow",
+      from: "2026-05-01",
+      to: "2026-06-01",
+      capturedAt: new Date("2026-06-01T12:00:00.000Z"),
+      payload: {
+        formSubmissionDetails: [
+          {
+            submissionId: "sub_demo_1",
+            formId: "demo-request",
+            formName: "Request a demo",
+            submittedAt: "2026-05-10T12:00:00.000Z",
+            pageUrl: "https://arda.cards/demo",
+            fields: {
+              email: "ada@example.com",
+              company: "Gamma",
+            },
+          },
+        ],
+      },
+    });
+
+    const submissions = records.filter(
+      (record) => record.externalId === "webflow:form_submission_detail:sub_demo_1",
+    );
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0]).toMatchObject({
+      objectType: "form_submission_detail",
+      occurredAt: "2026-05-10T12:00:00.000Z",
+      payload: expect.objectContaining({
+        submissionId: "sub_demo_1",
+        formName: "Request a demo",
       }),
     });
   });

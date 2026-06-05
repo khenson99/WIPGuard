@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Settings as SettingsIcon } from "lucide-react";
 import { clsx } from "clsx";
@@ -27,6 +28,7 @@ const LEGACY_SETTINGS_TABS = new Set([
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const tabParam = searchParams?.get("tab");
@@ -35,6 +37,12 @@ export default function SettingsPage() {
     tabParam && TABS.some((candidate) => candidate.id === tabParam)
       ? (tabParam as TabId)
       : "team";
+
+  useEffect(() => {
+    if (session?.user?.role === "investor") {
+      router.replace("/investor");
+    }
+  }, [router, session?.user?.role]);
 
   useEffect(() => {
     if (tabParam === "integrations") {
@@ -100,6 +108,9 @@ export default function SettingsPage() {
   );
 
   if (isLegacySettingsTab || tabParam === "integrations") {
+    return null;
+  }
+  if (status === "loading" || session?.user?.role === "investor") {
     return null;
   }
 

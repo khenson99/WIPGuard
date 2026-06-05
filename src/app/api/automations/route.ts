@@ -14,6 +14,7 @@ import {
   validateAndNormalizeGraph,
 } from "@/lib/automations/service";
 import { getAppRole } from "@/lib/permissions";
+import { investorForbiddenResponse } from "@/lib/investor/api-guards";
 import { prisma } from "@/lib/prisma";
 import { getAuthenticatedUser } from "@/lib/session-user";
 import type { AutomationTemplate } from "@/lib/automations/templates";
@@ -98,6 +99,8 @@ export async function GET(): Promise<NextResponse> {
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const investorDenied = investorForbiddenResponse(user.role);
+    if (investorDenied) return investorDenied;
 
     const workflows = await prisma.workflowDefinition.findMany({
       where: {
@@ -184,6 +187,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const investorDenied = investorForbiddenResponse(user.role);
+    if (investorDenied) return investorDenied;
 
     const role = await getAppRole(user.id);
     const body = parseBody(await request.json().catch(() => ({})));

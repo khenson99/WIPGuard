@@ -293,6 +293,503 @@ describe("analytics stripe fetcher", () => {
     ]);
   });
 
+  it("preserves HubSpot company metadata on active Stripe customer refs", async () => {
+    const fromDate = new Date("2026-02-01T00:00:00.000Z");
+    const toDate = new Date("2026-02-28T23:59:59.999Z");
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+
+      if (url.pathname === "/v1/subscriptions") {
+        const status = url.searchParams.get("status");
+        if (status === "active") {
+          return jsonResponse({
+            data: [
+              {
+                id: "sub_active_company_meta",
+                customer: {
+                  id: "cus_company_meta",
+                  email: "buyer@example.com",
+                  metadata: {
+                    hubspot_company_id: "company_from_customer",
+                    hubspot_associated_company_ids: "company_extra, company_from_customer",
+                  },
+                },
+                metadata: {
+                  hubspot_company_id: "company_from_subscription",
+                },
+                canceled_at: null,
+                items: {
+                  data: [
+                    {
+                      price: {
+                        unit_amount: 12_000,
+                        recurring: { interval: "month", interval_count: 1 },
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+            has_more: false,
+          });
+        }
+        return jsonResponse({ data: [], has_more: false });
+      }
+
+      if (url.pathname === "/v1/charges") {
+        return jsonResponse({ data: [], has_more: false });
+      }
+
+      if (["/v1/invoices", "/v1/disputes", "/v1/refunds"].includes(url.pathname)) {
+        return jsonResponse({ data: [], has_more: false });
+      }
+
+      return jsonResponse({ error: "unexpected request", url: String(url) }, 500);
+    });
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchStripeData("sk_test_123", { fromDate, toDate });
+
+    const activeSubscriptionRequest = fetchMock.mock.calls
+      .map(([url]) => new URL(String(url)))
+      .find((url) => url.pathname === "/v1/subscriptions" && url.searchParams.get("status") === "active");
+    expect(activeSubscriptionRequest?.searchParams.getAll("expand[]")).toContain("data.customer");
+    expect(data.subscriptions.activeCustomerRefs).toEqual([
+      {
+        customerId: "cus_company_meta",
+        email: "buyer@example.com",
+        emailDomain: "example.com",
+        hubspotCompanyIds: [
+          "company_from_subscription",
+          "company_from_customer",
+          "company_extra",
+        ],
+      },
+    ]);
+  });
+
+  it("uses deduplicated active customers for Stripe average revenue per customer", async () => {
+    const fromDate = new Date("2026-02-01T00:00:00.000Z");
+    const toDate = new Date("2026-02-28T23:59:59.999Z");
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+
+      if (url.pathname === "/v1/subscriptions") {
+        const status = url.searchParams.get("status");
+        if (status === "active") {
+          return jsonResponse({
+            data: [
+              {
+                id: "sub_primary",
+                customer: {
+                  id: "cus_shared",
+                  email: "billing@example.com",
+                },
+                items: {
+                  data: [
+                    {
+                      price: {
+                        unit_amount: 10_000,
+                        recurring: { interval: "month", interval_count: 1 },
+                      },
+                    },
+                  ],
+                },
+              },
+              {
+                id: "sub_expansion",
+                customer: {
+                  id: "cus_shared",
+                  email: "billing@example.com",
+                },
+                items: {
+                  data: [
+                    {
+                      price: {
+                        unit_amount: 5_000,
+                        recurring: { interval: "month", interval_count: 1 },
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+            has_more: false,
+          });
+        }
+        return jsonResponse({ data: [], has_more: false });
+      }
+
+      if (url.pathname === "/v1/charges") {
+        return jsonResponse({ data: [], has_more: false });
+      }
+
+      if (["/v1/invoices", "/v1/disputes", "/v1/refunds"].includes(url.pathname)) {
+        return jsonResponse({ data: [], has_more: false });
+      }
+
+      return jsonResponse({ error: "unexpected request", url: String(url) }, 500);
+    });
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchStripeData("sk_test_123", { fromDate, toDate });
+
+    expect(data.subscriptions.active).toBe(2);
+    expect(data.revenue.mrr).toBe(150);
+    expect(data.revenue.avgRevenuePerCustomer).toBe(150);
+  });
+
+  it("fetches invoices and exposes raw Stripe objects for durable Imladris ingestion", async () => {
+    const fromDate = new Date("2026-02-01T00:00:00.000Z");
+    const toDate = new Date("2026-02-28T23:59:59.999Z");
+    const currentStart = String(Math.floor(fromDate.getTime() / 1000));
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+
+      if (url.pathname === "/v1/subscriptions") {
+        const status = url.searchParams.get("status");
+        if (status === "active") {
+          return jsonResponse({
+            data: [
+              {
+                id: "sub_active_1",
+                customer: { id: "cus_active", email: "buyer@example.com" },
+                status: "active",
+                items: {
+                  data: [
+                    {
+                      id: "si_recurring",
+                      price: {
+                        id: "price_recurring",
+                        unit_amount: 12_000,
+                        recurring: { interval: "month", interval_count: 1 },
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+            has_more: false,
+          });
+        }
+        if (status === "canceled") {
+          return jsonResponse({
+            data: [{ id: "sub_canceled_1", customer: "cus_churned", status: "canceled" }],
+            has_more: false,
+          });
+        }
+        return jsonResponse({ data: [], has_more: false });
+      }
+
+      if (url.pathname === "/v1/charges") {
+        const isCurrentRange = url.searchParams.get("created[gte]") === currentStart;
+        return jsonResponse({
+          data: isCurrentRange
+            ? [{ id: "ch_current_1", amount: 12_000, created: Number(currentStart), status: "succeeded" }]
+            : [],
+          has_more: false,
+        });
+      }
+
+      if (url.pathname === "/v1/invoices") {
+        return jsonResponse({
+          data: [
+            {
+              id: "in_services_1",
+              customer: { id: "cus_active", email: "buyer@example.com" },
+              status: "paid",
+              created: Number(currentStart),
+              amount_paid: 75_000,
+              currency: "usd",
+              lines: {
+                data: [
+                  {
+                    id: "il_implementation_1",
+                    amount: 75_000,
+                    description: "Implementation services",
+                    price: { id: "price_implementation", type: "one_time" },
+                  },
+                ],
+              },
+            },
+          ],
+          has_more: false,
+        });
+      }
+
+      if (url.pathname === "/v1/disputes") {
+        return jsonResponse({
+          data: [
+            {
+              id: "dp_lost_1",
+              charge: "ch_current_1",
+              amount: 12_000,
+              currency: "usd",
+              status: "lost",
+              created: Number(currentStart),
+              reason: "fraudulent",
+            },
+          ],
+          has_more: false,
+        });
+      }
+
+      if (url.pathname === "/v1/refunds") {
+        return jsonResponse({
+          data: [
+            {
+              id: "re_1",
+              charge: "ch_current_1",
+              payment_intent: "pi_current_1",
+              amount: 2_500,
+              currency: "usd",
+              status: "succeeded",
+              created: Number(currentStart),
+              reason: "requested_by_customer",
+            },
+          ],
+          has_more: false,
+        });
+      }
+
+      if (url.pathname === "/v1/payment_intents") {
+        return jsonResponse({
+          data: [
+            {
+              id: "pi_current_1",
+              customer: { id: "cus_active", email: "buyer@example.com" },
+              latest_charge: { id: "ch_current_1", balance_transaction: "txn_fee_1" },
+              amount_received: 12_000,
+              currency: "usd",
+              status: "succeeded",
+              created: Number(currentStart),
+            },
+          ],
+          has_more: false,
+        });
+      }
+
+      if (url.pathname === "/v1/balance_transactions") {
+        return jsonResponse({
+          data: [
+            {
+              id: "txn_fee_1",
+              source: "ch_current_1",
+              amount: 12_000,
+              fee: 700,
+              net: 11_300,
+              currency: "usd",
+              created: Number(currentStart),
+              type: "charge",
+              reporting_category: "charge",
+            },
+          ],
+          has_more: false,
+        });
+      }
+
+      return jsonResponse({ error: "unexpected request", url: String(url) }, 500);
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchStripeData("sk_test_123", { fromDate, toDate });
+
+    const invoiceRequest = fetchMock.mock.calls
+      .map(([url]) => new URL(String(url)))
+      .find((url) => url.pathname === "/v1/invoices");
+    expect(invoiceRequest?.searchParams.get("limit")).toBe("100");
+    expect(invoiceRequest?.searchParams.get("created[gte]")).toBe(currentStart);
+    expect(invoiceRequest?.searchParams.get("expand[]")).toBe("data.customer");
+    expect(invoiceRequest?.searchParams.getAll("expand[]")).toContain("data.lines.data.price.product");
+    const disputeRequest = fetchMock.mock.calls
+      .map(([url]) => new URL(String(url)))
+      .find((url) => url.pathname === "/v1/disputes");
+    expect(disputeRequest?.searchParams.get("limit")).toBe("100");
+    expect(disputeRequest?.searchParams.get("created[gte]")).toBe(currentStart);
+    expect(disputeRequest?.searchParams.getAll("expand[]")).toContain("data.charge");
+    const refundRequest = fetchMock.mock.calls
+      .map(([url]) => new URL(String(url)))
+      .find((url) => url.pathname === "/v1/refunds");
+    expect(refundRequest?.searchParams.get("limit")).toBe("100");
+    expect(refundRequest?.searchParams.get("created[gte]")).toBe(currentStart);
+    expect(refundRequest?.searchParams.getAll("expand[]")).toContain("data.charge");
+    expect(refundRequest?.searchParams.getAll("expand[]")).toContain("data.payment_intent");
+    const paymentIntentRequest = fetchMock.mock.calls
+      .map(([url]) => new URL(String(url)))
+      .find((url) => url.pathname === "/v1/payment_intents");
+    expect(paymentIntentRequest?.searchParams.get("limit")).toBe("100");
+    expect(paymentIntentRequest?.searchParams.get("created[gte]")).toBe(currentStart);
+    expect(paymentIntentRequest?.searchParams.getAll("expand[]")).toContain("data.customer");
+    expect(paymentIntentRequest?.searchParams.getAll("expand[]")).toContain("data.latest_charge");
+    const balanceTransactionRequest = fetchMock.mock.calls
+      .map(([url]) => new URL(String(url)))
+      .find((url) => url.pathname === "/v1/balance_transactions");
+    expect(balanceTransactionRequest?.searchParams.get("limit")).toBe("100");
+    expect(balanceTransactionRequest?.searchParams.get("created[gte]")).toBe(currentStart);
+    expect(balanceTransactionRequest?.searchParams.getAll("expand[]")).toContain("data.source");
+    expect(data.stripeObjects).toEqual({
+      subscriptions: [
+        expect.objectContaining({ id: "sub_active_1", status: "active" }),
+        expect.objectContaining({ id: "sub_canceled_1", status: "canceled" }),
+      ],
+      charges: [expect.objectContaining({ id: "ch_current_1", status: "succeeded" })],
+      previousCharges: [],
+      invoices: [
+        expect.objectContaining({
+          id: "in_services_1",
+          amount_paid: 75_000,
+          lines: {
+            data: [
+              expect.objectContaining({
+                id: "il_implementation_1",
+                description: "Implementation services",
+              }),
+            ],
+          },
+        }),
+      ],
+      disputes: [
+        expect.objectContaining({
+          id: "dp_lost_1",
+          charge: "ch_current_1",
+          status: "lost",
+        }),
+      ],
+      refunds: [
+        expect.objectContaining({
+          id: "re_1",
+          charge: "ch_current_1",
+          payment_intent: "pi_current_1",
+          status: "succeeded",
+        }),
+      ],
+      paymentIntents: [
+        expect.objectContaining({
+          id: "pi_current_1",
+          customer: expect.objectContaining({ id: "cus_active" }),
+          latest_charge: expect.objectContaining({ id: "ch_current_1" }),
+          status: "succeeded",
+        }),
+      ],
+      balanceTransactions: [
+        expect.objectContaining({
+          id: "txn_fee_1",
+          source: "ch_current_1",
+          fee: 700,
+          net: 11_300,
+        }),
+      ],
+    });
+    expect(data._meta.diagnostics).toEqual(expect.objectContaining({
+      invoicesFetched: 1,
+      invoicesAvailable: true,
+      disputesFetched: 1,
+      disputesAvailable: true,
+      refundsFetched: 1,
+      refundsAvailable: true,
+      paymentIntentsFetched: 1,
+      paymentIntentsAvailable: true,
+      balanceTransactionsFetched: 1,
+      balanceTransactionsAvailable: true,
+    }));
+  });
+
+  it("fetches additional Stripe invoice line item pages when expanded invoice lines are truncated", async () => {
+    const fromDate = new Date("2026-02-01T00:00:00.000Z");
+    const toDate = new Date("2026-02-28T23:59:59.999Z");
+    const currentStart = String(Math.floor(fromDate.getTime() / 1000));
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+
+      if (url.pathname === "/v1/subscriptions") {
+        return jsonResponse({ data: [], has_more: false });
+      }
+
+      if (url.pathname === "/v1/charges") {
+        return jsonResponse({ data: [], has_more: false });
+      }
+
+      if (url.pathname === "/v1/invoices") {
+        return jsonResponse({
+          data: [
+            {
+              id: "in_truncated_lines",
+              customer: { id: "cus_lines", email: "buyer@example.com" },
+              status: "paid",
+              created: Number(currentStart),
+              amount_paid: 125_000,
+              currency: "usd",
+              lines: {
+                object: "list",
+                data: [
+                  {
+                    id: "il_first_page",
+                    amount: 75_000,
+                    description: "Implementation services",
+                    price: { id: "price_implementation", type: "one_time" },
+                  },
+                ],
+                has_more: true,
+              },
+            },
+          ],
+          has_more: false,
+        });
+      }
+
+      if (url.pathname === "/v1/invoices/in_truncated_lines/lines") {
+        return jsonResponse({
+          data: [
+            {
+              id: "il_second_page",
+              amount: 50_000,
+              description: "Training services",
+              price: { id: "price_training", type: "one_time" },
+            },
+          ],
+          has_more: false,
+        });
+      }
+
+      if (url.pathname === "/v1/disputes" || url.pathname === "/v1/refunds") {
+        return jsonResponse({ data: [], has_more: false });
+      }
+
+      return jsonResponse({ error: "unexpected request", url: String(url) }, 500);
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchStripeData("sk_test_123", { fromDate, toDate });
+
+    const lineItemRequest = fetchMock.mock.calls
+      .map(([url]) => new URL(String(url)))
+      .find((url) => url.pathname === "/v1/invoices/in_truncated_lines/lines");
+    expect(lineItemRequest?.searchParams.get("limit")).toBe("100");
+    expect(lineItemRequest?.searchParams.get("starting_after")).toBe("il_first_page");
+    expect(lineItemRequest?.searchParams.getAll("expand[]")).toContain("data.price.product");
+    const stripeObjects = data.stripeObjects;
+    expect(stripeObjects).toBeDefined();
+    if (!stripeObjects) throw new Error("Expected Stripe object snapshots");
+    expect(stripeObjects.invoices).toEqual([
+      expect.objectContaining({
+        id: "in_truncated_lines",
+        lines: expect.objectContaining({
+          has_more: false,
+          data: [
+            expect.objectContaining({ id: "il_first_page" }),
+            expect.objectContaining({ id: "il_second_page" }),
+          ],
+        }),
+      }),
+    ]);
+  });
+
   it("preserves Stripe customer charge net amounts when monetary fields arrive as formatted strings", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));

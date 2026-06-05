@@ -4,10 +4,11 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { CeoOrganizationContextError, withCeoOrganizationContext } from "@/lib/ceo/api-context";
 import { getCeoReportRun } from "@/lib/ceo/service";
+import { enforcePermission, normalizeRole } from "@/lib/permissions";
 import { getAuthenticatedUser } from "@/lib/session-user";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ runId: string }> }
 ): Promise<NextResponse> {
   try {
@@ -18,6 +19,23 @@ export async function GET(
     }
 
     const { runId } = await context.params;
+    const permission = await enforcePermission({
+      userId: user.id,
+      action: "report.read",
+      request,
+      targetType: "ceo_report_run",
+      targetId: runId,
+    });
+    if (permission.deniedResponse) {
+      return permission.deniedResponse;
+    }
+    if (normalizeRole(user.role) === "investor") {
+      return NextResponse.json(
+        { error: "Investors must use the redacted investor board-pack endpoint" },
+        { status: 403 },
+      );
+    }
+
     const run = await withCeoOrganizationContext(session, user, (organizationId) =>
       getCeoReportRun({
         userId: user.id,

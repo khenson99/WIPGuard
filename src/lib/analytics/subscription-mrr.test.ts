@@ -69,6 +69,43 @@ describe("buildSubscriptionMrrBreakdown", () => {
     expect(breakdown.mergedActiveSubscriptions).toBe(1);
   });
 
+  it("excludes HubSpot subscription revenue linked to active Stripe customer company metadata", () => {
+    const breakdown = buildSubscriptionMrrBreakdown({
+      stripe: {
+        revenue: { mrr: 12000, mrrChange: 500 },
+        subscriptions: {
+          active: 1,
+          activeCustomerRefs: [
+            {
+              customerId: "cus_123",
+              email: "billing@example.com",
+              emailDomain: "example.com",
+              hubspotCompanyIds: ["company_from_stripe"],
+            },
+          ],
+        },
+      },
+      hubspot: {
+        subscriptionDeals: [
+          {
+            dealId: "linked-by-company",
+            dealName: "Linked Company",
+            stageLabel: "Subscriptions",
+            amount: 3600,
+            stripeCustomerId: null,
+            primaryContactEmail: null,
+            companyIds: ["company_from_stripe"],
+          },
+        ],
+      },
+    });
+
+    expect(breakdown.totalMrr).toBe(12000);
+    expect(breakdown.hubspotOnlySubscriptionMrr).toBe(0);
+    expect(breakdown.excludedLinkedHubspotSubscriptionMrr).toBe(300);
+    expect(breakdown.mergedActiveSubscriptions).toBe(1);
+  });
+
   it("uses Stripe active subscription count when customer refs are unavailable", () => {
     const breakdown = buildSubscriptionMrrBreakdown({
       stripe: {

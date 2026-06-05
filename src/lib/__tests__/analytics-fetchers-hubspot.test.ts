@@ -37,6 +37,15 @@ function createPipelineResponse() {
 function createHubSpotFetchMock(input: {
   activeDeals?: unknown[];
   archivedDeals?: unknown[];
+  meetings?: unknown[];
+  meetingsPages?: Record<string, unknown>;
+  meetingsStatus?: number;
+  companies?: unknown[];
+  companyPages?: Record<string, unknown>;
+  companiesStatus?: number;
+  tickets?: unknown[];
+  ticketPages?: Record<string, unknown>;
+  ticketsStatus?: number;
   totalContacts?: number;
   owners?: unknown[];
   ownerV3Status?: number;
@@ -49,6 +58,8 @@ function createHubSpotFetchMock(input: {
   submissionsByFormGuid?: Record<string, unknown[]>;
   submissionPagesByFormGuid?: Record<string, Record<string, unknown>>;
   submissionPageStatusesByFormGuid?: Record<string, Record<string, number>>;
+  contactSearchPages?: Record<string, unknown>;
+  contactSearchStatus?: number;
 }) {
   return vi.fn(async (url: string, init?: RequestInit) => {
     const parsed = new URL(url);
@@ -61,6 +72,45 @@ function createHubSpotFetchMock(input: {
       const archived = parsed.searchParams.get("archived") === "true";
       return jsonResponse({
         results: archived ? input.archivedDeals ?? [] : input.activeDeals ?? [],
+      });
+    }
+
+    if (parsed.pathname === "/crm/v3/objects/meetings") {
+      if (input.meetingsStatus && input.meetingsStatus >= 400) {
+        return jsonResponse({ error: "meetings unavailable" }, input.meetingsStatus);
+      }
+      if (input.meetingsPages) {
+        const after = parsed.searchParams.get("after") ?? "initial";
+        return jsonResponse(input.meetingsPages[after] ?? { results: [] });
+      }
+      return jsonResponse({
+        results: input.meetings ?? [],
+      });
+    }
+
+    if (parsed.pathname === "/crm/v3/objects/companies") {
+      if (input.companiesStatus && input.companiesStatus >= 400) {
+        return jsonResponse({ error: "companies unavailable" }, input.companiesStatus);
+      }
+      if (input.companyPages) {
+        const after = parsed.searchParams.get("after") ?? "initial";
+        return jsonResponse(input.companyPages[after] ?? { results: [] });
+      }
+      return jsonResponse({
+        results: input.companies ?? [],
+      });
+    }
+
+    if (parsed.pathname === "/crm/v3/objects/tickets") {
+      if (input.ticketsStatus && input.ticketsStatus >= 400) {
+        return jsonResponse({ error: "tickets unavailable" }, input.ticketsStatus);
+      }
+      if (input.ticketPages) {
+        const after = parsed.searchParams.get("after") ?? "initial";
+        return jsonResponse(input.ticketPages[after] ?? { results: [] });
+      }
+      return jsonResponse({
+        results: input.tickets ?? [],
       });
     }
 
@@ -78,6 +128,14 @@ function createHubSpotFetchMock(input: {
 
     if (parsed.pathname === "/crm/v3/objects/contacts" && parsed.searchParams.get("limit") === "1") {
       return jsonResponse({ total: input.totalContacts ?? 0 });
+    }
+
+    if (parsed.pathname === "/crm/v3/objects/contacts/search") {
+      if (input.contactSearchStatus && input.contactSearchStatus >= 400) {
+        return jsonResponse({ error: "contact search unavailable" }, input.contactSearchStatus);
+      }
+      const body = JSON.parse(String(init?.body ?? "{}")) as { after?: string };
+      return jsonResponse(input.contactSearchPages?.[body.after ?? "initial"] ?? { results: [] });
     }
 
     if (parsed.pathname === "/crm/v4/associations/deal/contact/batch/read") {
@@ -155,6 +213,292 @@ describe("analytics hubspot fetcher", () => {
     expect(String(dealsRequest?.[0] ?? "")).toContain("limit=50");
     expect(data.pipelineStageLabelsSource).toBe("api");
     expect(data.pipelineDetected).toEqual({ pipelineId: "default", dealCount: 0 });
+  });
+
+  it("requests HubSpot deal associations and preserves company context on shaped deals", async () => {
+    const fetchMock = createHubSpotFetchMock({
+      activeDeals: [
+        {
+          id: "deal-associated-main",
+          properties: {
+            dealstage: "presentationscheduled",
+            amount: "12000",
+            dealname: "Gamma expansion",
+            hs_analytics_source: "PAID_SEARCH",
+            createdate: "2026-05-01T12:00:00.000Z",
+            hs_lastmodifieddate: "2026-05-08T12:00:00.000Z",
+            pipeline: "default",
+          },
+          associations: {
+            companies: { results: [{ id: "company-main-1" }] },
+            contacts: { results: [{ id: "contact-main-1" }] },
+          },
+          propertiesWithHistory: {
+            dealstage: [{ value: "presentationscheduled", timestamp: "2026-05-08T12:00:00.000Z" }],
+          },
+        },
+        {
+          id: "deal-associated-subscription",
+          properties: {
+            dealstage: "2239936224",
+            amount: "5000",
+            dealname: "Gamma subscription",
+            hs_analytics_source: "DIRECT_TRAFFIC",
+            createdate: "2026-05-02T12:00:00.000Z",
+            hs_lastmodifieddate: "2026-05-09T12:00:00.000Z",
+            pipeline: "1390107368",
+          },
+          associations: {
+            companies: { results: [{ toObjectId: "company-subscription-1" }] },
+            contacts: { results: [{ toObjectId: "contact-subscription-1" }] },
+          },
+          propertiesWithHistory: {
+            dealstage: [{ value: "2239936224", timestamp: "2026-05-09T12:00:00.000Z" }],
+          },
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchHubSpotData("hs-token");
+
+    const dealsRequests = fetchMock.mock.calls
+      .map(([url]) => String(url))
+      .filter((url) => url.includes("/crm/v3/objects/deals"));
+
+    expect(dealsRequests).not.toHaveLength(0);
+    expect(dealsRequests.every((url) => url.includes("associations=companies%2Ccontacts"))).toBe(true);
+    expect(data.deals?.[0]).toEqual(expect.objectContaining({
+      dealId: "deal-associated-main",
+      companyIds: ["company-main-1"],
+      contactIds: ["contact-main-1"],
+    }));
+    expect(data.subscriptionDeals?.[0]).toEqual(expect.objectContaining({
+      dealId: "deal-associated-subscription",
+      companyIds: ["company-subscription-1"],
+      contactIds: ["contact-subscription-1"],
+    }));
+  });
+
+  it("preserves explicit HubSpot subscription MRR and ARR properties on subscription deals", async () => {
+    const fetchMock = createHubSpotFetchMock({
+      activeDeals: [
+        {
+          id: "deal-subscription-revenue-fields",
+          properties: {
+            dealstage: "2239936224",
+            amount: "18000",
+            dealname: "Gamma annual subscription",
+            hs_analytics_source: "DIRECT_TRAFFIC",
+            createdate: "2026-05-02T12:00:00.000Z",
+            hs_lastmodifieddate: "2026-05-09T12:00:00.000Z",
+            pipeline: "1390107368",
+            hs_mrr: "1500",
+            hs_arr: "18000",
+            recurring_revenue: "true",
+            subscription_start_date: "2026-05-01",
+            subscription_end_date: "2027-05-01",
+          },
+          propertiesWithHistory: {
+            dealstage: [{ value: "2239936224", timestamp: "2026-05-09T12:00:00.000Z" }],
+          },
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchHubSpotData("hs-token");
+
+    const dealsRequests = fetchMock.mock.calls
+      .map(([url]) => String(url))
+      .filter((url) => url.includes("/crm/v3/objects/deals"));
+
+    expect(dealsRequests.every((url) => url.includes("hs_mrr"))).toBe(true);
+    expect(dealsRequests.every((url) => url.includes("hs_arr"))).toBe(true);
+    expect(data.subscriptionDeals?.[0]).toEqual(expect.objectContaining({
+      dealId: "deal-subscription-revenue-fields",
+      monthlyRecurringRevenue: "1500",
+      recurringRevenueAmount: "18000",
+      recurringRevenue: "true",
+      subscriptionStartDate: "2026-05-01",
+      subscriptionEndDate: "2027-05-01",
+    }));
+  });
+
+  it("loads recent meeting objects with attendee associations for demo evidence", async () => {
+    const fetchMock = createHubSpotFetchMock({
+      meetings: [
+        {
+          id: "meeting_demo_1",
+          properties: {
+            hs_object_id: "meeting_demo_1",
+            hs_timestamp: "2026-05-20T17:00:00.000Z",
+            hs_meeting_title: "Demo with Gamma",
+            hs_meeting_body: "Product walkthrough and pricing discussion",
+            hs_meeting_outcome: "SCHEDULED",
+            hs_createdate: "2026-05-18T12:00:00.000Z",
+            hs_lastmodifieddate: "2026-05-19T12:00:00.000Z",
+            hubspot_owner_id: "owner-1",
+          },
+          associations: {
+            contacts: {
+              results: [{ id: "contact-1", type: "meeting_to_contact" }],
+            },
+            deals: {
+              results: [{ id: "deal-1", type: "meeting_to_deal" }],
+            },
+          },
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchHubSpotData("hs-token");
+
+    const meetingsRequest = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("/crm/v3/objects/meetings"),
+    );
+
+    expect(String(meetingsRequest?.[0] ?? "")).toContain("properties=hs_object_id");
+    expect(String(meetingsRequest?.[0] ?? "")).toContain("hs_meeting_title");
+    expect(String(meetingsRequest?.[0] ?? "")).toContain("associations=contacts%2Cdeals");
+    expect(String(meetingsRequest?.[0] ?? "")).toContain("limit=100");
+    expect(data.meetings).toEqual([
+      {
+        meetingId: "meeting_demo_1",
+        title: "Demo with Gamma",
+        body: "Product walkthrough and pricing discussion",
+        outcome: "SCHEDULED",
+        ownerId: "owner-1",
+        startedAt: "2026-05-20T17:00:00.000Z",
+        createdAt: "2026-05-18T12:00:00.000Z",
+        updatedAt: "2026-05-19T12:00:00.000Z",
+        contactIds: ["contact-1"],
+        dealIds: ["deal-1"],
+      },
+    ]);
+    expect(data._meta.diagnostics).toEqual(expect.objectContaining({
+      meetingsAvailable: true,
+      meetingsFetched: 1,
+      meetingsTruncated: false,
+    }));
+  });
+
+  it("loads HubSpot company account objects for customer context ingestion", async () => {
+    const fetchMock = createHubSpotFetchMock({
+      companies: [
+        {
+          id: "company-1",
+          properties: {
+            hs_object_id: "company-1",
+            name: "Gamma Co",
+            domain: "gamma.example",
+            industry: "SaaS",
+            lifecyclestage: "customer",
+            numberofemployees: "42",
+            annualrevenue: "1200000",
+            createdate: "2026-01-10T12:00:00.000Z",
+            hs_lastmodifieddate: "2026-05-22T12:00:00.000Z",
+            hubspot_owner_id: "owner-1",
+          },
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchHubSpotData("hs-token");
+
+    const companiesRequest = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("/crm/v3/objects/companies"),
+    );
+
+    expect(String(companiesRequest?.[0] ?? "")).toContain("properties=hs_object_id");
+    expect(String(companiesRequest?.[0] ?? "")).toContain("lifecyclestage");
+    expect(String(companiesRequest?.[0] ?? "")).toContain("limit=100");
+    expect(data.companies).toEqual([
+      {
+        companyId: "company-1",
+        name: "Gamma Co",
+        domain: "gamma.example",
+        industry: "SaaS",
+        lifecycleStage: "customer",
+        employeeCount: 42,
+        annualRevenue: 1_200_000,
+        ownerId: "owner-1",
+        createdAt: "2026-01-10T12:00:00.000Z",
+        updatedAt: "2026-05-22T12:00:00.000Z",
+      },
+    ]);
+    expect(data._meta.diagnostics).toEqual(expect.objectContaining({
+      companiesAvailable: true,
+      companiesFetched: 1,
+      companiesTruncated: false,
+    }));
+  });
+
+  it("loads HubSpot support ticket objects for customer health ingestion", async () => {
+    const fetchMock = createHubSpotFetchMock({
+      tickets: [
+        {
+          id: "ticket-1",
+          properties: {
+            hs_object_id: "ticket-1",
+            subject: "Payment failure",
+            content: "Customer cannot update card.",
+            hs_pipeline: "support-pipeline",
+            hs_pipeline_stage: "open-stage",
+            hs_ticket_priority: "HIGH",
+            hs_ticket_category: "BILLING",
+            source_type: "EMAIL",
+            createdate: "2026-05-20T10:00:00.000Z",
+            hs_lastmodifieddate: "2026-05-21T10:00:00.000Z",
+            closed_date: "2026-05-22T10:00:00.000Z",
+            hubspot_owner_id: "owner-1",
+          },
+          associations: {
+            companies: { results: [{ id: "company-1" }] },
+            contacts: { results: [{ id: "contact-1" }] },
+            deals: { results: [{ id: "deal-1" }] },
+          },
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchHubSpotData("hs-token");
+
+    const ticketsRequest = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("/crm/v3/objects/tickets"),
+    );
+
+    expect(String(ticketsRequest?.[0] ?? "")).toContain("properties=hs_object_id");
+    expect(String(ticketsRequest?.[0] ?? "")).toContain("hs_ticket_priority");
+    expect(String(ticketsRequest?.[0] ?? "")).toContain("associations=companies%2Ccontacts%2Cdeals");
+    expect(String(ticketsRequest?.[0] ?? "")).toContain("limit=100");
+    expect(data.tickets).toEqual([
+      {
+        ticketId: "ticket-1",
+        subject: "Payment failure",
+        content: "Customer cannot update card.",
+        pipelineId: "support-pipeline",
+        stageId: "open-stage",
+        priority: "HIGH",
+        category: "BILLING",
+        sourceType: "EMAIL",
+        ownerId: "owner-1",
+        createdAt: "2026-05-20T10:00:00.000Z",
+        updatedAt: "2026-05-21T10:00:00.000Z",
+        closedAt: "2026-05-22T10:00:00.000Z",
+        companyIds: ["company-1"],
+        contactIds: ["contact-1"],
+        dealIds: ["deal-1"],
+      },
+    ]);
+    expect(data._meta.diagnostics).toEqual(expect.objectContaining({
+      ticketsAvailable: true,
+      ticketsFetched: 1,
+      ticketsTruncated: false,
+    }));
   });
 
   it("keeps subscription pipeline deals out of main deals while exposing active subscriptions", async () => {
@@ -396,6 +740,111 @@ describe("analytics hubspot fetcher", () => {
     expect(contactBatchCall?.[1]).toEqual(expect.objectContaining({
       cache: "no-store",
     }));
+  });
+
+  it("loads recent HubSpot contact objects for durable Imladris contact ingestion", async () => {
+    const fetchMock = createHubSpotFetchMock({
+      totalContacts: 12,
+      owners: [{ id: "owner-1", firstName: "Ada", lastName: "Lovelace", email: "ada@example.com" }],
+      contactSearchPages: {
+        initial: {
+          results: [
+            {
+              id: "contact-1",
+              properties: {
+                email: "buyer@example.com",
+                createdate: "2026-05-14T12:00:00.000Z",
+                hubspot_owner_id: "owner-1",
+                hs_analytics_source: "PAID_SEARCH",
+                hs_analytics_num_visits: "4",
+                hs_analytics_num_page_views: "9",
+                utm_source: "google",
+                utm_medium: "cpc",
+                utm_campaign: "launch",
+              },
+            },
+          ],
+          paging: { next: { after: "page-2" } },
+        },
+        "page-2": {
+          results: [
+            {
+              id: "contact-2",
+              properties: {
+                email: "founder@example.com",
+                createdate: "2026-05-20T09:30:00.000Z",
+                hs_analytics_source: "ORGANIC_SEARCH",
+              },
+            },
+          ],
+        },
+      },
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchHubSpotData("hs-token", {
+      fromDate: new Date("2026-05-01T00:00:00.000Z"),
+      toDate: new Date("2026-05-31T23:59:59.999Z"),
+    });
+
+    const contactSearchCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes("/crm/v3/objects/contacts/search"),
+    );
+    expect(contactSearchCalls).toHaveLength(2);
+    expect(contactSearchCalls[0]?.[1]).toEqual(expect.objectContaining({
+      method: "POST",
+      cache: "no-store",
+    }));
+    expect(JSON.parse(String(contactSearchCalls[0]?.[1]?.body ?? "{}"))).toMatchObject({
+      filterGroups: [
+        {
+          filters: [
+            { propertyName: "createdate", operator: "GTE", value: String(new Date("2026-05-01T00:00:00.000Z").getTime()) },
+            { propertyName: "createdate", operator: "LTE", value: String(new Date("2026-05-31T23:59:59.999Z").getTime()) },
+          ],
+        },
+      ],
+      properties: expect.arrayContaining([
+        "email",
+        "createdate",
+        "hubspot_owner_id",
+        "hs_analytics_source",
+        "utm_campaign",
+      ]),
+    });
+    expect((data as { contactRecords?: unknown[] }).contactRecords).toEqual([
+      expect.objectContaining({
+        contactId: "contact-1",
+        email: "buyer@example.com",
+        createdAt: "2026-05-14T12:00:00.000Z",
+        ownerId: "owner-1",
+        repName: "Ada Lovelace",
+        rawSource: "PAID_SEARCH",
+        numVisits: 4,
+        numPageViews: 9,
+        utmSource: "google",
+        utmMedium: "cpc",
+        utmCampaign: "launch",
+      }),
+      expect.objectContaining({
+        contactId: "contact-2",
+        email: "founder@example.com",
+        createdAt: "2026-05-20T09:30:00.000Z",
+        ownerId: null,
+        repName: "Unassigned",
+        rawSource: "ORGANIC_SEARCH",
+        numVisits: null,
+        numPageViews: null,
+        utmSource: null,
+        utmMedium: null,
+        utmCampaign: null,
+      }),
+    ]);
+    expect(data._meta.diagnostics).toMatchObject({
+      contactRecordsFetched: 2,
+      contactRecordsAvailable: true,
+      contactRecordsTruncated: false,
+    });
   });
 
   it("excludes suspicious contact-backed HubSpot leads from funnel and churn metrics", async () => {

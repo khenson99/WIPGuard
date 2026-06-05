@@ -6,6 +6,7 @@ import {
   GATopPage,
   WebflowData,
   WebflowFormEntry,
+  WebflowFormSubmissionDetail,
   WebflowPageDetail,
   WebflowCollectionDetail,
   WebflowFormTrendEntry,
@@ -583,6 +584,10 @@ export async function fetchWebflowData(
   };
   const strOrNull = (v: unknown): string | null =>
     typeof v === "string" && v.length > 0 ? v : null;
+  const recordOrEmpty = (v: unknown): Record<string, unknown> =>
+    v && typeof v === "object" && !Array.isArray(v)
+      ? (v as Record<string, unknown>)
+      : {};
 
   const pageDetails: WebflowPageDetail[] = rawPages.map((entry) => {
     const p = requireObject(entry);
@@ -658,6 +663,7 @@ export async function fetchWebflowData(
 
   // ── Form submissions + trend ──
   let formSubmissions: WebflowFormEntry[] = [];
+  let formSubmissionDetails: WebflowFormSubmissionDetail[] = [];
   let formTrend: WebflowFormTrendEntry[] = [];
   let formSubmissionsTruncated = false;
   let formSubmissionsAvailable = true;
@@ -690,6 +696,16 @@ export async function fetchWebflowData(
 
       const formName = String(row.formName || row.formId || "Unknown");
       formMap[formName] = (formMap[formName] || 0) + 1;
+      formSubmissionDetails.push({
+        submissionId: strOrNull(row.submissionId || row.submission_id || row.id || row._id),
+        formId: strOrNull(row.formId || row.form_id),
+        formName,
+        submittedAt:
+          createdDate?.toISOString() ??
+          strOrNull(row.submittedAt || row.submitted_at || row.createdOn || row.createdAt || row.created_at),
+        pageUrl: strOrNull(row.pageUrl || row.page_url || row.page),
+        fields: recordOrEmpty(row.data || row.fields || row.fieldData || row.field_data),
+      });
 
       // Bucket by day for trend
       if (createdDate) {
@@ -706,6 +722,7 @@ export async function fetchWebflowData(
       .map(([date, submissions]) => ({ date, submissions }));
   } catch (error) {
     formSubmissions = [];
+    formSubmissionDetails = [];
     formTrend = [];
     formSubmissionsAvailable = false;
     formSubmissionsError = error instanceof Error ? error.message : String(error);
@@ -731,6 +748,7 @@ export async function fetchWebflowData(
     totalPages: totalPageCount,
     totalCollections: rawCollections.length,
     formSubmissions,
+    formSubmissionDetails,
     customDomains,
 
     publishedPages,

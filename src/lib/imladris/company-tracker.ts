@@ -101,16 +101,78 @@ export interface CompanyTrackerMetric {
   computedAt: string | null;
   periodEnd: string | null;
   sourceLineageCount: number;
+  sourceLineageKeys?: string[];
+  latestSourceCapturedAt?: string;
 }
 
 export interface CompanyTrackerSummary {
   arr: number | null;
   mrr: number | null;
+  totalRevenue: number | null;
+  subscriptionRevenue: number | null;
+  servicesRevenue: number | null;
   runwayMonths: number | null;
   cashBalance: number | null;
   netBurn: number | null;
+  cashOutflow: number | null;
+  cashInflow: number | null;
+  expenses: number | null;
+  grossMargin: number | null;
+  grossMarginRevenue: number | null;
+  costOfGoodsSold: number | null;
+  stripeProcessingFees: number | null;
   qualifiedPipeline: number | null;
+  qualifiedPipelineCount: number | null;
+  collaborationTouchCount: number | null;
+  collaborationCoverage: number | null;
+  demos: number | null;
+  scheduledDemos: number | null;
+  requestedDemos: number | null;
+  hubspotDemoDeals: number | null;
+  hubspotDemoMeetings: number | null;
+  calendarDemoEvents: number | null;
+  webflowDemoRequests: number | null;
   activeSubscriptions: number | null;
+  stripeSubscriptions: number | null;
+  hubspotOnlySubscriptions: number | null;
+  customers: number | null;
+  stripeCustomers: number | null;
+  hubspotOnlyCustomers: number | null;
+  websiteTraffic: number | null;
+  websiteSessions: number | null;
+  posthogPageviews: number | null;
+  organicTraffic: number | null;
+  searchClicks: number | null;
+  searchImpressions: number | null;
+  conversionRate: number | null;
+  conversions: number | null;
+  webflowFormSubmissions: number | null;
+  hubspotLeadConversions: number | null;
+  posthogConversions: number | null;
+  identifiedVisitors: number | null;
+  pipelineEfficiency: number | null;
+  acquisitionSpend: number | null;
+  activationRate: number | null;
+  activatedAccounts: number | null;
+  eligibleAccounts: number | null;
+  customerHealth: number | null;
+  atRiskAccounts: number | null;
+  openSupportIssues: number | null;
+  customerActivity: number | null;
+  supportInteractions: number | null;
+  productUsageRecords: number | null;
+  collaborationSignals: number | null;
+  customerActivityActiveAccounts: number | null;
+  churnRate: number | null;
+  retentionRate: number | null;
+  churnedCustomers: number | null;
+  retainedCustomers: number | null;
+  retentionCustomerBase: number | null;
+  retentionRiskScore: number | null;
+  retentionRiskAccounts: number | null;
+  retentionRiskEscalations: number | null;
+  retentionRiskBillingRiskAccounts: number | null;
+  retentionRiskLowUsageAccounts: number | null;
   currency: string;
 }
 
@@ -148,6 +210,58 @@ export interface CompanyHealthBand {
   sourceMetricKeys: string[];
 }
 
+export interface CompanyNorthStarDriver {
+  id: string;
+  label: string;
+  value: number | null;
+  unit: string;
+  status: HealthBandStatus;
+  detail: string;
+  sourceLineageCount?: number;
+  sourceLineageKeys?: string[];
+  latestSourceCapturedAt?: string;
+}
+
+export interface CompanyNorthStar {
+  id: "healthy_arr_growth";
+  label: "Healthy ARR Growth";
+  status: HealthBandStatus;
+  currentArr: number | null;
+  currentMrr: number | null;
+  netNewArr: number | null;
+  formula: string;
+  sourceMetricKeys: string[];
+  drivers: CompanyNorthStarDriver[];
+}
+
+export interface CompanyBenchmarkItem {
+  id: string;
+  label: string;
+  value: number | null;
+  unit: "currency" | "months" | "percent" | "ratio" | "score";
+  status: HealthBandStatus;
+  benchmark: string;
+  formula: string;
+  assumption: string;
+  sourceMetricKeys: string[];
+}
+
+export interface CompanyCohortItem {
+  id: string;
+  label: string;
+  value: number | null;
+  unit: "count" | "currency" | "percent" | "ratio" | "score";
+  status: HealthBandStatus;
+  detail: string;
+  formula: string;
+  sourceMetricKeys: string[];
+}
+
+export interface CompanyBenchmarkContext {
+  items: CompanyBenchmarkItem[];
+  cohorts: CompanyCohortItem[];
+}
+
 export interface CompanySourceCoverage {
   key: string;
   label: string;
@@ -183,6 +297,8 @@ export interface CompanyBoardReadiness {
 export interface CompanyTrackerDashboardData {
   dashboard: ImladrisDashboardDefinition;
   summary: CompanyTrackerSummary;
+  northStar: CompanyNorthStar;
+  benchmarkContext: CompanyBenchmarkContext;
   goalProgress: CompanyGoalProgress[];
   goalRecommendations: CompanyGoalRecommendation[];
   healthBands: CompanyHealthBand[];
@@ -431,9 +547,88 @@ function arrayAtPath(value: unknown, path: string[]): unknown[] {
   return Array.isArray(target) ? target : [];
 }
 
+function firstArrayAtPath(value: unknown, paths: string[][]): unknown[] {
+  for (const path of paths) {
+    const entries = arrayAtPath(value, path);
+    if (entries.length > 0) return entries;
+  }
+  return [];
+}
+
 function countValue(value: unknown): number | null {
   const valueAsNumber = numberValue(value);
   return valueAsNumber === null ? null : Math.floor(Math.max(0, valueAsNumber));
+}
+
+function normalizedCustomerRefLookup(value: unknown): string | null {
+  const scalar = scalarValue(value);
+  if (typeof scalar === "number" && Number.isFinite(scalar)) return String(scalar).toLowerCase();
+  if (typeof scalar !== "string") return null;
+  const normalized = scalar.trim().toLowerCase();
+  return normalized.length > 0 && normalized !== "unknown customer" ? normalized : null;
+}
+
+function normalizedCustomerRefLookups(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(normalizedCustomerRefLookups);
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((entry) => normalizedCustomerRefLookup(entry))
+      .filter((entry): entry is string => Boolean(entry));
+  }
+  const normalized = normalizedCustomerRefLookup(value);
+  return normalized ? [normalized] : [];
+}
+
+function hubspotCompanyRefIdentities(record: Record<string, unknown>): string[] {
+  const metadata = asRecord(record.metadata);
+  return [
+    record.hubspotCompanyIds,
+    record.hubspot_company_ids,
+    record.hubspotCompanyId,
+    record.hubspot_company_id,
+    metadata.hubspotCompanyIds,
+    metadata.hubspot_company_ids,
+    metadata.hubspotCompanyId,
+    metadata.hubspot_company_id,
+  ].flatMap((value) => normalizedCustomerRefLookups(value).map((id) => `hubspot-company:${id}`));
+}
+
+function activeCustomerRefIdentities(ref: unknown): string[] {
+  const record = asRecord(ref);
+  const customer = asRecord(record.customer);
+  const companyIdentities = [
+    ...hubspotCompanyRefIdentities(record),
+    ...hubspotCompanyRefIdentities(customer),
+  ];
+  if (companyIdentities.length > 0) return companyIdentities;
+
+  const identity =
+    normalizedCustomerRefLookup(record.customerId) ??
+    normalizedCustomerRefLookup(record.customer_id) ??
+    normalizedCustomerRefLookup(record.stripeCustomerId) ??
+    normalizedCustomerRefLookup(record.stripe_customer_id) ??
+    normalizedCustomerRefLookup(record.id) ??
+    normalizedCustomerRefLookup(customer.id) ??
+    normalizedCustomerRefLookup(record.email) ??
+    normalizedCustomerRefLookup(record.customerEmail) ??
+    normalizedCustomerRefLookup(record.customer_email) ??
+    normalizedCustomerRefLookup(customer.email);
+  return identity ? [identity] : [];
+}
+
+function uniqueActiveCustomerRefCount(refs: unknown[]): number {
+  let anonymousRefs = 0;
+  const identities = new Set<string>();
+  for (const ref of refs) {
+    const refIdentities = activeCustomerRefIdentities(ref);
+    if (refIdentities.length > 0) {
+      refIdentities.forEach((identity) => identities.add(identity));
+    } else {
+      anonymousRefs += 1;
+    }
+  }
+  return identities.size + anonymousRefs;
 }
 
 function currencyFrom(...values: Array<Record<string, unknown>>): string {
@@ -1056,6 +1251,273 @@ function retentionRiskFallback(
   };
 }
 
+function revenueAmountFallback(
+  analyticsStats: CompanyAnalyticsStats,
+  key: "arr" | "subscription_revenue" | "total_revenue",
+): Record<string, unknown> | null {
+  if (!hasAnalyticsProvider(analyticsStats, "stripe", "hubspot")) return null;
+  const amount = analyticsStats.revenueDashboard.summary.arr;
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return {
+    amount,
+    ...(key === "total_revenue"
+      ? {
+          subscriptionRevenue: amount,
+          servicesRevenue: 0,
+        }
+      : {}),
+    currency: "USD",
+    formula: "subscription MRR x 12 from Stripe and HubSpot subscription evidence",
+    source:
+      key === "arr"
+        ? "analytics.revenue_dashboard"
+        : key === "total_revenue"
+          ? "analytics.snapshot_total_revenue"
+          : "analytics.snapshot_subscription_revenue",
+  };
+}
+
+function activeSubscriptionFallback(analyticsStats: CompanyAnalyticsStats): Record<string, unknown> | null {
+  if (!hasAnalyticsProvider(analyticsStats, "stripe", "hubspot")) return null;
+  const count = analyticsStats.metricsLayer.finance.summary.activeSubscriptions;
+  return {
+    count,
+    stripeActiveSubscriptions: analyticsStats.metricsLayer.finance.summary.stripeActiveSubscriptions,
+    hubspotActiveSubscriptions: analyticsStats.metricsLayer.finance.summary.hubspotActiveSubscriptions,
+    source: "analytics.metrics_layer",
+  };
+}
+
+function customerCountFallback(analyticsStats: CompanyAnalyticsStats): Record<string, unknown> | null {
+  if (!hasAnalyticsProvider(analyticsStats, "stripe", "hubspot")) return null;
+  const stripePayload = snapshotPayload(analyticsStats, "stripe");
+  const activeCustomerRefs = firstArrayAtPath(stripePayload, [
+    ["subscriptions", "activeCustomerRefs"],
+    ["subscriptions", "active_customer_refs"],
+  ]);
+  const count = activeCustomerRefs.length > 0
+    ? uniqueActiveCustomerRefCount(activeCustomerRefs)
+    : analyticsStats.metricsLayer.finance.summary.activeSubscriptions;
+  return {
+    count,
+    activeCustomerRefs: activeCustomerRefs.length,
+    source: "analytics.snapshot_customer_count",
+  };
+}
+
+function salesDemosFallback(analyticsStats: CompanyAnalyticsStats): Record<string, unknown> | null {
+  if (!hasAnalyticsProvider(analyticsStats, "hubspot")) return null;
+
+  const hubspotPayload = snapshotPayload(analyticsStats, "hubspot");
+  const scheduledDemos = countValue(
+    firstNumberAtPath(hubspotPayload, [
+      ["funnel", "demoScheduled"],
+      ["funnel", "scheduledDemos"],
+      ["demos", "scheduled"],
+      ["summary", "demoScheduled"],
+      ["summary", "scheduledDemos"],
+      ["demoScheduled"],
+      ["scheduledDemos"],
+    ]),
+  );
+  const requestedDemos = countValue(
+    firstNumberAtPath(hubspotPayload, [
+      ["funnel", "requestedDemos"],
+      ["demos", "requested"],
+      ["summary", "requestedDemos"],
+      ["requestedDemos"],
+    ]),
+  );
+  const demoDeals = arrayAtPath(hubspotPayload, ["deals"]).filter((deal) => {
+    const record = asRecord(deal);
+    const stage = [
+      scalarValue(record.stageLabel),
+      scalarValue(record.stageName),
+      scalarValue(record.stageId),
+      scalarValue(record.dealstage),
+    ]
+      .filter((value): value is string => typeof value === "string")
+      .join(" ")
+      .toLowerCase();
+    return stage.includes("demo") || stage.includes("presentation");
+  }).length;
+  const count = scheduledDemos ?? (demoDeals > 0 ? demoDeals : null);
+  if (count === null && requestedDemos === null) return null;
+
+  return {
+    count: count ?? requestedDemos ?? 0,
+    scheduledDemos: scheduledDemos ?? count ?? 0,
+    requestedDemos: requestedDemos ?? null,
+    demoDealCount: demoDeals,
+    source: "analytics.snapshot_demos",
+  };
+}
+
+function cashBalanceFallback(analyticsStats: CompanyAnalyticsStats): Record<string, unknown> | null {
+  if (!hasAnalyticsProvider(analyticsStats, "mercury")) return null;
+  const amount =
+    analyticsStats.metricsLayer.finance.summary.cashBalance ||
+    analyticsStats.revenueDashboard.summary.cashBalance;
+  return {
+    amount,
+    bankCash: analyticsStats.metricsLayer.finance.summary.bankCash,
+    treasuryCash: analyticsStats.metricsLayer.finance.summary.treasuryCash,
+    currency: "USD",
+    source: "analytics.metrics_layer",
+  };
+}
+
+function expensesFallback(analyticsStats: CompanyAnalyticsStats): Record<string, unknown> | null {
+  if (!hasAnalyticsProvider(analyticsStats, "mercury")) return null;
+  const amount = analyticsStats.metricsLayer.finance.summary.outflows30d;
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  return {
+    amount,
+    cashOutflow: amount,
+    currency: "USD",
+    source: "analytics.snapshot_expenses",
+  };
+}
+
+function websiteTrafficFallback(analyticsStats: CompanyAnalyticsStats): Record<string, unknown> | null {
+  if (!hasAnalyticsProvider(analyticsStats, "googleAnalytics", "googleSearchConsole", "semrush", "webflow", "posthog")) {
+    return null;
+  }
+  const gaPayload = snapshotPayload(analyticsStats, "googleAnalytics");
+  const gscPayload = snapshotPayload(analyticsStats, "googleSearchConsole");
+  const searchClicks = firstNumberAtPath(gscPayload, [["clicks"], ["totalClicks"], ["summary", "clicks"]]);
+  const count =
+    firstNumberAtPath(gaPayload, [["sessions30d"], ["sessions"], ["summary", "sessions"]]) ??
+    searchClicks;
+  if (count === null) return null;
+  return {
+    count,
+    websiteSessions: count,
+    searchClicks,
+    source: "analytics.snapshot_website_traffic",
+  };
+}
+
+function webflowFormSubmissionFallbackCount(payload: unknown): number | null {
+  const directCount = firstNumberAtPath(payload, [
+    ["totalFormSubmissions"],
+    ["total_form_submissions"],
+    ["formSubmissions"],
+    ["form_submissions"],
+    ["summary", "totalFormSubmissions"],
+    ["summary", "total_form_submissions"],
+    ["summary", "formSubmissions"],
+    ["summary", "form_submissions"],
+  ]);
+  if (directCount !== null) return Math.floor(Math.max(0, directCount));
+
+  const formSubmissions = firstArrayAtPath(payload, [
+    ["formSubmissions"],
+    ["form_submissions"],
+    ["forms"],
+    ["summary", "formSubmissions"],
+    ["summary", "form_submissions"],
+  ]);
+  if (formSubmissions.length === 0) return null;
+
+  return formSubmissions.reduce<number>((sum, submission) => {
+    const count =
+      firstNumberAtPath(submission, [["count"], ["submissions"], ["totalSubmissions"], ["total_submissions"]]) ??
+      1;
+    return sum + Math.floor(Math.max(0, count));
+  }, 0);
+}
+
+function conversionRateFallback(analyticsStats: CompanyAnalyticsStats): Record<string, unknown> | null {
+  if (!hasAnalyticsProvider(analyticsStats, "googleAnalytics", "googleSearchConsole")) return null;
+  const hubspotPayload = snapshotPayload(analyticsStats, "hubspot");
+  const gaPayload = snapshotPayload(analyticsStats, "googleAnalytics");
+  const gscPayload = snapshotPayload(analyticsStats, "googleSearchConsole");
+  const webflowPayload = snapshotPayload(analyticsStats, "webflow");
+  const searchClicks = firstNumberAtPath(gscPayload, [["clicks"], ["totalClicks"], ["summary", "clicks"]]);
+  const websiteSessions =
+    firstNumberAtPath(gaPayload, [["sessions30d"], ["sessions"], ["summary", "sessions"]]) ??
+    searchClicks;
+  const hubspotLeadConversions = firstNumberAtPath(hubspotPayload, [
+    ["collectedForms", "totalFormSubmissions"],
+    ["funnel", "collectedFormSubmissions"],
+    ["totalFormSubmissions"],
+    ["summary", "conversions"],
+  ]);
+  const webflowFormSubmissions = webflowFormSubmissionFallbackCount(webflowPayload);
+  const conversions =
+    hubspotLeadConversions !== null || webflowFormSubmissions !== null
+      ? (hubspotLeadConversions ?? 0) + (webflowFormSubmissions ?? 0)
+      : paidAcquisitionSummary(analyticsStats)?.conversions ?? null;
+  if (websiteSessions === null || websiteSessions <= 0 || conversions === null) return null;
+  return {
+    rate: round((conversions / websiteSessions) * 100, 2),
+    conversions,
+    websiteSessions,
+    hubspotLeadConversions: hubspotLeadConversions ?? 0,
+    webflowFormSubmissions: webflowFormSubmissions ?? 0,
+    searchClicks,
+    source: "analytics.snapshot_conversion",
+  };
+}
+
+function customerHealthFallback(analyticsStats: CompanyAnalyticsStats): Record<string, unknown> | null {
+  if (!hasAnalyticsProvider(analyticsStats, "pylon")) return null;
+  const pylonPayload = snapshotPayload(analyticsStats, "pylon");
+  const csat = normalizedCsat(firstNumberAtPath(pylonPayload, [["csat"], ["summary", "csat"]]));
+  if (csat !== null) {
+    return {
+      score: round(csat * 100, 1),
+      csat,
+      source: "analytics.snapshot_customer_health",
+    };
+  }
+  const retentionRisk = retentionRiskFallback(analyticsStats);
+  const riskScore = numberValue(asRecord(retentionRisk).riskScore);
+  if (riskScore === null) return null;
+  return {
+    score: round(Math.max(0, 100 - riskScore), 1),
+    riskScore,
+    source: "analytics.snapshot_customer_health",
+  };
+}
+
+function customerActivityFallback(analyticsStats: CompanyAnalyticsStats): Record<string, unknown> | null {
+  if (!hasAnalyticsProvider(analyticsStats, "pylon")) return null;
+  const pylonPayload = snapshotPayload(analyticsStats, "pylon");
+  const openConversations = firstNumberAtPath(pylonPayload, [["openConversations"], ["openIssues"], ["summary", "openConversations"]]) ?? 0;
+  const waitingOnTeam = firstNumberAtPath(pylonPayload, [["waitingOnTeam"], ["summary", "waitingOnTeam"]]) ?? 0;
+  const resolvedInRange = firstNumberAtPath(pylonPayload, [["resolvedInRange"], ["resolvedConversations"], ["summary", "resolvedInRange"]]) ?? 0;
+  const count = openConversations + waitingOnTeam + resolvedInRange;
+  return {
+    count,
+    openConversations,
+    waitingOnTeam,
+    resolvedInRange,
+    source: "analytics.snapshot_customer_activity",
+  };
+}
+
+function churnRateFallback(analyticsStats: CompanyAnalyticsStats): Record<string, unknown> | null {
+  if (!hasAnalyticsProvider(analyticsStats, "stripe")) return null;
+  const rate = analyticsStats.revenueDashboard.summary.churnRatePct;
+  return {
+    rate,
+    source: "analytics.revenue_dashboard",
+  };
+}
+
+function retentionRateFallback(analyticsStats: CompanyAnalyticsStats): Record<string, unknown> | null {
+  const churn = churnRateFallback(analyticsStats);
+  const churnRate = numberValue(asRecord(churn).rate);
+  if (churnRate === null) return null;
+  return {
+    rate: round(Math.max(0, 100 - churnRate), 2),
+    churnRate,
+    source: "analytics.revenue_dashboard",
+  };
+}
+
 function canonicalMetricAvailableAt(row: CanonicalMetricRow, now: Date): boolean {
   const periodStart = toDate(row.periodStart);
   const periodEnd = toDate(row.periodEnd);
@@ -1166,6 +1628,18 @@ function analyticsFallbackForMetric(
         currency: "USD",
         source: "analytics.metrics_layer",
       };
+    case "revenue.arr":
+      return revenueAmountFallback(analyticsStats, "arr");
+    case "revenue.total_revenue":
+      return revenueAmountFallback(analyticsStats, "total_revenue");
+    case "revenue.subscription_revenue":
+      return revenueAmountFallback(analyticsStats, "subscription_revenue");
+    case "revenue.active_subscriptions":
+      return activeSubscriptionFallback(analyticsStats);
+    case "revenue.customer_count":
+      return customerCountFallback(analyticsStats);
+    case "finance.cash_balance":
+      return cashBalanceFallback(analyticsStats);
     case "finance.cash_runway_months":
       if (!hasAnalyticsProvider(analyticsStats, "mercury")) return null;
       return {
@@ -1186,6 +1660,8 @@ function analyticsFallbackForMetric(
         currency: "USD",
         source: "analytics.metrics_layer",
       };
+    case "finance.expenses":
+      return expensesFallback(analyticsStats);
     case "sales.qualified_pipeline":
       if (!hasAnalyticsProvider(analyticsStats, "hubspot")) return null;
       return {
@@ -1198,10 +1674,24 @@ function analyticsFallbackForMetric(
         bookedToRealizedRatio30d: pipeline.bookedToRealizedRatio30d,
         source: "analytics.revenue_dashboard",
       };
+    case "sales.demos":
+      return salesDemosFallback(analyticsStats);
+    case "marketing.website_traffic":
+      return websiteTrafficFallback(analyticsStats);
+    case "marketing.conversion_rate":
+      return conversionRateFallback(analyticsStats);
     case "marketing.pipeline_efficiency":
       return marketingPipelineEfficiencyFallback(analyticsStats);
     case "product.activation_rate":
       return productActivationFallback(analyticsStats);
+    case "customer_success.customer_health":
+      return customerHealthFallback(analyticsStats);
+    case "customer_success.customer_activity":
+      return customerActivityFallback(analyticsStats);
+    case "customer_success.churn_rate":
+      return churnRateFallback(analyticsStats);
+    case "customer_success.retention_rate":
+      return retentionRateFallback(analyticsStats);
     case "customer_success.retention_risk":
       return retentionRiskFallback(analyticsStats);
     default:
@@ -1230,6 +1720,8 @@ function companyMetric(
         computedAt: analyticsStats?.latestCapturedAt ?? null,
         periodEnd: analyticsStats?.latestCapturedAt ?? null,
         sourceLineageCount: analyticsStats?.snapshotCount ?? 0,
+        sourceLineageKeys: analyticsStats ? [...analyticsStats.availableProviders].sort() : [],
+        ...(analyticsStats?.latestCapturedAt ? { latestSourceCapturedAt: analyticsStats.latestCapturedAt } : {}),
       };
     }
 
@@ -1245,8 +1737,10 @@ function companyMetric(
       computedAt: null,
       periodEnd: null,
       sourceLineageCount: 0,
+      sourceLineageKeys: [],
     };
   }
+  const latestSourceCapturedAt = latestLineageCapturedAt(row.lineage);
   return {
     key,
     label: definition?.label ?? key,
@@ -1259,17 +1753,59 @@ function companyMetric(
     computedAt: toIso(row.computedAt),
     periodEnd: toIso(row.periodEnd),
     sourceLineageCount: row.lineage?.length ?? 0,
+    sourceLineageKeys: lineageSourceKeys(row.lineage),
+    ...(latestSourceCapturedAt ? { latestSourceCapturedAt } : {}),
   };
+}
+
+function latestLineageCapturedAt(lineage: MetricLineageRow[] | undefined): string | null {
+  const timestamps = (lineage ?? [])
+    .map((entry) => toIso(entry.capturedAt))
+    .filter((timestamp): timestamp is string => Boolean(timestamp));
+  return timestamps.sort().at(-1) ?? null;
+}
+
+function lineageSourceKeys(lineage: MetricLineageRow[] | undefined): string[] {
+  const sourceKeys = new Set<string>();
+  for (const entry of lineage ?? []) {
+    const sourceKey = entry.sourceKey.trim();
+    if (sourceKey.length > 0) sourceKeys.add(sourceKey);
+  }
+  return [...sourceKeys];
 }
 
 function buildSummary(
   metrics: Map<string, CanonicalMetricRow>,
   analyticsStats: CompanyAnalyticsStats | null,
 ): CompanyTrackerSummary {
-  const mrr = metricValueView(usableMetricRow(metrics.get("revenue.mrr"))?.value);
-  const runway = metricValueView(usableMetricRow(metrics.get("finance.cash_runway_months"))?.value);
-  const netBurn = metricValueView(usableMetricRow(metrics.get("finance.net_burn"))?.value);
-  const pipeline = metricValueView(usableMetricRow(metrics.get("sales.qualified_pipeline"))?.value);
+  const metricPayload = (key: string) =>
+    metricValueView(
+      usableMetricRow(metrics.get(key))?.value ??
+        analyticsFallbackForMetric(key, analyticsStats),
+    );
+  const mrr = metricPayload("revenue.mrr");
+  const arr = metricPayload("revenue.arr");
+  const totalRevenue = metricPayload("revenue.total_revenue");
+  const subscriptionRevenue = metricPayload("revenue.subscription_revenue");
+  const servicesRevenue = metricPayload("revenue.services_revenue");
+  const activeSubscriptions = metricPayload("revenue.active_subscriptions");
+  const customerCount = metricPayload("revenue.customer_count");
+  const cashBalance = metricPayload("finance.cash_balance");
+  const runway = metricPayload("finance.cash_runway_months");
+  const netBurn = metricPayload("finance.net_burn");
+  const expenses = metricPayload("finance.expenses");
+  const grossMargin = metricPayload("finance.gross_margin");
+  const pipeline = metricPayload("sales.qualified_pipeline");
+  const demos = metricPayload("sales.demos");
+  const websiteTraffic = metricPayload("marketing.website_traffic");
+  const conversionRate = metricPayload("marketing.conversion_rate");
+  const pipelineEfficiency = metricPayload("marketing.pipeline_efficiency");
+  const activationRate = metricPayload("product.activation_rate");
+  const customerHealth = metricPayload("customer_success.customer_health");
+  const customerActivity = metricPayload("customer_success.customer_activity");
+  const churnRate = metricPayload("customer_success.churn_rate");
+  const retentionRate = metricPayload("customer_success.retention_rate");
+  const retentionRisk = metricPayload("customer_success.retention_risk");
   const financeSummary = analyticsStats?.metricsLayer.finance.summary ?? null;
   const revenueSummary = analyticsStats?.revenueDashboard.summary ?? null;
   const revenuePipeline = analyticsStats?.revenueDashboard.pipeline ?? null;
@@ -1290,19 +1826,44 @@ function buildSummary(
     }
     return null;
   };
+  const countFromFields = (record: Record<string, unknown>, ...fields: string[]): number | null => {
+    for (const field of fields) {
+      const value = countValue(record[field]);
+      if (value !== null) return value;
+    }
+    return null;
+  };
+  const subscriptionRevenueAmount =
+    numberFromFields(subscriptionRevenue, "amount", "arr", "subscriptionRevenue", "subscription_revenue") ??
+    null;
+  const servicesRevenueAmount =
+    numberFromFields(servicesRevenue, "amount", "servicesRevenue", "services_revenue") ??
+    null;
+  const derivedTotalRevenue =
+    subscriptionRevenueAmount !== null || servicesRevenueAmount !== null
+      ? (subscriptionRevenueAmount ?? 0) + (servicesRevenueAmount ?? 0)
+      : null;
 
   return {
     arr:
+      numberFromFields(arr, "amount", "arr") ??
       numberValue(mrr.arr) ??
       (mrrAmount === null ? null : mrrAmount * 12) ??
       fallbackArr,
     mrr: mrrAmount ?? fallbackMrr,
+    totalRevenue:
+      numberFromFields(totalRevenue, "amount", "totalRevenue", "total_revenue") ??
+      derivedTotalRevenue ??
+      null,
+    subscriptionRevenue: subscriptionRevenueAmount,
+    servicesRevenue: servicesRevenueAmount,
     runwayMonths:
       numberValue(runway.months) ??
       (hasFinanceFallback
         ? financeSummary?.runwayMonths ?? revenueSummary?.runwayMonths ?? null
         : null),
     cashBalance:
+      numberFromFields(cashBalance, "amount", "cashBalance", "cash_balance") ??
       numberFromFields(runway, "cashBalance", "cash_balance") ??
       (hasFinanceFallback
         ? financeSummary?.cashBalance ?? revenueSummary?.cashBalance ?? null
@@ -1313,10 +1874,62 @@ function buildSummary(
       (hasFinanceFallback
         ? financeSummary?.burnRate ?? revenueSummary?.burnRate ?? null
         : null),
+    cashOutflow:
+      numberFromFields(netBurn, "cashOutflow", "cash_outflow") ??
+      null,
+    cashInflow:
+      numberFromFields(netBurn, "cashInflow", "cash_inflow") ??
+      null,
+    expenses:
+      numberFromFields(expenses, "amount", "expenses", "expenseAmount", "expense_amount") ??
+      null,
+    grossMargin:
+      numberFromFields(grossMargin, "rate", "grossMargin", "gross_margin") ??
+      null,
+    grossMarginRevenue:
+      numberFromFields(grossMargin, "revenue", "grossMarginRevenue", "gross_margin_revenue") ??
+      null,
+    costOfGoodsSold:
+      numberFromFields(grossMargin, "costOfGoodsSold", "cost_of_goods_sold", "cogs") ??
+      null,
+    stripeProcessingFees:
+      numberFromFields(grossMargin, "stripeProcessingFees", "stripe_processing_fees", "stripeFees", "stripe_fees") ??
+      null,
     qualifiedPipeline:
       numberValue(pipeline.amount) ??
       (hasPipelineFallback ? revenuePipeline?.qualifiedPipelineValue ?? null : null),
+    qualifiedPipelineCount:
+      countFromFields(pipeline, "qualifiedDealCount", "qualified_deal_count") ??
+      (hasPipelineFallback ? revenuePipeline?.qualifiedPipelineCount ?? null : null),
+    collaborationTouchCount:
+      countFromFields(pipeline, "collaborationTouchCount", "collaboration_touch_count") ??
+      null,
+    collaborationCoverage:
+      numberFromFields(pipeline, "collaborationCoverage", "collaboration_coverage") ??
+      null,
+    demos:
+      countFromFields(demos, "count", "demos", "scheduledDemos", "scheduled_demos") ??
+      null,
+    scheduledDemos:
+      countFromFields(demos, "scheduledDemos", "scheduled_demos") ??
+      null,
+    requestedDemos:
+      countFromFields(demos, "requestedDemos", "requested_demos") ??
+      null,
+    hubspotDemoDeals:
+      countFromFields(demos, "hubspotDemoDeals", "hubspot_demo_deals") ??
+      null,
+    hubspotDemoMeetings:
+      countFromFields(demos, "hubspotDemoMeetings", "hubspot_demo_meetings") ??
+      null,
+    calendarDemoEvents:
+      countFromFields(demos, "calendarDemoEvents", "calendar_demo_events") ??
+      null,
+    webflowDemoRequests:
+      countFromFields(demos, "webflowDemoRequests", "webflow_demo_requests") ??
+      null,
     activeSubscriptions:
+      countFromFields(activeSubscriptions, "count", "activeSubscriptions", "active_subscriptions") ??
       countValue(mrr.activeSubscriptions) ??
       countValue(mrr.active_subscriptions) ??
       countValue(mrr.mergedActiveSubscriptions) ??
@@ -1328,7 +1941,161 @@ function buildSummary(
           revenueSummary?.activeSubscriptions ??
           null
         : null),
-    currency: currencyFrom(mrr, runway, netBurn, pipeline),
+    stripeSubscriptions:
+      countFromFields(activeSubscriptions, "stripeSubscriptions", "stripe_subscriptions") ??
+      countValue(mrr.stripeSubscriptions) ??
+      countValue(mrr.stripe_subscriptions) ??
+      null,
+    hubspotOnlySubscriptions:
+      countFromFields(activeSubscriptions, "hubspotOnlySubscriptions", "hubspot_only_subscriptions") ??
+      countValue(mrr.hubspotOnlySubscriptions) ??
+      countValue(mrr.hubspot_only_subscriptions) ??
+      null,
+    customers:
+      countFromFields(customerCount, "count", "activeCustomers", "active_customers", "customers") ??
+      null,
+    stripeCustomers:
+      countFromFields(customerCount, "stripeCustomers", "stripe_customers") ??
+      null,
+    hubspotOnlyCustomers:
+      countFromFields(customerCount, "hubspotOnlyCustomers", "hubspot_only_customers") ??
+      null,
+    websiteTraffic:
+      countFromFields(websiteTraffic, "count", "websiteSessions", "website_sessions", "sessions") ??
+      null,
+    websiteSessions:
+      countFromFields(websiteTraffic, "websiteSessions", "website_sessions", "sessions") ??
+      null,
+    posthogPageviews:
+      countFromFields(websiteTraffic, "posthogPageviews", "posthog_pageviews") ??
+      null,
+    organicTraffic:
+      countFromFields(websiteTraffic, "organicTraffic", "organic_traffic") ??
+      null,
+    searchClicks:
+      countFromFields(websiteTraffic, "searchClicks", "search_clicks") ??
+      null,
+    searchImpressions:
+      countFromFields(websiteTraffic, "searchImpressions", "search_impressions") ??
+      null,
+    conversionRate:
+      numberFromFields(conversionRate, "rate", "conversionRate", "conversion_rate") ??
+      null,
+    conversions:
+      countFromFields(conversionRate, "conversions", "conversionCount", "conversion_count") ??
+      null,
+    webflowFormSubmissions:
+      countFromFields(
+        conversionRate,
+        "webflowFormSubmissions",
+        "webflow_form_submissions",
+        "formSubmissions",
+        "form_submissions",
+      ) ??
+      null,
+    hubspotLeadConversions:
+      countFromFields(
+        conversionRate,
+        "hubspotLeadConversions",
+        "hubspot_lead_conversions",
+        "hubspotConversions",
+        "hubspot_conversions",
+      ) ??
+      null,
+    posthogConversions:
+      countFromFields(conversionRate, "posthogConversions", "posthog_conversions") ??
+      null,
+    identifiedVisitors:
+      countFromFields(conversionRate, "identifiedVisitors", "identified_visitors") ??
+      null,
+    pipelineEfficiency:
+      numberFromFields(pipelineEfficiency, "ratio", "rate", "pipelineEfficiency", "pipeline_efficiency") ??
+      null,
+    acquisitionSpend:
+      numberFromFields(pipelineEfficiency, "acquisitionSpend", "acquisition_spend") ??
+      null,
+    activationRate:
+      numberFromFields(activationRate, "rate", "activationRate", "activation_rate") ??
+      null,
+    activatedAccounts:
+      countFromFields(activationRate, "activatedAccounts", "activated_accounts") ??
+      null,
+    eligibleAccounts:
+      countFromFields(activationRate, "eligibleAccounts", "eligible_accounts") ??
+      null,
+    customerHealth:
+      numberFromFields(customerHealth, "score", "customerHealth", "customer_health") ??
+      null,
+    atRiskAccounts:
+      countFromFields(customerHealth, "atRiskAccounts", "at_risk_accounts") ??
+      null,
+    openSupportIssues:
+      countFromFields(customerHealth, "openSupportIssues", "open_support_issues") ??
+      null,
+    customerActivity:
+      countFromFields(customerActivity, "count", "customerActivity", "customer_activity") ??
+      null,
+    supportInteractions:
+      countFromFields(customerActivity, "supportInteractions", "support_interactions") ??
+      null,
+    productUsageRecords:
+      countFromFields(customerActivity, "productUsageRecords", "product_usage_records") ??
+      null,
+    collaborationSignals:
+      countFromFields(customerActivity, "collaborationSignals", "collaboration_signals") ??
+      null,
+    customerActivityActiveAccounts:
+      countFromFields(customerActivity, "activeAccounts", "active_accounts") ??
+      null,
+    churnRate:
+      numberFromFields(churnRate, "rate", "churnRate", "churn_rate") ??
+      null,
+    retentionRate:
+      numberFromFields(retentionRate, "rate", "retentionRate", "retention_rate") ??
+      null,
+    churnedCustomers:
+      countFromFields(churnRate, "churnedCustomers", "churned_customers") ??
+      countFromFields(retentionRate, "churnedCustomers", "churned_customers") ??
+      null,
+    retainedCustomers:
+      countFromFields(retentionRate, "retainedCustomers", "retained_customers") ??
+      countFromFields(churnRate, "retainedCustomers", "retained_customers") ??
+      null,
+    retentionCustomerBase:
+      countFromFields(retentionRate, "customerBase", "customer_base") ??
+      countFromFields(churnRate, "customerBase", "customer_base") ??
+      null,
+    retentionRiskScore:
+      numberFromFields(retentionRisk, "score", "riskScore", "risk_score") ??
+      null,
+    retentionRiskAccounts:
+      countFromFields(retentionRisk, "atRiskAccounts", "at_risk_accounts") ??
+      null,
+    retentionRiskEscalations:
+      countFromFields(retentionRisk, "escalations", "escalationCount", "escalation_count") ??
+      countFromFields(customerHealth, "escalations", "escalationCount", "escalation_count") ??
+      null,
+    retentionRiskBillingRiskAccounts:
+      countFromFields(
+        retentionRisk,
+        "accountsWithBillingRisk",
+        "accounts_with_billing_risk",
+        "billingRiskAccounts",
+        "billing_risk_accounts",
+      ) ??
+      countFromFields(
+        customerHealth,
+        "accountsWithBillingRisk",
+        "accounts_with_billing_risk",
+        "billingRiskAccounts",
+        "billing_risk_accounts",
+      ) ??
+      null,
+    retentionRiskLowUsageAccounts:
+      countFromFields(retentionRisk, "lowUsageAccounts", "low_usage_accounts") ??
+      countFromFields(customerHealth, "lowUsageAccounts", "low_usage_accounts") ??
+      null,
+    currency: currencyFrom(mrr, arr, totalRevenue, subscriptionRevenue, servicesRevenue, cashBalance, runway, netBurn, expenses, pipeline),
   };
 }
 
@@ -1361,9 +2128,9 @@ function currentValueForGoal(
       };
     case "CUSTOMER_COUNT":
       return {
-        value: summary.activeSubscriptions,
+        value: summary.customers ?? summary.activeSubscriptions,
         direction: "higher",
-        sourceMetricKey: "revenue.mrr",
+        sourceMetricKey: summary.customers === null ? "revenue.active_subscriptions" : "revenue.customer_count",
       };
     default:
       return { value: null, direction: "higher", sourceMetricKey: null };
@@ -1601,6 +2368,253 @@ function buildHealthBands(input: {
       sourceMetricKeys: ["sales.qualified_pipeline", "revenue.mrr"],
     },
   ];
+}
+
+function statusForNorthStar(
+  summary: CompanyTrackerSummary,
+  drivers: CompanyNorthStarDriver[],
+): HealthBandStatus {
+  if (summary.arr === null || summary.mrr === null) return "missing";
+  if (drivers.some((driver) => driver.status === "risk")) return "risk";
+  if (drivers.some((driver) => driver.status === "watch" || driver.status === "missing")) {
+    return "watch";
+  }
+  return "strong";
+}
+
+function buildNorthStar(input: {
+  summary: CompanyTrackerSummary;
+  previousMrr: CanonicalMetricRow | null;
+  healthBands: CompanyHealthBand[];
+  metrics: CompanyTrackerMetric[];
+}): CompanyNorthStar {
+  const previousArr = numberValue(metricValueView(input.previousMrr?.value).arr);
+  const netNewArr =
+    input.summary.arr !== null && previousArr !== null
+      ? input.summary.arr - previousArr
+      : null;
+  const metricsByKey = new Map(input.metrics.map((metric) => [metric.key, metric]));
+  const drivers = input.healthBands.map((band) => ({
+    id: band.id,
+    label: band.label,
+    value: band.value,
+    unit: band.unit,
+    status: band.status,
+    detail: band.detail,
+    ...northStarDriverEvidence(metricsByKey, band.sourceMetricKeys),
+  }));
+
+  return {
+    id: "healthy_arr_growth",
+    label: "Healthy ARR Growth",
+    status: statusForNorthStar(input.summary, drivers),
+    currentArr: input.summary.arr,
+    currentMrr: input.summary.mrr,
+    netNewArr,
+    formula:
+      "ARR growth interpreted through runway, burn multiple, pipeline coverage, activation, retention risk, goals, and source trust.",
+    sourceMetricKeys: [
+      "revenue.mrr",
+      "finance.cash_runway_months",
+      "finance.net_burn",
+      "sales.qualified_pipeline",
+    ],
+    drivers,
+  };
+}
+
+function northStarDriverEvidence(
+  metricsByKey: Map<string, CompanyTrackerMetric>,
+  sourceMetricKeys: string[],
+): Pick<CompanyNorthStarDriver, "sourceLineageCount" | "sourceLineageKeys" | "latestSourceCapturedAt"> {
+  const sourceKeys: string[] = [];
+  const seenSourceKeys = new Set<string>();
+  let sourceLineageCount = 0;
+  let latestSourceCapturedAt: string | null = null;
+
+  for (const metricKey of sourceMetricKeys) {
+    const metric = metricsByKey.get(metricKey);
+    if (!metric) continue;
+    if (Number.isFinite(metric.sourceLineageCount) && metric.sourceLineageCount > 0) {
+      sourceLineageCount += metric.sourceLineageCount;
+    }
+    for (const sourceKey of metric.sourceLineageKeys ?? []) {
+      const trimmed = sourceKey.trim();
+      if (!trimmed || seenSourceKeys.has(trimmed)) continue;
+      seenSourceKeys.add(trimmed);
+      sourceKeys.push(trimmed);
+    }
+    if (metric.latestSourceCapturedAt) {
+      const timestamp = toDate(metric.latestSourceCapturedAt);
+      const currentLatest = latestSourceCapturedAt ? toDate(latestSourceCapturedAt) : null;
+      if (timestamp && (!currentLatest || timestamp.getTime() > currentLatest.getTime())) {
+        latestSourceCapturedAt = timestamp.toISOString();
+      }
+    }
+  }
+
+  return {
+    ...(sourceLineageCount > 0 ? { sourceLineageCount } : {}),
+    ...(sourceKeys.length > 0 ? { sourceLineageKeys: sourceKeys } : {}),
+    ...(latestSourceCapturedAt ? { latestSourceCapturedAt } : {}),
+  };
+}
+
+function ratioStatus(value: number | null, strong: number, watch: number, direction: GoalDirection): HealthBandStatus {
+  if (value === null) return "missing";
+  if (direction === "higher") {
+    if (value >= strong) return "strong";
+    if (value >= watch) return "watch";
+    return "risk";
+  }
+  if (value <= strong) return "strong";
+  if (value <= watch) return "watch";
+  return "risk";
+}
+
+function percentStatus(value: number | null, strong: number, watch: number): HealthBandStatus {
+  return ratioStatus(value, strong, watch, "higher");
+}
+
+function roundDecimal(value: number | null, digits = 2): number | null {
+  if (value === null || !Number.isFinite(value)) return null;
+  const scale = 10 ** digits;
+  return Math.round(value * scale) / scale;
+}
+
+function buildBenchmarkContext(input: {
+  summary: CompanyTrackerSummary;
+  northStar: CompanyNorthStar;
+}): CompanyBenchmarkContext {
+  const monthlyNetNewArr =
+    input.northStar.netNewArr !== null && input.northStar.netNewArr > 0
+      ? input.northStar.netNewArr / 12
+      : null;
+  const burnMultiple =
+    input.summary.netBurn !== null && monthlyNetNewArr !== null && monthlyNetNewArr > 0
+      ? roundDecimal(input.summary.netBurn / monthlyNetNewArr)
+      : null;
+  const pipelineCoverage =
+    input.summary.qualifiedPipeline !== null && input.summary.mrr !== null && input.summary.mrr > 0
+      ? roundDecimal(input.summary.qualifiedPipeline / (input.summary.mrr * 3))
+      : null;
+  const arpa =
+    input.summary.mrr !== null && input.summary.activeSubscriptions !== null && input.summary.activeSubscriptions > 0
+      ? input.summary.mrr / input.summary.activeSubscriptions
+      : null;
+  const conversionCac =
+    input.summary.acquisitionSpend !== null && input.summary.conversions !== null && input.summary.conversions > 0
+      ? input.summary.acquisitionSpend / input.summary.conversions
+      : null;
+  const grossMarginRate =
+    input.summary.grossMargin !== null
+      ? input.summary.grossMargin > 1
+        ? input.summary.grossMargin / 100
+        : input.summary.grossMargin
+      : null;
+  const cacPayback =
+    conversionCac !== null && arpa !== null && grossMarginRate !== null && arpa * grossMarginRate > 0
+      ? roundDecimal(conversionCac / (arpa * grossMarginRate))
+      : null;
+  const retentionRiskRate =
+    input.summary.retentionRiskAccounts !== null && input.summary.customers !== null && input.summary.customers > 0
+      ? roundDecimal((input.summary.retentionRiskAccounts / input.summary.customers) * 100, 1)
+      : null;
+  const demoScheduledRate =
+    input.summary.scheduledDemos !== null && input.summary.requestedDemos !== null && input.summary.requestedDemos > 0
+      ? roundDecimal((input.summary.scheduledDemos / input.summary.requestedDemos) * 100, 1)
+      : null;
+
+  return {
+    items: [
+      {
+        id: "burn-multiple",
+        label: "Burn Multiple",
+        value: burnMultiple,
+        unit: "ratio",
+        status: ratioStatus(burnMultiple, 1, 2, "lower"),
+        benchmark: "Strong <=1.0x; watch <=2.0x.",
+        formula: "net burn / monthly net-new ARR",
+        assumption: "Uses the current ARR delta as the monthly net-new ARR proxy when prior MRR is available.",
+        sourceMetricKeys: ["finance.net_burn", "revenue.mrr"],
+      },
+      {
+        id: "pipeline-coverage",
+        label: "Pipeline Coverage",
+        value: pipelineCoverage,
+        unit: "ratio",
+        status: ratioStatus(pipelineCoverage, 3, 1.5, "higher"),
+        benchmark: "Strong >=3.0x next-quarter revenue run-rate; watch >=1.5x.",
+        formula: "qualified pipeline / (MRR * 3)",
+        assumption: "Uses current MRR as next-quarter revenue run-rate until explicit ARR target coverage is configured.",
+        sourceMetricKeys: ["sales.qualified_pipeline", "revenue.mrr"],
+      },
+      {
+        id: "cac-payback-proxy",
+        label: "CAC Payback Proxy",
+        value: cacPayback,
+        unit: "months",
+        status: ratioStatus(cacPayback, 12, 18, "lower"),
+        benchmark: "Strong <=12 months; watch <=18 months.",
+        formula: "(acquisition spend / conversions) / (ARPA * gross margin)",
+        assumption: "Uses conversion count as a CAC proxy until closed-won cohort CAC is materialized.",
+        sourceMetricKeys: ["marketing.pipeline_efficiency", "revenue.mrr", "finance.gross_margin"],
+      },
+      {
+        id: "retention-rate",
+        label: "Retention Rate",
+        value: input.summary.retentionRate,
+        unit: "percent",
+        status: percentStatus(input.summary.retentionRate, 95, 90),
+        benchmark: "Strong >=95%; watch >=90%.",
+        formula: "retained customers / eligible customers",
+        assumption: "Uses the canonical customer-success retention metric for the current reporting window.",
+        sourceMetricKeys: ["customer_success.retention_rate"],
+      },
+    ],
+    cohorts: [
+      {
+        id: "activation-cohort",
+        label: "Activation Cohort",
+        value: input.summary.activationRate,
+        unit: "percent",
+        status: percentStatus(input.summary.activationRate, 60, 40),
+        detail: `${input.summary.activatedAccounts ?? 0} activated / ${input.summary.eligibleAccounts ?? 0} eligible`,
+        formula: "activated accounts / eligible accounts",
+        sourceMetricKeys: ["product.activation_rate"],
+      },
+      {
+        id: "retention-risk-cohort",
+        label: "Retention-Risk Cohort",
+        value: retentionRiskRate,
+        unit: "percent",
+        status: ratioStatus(retentionRiskRate, 5, 15, "lower"),
+        detail: `${input.summary.retentionRiskAccounts ?? 0} at-risk accounts / ${input.summary.customers ?? 0} customers`,
+        formula: "at-risk accounts / active customers",
+        sourceMetricKeys: ["customer_success.retention_risk", "revenue.customer_count"],
+      },
+      {
+        id: "demo-scheduling-segment",
+        label: "Demo Scheduling Segment",
+        value: demoScheduledRate,
+        unit: "percent",
+        status: percentStatus(demoScheduledRate, 80, 50),
+        detail: `${input.summary.scheduledDemos ?? 0} scheduled / ${input.summary.requestedDemos ?? 0} requested`,
+        formula: "scheduled demos / requested demos",
+        sourceMetricKeys: ["sales.demos"],
+      },
+      {
+        id: "channel-efficiency-segment",
+        label: "Channel Efficiency Segment",
+        value: input.summary.pipelineEfficiency,
+        unit: "ratio",
+        status: ratioStatus(input.summary.pipelineEfficiency, 3, 1, "higher"),
+        detail: `${input.summary.conversions ?? 0} conversions / ${input.summary.acquisitionSpend ?? 0} acquisition spend`,
+        formula: "qualified pipeline / acquisition spend",
+        sourceMetricKeys: ["marketing.pipeline_efficiency"],
+      },
+    ],
+  };
 }
 
 function canonicalSourceKeys(rows: CanonicalMetricRow[]): Set<string> {
@@ -1875,6 +2889,22 @@ export async function buildCompanyTrackerDashboard(input: {
   const previousMrr = previousMetricRow(typedCanonicalRows, "revenue.mrr", currentMrr, context);
   const goalProgressRows = typedGoals.map((goal) => goalProgress(goal, summary, now));
   const goalRecommendations = buildGoalRecommendations(goalProgressRows, summary, now);
+  const healthBands = buildHealthBands({
+    summary,
+    currentMrr,
+    previousMrr,
+    goalProgress: goalProgressRows,
+  });
+  const northStar = buildNorthStar({
+    summary,
+    previousMrr,
+    healthBands,
+    metrics,
+  });
+  const benchmarkContext = buildBenchmarkContext({
+    summary,
+    northStar,
+  });
   const sourceCoverage = buildSourceCoverage({
     dashboard,
     canonicalRows: typedCanonicalRows,
@@ -1894,14 +2924,11 @@ export async function buildCompanyTrackerDashboard(input: {
   return {
     dashboard,
     summary,
+    northStar,
+    benchmarkContext,
     goalProgress: goalProgressRows,
     goalRecommendations,
-    healthBands: buildHealthBands({
-      summary,
-      currentMrr,
-      previousMrr,
-      goalProgress: goalProgressRows,
-    }),
+    healthBands,
     sourceCoverage,
     boardReadiness,
     metrics,

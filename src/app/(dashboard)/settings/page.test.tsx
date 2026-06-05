@@ -4,11 +4,19 @@ import SettingsPage from "@/app/(dashboard)/settings/page";
 
 const replace = vi.fn();
 let mockSearchParams = new URLSearchParams();
+let mockRole = "member";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace }),
   usePathname: () => "/settings",
   useSearchParams: () => mockSearchParams,
+}));
+
+vi.mock("next-auth/react", () => ({
+  useSession: () => ({
+    status: "authenticated",
+    data: { user: { id: "user-1", role: mockRole } },
+  }),
 }));
 
 vi.mock("@/components/settings/team-tab", () => ({
@@ -26,6 +34,7 @@ vi.mock("@/components/settings/integrations-tab", () => ({
 describe("SettingsPage", () => {
   beforeEach(() => {
     mockSearchParams = new URLSearchParams();
+    mockRole = "member";
     replace.mockReset();
   });
 
@@ -64,6 +73,17 @@ describe("SettingsPage", () => {
         "/settings?tab=team&source=old-link",
         { scroll: false },
       );
+    });
+  });
+
+  it("redirects investor users away from settings", async () => {
+    mockRole = "investor";
+
+    const { queryByRole } = render(<SettingsPage />);
+
+    expect(queryByRole("tab", { name: "Team" })).toBeNull();
+    await waitFor(() => {
+      expect(replace).toHaveBeenCalledWith("/investor");
     });
   });
 });

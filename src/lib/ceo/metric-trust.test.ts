@@ -7,6 +7,7 @@ import {
   getDefaultCeoMetricDefinitions,
   type CeoMetricValue,
 } from "@/lib/ceo/metric-trust";
+import { IMLADRIS_METRIC_DEFINITIONS } from "@/lib/imladris/catalog";
 
 const AS_OF = new Date("2026-05-01T12:00:00.000Z");
 
@@ -96,7 +97,7 @@ describe("CEO metric trust layer", () => {
     const definitions = getDefaultCeoMetricDefinitions();
     const domains = new Set(definitions.map((definition) => definition.domain));
     const keys = definitions.map((definition) => definition.key);
-    const socialPaidSpend = definitions.find((definition) => definition.key === "social.paid_spend");
+    const marketingPipelineEfficiency = definitions.find((definition) => definition.key === "marketing.pipeline_efficiency");
     const socialDomainHealth = definitions.find((definition) => definition.key === "domain.social-media.health");
     const revenueDomainHealth = definitions.find((definition) => definition.key === "domain.revenue.health");
 
@@ -109,8 +110,18 @@ describe("CEO metric trust layer", () => {
     expect(domains).toContain("revenue");
     expect(domains).toContain("development");
     expect(definitions.every((definition) => definition.sourceDependencies.length > 0)).toBe(true);
-    expect(socialPaidSpend?.sourceDependencies).toEqual(["googleAds", "metaAds"]);
-    expect(socialPaidSpend?.optionalSourceDependencies).toEqual(["redditAds"]);
+    expect(marketingPipelineEfficiency?.sourceDependencies).toEqual([
+      "googleAnalytics",
+      "googleSearchConsole",
+      "googleAds",
+      "metaAds",
+      "semrush",
+      "coda",
+      "webflow",
+      "unify",
+      "hubspot",
+    ]);
+    expect(marketingPipelineEfficiency?.optionalSourceDependencies).toEqual(["redditAds"]);
     expect(socialDomainHealth?.sourceDependencies).toEqual(["googleAds", "metaAds"]);
     expect(socialDomainHealth?.optionalSourceDependencies).toEqual(["redditAds"]);
     expect(revenueDomainHealth?.sourceDependencies).toEqual(["hubspot", "stripe", "mercury"]);
@@ -120,6 +131,114 @@ describe("CEO metric trust layer", () => {
     expect(definitions.find((definition) => definition.key === "development.delivery_health")).toMatchObject({
       sourceDependencies: ["linear", "github", "posthog"],
     });
+  });
+
+  it("uses canonical Imladris startup operating metrics in default report packs", () => {
+    const canonicalKeys = new Set(IMLADRIS_METRIC_DEFINITIONS.map((definition) => definition.key));
+    const legacyKeys = new Set([
+      "finance.mrr",
+      "sales.open_pipeline_value",
+      "retention.at_risk_accounts",
+      "customer_success.support_load",
+      "website.sessions",
+      "social.paid_spend",
+    ]);
+    const definitions = getDefaultCeoMetricDefinitions();
+    const packs = buildDefaultCeoReportPacks(definitions);
+    const packedMetricKeys = new Set(packs.flatMap((pack) => pack.metricKeys));
+
+    expect([...packedMetricKeys].filter((key) => legacyKeys.has(key))).toEqual([]);
+    for (const key of packedMetricKeys) {
+      expect(canonicalKeys.has(key) || key.startsWith("domain.") || key.startsWith("source.")).toBe(true);
+    }
+
+    expect([...packedMetricKeys]).toEqual(
+      expect.arrayContaining([
+        "revenue.mrr",
+        "revenue.arr",
+        "revenue.active_subscriptions",
+        "revenue.customer_count",
+        "finance.cash_balance",
+        "finance.net_burn",
+        "finance.cash_runway_months",
+        "sales.qualified_pipeline",
+        "sales.demos",
+        "marketing.website_traffic",
+        "marketing.conversion_rate",
+        "customer_success.customer_health",
+        "customer_success.customer_activity",
+        "customer_success.churn_rate",
+        "customer_success.retention_rate",
+      ]),
+    );
+  });
+
+  it("builds investor and board report sections around canonical traction, efficiency, and retention metrics", () => {
+    const definitions = getDefaultCeoMetricDefinitions();
+    const packs = buildDefaultCeoReportPacks(definitions);
+    const investorPack = packs.find((pack) => pack.slug === "investor-update")!;
+    const boardPack = packs.find((pack) => pack.slug === "board-meeting")!;
+
+    expect(investorPack.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: "Traction",
+          metricKeys: expect.arrayContaining([
+            "revenue.mrr",
+            "revenue.arr",
+            "revenue.customer_count",
+            "sales.qualified_pipeline",
+            "marketing.website_traffic",
+          ]),
+        }),
+        expect.objectContaining({
+          title: "Efficiency",
+          metricKeys: expect.arrayContaining([
+            "finance.net_burn",
+            "finance.cash_runway_months",
+            "marketing.conversion_rate",
+          ]),
+        }),
+        expect.objectContaining({
+          title: "Retention",
+          metricKeys: expect.arrayContaining([
+            "customer_success.customer_health",
+            "customer_success.churn_rate",
+            "customer_success.retention_rate",
+          ]),
+        }),
+      ]),
+    );
+    expect(boardPack.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: "Financials",
+          metricKeys: expect.arrayContaining([
+            "finance.cash_balance",
+            "finance.net_burn",
+            "finance.cash_runway_months",
+            "revenue.arr",
+          ]),
+        }),
+        expect.objectContaining({
+          title: "Revenue and Go-to-Market",
+          metricKeys: expect.arrayContaining([
+            "revenue.mrr",
+            "revenue.active_subscriptions",
+            "sales.demos",
+            "marketing.conversion_rate",
+          ]),
+        }),
+        expect.objectContaining({
+          title: "Customer Health",
+          metricKeys: expect.arrayContaining([
+            "customer_success.customer_activity",
+            "customer_success.retention_rate",
+            "customer_success.retention_risk",
+          ]),
+        }),
+      ]),
+    );
   });
 
   it("maps CEO finance projection source health to real provider dependencies", () => {

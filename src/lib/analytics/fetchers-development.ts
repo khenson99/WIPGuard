@@ -61,6 +61,54 @@ function normalizePostHogHost(host: string | null | undefined): string {
   return trimmed || "https://app.posthog.com";
 }
 
+function normalizeEventKey(value: unknown): string {
+  const eventName = asString(value);
+  return eventName ? eventName.trim().toLowerCase().replace(/[\s_-]+/g, "") : "";
+}
+
+const POSTHOG_PAGEVIEW_EVENT_KEYS = new Set([
+  "$pageview",
+  "pageview",
+  "pageviewed",
+  "viewedpage",
+]);
+
+const POSTHOG_MARKETING_CONVERSION_EVENT_KEYS = new Set([
+  "bookdemo",
+  "contactformsubmitted",
+  "conversion",
+  "demobooked",
+  "demorequested",
+  "formsubmission",
+  "formsubmitted",
+  "leadconverted",
+  "leadcreated",
+  "requestdemo",
+  "signup",
+  "signedup",
+  "trialstarted",
+]);
+
+function summarizePostHogEvents(events: unknown[]): {
+  pageviewCount: number;
+  conversionEventCount: number;
+  eventNameCounts: Record<string, number>;
+} {
+  const eventNameCounts: Record<string, number> = {};
+  let pageviewCount = 0;
+  let conversionEventCount = 0;
+
+  for (const event of events) {
+    const key = normalizeEventKey(asRecord(event).event);
+    if (!key) continue;
+    eventNameCounts[key] = (eventNameCounts[key] ?? 0) + 1;
+    if (POSTHOG_PAGEVIEW_EVENT_KEYS.has(key)) pageviewCount += 1;
+    if (POSTHOG_MARKETING_CONVERSION_EVENT_KEYS.has(key)) conversionEventCount += 1;
+  }
+
+  return { pageviewCount, conversionEventCount, eventNameCounts };
+}
+
 function isoDate(value: unknown): string | null {
   const raw = asString(value);
   if (!raw) return null;
@@ -189,9 +237,12 @@ export async function fetchPostHogData(input: {
     nextUrl = asString(payload.next);
   }
 
+  const eventSummary = summarizePostHogEvents(events);
+
   return {
     events,
     eventCount: events.length,
+    ...eventSummary,
     _meta: {
       fetchedAt: new Date().toISOString(),
       source: "live",

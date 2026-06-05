@@ -4,7 +4,7 @@ import type { WorkspaceId } from "@/lib/platform/workspaces";
 import { prisma } from "@/lib/prisma";
 import { recordSecurityAuditEvent } from "@/lib/security-audit";
 
-export type AppRole = "admin" | "member" | "observer";
+export type AppRole = "admin" | "member" | "observer" | "investor";
 
 export type PermissionAction =
   | "department.write"
@@ -21,7 +21,11 @@ export type PermissionAction =
   | "integration.read"
   | "integration.manage"
   | "automation.write"
-  | "automation.approve";
+  | "automation.approve"
+  | "investor.read"
+  | "report.read"
+  | "report.write"
+  | "board_final.approve";
 
 const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> =
   {
@@ -41,6 +45,10 @@ const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> 
       "integration.manage",
       "automation.write",
       "automation.approve",
+      "investor.read",
+      "report.read",
+      "report.write",
+      "board_final.approve",
     ],
     member: [
       "department.write",
@@ -54,14 +62,18 @@ const PERMISSION_MATRIX: Readonly<Record<AppRole, readonly PermissionAction[]>> 
       "integration.read",
       "automation.write",
       "automation.approve",
+      "report.read",
+      "report.write",
     ],
-    observer: ["profile.write", "integration.read", "automation.approve"],
+    observer: ["profile.write", "integration.read", "automation.approve", "report.read"],
+    investor: ["profile.write", "investor.read", "report.read"],
   };
 
 export function normalizeRole(role: string | null | undefined): AppRole {
   const normalized = (role ?? "member").trim().toLowerCase();
   if (normalized === "admin") return "admin";
   if (normalized === "observer") return "observer";
+  if (normalized === "investor") return "investor";
   return "member";
 }
 
@@ -98,6 +110,12 @@ export function workspaceIdForPermissionAction(
     case "automation.write":
     case "automation.approve":
       return "pipelines";
+    case "investor.read":
+      return "investor";
+    case "report.read":
+    case "report.write":
+    case "board_final.approve":
+      return "reports";
     case "team.invite":
     case "team.role.write":
     case "profile.write":

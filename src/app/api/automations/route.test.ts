@@ -25,6 +25,29 @@ describe("GET /api/automations", () => {
     vi.resetAllMocks();
   });
 
+  it("blocks investor users from operator automations", async () => {
+    const { auth } = await import("@/lib/auth");
+    const { getAuthenticatedUser } = await import("@/lib/session-user");
+    const { prisma } = await import("@/lib/prisma");
+
+    vi.mocked(auth).mockResolvedValue({ user: { id: "investor_1", role: "investor" } } as never);
+    vi.mocked(getAuthenticatedUser).mockReturnValue({
+      id: "investor_1",
+      role: "investor",
+      email: "investor@example.com",
+    } as never);
+
+    const { GET } = await import("@/app/api/automations/route");
+    const response = await GET();
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "Forbidden: investors must use investor-scoped APIs",
+    });
+    expect(prisma.workflowDefinition.findMany).not.toHaveBeenCalled();
+    expect(prisma.integrationRule.findMany).not.toHaveBeenCalled();
+  });
+
   it("filters retired workflow templates and actions from public templates", async () => {
     const { auth } = await import("@/lib/auth");
     const { getAuthenticatedUser } = await import("@/lib/session-user");

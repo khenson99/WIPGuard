@@ -12,11 +12,36 @@ import type { PrismaClientType } from "@/lib/prisma";
 const DEVELOPMENT_CALCULATION_VERSION = "development-delivery-health-v1";
 const PRODUCT_ACTIVATION_CALCULATION_VERSION = "product-activation-rate-v1";
 const FINANCE_NET_BURN_CALCULATION_VERSION = "finance-net-burn-v1";
+const FINANCE_CASH_BALANCE_CALCULATION_VERSION = "finance-cash-balance-v1";
 const FINANCE_CASH_RUNWAY_CALCULATION_VERSION = "finance-cash-runway-v1";
+const FINANCE_EXPENSES_CALCULATION_VERSION = "finance-expenses-v1";
+const FINANCE_GROSS_MARGIN_CALCULATION_VERSION = "finance-gross-margin-v1";
 const REVENUE_MRR_CALCULATION_VERSION = "revenue-mrr-v1";
+const REVENUE_ARR_CALCULATION_VERSION = "revenue-arr-v1";
+const REVENUE_TOTAL_REVENUE_CALCULATION_VERSION = "revenue-total-revenue-v1";
+const REVENUE_SUBSCRIPTION_REVENUE_CALCULATION_VERSION =
+  "revenue-subscription-revenue-v1";
+const REVENUE_SERVICES_REVENUE_CALCULATION_VERSION =
+  "revenue-services-revenue-v1";
+const REVENUE_ACTIVE_SUBSCRIPTIONS_CALCULATION_VERSION =
+  "revenue-active-subscriptions-v1";
+const REVENUE_CUSTOMER_COUNT_CALCULATION_VERSION = "revenue-customer-count-v1";
 const SALES_QUALIFIED_PIPELINE_CALCULATION_VERSION = "sales-qualified-pipeline-v1";
+const SALES_DEMOS_CALCULATION_VERSION = "sales-demos-v1";
 const MARKETING_PIPELINE_EFFICIENCY_CALCULATION_VERSION =
   "marketing-pipeline-efficiency-v1";
+const MARKETING_WEBSITE_TRAFFIC_CALCULATION_VERSION =
+  "marketing-website-traffic-v1";
+const MARKETING_CONVERSION_RATE_CALCULATION_VERSION =
+  "marketing-conversion-rate-v1";
+const CUSTOMER_SUCCESS_CUSTOMER_HEALTH_CALCULATION_VERSION =
+  "customer-success-customer-health-v1";
+const CUSTOMER_SUCCESS_CUSTOMER_ACTIVITY_CALCULATION_VERSION =
+  "customer-success-customer-activity-v1";
+const CUSTOMER_SUCCESS_CHURN_RATE_CALCULATION_VERSION =
+  "customer-success-churn-rate-v1";
+const CUSTOMER_SUCCESS_RETENTION_RATE_CALCULATION_VERSION =
+  "customer-success-retention-rate-v1";
 const CUSTOMER_SUCCESS_RETENTION_RISK_CALCULATION_VERSION =
   "customer-success-retention-risk-v1";
 const INACTIVE_STRIPE_SUBSCRIPTION_STATUSES = new Set([
@@ -838,6 +863,86 @@ function normalizeLookup(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function normalizeFirstLookup(value: unknown): string | null {
+  const normalized = normalizeLookup(value);
+  if (normalized) return normalized;
+  if (!Array.isArray(value)) return null;
+  for (const item of value) {
+    const itemValue = normalizeLookup(item);
+    if (itemValue) return itemValue;
+  }
+  return null;
+}
+
+function normalizeFirstAssociationLookup(
+  value: unknown,
+  seen = new WeakSet<object>(),
+): string | null {
+  if (typeof value === "string" || typeof value === "number") return normalizeLookup(value);
+  if (!value || typeof value !== "object") return null;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const normalized = normalizeFirstAssociationLookup(item, seen);
+      if (normalized) {
+        seen.delete(value);
+        return normalized;
+      }
+    }
+    seen.delete(value);
+    return null;
+  }
+
+  const record = nestedRecord(value);
+  const directId = normalizeLookup(
+    firstValueFromSources([record], [
+      "toObjectId",
+      "to_object_id",
+      "toId",
+      "to_id",
+      "objectId",
+      "object_id",
+      "id",
+    ]),
+  );
+  if (directId) {
+    seen.delete(value);
+    return directId;
+  }
+
+  const nestedTo = nestedRecordFromKey(record, "to");
+  if (Object.keys(nestedTo).length > 0) {
+    const nestedToId = normalizeFirstAssociationLookup(nestedTo, seen);
+    if (nestedToId) {
+      seen.delete(value);
+      return nestedToId;
+    }
+  }
+
+  for (const key of [
+    "results",
+    "data",
+    "ids",
+    "companies",
+    "company",
+    "accounts",
+    "account",
+  ]) {
+    const nested = firstValueFromSources([record], [key]);
+    const normalized = normalizeFirstAssociationLookup(nested, seen);
+    if (normalized) {
+      seen.delete(value);
+      return normalized;
+    }
+  }
+
+  const normalized = normalizeLookup(value);
+  seen.delete(value);
+  return normalized;
+}
+
 function normalizeObjectType(value: unknown): string {
   const normalizedValue = scalarValue(value);
   return typeof normalizedValue === "string" ? normalizeImladrisObjectType(normalizedValue) : "";
@@ -1578,6 +1683,39 @@ function transactionAmount(record: RawSourceRecordRow): number | null {
       "net_amount",
       "value",
     ]),
+  );
+}
+
+function mercuryTransactionIsCostOfGoodsSold(record: RawSourceRecordRow): boolean {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const signals = valuesFromSources(sources, [
+    "category",
+    "type",
+    "kind",
+    "description",
+    "memo",
+    "merchantName",
+    "merchant_name",
+    "counterpartyName",
+    "counterparty_name",
+  ]).map((value) =>
+    String(scalarValue(value) ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]+/g, ""),
+  );
+  return signals.some((signal) =>
+    [
+      "cogs",
+      "costofgoodssold",
+      "costofrevenue",
+      "servicedelivery",
+      "hostingcogs",
+      "cloudhosting",
+      "infrastructure",
+      "supportdelivery",
+    ].some((keyword) => signal.includes(keyword)),
   );
 }
 
@@ -2451,8 +2589,19 @@ function stripeCustomerId(record: RawSourceRecordRow): string | null {
   const customerSources = [...sources, ...subscriptionSources].map((source) =>
     nestedRecordFromKey(source, "customer"),
   );
-  return normalizeLookup(
-    firstValueFromSources([...sources, ...customerSources], [
+  const directCustomerId = normalizeLookup(
+    firstValueFromSources([...sources, ...subscriptionSources], [
+      "customerId",
+      "customer_id",
+      "stripeCustomerId",
+      "stripe_customer_id",
+      "customer",
+    ]),
+  );
+  if (directCustomerId) return directCustomerId;
+
+  const expandedCustomerId = normalizeLookup(
+    firstValueFromSources(customerSources, [
       "customerId",
       "customer_id",
       "stripeCustomerId",
@@ -2460,6 +2609,13 @@ function stripeCustomerId(record: RawSourceRecordRow): string | null {
       "id",
     ]),
   );
+  if (expandedCustomerId) return expandedCustomerId;
+
+  if (recordIsObjectType(record, "active_customer_ref")) {
+    return normalizeLookup(firstValueFromSources(sources, ["id"]));
+  }
+
+  return null;
 }
 
 function stripeCustomerEmail(record: RawSourceRecordRow): string | null {
@@ -2490,6 +2646,30 @@ function stripeCustomerEmailDomain(record: RawSourceRecordRow): string | null {
   );
   if (explicitDomain && !GENERIC_EMAIL_DOMAINS.has(explicitDomain)) return explicitDomain;
   return normalizeEmailDomain(stripeCustomerEmail(record));
+}
+
+function stripeHubspotCompanyIdentity(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const subscriptionSources = sources.map((source) => nestedRecordFromKey(source, "subscription"));
+  const customerSources = [...sources, ...subscriptionSources].map((source) =>
+    nestedRecordFromKey(source, "customer"),
+  );
+  const metadataSources = [...sources, ...subscriptionSources, ...customerSources].map((source) =>
+    nestedRecordFromKey(source, "metadata"),
+  );
+  return normalizeFirstAssociationLookup(
+    firstValueFromSources([...sources, ...subscriptionSources, ...customerSources, ...metadataSources], [
+      "hubspotCompanyId",
+      "hubspot_company_id",
+      "hubspotCompanyIds",
+      "hubspot_company_ids",
+      "hubspotAssociatedCompanyId",
+      "hubspot_associated_company_id",
+      "hubspotAssociatedCompanyIds",
+      "hubspot_associated_company_ids",
+    ]),
+  );
 }
 
 function stripeSubscriptionId(record: RawSourceRecordRow): string | null {
@@ -2535,6 +2715,68 @@ function hubspotDealEmailDomain(record: RawSourceRecordRow): string | null {
   return normalizeEmailDomain(hubspotDealEmail(record));
 }
 
+function hubspotDealAssociatedCompanyIdentity(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const associationSources = sources.flatMap((source) => {
+    const associations = nestedRecordFromKey(source, "associations");
+    return [
+      nestedRecordFromKey(source, "company"),
+      nestedRecordFromKey(source, "account"),
+      nestedRecordFromKey(source, "customer"),
+      associations,
+      nestedRecordFromKey(associations, "companies"),
+      nestedRecordFromKey(associations, "company"),
+      nestedRecordFromKey(associations, "accounts"),
+      nestedRecordFromKey(associations, "account"),
+    ];
+  });
+
+  return normalizeFirstAssociationLookup(
+    firstValueFromSources([...sources, ...associationSources], [
+      "companyIds",
+      "company_ids",
+      "associatedCompanyIds",
+      "associated_company_ids",
+      "associatedCompanies",
+      "associated_companies",
+      "hubspotCompanyIds",
+      "hubspot_company_ids",
+      "companies",
+      "company",
+      "results",
+      "data",
+      "ids",
+      "id",
+    ]),
+  );
+}
+
+function hubspotDealCustomerIdentity(record: RawSourceRecordRow): string {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  return (
+    hubspotDealAssociatedCompanyIdentity(record) ??
+    normalizeLookup(
+      firstValueFromSources(sources, [
+        "companyId",
+        "company_id",
+        "accountId",
+        "account_id",
+        "customerId",
+        "customer_id",
+        "hubspotCompanyId",
+        "hubspot_company_id",
+      ]),
+    ) ??
+    hubspotDealEmail(record) ??
+    hubspotDealEmailDomain(record) ??
+    normalizeLookup(record.externalId) ??
+    normalizeLookup(record.id) ??
+    "unknown"
+  );
+}
+
 function hubspotStripeCustomerId(record: RawSourceRecordRow): string | null {
   const payload = asRecord(record.payload);
   return normalizeLookup(
@@ -2566,17 +2808,20 @@ function isLinkedHubspotDeal(
     subscriptionIds: Set<string>;
     emails: Set<string>;
     domains: Set<string>;
+    hubspotCompanyIds: Set<string>;
   },
 ): boolean {
   const customerId = hubspotStripeCustomerId(record);
   const subscriptionId = hubspotStripeSubscriptionId(record);
   const email = hubspotDealEmail(record);
   const emailDomain = hubspotDealEmailDomain(record);
+  const hubspotCompanyId = hubspotDealAssociatedCompanyIdentity(record);
   return (
     Boolean(customerId && stripeRefs.customerIds.has(customerId)) ||
     Boolean(subscriptionId && stripeRefs.subscriptionIds.has(subscriptionId)) ||
     Boolean(email && stripeRefs.emails.has(email)) ||
-    Boolean(emailDomain && stripeRefs.domains.has(emailDomain))
+    Boolean(emailDomain && stripeRefs.domains.has(emailDomain)) ||
+    Boolean(hubspotCompanyId && stripeRefs.hubspotCompanyIds.has(hubspotCompanyId))
   );
 }
 
@@ -2632,6 +2877,7 @@ function hubspotRecurringRevenueAsOf(
       "billing_start_date",
       "billingStartsAt",
       "billing_starts_at",
+      "hs_recurring_billing_start_date",
       "serviceStartDate",
       "service_start_date",
       "contractStartDate",
@@ -2653,6 +2899,7 @@ function hubspotRecurringRevenueAsOf(
       "billing_end_date",
       "billingEndsAt",
       "billing_ends_at",
+      "hs_recurring_billing_end_date",
       "serviceEndDate",
       "service_end_date",
       "contractEndDate",
@@ -2681,6 +2928,7 @@ function hubspotRecurringRevenueAsOf(
     firstValueFromSources(sources, [
       "monthlyRecurringRevenue",
       "monthly_recurring_revenue",
+      "hs_mrr",
       "mrr",
       "amountMonthly",
       "amount_monthly",
@@ -2696,6 +2944,7 @@ function hubspotRecurringRevenueAsOf(
       "recurring_revenue_amount",
       "annualRecurringRevenue",
       "annual_recurring_revenue",
+      "hs_arr",
       "arr",
     ]),
   );
@@ -2737,6 +2986,9 @@ function buildStripeRefs(
     domains: new Set(
       stripeRecords.map(stripeCustomerEmailDomain).filter((value): value is string => Boolean(value)),
     ),
+    hubspotCompanyIds: new Set(
+      stripeRecords.map(stripeHubspotCompanyIdentity).filter((value): value is string => Boolean(value)),
+    ),
   };
 }
 
@@ -2744,12 +2996,34 @@ function computeMrrBreakdown(records: RawSourceRecordRow[], asOf: Date) {
   const stripeMrr = computeStripeMrr(records, asOf);
   const stripeArr = stripeMrr * 12;
   const stripeRefs = buildStripeRefs(records, asOf, stripeMrr > 0);
+  const activeStripeSubscriptions = latestStripeSubscriptionsById(
+    records.filter(
+      (record) =>
+        recordIsProvider(record, IntegrationProvider.STRIPE) &&
+        recordIsObjectType(record, "subscription"),
+    ),
+    asOf,
+  ).filter((record) => (stripeMrrAmount(record, asOf) ?? 0) > 0);
+  const activeStripeCustomerIdentities = new Set(
+    activeStripeSubscriptions
+      .map(
+        (record) =>
+          stripeCustomerId(record) ??
+          stripeCustomerEmail(record) ??
+          stripeCustomerEmailDomain(record) ??
+          stripeHubspotCompanyIdentity(record) ??
+          stripeSubscriptionId(record),
+      )
+      .filter((value): value is string => Boolean(value)),
+  );
   let hubspotSubscriptionMrr = 0;
   let hubspotSubscriptionArr = 0;
   let hubspotOnlySubscriptionMrr = 0;
   let hubspotOnlySubscriptionArr = 0;
   let excludedLinkedHubspotSubscriptionMrr = 0;
   let excludedLinkedHubspotSubscriptionArr = 0;
+  let hubspotOnlySubscriptions = 0;
+  const hubspotOnlyCustomerIdentities = new Set<string>();
 
   const hubspotSubscriptionRecords = latestRecordsByDealId(
     records.filter(
@@ -2772,11 +3046,15 @@ function computeMrrBreakdown(records: RawSourceRecordRow[], asOf: Date) {
     } else {
       hubspotOnlySubscriptionMrr += recurringRevenue.mrr;
       hubspotOnlySubscriptionArr += recurringRevenue.arr;
+      hubspotOnlySubscriptions += 1;
+      hubspotOnlyCustomerIdentities.add(hubspotDealCustomerIdentity(record));
     }
   }
 
   const totalMrr = stripeMrr + hubspotOnlySubscriptionMrr;
   const totalArr = stripeArr + hubspotOnlySubscriptionArr;
+  const stripeSubscriptions = activeStripeSubscriptions.length;
+  const stripeCustomers = activeStripeCustomerIdentities.size;
 
   return {
     amount: roundMoney(totalMrr),
@@ -2790,6 +3068,639 @@ function computeMrrBreakdown(records: RawSourceRecordRow[], asOf: Date) {
     hubspotRecurringRevenue: roundMoney(hubspotOnlySubscriptionMrr),
     excludedLinkedHubspotSubscriptionMrr: roundMoney(excludedLinkedHubspotSubscriptionMrr),
     excludedLinkedHubspotSubscriptionArr: roundMoney(excludedLinkedHubspotSubscriptionArr),
+    activeSubscriptions: stripeSubscriptions + hubspotOnlySubscriptions,
+    stripeSubscriptions,
+    hubspotOnlySubscriptions,
+    activeCustomers: stripeCustomers + hubspotOnlyCustomerIdentities.size,
+    stripeCustomers,
+    hubspotOnlyCustomers: hubspotOnlyCustomerIdentities.size,
+  };
+}
+
+function closedWonHubspotDealAmount(record: RawSourceRecordRow, asOf: Date): number | null {
+  if (!recordIsProvider(record, IntegrationProvider.HUBSPOT) || !recordIsObjectType(record, "deal")) {
+    return null;
+  }
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const stage = normalizeStageKey(
+    firstValueFromSources(sources, [
+      "dealstage",
+      "stage",
+      "stageLabel",
+      "stage_label",
+      "stageId",
+      "stage_id",
+    ]),
+  );
+  if (stage && !["closedwon", "won"].includes(stage)) return null;
+  const closedAt = firstDateFrom(
+    ...valuesFromSources(sources, [
+      "closedAt",
+      "closed_at",
+      "closeDate",
+      "close_date",
+      "closedate",
+      "wonAt",
+      "won_at",
+      "hs_closedate",
+    ]),
+  );
+  if (closedAt && closedAt.getTime() > asOf.getTime()) return null;
+  return Math.max(0, numberFrom(firstValueFromSources(sources, ["amount"])) ?? 0);
+}
+
+function hubspotDealIsServicesRevenue(record: RawSourceRecordRow, asOf: Date): boolean {
+  if (hubspotRecurringRevenueAsOf(record, asOf)) return false;
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const serviceSignals = valuesFromSources(sources, [
+    "revenueType",
+    "revenue_type",
+    "dealType",
+    "deal_type",
+    "productType",
+    "product_type",
+    "lineOfBusiness",
+    "line_of_business",
+    "category",
+    "type",
+  ]).map((value) => String(scalarValue(value) ?? "").trim().toLowerCase());
+  return serviceSignals.some((signal) =>
+    [
+      "service",
+      "services",
+      "professionalservice",
+      "professionalservices",
+      "professional_services",
+      "implementation",
+      "support",
+      "consulting",
+      "one-time",
+      "onetime",
+      "nonrecurring",
+      "non-recurring",
+    ].includes(signal.replace(/\s+/g, "")),
+  );
+}
+
+function stripeInvoiceIsPaid(record: RawSourceRecordRow): boolean {
+  if (!recordIsProvider(record, IntegrationProvider.STRIPE) || !recordIsObjectType(record, "invoice")) {
+    return false;
+  }
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const paid = booleanFrom(firstValueFromSources(sources, ["paid", "isPaid", "is_paid"]));
+  if (paid === false) return false;
+  if (paid === true) return true;
+  const status = normalizeStageKey(firstValueFromSources(sources, ["status"]));
+  if (["void", "voided", "draft", "open", "uncollectible"].includes(status)) return false;
+  if (status === "paid") return true;
+  const amountPaid = numberFrom(firstValueFromSources(sources, ["amount_paid", "amountPaid"]));
+  return Boolean(amountPaid && amountPaid > 0);
+}
+
+function stripeInvoiceLineItems(payload: Record<string, unknown>): Record<string, unknown>[] {
+  const sources = wrapperSources(payload);
+  const containers = sources.flatMap((source) => [
+    ...keyVariants("lines").map((key) => source[key]),
+    ...keyVariants("invoiceLines").map((key) => source[key]),
+    ...keyVariants("invoice_lines").map((key) => source[key]),
+  ]);
+  return containers.flatMap((container) => {
+    return (arrayValuesFromContainer(container) ?? []).map((item) => nestedRecord(item));
+  });
+}
+
+function stripeInvoiceLineAmount(item: Record<string, unknown>): number {
+  const sources = wrapperSources(item);
+  const explicitDecimalAmount = numberFrom(
+    firstValueFromSources(sources, [
+      "amountDecimal",
+      "amount_decimal",
+      "amountDollars",
+      "amount_dollars",
+      "subtotalDecimal",
+      "subtotal_decimal",
+      "subtotalDollars",
+      "subtotal_dollars",
+      "totalDecimal",
+      "total_decimal",
+      "totalDollars",
+      "total_dollars",
+    ]),
+  );
+  if (explicitDecimalAmount !== null) return Math.max(0, explicitDecimalAmount);
+
+  const explicitAmountCents = numberFrom(
+    firstValueFromSources(sources, [
+      "amountCents",
+      "amount_cents",
+      "subtotalCents",
+      "subtotal_cents",
+      "totalCents",
+      "total_cents",
+    ]),
+  );
+  if (explicitAmountCents !== null) return Math.max(0, explicitAmountCents / 100);
+
+  const amountCents = numberFrom(
+    firstValueFromSources(sources, [
+      "amount",
+      "amount_excluding_tax",
+      "amountExcludingTax",
+      "subtotal",
+      "subtotal_excluding_tax",
+      "subtotalExcludingTax",
+    ]),
+  );
+  return amountCents && amountCents > 0 ? amountCents / 100 : 0;
+}
+
+function stripeInvoiceId(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const invoiceSources = sources.map((source) => nestedRecordFromKey(source, "invoice"));
+  return normalizeLookup(
+    firstValueFromSources([...sources, ...invoiceSources], [
+      "invoiceId",
+      "invoice_id",
+      "stripeInvoiceId",
+      "stripe_invoice_id",
+      "id",
+    ]),
+  ) ?? normalizeLookup(String(record.externalId).split(":").pop());
+}
+
+function stripePaymentIntentId(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const paymentIntentSources = sources.map((source) => nestedRecordFromKey(source, "payment_intent"));
+  const explicitId = normalizeLookup(
+    firstValueFromSources(sources, [
+      "paymentIntentId",
+      "payment_intent_id",
+      "stripePaymentIntentId",
+      "stripe_payment_intent_id",
+    ]),
+  );
+  if (explicitId) return explicitId;
+
+  const paymentIntentReference = normalizeLookup(
+    firstValueFromSources(sources, [
+      "paymentIntent",
+      "payment_intent",
+    ]),
+  );
+  if (paymentIntentReference) return paymentIntentReference;
+
+  const nestedPaymentIntentId = normalizeLookup(firstValueFromSources(paymentIntentSources, ["id"]));
+  if (nestedPaymentIntentId) return nestedPaymentIntentId;
+
+  return recordIsObjectType(record, "payment_intent")
+    ? normalizeLookup(firstValueFromSources(sources, ["id"]))
+    : null;
+}
+
+function stripeChargeId(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const chargeSources = sources.flatMap((source) => [
+    nestedRecordFromKey(source, "charge"),
+    nestedRecordFromKey(source, "latest_charge"),
+    nestedRecordFromKey(source, "latestCharge"),
+  ]);
+  return normalizeLookup(
+    firstValueFromSources([...sources, ...chargeSources], [
+      "chargeId",
+      "charge_id",
+      "stripeChargeId",
+      "stripe_charge_id",
+      "charge",
+      "latest_charge",
+      "latestCharge",
+      "id",
+    ]),
+  );
+}
+
+function stripeInvoicePaymentIntentId(record: RawSourceRecordRow): string | null {
+  return stripePaymentIntentId(record);
+}
+
+function stripeChargeInvoiceId(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const invoiceSources = sources.map((source) => nestedRecordFromKey(source, "invoice"));
+  return normalizeLookup(
+    firstValueFromSources([...sources, ...invoiceSources], [
+      "invoiceId",
+      "invoice_id",
+      "stripeInvoiceId",
+      "stripe_invoice_id",
+      "invoice",
+    ]),
+  );
+}
+
+function stripeInvoiceCashAmount(record: RawSourceRecordRow): number | null {
+  if (!stripeInvoiceIsPaid(record)) return null;
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const explicitAmountPaidCents = numberFrom(
+    firstValueFromSources(sources, [
+      "amount_paid",
+      "amountPaid",
+      "amount_received",
+      "amountReceived",
+      "paidAmount",
+      "paid_amount",
+      "total",
+    ]),
+  );
+  if (explicitAmountPaidCents !== null) {
+    return Math.max(0, explicitAmountPaidCents / 100);
+  }
+  const lineAmount = stripeInvoiceLineItems(payload).reduce(
+    (sum, line) => sum + stripeInvoiceLineAmount(line),
+    0,
+  );
+  return lineAmount > 0 ? lineAmount : null;
+}
+
+function stripeChargeCashAmount(record: RawSourceRecordRow): number | null {
+  if (
+    !recordIsProvider(record, IntegrationProvider.STRIPE) ||
+    !recordIsObjectType(record, "charge", "payment", "payment_intent")
+  ) {
+    return null;
+  }
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const paid = booleanFrom(firstValueFromSources(sources, ["paid", "isPaid", "is_paid"]));
+  if (paid === false) return null;
+  const status = normalizeStageKey(firstValueFromSources(sources, ["status", "state"]));
+  if (["failed", "canceled", "cancelled", "requirespaymentmethod", "requiresconfirmation"].includes(status)) {
+    return null;
+  }
+  if (recordIsObjectType(record, "payment_intent") && status && !["succeeded", "paid", "captured"].includes(status)) {
+    return null;
+  }
+  const refunded = booleanFrom(firstValueFromSources(sources, ["refunded", "isRefunded", "is_refunded"]));
+  const amountRefundedCents = numberFrom(
+    firstValueFromSources(sources, ["amount_refunded", "amountRefunded", "refundedAmount", "refunded_amount"]),
+  );
+  if (refunded === true && (amountRefundedCents === null || amountRefundedCents <= 0)) return null;
+
+  const explicitNetAmountCents = numberFrom(
+    firstValueFromSources(sources, [
+      "netAmountCents",
+      "net_amount_cents",
+    ]),
+  );
+  if (explicitNetAmountCents !== null) return Math.max(0, explicitNetAmountCents / 100);
+
+  const grossAmountCents = numberFrom(
+    firstValueFromSources(sources, [
+      "amount_captured",
+      "amountCaptured",
+      "amount_received",
+      "amountReceived",
+      "amount",
+    ]),
+  );
+  if (grossAmountCents === null) return null;
+  return Math.max(0, (grossAmountCents - Math.max(0, amountRefundedCents ?? 0)) / 100);
+}
+
+function stripeChargeRefundedAmount(record: RawSourceRecordRow): number {
+  if (
+    !recordIsProvider(record, IntegrationProvider.STRIPE) ||
+    !recordIsObjectType(record, "charge", "payment", "payment_intent")
+  ) {
+    return 0;
+  }
+  const amountRefundedCents = numberFrom(
+    firstValueFromSources(wrapperSources(asRecord(record.payload)), [
+      "amount_refunded",
+      "amountRefunded",
+      "refundedAmount",
+      "refunded_amount",
+    ]),
+  );
+  return amountRefundedCents && amountRefundedCents > 0 ? amountRefundedCents / 100 : 0;
+}
+
+function stripeLostDisputeAmount(record: RawSourceRecordRow): number | null {
+  if (!recordIsProvider(record, IntegrationProvider.STRIPE) || !recordIsObjectType(record, "dispute")) {
+    return null;
+  }
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const status = normalizeStageKey(firstValueFromSources(sources, ["status", "state"]));
+  if (status !== "lost") return null;
+  const amountCents = numberFrom(
+    firstValueFromSources(sources, [
+      "amount",
+      "disputeAmount",
+      "dispute_amount",
+      "lostAmount",
+      "lost_amount",
+    ]),
+  );
+  if (amountCents === null || amountCents === 0) return null;
+  return Math.abs(amountCents) / 100;
+}
+
+function stripeRefundLossAmount(record: RawSourceRecordRow): number | null {
+  if (!recordIsProvider(record, IntegrationProvider.STRIPE) || !recordIsObjectType(record, "refund")) {
+    return null;
+  }
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const status = normalizeStageKey(firstValueFromSources(sources, ["status", "state"]));
+  if (!["succeeded", "paid", "completed"].includes(status)) return null;
+  const amountCents = numberFrom(
+    firstValueFromSources(sources, [
+      "amount",
+      "refundAmount",
+      "refund_amount",
+      "refundedAmount",
+      "refunded_amount",
+    ]),
+  );
+  if (amountCents === null || amountCents === 0) return null;
+  return Math.abs(amountCents) / 100;
+}
+
+function stripeBalanceTransactionFeeAmount(record: RawSourceRecordRow): number {
+  if (!recordIsProvider(record, IntegrationProvider.STRIPE) || !recordIsObjectType(record, "balance_transaction")) {
+    return 0;
+  }
+  const feeCents = numberFrom(
+    firstValueFromSources(wrapperSources(asRecord(record.payload)), [
+      "fee",
+      "feeAmount",
+      "fee_amount",
+      "feeCents",
+      "fee_cents",
+      "stripeFee",
+      "stripe_fee",
+    ]),
+  );
+  return feeCents && feeCents > 0 ? feeCents / 100 : 0;
+}
+
+function stripeBalanceTransactionSourceId(record: RawSourceRecordRow): string | null {
+  if (!recordIsProvider(record, IntegrationProvider.STRIPE) || !recordIsObjectType(record, "balance_transaction")) {
+    return null;
+  }
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  return (
+    normalizeIdentifier(
+      firstValueFromSources(sources, [
+        "id",
+        "balanceTransactionId",
+        "balance_transaction_id",
+        "transactionId",
+        "transaction_id",
+      ]),
+    ) ?? normalizeIdentifier(record.externalId)
+  );
+}
+
+function computeStripeProcessingFees(records: RawSourceRecordRow[]): number {
+  const feesByTransaction = new Map<string, number>();
+  let unkeyedFees = 0;
+  for (const record of records) {
+    const amount = stripeBalanceTransactionFeeAmount(record);
+    if (amount <= 0) continue;
+    const transactionId = stripeBalanceTransactionSourceId(record);
+    if (!transactionId) {
+      unkeyedFees += amount;
+      continue;
+    }
+    feesByTransaction.set(transactionId, Math.max(feesByTransaction.get(transactionId) ?? 0, amount));
+  }
+  return [...feesByTransaction.values()].reduce((sum, amount) => sum + amount, unkeyedFees);
+}
+
+function stripeRefundChargeId(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const chargeSources = sources.map((source) => nestedRecordFromKey(source, "charge"));
+  return normalizeLookup(
+    firstValueFromSources([...sources, ...chargeSources], [
+      "chargeId",
+      "charge_id",
+      "stripeChargeId",
+      "stripe_charge_id",
+      "charge",
+      "id",
+    ]),
+  );
+}
+
+function stripeRefundLosses(
+  refunds: { record: RawSourceRecordRow; chargeId: string | null; amount: number }[],
+  chargeRefundedAmounts: Map<string, number>,
+) {
+  const remainingReflectedRefunds = new Map(chargeRefundedAmounts);
+  return refunds
+    .map((refund) => {
+      if (!refund.chargeId) return { record: refund.record, amount: refund.amount };
+      const reflectedAmount = remainingReflectedRefunds.get(refund.chargeId) ?? 0;
+      const additionalAmount = Math.max(0, refund.amount - reflectedAmount);
+      remainingReflectedRefunds.set(refund.chargeId, Math.max(0, reflectedAmount - refund.amount));
+      return { record: refund.record, amount: additionalAmount };
+    })
+    .filter((refund): refund is { record: RawSourceRecordRow; amount: number } => refund.amount > 0);
+}
+
+function computeStripeCashCollections(records: RawSourceRecordRow[]) {
+  const paidInvoices = records
+    .filter((record) => recordIsProvider(record, IntegrationProvider.STRIPE) && recordIsObjectType(record, "invoice"))
+    .map((record) => ({
+      record,
+      invoiceId: stripeInvoiceId(record),
+      paymentIntentId: stripeInvoicePaymentIntentId(record),
+      amount: stripeInvoiceCashAmount(record),
+    }))
+    .filter((entry): entry is {
+      record: RawSourceRecordRow;
+      invoiceId: string | null;
+      paymentIntentId: string | null;
+      amount: number;
+    } => typeof entry.amount === "number" && entry.amount > 0);
+  const paidInvoiceIds = new Set(paidInvoices.map((entry) => entry.invoiceId).filter(Boolean));
+  const paidInvoicePaymentIntentIds = new Set(paidInvoices.map((entry) => entry.paymentIntentId).filter(Boolean));
+  const chargeCollections = records
+    .filter((record) => recordIsProvider(record, IntegrationProvider.STRIPE) && recordIsObjectType(record, "charge", "payment", "payment_intent"))
+    .map((record) => ({
+      record,
+      chargeId: stripeChargeId(record),
+      invoiceId: stripeChargeInvoiceId(record),
+      paymentIntentId: stripePaymentIntentId(record),
+      amount: stripeChargeCashAmount(record),
+      refundedAmount: stripeChargeRefundedAmount(record),
+    }))
+    .filter((entry): entry is {
+      record: RawSourceRecordRow;
+      chargeId: string | null;
+      invoiceId: string | null;
+      paymentIntentId: string | null;
+      amount: number;
+      refundedAmount: number;
+    } => {
+      if (typeof entry.amount !== "number" || entry.amount <= 0) return false;
+      if (entry.invoiceId && paidInvoiceIds.has(entry.invoiceId)) return false;
+      if (entry.paymentIntentId && paidInvoicePaymentIntentIds.has(entry.paymentIntentId)) return false;
+      return true;
+    });
+  const chargeRefundedAmounts = new Map<string, number>();
+  for (const charge of chargeCollections) {
+    if (!charge.chargeId || charge.refundedAmount <= 0) continue;
+    chargeRefundedAmounts.set(
+      charge.chargeId,
+      Math.max(chargeRefundedAmounts.get(charge.chargeId) ?? 0, charge.refundedAmount),
+    );
+  }
+  const lostDisputes = records
+    .filter((record) => recordIsProvider(record, IntegrationProvider.STRIPE) && recordIsObjectType(record, "dispute"))
+    .map((record) => ({
+      record,
+      amount: stripeLostDisputeAmount(record),
+    }))
+    .filter((entry): entry is { record: RawSourceRecordRow; amount: number } =>
+      typeof entry.amount === "number" && entry.amount > 0,
+    );
+  const successfulRefunds = records
+    .filter((record) => recordIsProvider(record, IntegrationProvider.STRIPE) && recordIsObjectType(record, "refund"))
+    .map((record) => ({
+      record,
+      chargeId: stripeRefundChargeId(record),
+      amount: stripeRefundLossAmount(record),
+    }))
+    .filter((entry): entry is { record: RawSourceRecordRow; chargeId: string | null; amount: number } =>
+      typeof entry.amount === "number" && entry.amount > 0,
+    );
+  const refundLosses = stripeRefundLosses(successfulRefunds, chargeRefundedAmounts);
+  const grossCollections = [...paidInvoices, ...chargeCollections].reduce((sum, entry) => sum + entry.amount, 0);
+  const disputeLosses = lostDisputes.reduce((sum, entry) => sum + entry.amount, 0);
+  const refundLossAmount = refundLosses.reduce((sum, entry) => sum + entry.amount, 0);
+
+  return {
+    amount: roundMoney(grossCollections - disputeLosses - refundLossAmount),
+    paidInvoices: paidInvoices.length,
+    paidCharges: chargeCollections.length,
+    lostDisputes: lostDisputes.length,
+    disputeLosses: roundMoney(disputeLosses),
+    refunds: refundLosses.length,
+    refundLosses: roundMoney(refundLossAmount),
+    observedCashEvidence:
+      paidInvoices.length > 0 ||
+      chargeCollections.length > 0 ||
+      lostDisputes.length > 0 ||
+      refundLosses.length > 0,
+  };
+}
+
+function stripeInvoiceLineHasRecurringEvidence(item: Record<string, unknown>): boolean {
+  const sources = wrapperSources(item);
+  const parentSources = sources.map((source) => nestedRecordFromKey(source, "parent"));
+  const parentSubscriptionItemSources = parentSources.flatMap((source) => [
+    nestedRecordFromKey(source, "subscription_item_details"),
+    nestedRecordFromKey(source, "subscriptionItemDetails"),
+  ]);
+  const priceSources = sources.flatMap((source) => [
+    ...wrapperSources(nestedRecordFromKey(source, "price")),
+    ...wrapperSources(nestedRecordFromKey(source, "pricing")),
+    ...wrapperSources(nestedRecordFromKey(source, "plan")),
+  ]);
+  const recurringEvidence = firstValueFromSources(priceSources, ["recurring", "interval"]);
+  if (recurringEvidence !== null && recurringEvidence !== undefined) return true;
+  const subscriptionReference = firstValueFromSources([...sources, ...parentSubscriptionItemSources], [
+    "subscription",
+    "subscriptionId",
+    "subscription_id",
+    "subscription_item",
+    "subscriptionItem",
+    "subscription_item_id",
+    "subscriptionItemId",
+  ]);
+  return Boolean(normalizeLookup(subscriptionReference));
+}
+
+function stripeInvoiceLineIsOneTimeService(item: Record<string, unknown>): boolean {
+  if (stripeInvoiceLineAmount(item) <= 0) return false;
+  if (stripeInvoiceLineHasRecurringEvidence(item)) return false;
+
+  const sources = wrapperSources(item);
+  const parentSources = sources.map((source) => nestedRecordFromKey(source, "parent"));
+  const priceSources = sources.flatMap((source) => [
+    ...wrapperSources(nestedRecordFromKey(source, "price")),
+    ...wrapperSources(nestedRecordFromKey(source, "pricing")),
+    ...wrapperSources(nestedRecordFromKey(source, "plan")),
+  ]);
+  const productSources = priceSources.flatMap((source) => [
+    ...wrapperSources(nestedRecordFromKey(source, "product")),
+    ...wrapperSources(nestedRecordFromKey(source, "product_details")),
+    ...wrapperSources(nestedRecordFromKey(source, "productDetails")),
+  ]);
+  const typeSignals = valuesFromSources([...sources, ...parentSources, ...priceSources], [
+    "type",
+    "billingScheme",
+    "billing_scheme",
+  ]).map((value) => String(scalarValue(value) ?? "").trim().toLowerCase().replace(/[\s_-]+/g, ""));
+  if (typeSignals.some((signal) => ["invoiceitemdetails", "invoiceitem", "onetime"].includes(signal))) {
+    return true;
+  }
+
+  const serviceSignals = valuesFromSources([...sources, ...priceSources, ...productSources], [
+    "description",
+    "name",
+    "nickname",
+    "productName",
+    "product_name",
+    "lineOfBusiness",
+    "line_of_business",
+    "category",
+  ]).map((value) => String(scalarValue(value) ?? "").trim().toLowerCase());
+  return serviceSignals.some((signal) =>
+    /service|implementation|consulting|support|setup|onboarding|professional/.test(signal),
+  );
+}
+
+function computeServicesRevenue(records: RawSourceRecordRow[], asOf: Date) {
+  const servicesDeals = latestRecordsByDealId(
+    records.filter(
+      (record) =>
+        recordIsProvider(record, IntegrationProvider.HUBSPOT) &&
+        recordIsObjectType(record, "deal") &&
+        hubspotDealIsServicesRevenue(record, asOf),
+    ),
+    asOf,
+  );
+  const amount = servicesDeals.reduce((sum, record) => {
+    return sum + (closedWonHubspotDealAmount(record, asOf) ?? 0);
+  }, 0);
+  const stripeServiceInvoices = records.filter(stripeInvoiceIsPaid).map((record) => {
+    const serviceLines = stripeInvoiceLineItems(asRecord(record.payload)).filter(stripeInvoiceLineIsOneTimeService);
+    return {
+      record,
+      amount: serviceLines.reduce((sum, line) => sum + stripeInvoiceLineAmount(line), 0),
+      serviceLineCount: serviceLines.length,
+    };
+  }).filter((invoice) => invoice.amount > 0 && invoice.serviceLineCount > 0);
+  const stripeServiceRevenue = stripeServiceInvoices.reduce((sum, invoice) => sum + invoice.amount, 0);
+  return {
+    amount: roundMoney(amount + stripeServiceRevenue),
+    closedWonServicesDeals: servicesDeals.filter(
+      (record) => (closedWonHubspotDealAmount(record, asOf) ?? 0) > 0,
+    ).length,
+    stripeServiceInvoices: stripeServiceInvoices.length,
+    stripeServiceInvoiceLines: stripeServiceInvoices.reduce((sum, invoice) => sum + invoice.serviceLineCount, 0),
   };
 }
 
@@ -2806,13 +3717,39 @@ function computeFinanceValues(records: RawSourceRecordRow[], asOf: Date) {
     const amount = transactionAmount(record);
     return amount && amount < 0 ? sum + Math.abs(amount) : sum;
   }, 0);
+  const mercuryCostOfGoodsSold = mercuryTransactions.reduce((sum, record) => {
+    const amount = transactionAmount(record);
+    return amount && amount < 0 && mercuryTransactionIsCostOfGoodsSold(record)
+      ? sum + Math.abs(amount)
+      : sum;
+  }, 0);
+  const stripeProcessingFees = computeStripeProcessingFees(records);
+  const costOfGoodsSold = mercuryCostOfGoodsSold + stripeProcessingFees;
+  const expenseTransactions = mercuryTransactions.filter((record) => {
+    const amount = transactionAmount(record);
+    return Boolean(amount && amount < 0);
+  }).length;
   const mercuryCashInflow = mercuryTransactions.reduce((sum, record) => {
     const amount = transactionAmount(record);
     return amount && amount > 0 ? sum + amount : sum;
   }, 0);
   const mrr = computeMrrBreakdown(records, asOf);
+  // recognizedMrr is the recognized (billed) MRR. Per the canonical finance fix
+  // it is surfaced for visibility but is NOT treated as cash inflow.
   const recognizedMrr = mrr.amount;
-  const cashInflow = mercuryCashInflow;
+  // stripeMrr is retained as an informational "estimated MRR inflow" figure only.
+  const stripeMrr = computeStripeMrr(records, asOf);
+  const stripeCashCollections = computeStripeCashCollections(records);
+  // Only count actual Stripe cash collections (paid invoices/charges net of
+  // disputes and refunds) as cash inflow. When there is no observed cash
+  // evidence we fall back to 0 rather than recognized MRR, since recognized
+  // revenue is not cash.
+  const stripeCashInflow = stripeCashCollections.observedCashEvidence
+    ? stripeCashCollections.amount
+    : 0;
+  const servicesRevenue = computeServicesRevenue(records, asOf);
+  const grossMarginRevenue = mrr.amount + servicesRevenue.amount;
+  const cashInflow = mercuryCashInflow + stripeCashInflow;
   const netBurn = cashOutflow - cashInflow;
   const mercuryBalanceAmounts = records
     .filter(
@@ -2855,6 +3792,16 @@ function computeFinanceValues(records: RawSourceRecordRow[], asOf: Date) {
       cashOutflow: roundMoney(cashOutflow),
       cashInflow: roundMoney(cashInflow),
       recognizedMrr,
+      mercuryCashInflow: roundMoney(mercuryCashInflow),
+      stripeCashCollections: stripeCashCollections.amount,
+      stripeCashCollectionInvoices: stripeCashCollections.paidInvoices,
+      stripeCashCollectionCharges: stripeCashCollections.paidCharges,
+      stripeDisputeLosses: stripeCashCollections.disputeLosses,
+      stripeLostDisputes: stripeCashCollections.lostDisputes,
+      stripeRefundLosses: stripeCashCollections.refundLosses,
+      stripeRefunds: stripeCashCollections.refunds,
+      stripeEstimatedMrrInflow: roundMoney(stripeMrr),
+      stripeCashInflow: roundMoney(stripeCashInflow),
     },
     runway: {
       months: netBurn > 0 ? roundRatio(cashBalance / netBurn) : null,
@@ -2863,9 +3810,62 @@ function computeFinanceValues(records: RawSourceRecordRow[], asOf: Date) {
       recognizedMrr,
       currency,
     },
-    mrr: {
-      ...mrr,
+    expenses: {
+      amount: roundMoney(cashOutflow),
       currency,
+      cashOutflow: roundMoney(cashOutflow),
+      expenseTransactions,
+    },
+    grossMargin: {
+      rate:
+        grossMarginRevenue > 0
+          ? roundRatio(((grossMarginRevenue - costOfGoodsSold) / grossMarginRevenue) * 100)
+          : null,
+      revenue: roundMoney(grossMarginRevenue),
+      costOfGoodsSold: roundMoney(costOfGoodsSold),
+      stripeProcessingFees: roundMoney(stripeProcessingFees),
+      currency,
+    },
+    mrr: {
+      amount: mrr.amount,
+      arr: mrr.arr,
+      stripeMrr: mrr.stripeMrr,
+      stripeArr: mrr.stripeArr,
+      hubspotSubscriptionMrr: mrr.hubspotSubscriptionMrr,
+      hubspotSubscriptionArr: mrr.hubspotSubscriptionArr,
+      hubspotOnlySubscriptionMrr: mrr.hubspotOnlySubscriptionMrr,
+      hubspotOnlySubscriptionArr: mrr.hubspotOnlySubscriptionArr,
+      hubspotRecurringRevenue: mrr.hubspotRecurringRevenue,
+      excludedLinkedHubspotSubscriptionMrr: mrr.excludedLinkedHubspotSubscriptionMrr,
+      excludedLinkedHubspotSubscriptionArr: mrr.excludedLinkedHubspotSubscriptionArr,
+      currency,
+    },
+    subscriptionRevenue: {
+      amount: mrr.arr,
+      mrr: mrr.amount,
+      currency,
+      activeSubscriptions: mrr.activeSubscriptions,
+      activeCustomers: mrr.activeCustomers,
+    },
+    totalRevenue: {
+      amount: roundMoney(mrr.arr + servicesRevenue.amount),
+      subscriptionRevenue: mrr.arr,
+      servicesRevenue: servicesRevenue.amount,
+      currency,
+    },
+    servicesRevenue: {
+      ...servicesRevenue,
+      currency,
+    },
+    activeSubscriptions: {
+      count: mrr.activeSubscriptions,
+      stripeSubscriptions: mrr.stripeSubscriptions,
+      hubspotOnlySubscriptions: mrr.hubspotOnlySubscriptions,
+    },
+    customerCount: {
+      count: mrr.activeCustomers,
+      stripeCustomers: mrr.stripeCustomers,
+      hubspotOnlyCustomers: mrr.hubspotOnlyCustomers,
     },
   };
 }
@@ -2974,6 +3974,16 @@ export async function materializeImladrisFinanceMetrics(
       calculationVersion: FINANCE_NET_BURN_CALCULATION_VERSION,
     },
     {
+      metricKey: "finance.cash_balance",
+      department: "finance",
+      unit: "currency",
+      value: {
+        amount: values.runway.cashBalance,
+        currency: values.runway.currency,
+      },
+      calculationVersion: FINANCE_CASH_BALANCE_CALCULATION_VERSION,
+    },
+    {
       metricKey: "finance.cash_runway_months",
       department: "finance",
       unit: "months",
@@ -2981,11 +3991,71 @@ export async function materializeImladrisFinanceMetrics(
       calculationVersion: FINANCE_CASH_RUNWAY_CALCULATION_VERSION,
     },
     {
+      metricKey: "finance.expenses",
+      department: "finance",
+      unit: "currency",
+      value: values.expenses,
+      calculationVersion: FINANCE_EXPENSES_CALCULATION_VERSION,
+    },
+    {
+      metricKey: "finance.gross_margin",
+      department: "finance",
+      unit: "percent",
+      value: values.grossMargin,
+      calculationVersion: FINANCE_GROSS_MARGIN_CALCULATION_VERSION,
+    },
+    {
       metricKey: "revenue.mrr",
       department: "finance",
       unit: "currency",
       value: values.mrr,
       calculationVersion: REVENUE_MRR_CALCULATION_VERSION,
+    },
+    {
+      metricKey: "revenue.arr",
+      department: "finance",
+      unit: "currency",
+      value: {
+        amount: values.mrr.arr,
+        mrr: values.mrr.amount,
+        currency: values.mrr.currency,
+      },
+      calculationVersion: REVENUE_ARR_CALCULATION_VERSION,
+    },
+    {
+      metricKey: "revenue.total_revenue",
+      department: "finance",
+      unit: "currency",
+      value: values.totalRevenue,
+      calculationVersion: REVENUE_TOTAL_REVENUE_CALCULATION_VERSION,
+    },
+    {
+      metricKey: "revenue.subscription_revenue",
+      department: "finance",
+      unit: "currency",
+      value: values.subscriptionRevenue,
+      calculationVersion: REVENUE_SUBSCRIPTION_REVENUE_CALCULATION_VERSION,
+    },
+    {
+      metricKey: "revenue.services_revenue",
+      department: "finance",
+      unit: "currency",
+      value: values.servicesRevenue,
+      calculationVersion: REVENUE_SERVICES_REVENUE_CALCULATION_VERSION,
+    },
+    {
+      metricKey: "revenue.active_subscriptions",
+      department: "finance",
+      unit: "count",
+      value: values.activeSubscriptions,
+      calculationVersion: REVENUE_ACTIVE_SUBSCRIPTIONS_CALCULATION_VERSION,
+    },
+    {
+      metricKey: "revenue.customer_count",
+      department: "finance",
+      unit: "count",
+      value: values.customerCount,
+      calculationVersion: REVENUE_CUSTOMER_COUNT_CALCULATION_VERSION,
     },
   ];
   const results: MaterializedImladrisMetricResult[] = [];
@@ -3146,6 +4216,8 @@ function collaborationEventTimestamp(record: RawSourceRecordRow): Date | null {
     "event_time",
     "eventTimestamp",
     "event_timestamp",
+    "startedAt",
+    "started_at",
     "startTime",
     "start_time",
     "startAt",
@@ -3331,6 +4403,253 @@ function latestSalesCollaborationTouchesById(records: RawSourceRecordRow[], asOf
   return [...latestByKey.values()];
 }
 
+function recordIsOneOfProviders(record: RawSourceRecordRow, providers: IntegrationProvider[]): boolean {
+  const provider = recordProvider(record);
+  return provider !== null && providers.includes(provider);
+}
+
+function textLooksLikeSalesDemo(value: unknown): boolean {
+  const text = stageText(value) ?? normalizeLookup(value);
+  if (!text) return false;
+  const normalized = text.trim().toLowerCase();
+  const compact = normalized.replace(/[\s_-]+/g, "");
+  return (
+    /\bdemo(?:s|nstration)?\b/.test(normalized) ||
+    compact.includes("appointmentscheduled") ||
+    compact.includes("scheduledemo") ||
+    compact.includes("bookdemo") ||
+    compact.includes("requestdemo") ||
+    /\bpresentation\b/.test(normalized)
+  );
+}
+
+function anySourceTextLooksLikeSalesDemo(sources: Record<string, unknown>[], keys: string[]): boolean {
+  return valuesFromSources(sources, keys).some(textLooksLikeSalesDemo);
+}
+
+function hubspotDealIsDemo(record: RawSourceRecordRow): boolean {
+  if (!recordIsProvider(record, IntegrationProvider.HUBSPOT) || !recordIsObjectType(record, "deal")) {
+    return false;
+  }
+
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  return anySourceTextLooksLikeSalesDemo(sources, [
+    "dealstage",
+    "stage",
+    "stageLabel",
+    "stage_label",
+    "stageName",
+    "stage_name",
+    "stageId",
+    "stage_id",
+    "pipelineStage",
+    "pipeline_stage",
+  ]);
+}
+
+function hubspotMeetingIsDemo(record: RawSourceRecordRow): boolean {
+  if (!recordIsProvider(record, IntegrationProvider.HUBSPOT) || !recordIsObjectType(record, "meeting")) {
+    return false;
+  }
+
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  return anySourceTextLooksLikeSalesDemo(sources, [
+    "title",
+    "meetingTitle",
+    "meeting_title",
+    "hs_meeting_title",
+    "subject",
+    "body",
+    "description",
+    "hs_meeting_body",
+    "name",
+  ]);
+}
+
+function googleWorkspaceRecordIsDemo(record: RawSourceRecordRow): boolean {
+  if (
+    !recordIsProvider(record, IntegrationProvider.GOOGLE_WORKSPACE) ||
+    !recordIsObjectType(record, "calendar_event", "event")
+  ) {
+    return false;
+  }
+
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  return anySourceTextLooksLikeSalesDemo(sources, [
+    "summary",
+    "title",
+    "subject",
+    "description",
+    "name",
+  ]);
+}
+
+function webflowRecordIsDemoRequest(record: RawSourceRecordRow): boolean {
+  if (
+    !recordIsProvider(record, IntegrationProvider.WEBFLOW) ||
+    !recordIsObjectType(record, "form_submission", "form_submission_detail", "submission", "form")
+  ) {
+    return false;
+  }
+
+  const sources = [
+    ...webflowSubmissionSources(record),
+    ...webflowFormSources(record),
+  ];
+  return anySourceTextLooksLikeSalesDemo(sources, [
+    "formName",
+    "form_name",
+    "formTitle",
+    "form_title",
+    "formId",
+    "form_id",
+    "name",
+    "title",
+    "path",
+    "url",
+    "page",
+    "pageUrl",
+    "page_url",
+    "cta",
+    "intent",
+  ]);
+}
+
+function salesDemoRecordTimestamp(record: RawSourceRecordRow): Date | null {
+  if (recordIsProvider(record, IntegrationProvider.GOOGLE_WORKSPACE)) {
+    return collaborationEventTimestamp(record);
+  }
+
+  const payload = asRecord(record.payload);
+  const sources = recordIsProvider(record, IntegrationProvider.WEBFLOW)
+    ? webflowSubmissionSources(record)
+    : wrapperSources(payload);
+  return firstDateFrom(
+    ...sources.flatMap((source) => [
+      firstValueFromSources([source], [
+        "startedAt",
+        "started_at",
+        "startTime",
+        "start_time",
+        "startAt",
+        "start_at",
+        "hs_timestamp",
+        "meetingStartTime",
+        "meeting_start_time",
+        "submittedAt",
+        "submitted_at",
+        "createdAt",
+        "created_at",
+        "updatedAt",
+        "updated_at",
+        "eventTime",
+        "event_time",
+        "timestamp",
+        "date",
+      ]),
+    ]),
+    record.occurredAt,
+    record.sourceUpdatedAt,
+    record.sourceCreatedAt,
+  );
+}
+
+function salesDemoTimestampIsWithinPeriod(
+  record: RawSourceRecordRow,
+  periodStart: Date,
+  asOf: Date,
+): boolean {
+  const timestamp = salesDemoRecordTimestamp(record);
+  if (!timestamp) return true;
+  const timestampMs = timestamp.getTime();
+  return timestampMs >= periodStart.getTime() && timestampMs <= asOf.getTime();
+}
+
+function salesDemoDeduplicationKey(record: RawSourceRecordRow): string {
+  if (recordIsProvider(record, IntegrationProvider.HUBSPOT)) {
+    return dealIdFromRecord(record) ?? rawRecordDeduplicationKey(record);
+  }
+  if (recordIsProvider(record, IntegrationProvider.GOOGLE_WORKSPACE)) {
+    return googleWorkspaceCollaborationEventId(record) ?? rawRecordDeduplicationKey(record);
+  }
+  if (recordIsProvider(record, IntegrationProvider.WEBFLOW)) {
+    return webflowFormSubmissionDeduplicationKey(record);
+  }
+  return rawRecordDeduplicationKey(record);
+}
+
+function salesDemoRevisionTimestampAsOf(record: RawSourceRecordRow, asOf: Date): number {
+  return (
+    rawRevisionTimestampAsOf(record.sourceUpdatedAt, asOf) ??
+    rawRevisionTimestampAsOf(record.occurredAt, asOf) ??
+    rawRevisionTimestampAsOf(record.sourceCreatedAt, asOf) ??
+    0
+  );
+}
+
+function latestSalesDemoRecordsById(records: RawSourceRecordRow[], asOf: Date): RawSourceRecordRow[] {
+  const latestByKey = new Map<string, RawSourceRecordRow>();
+  for (const record of records) {
+    const key = salesDemoDeduplicationKey(record);
+    const current = latestByKey.get(key);
+    if (
+      !current ||
+      salesDemoRevisionTimestampAsOf(record, asOf) >= salesDemoRevisionTimestampAsOf(current, asOf)
+    ) {
+      latestByKey.set(key, record);
+    }
+  }
+  return [...latestByKey.values()];
+}
+
+function isSalesDemoRecord(record: RawSourceRecordRow): boolean {
+  return (
+    hubspotDealIsDemo(record) ||
+    hubspotMeetingIsDemo(record) ||
+    googleWorkspaceRecordIsDemo(record) ||
+    webflowRecordIsDemoRequest(record)
+  );
+}
+
+function computeSalesDemos(records: RawSourceRecordRow[], periodStart: Date, asOf: Date) {
+  const demoRecords = latestSalesDemoRecordsById(
+    records.filter((record) => (
+      isSalesDemoRecord(record) && salesDemoTimestampIsWithinPeriod(record, periodStart, asOf)
+    )),
+    asOf,
+  );
+  const hubspotDemoDeals = demoRecords.filter((record) =>
+    recordIsProvider(record, IntegrationProvider.HUBSPOT) && recordIsObjectType(record, "deal"),
+  ).length;
+  const hubspotDemoMeetings = demoRecords.filter((record) =>
+    recordIsProvider(record, IntegrationProvider.HUBSPOT) && recordIsObjectType(record, "meeting"),
+  ).length;
+  const calendarDemoEvents = demoRecords.filter((record) =>
+    recordIsProvider(record, IntegrationProvider.GOOGLE_WORKSPACE),
+  ).length;
+  const webflowDemoRequests = demoRecords.filter((record) =>
+    recordIsProvider(record, IntegrationProvider.WEBFLOW),
+  ).length;
+  const scheduledDemos = hubspotDemoDeals + hubspotDemoMeetings + calendarDemoEvents;
+  const requestedDemos = webflowDemoRequests;
+
+  return {
+    records: demoRecords,
+    value: {
+      count: scheduledDemos + requestedDemos,
+      scheduledDemos,
+      requestedDemos,
+      hubspotDemoDeals,
+      hubspotDemoMeetings,
+      calendarDemoEvents,
+      webflowDemoRequests,
+    },
+  };
+}
+
 function computeQualifiedPipeline(records: RawSourceRecordRow[], periodStart: Date, asOf: Date) {
   const qualifiedDeals = latestRecordsByDealId(records.filter(isQualifiedPipelineDeal), asOf);
   const qualifiedDealIds = new Set(
@@ -3372,14 +4691,23 @@ export async function materializeImladrisSalesMetrics(
   const context = normalizeContext(input.context);
   const now = input.now ?? new Date();
 
-  const requiredProviders = [
+  const qualifiedPipelineProviders = [
     IntegrationProvider.HUBSPOT,
     IntegrationProvider.GOOGLE_WORKSPACE,
     IntegrationProvider.SLACK,
   ];
+  const salesDemoProviders = [
+    IntegrationProvider.HUBSPOT,
+    IntegrationProvider.GOOGLE_WORKSPACE,
+    IntegrationProvider.WEBFLOW,
+  ];
+  const queryProviders = [
+    ...qualifiedPipelineProviders,
+    IntegrationProvider.WEBFLOW,
+  ];
   const queriedRecords = await rawRecords.findMany({
     where: providerWindowWhere({
-      providers: requiredProviders,
+      providers: queryProviders,
       context,
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
@@ -3388,12 +4716,13 @@ export async function materializeImladrisSalesMetrics(
   });
   const records = dedupeRawSourceRecords(queriedRecords, context, input.periodStart, input.periodEnd, now);
   const salesAsOf = earlierDate(inclusivePeriodEnd(input.periodEnd), now);
-  const value = computeQualifiedPipeline(records, input.periodStart, salesAsOf);
-  const status = statusForProviderCoverage({ records, requiredProviders });
+  const pipelineRecords = records.filter((record) => recordIsOneOfProviders(record, qualifiedPipelineProviders));
+  const value = computeQualifiedPipeline(pipelineRecords, input.periodStart, salesAsOf);
+  const status = statusForProviderCoverage({ records: pipelineRecords, requiredProviders: qualifiedPipelineProviders });
   const warnings = providerCoverageWarning({
     metricLabel: "Qualified Pipeline",
-    records,
-    requiredProviders,
+    records: pipelineRecords,
+    requiredProviders: qualifiedPipelineProviders,
     emptyWarning: "No HubSpot, Google Workspace, or Slack raw records were available for sales materialization.",
   });
   const metricValue = await upsertCanonicalMetric({
@@ -3406,7 +4735,7 @@ export async function materializeImladrisSalesMetrics(
     periodStart: input.periodStart,
     periodEnd: input.periodEnd,
     status,
-    confidence: confidenceFor(records),
+    confidence: confidenceFor(pipelineRecords),
     warnings,
     calculationVersion: SALES_QUALIFIED_PIPELINE_CALCULATION_VERSION,
     now,
@@ -3415,8 +4744,41 @@ export async function materializeImladrisSalesMetrics(
   await replaceLineage({
     metricLineage,
     metricValueId: metricValue.id,
-    records,
+    records: pipelineRecords,
     calculationVersion: SALES_QUALIFIED_PIPELINE_CALCULATION_VERSION,
+    asOf: now,
+  });
+
+  const demos = computeSalesDemos(records, input.periodStart, salesAsOf);
+  const demosStatus = statusForProviderCoverage({ records, requiredProviders: salesDemoProviders });
+  const demosWarnings = providerCoverageWarning({
+    metricLabel: "Demos",
+    missingVerb: "are",
+    records,
+    requiredProviders: salesDemoProviders,
+    emptyWarning: "No HubSpot, Google Workspace, or Webflow raw records were available for sales demos materialization.",
+  });
+  const demosMetricValue = await upsertCanonicalMetric({
+    canonicalMetrics,
+    context,
+    metricKey: "sales.demos",
+    department: "sales",
+    unit: "count",
+    value: demos.value,
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    status: demosStatus,
+    confidence: confidenceFor(demos.records),
+    warnings: demosWarnings,
+    calculationVersion: SALES_DEMOS_CALCULATION_VERSION,
+    now,
+  });
+
+  await replaceLineage({
+    metricLineage,
+    metricValueId: demosMetricValue.id,
+    records: demos.records,
+    calculationVersion: SALES_DEMOS_CALCULATION_VERSION,
     asOf: now,
   });
 
@@ -3957,6 +5319,231 @@ function webflowFormSubmissionCount(records: RawSourceRecordRow[], asOf: Date): 
     }, 0);
 }
 
+function hubspotMarketingConversionSources(record: RawSourceRecordRow): Record<string, unknown>[] {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  return [
+    ...sources,
+    ...sources.flatMap((source) => [
+      nestedRecordFromKey(source, "contact"),
+      nestedRecordFromKey(source, "lead"),
+      nestedRecordFromKey(source, "lifecycle"),
+    ]),
+  ];
+}
+
+function hubspotMarketingConversionTimestamp(record: RawSourceRecordRow): Date | null {
+  const sources = hubspotMarketingConversionSources(record);
+  return firstDateFrom(
+    ...valuesFromSources(sources, [
+      "createdAt",
+      "created_at",
+      "createdate",
+      "hs_createdate",
+      "conversionDate",
+      "conversion_date",
+      "convertedAt",
+      "converted_at",
+      "firstConversionDate",
+      "first_conversion_date",
+      "becameLeadAt",
+      "became_lead_at",
+      "hs_date_entered_lead",
+      "hs_date_entered_marketingqualifiedlead",
+    ]),
+    record.sourceCreatedAt,
+    record.occurredAt,
+  );
+}
+
+function hubspotMarketingLifecycleStageIsConversion(record: RawSourceRecordRow): boolean {
+  const stage = normalizeStageKey(
+    firstValueFromSources(hubspotMarketingConversionSources(record), [
+      "lifecyclestage",
+      "lifecycleStage",
+      "lifecycle_stage",
+      "hs_lifecyclestage",
+      "stage",
+      "stageName",
+      "stage_name",
+      "status",
+    ]),
+  );
+  if (!stage) return true;
+  return [
+    "lead",
+    "marketingqualifiedlead",
+    "mql",
+    "salesqualifiedlead",
+    "sql",
+    "opportunity",
+    "customer",
+  ].includes(stage);
+}
+
+function hubspotMarketingConversionIdentity(record: RawSourceRecordRow): string {
+  const sources = hubspotMarketingConversionSources(record);
+  const email = normalizeLookup(firstValueFromSources(sources, [
+    "email",
+    "emailAddress",
+    "email_address",
+  ]));
+  if (email) return email;
+
+  return (
+    normalizeLookup(firstValueFromSources(sources, [
+      "hs_object_id",
+      "contactId",
+      "contact_id",
+      "leadId",
+      "lead_id",
+      "id",
+    ])) ??
+    normalizeLookup(record.externalId) ??
+    normalizeLookup(record.id) ??
+    rawRecordDeduplicationKey(record)
+  );
+}
+
+function isHubspotMarketingConversionRecord(
+  record: RawSourceRecordRow,
+  periodStart: Date,
+  asOf: Date,
+): boolean {
+  if (!recordIsProvider(record, IntegrationProvider.HUBSPOT)) return false;
+  if (!recordIsObjectType(record, "contact", "lead")) return false;
+  if (!hubspotMarketingLifecycleStageIsConversion(record)) return false;
+  const convertedAt = hubspotMarketingConversionTimestamp(record);
+  if (!convertedAt) return false;
+  return convertedAt.getTime() >= periodStart.getTime() && convertedAt.getTime() <= asOf.getTime();
+}
+
+function hubspotLeadConversionCount(
+  records: RawSourceRecordRow[],
+  periodStart: Date,
+  asOf: Date,
+): number {
+  return new Set(
+    records
+      .filter((record) => isHubspotMarketingConversionRecord(record, periodStart, asOf))
+      .map(hubspotMarketingConversionIdentity),
+  ).size;
+}
+
+function posthogMarketingEventTimestamp(record: RawSourceRecordRow, asOf: Date): Date | null {
+  return (
+    posthogEventTimestamp(record) ??
+    firstDateAtOrBefore(asOf, record.occurredAt, record.sourceUpdatedAt, record.sourceCreatedAt)
+  );
+}
+
+function posthogMarketingEventName(record: RawSourceRecordRow): string {
+  const payload = asRecord(record.payload);
+  return normalizeStageKey(
+    firstValueFromSources(wrapperSources(payload), [
+      "event",
+      "eventName",
+      "event_name",
+      "name",
+      "type",
+    ]),
+  );
+}
+
+function posthogMarketingEvents(
+  records: RawSourceRecordRow[],
+  periodStart: Date,
+  asOf: Date,
+): RawSourceRecordRow[] {
+  return latestPosthogEventsById(
+    records.filter(
+      (record) => recordIsProvider(record, IntegrationProvider.POSTHOG) && recordIsObjectType(record, "event"),
+    ),
+    asOf,
+  ).filter((record) => {
+    const eventTimestamp = posthogMarketingEventTimestamp(record, asOf);
+    if (!eventTimestamp) return false;
+    return eventTimestamp.getTime() >= periodStart.getTime() && eventTimestamp.getTime() <= asOf.getTime();
+  });
+}
+
+const POSTHOG_PAGEVIEW_EVENT_KEYS = new Set([
+  "$pageview",
+  "pageview",
+  "pageviewed",
+  "viewedpage",
+]);
+
+const POSTHOG_MARKETING_CONVERSION_EVENT_KEYS = new Set([
+  "bookdemo",
+  "contactformsubmitted",
+  "conversion",
+  "demobooked",
+  "demorequested",
+  "formsubmission",
+  "formsubmitted",
+  "leadconverted",
+  "leadcreated",
+  "requestdemo",
+  "signup",
+  "signedup",
+  "trialstarted",
+]);
+
+function posthogPageviewEventCount(records: RawSourceRecordRow[]): number {
+  return records.filter((record) => POSTHOG_PAGEVIEW_EVENT_KEYS.has(posthogMarketingEventName(record))).length;
+}
+
+function posthogMarketingConversionEventCount(records: RawSourceRecordRow[]): number {
+  return records.filter((record) => POSTHOG_MARKETING_CONVERSION_EVENT_KEYS.has(posthogMarketingEventName(record))).length;
+}
+
+function posthogSnapshotPageviewValue(record: RawSourceRecordRow): number | null {
+  if (!recordIsProvider(record, IntegrationProvider.POSTHOG)) return null;
+  const payload = asRecord(record.payload);
+  return nonNegativeIntegerFrom(
+    firstValueFromSources(metricSources(payload), [
+      "pageviewCount",
+      "pageview_count",
+      "pageviews",
+      "page_views",
+      "posthogPageviews",
+      "posthog_pageviews",
+    ]),
+  );
+}
+
+function posthogSnapshotConversionValue(record: RawSourceRecordRow): number | null {
+  if (!recordIsProvider(record, IntegrationProvider.POSTHOG)) return null;
+  const payload = asRecord(record.payload);
+  return nonNegativeIntegerFrom(
+    firstValueFromSources(metricSources(payload), [
+      "conversionEventCount",
+      "conversion_event_count",
+      "posthogConversions",
+      "posthog_conversions",
+      "conversions",
+      "conversion_count",
+    ]),
+  );
+}
+
+function posthogSnapshotPageviews(records: RawSourceRecordRow[], asOf: Date): number {
+  return latestSnapshotMetric(
+    records.filter((record) => recordIsProvider(record, IntegrationProvider.POSTHOG)),
+    posthogSnapshotPageviewValue,
+    asOf,
+  ) ?? 0;
+}
+
+function posthogSnapshotConversions(records: RawSourceRecordRow[], asOf: Date): number {
+  return latestSnapshotMetric(
+    records.filter((record) => recordIsProvider(record, IntegrationProvider.POSTHOG)),
+    posthogSnapshotConversionValue,
+    asOf,
+  ) ?? 0;
+}
+
 function searchClicksValue(record: RawSourceRecordRow): number | null {
   if (!recordIsProvider(record, IntegrationProvider.GOOGLE_SEARCH_CONSOLE)) return 0;
   const payload = asRecord(record.payload);
@@ -4144,7 +5731,11 @@ function latestSnapshotMetric(
     )?.value ?? null;
 }
 
-function computeMarketingPipelineEfficiency(records: RawSourceRecordRow[], asOf: Date) {
+function computeMarketingPipelineEfficiency(
+  records: RawSourceRecordRow[],
+  periodStart: Date,
+  asOf: Date,
+) {
   const acquisitionSpend = PAID_AD_PROVIDERS.reduce(
     (sum, provider) => sum + acquisitionSpendForProvider(records, provider, asOf),
     0,
@@ -4156,6 +5747,13 @@ function computeMarketingPipelineEfficiency(records: RawSourceRecordRow[], asOf:
   const websiteSessions = websiteSessionsCount(records, asOf);
   const organicTraffic = semrushOrganicTraffic(records, asOf);
   const webflowFormSubmissions = webflowFormSubmissionCount(records, asOf);
+  const hubspotLeadConversions = hubspotLeadConversionCount(records, periodStart, asOf);
+  const posthogEvents = posthogMarketingEvents(records, periodStart, asOf);
+  const posthogEventPageviews = posthogPageviewEventCount(posthogEvents);
+  const posthogEventConversions = posthogMarketingConversionEventCount(posthogEvents);
+  const posthogPageviews = posthogEventPageviews > 0 ? posthogEventPageviews : posthogSnapshotPageviews(records, asOf);
+  const posthogConversions =
+    posthogEventConversions > 0 ? posthogEventConversions : posthogSnapshotConversions(records, asOf);
   const googleSearchConsoleRecords = records.filter(
     (record) => recordIsProvider(record, IntegrationProvider.GOOGLE_SEARCH_CONSOLE),
   );
@@ -4192,11 +5790,50 @@ function computeMarketingPipelineEfficiency(records: RawSourceRecordRow[], asOf:
     acquisitionSpend: roundMoney(acquisitionSpend),
     websiteSessions,
     webflowFormSubmissions,
+    hubspotLeadConversions,
+    posthogPageviews,
+    posthogConversions,
     organicTraffic,
     searchClicks: searchClickCount,
     searchImpressions: searchImpressionCount,
     identifiedVisitors,
     currency,
+  };
+}
+
+function marketingWebsiteTrafficValue(value: ReturnType<typeof computeMarketingPipelineEfficiency>) {
+  const count = value.websiteSessions + value.organicTraffic;
+  return {
+    count: count > 0 ? count : value.searchClicks > 0 ? value.searchClicks : value.posthogPageviews,
+    websiteSessions: value.websiteSessions,
+    posthogPageviews: value.posthogPageviews,
+    organicTraffic: value.organicTraffic,
+    searchClicks: value.searchClicks,
+    searchImpressions: value.searchImpressions,
+  };
+}
+
+function marketingConversionRateValue(value: ReturnType<typeof computeMarketingPipelineEfficiency>) {
+  const conversions = value.webflowFormSubmissions + value.hubspotLeadConversions + value.posthogConversions;
+  const websiteSessions =
+    value.websiteSessions > 0
+      ? value.websiteSessions
+      : value.organicTraffic > 0
+        ? value.organicTraffic
+        : value.searchClicks > 0
+          ? value.searchClicks
+          : value.posthogPageviews;
+  return {
+    rate:
+      websiteSessions > 0
+        ? roundRatio((conversions / websiteSessions) * 100)
+        : null,
+    conversions,
+    websiteSessions,
+    webflowFormSubmissions: value.webflowFormSubmissions,
+    hubspotLeadConversions: value.hubspotLeadConversions,
+    posthogConversions: value.posthogConversions,
+    identifiedVisitors: value.identifiedVisitors,
   };
 }
 
@@ -4222,7 +5859,7 @@ export async function materializeImladrisMarketingMetrics(
     IntegrationProvider.UNIFY,
     IntegrationProvider.HUBSPOT,
   ];
-  const queryProviders = [...requiredProviders, IntegrationProvider.META_PAGE];
+  const queryProviders = [...requiredProviders, IntegrationProvider.META_PAGE, IntegrationProvider.POSTHOG];
   const queriedRecords = await rawRecords.findMany({
     where: providerWindowWhere({
       providers: queryProviders,
@@ -4233,7 +5870,8 @@ export async function materializeImladrisMarketingMetrics(
     orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
   });
   const records = dedupeRawSourceRecords(queriedRecords, context, input.periodStart, input.periodEnd, now);
-  const value = computeMarketingPipelineEfficiency(records, now);
+  const marketingAsOf = earlierDate(inclusivePeriodEnd(input.periodEnd), now);
+  const value = computeMarketingPipelineEfficiency(records, input.periodStart, marketingAsOf);
   const status = statusForProviderCoverage({ records, requiredProviders });
   const warnings = providerCoverageWarning({
     metricLabel: "Pipeline Efficiency",
@@ -4265,6 +5903,46 @@ export async function materializeImladrisMarketingMetrics(
     asOf: now,
   });
 
+  const supplementalMetrics = [
+    {
+      metricKey: "marketing.website_traffic",
+      unit: "count",
+      value: marketingWebsiteTrafficValue(value),
+      calculationVersion: MARKETING_WEBSITE_TRAFFIC_CALCULATION_VERSION,
+    },
+    {
+      metricKey: "marketing.conversion_rate",
+      unit: "percent",
+      value: marketingConversionRateValue(value),
+      calculationVersion: MARKETING_CONVERSION_RATE_CALCULATION_VERSION,
+    },
+  ];
+
+  for (const supplementalMetric of supplementalMetrics) {
+    const supplementalMetricValue = await upsertCanonicalMetric({
+      canonicalMetrics,
+      context,
+      metricKey: supplementalMetric.metricKey,
+      department: "marketing",
+      unit: supplementalMetric.unit,
+      value: supplementalMetric.value,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+      status,
+      confidence: confidenceFor(records),
+      warnings,
+      calculationVersion: supplementalMetric.calculationVersion,
+      now,
+    });
+    await replaceLineage({
+      metricLineage,
+      metricValueId: supplementalMetricValue.id,
+      records,
+      calculationVersion: supplementalMetric.calculationVersion,
+      asOf: now,
+    });
+  }
+
   return {
     metricKey: "marketing.pipeline_efficiency",
     metricValueId: metricValue.id,
@@ -4282,6 +5960,18 @@ function accountIdFromPayload(record: RawSourceRecordRow): string | null {
     nestedRecordFromKey(source, "company"),
     nestedRecordFromKey(source, "customer"),
   ]);
+  const associationSources = sources.flatMap((source) => {
+    const associations = nestedRecordFromKey(source, "associations");
+    return [
+      associations,
+      nestedRecordFromKey(associations, "companies"),
+      nestedRecordFromKey(associations, "company"),
+      nestedRecordFromKey(associations, "accounts"),
+      nestedRecordFromKey(associations, "account"),
+      nestedRecordFromKey(source, "companies"),
+      nestedRecordFromKey(source, "accounts"),
+    ];
+  });
   const id =
     firstValueFromSources(sources, [
       "accountId",
@@ -4292,14 +5982,36 @@ function accountIdFromPayload(record: RawSourceRecordRow): string | null {
       "customer_id",
       "stripeCustomerId",
       "stripe_customer_id",
+      "accountIds",
+      "account_ids",
+      "companyIds",
+      "company_ids",
+      "customerIds",
+      "customer_ids",
+      "associatedAccountIds",
+      "associated_account_ids",
+      "associatedCompanyIds",
+      "associated_company_ids",
+      "associatedCustomerIds",
+      "associated_customer_ids",
     ]) ??
     firstValueFromSources(nestedSources, [
       "id",
       "stripeCustomerId",
       "stripe_customer_id",
+    ]) ??
+    firstValueFromSources(associationSources, [
+      "companies",
+      "company",
+      "accounts",
+      "account",
+      "results",
+      "data",
+      "ids",
+      "id",
     ]);
 
-  return normalizeLookup(id);
+  return normalizeFirstLookup(id) ?? normalizeFirstAssociationLookup(id);
 }
 
 function statusText(value: unknown, seen = new WeakSet<object>()): string | null {
@@ -4360,8 +6072,15 @@ function isPylonSupportRecord(record: RawSourceRecordRow): boolean {
   );
 }
 
-function pylonSupportRecordId(record: RawSourceRecordRow): string | null {
-  if (!isPylonSupportRecord(record)) return null;
+function isCustomerSupportRecord(record: RawSourceRecordRow): boolean {
+  return (
+    isPylonSupportRecord(record) ||
+    (recordIsProvider(record, IntegrationProvider.HUBSPOT) && recordIsObjectType(record, "ticket"))
+  );
+}
+
+function supportRecordId(record: RawSourceRecordRow): string | null {
+  if (!isCustomerSupportRecord(record)) return null;
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
   const id = firstValueFromSources(sources, [
@@ -4375,6 +6094,8 @@ function pylonSupportRecordId(record: RawSourceRecordRow): string | null {
     "pylon_conversation_id",
     "pylonTicketId",
     "pylon_ticket_id",
+    "hubspotTicketId",
+    "hubspot_ticket_id",
     "id",
   ]);
   const payloadId = normalizeLookup(id);
@@ -4393,12 +6114,12 @@ function supportRevisionTimestampAsOf(record: RawSourceRecordRow, asOf: Date): n
   );
 }
 
-function latestPylonSupportRecordsById(records: RawSourceRecordRow[], asOf: Date): RawSourceRecordRow[] {
+function latestCustomerSupportRecordsById(records: RawSourceRecordRow[], asOf: Date): RawSourceRecordRow[] {
   const latestById = new Map<string, RawSourceRecordRow>();
   const unkeyedRecords: RawSourceRecordRow[] = [];
   for (const record of records) {
-    if (!isPylonSupportRecord(record)) continue;
-    const supportId = pylonSupportRecordId(record);
+    if (!isCustomerSupportRecord(record)) continue;
+    const supportId = supportRecordId(record);
     if (!supportId) {
       unkeyedRecords.push(record);
       continue;
@@ -4412,7 +6133,7 @@ function latestPylonSupportRecordsById(records: RawSourceRecordRow[], asOf: Date
 }
 
 function isOpenSupportIssue(record: RawSourceRecordRow, asOf: Date): boolean {
-  if (!isPylonSupportRecord(record)) return false;
+  if (!isCustomerSupportRecord(record)) return false;
   if (supportClosedAtOrBefore(record, asOf)) return false;
 
   const payload = asRecord(record.payload);
@@ -4516,7 +6237,13 @@ function isEscalation(record: RawSourceRecordRow, asOf: Date): boolean {
     normalizeLookup(firstValueFromSources(sources, ["type", "kind", "category"])) ?? "";
   const rawTags = firstValueFromSources(sources, ["tags"]);
   const tags = normalizedTagValues(rawTags);
-  const priority = normalizeLookup(firstValueFromSources(sources, ["priority"])) ?? "";
+  const priority =
+    normalizeLookup(firstValueFromSources(sources, [
+      "priority",
+      "ticketPriority",
+      "ticket_priority",
+      "hs_ticket_priority",
+    ])) ?? "";
 
   if (recordIsProvider(record, IntegrationProvider.SLACK)) {
     const escalationFlag = [
@@ -4534,10 +6261,7 @@ function isEscalation(record: RawSourceRecordRow, asOf: Date): boolean {
     );
   }
 
-  if (
-    recordIsProvider(record, IntegrationProvider.PYLON) &&
-    recordIsObjectType(record, "conversation", "ticket", "issue")
-  ) {
+  if (isCustomerSupportRecord(record)) {
     return (
       priority === "urgent" ||
       priority === "high" ||
@@ -4689,15 +6413,15 @@ function latestEscalationSignalsById(records: RawSourceRecordRow[], asOf: Date):
 }
 
 function computeRetentionRisk(records: RawSourceRecordRow[], periodStart: Date, asOf: Date) {
-  const pylonSupportRecords = latestPylonSupportRecordsById(records, asOf);
-  const supportIssues = pylonSupportRecords.filter((record) => isOpenSupportIssue(record, asOf));
-  const nonPylonEscalations = latestEscalationSignalsById(
-    records.filter((record) => !isPylonSupportRecord(record) && isEscalation(record, asOf)),
+  const supportRecords = latestCustomerSupportRecordsById(records, asOf);
+  const supportIssues = supportRecords.filter((record) => isOpenSupportIssue(record, asOf));
+  const nonSupportEscalations = latestEscalationSignalsById(
+    records.filter((record) => !isCustomerSupportRecord(record) && isEscalation(record, asOf)),
     asOf,
   );
   const escalations = [
-    ...pylonSupportRecords.filter((record) => isEscalation(record, asOf)),
-    ...nonPylonEscalations,
+    ...supportRecords.filter((record) => isEscalation(record, asOf)),
+    ...nonSupportEscalations,
   ];
   const billingRiskRecords = records.filter(isBillingRisk);
   const lowUsageRecords = records.filter((record) => isLowUsage(record, asOf));
@@ -4784,6 +6508,281 @@ function computeRetentionRisk(records: RawSourceRecordRow[], periodStart: Date, 
   };
 }
 
+function customerSuccessAccountIdentity(record: RawSourceRecordRow): string | null {
+  const accountId = accountIdFromPayload(record);
+  if (accountId) return accountId;
+  if (recordIsProvider(record, IntegrationProvider.STRIPE)) {
+    return (
+      stripeCustomerId(record) ??
+      stripeCustomerEmail(record) ??
+      stripeCustomerEmailDomain(record) ??
+      stripeSubscriptionId(record)
+    );
+  }
+  if (recordIsProvider(record, IntegrationProvider.HUBSPOT)) {
+    return hubspotDealCustomerIdentity(record);
+  }
+  return null;
+}
+
+function customerSuccessAccountIdentities(records: RawSourceRecordRow[]): Set<string> {
+  return new Set(
+    records
+      .map(customerSuccessAccountIdentity)
+      .filter((identity): identity is string => Boolean(identity)),
+  );
+}
+
+function customerSuccessCustomerHealthValue(
+  risk: ReturnType<typeof computeRetentionRisk>,
+  records: RawSourceRecordRow[],
+) {
+  const accountCount = customerSuccessAccountIdentities(records).size;
+  return {
+    score: Math.max(0, 100 - risk.score),
+    riskScore: risk.score,
+    accountCount,
+    healthyAccounts: Math.max(0, accountCount - risk.atRiskAccounts),
+    atRiskAccounts: risk.atRiskAccounts,
+    openSupportIssues: risk.openSupportIssues,
+    escalations: risk.escalations,
+    accountsWithBillingRisk: risk.accountsWithBillingRisk,
+    lowUsageAccounts: risk.lowUsageAccounts,
+  };
+}
+
+function isPosthogCustomerUsageRecord(record: RawSourceRecordRow): boolean {
+  return (
+    recordIsProvider(record, IntegrationProvider.POSTHOG) &&
+    Boolean(accountIdFromPayload(record)) &&
+    recordIsObjectType(
+      record,
+      "account_usage",
+      "account_activity",
+      "customer_activity",
+      "product_usage",
+      "user_activity",
+      "event",
+    )
+  );
+}
+
+function customerSuccessCustomerActivityValue(
+  records: RawSourceRecordRow[],
+  periodStart: Date,
+  asOf: Date,
+) {
+  const supportRecords = latestCustomerSupportRecordsById(records, asOf);
+  const supportInteractions = supportRecords.length;
+  const productUsageRecords = records.filter(isPosthogCustomerUsageRecord);
+  const collaborationSignals = latestCollaborationSignalsById(
+    records.filter(
+      (record) =>
+        !recordIsProvider(record, IntegrationProvider.GOOGLE_WORKSPACE) ||
+        collaborationTimestampIsWithinPeriod(record, periodStart, asOf),
+    ),
+    asOf,
+  );
+  const activeAccountIds = customerSuccessAccountIdentities([
+    ...productUsageRecords,
+    ...collaborationSignals,
+    ...supportRecords,
+  ]);
+
+  return {
+    count: supportInteractions + productUsageRecords.length + collaborationSignals.length,
+    supportInteractions,
+    productUsageRecords: productUsageRecords.length,
+    collaborationSignals: collaborationSignals.length,
+    activeAccounts: activeAccountIds.size,
+  };
+}
+
+function isActiveStripeCustomerRecord(record: RawSourceRecordRow, asOf: Date): boolean {
+  return (
+    recordIsProvider(record, IntegrationProvider.STRIPE) &&
+    recordIsObjectType(record, "subscription") &&
+    !isInactiveStripeSubscription(record, asOf) &&
+    !isFutureTrialStripeSubscription(record, asOf) &&
+    !isFutureStartStripeSubscription(record, asOf)
+  );
+}
+
+function stripeSubscriptionCancellationAt(record: RawSourceRecordRow): Date | null {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const subscriptionSources = sources.map((source) => nestedRecordFromKey(source, "subscription"));
+  const stripeSources = [...sources, ...subscriptionSources];
+  return firstDateFrom(
+    ...valuesFromSources(stripeSources, [
+      "canceled_at",
+      "canceledAt",
+      "cancel_at",
+      "cancelAt",
+      "cancelled_at",
+      "cancelledAt",
+      "ended_at",
+      "endedAt",
+      "ended",
+      "statusChangedAt",
+      "status_changed_at",
+    ]),
+  );
+}
+
+function isChurnedStripeCustomerRecord(
+  record: RawSourceRecordRow,
+  periodStart: Date,
+  asOf: Date,
+): boolean {
+  if (!recordIsProvider(record, IntegrationProvider.STRIPE) || !recordIsObjectType(record, "subscription")) {
+    return false;
+  }
+
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const subscriptionSources = sources.map((source) => nestedRecordFromKey(source, "subscription"));
+  const status = normalizeStageKey(firstValueFromSources([...sources, ...subscriptionSources], ["status"]));
+  const cancellationAt = stripeSubscriptionCancellationAt(record);
+  if (cancellationAt) {
+    return cancellationAt.getTime() >= periodStart.getTime() && cancellationAt.getTime() <= asOf.getTime();
+  }
+  if (!["canceled", "cancelled"].includes(status)) return false;
+
+  const churnedAt = stripeSubscriptionInactiveAt(record);
+  if (!churnedAt) return recordFactTimestampAsOf(record, asOf) >= periodStart.getTime();
+  return churnedAt.getTime() >= periodStart.getTime() && churnedAt.getTime() <= asOf.getTime();
+}
+
+function isActiveHubspotCustomerRecord(record: RawSourceRecordRow, asOf: Date): boolean {
+  return (
+    recordIsProvider(record, IntegrationProvider.HUBSPOT) &&
+    recordIsObjectType(record, "deal", "subscription_deal") &&
+    Boolean(hubspotRecurringRevenueAsOf(record, asOf))
+  );
+}
+
+function isChurnedHubspotCustomerRecord(
+  record: RawSourceRecordRow,
+  periodStart: Date,
+  asOf: Date,
+): boolean {
+  if (
+    !recordIsProvider(record, IntegrationProvider.HUBSPOT) ||
+    !recordIsObjectType(record, "deal", "company", "customer", "account")
+  ) {
+    return false;
+  }
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const lifecycleSources = sources.flatMap((source) => [
+    source,
+    nestedRecordFromKey(source, "company"),
+    nestedRecordFromKey(source, "customer"),
+    nestedRecordFromKey(source, "account"),
+    nestedRecordFromKey(source, "lifecycle"),
+  ]);
+  const stage = normalizeStageKey(
+    firstValueFromSources(lifecycleSources, [
+      "dealstage",
+      "stage",
+      "stageLabel",
+      "stage_label",
+      "stageId",
+      "stage_id",
+      "lifecycleStage",
+      "lifecycle_stage",
+      "lifecyclestage",
+      "customerStatus",
+      "customer_status",
+      "status",
+    ]),
+  );
+  if (!stage.includes("churn") && stage !== "closedlost" && stage !== "lost") return false;
+
+  const churnedAt = firstDateAtOrBefore(
+    asOf,
+    ...valuesFromSources(lifecycleSources, [
+      "churnedAt",
+      "churned_at",
+      "canceledAt",
+      "canceled_at",
+      "cancelledAt",
+      "cancelled_at",
+      "closedAt",
+      "closed_at",
+      "closeDate",
+      "close_date",
+      "closedate",
+    ]),
+  );
+  if (!churnedAt) return recordFactTimestampAsOf(record, asOf) >= periodStart.getTime();
+  return churnedAt.getTime() >= periodStart.getTime();
+}
+
+function customerSuccessRetentionCounts(
+  records: RawSourceRecordRow[],
+  periodStart: Date,
+  asOf: Date,
+) {
+  const retainedCustomerIds = new Set<string>();
+  const churnedCustomerIds = new Set<string>();
+
+  for (const record of records) {
+    const identity = customerSuccessAccountIdentity(record);
+    if (!identity) continue;
+    if (isChurnedStripeCustomerRecord(record, periodStart, asOf) || isChurnedHubspotCustomerRecord(record, periodStart, asOf)) {
+      churnedCustomerIds.add(identity);
+      continue;
+    }
+    if (isActiveStripeCustomerRecord(record, asOf) || isActiveHubspotCustomerRecord(record, asOf)) {
+      retainedCustomerIds.add(identity);
+    }
+  }
+
+  for (const churnedCustomerId of churnedCustomerIds) {
+    retainedCustomerIds.delete(churnedCustomerId);
+  }
+
+  const customerBase = new Set([...retainedCustomerIds, ...churnedCustomerIds]).size;
+  const churnedCustomers = churnedCustomerIds.size;
+  const retainedCustomers = retainedCustomerIds.size;
+
+  return {
+    customerBase,
+    churnedCustomers,
+    retainedCustomers,
+  };
+}
+
+function customerSuccessChurnRateValue(
+  records: RawSourceRecordRow[],
+  periodStart: Date,
+  asOf: Date,
+) {
+  const counts = customerSuccessRetentionCounts(records, periodStart, asOf);
+  return {
+    rate: counts.customerBase > 0 ? roundRatio((counts.churnedCustomers / counts.customerBase) * 100) : null,
+    churnedCustomers: counts.churnedCustomers,
+    retainedCustomers: counts.retainedCustomers,
+    customerBase: counts.customerBase,
+  };
+}
+
+function customerSuccessRetentionRateValue(
+  records: RawSourceRecordRow[],
+  periodStart: Date,
+  asOf: Date,
+) {
+  const counts = customerSuccessRetentionCounts(records, periodStart, asOf);
+  return {
+    rate: counts.customerBase > 0 ? roundRatio((counts.retainedCustomers / counts.customerBase) * 100) : null,
+    retainedCustomers: counts.retainedCustomers,
+    churnedCustomers: counts.churnedCustomers,
+    customerBase: counts.customerBase,
+  };
+}
+
 export async function materializeImladrisCustomerSuccessMetrics(
   input: MaterializeDevelopmentMetricsInput,
 ): Promise<MaterializedImladrisMetricResult> {
@@ -4801,9 +6800,10 @@ export async function materializeImladrisCustomerSuccessMetrics(
     IntegrationProvider.GOOGLE_WORKSPACE,
     IntegrationProvider.STRIPE,
   ];
+  const queryProviders = [...requiredProviders, IntegrationProvider.HUBSPOT];
   const queriedRecords = await rawRecords.findMany({
     where: providerWindowWhere({
-      providers: requiredProviders,
+      providers: queryProviders,
       context,
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
@@ -4812,6 +6812,7 @@ export async function materializeImladrisCustomerSuccessMetrics(
   });
   const records = dedupeRawSourceRecords(queriedRecords, context, input.periodStart, input.periodEnd, now);
   const value = computeRetentionRisk(records, input.periodStart, now);
+  const confidence = confidenceFor(records);
   const status = statusForProviderCoverage({ records, requiredProviders });
   const warnings = providerCoverageWarning({
     metricLabel: "Retention Risk",
@@ -4829,7 +6830,7 @@ export async function materializeImladrisCustomerSuccessMetrics(
     periodStart: input.periodStart,
     periodEnd: input.periodEnd,
     status,
-    confidence: confidenceFor(records),
+    confidence,
     warnings,
     calculationVersion: CUSTOMER_SUCCESS_RETENTION_RISK_CALCULATION_VERSION,
     now,
@@ -4842,6 +6843,58 @@ export async function materializeImladrisCustomerSuccessMetrics(
     calculationVersion: CUSTOMER_SUCCESS_RETENTION_RISK_CALCULATION_VERSION,
     asOf: now,
   });
+
+  const supplementalMetrics = [
+    {
+      metricKey: "customer_success.customer_health",
+      unit: "score",
+      value: customerSuccessCustomerHealthValue(value, records),
+      calculationVersion: CUSTOMER_SUCCESS_CUSTOMER_HEALTH_CALCULATION_VERSION,
+    },
+    {
+      metricKey: "customer_success.customer_activity",
+      unit: "count",
+      value: customerSuccessCustomerActivityValue(records, input.periodStart, now),
+      calculationVersion: CUSTOMER_SUCCESS_CUSTOMER_ACTIVITY_CALCULATION_VERSION,
+    },
+    {
+      metricKey: "customer_success.churn_rate",
+      unit: "percent",
+      value: customerSuccessChurnRateValue(records, input.periodStart, now),
+      calculationVersion: CUSTOMER_SUCCESS_CHURN_RATE_CALCULATION_VERSION,
+    },
+    {
+      metricKey: "customer_success.retention_rate",
+      unit: "percent",
+      value: customerSuccessRetentionRateValue(records, input.periodStart, now),
+      calculationVersion: CUSTOMER_SUCCESS_RETENTION_RATE_CALCULATION_VERSION,
+    },
+  ];
+
+  for (const supplementalMetric of supplementalMetrics) {
+    const supplementalMetricValue = await upsertCanonicalMetric({
+      canonicalMetrics,
+      context,
+      metricKey: supplementalMetric.metricKey,
+      department: "customer-success",
+      unit: supplementalMetric.unit,
+      value: supplementalMetric.value,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+      status,
+      confidence,
+      warnings,
+      calculationVersion: supplementalMetric.calculationVersion,
+      now,
+    });
+    await replaceLineage({
+      metricLineage,
+      metricValueId: supplementalMetricValue.id,
+      records,
+      calculationVersion: supplementalMetric.calculationVersion,
+      asOf: now,
+    });
+  }
 
   return {
     metricKey: "customer_success.retention_risk",

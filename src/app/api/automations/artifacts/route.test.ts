@@ -38,6 +38,29 @@ describe("GET /api/automations/artifacts", () => {
     expect(response.status).toBe(401);
   });
 
+  it("blocks investor users from operator artifacts", async () => {
+    const { auth } = await import("@/lib/auth");
+    const { getAuthenticatedUser } = await import("@/lib/session-user");
+    const { prisma } = await import("@/lib/prisma");
+
+    vi.mocked(auth).mockResolvedValue({ user: { id: "investor_1", role: "investor" } } as never);
+    vi.mocked(getAuthenticatedUser).mockReturnValue({
+      id: "investor_1",
+      role: "investor",
+    } as never);
+
+    const { GET } = await import("@/app/api/automations/artifacts/route");
+    const response = await GET(
+      new NextRequest("http://localhost/api/automations/artifacts")
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "Forbidden: investors must use investor-scoped APIs",
+    });
+    expect(prisma.automationArtifact.findMany).not.toHaveBeenCalled();
+  });
+
   it("filters artifacts to the viewer's workflows plus shared workflows", async () => {
     const { auth } = await import("@/lib/auth");
     const { getAuthenticatedUser } = await import("@/lib/session-user");

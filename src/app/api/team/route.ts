@@ -12,6 +12,9 @@ export async function GET(): Promise<NextResponse> {
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if (normalizeRole(session.user.role) === "investor") {
+      return NextResponse.json({ error: "Forbidden: investors cannot access team data" }, { status: 403 });
+    }
 
     const users = await prisma.user.findMany({
       select: {

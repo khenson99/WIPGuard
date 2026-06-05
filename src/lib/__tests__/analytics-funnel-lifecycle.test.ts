@@ -560,6 +560,7 @@ describe("analytics lifecycle funnel", () => {
       totalPages: 1,
       totalCollections: 0,
       formSubmissions: [{ formName: "Contact", count: 2 }],
+      formSubmissionDetails: [],
       customDomains: [],
       publishedPages: 1,
       draftPages: 0,

@@ -24,9 +24,22 @@ const WORKSPACE_ICONS: Record<WorkspaceId, LucideIcon> = {
   metrics: BarChart3,
   reports: FileText,
   pipelines: Workflow,
+  investor: FileText,
 };
 
-export function buildNavItems(): NavItem[] {
+export function buildNavItems(role?: string | null): NavItem[] {
+  if (role?.trim().toLowerCase() === "investor") {
+    return [
+      {
+        id: "investor",
+        href: "/investor",
+        label: "Investor",
+        workspaceId: "investor",
+        icon: WORKSPACE_ICONS.investor,
+      },
+    ];
+  }
+
   return WORKSPACE_NAV_ITEMS.map((item) => ({
     id: item.id,
     href: item.href,

@@ -15,6 +15,12 @@ export const TEST_ADMIN = {
   name: 'E2E Admin User',
 } as const;
 
+export const TEST_INVESTOR = {
+  email: process.env.E2E_TEST_INVESTOR_EMAIL || 'e2e-investor@the-mother-node.local',
+  password: process.env.E2E_TEST_INVESTOR_PASSWORD || 'InvestorPassword123!',
+  name: 'E2E Investor User',
+} as const;
+
 let counter = 0;
 
 /**

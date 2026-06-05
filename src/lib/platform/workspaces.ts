@@ -3,7 +3,8 @@ export type WorkspaceId =
   | "goals"
   | "metrics"
   | "reports"
-  | "pipelines";
+  | "pipelines"
+  | "investor";
 
 export interface WorkspaceNavChildItem {
   id: string;
@@ -43,6 +44,54 @@ export const WORKSPACE_NAV_ITEMS: WorkspaceNavItem[] = [
         id: "company-tracker",
         label: "Company Tracker",
         href: "/metrics/company",
+        workspaceId: "metrics",
+      },
+      {
+        id: "operating",
+        label: "Operating",
+        href: "/operating",
+        workspaceId: "metrics",
+      },
+      {
+        id: "company-tracker-cockpit",
+        label: "Company Tracker (Cockpit)",
+        href: "/operating/company",
+        workspaceId: "metrics",
+      },
+      {
+        id: "finance",
+        label: "Finance",
+        href: "/operating/finance",
+        workspaceId: "metrics",
+      },
+      {
+        id: "sales",
+        label: "Sales",
+        href: "/operating/sales",
+        workspaceId: "metrics",
+      },
+      {
+        id: "marketing",
+        label: "Marketing",
+        href: "/operating/marketing",
+        workspaceId: "metrics",
+      },
+      {
+        id: "development",
+        label: "Development",
+        href: "/operating/development",
+        workspaceId: "metrics",
+      },
+      {
+        id: "customer-success",
+        label: "Customer Success",
+        href: "/operating/customer-success",
+        workspaceId: "metrics",
+      },
+      {
+        id: "source-health",
+        label: "Source Health",
+        href: "/operating/sources",
         workspaceId: "metrics",
       },
       {

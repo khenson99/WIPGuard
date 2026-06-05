@@ -65,12 +65,28 @@ describe("Imladris catalog", () => {
     const operating = getImladrisDashboardDefinition("operating");
     expect(operating?.metricKeys).toEqual([
       "finance.cash_runway_months",
+      "finance.cash_balance",
       "finance.net_burn",
+      "finance.expenses",
+      "finance.gross_margin",
       "revenue.mrr",
+      "revenue.arr",
+      "revenue.total_revenue",
+      "revenue.subscription_revenue",
+      "revenue.services_revenue",
+      "revenue.active_subscriptions",
+      "revenue.customer_count",
       "sales.qualified_pipeline",
+      "sales.demos",
+      "marketing.website_traffic",
+      "marketing.conversion_rate",
       "marketing.pipeline_efficiency",
       "development.delivery_health",
       "product.activation_rate",
+      "customer_success.customer_health",
+      "customer_success.customer_activity",
+      "customer_success.churn_rate",
+      "customer_success.retention_rate",
       "customer_success.retention_risk",
     ]);
 
@@ -95,11 +111,27 @@ describe("Imladris catalog", () => {
       label: "Company Tracker",
       metricKeys: [
         "revenue.mrr",
+        "revenue.arr",
+        "revenue.total_revenue",
+        "revenue.subscription_revenue",
+        "revenue.services_revenue",
+        "revenue.active_subscriptions",
+        "revenue.customer_count",
+        "finance.cash_balance",
         "finance.cash_runway_months",
         "finance.net_burn",
+        "finance.expenses",
+        "finance.gross_margin",
         "sales.qualified_pipeline",
+        "sales.demos",
+        "marketing.website_traffic",
+        "marketing.conversion_rate",
         "marketing.pipeline_efficiency",
         "product.activation_rate",
+        "customer_success.customer_health",
+        "customer_success.customer_activity",
+        "customer_success.churn_rate",
+        "customer_success.retention_rate",
         "customer_success.retention_risk",
       ],
     });
@@ -112,5 +144,17 @@ describe("Imladris catalog", () => {
     expect(
       IMLADRIS_METRIC_DEFINITIONS.find((metric) => metric.key === "product.activation_rate")?.unit,
     ).toBe("percent");
+    expect(
+      IMLADRIS_METRIC_DEFINITIONS.find((metric) => metric.key === "sales.demos")?.unit,
+    ).toBe("count");
+    expect(
+      IMLADRIS_METRIC_DEFINITIONS.find((metric) => metric.key === "marketing.conversion_rate")?.unit,
+    ).toBe("percent");
+    expect(
+      IMLADRIS_METRIC_DEFINITIONS.find((metric) => metric.key === "revenue.customer_count")?.unit,
+    ).toBe("count");
+    expect(
+      IMLADRIS_METRIC_DEFINITIONS.find((metric) => metric.key === "revenue.total_revenue")?.unit,
+    ).toBe("currency");
   });
 });

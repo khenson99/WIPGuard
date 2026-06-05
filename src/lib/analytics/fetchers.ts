@@ -83,6 +83,45 @@ const HUBSPOT_STAGE_FALLBACK_LABEL_BY_ID = Object.fromEntries(
   HUBSPOT_MAIN_PIPELINE_FALLBACK_STAGES.map((stage) => [stage.id, stage.label]),
 ) as Record<string, string>;
 
+const HUBSPOT_MEETING_PROPERTIES = [
+  "hs_object_id",
+  "hs_timestamp",
+  "hs_meeting_title",
+  "hs_meeting_body",
+  "hs_meeting_outcome",
+  "hs_createdate",
+  "hs_lastmodifieddate",
+  "hubspot_owner_id",
+].join(",");
+
+const HUBSPOT_COMPANY_PROPERTIES = [
+  "hs_object_id",
+  "name",
+  "domain",
+  "industry",
+  "lifecyclestage",
+  "numberofemployees",
+  "annualrevenue",
+  "createdate",
+  "hs_lastmodifieddate",
+  "hubspot_owner_id",
+].join(",");
+
+const HUBSPOT_TICKET_PROPERTIES = [
+  "hs_object_id",
+  "subject",
+  "content",
+  "hs_pipeline",
+  "hs_pipeline_stage",
+  "hs_ticket_priority",
+  "hs_ticket_category",
+  "source_type",
+  "createdate",
+  "hs_lastmodifieddate",
+  "closed_date",
+  "hubspot_owner_id",
+].join(",");
+
 type HubSpotPipelineStage = {
   id: string;
   label: string;
@@ -115,11 +154,70 @@ type HubSpotDealObject = {
   id?: string;
   properties?: Record<string, string>;
   propertiesWithHistory?: Record<string, Array<{ value?: string; timestamp?: string | number }>>;
+  associations?: HubSpotAssociationMap;
 };
 
 type HubSpotDealsListResponse = {
   results?: HubSpotDealObject[];
   paging?: { next?: { after?: string } };
+};
+
+type HubSpotAssociationMap = Record<string, { results?: Array<{ id?: string | number; toObjectId?: string | number }> }>;
+
+type HubSpotMeetingObject = {
+  id?: string;
+  properties?: Record<string, string>;
+  associations?: HubSpotAssociationMap;
+};
+
+type HubSpotMeetingsListResponse = {
+  results?: HubSpotMeetingObject[];
+  paging?: { next?: { after?: string } };
+};
+
+type HubSpotMeetingsFetchResult = {
+  data: HubSpotData["meetings"];
+  truncated: boolean;
+  available: boolean;
+  error: string | null;
+  pagesFetched: number;
+};
+
+type HubSpotCompanyObject = {
+  id?: string;
+  properties?: Record<string, string>;
+};
+
+type HubSpotCompaniesListResponse = {
+  results?: HubSpotCompanyObject[];
+  paging?: { next?: { after?: string } };
+};
+
+type HubSpotCompaniesFetchResult = {
+  data: HubSpotData["companies"];
+  truncated: boolean;
+  available: boolean;
+  error: string | null;
+  pagesFetched: number;
+};
+
+type HubSpotTicketObject = {
+  id?: string;
+  properties?: Record<string, string>;
+  associations?: HubSpotAssociationMap;
+};
+
+type HubSpotTicketsListResponse = {
+  results?: HubSpotTicketObject[];
+  paging?: { next?: { after?: string } };
+};
+
+type HubSpotTicketsFetchResult = {
+  data: HubSpotData["tickets"];
+  truncated: boolean;
+  available: boolean;
+  error: string | null;
+  pagesFetched: number;
 };
 
 type HubSpotFormObject = {
@@ -512,6 +610,7 @@ async function fetchAllHubSpotDeals(input: {
     // smaller page size (currently max 50 objects per request).
     url.searchParams.set("limit", input.propertiesWithHistory ? "50" : "100");
     url.searchParams.set("properties", input.properties);
+    url.searchParams.set("associations", "companies,contacts");
     url.searchParams.set("archived", input.archived ? "true" : "false");
     if (input.propertiesWithHistory) {
       url.searchParams.set("propertiesWithHistory", input.propertiesWithHistory);
@@ -541,6 +640,268 @@ async function fetchAllHubSpotDeals(input: {
     lastAfter: after ?? null,
     truncated: Boolean(after && input.maxTotalDeals && deals.length >= input.maxTotalDeals),
   };
+}
+
+function hubSpotAssociationIds(
+  associations: HubSpotAssociationMap | undefined,
+  key: "companies" | "contacts" | "deals",
+): string[] {
+  const seen = new Set<string>();
+  const rows = associations?.[key]?.results ?? [];
+  for (const row of rows) {
+    const id = String(row.id ?? row.toObjectId ?? "").trim();
+    if (id) seen.add(id);
+  }
+  return [...seen];
+}
+
+function firstHubSpotProperty(
+  props: Record<string, string>,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const value = props[key];
+    if (typeof value === "string" && value.trim().length > 0) return value;
+  }
+  return null;
+}
+
+function hubSpotMeetingRecordFromObject(meeting: HubSpotMeetingObject) {
+  const props = meeting.properties ?? {};
+  const meetingId = String(props.hs_object_id ?? meeting.id ?? "").trim();
+  if (!meetingId) return null;
+
+  return {
+    meetingId,
+    title: props.hs_meeting_title || null,
+    body: props.hs_meeting_body || null,
+    outcome: props.hs_meeting_outcome || null,
+    ownerId: props.hubspot_owner_id || null,
+    startedAt: hubSpotTimestampToIso(props.hs_timestamp),
+    createdAt: hubSpotTimestampToIso(props.hs_createdate),
+    updatedAt: hubSpotTimestampToIso(props.hs_lastmodifieddate),
+    contactIds: hubSpotAssociationIds(meeting.associations, "contacts"),
+    dealIds: hubSpotAssociationIds(meeting.associations, "deals"),
+  };
+}
+
+function numericHubSpotProperty(value: string | undefined): number | null {
+  if (value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function hubSpotCompanyRecordFromObject(company: HubSpotCompanyObject) {
+  const props = company.properties ?? {};
+  const companyId = String(props.hs_object_id ?? company.id ?? "").trim();
+  if (!companyId) return null;
+
+  return {
+    companyId,
+    name: props.name || null,
+    domain: props.domain || null,
+    industry: props.industry || null,
+    lifecycleStage: props.lifecyclestage || null,
+    employeeCount: numericHubSpotProperty(props.numberofemployees),
+    annualRevenue: numericHubSpotProperty(props.annualrevenue),
+    ownerId: props.hubspot_owner_id || null,
+    createdAt: hubSpotTimestampToIso(props.createdate),
+    updatedAt: hubSpotTimestampToIso(props.hs_lastmodifieddate),
+  };
+}
+
+function hubSpotTicketRecordFromObject(ticket: HubSpotTicketObject) {
+  const props = ticket.properties ?? {};
+  const ticketId = String(props.hs_object_id ?? ticket.id ?? "").trim();
+  if (!ticketId) return null;
+
+  return {
+    ticketId,
+    subject: props.subject || null,
+    content: props.content || null,
+    pipelineId: props.hs_pipeline || null,
+    stageId: props.hs_pipeline_stage || null,
+    priority: props.hs_ticket_priority || null,
+    category: props.hs_ticket_category || null,
+    sourceType: props.source_type || null,
+    ownerId: props.hubspot_owner_id || null,
+    createdAt: hubSpotTimestampToIso(props.createdate),
+    updatedAt: hubSpotTimestampToIso(props.hs_lastmodifieddate),
+    closedAt: hubSpotTimestampToIso(props.closed_date),
+    companyIds: hubSpotAssociationIds(ticket.associations, "companies"),
+    contactIds: hubSpotAssociationIds(ticket.associations, "contacts"),
+    dealIds: hubSpotAssociationIds(ticket.associations, "deals"),
+  };
+}
+
+async function fetchHubSpotMeetings(input: {
+  baseUrl: string;
+  headers: Record<string, string>;
+}): Promise<HubSpotMeetingsFetchResult> {
+  const meetings: NonNullable<HubSpotData["meetings"]> = [];
+  let after: string | undefined;
+  let pagesFetched = 0;
+
+  try {
+    for (let page = 0; page < 100; page += 1) {
+      const url = new URL(`${input.baseUrl}/crm/v3/objects/meetings`);
+      url.searchParams.set("limit", "100");
+      url.searchParams.set("properties", HUBSPOT_MEETING_PROPERTIES);
+      url.searchParams.set("associations", "contacts,deals");
+      if (after) url.searchParams.set("after", after);
+
+      const response = await fetch(url.toString(), {
+        headers: input.headers,
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        return {
+          data: undefined,
+          truncated: false,
+          available: false,
+          error: `HubSpot meetings request failed (${response.status})`,
+          pagesFetched,
+        };
+      }
+
+      pagesFetched += 1;
+      const payload = await safeJson<HubSpotMeetingsListResponse>(response, "hubspot meetings");
+      const results = payload.results ?? [];
+      for (const meeting of results) {
+        const record = hubSpotMeetingRecordFromObject(meeting);
+        if (record) meetings.push(record);
+      }
+
+      after = payload.paging?.next?.after;
+      if (!after || results.length === 0) {
+        return { data: meetings, truncated: false, available: true, error: null, pagesFetched };
+      }
+    }
+
+    return { data: meetings, truncated: true, available: true, error: null, pagesFetched };
+  } catch (error) {
+    return {
+      data: undefined,
+      truncated: false,
+      available: false,
+      error: error instanceof Error ? error.message : "HubSpot meetings request failed",
+      pagesFetched,
+    };
+  }
+}
+
+async function fetchHubSpotTickets(input: {
+  baseUrl: string;
+  headers: Record<string, string>;
+}): Promise<HubSpotTicketsFetchResult> {
+  const tickets: NonNullable<HubSpotData["tickets"]> = [];
+  let after: string | undefined;
+  let pagesFetched = 0;
+
+  try {
+    for (let page = 0; page < 100; page += 1) {
+      const url = new URL(`${input.baseUrl}/crm/v3/objects/tickets`);
+      url.searchParams.set("limit", "100");
+      url.searchParams.set("properties", HUBSPOT_TICKET_PROPERTIES);
+      url.searchParams.set("associations", "companies,contacts,deals");
+      if (after) url.searchParams.set("after", after);
+
+      const response = await fetch(url.toString(), {
+        headers: input.headers,
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        return {
+          data: undefined,
+          truncated: false,
+          available: false,
+          error: `HubSpot tickets request failed (${response.status})`,
+          pagesFetched,
+        };
+      }
+
+      pagesFetched += 1;
+      const payload = await safeJson<HubSpotTicketsListResponse>(response, "hubspot tickets");
+      const results = payload.results ?? [];
+      for (const ticket of results) {
+        const record = hubSpotTicketRecordFromObject(ticket);
+        if (record) tickets.push(record);
+      }
+
+      after = payload.paging?.next?.after;
+      if (!after || results.length === 0) {
+        return { data: tickets, truncated: false, available: true, error: null, pagesFetched };
+      }
+    }
+
+    return { data: tickets, truncated: true, available: true, error: null, pagesFetched };
+  } catch (error) {
+    return {
+      data: undefined,
+      truncated: false,
+      available: false,
+      error: error instanceof Error ? error.message : "HubSpot tickets request failed",
+      pagesFetched,
+    };
+  }
+}
+
+async function fetchHubSpotCompanies(input: {
+  baseUrl: string;
+  headers: Record<string, string>;
+}): Promise<HubSpotCompaniesFetchResult> {
+  const companies: NonNullable<HubSpotData["companies"]> = [];
+  let after: string | undefined;
+  let pagesFetched = 0;
+
+  try {
+    for (let page = 0; page < 100; page += 1) {
+      const url = new URL(`${input.baseUrl}/crm/v3/objects/companies`);
+      url.searchParams.set("limit", "100");
+      url.searchParams.set("properties", HUBSPOT_COMPANY_PROPERTIES);
+      if (after) url.searchParams.set("after", after);
+
+      const response = await fetch(url.toString(), {
+        headers: input.headers,
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        return {
+          data: undefined,
+          truncated: false,
+          available: false,
+          error: `HubSpot companies request failed (${response.status})`,
+          pagesFetched,
+        };
+      }
+
+      pagesFetched += 1;
+      const payload = await safeJson<HubSpotCompaniesListResponse>(response, "hubspot companies");
+      const results = payload.results ?? [];
+      for (const company of results) {
+        const record = hubSpotCompanyRecordFromObject(company);
+        if (record) companies.push(record);
+      }
+
+      after = payload.paging?.next?.after;
+      if (!after || results.length === 0) {
+        return { data: companies, truncated: false, available: true, error: null, pagesFetched };
+      }
+    }
+
+    return { data: companies, truncated: true, available: true, error: null, pagesFetched };
+  } catch (error) {
+    return {
+      data: undefined,
+      truncated: false,
+      available: false,
+      error: error instanceof Error ? error.message : "HubSpot companies request failed",
+      pagesFetched,
+    };
+  }
 }
 
 async function fetchHubSpotDealPipelines(input: {
@@ -860,10 +1221,18 @@ export async function fetchHubSpotData(
     Boolean(rangeFrom && rangeTo && rangeFrom <= rangeTo);
 
   const properties =
-    "dealstage,amount,dealname,closedate,createdate,hs_analytics_source,num_associated_contacts,hubspot_owner_id,hs_lastmodifieddate,stripe_customer_id,stripe_customer,pipeline";
+    "dealstage,amount,dealname,closedate,createdate,hs_analytics_source,num_associated_contacts,hubspot_owner_id,hs_lastmodifieddate,stripe_customer_id,stripe_customer,pipeline,hs_mrr,hs_arr,monthly_recurring_revenue,annual_recurring_revenue,recurring_revenue,recurring_revenue_amount,subscription_start_date,subscription_end_date,hs_recurring_billing_start_date,hs_recurring_billing_end_date";
   const historyKey = "dealstage";
 
-  const [pipelineResult, activeDealsResult, archivedDealsResult, collectedFormsResult] = await Promise.all([
+  const [
+    pipelineResult,
+    activeDealsResult,
+    archivedDealsResult,
+    collectedFormsResult,
+    meetingsResult,
+    companiesResult,
+    ticketsResult,
+  ] = await Promise.all([
     fetchHubSpotDealPipelines({ baseUrl, headers }),
     fetchAllHubSpotDeals({
       baseUrl,
@@ -887,6 +1256,9 @@ export async function fetchHubSpotData(
       from: rangeFrom,
       to: rangeTo,
     }),
+    fetchHubSpotMeetings({ baseUrl, headers }),
+    fetchHubSpotCompanies({ baseUrl, headers }),
+    fetchHubSpotTickets({ baseUrl, headers }),
   ]);
 
   const mainPipeline = pipelineResult.pipelines.find((pipeline) => pipeline.id === HUBSPOT_MAIN_PIPELINE_ID) ?? null;
@@ -934,6 +1306,31 @@ export async function fetchHubSpotData(
     }
   }
 
+  let contactRecords: HubSpotContactRecord[] | undefined;
+  let contactRecordsAvailable = false;
+  let contactRecordsError: string | null = null;
+  let contactRecordsTruncated = false;
+  let contactRecordsPagesFetched = 0;
+  if (useActivityInRange && rangeFrom && rangeTo) {
+    try {
+      const contactResult = await fetchHubSpotContactRecords({
+        baseUrl,
+        headers,
+        from: rangeFrom,
+        to: rangeTo,
+        ownerNameById,
+      });
+      contactRecords = contactResult.contacts;
+      contactRecordsAvailable = true;
+      contactRecordsTruncated = contactResult.truncated;
+      contactRecordsPagesFetched = contactResult.pagesFetched;
+    } catch (error) {
+      contactRecords = undefined;
+      contactRecordsAvailable = false;
+      contactRecordsError = error instanceof Error ? error.message : "HubSpot contacts request failed";
+    }
+  }
+
   const resolveOwnerName = (ownerId: string | null | undefined): string => {
     if (!ownerId) return "Unassigned";
     const trimmed = String(ownerId).trim();
@@ -959,9 +1356,28 @@ export async function fetchHubSpotData(
       closedAt: hubSpotTimestampToIso(props.closedate),
       stripeCustomerId: props.stripe_customer_id || props.stripe_customer || null,
       pipelineId: props.pipeline || null,
-      contactIds: [] as string[],
+      companyIds: hubSpotAssociationIds(deal.associations, "companies"),
+      contactIds: hubSpotAssociationIds(deal.associations, "contacts"),
       primaryContactId: null as string | null,
       primaryContactEmail: null as string | null,
+      monthlyRecurringRevenue: firstHubSpotProperty(props, [
+        "hs_mrr",
+        "monthly_recurring_revenue",
+      ]),
+      recurringRevenueAmount: firstHubSpotProperty(props, [
+        "hs_arr",
+        "annual_recurring_revenue",
+        "recurring_revenue_amount",
+      ]),
+      recurringRevenue: firstHubSpotProperty(props, ["recurring_revenue"]),
+      subscriptionStartDate: firstHubSpotProperty(props, [
+        "subscription_start_date",
+        "hs_recurring_billing_start_date",
+      ]),
+      subscriptionEndDate: firstHubSpotProperty(props, [
+        "subscription_end_date",
+        "hs_recurring_billing_end_date",
+      ]),
       stageHistory: buildHubSpotStageHistory(deal, mainStageLabelById),
     };
   });
@@ -984,9 +1400,28 @@ export async function fetchHubSpotData(
       closedAt: hubSpotTimestampToIso(props.closedate),
       stripeCustomerId: props.stripe_customer_id || props.stripe_customer || null,
       pipelineId: props.pipeline || null,
-      contactIds: [] as string[],
+      companyIds: hubSpotAssociationIds(deal.associations, "companies"),
+      contactIds: hubSpotAssociationIds(deal.associations, "contacts"),
       primaryContactId: null as string | null,
       primaryContactEmail: null as string | null,
+      monthlyRecurringRevenue: firstHubSpotProperty(props, [
+        "hs_mrr",
+        "monthly_recurring_revenue",
+      ]),
+      recurringRevenueAmount: firstHubSpotProperty(props, [
+        "hs_arr",
+        "annual_recurring_revenue",
+        "recurring_revenue_amount",
+      ]),
+      recurringRevenue: firstHubSpotProperty(props, ["recurring_revenue"]),
+      subscriptionStartDate: firstHubSpotProperty(props, [
+        "subscription_start_date",
+        "hs_recurring_billing_start_date",
+      ]),
+      subscriptionEndDate: firstHubSpotProperty(props, [
+        "subscription_end_date",
+        "hs_recurring_billing_end_date",
+      ]),
       stageHistory: buildHubSpotStageHistory(deal, stageLabelById),
     };
   });
@@ -999,8 +1434,10 @@ export async function fetchHubSpotData(
     for (const deal of [...deals, ...subscriptionDeals]) {
       const analytics = contactAnalytics.get(deal.dealId);
       if (analytics) {
-        deal.contactIds = analytics.contactIds;
-        deal.primaryContactId = analytics.primaryContactId;
+        if (analytics.contactIds.length > 0) {
+          deal.contactIds = analytics.contactIds;
+        }
+        deal.primaryContactId = analytics.primaryContactId ?? deal.contactIds[0] ?? null;
         deal.primaryContactEmail = analytics.primaryContactEmail;
         (deal as Record<string, unknown>).primaryContactAnalytics = analytics.primaryContactAnalytics;
       }
@@ -1288,10 +1725,16 @@ export async function fetchHubSpotData(
 
   const meta = makeMeta("live");
   const collectedForms = collectedFormsResult.data;
+  const meetings = meetingsResult.data;
+  const companies = companiesResult.data;
+  const tickets = ticketsResult.data;
   const truncatedResources = [
     ...(activeDealsResult.truncated ? ["activeDeals"] : []),
     ...(archivedDealsResult.truncated ? ["archivedDeals"] : []),
     ...collectedFormsResult.truncatedResources,
+    ...(meetingsResult.truncated ? ["meetings"] : []),
+    ...(companiesResult.truncated ? ["companies"] : []),
+    ...(ticketsResult.truncated ? ["tickets"] : []),
   ];
   meta.truncated = truncatedResources.length > 0;
   meta.truncatedResources = truncatedResources;
@@ -1330,6 +1773,26 @@ export async function fetchHubSpotData(
     collectedFormsFetched: collectedForms?.totalFormSubmissions ?? 0,
     collectedFormsTruncated: collectedFormsResult.truncated,
     collectedFormsPagesFetched: collectedFormsResult.pagesFetched,
+    meetingsAvailable: meetingsResult.available,
+    meetingsError: meetingsResult.error,
+    meetingsFetched: meetings?.length ?? 0,
+    meetingsTruncated: meetingsResult.truncated,
+    meetingsPagesFetched: meetingsResult.pagesFetched,
+    companiesAvailable: companiesResult.available,
+    companiesError: companiesResult.error,
+    companiesFetched: companies?.length ?? 0,
+    companiesTruncated: companiesResult.truncated,
+    companiesPagesFetched: companiesResult.pagesFetched,
+    ticketsAvailable: ticketsResult.available,
+    ticketsError: ticketsResult.error,
+    ticketsFetched: tickets?.length ?? 0,
+    ticketsTruncated: ticketsResult.truncated,
+    ticketsPagesFetched: ticketsResult.pagesFetched,
+    contactRecordsAvailable,
+    contactRecordsError,
+    contactRecordsFetched: contactRecords?.length ?? 0,
+    contactRecordsTruncated,
+    contactRecordsPagesFetched,
   };
 
   return {
@@ -1356,6 +1819,10 @@ export async function fetchHubSpotData(
       dealsBySource,
     },
     collectedForms,
+    meetings,
+    companies,
+    tickets,
+    ...(contactRecords ? { contactRecords } : {}),
     contacts: {
       totalContacts: Math.max(0, recentContacts - suspiciousLeadExclusions),
       recentContacts: Math.max(0, recentContacts - suspiciousLeadExclusions),
@@ -1437,6 +1904,121 @@ type HubSpotContactsSearchResponse = {
   results?: Array<{ id?: string | number; properties?: Record<string, string> }>;
   paging?: { next?: { after?: string } };
 };
+
+async function fetchHubSpotContactRecords(input: {
+  baseUrl: string;
+  headers: Record<string, string>;
+  from: Date;
+  to: Date;
+  ownerNameById?: Map<string, string>;
+  maxPages?: number;
+}): Promise<{
+  contacts: HubSpotContactRecord[];
+  pagesFetched: number;
+  truncated: boolean;
+}> {
+  const envMaxPages = Number(process.env.HUBSPOT_CONTACTS_MAX_PAGES);
+  const defaultMaxPages = Number.isFinite(envMaxPages) && envMaxPages > 0 ? envMaxPages : 1000;
+  const maxPages = Math.max(1, Math.min(input.maxPages ?? defaultMaxPages, 1000));
+  const ownerNameById = input.ownerNameById ?? new Map<string, string>();
+  const fromMs = input.from.getTime();
+  const toMs = input.to.getTime();
+  const contacts: HubSpotContactRecord[] = [];
+  let pagesFetched = 0;
+  let after: string | undefined;
+  let truncated = false;
+
+  for (let page = 0; page < maxPages; page++) {
+    const body = {
+      filterGroups: [
+        {
+          filters: [
+            { propertyName: "createdate", operator: "GTE", value: String(fromMs) },
+            { propertyName: "createdate", operator: "LTE", value: String(toMs) },
+          ],
+        },
+      ],
+      sorts: ["createdate"],
+      properties: [
+        "email",
+        "createdate",
+        "hubspot_owner_id",
+        "hs_analytics_source",
+        "hs_analytics_source_data_1",
+        "hs_analytics_source_data_2",
+        "hs_analytics_first_timestamp",
+        "hs_analytics_last_timestamp",
+        "hs_analytics_first_url",
+        "hs_analytics_last_url",
+        "hs_analytics_num_visits",
+        "hs_analytics_num_page_views",
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+      ],
+      limit: 100,
+      after,
+    };
+
+    const res = await fetch(`${input.baseUrl}/crm/v3/objects/contacts/search`, {
+      method: "POST",
+      headers: input.headers,
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "unknown");
+      throw new Error(`HubSpot contacts API error ${res.status}: ${text}`);
+    }
+
+    const data = await safeJson<HubSpotContactsSearchResponse>(res, "hubspot contacts");
+    const results = data.results ?? [];
+    pagesFetched += 1;
+
+    for (const contact of results) {
+      const props = contact.properties ?? {};
+      const contactId = String(contact.id ?? "").trim();
+      if (!contactId) continue;
+      const ownerId = props.hubspot_owner_id ? String(props.hubspot_owner_id) : null;
+      const email = props.email ? String(props.email) : null;
+      const rawSource = props.hs_analytics_source ? String(props.hs_analytics_source) : null;
+
+      contacts.push({
+        contactId,
+        email,
+        createdAt: hubSpotTimestampToIso(props.createdate),
+        ownerId,
+        repName: ownerId ? ownerNameById.get(ownerId) || "Unknown" : "Unassigned",
+        rawSource,
+        sourceData1: props.hs_analytics_source_data_1 || null,
+        sourceData2: props.hs_analytics_source_data_2 || null,
+        firstSeenAt: props.hs_analytics_first_timestamp
+          ? hubSpotTimestampToIso(props.hs_analytics_first_timestamp)
+          : null,
+        lastSeenAt: props.hs_analytics_last_timestamp
+          ? hubSpotTimestampToIso(props.hs_analytics_last_timestamp)
+          : null,
+        firstUrl: props.hs_analytics_first_url || null,
+        lastUrl: props.hs_analytics_last_url || null,
+        numVisits: props.hs_analytics_num_visits ? Number(props.hs_analytics_num_visits) : null,
+        numPageViews: props.hs_analytics_num_page_views ? Number(props.hs_analytics_num_page_views) : null,
+        utmSource: props.utm_source || null,
+        utmMedium: props.utm_medium || null,
+        utmCampaign: props.utm_campaign || null,
+      });
+    }
+
+    after = data.paging?.next?.after;
+    if (!after || results.length === 0) break;
+    if (page === maxPages - 1) {
+      truncated = true;
+      break;
+    }
+  }
+
+  return { contacts, pagesFetched, truncated };
+}
 
 async function fetchDealContactAnalytics(
   baseUrl: string,
@@ -1562,115 +2144,16 @@ export async function fetchHubSpotContacts(
     "Content-Type": "application/json",
   };
 
-  const envMaxPages = Number(process.env.HUBSPOT_CONTACTS_MAX_PAGES || "");
-  const maxPages = Math.max(1, Math.min(opts?.maxPages ?? (Number.isFinite(envMaxPages) ? envMaxPages : 1000), 1000));
-
   const { owners } = await fetchHubSpotOwners({ baseUrl, headers });
-  const ownerMap = Object.fromEntries(owners.map((owner) => [owner.id, owner.name]));
-
-  const fromMs = from.getTime();
-  const toMs = to.getTime();
-
-  const out: HubSpotContactRecord[] = [];
-  let after: string | undefined;
-
-  for (let page = 0; page < maxPages; page++) {
-    const url = `${baseUrl}/crm/v3/objects/contacts/search`;
-
-    const body = {
-      filterGroups: [
-        {
-          filters: [
-            { propertyName: "createdate", operator: "GTE", value: String(fromMs) },
-            { propertyName: "createdate", operator: "LTE", value: String(toMs) },
-          ],
-        },
-      ],
-      sorts: ["createdate"],
-      properties: [
-        "email",
-        "createdate",
-        "hubspot_owner_id",
-        "hs_analytics_source",
-        "hs_analytics_num_visits",
-        "hs_analytics_num_page_views",
-        "utm_source",
-        "utm_medium",
-        "utm_campaign",
-      ],
-      limit: 100,
-      after,
-    };
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      cache: "no-store",
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "unknown");
-      throw new Error(`HubSpot contacts API error ${res.status}: ${text}`);
-    }
-
-    const data = await safeJson<HubSpotContactsSearchResponse>(res, "hubspot contacts");
-    const results = data.results || [];
-
-    for (const contact of results) {
-      const props = contact.properties || {};
-      const ownerId = props.hubspot_owner_id ? String(props.hubspot_owner_id) : null;
-      const email = props.email ? String(props.email) : null;
-      const rawSource = props.hs_analytics_source ? String(props.hs_analytics_source) : null;
-      const syntheticDeal: HubSpotDealRecord = {
-        dealId: String(contact.id ?? ""),
-        dealName: email?.split("@")[0] || "Untitled contact",
-        stageId: "contact",
-        stageLabel: "Lead",
-        amount: 0,
-        source: rawSource || "Unknown",
-        ownerId,
-        repName: ownerId ? ownerMap[ownerId] || "Unknown" : "Unassigned",
-        updatedAt: null,
-        createdAt: hubSpotTimestampToIso(props.createdate),
-        closedAt: null,
-        stripeCustomerId: null,
-        pipelineId: null,
-        contactIds: [String(contact.id ?? "")].filter(Boolean),
-        primaryContactId: String(contact.id ?? "") || null,
-        primaryContactEmail: email,
-        primaryContactAnalytics: {
-          createdAt: hubSpotTimestampToIso(props.createdate),
-          source: rawSource,
-          sourceData1: null,
-          sourceData2: null,
-          firstSeenAt: null,
-          lastSeenAt: null,
-          firstUrl: null,
-          lastUrl: null,
-          numVisits: props.hs_analytics_num_visits ? Number(props.hs_analytics_num_visits) : null,
-          numPageViews: props.hs_analytics_num_page_views ? Number(props.hs_analytics_num_page_views) : null,
-          utmSource: props.utm_source || null,
-          utmMedium: props.utm_medium || null,
-          utmCampaign: props.utm_campaign || null,
-        },
-      };
-      if (isSuspiciousHubSpotLead(syntheticDeal)) continue;
-
-      out.push({
-        contactId: String(contact.id ?? ""),
-        createdAt: hubSpotTimestampToIso(props.createdate),
-        ownerId,
-        repName: ownerId ? ownerMap[ownerId] || "Unknown" : "Unassigned",
-        rawSource,
-      });
-    }
-
-    after = data.paging?.next?.after;
-    if (!after || results.length === 0) break;
-  }
-
-  return out;
+  const result = await fetchHubSpotContactRecords({
+    baseUrl,
+    headers,
+    from,
+    to,
+    ownerNameById: new Map(owners.map((owner) => [owner.id, owner.name])),
+    maxPages: opts?.maxPages,
+  });
+  return result.contacts;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1684,19 +2167,49 @@ interface StripeSubItem {
   };
 }
 
-interface StripeSub {
+interface StripeSub extends Record<string, unknown> {
   id: string;
   items: { data: StripeSubItem[] };
-  customer: string | { id?: string | null; email?: string | null } | null;
+  customer: string | { id?: string | null; email?: string | null; metadata?: Record<string, unknown> | null } | null;
   canceled_at: number | null;
+  metadata?: Record<string, unknown> | null;
 }
 
-interface StripeCharge {
+interface StripeCharge extends Record<string, unknown> {
   id?: string;
   amount: number | string;
   created: number | string | null | undefined;
   status: string;
 }
+
+type StripeInvoice = Record<string, unknown> & {
+  id?: string;
+  created?: number | string | null;
+};
+
+type StripeInvoiceLine = Record<string, unknown> & {
+  id?: string;
+};
+
+type StripeDispute = Record<string, unknown> & {
+  id?: string;
+  created?: number | string | null;
+};
+
+type StripeRefund = Record<string, unknown> & {
+  id?: string;
+  created?: number | string | null;
+};
+
+type StripePaymentIntent = Record<string, unknown> & {
+  id?: string;
+  created?: number | string | null;
+};
+
+type StripeBalanceTransaction = Record<string, unknown> & {
+  id?: string;
+  created?: number | string | null;
+};
 
 function stripeSubscriptionItemMonthlyAmount(item: StripeSubItem): number {
   if (!item.price) return 0;
@@ -1751,6 +2264,73 @@ function stripeSubscriptionCustomerEmail(customer: StripeSub["customer"]): strin
   }
 
   return null;
+}
+
+function normalizeStripeMetadataId(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value).trim().toLowerCase();
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function stripeMetadataIdValues(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(stripeMetadataIdValues);
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((entry) => normalizeStripeMetadataId(entry))
+      .filter((entry): entry is string => Boolean(entry));
+  }
+  const normalized = normalizeStripeMetadataId(value);
+  return normalized ? [normalized] : [];
+}
+
+function stripeSubscriptionHubspotCompanyIds(subscription: StripeSub): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  const addId = (value: unknown) => {
+    for (const id of stripeMetadataIdValues(value)) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+    }
+  };
+  const metadataSources = [
+    subscription.metadata,
+    typeof subscription.customer === "object" && subscription.customer ? subscription.customer.metadata : null,
+  ];
+
+  for (const metadata of metadataSources) {
+    if (!metadata || typeof metadata !== "object") continue;
+    addId(metadata.hubspot_company_id);
+    addId(metadata.hubspotCompanyId);
+    addId(metadata.hubspot_company_ids);
+    addId(metadata.hubspotCompanyIds);
+    addId(metadata.hubspot_associated_company_id);
+    addId(metadata.hubspotAssociatedCompanyId);
+    addId(metadata.hubspot_associated_company_ids);
+    addId(metadata.hubspotAssociatedCompanyIds);
+  }
+
+  return ids;
+}
+
+function stripeSubscriptionCustomerIdentity(subscription: StripeSub): string {
+  const customerId = stripeSubscriptionCustomerId(subscription.customer);
+  if (customerId !== "Unknown customer") return `stripe:${customerId.toLowerCase()}`;
+
+  const hubspotCompanyId = stripeSubscriptionHubspotCompanyIds(subscription)[0];
+  if (hubspotCompanyId) return `hubspot:${hubspotCompanyId}`;
+
+  const email = stripeSubscriptionCustomerEmail(subscription.customer);
+  if (email) return `email:${email}`;
+
+  const emailDomain = normalizeEmailDomain(email);
+  if (emailDomain) return `domain:${emailDomain}`;
+
+  return typeof subscription.id === "string" && subscription.id.trim()
+    ? `subscription:${subscription.id.trim().toLowerCase()}`
+    : "subscription:unknown";
 }
 
 function normalizeEmailDomain(email: string | null): string | null {
@@ -1871,6 +2451,8 @@ export async function fetchStripeData(
   const fetchPastDueAndTrialingCounts = async (): Promise<{
     pastDueCount: number;
     trialingCount: number;
+    pastDueSubscriptions: StripeSub[];
+    trialingSubscriptions: StripeSub[];
     truncatedResources: string[];
     pagesFetched: Record<string, number>;
   }> => {
@@ -1882,6 +2464,8 @@ export async function fetchStripeData(
       return {
         pastDueCount: pastDueResult.subscriptions.length,
         trialingCount: trialingResult.subscriptions.length,
+        pastDueSubscriptions: pastDueResult.subscriptions,
+        trialingSubscriptions: trialingResult.subscriptions,
         truncatedResources: [
           ...(pastDueResult.truncated ? ["pastDueSubscriptions"] : []),
           ...(trialingResult.truncated ? ["trialingSubscriptions"] : []),
@@ -1897,6 +2481,8 @@ export async function fetchStripeData(
     return {
       pastDueCount: 0,
       trialingCount: 0,
+      pastDueSubscriptions: [],
+      trialingSubscriptions: [],
       truncatedResources: [],
       pagesFetched: {
         pastDueSubscriptions: 0,
@@ -1941,12 +2527,438 @@ export async function fetchStripeData(
     return { charges: allCharges, pagesFetched, truncated };
   };
 
-  const [activeSubResult, canceledSubResult, counts, chargesInRangeResult, chargesPrevRangeResult] = await Promise.all([
+  const fetchAdditionalInvoiceLines = async (invoice: StripeInvoice): Promise<{
+    invoice: StripeInvoice;
+    truncated: boolean;
+  }> => {
+    const invoiceId = typeof invoice.id === "string" && invoice.id.trim() ? invoice.id.trim() : null;
+    const lines = invoice.lines && typeof invoice.lines === "object" && !Array.isArray(invoice.lines)
+      ? invoice.lines as Record<string, unknown>
+      : null;
+    const firstPageLines = Array.isArray(lines?.data) ? lines.data as StripeInvoiceLine[] : [];
+    if (!invoiceId || lines?.has_more !== true) {
+      return { invoice, truncated: false };
+    }
+
+    const allLines = [...firstPageLines];
+    let startingAfter = firstPageLines[firstPageLines.length - 1]?.id;
+
+    for (let page = 0; page < maxPages; page++) {
+      if (!startingAfter) break;
+
+      const url = new URL(`${baseUrl}/invoices/${encodeURIComponent(invoiceId)}/lines`);
+      url.searchParams.set("limit", "100");
+      url.searchParams.set("starting_after", startingAfter);
+      url.searchParams.append("expand[]", "data.price.product");
+
+      const response = await fetchStripe(url.toString());
+      if (!response.ok) {
+        return {
+          invoice: {
+            ...invoice,
+            _imladrisInvoiceLineItemsError: `Stripe invoice lines error (${response.status}): ${await readStripeErrorMessage(response)}`,
+          },
+          truncated: false,
+        };
+      }
+
+      const payload = await safeJson<{ data?: StripeInvoiceLine[]; has_more?: boolean }>(
+        response,
+        "stripe invoice lines",
+      );
+      const batch = payload.data ?? [];
+      allLines.push(...batch);
+
+      if (!payload.has_more || batch.length === 0) {
+        return {
+          invoice: {
+            ...invoice,
+            lines: {
+              ...(lines ?? {}),
+              data: allLines,
+              has_more: false,
+            },
+          },
+          truncated: false,
+        };
+      }
+
+      startingAfter = batch[batch.length - 1]?.id;
+      if (!startingAfter) break;
+      if (page === maxPages - 1) {
+        return {
+          invoice: {
+            ...invoice,
+            lines: {
+              ...(lines ?? {}),
+              data: allLines,
+              has_more: true,
+            },
+          },
+          truncated: true,
+        };
+      }
+    }
+
+    return {
+      invoice: {
+        ...invoice,
+        lines: {
+          ...(lines ?? {}),
+          data: allLines,
+          has_more: Boolean(startingAfter),
+        },
+      },
+      truncated: Boolean(startingAfter),
+    };
+  };
+
+  const fetchInvoices = async (createdGte: number, createdLte: number): Promise<{
+    invoices: StripeInvoice[];
+    pagesFetched: number;
+    truncated: boolean;
+    available: boolean;
+    error: string | null;
+  }> => {
+    const invoices: StripeInvoice[] = [];
+    let startingAfter: string | undefined;
+    let pagesFetched = 0;
+
+    try {
+      for (let page = 0; page < maxPages; page++) {
+        const url = new URL(`${baseUrl}/invoices`);
+        url.searchParams.set("limit", "100");
+        url.searchParams.set("created[gte]", String(createdGte));
+        url.searchParams.set("created[lte]", String(createdLte));
+        url.searchParams.append("expand[]", "data.customer");
+        url.searchParams.append("expand[]", "data.lines.data.price.product");
+        if (startingAfter) url.searchParams.set("starting_after", startingAfter);
+
+        const response = await fetchStripe(url.toString());
+        if (!response.ok) {
+          return {
+            invoices,
+            pagesFetched,
+            truncated: false,
+            available: false,
+            error: `Stripe invoices error (${response.status}): ${await readStripeErrorMessage(response)}`,
+          };
+        }
+
+        const payload = await safeJson<{ data?: StripeInvoice[]; has_more?: boolean }>(
+          response,
+          "stripe invoices",
+        );
+        const batch = payload.data ?? [];
+        pagesFetched += 1;
+        for (const invoice of batch) {
+          const lineResult = await fetchAdditionalInvoiceLines(invoice);
+          invoices.push(lineResult.invoice);
+          if (lineResult.truncated) {
+            return { invoices, pagesFetched, truncated: true, available: true, error: null };
+          }
+        }
+
+        if (!payload.has_more || batch.length === 0) {
+          return { invoices, pagesFetched, truncated: false, available: true, error: null };
+        }
+        startingAfter = batch[batch.length - 1]?.id;
+        if (!startingAfter) {
+          return { invoices, pagesFetched, truncated: false, available: true, error: null };
+        }
+        if (page === maxPages - 1) {
+          return { invoices, pagesFetched, truncated: true, available: true, error: null };
+        }
+      }
+    } catch (error) {
+      return {
+        invoices,
+        pagesFetched,
+        truncated: false,
+        available: false,
+        error: error instanceof Error ? error.message : "Stripe invoices request failed",
+      };
+    }
+
+    return { invoices, pagesFetched, truncated: false, available: true, error: null };
+  };
+
+  const fetchDisputes = async (createdGte: number, createdLte: number): Promise<{
+    disputes: StripeDispute[];
+    pagesFetched: number;
+    truncated: boolean;
+    available: boolean;
+    error: string | null;
+  }> => {
+    const disputes: StripeDispute[] = [];
+    let startingAfter: string | undefined;
+    let pagesFetched = 0;
+
+    try {
+      for (let page = 0; page < maxPages; page++) {
+        const url = new URL(`${baseUrl}/disputes`);
+        url.searchParams.set("limit", "100");
+        url.searchParams.set("created[gte]", String(createdGte));
+        url.searchParams.set("created[lte]", String(createdLte));
+        url.searchParams.append("expand[]", "data.charge");
+        if (startingAfter) url.searchParams.set("starting_after", startingAfter);
+
+        const response = await fetchStripe(url.toString());
+        if (!response.ok) {
+          return {
+            disputes,
+            pagesFetched,
+            truncated: false,
+            available: false,
+            error: `Stripe disputes error (${response.status}): ${await readStripeErrorMessage(response)}`,
+          };
+        }
+
+        const payload = await safeJson<{ data?: StripeDispute[]; has_more?: boolean }>(
+          response,
+          "stripe disputes",
+        );
+        const batch = payload.data ?? [];
+        disputes.push(...batch);
+        pagesFetched += 1;
+
+        if (!payload.has_more || batch.length === 0) {
+          return { disputes, pagesFetched, truncated: false, available: true, error: null };
+        }
+        startingAfter = batch[batch.length - 1]?.id;
+        if (!startingAfter) {
+          return { disputes, pagesFetched, truncated: false, available: true, error: null };
+        }
+        if (page === maxPages - 1) {
+          return { disputes, pagesFetched, truncated: true, available: true, error: null };
+        }
+      }
+    } catch (error) {
+      return {
+        disputes,
+        pagesFetched,
+        truncated: false,
+        available: false,
+        error: error instanceof Error ? error.message : "Stripe disputes request failed",
+      };
+    }
+
+    return { disputes, pagesFetched, truncated: false, available: true, error: null };
+  };
+
+  const fetchRefunds = async (createdGte: number, createdLte: number): Promise<{
+    refunds: StripeRefund[];
+    pagesFetched: number;
+    truncated: boolean;
+    available: boolean;
+    error: string | null;
+  }> => {
+    const refunds: StripeRefund[] = [];
+    let startingAfter: string | undefined;
+    let pagesFetched = 0;
+
+    try {
+      for (let page = 0; page < maxPages; page++) {
+        const url = new URL(`${baseUrl}/refunds`);
+        url.searchParams.set("limit", "100");
+        url.searchParams.set("created[gte]", String(createdGte));
+        url.searchParams.set("created[lte]", String(createdLte));
+        url.searchParams.append("expand[]", "data.charge");
+        url.searchParams.append("expand[]", "data.payment_intent");
+        if (startingAfter) url.searchParams.set("starting_after", startingAfter);
+
+        const response = await fetchStripe(url.toString());
+        if (!response.ok) {
+          return {
+            refunds,
+            pagesFetched,
+            truncated: false,
+            available: false,
+            error: `Stripe refunds error (${response.status}): ${await readStripeErrorMessage(response)}`,
+          };
+        }
+
+        const payload = await safeJson<{ data?: StripeRefund[]; has_more?: boolean }>(
+          response,
+          "stripe refunds",
+        );
+        const batch = payload.data ?? [];
+        refunds.push(...batch);
+        pagesFetched += 1;
+
+        if (!payload.has_more || batch.length === 0) {
+          return { refunds, pagesFetched, truncated: false, available: true, error: null };
+        }
+        startingAfter = batch[batch.length - 1]?.id;
+        if (!startingAfter) {
+          return { refunds, pagesFetched, truncated: false, available: true, error: null };
+        }
+        if (page === maxPages - 1) {
+          return { refunds, pagesFetched, truncated: true, available: true, error: null };
+        }
+      }
+    } catch (error) {
+      return {
+        refunds,
+        pagesFetched,
+        truncated: false,
+        available: false,
+        error: error instanceof Error ? error.message : "Stripe refunds request failed",
+      };
+    }
+
+    return { refunds, pagesFetched, truncated: false, available: true, error: null };
+  };
+
+  const fetchPaymentIntents = async (createdGte: number, createdLte: number): Promise<{
+    paymentIntents: StripePaymentIntent[];
+    pagesFetched: number;
+    truncated: boolean;
+    available: boolean;
+    error: string | null;
+  }> => {
+    const paymentIntents: StripePaymentIntent[] = [];
+    let startingAfter: string | undefined;
+    let pagesFetched = 0;
+
+    try {
+      for (let page = 0; page < maxPages; page++) {
+        const url = new URL(`${baseUrl}/payment_intents`);
+        url.searchParams.set("limit", "100");
+        url.searchParams.set("created[gte]", String(createdGte));
+        url.searchParams.set("created[lte]", String(createdLte));
+        url.searchParams.append("expand[]", "data.customer");
+        url.searchParams.append("expand[]", "data.latest_charge");
+        if (startingAfter) url.searchParams.set("starting_after", startingAfter);
+
+        const response = await fetchStripe(url.toString());
+        if (!response.ok) {
+          return {
+            paymentIntents,
+            pagesFetched,
+            truncated: false,
+            available: false,
+            error: `Stripe payment intents error (${response.status}): ${await readStripeErrorMessage(response)}`,
+          };
+        }
+
+        const payload = await safeJson<{ data?: StripePaymentIntent[]; has_more?: boolean }>(
+          response,
+          "stripe payment intents",
+        );
+        const batch = payload.data ?? [];
+        paymentIntents.push(...batch);
+        pagesFetched += 1;
+
+        if (!payload.has_more || batch.length === 0) {
+          return { paymentIntents, pagesFetched, truncated: false, available: true, error: null };
+        }
+        startingAfter = batch[batch.length - 1]?.id;
+        if (!startingAfter) {
+          return { paymentIntents, pagesFetched, truncated: false, available: true, error: null };
+        }
+        if (page === maxPages - 1) {
+          return { paymentIntents, pagesFetched, truncated: true, available: true, error: null };
+        }
+      }
+    } catch (error) {
+      return {
+        paymentIntents,
+        pagesFetched,
+        truncated: false,
+        available: false,
+        error: error instanceof Error ? error.message : "Stripe payment intents request failed",
+      };
+    }
+
+    return { paymentIntents, pagesFetched, truncated: false, available: true, error: null };
+  };
+
+  const fetchBalanceTransactions = async (createdGte: number, createdLte: number): Promise<{
+    balanceTransactions: StripeBalanceTransaction[];
+    pagesFetched: number;
+    truncated: boolean;
+    available: boolean;
+    error: string | null;
+  }> => {
+    const balanceTransactions: StripeBalanceTransaction[] = [];
+    let startingAfter: string | undefined;
+    let pagesFetched = 0;
+
+    try {
+      for (let page = 0; page < maxPages; page++) {
+        const url = new URL(`${baseUrl}/balance_transactions`);
+        url.searchParams.set("limit", "100");
+        url.searchParams.set("created[gte]", String(createdGte));
+        url.searchParams.set("created[lte]", String(createdLte));
+        url.searchParams.append("expand[]", "data.source");
+        if (startingAfter) url.searchParams.set("starting_after", startingAfter);
+
+        const response = await fetchStripe(url.toString());
+        if (!response.ok) {
+          return {
+            balanceTransactions,
+            pagesFetched,
+            truncated: false,
+            available: false,
+            error: `Stripe balance transactions error (${response.status}): ${await readStripeErrorMessage(response)}`,
+          };
+        }
+
+        const payload = await safeJson<{ data?: StripeBalanceTransaction[]; has_more?: boolean }>(
+          response,
+          "stripe balance transactions",
+        );
+        const batch = payload.data ?? [];
+        balanceTransactions.push(...batch);
+        pagesFetched += 1;
+
+        if (!payload.has_more || batch.length === 0) {
+          return { balanceTransactions, pagesFetched, truncated: false, available: true, error: null };
+        }
+        startingAfter = batch[batch.length - 1]?.id;
+        if (!startingAfter) {
+          return { balanceTransactions, pagesFetched, truncated: false, available: true, error: null };
+        }
+        if (page === maxPages - 1) {
+          return { balanceTransactions, pagesFetched, truncated: true, available: true, error: null };
+        }
+      }
+    } catch (error) {
+      return {
+        balanceTransactions,
+        pagesFetched,
+        truncated: false,
+        available: false,
+        error: error instanceof Error ? error.message : "Stripe balance transactions request failed",
+      };
+    }
+
+    return { balanceTransactions, pagesFetched, truncated: false, available: true, error: null };
+  };
+
+  const [
+    activeSubResult,
+    canceledSubResult,
+    counts,
+    chargesInRangeResult,
+    chargesPrevRangeResult,
+    invoicesResult,
+    disputesResult,
+    refundsResult,
+    paymentIntentsResult,
+    balanceTransactionsResult,
+  ] = await Promise.all([
     fetchSubscriptionsByStatus("active"),
     fetchSubscriptionsByStatus("canceled"),
     fetchPastDueAndTrialingCounts(),
     fetchCharges(rangeStart, rangeEnd),
     fetchCharges(previousStart, previousEnd),
+    fetchInvoices(rangeStart, rangeEnd),
+    fetchDisputes(rangeStart, rangeEnd),
+    fetchRefunds(rangeStart, rangeEnd),
+    fetchPaymentIntents(rangeStart, rangeEnd),
+    fetchBalanceTransactions(rangeStart, rangeEnd),
   ]);
   const activeSubs = activeSubResult.subscriptions;
   const canceledSubs = canceledSubResult.subscriptions;
@@ -2031,6 +3043,7 @@ export async function fetchStripeData(
       canceledAt: new Date((subscription.canceled_at || 0) * 1000).toISOString(),
       amount: stripeSubscriptionMonthlyAmount(subscription),
     }));
+  const activeCustomerCount = new Set(activeSubs.map(stripeSubscriptionCustomerIdentity)).size;
 
   const truncatedResources = [
     ...(activeSubResult.truncated ? ["activeSubscriptions"] : []),
@@ -2038,6 +3051,11 @@ export async function fetchStripeData(
     ...counts.truncatedResources,
     ...(chargesInRangeResult.truncated ? ["chargesInRange"] : []),
     ...(chargesPrevRangeResult.truncated ? ["chargesPreviousRange"] : []),
+    ...(invoicesResult.truncated ? ["invoices"] : []),
+    ...(disputesResult.truncated ? ["disputes"] : []),
+    ...(refundsResult.truncated ? ["refunds"] : []),
+    ...(paymentIntentsResult.truncated ? ["paymentIntents"] : []),
+    ...(balanceTransactionsResult.truncated ? ["balanceTransactions"] : []),
   ];
   const meta = makeMeta();
   meta.truncated = truncatedResources.length > 0;
@@ -2050,7 +3068,27 @@ export async function fetchStripeData(
       ...counts.pagesFetched,
       chargesInRange: chargesInRangeResult.pagesFetched,
       chargesPreviousRange: chargesPrevRangeResult.pagesFetched,
+      invoices: invoicesResult.pagesFetched,
+      disputes: disputesResult.pagesFetched,
+      refunds: refundsResult.pagesFetched,
+      paymentIntents: paymentIntentsResult.pagesFetched,
+      balanceTransactions: balanceTransactionsResult.pagesFetched,
     },
+    invoicesFetched: invoicesResult.invoices.length,
+    invoicesAvailable: invoicesResult.available,
+    invoicesError: invoicesResult.error,
+    disputesFetched: disputesResult.disputes.length,
+    disputesAvailable: disputesResult.available,
+    disputesError: disputesResult.error,
+    refundsFetched: refundsResult.refunds.length,
+    refundsAvailable: refundsResult.available,
+    refundsError: refundsResult.error,
+    paymentIntentsFetched: paymentIntentsResult.paymentIntents.length,
+    paymentIntentsAvailable: paymentIntentsResult.available,
+    paymentIntentsError: paymentIntentsResult.error,
+    balanceTransactionsFetched: balanceTransactionsResult.balanceTransactions.length,
+    balanceTransactionsAvailable: balanceTransactionsResult.available,
+    balanceTransactionsError: balanceTransactionsResult.error,
   };
 
   return {
@@ -2060,7 +3098,7 @@ export async function fetchStripeData(
       totalRevenue30d: revInRange,
       totalRevenuePrev30d: revPrev,
       revenueGrowth,
-      avgRevenuePerCustomer: activeSubs.length > 0 ? mrr / activeSubs.length : 0,
+      avgRevenuePerCustomer: activeCustomerCount > 0 ? mrr / activeCustomerCount : 0,
     },
     subscriptions: {
       active: activeSubs.length,
@@ -2073,10 +3111,12 @@ export async function fetchStripeData(
       activeCustomerRefs: activeSubs.map((subscription) => {
         const customerId = stripeSubscriptionCustomerId(subscription.customer);
         const email = stripeSubscriptionCustomerEmail(subscription.customer);
+        const hubspotCompanyIds = stripeSubscriptionHubspotCompanyIds(subscription);
         return {
           customerId,
           email,
           emailDomain: normalizeEmailDomain(email),
+          ...(hubspotCompanyIds.length > 0 ? { hubspotCompanyIds } : {}),
         };
       }),
     },
@@ -2086,6 +3126,21 @@ export async function fetchStripeData(
       successRate: succeeded + failed > 0 ? (succeeded / (succeeded + failed)) * 100 : 0,
     },
     revenueTrend: trend,
+    stripeObjects: {
+      subscriptions: [
+        ...activeSubs,
+        ...canceledSubs,
+        ...counts.pastDueSubscriptions,
+        ...counts.trialingSubscriptions,
+      ],
+      charges: chargesInRange,
+      previousCharges: chargesPrevRange,
+      invoices: invoicesResult.invoices,
+      disputes: disputesResult.disputes,
+      refunds: refundsResult.refunds,
+      paymentIntents: paymentIntentsResult.paymentIntents,
+      balanceTransactions: balanceTransactionsResult.balanceTransactions,
+    },
     _meta: meta,
   };
 }

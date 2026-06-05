@@ -80,9 +80,30 @@ describe("webflow fetcher", () => {
       .mockResolvedValueOnce(
         jsonResponse({
           formSubmissions: [
-            { formId: "f1", formName: "Contact", createdOn: "2026-02-15T10:00:00.000Z" },
-            { formId: "f1", formName: "Contact", createdOn: "2026-02-15T14:00:00.000Z" },
-            { formId: "f2", formName: "Newsletter", createdOn: "2026-02-16T09:00:00.000Z" },
+            {
+              id: "sub_contact_1",
+              formId: "f1",
+              formName: "Contact",
+              createdOn: "2026-02-15T10:00:00.000Z",
+              pageUrl: "https://arda.cards/contact",
+              data: { email: "ada@example.com", company: "Gamma" },
+            },
+            {
+              id: "sub_contact_2",
+              formId: "f1",
+              formName: "Contact",
+              createdOn: "2026-02-15T14:00:00.000Z",
+              pageUrl: "https://arda.cards/contact",
+              data: { email: "grace@example.com", company: "Delta" },
+            },
+            {
+              id: "sub_newsletter_1",
+              formId: "f2",
+              formName: "Newsletter",
+              createdOn: "2026-02-16T09:00:00.000Z",
+              pageUrl: "https://arda.cards/blog",
+              data: { email: "linus@example.com" },
+            },
           ],
         })
       );
@@ -132,6 +153,32 @@ describe("webflow fetcher", () => {
         { formName: "Newsletter", count: 1 },
       ])
     );
+    expect(data.formSubmissionDetails).toEqual([
+      {
+        submissionId: "sub_contact_1",
+        formId: "f1",
+        formName: "Contact",
+        submittedAt: "2026-02-15T10:00:00.000Z",
+        pageUrl: "https://arda.cards/contact",
+        fields: { email: "ada@example.com", company: "Gamma" },
+      },
+      {
+        submissionId: "sub_contact_2",
+        formId: "f1",
+        formName: "Contact",
+        submittedAt: "2026-02-15T14:00:00.000Z",
+        pageUrl: "https://arda.cards/contact",
+        fields: { email: "grace@example.com", company: "Delta" },
+      },
+      {
+        submissionId: "sub_newsletter_1",
+        formId: "f2",
+        formName: "Newsletter",
+        submittedAt: "2026-02-16T09:00:00.000Z",
+        pageUrl: "https://arda.cards/blog",
+        fields: { email: "linus@example.com" },
+      },
+    ]);
     expect(data.totalFormSubmissions).toBe(3);
 
     // Form trend (bucketed by day)
