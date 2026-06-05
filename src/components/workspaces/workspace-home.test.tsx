@@ -1,7 +1,21 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import type { AnchorHTMLAttributes, ReactNode } from "react";
+import { describe, expect, it, vi } from "vitest";
 import { WorkspaceHome } from "./workspace-home";
 import type { WorkspacePageModel } from "./workspace-model";
+
+type MockNextLinkProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
+  href: string;
+  children: ReactNode;
+};
+
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...props }: MockNextLinkProps) => (
+    <a href={href} data-next-link="true" {...props}>
+      {children}
+    </a>
+  ),
+}));
 
 const MODEL: WorkspacePageModel = {
   eyebrow: "Sources",
@@ -44,11 +58,16 @@ describe("WorkspaceHome", () => {
     expect(screen.getByText("Preserved APIs")).toBeTruthy();
     expect(screen.getByText("Raw source records")).toBeTruthy();
     expect(screen.getByText("OAuth callbacks")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Manage connections" }).getAttribute("href")).toBe(
-      "/settings"
-    );
-    expect(screen.getByRole("link", { name: "Open API" }).getAttribute("href")).toBe(
-      "/api/integrations"
-    );
+
+    const settingsLink = screen.getByRole("link", { name: "Manage connections" });
+    const openApiLink = screen.getByRole("link", { name: "Open API" });
+    const sourceApiLink = screen.getByRole("link", { name: "Imladris source API" });
+
+    expect(settingsLink.getAttribute("href")).toBe("/settings");
+    expect(settingsLink.getAttribute("data-next-link")).toBe("true");
+    expect(openApiLink.getAttribute("href")).toBe("/api/integrations");
+    expect(openApiLink.getAttribute("data-next-link")).toBeNull();
+    expect(sourceApiLink.getAttribute("href")).toBe("/api/imladris/sources");
+    expect(sourceApiLink.getAttribute("data-next-link")).toBeNull();
   });
 });

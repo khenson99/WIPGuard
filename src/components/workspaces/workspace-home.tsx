@@ -1,20 +1,42 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { ArrowUpRight, CheckCircle2 } from "lucide-react";
 import type { WorkspacePageModel } from "./workspace-model";
 
-function WorkspaceActionLink({ action, primary = false }: { action: { href: string; label: string }; primary?: boolean }) {
+function WorkspaceLink({
+  href,
+  className,
+  children,
+}: {
+  href: string;
+  className: string;
+  children: ReactNode;
+}) {
+  if (href.startsWith("/api/")) {
+    return (
+      <a href={href} className={className}>
+        {children}
+      </a>
+    );
+  }
+
   return (
-    <Link
-      href={action.href}
-      className={
-        primary
-          ? "inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
-          : "inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
-      }
-    >
+    <Link href={href} className={className}>
+      {children}
+    </Link>
+  );
+}
+
+function WorkspaceActionLink({ action, primary = false }: { action: { href: string; label: string }; primary?: boolean }) {
+  const className = primary
+    ? "inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+    : "inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground";
+
+  return (
+    <WorkspaceLink href={action.href} className={className}>
       {action.label}
       <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
-    </Link>
+    </WorkspaceLink>
   );
 }
 
@@ -67,13 +89,13 @@ export function WorkspaceHome({ model }: { model: WorkspacePageModel }) {
                     </p>
                   </div>
                   {record.href && record.label ? (
-                    <Link
+                    <WorkspaceLink
                       href={record.href}
                       className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
                     >
                       {record.label}
                       <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
-                    </Link>
+                    </WorkspaceLink>
                   ) : null}
                 </div>
               </article>
