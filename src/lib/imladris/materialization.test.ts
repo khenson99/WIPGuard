@@ -5579,6 +5579,54 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("reads uppercase nested Stripe subscription MRR fields before finance materialization", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_uppercase_subscription_explicit_mrr",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_uppercase_subscription_explicit_mrr",
+            occurredAt: new Date("2026-05-11T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-11T00:00:00.000Z"),
+            payload: {
+              status: "active",
+              customerId: "cus_uppercase_subscription_explicit_mrr",
+              SUBSCRIPTION: {
+                monthlyRecurringRevenue: "$21,000.00",
+              },
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 21_000,
+      arr: 252_000,
+      stripeMrr: 21_000,
+      stripeArr: 252_000,
+    });
+  });
+
   it("reads wrapped explicit Stripe MRR fields before finance materialization", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -6391,6 +6439,65 @@ describe("Imladris canonical materialization", () => {
       arr: 18_000,
       stripeMrr: 1_500,
       stripeArr: 18_000,
+    });
+  });
+
+  it("reads uppercase nested Stripe subscription item prices before canonical MRR", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_uppercase_subscription_item_price",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "sub_uppercase_item_price",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              status: "active",
+              customerId: "cus_uppercase_item_price",
+              currency: "USD",
+              items: {
+                data: [
+                  {
+                    quantity: 2,
+                    PRICE: {
+                      unit_amount: 85_000,
+                      recurring: {
+                        interval: "month",
+                        interval_count: 1,
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 1_700,
+      arr: 20_400,
+      stripeMrr: 1_700,
+      stripeArr: 20_400,
     });
   });
 

@@ -1718,7 +1718,7 @@ function stripeMrrAmount(record: RawSourceRecordRow, asOf: Date): number | null 
     return null;
   }
   const sources = wrapperSources(payload);
-  const subscriptionSources = sources.map((source) => nestedRecord(source.subscription));
+  const subscriptionSources = sources.map((source) => nestedRecordFromKey(source, "subscription"));
   const explicitMrr = numberFrom(
     firstValueFromSources([...sources, ...subscriptionSources], [
       "monthlyRecurringRevenue",
@@ -1879,9 +1879,9 @@ function invoiceLinePeriodMonthlyDivisor(item: Record<string, unknown>): number 
 
 function stripeSubscriptionItemRecurring(item: Record<string, unknown>): unknown {
   const sources = wrapperSources(item);
-  const priceSources = sources.flatMap((source) => wrapperSources(nestedRecord(source.price)));
-  const pricingSources = sources.flatMap((source) => wrapperSources(nestedRecord(source.pricing)));
-  const planSources = sources.flatMap((source) => wrapperSources(nestedRecord(source.plan)));
+  const priceSources = sources.flatMap((source) => wrapperSources(nestedRecordFromKey(source, "price")));
+  const pricingSources = sources.flatMap((source) => wrapperSources(nestedRecordFromKey(source, "pricing")));
+  const planSources = sources.flatMap((source) => wrapperSources(nestedRecordFromKey(source, "plan")));
   return (
     firstValueFromSources([...priceSources, ...pricingSources], ["recurring"]) ??
     planSources.find((source) => Object.keys(source).length > 0) ??
@@ -1916,8 +1916,8 @@ function isOneTimeStripeInvoiceLine(item: Record<string, unknown>): boolean {
   ) {
     return true;
   }
-  const priceSources = sources.flatMap((source) => wrapperSources(nestedRecord(source.price)));
-  const pricingSources = sources.flatMap((source) => wrapperSources(nestedRecord(source.pricing)));
+  const priceSources = sources.flatMap((source) => wrapperSources(nestedRecordFromKey(source, "price")));
+  const pricingSources = sources.flatMap((source) => wrapperSources(nestedRecordFromKey(source, "pricing")));
   return [...sources, ...priceSources, ...pricingSources].some((source) => {
     const type = scalarValue(source.type);
     if (typeof type !== "string") return false;
@@ -1937,9 +1937,9 @@ function isContributingStripeItem(item: Record<string, unknown>): boolean {
 function itemUnitAmount(item: Record<string, unknown>): number | null {
   if (!isContributingStripeItem(item)) return null;
   const sources = wrapperSources(item);
-  const priceSources = sources.flatMap((source) => wrapperSources(nestedRecord(source.price)));
-  const planSources = sources.flatMap((source) => wrapperSources(nestedRecord(source.plan)));
-  const pricingSources = sources.flatMap((source) => wrapperSources(nestedRecord(source.pricing)));
+  const priceSources = sources.flatMap((source) => wrapperSources(nestedRecordFromKey(source, "price")));
+  const planSources = sources.flatMap((source) => wrapperSources(nestedRecordFromKey(source, "plan")));
+  const pricingSources = sources.flatMap((source) => wrapperSources(nestedRecordFromKey(source, "pricing")));
   const divisor =
     invoiceLinePeriodMonthlyDivisor(item) ??
     recurringMonthlyDivisor(stripeSubscriptionItemRecurring(item));
@@ -2032,22 +2032,22 @@ function arrayValuesFromContainer(value: unknown, seen = new WeakSet<object>()):
 
 function stripeSubscriptionItems(payload: Record<string, unknown>): Record<string, unknown>[] {
   const sources = wrapperSources(payload);
-  const subscriptionSources = sources.map((source) => nestedRecord(source.subscription));
+  const subscriptionSources = sources.map((source) => nestedRecordFromKey(source, "subscription"));
   const subscriptionItemSources = [...sources, ...subscriptionSources];
   const invoiceSources = subscriptionItemSources.flatMap((source) => [
-    nestedRecord(source.latest_invoice),
-    nestedRecord(source.latestInvoice),
-    nestedRecord(source.invoice),
+    nestedRecordFromKey(source, "latest_invoice"),
+    nestedRecordFromKey(source, "latestInvoice"),
+    nestedRecordFromKey(source, "invoice"),
   ]);
   const itemContainers = subscriptionItemSources.flatMap((source) => [
-    source.items,
-    source.subscriptionItems,
-    source.subscription_items,
+    ...keyVariants("items").map((key) => source[key]),
+    ...keyVariants("subscriptionItems").map((key) => source[key]),
+    ...keyVariants("subscription_items").map((key) => source[key]),
   ]);
   const invoiceLineContainers = invoiceSources.flatMap((source) => [
-    source.lines,
-    source.invoiceLines,
-    source.invoice_lines,
+    ...keyVariants("lines").map((key) => source[key]),
+    ...keyVariants("invoiceLines").map((key) => source[key]),
+    ...keyVariants("invoice_lines").map((key) => source[key]),
   ]);
   const itemsFromContainers = (
     containers: unknown[],
@@ -2108,7 +2108,7 @@ function stripeSubscriptionDiscountMonthlyDivisor(payload: Record<string, unknow
 
 function stripeSubscriptionDiscounts(payload: Record<string, unknown>): Record<string, unknown>[] {
   const sources = wrapperSources(payload);
-  const subscriptionSources = sources.map((source) => nestedRecord(source.subscription));
+  const subscriptionSources = sources.map((source) => nestedRecordFromKey(source, "subscription"));
   const discountSources = [...sources, ...subscriptionSources];
   const discounts: Record<string, unknown>[] = [];
   const addDiscount = (value: unknown) => {
@@ -2116,12 +2116,12 @@ function stripeSubscriptionDiscounts(payload: Record<string, unknown>): Record<s
     if (Object.keys(discount).length > 0) discounts.push(discount);
   };
   for (const source of discountSources) {
-    addDiscount(source.discount);
+    for (const key of keyVariants("discount")) addDiscount(source[key]);
   }
   const discountContainers = discountSources.flatMap((source) => [
-    source.discounts,
-    source.subscriptionDiscounts,
-    source.subscription_discounts,
+    ...keyVariants("discounts").map((key) => source[key]),
+    ...keyVariants("subscriptionDiscounts").map((key) => source[key]),
+    ...keyVariants("subscription_discounts").map((key) => source[key]),
   ]);
   for (const container of discountContainers) {
     for (const entry of arrayValuesFromContainer(container) ?? []) addDiscount(entry);
@@ -2147,14 +2147,14 @@ function percentFrom(value: unknown): number | null {
 
 function stripePayloadCurrency(payload: Record<string, unknown>): string | null {
   const sources = wrapperSources(payload);
-  const subscriptionSources = sources.map((source) => nestedRecord(source.subscription));
+  const subscriptionSources = sources.map((source) => nestedRecordFromKey(source, "subscription"));
   const itemPriceSources = stripeSubscriptionItems(payload).flatMap((item) => {
     const itemSources = wrapperSources(item);
     return itemSources.flatMap((source) => [
       source,
-      ...wrapperSources(nestedRecord(source.price)),
-      ...wrapperSources(nestedRecord(source.pricing)),
-      ...wrapperSources(nestedRecord(source.plan)),
+      ...wrapperSources(nestedRecordFromKey(source, "price")),
+      ...wrapperSources(nestedRecordFromKey(source, "pricing")),
+      ...wrapperSources(nestedRecordFromKey(source, "plan")),
     ]);
   });
   const currency = firstValueFromSources([...sources, ...subscriptionSources], [
@@ -2169,7 +2169,7 @@ function stripePayloadCurrency(payload: Record<string, unknown>): string | null 
 }
 
 function stripeCouponSources(discountSources: Record<string, unknown>[]): Record<string, unknown>[] {
-  return discountSources.flatMap((source) => wrapperSources(nestedRecord(source.coupon)));
+  return discountSources.flatMap((source) => wrapperSources(nestedRecordFromKey(source, "coupon")));
 }
 
 function recordFromContainer(value: unknown, seen = new WeakSet<object>()): Record<string, unknown> {
