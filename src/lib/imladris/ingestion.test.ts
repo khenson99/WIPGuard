@@ -2542,6 +2542,134 @@ describe("Imladris raw ingestion", () => {
     );
   });
 
+  it("does not prefer null-only duplicate payload fields over observed values", async () => {
+    const { prisma } = createPrismaMock();
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.HUBSPOT,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      now: new Date("2026-05-29T10:00:00.000Z"),
+      records: [
+        {
+          objectType: "deal",
+          externalId: "deal_null_payload_tie",
+          sourceUpdatedAt: "2026-05-29T09:45:00.000Z",
+          payload: {
+            id: "deal_null_payload_tie",
+            amount: 42_000,
+            stage: "contract_sent",
+          },
+        },
+        {
+          objectType: "deal",
+          externalId: "deal_null_payload_tie",
+          sourceUpdatedAt: "2026-05-29T09:45:00.000Z",
+          payload: {
+            id: "deal_null_payload_tie",
+            amount: null,
+            stage: null,
+            companyId: null,
+            primaryContactEmail: null,
+          },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      recordCount: 2,
+      acceptedCount: 2,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledOnce();
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          payload: {
+            amount: 42_000,
+            id: "deal_null_payload_tie",
+            stage: "contract_sent",
+          },
+        }),
+        update: expect.objectContaining({
+          payload: {
+            amount: 42_000,
+            id: "deal_null_payload_tie",
+            stage: "contract_sent",
+          },
+        }),
+      }),
+    );
+  });
+
+  it("does not prefer blank-string duplicate payload fields over observed values", async () => {
+    const { prisma } = createPrismaMock();
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.HUBSPOT,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      now: new Date("2026-05-29T10:00:00.000Z"),
+      records: [
+        {
+          objectType: "deal",
+          externalId: "deal_blank_payload_tie",
+          sourceUpdatedAt: "2026-05-29T09:45:00.000Z",
+          payload: {
+            id: "deal_blank_payload_tie",
+            amount: 42_000,
+            stage: "contract_sent",
+          },
+        },
+        {
+          objectType: "deal",
+          externalId: "deal_blank_payload_tie",
+          sourceUpdatedAt: "2026-05-29T09:45:00.000Z",
+          payload: {
+            id: "deal_blank_payload_tie",
+            amount: "",
+            stage: "   ",
+            companyId: "",
+            primaryContactEmail: "",
+          },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      recordCount: 2,
+      acceptedCount: 2,
+      errorCount: 0,
+    });
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledOnce();
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          payload: {
+            amount: 42_000,
+            id: "deal_blank_payload_tie",
+            stage: "contract_sent",
+          },
+        }),
+        update: expect.objectContaining({
+          payload: {
+            amount: 42_000,
+            id: "deal_blank_payload_tie",
+            stage: "contract_sent",
+          },
+        }),
+      }),
+    );
+  });
+
   it("nulls future provider timestamps before raw persistence", async () => {
     const { prisma } = createPrismaMock();
 

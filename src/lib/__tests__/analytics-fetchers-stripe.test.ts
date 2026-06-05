@@ -50,6 +50,53 @@ describe("analytics stripe fetcher", () => {
     expect(data.payments.failed).toBe(0);
   });
 
+  it("ignores Stripe charges with malformed created timestamps", async () => {
+    const fromDate = new Date("2026-02-01T00:00:00.000Z");
+    const toDate = new Date("2026-02-28T23:59:59.999Z");
+    const currentStart = String(Math.floor(fromDate.getTime() / 1000));
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+
+      if (url.pathname === "/v1/subscriptions") {
+        return jsonResponse({ data: [], has_more: false });
+      }
+
+      if (url.pathname === "/v1/charges") {
+        const isCurrentRange = url.searchParams.get("created[gte]") === currentStart;
+        return jsonResponse({
+          data: isCurrentRange
+            ? [
+                {
+                  id: "ch_bad_created",
+                  amount: 5000,
+                  created: "not-a-timestamp",
+                  status: "succeeded",
+                },
+                {
+                  id: "ch_valid",
+                  amount: 3000,
+                  created: currentStart,
+                  status: "succeeded",
+                },
+              ]
+            : [],
+          has_more: false,
+        });
+      }
+
+      return jsonResponse({ error: "unexpected request", url: String(url) }, 500);
+    });
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchStripeData("sk_test_123", { fromDate, toDate });
+
+    expect(data.revenue.totalRevenue30d).toBe(30);
+    expect(data.payments.succeeded).toBe(1);
+    expect(data.revenueTrend).toEqual([{ month: "2026-02-01", revenue: 30 }]);
+  });
+
   it("preserves Stripe revenue metrics when monetary fields arrive as formatted strings", async () => {
     const fromDate = new Date("2026-02-01T00:00:00.000Z");
     const toDate = new Date("2026-02-28T23:59:59.999Z");
@@ -258,6 +305,23 @@ describe("analytics stripe fetcher", () => {
               amount: "2,500",
               amount_refunded: "500",
               created: 1_700_000_000,
+              currency: "usd",
+              status: "succeeded",
+              paid: true,
+            },
+            {
+              id: "ch_bad_created",
+              amount: "9,000",
+              amount_refunded: "0",
+              created: "not-a-timestamp",
+              currency: "usd",
+              status: "succeeded",
+              paid: true,
+            },
+            {
+              amount: "7,000",
+              amount_refunded: "0",
+              created: 1_700_000_100,
               currency: "usd",
               status: "succeeded",
               paid: true,

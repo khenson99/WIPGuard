@@ -1,8 +1,11 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
+import { AnalyticsSnapshotStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
+import { normalizeMercuryDataPayload } from "@/lib/analytics/mercury-normalization";
 import {
   buildForecastScenario,
   buildDefaultScenarios,
@@ -41,21 +44,33 @@ function toForecastAssumptions(value: unknown): ForecastAssumptions {
 async function loadFinancialData(
   userId: string,
 ): Promise<{ stripe: StripeData | null; mercury: MercuryData | null; hubspot: HubSpotData | null }> {
+  const now = new Date();
+  const [stripe, mercury, hubspot] = await Promise.all([
+    loadLatestProviderPayload<StripeData>(userId, "stripe", now),
+    loadLatestProviderPayload<MercuryData>(userId, "mercury", now),
+    loadLatestProviderPayload<HubSpotData>(userId, "hubspot", now),
+  ]);
+
+  return { stripe, mercury: normalizeMercuryDataPayload(mercury), hubspot };
+}
+
+async function loadLatestProviderPayload<T>(
+  userId: string,
+  providerKey: string,
+  now: Date,
+): Promise<T | null> {
   const snapshot = await prisma.analyticsSnapshot.findFirst({
-    where: { userId },
+    where: {
+      userId,
+      providerKey,
+      status: AnalyticsSnapshotStatus.SUCCESS,
+      capturedAt: { lte: now },
+    },
     orderBy: { capturedAt: "desc" },
+    select: { payload: true },
   });
 
-  const payload = snapshot?.payload;
-  const dashboardData =
-    payload && typeof payload === "object" && !Array.isArray(payload)
-      ? (payload as Record<string, unknown>)
-      : null;
-  const stripe = (dashboardData?.stripe as StripeData | null) ?? null;
-  const mercury = (dashboardData?.mercury as MercuryData | null) ?? null;
-  const hubspot = (dashboardData?.hubspot as HubSpotData | null) ?? null;
-
-  return { stripe, mercury, hubspot };
+  return (snapshot?.payload as T | null) ?? null;
 }
 
 export async function GET(): Promise<NextResponse> {
@@ -66,9 +81,10 @@ export async function GET(): Promise<NextResponse> {
     }
 
     const userId = (session.user as { id: string }).id;
+    const integrationOwnerUserId = resolveIntegrationOwnerUserId(userId);
 
     const [{ stripe, mercury, hubspot }, savedScenarios] = await Promise.all([
-      loadFinancialData(userId),
+      loadFinancialData(integrationOwnerUserId),
       prisma.forecastScenario.findMany({ where: { userId } }),
     ]);
 
@@ -103,6 +119,7 @@ export async function POST(
     }
 
     const userId = (session.user as { id: string }).id;
+    const integrationOwnerUserId = resolveIntegrationOwnerUserId(userId);
     const body = await request.json();
 
     if (!body.name || !body.assumptions) {
@@ -126,7 +143,7 @@ export async function POST(
       },
     });
 
-    const { stripe, mercury, hubspot } = await loadFinancialData(userId);
+    const { stripe, mercury, hubspot } = await loadFinancialData(integrationOwnerUserId);
 
     const result = buildForecastScenario(
       stripe,

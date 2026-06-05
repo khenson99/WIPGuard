@@ -120,10 +120,10 @@ function parseUnitAmountCents(input: unknown): number | null {
 }
 
 function parseUnixSeconds(input: unknown): number | null {
-  if (typeof input === "number" && Number.isFinite(input)) return input;
+  if (typeof input === "number" && Number.isFinite(input) && input > 0) return input;
   if (typeof input === "string" && input.trim()) {
     const parsed = Number(input.trim());
-    return Number.isFinite(parsed) ? parsed : null;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }
   return null;
 }
@@ -330,13 +330,14 @@ async function chargesPaid12moForCustomer(input: {
     for (const charge of batch) {
       if (charge.status !== "succeeded") continue;
       if (charge.paid === false) continue;
+      const created = parseUnixSeconds(charge.created);
+      if (created === null) continue;
 
       const amount = parseUnitAmountCents(charge.amount) ?? 0;
       const refunded = parseUnitAmountCents(charge.amount_refunded) ?? 0;
       const net = Math.max(0, amount - refunded);
       totalCents += net;
-      const created = parseUnixSeconds(charge.created);
-      if (created !== null && created > lastPaymentCreated) lastPaymentCreated = created;
+      if (created > lastPaymentCreated) lastPaymentCreated = created;
     }
 
     if (!parsed.has_more) break;

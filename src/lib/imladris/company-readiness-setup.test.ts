@@ -449,6 +449,72 @@ describe("runCompanyReadinessSetup", () => {
     );
   });
 
+  it("ignores future-dated snapshots before company readiness backfill", async () => {
+    const now = new Date("2026-06-01T12:00:00.000Z");
+    const prisma = prismaMock({
+      snapshots: [
+        snapshot("stripe", { revenue: { mrr: 32_000 } }, "2026-06-01T10:00:00.000Z"),
+        snapshot("stripe", { revenue: { mrr: 999_999 } }, "2026-06-02T10:00:00.000Z"),
+      ],
+    });
+    vi.mocked(buildCompanyTrackerDashboard)
+      .mockResolvedValueOnce(dashboardWithRecommendations([]) as never)
+      .mockResolvedValueOnce(dashboardWithRecommendations([]) as never);
+
+    const result = await runCompanyReadinessSetup({
+      prisma: prisma as never,
+      context: CONTEXT,
+      now,
+    });
+    const stripeBackfills = vi
+      .mocked(ingestImladrisRawRecords)
+      .mock.calls.filter(([input]) => input.provider === IntegrationProvider.STRIPE);
+
+    expect(prisma.analyticsSnapshot.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          capturedAt: { lte: now },
+        }),
+      }),
+    );
+    expect(stripeBackfills).toHaveLength(1);
+    expect(result.setup.snapshotsUsed).toEqual([
+      expect.objectContaining({
+        providerKey: "stripe",
+        capturedAt: "2026-06-01T10:00:00.000Z",
+      }),
+    ]);
+  });
+
+  it("deduplicates snapshot-key aliases before company readiness backfill", async () => {
+    const prisma = prismaMock({
+      snapshots: [
+        snapshot("Google Analytics", { sessions: 20_000 }, "2026-06-01T08:00:00.000Z"),
+        snapshot("google_analytics", { sessions: 21_000 }, "2026-06-01T09:00:00.000Z"),
+      ],
+    });
+    vi.mocked(buildCompanyTrackerDashboard)
+      .mockResolvedValueOnce(dashboardWithRecommendations([]) as never)
+      .mockResolvedValueOnce(dashboardWithRecommendations([]) as never);
+
+    const result = await runCompanyReadinessSetup({
+      prisma: prisma as never,
+      context: CONTEXT,
+      now: new Date("2026-06-01T12:00:00.000Z"),
+    });
+    const googleAnalyticsBackfills = vi
+      .mocked(ingestImladrisRawRecords)
+      .mock.calls.filter(([input]) => input.provider === IntegrationProvider.GOOGLE_ANALYTICS);
+
+    expect(googleAnalyticsBackfills).toHaveLength(1);
+    expect(googleAnalyticsBackfills[0][0].checkpoint).toMatchObject({
+      providerKey: "google_analytics",
+    });
+    expect(result.setup.snapshotsUsed.map((snapshotResult) => snapshotResult.providerKey)).toEqual([
+      "google_analytics",
+    ]);
+  });
+
   it("does not duplicate configured goals and reports recommendations without target values as unresolved", async () => {
     const prisma = prismaMock();
     vi.mocked(buildCompanyTrackerDashboard)

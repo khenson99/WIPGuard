@@ -532,12 +532,16 @@ function rawRecordFreshness(record: NormalizedRawRecord, now: Date): number {
 
 function payloadCompleteness(value: unknown): number {
   if (value === null || value === undefined) return 0;
+  if (typeof value === "string" && value.trim().length === 0) return 0;
   if (Array.isArray(value)) {
     return value.reduce((sum, item) => sum + payloadCompleteness(item), 0);
   }
   if (typeof value === "object") {
     return Object.entries(value as Record<string, unknown>).reduce(
-      (sum, [, entryValue]) => sum + 1 + payloadCompleteness(entryValue),
+      (sum, [, entryValue]) => {
+        const entryCompleteness = payloadCompleteness(entryValue);
+        return entryCompleteness === 0 ? sum : sum + 1 + entryCompleteness;
+      },
       0,
     );
   }

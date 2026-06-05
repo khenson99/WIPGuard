@@ -27,29 +27,47 @@ export function snapshotKeysForIntegrationProvider(provider: IntegrationProvider
   return snapshotKeyQueryVariants(getProviderRegistryEntry(provider)?.snapshotKeys ?? []);
 }
 
-function toDate(value: Date | string): Date {
-  return value instanceof Date ? value : new Date(value);
+function toDate(value: Date | string): Date | null {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
 }
 
-function toIso(value: Date | string): string {
-  return toDate(value).toISOString();
+function toIso(value: Date | string): string | null {
+  return toDate(value)?.toISOString() ?? null;
 }
 
 function isStale(value: Date | string, now: Date): boolean {
-  return toDate(value).getTime() < now.getTime();
+  const date = toDate(value);
+  return !date || date.getTime() < now.getTime();
 }
 
-function latestSnapshot(samples: ProviderSnapshotSample[]): ProviderSnapshotSample | null {
-  if (samples.length === 0) return null;
-
-  return [...samples].sort((a, b) => toDate(b.capturedAt).getTime() - toDate(a.capturedAt).getTime())[0] ?? null;
+function capturedAtIsUsable(sample: ProviderSnapshotSample, now: Date): boolean {
+  const capturedAt = toDate(sample.capturedAt);
+  return !!capturedAt && capturedAt.getTime() <= now.getTime();
 }
 
-function latestSuccessfulSnapshot(samples: ProviderSnapshotSample[]): ProviderSnapshotSample | null {
-  const success = samples.filter((sample) => sample.status === "SUCCESS");
+function latestSnapshot(samples: ProviderSnapshotSample[], now: Date): ProviderSnapshotSample | null {
+  const validSamples = samples.filter((sample) => capturedAtIsUsable(sample, now));
+  if (validSamples.length === 0) return null;
+
+  return [...validSamples].sort((a, b) => {
+    const capturedB = toDate(b.capturedAt)?.getTime() ?? Number.NEGATIVE_INFINITY;
+    const capturedA = toDate(a.capturedAt)?.getTime() ?? Number.NEGATIVE_INFINITY;
+    return capturedB - capturedA;
+  })[0] ?? null;
+}
+
+function latestSuccessfulSnapshot(samples: ProviderSnapshotSample[], now: Date): ProviderSnapshotSample | null {
+  const success = samples.filter(
+    (sample) => sample.status === "SUCCESS" && capturedAtIsUsable(sample, now)
+  );
   if (success.length === 0) return null;
 
-  return success.sort((a, b) => toDate(b.capturedAt).getTime() - toDate(a.capturedAt).getTime())[0] ?? null;
+  return success.sort((a, b) => {
+    const capturedB = toDate(b.capturedAt)?.getTime() ?? Number.NEGATIVE_INFINITY;
+    const capturedA = toDate(a.capturedAt)?.getTime() ?? Number.NEGATIVE_INFINITY;
+    return capturedB - capturedA;
+  })[0] ?? null;
 }
 
 export function evaluateProviderSyncHealth(input: {
@@ -69,7 +87,7 @@ export function evaluateProviderSyncHealth(input: {
     };
   }
 
-  const latest = latestSnapshot(input.snapshots);
+  const latest = latestSnapshot(input.snapshots, now);
   if (!latest) {
     return {
       syncHealth: "degraded",
@@ -82,7 +100,7 @@ export function evaluateProviderSyncHealth(input: {
   const latestAt = toIso(latest.capturedAt);
 
   if (latest.status === "ERROR") {
-    const fallback = latestSuccessfulSnapshot(input.snapshots);
+    const fallback = latestSuccessfulSnapshot(input.snapshots, now);
     if (fallback && !isStale(fallback.expiresAt, now)) {
       return {
         syncHealth: "degraded",
@@ -95,6 +113,15 @@ export function evaluateProviderSyncHealth(input: {
     return {
       syncHealth: "error",
       syncHealthReason: latest.lastError || "Latest sync failed and no fresh fallback snapshot is available.",
+      lastSnapshotAt: latestAt,
+      lastSnapshotStatus: latest.status,
+    };
+  }
+
+  if (!toDate(latest.expiresAt)) {
+    return {
+      syncHealth: "degraded",
+      syncHealthReason: "Latest snapshot expiry is invalid.",
       lastSnapshotAt: latestAt,
       lastSnapshotStatus: latest.status,
     };

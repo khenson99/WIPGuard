@@ -548,6 +548,9 @@ export interface GAData {
 // ══════════════════════════════════════════════════════════
 
 export interface AdCampaign {
+  campaignId?: string;
+  customerId?: string;
+  adAccountId?: string;
   name: string;
   spend: number;
   impressions: number;

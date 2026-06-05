@@ -2351,7 +2351,7 @@ describe("provider metrics sync", () => {
         }),
         expect.objectContaining({
           objectType: "message",
-          externalId: "slack:message:1780240800.000000",
+          externalId: "slack:message:C123:1780240800.000000",
         }),
       ]),
     }));
@@ -2415,7 +2415,7 @@ describe("provider metrics sync", () => {
         }),
         expect.objectContaining({
           objectType: "calendar_event",
-          externalId: "googleWorkspace:calendar_event:evt_1",
+          externalId: "googleWorkspace:calendar_event:primary:evt_1",
         }),
         expect.objectContaining({
           objectType: "email_thread",

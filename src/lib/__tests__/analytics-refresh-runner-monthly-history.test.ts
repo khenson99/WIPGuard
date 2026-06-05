@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IntegrationProvider } from "@/generated/prisma/client";
-import { runAnalyticsRefresh } from "@/lib/analytics/refresh-runner";
+import {
+  runAnalyticsRefresh,
+  shouldPersistImladrisRawSnapshot,
+} from "@/lib/analytics/refresh-runner";
 import { fetchMercuryData, fetchStripeData } from "@/lib/analytics/fetchers";
 import { getCredentials } from "@/lib/analytics/credentials";
 import { fetchMetaInstagramData } from "@/lib/analytics/fetchers-ads";
@@ -526,6 +529,13 @@ describe("analytics monthly financial history refresh", () => {
         providerKey: "mercury",
       }),
     }));
+  });
+
+  it("accepts registry snapshot-key variants for Imladris raw persistence", () => {
+    expect(shouldPersistImladrisRawSnapshot("google_analytics")).toBe(true);
+    expect(shouldPersistImladrisRawSnapshot("google-search-console")).toBe(true);
+    expect(shouldPersistImladrisRawSnapshot("google_ads")).toBe(true);
+    expect(shouldPersistImladrisRawSnapshot("unknownProvider")).toBe(false);
   });
 
   it("retries transient rolling provider fetch failures before recording a snapshot failure", async () => {

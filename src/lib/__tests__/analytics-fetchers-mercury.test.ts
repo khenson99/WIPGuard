@@ -194,6 +194,58 @@ describe("Mercury analytics fetcher", () => {
     ]);
   });
 
+  it("ignores global Mercury transactions returned outside the requested date range", async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          accounts: [
+            {
+              id: "checking-1",
+              name: "Mercury Checking",
+              currentBalance: "10,000",
+              type: "mercury",
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ accounts: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          transactions: [
+            {
+              id: "in-range",
+              status: "sent",
+              kind: "incomingDomesticWire",
+              postedAt: "2026-04-15T12:00:00.000Z",
+              amount: 500,
+            },
+            {
+              id: "after-range",
+              status: "sent",
+              kind: "outgoingPayment",
+              postedAt: "2026-05-01T00:00:00.000Z",
+              amount: -9_000,
+            },
+          ],
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchMercuryData("token", {
+      fromDate: new Date("2026-04-01T00:00:00.000Z"),
+      toDate: new Date("2026-04-30T23:59:59.999Z"),
+    });
+
+    expect(data.cashFlow.inflows30d).toBe(500);
+    expect(data.cashFlow.outflows30d).toBe(0);
+    expect(data.cashFlow.netCashFlow).toBe(500);
+    expect(data.transactions).toEqual([
+      expect.objectContaining({ id: "in-range", amount: 500 }),
+    ]);
+  });
+
   it("excludes internal account-transfer pairs from cash flow and exposed transactions while applying expense mappings", async () => {
     const fetchMock = vi.fn();
     fetchMock

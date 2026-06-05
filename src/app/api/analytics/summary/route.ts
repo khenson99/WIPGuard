@@ -19,6 +19,7 @@ import {
 } from "@/lib/analytics/summary-health";
 import { buildSummaryChildDiagnostics } from "@/lib/analytics/route-meta";
 import { HARD_STALE_GRACE_MS } from "@/lib/analytics/snapshots";
+import { snapshotKeyQueryVariants } from "@/lib/integrations/provider-registry";
 
 function aggregateStatus(statuses: SectionStatus[]): SectionStatus {
   if (statuses.every((status) => status === "connected")) return "connected";
@@ -26,6 +27,28 @@ function aggregateStatus(statuses: SectionStatus[]): SectionStatus {
   if (statuses.some((status) => status === "connected")) return "partial";
   return "missing";
 }
+
+const DOMAIN_SNAPSHOT_KEYS: Partial<Record<AnalyticsSubSection["dataDomain"], string[]>> = {
+  hubspot: snapshotKeyQueryVariants(["hubspot"]),
+  salesPerformance: snapshotKeyQueryVariants(["salesPerformance"]),
+  stripe: snapshotKeyQueryVariants(["stripe"]),
+  mercury: snapshotKeyQueryVariants(["mercury"]),
+  googleWorkspace: snapshotKeyQueryVariants(["googleWorkspace"]),
+  slack: snapshotKeyQueryVariants(["slack"]),
+  googleAnalytics: snapshotKeyQueryVariants(["googleAnalytics"]),
+  googleAds: snapshotKeyQueryVariants(["googleAds"]),
+  metaAds: snapshotKeyQueryVariants(["metaAds"]),
+  metaPage: snapshotKeyQueryVariants(["metaPage"]),
+  redditAds: snapshotKeyQueryVariants(["redditAds"]),
+  webflow: snapshotKeyQueryVariants(["webflow"]),
+  coda: snapshotKeyQueryVariants(["coda"]),
+  semrush: snapshotKeyQueryVariants(["semrush"]),
+  pylon: snapshotKeyQueryVariants(["pylon"]),
+};
+
+const SUMMARY_SNAPSHOT_KEYS = [
+  ...new Set(Object.values(DOMAIN_SNAPSHOT_KEYS).flatMap((snapshotKeys) => snapshotKeys ?? [])),
+];
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
@@ -38,6 +61,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const range = parseAnalyticsTimeRange(request.nextUrl.searchParams);
     const to = new Date(`${range.to}T23:59:59.999Z`);
     const integrationOwnerUserId = resolveIntegrationOwnerUserId(user.id);
+    const now = Date.now();
+    const nowDate = new Date(now);
 
     const [creds, latestSnapshots] = await Promise.all([
       getCredentials(integrationOwnerUserId),
@@ -46,24 +71,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           userId: integrationOwnerUserId,
           rangePreset: range.preset,
           toDate: to,
+          capturedAt: { lte: nowDate },
           providerKey: {
-            in: [
-              "hubspot",
-              "salesPerformance",
-              "stripe",
-              "mercury",
-              "googleAnalytics",
-              "googleAds",
-              "metaAds",
-              "metaPage",
-              "redditAds",
-              "webflow",
-              "coda",
-              "semrush",
-              "pylon",
-              "googleWorkspace",
-              "slack",
-            ],
+            in: SUMMARY_SNAPSHOT_KEYS,
           },
         },
         select: {
@@ -142,8 +152,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       retentionArdaActivityRecords === 0 &&
       retentionArdaFallbackTenants > 0;
 
-    const now = Date.now();
-
     const latestSnapshotByProvider = new Map<
       string,
       {
@@ -155,6 +163,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     >();
 
     for (const snapshot of latestSnapshots) {
+      if (snapshot.capturedAt.getTime() > now) continue;
       if (latestSnapshotByProvider.has(snapshot.providerKey)) continue;
       latestSnapshotByProvider.set(snapshot.providerKey, {
         status: snapshot.status,
@@ -162,6 +171,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         capturedAt: snapshot.capturedAt.toISOString(),
         lastError: snapshot.lastError,
       });
+    }
+
+    function latestSnapshotForKeys(snapshotKeys: string[] | undefined) {
+      if (!snapshotKeys) return null;
+      return snapshotKeys
+        .map((snapshotKey) => latestSnapshotByProvider.get(snapshotKey) ?? null)
+        .filter((snapshot): snapshot is NonNullable<typeof snapshot> => Boolean(snapshot))
+        .sort((left, right) => Date.parse(right.capturedAt) - Date.parse(left.capturedAt))[0] ?? null;
     }
 
     const domainConnected: Record<AnalyticsSubSection["dataDomain"], boolean> = {
@@ -207,24 +224,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       processAnalytics: true,
     };
 
-    const domainSnapshotKey: Partial<Record<AnalyticsSubSection["dataDomain"], string>> = {
-      hubspot: "hubspot",
-      salesPerformance: "salesPerformance",
-      stripe: "stripe",
-      mercury: "mercury",
-      googleWorkspace: "googleWorkspace",
-      slack: "slack",
-      googleAnalytics: "googleAnalytics",
-      googleAds: "googleAds",
-      metaAds: "metaAds",
-      metaPage: "metaPage",
-      redditAds: "redditAds",
-      webflow: "webflow",
-      coda: "coda",
-      semrush: "semrush",
-      pylon: "pylon",
-    };
-
     const primarySections = ANALYTICS_PRIMARY_SECTIONS.map((primary) => {
       if (primary.id === "retention") {
         const latestRetentionErrored = latestRetentionRun?.status === "ERROR";
@@ -259,11 +258,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
       const children = ANALYTICS_SUB_SECTIONS.filter((child) => child.parentId === primary.id).map((child) => {
         const configured = domainConnected[child.dataDomain];
-        const snapshotKey = domainSnapshotKey[child.dataDomain];
-        const latestSnapshot = snapshotKey ? latestSnapshotByProvider.get(snapshotKey) : null;
+        const snapshotKeys = DOMAIN_SNAPSHOT_KEYS[child.dataDomain];
+        const latestSnapshot = latestSnapshotForKeys(snapshotKeys);
         const status = deriveDomainSectionStatus({
           configured,
-          requiresSnapshot: Boolean(snapshotKey),
+          requiresSnapshot: Boolean(snapshotKeys),
           snapshotStatus:
             latestSnapshot?.status === AnalyticsSnapshotStatus.SUCCESS
               ? "SUCCESS"

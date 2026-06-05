@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 vi.mock("@/lib/auth", () => ({
@@ -28,6 +28,10 @@ vi.mock("@/lib/analytics/unit-economics", () => ({
 describe("GET /api/financial-planning/overview", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("uses the integration owner and normalizes legacy Mercury snapshots", async () => {
@@ -168,6 +172,80 @@ describe("GET /api/financial-planning/overview", () => {
       expect.objectContaining({
         observedPeriodDays: 90,
       }),
+    );
+  });
+
+  it("does not use future-dated provider snapshots for financial metrics", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-15T12:00:00.000Z"));
+    const { auth } = await import("@/lib/auth");
+    const { prisma } = await import("@/lib/prisma");
+    const { buildProfitAndLoss } = await import("@/lib/analytics/pnl-builder");
+    const { computeUnitEconomics } = await import("@/lib/analytics/unit-economics");
+    const { GET } = await import("@/app/api/financial-planning/overview/route");
+
+    vi.mocked(auth).mockResolvedValue({ user: { id: "user-1" } } as never);
+    vi.mocked(prisma.analyticsSnapshot.findFirst).mockImplementation((async (query: unknown) => {
+      const where = (query as { where?: { providerKey?: string; capturedAt?: unknown } }).where;
+      if (where?.providerKey === "stripe" && !where.capturedAt) {
+        return {
+          payload: {
+            revenue: {
+              mrr: 999_999,
+              mrrChange: 0,
+              totalRevenue30d: 999_999,
+              totalRevenuePrev30d: 0,
+              revenueGrowth: 0,
+              avgRevenuePerCustomer: 0,
+            },
+            subscriptions: {
+              active: 1,
+              pastDue: 0,
+              canceled: 0,
+              trialing: 0,
+              churnRate: 0,
+              recentChurnEvents: [],
+            },
+            payments: {
+              succeeded: 0,
+              failed: 0,
+              successRate: 100,
+            },
+            revenueTrend: [],
+            _meta: {
+              fetchedAt: "2026-03-16T00:00:00.000Z",
+              nextRefresh: "2026-03-16T01:00:00.000Z",
+              source: "snapshot",
+            },
+          },
+        } as never;
+      }
+      return null;
+    }) as never);
+
+    const response = await GET(new NextRequest("http://localhost/api/financial-planning/overview"));
+
+    expect(response.status).toBe(200);
+    expect(prisma.analyticsSnapshot.findFirst).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          userId: "owner-for-user-1",
+          providerKey: "stripe",
+          capturedAt: { lte: new Date("2026-03-15T12:00:00.000Z") },
+        }),
+      }),
+    );
+    expect(buildProfitAndLoss).toHaveBeenCalledWith(
+      null,
+      null,
+      expect.objectContaining({ timeRange: "Last 30 days" }),
+    );
+    expect(computeUnitEconomics).toHaveBeenCalledWith(
+      null,
+      null,
+      null,
+      expect.objectContaining({ observedPeriodDays: 30 }),
     );
   });
 });

@@ -1694,7 +1694,7 @@ interface StripeSub {
 interface StripeCharge {
   id?: string;
   amount: number | string;
-  created: number;
+  created: number | string | null | undefined;
   status: string;
 }
 
@@ -1769,6 +1769,22 @@ function readStripeAmountCents(value: unknown): number {
 
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function readStripeCreatedSeconds(value: unknown): number | null {
+  const seconds =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim().length > 0
+        ? Number(value.trim())
+        : null;
+
+  if (seconds === null || !Number.isFinite(seconds) || seconds < 0) {
+    return null;
+  }
+
+  const millis = seconds * 1000;
+  return Number.isNaN(new Date(millis).getTime()) ? null : seconds;
 }
 
 export async function fetchStripeData(
@@ -1952,8 +1968,11 @@ export async function fetchStripeData(
   let succeeded = 0;
   let failed = 0;
   for (const charge of chargesInRange) {
+    const created = readStripeCreatedSeconds(charge.created);
+    if (created === null) continue;
+
     const amt = readStripeAmountCents(charge.amount) / 100;
-    const chargeDate = new Date(charge.created * 1000);
+    const chargeDate = new Date(created * 1000);
     const monthKey = chargeDate.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
 
     if (charge.status === "succeeded") {
@@ -1965,6 +1984,9 @@ export async function fetchStripeData(
     }
   }
   for (const charge of chargesPrevRange) {
+    const created = readStripeCreatedSeconds(charge.created);
+    if (created === null) continue;
+
     if (charge.status === "succeeded") {
       revPrev += readStripeAmountCents(charge.amount) / 100;
     }
@@ -1979,7 +2001,9 @@ export async function fetchStripeData(
     const dayBuckets: Record<string, number> = {};
     for (const charge of chargesInRange) {
       if (charge.status !== "succeeded") continue;
-      const dayKey = new Date(charge.created * 1000).toISOString().slice(0, 10);
+      const created = readStripeCreatedSeconds(charge.created);
+      if (created === null) continue;
+      const dayKey = new Date(created * 1000).toISOString().slice(0, 10);
       dayBuckets[dayKey] = (dayBuckets[dayKey] || 0) + readStripeAmountCents(charge.amount) / 100;
     }
     const keys = Object.keys(dayBuckets).sort();
@@ -2071,7 +2095,7 @@ type StripeChargeListResponse = {
     id: string;
     amount: number | string;
     amount_refunded?: number | string;
-    created: number;
+    created: number | string | null | undefined;
     currency?: string;
     status?: string;
     paid?: boolean;
@@ -2153,15 +2177,18 @@ async function fetchStripeChargesForCustomer(
     const batch = body.data ?? [];
 
     for (const charge of batch) {
+      if (typeof charge.id !== "string" || charge.id.trim().length === 0) continue;
       if (charge.status !== "succeeded") continue;
       if (charge.paid === false) continue;
+      const created = readStripeCreatedSeconds(charge.created);
+      if (created === null) continue;
 
       const amountRefunded = readStripeAmountCents(charge.amount_refunded);
       const net = Math.max(0, readStripeAmountCents(charge.amount) - amountRefunded);
 
       all.push({
-        chargeId: charge.id,
-        created: charge.created,
+        chargeId: charge.id.trim(),
+        created,
         currency: charge.currency ?? null,
         netAmountCents: net,
       });
@@ -2566,6 +2593,14 @@ export async function fetchMercuryData(
   const shouldCountCashFlow = (tx: MercuryTransaction): boolean => {
     if (tx.status !== "sent") return false;
     if (readMercuryNumber(tx.amount) === 0) return false;
+    if (useRange && rangeFrom && rangeTo) {
+      const postedAt = tx.postedAt || tx.createdAt || tx.timestamp || "";
+      if (postedAt) {
+        const postedMs = Date.parse(postedAt);
+        if (!Number.isFinite(postedMs)) return false;
+        if (postedMs < rangeFrom.getTime() || postedMs > rangeTo.getTime()) return false;
+      }
+    }
     const kind = (tx.kind ?? "").toLowerCase();
     const mercuryCategory = (tx.mercuryCategory ?? "").toLowerCase();
     const description = [
@@ -2681,16 +2716,7 @@ export async function fetchMercuryData(
           const txData = await safeJson<{ transactions?: MercuryTransaction[] }>(txRes, "mercury transactions");
           const txs = txData.transactions ?? [];
           accountTransactionPagesFetched += 1;
-          for (const tx of txs) {
-            if (useRange && rangeTo) {
-              const postedAt = tx.postedAt || tx.createdAt || tx.timestamp || "";
-              if (postedAt) {
-                const postedMs = Date.parse(postedAt);
-                if (Number.isFinite(postedMs) && postedMs > rangeTo.getTime()) continue;
-              }
-            }
-            addCashFlow(tx);
-          }
+          for (const tx of txs) addCashFlow(tx);
           if (txs.length < limit) break;
           if (page === maxPages - 1) {
             accountTransactionsTruncated = true;
@@ -2904,7 +2930,12 @@ export function buildSalesPerformancePack(args: {
     });
 
     for (const charge of charges) {
+      if (!Number.isFinite(charge.created)) continue;
+      if (!Number.isFinite(charge.netAmountCents) || charge.netAmountCents <= 0) continue;
+
       const chargeMs = charge.created * 1000;
+      if (!Number.isFinite(chargeMs)) continue;
+
       let matchedIndex = -1;
       for (let i = windows.length - 1; i >= 0; i--) {
         const w = windows[i]!;

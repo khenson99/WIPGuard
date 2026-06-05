@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { AnalyticsSnapshotStatus, IntegrationProvider } from "@/generated/prisma/client";
 
@@ -112,6 +112,10 @@ describe("GET /api/analytics/summary", () => {
     vi.mocked(prisma.retentionSourceRecord.findMany).mockResolvedValue([] as never);
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("uses the integration owner for credentials and snapshot health", async () => {
     const { getCredentials } = await import("@/lib/analytics/credentials");
     const { prisma } = await import("@/lib/prisma");
@@ -185,5 +189,87 @@ describe("GET /api/analytics/summary", () => {
 
     expect(response.status).toBe(200);
     expect(retention.status).toBe("degraded");
+  });
+
+  it("uses aliased provider snapshots when deriving summary child health", async () => {
+    const { getCredentials } = await import("@/lib/analytics/credentials");
+    const { prisma } = await import("@/lib/prisma");
+    const { GET } = await import("@/app/api/analytics/summary/route");
+
+    vi.mocked(getCredentials).mockResolvedValue({
+      gaPropertyId: "properties/123",
+      gaClientEmail: "ga@example.com",
+      gaPrivateKey: "private-key",
+    } as never);
+    vi.mocked(prisma.analyticsSnapshot.findMany).mockResolvedValue([
+      {
+        providerKey: "google_analytics",
+        status: AnalyticsSnapshotStatus.SUCCESS,
+        expiresAt: new Date("2099-02-10T00:00:00.000Z"),
+        capturedAt: new Date("2026-02-10T00:00:00.000Z"),
+        lastError: null,
+      },
+    ] as never);
+
+    const response = await GET(new NextRequest("http://localhost/api/analytics/summary?range=30d"));
+    const body = await response.json();
+    const website = body.primarySections.find((section: { id: string }) => section.id === "website-traffic");
+    const googleAnalytics = website.children.find(
+      (child: { id: string }) => child.id === "ads-google-analytics",
+    );
+
+    expect(response.status).toBe(200);
+    expect(prisma.analyticsSnapshot.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          providerKey: {
+            in: expect.arrayContaining(["googleAnalytics", "google_analytics"]),
+          },
+        }),
+      }),
+    );
+    expect(googleAnalytics.status).toBe("connected");
+    expect(googleAnalytics.lastSnapshotAt).toBe("2026-02-10T00:00:00.000Z");
+  });
+
+  it("ignores future-dated snapshots when deriving summary child health", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-10T12:00:00.000Z"));
+    const { getCredentials } = await import("@/lib/analytics/credentials");
+    const { prisma } = await import("@/lib/prisma");
+    const { GET } = await import("@/app/api/analytics/summary/route");
+
+    vi.mocked(getCredentials).mockResolvedValue({
+      gaPropertyId: "properties/123",
+      gaClientEmail: "ga@example.com",
+      gaPrivateKey: "private-key",
+    } as never);
+    vi.mocked(prisma.analyticsSnapshot.findMany).mockResolvedValue([
+      {
+        providerKey: "googleAnalytics",
+        status: AnalyticsSnapshotStatus.SUCCESS,
+        expiresAt: new Date("2099-02-11T00:00:00.000Z"),
+        capturedAt: new Date("2026-02-11T00:00:00.000Z"),
+        lastError: null,
+      },
+    ] as never);
+
+    const response = await GET(new NextRequest("http://localhost/api/analytics/summary?range=30d"));
+    const body = await response.json();
+    const website = body.primarySections.find((section: { id: string }) => section.id === "website-traffic");
+    const googleAnalytics = website.children.find(
+      (child: { id: string }) => child.id === "ads-google-analytics",
+    );
+
+    expect(response.status).toBe(200);
+    expect(prisma.analyticsSnapshot.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          capturedAt: { lte: new Date("2026-02-10T12:00:00.000Z") },
+        }),
+      }),
+    );
+    expect(googleAnalytics.status).toBe("degraded");
+    expect(googleAnalytics.lastSnapshotAt).toBeNull();
   });
 });

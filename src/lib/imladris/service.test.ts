@@ -46,6 +46,67 @@ function successfulSyncRun(provider: string, startedAt: string) {
 }
 
 describe("Imladris service", () => {
+  it("uses integration-owner analytics snapshots for source readiness", async () => {
+    const previousOwner = process.env.INTEGRATION_OWNER_USER_ID;
+    process.env.INTEGRATION_OWNER_USER_ID = "owner_1";
+    const analyticsSnapshotFindMany = vi.fn(async (query) => {
+      const userIds = (query as {
+        where?: { userId?: string | { in?: string[] } };
+      }).where?.userId;
+      const requestedUserIds =
+        typeof userIds === "string" ? [userIds] : userIds?.in ?? [];
+
+      return requestedUserIds.includes("owner_1")
+        ? [
+            {
+              userId: "owner_1",
+              providerKey: "hubspot",
+              status: "SUCCESS",
+              capturedAt: new Date("2026-05-29T09:30:00.000Z"),
+              expiresAt: new Date("2026-05-30T09:30:00.000Z"),
+              lastError: null,
+            },
+          ]
+        : [];
+    });
+    const prisma = createPrismaMock({
+      analyticsSnapshot: {
+        findMany: analyticsSnapshotFindMany,
+      },
+    });
+
+    try {
+      const sources = await buildImladrisSources({
+        prisma,
+        context: CONTEXT,
+        now: new Date("2026-05-29T10:00:00.000Z"),
+      });
+
+      const hubspot = sources.find((source) => source.key === "hubspot");
+      expect(hubspot).toMatchObject({
+        key: "hubspot",
+        status: "connected",
+        connected: true,
+        lastSnapshotAt: "2026-05-29T09:30:00.000Z",
+      });
+      expect(analyticsSnapshotFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: {
+              in: expect.arrayContaining(["owner_1", "user_1"]),
+            },
+          }),
+        }),
+      );
+    } finally {
+      if (previousOwner === undefined) {
+        delete process.env.INTEGRATION_OWNER_USER_ID;
+      } else {
+        process.env.INTEGRATION_OWNER_USER_ID = previousOwner;
+      }
+    }
+  });
+
   it("uses latest Imladris source sync runs for source readiness", async () => {
     const prisma = createPrismaMock({
       imladrisSourceSyncRun: {
@@ -804,6 +865,126 @@ describe("Imladris service", () => {
         recordCount: 10,
         acceptedCount: 11,
         errorCount: 0,
+      },
+    });
+  });
+
+  it("explains partial source sync runs when accepted records are lower than observed records", async () => {
+    const prisma = createPrismaMock({
+      imladrisSourceSyncRun: {
+        findMany: vi.fn(async () => [
+          {
+            provider: "STRIPE",
+            status: "SUCCESS",
+            startedAt: new Date("2026-05-29T09:00:00.000Z"),
+            completedAt: new Date("2026-05-29T09:05:00.000Z"),
+            windowStart: new Date("2025-04-29T10:00:00.000Z"),
+            windowEnd: new Date("2026-05-29T09:05:00.000Z"),
+            checkpoint: null,
+            recordCount: 10,
+            acceptedCount: 9,
+            errorCount: 0,
+            lastError: null,
+          },
+        ]),
+      },
+    });
+
+    const sources = await buildImladrisSources({
+      prisma,
+      context: CONTEXT,
+      now: new Date("2026-05-29T10:00:00.000Z"),
+    });
+
+    const stripe = sources.find((source) => source.key === "stripe");
+    expect(stripe).toMatchObject({
+      key: "stripe",
+      status: "partial",
+      connected: false,
+      lastError: "Sync run accepted 9 of 10 observed records.",
+      latestSyncRun: {
+        status: "SUCCESS",
+        recordCount: 10,
+        acceptedCount: 9,
+        errorCount: 0,
+      },
+    });
+  });
+
+  it("ignores blank sync-run error messages when explaining partial coverage", async () => {
+    const prisma = createPrismaMock({
+      imladrisSourceSyncRun: {
+        findMany: vi.fn(async () => [
+          {
+            provider: "STRIPE",
+            status: "SUCCESS",
+            startedAt: new Date("2026-05-29T09:00:00.000Z"),
+            completedAt: new Date("2026-05-29T09:05:00.000Z"),
+            windowStart: new Date("2025-04-29T10:00:00.000Z"),
+            windowEnd: new Date("2026-05-29T09:05:00.000Z"),
+            checkpoint: null,
+            recordCount: 10,
+            acceptedCount: 9,
+            errorCount: 0,
+            lastError: "   ",
+          },
+        ]),
+      },
+    });
+
+    const sources = await buildImladrisSources({
+      prisma,
+      context: CONTEXT,
+      now: new Date("2026-05-29T10:00:00.000Z"),
+    });
+
+    const stripe = sources.find((source) => source.key === "stripe");
+    expect(stripe).toMatchObject({
+      key: "stripe",
+      status: "partial",
+      connected: false,
+      lastError: "Sync run accepted 9 of 10 observed records.",
+    });
+  });
+
+  it("explains partial source sync runs when providers report errored records", async () => {
+    const prisma = createPrismaMock({
+      imladrisSourceSyncRun: {
+        findMany: vi.fn(async () => [
+          {
+            provider: "STRIPE",
+            status: "SUCCESS",
+            startedAt: new Date("2026-05-29T09:00:00.000Z"),
+            completedAt: new Date("2026-05-29T09:05:00.000Z"),
+            windowStart: new Date("2025-04-29T10:00:00.000Z"),
+            windowEnd: new Date("2026-05-29T09:05:00.000Z"),
+            checkpoint: null,
+            recordCount: 10,
+            acceptedCount: 9,
+            errorCount: 1,
+            lastError: null,
+          },
+        ]),
+      },
+    });
+
+    const sources = await buildImladrisSources({
+      prisma,
+      context: CONTEXT,
+      now: new Date("2026-05-29T10:00:00.000Z"),
+    });
+
+    const stripe = sources.find((source) => source.key === "stripe");
+    expect(stripe).toMatchObject({
+      key: "stripe",
+      status: "partial",
+      connected: false,
+      lastError: "Sync run reported 1 errored record.",
+      latestSyncRun: {
+        status: "SUCCESS",
+        recordCount: 10,
+        acceptedCount: 9,
+        errorCount: 1,
       },
     });
   });
@@ -2646,6 +2827,136 @@ describe("Imladris service", () => {
       connected: true,
       lastSyncedAt: "2026-05-29T09:00:00.000Z",
     });
+  });
+
+  it("uses integration-owner connection and sync evidence under organization context", async () => {
+    const previousOwner = process.env.INTEGRATION_OWNER_USER_ID;
+    process.env.INTEGRATION_OWNER_USER_ID = "owner_1";
+    const integrationConnectionFindMany = vi.fn(async (query) => {
+      const scopes = (query as {
+        where?: { OR?: Array<{ userId: string | null; organizationId: string | null }> };
+      }).where?.OR ?? [];
+      const includesOwnerScope = scopes.some(
+        (scope) => scope.userId === "owner_1" && scope.organizationId === null,
+      );
+
+      return includesOwnerScope
+        ? [
+            {
+              provider: "LINEAR",
+              status: "CONNECTED",
+              userId: "owner_1",
+              organizationId: null,
+              connectedAt: new Date("2026-05-29T08:00:00.000Z"),
+              lastSyncedAt: new Date("2026-05-29T08:30:00.000Z"),
+              expiresAt: null,
+              lastError: null,
+            },
+            {
+              provider: "LINEAR",
+              status: "ERROR",
+              userId: "owner_1",
+              organizationId: "other_org",
+              connectedAt: new Date("2026-05-29T09:00:00.000Z"),
+              lastSyncedAt: new Date("2026-05-29T09:30:00.000Z"),
+              expiresAt: null,
+              lastError: "Wrong organization owner credential failed",
+            },
+          ]
+        : [];
+    });
+    const imladrisSourceSyncRunFindMany = vi.fn(async (query) => {
+      const scopes = (query as {
+        where?: { OR?: Array<{ userId: string | null; organizationId: string | null }> };
+      }).where?.OR ?? [];
+      const includesOwnerScope = scopes.some(
+        (scope) => scope.userId === "owner_1" && scope.organizationId === null,
+      );
+
+      return includesOwnerScope
+        ? [
+            {
+              provider: "LINEAR",
+              status: "SUCCESS",
+              userId: "owner_1",
+              organizationId: null,
+              startedAt: new Date("2026-05-29T08:00:00.000Z"),
+              completedAt: new Date("2026-05-29T08:03:00.000Z"),
+              windowStart: new Date("2025-04-29T10:00:00.000Z"),
+              windowEnd: new Date("2026-05-29T08:03:00.000Z"),
+              checkpoint: { scope: "owner" },
+              recordCount: 120,
+              acceptedCount: 120,
+              errorCount: 0,
+              lastError: null,
+            },
+            {
+              provider: "LINEAR",
+              status: "ERROR",
+              userId: "owner_1",
+              organizationId: "other_org",
+              startedAt: new Date("2026-05-29T09:30:00.000Z"),
+              completedAt: new Date("2026-05-29T09:31:00.000Z"),
+              windowStart: new Date("2025-04-29T10:00:00.000Z"),
+              windowEnd: new Date("2026-05-29T09:31:00.000Z"),
+              checkpoint: null,
+              recordCount: 0,
+              acceptedCount: 0,
+              errorCount: 1,
+              lastError: "Wrong organization owner sync failed",
+            },
+          ]
+        : [];
+    });
+    const prisma = createPrismaMock({
+      integrationConnection: {
+        findMany: integrationConnectionFindMany,
+      },
+      imladrisSourceSyncRun: {
+        findMany: imladrisSourceSyncRunFindMany,
+      },
+    });
+
+    try {
+      const sources = await buildImladrisSources({
+        prisma,
+        context: CONTEXT,
+        now: new Date("2026-05-29T10:00:00.000Z"),
+      });
+
+      const linear = sources.find((source) => source.key === "linear");
+      expect(linear).toMatchObject({
+        key: "linear",
+        status: "connected",
+        connected: true,
+        lastSyncedAt: "2026-05-29T08:03:00.000Z",
+        lastError: null,
+        latestSyncRun: {
+          status: "SUCCESS",
+          checkpoint: { scope: "owner" },
+        },
+      });
+      expect(integrationConnectionFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([{ userId: "owner_1", organizationId: null }]),
+          }),
+        }),
+      );
+      expect(imladrisSourceSyncRunFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([{ userId: "owner_1", organizationId: null }]),
+          }),
+        }),
+      );
+    } finally {
+      if (previousOwner === undefined) {
+        delete process.env.INTEGRATION_OWNER_USER_ID;
+      } else {
+        process.env.INTEGRATION_OWNER_USER_ID = previousOwner;
+      }
+    }
   });
 
   it("uses the newest sync run across provider aliases for source readiness", async () => {

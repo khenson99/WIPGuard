@@ -178,6 +178,36 @@ describe("buildMonthlyPnLHistory", () => {
     });
   });
 
+  it("ignores future-captured snapshots when selecting monthly history data", async () => {
+    vi.mocked(prisma.analyticsSnapshot.findMany).mockResolvedValue([
+      {
+        providerKey: "stripe",
+        payload: makeStripe(99_999),
+        fromDate: new Date("2025-01-01T00:00:00.000Z"),
+        toDate: new Date("2025-01-31T23:59:59.999Z"),
+        capturedAt: new Date("2025-03-16T00:00:00.000Z"),
+      },
+      {
+        providerKey: "stripe",
+        payload: makeStripe(10_000),
+        fromDate: new Date("2025-01-01T00:00:00.000Z"),
+        toDate: new Date("2025-01-31T23:59:59.999Z"),
+        capturedAt: new Date("2025-03-15T00:00:00.000Z"),
+      },
+    ] as never);
+
+    const history = await buildMonthlyPnLHistory("user-1");
+
+    expect(history.months[0]?.revenue).toBe(10_000);
+    expect(prisma.analyticsSnapshot.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          capturedAt: { lte: new Date("2025-03-15T12:00:00.000Z") },
+        }),
+      }),
+    );
+  });
+
   it("normalizes ratio-style Stripe churn in historical monthly entries", async () => {
     vi.mocked(prisma.analyticsSnapshot.findMany).mockResolvedValue([
       {
@@ -201,6 +231,34 @@ describe("buildMonthlyPnLHistory", () => {
     const history = await buildMonthlyPnLHistory("user-1");
 
     expect(history.months[0]?.churnRate).toBe(4);
+  });
+
+  it("normalizes legacy Mercury observed-period snapshots in monthly history", async () => {
+    vi.mocked(prisma.analyticsSnapshot.findMany).mockResolvedValue([
+      {
+        providerKey: "mercury",
+        payload: {
+          ...makeMercury(120_000, 90_000),
+          cashFlow: {
+            ...makeMercury(120_000, 90_000).cashFlow,
+            inflows30d: 0,
+            netCashFlow: -90_000,
+            burnRate: 90_000,
+            runway: 1.3,
+            observedPeriodDays: 90,
+          },
+        },
+        fromDate: new Date("2025-01-01T00:00:00.000Z"),
+        toDate: new Date("2025-01-31T23:59:59.999Z"),
+        capturedAt: new Date("2025-03-15T00:00:00.000Z"),
+      },
+    ] as never);
+
+    const history = await buildMonthlyPnLHistory("user-1");
+
+    expect(history.months[0]?.cashBalance).toBe(120_000);
+    expect(history.months[0]?.burnRate).toBe(30_000);
+    expect(history.months[0]?.totalOpex).toBe(22_500);
   });
 
   it("uses canonical Stripe plus HubSpot subscription metrics in monthly history", async () => {

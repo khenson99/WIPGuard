@@ -197,6 +197,71 @@ describe("stripe email enrichment", () => {
     );
   });
 
+  it("ignores Stripe enrichment charges with invalid created timestamps", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+
+      if (url.pathname === "/v1/customers/search") {
+        return stripeResponse({
+          data: [
+            {
+              id: "cus_invalid_charge_time",
+              email: "lineage@example.com",
+              created: 1_770_000_000,
+            },
+          ],
+          has_more: false,
+        });
+      }
+
+      if (url.pathname === "/v1/subscriptions") {
+        return stripeResponse({ data: [], has_more: false });
+      }
+
+      if (url.pathname === "/v1/charges") {
+        return stripeResponse({
+          data: [
+            {
+              id: "ch_bad_time",
+              amount: "9,000",
+              amount_refunded: "0",
+              created: "not-a-timestamp",
+              status: "succeeded",
+              paid: true,
+            },
+            {
+              id: "ch_valid",
+              amount: "2,500",
+              amount_refunded: "500",
+              created: 1_770_000_000,
+              status: "succeeded",
+              paid: true,
+            },
+          ],
+          has_more: false,
+        });
+      }
+
+      throw new Error(`Unexpected Stripe URL: ${url.toString()}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await enrichStripeEmails({
+      apiKey: "sk_test_123",
+      emails: ["lineage@example.com"],
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(result.get("lineage@example.com")).toEqual(
+      expect.objectContaining({
+        matched: true,
+        customerId: "cus_invalid_charge_time",
+        paid12mo: 20,
+        lastPaymentAt: new Date(1_770_000_000 * 1000).toISOString(),
+      }),
+    );
+  });
+
   it("marks customer lookup unavailable as unknown instead of no Stripe customer", async () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = new URL(input instanceof Request ? input.url : String(input));

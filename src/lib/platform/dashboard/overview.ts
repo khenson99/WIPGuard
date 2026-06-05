@@ -89,12 +89,11 @@ export async function loadDashboardOverview(
     OR: [{ ownerId: input.userId }, { scope: WorkflowScope.SHARED }],
   };
   const integrationDefinitions = listIntegrationDefinitions();
+  const snapshotKeyGroups = integrationDefinitions
+    .map((definition) => snapshotKeysForIntegrationProvider(definition.provider))
+    .filter((snapshotKeys) => snapshotKeys.length > 0);
   const expectedSnapshotKeys = Array.from(
-    new Set(
-      integrationDefinitions.flatMap((definition) =>
-        snapshotKeysForIntegrationProvider(definition.provider),
-      ),
-    ),
+    new Set(snapshotKeyGroups.flatMap((snapshotKeys) => snapshotKeys)),
   );
 
   const [
@@ -186,6 +185,7 @@ export async function loadDashboardOverview(
           where: {
             userId: ownerUserId,
             providerKey: { in: expectedSnapshotKeys },
+            capturedAt: { lte: now },
           },
           _max: { capturedAt: true },
         }),
@@ -215,9 +215,20 @@ export async function loadDashboardOverview(
           },
         });
 
-  const latestSnapshotByKey = new Map(
-    latestSnapshots.map((snapshot) => [snapshot.providerKey, snapshot]),
+  const availableLatestSnapshots = latestSnapshots.filter(
+    (snapshot) => snapshot.capturedAt.getTime() <= now.getTime(),
   );
+
+  const latestSnapshotByKey = new Map(
+    availableLatestSnapshots.map((snapshot) => [snapshot.providerKey, snapshot]),
+  );
+
+  function latestSnapshotForKeys(snapshotKeys: string[]) {
+    return snapshotKeys
+      .map((providerKey) => latestSnapshotByKey.get(providerKey) ?? null)
+      .filter((snapshot): snapshot is NonNullable<typeof snapshot> => Boolean(snapshot))
+      .sort((left, right) => right.capturedAt.getTime() - left.capturedAt.getTime())[0] ?? null;
+  }
 
   let latestSnapshotAt: string | null = null;
   let healthyDomains = 0;
@@ -225,8 +236,8 @@ export async function loadDashboardOverview(
   let errorDomains = 0;
   let missingDomains = 0;
 
-  for (const providerKey of expectedSnapshotKeys) {
-    const snapshot = latestSnapshotByKey.get(providerKey);
+  for (const snapshotKeys of snapshotKeyGroups) {
+    const snapshot = latestSnapshotForKeys(snapshotKeys);
     if (!snapshot) {
       missingDomains += 1;
       continue;

@@ -17,12 +17,14 @@ import type {
 async function loadLatestProviderPayload<T>(
   userId: string,
   providerKey: string,
+  now: Date,
 ): Promise<T | null> {
   const snapshot = await prisma.analyticsSnapshot.findFirst({
     where: {
       userId,
       providerKey,
       status: AnalyticsSnapshotStatus.SUCCESS,
+      capturedAt: { lte: now },
     },
     orderBy: { capturedAt: "desc" },
     select: { payload: true },
@@ -39,11 +41,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const userId = resolveIntegrationOwnerUserId((session.user as { id: string }).id);
+    const now = new Date();
 
     const [stripe, mercury, hubspot] = await Promise.all([
-      loadLatestProviderPayload<StripeData>(userId, "stripe"),
-      loadLatestProviderPayload<MercuryData>(userId, "mercury"),
-      loadLatestProviderPayload<HubSpotData>(userId, "hubspot"),
+      loadLatestProviderPayload<StripeData>(userId, "stripe", now),
+      loadLatestProviderPayload<MercuryData>(userId, "mercury", now),
+      loadLatestProviderPayload<HubSpotData>(userId, "hubspot", now),
     ]);
     const normalizedMercury = normalizeMercuryDataPayload(mercury);
 

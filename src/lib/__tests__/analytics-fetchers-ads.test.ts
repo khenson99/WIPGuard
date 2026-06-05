@@ -33,7 +33,7 @@ describe("analytics ads fetchers", () => {
             {
               results: [
                 {
-                  campaign: { name: "Brand Search" },
+                  campaign: { id: "campaign_1", name: "Brand Search" },
                   metrics: {
                     cost_micros: "2500000",
                     impressions: "1000",
@@ -63,13 +63,18 @@ describe("analytics ads fetchers", () => {
     expect(data.totalImpressions).toBe(1000);
     expect(data.totalClicks).toBe(40);
     expect(data.totalConversions).toBe(5);
-    expect(data.campaigns[0]?.name).toBe("Brand Search");
+    expect(data.campaigns[0]).toEqual(expect.objectContaining({
+      campaignId: "campaign_1",
+      customerId: "1234567890",
+      name: "Brand Search",
+    }));
 
     const requestUrl = String(fetchMock.mock.calls[1]?.[0] ?? "");
     expect(requestUrl).toContain("/customers/1234567890/googleAds:searchStream");
     expect(requestUrl).not.toContain("/customers/1234567890:searchStream");
 
     const requestInit = fetchMock.mock.calls[1]?.[1] as RequestInit;
+    expect(String(requestInit.body)).toContain("campaign.id");
     const headers = requestInit.headers as Record<string, string>;
     expect(headers["login-customer-id"]).toBe("9998887777");
   });
@@ -290,6 +295,7 @@ describe("analytics ads fetchers", () => {
           return jsonResponse({
             data: [
               {
+                id: "campaign_second",
                 name: "Second Campaign",
                 insights: {
                   data: [
@@ -309,6 +315,7 @@ describe("analytics ads fetchers", () => {
         return jsonResponse({
           data: [
             {
+              id: "campaign_first",
               name: "First Campaign",
               insights: {
                 data: [
@@ -347,6 +354,17 @@ describe("analytics ads fetchers", () => {
       "Second Campaign",
     ]);
     expect(data.campaigns.map((campaign) => campaign.conversions)).toEqual([4, 2]);
+    expect(data.campaigns).toEqual([
+      expect.objectContaining({
+        campaignId: "campaign_first",
+        adAccountId: "12345",
+      }),
+      expect.objectContaining({
+        campaignId: "campaign_second",
+        adAccountId: "12345",
+      }),
+    ]);
+    expect(campaignRequests[0]?.searchParams.get("fields")).toContain("id");
   });
 
   it("marks Meta Ads payloads truncated when campaign page caps stop before cursors are exhausted", async () => {

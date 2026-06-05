@@ -35,6 +35,7 @@ import { runWithContextAsync } from "@/lib/request-context";
 import { REQUIRED_IMLADRIS_PROVIDERS } from "@/lib/imladris/catalog";
 import { ingestImladrisRawRecords } from "@/lib/imladris/ingestion";
 import { buildImladrisRawRecordsFromPayload } from "@/lib/imladris/raw-records";
+import { snapshotKeyQueryVariants } from "@/lib/integrations/provider-registry";
 import { MERCURY_CASHFLOW_SYNC_RULE_KEY } from "@/lib/integrations/provider-metrics-sync";
 import {
   MONTHLY_HISTORY_CONTEXT_KEY,
@@ -251,10 +252,12 @@ async function resolveRefreshUserIds(inputUserIds: string[] | undefined): Promis
 }
 
 const IMLADRIS_SNAPSHOT_KEYS = new Set(
-  REQUIRED_IMLADRIS_PROVIDERS.flatMap((provider) => provider.snapshotKeys)
+  snapshotKeyQueryVariants(
+    REQUIRED_IMLADRIS_PROVIDERS.flatMap((provider) => provider.snapshotKeys)
+  )
 );
 
-function shouldPersistImladrisRawSnapshot(providerKey: string): boolean {
+export function shouldPersistImladrisRawSnapshot(providerKey: string): boolean {
   return IMLADRIS_SNAPSHOT_KEYS.has(providerKey);
 }
 

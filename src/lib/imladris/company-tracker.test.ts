@@ -364,6 +364,105 @@ describe("buildCompanyTrackerDashboard", () => {
     );
   });
 
+  it("ignores future-dated analytics snapshots when building live company metrics", async () => {
+    const currentCapturedAt = new Date("2026-05-31T20:00:00.000Z");
+    const futureCapturedAt = new Date("2026-06-02T20:00:00.000Z");
+    const prisma = prismaMock({
+      snapshots: [
+        {
+          providerKey: "stripe",
+          status: "SUCCESS",
+          capturedAt: currentCapturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            revenue: {
+              mrr: 32_000,
+              mrrChange: 0,
+              totalRevenue30d: 37_000,
+              totalRevenuePrev30d: 34_000,
+              revenueGrowth: 0.08,
+              avgRevenuePerCustomer: 800,
+            },
+            subscriptions: {
+              active: 42,
+              pastDue: 0,
+              canceled: 0,
+              trialing: 0,
+              churnRate: 0.02,
+              recentChurnEvents: [],
+            },
+            payments: {
+              succeeded: 20,
+              failed: 1,
+              successRate: 0.95,
+            },
+            revenueTrend: [],
+          },
+        },
+        {
+          providerKey: "stripe",
+          status: "SUCCESS",
+          capturedAt: futureCapturedAt,
+          expiresAt: new Date("2026-06-03T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            revenue: {
+              mrr: 999_999,
+              mrrChange: 0,
+              totalRevenue30d: 999_999,
+              totalRevenuePrev30d: 34_000,
+              revenueGrowth: 0.08,
+              avgRevenuePerCustomer: 800,
+            },
+            subscriptions: {
+              active: 1,
+              pastDue: 0,
+              canceled: 0,
+              trialing: 0,
+              churnRate: 0.02,
+              recentChurnEvents: [],
+            },
+            payments: {
+              succeeded: 20,
+              failed: 1,
+              successRate: 0.95,
+            },
+            revenueTrend: [],
+          },
+        },
+      ],
+    });
+
+    const now = new Date("2026-06-01T00:00:00.000Z");
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now,
+    });
+
+    expect(dashboard.summary).toMatchObject({
+      arr: 384_000,
+      mrr: 32_000,
+      activeSubscriptions: 42,
+    });
+    expect(dashboard.metrics.find((metric) => metric.key === "revenue.mrr")).toMatchObject({
+      computedAt: currentCapturedAt.toISOString(),
+      periodEnd: currentCapturedAt.toISOString(),
+      value: expect.objectContaining({
+        amount: 32_000,
+        arr: 384_000,
+      }),
+    });
+    expect(prisma.analyticsSnapshot.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          capturedAt: { lte: now },
+        }),
+      }),
+    );
+  });
+
   it("queries organization-owned analytics snapshots when the current user has no direct snapshot rows", async () => {
     const capturedAt = new Date("2026-05-31T20:00:00.000Z");
     const prisma = prismaMock({
@@ -424,6 +523,180 @@ describe("buildCompanyTrackerDashboard", () => {
         }),
       }),
     );
+  });
+
+  it("reports source coverage capture times from each provider's own latest snapshot", async () => {
+    const prisma = prismaMock({
+      snapshots: [
+        {
+          providerKey: "stripe",
+          status: "SUCCESS",
+          capturedAt: new Date("2026-05-31T22:00:00.000Z"),
+          expiresAt: new Date("2026-06-01T22:00:00.000Z"),
+          lastError: null,
+          payload: {
+            revenue: {
+              mrr: 32_000,
+              mrrChange: 0,
+              totalRevenue30d: 37_000,
+              totalRevenuePrev30d: 34_000,
+              revenueGrowth: 0.08,
+              avgRevenuePerCustomer: 800,
+            },
+            subscriptions: {
+              active: 42,
+              pastDue: 0,
+              canceled: 0,
+              trialing: 0,
+              churnRate: 0.02,
+              recentChurnEvents: [],
+            },
+            payments: {
+              succeeded: 20,
+              failed: 1,
+              successRate: 0.95,
+            },
+            revenueTrend: [],
+          },
+        },
+        {
+          providerKey: "hubspot",
+          status: "SUCCESS",
+          capturedAt: new Date("2026-05-31T08:30:00.000Z"),
+          expiresAt: new Date("2026-06-01T08:30:00.000Z"),
+          lastError: null,
+          payload: {
+            funnel: {
+              totalDeals: 0,
+              closedWon: 0,
+              closedLost: 0,
+              unlikely: 0,
+              churn: 0,
+              activeSubscriptions: 42,
+              noShows: 0,
+              demoScheduled: 0,
+              demoFollowUp: 0,
+              avgDealSize: 0,
+              winRate: 0,
+              effectiveWinRate: 0,
+              noShowRate: 0,
+              stages: [],
+              dealsBySource: [],
+            },
+            contacts: {
+              totalContacts: 0,
+              recentContacts: 0,
+              bySource: [],
+            },
+            deals: [],
+          },
+        },
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.sourceCoverage).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "stripe",
+          lastCapturedAt: "2026-05-31T22:00:00.000Z",
+        }),
+        expect.objectContaining({
+          key: "hubspot",
+          lastCapturedAt: "2026-05-31T08:30:00.000Z",
+        }),
+      ]),
+    );
+  });
+
+  it("uses the newest status across snapshot aliases for source coverage", async () => {
+    const prisma = prismaMock({
+      snapshots: [
+        {
+          providerKey: "google_analytics",
+          status: "ERROR",
+          capturedAt: new Date("2026-05-31T08:00:00.000Z"),
+          expiresAt: new Date("2026-06-01T08:00:00.000Z"),
+          lastError: "Old GA alias token failed.",
+          payload: null,
+        },
+        {
+          providerKey: "googleAnalytics",
+          status: "SUCCESS",
+          capturedAt: new Date("2026-05-31T22:00:00.000Z"),
+          expiresAt: new Date("2026-06-01T22:00:00.000Z"),
+          lastError: null,
+          payload: {
+            sessions30d: 12_000,
+            pageviews30d: 24_000,
+            bounceRate: 0.42,
+          },
+        },
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.sourceCoverage).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "googleAnalytics",
+          status: "available",
+          lastCapturedAt: "2026-05-31T22:00:00.000Z",
+        }),
+      ]),
+    );
+    expect(dashboard.trust.warnings).not.toContain("google_analytics: Old GA alias token failed.");
+  });
+
+  it("uses delimiter-formatted snapshot aliases as live metric fallback inputs", async () => {
+    const capturedAt = new Date("2026-05-31T20:00:00.000Z");
+    const prisma = prismaMock({
+      snapshots: [
+        {
+          providerKey: "sales-performance",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            repMonthRows: [
+              {
+                ownerId: "owner_1",
+                ownerName: "Ava",
+                signedDealsBookedValue: 250_000,
+                signedDealsRealizedValue30d: 100_000,
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.metrics.find((metric) => metric.key === "sales.qualified_pipeline")).toMatchObject({
+      status: "partial",
+      value: expect.objectContaining({
+        bookedValue: 250_000,
+        realizedValue30d: 100_000,
+        bookedToRealizedRatio30d: 0.4,
+        source: "analytics.revenue_dashboard",
+      }),
+    });
   });
 
   it("surfaces errored analytics snapshots without using failed payloads as metric values", async () => {
@@ -640,6 +913,145 @@ describe("buildCompanyTrackerDashboard", () => {
         "Canonical customer_success.retention_risk is missing; using latest analytics snapshot stats.",
       ]),
     );
+  });
+
+  it("uses legacy product snapshots as PostHog evidence for activation fallback", async () => {
+    const capturedAt = new Date("2026-05-31T20:00:00.000Z");
+    const analyticsSnapshotFindMany = vi.fn(async (query) => {
+      const providerKeys = (query as {
+        where?: { providerKey?: { in?: string[] } };
+      }).where?.providerKey?.in ?? [];
+      return providerKeys.includes("product")
+        ? [
+            {
+              providerKey: "hubspot",
+              status: "SUCCESS",
+              capturedAt,
+              expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+              lastError: null,
+              payload: {
+                funnel: {
+                  activeSubscriptions: 4,
+                },
+              },
+            },
+            {
+              providerKey: "product",
+              status: "SUCCESS",
+              capturedAt,
+              expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+              lastError: null,
+              payload: {
+                events: [
+                  { event: "activation_completed", distinct_id: "account_1" },
+                  { event: "pageview", distinct_id: "account_2" },
+                ],
+                eventCount: 2,
+              },
+            },
+          ]
+        : [];
+    });
+    const prisma = {
+      ...prismaMock(),
+      analyticsSnapshot: {
+        findMany: analyticsSnapshotFindMany,
+      },
+    };
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.metrics.find((metric) => metric.key === "product.activation_rate")).toMatchObject({
+      status: "partial",
+      value: expect.objectContaining({
+        rate: 25,
+        activatedAccounts: 1,
+        eligibleAccounts: 4,
+        source: "analytics.snapshot_activation",
+      }),
+    });
+    expect(dashboard.sourceCoverage).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "posthog", status: "available" }),
+      ]),
+    );
+    expect(analyticsSnapshotFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          providerKey: {
+            in: expect.arrayContaining(["posthog", "product"]),
+          },
+        }),
+      }),
+    );
+  });
+
+  it("uses the newest compatible PostHog snapshot alias for activation fallback", async () => {
+    const prisma = prismaMock({
+      snapshots: [
+        {
+          providerKey: "hubspot",
+          status: "SUCCESS",
+          capturedAt: new Date("2026-05-31T20:00:00.000Z"),
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            funnel: {
+              activeSubscriptions: 4,
+            },
+          },
+        },
+        {
+          providerKey: "posthog",
+          status: "SUCCESS",
+          capturedAt: new Date("2026-05-31T08:00:00.000Z"),
+          expiresAt: new Date("2026-06-01T08:00:00.000Z"),
+          lastError: null,
+          payload: {
+            events: [
+              { event: "activation_completed", distinct_id: "account_1" },
+            ],
+            eventCount: 1,
+          },
+        },
+        {
+          providerKey: "product",
+          status: "SUCCESS",
+          capturedAt: new Date("2026-05-31T22:00:00.000Z"),
+          expiresAt: new Date("2026-06-01T22:00:00.000Z"),
+          lastError: null,
+          payload: {
+            events: [
+              { event: "activation_completed", distinct_id: "account_1" },
+              { event: "activation_completed", distinct_id: "account_2" },
+              { event: "activation_completed", distinct_id: "account_3" },
+              { event: "activation_completed", distinct_id: "account_4" },
+            ],
+            eventCount: 4,
+          },
+        },
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.metrics.find((metric) => metric.key === "product.activation_rate")).toMatchObject({
+      status: "partial",
+      value: expect.objectContaining({
+        rate: 100,
+        activatedAccounts: 4,
+        eligibleAccounts: 4,
+        eventCount: 4,
+      }),
+    });
   });
 
   it("returns board readiness, source coverage, and draft targets when goals are not configured", async () => {

@@ -6,6 +6,7 @@ import {
 import { buildAnalyticsMetricsLayer } from "@/lib/analytics/kpis";
 import { buildRevenueDashboardData } from "@/lib/analytics/revenue-dashboard";
 import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
+import { snapshotKeyQueryVariants } from "@/lib/integrations/provider-registry";
 import type { ImladrisDashboardDefinition } from "@/lib/imladris/catalog";
 import { normalizeMetricConfidence, normalizeMetricStatus, normalizeMetricWarnings } from "@/lib/imladris/confidence";
 import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
@@ -77,6 +78,7 @@ interface AnalyticsSnapshotRow {
 
 interface CompanyAnalyticsStats {
   snapshots: Map<string, AnalyticsSnapshotRow>;
+  statusSnapshotsBySource: Map<string, AnalyticsSnapshotRow>;
   metricsLayer: AnalyticsMetricsLayer;
   revenueDashboard: RevenueDashboardData;
   snapshotCount: number;
@@ -198,7 +200,7 @@ export type CompanyTrackerPrisma = Pick<
   "imladrisCanonicalMetricValue" | "financialGoal" | "analyticsSnapshot"
 >;
 
-const ANALYTICS_SNAPSHOT_PROVIDER_KEYS = [
+const ANALYTICS_SNAPSHOT_BASE_PROVIDER_KEYS = [
   "stripe",
   "mercury",
   "hubspot",
@@ -225,12 +227,23 @@ const ANALYTICS_SNAPSHOT_PROVIDER_KEYS = [
   "product",
 ] as const;
 
+const ANALYTICS_SNAPSHOT_PROVIDER_KEYS = snapshotKeyQueryVariants([
+  ...ANALYTICS_SNAPSHOT_BASE_PROVIDER_KEYS,
+]);
+
 const SOURCE_SNAPSHOT_KEYS = new Map<string, string[]>(
   REQUIRED_IMLADRIS_PROVIDERS.map((provider) => [
     provider.key,
-    provider.snapshotKeys,
+    snapshotKeyQueryVariants(provider.snapshotKeys),
   ]),
 );
+
+const COMPATIBLE_PAYLOAD_SNAPSHOT_KEYS = new Map<string, string[]>([
+  ["posthog", ["posthog", "product"]],
+  ["product", ["posthog", "product"]],
+]);
+
+const EMPTY_ANALYTICS_SNAPSHOT_MAP = new Map<string, AnalyticsSnapshotRow>();
 
 const BOARD_TARGET_METRICS = ["ARR", "RUNWAY", "BURN_RATE"] as const;
 
@@ -529,12 +542,31 @@ function snapshotKeysForSource(sourceKey: string): string[] {
   return SOURCE_SNAPSHOT_KEYS.get(sourceKey) ?? [sourceKey];
 }
 
+function sourceKeyForSnapshotKey(snapshotKey: string): string | null {
+  for (const [sourceKey, snapshotKeys] of SOURCE_SNAPSHOT_KEYS.entries()) {
+    if (snapshotKeys.includes(snapshotKey)) return sourceKey;
+  }
+  return null;
+}
+
 function latestSnapshotsByProvider(rows: AnalyticsSnapshotRow[]): Map<string, AnalyticsSnapshotRow> {
   const latest = new Map<string, AnalyticsSnapshotRow>();
   for (const row of rows) {
     const existing = latest.get(row.providerKey);
     if (!existing || (toDate(row.capturedAt)?.getTime() ?? 0) > (toDate(existing.capturedAt)?.getTime() ?? 0)) {
       latest.set(row.providerKey, row);
+    }
+  }
+  return latest;
+}
+
+function latestSnapshotsBySource(rows: AnalyticsSnapshotRow[]): Map<string, AnalyticsSnapshotRow> {
+  const latest = new Map<string, AnalyticsSnapshotRow>();
+  for (const row of rows) {
+    const sourceKey = sourceKeyForSnapshotKey(row.providerKey) ?? row.providerKey;
+    const existing = latest.get(sourceKey);
+    if (!existing || (toDate(row.capturedAt)?.getTime() ?? 0) > (toDate(existing.capturedAt)?.getTime() ?? 0)) {
+      latest.set(sourceKey, row);
     }
   }
   return latest;
@@ -555,18 +587,43 @@ function analyticsSnapshotScopeWhere(context: UserContext) {
   return { OR: userScopes };
 }
 
+function latestSnapshotForProviderKey(
+  snapshots: Map<string, AnalyticsSnapshotRow>,
+  providerKey: string,
+): AnalyticsSnapshotRow | null {
+  return latestSnapshotForProviderKeys(snapshots, [providerKey]);
+}
+
+function latestSnapshotForProviderKeys(
+  snapshots: Map<string, AnalyticsSnapshotRow>,
+  providerKeys: string[],
+): AnalyticsSnapshotRow | null {
+  const variants = snapshotKeyQueryVariants(providerKeys);
+  const candidates = variants
+    .map((snapshotKey) => snapshots.get(snapshotKey) ?? null)
+    .filter((snapshot): snapshot is AnalyticsSnapshotRow => Boolean(snapshot));
+  if (candidates.length === 0) return null;
+
+  return [...candidates].sort(
+    (left, right) =>
+      (toDate(right.capturedAt)?.getTime() ?? 0) -
+      (toDate(left.capturedAt)?.getTime() ?? 0),
+  )[0] ?? null;
+}
+
 function analyticsDataFromSnapshots(
   snapshots: Map<string, AnalyticsSnapshotRow>,
   now: Date,
 ): AnalyticsDashboardData {
-  const payload = (providerKey: string) => snapshots.get(providerKey)?.payload ?? null;
+  const payload = (providerKey: string) =>
+    latestSnapshotForProviderKey(snapshots, providerKey)?.payload ?? null;
 
   return {
-    stripe: (snapshots.get("stripe")?.payload as StripeData | undefined) ?? null,
-    mercury: (snapshots.get("mercury")?.payload as MercuryData | undefined) ?? null,
-    hubspot: (snapshots.get("hubspot")?.payload as HubSpotData | undefined) ?? null,
+    stripe: (payload("stripe") as StripeData | undefined) ?? null,
+    mercury: (payload("mercury") as MercuryData | undefined) ?? null,
+    hubspot: (payload("hubspot") as HubSpotData | undefined) ?? null,
     salesPerformance:
-      (snapshots.get("salesPerformance")?.payload as SalesPerformancePack | undefined) ?? null,
+      (payload("salesPerformance") as SalesPerformancePack | undefined) ?? null,
     googleAnalytics: payload("googleAnalytics"),
     googleSearchConsole: payload("googleSearchConsole") ?? payload("searchConsole"),
     googleAds: payload("googleAds"),
@@ -611,11 +668,14 @@ async function buildCompanyAnalyticsStats(input: {
 }): Promise<CompanyAnalyticsStats | null> {
   if (!input.context.userId) return null;
 
-  const snapshotRows = (await input.prisma.analyticsSnapshot.findMany({
+  const loadedSnapshotRows = (await input.prisma.analyticsSnapshot.findMany({
     where: {
       ...analyticsSnapshotScopeWhere(input.context),
       providerKey: {
         in: [...ANALYTICS_SNAPSHOT_PROVIDER_KEYS],
+      },
+      capturedAt: {
+        lte: input.now,
       },
     },
     select: {
@@ -628,8 +688,13 @@ async function buildCompanyAnalyticsStats(input: {
     },
     orderBy: [{ capturedAt: "desc" }],
   })) as AnalyticsSnapshotRow[];
+  const snapshotRows = loadedSnapshotRows.filter((snapshot) => {
+    const capturedAt = toDate(snapshot.capturedAt);
+    return capturedAt !== null && capturedAt.getTime() <= input.now.getTime();
+  });
   const latestStatusSnapshots = latestSnapshotsByProvider(snapshotRows);
   if (latestStatusSnapshots.size === 0) return null;
+  const statusSnapshotsBySource = latestSnapshotsBySource([...latestStatusSnapshots.values()]);
 
   const snapshots = latestSnapshotsByProvider(
     snapshotRows.filter(
@@ -666,6 +731,7 @@ async function buildCompanyAnalyticsStats(input: {
 
   return {
     snapshots,
+    statusSnapshotsBySource,
     metricsLayer: buildAnalyticsMetricsLayer(analyticsData),
     revenueDashboard: buildRevenueDashboardData(analyticsData),
     snapshotCount: snapshots.size,
@@ -673,7 +739,7 @@ async function buildCompanyAnalyticsStats(input: {
     availableProviders: new Set(snapshots.keys()),
     staleProviders,
     errorProviders,
-    warnings: [...latestStatusSnapshots.values()]
+    warnings: [...statusSnapshotsBySource.values()]
       .filter((snapshot) => snapshot.status === "ERROR" || snapshot.lastError)
       .map(
         (snapshot) =>
@@ -687,7 +753,9 @@ function hasAnalyticsProvider(
   ...providerKeys: string[]
 ): boolean {
   return providerKeys.some((providerKey) =>
-    analyticsStats?.availableProviders.has(providerKey),
+    snapshotKeysForSource(providerKey).some((snapshotKey) =>
+      analyticsStats?.availableProviders.has(snapshotKey),
+    ),
   );
 }
 
@@ -695,7 +763,22 @@ function snapshotPayload(
   analyticsStats: CompanyAnalyticsStats | null,
   providerKey: string,
 ): unknown {
-  return analyticsStats?.snapshots.get(providerKey)?.payload ?? null;
+  const compatiblePayloadKeys = COMPATIBLE_PAYLOAD_SNAPSHOT_KEYS.get(providerKey);
+  if (compatiblePayloadKeys) {
+    return latestSnapshotForProviderKeys(
+      analyticsStats?.snapshots ?? EMPTY_ANALYTICS_SNAPSHOT_MAP,
+      compatiblePayloadKeys,
+    )?.payload ?? null;
+  }
+
+  for (const snapshotKey of snapshotKeysForSource(providerKey)) {
+    const payload = latestSnapshotForProviderKey(
+      analyticsStats?.snapshots ?? EMPTY_ANALYTICS_SNAPSHOT_MAP,
+      snapshotKey,
+    )?.payload;
+    if (payload !== null && payload !== undefined) return payload;
+  }
+  return null;
 }
 
 function paidAcquisitionSummary(analyticsStats: CompanyAnalyticsStats): {
@@ -1110,6 +1193,9 @@ function analyticsFallbackForMetric(
         qualifiedDealCount: pipeline.qualifiedPipelineCount,
         openPipelineValue: pipeline.openPipelineValue,
         openPipelineCount: pipeline.openPipelineCount,
+        bookedValue: pipeline.bookedValue,
+        realizedValue30d: pipeline.realizedValue30d,
+        bookedToRealizedRatio30d: pipeline.bookedToRealizedRatio30d,
         source: "analytics.revenue_dashboard",
       };
     case "marketing.pipeline_efficiency":
@@ -1536,18 +1622,37 @@ function sourceHasSnapshot(
   );
 }
 
+function sourceLatestCapturedAt(
+  analyticsStats: CompanyAnalyticsStats | null,
+  sourceKey: string,
+): string | null {
+  const latest = snapshotKeysForSource(sourceKey)
+    .map((snapshotKey) => analyticsStats?.snapshots.get(snapshotKey)?.capturedAt)
+    .map(toDate)
+    .filter((date): date is Date => Boolean(date))
+    .sort((left, right) => right.getTime() - left.getTime())[0];
+  return latest ? latest.toISOString() : null;
+}
+
 function sourceSnapshotStatus(
   analyticsStats: CompanyAnalyticsStats | null,
   sourceKey: string,
+  now: Date,
 ): SourceCoverageStatus | null {
-  const snapshotKeys = snapshotKeysForSource(sourceKey);
-  if (snapshotKeys.some((snapshotKey) => analyticsStats?.errorProviders.has(snapshotKey))) {
+  const latestSnapshot = analyticsStats?.statusSnapshotsBySource.get(sourceKey);
+  if (!latestSnapshot) return null;
+  if (latestSnapshot.status === "ERROR" || latestSnapshot.lastError) {
     return "error";
   }
-  if (snapshotKeys.some((snapshotKey) => analyticsStats?.staleProviders.has(snapshotKey))) {
+  if ((toDate(latestSnapshot.expiresAt)?.getTime() ?? Number.POSITIVE_INFINITY) <
+    now.getTime()) {
     return "stale";
   }
-  if (snapshotKeys.some((snapshotKey) => analyticsStats?.availableProviders.has(snapshotKey))) {
+  if (
+    latestSnapshot.status === "SUCCESS" &&
+    latestSnapshot.payload !== null &&
+    latestSnapshot.payload !== undefined
+  ) {
     return "available";
   }
   return null;
@@ -1557,18 +1662,19 @@ function buildSourceCoverage(input: {
   dashboard: ImladrisDashboardDefinition;
   canonicalRows: CanonicalMetricRow[];
   analyticsStats: CompanyAnalyticsStats | null;
+  now: Date;
 }): CompanySourceCoverage[] {
   const canonicalSources = canonicalSourceKeys(input.canonicalRows);
 
   return input.dashboard.sourceKeys.map((sourceKey) => {
     const definition = REQUIRED_IMLADRIS_PROVIDERS.find((provider) => provider.key === sourceKey);
-    const snapshotStatus = sourceSnapshotStatus(input.analyticsStats, sourceKey);
+    const snapshotStatus = sourceSnapshotStatus(input.analyticsStats, sourceKey, input.now);
     const canonicalAvailable = canonicalSources.has(sourceKey);
     const status: SourceCoverageStatus =
       snapshotStatus ??
       (canonicalAvailable ? "available" : "missing");
     const lastCapturedAt = sourceHasSnapshot(input.analyticsStats, sourceKey)
-      ? input.analyticsStats?.latestCapturedAt ?? null
+      ? sourceLatestCapturedAt(input.analyticsStats, sourceKey)
       : null;
     const detail =
       status === "available"
@@ -1773,6 +1879,7 @@ export async function buildCompanyTrackerDashboard(input: {
     dashboard,
     canonicalRows: typedCanonicalRows,
     analyticsStats,
+    now,
   });
   const trust = buildTrust(metrics, analyticsStats);
   const boardReadiness = buildBoardReadiness({

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AnalyticsSnapshotStatus,
   DealStage,
@@ -48,6 +48,10 @@ vi.mock("@/lib/analytics/credentials", () => ({
 describe("loadDashboardOverview", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("summarizes revenue, integrations, automations, and analytics freshness", async () => {
@@ -125,6 +129,106 @@ describe("loadDashboardOverview", () => {
       healthyDomains: 1,
       errorDomains: 1,
       missingDomains: 1,
+    });
+  });
+
+  it("counts snapshot-key variants as one analytics freshness domain", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const { snapshotKeysForIntegrationProvider } = await import("@/lib/analytics/provider-health");
+    const { loadDashboardOverview } = await import("@/lib/platform/dashboard/overview");
+
+    vi.mocked(snapshotKeysForIntegrationProvider).mockImplementation((provider: string) => {
+      if (provider === "GOOGLE_ANALYTICS") return ["googleAnalytics", "google_analytics"];
+      if (provider === "HUBSPOT") return ["hubspot"];
+      return ["slack"];
+    });
+    vi.mocked(prisma.deal.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.deal.aggregate).mockResolvedValue({ _sum: { amount: 0 } } as never);
+    vi.mocked(prisma.workflowDefinition.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.workflowApproval.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.automationRecommendation.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.workflowRun.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.integrationConnection.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.analyticsSnapshot.groupBy).mockResolvedValue([
+      { providerKey: "google_analytics", _max: { capturedAt: new Date("2026-03-11T15:00:00.000Z") } },
+    ] as never);
+    vi.mocked(prisma.analyticsSnapshot.findMany).mockResolvedValue([
+      {
+        providerKey: "google_analytics",
+        status: AnalyticsSnapshotStatus.SUCCESS,
+        capturedAt: new Date("2026-03-11T15:00:00.000Z"),
+        expiresAt: new Date("2099-03-11T17:00:00.000Z"),
+      },
+    ] as never);
+
+    const payload = await loadDashboardOverview({
+      userId: "user-1",
+      organizationId: "org-1",
+    });
+
+    expect(prisma.analyticsSnapshot.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          providerKey: {
+            in: expect.arrayContaining(["googleAnalytics", "google_analytics"]),
+          },
+        }),
+      }),
+    );
+    expect(payload.analyticsFreshness).toMatchObject({
+      healthyDomains: 1,
+      missingDomains: 2,
+    });
+  });
+
+  it("ignores future-dated snapshots when summarizing analytics freshness", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-11T16:00:00.000Z"));
+    const { prisma } = await import("@/lib/prisma");
+    const { loadDashboardOverview } = await import("@/lib/platform/dashboard/overview");
+
+    vi.mocked(prisma.deal.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.deal.aggregate).mockResolvedValue({ _sum: { amount: 0 } } as never);
+    vi.mocked(prisma.workflowDefinition.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.workflowApproval.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.automationRecommendation.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.workflowRun.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.integrationConnection.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.analyticsSnapshot.groupBy).mockResolvedValue([
+      { providerKey: "hubspot", _max: { capturedAt: new Date("2026-03-11T15:00:00.000Z") } },
+      { providerKey: "slack", _max: { capturedAt: new Date("2026-03-12T15:00:00.000Z") } },
+    ] as never);
+    vi.mocked(prisma.analyticsSnapshot.findMany).mockResolvedValue([
+      {
+        providerKey: "hubspot",
+        status: AnalyticsSnapshotStatus.SUCCESS,
+        capturedAt: new Date("2026-03-11T15:00:00.000Z"),
+        expiresAt: new Date("2099-03-11T17:00:00.000Z"),
+      },
+      {
+        providerKey: "slack",
+        status: AnalyticsSnapshotStatus.SUCCESS,
+        capturedAt: new Date("2026-03-12T15:00:00.000Z"),
+        expiresAt: new Date("2099-03-12T17:00:00.000Z"),
+      },
+    ] as never);
+
+    const payload = await loadDashboardOverview({
+      userId: "user-1",
+      organizationId: "org-1",
+    });
+
+    expect(prisma.analyticsSnapshot.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          capturedAt: { lte: new Date("2026-03-11T16:00:00.000Z") },
+        }),
+      }),
+    );
+    expect(payload.analyticsFreshness).toMatchObject({
+      latestSnapshotAt: "2026-03-11T15:00:00.000Z",
+      healthyDomains: 1,
+      missingDomains: 2,
     });
   });
 

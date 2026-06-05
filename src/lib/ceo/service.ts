@@ -1,5 +1,6 @@
 import { AnalyticsSnapshotStatus, Prisma, RetentionTenantStatus } from "@/generated/prisma/client";
 import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
+import { snapshotKeyQueryVariants } from "@/lib/integrations/provider-registry";
 import { prisma } from "@/lib/prisma";
 import {
   buildDefaultCeoReportPacks,
@@ -119,6 +120,18 @@ function sourceKeysForDefinition(definition: CeoMetricDefinition): string[] {
       ...(definition.optionalSourceDependencies ?? []),
     ])
   );
+}
+
+function sourceKeyVariantLookup(sourceKeys: string[]): Map<string, string> {
+  const lookup = new Map<string, string>();
+  for (const sourceKey of sourceKeys) {
+    for (const variant of snapshotKeyQueryVariants([sourceKey])) {
+      if (!lookup.has(variant)) {
+        lookup.set(variant, sourceKey);
+      }
+    }
+  }
+  return lookup;
 }
 
 function getPathNumber(payload: unknown, path: string[]): number | null {
@@ -449,11 +462,15 @@ function verifiedMetricKeysForDefinitions(definitions: CeoMetricDefinition[]): S
 async function loadLatestAnalyticsSnapshots(input: {
   userId: string;
   sourceKeys: string[];
+  asOf: Date;
 }): Promise<AnalyticsSnapshotSample[]> {
-  return prisma.analyticsSnapshot.findMany({
+  const sourceKeyLookup = sourceKeyVariantLookup(input.sourceKeys);
+  const providerKeys = Array.from(sourceKeyLookup.keys());
+  const snapshots = await prisma.analyticsSnapshot.findMany({
     where: {
       userId: input.userId,
-      providerKey: { in: Array.from(new Set(input.sourceKeys)) },
+      providerKey: { in: providerKeys },
+      capturedAt: { lte: input.asOf },
     },
     orderBy: [{ capturedAt: "desc" }],
     select: {
@@ -466,6 +483,13 @@ async function loadLatestAnalyticsSnapshots(input: {
       payload: true,
     },
   });
+
+  return snapshots
+    .filter((snapshot) => snapshot.capturedAt.getTime() <= input.asOf.getTime())
+    .map((snapshot) => ({
+      ...snapshot,
+      providerKey: sourceKeyLookup.get(snapshot.providerKey) ?? snapshot.providerKey,
+    }));
 }
 
 async function upsertMetricDefinitions(definitions: CeoMetricDefinition[]): Promise<Map<string, string>> {
@@ -556,9 +580,9 @@ export async function loadCeoMetricSnapshot(input: {
 }): Promise<CeoMetricSnapshotPayload> {
   const definitions = getDefaultCeoMetricDefinitions();
   const sourceKeys = definitions.flatMap(sourceKeysForDefinition);
-  const snapshots = await loadLatestAnalyticsSnapshots({ userId: input.userId, sourceKeys });
-  const latestSnapshots = latestSnapshotByProvider(snapshots);
   const asOf = new Date();
+  const snapshots = await loadLatestAnalyticsSnapshots({ userId: input.userId, sourceKeys, asOf });
+  const latestSnapshots = latestSnapshotByProvider(snapshots);
   const snapshotSourceSamples = snapshots.map(sourceSampleFromSnapshot);
   const retentionMetric = await loadRetentionMetricSource({
     organizationId: input.organizationId ?? null,

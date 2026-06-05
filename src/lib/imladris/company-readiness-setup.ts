@@ -106,15 +106,20 @@ function companySnapshotKeys(): string[] {
   );
 }
 
+function canonicalSnapshotGroupKey(providerKey: string): string {
+  return snapshotKeyQueryVariants([providerKey])[0] ?? providerKey;
+}
+
 function latestSnapshotsByProvider(rows: AnalyticsSnapshotRow[]): AnalyticsSnapshotRow[] {
   const latest = new Map<string, AnalyticsSnapshotRow>();
   for (const row of rows) {
     if (row.payload === null || row.payload === undefined) continue;
-    const existing = latest.get(row.providerKey);
+    const groupKey = canonicalSnapshotGroupKey(row.providerKey);
+    const existing = latest.get(groupKey);
     const rowTime = toDate(row.capturedAt)?.getTime() ?? 0;
     const existingTime = toDate(existing?.capturedAt)?.getTime() ?? 0;
     if (!existing || rowTime > existingTime) {
-      latest.set(row.providerKey, row);
+      latest.set(groupKey, row);
     }
   }
   return [...latest.values()];
@@ -123,16 +128,20 @@ function latestSnapshotsByProvider(rows: AnalyticsSnapshotRow[]): AnalyticsSnaps
 async function loadLatestCompanySnapshots(input: {
   prisma: PrismaClientType;
   context: UserContext;
+  now: Date;
 }): Promise<AnalyticsSnapshotRow[]> {
   if (!input.context.userId) return [];
 
-  const rows = (await input.prisma.analyticsSnapshot.findMany({
+  const loadedRows = (await input.prisma.analyticsSnapshot.findMany({
     where: {
       ...analyticsSnapshotScopeWhere(input.context),
       providerKey: {
         in: companySnapshotKeys(),
       },
       status: "SUCCESS",
+      capturedAt: {
+        lte: input.now,
+      },
     },
     select: {
       providerKey: true,
@@ -146,6 +155,10 @@ async function loadLatestCompanySnapshots(input: {
     },
     orderBy: [{ capturedAt: "desc" }],
   })) as AnalyticsSnapshotRow[];
+  const rows = loadedRows.filter((row) => {
+    const capturedAt = toDate(row.capturedAt);
+    return capturedAt !== null && capturedAt.getTime() <= input.now.getTime();
+  });
 
   return latestSnapshotsByProvider(rows);
 }
@@ -290,6 +303,7 @@ export async function runCompanyReadinessSetup(input: {
   const snapshots = await loadLatestCompanySnapshots({
     prisma: input.prisma,
     context: input.context,
+    now,
   });
   const snapshotsUsed = await backfillSnapshots({
     prisma: input.prisma,

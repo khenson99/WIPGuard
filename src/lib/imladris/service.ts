@@ -3,6 +3,8 @@ import type { ImladrisProviderKey } from "@/lib/imladris/catalog";
 import { normalizeMetricConfidence, normalizeMetricStatus, normalizeMetricWarnings } from "@/lib/imladris/confidence";
 import { getImladrisHistoricalWindow } from "@/lib/imladris/ingestion";
 import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
+import { snapshotKeyQueryVariants } from "@/lib/integrations/provider-registry";
+import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import type { IntegrationProvider } from "@/generated/prisma/client";
 import type { PrismaClientType } from "@/lib/prisma";
 
@@ -266,6 +268,12 @@ function displaySourceStateStatus(status: unknown): string {
   return normalizeSourceStateStatus(status) || (typeof status === "string" && status.trim()) || "UNKNOWN";
 }
 
+function normalizedErrorMessage(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -397,27 +405,6 @@ function providerAliasMatches(value: unknown, aliases: string[]): boolean {
     aliases.some((alias) => normalizeProviderAlias(alias) === normalizedValue);
 }
 
-function snapshotKeyQueryVariants(snapshotKeys: string[]): string[] {
-  const values = new Set<string>();
-  for (const snapshotKey of snapshotKeys) {
-    const trimmed = snapshotKey.trim();
-    if (!trimmed) continue;
-    const snakeCaseKey = trimmed
-      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
-      .replace(/[^a-zA-Z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "")
-      .toLowerCase();
-
-    values.add(trimmed);
-    if (snakeCaseKey) {
-      values.add(snakeCaseKey);
-      values.add(snakeCaseKey.replaceAll("_", "-"));
-      values.add(snakeCaseKey.replaceAll("_", ""));
-    }
-  }
-  return [...values];
-}
-
 function isUnknownCompletedSyncRunStatus(status: string): boolean {
   return !["SUCCESS", "PARTIAL", "ERROR"].includes(status);
 }
@@ -528,6 +515,25 @@ function contextQueryOr(context: UserContext): Array<Record<string, string | nul
     ];
   }
   return [{ userId: null, organizationId: null }];
+}
+
+function sourceEvidenceOwnerUserId(context: UserContext): string | null {
+  if (!context.userId) return null;
+  const ownerUserId = resolveIntegrationOwnerUserId(context.userId);
+  return ownerUserId !== context.userId ? ownerUserId : null;
+}
+
+function sourceEvidenceQueryOr(context: UserContext): Array<Record<string, string | null>> {
+  const scopes = contextQueryOr(context);
+  const ownerUserId = sourceEvidenceOwnerUserId(context);
+  if (!ownerUserId) return scopes;
+  return [
+    ...scopes,
+    {
+      userId: ownerUserId,
+      organizationId: null,
+    },
+  ];
 }
 
 function compareCanonicalMetricRows(
@@ -648,6 +654,27 @@ function syncRunAccountingError(syncRun: SourceSyncRunRow): string | null {
   return null;
 }
 
+function syncRunCoverageError(counts: ReturnType<typeof syncRunCounts> | null): string | null {
+  if (
+    counts?.errorCount !== null &&
+    counts?.errorCount !== undefined &&
+    counts.errorCount > 0
+  ) {
+    const noun = counts.errorCount === 1 ? "record" : "records";
+    return `Sync run reported ${counts.errorCount} errored ${noun}.`;
+  }
+  if (
+    counts?.recordCount !== null &&
+    counts?.acceptedCount !== null &&
+    counts?.recordCount !== undefined &&
+    counts?.acceptedCount !== undefined &&
+    counts.acceptedCount < counts.recordCount
+  ) {
+    return `Sync run accepted ${counts.acceptedCount} of ${counts.recordCount} observed records.`;
+  }
+  return null;
+}
+
 function hasInvalidSyncRunWindow(syncRun: SourceSyncRunRow, now: Date): boolean {
   const windowStart = toDate(syncRun.windowStart);
   const windowEnd = toDate(syncRun.windowEnd);
@@ -751,27 +778,31 @@ function sourceLastError(input: {
   const counts = input.syncRun ? syncRunCounts(input.syncRun) : null;
 
   if (connectionStatus === "DISCONNECTED") {
-    return input.connection?.lastError ?? null;
+    return normalizedErrorMessage(input.connection?.lastError);
   }
 
   if (input.status === "error") {
     if (connectionExpiryInvalid(input.connection)) {
-      return input.connection?.lastError ?? "Integration credential expiry is invalid.";
+      return normalizedErrorMessage(input.connection?.lastError) ?? "Integration credential expiry is invalid.";
     }
     if (connectionExpired(input.connection, input.now)) {
-      return input.connection?.lastError ?? "Integration credentials expired.";
+      return normalizedErrorMessage(input.connection?.lastError) ?? "Integration credentials expired.";
     }
-    if (syncRunStatus === "ERROR" && input.syncRun?.lastError) {
-      return input.syncRun.lastError;
+    const syncRunLastError = normalizedErrorMessage(input.syncRun?.lastError);
+    if (syncRunStatus === "ERROR" && syncRunLastError) {
+      return syncRunLastError;
     }
-    if (!input.syncRun && snapshotStatus === "ERROR" && input.snapshot?.lastError) {
-      return input.snapshot.lastError;
+    const snapshotLastError = normalizedErrorMessage(input.snapshot?.lastError);
+    if (!input.syncRun && snapshotStatus === "ERROR" && snapshotLastError) {
+      return snapshotLastError;
     }
-    if (connectionStatus === "ERROR" && input.connection?.lastError) {
-      return input.connection.lastError;
+    const connectionLastError = normalizedErrorMessage(input.connection?.lastError);
+    if (connectionStatus === "ERROR" && connectionLastError) {
+      return connectionLastError;
     }
   }
 
+  const syncRunLastError = normalizedErrorMessage(input.syncRun?.lastError);
   if (
     input.status === "partial" &&
     input.syncRun &&
@@ -782,15 +813,16 @@ function sourceLastError(input: {
       hasInvalidSyncRunWindow(input.syncRun, input.now) ||
       syncRunCountsAreIncomplete(counts) ||
       syncRunCountsHaveErrors(counts)) &&
-    input.syncRun.lastError
+    syncRunLastError
   ) {
-    return input.syncRun.lastError;
+    return syncRunLastError;
   }
 
   if (input.status === "partial" && input.syncRun) {
     return (
       (!toDate(input.syncRun.completedAt) ? "Sync run has not completed." : null) ??
       syncRunAccountingError(input.syncRun) ??
+      syncRunCoverageError(counts) ??
       syncRunWindowError(input.syncRun, input.now)
     );
   }
@@ -802,11 +834,15 @@ function sourceLastError(input: {
     !input.syncRun &&
     connectionStatus === "CONNECTED"
   ) {
-    return input.connection.lastError ?? `${sourceLabel(input.sourceKey)} is connected but no raw sync has completed yet.`;
+    return normalizedErrorMessage(input.connection.lastError) ?? `${sourceLabel(input.sourceKey)} is connected but no raw sync has completed yet.`;
   }
 
-  const snapshotLastError = input.syncRun ? null : input.snapshot?.lastError ?? null;
-  return input.connection?.lastError ?? input.syncRun?.lastError ?? snapshotLastError;
+  const snapshotLastError = input.syncRun ? null : normalizedErrorMessage(input.snapshot?.lastError);
+  return (
+    normalizedErrorMessage(input.connection?.lastError) ??
+    normalizedErrorMessage(input.syncRun?.lastError) ??
+    snapshotLastError
+  );
 }
 
 function canonicalMetricStatus(sourceKeys: ImladrisProviderKey[], sourceStatuses: Map<ImladrisProviderKey, SourceStatus>) {
@@ -968,13 +1004,18 @@ function connectionTimestamp(connection: SourceRow, now: Date): number {
   );
 }
 
-function connectionScopeSpecificity(connection: SourceRow, context: UserContext): number {
+function connectionScopeSpecificity(
+  connection: SourceRow,
+  context: UserContext,
+  ownerUserId: string | null,
+): number {
   const userId = connection.userId ?? null;
   const organizationId = connection.organizationId ?? null;
 
   if (context.organizationId) {
     if (userId === context.userId && organizationId === context.organizationId) return 4;
     if (context.userId && userId === context.userId && organizationId === null) return 3;
+    if (ownerUserId && userId === ownerUserId && organizationId === null) return 3;
     if (userId === null && organizationId === context.organizationId) return 2;
     if (userId === null && organizationId === null) return 1;
     return 0;
@@ -982,6 +1023,7 @@ function connectionScopeSpecificity(connection: SourceRow, context: UserContext)
 
   if (context.userId) {
     if (userId === context.userId && organizationId === null) return 3;
+    if (ownerUserId && userId === ownerUserId && organizationId === null) return 3;
     if (userId === null && organizationId === null) return 1;
     return 0;
   }
@@ -1011,7 +1053,11 @@ function connectionAvailableAt(connection: SourceRow, now: Date): boolean {
   return true;
 }
 
-function connectionMatchesContext(connection: SourceRow, context: UserContext): boolean {
+function connectionMatchesContext(
+  connection: SourceRow,
+  context: UserContext,
+  ownerUserId: string | null,
+): boolean {
   if (connection.userId === undefined && connection.organizationId === undefined) return true;
 
   const userId = connection.userId ?? null;
@@ -1022,13 +1068,16 @@ function connectionMatchesContext(connection: SourceRow, context: UserContext): 
       return userId === null || userId === context.userId;
     }
     if (organizationId === null) {
-      return userId === null || Boolean(context.userId && userId === context.userId);
+      return userId === null ||
+        Boolean(context.userId && userId === context.userId) ||
+        Boolean(ownerUserId && userId === ownerUserId);
     }
     return false;
   }
 
   if (context.userId) {
-    return organizationId === null && (userId === null || userId === context.userId);
+    return organizationId === null &&
+      (userId === null || userId === context.userId || userId === ownerUserId);
   }
 
   return userId === null && organizationId === null;
@@ -1039,10 +1088,11 @@ function compareSourceConnections(
   right: SourceRow,
   context: UserContext,
   now: Date,
+  ownerUserId: string | null,
 ): number {
   const scopeDifference =
-    connectionScopeSpecificity(right, context) -
-    connectionScopeSpecificity(left, context);
+    connectionScopeSpecificity(right, context, ownerUserId) -
+    connectionScopeSpecificity(left, context, ownerUserId);
   if (scopeDifference !== 0) return scopeDifference;
 
   if (sameConnectionScope(left, right)) {
@@ -1062,16 +1112,17 @@ function bestConnectionForProvider(input: {
   providerAliases: string[];
   context: UserContext;
   now: Date;
+  ownerUserId: string | null;
 }): SourceRow | null {
   const candidates = input.connections.filter(
     (candidate) =>
       providerAliasMatches(candidate.provider, input.providerAliases) &&
-      connectionMatchesContext(candidate, input.context) &&
+      connectionMatchesContext(candidate, input.context, input.ownerUserId) &&
       connectionAvailableAt(candidate, input.now),
   );
   if (candidates.length === 0) return null;
   return [...candidates].sort((left, right) =>
-    compareSourceConnections(left, right, input.context, input.now),
+    compareSourceConnections(left, right, input.context, input.now, input.ownerUserId),
   )[0] ?? null;
 }
 
@@ -1083,7 +1134,11 @@ function syncRunTimestamp(syncRun: SourceSyncRunRow): number {
   );
 }
 
-function syncRunMatchesContext(syncRun: SourceSyncRunRow, context: UserContext): boolean {
+function syncRunMatchesContext(
+  syncRun: SourceSyncRunRow,
+  context: UserContext,
+  ownerUserId: string | null,
+): boolean {
   if (syncRun.userId === undefined && syncRun.organizationId === undefined) return true;
 
   const userId = syncRun.userId ?? null;
@@ -1094,19 +1149,26 @@ function syncRunMatchesContext(syncRun: SourceSyncRunRow, context: UserContext):
       return userId === null || userId === context.userId;
     }
     if (organizationId === null) {
-      return userId === null || Boolean(context.userId && userId === context.userId);
+      return userId === null ||
+        Boolean(context.userId && userId === context.userId) ||
+        Boolean(ownerUserId && userId === ownerUserId);
     }
     return false;
   }
 
   if (context.userId) {
-    return organizationId === null && (userId === null || userId === context.userId);
+    return organizationId === null &&
+      (userId === null || userId === context.userId || userId === ownerUserId);
   }
 
   return userId === null && organizationId === null;
 }
 
-function syncRunScopeSpecificity(syncRun: SourceSyncRunRow, context: UserContext): number {
+function syncRunScopeSpecificity(
+  syncRun: SourceSyncRunRow,
+  context: UserContext,
+  ownerUserId: string | null,
+): number {
   if (syncRun.userId === undefined && syncRun.organizationId === undefined) return 1;
 
   const userId = syncRun.userId ?? null;
@@ -1115,6 +1177,7 @@ function syncRunScopeSpecificity(syncRun: SourceSyncRunRow, context: UserContext
   if (context.organizationId) {
     if (userId === context.userId && organizationId === context.organizationId) return 4;
     if (context.userId && userId === context.userId && organizationId === null) return 3;
+    if (ownerUserId && userId === ownerUserId && organizationId === null) return 3;
     if (userId === null && organizationId === context.organizationId) return 2;
     if (userId === null && organizationId === null) return 1;
     return 0;
@@ -1122,6 +1185,7 @@ function syncRunScopeSpecificity(syncRun: SourceSyncRunRow, context: UserContext
 
   if (context.userId) {
     if (userId === context.userId && organizationId === null) return 3;
+    if (ownerUserId && userId === ownerUserId && organizationId === null) return 3;
     if (userId === null && organizationId === null) return 1;
     return 0;
   }
@@ -1182,18 +1246,19 @@ function bestSyncRunForProvider(input: {
   now: Date;
   freshnessSlaHours: number;
   expectedWindowStart: Date;
+  ownerUserId: string | null;
 }): SourceSyncRunRow | null {
   const candidates = input.syncRuns.filter(
     (candidate) =>
       providerAliasMatches(candidate.provider, input.providerAliases) &&
-      syncRunMatchesContext(candidate, input.context) &&
+      syncRunMatchesContext(candidate, input.context, input.ownerUserId) &&
       syncRunAvailableAt(candidate, input.now),
   );
   if (candidates.length === 0) return null;
   return [...candidates].sort((left, right) => {
     const scopeDifference =
-      syncRunScopeSpecificity(right, input.context) -
-      syncRunScopeSpecificity(left, input.context);
+      syncRunScopeSpecificity(right, input.context, input.ownerUserId) -
+      syncRunScopeSpecificity(left, input.context, input.ownerUserId);
     if (scopeDifference !== 0) return scopeDifference;
 
     const completionDifference =
@@ -1209,8 +1274,13 @@ function snapshotTimestamp(snapshot: SnapshotRow): number {
   return toDate(snapshot.capturedAt)?.getTime() ?? 0;
 }
 
-function snapshotMatchesContext(snapshot: SnapshotRow, context: UserContext): boolean {
-  return snapshot.userId === undefined || snapshot.userId === context.userId;
+function snapshotScopeUserIds(context: UserContext): string[] {
+  if (!context.userId) return [];
+  return Array.from(new Set([resolveIntegrationOwnerUserId(context.userId), context.userId]));
+}
+
+function snapshotMatchesContext(snapshot: SnapshotRow, allowedUserIds: Set<string>): boolean {
+  return snapshot.userId === undefined || allowedUserIds.has(snapshot.userId ?? "");
 }
 
 function snapshotAvailableAt(snapshot: SnapshotRow, now: Date): boolean {
@@ -1220,13 +1290,13 @@ function snapshotAvailableAt(snapshot: SnapshotRow, now: Date): boolean {
 function bestSnapshotForProvider(input: {
   snapshots: SnapshotRow[];
   snapshotKeys: string[];
-  context: UserContext;
+  allowedUserIds: Set<string>;
   now: Date;
 }): SnapshotRow | null {
   const candidates = input.snapshots.filter(
     (candidate) =>
       providerAliasMatches(candidate.providerKey, input.snapshotKeys) &&
-      snapshotMatchesContext(candidate, input.context) &&
+      snapshotMatchesContext(candidate, input.allowedUserIds) &&
       snapshotAvailableAt(candidate, input.now),
   );
   if (candidates.length === 0) return null;
@@ -1248,10 +1318,15 @@ export async function buildImladrisSources(input: {
   const snapshotKeys = snapshotKeyQueryVariants(
     REQUIRED_IMLADRIS_PROVIDERS.flatMap((provider) => provider.snapshotKeys),
   );
-  const snapshotQuery = context.userId
+  const snapshotUserIds = snapshotScopeUserIds(context);
+  const sourceEvidenceScopes = sourceEvidenceQueryOr(context);
+  const sourceEvidenceOwnerId = sourceEvidenceOwnerUserId(context);
+  const snapshotQuery = snapshotUserIds.length > 0
     ? input.prisma.analyticsSnapshot.findMany({
         where: {
-          userId: context.userId,
+          userId: {
+            in: snapshotUserIds,
+          },
           providerKey: {
             in: snapshotKeys,
           },
@@ -1276,7 +1351,7 @@ export async function buildImladrisSources(input: {
         provider: {
           in: providerAliases,
         },
-        OR: contextQueryOr(context),
+        OR: sourceEvidenceScopes,
       },
       select: {
         provider: true,
@@ -1298,7 +1373,7 @@ export async function buildImladrisSources(input: {
         startedAt: {
           lte: now,
         },
-        OR: contextQueryOr(context),
+        OR: sourceEvidenceScopes,
       },
       select: {
         provider: true,
@@ -1322,6 +1397,7 @@ export async function buildImladrisSources(input: {
   const typedConnections = connections as SourceRow[];
   const typedSnapshots = snapshots as SnapshotRow[];
   const typedSyncRuns = syncRuns as SourceSyncRunRow[];
+  const allowedSnapshotUserIds = new Set(snapshotUserIds);
 
   return REQUIRED_IMLADRIS_PROVIDERS.map((provider) => {
     const connection = bestConnectionForProvider({
@@ -1329,11 +1405,12 @@ export async function buildImladrisSources(input: {
       providerAliases: provider.providerAliases,
       context,
       now,
+      ownerUserId: sourceEvidenceOwnerId,
     });
     const snapshot = bestSnapshotForProvider({
       snapshots: typedSnapshots,
       snapshotKeys: provider.snapshotKeys,
-      context,
+      allowedUserIds: allowedSnapshotUserIds,
       now,
     });
     const expectedWindow = getImladrisHistoricalWindow(now);
@@ -1344,6 +1421,7 @@ export async function buildImladrisSources(input: {
       now,
       freshnessSlaHours: provider.freshnessSlaHours,
       expectedWindowStart: expectedWindow.windowStart,
+      ownerUserId: sourceEvidenceOwnerId,
     });
     const counts = syncRun ? syncRunCounts(syncRun) : null;
     const lastSyncedAt =

@@ -1232,7 +1232,7 @@ export async function fetchGoogleAdsData(
     : "segments.date DURING LAST_30_DAYS";
 
   const gaqlQuery = `
-    SELECT campaign.name, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions
+    SELECT campaign.id, campaign.name, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions
     FROM campaign
     WHERE ${dateWhere} AND campaign.status = 'ENABLED'
   `;
@@ -1297,6 +1297,8 @@ export async function fetchGoogleAdsData(
       totalConversions += conversions;
 
       campaigns.push({
+        campaignId: readString(campaign?.id) ?? undefined,
+        customerId: cleanCustomerId || undefined,
         name: String(campaign?.name ?? "Unknown campaign"),
         spend,
         impressions,
@@ -1407,7 +1409,7 @@ export async function fetchMetaAdsData(
   const campaignsUrl = new URL(
     `https://graph.facebook.com/${META_GRAPH_VERSION}/act_${accountId}/campaigns`
   );
-  campaignsUrl.searchParams.set("fields", "name,insights{spend,impressions,clicks,actions}");
+  campaignsUrl.searchParams.set("fields", "id,name,insights{spend,impressions,clicks,actions}");
   if (useRange) {
     campaignsUrl.searchParams.set("time_range", JSON.stringify({ since, until }));
   } else {
@@ -1415,6 +1417,7 @@ export async function fetchMetaAdsData(
   }
 
   const campaignPageResult = await fetchMetaGraphPages<{
+    id?: string;
     name?: string;
     insights?: {
       data?: Array<{
@@ -1444,6 +1447,8 @@ export async function fetchMetaAdsData(
     const cpc = clicks > 0 ? spend / clicks : 0;
 
     campaigns.push({
+      campaignId: readString(campaign.id) ?? undefined,
+      adAccountId: accountId,
       name: campaign.name || "Unknown campaign",
       spend,
       impressions,
@@ -2189,6 +2194,8 @@ export async function fetchRedditAdsData(
     const ctr = data.impressions > 0 ? (data.clicks / data.impressions) * 100 : 0;
     const cpc = data.clicks > 0 ? data.spend / data.clicks : 0;
     return {
+      campaignId,
+      adAccountId: cleanAccountId || undefined,
       name: campaignNameById.get(campaignId) || campaignId,
       spend: data.spend,
       impressions: data.impressions,

@@ -125,11 +125,26 @@ function firstValueFromSources(
 ): unknown {
   for (const source of sources) {
     for (const key of keys) {
-      const value = source[key];
-      if (value !== undefined && value !== null) return value;
+      for (const keyVariant of keyVariants(key)) {
+        const value = source[keyVariant];
+        if (value !== undefined && value !== null) return value;
+      }
     }
   }
   return null;
+}
+
+function keyVariants(key: string): string[] {
+  const uppercaseKey = key.toUpperCase();
+  return uppercaseKey === key ? [key] : [key, uppercaseKey];
+}
+
+function nestedRecordFromKey(source: Record<string, unknown>, key: string): Record<string, unknown> {
+  for (const keyVariant of keyVariants(key)) {
+    const record = nestedRecord(source[keyVariant]);
+    if (Object.keys(record).length > 0) return record;
+  }
+  return {};
 }
 
 function expandSingleValueSource(source: Record<string, unknown>): Record<string, unknown>[] {
@@ -146,22 +161,22 @@ function expandSingleValueSource(source: Record<string, unknown>): Record<string
 }
 
 function wrapperSources(payload: Record<string, unknown>): Record<string, unknown>[] {
-  const data = nestedRecord(payload.data);
+  const data = nestedRecordFromKey(payload, "data");
   return [
     payload,
     data,
-    nestedRecord(payload.properties),
-    nestedRecord(payload.summary),
-    nestedRecord(payload.metrics),
-    nestedRecord(payload.values),
-    nestedRecord(payload.attributes),
-    nestedRecord(payload.fields),
-    nestedRecord(data.properties),
-    nestedRecord(data.summary),
-    nestedRecord(data.metrics),
-    nestedRecord(data.values),
-    nestedRecord(data.attributes),
-    nestedRecord(data.fields),
+    nestedRecordFromKey(payload, "properties"),
+    nestedRecordFromKey(payload, "summary"),
+    nestedRecordFromKey(payload, "metrics"),
+    nestedRecordFromKey(payload, "values"),
+    nestedRecordFromKey(payload, "attributes"),
+    nestedRecordFromKey(payload, "fields"),
+    nestedRecordFromKey(data, "properties"),
+    nestedRecordFromKey(data, "summary"),
+    nestedRecordFromKey(data, "metrics"),
+    nestedRecordFromKey(data, "values"),
+    nestedRecordFromKey(data, "attributes"),
+    nestedRecordFromKey(data, "fields"),
   ].flatMap(expandSingleValueSource);
 }
 
@@ -170,8 +185,8 @@ function metricSources(payload: Record<string, unknown>): Record<string, unknown
   return [
     ...sources,
     ...sources.flatMap((source) => [
-      nestedRecord(source.summary),
-      nestedRecord(source.metrics),
+      nestedRecordFromKey(source, "summary"),
+      nestedRecordFromKey(source, "metrics"),
     ]),
   ];
 }
@@ -428,19 +443,160 @@ function average(values: number[]): number | null {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
+function latestRevisionTimestampAsOf(record: RawSourceRecordRow, asOf: Date): number {
+  return (
+    rawRevisionTimestampAsOf(record.sourceUpdatedAt, asOf) ??
+    rawRevisionTimestampAsOf(record.occurredAt, asOf) ??
+    rawRevisionTimestampAsOf(record.sourceCreatedAt, asOf) ??
+    0
+  );
+}
+
+function linearIssueIdentity(record: RawSourceRecordRow): string | null {
+  if (!recordIsProvider(record, IntegrationProvider.LINEAR) || !recordIsObjectType(record, "issue")) {
+    return null;
+  }
+  const payload = asRecord(record.payload);
+  const id = firstValueFromSources(wrapperSources(payload), [
+    "issueId",
+    "issue_id",
+    "linearIssueId",
+    "linear_issue_id",
+    "identifier",
+    "key",
+    "number",
+    "id",
+  ]);
+  const payloadId = normalizeLookup(id);
+  if (payloadId) return payloadId;
+  const externalId = normalizeLookup(record.externalId);
+  if (externalId) return externalId.split(":").filter(Boolean).pop() ?? externalId;
+  return normalizeLookup(record.id);
+}
+
+function latestLinearIssuesById(records: RawSourceRecordRow[], asOf: Date): RawSourceRecordRow[] {
+  const latestById = new Map<string, RawSourceRecordRow>();
+  const unkeyedRecords: RawSourceRecordRow[] = [];
+  for (const record of records) {
+    const issueId = linearIssueIdentity(record);
+    if (!issueId) {
+      unkeyedRecords.push(record);
+      continue;
+    }
+    const current = latestById.get(issueId);
+    if (!current || latestRevisionTimestampAsOf(record, asOf) >= latestRevisionTimestampAsOf(current, asOf)) {
+      latestById.set(issueId, record);
+    }
+  }
+  return [...latestById.values(), ...unkeyedRecords];
+}
+
+function githubPullRequestIdentity(record: RawSourceRecordRow): string | null {
+  if (
+    !recordIsProvider(record, IntegrationProvider.GITHUB) ||
+    !recordIsObjectType(record, "pull_request")
+  ) {
+    return null;
+  }
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const repositorySources = sources.flatMap((source) => [
+    nestedRecord(source.repository),
+    nestedRecord(source.repo),
+  ]);
+  const repository = normalizeLookup(
+    firstValueFromSources([...sources, ...repositorySources], [
+      "repositoryFullName",
+      "repository_full_name",
+      "repoFullName",
+      "repo_full_name",
+      "nameWithOwner",
+      "name_with_owner",
+      "fullName",
+      "full_name",
+      "repository",
+      "repo",
+    ]),
+  );
+  const number = normalizeLookup(
+    firstValueFromSources(sources, [
+      "pullRequestNumber",
+      "pull_request_number",
+      "prNumber",
+      "pr_number",
+      "number",
+    ]),
+  );
+  if (repository && number) return `${repository}#${number}`;
+  return normalizeLookup(record.externalId) ?? normalizeLookup(record.id);
+}
+
+function latestGithubPullRequestsById(records: RawSourceRecordRow[], asOf: Date): RawSourceRecordRow[] {
+  const latestById = new Map<string, RawSourceRecordRow>();
+  const unkeyedRecords: RawSourceRecordRow[] = [];
+  for (const record of records) {
+    const pullRequestId = githubPullRequestIdentity(record);
+    if (!pullRequestId) {
+      unkeyedRecords.push(record);
+      continue;
+    }
+    const current = latestById.get(pullRequestId);
+    if (!current || latestRevisionTimestampAsOf(record, asOf) >= latestRevisionTimestampAsOf(current, asOf)) {
+      latestById.set(pullRequestId, record);
+    }
+  }
+  return [...latestById.values(), ...unkeyedRecords];
+}
+
+function posthogEventIdentity(record: RawSourceRecordRow): string | null {
+  if (!recordIsProvider(record, IntegrationProvider.POSTHOG) || !recordIsObjectType(record, "event")) {
+    return null;
+  }
+  const payload = asRecord(record.payload);
+  const id = firstValueFromSources(wrapperSources(payload), [
+    "eventId",
+    "event_id",
+    "eventUuid",
+    "event_uuid",
+    "uuid",
+    "id",
+  ]);
+  return normalizeLookup(id) ?? rawRecordDeduplicationKey(record);
+}
+
+function latestPosthogEventsById(records: RawSourceRecordRow[], asOf: Date): RawSourceRecordRow[] {
+  const latestById = new Map<string, RawSourceRecordRow>();
+  for (const record of records) {
+    const eventId = posthogEventIdentity(record);
+    if (!eventId) continue;
+    const current = latestById.get(eventId);
+    if (!current || latestRevisionTimestampAsOf(record, asOf) >= latestRevisionTimestampAsOf(current, asOf)) {
+      latestById.set(eventId, record);
+    }
+  }
+  return [...latestById.values()];
+}
+
 function computeDeliveryHealth(records: RawSourceRecordRow[], asOf: Date) {
-  const linearIssues = records.filter(
-    (record) => recordIsProvider(record, IntegrationProvider.LINEAR) && recordIsObjectType(record, "issue"),
+  const linearIssues = latestLinearIssuesById(
+    records.filter(
+      (record) => recordIsProvider(record, IntegrationProvider.LINEAR) && recordIsObjectType(record, "issue"),
+    ),
+    asOf,
   );
   const completedLinearIssues = linearIssues.filter((record) => isCompletedLinearIssue(record, asOf));
-  const mergedPullRequests = records.filter(
-    (record) =>
-      recordIsProvider(record, IntegrationProvider.GITHUB) &&
-      recordIsObjectType(record, "pull_request") &&
-      isMergedPullRequest(record, asOf),
+  const pullRequests = latestGithubPullRequestsById(
+    records.filter(
+      (record) => recordIsProvider(record, IntegrationProvider.GITHUB) && recordIsObjectType(record, "pull_request"),
+    ),
+    asOf,
   );
-  const productEvents = records.filter(
-    (record) => recordIsProvider(record, IntegrationProvider.POSTHOG) && recordIsObjectType(record, "event"),
+  const mergedPullRequests = pullRequests.filter((record) => isMergedPullRequest(record, asOf));
+  const productEvents = latestPosthogEventsById(
+    records.filter(
+      (record) => recordIsProvider(record, IntegrationProvider.POSTHOG) && recordIsObjectType(record, "event"),
+    ),
+    asOf,
   );
   const cycleTimes = completedLinearIssues
     .map((record) => linearCycleTimeDays(record, asOf))
@@ -572,6 +728,11 @@ function nonNegativeNumberFrom(value: unknown): number | null {
 function nonNegativeIntegerFrom(value: unknown): number | null {
   const number = nonNegativeNumberFrom(value);
   return number === null ? null : Math.floor(number);
+}
+
+function observedNonNegativeIntegerFrom(value: unknown): number | null {
+  const number = numberFrom(value);
+  return number !== null && number >= 0 ? Math.floor(number) : null;
 }
 
 function booleanValue(value: unknown, seen = new WeakSet<object>()): unknown {
@@ -946,6 +1107,10 @@ function inclusivePeriodEnd(periodEnd: Date): Date {
   return periodEnd;
 }
 
+function earlierDate(left: Date, right: Date): Date {
+  return left.getTime() <= right.getTime() ? left : right;
+}
+
 function rawRecordIsWithinPeriod(record: RawSourceRecordRow, periodStart: Date, periodEnd: Date): boolean {
   const inclusiveEnd = inclusivePeriodEnd(periodEnd);
   return [record.occurredAt, record.sourceCreatedAt, record.sourceUpdatedAt].some((value) => {
@@ -1149,7 +1314,7 @@ function hubspotAccountId(record: RawSourceRecordRow): string | null {
     "hs_object_id",
     "id",
   ]);
-  return normalizeIdentifier(id) ?? normalizeIdentifier(record.externalId);
+  return normalizeLookup(id) ?? normalizeLookup(record.externalId);
 }
 
 function activationAccountId(record: RawSourceRecordRow): string | null {
@@ -1163,13 +1328,32 @@ function activationAccountId(record: RawSourceRecordRow): string | null {
     "account_id",
     "distinct_id",
   ]);
-  return normalizeIdentifier(id);
+  return normalizeLookup(id);
 }
 
-function isActivationEvent(record: RawSourceRecordRow): boolean {
+function posthogEventTimestamp(record: RawSourceRecordRow): Date | null {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  return firstDateFrom(
+    ...sources.flatMap((source) => [
+      source.timestamp,
+      source.time,
+      source.eventTimestamp,
+      source.event_timestamp,
+      source.eventTime,
+      source.event_time,
+      source.createdAt,
+      source.created_at,
+    ]),
+  );
+}
+
+function isActivationEvent(record: RawSourceRecordRow, asOf: Date): boolean {
   if (!recordIsProvider(record, IntegrationProvider.POSTHOG) || !recordIsObjectType(record, "event")) {
     return false;
   }
+  const eventTimestamp = posthogEventTimestamp(record);
+  if (eventTimestamp && eventTimestamp.getTime() > asOf.getTime()) return false;
   const eventName = firstValueFromSources(wrapperSources(asRecord(record.payload)), ["event"]);
   const normalizedEventName = normalizeLookup(eventName);
   return (
@@ -1178,7 +1362,7 @@ function isActivationEvent(record: RawSourceRecordRow): boolean {
   );
 }
 
-function computeActivationRate(records: RawSourceRecordRow[]) {
+function computeActivationRate(records: RawSourceRecordRow[], asOf: Date) {
   const eligibleAccountIds = new Set(
     records
       .filter((record) => recordIsProvider(record, IntegrationProvider.HUBSPOT))
@@ -1187,7 +1371,7 @@ function computeActivationRate(records: RawSourceRecordRow[]) {
   );
   const activatedAccountIds = new Set(
     records
-      .filter(isActivationEvent)
+      .filter((record) => isActivationEvent(record, asOf))
       .map(activationAccountId)
       .filter(
         (id): id is string => typeof id === "string" && eligibleAccountIds.has(id),
@@ -1225,7 +1409,8 @@ export async function materializeImladrisProductActivationMetric(
   });
   const records = dedupeRawSourceRecords(queriedRecords, context, input.periodStart, input.periodEnd, now);
 
-  const value = computeActivationRate(records);
+  const activationAsOf = earlierDate(inclusivePeriodEnd(input.periodEnd), now);
+  const value = computeActivationRate(records, activationAsOf);
   const status =
     value.eligibleAccounts > 0
       ? statusForProviderCoverage({ records, requiredProviders })
@@ -1378,6 +1563,40 @@ function transactionAmount(record: RawSourceRecordRow): number | null {
   );
 }
 
+function mercuryTransactionIdentity(record: RawSourceRecordRow): string | null {
+  if (
+    !recordIsProvider(record, IntegrationProvider.MERCURY) ||
+    !recordIsObjectType(record, "transaction", "bank_transaction")
+  ) {
+    return null;
+  }
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const id = firstValueFromSources(sources, [
+    "transactionId",
+    "transaction_id",
+    "bankTransactionId",
+    "bank_transaction_id",
+    "mercuryTransactionId",
+    "mercury_transaction_id",
+    "id",
+  ]);
+  return normalizeLookup(id) ?? rawRecordDeduplicationKey(record);
+}
+
+function latestMercuryTransactionsById(records: RawSourceRecordRow[], asOf: Date): RawSourceRecordRow[] {
+  const latestById = new Map<string, RawSourceRecordRow>();
+  for (const record of records) {
+    const transactionId = mercuryTransactionIdentity(record);
+    if (!transactionId) continue;
+    const current = latestById.get(transactionId);
+    if (!current || latestRevisionTimestampAsOf(record, asOf) >= latestRevisionTimestampAsOf(current, asOf)) {
+      latestById.set(transactionId, record);
+    }
+  }
+  return [...latestById.values()];
+}
+
 function balanceAmount(record: RawSourceRecordRow): number | null {
   const payload = asRecord(record.payload);
   return numberFrom(
@@ -1413,19 +1632,11 @@ function balanceAccountKey(record: RawSourceRecordRow): string {
   );
 }
 
-function recordFactTimestamp(record: RawSourceRecordRow): number {
-  return (
-    dateFrom(record.occurredAt)?.getTime() ??
-    dateFrom(record.sourceUpdatedAt)?.getTime() ??
-    dateFrom(record.sourceCreatedAt)?.getTime() ??
-    0
-  );
-}
-
-function balanceRecordTimestamp(record: RawSourceRecordRow): number {
+function balanceRecordTimestampAsOf(record: RawSourceRecordRow, asOf: Date): number {
   const payload = asRecord(record.payload);
   return (
-    dateFrom(
+    firstDateAtOrBefore(
+      asOf,
       firstValueFromSources(wrapperSources(payload), [
         "balanceAsOf",
         "balance_as_of",
@@ -1435,20 +1646,23 @@ function balanceRecordTimestamp(record: RawSourceRecordRow): number {
         "effective_at",
       ]),
     )?.getTime() ??
-    dateFrom(record.sourceUpdatedAt)?.getTime() ??
-    dateFrom(record.occurredAt)?.getTime() ??
-    dateFrom(record.sourceCreatedAt)?.getTime() ??
+    firstDateAtOrBefore(
+      asOf,
+      record.sourceUpdatedAt,
+      record.occurredAt,
+      record.sourceCreatedAt,
+    )?.getTime() ??
     0
   );
 }
 
-function latestAccountBalanceAmounts(records: RawSourceRecordRow[]): number[] {
+function latestAccountBalanceAmounts(records: RawSourceRecordRow[], asOf: Date): number[] {
   const latestByAccount = new Map<string, { amount: number; timestamp: number }>();
   for (const record of records) {
     const amount = balanceAmount(record);
     if (amount === null) continue;
     const accountKey = balanceAccountKey(record);
-    const timestamp = balanceRecordTimestamp(record);
+    const timestamp = balanceRecordTimestampAsOf(record, asOf);
     const current = latestByAccount.get(accountKey);
     if (!current || timestamp >= current.timestamp) {
       latestByAccount.set(accountKey, { amount, timestamp });
@@ -1518,6 +1732,26 @@ function stripeMrrAmount(record: RawSourceRecordRow, asOf: Date): number | null 
   return itemMrr === null ? null : applyStripeSubscriptionDiscounts(itemMrr, payload, asOf);
 }
 
+function latestStripeSubscriptionsById(records: RawSourceRecordRow[], asOf: Date): RawSourceRecordRow[] {
+  const latestById = new Map<string, RawSourceRecordRow>();
+  const unkeyedRecords: RawSourceRecordRow[] = [];
+  for (const record of records) {
+    if (!recordIsProvider(record, IntegrationProvider.STRIPE) || !recordIsObjectType(record, "subscription")) {
+      continue;
+    }
+    const subscriptionId = stripeSubscriptionId(record);
+    if (!subscriptionId) {
+      unkeyedRecords.push(record);
+      continue;
+    }
+    const current = latestById.get(subscriptionId);
+    if (!current || latestRevisionTimestampAsOf(record, asOf) >= latestRevisionTimestampAsOf(current, asOf)) {
+      latestById.set(subscriptionId, record);
+    }
+  }
+  return [...latestById.values(), ...unkeyedRecords];
+}
+
 function computeStripeMrr(records: RawSourceRecordRow[], asOf: Date): number {
   const stripeRecords = records.filter((record) => recordIsProvider(record, IntegrationProvider.STRIPE));
   const summaryMrrEntries = stripeRecords
@@ -1542,7 +1776,11 @@ function computeStripeMrr(records: RawSourceRecordRow[], asOf: Date): number {
     null,
   );
   if (latestSummaryMrr) return latestSummaryMrr.amount;
-  return stripeRecords.reduce((sum, record) => sum + (stripeMrrAmount(record, asOf) ?? 0), 0);
+  const subscriptionRecords = latestStripeSubscriptionsById(
+    stripeRecords.filter((record) => recordIsObjectType(record, "subscription")),
+    asOf,
+  );
+  return subscriptionRecords.reduce((sum, record) => sum + (stripeMrrAmount(record, asOf) ?? 0), 0);
 }
 
 function scalarValue(value: unknown, seen = new WeakSet<object>()): unknown {
@@ -2480,13 +2718,16 @@ function computeMrrBreakdown(records: RawSourceRecordRow[], asOf: Date) {
   let excludedLinkedHubspotSubscriptionMrr = 0;
   let excludedLinkedHubspotSubscriptionArr = 0;
 
-  for (const record of records) {
-    if (
-      !recordIsProvider(record, IntegrationProvider.HUBSPOT) ||
-      !recordIsObjectType(record, "deal", "subscription_deal")
-    ) {
-      continue;
-    }
+  const hubspotSubscriptionRecords = latestRecordsByDealId(
+    records.filter(
+      (record) =>
+        recordIsProvider(record, IntegrationProvider.HUBSPOT) &&
+        recordIsObjectType(record, "deal", "subscription_deal"),
+    ),
+    asOf,
+  );
+
+  for (const record of hubspotSubscriptionRecords) {
     const recurringRevenue = hubspotRecurringRevenueAsOf(record, asOf);
     if (!recurringRevenue) continue;
 
@@ -2520,10 +2761,13 @@ function computeMrrBreakdown(records: RawSourceRecordRow[], asOf: Date) {
 }
 
 function computeFinanceValues(records: RawSourceRecordRow[], asOf: Date) {
-  const mercuryTransactions = records.filter(
-    (record) =>
-      recordIsProvider(record, IntegrationProvider.MERCURY) &&
-      recordIsObjectType(record, "transaction", "bank_transaction"),
+  const mercuryTransactions = latestMercuryTransactionsById(
+    records.filter(
+      (record) =>
+        recordIsProvider(record, IntegrationProvider.MERCURY) &&
+        recordIsObjectType(record, "transaction", "bank_transaction"),
+    ),
+    asOf,
   );
   const cashOutflow = mercuryTransactions.reduce((sum, record) => {
     const amount = transactionAmount(record);
@@ -2551,7 +2795,7 @@ function computeFinanceValues(records: RawSourceRecordRow[], asOf: Date) {
     )
     .map((record) => ({
       amount: mercurySnapshotCashBalance(record),
-      timestamp: recordFactTimestamp(record),
+      timestamp: recordFactTimestampAsOf(record, asOf),
     }))
     .filter(
       (entry): entry is { amount: number; timestamp: number } =>
@@ -2564,7 +2808,7 @@ function computeFinanceValues(records: RawSourceRecordRow[], asOf: Date) {
       !latest || entry.timestamp >= latest.timestamp ? entry : latest,
     null,
   );
-  const latestAccountBalances = latestAccountBalanceAmounts(mercuryBalanceAmounts);
+  const latestAccountBalances = latestAccountBalanceAmounts(mercuryBalanceAmounts, asOf);
   const cashBalance =
     latestAccountBalances.length > 0
       ? latestAccountBalances.reduce((sum, amount) => sum + amount, 0)
@@ -2824,21 +3068,244 @@ function linkedDealId(record: RawSourceRecordRow): string | null {
   return normalizeIdentifier(id);
 }
 
-function computeQualifiedPipeline(records: RawSourceRecordRow[]) {
-  const qualifiedDeals = records.filter(isQualifiedPipelineDeal);
+function dealRevisionTimestampAsOf(record: RawSourceRecordRow, asOf: Date): number {
+  return (
+    rawRevisionTimestampAsOf(record.sourceUpdatedAt, asOf) ??
+    rawRevisionTimestampAsOf(record.occurredAt, asOf) ??
+    rawRevisionTimestampAsOf(record.sourceCreatedAt, asOf) ??
+    0
+  );
+}
+
+function latestRecordsByDealId(records: RawSourceRecordRow[], asOf: Date): RawSourceRecordRow[] {
+  const latestByDealId = new Map<string, RawSourceRecordRow>();
+  const unkeyedRecords: RawSourceRecordRow[] = [];
+  for (const record of records) {
+    const dealId = dealIdFromRecord(record);
+    if (!dealId) {
+      unkeyedRecords.push(record);
+      continue;
+    }
+    const current = latestByDealId.get(dealId);
+    if (!current || dealRevisionTimestampAsOf(record, asOf) >= dealRevisionTimestampAsOf(current, asOf)) {
+      latestByDealId.set(dealId, record);
+    }
+  }
+  return [...latestByDealId.values(), ...unkeyedRecords];
+}
+
+function collaborationEventTimestamp(record: RawSourceRecordRow): Date | null {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  return firstDateFrom(
+    ...sources.flatMap((source) => [
+      source.timestamp,
+      source.time,
+      source.ts,
+      source.createdAt,
+      source.created_at,
+      source.sentAt,
+      source.sent_at,
+      source.messageTs,
+      source.message_ts,
+      source.eventTime,
+      source.event_time,
+      source.eventTimestamp,
+      source.event_timestamp,
+      source.startTime,
+      source.start_time,
+      source.startAt,
+      source.start_at,
+      source.start,
+      source.dateTime,
+      source.date_time,
+      source.date,
+      nestedRecord(source.start).dateTime,
+      nestedRecord(source.start).date_time,
+      nestedRecord(source.start).date,
+    ]),
+  );
+}
+
+function collaborationTimestampIsWithinPeriod(
+  record: RawSourceRecordRow,
+  periodStart: Date,
+  asOf: Date,
+): boolean {
+  const timestamp = collaborationEventTimestamp(record);
+  if (!timestamp) return true;
+  const timestampMs = timestamp.getTime();
+  return timestampMs >= periodStart.getTime() && timestampMs <= asOf.getTime();
+}
+
+function slackCollaborationEventId(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const eventId = normalizeLookup(
+    firstValueFromSources(
+      sources,
+      recordIsObjectType(record, "thread")
+        ? [
+            "threadTs",
+            "thread_ts",
+            "thread",
+            "ts",
+            "messageTs",
+            "message_ts",
+            "messageId",
+            "message_id",
+            "id",
+          ]
+        : [
+            "messageTs",
+            "message_ts",
+            "messageId",
+            "message_id",
+            "threadTs",
+            "thread_ts",
+            "ts",
+            "id",
+          ],
+    ),
+  );
+  if (!eventId) return null;
+
+  const channelId = normalizeLookup(firstValueFromSources(sources, ["channelId", "channel_id", "channel"]));
+  return channelId ? `${channelId}:${eventId}` : eventId;
+}
+
+function googleWorkspaceCalendarId(sources: Record<string, unknown>[]): string | null {
+  const explicit = normalizeLookup(firstValueFromSources(sources, ["calendarId", "calendar_id"]));
+  if (explicit) return explicit;
+  return normalizeLookup(
+    firstValueFromSources(
+      sources.flatMap((source) => [nestedRecord(source.calendar)]),
+      ["calendarId", "calendar_id", "id"],
+    ),
+  );
+}
+
+function googleWorkspaceCollaborationEventId(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  if (recordIsObjectType(record, "calendar_event", "event")) {
+    const eventId = normalizeLookup(
+      firstValueFromSources(sources, [
+        "eventId",
+        "event_id",
+        "calendarEventId",
+        "calendar_event_id",
+        "id",
+      ]),
+    );
+    if (eventId) {
+      const calendarId = googleWorkspaceCalendarId(sources);
+      return calendarId ? `${calendarId}:${eventId}` : eventId;
+    }
+    return normalizeLookup(firstValueFromSources(sources, ["iCalUID", "ical_uid"]));
+  }
+
+  return normalizeLookup(
+    firstValueFromSources(sources, [
+      "messageId",
+      "message_id",
+      "threadId",
+      "thread_id",
+      "thread",
+      "documentId",
+      "document_id",
+      "fileId",
+      "file_id",
+      "file",
+      "id",
+    ]),
+  );
+}
+
+function salesCollaborationTouchEventId(record: RawSourceRecordRow): string | null {
+  if (recordIsProvider(record, IntegrationProvider.SLACK)) {
+    return slackCollaborationEventId(record);
+  }
+  if (recordIsProvider(record, IntegrationProvider.GOOGLE_WORKSPACE)) {
+    return googleWorkspaceCollaborationEventId(record);
+  }
+  return null;
+}
+
+function isSalesCollaborationTouchRecord(record: RawSourceRecordRow): boolean {
+  return (
+    (recordIsProvider(record, IntegrationProvider.GOOGLE_WORKSPACE) &&
+      recordIsObjectType(record, "calendar_event", "email_thread", "document", "event", "thread", "file")) ||
+    (recordIsProvider(record, IntegrationProvider.SLACK) && recordIsObjectType(record, "message", "thread"))
+  );
+}
+
+function googleWorkspaceCollaborationObjectType(record: RawSourceRecordRow): string | null {
+  if (!recordIsProvider(record, IntegrationProvider.GOOGLE_WORKSPACE)) return null;
+  if (recordIsObjectType(record, "calendar_event", "event")) return "calendar_event";
+  if (recordIsObjectType(record, "email_thread", "thread")) return "email_thread";
+  if (recordIsObjectType(record, "document", "file")) return "document";
+  return recordObjectType(record);
+}
+
+function collaborationObjectType(record: RawSourceRecordRow): string {
+  if (recordIsProvider(record, IntegrationProvider.SLACK) && recordIsObjectType(record, "message", "thread")) {
+    return "message";
+  }
+  return googleWorkspaceCollaborationObjectType(record) ?? recordObjectType(record) ?? "";
+}
+
+function salesCollaborationTouchDeduplicationKey(record: RawSourceRecordRow): string | null {
+  const dealId = linkedDealId(record);
+  if (!dealId) return null;
+  const eventId = salesCollaborationTouchEventId(record);
+  if (eventId) {
+    return `${recordProvider(record) ?? "UNKNOWN"}:${collaborationObjectType(record)}:${dealId}:${eventId}`;
+  }
+  return `${dealId}:${rawRecordDeduplicationKey(record)}`;
+}
+
+function salesCollaborationTouchRevisionTimestampAsOf(record: RawSourceRecordRow, asOf: Date): number {
+  return (
+    rawRevisionTimestampAsOf(record.sourceUpdatedAt, asOf) ??
+    rawRevisionTimestampAsOf(record.occurredAt, asOf) ??
+    rawRevisionTimestampAsOf(record.sourceCreatedAt, asOf) ??
+    0
+  );
+}
+
+function latestSalesCollaborationTouchesById(records: RawSourceRecordRow[], asOf: Date): RawSourceRecordRow[] {
+  const latestByKey = new Map<string, RawSourceRecordRow>();
+  for (const record of records) {
+    const key = salesCollaborationTouchDeduplicationKey(record);
+    if (!key) continue;
+    const current = latestByKey.get(key);
+    if (
+      !current ||
+      salesCollaborationTouchRevisionTimestampAsOf(record, asOf) >=
+        salesCollaborationTouchRevisionTimestampAsOf(current, asOf)
+    ) {
+      latestByKey.set(key, record);
+    }
+  }
+  return [...latestByKey.values()];
+}
+
+function computeQualifiedPipeline(records: RawSourceRecordRow[], periodStart: Date, asOf: Date) {
+  const qualifiedDeals = latestRecordsByDealId(records.filter(isQualifiedPipelineDeal), asOf);
   const qualifiedDealIds = new Set(
     qualifiedDeals.map(dealIdFromRecord).filter((id): id is string => Boolean(id)),
   );
-  const collaborationTouches = records.filter((record) => {
-    if (
-      !recordIsProvider(record, IntegrationProvider.GOOGLE_WORKSPACE) &&
-      !recordIsProvider(record, IntegrationProvider.SLACK)
-    ) {
+  const collaborationTouches = latestSalesCollaborationTouchesById(records.filter((record) => {
+    if (!isSalesCollaborationTouchRecord(record)) {
+      return false;
+    }
+    if (!collaborationTimestampIsWithinPeriod(record, periodStart, asOf)) {
       return false;
     }
     const dealId = linkedDealId(record);
     return Boolean(dealId && qualifiedDealIds.has(dealId));
-  });
+  }), asOf);
   const coveredDealIds = new Set(
     collaborationTouches
       .map(linkedDealId)
@@ -2880,7 +3347,8 @@ export async function materializeImladrisSalesMetrics(
     orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
   });
   const records = dedupeRawSourceRecords(queriedRecords, context, input.periodStart, input.periodEnd, now);
-  const value = computeQualifiedPipeline(records);
+  const salesAsOf = earlierDate(inclusivePeriodEnd(input.periodEnd), now);
+  const value = computeQualifiedPipeline(records, input.periodStart, salesAsOf);
   const status = statusForProviderCoverage({ records, requiredProviders });
   const warnings = providerCoverageWarning({
     metricLabel: "Qualified Pipeline",
@@ -2928,42 +3396,168 @@ function spendAmount(record: RawSourceRecordRow): number | null {
     firstValueFromSources(sources, [
       "costMicros",
       "cost_micros",
+      "COST_MICROS",
       "spendMicros",
       "spend_micros",
+      "SPEND_MICROS",
       "totalSpendMicros",
       "total_spend_micros",
+      "TOTAL_SPEND_MICROS",
     ]),
   );
   if (costMicros !== null) {
     return costMicros / 1_000_000;
   }
+  const redditSpendMicros = recordIsProvider(record, IntegrationProvider.REDDIT)
+    ? nonNegativeNumberFrom(firstValueFromSources(sources, ["SPEND"]))
+    : null;
+  if (redditSpendMicros !== null) {
+    return redditSpendMicros / 1_000_000;
+  }
   return nonNegativeNumberFrom(
     firstValueFromSources(sources, [
       "totalSpend30d",
       "total_spend_30d",
+      "TOTAL_SPEND_30D",
       "totalSpend",
       "total_spend",
+      "TOTAL_SPEND",
       "spend",
       "amountSpent",
       "amount_spent",
+      "AMOUNT_SPENT",
       "cost",
+      "COST",
     ]),
   );
+}
+
+function paidAdDimensionSources(record: RawSourceRecordRow): Record<string, unknown>[] {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  return [
+    ...sources,
+    ...sources.flatMap((source) => [
+      nestedRecord(source.campaign),
+      nestedRecord(source.campaigns),
+      nestedRecord(source.adGroup),
+      nestedRecord(source.ad_group),
+      nestedRecord(source.adSet),
+      nestedRecord(source.ad_set),
+      nestedRecord(source.ad),
+    ]),
+  ];
+}
+
+function paidAdDimensionValue(record: RawSourceRecordRow, keys: string[]): string | null {
+  return normalizeLookup(firstValueFromSources(paidAdDimensionSources(record), keys));
+}
+
+function paidAdDateDimension(record: RawSourceRecordRow): string | null {
+  const value = firstValueFromSources(paidAdDimensionSources(record), [
+    "date",
+    "DATE",
+    "rowDate",
+    "row_date",
+    "ROW_DATE",
+    "startDate",
+    "start_date",
+    "START_DATE",
+    "endDate",
+    "end_date",
+    "END_DATE",
+    "period",
+    "PERIOD",
+    "month",
+    "MONTH",
+  ]);
+  const parsedDate = dateFrom(value);
+  if (parsedDate) return parsedDate.toISOString().slice(0, 10);
+  return normalizeLookup(value);
+}
+
+function paidAdSpendRecordDeduplicationKey(record: RawSourceRecordRow): string {
+  const dimensions = [
+    paidAdDimensionValue(record, [
+      "customerId",
+      "customer_id",
+      "CUSTOMER_ID",
+      "customer",
+      "accountId",
+      "account_id",
+      "ACCOUNT_ID",
+      "account",
+      "adAccountId",
+      "ad_account_id",
+      "AD_ACCOUNT_ID",
+      "adAccount",
+      "ad_account",
+      "AD_ACCOUNT",
+    ]),
+    paidAdDimensionValue(record, [
+      "campaignId",
+      "campaign_id",
+      "CAMPAIGN_ID",
+      "campaign",
+      "campaignName",
+      "campaign_name",
+      "CAMPAIGN_NAME",
+      "id",
+    ]),
+    paidAdDimensionValue(record, ["adGroupId", "ad_group_id", "AD_GROUP_ID", "adGroup", "ad_group", "AD_GROUP"]),
+    paidAdDimensionValue(record, ["adSetId", "ad_set_id", "AD_SET_ID", "adSet", "ad_set", "AD_SET"]),
+    paidAdDimensionValue(record, ["adId", "ad_id", "AD_ID", "ad"]),
+    paidAdDateDimension(record),
+  ]
+    .map((value, index) => (value ? `${index}:${value}` : null))
+    .filter((value): value is string => Boolean(value));
+
+  if (dimensions.length > 0) {
+    return `${recordProvider(record) ?? "UNKNOWN"}:${recordObjectType(record)}:${dimensions.join(":")}`;
+  }
+  return rawRecordDeduplicationKey(record);
+}
+
+function paidAdSpendRevisionTimestampAsOf(record: RawSourceRecordRow, asOf: Date): number {
+  return (
+    rawRevisionTimestampAsOf(record.sourceUpdatedAt, asOf) ??
+    rawRevisionTimestampAsOf(record.occurredAt, asOf) ??
+    rawRevisionTimestampAsOf(record.sourceCreatedAt, asOf) ??
+    0
+  );
+}
+
+function latestPaidAdSpendRecordsById(records: RawSourceRecordRow[], asOf: Date): RawSourceRecordRow[] {
+  const latestByKey = new Map<string, RawSourceRecordRow>();
+  for (const record of records) {
+    const key = paidAdSpendRecordDeduplicationKey(record);
+    const current = latestByKey.get(key);
+    if (
+      !current ||
+      paidAdSpendRevisionTimestampAsOf(record, asOf) >=
+        paidAdSpendRevisionTimestampAsOf(current, asOf)
+    ) {
+      latestByKey.set(key, record);
+    }
+  }
+  return [...latestByKey.values()];
 }
 
 function acquisitionSpendForProvider(
   records: RawSourceRecordRow[],
   provider: (typeof PAID_AD_PROVIDERS)[number],
+  asOf: Date,
 ): number {
   const providerRecords = records.filter((record) => recordIsProvider(record, provider));
-  const snapshotAmounts = providerRecords
-    .filter((record) => recordIsObjectType(record, "snapshot"))
-    .map(spendAmount)
-    .filter((amount): amount is number => typeof amount === "number");
+  const snapshotAmount = latestSnapshotMetric(providerRecords, spendAmount, asOf);
+  const fallbackRecords = latestPaidAdSpendRecordsById(
+    providerRecords.filter((record) => !recordIsObjectType(record, "snapshot")),
+    asOf,
+  );
   const recordsForSpend =
-    snapshotAmounts.length > 0
-      ? snapshotAmounts
-      : providerRecords
+    snapshotAmount !== null
+      ? [snapshotAmount]
+      : fallbackRecords
           .map(spendAmount)
           .filter((amount): amount is number => typeof amount === "number");
   return recordsForSpend.reduce((sum, amount) => sum + amount, 0);
@@ -2985,18 +3579,91 @@ function sessionsCount(record: RawSourceRecordRow): number | null {
   );
 }
 
-function websiteSessionsCount(records: RawSourceRecordRow[]): number {
+function googleAnalyticsDimensionValue(record: RawSourceRecordRow, keys: string[]): string | null {
+  const payload = asRecord(record.payload);
+  return normalizeLookup(firstValueFromSources(wrapperSources(payload), keys));
+}
+
+function googleAnalyticsDateDimension(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const value = firstValueFromSources(wrapperSources(payload), [
+    "date",
+    "rowDate",
+    "row_date",
+    "startDate",
+    "start_date",
+    "endDate",
+    "end_date",
+    "period",
+    "month",
+  ]);
+  const parsedDate = dateFrom(value);
+  if (parsedDate) return parsedDate.toISOString().slice(0, 10);
+  return normalizeLookup(value);
+}
+
+function googleAnalyticsSessionRowDeduplicationKey(record: RawSourceRecordRow): string {
+  const dimensions = [
+    googleAnalyticsDimensionValue(record, [
+      "channel",
+      "channelGroup",
+      "channel_group",
+      "defaultChannelGroup",
+      "default_channel_group",
+      "sessionDefaultChannelGroup",
+      "session_default_channel_group",
+    ]),
+    googleAnalyticsDimensionValue(record, ["source", "sessionSource", "session_source"]),
+    googleAnalyticsDimensionValue(record, ["medium", "sessionMedium", "session_medium"]),
+    googleAnalyticsDateDimension(record),
+  ]
+    .map((value, index) => (value ? `${index}:${value}` : null))
+    .filter((value): value is string => Boolean(value));
+
+  if (dimensions.length > 0) {
+    return `${recordProvider(record) ?? "UNKNOWN"}:${recordObjectType(record)}:${dimensions.join(":")}`;
+  }
+  return rawRecordDeduplicationKey(record);
+}
+
+function googleAnalyticsSessionRevisionTimestampAsOf(record: RawSourceRecordRow, asOf: Date): number {
+  return (
+    rawRevisionTimestampAsOf(record.sourceUpdatedAt, asOf) ??
+    rawRevisionTimestampAsOf(record.occurredAt, asOf) ??
+    rawRevisionTimestampAsOf(record.sourceCreatedAt, asOf) ??
+    0
+  );
+}
+
+function latestGoogleAnalyticsSessionRowsById(records: RawSourceRecordRow[], asOf: Date): RawSourceRecordRow[] {
+  const latestByKey = new Map<string, RawSourceRecordRow>();
+  for (const record of records) {
+    const key = googleAnalyticsSessionRowDeduplicationKey(record);
+    const current = latestByKey.get(key);
+    if (
+      !current ||
+      googleAnalyticsSessionRevisionTimestampAsOf(record, asOf) >=
+        googleAnalyticsSessionRevisionTimestampAsOf(current, asOf)
+    ) {
+      latestByKey.set(key, record);
+    }
+  }
+  return [...latestByKey.values()];
+}
+
+function websiteSessionsCount(records: RawSourceRecordRow[], asOf: Date): number {
   const googleAnalyticsRecords = records.filter(
     (record) => recordIsProvider(record, IntegrationProvider.GOOGLE_ANALYTICS),
   );
-  const snapshotCounts = googleAnalyticsRecords
-    .filter((record) => recordIsObjectType(record, "snapshot"))
-    .map(sessionsCount)
-    .filter((count): count is number => typeof count === "number");
+  const snapshotCount = latestSnapshotMetric(googleAnalyticsRecords, sessionsCount, asOf);
+  const fallbackRecords = latestGoogleAnalyticsSessionRowsById(
+    googleAnalyticsRecords.filter((record) => !recordIsObjectType(record, "snapshot")),
+    asOf,
+  );
   const recordsForSessions =
-    snapshotCounts.length > 0
-      ? snapshotCounts
-      : googleAnalyticsRecords
+    snapshotCount !== null
+      ? [snapshotCount]
+      : fallbackRecords
           .map(sessionsCount)
           .filter((count): count is number => typeof count === "number");
   return recordsForSessions.reduce((sum, count) => sum + count, 0);
@@ -3014,28 +3681,214 @@ function organicTrafficCount(record: RawSourceRecordRow): number | null {
   );
 }
 
-function semrushOrganicTraffic(records: RawSourceRecordRow[]): number {
+function semrushDimensionValue(record: RawSourceRecordRow, keys: string[]): string | null {
+  const payload = asRecord(record.payload);
+  return normalizeLookup(firstValueFromSources(wrapperSources(payload), keys));
+}
+
+function semrushDateDimension(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const value = firstValueFromSources(wrapperSources(payload), [
+    "date",
+    "rowDate",
+    "row_date",
+    "period",
+    "month",
+    "startDate",
+    "start_date",
+    "endDate",
+    "end_date",
+  ]);
+  const parsedDate = dateFrom(value);
+  if (parsedDate) return parsedDate.toISOString().slice(0, 10);
+  return normalizeLookup(value);
+}
+
+function semrushTrafficRowDeduplicationKey(record: RawSourceRecordRow): string {
+  const dimensions = [
+    semrushDimensionValue(record, ["domain", "domainName", "domain_name", "rootDomain", "root_domain"]),
+    semrushDimensionValue(record, ["keyword", "query", "searchQuery", "search_query"]),
+    semrushDimensionValue(record, ["url", "page", "pageUrl", "page_url", "landingPage", "landing_page"]),
+    semrushDimensionValue(record, ["country", "countryCode", "country_code", "database"]),
+    semrushDateDimension(record),
+  ]
+    .map((value, index) => (value ? `${index}:${value}` : null))
+    .filter((value): value is string => Boolean(value));
+
+  if (dimensions.length > 0) {
+    return `${recordProvider(record) ?? "UNKNOWN"}:${recordObjectType(record)}:${dimensions.join(":")}`;
+  }
+  return rawRecordDeduplicationKey(record);
+}
+
+function semrushTrafficRevisionTimestampAsOf(record: RawSourceRecordRow, asOf: Date): number {
+  return (
+    rawRevisionTimestampAsOf(record.sourceUpdatedAt, asOf) ??
+    rawRevisionTimestampAsOf(record.occurredAt, asOf) ??
+    rawRevisionTimestampAsOf(record.sourceCreatedAt, asOf) ??
+    0
+  );
+}
+
+function latestSemrushTrafficRowsById(records: RawSourceRecordRow[], asOf: Date): RawSourceRecordRow[] {
+  const latestByKey = new Map<string, RawSourceRecordRow>();
+  for (const record of records) {
+    const key = semrushTrafficRowDeduplicationKey(record);
+    const current = latestByKey.get(key);
+    if (
+      !current ||
+      semrushTrafficRevisionTimestampAsOf(record, asOf) >= semrushTrafficRevisionTimestampAsOf(current, asOf)
+    ) {
+      latestByKey.set(key, record);
+    }
+  }
+  return [...latestByKey.values()];
+}
+
+function semrushOrganicTraffic(records: RawSourceRecordRow[], asOf: Date): number {
   const semrushRecords = records.filter(
     (record) => recordIsProvider(record, IntegrationProvider.SEMRUSH),
   );
-  const snapshotCounts = semrushRecords
-    .filter((record) => recordIsObjectType(record, "snapshot"))
-    .map(organicTrafficCount)
-    .filter((count): count is number => typeof count === "number");
+  const snapshotCount = latestSnapshotMetric(semrushRecords, organicTrafficCount, asOf);
+  const fallbackRecords = latestSemrushTrafficRowsById(
+    semrushRecords.filter((record) => !recordIsObjectType(record, "snapshot")),
+    asOf,
+  );
   const recordsForTraffic =
-    snapshotCounts.length > 0
-      ? snapshotCounts
-      : semrushRecords
+    snapshotCount !== null
+      ? [snapshotCount]
+      : fallbackRecords
           .map(organicTrafficCount)
           .filter((count): count is number => typeof count === "number");
   return recordsForTraffic.reduce((sum, count) => sum + count, 0);
 }
 
-function webflowFormSubmissionCount(records: RawSourceRecordRow[]): number {
+function webflowSubmissionSources(record: RawSourceRecordRow): Record<string, unknown>[] {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  return [
+    ...sources,
+    ...sources.flatMap((source) => [
+      nestedRecord(source.submission),
+      nestedRecord(source.formSubmission),
+      nestedRecord(source.form_submission),
+    ]),
+  ];
+}
+
+function webflowFormSources(record: RawSourceRecordRow): Record<string, unknown>[] {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  return [
+    ...sources,
+    ...sources.flatMap((source) => [
+      nestedRecord(source.form),
+      nestedRecord(source.formData),
+      nestedRecord(source.form_data),
+    ]),
+  ];
+}
+
+function webflowSubmitterSources(record: RawSourceRecordRow): Record<string, unknown>[] {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  return [
+    ...sources,
+    ...sources.flatMap((source) => [
+      nestedRecord(source.contact),
+      nestedRecord(source.submitter),
+      nestedRecord(source.person),
+      nestedRecord(source.customer),
+      nestedRecord(source.lead),
+      nestedRecord(source.user),
+    ]),
+  ];
+}
+
+function webflowDimensionValue(sources: Record<string, unknown>[], keys: string[]): string | null {
+  return normalizeLookup(firstValueFromSources(sources, keys));
+}
+
+function webflowSubmissionDateDimension(record: RawSourceRecordRow): string | null {
+  const value = firstValueFromSources(webflowSubmissionSources(record), [
+    "submittedAt",
+    "submitted_at",
+    "createdAt",
+    "created_at",
+    "date",
+    "rowDate",
+    "row_date",
+    "timestamp",
+  ]);
+  const parsedDate = dateFrom(value);
+  if (parsedDate) return parsedDate.toISOString();
+  return normalizeLookup(value);
+}
+
+function webflowFormSubmissionDeduplicationKey(record: RawSourceRecordRow): string {
+  const dimensions = [
+    webflowDimensionValue(webflowSubmissionSources(record), [
+      "submissionId",
+      "submission_id",
+      "submissionID",
+      "id",
+    ]),
+    webflowDimensionValue(webflowFormSources(record), [
+      "formId",
+      "form_id",
+      "formID",
+      "form",
+      "formName",
+      "form_name",
+      "name",
+      "id",
+    ]),
+    webflowDimensionValue(webflowSubmitterSources(record), [
+      "email",
+      "emailAddress",
+      "email_address",
+    ]),
+    webflowSubmissionDateDimension(record),
+  ]
+    .map((value, index) => (value ? `${index}:${value}` : null))
+    .filter((value): value is string => Boolean(value));
+
+  if (dimensions.length > 0) {
+    return `${recordProvider(record) ?? "UNKNOWN"}:${recordObjectType(record)}:${dimensions.join(":")}`;
+  }
+  return rawRecordDeduplicationKey(record);
+}
+
+function webflowSubmissionRevisionTimestampAsOf(record: RawSourceRecordRow, asOf: Date): number {
+  return (
+    rawRevisionTimestampAsOf(record.sourceUpdatedAt, asOf) ??
+    rawRevisionTimestampAsOf(record.occurredAt, asOf) ??
+    rawRevisionTimestampAsOf(record.sourceCreatedAt, asOf) ??
+    0
+  );
+}
+
+function latestWebflowFormSubmissionsById(records: RawSourceRecordRow[], asOf: Date): RawSourceRecordRow[] {
+  const latestByKey = new Map<string, RawSourceRecordRow>();
+  for (const record of records) {
+    const key = webflowFormSubmissionDeduplicationKey(record);
+    const current = latestByKey.get(key);
+    if (
+      !current ||
+      webflowSubmissionRevisionTimestampAsOf(record, asOf) >=
+        webflowSubmissionRevisionTimestampAsOf(current, asOf)
+    ) {
+      latestByKey.set(key, record);
+    }
+  }
+  return [...latestByKey.values()];
+}
+
+function webflowFormSubmissionCount(records: RawSourceRecordRow[], asOf: Date): number {
   const webflowRecords = records.filter((record) => recordIsProvider(record, IntegrationProvider.WEBFLOW));
-  const snapshotCounts = webflowRecords
-    .filter((record) => recordIsObjectType(record, "snapshot"))
-    .map((record) => {
+  const snapshotCount = latestSnapshotMetric(
+    webflowRecords,
+    (record) => {
       const payload = asRecord(record.payload);
       return nonNegativeIntegerFrom(
         firstValueFromSources(metricSources(payload), [
@@ -3043,15 +3896,17 @@ function webflowFormSubmissionCount(records: RawSourceRecordRow[]): number {
           "total_form_submissions",
         ]),
       );
-    })
-    .filter((count): count is number => typeof count === "number");
-  if (snapshotCounts.length > 0) {
-    return snapshotCounts.reduce((sum, count) => sum + count, 0);
+    },
+    asOf,
+  );
+  if (snapshotCount !== null) {
+    return snapshotCount;
   }
 
-  return webflowRecords
-    .filter((record) => recordIsObjectType(record, "form_submission"))
-    .reduce((sum, record) => {
+  return latestWebflowFormSubmissionsById(
+    webflowRecords.filter((record) => recordIsObjectType(record, "form_submission")),
+    asOf,
+  ).reduce((sum, record) => {
       const payload = asRecord(record.payload);
       return (
         sum +
@@ -3062,36 +3917,91 @@ function webflowFormSubmissionCount(records: RawSourceRecordRow[]): number {
     }, 0);
 }
 
-function searchClicks(record: RawSourceRecordRow): number {
+function searchClicksValue(record: RawSourceRecordRow): number | null {
   if (!recordIsProvider(record, IntegrationProvider.GOOGLE_SEARCH_CONSOLE)) return 0;
   const payload = asRecord(record.payload);
-  return (
-    nonNegativeIntegerFrom(
-      firstValueFromSources(metricSources(payload), [
-        "clicks",
-        "clickCount",
-        "click_count",
-        "searchClicks",
-        "search_clicks",
-      ]),
-    ) ?? 0
+  return nonNegativeIntegerFrom(
+    firstValueFromSources(metricSources(payload), [
+      "clicks",
+      "clickCount",
+      "click_count",
+      "searchClicks",
+      "search_clicks",
+    ]),
+  );
+}
+
+function searchClicks(record: RawSourceRecordRow): number {
+  return searchClicksValue(record) ?? 0;
+}
+
+function searchImpressionsValue(record: RawSourceRecordRow): number | null {
+  if (!recordIsProvider(record, IntegrationProvider.GOOGLE_SEARCH_CONSOLE)) return 0;
+  const payload = asRecord(record.payload);
+  return nonNegativeIntegerFrom(
+    firstValueFromSources(metricSources(payload), [
+      "impressions",
+      "impressionCount",
+      "impression_count",
+      "searchImpressions",
+      "search_impressions",
+    ]),
   );
 }
 
 function searchImpressions(record: RawSourceRecordRow): number {
-  if (!recordIsProvider(record, IntegrationProvider.GOOGLE_SEARCH_CONSOLE)) return 0;
+  return searchImpressionsValue(record) ?? 0;
+}
+
+function googleSearchConsoleDimensionValue(record: RawSourceRecordRow, keys: string[]): string | null {
   const payload = asRecord(record.payload);
-  return (
-    nonNegativeIntegerFrom(
-      firstValueFromSources(metricSources(payload), [
-        "impressions",
-        "impressionCount",
-        "impression_count",
-        "searchImpressions",
-        "search_impressions",
-      ]),
-    ) ?? 0
-  );
+  return normalizeLookup(firstValueFromSources(wrapperSources(payload), keys));
+}
+
+function googleSearchConsoleDateDimension(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const value = firstValueFromSources(wrapperSources(payload), [
+    "date",
+    "rowDate",
+    "row_date",
+    "startDate",
+    "start_date",
+    "endDate",
+    "end_date",
+  ]);
+  const parsedDate = dateFrom(value);
+  if (parsedDate) return parsedDate.toISOString().slice(0, 10);
+  return normalizeLookup(value);
+}
+
+function googleSearchConsoleRowDeduplicationKey(record: RawSourceRecordRow): string {
+  const dimensions = [
+    googleSearchConsoleDimensionValue(record, ["query", "searchQuery", "search_query", "keyword"]),
+    googleSearchConsoleDimensionValue(record, ["page", "url", "pageUrl", "page_url", "landingPage", "landing_page"]),
+    googleSearchConsoleDateDimension(record),
+    googleSearchConsoleDimensionValue(record, ["country", "countryCode", "country_code"]),
+    googleSearchConsoleDimensionValue(record, ["device", "deviceCategory", "device_category"]),
+    googleSearchConsoleDimensionValue(record, ["searchAppearance", "search_appearance"]),
+  ]
+    .map((value, index) => (value ? `${index}:${value}` : null))
+    .filter((value): value is string => Boolean(value));
+
+  if (dimensions.length >= 2) {
+    return `${recordProvider(record) ?? "UNKNOWN"}:${recordObjectType(record)}:${dimensions.join(":")}`;
+  }
+  return rawRecordDeduplicationKey(record);
+}
+
+function latestGoogleSearchConsoleRowsById(records: RawSourceRecordRow[], asOf: Date): RawSourceRecordRow[] {
+  const latestByKey = new Map<string, RawSourceRecordRow>();
+  for (const record of records) {
+    const key = googleSearchConsoleRowDeduplicationKey(record);
+    const current = latestByKey.get(key);
+    if (!current || recordFactTimestampAsOf(record, asOf) >= recordFactTimestampAsOf(current, asOf)) {
+      latestByKey.set(key, record);
+    }
+  }
+  return [...latestByKey.values()];
 }
 
 function isIdentifiedVisitor(record: RawSourceRecordRow): boolean {
@@ -3119,6 +4029,27 @@ function isIdentifiedVisitor(record: RawSourceRecordRow): boolean {
         ]),
       ) !== null,
   );
+}
+
+function identifiedVisitorKey(record: RawSourceRecordRow): string | null {
+  if (!isIdentifiedVisitor(record)) return null;
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const nestedSources = sources.flatMap((source) => [
+    nestedRecord(source.account),
+    nestedRecord(source.company),
+  ]);
+  const identity = firstValueFromSources([...sources, ...nestedSources], [
+    "companyId",
+    "company_id",
+    "accountId",
+    "account_id",
+    "companyDomain",
+    "company_domain",
+    "domain",
+    "id",
+  ]);
+  return normalizeLookup(identity) ?? rawRecordDeduplicationKey(record);
 }
 
 function isMarketingPipelineDeal(record: RawSourceRecordRow): boolean {
@@ -3155,36 +4086,64 @@ function isMarketingPipelineDeal(record: RawSourceRecordRow): boolean {
   );
 }
 
-function computeMarketingPipelineEfficiency(records: RawSourceRecordRow[]) {
+function latestSnapshotMetric(
+  records: RawSourceRecordRow[],
+  metric: (record: RawSourceRecordRow) => number | null,
+  asOf: Date,
+): number | null {
+  return records
+    .filter((record) => recordIsObjectType(record, "snapshot"))
+    .map((record) => ({
+      value: metric(record),
+      timestamp: recordFactTimestampAsOf(record, asOf),
+    }))
+    .filter((entry): entry is { value: number; timestamp: number } => typeof entry.value === "number")
+    .reduce<{ value: number; timestamp: number } | null>(
+      (latest, entry) => (!latest || entry.timestamp >= latest.timestamp ? entry : latest),
+      null,
+    )?.value ?? null;
+}
+
+function computeMarketingPipelineEfficiency(records: RawSourceRecordRow[], asOf: Date) {
   const acquisitionSpend = PAID_AD_PROVIDERS.reduce(
-    (sum, provider) => sum + acquisitionSpendForProvider(records, provider),
+    (sum, provider) => sum + acquisitionSpendForProvider(records, provider, asOf),
     0,
   );
-  const qualifiedPipeline = records
-    .filter(isMarketingPipelineDeal)
-    .reduce((sum, record) => sum + dealAmount(record), 0);
-  const websiteSessions = websiteSessionsCount(records);
-  const organicTraffic = semrushOrganicTraffic(records);
-  const webflowFormSubmissions = webflowFormSubmissionCount(records);
+  const qualifiedPipeline = latestRecordsByDealId(records.filter(isMarketingPipelineDeal), asOf).reduce(
+    (sum, record) => sum + dealAmount(record),
+    0,
+  );
+  const websiteSessions = websiteSessionsCount(records, asOf);
+  const organicTraffic = semrushOrganicTraffic(records, asOf);
+  const webflowFormSubmissions = webflowFormSubmissionCount(records, asOf);
   const googleSearchConsoleRecords = records.filter(
     (record) => recordIsProvider(record, IntegrationProvider.GOOGLE_SEARCH_CONSOLE),
   );
-  const googleSearchConsoleSummaryRecords = googleSearchConsoleRecords.filter(
-    (record) => recordIsObjectType(record, "snapshot"),
+  const googleSearchConsoleRows = latestGoogleSearchConsoleRowsById(
+    googleSearchConsoleRecords.filter((record) => !recordIsObjectType(record, "snapshot")),
+    asOf,
   );
-  const googleSearchConsoleTrafficRecords =
-    googleSearchConsoleSummaryRecords.length > 0
-      ? googleSearchConsoleSummaryRecords
-      : googleSearchConsoleRecords;
-  const searchClickCount = googleSearchConsoleTrafficRecords.reduce(
-    (sum, record) => sum + searchClicks(record),
-    0,
+  const snapshotSearchClickCount = latestSnapshotMetric(
+    googleSearchConsoleRecords,
+    searchClicksValue,
+    asOf,
   );
-  const searchImpressionCount = googleSearchConsoleTrafficRecords.reduce(
-    (sum, record) => sum + searchImpressions(record),
-    0,
+  const snapshotSearchImpressionCount = latestSnapshotMetric(
+    googleSearchConsoleRecords,
+    searchImpressionsValue,
+    asOf,
   );
-  const identifiedVisitors = records.filter(isIdentifiedVisitor).length;
+  const hasGoogleSearchConsoleSnapshotMetric =
+    snapshotSearchClickCount !== null || snapshotSearchImpressionCount !== null;
+  const searchClickCount = hasGoogleSearchConsoleSnapshotMetric
+    ? snapshotSearchClickCount ?? 0
+    : googleSearchConsoleRows.reduce((sum, record) => sum + searchClicks(record), 0);
+  const searchImpressionCount = hasGoogleSearchConsoleSnapshotMetric
+    ? snapshotSearchImpressionCount ?? 0
+    : googleSearchConsoleRows.reduce((sum, record) => sum + searchImpressions(record), 0);
+  const identifiedVisitors = new Set(
+    records.map(identifiedVisitorKey).filter((key): key is string => Boolean(key)),
+  ).size;
   const currency = currencyFrom(records);
 
   return {
@@ -3234,7 +4193,7 @@ export async function materializeImladrisMarketingMetrics(
     orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
   });
   const records = dedupeRawSourceRecords(queriedRecords, context, input.periodStart, input.periodEnd, now);
-  const value = computeMarketingPipelineEfficiency(records);
+  const value = computeMarketingPipelineEfficiency(records, now);
   const status = statusForProviderCoverage({ records, requiredProviders });
   const warnings = providerCoverageWarning({
     metricLabel: "Pipeline Efficiency",
@@ -3300,7 +4259,7 @@ function accountIdFromPayload(record: RawSourceRecordRow): string | null {
       "stripe_customer_id",
     ]);
 
-  return normalizeIdentifier(id);
+  return normalizeLookup(id);
 }
 
 function statusText(value: unknown, seen = new WeakSet<object>()): string | null {
@@ -3342,9 +4301,87 @@ function isClosedStatus(status: unknown): boolean {
   );
 }
 
-function isOpenSupportIssue(record: RawSourceRecordRow): boolean {
-  if (!recordIsProvider(record, IntegrationProvider.PYLON)) return false;
-  if (!recordIsObjectType(record, "conversation", "ticket", "issue")) return false;
+function supportClosedAtOrBefore(record: RawSourceRecordRow, asOf: Date): boolean {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  return firstDateAtOrBefore(
+    asOf,
+    ...sources.flatMap((source) => [
+      source.closedAt,
+      source.closed_at,
+      source.resolvedAt,
+      source.resolved_at,
+      source.completedAt,
+      source.completed_at,
+      source.cancelledAt,
+      source.cancelled_at,
+      source.canceledAt,
+      source.canceled_at,
+    ]),
+  ) !== null;
+}
+
+function isPylonSupportRecord(record: RawSourceRecordRow): boolean {
+  return (
+    recordIsProvider(record, IntegrationProvider.PYLON) &&
+    recordIsObjectType(record, "conversation", "ticket", "issue")
+  );
+}
+
+function pylonSupportRecordId(record: RawSourceRecordRow): string | null {
+  if (!isPylonSupportRecord(record)) return null;
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const id = firstValueFromSources(sources, [
+    "conversationId",
+    "conversation_id",
+    "ticketId",
+    "ticket_id",
+    "issueId",
+    "issue_id",
+    "pylonConversationId",
+    "pylon_conversation_id",
+    "pylonTicketId",
+    "pylon_ticket_id",
+    "id",
+  ]);
+  const payloadId = normalizeLookup(id);
+  if (payloadId) return payloadId;
+  const externalId = normalizeLookup(record.externalId);
+  if (externalId) return externalId.split(":").filter(Boolean).pop() ?? externalId;
+  return normalizeLookup(record.id);
+}
+
+function supportRevisionTimestampAsOf(record: RawSourceRecordRow, asOf: Date): number {
+  return (
+    rawRevisionTimestampAsOf(record.sourceUpdatedAt, asOf) ??
+    rawRevisionTimestampAsOf(record.occurredAt, asOf) ??
+    rawRevisionTimestampAsOf(record.sourceCreatedAt, asOf) ??
+    0
+  );
+}
+
+function latestPylonSupportRecordsById(records: RawSourceRecordRow[], asOf: Date): RawSourceRecordRow[] {
+  const latestById = new Map<string, RawSourceRecordRow>();
+  const unkeyedRecords: RawSourceRecordRow[] = [];
+  for (const record of records) {
+    if (!isPylonSupportRecord(record)) continue;
+    const supportId = pylonSupportRecordId(record);
+    if (!supportId) {
+      unkeyedRecords.push(record);
+      continue;
+    }
+    const current = latestById.get(supportId);
+    if (!current || supportRevisionTimestampAsOf(record, asOf) >= supportRevisionTimestampAsOf(current, asOf)) {
+      latestById.set(supportId, record);
+    }
+  }
+  return [...latestById.values(), ...unkeyedRecords];
+}
+
+function isOpenSupportIssue(record: RawSourceRecordRow, asOf: Date): boolean {
+  if (!isPylonSupportRecord(record)) return false;
+  if (supportClosedAtOrBefore(record, asOf)) return false;
 
   const payload = asRecord(record.payload);
   return !isClosedStatus(
@@ -3425,10 +4462,11 @@ function normalizedTagValues(value: unknown): string[] {
     .filter((tag): tag is string => tag !== null);
 }
 
-function isEscalation(record: RawSourceRecordRow): boolean {
+function isEscalation(record: RawSourceRecordRow, asOf: Date): boolean {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
   if (
+    supportClosedAtOrBefore(record, asOf) ||
     isClosedStatus(
       firstValueFromSources(sources, ["status", "state"]),
     )
@@ -3443,8 +4481,16 @@ function isEscalation(record: RawSourceRecordRow): boolean {
   const priority = normalizeLookup(firstValueFromSources(sources, ["priority"])) ?? "";
 
   if (recordIsProvider(record, IntegrationProvider.SLACK)) {
+    const escalationFlag = [
+      "escalation",
+      "isEscalation",
+      "is_escalation",
+      "escalated",
+      "customerEscalation",
+      "customer_escalation",
+    ].some((key) => booleanFrom(firstValueFromSources(sources, [key])) === true);
     return (
-      booleanFrom(firstValueFromSources(sources, ["escalation"])) === true ||
+      escalationFlag ||
       type.includes("escalation") ||
       tags.some((tag) => tag.toLowerCase().includes("escalation"))
     );
@@ -3483,7 +4529,7 @@ function isLowUsage(record: RawSourceRecordRow, asOf: Date): boolean {
 
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
-  const activeUsers = numberFrom(
+  const activeUsers = observedNonNegativeIntegerFrom(
     firstValueFromSources(sources, [
       "activeUsers",
       "active_users",
@@ -3491,7 +4537,7 @@ function isLowUsage(record: RawSourceRecordRow, asOf: Date): boolean {
       "weekly_active_users",
     ]),
   );
-  const daysSinceLastActive = numberFrom(
+  const daysSinceLastActive = observedNonNegativeIntegerFrom(
     firstValueFromSources(sources, [
       "daysSinceLastActive",
       "days_since_last_active",
@@ -3522,19 +4568,102 @@ function isLowUsage(record: RawSourceRecordRow, asOf: Date): boolean {
 function isCollaborationSignal(record: RawSourceRecordRow): boolean {
   const supported =
     (recordIsProvider(record, IntegrationProvider.GOOGLE_WORKSPACE) &&
-      recordIsObjectType(record, "calendar_event", "email_thread", "document")) ||
-    (recordIsProvider(record, IntegrationProvider.SLACK) && recordIsObjectType(record, "message"));
+      recordIsObjectType(record, "calendar_event", "email_thread", "document", "event", "thread", "file")) ||
+    (recordIsProvider(record, IntegrationProvider.SLACK) && recordIsObjectType(record, "message", "thread"));
   if (!supported) return false;
 
   return Boolean(accountIdFromPayload(record));
 }
 
+function collaborationSignalEventId(record: RawSourceRecordRow): string | null {
+  if (recordIsProvider(record, IntegrationProvider.SLACK)) {
+    return slackCollaborationEventId(record);
+  }
+  if (recordIsProvider(record, IntegrationProvider.GOOGLE_WORKSPACE)) {
+    return googleWorkspaceCollaborationEventId(record);
+  }
+  return null;
+}
+
+function collaborationSignalObjectType(record: RawSourceRecordRow): string {
+  return collaborationObjectType(record);
+}
+
+function collaborationSignalDeduplicationKey(record: RawSourceRecordRow): string | null {
+  if (!isCollaborationSignal(record)) return null;
+  const accountId = accountIdFromPayload(record);
+  const eventId = collaborationSignalEventId(record);
+  if (accountId && eventId) {
+    return `${recordProvider(record) ?? "UNKNOWN"}:${collaborationSignalObjectType(record)}:${accountId}:${eventId}`;
+  }
+  return rawRecordDeduplicationKey(record);
+}
+
+function collaborationSignalRevisionTimestampAsOf(record: RawSourceRecordRow, asOf: Date): number {
+  return (
+    rawRevisionTimestampAsOf(record.sourceUpdatedAt, asOf) ??
+    rawRevisionTimestampAsOf(record.occurredAt, asOf) ??
+    rawRevisionTimestampAsOf(record.sourceCreatedAt, asOf) ??
+    0
+  );
+}
+
+function latestCollaborationSignalsById(records: RawSourceRecordRow[], asOf: Date): RawSourceRecordRow[] {
+  const latestByKey = new Map<string, RawSourceRecordRow>();
+  for (const record of records) {
+    const key = collaborationSignalDeduplicationKey(record);
+    if (!key) continue;
+    const current = latestByKey.get(key);
+    if (
+      !current ||
+      collaborationSignalRevisionTimestampAsOf(record, asOf) >=
+        collaborationSignalRevisionTimestampAsOf(current, asOf)
+    ) {
+      latestByKey.set(key, record);
+    }
+  }
+  return [...latestByKey.values()];
+}
+
+function escalationSignalDeduplicationKey(record: RawSourceRecordRow): string {
+  const accountId = accountIdFromPayload(record);
+  const eventId = collaborationSignalEventId(record);
+  if (accountId && eventId) {
+    return `${recordProvider(record) ?? "UNKNOWN"}:${collaborationObjectType(record)}:${accountId}:${eventId}`;
+  }
+  return rawRecordDeduplicationKey(record);
+}
+
+function latestEscalationSignalsById(records: RawSourceRecordRow[], asOf: Date): RawSourceRecordRow[] {
+  const latestByKey = new Map<string, RawSourceRecordRow>();
+  for (const record of records) {
+    const key = escalationSignalDeduplicationKey(record);
+    const current = latestByKey.get(key);
+    if (
+      !current ||
+      collaborationSignalRevisionTimestampAsOf(record, asOf) >=
+        collaborationSignalRevisionTimestampAsOf(current, asOf)
+    ) {
+      latestByKey.set(key, record);
+    }
+  }
+  return [...latestByKey.values()];
+}
+
 function computeRetentionRisk(records: RawSourceRecordRow[], asOf: Date) {
-  const supportIssues = records.filter(isOpenSupportIssue);
-  const escalations = records.filter(isEscalation);
+  const pylonSupportRecords = latestPylonSupportRecordsById(records, asOf);
+  const supportIssues = pylonSupportRecords.filter((record) => isOpenSupportIssue(record, asOf));
+  const nonPylonEscalations = latestEscalationSignalsById(
+    records.filter((record) => !isPylonSupportRecord(record) && isEscalation(record, asOf)),
+    asOf,
+  );
+  const escalations = [
+    ...pylonSupportRecords.filter((record) => isEscalation(record, asOf)),
+    ...nonPylonEscalations,
+  ];
   const billingRiskRecords = records.filter(isBillingRisk);
   const lowUsageRecords = records.filter((record) => isLowUsage(record, asOf));
-  const collaborationSignals = records.filter(isCollaborationSignal);
+  const collaborationSignals = latestCollaborationSignalsById(records, asOf);
   const latestPylonSnapshot = latestRecordByFactTimestamp(
     records.filter(
       (record) =>
@@ -3569,10 +4698,10 @@ function computeRetentionRisk(records: RawSourceRecordRow[], asOf: Date) {
           "urgent_issues",
           "urgentTickets",
           "urgent_tickets",
-        ]) ?? 0
-      : 0;
+        ])
+      : null;
   const openSupportIssueCount = pylonSnapshotOpenSupportIssues ?? supportIssues.length;
-  const escalationCount = escalations.length + pylonSnapshotEscalations;
+  const escalationCount = pylonSnapshotEscalations ?? escalations.length;
 
   const billingRiskAccounts = new Set(
     billingRiskRecords

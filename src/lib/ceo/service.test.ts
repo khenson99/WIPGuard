@@ -242,6 +242,66 @@ describe("loadCeoMetricSnapshot", () => {
     expect(payload.readiness.status).toBe("board_ready");
   });
 
+  it("normalizes aliased analytics snapshots before calculating CEO metrics", async () => {
+    vi.mocked(prisma.analyticsSnapshot.findMany).mockResolvedValue([
+      snapshot("google_analytics", { sessions30d: 5432 }),
+      snapshot("webflow", { site: "connected" }),
+    ] as never);
+
+    const payload = await loadCeoMetricSnapshot({
+      userId: "user-1",
+      organizationId: "org-1",
+      persist: false,
+    });
+
+    const firstFindManyCall = vi.mocked(prisma.analyticsSnapshot.findMany).mock.calls[0]?.[0] as
+      | { where?: { providerKey?: { in?: string[] } } }
+      | undefined;
+    const requestedSources = firstFindManyCall?.where?.providerKey?.in ?? [];
+    const metricByKey = new Map(payload.metrics.map((metric) => [metric.definition.key, metric]));
+    const websiteSessions = metricByKey.get("website.sessions");
+    const websiteHealth = metricByKey.get("domain.website-traffic.health");
+
+    expect(requestedSources).toContain("googleAnalytics");
+    expect(requestedSources).toContain("google_analytics");
+    expect(websiteSessions?.value).toBe(5432);
+    expect(websiteSessions?.lineage.map((lineage) => lineage.sourceKey)).toContain("googleAnalytics");
+    expect(websiteHealth?.trust.status).toBe("fresh");
+  });
+
+  it("ignores future-dated analytics snapshots before calculating CEO metrics", async () => {
+    vi.mocked(prisma.analyticsSnapshot.findMany).mockResolvedValue([
+      snapshot("googleAnalytics", { sessions30d: 5432 }),
+      {
+        ...snapshot("googleAnalytics", { sessions30d: 999999 }),
+        id: "googleAnalytics-future-snapshot",
+        capturedAt: new Date("2026-05-02T11:30:00.000Z"),
+        expiresAt: new Date("2026-05-03T11:30:00.000Z"),
+      },
+    ] as never);
+
+    const payload = await loadCeoMetricSnapshot({
+      userId: "user-1",
+      organizationId: "org-1",
+      persist: false,
+    });
+
+    const firstFindManyCall = vi.mocked(prisma.analyticsSnapshot.findMany).mock.calls[0]?.[0] as
+      | { where?: { capturedAt?: { lte?: Date } } }
+      | undefined;
+    const metricByKey = new Map(payload.metrics.map((metric) => [metric.definition.key, metric]));
+    const websiteSessions = metricByKey.get("website.sessions");
+
+    expect(firstFindManyCall?.where?.capturedAt?.lte).toEqual(new Date("2026-05-01T12:00:00.000Z"));
+    expect(websiteSessions?.value).toBe(5432);
+    expect(websiteSessions?.lineage).toEqual([
+      expect.objectContaining({
+        sourceId: "googleAnalytics-snapshot",
+        capturedAt: "2026-05-01T11:30:00.000Z",
+      }),
+    ]);
+  });
+
   it("derives finance forecast health from Stripe and Mercury snapshots", async () => {
     vi.mocked(prisma.analyticsSnapshot.findMany).mockResolvedValue([
       snapshot("mercury", {

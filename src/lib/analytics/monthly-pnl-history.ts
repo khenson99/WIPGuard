@@ -7,6 +7,7 @@ import { buildProfitAndLossCore } from "./pnl-builder";
 import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
 import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
+import { normalizeMercuryDataPayload } from "@/lib/analytics/mercury-normalization";
 import type { StripeData, MercuryData, HubSpotData, PnLRow } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -106,6 +107,9 @@ async function loadMonthlySnapshots(
   startDate: Date,
   endDate: Date,
 ): Promise<MonthlySnapshot[]> {
+  const now = new Date();
+  const nowTime = now.getTime();
+
   // Fetch all successful monthly source snapshots inside the reporting window.
   const snapshots = await prisma.analyticsSnapshot.findMany({
     where: {
@@ -115,6 +119,7 @@ async function loadMonthlySnapshots(
       rangePreset: MONTHLY_HISTORY_RANGE_PRESET,
       status: AnalyticsSnapshotStatus.SUCCESS,
       fromDate: { gte: startDate },
+      capturedAt: { lte: now },
     },
     orderBy: [{ fromDate: "desc" }, { capturedAt: "desc" }],
     select: {
@@ -133,6 +138,8 @@ async function loadMonthlySnapshots(
   let latestSnapshotMonth: Date | null = null;
 
   for (const snap of snapshots) {
+    const capturedAtTime = snap.capturedAt.getTime();
+    if (!Number.isFinite(capturedAtTime) || capturedAtTime > nowTime) continue;
     if (snap.fromDate.getTime() > endDate.getTime()) continue;
 
     if (
@@ -151,7 +158,7 @@ async function loadMonthlySnapshots(
       entry.stripe = snap.payload as StripeData | null;
     }
     if (snap.providerKey === "mercury" && !entry.mercury) {
-      entry.mercury = snap.payload as MercuryData | null;
+      entry.mercury = normalizeMercuryDataPayload(snap.payload as MercuryData | null);
     }
     if (snap.providerKey === "hubspot" && !entry.hubspot) {
       entry.hubspot = snap.payload as HubSpotData | null;

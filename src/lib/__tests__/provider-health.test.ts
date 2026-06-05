@@ -109,6 +109,86 @@ describe("provider health", () => {
     expect(result.syncHealthReason).toContain("HubSpot timeout");
   });
 
+  it("returns degraded when the latest snapshot expiry is invalid", () => {
+    const now = new Date("2026-02-16T12:00:00.000Z");
+    const result = evaluateProviderSyncHealth({
+      connected: true,
+      hasCredential: true,
+      now,
+      snapshots: [
+        {
+          providerKey: "stripe",
+          status: "SUCCESS",
+          capturedAt: "2026-02-16T11:59:00.000Z",
+          expiresAt: "not-a-date",
+          lastError: null,
+        },
+      ],
+    });
+
+    expect(result.syncHealth).toBe("degraded");
+    expect(result.syncHealthReason).toContain("invalid");
+    expect(result.lastSnapshotAt).toBe("2026-02-16T11:59:00.000Z");
+    expect(result.lastSnapshotStatus).toBe("SUCCESS");
+  });
+
+  it("ignores snapshots with invalid capture times when selecting latest health", () => {
+    const now = new Date("2026-02-16T12:00:00.000Z");
+    const result = evaluateProviderSyncHealth({
+      connected: true,
+      hasCredential: true,
+      now,
+      snapshots: [
+        {
+          providerKey: "hubspot",
+          status: "SUCCESS",
+          capturedAt: "not-a-date",
+          expiresAt: "2026-02-16T14:00:00.000Z",
+          lastError: null,
+        },
+        {
+          providerKey: "hubspot",
+          status: "SUCCESS",
+          capturedAt: "2026-02-16T11:30:00.000Z",
+          expiresAt: "2026-02-16T13:30:00.000Z",
+          lastError: null,
+        },
+      ],
+    });
+
+    expect(result.syncHealth).toBe("healthy");
+    expect(result.lastSnapshotAt).toBe("2026-02-16T11:30:00.000Z");
+  });
+
+  it("ignores future capture times when selecting latest health", () => {
+    const now = new Date("2026-02-16T12:00:00.000Z");
+    const result = evaluateProviderSyncHealth({
+      connected: true,
+      hasCredential: true,
+      now,
+      snapshots: [
+        {
+          providerKey: "stripe",
+          status: "SUCCESS",
+          capturedAt: "2026-02-16T12:05:00.000Z",
+          expiresAt: "2026-02-16T13:00:00.000Z",
+          lastError: null,
+        },
+        {
+          providerKey: "stripe",
+          status: "SUCCESS",
+          capturedAt: "2026-02-16T10:00:00.000Z",
+          expiresAt: "2026-02-16T11:00:00.000Z",
+          lastError: null,
+        },
+      ],
+    });
+
+    expect(result.syncHealth).toBe("degraded");
+    expect(result.syncHealthReason).toContain("stale");
+    expect(result.lastSnapshotAt).toBe("2026-02-16T10:00:00.000Z");
+  });
+
   it("maps integration providers to relevant snapshot keys", () => {
     expect(snapshotKeysForIntegrationProvider(IntegrationProvider.HUBSPOT)).toEqual([
       "hubspot",

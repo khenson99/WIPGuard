@@ -296,6 +296,17 @@ describe("GET /api/integrations", () => {
       body.find((item) => item.provider === IntegrationProvider.GOOGLE_ANALYTICS)?.credentialSource
     ).toBe("env");
     expect(prisma.analyticsSnapshot.groupBy).toHaveBeenCalledTimes(2);
+    const groupByCalls = vi.mocked(prisma.analyticsSnapshot.groupBy).mock.calls.map(([query]) => query as {
+      where?: { capturedAt?: unknown };
+    });
+    expect(groupByCalls).toEqual([
+      expect.objectContaining({
+        where: expect.objectContaining({ capturedAt: { lte: expect.any(Date) } }),
+      }),
+      expect.objectContaining({
+        where: expect.objectContaining({ capturedAt: { lte: expect.any(Date) } }),
+      }),
+    ]);
   });
 
   it("falls back to safe freshness when a provider freshness entry is missing", async () => {

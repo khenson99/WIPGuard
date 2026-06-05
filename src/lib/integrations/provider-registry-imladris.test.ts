@@ -4,6 +4,7 @@ import {
   listProviderRegistryEntries,
   providerForSnapshotKey,
   resolveProviderRegistryEntryBySlug,
+  snapshotKeyQueryVariants,
 } from "@/lib/integrations/provider-registry";
 import { getIntegrationDefinition } from "@/lib/integrations/catalog";
 
@@ -43,6 +44,17 @@ describe("Imladris provider registry coverage", () => {
     expect(providerForSnapshotKey("google-analytics")).toBe(IntegrationProvider.GOOGLE_ANALYTICS);
     expect(providerForSnapshotKey("sales-performance")).toBe(IntegrationProvider.HUBSPOT);
     expect(providerForSnapshotKey("product")).toBe(IntegrationProvider.POSTHOG);
+  });
+
+  it("expands snapshot key aliases back to the canonical key without sibling payloads", () => {
+    expect(snapshotKeyQueryVariants(["google_analytics"])).toEqual(
+      expect.arrayContaining(["googleAnalytics", "google_analytics", "google-analytics"])
+    );
+    expect(snapshotKeyQueryVariants(["sales-performance"])).toEqual(
+      expect.arrayContaining(["salesPerformance", "sales_performance", "sales-performance"])
+    );
+    expect(snapshotKeyQueryVariants(["sales-performance"])).not.toContain("hubspot");
+    expect(snapshotKeyQueryVariants(["sales-performance"])).not.toContain("hubspotOps");
   });
 
   it("does not expose WIPGuard as a provider source", () => {

@@ -475,6 +475,62 @@ describe("buildSalesPerformancePack", () => {
     expect(d2?.stripeRealized30d).toBe(25);
   });
 
+  it("ignores non-finite Stripe realized cash charge amounts", () => {
+    const deals: NonNullable<HubSpotData["deals"]> = [
+      {
+        dealId: "d1",
+        dealName: "Deal 1",
+        stageId: "closedwon",
+        stageLabel: "Closed Won",
+        amount: 1000,
+        source: "Organic Search",
+        ownerId: "o1",
+        repName: "Rep A",
+        updatedAt: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        closedAt: "2026-02-01T00:00:00.000Z",
+        stripeCustomerId: "cus_1",
+        ...DEAL_CONTACT_DEFAULTS,
+      },
+    ];
+
+    const pack = buildSalesPerformancePack({
+      from: new Date("2026-02-01T00:00:00.000Z"),
+      to: new Date("2026-02-28T23:59:59.999Z"),
+      deals,
+      contacts: [],
+      chargesByCustomerId: {
+        cus_1: [
+          {
+            chargeId: "ch_bad_nan",
+            created: Math.floor(new Date("2026-02-02T00:00:00.000Z").getTime() / 1000),
+            currency: "usd",
+            netAmountCents: Number.NaN,
+          },
+          {
+            chargeId: "ch_bad_infinity",
+            created: Math.floor(new Date("2026-02-03T00:00:00.000Z").getTime() / 1000),
+            currency: "usd",
+            netAmountCents: Number.POSITIVE_INFINITY,
+          },
+          {
+            chargeId: "ch_valid",
+            created: Math.floor(new Date("2026-02-04T00:00:00.000Z").getTime() / 1000),
+            currency: "usd",
+            netAmountCents: 2500,
+          },
+        ],
+      },
+    });
+
+    const row = pack.dealAuditRows.find((r) => r.hubspotDealId === "d1");
+    const repMonth = pack.repMonthRows.find((r) => r.repName === "Rep A" && r.month === "2026-02");
+    const channel = pack.repMonthChannelRows.find((r) => r.repName === "Rep A" && r.month === "2026-02");
+    expect(row?.stripeRealized30d).toBe(25);
+    expect(repMonth?.signedDealsRealizedValue30d).toBe(25);
+    expect(channel?.realizedValue30d).toBe(25);
+  });
+
   it("computes lead→opp proxy rate by rep-month", () => {
     const deals: NonNullable<HubSpotData["deals"]> = [
       {

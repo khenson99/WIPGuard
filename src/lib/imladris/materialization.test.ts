@@ -960,6 +960,278 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("does not double-count completed Linear issue aliases", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_linear_issue_alias_primary",
+            provider: IntegrationProvider.LINEAR,
+            objectType: "issue",
+            externalId: "linear:issue:LIN-42",
+            occurredAt: new Date("2026-05-15T10:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-05-10T10:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-15T10:00:00.000Z"),
+            payload: {
+              id: "LIN-42",
+              state: { type: "completed" },
+              createdAt: "2026-05-10T10:00:00.000Z",
+              completedAt: "2026-05-15T10:00:00.000Z",
+            },
+          },
+          {
+            id: "raw_linear_issue_alias_secondary",
+            provider: IntegrationProvider.LINEAR,
+            objectType: "issue",
+            externalId: "linear:import:LIN-42",
+            occurredAt: new Date("2026-05-15T10:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-05-10T10:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-16T10:00:00.000Z"),
+            payload: {
+              issueId: "LIN-42",
+              state: { type: "completed" },
+              createdAt: "2026-05-10T10:00:00.000Z",
+              completedAt: "2026-05-15T10:00:00.000Z",
+            },
+          },
+          {
+            id: "raw_github_issue_alias_context",
+            provider: IntegrationProvider.GITHUB,
+            objectType: "pull_request",
+            externalId: "repo/pull/7",
+            occurredAt: new Date("2026-05-18T10:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-05-16T10:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-18T10:00:00.000Z"),
+            payload: {
+              number: 7,
+              merged: true,
+              created_at: "2026-05-16T10:00:00.000Z",
+              merged_at: "2026-05-18T10:00:00.000Z",
+            },
+          },
+          {
+            id: "raw_posthog_issue_alias_context",
+            provider: IntegrationProvider.POSTHOG,
+            objectType: "event",
+            externalId: "evt_issue_alias_context",
+            occurredAt: new Date("2026-05-19T10:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: null,
+            payload: {
+              event: "activation_completed",
+              distinct_id: "acct_1",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_development_linear_alias", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisDevelopmentMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      score: 57,
+      completedLinearIssues: 1,
+      mergedPullRequests: 1,
+      productEvents: 1,
+      averageLinearCycleTimeDays: 5,
+    });
+  });
+
+  it("does not double-count merged GitHub pull request aliases", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_linear_pr_alias_context",
+            provider: IntegrationProvider.LINEAR,
+            objectType: "issue",
+            externalId: "LIN-1",
+            occurredAt: new Date("2026-05-15T10:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-05-10T10:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-15T10:00:00.000Z"),
+            payload: {
+              id: "LIN-1",
+              state: { type: "completed" },
+              createdAt: "2026-05-10T10:00:00.000Z",
+              completedAt: "2026-05-15T10:00:00.000Z",
+            },
+          },
+          {
+            id: "raw_github_pr_alias_primary",
+            provider: IntegrationProvider.GITHUB,
+            objectType: "pull_request",
+            externalId: "github:pull_request:octo/app#7",
+            occurredAt: new Date("2026-05-18T10:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-05-16T10:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-18T10:00:00.000Z"),
+            payload: {
+              repository: "octo/app",
+              number: 7,
+              merged: true,
+              created_at: "2026-05-16T10:00:00.000Z",
+              merged_at: "2026-05-18T10:00:00.000Z",
+            },
+          },
+          {
+            id: "raw_github_pr_alias_secondary",
+            provider: IntegrationProvider.GITHUB,
+            objectType: "pull_request",
+            externalId: "github:import:octo/app#7",
+            occurredAt: new Date("2026-05-18T10:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-05-16T10:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-19T10:00:00.000Z"),
+            payload: {
+              repoFullName: "octo/app",
+              pullRequestNumber: 7,
+              merged: true,
+              created_at: "2026-05-16T10:00:00.000Z",
+              merged_at: "2026-05-18T10:00:00.000Z",
+            },
+          },
+          {
+            id: "raw_posthog_pr_alias_context",
+            provider: IntegrationProvider.POSTHOG,
+            objectType: "event",
+            externalId: "evt_pr_alias_context",
+            occurredAt: new Date("2026-05-19T10:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: null,
+            payload: {
+              event: "activation_completed",
+              distinct_id: "acct_1",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_development_pr_alias", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisDevelopmentMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      score: 57,
+      completedLinearIssues: 1,
+      mergedPullRequests: 1,
+      productEvents: 1,
+      averageLinearCycleTimeDays: 5,
+    });
+  });
+
+  it("does not double-count PostHog product event aliases", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_linear_event_alias_context",
+            provider: IntegrationProvider.LINEAR,
+            objectType: "issue",
+            externalId: "LIN-1",
+            occurredAt: new Date("2026-05-15T10:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-05-10T10:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-15T10:00:00.000Z"),
+            payload: {
+              id: "LIN-1",
+              state: { type: "completed" },
+              createdAt: "2026-05-10T10:00:00.000Z",
+              completedAt: "2026-05-15T10:00:00.000Z",
+            },
+          },
+          {
+            id: "raw_github_event_alias_context",
+            provider: IntegrationProvider.GITHUB,
+            objectType: "pull_request",
+            externalId: "repo/pull/7",
+            occurredAt: new Date("2026-05-18T10:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-05-16T10:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-18T10:00:00.000Z"),
+            payload: {
+              number: 7,
+              merged: true,
+              created_at: "2026-05-16T10:00:00.000Z",
+              merged_at: "2026-05-18T10:00:00.000Z",
+            },
+          },
+          {
+            id: "raw_posthog_event_alias_primary",
+            provider: IntegrationProvider.POSTHOG,
+            objectType: "event",
+            externalId: "posthog:event:primary",
+            occurredAt: new Date("2026-05-19T10:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: null,
+            payload: {
+              eventId: "evt_alias_1",
+              event: "activation_completed",
+              distinct_id: "acct_1",
+            },
+          },
+          {
+            id: "raw_posthog_event_alias_secondary",
+            provider: IntegrationProvider.POSTHOG,
+            objectType: "event",
+            externalId: "posthog:import:primary",
+            occurredAt: new Date("2026-05-19T10:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T10:00:00.000Z"),
+            payload: {
+              event_id: "evt_alias_1",
+              event: "activation_completed",
+              distinct_id: "acct_1",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_development_event_alias", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisDevelopmentMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      score: 57,
+      completedLinearIssues: 1,
+      mergedPullRequests: 1,
+      productEvents: 1,
+      averageLinearCycleTimeDays: 5,
+    });
+  });
+
   it("normalizes blank materialization context before querying raw records and writing canonical metrics", async () => {
     const prisma = createPrismaMock();
     const periodStart = new Date("2026-05-01T00:00:00.000Z");
@@ -1895,6 +2167,116 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("ignores future PostHog activation event timestamps before matching product activations", async () => {
+    const prisma = createActivationPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_hubspot_account_for_future_activation",
+        provider: IntegrationProvider.HUBSPOT,
+        objectType: "company",
+        externalId: "acct_1",
+        occurredAt: new Date("2026-05-03T10:00:00.000Z"),
+        sourceCreatedAt: new Date("2026-05-03T10:00:00.000Z"),
+        sourceUpdatedAt: new Date("2026-05-03T10:00:00.000Z"),
+        payload: { id: "acct_1", name: "Aperture" },
+      },
+      {
+        id: "raw_hubspot_unactivated_account_for_future_activation",
+        provider: IntegrationProvider.HUBSPOT,
+        objectType: "company",
+        externalId: "acct_2",
+        occurredAt: new Date("2026-05-04T10:00:00.000Z"),
+        sourceCreatedAt: new Date("2026-05-04T10:00:00.000Z"),
+        sourceUpdatedAt: new Date("2026-05-04T10:00:00.000Z"),
+        payload: { id: "acct_2", name: "Black Mesa" },
+      },
+      {
+        id: "raw_posthog_future_activation_event",
+        provider: IntegrationProvider.POSTHOG,
+        objectType: "event",
+        externalId: "evt_future_activation_event",
+        occurredAt: new Date("2026-05-05T10:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: null,
+        payload: {
+          event: "activation_completed",
+          distinct_id: "acct_1",
+          timestamp: "2099-01-01T00:00:00.000Z",
+          properties: { hubspotCompanyId: "acct_1" },
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisProductActivationMetric({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      rate: 0,
+      activatedAccounts: 0,
+      eligibleAccounts: 2,
+    });
+  });
+
+  it("ignores PostHog activation event timestamps after the reporting period", async () => {
+    const prisma = createActivationPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_hubspot_account_for_post_period_activation",
+        provider: IntegrationProvider.HUBSPOT,
+        objectType: "company",
+        externalId: "acct_1",
+        occurredAt: new Date("2026-05-03T10:00:00.000Z"),
+        sourceCreatedAt: new Date("2026-05-03T10:00:00.000Z"),
+        sourceUpdatedAt: new Date("2026-05-03T10:00:00.000Z"),
+        payload: { id: "acct_1", name: "Aperture" },
+      },
+      {
+        id: "raw_hubspot_unactivated_account_for_post_period_activation",
+        provider: IntegrationProvider.HUBSPOT,
+        objectType: "company",
+        externalId: "acct_2",
+        occurredAt: new Date("2026-05-04T10:00:00.000Z"),
+        sourceCreatedAt: new Date("2026-05-04T10:00:00.000Z"),
+        sourceUpdatedAt: new Date("2026-05-04T10:00:00.000Z"),
+        payload: { id: "acct_2", name: "Black Mesa" },
+      },
+      {
+        id: "raw_posthog_post_period_activation_event",
+        provider: IntegrationProvider.POSTHOG,
+        objectType: "event",
+        externalId: "evt_post_period_activation_event",
+        occurredAt: new Date("2026-05-05T10:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: null,
+        payload: {
+          event: "activation_completed",
+          distinct_id: "acct_1",
+          timestamp: "2026-05-30T00:00:00.000Z",
+          properties: { hubspotCompanyId: "acct_1" },
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisProductActivationMetric({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-30T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      rate: 0,
+      activatedAccounts: 0,
+      eligibleAccounts: 2,
+    });
+  });
+
   it("reads snake_case account identifiers before matching product activations", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -1955,6 +2337,64 @@ describe("Imladris canonical materialization", () => {
       rate: 50,
       activatedAccounts: 1,
       eligibleAccounts: 2,
+    });
+  });
+
+  it("matches activation account identifiers case-insensitively", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_case_variant_activation_account",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "company",
+            externalId: "hubspot:company:Acct_Case",
+            occurredAt: new Date("2026-05-03T10:00:00.000Z"),
+            sourceCreatedAt: new Date("2026-05-03T10:00:00.000Z"),
+            sourceUpdatedAt: new Date("2026-05-03T10:00:00.000Z"),
+            payload: {
+              id: "Acct_Case",
+              name: "Aperture",
+            },
+          },
+          {
+            id: "raw_posthog_case_variant_activation_event",
+            provider: IntegrationProvider.POSTHOG,
+            objectType: "event",
+            externalId: "evt_case_variant_activation",
+            occurredAt: new Date("2026-05-05T10:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: null,
+            payload: {
+              event: "activation_completed",
+              properties: {
+                hubspotCompanyId: "acct_case",
+              },
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_activation_case_variant", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisProductActivationMetric({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      rate: 100,
+      activatedAccounts: 1,
+      eligibleAccounts: 1,
     });
   });
 
@@ -3041,6 +3481,72 @@ describe("Imladris canonical materialization", () => {
             payload: {
               status: "active",
               customerId: "cus_in_summary",
+              monthlyRecurringRevenue: 42_000,
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 42_000,
+      arr: 504_000,
+      stripeMrr: 42_000,
+      stripeArr: 504_000,
+    });
+    expect(results.find((result) => result.metricKey === "finance.net_burn")?.value).toMatchObject({
+      cashInflow: 42_000,
+    });
+  });
+
+  it("does not double-count Stripe subscription aliases that share a provider subscription id", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_subscription_alias_primary",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "stripe:subscription:primary",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              id: "sub_duplicate_alias",
+              status: "active",
+              customerId: "cus_duplicate_alias",
+              monthlyRecurringRevenue: 42_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_stripe_subscription_alias_secondary",
+            provider: IntegrationProvider.STRIPE,
+            objectType: "subscription",
+            externalId: "stripe:import:primary",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-11T00:00:00.000Z"),
+            payload: {
+              subscription_id: "sub_duplicate_alias",
+              status: "active",
+              customerId: "cus_duplicate_alias",
               monthlyRecurringRevenue: 42_000,
               currency: "USD",
             },
@@ -9116,6 +9622,83 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("does not double-count duplicate Mercury transaction aliases before calculating net burn", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_mercury_balance_duplicate_transaction_alias",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "account_balance",
+            externalId: "balance_duplicate_transaction_alias",
+            occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+            payload: {
+              accountId: "checking",
+              availableBalance: 240_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_mercury_transaction_alias_primary",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "transaction",
+            externalId: "mercury:transaction:primary",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              id: "txn_duplicate_alias",
+              amount: -120_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_mercury_transaction_alias_secondary",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "bank_transaction",
+            externalId: "mercury:import:primary",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-11T00:00:00.000Z"),
+            payload: {
+              transaction_id: "txn_duplicate_alias",
+              amount: -120_000,
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "finance.net_burn")?.value).toMatchObject({
+      amount: 120_000,
+      cashOutflow: 120_000,
+      cashInflow: 0,
+    });
+    expect(results.find((result) => result.metricKey === "finance.cash_runway_months")?.value).toMatchObject({
+      cashBalance: 240_000,
+      netBurn: 120_000,
+      months: 2,
+    });
+  });
+
   it("reads nested currency fields before finance materialization", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -9575,6 +10158,79 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("ignores future Mercury balance effective timestamps when choosing account balances", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_mercury_checking_future_effective_balance",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "account_balance",
+            externalId: "mercury:account_balance:checking:future-effective",
+            occurredAt: new Date("2026-05-28T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-28T00:00:00.000Z"),
+            payload: {
+              accountId: "checking",
+              balance: 999_000,
+              balanceAsOf: "2099-01-01T00:00:00.000Z",
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_mercury_checking_current_effective_balance",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "account_balance",
+            externalId: "mercury:account_balance:checking:current-effective",
+            occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+            payload: {
+              accountId: "checking",
+              balance: 100_000,
+              balanceAsOf: "2026-05-29T00:00:00.000Z",
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_mercury_balance_effective_outflow",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "transaction",
+            externalId: "txn_balance_effective_outflow",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              amount: -50_000,
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "finance.cash_runway_months")?.value).toMatchObject({
+      cashBalance: 100_000,
+      netBurn: 50_000,
+      months: 2,
+    });
+  });
+
   it("uses Mercury snapshot cash totals when account balances are absent", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -9781,6 +10437,79 @@ describe("Imladris canonical materialization", () => {
             provider: IntegrationProvider.MERCURY,
             objectType: "transaction",
             externalId: "txn_snapshot_latest_outflow",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              amount: -120_000,
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "finance.cash_runway_months")?.value).toMatchObject({
+      cashBalance: 480_000,
+      netBurn: 120_000,
+      months: 4,
+    });
+  });
+
+  it("ignores future Mercury snapshot fact timestamps when choosing cash totals", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_mercury_snapshot_future_fact_cash_flow",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "snapshot",
+            externalId: "mercury:snapshot:future-fact",
+            occurredAt: new Date("2099-01-01T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-28T00:00:00.000Z"),
+            payload: {
+              cashFlow: {
+                totalBalance: 999_000,
+              },
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_mercury_snapshot_current_fact_cash_flow",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "snapshot",
+            externalId: "mercury:snapshot:current-fact",
+            occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+            payload: {
+              cashFlow: {
+                totalBalance: 480_000,
+              },
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_mercury_snapshot_future_fact_outflow",
+            provider: IntegrationProvider.MERCURY,
+            objectType: "transaction",
+            externalId: "txn_snapshot_future_fact_outflow",
             occurredAt: new Date("2026-05-10T00:00:00.000Z"),
             sourceCreatedAt: null,
             sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
@@ -10870,6 +11599,71 @@ describe("Imladris canonical materialization", () => {
             payload: {
               amount: 12_000,
               dealstage: " closedwon ",
+              recurringRevenue: true,
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const results = await materializeImladrisFinanceMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(results.find((result) => result.metricKey === "revenue.mrr")?.value).toMatchObject({
+      amount: 1_000,
+      arr: 12_000,
+      hubspotSubscriptionMrr: 1_000,
+      hubspotSubscriptionArr: 12_000,
+      hubspotOnlySubscriptionMrr: 1_000,
+      hubspotOnlySubscriptionArr: 12_000,
+    });
+  });
+
+  it("does not double-count HubSpot subscription deal aliases before canonical MRR calculation", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_subscription_deal_alias_primary",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "hubspot:deal:deal_subscription_alias",
+            occurredAt: new Date("2026-05-12T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-12T00:00:00.000Z"),
+            payload: {
+              id: "deal_subscription_alias",
+              amount: 12_000,
+              dealstage: "closedwon",
+              recurringRevenue: true,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_hubspot_subscription_deal_alias_secondary",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "subscription_deal",
+            externalId: "hubspot:import:deal_subscription_alias",
+            occurredAt: new Date("2026-05-12T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-13T00:00:00.000Z"),
+            payload: {
+              hs_object_id: "deal_subscription_alias",
+              amount: 12_000,
+              dealstage: "closedwon",
               recurringRevenue: true,
               currency: "USD",
             },
@@ -12185,6 +12979,368 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("does not double-count qualified deals that share a normalized HubSpot deal id", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_qualified_deal_alias_primary",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "hubspot:deal:deal_duplicate_alias",
+            occurredAt: new Date("2026-05-20T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+            payload: {
+              id: "deal_duplicate_alias",
+              amount: 50_000,
+              dealstage: "qualified",
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_hubspot_qualified_deal_alias_secondary",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "hubspot:import:deal_duplicate_alias",
+            occurredAt: new Date("2026-05-20T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-21T00:00:00.000Z"),
+            payload: {
+              hs_object_id: "deal_duplicate_alias",
+              amount: 50_000,
+              dealstage: "qualified",
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_google_touch_duplicate_alias",
+            provider: IntegrationProvider.GOOGLE_WORKSPACE,
+            objectType: "calendar_event",
+            externalId: "meeting_duplicate_alias",
+            occurredAt: new Date("2026-05-21T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-21T00:00:00.000Z"),
+            payload: {
+              dealId: "deal_duplicate_alias",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_duplicate_deal_id", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisSalesMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      amount: 50_000,
+      qualifiedDealCount: 1,
+      collaborationTouchCount: 1,
+      collaborationCoverage: 1,
+    });
+  });
+
+  it("does not double-count sales collaboration touch aliases", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_qualified_deal_duplicate_touch",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "hubspot:deal:deal_duplicate_touch",
+            occurredAt: new Date("2026-05-20T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+            payload: {
+              id: "deal_duplicate_touch",
+              amount: 50_000,
+              dealstage: "qualified",
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_slack_touch_alias_primary",
+            provider: IntegrationProvider.SLACK,
+            objectType: "message",
+            externalId: "slack:message:primary",
+            occurredAt: new Date("2026-05-21T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-21T00:00:00.000Z"),
+            payload: {
+              dealId: "deal_duplicate_touch",
+              messageTs: "1779382800.000100",
+            },
+          },
+          {
+            id: "raw_slack_touch_alias_secondary",
+            provider: IntegrationProvider.SLACK,
+            objectType: "message",
+            externalId: "slack:import:primary",
+            occurredAt: new Date("2026-05-21T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-22T00:00:00.000Z"),
+            payload: {
+              dealId: "deal_duplicate_touch",
+              message_ts: "1779382800.000100",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_duplicate_touch", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisSalesMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      amount: 50_000,
+      qualifiedDealCount: 1,
+      collaborationTouchCount: 1,
+      collaborationCoverage: 1,
+    });
+  });
+
+  it("does not double-count sales Slack collaboration object-type aliases", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_qualified_deal_slack_object_type_alias",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "hubspot:deal:deal_slack_object_type_alias",
+            occurredAt: new Date("2026-05-20T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+            payload: {
+              id: "deal_slack_object_type_alias",
+              amount: 50_000,
+              dealstage: "qualified",
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_slack_touch_message_object_type_alias",
+            provider: IntegrationProvider.SLACK,
+            objectType: "message",
+            externalId: "slack:message:1779382800.000100",
+            occurredAt: new Date("2026-05-21T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-21T00:00:00.000Z"),
+            payload: {
+              dealId: "deal_slack_object_type_alias",
+              messageTs: "1779382800.000100",
+            },
+          },
+          {
+            id: "raw_slack_touch_thread_object_type_alias",
+            provider: IntegrationProvider.SLACK,
+            objectType: "thread",
+            externalId: "slack:thread:1779382800.000100",
+            occurredAt: new Date("2026-05-21T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-22T00:00:00.000Z"),
+            payload: {
+              dealId: "deal_slack_object_type_alias",
+              threadTs: "1779382800.000100",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_slack_object_type_alias", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisSalesMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      amount: 50_000,
+      qualifiedDealCount: 1,
+      collaborationTouchCount: 1,
+      collaborationCoverage: 1,
+    });
+  });
+
+  it("does not double-count sales Google Workspace collaboration object-type aliases", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_qualified_deal_google_object_type_alias",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "hubspot:deal:deal_google_object_type_alias",
+            occurredAt: new Date("2026-05-20T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+            payload: {
+              id: "deal_google_object_type_alias",
+              amount: 50_000,
+              dealstage: "qualified",
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_google_touch_event_object_type_alias",
+            provider: IntegrationProvider.GOOGLE_WORKSPACE,
+            objectType: "event",
+            externalId: "googleWorkspace:event:event_google_object_type_alias",
+            occurredAt: new Date("2026-05-21T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-21T00:00:00.000Z"),
+            payload: {
+              dealId: "deal_google_object_type_alias",
+              eventId: "event_google_object_type_alias",
+            },
+          },
+          {
+            id: "raw_google_touch_calendar_event_object_type_alias",
+            provider: IntegrationProvider.GOOGLE_WORKSPACE,
+            objectType: "calendar_event",
+            externalId: "googleWorkspace:calendar_event:event_google_object_type_alias",
+            occurredAt: new Date("2026-05-21T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-22T00:00:00.000Z"),
+            payload: {
+              dealId: "deal_google_object_type_alias",
+              calendarEventId: "event_google_object_type_alias",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_google_object_type_alias", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisSalesMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      amount: 50_000,
+      qualifiedDealCount: 1,
+      collaborationTouchCount: 1,
+      collaborationCoverage: 1,
+    });
+  });
+
+  it("ignores non-collaboration provider metadata rows before calculating sales collaboration coverage", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_qualified_deal_metadata_touch",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "hubspot:deal:deal_metadata_touch",
+            occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+            payload: {
+              id: "deal_metadata_touch",
+              amount: 80_000,
+              dealstage: "qualified",
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_slack_channel_metadata_touch",
+            provider: IntegrationProvider.SLACK,
+            objectType: "channel",
+            externalId: "slack:channel:C123",
+            occurredAt: new Date("2026-05-16T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-16T00:00:00.000Z"),
+            payload: {
+              dealId: "deal_metadata_touch",
+              channelId: "C123",
+              name: "sales-updates",
+            },
+          },
+          {
+            id: "raw_workspace_profile_metadata_touch",
+            provider: IntegrationProvider.GOOGLE_WORKSPACE,
+            objectType: "profile",
+            externalId: "googleWorkspace:profile:user@example.com",
+            occurredAt: new Date("2026-05-16T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-16T00:00:00.000Z"),
+            payload: {
+              dealId: "deal_metadata_touch",
+              emailAddress: "user@example.com",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_metadata_touch", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisSalesMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      amount: 80_000,
+      qualifiedDealCount: 1,
+      collaborationTouchCount: 0,
+      collaborationCoverage: 0,
+    });
+  });
+
   it("reads nested snake_case deal identifiers before calculating sales collaboration coverage", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -12303,6 +13459,150 @@ describe("Imladris canonical materialization", () => {
       qualifiedDealCount: 1,
       collaborationTouchCount: 1,
       collaborationCoverage: 1,
+    });
+  });
+
+  it("ignores future collaboration timestamps before calculating sales coverage", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_qualified_deal_future_collaboration",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_future_collaboration",
+            occurredAt: new Date("2026-05-20T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+            payload: {
+              id: "deal_future_collaboration",
+              amount: 50_000,
+              dealstage: "qualified",
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_google_future_collaboration_touch",
+            provider: IntegrationProvider.GOOGLE_WORKSPACE,
+            objectType: "calendar_event",
+            externalId: "meeting_future_collaboration_touch",
+            occurredAt: new Date("2026-05-21T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-21T00:00:00.000Z"),
+            payload: {
+              dealId: "deal_future_collaboration",
+              startTime: "2026-05-30T17:00:00.000Z",
+            },
+          },
+          {
+            id: "raw_slack_future_collaboration_touch",
+            provider: IntegrationProvider.SLACK,
+            objectType: "message",
+            externalId: "message_future_collaboration_touch",
+            occurredAt: new Date("2026-05-22T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-22T00:00:00.000Z"),
+            payload: {
+              dealId: "deal_future_collaboration",
+              timestamp: "2026-05-30T18:00:00.000Z",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_future_collaboration", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisSalesMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-30T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      amount: 50_000,
+      qualifiedDealCount: 1,
+      collaborationTouchCount: 0,
+      collaborationCoverage: 0,
+    });
+  });
+
+  it("ignores stale collaboration timestamps before calculating sales coverage", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_qualified_deal_stale_collaboration",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_stale_collaboration",
+            occurredAt: new Date("2026-05-20T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+            payload: {
+              id: "deal_stale_collaboration",
+              amount: 50_000,
+              dealstage: "qualified",
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_google_stale_collaboration_touch",
+            provider: IntegrationProvider.GOOGLE_WORKSPACE,
+            objectType: "calendar_event",
+            externalId: "meeting_stale_collaboration_touch",
+            occurredAt: new Date("2026-05-21T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-21T00:00:00.000Z"),
+            payload: {
+              dealId: "deal_stale_collaboration",
+              startTime: "2026-04-30T17:00:00.000Z",
+            },
+          },
+          {
+            id: "raw_slack_stale_collaboration_touch",
+            provider: IntegrationProvider.SLACK,
+            objectType: "message",
+            externalId: "message_stale_collaboration_touch",
+            occurredAt: new Date("2026-05-22T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-22T00:00:00.000Z"),
+            payload: {
+              dealId: "deal_stale_collaboration",
+              timestamp: "2026-04-30T18:00:00.000Z",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_stale_collaboration", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisSalesMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      amount: 50_000,
+      qualifiedDealCount: 1,
+      collaborationTouchCount: 0,
+      collaborationCoverage: 0,
     });
   });
 
@@ -12787,6 +14087,59 @@ describe("Imladris canonical materialization", () => {
     );
   });
 
+  it("does not double-count Google Search Console row aliases before calculating search totals", async () => {
+    const prisma = createMarketingPrismaMock();
+    const baseRecords = await prisma.imladrisRawSourceRecord.findMany();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValue([
+      ...baseRecords.filter((record) => record.id !== "raw_gsc_1"),
+      {
+        id: "raw_gsc_query_alias_primary",
+        provider: IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
+        objectType: "query",
+        externalId: "googleSearchConsole:row:primary",
+        occurredAt: new Date("2026-05-11T12:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-11T12:00:00.000Z"),
+        payload: {
+          query: "imladris analytics",
+          page: "https://example.com/pricing",
+          date: "2026-05-11",
+          clicks: 77,
+          impressions: 900,
+        },
+      },
+      {
+        id: "raw_gsc_query_alias_secondary",
+        provider: IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
+        objectType: "query",
+        externalId: "googleSearchConsole:row:imported",
+        occurredAt: new Date("2026-05-11T12:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-12T12:00:00.000Z"),
+        payload: {
+          search_query: "imladris analytics",
+          page_url: "https://example.com/pricing",
+          row_date: "2026-05-11",
+          clicks: 80,
+          impressions: 950,
+        },
+      },
+    ] as never);
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      searchClicks: 80,
+      searchImpressions: 950,
+    });
+  });
+
   it("reads nested Google Search Console metrics before calculating search totals", async () => {
     const prisma = createMarketingPrismaMock();
     const baseRecords = await prisma.imladrisRawSourceRecord.findMany();
@@ -12820,6 +14173,76 @@ describe("Imladris canonical materialization", () => {
     expect(result.value).toMatchObject({
       searchClicks: 321,
       searchImpressions: 6_543,
+    });
+  });
+
+  it("reads uppercase Google Search Console metrics before calculating search totals", async () => {
+    const prisma = createMarketingPrismaMock();
+    const baseRecords = await prisma.imladrisRawSourceRecord.findMany();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValue([
+      {
+        id: "raw_gsc_uppercase_metrics_snapshot",
+        provider: IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
+        objectType: "snapshot",
+        externalId: "googleSearchConsole:snapshot:uppercase_metrics",
+        occurredAt: new Date("2026-05-11T11:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-11T11:00:00.000Z"),
+        payload: {
+          CLICKS: 654,
+          IMPRESSIONS: 12_345,
+        },
+      },
+      ...baseRecords,
+    ] as never);
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      searchClicks: 654,
+      searchImpressions: 12_345,
+    });
+  });
+
+  it("reads uppercase Google Search Console metric wrappers before calculating search totals", async () => {
+    const prisma = createMarketingPrismaMock();
+    const baseRecords = await prisma.imladrisRawSourceRecord.findMany();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValue([
+      {
+        id: "raw_gsc_uppercase_metrics_wrapper_snapshot",
+        provider: IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
+        objectType: "snapshot",
+        externalId: "googleSearchConsole:snapshot:uppercase_metrics_wrapper",
+        occurredAt: new Date("2026-05-11T11:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-11T11:00:00.000Z"),
+        payload: {
+          METRICS: {
+            CLICKS: 765,
+            IMPRESSIONS: 23_456,
+          },
+        },
+      },
+      ...baseRecords,
+    ] as never);
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      searchClicks: 765,
+      searchImpressions: 23_456,
     });
   });
 
@@ -12858,6 +14281,61 @@ describe("Imladris canonical materialization", () => {
     expect(result.value).toMatchObject({
       searchClicks: 432,
       searchImpressions: 7_654,
+    });
+  });
+
+  it("falls back to the latest valid Google Search Console snapshot when the newest summary is malformed", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_gsc_valid_snapshot_before_malformed",
+            provider: IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
+            objectType: "snapshot",
+            externalId: "gsc:snapshot:valid-before-malformed",
+            occurredAt: new Date("2026-05-28T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-28T12:00:00.000Z"),
+            payload: {
+              clicks: 25,
+              impressions: 250,
+            },
+          },
+          {
+            id: "raw_gsc_malformed_latest_snapshot",
+            provider: IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
+            objectType: "snapshot",
+            externalId: "gsc:snapshot:malformed",
+            occurredAt: new Date("2026-05-29T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T12:00:00.000Z"),
+            payload: {
+              clicks: "not-a-number",
+              impressions: "not-a-number",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_gsc_latest_valid_snapshot", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      searchClicks: 25,
+      searchImpressions: 250,
     });
   });
 
@@ -13037,6 +14515,60 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("deduplicates identified Unify visitors by normalized account identity", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_unify_account_visitor_primary",
+            provider: IntegrationProvider.UNIFY,
+            objectType: "visitor",
+            externalId: "visitor_account_primary",
+            occurredAt: new Date("2026-05-12T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-12T00:00:00.000Z"),
+            payload: {
+              companyId: "Acct_Duplicate",
+            },
+          },
+          {
+            id: "raw_unify_account_visitor_secondary",
+            provider: IntegrationProvider.UNIFY,
+            objectType: "visitor",
+            externalId: "visitor_account_secondary",
+            occurredAt: new Date("2026-05-12T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-13T00:00:00.000Z"),
+            payload: {
+              company: {
+                accountId: "acct_duplicate",
+              },
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_duplicate_unify", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      identifiedVisitors: 1,
+    });
+  });
+
   it("uses synced ad snapshot spend instead of double-counting campaign rows", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -13109,6 +14641,440 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("does not double-count paid ad campaign aliases before calculating acquisition spend", async () => {
+    const prisma = createMarketingPrismaMock();
+    const baseRecords = await prisma.imladrisRawSourceRecord.findMany();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValue([
+      ...baseRecords.filter((record) => record.id !== "raw_google_ads_1"),
+      {
+        id: "raw_google_ads_campaign_alias_primary",
+        provider: IntegrationProvider.GOOGLE_ADS,
+        objectType: "campaign_metric",
+        externalId: "googleAds:campaign:primary",
+        occurredAt: new Date("2026-05-08T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-08T00:00:00.000Z"),
+        payload: {
+          campaignId: "campaign_brand",
+          date: "2026-05",
+          spend: 10_000,
+          currency: "USD",
+        },
+      },
+      {
+        id: "raw_google_ads_campaign_alias_secondary",
+        provider: IntegrationProvider.GOOGLE_ADS,
+        objectType: "campaign_metric",
+        externalId: "googleAds:import:campaign_brand",
+        occurredAt: new Date("2026-05-08T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-09T00:00:00.000Z"),
+        payload: {
+          campaign_id: "campaign_brand",
+          row_date: "2026-05",
+          spend: 11_000,
+          currency: "USD",
+        },
+      },
+    ] as never);
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      acquisitionSpend: 18_500,
+      qualifiedPipeline: 90_000,
+      ratio: 4.86,
+    });
+  });
+
+  it("counts paid ad campaigns with the same campaign ID in different ad accounts separately", async () => {
+    const prisma = createMarketingPrismaMock();
+    const baseRecords = await prisma.imladrisRawSourceRecord.findMany();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValue([
+      ...baseRecords.filter((record) => record.id !== "raw_google_ads_1"),
+      {
+        id: "raw_google_ads_account_scoped_campaign_primary",
+        provider: IntegrationProvider.GOOGLE_ADS,
+        objectType: "campaign_metric",
+        externalId: "googleAds:campaign:customer_1:campaign_brand",
+        occurredAt: new Date("2026-05-08T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-08T00:00:00.000Z"),
+        payload: {
+          customerId: "customer_1",
+          campaignId: "campaign_brand",
+          date: "2026-05",
+          spend: 10_000,
+          currency: "USD",
+        },
+      },
+      {
+        id: "raw_google_ads_account_scoped_campaign_secondary",
+        provider: IntegrationProvider.GOOGLE_ADS,
+        objectType: "campaign_metric",
+        externalId: "googleAds:campaign:customer_2:campaign_brand",
+        occurredAt: new Date("2026-05-08T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-09T00:00:00.000Z"),
+        payload: {
+          customer_id: "customer_2",
+          campaign_id: "campaign_brand",
+          row_date: "2026-05",
+          spend: 11_000,
+          currency: "USD",
+        },
+      },
+    ] as never);
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      acquisitionSpend: 28_500,
+      qualifiedPipeline: 90_000,
+      ratio: 3.16,
+    });
+  });
+
+  it("reads Reddit Ads uppercase spend micros before calculating acquisition spend", async () => {
+    const prisma = createMarketingPrismaMock();
+    const baseRecords = await prisma.imladrisRawSourceRecord.findMany();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValue([
+      ...baseRecords.filter((record) => !["raw_google_ads_1", "raw_reddit_ads_1"].includes(record.id)),
+      {
+        id: "raw_reddit_ads_uppercase_spend",
+        provider: IntegrationProvider.REDDIT,
+        objectType: "campaign_metric",
+        externalId: "redditAds:campaign:uppercase_spend",
+        occurredAt: new Date("2026-05-08T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-08T00:00:00.000Z"),
+        payload: {
+          CAMPAIGN_ID: "campaign_brand",
+          DATE: "2026-05",
+          SPEND: "10000000000",
+          CURRENCY: "USD",
+        },
+      },
+    ] as never);
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      acquisitionSpend: 15_000,
+      qualifiedPipeline: 90_000,
+      ratio: 6,
+    });
+  });
+
+  it("does not double-count Reddit Ads uppercase campaign aliases before calculating acquisition spend", async () => {
+    const prisma = createMarketingPrismaMock();
+    const baseRecords = await prisma.imladrisRawSourceRecord.findMany();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValue([
+      ...baseRecords.filter((record) => !["raw_google_ads_1", "raw_reddit_ads_1"].includes(record.id)),
+      {
+        id: "raw_reddit_ads_uppercase_campaign_alias_primary",
+        provider: IntegrationProvider.REDDIT,
+        objectType: "campaign_metric",
+        externalId: "redditAds:campaign:campaign_brand",
+        occurredAt: new Date("2026-05-08T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-08T00:00:00.000Z"),
+        payload: {
+          CAMPAIGN_ID: "campaign_brand",
+          DATE: "2026-05",
+          SPEND: "10000000000",
+          CURRENCY: "USD",
+        },
+      },
+      {
+        id: "raw_reddit_ads_camel_campaign_alias_secondary",
+        provider: IntegrationProvider.REDDIT,
+        objectType: "campaign_metric",
+        externalId: "redditAds:import:campaign_brand",
+        occurredAt: new Date("2026-05-08T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-09T00:00:00.000Z"),
+        payload: {
+          campaignId: "campaign_brand",
+          date: "2026-05",
+          spend: 11_000,
+          currency: "USD",
+        },
+      },
+    ] as never);
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      acquisitionSpend: 16_000,
+      qualifiedPipeline: 90_000,
+      ratio: 5.63,
+    });
+  });
+
+  it("uses the latest marketing snapshot totals instead of summing stale snapshots", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_google_ads_stale_snapshot_spend",
+            provider: IntegrationProvider.GOOGLE_ADS,
+            objectType: "snapshot",
+            externalId: "googleAds:snapshot:stale",
+            occurredAt: new Date("2026-05-20T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T12:00:00.000Z"),
+            payload: {
+              totalSpend30d: 7_500,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_google_ads_current_snapshot_spend",
+            provider: IntegrationProvider.GOOGLE_ADS,
+            objectType: "snapshot",
+            externalId: "googleAds:snapshot:current",
+            occurredAt: new Date("2026-05-29T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T12:00:00.000Z"),
+            payload: {
+              totalSpend30d: 12_500,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_ga_stale_snapshot_sessions",
+            provider: IntegrationProvider.GOOGLE_ANALYTICS,
+            objectType: "snapshot",
+            externalId: "googleAnalytics:snapshot:stale",
+            occurredAt: new Date("2026-05-20T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T12:00:00.000Z"),
+            payload: {
+              sessions30d: 1_100,
+            },
+          },
+          {
+            id: "raw_ga_current_snapshot_sessions",
+            provider: IntegrationProvider.GOOGLE_ANALYTICS,
+            objectType: "snapshot",
+            externalId: "googleAnalytics:snapshot:current",
+            occurredAt: new Date("2026-05-29T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T12:00:00.000Z"),
+            payload: {
+              sessions30d: 4_200,
+            },
+          },
+          {
+            id: "raw_semrush_stale_snapshot_traffic",
+            provider: IntegrationProvider.SEMRUSH,
+            objectType: "snapshot",
+            externalId: "semrush:snapshot:stale",
+            occurredAt: new Date("2026-05-20T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T12:00:00.000Z"),
+            payload: {
+              organicTraffic: 600,
+            },
+          },
+          {
+            id: "raw_semrush_current_snapshot_traffic",
+            provider: IntegrationProvider.SEMRUSH,
+            objectType: "snapshot",
+            externalId: "semrush:snapshot:current",
+            occurredAt: new Date("2026-05-29T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T12:00:00.000Z"),
+            payload: {
+              organicTraffic: 1_800,
+            },
+          },
+          {
+            id: "raw_webflow_stale_snapshot_submissions",
+            provider: IntegrationProvider.WEBFLOW,
+            objectType: "snapshot",
+            externalId: "webflow:snapshot:stale",
+            occurredAt: new Date("2026-05-20T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T12:00:00.000Z"),
+            payload: {
+              totalFormSubmissions: 2,
+            },
+          },
+          {
+            id: "raw_webflow_current_snapshot_submissions",
+            provider: IntegrationProvider.WEBFLOW,
+            objectType: "snapshot",
+            externalId: "webflow:snapshot:current",
+            occurredAt: new Date("2026-05-29T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T12:00:00.000Z"),
+            payload: {
+              totalFormSubmissions: 7,
+            },
+          },
+          {
+            id: "raw_gsc_stale_snapshot_search",
+            provider: IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
+            objectType: "snapshot",
+            externalId: "googleSearchConsole:snapshot:stale",
+            occurredAt: new Date("2026-05-20T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-20T12:00:00.000Z"),
+            payload: {
+              clicks: 10,
+              impressions: 100,
+            },
+          },
+          {
+            id: "raw_gsc_current_snapshot_search",
+            provider: IntegrationProvider.GOOGLE_SEARCH_CONSOLE,
+            objectType: "snapshot",
+            externalId: "googleSearchConsole:snapshot:current",
+            occurredAt: new Date("2026-05-29T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T12:00:00.000Z"),
+            payload: {
+              clicks: 25,
+              impressions: 250,
+            },
+          },
+          {
+            id: "raw_hubspot_latest_snapshot_deal",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "deal_latest_snapshot_totals",
+            occurredAt: new Date("2026-05-14T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-14T00:00:00.000Z"),
+            payload: {
+              amount: 50_000,
+              dealstage: "qualified",
+              originalSource: "paid search",
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_latest_snapshot_totals", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      acquisitionSpend: 12_500,
+      websiteSessions: 4_200,
+      organicTraffic: 1_800,
+      webflowFormSubmissions: 7,
+      searchClicks: 25,
+      searchImpressions: 250,
+      qualifiedPipeline: 50_000,
+      ratio: 4,
+    });
+  });
+
+  it("falls back to the latest valid marketing snapshot when a newer snapshot total is malformed", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_ga_valid_snapshot_sessions_before_malformed",
+            provider: IntegrationProvider.GOOGLE_ANALYTICS,
+            objectType: "snapshot",
+            externalId: "googleAnalytics:snapshot:valid-before-malformed",
+            occurredAt: new Date("2026-05-28T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-28T12:00:00.000Z"),
+            payload: {
+              sessions30d: 4_200,
+            },
+          },
+          {
+            id: "raw_ga_malformed_snapshot_sessions",
+            provider: IntegrationProvider.GOOGLE_ANALYTICS,
+            objectType: "snapshot",
+            externalId: "googleAnalytics:snapshot:malformed",
+            occurredAt: new Date("2026-05-29T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T12:00:00.000Z"),
+            payload: {
+              sessions30d: "not-a-number",
+            },
+          },
+          {
+            id: "raw_ga_partial_channel_after_malformed_snapshot",
+            provider: IntegrationProvider.GOOGLE_ANALYTICS,
+            objectType: "traffic_by_channel",
+            externalId: "googleAnalytics:traffic_by_channel:paid",
+            occurredAt: new Date("2026-05-29T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T12:00:00.000Z"),
+            payload: {
+              channel: "Paid Search",
+              sessions: 1_000,
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_latest_valid_snapshot", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      websiteSessions: 4_200,
+    });
+  });
+
   it("uses synced Google Analytics snapshot sessions instead of partial channel rows", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -13175,6 +15141,54 @@ describe("Imladris canonical materialization", () => {
     expect(result.value).toMatchObject({
       websiteSessions: 4_200,
       qualifiedPipeline: 50_000,
+    });
+  });
+
+  it("does not double-count Google Analytics session row aliases before calculating website sessions", async () => {
+    const prisma = createMarketingPrismaMock();
+    const baseRecords = await prisma.imladrisRawSourceRecord.findMany();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValue([
+      ...baseRecords.filter((record) => record.id !== "raw_ga_1"),
+      {
+        id: "raw_ga_channel_alias_primary",
+        provider: IntegrationProvider.GOOGLE_ANALYTICS,
+        objectType: "traffic_by_channel",
+        externalId: "googleAnalytics:channel:primary",
+        occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-10T00:00:00.000Z"),
+        payload: {
+          channel: "Organic Search",
+          date: "2026-05",
+          sessions: 2_000,
+        },
+      },
+      {
+        id: "raw_ga_channel_alias_secondary",
+        provider: IntegrationProvider.GOOGLE_ANALYTICS,
+        objectType: "traffic_by_channel",
+        externalId: "googleAnalytics:import:organic-search",
+        occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-11T00:00:00.000Z"),
+        payload: {
+          channel_group: "Organic Search",
+          row_date: "2026-05",
+          sessions: 2_100,
+        },
+      },
+    ] as never);
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      websiteSessions: 2_100,
     });
   });
 
@@ -13269,6 +15283,54 @@ describe("Imladris canonical materialization", () => {
 
     expect(result.value).toMatchObject({
       organicTraffic: 1_800,
+    });
+  });
+
+  it("does not double-count SEMrush traffic row aliases before calculating organic traffic", async () => {
+    const prisma = createMarketingPrismaMock();
+    const baseRecords = await prisma.imladrisRawSourceRecord.findMany();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValue([
+      ...baseRecords.filter((record) => record.id !== "raw_semrush_1"),
+      {
+        id: "raw_semrush_domain_alias_primary",
+        provider: IntegrationProvider.SEMRUSH,
+        objectType: "domain_organic",
+        externalId: "semrush:domain:primary",
+        occurredAt: new Date("2026-05-11T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-11T00:00:00.000Z"),
+        payload: {
+          domain: "example.com",
+          month: "2026-05",
+          organicTraffic: 500,
+        },
+      },
+      {
+        id: "raw_semrush_domain_alias_secondary",
+        provider: IntegrationProvider.SEMRUSH,
+        objectType: "domain_organic",
+        externalId: "semrush:domain:imported",
+        occurredAt: new Date("2026-05-11T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-12T00:00:00.000Z"),
+        payload: {
+          domain_name: "example.com",
+          period: "2026-05",
+          organic_traffic: 550,
+        },
+      },
+    ] as never);
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      organicTraffic: 550,
     });
   });
 
@@ -13437,6 +15499,66 @@ describe("Imladris canonical materialization", () => {
 
     expect(result.value).toMatchObject({
       webflowFormSubmissions: 2,
+    });
+  });
+
+  it("does not double-count Webflow form submission aliases before calculating submissions", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_webflow_submission_alias_primary",
+            provider: IntegrationProvider.WEBFLOW,
+            objectType: "form_submission",
+            externalId: "webflow:submission:primary",
+            occurredAt: new Date("2026-05-10T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-10T12:00:00.000Z"),
+            payload: {
+              submissionId: "sub_demo_1",
+              formId: "demo-request",
+              email: "ada@example.com",
+              submittedAt: "2026-05-10T12:00:00.000Z",
+            },
+          },
+          {
+            id: "raw_webflow_submission_alias_secondary",
+            provider: IntegrationProvider.WEBFLOW,
+            objectType: "form_submission",
+            externalId: "webflow:import:sub_demo_1",
+            occurredAt: new Date("2026-05-10T12:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-11T12:00:00.000Z"),
+            payload: {
+              id: "sub_demo_1",
+              form_id: "demo-request",
+              contact: {
+                email: "ada@example.com",
+              },
+              submitted_at: "2026-05-10T12:00:00.000Z",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_webflow_aliases", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      webflowFormSubmissions: 1,
     });
   });
 
@@ -13966,6 +16088,81 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("does not double-count marketing pipeline deals that share a normalized HubSpot deal id", async () => {
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_google_ads_duplicate_marketing_deal",
+            provider: IntegrationProvider.GOOGLE_ADS,
+            objectType: "campaign_metric",
+            externalId: "gads_duplicate_marketing_deal",
+            occurredAt: new Date("2026-05-08T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-08T00:00:00.000Z"),
+            payload: {
+              spend: 10_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_hubspot_marketing_deal_alias_primary",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "hubspot:deal:marketing_duplicate_alias",
+            occurredAt: new Date("2026-05-14T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-14T00:00:00.000Z"),
+            payload: {
+              id: "marketing_duplicate_alias",
+              amount: 50_000,
+              dealstage: "qualified",
+              originalSource: "paid search",
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_hubspot_marketing_deal_alias_secondary",
+            provider: IntegrationProvider.HUBSPOT,
+            objectType: "deal",
+            externalId: "hubspot:import:marketing_duplicate_alias",
+            occurredAt: new Date("2026-05-14T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-15T00:00:00.000Z"),
+            payload: {
+              hs_object_id: "marketing_duplicate_alias",
+              amount: 50_000,
+              dealstage: "qualified",
+              originalSource: "paid search",
+              currency: "USD",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_duplicate_deal_id", ...create })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      acquisitionSpend: 10_000,
+      qualifiedPipeline: 50_000,
+      ratio: 5,
+    });
+  });
+
   it("reads nested HubSpot marketing deal fields before calculating pipeline efficiency", async () => {
     const prisma = {
       imladrisRawSourceRecord: {
@@ -14351,13 +16548,13 @@ describe("Imladris canonical materialization", () => {
       status: "READY",
       rawRecordCount: 6,
       value: {
-        score: 100,
+        score: 98,
         atRiskAccounts: 1,
         openSupportIssues: 2,
         escalations: 2,
         accountsWithBillingRisk: 1,
         lowUsageAccounts: 1,
-        collaborationSignals: 1,
+        collaborationSignals: 2,
       },
     });
     expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith({
@@ -14391,25 +16588,25 @@ describe("Imladris canonical materialization", () => {
         unit: "score",
         status: "READY",
         value: {
-          score: 100,
+          score: 98,
           atRiskAccounts: 1,
           openSupportIssues: 2,
           escalations: 2,
           accountsWithBillingRisk: 1,
           lowUsageAccounts: 1,
-          collaborationSignals: 1,
+          collaborationSignals: 2,
         },
       }),
       update: expect.objectContaining({
         status: "READY",
         value: {
-          score: 100,
+          score: 98,
           atRiskAccounts: 1,
           openSupportIssues: 2,
           escalations: 2,
           accountsWithBillingRisk: 1,
           lowUsageAccounts: 1,
-          collaborationSignals: 1,
+          collaborationSignals: 2,
         },
       }),
     });
@@ -14671,6 +16868,67 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("deduplicates customer-success risk accounts case-insensitively", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_pylon_issue_case_variant_account",
+        provider: IntegrationProvider.PYLON,
+        objectType: "conversation",
+        externalId: "conv_case_variant_account",
+        occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+        payload: {
+          accountId: "Acct_Case",
+          status: "open",
+          priority: "high",
+        },
+      },
+      {
+        id: "raw_posthog_usage_case_variant_account",
+        provider: IntegrationProvider.POSTHOG,
+        objectType: "account_usage",
+        externalId: "usage_case_variant_account",
+        occurredAt: new Date("2026-05-17T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-17T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_case",
+          activeUsers: 1,
+        },
+      },
+      {
+        id: "raw_stripe_subscription_case_variant_account",
+        provider: IntegrationProvider.STRIPE,
+        objectType: "subscription",
+        externalId: "sub_case_variant_account",
+        occurredAt: new Date("2026-05-24T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-24T00:00:00.000Z"),
+        payload: {
+          accountId: "ACCT_CASE",
+          status: "past_due",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      atRiskAccounts: 1,
+      accountsWithBillingRisk: 1,
+      lowUsageAccounts: 1,
+      openSupportIssues: 1,
+    });
+  });
+
   it("normalizes numeric account identifiers before de-duping customer-success risk accounts", async () => {
     const prisma = createCustomerSuccessPrismaMock();
     prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
@@ -14846,6 +17104,556 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("counts Slack messages with the same timestamp in different channels as distinct collaboration signals", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_slack_channel_scoped_message_primary",
+        provider: IntegrationProvider.SLACK,
+        objectType: "message",
+        externalId: "slack:message:channel_1:1780240800.000000",
+        occurredAt: new Date("2026-05-22T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-22T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          channelId: "channel_1",
+          messageTs: "1780240800.000000",
+          text: "Customer renewal action plan discussed",
+        },
+      },
+      {
+        id: "raw_slack_channel_scoped_message_secondary",
+        provider: IntegrationProvider.SLACK,
+        objectType: "message",
+        externalId: "slack:message:channel_2:1780240800.000000",
+        occurredAt: new Date("2026-05-22T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-22T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          channel_id: "channel_2",
+          message_ts: "1780240800.000000",
+          text: "Internal renewal handoff discussed",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      collaborationSignals: 2,
+    });
+  });
+
+  it("counts Slack account-linked threads as customer-success collaboration signals", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_pylon_issue_slack_thread_collaboration",
+        provider: IntegrationProvider.PYLON,
+        objectType: "conversation",
+        externalId: "conv_slack_thread_collaboration",
+        occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          status: "open",
+        },
+      },
+      {
+        id: "raw_slack_thread_collaboration",
+        provider: IntegrationProvider.SLACK,
+        objectType: "thread",
+        externalId: "slack:thread:1780240800.000000",
+        occurredAt: new Date("2026-05-22T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-22T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          channelName: "customer-success",
+          threadTs: "1780240800.000000",
+          text: "Renewal action plan discussed",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      openSupportIssues: 1,
+      collaborationSignals: 1,
+      score: 17,
+    });
+  });
+
+  it("counts raw-ingested Google Workspace events and threads as customer-success collaboration signals", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_workspace_event_collaboration",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        objectType: "event",
+        externalId: "googleWorkspace:event:event_demo_1",
+        occurredAt: new Date("2026-05-22T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-22T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          calendarEventId: "event_demo_1",
+          summary: "Customer QBR",
+        },
+      },
+      {
+        id: "raw_workspace_thread_collaboration",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        objectType: "thread",
+        externalId: "googleWorkspace:thread:thread_demo_1",
+        occurredAt: new Date("2026-05-23T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-23T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          threadId: "thread_demo_1",
+          subject: "Renewal follow-up",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      collaborationSignals: 2,
+      score: 0,
+    });
+  });
+
+  it("counts Google Workspace events with the same event ID in different calendars as distinct collaboration signals", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_workspace_calendar_scoped_event_primary",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        objectType: "calendar_event",
+        externalId: "googleWorkspace:calendar_event:calendar_1:event_demo_1",
+        occurredAt: new Date("2026-05-22T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-22T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          calendarId: "calendar_1",
+          eventId: "event_demo_1",
+          summary: "Customer QBR",
+        },
+      },
+      {
+        id: "raw_workspace_calendar_scoped_event_secondary",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        objectType: "calendar_event",
+        externalId: "googleWorkspace:calendar_event:calendar_2:event_demo_1",
+        occurredAt: new Date("2026-05-22T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-23T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          calendar_id: "calendar_2",
+          event_id: "event_demo_1",
+          summary: "Implementation QBR",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      collaborationSignals: 2,
+    });
+  });
+
+  it("counts raw-ingested Google Workspace files as customer-success collaboration signals", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_workspace_file_collaboration",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        objectType: "file",
+        externalId: "googleWorkspace:file:file_demo_1",
+        occurredAt: new Date("2026-05-24T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-24T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          fileId: "file_demo_1",
+          name: "Renewal Plan",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      collaborationSignals: 1,
+      score: 5,
+    });
+  });
+
+  it("does not double-count duplicate Slack collaboration signal aliases", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_posthog_usage_for_duplicate_collaboration_signal",
+        provider: IntegrationProvider.POSTHOG,
+        objectType: "account_usage",
+        externalId: "usage_duplicate_collaboration_signal",
+        occurredAt: new Date("2026-05-17T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-17T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          activeUsers: 1,
+        },
+      },
+      {
+        id: "raw_slack_collaboration_alias_primary",
+        provider: IntegrationProvider.SLACK,
+        objectType: "message",
+        externalId: "slack:message:primary",
+        occurredAt: new Date("2026-05-18T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-18T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          messageTs: "1716048000.000100",
+        },
+      },
+      {
+        id: "raw_slack_collaboration_alias_secondary",
+        provider: IntegrationProvider.SLACK,
+        objectType: "message",
+        externalId: "slack:import:primary",
+        occurredAt: new Date("2026-05-18T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-19T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          message_ts: "1716048000.000100",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      score: 23,
+      lowUsageAccounts: 1,
+      collaborationSignals: 1,
+    });
+  });
+
+  it("does not double-count duplicate raw-ingested Google Workspace thread aliases", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_workspace_thread_alias_primary",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        objectType: "thread",
+        externalId: "googleWorkspace:thread:primary",
+        occurredAt: new Date("2026-05-18T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-18T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          threadId: "thread_demo_1",
+          subject: "Renewal follow-up",
+        },
+      },
+      {
+        id: "raw_workspace_thread_alias_secondary",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        objectType: "thread",
+        externalId: "googleWorkspace:thread:import",
+        occurredAt: new Date("2026-05-18T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-19T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          id: "thread_demo_1",
+          subject: "Renewal follow-up updated",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      collaborationSignals: 1,
+      score: 5,
+    });
+  });
+
+  it("does not double-count Google Workspace collaboration object-type aliases", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_workspace_event_object_type_alias",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        objectType: "event",
+        externalId: "googleWorkspace:event:event_demo_1",
+        occurredAt: new Date("2026-05-18T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-18T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          eventId: "event_demo_1",
+          summary: "Customer QBR",
+        },
+      },
+      {
+        id: "raw_workspace_calendar_event_object_type_alias",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        objectType: "calendar_event",
+        externalId: "googleWorkspace:calendar_event:event_demo_1",
+        occurredAt: new Date("2026-05-18T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-19T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          calendarEventId: "event_demo_1",
+          summary: "Customer QBR Updated",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      collaborationSignals: 1,
+      score: 5,
+    });
+  });
+
+  it("does not double-count duplicate raw-ingested Google Workspace file aliases", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_workspace_file_alias_primary",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        objectType: "file",
+        externalId: "googleWorkspace:file:primary",
+        occurredAt: new Date("2026-05-20T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          fileId: "file_demo_1",
+          name: "Renewal Plan",
+        },
+      },
+      {
+        id: "raw_workspace_file_alias_secondary",
+        provider: IntegrationProvider.GOOGLE_WORKSPACE,
+        objectType: "file",
+        externalId: "googleWorkspace:file:import",
+        occurredAt: new Date("2026-05-20T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-21T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          id: "file_demo_1",
+          name: "Renewal Plan Updated",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      collaborationSignals: 1,
+      score: 5,
+    });
+  });
+
+  it("does not double-count duplicate Slack escalation aliases", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_posthog_usage_for_duplicate_slack_escalation",
+        provider: IntegrationProvider.POSTHOG,
+        objectType: "account_usage",
+        externalId: "usage_duplicate_slack_escalation",
+        occurredAt: new Date("2026-05-17T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-17T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          activeUsers: 1,
+        },
+      },
+      {
+        id: "raw_slack_escalation_alias_primary",
+        provider: IntegrationProvider.SLACK,
+        objectType: "message",
+        externalId: "slack:message:1779382800.000100",
+        occurredAt: new Date("2026-05-18T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-18T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          escalation: true,
+          messageTs: "1779382800.000100",
+        },
+      },
+      {
+        id: "raw_slack_escalation_alias_secondary",
+        provider: IntegrationProvider.SLACK,
+        objectType: "message",
+        externalId: "slack:import:1779382800.000100",
+        occurredAt: new Date("2026-05-18T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-19T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          escalation: true,
+          message_ts: "1779382800.000100",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      score: 41,
+      atRiskAccounts: 1,
+      escalations: 1,
+      lowUsageAccounts: 1,
+      collaborationSignals: 1,
+    });
+  });
+
+  it("does not double-count Slack escalation object-type aliases", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_posthog_usage_for_slack_escalation_object_type_alias",
+        provider: IntegrationProvider.POSTHOG,
+        objectType: "account_usage",
+        externalId: "usage_slack_escalation_object_type_alias",
+        occurredAt: new Date("2026-05-17T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-17T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          activeUsers: 1,
+        },
+      },
+      {
+        id: "raw_slack_message_escalation_object_type_alias",
+        provider: IntegrationProvider.SLACK,
+        objectType: "message",
+        externalId: "slack:message:1779382800.000100",
+        occurredAt: new Date("2026-05-18T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-18T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          escalation: true,
+          messageTs: "1779382800.000100",
+        },
+      },
+      {
+        id: "raw_slack_thread_escalation_object_type_alias",
+        provider: IntegrationProvider.SLACK,
+        objectType: "thread",
+        externalId: "slack:thread:1779382800.000100",
+        occurredAt: new Date("2026-05-18T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-19T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          escalation: true,
+          threadTs: "1779382800.000100",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      score: 41,
+      atRiskAccounts: 1,
+      escalations: 1,
+      lowUsageAccounts: 1,
+      collaborationSignals: 1,
+    });
+  });
+
   it("counts urgent Pylon support issues as customer-success escalations", async () => {
     const prisma = createCustomerSuccessPrismaMock();
     prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
@@ -14983,6 +17791,54 @@ describe("Imladris canonical materialization", () => {
       atRiskAccounts: 0,
       openSupportIssues: 4,
       escalations: 2,
+    });
+  });
+
+  it("uses Pylon snapshot escalation totals instead of adding child conversation rows", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_pylon_snapshot_with_child_rows",
+        provider: IntegrationProvider.PYLON,
+        objectType: "snapshot",
+        externalId: "pylon:snapshot:with-child-rows",
+        occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+        payload: {
+          openConversations: 1,
+          urgentConversations: 1,
+        },
+      },
+      {
+        id: "raw_pylon_snapshot_child_urgent_issue",
+        provider: IntegrationProvider.PYLON,
+        objectType: "conversation",
+        externalId: "pylon:conversation:snapshot_child_urgent",
+        occurredAt: new Date("2026-05-20T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          status: "open",
+          priority: "urgent",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      score: 40,
+      atRiskAccounts: 1,
+      openSupportIssues: 1,
+      escalations: 1,
     });
   });
 
@@ -15286,6 +18142,39 @@ describe("Imladris canonical materialization", () => {
     });
   });
 
+  it("ignores negative PostHog usage counters before calculating customer-success risk", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_posthog_negative_active_users",
+        provider: IntegrationProvider.POSTHOG,
+        objectType: "account_usage",
+        externalId: "usage_negative_active_users",
+        occurredAt: new Date("2026-05-17T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-17T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          activeUsers: -5,
+          daysSinceLastActive: -2,
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      atRiskAccounts: 0,
+      lowUsageAccounts: 0,
+    });
+  });
+
   it("derives low PostHog usage from stale last-active timestamps", async () => {
     const prisma = createCustomerSuccessPrismaMock();
     prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
@@ -15418,6 +18307,138 @@ describe("Imladris canonical materialization", () => {
     expect(result.value).toMatchObject({
       atRiskAccounts: 1,
       escalations: 1,
+    });
+  });
+
+  it("recognizes Slack escalation flag aliases before calculating customer-success risk", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_slack_is_escalation_flag",
+        provider: IntegrationProvider.SLACK,
+        objectType: "thread",
+        externalId: "thread_is_escalation_flag",
+        occurredAt: new Date("2026-05-18T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-18T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          isEscalation: true,
+          status: "open",
+        },
+      },
+      {
+        id: "raw_slack_escalated_flag",
+        provider: IntegrationProvider.SLACK,
+        objectType: "thread",
+        externalId: "thread_escalated_flag",
+        occurredAt: new Date("2026-05-18T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-18T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_2",
+          escalated: "true",
+          status: "open",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      atRiskAccounts: 2,
+      escalations: 2,
+    });
+  });
+
+  it("ignores Pylon support records closed before the report when calculating customer-success risk", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_pylon_open_status_closed_timestamp",
+        provider: IntegrationProvider.PYLON,
+        objectType: "conversation",
+        externalId: "conv_open_status_closed_timestamp",
+        occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+        payload: {
+          accountId: "acct_1",
+          status: "open",
+          priority: "high",
+          closedAt: "2026-05-21T00:00:00.000Z",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      atRiskAccounts: 0,
+      openSupportIssues: 0,
+      escalations: 0,
+    });
+  });
+
+  it("uses the latest duplicate Pylon support record before calculating customer-success risk", async () => {
+    const prisma = createCustomerSuccessPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_pylon_duplicate_support_stale_open",
+        provider: IntegrationProvider.PYLON,
+        objectType: "conversation",
+        externalId: "pylon:conversation:duplicate_support",
+        occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+        payload: {
+          conversationId: "duplicate_support",
+          accountId: "acct_1",
+          status: "open",
+          priority: "high",
+        },
+      },
+      {
+        id: "raw_pylon_duplicate_support_resolved",
+        provider: IntegrationProvider.PYLON,
+        objectType: "ticket",
+        externalId: "pylon:ticket:duplicate_support",
+        occurredAt: new Date("2026-05-10T00:00:00.000Z"),
+        sourceCreatedAt: null,
+        sourceUpdatedAt: new Date("2026-05-24T00:00:00.000Z"),
+        payload: {
+          id: "duplicate_support",
+          accountId: "acct_1",
+          status: "resolved",
+          priority: "high",
+        },
+      },
+    ]);
+
+    const result = await materializeImladrisCustomerSuccessMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      atRiskAccounts: 0,
+      openSupportIssues: 0,
+      escalations: 0,
     });
   });
 

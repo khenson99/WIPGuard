@@ -225,10 +225,13 @@ for (const entry of INTEGRATION_PROVIDER_REGISTRY) {
 }
 
 const SNAPSHOT_KEY_LOOKUP = new Map<string, IntegrationProvider>();
+const SNAPSHOT_KEY_CANONICAL_LOOKUP = new Map<string, string>();
 for (const entry of INTEGRATION_PROVIDER_REGISTRY) {
   for (const snapshotKey of entry.snapshotKeys) {
     for (const variant of providerRegistryKeyVariants(snapshotKey)) {
-      SNAPSHOT_KEY_LOOKUP.set(normalizeProviderRegistryKey(variant), entry.provider);
+      const normalized = normalizeProviderRegistryKey(variant);
+      SNAPSHOT_KEY_LOOKUP.set(normalized, entry.provider);
+      SNAPSHOT_KEY_CANONICAL_LOOKUP.set(normalized, snapshotKey);
     }
   }
 }
@@ -254,5 +257,17 @@ export function providerForSnapshotKey(snapshotKey: string): IntegrationProvider
 }
 
 export function snapshotKeyQueryVariants(snapshotKeys: string[]): string[] {
-  return [...new Set(snapshotKeys.flatMap(providerRegistryKeyVariants))];
+  const variants = new Set<string>();
+  for (const snapshotKey of snapshotKeys) {
+    const canonicalSnapshotKey =
+      SNAPSHOT_KEY_CANONICAL_LOOKUP.get(normalizeProviderRegistryKey(snapshotKey)) ??
+      snapshotKey;
+    for (const variant of providerRegistryKeyVariants(canonicalSnapshotKey)) {
+      variants.add(variant);
+    }
+    for (const variant of providerRegistryKeyVariants(snapshotKey)) {
+      variants.add(variant);
+    }
+  }
+  return [...variants];
 }

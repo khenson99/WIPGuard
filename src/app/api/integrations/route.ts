@@ -86,6 +86,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     });
 
     const credentials = await getCredentials(ownerUserId);
+    const now = new Date();
 
     const allSnapshotKeys = Array.from(
       new Set(
@@ -98,7 +99,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const [latestRows, latestSuccessRows] = await Promise.all([
       prisma.analyticsSnapshot.groupBy({
         by: ["providerKey"],
-        where: { userId: ownerUserId, providerKey: { in: allSnapshotKeys } },
+        where: {
+          userId: ownerUserId,
+          providerKey: { in: allSnapshotKeys },
+          capturedAt: { lte: now },
+        },
         _max: { capturedAt: true },
       }),
       prisma.analyticsSnapshot.groupBy({
@@ -106,6 +111,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         where: {
           userId: ownerUserId,
           providerKey: { in: allSnapshotKeys },
+          capturedAt: { lte: now },
           status: AnalyticsSnapshotStatus.SUCCESS,
         },
         _max: { capturedAt: true },
@@ -187,6 +193,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         connected,
         hasCredential,
         snapshots: snapshotsForProvider(definition.provider, snapshots),
+        now,
       });
 
       return {

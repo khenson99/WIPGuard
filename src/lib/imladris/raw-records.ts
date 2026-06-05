@@ -24,6 +24,14 @@ function asTrimmedString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function providerEnvelopeValue(record: Record<string, unknown>, key: string): unknown {
+  for (const keyVariant of providerKeyVariants(key)) {
+    const value = record[keyVariant];
+    if (value !== undefined && value !== null) return value;
+  }
+  return undefined;
+}
+
 function scalarProviderIdValue(value: unknown, seen = new WeakSet<object>()): unknown {
   if (value === null || value === undefined || typeof value !== "object") return value;
   if (seen.has(value)) return null;
@@ -34,17 +42,18 @@ function scalarProviderIdValue(value: unknown, seen = new WeakSet<object>()): un
   }
 
   const record = value as Record<string, unknown>;
-  const data = wrapperFieldRecord(record.data);
+  const data = wrapperFieldRecord(providerEnvelopeValue(record, "data"));
+  const dataAttributes = wrapperFieldRecord(providerEnvelopeValue(data, "attributes"));
   const candidates = [
-    record.value,
-    record.metricValue,
-    record.metric_value,
-    wrapperFieldRecord(data.attributes).value,
-    data.value,
-    data.attributes,
-    record.attributes,
-    record.values,
-    record.fields,
+    providerEnvelopeValue(record, "value"),
+    providerEnvelopeValue(record, "metricValue"),
+    providerEnvelopeValue(record, "metric_value"),
+    providerEnvelopeValue(dataAttributes, "value"),
+    providerEnvelopeValue(data, "value"),
+    providerEnvelopeValue(data, "attributes"),
+    providerEnvelopeValue(record, "attributes"),
+    providerEnvelopeValue(record, "values"),
+    providerEnvelopeValue(record, "fields"),
   ];
 
   for (const candidate of candidates) {
@@ -236,6 +245,14 @@ function expandSingleValueSource(source: Record<string, unknown>): Record<string
   return [nestedValue, source];
 }
 
+function providerWrapperRecord(source: Record<string, unknown>, key: string): Record<string, unknown> {
+  for (const keyVariant of providerKeyVariants(key)) {
+    const wrapper = wrapperFieldRecord(source[keyVariant]);
+    if (Object.keys(wrapper).length > 0) return wrapper;
+  }
+  return {};
+}
+
 function providerFieldRecords(record: Record<string, unknown>): Record<string, unknown>[] {
   const wrappers: Record<string, unknown>[] = [];
   const appendWrapper = (value: unknown) => {
@@ -246,18 +263,18 @@ function providerFieldRecords(record: Record<string, unknown>): Record<string, u
     return wrapper;
   };
 
-  appendWrapper(record.properties);
-  appendWrapper(record.attributes);
-  appendWrapper(record.fields);
-  appendWrapper(record.values);
-  appendWrapper(record.relationships);
+  appendWrapper(providerWrapperRecord(record, "properties"));
+  appendWrapper(providerWrapperRecord(record, "attributes"));
+  appendWrapper(providerWrapperRecord(record, "fields"));
+  appendWrapper(providerWrapperRecord(record, "values"));
+  appendWrapper(providerWrapperRecord(record, "relationships"));
 
-  const dataRecord = appendWrapper(record.data);
-  appendWrapper(dataRecord.properties);
-  appendWrapper(dataRecord.attributes);
-  appendWrapper(dataRecord.fields);
-  appendWrapper(dataRecord.values);
-  appendWrapper(dataRecord.relationships);
+  const dataRecord = appendWrapper(providerWrapperRecord(record, "data"));
+  appendWrapper(providerWrapperRecord(dataRecord, "properties"));
+  appendWrapper(providerWrapperRecord(dataRecord, "attributes"));
+  appendWrapper(providerWrapperRecord(dataRecord, "fields"));
+  appendWrapper(providerWrapperRecord(dataRecord, "values"));
+  appendWrapper(providerWrapperRecord(dataRecord, "relationships"));
 
   return (wrappers.length > 0 ? [record, ...wrappers] : [record]).flatMap(expandSingleValueSource);
 }
@@ -556,6 +573,12 @@ function providerSpecificExternalIdValue(input: {
   if (input.snapshotKey === "github" && input.objectType === "pull_request") {
     return githubPullRequestExternalIdValue(input.record);
   }
+  if (
+    ["googleAds", "metaAds"].includes(input.snapshotKey) &&
+    ["campaign", "campaign_metric"].includes(input.objectType)
+  ) {
+    return paidAdCampaignExternalIdValue(input.record);
+  }
   if (input.snapshotKey === "github" && input.objectType === "commit") {
     for (const key of ["sha", "commitSha", "commit_sha"]) {
       for (const record of providerFieldRecords(input.record)) {
@@ -566,6 +589,73 @@ function providerSpecificExternalIdValue(input: {
   }
   if (input.snapshotKey === "googleSearchConsole") {
     return googleSearchConsoleExternalIdValue(input.record);
+  }
+  if (input.snapshotKey === "webflow" && input.objectType === "form_submission") {
+    return webflowFormSubmissionExternalIdValue(input.record);
+  }
+  if (input.snapshotKey === "unify" && input.objectType === "visitor") {
+    return unifyVisitorExternalIdValue(input.record);
+  }
+  if (["unify", "visitorFunnel"].includes(input.snapshotKey) && input.objectType === "signal") {
+    return visitorFunnelSignalExternalIdValue(input.record);
+  }
+  if (input.snapshotKey === "hubspot" && input.objectType === "contact") {
+    return hubspotContactExternalIdValue(input.record);
+  }
+  if (
+    input.snapshotKey === "mercury" &&
+    ["transaction", "bank_transaction"].includes(input.objectType)
+  ) {
+    return mercuryTransactionExternalIdValue(input.record);
+  }
+  if (
+    input.snapshotKey === "redditAds" &&
+    ["campaign", "campaign_metric"].includes(input.objectType)
+  ) {
+    return paidAdCampaignExternalIdValue(input.record);
+  }
+  if (
+    input.snapshotKey === "pylon" &&
+    ["conversation", "ticket", "issue"].includes(input.objectType)
+  ) {
+    if (input.objectType === "issue") return pylonIssueExternalIdValue(input.record);
+    return pylonSupportExternalIdValue(input.record);
+  }
+  if (
+    input.snapshotKey === "googleWorkspace" &&
+    ["calendar_event", "event"].includes(input.objectType)
+  ) {
+    return googleWorkspaceEventExternalIdValue(input.record);
+  }
+  if (
+    input.snapshotKey === "googleWorkspace" &&
+    ["email_thread", "thread"].includes(input.objectType)
+  ) {
+    return googleWorkspaceThreadExternalIdValue(input.record);
+  }
+  if (
+    input.snapshotKey === "googleWorkspace" &&
+    ["document", "file"].includes(input.objectType)
+  ) {
+    return googleWorkspaceDocumentExternalIdValue(input.record);
+  }
+  if (input.snapshotKey === "slack" && input.objectType === "message") {
+    return slackMessageExternalIdValue(input.record);
+  }
+  if (input.snapshotKey === "slack" && input.objectType === "thread") {
+    return slackThreadExternalIdValue(input.record);
+  }
+  if (input.snapshotKey === "stripe" && input.objectType === "charge") {
+    return stripeChargeExternalIdValue(input.record);
+  }
+  if (input.snapshotKey === "stripe" && input.objectType === "subscription") {
+    return stripeSubscriptionExternalIdValue(input.record);
+  }
+  if (input.snapshotKey === "stripe" && input.objectType === "invoice") {
+    return stripeInvoiceExternalIdValue(input.record);
+  }
+  if (input.snapshotKey === "stripe" && input.objectType === "payment_intent") {
+    return stripePaymentIntentExternalIdValue(input.record);
   }
   if (input.snapshotKey === "semrush" && input.objectType === "organic_competitor") {
     return semrushCompetitorExternalIdValue(input.record);
@@ -596,6 +686,281 @@ function providerSpecificExternalIdValue(input: {
   }
   if (input.snapshotKey === "coda" && input.objectType === "conversion") {
     return codaConversionExternalIdValue(input.record);
+  }
+  return null;
+}
+
+function googleWorkspaceEventExternalIdValue(record: Record<string, unknown>): string | number | null {
+  const sources = providerFieldRecords(record);
+  const eventId = firstProviderExternalIdValue(sources, [
+    "eventId",
+    "event_id",
+    "calendarEventId",
+    "calendar_event_id",
+    "id",
+  ]);
+  if (eventId !== null) {
+    const calendarId = googleWorkspaceCalendarIdValue(sources);
+    return calendarId === null ? eventId : `${calendarId}:${eventId}`;
+  }
+  return firstProviderExternalIdValue(sources, ["iCalUID", "ical_uid"]);
+}
+
+function googleWorkspaceCalendarIdValue(records: Record<string, unknown>[]): string | number | null {
+  const explicit = firstProviderExternalIdValue(records, ["calendarId", "calendar_id"]);
+  if (explicit !== null) return explicit;
+
+  for (const record of records) {
+    const calendar = wrapperFieldRecord(record.calendar);
+    const value =
+      providerExternalIdValue(calendar, "calendarId") ??
+      providerExternalIdValue(calendar, "calendar_id") ??
+      providerExternalIdValue(calendar, "id");
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+function googleWorkspaceDocumentExternalIdValue(record: Record<string, unknown>): string | number | null {
+  for (const sourceRecord of providerFieldRecords(record)) {
+    for (const key of ["documentId", "document_id", "fileId", "file_id", "id"]) {
+      const value = providerExternalIdValue(sourceRecord, key);
+      if (value !== null) return value;
+    }
+  }
+  return null;
+}
+
+function googleWorkspaceThreadExternalIdValue(record: Record<string, unknown>): string | number | null {
+  for (const sourceRecord of providerFieldRecords(record)) {
+    for (const key of [
+      "emailThreadId",
+      "email_thread_id",
+      "gmailThreadId",
+      "gmail_thread_id",
+      "threadId",
+      "thread_id",
+      "thread",
+      "messageId",
+      "message_id",
+      "id",
+    ]) {
+      const value = providerExternalIdValue(sourceRecord, key);
+      if (value !== null) return value;
+    }
+  }
+  return null;
+}
+
+function slackMessageExternalIdValue(record: Record<string, unknown>): string | number | null {
+  return slackScopedExternalIdValue(providerFieldRecords(record), [
+    "messageTs",
+    "message_ts",
+    "messageId",
+    "message_id",
+    "threadTs",
+    "thread_ts",
+    "ts",
+    "id",
+  ]);
+}
+
+function slackThreadExternalIdValue(record: Record<string, unknown>): string | number | null {
+  return slackScopedExternalIdValue(providerFieldRecords(record), [
+    "threadTs",
+    "thread_ts",
+    "thread",
+    "ts",
+    "messageTs",
+    "message_ts",
+    "messageId",
+    "message_id",
+    "id",
+  ]);
+}
+
+function slackScopedExternalIdValue(
+  records: Record<string, unknown>[],
+  keys: string[],
+): string | number | null {
+  const value = firstProviderExternalIdValue(records, keys);
+  if (value === null) return null;
+
+  const channelId = firstProviderExternalIdValue(records, ["channelId", "channel_id", "channel"]);
+  return channelId === null ? value : `${channelId}:${value}`;
+}
+
+function hubspotContactExternalIdValue(record: Record<string, unknown>): string | number | null {
+  for (const sourceRecord of providerFieldRecords(record)) {
+    for (const key of ["contactId", "contact_id", "hubspotContactId", "hubspot_contact_id", "contact", "id"]) {
+      const value = providerExternalIdValue(sourceRecord, key);
+      if (value !== null) return value;
+    }
+  }
+  return null;
+}
+
+function mercuryTransactionExternalIdValue(record: Record<string, unknown>): string | number | null {
+  for (const sourceRecord of providerFieldRecords(record)) {
+    for (const key of [
+      "transactionId",
+      "transaction_id",
+      "bankTransactionId",
+      "bank_transaction_id",
+      "transaction",
+      "id",
+    ]) {
+      const value = providerExternalIdValue(sourceRecord, key);
+      if (value !== null) return value;
+    }
+  }
+  return null;
+}
+
+function stripeChargeExternalIdValue(record: Record<string, unknown>): string | number | null {
+  for (const sourceRecord of providerFieldRecords(record)) {
+    for (const key of ["chargeId", "charge_id", "charge", "id"]) {
+      const value = providerExternalIdValue(sourceRecord, key);
+      if (value !== null) return value;
+    }
+  }
+  return null;
+}
+
+function stripeSubscriptionExternalIdValue(record: Record<string, unknown>): string | number | null {
+  for (const sourceRecord of providerFieldRecords(record)) {
+    for (const key of ["subscriptionId", "subscription_id", "subscription", "id"]) {
+      const value = providerExternalIdValue(sourceRecord, key);
+      if (value !== null) return value;
+    }
+  }
+  return null;
+}
+
+function stripeInvoiceExternalIdValue(record: Record<string, unknown>): string | number | null {
+  for (const sourceRecord of providerFieldRecords(record)) {
+    for (const key of ["invoiceId", "invoice_id", "invoice", "id"]) {
+      const value = providerExternalIdValue(sourceRecord, key);
+      if (value !== null) return value;
+    }
+  }
+  return null;
+}
+
+function stripePaymentIntentExternalIdValue(record: Record<string, unknown>): string | number | null {
+  for (const sourceRecord of providerFieldRecords(record)) {
+    for (const key of ["paymentIntentId", "payment_intent_id", "paymentIntent", "payment_intent", "id"]) {
+      const value = providerExternalIdValue(sourceRecord, key);
+      if (value !== null) return value;
+    }
+  }
+  return null;
+}
+
+function pylonSupportExternalIdValue(record: Record<string, unknown>): string | number | null {
+  for (const sourceRecord of providerFieldRecords(record)) {
+    for (const key of [
+      "conversationId",
+      "conversation_id",
+      "ticketId",
+      "ticket_id",
+      "issueId",
+      "issue_id",
+      "pylonConversationId",
+      "pylon_conversation_id",
+      "pylonTicketId",
+      "pylon_ticket_id",
+      "id",
+    ]) {
+      const value = providerExternalIdValue(sourceRecord, key);
+      if (value !== null) return value;
+    }
+  }
+  return null;
+}
+
+function pylonIssueExternalIdValue(record: Record<string, unknown>): string | number | null {
+  for (const sourceRecord of providerFieldRecords(record)) {
+    for (const key of ["issueId", "issue_id", "pylonIssueId", "pylon_issue_id", "issue", "id"]) {
+      const value = providerExternalIdValue(sourceRecord, key);
+      if (value !== null) return value;
+    }
+  }
+  return null;
+}
+
+function paidAdCampaignExternalIdValue(record: Record<string, unknown>): string | number | null {
+  const sources = providerFieldRecords(record);
+  const campaignId = firstProviderExternalIdValue(sources, [
+    "campaignId",
+    "campaign_id",
+    "CAMPAIGN_ID",
+    "campaign",
+    "id",
+  ]);
+  if (campaignId === null) return null;
+
+  const customerId = firstProviderExternalIdValue(sources, [
+    "customerId",
+    "customer_id",
+    "CUSTOMER_ID",
+    "customer",
+    "accountId",
+    "account_id",
+    "ACCOUNT_ID",
+    "account",
+    "adAccountId",
+    "ad_account_id",
+    "AD_ACCOUNT_ID",
+    "adAccount",
+    "ad_account",
+    "AD_ACCOUNT",
+  ]);
+  return customerId === null ? campaignId : `${customerId}:${campaignId}`;
+}
+
+function unifyVisitorExternalIdValue(record: Record<string, unknown>): string | number | null {
+  for (const sourceRecord of providerFieldRecords(record)) {
+    for (const key of ["visitorId", "visitor_id", "visitorID", "id"]) {
+      const value = providerExternalIdValue(sourceRecord, key);
+      if (value !== null) return value;
+    }
+  }
+  return null;
+}
+
+function visitorFunnelSignalExternalIdValue(record: Record<string, unknown>): string | number | null {
+  const sources = providerFieldRecords(record);
+  for (const sourceRecord of sources) {
+    for (const key of ["signalKey", "signal_key", "recordId", "record_id", "rowId", "row_id", "id"]) {
+      const value = providerExternalIdValue(sourceRecord, key);
+      if (value !== null) return value;
+    }
+  }
+
+  const identity = {
+    enrichmentProvider: firstProviderExternalIdValue(sources, [
+      "enrichmentProvider",
+      "enrichment_provider",
+      "sourceProvider",
+      "source_provider",
+      "provider",
+    ]),
+    anonymousId: firstProviderExternalIdValue(sources, ["anonymousId", "anonymous_id", "visitorId", "visitor_id"]),
+    email: firstProviderExternalIdValue(sources, ["email", "workEmail", "work_email", "businessEmail", "business_email"]),
+    domain: firstProviderExternalIdValue(sources, ["domain", "companyDomain", "company_domain"]),
+    occurredAt: firstProviderExternalIdValue(sources, ["occurredAt", "occurred_at", "seenAt", "seen_at", "timestamp"]),
+  };
+  const hasEntityIdentity = [identity.anonymousId, identity.email, identity.domain].some((value) => value !== null);
+  return identity.occurredAt !== null && hasEntityIdentity ? shortHash(identity) : null;
+}
+
+function webflowFormSubmissionExternalIdValue(record: Record<string, unknown>): string | number | null {
+  for (const sourceRecord of providerFieldRecords(record)) {
+    for (const key of ["submissionId", "submission_id", "submissionID", "id"]) {
+      const value = providerExternalIdValue(sourceRecord, key);
+      if (value !== null) return value;
+    }
   }
   return null;
 }
@@ -691,9 +1056,13 @@ function googleSearchConsoleExternalIdValue(record: Record<string, unknown>): st
 }
 
 function githubPullRequestExternalIdValue(record: Record<string, unknown>): string | null {
-  const pullRequestNumber = providerFieldRecords(record)
-    .map((sourceRecord) => providerExternalIdValue(sourceRecord, "number"))
-    .find((value) => value !== null) ?? null;
+  const pullRequestNumber = firstProviderExternalIdValue(providerFieldRecords(record), [
+    "pullRequestNumber",
+    "pull_request_number",
+    "prNumber",
+    "pr_number",
+    "number",
+  ]);
   const repositoryFullName = githubRepositoryFullName(record);
   if (pullRequestNumber === null || !repositoryFullName) return null;
   return `${repositoryFullName}/pull/${pullRequestNumber}`;
@@ -702,13 +1071,26 @@ function githubPullRequestExternalIdValue(record: Record<string, unknown>): stri
 function githubRepositoryFullName(record: Record<string, unknown>): string | null {
   for (const sourceRecord of providerFieldRecords(record)) {
     const repository = wrapperFieldRecord(sourceRecord.repository);
+    const repo = wrapperFieldRecord(sourceRecord.repo);
     const explicit =
       providerTextValue(repository.full_name) ??
       providerTextValue(repository.fullName) ??
+      providerTextValue(repository.nameWithOwner) ??
+      providerTextValue(repository.name_with_owner) ??
+      providerTextValue(repo.full_name) ??
+      providerTextValue(repo.fullName) ??
+      providerTextValue(repo.nameWithOwner) ??
+      providerTextValue(repo.name_with_owner) ??
       providerTextValue(sourceRecord.repositoryFullName) ??
       providerTextValue(sourceRecord.repository_full_name) ??
+      providerTextValue(sourceRecord.repoFullName) ??
+      providerTextValue(sourceRecord.repo_full_name) ??
+      providerTextValue(sourceRecord.nameWithOwner) ??
+      providerTextValue(sourceRecord.name_with_owner) ??
       providerTextValue(sourceRecord.full_name) ??
-      providerTextValue(sourceRecord.fullName);
+      providerTextValue(sourceRecord.fullName) ??
+      providerTextValue(sourceRecord.repository) ??
+      providerTextValue(sourceRecord.repo);
     if (explicit?.includes("/")) return explicit;
 
     const htmlUrl = providerTextValue(sourceRecord.html_url) ?? providerTextValue(sourceRecord.htmlUrl);
@@ -776,12 +1158,36 @@ function nestedPricingProviderObjectId(value: unknown): string | number | null {
   return null;
 }
 
+function firstProviderExternalIdValue(
+  records: Record<string, unknown>[],
+  keys: string[],
+): string | number | null {
+  for (const record of records) {
+    for (const key of keys) {
+      const value = providerExternalIdValue(record, key);
+      if (value !== null) return value;
+    }
+  }
+  return null;
+}
+
+function providerKeyVariants(key: string): string[] {
+  const uppercaseKey = key.toUpperCase();
+  return uppercaseKey === key ? [key] : [key, uppercaseKey];
+}
+
 function providerExternalIdValue(record: Record<string, unknown>, key: string): string | number | null {
-  const value = record[key];
-  const safeValue = safeProviderIdValue(value);
-  if (safeValue !== null) return safeValue;
+  const values = providerKeyVariants(key).map((keyVariant) => record[keyVariant]);
+  for (const value of values) {
+    const safeValue = safeProviderIdValue(value);
+    if (safeValue !== null) return safeValue;
+  }
   if (key === "pricing") {
-    return nestedProviderObjectId(value) ?? nestedPricingProviderObjectId(value);
+    for (const value of values) {
+      const pricingId = nestedProviderObjectId(value) ?? nestedPricingProviderObjectId(value);
+      if (pricingId !== null) return pricingId;
+    }
+    return null;
   }
   if (
     key === "customer" ||
@@ -804,6 +1210,8 @@ function providerExternalIdValue(record: Record<string, unknown>, key: string): 
     key === "thread" ||
     key === "file" ||
     key === "campaign" ||
+    key === "adAccount" ||
+    key === "ad_account" ||
     key === "adGroup" ||
     key === "ad_group" ||
     key === "adSet" ||
@@ -813,7 +1221,10 @@ function providerExternalIdValue(record: Record<string, unknown>, key: string): 
     key === "criterion" ||
     key === "ad"
   ) {
-    return nestedProviderObjectId(value);
+    for (const value of values) {
+      const nestedId = nestedProviderObjectId(value);
+      if (nestedId !== null) return nestedId;
+    }
   }
   return null;
 }
@@ -830,24 +1241,25 @@ function scalarTimestampValue(value: unknown, seen = new WeakSet<object>()): unk
   }
 
   const record = value as Record<string, unknown>;
-  const data = wrapperFieldRecord(record.data);
+  const data = wrapperFieldRecord(providerEnvelopeValue(record, "data"));
+  const dataAttributes = wrapperFieldRecord(providerEnvelopeValue(data, "attributes"));
   const candidates = [
-    record.value,
-    record.date,
-    record.timestamp,
-    record.time,
-    record.iso,
-    record.isoString,
-    record.iso_string,
-    record.milliseconds,
-    record.millis,
-    record.seconds,
-    wrapperFieldRecord(data.attributes).value,
-    data.value,
-    data.attributes,
-    record.attributes,
-    record.values,
-    record.fields,
+    providerEnvelopeValue(record, "value"),
+    providerEnvelopeValue(record, "date"),
+    providerEnvelopeValue(record, "timestamp"),
+    providerEnvelopeValue(record, "time"),
+    providerEnvelopeValue(record, "iso"),
+    providerEnvelopeValue(record, "isoString"),
+    providerEnvelopeValue(record, "iso_string"),
+    providerEnvelopeValue(record, "milliseconds"),
+    providerEnvelopeValue(record, "millis"),
+    providerEnvelopeValue(record, "seconds"),
+    providerEnvelopeValue(dataAttributes, "value"),
+    providerEnvelopeValue(data, "value"),
+    providerEnvelopeValue(data, "attributes"),
+    providerEnvelopeValue(record, "attributes"),
+    providerEnvelopeValue(record, "values"),
+    providerEnvelopeValue(record, "fields"),
   ];
 
   for (const candidate of candidates) {
@@ -897,8 +1309,15 @@ function timestampFromRecord(record: Record<string, unknown>, keys: string[]): s
   return null;
 }
 
+function timestampKeys(keys: string[]): string[] {
+  return keys.flatMap((key) => {
+    const uppercaseKey = key.toUpperCase();
+    return uppercaseKey === key ? [key] : [key, uppercaseKey];
+  });
+}
+
 function recordOccurredAt(record: Record<string, unknown>): string | null {
-  return timestampFromRecord(record, [
+  return timestampFromRecord(record, timestampKeys([
     "occurredAt",
     "occurred_at",
     "timestamp",
@@ -925,11 +1344,11 @@ function recordOccurredAt(record: Record<string, unknown>): string | null {
     "date",
     "day",
     "month",
-  ]);
+  ]));
 }
 
 function recordSourceCreatedAt(record: Record<string, unknown>): string | null {
-  return timestampFromRecord(record, [
+  return timestampFromRecord(record, timestampKeys([
     "sourceCreatedAt",
     "source_created_at",
     "created",
@@ -940,11 +1359,11 @@ function recordSourceCreatedAt(record: Record<string, unknown>): string | null {
     "createdate",
     "firstCardAt",
     "first_card_at",
-  ]);
+  ]));
 }
 
 function recordSourceUpdatedAt(record: Record<string, unknown>): string | null {
-  return timestampFromRecord(record, [
+  return timestampFromRecord(record, timestampKeys([
     "sourceUpdatedAt",
     "source_updated_at",
     "syncedAt",
@@ -966,7 +1385,7 @@ function recordSourceUpdatedAt(record: Record<string, unknown>): string | null {
     "hs_lastmodifieddate",
     "lastCardAt",
     "last_card_at",
-  ]);
+  ]));
 }
 
 function rawRecordFreshnessTimestamp(value: unknown, asOf: Date): number | null {

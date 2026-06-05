@@ -3,6 +3,7 @@ import {
   MONTHLY_HISTORY_CONTEXT_KEY,
   MONTHLY_HISTORY_RANGE_PRESET,
 } from "@/lib/analytics/monthly-pnl-history";
+import { snapshotKeyQueryVariants } from "@/lib/integrations/provider-registry";
 import { prisma } from "@/lib/prisma";
 
 export interface SnapshotQueryInput {
@@ -48,6 +49,11 @@ export const HARD_STALE_GRACE_MS = 3 * 60 * 60 * 1000; // 3 hours
 function contextKeyOrDefault(value?: string): string {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : "default";
+}
+
+function providerKeyWhere(providerKey: string): string | { in: string[] } {
+  const variants = snapshotKeyQueryVariants([providerKey]);
+  return variants.length > 1 ? { in: variants } : providerKey;
 }
 
 export async function storeAnalyticsSnapshot(input: SnapshotUpsertInput): Promise<void> {
@@ -127,13 +133,15 @@ export async function storeAnalyticsSnapshotFailure(input: SnapshotFailureInput)
 }
 
 export async function readLatestSnapshot<T = unknown>(input: SnapshotQueryInput): Promise<SnapshotResult<T>> {
+  const now = new Date();
   const snapshot = await prisma.analyticsSnapshot.findFirst({
     where: {
       userId: input.userId,
-      providerKey: input.providerKey,
+      providerKey: providerKeyWhere(input.providerKey),
       contextKey: contextKeyOrDefault(input.contextKey),
       rangePreset: input.rangePreset,
       toDate: input.toDate,
+      capturedAt: { lte: now },
     },
     orderBy: [{ capturedAt: "desc" }],
   });
@@ -154,14 +162,14 @@ export async function readLatestSnapshot<T = unknown>(input: SnapshotQueryInput)
   const isSuccess = snapshot.status === AnalyticsSnapshotStatus.SUCCESS;
   const payload = (isSuccess ? (snapshot.payload as T | null) : null) ?? null;
   const expiresAtMs = snapshot.expiresAt.getTime();
-  const now = Date.now();
+  const nowMs = now.getTime();
 
   return {
     payload,
     capturedAt: snapshot.capturedAt.toISOString(),
     expiresAt: snapshot.expiresAt.toISOString(),
-    needsRefresh: expiresAtMs < now,
-    stale: expiresAtMs + HARD_STALE_GRACE_MS < now,
+    needsRefresh: expiresAtMs < nowMs,
+    stale: expiresAtMs + HARD_STALE_GRACE_MS < nowMs,
     fromSnapshot: true,
     status: snapshot.status,
     error: snapshot.lastError,
@@ -171,13 +179,15 @@ export async function readLatestSnapshot<T = unknown>(input: SnapshotQueryInput)
 export async function readLatestSuccessfulSnapshot<T = unknown>(
   input: SnapshotQueryInput
 ): Promise<SnapshotResult<T>> {
+  const now = new Date();
   const snapshot = await prisma.analyticsSnapshot.findFirst({
     where: {
       userId: input.userId,
-      providerKey: input.providerKey,
+      providerKey: providerKeyWhere(input.providerKey),
       contextKey: contextKeyOrDefault(input.contextKey),
       rangePreset: input.rangePreset,
       toDate: input.toDate,
+      capturedAt: { lte: now },
       status: AnalyticsSnapshotStatus.SUCCESS,
     },
     orderBy: [{ capturedAt: "desc" }],
@@ -197,14 +207,14 @@ export async function readLatestSuccessfulSnapshot<T = unknown>(
   }
 
   const expiresAtMs = snapshot.expiresAt.getTime();
-  const now = Date.now();
+  const nowMs = now.getTime();
 
   return {
     payload: (snapshot.payload as T | null) ?? null,
     capturedAt: snapshot.capturedAt.toISOString(),
     expiresAt: snapshot.expiresAt.toISOString(),
-    needsRefresh: expiresAtMs < now,
-    stale: expiresAtMs + HARD_STALE_GRACE_MS < now,
+    needsRefresh: expiresAtMs < nowMs,
+    stale: expiresAtMs + HARD_STALE_GRACE_MS < nowMs,
     fromSnapshot: true,
     status: snapshot.status,
     error: snapshot.lastError,
