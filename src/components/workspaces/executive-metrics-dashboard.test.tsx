@@ -223,7 +223,7 @@ describe("ExecutiveMetricsDashboard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Customer Risk/i }));
 
-    expect(screen.getByText("10 accounts tracked, 7 healthy.")).toBeTruthy();
+    expect(screen.getAllByText("10 accounts tracked, 7 healthy.").length).toBeGreaterThan(1);
     expect(screen.getByRole("link", { name: /Drill in/i }).getAttribute("href")).toBe(
       "/metrics/customer-health",
     );

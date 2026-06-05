@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -586,13 +586,11 @@ export function ExecutiveMetricsDashboard({
     [dashboard.metricIds, metricMap],
   );
   const [selectedMetricId, setSelectedMetricId] = useState<string>(visibleMetrics[0]?.id ?? "arr");
-  const selectedMetric = metricMap.get(selectedMetricId) ?? visibleMetrics[0] ?? metrics[0] ?? FALLBACK_METRIC;
-
-  useEffect(() => {
-    if (!visibleMetrics.some((metric) => metric.id === selectedMetricId) && visibleMetrics[0]) {
-      setSelectedMetricId(visibleMetrics[0].id);
-    }
-  }, [selectedMetricId, visibleMetrics]);
+  const selectedMetric =
+    visibleMetrics.find((metric) => metric.id === selectedMetricId) ??
+    visibleMetrics[0] ??
+    metrics[0] ??
+    FALLBACK_METRIC;
 
   const decisionSignals: DecisionSignal[] = [
     {
